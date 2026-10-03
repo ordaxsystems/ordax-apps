@@ -1,0 +1,40 @@
+{
+  "$schema": "ordax.apps-workspace/1",
+  "role": "first-party-app-source",
+  "platform_repository": "washingtonmsdj/prototipo-ordax-os",
+  "authority": "none",
+  "source_of_truth_policy": "single-repository-per-app",
+  "structural_surfaces_owned_by_platform": [
+    "store",
+    "settings",
+    "account",
+    "system"
+  ],
+  "first_party_app_targets": [
+    "files",
+    "internet",
+    "assistant",
+    "studio",
+    "projects",
+    "activity",
+    "notes",
+    "network"
+  ],
+  "initial_extraction_candidate": "notes",
+  "contracts": {
+    "component_manifest": "ordax.component-manifest/1",
+    "intelligence": "ordax.intelligence/1",
+    "memory": "ordax.memory/1",
+    "delivery_policy": "ordax.first-party-app-delivery-policy/1",
+    "runtime_release": "prototype-ordax.runtime-component-release/2"
+  },
+  "invariants": {
+    "store_is_structural_and_non_removable": true,
+    "store_ui_has_install_authority": false,
+    "app_package_may_mint_authority": false,
+    "uninstall_implies_user_data_delete": false,
+    "localization_policy": "component-scoped",
+    "platform_services_may_be_copied_here": false,
+    "third_party_apps_use_public_contracts": true
+  }
+}
