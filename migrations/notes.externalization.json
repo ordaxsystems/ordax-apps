@@ -1,0 +1,54 @@
+{
+  "$schema": "ordax.app-externalization-plan/1",
+  "app_id": "notes",
+  "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+  "source_path_current": "system/apps/notes",
+  "target_repository": "washingtonmsdj/ordax-apps",
+  "target_path": "apps/notes",
+  "source_of_truth_state": "platform-until-cutover",
+  "cutover_allowed": false,
+  "platform_contracts_required": [
+    "ordax.app-activation/1",
+    "ordax.component-manifest/1",
+    "ordax.component-runtime/1",
+    "ordax.file-space/11",
+    "ordax.intelligence/1",
+    "ordax.localization/1",
+    "prototype-ordax.localization-pack/1",
+    "ordax.surface-render-lifecycle/4"
+  ],
+  "app_owned_contracts": [
+    "notes-store",
+    "notes-file-importer"
+  ],
+  "private_dependencies_to_remove": [
+    {
+      "source": "system/apps/notes/ui/workspace-controls.mjs",
+      "dependency": "system/services/intelligence/client-actions.mjs",
+      "replacement": "app-owned client code over injected ordax.intelligence/1 port"
+    },
+    {
+      "source": "system/apps/catalog.mjs",
+      "dependency": "system/apps/notes/app.mjs",
+      "replacement": "product catalog metadata independent from implementation source"
+    },
+    {
+      "source": "system/apps/component-catalog.mjs",
+      "dependency": "system/apps/notes/component.mjs",
+      "replacement": "verified package/inventory component manifest"
+    }
+  ],
+  "proofs_required": [
+    "sdk-contracts-pinned",
+    "no-core-private-imports",
+    "external-deterministic-package",
+    "platform-package-verification",
+    "install-stage-health-promote",
+    "rollback-last-known-good",
+    "platform-operates-without-app",
+    "offline-reinstall-from-local-artifact",
+    "uninstall-preserves-user-data",
+    "old-platform-source-removed"
+  ],
+  "authority": "none"
+}
