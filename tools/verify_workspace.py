@@ -36,12 +36,21 @@ def main() -> None:
     if data.get("initial_extraction_candidate") != "notes":
         fail("initial extraction candidate must remain explicitly reviewed")
 
+    expected_contracts = {
+        "component_manifest": "ordax.component-manifest/1",
+        "intelligence": "ordax.intelligence/1",
+        "memory": "ordax.memory/1",
+        "localization_pack": "prototype-ordax.localization-pack/1",
+        "runtime_release": "prototype-ordax.runtime-component-release/2",
+    }
+    if data.get("contracts") != expected_contracts:
+        fail("published platform contract set drifted")
+    if data.get("planned_contracts") != {
+        "delivery_policy": "ordax.first-party-app-delivery-policy/1"
+    }:
+        fail("planned platform contract set drifted")
+
     invariants = data.get("invariants") or {}
-    required_true = [
-        "store_is_structural_and_non_removable",
-        "uninstall_implies_user_data_delete",
-        "third_party_apps_use_public_contracts",
-    ]
     if invariants.get("store_is_structural_and_non_removable") is not True:
         fail("Store must remain structural and non-removable")
     if invariants.get("store_ui_has_install_authority") is not False:
@@ -65,6 +74,7 @@ def main() -> None:
 
     print("ORDAX_APPS_WORKSPACE=PASS")
     print(f"FIRST_PARTY_TARGET_COUNT={len(targets)}")
+    print(f"PUBLISHED_CONTRACT_COUNT={len(expected_contracts)}")
     print("STORE_STRUCTURAL_NON_REMOVABLE=YES")
     print("APP_INSTALL_AUTHORITY=PLATFORM_ONLY")
 
