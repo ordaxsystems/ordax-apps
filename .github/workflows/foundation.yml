@@ -19,7 +19,12 @@ jobs:
           persist-credentials: false
 
       - name: Validate workspace JSON
-        run: python3 -m json.tool ordax-apps.workspace.json >/dev/null
+        run: |
+          python3 -m json.tool ordax-apps.workspace.json >/dev/null
+          python3 -m json.tool platform-sdk.lock.json >/dev/null
 
       - name: Prove repository boundary invariants
         run: python3 tools/verify_workspace.py
+
+      - name: Prove pinned public App SDK from platform repository
+        run: python3 tools/verify_platform_sdk.py
