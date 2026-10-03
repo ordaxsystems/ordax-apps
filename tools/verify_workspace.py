@@ -4,10 +4,55 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT / "ordax-apps.workspace.json"
+NOTES_MIGRATION = ROOT / "migrations" / "notes.externalization.json"
 
 
 def fail(message: str) -> None:
     raise SystemExit(f"ORDAX_APPS_WORKSPACE=FAIL\n{message}")
+
+
+def validate_notes_migration() -> None:
+    plan = json.loads(NOTES_MIGRATION.read_text(encoding="utf-8"))
+    if plan.get("$schema") != "ordax.app-externalization-plan/1":
+        fail("unexpected Notes externalization plan schema")
+    if plan.get("app_id") != "notes":
+        fail("Notes externalization plan has wrong app id")
+    if plan.get("source_repository_current") != "washingtonmsdj/prototipo-ordax-os":
+        fail("Notes source repository must remain platform until cutover")
+    if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
+        fail("Notes target repository is invalid")
+    if plan.get("source_of_truth_state") != "platform-until-cutover":
+        fail("Notes must retain one source of truth before cutover")
+    if plan.get("cutover_allowed") is not False:
+        fail("Notes cutover must remain blocked until proofs are complete")
+    if plan.get("authority") != "none":
+        fail("externalization metadata must not carry authority")
+
+    private_dependencies = plan.get("private_dependencies_to_remove")
+    if not isinstance(private_dependencies, list) or not private_dependencies:
+        fail("Notes migration must track private dependencies")
+    if not any(
+        item.get("dependency") == "system/services/intelligence/client-actions.mjs"
+        for item in private_dependencies
+        if isinstance(item, dict)
+    ):
+        fail("Notes migration must track the private Intelligence helper dependency")
+
+    proofs = plan.get("proofs_required")
+    required_proofs = {
+        "sdk-contracts-pinned",
+        "no-core-private-imports",
+        "external-deterministic-package",
+        "platform-package-verification",
+        "install-stage-health-promote",
+        "rollback-last-known-good",
+        "platform-operates-without-app",
+        "offline-reinstall-from-local-artifact",
+        "uninstall-preserves-user-data",
+        "old-platform-source-removed",
+    }
+    if not isinstance(proofs, list) or set(proofs) != required_proofs:
+        fail("Notes cutover proof set drifted")
 
 
 def main() -> None:
@@ -72,10 +117,13 @@ def main() -> None:
     if unexpected:
         fail(f"platform-owned top-level paths present: {', '.join(unexpected)}")
 
+    validate_notes_migration()
+
     print("ORDAX_APPS_WORKSPACE=PASS")
     print(f"FIRST_PARTY_TARGET_COUNT={len(targets)}")
     print(f"PUBLISHED_CONTRACT_COUNT={len(expected_contracts)}")
     print("STORE_STRUCTURAL_NON_REMOVABLE=YES")
+    print("NOTES_CUTOVER_ALLOWED=NO")
     print("APP_INSTALL_AUTHORITY=PLATFORM_ONLY")
 
 
