@@ -37,7 +37,12 @@
       "runtime_product_name": "ORDAX Runtime",
       "launcher_name": "ORDAX Studio.exe",
       "installer_name_pattern": "ORDAX-Studio-Setup-<version>-x64.exe",
-      "requires_ordax_os": false
+      "requires_ordax_os": false,
+      "account_optional_for_local_use": true,
+      "cloud_pairing_optional_for_local_use": true,
+      "offline_local_launch_supported": true,
+      "local_device_identity_account_independent": true,
+      "account_connection_extends_remote_capabilities_only": true
     }
   },
   "shared_release_invariants": {
@@ -47,6 +52,7 @@
     "same_typed_action_semantics": true,
     "same_provider_neutral_core": true,
     "same_canonical_app_version": true,
+    "windows_local_first_semantics": true,
     "os_specific_forks_forbidden": true,
     "provider_specific_forks_forbidden": true,
     "raw_device_execute_in_portable_app_forbidden": true,
@@ -80,6 +86,7 @@
     "typed-action-semantic-parity",
     "canonical-app-version-parity",
     "provider-neutral-core",
+    "windows-local-first-no-account-offline",
     "windows-clean-install-upgrade-uninstall",
     "ordax-os-install-stage-health-promote-rollback"
   ],
