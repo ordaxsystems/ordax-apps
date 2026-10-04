@@ -48,7 +48,17 @@
       "remote_client_cannot_enable_full_access": true,
       "full_access_removes_ordax_root_and_app_allowlists": true,
       "full_filesystem_intermediate_mode_supported": true,
-      "windows_uac_remains_final_platform_boundary": true
+      "windows_uac_remains_final_platform_boundary": true,
+      "remote_full_access_gate": {
+        "status": "required-before-cutover",
+        "device_scoped": true,
+        "project_id_nullable_for_device_control": true,
+        "derived_from_authenticated_subject_and_active_device_link": true,
+        "operator_token_not_required_for_normal_owner_use": true,
+        "model_callable_grant_mint_forbidden": true,
+        "local_full_access_consent_required": true,
+        "legacy_operator_only_project_grant_is_not_product_path": true
+      }
     }
   },
   "shared_release_invariants": {
@@ -60,6 +70,7 @@
     "same_canonical_app_version": true,
     "windows_local_first_semantics": true,
     "windows_full_access_is_host_policy_not_portable_authority": true,
+    "remote_full_access_must_use_runtime_v2_device_scope": true,
     "os_specific_forks_forbidden": true,
     "provider_specific_forks_forbidden": true,
     "raw_device_execute_in_portable_app_forbidden": true,
@@ -76,7 +87,8 @@
       "ORDAX Runtime packaging",
       "Windows installer and launcher integration",
       "Windows process/service lifecycle",
-      "Windows Computer Control policy and owner-approved Full Access"
+      "Windows Computer Control policy and owner-approved Full Access",
+      "Windows device-scoped remote authorization adapter"
     ]
   },
   "outside_studio_core": [
@@ -96,6 +108,7 @@
     "provider-neutral-core",
     "windows-local-first-no-account-offline",
     "windows-owner-approved-full-access",
+    "windows-full-access-device-scoped-remote",
     "windows-clean-install-upgrade-uninstall",
     "ordax-os-install-stage-health-promote-rollback"
   ],
