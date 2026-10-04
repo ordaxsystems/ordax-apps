@@ -23,6 +23,7 @@ jobs:
           python3 -m json.tool ordax-apps.workspace.json >/dev/null
           python3 -m json.tool platform-sdk.lock.json >/dev/null
           python3 -m json.tool migrations/studio.legacy-method-ownership.json >/dev/null
+          python3 -m json.tool migrations/studio.distribution.json >/dev/null
 
       - name: Prove repository boundary invariants
         run: python3 tools/verify_workspace.py
@@ -38,3 +39,6 @@ jobs:
 
       - name: Prove Studio legacy method ownership boundary
         run: python3 tools/verify_studio_legacy_method_ownership.py
+
+      - name: Prove Studio OrdaX OS and Windows distribution invariants
+        run: python3 tools/verify_studio_distribution.py
