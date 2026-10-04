@@ -13,7 +13,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = ROOT / "platform-sdk.lock.json"
-TEST_PATH = ROOT / "tests" / "studio_sdk_conformance.mjs"
+TEST_PATHS = (
+    ROOT / "tests" / "studio_sdk_conformance.mjs",
+    ROOT / "tests" / "studio_sdk_v2_conformance.mjs",
+)
 MAX_BUNDLE_BYTES = 1024 * 1024
 MAX_CONTRACT_BYTES = 512 * 1024
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -23,13 +26,16 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 # is materialized into the external app workspace.
 SOURCE_PATHS = (
     "system/contracts/device-action-envelope.mjs",
+    "system/contracts/device-action-envelope-v2.mjs",
     "system/contracts/device-capabilities.mjs",
     "system/contracts/file-space.mjs",
     "system/contracts/intelligence.mjs",
     "system/contracts/localization.mjs",
     "system/contracts/memory.mjs",
     "system/contracts/project-catalog.mjs",
+    "system/contracts/studio-action-context.mjs",
     "system/contracts/studio-runtime.mjs",
+    "system/contracts/studio-runtime-v2.mjs",
 )
 
 
@@ -104,8 +110,9 @@ def main() -> None:
         if not path.startswith("system/contracts/"):
             fail(f"Studio conformance source escaped public contract layer: {path}")
 
-    if not TEST_PATH.is_file():
-        fail("Studio SDK conformance fixture is missing")
+    for test_path in TEST_PATHS:
+        if not test_path.is_file():
+            fail(f"Studio SDK conformance fixture is missing: {test_path.name}")
 
     with tempfile.TemporaryDirectory(prefix="ordax-studio-sdk-") as temporary:
         temp_root = Path(temporary)
@@ -126,16 +133,16 @@ def main() -> None:
         env["ORDAX_STUDIO_SDK_ROOT"] = str(temp_root / "system" / "contracts")
         try:
             result = subprocess.run(
-                ["node", "--test", str(TEST_PATH)],
+                ["node", "--test", *(str(path) for path in TEST_PATHS)],
                 cwd=ROOT,
                 env=env,
                 check=False,
                 text=True,
                 capture_output=True,
-                timeout=60,
+                timeout=90,
             )
         except (OSError, subprocess.SubprocessError) as exc:
-            fail(f"could not execute Node Studio conformance fixture: {exc}")
+            fail(f"could not execute Node Studio conformance fixtures: {exc}")
         if result.returncode != 0:
             output = (result.stdout + "\n" + result.stderr).strip()
             fail(f"Studio public-port conformance failed:\n{output}")
@@ -143,7 +150,8 @@ def main() -> None:
     print("ORDAX_STUDIO_SDK_CONFORMANCE=PASS")
     print(f"SDK_COMMIT={commit}")
     print(f"SDK_CONTRACT_MODULE_COUNT={len(SOURCE_PATHS)}")
-    print("STUDIO_PUBLIC_PORTS=studio-runtime,memory,intelligence,localization")
+    print("STUDIO_PUBLIC_PORTS=studio-runtime-v2,memory,intelligence,localization")
+    print("STUDIO_COMPATIBILITY_PORT=studio-runtime-v1")
     print("RAW_DEVICE_AGENT_EXPORTED=NO")
     print("PORTABLE_STUDIO_AUTHORITY=none")
 
