@@ -10,14 +10,15 @@ Canonical target boundary: `docs/STUDIO-BOUNDARY.md`.
 
 ## Current platform gate
 
-The public platform contract gate is now complete for the first Studio extraction stage:
+The public platform contract and external conformance gates are complete for the first Studio extraction stage:
 
 - `prototipo-ordax-os#1030` is merged as `73c86c684abcd38b846e6eed40a5cd75cacf50ae`;
 - App SDK bundle `1.2.0` is pinned by exact commit and SHA-256 in this repository;
 - `ordax.studio-runtime/1`, capability discovery, project catalog and device request/receipt envelopes are published with `authority:none`;
-- raw `ordax.device-agent/1`, `execute()`, grant validation and Control Plane implementation are deliberately not part of the App SDK.
+- raw `ordax.device-agent/1`, `execute()`, grant validation and Control Plane implementation are deliberately not part of the App SDK;
+- `ordax-apps#11` proves the pinned SDK by bundle digest, Git blob identity and provider/host-neutral Studio port semantics without copying platform implementation.
 
-The next Studio boundary gate is therefore **portable UI/host separation + conformance**, not another private-runtime export.
+The next Studio boundary gate is therefore **portable UI/host separation**, followed by real Windows/OrdaX OS adapter parity against the merged conformance fixture.
 
 ## Classification rule
 
@@ -122,7 +123,7 @@ App-private durable state will use `ordax.app-data/1` only after its Native veri
 
 1. **DONE** — publish and merge the required first-stage public App SDK contracts;
 2. **DONE** — pin App SDK `1.2.0` to exact platform commit + verified bundle digest;
-3. build a Studio conformance fixture against those public ports without copying product source;
+3. **DONE** — build and CI-prove a Studio conformance fixture against the pinned public ports without copying product source;
 4. extract host-specific RPC/readiness lifecycle from the current UI so portable code depends on one host abstraction;
 5. refactor the authoritative Studio implementation so portable product logic depends only on public/runtime-provided ports;
 6. prove equivalent OrdaX OS and Windows host adapters against the same conformance tests;
