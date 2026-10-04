@@ -12,6 +12,9 @@ const runtime = await load("studio-runtime.mjs");
 const capabilities = await load("device-capabilities.mjs");
 const actions = await load("device-action-envelope.mjs");
 const projects = await load("project-catalog.mjs");
+const memory = await load("memory.mjs");
+const intelligence = await load("intelligence.mjs");
+const localization = await load("localization.mjs");
 
 function projectCatalog() {
   return {
@@ -94,6 +97,106 @@ function studioPort({ onRequest = null, reader = null, catalog = null, ...extra 
       return receiptFor(request);
     },
     ...extra,
+  };
+}
+
+function memoryItem(overrides = {}) {
+  return {
+    id: "memory-1",
+    ownerKind: "device",
+    ownerId: null,
+    scope: "project",
+    kind: "summary",
+    sensitivity: "private",
+    content: "Studio parity fixture",
+    provenance: "ordax-apps conformance",
+    sourceTimestamp: "2026-10-04T00:00:00.000Z",
+    spaceId: null,
+    projectId: "project-1",
+    ...overrides,
+  };
+}
+
+function memoryPort() {
+  const store = new Map();
+  return {
+    schema: memory.MEMORY_PORT_SCHEMA,
+    async search(request) {
+      const valid = memory.validateMemorySearchRequest(request);
+      return [...store.values()].filter((item) => {
+        if (valid.scopes && !valid.scopes.includes(item.scope)) return false;
+        if (valid.projectId && item.projectId !== valid.projectId) return false;
+        if (valid.query && !item.content.toLowerCase().includes(valid.query.toLowerCase())) return false;
+        return true;
+      }).slice(valid.offset, valid.offset + valid.limit);
+    },
+    async remember(item) {
+      const valid = memory.validateMemoryItem(item);
+      store.set(valid.id, valid);
+      return valid;
+    },
+    async forget(request) {
+      const valid = memory.validateMemoryForgetRequest(request);
+      return store.delete(valid.id);
+    },
+    async flush() {
+      return { ok: true };
+    },
+  };
+}
+
+function intelligencePort() {
+  const snapshot = {
+    state: "ready",
+    inferenceAvailable: true,
+    engineId: "fixture-engine",
+    modelId: "fixture-model",
+    authority: "none",
+    toolExecution: false,
+  };
+  return {
+    schema: intelligence.INTELLIGENCE_PORT_SCHEMA,
+    getSnapshot() {
+      return snapshot;
+    },
+    subscribe() {
+      return () => {};
+    },
+    async respond(request) {
+      const valid = intelligence.validateIntelligenceRequest(request);
+      return intelligence.validateIntelligenceResponse({
+        schema: intelligence.INTELLIGENCE_RESPONSE_SCHEMA,
+        text: `${valid.intent}:${valid.prompt}`,
+        engineId: snapshot.engineId,
+        modelId: snapshot.modelId,
+        authority: "none",
+      });
+    },
+  };
+}
+
+function localizationPort(locale = "pt-BR") {
+  return {
+    schema: localization.LOCALIZATION_SCHEMA,
+    getLocale() {
+      return locale;
+    },
+    translate(key, variables = {}) {
+      const suffix = Object.keys(variables).length ? `:${JSON.stringify(variables)}` : "";
+      return `${locale}:${key}${suffix}`;
+    },
+    subscribe() {
+      return () => {};
+    },
+  };
+}
+
+function hostFacets() {
+  return {
+    studioRuntime: studioPort(),
+    memory: memoryPort(),
+    intelligence: intelligencePort(),
+    localization: localizationPort(),
   };
 }
 
@@ -181,6 +284,82 @@ test("Studio runtime requires the public project catalog port", () => {
     () => runtime.assertStudioRuntimePort(studioPort({ catalog: invalidCatalog })),
     /Project-catalog port must implement/,
   );
+});
+
+test("Memory, Intelligence and Localization facets use the pinned public contracts", async () => {
+  const facets = hostFacets();
+  assert.equal(memory.assertMemoryPort(facets.memory), facets.memory);
+  assert.equal(intelligence.assertIntelligencePort(facets.intelligence), facets.intelligence);
+  assert.equal(localization.assertLocalizationPort(facets.localization), facets.localization);
+
+  const remembered = await facets.memory.remember(memoryItem());
+  assert.equal(remembered.schema, memory.MEMORY_PORT_SCHEMA);
+  const found = await facets.memory.search({
+    ownerKind: "device",
+    ownerId: null,
+    query: "parity",
+    scopes: ["project"],
+    projectId: "project-1",
+    limit: 8,
+    offset: 0,
+  });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].id, "memory-1");
+
+  const response = await facets.intelligence.respond({
+    intent: "summarize",
+    prompt: "Summarize the active project",
+    context: [],
+    maxTokens: 256,
+  });
+  assert.equal(response.schema, intelligence.INTELLIGENCE_RESPONSE_SCHEMA);
+  assert.equal(response.authority, "none");
+  assert.equal(facets.localization.getLocale(), "pt-BR");
+  assert.equal(facets.localization.translate("studio.ready"), "pt-BR:studio.ready");
+});
+
+test("same public facet semantics are host-neutral across Windows and OrdaX OS", async () => {
+  const windows = hostFacets();
+  const ordaxOs = hostFacets();
+
+  runtime.assertStudioRuntimePort(windows.studioRuntime);
+  runtime.assertStudioRuntimePort(ordaxOs.studioRuntime);
+  memory.assertMemoryPort(windows.memory);
+  memory.assertMemoryPort(ordaxOs.memory);
+  intelligence.assertIntelligencePort(windows.intelligence);
+  intelligence.assertIntelligencePort(ordaxOs.intelligence);
+  localization.assertLocalizationPort(windows.localization);
+  localization.assertLocalizationPort(ordaxOs.localization);
+
+  const request = actionRequest();
+  const windowsReceipt = await runtime.requestStudioDeviceAction(windows.studioRuntime, request);
+  const ordaxReceipt = await runtime.requestStudioDeviceAction(ordaxOs.studioRuntime, request);
+  assert.deepEqual(windowsReceipt, ordaxReceipt);
+
+  const item = memoryItem();
+  assert.deepEqual(await windows.memory.remember(item), await ordaxOs.memory.remember(item));
+  const search = {
+    ownerKind: "device",
+    ownerId: null,
+    query: "Studio",
+    scopes: ["project"],
+    projectId: "project-1",
+    limit: 8,
+    offset: 0,
+  };
+  assert.deepEqual(await windows.memory.search(search), await ordaxOs.memory.search(search));
+
+  const intelligenceRequest = {
+    intent: "explain",
+    prompt: "Explain the current state",
+    context: [],
+    maxTokens: 128,
+  };
+  assert.deepEqual(
+    await windows.intelligence.respond(intelligenceRequest),
+    await ordaxOs.intelligence.respond(intelligenceRequest),
+  );
+  assert.equal(windows.localization.translate("studio.ready"), ordaxOs.localization.translate("studio.ready"));
 });
 
 test("same public request semantics are host-neutral", async () => {

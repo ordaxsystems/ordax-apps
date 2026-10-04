@@ -18,13 +18,16 @@ MAX_BUNDLE_BYTES = 1024 * 1024
 MAX_CONTRACT_BYTES = 512 * 1024
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
-# Only public contract modules required to load ordax.studio-runtime/1.
+# Only public contract modules required by the portable Studio composition.
 # Nothing from system/services, composition, adapters or runtime implementation
 # is materialized into the external app workspace.
 SOURCE_PATHS = (
     "system/contracts/device-action-envelope.mjs",
     "system/contracts/device-capabilities.mjs",
     "system/contracts/file-space.mjs",
+    "system/contracts/intelligence.mjs",
+    "system/contracts/localization.mjs",
+    "system/contracts/memory.mjs",
     "system/contracts/project-catalog.mjs",
     "system/contracts/studio-runtime.mjs",
 )
@@ -140,6 +143,7 @@ def main() -> None:
     print("ORDAX_STUDIO_SDK_CONFORMANCE=PASS")
     print(f"SDK_COMMIT={commit}")
     print(f"SDK_CONTRACT_MODULE_COUNT={len(SOURCE_PATHS)}")
+    print("STUDIO_PUBLIC_PORTS=studio-runtime,memory,intelligence,localization")
     print("RAW_DEVICE_AGENT_EXPORTED=NO")
     print("PORTABLE_STUDIO_AUTHORITY=none")
 
