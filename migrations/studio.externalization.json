@@ -1,0 +1,97 @@
+{
+  "$schema": "ordax.app-externalization-plan/1",
+  "app_id": "studio",
+  "source_repository_current": "washingtonmsdj/mcp-blender",
+  "source_path_current": "ordax_studio",
+  "inventory_commit": "7d2b6769b9afecb0b63535ab15161b81cb8907fe",
+  "target_repository": "washingtonmsdj/ordax-apps",
+  "target_path": "apps/studio",
+  "source_of_truth_state": "historical-repository-until-cutover",
+  "cutover_allowed": false,
+  "platform_contracts_required": [
+    "ordax.app-activation/1",
+    "ordax.component-manifest/1",
+    "ordax.component-runtime/1",
+    "ordax.device-action-receipt/1",
+    "ordax.device-action-request/1",
+    "ordax.device-agent-capabilities/1",
+    "ordax.device-agent-capability-reader/1",
+    "ordax.file-space/11",
+    "ordax.intelligence/1",
+    "ordax.localization/1",
+    "ordax.memory/1",
+    "ordax.project-catalog/1",
+    "ordax.studio-runtime/1",
+    "ordax.surface-render-lifecycle/4"
+  ],
+  "private_dependencies_to_remove": [
+    {
+      "source": "ordax_studio/web_desktop.py",
+      "dependency": "ordax_dev_agent.actions.ActionRegistry",
+      "replacement": "host-injected ordax.studio-runtime/1 port"
+    },
+    {
+      "source": "ordax_studio/web_desktop.py",
+      "dependency": "ordax_dev_agent.config.AgentConfig",
+      "replacement": "environment composition outside portable Studio app"
+    },
+    {
+      "source": "ordax_studio/web_desktop.py",
+      "dependency": "ordax_dev_agent.computer_filesystem_actions computer access management",
+      "replacement": "typed platform/host settings port; do not expose raw local policy implementation"
+    },
+    {
+      "source": "ordax_studio/product_auth.py",
+      "dependency": "ordax_dev_agent.cloudflare_control_plane.CloudflareControlPlane",
+      "replacement": "platform/host authentication port outside Studio core"
+    },
+    {
+      "source": "ordax_studio/device_identity.py",
+      "dependency": "ordax_dev_agent.cloudflare_control_plane.CloudflareControlPlane",
+      "replacement": "platform-owned pairing/device identity port"
+    },
+    {
+      "source": "ordax_studio/mcp_server.py",
+      "dependency": "ordax_dev_agent.mcp_server",
+      "replacement": "provider connector/control-plane boundary; not Studio core"
+    },
+    {
+      "source": "ordax_studio/preview.py and desktop/product surfaces",
+      "dependency": "direct self.agent.execute action dispatch",
+      "replacement": "ordax.studio-runtime/1 request/discovery ports"
+    }
+  ],
+  "non_app_ownership": {
+    "runtime_host": [
+      "ordax_dev_agent",
+      "ordax_device_agent",
+      "packaging/windows"
+    ],
+    "remote_infrastructure": [
+      "control-plane"
+    ],
+    "provider_connectors": [
+      "plugins/ordax-chatgpt"
+    ],
+    "specialized_adapters": [
+      "blender",
+      "unity"
+    ]
+  },
+  "proofs_required": [
+    "sdk-contracts-pinned",
+    "no-private-runtime-imports",
+    "provider-neutral-core",
+    "ordax-os-windows-port-parity",
+    "external-deterministic-package",
+    "platform-package-verification",
+    "install-stage-health-promote",
+    "rollback-last-known-good",
+    "platform-operates-without-app",
+    "offline-reinstall-from-local-artifact",
+    "uninstall-preserves-user-data",
+    "old-historical-app-source-removed",
+    "no-residual-launch-path"
+  ],
+  "authority": "none"
+}
