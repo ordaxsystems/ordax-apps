@@ -8,10 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = ROOT / "platform-sdk.lock.json"
 
 EXPECTED_CONTRACTS = {
+    "ordax.app-activation/1",
     "ordax.component-manifest/1",
+    "ordax.component-runtime/1",
+    "ordax.file-space/11",
+    "ordax.first-party-app-delivery-policy/1",
     "ordax.intelligence/1",
-    "ordax.memory/1",
+    "ordax.localization/1",
     "prototype-ordax.localization-pack/1",
+    "ordax.memory/1",
+    "ordax.surface-render-lifecycle/4",
 }
 
 
@@ -32,7 +38,7 @@ def main() -> None:
         fail("unexpected SDK bundle path")
     if lock.get("bundle_schema") != "ordax.app-sdk-bundle/1":
         fail("unexpected SDK bundle schema")
-    if lock.get("bundle_version") != "1.0.0":
+    if lock.get("bundle_version") != "1.1.0":
         fail("unexpected SDK bundle version")
     if lock.get("authority") != "none":
         fail("SDK lock must not carry authority")
