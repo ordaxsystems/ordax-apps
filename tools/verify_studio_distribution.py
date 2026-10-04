@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+DISTRIBUTION = ROOT / "migrations" / "studio.distribution.json"
+EXTERNALIZATION = ROOT / "migrations" / "studio.externalization.json"
+
+
+def fail(message: str) -> None:
+    raise SystemExit(f"ORDAX_STUDIO_DISTRIBUTION=FAIL\n{message}")
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        fail(message)
+
+
+def main() -> None:
+    distribution = json.loads(DISTRIBUTION.read_text(encoding="utf-8"))
+    externalization = json.loads(EXTERNALIZATION.read_text(encoding="utf-8"))
+
+    require(distribution.get("$schema") == "ordax-apps.studio-distribution/1", "unexpected distribution schema")
+    require(distribution.get("authority") == "none", "distribution metadata must carry no authority")
+    require(distribution.get("cutover_allowed") is False, "distribution contract must not bypass source cutover gates")
+
+    product = distribution.get("product") or {}
+    require(product.get("app_id") == "studio", "Studio app id drifted")
+    require(product.get("name") == "ORDAX Studio", "Studio product name drifted")
+    require(product.get("provider_neutral") is True, "Studio core must remain provider-neutral")
+    require(product.get("single_portable_source") is True, "Studio must have one portable source")
+
+    target_source = externalization.get("target_path")
+    require(target_source == "apps/studio", "externalization target must remain apps/studio")
+    require(product.get("portable_source_after_cutover") == target_source, "distribution and externalization source targets disagree")
+
+    targets = distribution.get("targets") or {}
+    require(set(targets) == {"ordax_os", "windows"}, "Studio must have exactly OrdaX OS and Windows distribution targets")
+
+    ordax_os = targets["ordax_os"]
+    windows = targets["windows"]
+    for name, target in targets.items():
+        require(target.get("supported") is True, f"{name} must be an official supported Studio target")
+        require(target.get("portable_source") == target_source, f"{name} must consume the same portable Studio source")
+        require(isinstance(target.get("host_adapter"), str) and target["host_adapter"], f"{name} must declare a host adapter")
+
+    require(ordax_os.get("distribution_kind") == "first-party-app-component", "OrdaX OS Studio must be a first-party app component")
+    require(ordax_os.get("runtime_owner") == "ordax-os-platform", "OrdaX OS must own its platform runtime")
+    require(ordax_os.get("bundles_ordax_runtime") is False, "OrdaX OS Studio must not bundle a duplicate ORDAX Runtime")
+    require(ordax_os.get("uses_platform_ports") is True, "OrdaX OS Studio must use platform ports")
+
+    require(windows.get("distribution_kind") == "standalone-desktop-product", "Windows Studio must remain separately distributable")
+    require(windows.get("requires_ordax_os") is False, "Windows Studio must not require OrdaX OS")
+    require(windows.get("bundles_ordax_runtime") is True, "Windows distribution must carry its provider-neutral ORDAX Runtime")
+    require(windows.get("runtime_product_name") == "ORDAX Runtime", "Windows runtime product identity drifted")
+    require(windows.get("launcher_name") == "ORDAX Studio.exe", "Windows launcher identity drifted")
+    require(windows.get("installer_name_pattern") == "ORDAX-Studio-Setup-<version>-x64.exe", "Windows installer naming drifted")
+
+    invariants = distribution.get("shared_release_invariants") or {}
+    required_true = {
+        "same_portable_product_source",
+        "same_portable_ui_semantics",
+        "same_public_port_contracts",
+        "same_typed_action_semantics",
+        "same_provider_neutral_core",
+        "os_specific_forks_forbidden",
+        "provider_specific_forks_forbidden",
+        "raw_device_execute_in_portable_app_forbidden",
+        "runtime_implementation_in_portable_app_forbidden",
+    }
+    missing_invariants = sorted(key for key in required_true if invariants.get(key) is not True)
+    require(not missing_invariants, f"required shared invariants are not enforced: {', '.join(missing_invariants)}")
+
+    proofs = set(distribution.get("parity_proofs_required_before_cutover") or [])
+    required_proofs = {
+        "ordax-os-adapter-conformance",
+        "windows-adapter-conformance",
+        "portable-core-identical-inputs",
+        "typed-action-semantic-parity",
+        "provider-neutral-core",
+        "windows-clean-install-upgrade-uninstall",
+        "ordax-os-install-stage-health-promote-rollback",
+    }
+    require(required_proofs.issubset(proofs), "dual-target parity proof set is incomplete")
+
+    external_proofs = set(externalization.get("proofs_required") or [])
+    require("ordax-os-windows-port-parity" in external_proofs, "externalization plan lost OrdaX OS/Windows port parity gate")
+
+    forbidden_core_owners = set(distribution.get("outside_studio_core") or [])
+    require("Identity and device pairing authority" in forbidden_core_owners, "pairing authority must stay outside Studio core")
+    require("Computer Control policy authority" in forbidden_core_owners, "computer policy authority must stay outside Studio core")
+    require("provider connectors" in forbidden_core_owners, "provider connectors must stay outside Studio core")
+
+    print("ORDAX_STUDIO_DISTRIBUTION=PASS")
+    print("STUDIO_TARGETS=ordax_os,windows")
+    print("STUDIO_PORTABLE_SOURCE=apps/studio")
+    print("WINDOWS_STANDALONE=true")
+    print("ORDAX_OS_DUPLICATE_RUNTIME=false")
+    print("STUDIO_AUTHORITY=none")
+
+
+if __name__ == "__main__":
+    main()

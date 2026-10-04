@@ -1,0 +1,77 @@
+{
+  "$schema": "ordax-apps.studio-distribution/1",
+  "product": {
+    "app_id": "studio",
+    "name": "ORDAX Studio",
+    "portable_source_after_cutover": "apps/studio",
+    "single_portable_source": true,
+    "provider_neutral": true
+  },
+  "targets": {
+    "ordax_os": {
+      "supported": true,
+      "distribution_kind": "first-party-app-component",
+      "portable_source": "apps/studio",
+      "host_adapter": "ordax-os",
+      "runtime_owner": "ordax-os-platform",
+      "bundles_ordax_runtime": false,
+      "uses_platform_ports": true,
+      "standalone_from_windows_host": true
+    },
+    "windows": {
+      "supported": true,
+      "distribution_kind": "standalone-desktop-product",
+      "portable_source": "apps/studio",
+      "host_adapter": "windows",
+      "runtime_owner": "ordax-runtime-windows",
+      "bundles_ordax_runtime": true,
+      "runtime_product_name": "ORDAX Runtime",
+      "launcher_name": "ORDAX Studio.exe",
+      "installer_name_pattern": "ORDAX-Studio-Setup-<version>-x64.exe",
+      "requires_ordax_os": false
+    }
+  },
+  "shared_release_invariants": {
+    "same_portable_product_source": true,
+    "same_portable_ui_semantics": true,
+    "same_public_port_contracts": true,
+    "same_typed_action_semantics": true,
+    "same_provider_neutral_core": true,
+    "os_specific_forks_forbidden": true,
+    "provider_specific_forks_forbidden": true,
+    "raw_device_execute_in_portable_app_forbidden": true,
+    "runtime_implementation_in_portable_app_forbidden": true
+  },
+  "allowed_target_specific_code": {
+    "ordax_os": [
+      "platform port composition",
+      "OrdaX OS package metadata",
+      "OrdaX OS lifecycle integration"
+    ],
+    "windows": [
+      "Windows host adapter",
+      "ORDAX Runtime packaging",
+      "Windows installer and launcher integration",
+      "Windows process/service lifecycle"
+    ]
+  },
+  "outside_studio_core": [
+    "Identity and device pairing authority",
+    "Computer Control policy authority",
+    "Control Plane implementation",
+    "provider connectors",
+    "Blender and Unity execution adapters",
+    "package install/update/rollback authority"
+  ],
+  "parity_proofs_required_before_cutover": [
+    "ordax-os-adapter-conformance",
+    "windows-adapter-conformance",
+    "portable-core-identical-inputs",
+    "typed-action-semantic-parity",
+    "provider-neutral-core",
+    "windows-clean-install-upgrade-uninstall",
+    "ordax-os-install-stage-health-promote-rollback"
+  ],
+  "cutover_allowed": false,
+  "authority": "none"
+}

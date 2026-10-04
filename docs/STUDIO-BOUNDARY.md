@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the target product boundary for **ORDAX Studio** as a first-party OrdaX application.
+This document defines the target product boundary for **ORDAX Studio** as a first-party OrdaX application with two official distribution targets: OrdaX OS and Windows.
 
 The source-of-truth cutover to `apps/studio/` has **not** happened yet. Until the package/lifecycle gates are proven, the current Studio/Windows implementation remains in its existing authoritative repository. This document defines the destination contract only; it must not create a second long-lived source copy.
 
@@ -89,7 +89,7 @@ Those remain platform/runtime responsibilities and are consumed through publishe
 
 ## OrdaX OS deployment
 
-On OrdaX OS, Studio is an application component and should consume platform-provided runtime ports. It must not bundle a second operating-system runtime merely to reproduce services already owned by the platform.
+On OrdaX OS, Studio is an application component and consumes platform-provided runtime ports. It must not bundle a second operating-system runtime merely to reproduce services already owned by the platform.
 
 Target source layout after the future source-of-truth cutover:
 
@@ -106,20 +106,38 @@ Any additional directory is app-owned implementation only. Platform services are
 
 ## Windows deployment
 
-Windows does not natively provide the OrdaX platform services. The Windows product therefore may ship a local **ORDAX Runtime**/device host that implements the same capability boundary expected by Studio.
+Windows is an official, separately distributable ORDAX Studio target. It must not require OrdaX OS to be installed.
+
+Because Windows does not natively provide the OrdaX platform services, the Windows product ships a local **ORDAX Runtime**/device host that implements the same capability boundary expected by Studio. The canonical launcher is `ORDAX Studio.exe`; the canonical installer family is `ORDAX-Studio-Setup-<version>-x64.exe`.
 
 That Runtime is infrastructure, not a ChatGPT/Grok/Codex runtime. It must stay provider-neutral and enforce local policy, authenticated grants and audit independently of the Studio UI.
 
 Conceptually:
 
 ```text
-ORDAX Studio UI/core
+ORDAX Studio portable UI/core
         │
         ├─ OrdaX OS adapter -> platform runtime ports
         └─ Windows adapter  -> ORDAX Runtime
 ```
 
 The goal is one Studio product with environment adapters, not separate Studio forks per operating system or AI provider.
+
+## Dual-distribution invariant
+
+OrdaX OS and Windows are two release targets of the **same portable Studio source**. After source cutover, both consume `apps/studio/`; target-specific code is restricted to host adapters, package metadata and lifecycle integration.
+
+A release must not be promoted merely because each target works independently. Before cutover and for future compatibility gates, the release pipeline must prove:
+
+- both targets consume the same portable Studio source/input;
+- both expose compatible public port majors;
+- typed action semantics are equivalent across OrdaX OS and Windows;
+- provider-specific code does not select an alternate implementation;
+- OrdaX OS does not bundle a duplicate ORDAX Runtime;
+- Windows remains installable and usable without OrdaX OS;
+- Windows host/runtime code does not leak into the portable app package.
+
+The machine-readable SSOT for these rules is `migrations/studio.distribution.json` and CI must reject drift.
 
 ## Provider connectors
 
@@ -158,6 +176,8 @@ ORDAX connector Grok      1.x
 Windows ORDAX Runtime     1.x
 ```
 
+`ORDAX Studio 12.4.0` identifies the portable app release. OrdaX OS packaging and Windows packaging may have target-specific build metadata, but they must not represent divergent application feature versions from the same release line.
+
 A Studio release must not require rebuilding the Base image solely because Studio changed.
 
 ## Source-of-truth cutover rule
@@ -168,13 +188,15 @@ The eventual cutover must follow the repository migration invariant:
 
 1. prove package/build compatibility against the pinned App SDK;
 2. remove private platform/runtime implementation dependencies from Studio core;
-3. define deterministic package and health contracts;
-4. prove install, verify, stage, health, promote and rollback;
-5. prove offline reinstall and uninstall with user-data preservation;
-6. freeze the migration boundary;
-7. move Studio source in one controlled cutover;
-8. update platform catalog/package references;
-9. delete the former authoritative Studio source in the same migration cycle;
-10. prove no residual path can launch the removed copy.
+3. prove OrdaX OS and Windows adapter parity against the same portable contract;
+4. define deterministic packages and health contracts for both targets;
+5. prove OrdaX OS install, verify, stage, health, promote and rollback;
+6. prove Windows clean install, upgrade and uninstall with user-data preservation;
+7. prove offline reinstall where applicable;
+8. freeze the migration boundary;
+9. move Studio portable source in one controlled cutover;
+10. update platform catalog and Windows package references to that same source;
+11. delete the former authoritative Studio source in the same migration cycle;
+12. prove no residual path can launch a removed or divergent Studio copy.
 
 Until these gates are green, this repository documents and validates the target boundary without claiming source ownership.
