@@ -28,3 +28,6 @@ jobs:
 
       - name: Prove pinned public App SDK from platform repository
         run: python3 tools/verify_platform_sdk.py
+
+      - name: Prove Studio public SDK conformance
+        run: python3 tools/verify_studio_sdk_conformance.py
