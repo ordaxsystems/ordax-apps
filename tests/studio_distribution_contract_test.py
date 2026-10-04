@@ -23,6 +23,18 @@ class StudioDistributionContractTests(unittest.TestCase):
         self.assertEqual(targets["ordax_os"]["portable_source"], "apps/studio")
         self.assertEqual(targets["windows"]["portable_source"], "apps/studio")
 
+    def test_both_targets_share_one_canonical_app_version(self) -> None:
+        versioning = self.contract["release_versioning"]
+        self.assertTrue(versioning["single_app_version"])
+        self.assertEqual(
+            versioning["current_transitional_source"],
+            "washingtonmsdj/mcp-blender:pyproject.toml#project.version",
+        )
+        self.assertEqual(versioning["source_after_cutover"], "apps/studio/app.json#version")
+        self.assertTrue(versioning["windows_consumes_canonical_app_version"])
+        self.assertTrue(versioning["ordax_os_consumes_canonical_app_version"])
+        self.assertTrue(versioning["target_specific_feature_versions_forbidden"])
+
     def test_ordax_os_uses_platform_runtime_without_duplicate_runtime(self) -> None:
         target = self.contract["targets"]["ordax_os"]
         self.assertTrue(target["uses_platform_ports"])
@@ -42,6 +54,7 @@ class StudioDistributionContractTests(unittest.TestCase):
         self.assertTrue(invariants["provider_specific_forks_forbidden"])
         self.assertTrue(invariants["same_typed_action_semantics"])
         self.assertTrue(invariants["same_portable_product_source"])
+        self.assertTrue(invariants["same_canonical_app_version"])
 
 
 if __name__ == "__main__":
