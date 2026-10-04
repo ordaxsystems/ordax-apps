@@ -21,6 +21,10 @@ Os apps deste repositório devem consumir esses contratos; não podem criar impl
 - app ausente pode aparecer como disponível/recomendado, mas nunca como instalado/launchable;
 - apps criados por terceiros ou usuários devem usar o mesmo contrato público de pacote/compatibilidade, sem acesso privilegiado por estarem na Store.
 
+### ORDAX Studio
+
+`studio` é um app first-party **provider-neutral**. ChatGPT, Grok, Codex e outros clientes de IA são conectores/clientes externos e não runtimes do Studio. O boundary canônico, incluindo a separação entre OrdaX OS, Windows Runtime e conectores de provider, está em [`docs/STUDIO-BOUNDARY.md`](docs/STUDIO-BOUNDARY.md).
+
 ## Estrutura alvo
 
 ```text
