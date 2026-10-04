@@ -48,6 +48,19 @@ class StudioDistributionContractTests(unittest.TestCase):
         self.assertEqual(target["runtime_product_name"], "ORDAX Runtime")
         self.assertEqual(target["launcher_name"], "ORDAX Studio.exe")
 
+    def test_windows_local_use_is_account_optional_and_offline_capable(self) -> None:
+        target = self.contract["targets"]["windows"]
+        self.assertTrue(target["account_optional_for_local_use"])
+        self.assertTrue(target["cloud_pairing_optional_for_local_use"])
+        self.assertTrue(target["offline_local_launch_supported"])
+        self.assertTrue(target["local_device_identity_account_independent"])
+        self.assertTrue(target["account_connection_extends_remote_capabilities_only"])
+        self.assertTrue(self.contract["shared_release_invariants"]["windows_local_first_semantics"])
+        self.assertIn(
+            "windows-local-first-no-account-offline",
+            self.contract["parity_proofs_required_before_cutover"],
+        )
+
     def test_os_and_provider_forks_are_forbidden(self) -> None:
         invariants = self.contract["shared_release_invariants"]
         self.assertTrue(invariants["os_specific_forks_forbidden"])
