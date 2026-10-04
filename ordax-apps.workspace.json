@@ -23,14 +23,13 @@
   "initial_extraction_candidate": "notes",
   "contracts": {
     "component_manifest": "ordax.component-manifest/1",
+    "delivery_policy": "ordax.first-party-app-delivery-policy/1",
     "intelligence": "ordax.intelligence/1",
     "memory": "ordax.memory/1",
     "localization_pack": "prototype-ordax.localization-pack/1",
     "runtime_release": "prototype-ordax.runtime-component-release/2"
   },
-  "planned_contracts": {
-    "delivery_policy": "ordax.first-party-app-delivery-policy/1"
-  },
+  "planned_contracts": {},
   "invariants": {
     "store_is_structural_and_non_removable": true,
     "store_ui_has_install_authority": false,
