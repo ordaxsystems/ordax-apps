@@ -42,7 +42,13 @@
       "cloud_pairing_optional_for_local_use": true,
       "offline_local_launch_supported": true,
       "local_device_identity_account_independent": true,
-      "account_connection_extends_remote_capabilities_only": true
+      "account_connection_extends_remote_capabilities_only": true,
+      "computer_control_modes": ["bounded", "full-access"],
+      "full_access_owner_approval_local_only": true,
+      "remote_client_cannot_enable_full_access": true,
+      "full_access_removes_ordax_root_and_app_allowlists": true,
+      "full_filesystem_intermediate_mode_supported": true,
+      "windows_uac_remains_final_platform_boundary": true
     }
   },
   "shared_release_invariants": {
@@ -53,6 +59,7 @@
     "same_provider_neutral_core": true,
     "same_canonical_app_version": true,
     "windows_local_first_semantics": true,
+    "windows_full_access_is_host_policy_not_portable_authority": true,
     "os_specific_forks_forbidden": true,
     "provider_specific_forks_forbidden": true,
     "raw_device_execute_in_portable_app_forbidden": true,
@@ -68,7 +75,8 @@
       "Windows host adapter",
       "ORDAX Runtime packaging",
       "Windows installer and launcher integration",
-      "Windows process/service lifecycle"
+      "Windows process/service lifecycle",
+      "Windows Computer Control policy and owner-approved Full Access"
     ]
   },
   "outside_studio_core": [
@@ -87,6 +95,7 @@
     "canonical-app-version-parity",
     "provider-neutral-core",
     "windows-local-first-no-account-offline",
+    "windows-owner-approved-full-access",
     "windows-clean-install-upgrade-uninstall",
     "ordax-os-install-stage-health-promote-rollback"
   ],

@@ -61,6 +61,28 @@ class StudioDistributionContractTests(unittest.TestCase):
             self.contract["parity_proofs_required_before_cutover"],
         )
 
+    def test_windows_full_access_is_owner_approved_host_policy(self) -> None:
+        target = self.contract["targets"]["windows"]
+        self.assertEqual(target["computer_control_modes"], ["bounded", "full-access"])
+        self.assertTrue(target["full_access_owner_approval_local_only"])
+        self.assertTrue(target["remote_client_cannot_enable_full_access"])
+        self.assertTrue(target["full_access_removes_ordax_root_and_app_allowlists"])
+        self.assertTrue(target["full_filesystem_intermediate_mode_supported"])
+        self.assertTrue(target["windows_uac_remains_final_platform_boundary"])
+        self.assertTrue(
+            self.contract["shared_release_invariants"][
+                "windows_full_access_is_host_policy_not_portable_authority"
+            ]
+        )
+        self.assertIn(
+            "windows-owner-approved-full-access",
+            self.contract["parity_proofs_required_before_cutover"],
+        )
+        self.assertIn(
+            "Computer Control policy authority",
+            self.contract["outside_studio_core"],
+        )
+
     def test_os_and_provider_forks_are_forbidden(self) -> None:
         invariants = self.contract["shared_release_invariants"]
         self.assertTrue(invariants["os_specific_forks_forbidden"])

@@ -77,6 +77,12 @@ def main() -> None:
     require(windows.get("offline_local_launch_supported") is True, "Windows Studio must support local launch without internet")
     require(windows.get("local_device_identity_account_independent") is True, "Windows local device identity must not depend on account state")
     require(windows.get("account_connection_extends_remote_capabilities_only") is True, "account connection must extend remote capabilities without replacing local identity")
+    require(windows.get("computer_control_modes") == ["bounded", "full-access"], "Windows Computer Control modes drifted")
+    require(windows.get("full_access_owner_approval_local_only") is True, "Full Access must require local owner approval")
+    require(windows.get("remote_client_cannot_enable_full_access") is True, "remote clients must not enable Full Access")
+    require(windows.get("full_access_removes_ordax_root_and_app_allowlists") is True, "Full Access must remove ORDAX root/app allowlists")
+    require(windows.get("full_filesystem_intermediate_mode_supported") is True, "filesystem-wide/app-bounded intermediate mode must stay supported")
+    require(windows.get("windows_uac_remains_final_platform_boundary") is True, "Windows/UAC must remain the final platform boundary")
 
     invariants = distribution.get("shared_release_invariants") or {}
     required_true = {
@@ -87,6 +93,7 @@ def main() -> None:
         "same_provider_neutral_core",
         "same_canonical_app_version",
         "windows_local_first_semantics",
+        "windows_full_access_is_host_policy_not_portable_authority",
         "os_specific_forks_forbidden",
         "provider_specific_forks_forbidden",
         "raw_device_execute_in_portable_app_forbidden",
@@ -104,6 +111,7 @@ def main() -> None:
         "canonical-app-version-parity",
         "provider-neutral-core",
         "windows-local-first-no-account-offline",
+        "windows-owner-approved-full-access",
         "windows-clean-install-upgrade-uninstall",
         "ordax-os-install-stage-health-promote-rollback",
     }
@@ -125,6 +133,8 @@ def main() -> None:
     print("WINDOWS_LOCAL_FIRST=true")
     print("WINDOWS_ACCOUNT_OPTIONAL=true")
     print("WINDOWS_OFFLINE_LOCAL_LAUNCH=true")
+    print("WINDOWS_FULL_ACCESS_OWNER_APPROVED=true")
+    print("WINDOWS_FULL_ACCESS_REMOTE_ENABLE=false")
     print("ORDAX_OS_DUPLICATE_RUNTIME=false")
     print("STUDIO_AUTHORITY=none")
 
