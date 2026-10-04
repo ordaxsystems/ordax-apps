@@ -1,0 +1,73 @@
+{
+  "$schema": "ordax-apps.studio-legacy-method-ownership/1",
+  "source": {
+    "repository": "washingtonmsdj/mcp-blender",
+    "ref": "main",
+    "file": "ordax_studio/assets/studio.js"
+  },
+  "owners": {
+    "studio-runtime": [
+      "projects_catalog",
+      "startup_project",
+      "bootstrap",
+      "select_project",
+      "inventory",
+      "read_file",
+      "save_file",
+      "preview_status",
+      "preview_start",
+      "preview_stop",
+      "preview_capture",
+      "preview_logs",
+      "preview_image",
+      "execution_status",
+      "task_add",
+      "checkpoint",
+      "product_status",
+      "health",
+      "briefing",
+      "search",
+      "git_diff"
+    ],
+    "memory": [
+      "memory_context"
+    ],
+    "intelligence": [
+      "ai_sessions_status"
+    ],
+    "host-policy": [
+      "computer_access_settings",
+      "save_computer_access_settings"
+    ],
+    "identity-host": [
+      "connect_product_account"
+    ],
+    "adapter": [
+      "blender_prepare",
+      "blender_install_bridge",
+      "blender_instances",
+      "blender_adopt",
+      "blender_start"
+    ]
+  },
+  "invariants": {
+    "studio_runtime_must_not_own": [
+      "computer_access_settings",
+      "save_computer_access_settings",
+      "connect_product_account",
+      "blender_prepare",
+      "blender_install_bridge",
+      "blender_instances",
+      "blender_adopt",
+      "blender_start",
+      "memory_context",
+      "ai_sessions_status"
+    ],
+    "generic_dispatch_forbidden": [
+      "call",
+      "execute",
+      "deviceAgent"
+    ],
+    "cutover_allowed": false
+  }
+}
