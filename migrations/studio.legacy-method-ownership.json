@@ -6,11 +6,15 @@
     "file": "ordax_studio/assets/studio.js"
   },
   "owners": {
-    "studio-runtime": [
+    "project-catalog": [
       "projects_catalog",
       "startup_project",
-      "bootstrap",
-      "select_project",
+      "select_project"
+    ],
+    "app-composition": [
+      "bootstrap"
+    ],
+    "studio-runtime": [
       "inventory",
       "read_file",
       "save_file",
@@ -21,19 +25,21 @@
       "preview_logs",
       "preview_image",
       "execution_status",
-      "task_add",
-      "checkpoint",
-      "product_status",
       "health",
       "briefing",
       "search",
       "git_diff"
     ],
     "memory": [
+      "task_add",
+      "checkpoint",
       "memory_context"
     ],
     "intelligence": [
       "ai_sessions_status"
+    ],
+    "host-status": [
+      "product_status"
     ],
     "host-policy": [
       "computer_access_settings",
@@ -52,6 +58,15 @@
   },
   "invariants": {
     "studio_runtime_must_not_own": [
+      "projects_catalog",
+      "startup_project",
+      "select_project",
+      "bootstrap",
+      "task_add",
+      "checkpoint",
+      "memory_context",
+      "ai_sessions_status",
+      "product_status",
       "computer_access_settings",
       "save_computer_access_settings",
       "connect_product_account",
@@ -59,9 +74,11 @@
       "blender_install_bridge",
       "blender_instances",
       "blender_adopt",
-      "blender_start",
-      "memory_context",
-      "ai_sessions_status"
+      "blender_start"
+    ],
+    "transitional_methods_to_eliminate": [
+      "bootstrap",
+      "product_status"
     ],
     "generic_dispatch_forbidden": [
       "call",
