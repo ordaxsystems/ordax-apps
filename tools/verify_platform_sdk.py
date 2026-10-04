@@ -16,12 +16,18 @@ EXPECTED_CONTRACTS = {
     "ordax.app-activation/1",
     "ordax.component-manifest/1",
     "ordax.component-runtime/1",
+    "ordax.device-action-receipt/1",
+    "ordax.device-action-request/1",
+    "ordax.device-agent-capabilities/1",
+    "ordax.device-agent-capability-reader/1",
     "ordax.file-space/11",
     "ordax.first-party-app-delivery-policy/1",
     "ordax.intelligence/1",
     "ordax.localization/1",
     "prototype-ordax.localization-pack/1",
     "ordax.memory/1",
+    "ordax.project-catalog/1",
+    "ordax.studio-runtime/1",
     "ordax.surface-render-lifecycle/4",
 }
 
