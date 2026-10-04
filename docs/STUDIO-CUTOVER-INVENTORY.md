@@ -8,6 +8,17 @@ Historical/incubation source reviewed at:
 
 Canonical target boundary: `docs/STUDIO-BOUNDARY.md`.
 
+## Current platform gate
+
+The public platform contract gate is now complete for the first Studio extraction stage:
+
+- `prototipo-ordax-os#1030` is merged as `73c86c684abcd38b846e6eed40a5cd75cacf50ae`;
+- App SDK bundle `1.2.0` is pinned by exact commit and SHA-256 in this repository;
+- `ordax.studio-runtime/1`, capability discovery, project catalog and device request/receipt envelopes are published with `authority:none`;
+- raw `ordax.device-agent/1`, `execute()`, grant validation and Control Plane implementation are deliberately not part of the App SDK.
+
+The next Studio boundary gate is therefore **portable UI/host separation + conformance**, not another private-runtime export.
+
 ## Classification rule
 
 Every current path belongs to exactly one destination class:
@@ -25,22 +36,29 @@ No path is copied merely because it currently lives under `ordax_studio/`.
 
 | Current path | Class | Cutover treatment |
 | --- | --- | --- |
-| `ordax_studio/assets/` | APP | migrate UI assets after package boundary is proven |
+| `ordax_studio/assets/` | APP | migrate UI assets only after host-specific bridge details are removed from portable code |
+| `ordax_studio/assets/studio.js` | APP with current HOST leak | preserve portable product behavior, but move pywebview/WebView2 RPC and readiness lifecycle into a host adapter before cutover |
 | `ordax_studio/studio.html` | APP candidate | reconcile with current product surface; only one UI source may survive cutover |
 | `ordax_studio/studio_product.html` | APP candidate | reconcile with `studio.html`; duplicate product surfaces are not allowed long-term |
 | `ordax_studio/product_web_desktop.py` | APP/HOST boundary | split portable presentation/API model from Windows/local server hosting |
-| `ordax_studio/web_desktop.py` | APP/HOST boundary | remove direct `ActionRegistry`, `AgentConfig` and local policy imports; consume `ordax.studio-runtime/1` instead |
+| `ordax_studio/web_desktop.py` | APP/HOST boundary | remove portable dependency on direct `ActionRegistry`, `AgentConfig` and local policy implementations; host composition may retain them behind public ports |
 | `ordax_studio/workbench_bridge.py` | HOST adapter | replace direct local method bridge with environment adapter implementing public Studio runtime ports |
 | `ordax_studio/desktop.py` | HOST | native/Windows process and desktop hosting does not belong in OrdaX OS app source |
 | `ordax_studio/instance_lock.py` | HOST | process-instance ownership is host/platform responsibility |
 | `ordax_studio/device_identity.py` | HOST/platform adapter | pairing/device identity authority remains outside Studio app |
-| `ordax_studio/product_auth.py` | HOST/INFRA adapter | direct Control Plane authentication must be replaced by a public host/platform port |
+| `ordax_studio/product_auth.py` | HOST/INFRA adapter | direct Control Plane authentication remains host/platform integration, not portable app ownership |
 | `ordax_studio/mcp_server.py` | DEV/CONNECTOR boundary | local MCP server is not Studio core; provider/public MCP belongs at connector/control-plane boundary |
 | `ordax_studio/blender_connection.py` | ADAPTER | Blender remains a capability adapter, not Studio product core |
 | `ordax_studio/preview.py` | APP/HOST boundary | keep portable preview UX; move process/server ownership behind a host port |
-| `ordax_studio/project_maintenance.py` | APP candidate | retain only product policy/UX that can operate through public project ports |
+| `ordax_studio/project_maintenance.py` | APP candidate | retain only product policy/UX that can operate through public project/runtime ports |
 | `ordax_studio/cli.py` | DEV/HOST | classify commands individually; do not ship development/bootstrap commands in the OrdaX OS app by default |
 | `ordax_studio/__init__.py` | transitional | recreated only if required by the final package/runtime technology |
+
+### Host bridge rule
+
+Portable UI code must call one Studio host abstraction. It must not test for or invoke `window.pywebview`, `window.chrome.webview`, Windows process APIs, `ActionRegistry` or Control Plane clients directly.
+
+The Windows host adapter may translate that abstraction to pywebview/WebView2 and ORDAX Runtime. The OrdaX OS composition may translate the same abstraction to platform-owned public ports. Both adapters must pass the same conformance fixture and expose the same action semantics.
 
 ## Runtime and device execution
 
@@ -54,6 +72,8 @@ The following areas are **not** candidates for `apps/studio/` source:
 - action execution lock/arbitration.
 
 These responsibilities may later move out of the historical `mcp-blender` repository into a dedicated ORDAX Runtime repository/component, but they must not be absorbed by `ordax-apps` merely to eliminate the old repository name.
+
+Computer Control policy (`allowed_roots`, full-filesystem opt-in, allowed applications and equivalent local policy) is host/Settings authority. Pairing/device identity and grants are also host/platform authorities. Studio may present status/navigation but must not become their owner.
 
 ## Remote infrastructure
 
@@ -77,11 +97,9 @@ Blender, Unity and future specialized tools are **ADAPTERS**.
 
 They may expose capability-specific UI inside Studio, but their execution belongs behind generic runtime/action contracts. A specialized adapter must not create a second Device Agent, second authorization path or separate provider-specific backend.
 
-## Public contracts required before APP cutover
+## Public contracts now pinned
 
-Portable Studio code must stop importing private Runtime/Control Plane implementations directly.
-
-Required public families include:
+The exact App SDK `1.2.0` pin publishes the first Studio-facing contract set:
 
 - `ordax.app-activation/1`;
 - `ordax.component-manifest/1`;
@@ -98,34 +116,37 @@ Required public families include:
 - `ordax.localization/1`;
 - `ordax.surface-render-lifecycle/4`.
 
-The platform PR that publishes the narrowed Studio-facing device/runtime contracts must merge before `ordax-apps` updates its SDK pin. The app must never pin to an unmerged branch or unverified `latest` bundle.
+App-private durable state will use `ordax.app-data/1` only after its Native verified-publisher binding is implemented, proven and then published in a future pinned App SDK bundle. Studio must not create a private storage endpoint or misuse global Memory as an internal UI database to bypass that gate.
 
 ## Source-of-truth cutover sequence
 
-1. publish and merge the required public App SDK contracts;
-2. update `ordax-apps/platform-sdk.lock.json` to an exact platform commit + verified bundle digest;
-3. build a Studio conformance fixture against those public ports without copying the product source;
-4. refactor the current authoritative Studio implementation so portable code depends only on those ports;
-5. prove equivalent OrdaX OS and Windows host adapters against the same conformance tests;
-6. define deterministic `apps/studio/app.json`, package inputs, localization and app-owned state;
-7. prove install -> verify -> stage -> health -> promote -> rollback;
-8. prove offline launch/reinstall and uninstall with user-data preservation;
-9. freeze the migration boundary;
-10. move only the **APP** paths in one controlled source-of-truth cutover;
-11. update platform catalog/package references;
-12. delete the former APP source from the historical repository in the same migration cycle;
-13. prove no residual launch path can start the removed Studio copy;
-14. only then decide whether the remaining Runtime/Infra/Adapter repository should be renamed/split and archive `mcp-blender` once it owns nothing canonical.
+1. **DONE** — publish and merge the required first-stage public App SDK contracts;
+2. **DONE** — pin App SDK `1.2.0` to exact platform commit + verified bundle digest;
+3. build a Studio conformance fixture against those public ports without copying product source;
+4. extract host-specific RPC/readiness lifecycle from the current UI so portable code depends on one host abstraction;
+5. refactor the authoritative Studio implementation so portable product logic depends only on public/runtime-provided ports;
+6. prove equivalent OrdaX OS and Windows host adapters against the same conformance tests;
+7. define deterministic `apps/studio/app.json`, package inputs, localization and app-owned state;
+8. prove install -> verify -> stage -> health -> promote -> rollback;
+9. prove offline launch/reinstall and uninstall with user-data preservation;
+10. freeze the migration boundary;
+11. move only the **APP** paths in one controlled source-of-truth cutover;
+12. update platform catalog/package references;
+13. delete the former APP source from the historical repository in the same migration cycle;
+14. prove no residual launch path can start the removed Studio copy;
+15. only then decide whether the remaining Runtime/Infra/Adapter repository should be renamed/split and archive `mcp-blender` once it owns nothing canonical.
 
 ## Stop conditions
 
 Do not cut over Studio source if any of these are true:
 
 - portable Studio still imports `ordax_dev_agent`, `ordax_device_agent` or `CloudflareControlPlane` directly;
+- portable UI still contains pywebview/WebView2-specific transport or startup lifecycle code;
 - the App SDK pin references an unmerged branch or mutable latest version;
 - the Studio package contains raw Device Agent `execute()`;
 - OrdaX OS and Windows use different action semantics;
 - provider-specific code selects a different local implementation;
+- private app state bypasses the canonical App Data boundary;
 - install/rollback/offline/uninstall lifecycle is not proven;
 - old and new Studio copies can both launch.
 
