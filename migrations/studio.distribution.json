@@ -7,6 +7,15 @@
     "single_portable_source": true,
     "provider_neutral": true
   },
+  "release_versioning": {
+    "single_app_version": true,
+    "current_transitional_source": "washingtonmsdj/mcp-blender:pyproject.toml#project.version",
+    "source_after_cutover": "apps/studio/app.json#version",
+    "windows_consumes_canonical_app_version": true,
+    "ordax_os_consumes_canonical_app_version": true,
+    "target_specific_feature_versions_forbidden": true,
+    "target_build_metadata_allowed": true
+  },
   "targets": {
     "ordax_os": {
       "supported": true,
@@ -37,6 +46,7 @@
     "same_public_port_contracts": true,
     "same_typed_action_semantics": true,
     "same_provider_neutral_core": true,
+    "same_canonical_app_version": true,
     "os_specific_forks_forbidden": true,
     "provider_specific_forks_forbidden": true,
     "raw_device_execute_in_portable_app_forbidden": true,
@@ -68,6 +78,7 @@
     "windows-adapter-conformance",
     "portable-core-identical-inputs",
     "typed-action-semantic-parity",
+    "canonical-app-version-parity",
     "provider-neutral-core",
     "windows-clean-install-upgrade-uninstall",
     "ordax-os-install-stage-health-promote-rollback"
