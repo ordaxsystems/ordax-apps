@@ -36,6 +36,21 @@ def main() -> None:
     require(target_source == "apps/studio", "externalization target must remain apps/studio")
     require(product.get("portable_source_after_cutover") == target_source, "distribution and externalization source targets disagree")
 
+    versioning = distribution.get("release_versioning") or {}
+    require(versioning.get("single_app_version") is True, "Studio must have one canonical application version")
+    require(
+        versioning.get("current_transitional_source") == "washingtonmsdj/mcp-blender:pyproject.toml#project.version",
+        "current transitional Studio version provenance drifted",
+    )
+    require(
+        versioning.get("source_after_cutover") == "apps/studio/app.json#version",
+        "post-cutover Studio version must come from apps/studio/app.json",
+    )
+    require(versioning.get("windows_consumes_canonical_app_version") is True, "Windows must consume the canonical Studio app version")
+    require(versioning.get("ordax_os_consumes_canonical_app_version") is True, "OrdaX OS must consume the canonical Studio app version")
+    require(versioning.get("target_specific_feature_versions_forbidden") is True, "target-specific Studio feature versions are forbidden")
+    require(versioning.get("target_build_metadata_allowed") is True, "target build metadata policy must stay explicit")
+
     targets = distribution.get("targets") or {}
     require(set(targets) == {"ordax_os", "windows"}, "Studio must have exactly OrdaX OS and Windows distribution targets")
 
@@ -65,6 +80,7 @@ def main() -> None:
         "same_public_port_contracts",
         "same_typed_action_semantics",
         "same_provider_neutral_core",
+        "same_canonical_app_version",
         "os_specific_forks_forbidden",
         "provider_specific_forks_forbidden",
         "raw_device_execute_in_portable_app_forbidden",
@@ -79,6 +95,7 @@ def main() -> None:
         "windows-adapter-conformance",
         "portable-core-identical-inputs",
         "typed-action-semantic-parity",
+        "canonical-app-version-parity",
         "provider-neutral-core",
         "windows-clean-install-upgrade-uninstall",
         "ordax-os-install-stage-health-promote-rollback",
@@ -96,6 +113,7 @@ def main() -> None:
     print("ORDAX_STUDIO_DISTRIBUTION=PASS")
     print("STUDIO_TARGETS=ordax_os,windows")
     print("STUDIO_PORTABLE_SOURCE=apps/studio")
+    print("STUDIO_VERSION_SOURCE_AFTER_CUTOVER=apps/studio/app.json#version")
     print("WINDOWS_STANDALONE=true")
     print("ORDAX_OS_DUPLICATE_RUNTIME=false")
     print("STUDIO_AUTHORITY=none")
