@@ -31,3 +31,6 @@ jobs:
 
       - name: Prove Studio public SDK conformance
         run: python3 tools/verify_studio_sdk_conformance.py
+
+      - name: Prove Studio typed host bridge boundary
+        run: node --test tests/studio_host_bridge_conformance.mjs
