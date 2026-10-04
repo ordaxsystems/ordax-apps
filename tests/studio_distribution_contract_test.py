@@ -83,6 +83,27 @@ class StudioDistributionContractTests(unittest.TestCase):
             self.contract["outside_studio_core"],
         )
 
+    def test_remote_full_access_requires_runtime_v2_device_scope_not_legacy_operator_grant(self) -> None:
+        target = self.contract["targets"]["windows"]
+        gate = target["remote_full_access_gate"]
+        self.assertEqual(gate["status"], "required-before-cutover")
+        self.assertTrue(gate["device_scoped"])
+        self.assertTrue(gate["project_id_nullable_for_device_control"])
+        self.assertTrue(gate["derived_from_authenticated_subject_and_active_device_link"])
+        self.assertTrue(gate["operator_token_not_required_for_normal_owner_use"])
+        self.assertTrue(gate["model_callable_grant_mint_forbidden"])
+        self.assertTrue(gate["local_full_access_consent_required"])
+        self.assertTrue(gate["legacy_operator_only_project_grant_is_not_product_path"])
+        self.assertTrue(
+            self.contract["shared_release_invariants"][
+                "remote_full_access_must_use_runtime_v2_device_scope"
+            ]
+        )
+        self.assertIn(
+            "windows-full-access-device-scoped-remote",
+            self.contract["parity_proofs_required_before_cutover"],
+        )
+
     def test_os_and_provider_forks_are_forbidden(self) -> None:
         invariants = self.contract["shared_release_invariants"]
         self.assertTrue(invariants["os_specific_forks_forbidden"])
