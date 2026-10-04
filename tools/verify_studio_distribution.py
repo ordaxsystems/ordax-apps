@@ -72,6 +72,11 @@ def main() -> None:
     require(windows.get("runtime_product_name") == "ORDAX Runtime", "Windows runtime product identity drifted")
     require(windows.get("launcher_name") == "ORDAX Studio.exe", "Windows launcher identity drifted")
     require(windows.get("installer_name_pattern") == "ORDAX-Studio-Setup-<version>-x64.exe", "Windows installer naming drifted")
+    require(windows.get("account_optional_for_local_use") is True, "Windows local Studio use must not require an ORDAX account")
+    require(windows.get("cloud_pairing_optional_for_local_use") is True, "Windows local Studio use must not require Cloudflare pairing")
+    require(windows.get("offline_local_launch_supported") is True, "Windows Studio must support local launch without internet")
+    require(windows.get("local_device_identity_account_independent") is True, "Windows local device identity must not depend on account state")
+    require(windows.get("account_connection_extends_remote_capabilities_only") is True, "account connection must extend remote capabilities without replacing local identity")
 
     invariants = distribution.get("shared_release_invariants") or {}
     required_true = {
@@ -81,6 +86,7 @@ def main() -> None:
         "same_typed_action_semantics",
         "same_provider_neutral_core",
         "same_canonical_app_version",
+        "windows_local_first_semantics",
         "os_specific_forks_forbidden",
         "provider_specific_forks_forbidden",
         "raw_device_execute_in_portable_app_forbidden",
@@ -97,6 +103,7 @@ def main() -> None:
         "typed-action-semantic-parity",
         "canonical-app-version-parity",
         "provider-neutral-core",
+        "windows-local-first-no-account-offline",
         "windows-clean-install-upgrade-uninstall",
         "ordax-os-install-stage-health-promote-rollback",
     }
@@ -115,6 +122,9 @@ def main() -> None:
     print("STUDIO_PORTABLE_SOURCE=apps/studio")
     print("STUDIO_VERSION_SOURCE_AFTER_CUTOVER=apps/studio/app.json#version")
     print("WINDOWS_STANDALONE=true")
+    print("WINDOWS_LOCAL_FIRST=true")
+    print("WINDOWS_ACCOUNT_OPTIONAL=true")
+    print("WINDOWS_OFFLINE_LOCAL_LAUNCH=true")
     print("ORDAX_OS_DUPLICATE_RUNTIME=false")
     print("STUDIO_AUTHORITY=none")
 
