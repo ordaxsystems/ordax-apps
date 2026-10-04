@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT / "ordax-apps.workspace.json"
 NOTES_MIGRATION = ROOT / "migrations" / "notes.externalization.json"
+STUDIO_MIGRATION = ROOT / "migrations" / "studio.externalization.json"
 
 
 def fail(message: str) -> None:
@@ -53,6 +55,99 @@ def validate_notes_migration() -> None:
     }
     if not isinstance(proofs, list) or set(proofs) != required_proofs:
         fail("Notes cutover proof set drifted")
+
+
+def validate_studio_migration() -> None:
+    plan = json.loads(STUDIO_MIGRATION.read_text(encoding="utf-8"))
+    if plan.get("$schema") != "ordax.app-externalization-plan/1":
+        fail("unexpected Studio externalization plan schema")
+    if plan.get("app_id") != "studio":
+        fail("Studio externalization plan has wrong app id")
+    if plan.get("source_repository_current") != "washingtonmsdj/mcp-blender":
+        fail("Studio source must remain in the historical repository until cutover")
+    if plan.get("source_path_current") != "ordax_studio":
+        fail("Studio current source path drifted")
+    if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
+        fail("Studio target repository is invalid")
+    if plan.get("target_path") != "apps/studio":
+        fail("Studio target path is invalid")
+    if plan.get("source_of_truth_state") != "historical-repository-until-cutover":
+        fail("Studio must retain one source of truth before cutover")
+    if plan.get("cutover_allowed") is not False:
+        fail("Studio cutover must remain blocked until proofs are complete")
+    if plan.get("authority") != "none":
+        fail("Studio externalization metadata must not carry authority")
+
+    inventory_commit = plan.get("inventory_commit")
+    if not isinstance(inventory_commit, str) or re.fullmatch(r"[0-9a-f]{40}", inventory_commit) is None:
+        fail("Studio inventory commit must be an exact Git commit")
+
+    required_contracts = {
+        "ordax.app-activation/1",
+        "ordax.component-manifest/1",
+        "ordax.component-runtime/1",
+        "ordax.device-action-receipt/1",
+        "ordax.device-action-request/1",
+        "ordax.device-agent-capabilities/1",
+        "ordax.device-agent-capability-reader/1",
+        "ordax.file-space/11",
+        "ordax.intelligence/1",
+        "ordax.localization/1",
+        "ordax.memory/1",
+        "ordax.project-catalog/1",
+        "ordax.studio-runtime/1",
+        "ordax.surface-render-lifecycle/4",
+    }
+    contracts = plan.get("platform_contracts_required")
+    if not isinstance(contracts, list) or set(contracts) != required_contracts:
+        fail("Studio required public contract set drifted")
+
+    private_dependencies = plan.get("private_dependencies_to_remove")
+    if not isinstance(private_dependencies, list) or len(private_dependencies) < 7:
+        fail("Studio migration must track private Runtime/Control Plane dependencies")
+    dependencies = {
+        item.get("dependency")
+        for item in private_dependencies
+        if isinstance(item, dict)
+    }
+    for required in {
+        "ordax_dev_agent.actions.ActionRegistry",
+        "ordax_dev_agent.config.AgentConfig",
+        "ordax_dev_agent.cloudflare_control_plane.CloudflareControlPlane",
+        "ordax_dev_agent.mcp_server",
+        "direct self.agent.execute action dispatch",
+    }:
+        if required not in dependencies:
+            fail(f"Studio migration is missing dependency classification: {required}")
+
+    ownership = plan.get("non_app_ownership") or {}
+    if "ordax_dev_agent" not in ownership.get("runtime_host", []):
+        fail("Studio plan must keep ordax_dev_agent outside app ownership")
+    if "ordax_device_agent" not in ownership.get("runtime_host", []):
+        fail("Studio plan must keep ordax_device_agent outside app ownership")
+    if ownership.get("remote_infrastructure") != ["control-plane"]:
+        fail("Studio plan must keep Control Plane outside app ownership")
+    if "plugins/ordax-chatgpt" not in ownership.get("provider_connectors", []):
+        fail("Studio plan must classify ChatGPT integration as a connector")
+
+    proofs = plan.get("proofs_required")
+    required_proofs = {
+        "sdk-contracts-pinned",
+        "no-private-runtime-imports",
+        "provider-neutral-core",
+        "ordax-os-windows-port-parity",
+        "external-deterministic-package",
+        "platform-package-verification",
+        "install-stage-health-promote",
+        "rollback-last-known-good",
+        "platform-operates-without-app",
+        "offline-reinstall-from-local-artifact",
+        "uninstall-preserves-user-data",
+        "old-historical-app-source-removed",
+        "no-residual-launch-path",
+    }
+    if not isinstance(proofs, list) or set(proofs) != required_proofs:
+        fail("Studio cutover proof set drifted")
 
 
 def main() -> None:
@@ -117,12 +212,14 @@ def main() -> None:
         fail(f"platform-owned top-level paths present: {', '.join(unexpected)}")
 
     validate_notes_migration()
+    validate_studio_migration()
 
     print("ORDAX_APPS_WORKSPACE=PASS")
     print(f"FIRST_PARTY_TARGET_COUNT={len(targets)}")
     print(f"PUBLISHED_CONTRACT_COUNT={len(expected_contracts)}")
     print("STORE_STRUCTURAL_NON_REMOVABLE=YES")
     print("NOTES_CUTOVER_ALLOWED=NO")
+    print("STUDIO_CUTOVER_ALLOWED=NO")
     print("APP_INSTALL_AUTHORITY=PLATFORM_ONLY")
 
 
