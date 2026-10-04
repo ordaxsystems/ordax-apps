@@ -6,14 +6,26 @@ ROOT = Path(__file__).resolve().parents[1]
 PLAN = ROOT / "migrations" / "studio.legacy-method-ownership.json"
 
 EXPECTED_OWNERS = {
+    "project-catalog",
+    "app-composition",
     "studio-runtime",
     "memory",
     "intelligence",
+    "host-status",
     "host-policy",
     "identity-host",
     "adapter",
 }
 FORBIDDEN_RUNTIME_METHODS = {
+    "projects_catalog",
+    "startup_project",
+    "select_project",
+    "bootstrap",
+    "task_add",
+    "checkpoint",
+    "memory_context",
+    "ai_sessions_status",
+    "product_status",
     "computer_access_settings",
     "save_computer_access_settings",
     "connect_product_account",
@@ -22,9 +34,8 @@ FORBIDDEN_RUNTIME_METHODS = {
     "blender_instances",
     "blender_adopt",
     "blender_start",
-    "memory_context",
-    "ai_sessions_status",
 }
+TRANSITIONAL_METHODS = {"bootstrap", "product_status"}
 FORBIDDEN_GENERIC_DISPATCH = {"call", "execute", "deviceAgent"}
 
 
@@ -57,6 +68,15 @@ def main() -> None:
     if leaked:
         fail("studio-runtime absorbed foreign authority: " + ", ".join(leaked))
 
+    if not {"task_add", "checkpoint", "memory_context"}.issubset(set(owners["memory"])):
+        fail("Memory-owned legacy methods drifted")
+    if set(owners["project-catalog"]) != {"projects_catalog", "startup_project", "select_project"}:
+        fail("Project Catalog legacy ownership drifted")
+    if set(owners["app-composition"]) != {"bootstrap"}:
+        fail("bootstrap must remain explicit transitional app composition")
+    if set(owners["host-status"]) != {"product_status"}:
+        fail("product_status must remain host status, not Studio runtime")
+
     invariants = plan.get("invariants")
     if not isinstance(invariants, dict):
         fail("migration invariants are missing")
@@ -64,11 +84,15 @@ def main() -> None:
         fail("source cutover must remain blocked")
     if set(invariants.get("studio_runtime_must_not_own", [])) != FORBIDDEN_RUNTIME_METHODS:
         fail("studio-runtime foreign-authority denylist drifted")
+    if set(invariants.get("transitional_methods_to_eliminate", [])) != TRANSITIONAL_METHODS:
+        fail("transitional method elimination set drifted")
     if set(invariants.get("generic_dispatch_forbidden", [])) != FORBIDDEN_GENERIC_DISPATCH:
         fail("generic dispatch denylist drifted")
 
     print("ORDAX_STUDIO_METHOD_OWNERSHIP=PASS")
     print(f"LEGACY_METHOD_COUNT={len(seen)}")
+    print(f"STUDIO_RUNTIME_METHOD_COUNT={len(runtime)}")
+    print("TRANSITIONAL_METHODS=bootstrap,product_status")
     print("CUTOVER_ALLOWED=false")
 
 
