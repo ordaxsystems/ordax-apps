@@ -41,4 +41,6 @@ jobs:
         run: python3 tools/verify_studio_legacy_method_ownership.py
 
       - name: Prove Studio OrdaX OS and Windows distribution invariants
-        run: python3 tools/verify_studio_distribution.py
+        run: |
+          python3 tools/verify_studio_distribution.py
+          python3 tests/studio_distribution_contract_test.py
