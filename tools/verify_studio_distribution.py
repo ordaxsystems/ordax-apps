@@ -84,6 +84,16 @@ def main() -> None:
     require(windows.get("full_filesystem_intermediate_mode_supported") is True, "filesystem-wide/app-bounded intermediate mode must stay supported")
     require(windows.get("windows_uac_remains_final_platform_boundary") is True, "Windows/UAC must remain the final platform boundary")
 
+    remote_full = windows.get("remote_full_access_gate") or {}
+    require(remote_full.get("status") == "required-before-cutover", "remote Full Access gate status drifted")
+    require(remote_full.get("device_scoped") is True, "remote Full Access must be device-scoped")
+    require(remote_full.get("project_id_nullable_for_device_control") is True, "device control must not fabricate a project id")
+    require(remote_full.get("derived_from_authenticated_subject_and_active_device_link") is True, "remote owner authorization must derive from subject + active device link")
+    require(remote_full.get("operator_token_not_required_for_normal_owner_use") is True, "normal owner Full Access must not require operator/admin token")
+    require(remote_full.get("model_callable_grant_mint_forbidden") is True, "model-callable grant mint must stay forbidden")
+    require(remote_full.get("local_full_access_consent_required") is True, "remote Full Access must remain bound to local owner consent")
+    require(remote_full.get("legacy_operator_only_project_grant_is_not_product_path") is True, "legacy operator-only project grant must not become the normal product path")
+
     invariants = distribution.get("shared_release_invariants") or {}
     required_true = {
         "same_portable_product_source",
@@ -94,6 +104,7 @@ def main() -> None:
         "same_canonical_app_version",
         "windows_local_first_semantics",
         "windows_full_access_is_host_policy_not_portable_authority",
+        "remote_full_access_must_use_runtime_v2_device_scope",
         "os_specific_forks_forbidden",
         "provider_specific_forks_forbidden",
         "raw_device_execute_in_portable_app_forbidden",
@@ -112,6 +123,7 @@ def main() -> None:
         "provider-neutral-core",
         "windows-local-first-no-account-offline",
         "windows-owner-approved-full-access",
+        "windows-full-access-device-scoped-remote",
         "windows-clean-install-upgrade-uninstall",
         "ordax-os-install-stage-health-promote-rollback",
     }
@@ -135,6 +147,8 @@ def main() -> None:
     print("WINDOWS_OFFLINE_LOCAL_LAUNCH=true")
     print("WINDOWS_FULL_ACCESS_OWNER_APPROVED=true")
     print("WINDOWS_FULL_ACCESS_REMOTE_ENABLE=false")
+    print("WINDOWS_FULL_ACCESS_REMOTE_SCOPE=device")
+    print("WINDOWS_FULL_ACCESS_OPERATOR_TOKEN_REQUIRED=false")
     print("ORDAX_OS_DUPLICATE_RUNTIME=false")
     print("STUDIO_AUTHORITY=none")
 
