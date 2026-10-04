@@ -18,6 +18,7 @@ EXPECTED_CONTRACTS = {
     "ordax.component-runtime/1",
     "ordax.device-action-receipt/1",
     "ordax.device-action-request/1",
+    "ordax.device-action-request/2",
     "ordax.device-agent-capabilities/1",
     "ordax.device-agent-capability-reader/1",
     "ordax.file-space/11",
@@ -27,7 +28,9 @@ EXPECTED_CONTRACTS = {
     "prototype-ordax.localization-pack/1",
     "ordax.memory/1",
     "ordax.project-catalog/1",
+    "ordax.studio-action-context/1",
     "ordax.studio-runtime/1",
+    "ordax.studio-runtime/2",
     "ordax.surface-render-lifecycle/4",
 }
 
