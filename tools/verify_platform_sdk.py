@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 import hashlib
 import json
+import re
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = ROOT / "platform-sdk.lock.json"
+BUNDLE_VERSION_RE = re.compile(
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
+)
 
 EXPECTED_CONTRACTS = {
     "ordax.app-activation/1",
@@ -38,8 +43,12 @@ def main() -> None:
         fail("unexpected SDK bundle path")
     if lock.get("bundle_schema") != "ordax.app-sdk-bundle/1":
         fail("unexpected SDK bundle schema")
-    if lock.get("bundle_version") != "1.1.0":
-        fail("unexpected SDK bundle version")
+
+    bundle_version = lock.get("bundle_version")
+    if not isinstance(bundle_version, str) or not BUNDLE_VERSION_RE.fullmatch(bundle_version):
+        fail("SDK bundle version must be a valid semantic version")
+    if bundle_version.split(".", 1)[0] != "1":
+        fail("SDK lock must remain on reviewed App SDK bundle major 1")
     if lock.get("authority") != "none":
         fail("SDK lock must not carry authority")
 
@@ -66,7 +75,7 @@ def main() -> None:
     bundle = json.loads(content.decode("utf-8"))
     if bundle.get("$schema") != lock["bundle_schema"]:
         fail("fetched SDK schema does not match lock")
-    if bundle.get("bundle_version") != lock["bundle_version"]:
+    if bundle.get("bundle_version") != bundle_version:
         fail("fetched SDK version does not match lock")
     if bundle.get("authority") != "none":
         fail("fetched SDK unexpectedly carries authority")
@@ -83,7 +92,7 @@ def main() -> None:
 
     print("ORDAX_PLATFORM_SDK=PASS")
     print(f"SDK_COMMIT={commit}")
-    print(f"SDK_VERSION={bundle['bundle_version']}")
+    print(f"SDK_VERSION={bundle_version}")
     print(f"SDK_CONTRACT_COUNT={len(contracts)}")
     print("SDK_AUTHORITY=none")
 
