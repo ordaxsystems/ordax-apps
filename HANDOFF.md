@@ -1,6 +1,6 @@
 # OrdaX Apps — canonical handoff
 
-Atualizado em 2026-10-03.
+Atualizado em 2026-10-04.
 
 ## Estado
 
@@ -21,20 +21,26 @@ A plataforma/core continua em `washingtonmsdj/prototipo-ordax-os`.
 
 ## App SDK atual
 
-`platform-sdk.lock.json` fixa o App SDK v1.0.0 no commit da plataforma:
+`platform-sdk.lock.json` fixa o App SDK v1.1.0 no commit da plataforma:
 
-`342e894cdf004c3c54810ccf23cbe3d68c3ca6c2`
+`49b9855018b80c462579cf44275123613b33f9bc`
 
 O CI baixa o bundle desse commit exato e verifica SHA-256 antes de aceitar o workspace.
 
-Contratos publicados no SDK 1.0.0:
+Contratos publicados no SDK 1.1.0:
 
+- `ordax.app-activation/1`
 - `ordax.component-manifest/1`
+- `ordax.component-runtime/1`
+- `ordax.file-space/11`
+- `ordax.first-party-app-delivery-policy/1`
 - `ordax.intelligence/1`
-- `ordax.memory/1`
+- `ordax.localization/1`
 - `prototype-ordax.localization-pack/1`
+- `ordax.memory/1`
+- `ordax.surface-render-lifecycle/4`
 
-O delivery policy ainda está em `planned_contracts` até a PR limpa `prototipo-ordax-os#1020` entrar na `main`.
+O SDK é contrato/tooling público com `authority:none`. Ele não contém updater, chaves privadas, grants, provider credentials nem implementações privadas do core.
 
 ## Piloto de extração
 
@@ -44,26 +50,25 @@ Primeiro app: **Notes**.
 
 Não copiar/mover source ainda.
 
-Blockers confirmados estão documentados em `docs/NOTES-EXTERNALIZATION.md`:
+### Blockers restantes antes do source cutover
 
-- app/component definitions ainda importam validators do core;
-- runtime depende de component-runtime/surface lifecycle;
-- File Space precisa ser contrato SDK;
-- app activation precisa ser contrato SDK;
-- Notes UI importa implementação privada `system/services/intelligence/client-actions.mjs`;
-- catálogos do core ainda importam diretamente `notes/app.mjs` e `notes/component.mjs`;
-- testes/smokes ainda assumem paths `system/apps/notes/*`.
+- remover do Notes a dependência privada `system/services/intelligence/client-actions.mjs`; o app deve consumir o port público `ordax.intelligence/1` injetado pelo runtime;
+- migrar ownership de `notes-store` e `notes-file-importer` para o próprio app sem promover esses contratos para API global da plataforma;
+- separar catálogo de produto/launcher da implementação/package source;
+- substituir testes/smokes que assumem paths `system/apps/notes/*` por package/conformance proofs.
+
+Os contratos de plataforma que bloqueavam a externalização inicial já estão publicados no App SDK 1.1.
 
 ## Próximos passos
 
-1. aguardar/validar merge de `prototipo-ordax-os#1020`;
-2. plataforma publica App SDK 1.1 com delivery + runtime capability contracts necessários ao Notes;
-3. substituir dependências privadas do Notes por runtime ports/SDK público;
-4. separar catálogo de produto de implementação/package source;
+1. validar/mesclar o pin do SDK 1.1 neste repositório;
+2. substituir dependências privadas do Notes por runtime ports/SDK público dentro do core antes do cutover;
+3. definir o package manifest externo do Notes;
+4. mover contratos Notes-owned junto com o app na janela de cutover;
 5. construir package determinístico do Notes inteiramente neste repo;
-6. provar install -> stage -> health -> promote -> rollback;
+6. provar install -> verify -> stage -> health -> promote -> rollback;
 7. provar ausência, reinstall offline e uninstall preservando dados;
-8. somente então fazer o source-of-truth cutover e remover a cópia antiga do core.
+8. somente então fazer o source-of-truth cutover e remover a cópia antiga do core no mesmo ciclo.
 
 ## Não fazer
 
