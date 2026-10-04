@@ -83,6 +83,7 @@ def main() -> None:
 
     expected_contracts = {
         "component_manifest": "ordax.component-manifest/1",
+        "delivery_policy": "ordax.first-party-app-delivery-policy/1",
         "intelligence": "ordax.intelligence/1",
         "memory": "ordax.memory/1",
         "localization_pack": "prototype-ordax.localization-pack/1",
@@ -90,9 +91,7 @@ def main() -> None:
     }
     if data.get("contracts") != expected_contracts:
         fail("published platform contract set drifted")
-    if data.get("planned_contracts") != {
-        "delivery_policy": "ordax.first-party-app-delivery-policy/1"
-    }:
+    if data.get("planned_contracts") != {}:
         fail("planned platform contract set drifted")
 
     invariants = data.get("invariants") or {}
