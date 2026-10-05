@@ -114,6 +114,7 @@
     "runtime_host_repointed": true,
     "provider_connector_repointed": true,
     "blockers": [
+      "configure CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID and ORDAX_OPERATOR_TOKEN in ordax-control-plane environment cloudflare-v3",
       "deploy production Control Plane from washingtonmsdj/ordax-control-plane",
       "prove end-to-end ChatGPT/provider -> Control Plane -> ORDAX Runtime -> capability -> receipt",
       "prove no residual functional build, deploy or launch path references washingtonmsdj/mcp-blender"
