@@ -1,12 +1,12 @@
 {
   "$schema": "ordax.app-externalization-plan/1",
   "app_id": "studio",
-  "source_repository_current": "washingtonmsdj/mcp-blender",
-  "source_path_current": "ordax_studio",
+  "source_repository_current": "washingtonmsdj/ordax-apps",
+  "source_path_current": "apps/studio",
   "inventory_commit": "7d2b6769b9afecb0b63535ab15161b81cb8907fe",
   "target_repository": "washingtonmsdj/ordax-apps",
   "target_path": "apps/studio",
-  "source_of_truth_state": "historical-repository-until-cutover",
+  "source_of_truth_state": "ordax-apps-canonical-legacy-removal-pending",
   "cutover_allowed": false,
   "platform_contracts_required": [
     "ordax.app-activation/1",
@@ -94,7 +94,7 @@
     "no-residual-launch-path"
   ],
   "authority": "none",
-  "cutover_phase": "portable-source-staged",
+  "cutover_phase": "portable-source-canonical",
   "replacement_repositories": {
     "portable_app": "washingtonmsdj/ordax-apps",
     "runtime_host": "washingtonmsdj/ordax-runtime",
@@ -106,6 +106,11 @@
     "portable_app_staged": true,
     "production_control_plane_repointed": false,
     "windows_build_repointed": false,
-    "safe_to_delete_legacy_repository": false
-  }
+    "safe_to_delete_legacy_repository": false,
+    "portable_app_canonical": true,
+    "legacy_app_new_features_allowed": false
+  },
+  "legacy_source_repository": "washingtonmsdj/mcp-blender",
+  "legacy_source_path": "ordax_studio",
+  "cutover_scope": "distribution"
 }
