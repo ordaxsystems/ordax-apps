@@ -92,18 +92,28 @@ def validate_studio_migration() -> None:
         fail("unexpected Studio externalization plan schema")
     if plan.get("app_id") != "studio":
         fail("Studio externalization plan has wrong app id")
-    if plan.get("source_repository_current") != "washingtonmsdj/mcp-blender":
-        fail("Studio source must remain in the historical repository until cutover")
-    if plan.get("source_path_current") != "ordax_studio":
-        fail("Studio current source path drifted")
+    if plan.get("source_repository_current") != "washingtonmsdj/ordax-apps":
+        fail("Studio portable source must be canonical in ordax-apps after source cutover")
+    if plan.get("source_path_current") != "apps/studio":
+        fail("Studio canonical source path drifted")
+    if plan.get("legacy_source_repository") != "washingtonmsdj/mcp-blender":
+        fail("Studio legacy source repository must remain explicitly tracked until removal")
+    if plan.get("legacy_source_path") != "ordax_studio":
+        fail("Studio legacy source path drifted")
     if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
         fail("Studio target repository is invalid")
     if plan.get("target_path") != "apps/studio":
         fail("Studio target path is invalid")
-    if plan.get("source_of_truth_state") != "historical-repository-until-cutover":
-        fail("Studio must retain one source of truth before cutover")
+    if plan.get("source_of_truth_state") != "ordax-apps-canonical-legacy-removal-pending":
+        fail("Studio source of truth must be ordax-apps while legacy removal is pending")
+    if plan.get("cutover_scope") != "distribution":
+        fail("Studio cutover_allowed must describe distribution cutover, not source ownership")
     if plan.get("cutover_allowed") is not False:
-        fail("Studio cutover must remain blocked until proofs are complete")
+        fail("Studio distribution cutover must remain blocked until lifecycle proofs are complete")
+    if plan.get("cutover_phase") != "portable-source-canonical":
+        fail("Studio portable source phase drifted")
+    if not (ROOT / "apps" / "studio" / "app.json").is_file():
+        fail("canonical Studio app manifest is missing from ordax-apps")
     if plan.get("authority") != "none":
         fail("Studio externalization metadata must not carry authority")
 
@@ -158,6 +168,14 @@ def validate_studio_migration() -> None:
         fail("Studio plan must keep Control Plane outside app ownership")
     if "plugins/ordax-chatgpt" not in ownership.get("provider_connectors", []):
         fail("Studio plan must classify ChatGPT integration as a connector")
+
+    legacy_gate = plan.get("legacy_repository_deletion_gate") or {}
+    if legacy_gate.get("portable_app_canonical") is not True:
+        fail("Studio legacy-removal gate must recognize ordax-apps as canonical")
+    if legacy_gate.get("legacy_app_new_features_allowed") is not False:
+        fail("legacy Studio app source must be frozen for new product features")
+    if legacy_gate.get("safe_to_delete_legacy_repository") is not False:
+        fail("legacy repository deletion must remain blocked until remaining owners move")
 
     proofs = plan.get("proofs_required")
     required_proofs = {
@@ -248,7 +266,8 @@ def main() -> None:
     print(f"PUBLISHED_CONTRACT_COUNT={len(expected_contracts)}")
     print("STORE_STRUCTURAL_NON_REMOVABLE=YES")
     print("NOTES_CUTOVER_ALLOWED=NO")
-    print("STUDIO_CUTOVER_ALLOWED=NO")
+    print("STUDIO_SOURCE_CANONICAL=ORDAX_APPS")
+    print("STUDIO_DISTRIBUTION_CUTOVER_ALLOWED=NO")
     print("APP_INSTALL_AUTHORITY=PLATFORM_ONLY")
 
 
