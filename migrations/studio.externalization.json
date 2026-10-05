@@ -93,5 +93,19 @@
     "old-historical-app-source-removed",
     "no-residual-launch-path"
   ],
-  "authority": "none"
+  "authority": "none",
+  "cutover_phase": "portable-source-staged",
+  "replacement_repositories": {
+    "portable_app": "washingtonmsdj/ordax-apps",
+    "runtime_host": "washingtonmsdj/ordax-runtime",
+    "remote_infrastructure": "washingtonmsdj/ordax-control-plane",
+    "provider_connectors": "washingtonmsdj/ordax-control-plane"
+  },
+  "legacy_repository_deletion_gate": {
+    "source_preserved": true,
+    "portable_app_staged": true,
+    "production_control_plane_repointed": false,
+    "windows_build_repointed": false,
+    "safe_to_delete_legacy_repository": false
+  }
 }

@@ -40,6 +40,9 @@ jobs:
       - name: Prove Studio legacy method ownership boundary
         run: python3 tools/verify_studio_legacy_method_ownership.py
 
+      - name: Prove portable Studio source boundary
+        run: python3 apps/studio/tests/test_portable_boundary.py
+
       - name: Prove Studio OrdaX OS and Windows distribution invariants
         run: |
           python3 tools/verify_studio_distribution.py
