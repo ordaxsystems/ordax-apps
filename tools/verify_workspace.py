@@ -91,6 +91,22 @@ def validate_notes_migration() -> None:
     if delivery.get("auto_install") is not False:
         fail("on-demand Notes must not auto-install")
 
+    source_cutover = plan.get("source_cutover") or {}
+    if source_cutover.get("mode") != "remove-platform-first":
+        fail("Notes must use remove-platform-first source cutover")
+    if source_cutover.get("prelaunch_only") is not True:
+        fail("remove-first Notes cutover must remain prelaunch-only")
+    if source_cutover.get("temporary_app_absence_allowed") is not True:
+        fail("prelaunch Notes cutover must allow temporary app absence")
+    if source_cutover.get("dual_source_allowed") is not False:
+        fail("Notes dual source must remain forbidden")
+    if source_cutover.get("platform_absence_proof_required_before_copy") is not True:
+        fail("platform absence proof is required before copying Notes")
+    if source_cutover.get("package_lifecycle_proof_runs_after_source_cutover") is not True:
+        fail("Notes package lifecycle proof must run from canonical external source")
+    if source_cutover.get("production_rule_after_first_user_data") != "staged-handoff-no-data-loss":
+        fail("production Notes cutover rule must preserve real user data")
+
     proofs = plan.get("proofs_required")
     required_proofs = {
         "sdk-contracts-pinned",
