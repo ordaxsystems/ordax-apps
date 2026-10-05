@@ -61,7 +61,31 @@ platform-owned App Data owner
 
 The Notes-owned schema/validation remains with the product. The platform owns isolation, verified app identity, durability and lifecycle of the private App Data partition.
 
-Cutover remains blocked until the Notes runtime is adapted to this public port and migration of existing Notes data, rollback and reinstall preservation are proven.
+Cutover remains blocked until the Notes runtime is adapted to this public port and package/lifecycle proofs are complete. This is a **clean pre-launch cutover**: there are no production users or production Notes data to migrate, so a legacy seed bridge is not a requirement. The old payload may be discarded at cutover instead of being carried forward as compatibility debt.
+
+This does **not** weaken the permanent lifecycle rule: once real user data exists, uninstalling the app must remain separate from deleting its App Data.
+
+## Delivery and Store model
+
+Notes is an **on-demand, store-only** first-party app.
+
+The target flow is:
+
+```text
+Store UI
+   ↓ request only
+platform app lifecycle owner
+   ↓
+catalog → artifact identity → trust/provenance → compatibility
+   ↓
+stage → health/probation → promote → installed inventory/receipt
+   ↓
+Notes launchable
+```
+
+The Store is structural UI and does not own install authority, signing keys, package verification, permissions or rollback. Before the Store UI/service exists, the official signed Stable release channel may deliver a completed first-party app through the same platform-owned trust/lifecycle boundary. On-demand apps are never silently auto-installed.
+
+Because this project is still pre-launch with no production Notes data, the first externalized Notes install is treated as a clean install. We do not keep a legacy storage bridge solely for nonexistent users.
 
 ## Remaining source couplings
 
@@ -87,6 +111,7 @@ Do not move Notes source until all are true:
 
 - [ ] required platform contracts are published in a pinned App SDK bundle accepted by Notes;
 - [ ] `ordax.app-data/1` is the runtime storage boundary instead of `createStore`;
+- [x] pre-launch cutover explicitly requires no legacy data seed;
 - [x] Notes Intelligence uses app-owned code over the injected public Intelligence port;
 - [ ] Notes-owned contracts have an explicit migration destination;
 - [ ] deterministic Notes package builds entirely in `ordax-apps`;

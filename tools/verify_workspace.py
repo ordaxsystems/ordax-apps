@@ -68,6 +68,28 @@ def validate_notes_migration() -> None:
         fail("Notes current storage injection must remain explicit until migration")
     if storage.get("target_contract") != "ordax.app-data/1":
         fail("Notes durable state must target ordax.app-data/1")
+    if storage.get("cutover_mode") != "clean-prelaunch":
+        fail("Notes must use clean pre-launch cutover")
+    if storage.get("production_user_data_present") is not False:
+        fail("Notes plan must record no production user data")
+    if storage.get("legacy_seed_required") is not False:
+        fail("Notes legacy seed must remain disabled before first production data")
+    if storage.get("uninstall_data_separation_required") is not True:
+        fail("Notes uninstall/data separation invariant is required")
+
+    delivery = plan.get("delivery") or {}
+    if delivery.get("delivery_class") != "on-demand":
+        fail("Notes must remain on-demand")
+    if delivery.get("discovery") != "store-only":
+        fail("Notes discovery must remain store-only")
+    if delivery.get("store_is_install_authority") is not False:
+        fail("Store UI must not own Notes install authority")
+    if delivery.get("install_owner") != "platform-component-lifecycle":
+        fail("Notes install authority must remain platform-owned")
+    if delivery.get("pre_store_delivery") != "official-signed-stable-release":
+        fail("pre-Store Notes delivery must use the official signed Stable channel")
+    if delivery.get("auto_install") is not False:
+        fail("on-demand Notes must not auto-install")
 
     proofs = plan.get("proofs_required")
     required_proofs = {

@@ -51,7 +51,12 @@
     "current_runtime_injection": "createStore",
     "target_contract": "ordax.app-data/1",
     "state": "blocked-pending-runtime-port-cutover",
-    "data_owner": "notes"
+    "data_owner": "notes",
+    "cutover_mode": "clean-prelaunch",
+    "production_user_data_present": false,
+    "legacy_seed_required": false,
+    "legacy_payload_may_be_discarded_at_cutover": true,
+    "uninstall_data_separation_required": true
   },
   "proofs_required": [
     "sdk-contracts-pinned",
@@ -65,5 +70,13 @@
     "uninstall-preserves-user-data",
     "old-platform-source-removed"
   ],
-  "authority": "none"
+  "authority": "none",
+  "delivery": {
+    "delivery_class": "on-demand",
+    "discovery": "store-only",
+    "store_is_install_authority": false,
+    "install_owner": "platform-component-lifecycle",
+    "pre_store_delivery": "official-signed-stable-release",
+    "auto_install": false
+  }
 }
