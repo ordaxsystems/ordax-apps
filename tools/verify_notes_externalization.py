@@ -126,6 +126,19 @@ def main() -> None:
     if delivery != expected_delivery:
         fail("Notes delivery/Store model drifted")
 
+    source_cutover = plan.get("source_cutover") or {}
+    expected_cutover = {
+        "mode": "remove-platform-first",
+        "prelaunch_only": True,
+        "temporary_app_absence_allowed": True,
+        "dual_source_allowed": False,
+        "platform_absence_proof_required_before_copy": True,
+        "package_lifecycle_proof_runs_after_source_cutover": True,
+        "production_rule_after_first_user_data": "staged-handoff-no-data-loss",
+    }
+    if source_cutover != expected_cutover:
+        fail("Notes source cutover mode drifted")
+
     proofs = plan.get("proofs_required")
     if not isinstance(proofs, list) or set(proofs) != REQUIRED_PROOFS:
         fail("Notes cutover proof set drifted")
@@ -154,6 +167,9 @@ def main() -> None:
     print("LEGACY_DATA_SEED_REQUIRED=NO")
     print("NOTES_DELIVERY=ON_DEMAND_STORE_ONLY")
     print("STORE_INSTALL_AUTHORITY=NO")
+    print("SOURCE_CUTOVER=REMOVE_PLATFORM_FIRST")
+    print("TEMPORARY_APP_ABSENCE_ALLOWED=YES")
+    print("DUAL_SOURCE_ALLOWED=NO")
     print(f"NOTES_SOURCE_PRESENT={'YES' if source_present else 'NO'}")
     print(f"NOTES_CUTOVER_ALLOWED={'YES' if cutover_allowed else 'NO'}")
     print(

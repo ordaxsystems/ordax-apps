@@ -78,5 +78,14 @@
     "install_owner": "platform-component-lifecycle",
     "pre_store_delivery": "official-signed-stable-release",
     "auto_install": false
+  },
+  "source_cutover": {
+    "mode": "remove-platform-first",
+    "prelaunch_only": true,
+    "temporary_app_absence_allowed": true,
+    "dual_source_allowed": false,
+    "platform_absence_proof_required_before_copy": true,
+    "package_lifecycle_proof_runs_after_source_cutover": true,
+    "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
   }
 }

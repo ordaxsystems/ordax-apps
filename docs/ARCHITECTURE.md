@@ -27,16 +27,20 @@ This repository keeps shared app tooling, CI conventions and contract conformanc
 
 An app must have exactly one authoritative source repository at a time.
 
-Extraction from the platform repo is therefore staged:
+Extraction from the platform repo is staged without a long-lived dual source.
 
-1. prove external package/build compatibility;
-2. freeze the migration boundary;
-3. move the app source;
-4. change platform catalog/package references;
-5. delete the old source from the platform repo;
-6. prove no residual path can launch the removed copy.
+For a released app with real user data, use a staged handoff that preserves service continuity and data. For a **pre-launch app with no production users/data**, OrdaX also permits a remove-first cutover:
 
-Long-lived duplicated app source is forbidden.
+1. freeze the migration boundary;
+2. remove the app implementation from the platform runtime while keeping independent product/delivery metadata;
+3. prove the platform boots and operates with the app absent;
+4. move the last canonical app source into `ordax-apps`;
+5. build and prove the deterministic external package from that single source;
+6. prove verify → stage → health → promote → rollback/reinstall/uninstall;
+7. publish availability through the signed catalog/Store path;
+8. prove no residual platform implementation can launch.
+
+Temporary app absence is acceptable only in this explicit pre-launch/no-data mode. Long-lived duplicated app source is forbidden.
 
 ## Structural Store
 
@@ -72,4 +76,4 @@ Localization remains component-scoped. Each app owns its strings/packs while hon
 
 ## First extraction candidate
 
-`notes` is the initial candidate because it is non-structural and comparatively bounded. It must not be moved until package install, reinstall, offline execution, rollback and uninstall-with-data-preservation are proven.
+`notes` is the initial candidate because it is non-structural and comparatively bounded. Because OrdaX is still pre-launch and has no production Notes data, Notes uses the **remove-platform-first** cutover above. Package/lifecycle proof then happens from the canonical source in `ordax-apps`; until that proof is complete, Notes may simply be unavailable rather than duplicated.
