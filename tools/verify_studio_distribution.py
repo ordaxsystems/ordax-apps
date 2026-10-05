@@ -34,18 +34,19 @@ def main() -> None:
 
     target_source = externalization.get("target_path")
     require(target_source == "apps/studio", "externalization target must remain apps/studio")
-    require(product.get("portable_source_after_cutover") == target_source, "distribution and externalization source targets disagree")
+    require(product.get("portable_source") == target_source, "distribution and externalization source targets disagree")
 
     versioning = distribution.get("release_versioning") or {}
     require(versioning.get("single_app_version") is True, "Studio must have one canonical application version")
     require(
-        versioning.get("current_transitional_source") == "washingtonmsdj/mcp-blender:pyproject.toml#project.version",
-        "current transitional Studio version provenance drifted",
+        versioning.get("current_transitional_source") == "apps/studio/app.json#version",
+        "Studio version must come from apps/studio/app.json",
     )
     require(
         versioning.get("source_after_cutover") == "apps/studio/app.json#version",
-        "post-cutover Studio version must come from apps/studio/app.json",
+        "Studio version source must remain apps/studio/app.json",
     )
+    require(versioning.get("legacy_version_source_allowed") is False, "legacy repository must not remain a Studio version authority")
     require(versioning.get("windows_consumes_canonical_app_version") is True, "Windows must consume the canonical Studio app version")
     require(versioning.get("ordax_os_consumes_canonical_app_version") is True, "OrdaX OS must consume the canonical Studio app version")
     require(versioning.get("target_specific_feature_versions_forbidden") is True, "target-specific Studio feature versions are forbidden")
@@ -140,7 +141,7 @@ def main() -> None:
     print("ORDAX_STUDIO_DISTRIBUTION=PASS")
     print("STUDIO_TARGETS=ordax_os,windows")
     print("STUDIO_PORTABLE_SOURCE=apps/studio")
-    print("STUDIO_VERSION_SOURCE_AFTER_CUTOVER=apps/studio/app.json#version")
+    print("STUDIO_VERSION_SOURCE=apps/studio/app.json#version")
     print("WINDOWS_STANDALONE=true")
     print("WINDOWS_LOCAL_FIRST=true")
     print("WINDOWS_ACCOUNT_OPTIONAL=true")
