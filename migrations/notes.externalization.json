@@ -9,6 +9,7 @@
   "cutover_allowed": false,
   "platform_contracts_required": [
     "ordax.app-activation/1",
+    "ordax.app-data/1",
     "ordax.component-manifest/1",
     "ordax.component-runtime/1",
     "ordax.file-space/11",
@@ -17,16 +18,24 @@
     "prototype-ordax.localization-pack/1",
     "ordax.surface-render-lifecycle/4"
   ],
+  "target_sdk": {
+    "minimum_bundle_version": "1.6.0",
+    "reason": "ordax.app-data/1 is required for external durable Notes state"
+  },
   "app_owned_contracts": [
     "notes-store",
     "notes-file-importer"
   ],
-  "private_dependencies_to_remove": [
+  "resolved_dependencies": [
     {
       "source": "system/apps/notes/ui/workspace-controls.mjs",
-      "dependency": "system/services/intelligence/client-actions.mjs",
-      "replacement": "app-owned client code over injected ordax.intelligence/1 port"
-    },
+      "former_dependency": "system/services/intelligence/client-actions.mjs",
+      "replacement": "system/apps/notes/platform/intelligence-summary.mjs over injected ordax.intelligence/1 port",
+      "verified_platform_commit": "4229f9e381203a09036bff7955bd87ea971cf231"
+    }
+  ],
+  "private_dependencies_to_remove": [],
+  "source_couplings_to_remove": [
     {
       "source": "system/apps/catalog.mjs",
       "dependency": "system/apps/notes/app.mjs",
@@ -38,6 +47,12 @@
       "replacement": "verified package/inventory component manifest"
     }
   ],
+  "storage_migration": {
+    "current_runtime_injection": "createStore",
+    "target_contract": "ordax.app-data/1",
+    "state": "blocked-pending-runtime-port-cutover",
+    "data_owner": "notes"
+  },
   "proofs_required": [
     "sdk-contracts-pinned",
     "no-core-private-imports",

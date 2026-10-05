@@ -13,10 +13,13 @@ Current Notes code consumes platform capabilities/contracts that remain owned by
 - `ordax.surface-render-lifecycle/4` — render/localization lifecycle supplied by Surface;
 - `ordax.intelligence/1` — local/cloud-neutral Intelligence port;
 - `ordax.file-space/11` — user file-space capability port;
+- `ordax.app-data/1` — device-local private durable state for an independently delivered app;
 - app activation contract — navigation/activation request boundary;
 - localization contracts — component-scoped locale/fallback behavior.
 
 An external app must consume these through a versioned SDK/runtime host boundary, never by importing files from `system/contracts` in another repository checkout.
+
+The current repository-wide SDK pin remains 1.3.0. The platform bundle inspected at commit `4229f9e381203a09036bff7955bd87ea971cf231` publishes App SDK 1.6.0 including `ordax.app-data/1`. Notes therefore targets **App SDK 1.6.0 or newer compatible contract-major coverage** before source cutover; the global pin must not be bumped blindly because Studio and other consumers have their own conformance gates.
 
 ## Notes-owned contracts/code
 
@@ -32,15 +35,42 @@ These belong to the Notes product and should move with Notes at source-of-truth 
 
 The current core paths `system/contracts/notes-store.mjs` and `system/contracts/notes-file-importer.mjs` therefore need an ownership migration strategy; they should not become generic OrdaX platform contracts merely because they currently live under `system/contracts`.
 
-## Private implementation dependency to eliminate
+## Intelligence dependency — resolved
 
-Current Notes UI imports:
+The former private dependency on:
 
 `system/services/intelligence/client-actions.mjs`
 
-This is a private implementation helper and MUST NOT be copied into `ordax-apps` or exported as platform service source.
+is no longer present in the current platform source. Notes now owns `system/apps/notes/platform/intelligence-summary.mjs`, which validates and consumes the injected public `ordax.intelligence/1` port.
 
-Notes already receives an `intelligence` port at runtime. The target is for app-owned code (using the public SDK validator/client surface) to call the injected `ordax.intelligence/1` capability without knowing the platform service implementation path.
+Do not reconstruct the private helper import during extraction. The migration plan records this dependency as resolved evidence rather than an open blocker.
+
+## Durable storage blocker
+
+The current Notes component runtime still receives a host factory named `createStore` and creates the Notes runtime from that store. This is still platform-composition coupling and is not the final external-app storage boundary.
+
+The target is:
+
+```text
+Notes package
+   ↓
+injected ordax.app-data/1 port
+   ↓
+platform-owned App Data owner
+```
+
+The Notes-owned schema/validation remains with the product. The platform owns isolation, verified app identity, durability and lifecycle of the private App Data partition.
+
+Cutover remains blocked until the Notes runtime is adapted to this public port and migration of existing Notes data, rollback and reinstall preservation are proven.
+
+## Remaining source couplings
+
+The platform catalog still references repo-local Notes implementation metadata through:
+
+- `system/apps/catalog.mjs` → `system/apps/notes/app.mjs`;
+- `system/apps/component-catalog.mjs` → `system/apps/notes/component.mjs`.
+
+These must become package/inventory metadata lookups at cutover. They are source-location couplings, not reasons to expose platform internals to the app.
 
 ## Tests that must change at cutover
 
@@ -55,8 +85,9 @@ Browser/Surface integration must not require Notes source to be inside the platf
 
 Do not move Notes source until all are true:
 
-- [ ] required platform contracts are published in a pinned App SDK bundle;
-- [ ] app runtime can use SDK/runtime-provided ports without core-private imports;
+- [ ] required platform contracts are published in a pinned App SDK bundle accepted by Notes;
+- [ ] `ordax.app-data/1` is the runtime storage boundary instead of `createStore`;
+- [x] Notes Intelligence uses app-owned code over the injected public Intelligence port;
 - [ ] Notes-owned contracts have an explicit migration destination;
 - [ ] deterministic Notes package builds entirely in `ordax-apps`;
 - [ ] platform verifies package identity/provenance/compatibility without source checkout;
@@ -66,3 +97,7 @@ Do not move Notes source until all are true:
 - [ ] source cutover removes the old core copy in the same migration window.
 
 Long-lived dual source is forbidden.
+
+## CI preflight
+
+`tools/verify_notes_externalization.py` enforces the pre-cutover state. While `cutover_allowed=false`, it intentionally fails if `apps/notes` appears in this repository. This prevents a second authoritative copy from being introduced before the storage/package/lifecycle gates are ready.

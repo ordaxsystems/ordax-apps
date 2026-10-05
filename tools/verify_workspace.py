@@ -30,15 +30,44 @@ def validate_notes_migration() -> None:
     if plan.get("authority") != "none":
         fail("externalization metadata must not carry authority")
 
+    contracts = plan.get("platform_contracts_required")
+    if not isinstance(contracts, list) or "ordax.app-data/1" not in contracts:
+        fail("Notes migration must require the public App Data contract")
+
+    target_sdk = plan.get("target_sdk") or {}
+    if target_sdk.get("minimum_bundle_version") != "1.6.0":
+        fail("Notes App Data cutover must target App SDK 1.6.0")
+
     private_dependencies = plan.get("private_dependencies_to_remove")
-    if not isinstance(private_dependencies, list) or not private_dependencies:
-        fail("Notes migration must track private dependencies")
-    if not any(
-        item.get("dependency") == "system/services/intelligence/client-actions.mjs"
-        for item in private_dependencies
+    if private_dependencies != []:
+        fail("known private Notes dependencies are resolved; new ones require explicit review")
+
+    resolved_dependencies = plan.get("resolved_dependencies")
+    if not isinstance(resolved_dependencies, list) or not any(
+        item.get("former_dependency") == "system/services/intelligence/client-actions.mjs"
+        and "ordax.intelligence/1" in item.get("replacement", "")
+        for item in resolved_dependencies
         if isinstance(item, dict)
     ):
-        fail("Notes migration must track the private Intelligence helper dependency")
+        fail("Notes migration must record the former private Intelligence helper as resolved")
+
+    source_couplings = plan.get("source_couplings_to_remove")
+    dependencies = {
+        item.get("dependency")
+        for item in source_couplings or []
+        if isinstance(item, dict)
+    }
+    if dependencies != {
+        "system/apps/notes/app.mjs",
+        "system/apps/notes/component.mjs",
+    }:
+        fail("Notes source coupling inventory drifted")
+
+    storage = plan.get("storage_migration") or {}
+    if storage.get("current_runtime_injection") != "createStore":
+        fail("Notes current storage injection must remain explicit until migration")
+    if storage.get("target_contract") != "ordax.app-data/1":
+        fail("Notes durable state must target ordax.app-data/1")
 
     proofs = plan.get("proofs_required")
     required_proofs = {
