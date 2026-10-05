@@ -120,6 +120,25 @@ Before copying Notes into `ordax-apps`:
 - [ ] platform works, boots and reports Notes as absent/uninstalled;
 - [ ] old platform app implementation and residual launch paths are removed.
 
+### Gate A removal scope
+
+Gate A removes **product implementation**, not the platform capabilities needed by an externally installed app.
+
+Remove from `prototipo-ordax-os`:
+- `system/apps/notes/**` and Notes-owned contracts;
+- legacy Web/Native Notes storage adapters;
+- local Notes imports from app/component catalogs and Web/Native composition;
+- `/__ordax/native/notes` and `/var/lib/ordax/notes.json`;
+- fixed launcher/rail entries and smoke assumptions that treat Notes as installed.
+
+Retain in the platform:
+- the first-party delivery policy identifying Notes as `on-demand + store-only`;
+- signed catalog/Store discovery metadata;
+- `ordax.app-data/1`, verified install identity and the owner-managed Notes quota;
+- generic Component Manager, package trust, probation, rollback and uninstall infrastructure.
+
+Gate A is complete only when OrdaX boots and operates with Notes absent and no residual local path can launch the removed implementation.
+
 ### Gate B — establish canonical external source
 
 After Gate A, copy the last canonical Notes source into `apps/notes` and mark `ordax-apps` as the only source of truth.

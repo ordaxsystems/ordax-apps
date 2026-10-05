@@ -139,6 +139,28 @@ def main() -> None:
     if source_cutover != expected_cutover:
         fail("Notes source cutover mode drifted")
 
+    removal = plan.get("gate_a_platform_removal") or {}
+    required_removal_proofs = {
+        "notes-not-in-installed-app-catalog",
+        "notes-not-in-installed-component-catalog",
+        "no-local-notes-runtime-import",
+        "no-legacy-notes-endpoint",
+        "no-fixed-notes-launcher",
+        "platform-boots-with-notes-absent",
+        "notes-remains-on-demand-store-only-product",
+    }
+    if set(removal.get("required_proofs") or []) != required_removal_proofs:
+        fail("Notes Gate A platform-removal proof set drifted")
+    retained = set(removal.get("retain_platform_owned") or [])
+    for required in {
+        "first-party delivery policy for notes",
+        "ordax.app-data/1 owner and verified install binding",
+        "owner-managed Notes App Data quota policy",
+        "generic component lifecycle/trust/probation infrastructure",
+    }:
+        if required not in retained:
+            fail(f"Notes Gate A must retain platform owner: {required}")
+
     proofs = plan.get("proofs_required")
     if not isinstance(proofs, list) or set(proofs) != REQUIRED_PROOFS:
         fail("Notes cutover proof set drifted")
@@ -170,6 +192,7 @@ def main() -> None:
     print("SOURCE_CUTOVER=REMOVE_PLATFORM_FIRST")
     print("TEMPORARY_APP_ABSENCE_ALLOWED=YES")
     print("DUAL_SOURCE_ALLOWED=NO")
+    print("GATE_A_PLATFORM_REMOVAL=DEFINED")
     print(f"NOTES_SOURCE_PRESENT={'YES' if source_present else 'NO'}")
     print(f"NOTES_CUTOVER_ALLOWED={'YES' if cutover_allowed else 'NO'}")
     print(
