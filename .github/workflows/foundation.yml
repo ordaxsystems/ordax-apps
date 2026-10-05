@@ -22,11 +22,15 @@ jobs:
         run: |
           python3 -m json.tool ordax-apps.workspace.json >/dev/null
           python3 -m json.tool platform-sdk.lock.json >/dev/null
+          python3 -m json.tool migrations/notes.externalization.json >/dev/null
           python3 -m json.tool migrations/studio.legacy-method-ownership.json >/dev/null
           python3 -m json.tool migrations/studio.distribution.json >/dev/null
 
       - name: Prove repository boundary invariants
         run: python3 tools/verify_workspace.py
+
+      - name: Prove Notes externalization preflight
+        run: python3 tools/verify_notes_externalization.py
 
       - name: Prove pinned public App SDK from platform repository
         run: python3 tools/verify_platform_sdk.py
