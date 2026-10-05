@@ -105,19 +105,18 @@
     "source_preserved": true,
     "portable_app_staged": true,
     "production_control_plane_repointed": false,
-    "windows_build_repointed": false,
+    "windows_build_repointed": true,
     "safe_to_delete_legacy_repository": false,
     "portable_app_canonical": true,
     "legacy_app_new_features_allowed": false,
     "retirement_requested": true,
     "portable_source_dependency_remaining": false,
-    "runtime_host_repointed": false,
-    "provider_connector_repointed": false,
+    "runtime_host_repointed": true,
+    "provider_connector_repointed": true,
     "blockers": [
-      "migrate Windows ORDAX Runtime/device host to washingtonmsdj/ordax-runtime",
-      "migrate Product MCP/Control Plane and ORDAX provider connector to washingtonmsdj/ordax-control-plane",
-      "repoint production deployment and Windows packaging away from washingtonmsdj/mcp-blender",
-      "prove no residual build, deploy or launch path references washingtonmsdj/mcp-blender"
+      "deploy production Control Plane from washingtonmsdj/ordax-control-plane",
+      "prove end-to-end ChatGPT/provider -> Control Plane -> ORDAX Runtime -> capability -> receipt",
+      "prove no residual functional build, deploy or launch path references washingtonmsdj/mcp-blender"
     ]
   },
   "legacy_source_repository": "washingtonmsdj/mcp-blender",
