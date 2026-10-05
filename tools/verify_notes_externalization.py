@@ -56,6 +56,21 @@ def main() -> None:
     if plan.get("authority") != "none":
         fail("app externalization metadata must not carry authority")
 
+    source_snapshot = plan.get("source_snapshot") or {}
+    if source_snapshot.get("repository") != "washingtonmsdj/prototipo-ordax-os":
+        fail("Notes source snapshot repository drifted")
+    snapshot_commit = source_snapshot.get("commit")
+    if not isinstance(snapshot_commit, str) or len(snapshot_commit) != 40 or any(
+        char not in "0123456789abcdef" for char in snapshot_commit
+    ):
+        fail("Notes source snapshot must pin an exact lowercase Git commit")
+    if snapshot_commit != "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6":
+        fail("Notes pre-removal source snapshot drifted")
+    if source_snapshot.get("captured_before_gate_a_removal") is not True:
+        fail("Notes source snapshot must be explicitly pre-removal")
+    if source_snapshot.get("app_source_path") != "system/apps/notes":
+        fail("Notes source snapshot app path drifted")
+
     contracts = plan.get("platform_contracts_required")
     if not isinstance(contracts, list) or "ordax.app-data/1" not in contracts:
         fail("Notes cutover must require ordax.app-data/1")
