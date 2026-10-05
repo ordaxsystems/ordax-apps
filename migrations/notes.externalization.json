@@ -128,5 +128,17 @@
       "platform-boots-with-notes-absent",
       "notes-remains-on-demand-store-only-product"
     ]
+  },
+  "source_snapshot": {
+    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "commit": "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6",
+    "captured_before_gate_a_removal": true,
+    "app_source_path": "system/apps/notes",
+    "app_owned_support_paths": [
+      "system/contracts/notes-store.mjs",
+      "system/contracts/notes-file-importer.mjs",
+      "system/services/i18n/catalog/notes.mjs"
+    ],
+    "purpose": "reproducible Gate B source transfer after platform absence proof"
   }
 }
