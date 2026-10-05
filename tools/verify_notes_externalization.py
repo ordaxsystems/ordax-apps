@@ -103,6 +103,28 @@ def main() -> None:
         fail("Notes durable state must target ordax.app-data/1")
     if storage.get("state") != "blocked-pending-runtime-port-cutover":
         fail("unexpected Notes storage migration state")
+    if storage.get("cutover_mode") != "clean-prelaunch":
+        fail("Notes must use the clean pre-launch cutover while no production data exists")
+    if storage.get("production_user_data_present") is not False:
+        fail("Notes migration plan must explicitly record that no production user data exists")
+    if storage.get("legacy_seed_required") is not False:
+        fail("legacy Notes seed must not be required for a clean pre-launch cutover")
+    if storage.get("legacy_payload_may_be_discarded_at_cutover") is not True:
+        fail("legacy Notes payload must be explicitly discardable at pre-launch cutover")
+    if storage.get("uninstall_data_separation_required") is not True:
+        fail("future uninstall must remain separate from App Data deletion")
+
+    delivery = plan.get("delivery") or {}
+    expected_delivery = {
+        "delivery_class": "on-demand",
+        "discovery": "store-only",
+        "store_is_install_authority": False,
+        "install_owner": "platform-component-lifecycle",
+        "pre_store_delivery": "official-signed-stable-release",
+        "auto_install": False,
+    }
+    if delivery != expected_delivery:
+        fail("Notes delivery/Store model drifted")
 
     proofs = plan.get("proofs_required")
     if not isinstance(proofs, list) or set(proofs) != REQUIRED_PROOFS:
@@ -129,6 +151,9 @@ def main() -> None:
     print(f"SDK_PIN={current_sdk}")
     print(f"SDK_TARGET={target_version}")
     print("APP_DATA_REQUIRED=YES")
+    print("LEGACY_DATA_SEED_REQUIRED=NO")
+    print("NOTES_DELIVERY=ON_DEMAND_STORE_ONLY")
+    print("STORE_INSTALL_AUTHORITY=NO")
     print(f"NOTES_SOURCE_PRESENT={'YES' if source_present else 'NO'}")
     print(f"NOTES_CUTOVER_ALLOWED={'YES' if cutover_allowed else 'NO'}")
     print(
