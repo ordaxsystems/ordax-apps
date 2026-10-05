@@ -174,8 +174,15 @@ def validate_studio_migration() -> None:
         fail("Studio legacy-removal gate must recognize ordax-apps as canonical")
     if legacy_gate.get("legacy_app_new_features_allowed") is not False:
         fail("legacy Studio app source must be frozen for new product features")
+    if legacy_gate.get("retirement_requested") is not True:
+        fail("legacy repository retirement must be explicitly requested")
+    if legacy_gate.get("portable_source_dependency_remaining") is not False:
+        fail("portable Studio must not depend on the legacy repository")
     if legacy_gate.get("safe_to_delete_legacy_repository") is not False:
-        fail("legacy repository deletion must remain blocked until remaining owners move")
+        fail("legacy repository deletion must remain blocked until Runtime/Control Plane owners move")
+    blockers = legacy_gate.get("blockers")
+    if not isinstance(blockers, list) or len(blockers) < 4:
+        fail("legacy repository deletion blockers must remain explicit")
 
     proofs = plan.get("proofs_required")
     required_proofs = {
