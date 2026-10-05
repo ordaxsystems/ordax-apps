@@ -87,5 +87,46 @@
     "platform_absence_proof_required_before_copy": true,
     "package_lifecycle_proof_runs_after_source_cutover": true,
     "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
+  },
+  "gate_a_platform_removal": {
+    "remove_owned_source": [
+      "system/apps/notes/**",
+      "system/contracts/notes-store.mjs",
+      "system/contracts/notes-file-importer.mjs"
+    ],
+    "remove_legacy_adapters": [
+      "system/adapters/native/notes.mjs",
+      "system/adapters/web/notes.mjs"
+    ],
+    "remove_platform_implementation_couplings": [
+      "system/apps/catalog.mjs -> ./notes/app.mjs",
+      "system/apps/component-catalog.mjs -> ./notes/component.mjs",
+      "system/composition/native/main.mjs -> ../../apps/notes/runtime.mjs",
+      "system/composition/web/main.mjs -> ../../apps/notes/runtime.mjs"
+    ],
+    "remove_legacy_native_state": [
+      "/__ordax/native/notes",
+      "/var/lib/ordax/notes.json"
+    ],
+    "remove_fixed_launch_paths": [
+      "desktop rail Notes shortcut",
+      "Surface/browser smoke assumptions that Notes payload is present"
+    ],
+    "retain_platform_owned": [
+      "first-party delivery policy for notes",
+      "signed catalog/store discovery metadata",
+      "ordax.app-data/1 owner and verified install binding",
+      "owner-managed Notes App Data quota policy",
+      "generic component lifecycle/trust/probation infrastructure"
+    ],
+    "required_proofs": [
+      "notes-not-in-installed-app-catalog",
+      "notes-not-in-installed-component-catalog",
+      "no-local-notes-runtime-import",
+      "no-legacy-notes-endpoint",
+      "no-fixed-notes-launcher",
+      "platform-boots-with-notes-absent",
+      "notes-remains-on-demand-store-only-product"
+    ]
   }
 }
