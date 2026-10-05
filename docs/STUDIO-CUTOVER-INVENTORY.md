@@ -1,37 +1,37 @@
 # ORDAX Studio cutover inventory
 
-Status: pre-cutover inventory. This document classifies the current implementation; it does **not** move or duplicate source.
+Status: portable source cut over. `apps/studio` in `ordax-apps` is now the canonical Studio product source. The historical `ordax_studio/` tree is legacy-only and remains tracked until its removal is proven.
 
 Historical/incubation source reviewed at:
 
 `washingtonmsdj/mcp-blender@7d2b6769b9afecb0b63535ab15161b81cb8907fe`
 
-Canonical target boundary: `docs/STUDIO-BOUNDARY.md`.
+Canonical product source: `washingtonmsdj/ordax-apps/apps/studio` (cut over by `ordax-apps#28`).\n\nCanonical boundary: `docs/STUDIO-BOUNDARY.md`.
 
 ## Current platform gate
 
 The public platform contract and external conformance gates are complete for the first Studio extraction stage:
 
 - `prototipo-ordax-os#1030` is merged as `73c86c684abcd38b846e6eed40a5cd75cacf50ae`;
-- App SDK bundle `1.2.0` is pinned by exact commit and SHA-256 in this repository;
+- App SDK bundle `1.3.0` is pinned by exact commit and SHA-256 in this repository; the platform currently publishes 1.6.0, but that newer bundle is not silently adopted by Studio;
 - `ordax.studio-runtime/1`, capability discovery, project catalog and device request/receipt envelopes are published with `authority:none`;
 - raw `ordax.device-agent/1`, `execute()`, grant validation and Control Plane implementation are deliberately not part of the App SDK;
 - `ordax-apps#11` proves the pinned SDK by bundle digest, Git blob identity and provider/host-neutral Studio port semantics without copying platform implementation.
 
-The next Studio boundary gate is therefore **portable UI/host separation**, followed by real Windows/OrdaX OS adapter parity against the merged conformance fixture.
+Portable UI/host separation is now enforced in `apps/studio`. The next gates are real Windows/OrdaX OS adapter parity, deterministic package/lifecycle proof, and removal of the historical launchable Studio copy.
 
 ## Classification rule
 
 Every current path belongs to exactly one destination class:
 
-- **APP** — portable ORDAX Studio product/UI logic, candidate for future `apps/studio/` cutover;
+- **APP** — portable ORDAX Studio product/UI logic; the canonical implementation now lives in `apps/studio/`;
 - **HOST** — foreign-OS Runtime/device host implementation, not part of the OrdaX OS app package;
 - **INFRA** — remote/control-plane/service infrastructure;
 - **CONNECTOR** — provider-facing integration package such as ChatGPT;
 - **ADAPTER** — Blender/Unity/tool capability adapter behind generic runtime contracts;
 - **DEV** — local development/diagnostic tooling only.
 
-No path is copied merely because it currently lives under `ordax_studio/`.
+The table below is retained as historical migration inventory. New Studio product features belong only in `apps/studio/`; legacy paths must not become a second product source.
 
 ## Current Studio package
 
@@ -100,7 +100,7 @@ They may expose capability-specific UI inside Studio, but their execution belong
 
 ## Public contracts now pinned
 
-The exact App SDK `1.2.0` pin publishes the first Studio-facing contract set:
+The exact App SDK `1.3.0` pin used by this repository publishes the Studio-facing contract set currently accepted by its conformance gates:
 
 - `ordax.app-activation/1`;
 - `ordax.component-manifest/1`;
@@ -117,21 +117,21 @@ The exact App SDK `1.2.0` pin publishes the first Studio-facing contract set:
 - `ordax.localization/1`;
 - `ordax.surface-render-lifecycle/4`.
 
-App-private durable state will use `ordax.app-data/1` only after its Native verified-publisher binding is implemented, proven and then published in a future pinned App SDK bundle. Studio must not create a private storage endpoint or misuse global Memory as an internal UI database to bypass that gate.
+The platform App SDK 1.6.0 now publishes `ordax.app-data/1` and the Native binding foundation exists, but this repository remains pinned to 1.3.0 for Studio until compatibility is deliberately proven. Studio must not create a private storage endpoint or misuse global Memory as an internal UI database to bypass that gate.
 
 ## Source-of-truth cutover sequence
 
 1. **DONE** — publish and merge the required first-stage public App SDK contracts;
-2. **DONE** — pin App SDK `1.2.0` to exact platform commit + verified bundle digest;
+2. **DONE** — pin App SDK `1.3.0` to exact platform commit + verified bundle digest;
 3. **DONE** — build and CI-prove a Studio conformance fixture against the pinned public ports without copying product source;
-4. extract host-specific RPC/readiness lifecycle from the current UI so portable code depends on one host abstraction;
-5. refactor the authoritative Studio implementation so portable product logic depends only on public/runtime-provided ports;
+4. **DONE for canonical portable source** — `apps/studio` depends on one injected host abstraction and its boundary test rejects pywebview/WebView2/private Runtime imports;
+5. **DONE for canonical portable source** — new product work is owned by `apps/studio`; host/runtime authority remains outside the app;
 6. prove equivalent OrdaX OS and Windows host adapters against the same conformance tests;
-7. define deterministic `apps/studio/app.json`, package inputs, localization and app-owned state;
+7. **PARTIAL** — `apps/studio/app.json` and portable source exist; deterministic package inputs, localization packaging and app-owned durable state still require completion;
 8. prove install -> verify -> stage -> health -> promote -> rollback;
 9. prove offline launch/reinstall and uninstall with user-data preservation;
 10. freeze the migration boundary;
-11. move only the **APP** paths in one controlled source-of-truth cutover;
+11. **DONE** — portable **APP** source is canonical in `apps/studio` after `ordax-apps#28`; the historical copy is frozen for new product work and pending removal;
 12. update platform catalog/package references;
 13. delete the former APP source from the historical repository in the same migration cycle;
 14. prove no residual launch path can start the removed Studio copy;
@@ -139,7 +139,7 @@ App-private durable state will use `ordax.app-data/1` only after its Native veri
 
 ## Stop conditions
 
-Do not cut over Studio source if any of these are true:
+Do not enable Studio **distribution cutover** while any of these are true:
 
 - portable Studio still imports `ordax_dev_agent`, `ordax_device_agent` or `CloudflareControlPlane` directly;
 - portable UI still contains pywebview/WebView2-specific transport or startup lifecycle code;
@@ -151,4 +151,4 @@ Do not cut over Studio source if any of these are true:
 - install/rollback/offline/uninstall lifecycle is not proven;
 - old and new Studio copies can both launch.
 
-This inventory intentionally favors a slower single-source cutover over a temporary duplicated product tree.
+`ordax-apps/apps/studio` is the sole canonical portable product source. The historical copy is migration residue only and must be removed once the remaining Runtime/Infra ownership split and residual launch-path proofs are complete.
