@@ -3,18 +3,19 @@
   "product": {
     "app_id": "studio",
     "name": "ORDAX Studio",
-    "portable_source_after_cutover": "apps/studio",
     "single_portable_source": true,
-    "provider_neutral": true
+    "provider_neutral": true,
+    "portable_source": "apps/studio"
   },
   "release_versioning": {
     "single_app_version": true,
-    "current_transitional_source": "washingtonmsdj/mcp-blender:pyproject.toml#project.version",
+    "current_transitional_source": "apps/studio/app.json#version",
     "source_after_cutover": "apps/studio/app.json#version",
     "windows_consumes_canonical_app_version": true,
     "ordax_os_consumes_canonical_app_version": true,
     "target_specific_feature_versions_forbidden": true,
-    "target_build_metadata_allowed": true
+    "target_build_metadata_allowed": true,
+    "legacy_version_source_allowed": false
   },
   "targets": {
     "ordax_os": {
@@ -121,5 +122,11 @@
     "portable_app": "washingtonmsdj/ordax-apps",
     "windows_runtime": "washingtonmsdj/ordax-runtime",
     "control_plane": "washingtonmsdj/ordax-control-plane"
+  },
+  "legacy_repository": {
+    "repository": "washingtonmsdj/mcp-blender",
+    "role": "retirement-only",
+    "may_source_portable_studio": false,
+    "deletion_requires_runtime_and_control_plane_repoint": true
   }
 }

@@ -4,7 +4,7 @@
 
 This document defines the target product boundary for **ORDAX Studio** as a first-party OrdaX application with two official distribution targets: OrdaX OS and Windows.
 
-The source-of-truth cutover to `apps/studio/` has **not** happened yet. Until the package/lifecycle gates are proven, the current Studio/Windows implementation remains in its existing authoritative repository. This document defines the destination contract only; it must not create a second long-lived source copy.
+`apps/studio/` in `washingtonmsdj/ordax-apps` is the **canonical portable source of truth** for ORDAX Studio. The historical `mcp-blender` repository is legacy migration residue only and must not receive new Studio product features. Distribution/runtime cutover remains separately gated until Windows Runtime, Control Plane, connector and lifecycle ownership are proven outside the legacy repository.
 
 ## Product identity
 
@@ -91,7 +91,7 @@ Those remain platform/runtime responsibilities and are consumed through publishe
 
 On OrdaX OS, Studio is an application component and consumes platform-provided runtime ports. It must not bundle a second operating-system runtime merely to reproduce services already owned by the platform.
 
-Target source layout after the future source-of-truth cutover:
+Canonical portable source layout:
 
 ```text
 apps/studio/
@@ -180,11 +180,11 @@ Windows ORDAX Runtime     1.x
 
 A Studio release must not require rebuilding the Base image solely because Studio changed.
 
-## Source-of-truth cutover rule
+## Source-of-truth and legacy retirement rule
 
-Do not copy the current Studio implementation into `apps/studio/` as a parallel source tree.
+The portable Studio source has already cut over to `apps/studio/`. Do not restore or evolve a parallel Studio product tree in `mcp-blender`.
 
-The eventual cutover must follow the repository migration invariant:
+Retiring the historical repository must follow this invariant:
 
 1. prove package/build compatibility against the pinned App SDK;
 2. remove private platform/runtime implementation dependencies from Studio core;
@@ -194,9 +194,12 @@ The eventual cutover must follow the repository migration invariant:
 6. prove Windows clean install, upgrade and uninstall with user-data preservation;
 7. prove offline reinstall where applicable;
 8. freeze the migration boundary;
-9. move Studio portable source in one controlled cutover;
-10. update platform catalog and Windows package references to that same source;
-11. delete the former authoritative Studio source in the same migration cycle;
-12. prove no residual path can launch a removed or divergent Studio copy.
+9. keep `apps/studio/` as the only portable product source;
+10. repoint platform catalog and Windows packaging to that same source;
+11. migrate Windows Runtime/device host to `washingtonmsdj/ordax-runtime`;
+12. migrate Product MCP/Control Plane and provider connector ownership to `washingtonmsdj/ordax-control-plane`;
+13. prove production no longer fetches/builds/launches anything from `mcp-blender`;
+14. only then delete/archive the historical repository;
+15. prove no residual path can launch a removed or divergent Studio copy.
 
-Until these gates are green, this repository documents and validates the target boundary without claiming source ownership.
+The app source is already owned here. What remains blocked is **legacy repository retirement**, not portable Studio ownership.

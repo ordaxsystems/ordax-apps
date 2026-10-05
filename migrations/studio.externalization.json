@@ -108,7 +108,17 @@
     "windows_build_repointed": false,
     "safe_to_delete_legacy_repository": false,
     "portable_app_canonical": true,
-    "legacy_app_new_features_allowed": false
+    "legacy_app_new_features_allowed": false,
+    "retirement_requested": true,
+    "portable_source_dependency_remaining": false,
+    "runtime_host_repointed": false,
+    "provider_connector_repointed": false,
+    "blockers": [
+      "migrate Windows ORDAX Runtime/device host to washingtonmsdj/ordax-runtime",
+      "migrate Product MCP/Control Plane and ORDAX provider connector to washingtonmsdj/ordax-control-plane",
+      "repoint production deployment and Windows packaging away from washingtonmsdj/mcp-blender",
+      "prove no residual build, deploy or launch path references washingtonmsdj/mcp-blender"
+    ]
   },
   "legacy_source_repository": "washingtonmsdj/mcp-blender",
   "legacy_source_path": "ordax_studio",

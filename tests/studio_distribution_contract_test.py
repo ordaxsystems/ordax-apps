@@ -19,18 +19,16 @@ class StudioDistributionContractTests(unittest.TestCase):
         product = self.contract["product"]
         targets = self.contract["targets"]
         self.assertTrue(product["single_portable_source"])
-        self.assertEqual(product["portable_source_after_cutover"], "apps/studio")
+        self.assertEqual(product["portable_source"], "apps/studio")
         self.assertEqual(targets["ordax_os"]["portable_source"], "apps/studio")
         self.assertEqual(targets["windows"]["portable_source"], "apps/studio")
 
     def test_both_targets_share_one_canonical_app_version(self) -> None:
         versioning = self.contract["release_versioning"]
         self.assertTrue(versioning["single_app_version"])
-        self.assertEqual(
-            versioning["current_transitional_source"],
-            "washingtonmsdj/mcp-blender:pyproject.toml#project.version",
-        )
+        self.assertEqual(versioning["current_transitional_source"], "apps/studio/app.json#version")
         self.assertEqual(versioning["source_after_cutover"], "apps/studio/app.json#version")
+        self.assertFalse(versioning["legacy_version_source_allowed"])
         self.assertTrue(versioning["windows_consumes_canonical_app_version"])
         self.assertTrue(versioning["ordax_os_consumes_canonical_app_version"])
         self.assertTrue(versioning["target_specific_feature_versions_forbidden"])
