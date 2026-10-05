@@ -2,7 +2,7 @@
 
 Notes is the first extraction pilot from `prototipo-ordax-os` into `ordax-apps`.
 
-The source MUST NOT be copied here until the platform boundary is complete. This document classifies the current dependencies so the cutover is deliberate and results in one source of truth.
+The source MUST NOT be copied here while the platform copy is still authoritative. For this pre-launch/no-data migration, the selected strategy is **remove-platform-first**: first remove the implementation from the platform and prove OrdaX works without Notes; then copy the last canonical source into `ordax-apps`. A temporary absence of Notes is preferable to two authoritative copies.
 
 ## Platform contracts that must be public App SDK inputs
 
@@ -61,7 +61,7 @@ platform-owned App Data owner
 
 The Notes-owned schema/validation remains with the product. The platform owns isolation, verified app identity, durability and lifecycle of the private App Data partition.
 
-Cutover remains blocked until the Notes runtime is adapted to this public port and package/lifecycle proofs are complete. This is a **clean pre-launch cutover**: there are no production users or production Notes data to migrate, so a legacy seed bridge is not a requirement. The old payload may be discarded at cutover instead of being carried forward as compatibility debt.
+Source cutover remains blocked until the Notes runtime is adapted to the public App Data port and the platform can operate with Notes absent. Package/lifecycle proof no longer blocks the source move in this pre-launch mode; it is performed **after** the single-source move, from `ordax-apps`. This is a **clean pre-launch cutover**: there are no production users or production Notes data to migrate, so a legacy seed bridge is not a requirement. The old payload may be discarded at cutover instead of being carried forward as compatibility debt.
 
 This does **not** weaken the permanent lifecycle rule: once real user data exists, uninstalling the app must remain separate from deleting its App Data.
 
@@ -107,22 +107,35 @@ Browser/Surface integration must not require Notes source to be inside the platf
 
 ## Cutover gate
 
-Do not move Notes source until all are true:
+### Gate A — remove from platform
+
+Before copying Notes into `ordax-apps`:
 
 - [ ] required platform contracts are published in a pinned App SDK bundle accepted by Notes;
 - [ ] `ordax.app-data/1` is the runtime storage boundary instead of `createStore`;
 - [x] pre-launch cutover explicitly requires no legacy data seed;
 - [x] Notes Intelligence uses app-owned code over the injected public Intelligence port;
 - [ ] Notes-owned contracts have an explicit migration destination;
+- [ ] product/catalog metadata no longer imports repo-local Notes implementation;
+- [ ] platform works, boots and reports Notes as absent/uninstalled;
+- [ ] old platform app implementation and residual launch paths are removed.
+
+### Gate B — establish canonical external source
+
+After Gate A, copy the last canonical Notes source into `apps/notes` and mark `ordax-apps` as the only source of truth.
+
+### Gate C — package and delivery
+
+Then prove from the external source:
+
 - [ ] deterministic Notes package builds entirely in `ordax-apps`;
 - [ ] platform verifies package identity/provenance/compatibility without source checkout;
 - [ ] install/stage/health/promote/rollback proof exists;
-- [ ] uninstall preserves user data;
-- [ ] platform works with Notes absent;
-- [ ] source cutover removes the old core copy in the same migration window.
+- [ ] offline reinstall works from a verified local artifact;
+- [ ] uninstall keeps App Data separate from payload deletion;
+- [ ] signed catalog/Store projection exposes Notes only when the artifact is genuinely available.
 
-Long-lived dual source is forbidden.
-
+Long-lived dual source is forbidden. Temporary absence is explicitly allowed for this pre-launch migration.
 ## CI preflight
 
-`tools/verify_notes_externalization.py` enforces the pre-cutover state. While `cutover_allowed=false`, it intentionally fails if `apps/notes` appears in this repository. This prevents a second authoritative copy from being introduced before the storage/package/lifecycle gates are ready.
+`tools/verify_notes_externalization.py` enforces the current Gate A state. While the platform remains the declared source, it fails if `apps/notes` appears here. After platform removal is proven, the migration metadata must advance before `apps/notes` is introduced; the verifier then protects the new single-source state.
