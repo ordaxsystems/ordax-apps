@@ -14,6 +14,7 @@ const actions = await load("device-action-envelope.mjs");
 const projects = await load("project-catalog.mjs");
 const memory = await load("memory.mjs");
 const intelligence = await load("intelligence.mjs");
+const localeProfile = await load("locale-profile.mjs");
 const localization = await load("localization.mjs");
 
 function projectCatalog() {
@@ -176,10 +177,14 @@ function intelligencePort() {
 }
 
 function localizationPort(locale = "pt-BR") {
+  const profile = localeProfile.createLocaleProfile(locale);
   return {
     schema: localization.LOCALIZATION_SCHEMA,
     getLocale() {
       return locale;
+    },
+    getProfile() {
+      return profile;
     },
     translate(key, variables = {}) {
       const suffix = Object.keys(variables).length ? `:${JSON.stringify(variables)}` : "";
@@ -315,6 +320,7 @@ test("Memory, Intelligence and Localization facets use the pinned public contrac
   assert.equal(response.schema, intelligence.INTELLIGENCE_RESPONSE_SCHEMA);
   assert.equal(response.authority, "none");
   assert.equal(facets.localization.getLocale(), "pt-BR");
+  assert.equal(facets.localization.getProfile().schema, localeProfile.LOCALE_PROFILE_SCHEMA);
   assert.equal(facets.localization.translate("studio.ready"), "pt-BR:studio.ready");
 });
 
@@ -359,6 +365,7 @@ test("same public facet semantics are host-neutral across Windows and OrdaX OS",
     await windows.intelligence.respond(intelligenceRequest),
     await ordaxOs.intelligence.respond(intelligenceRequest),
   );
+  assert.deepEqual(windows.localization.getProfile(), ordaxOs.localization.getProfile());
   assert.equal(windows.localization.translate("studio.ready"), ordaxOs.localization.translate("studio.ready"));
 });
 
