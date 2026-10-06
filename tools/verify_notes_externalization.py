@@ -8,6 +8,7 @@ SDK_LOCK_PATH = ROOT / "platform-sdk.lock.json"
 TARGET_PATH = ROOT / "apps" / "notes"
 SOURCE_INVENTORY_PATH = ROOT / "migrations" / "notes.source-snapshot.json"
 TRANSFER_MAP_PATH = ROOT / "migrations" / "notes.gate-b-transfer-map.json"
+HOST_BOUNDARY_PATH = ROOT / "migrations" / "notes.host-boundary.json"
 
 REQUIRED_PROOFS = {
     "sdk-contracts-pinned",
@@ -213,6 +214,78 @@ def main() -> None:
     }
     if manifest != expected_manifest:
         fail("Notes Gate B manifest replacement contract drifted")
+
+    if plan.get("host_boundary") != "migrations/notes.host-boundary.json":
+        fail("Notes migration must bind the canonical host boundary")
+
+    host = json.loads(HOST_BOUNDARY_PATH.read_text(encoding="utf-8"))
+    if host.get("$schema") != "ordax.notes-host-boundary/1":
+        fail("unexpected Notes host-boundary schema")
+    if host.get("app_id") != "notes" or host.get("target_source") != "apps/notes":
+        fail("Notes host-boundary identity drifted")
+    if host.get("host_object") != "ordaxNotesHost":
+        fail("Notes host injection object drifted")
+    if host.get("injection_owner") != "ordax-platform-host":
+        fail("Notes host injection must remain platform-owned")
+    if host.get("portable_app_authority") != "none" or host.get("authority") != "none":
+        fail("Notes portable boundary must carry no authority")
+
+    facets = host.get("required_facets") or {}
+    expected_facets = {
+        "appData": ("ordax.app-data/1", True),
+        "appActivation": ("ordax.app-activation/1", True),
+        "fileSpace": ("ordax.file-space/11", False),
+        "intelligence": ("ordax.intelligence/1", False),
+        "localization": ("ordax.localization/1", True),
+        "surfaceLifecycle": ("ordax.surface-render-lifecycle/4", True),
+    }
+    if set(facets) != set(expected_facets):
+        fail("Notes host facets drifted")
+    for name, (contract, required) in expected_facets.items():
+        value = facets.get(name) or {}
+        if value.get("contract") != contract:
+            fail(f"Notes host facet contract drifted: {name}")
+        if value.get("required_for_distribution") is not required:
+            fail(f"Notes host facet distribution requirement drifted: {name}")
+
+    component_contracts = host.get("component_contracts") or {}
+    if component_contracts != {
+        "manifest": "ordax.component-manifest/1",
+        "runtime": "ordax.component-runtime/1",
+    }:
+        fail("Notes component contracts drifted")
+    if set(host.get("app_owned_contracts") or []) != {"notes-store", "notes-file-importer"}:
+        fail("Notes app-owned contract ownership drifted")
+
+    forbidden = host.get("forbidden") or {}
+    for key in {
+        "platform_private_imports",
+        "system_contract_path_imports",
+        "legacy_createStore_injection",
+        "legacy_native_notes_endpoint",
+        "raw_native_storage_path",
+        "install_authority_in_app",
+        "store_authority_in_app",
+    }:
+        if forbidden.get(key) is not True:
+            fail(f"Notes forbidden host-boundary rule drifted: {key}")
+
+    data = host.get("data") or {}
+    if data.get("durable_owner") != "ordax.app-data/1":
+        fail("Notes durable data owner must be App Data")
+    if data.get("legacy_seed_required") is not False:
+        fail("Notes clean pre-launch host boundary must not require legacy seed")
+    if data.get("uninstall_payload_and_user_data_are_separate") is not True:
+        fail("Notes uninstall/data separation drifted")
+
+    parity = host.get("host_parity") or {}
+    for key in {
+        "same_port_semantics_web_native",
+        "host_specific_transport_outside_app",
+        "app_source_fork_by_host_forbidden",
+    }:
+        if parity.get(key) is not True:
+            fail(f"Notes host parity rule drifted: {key}")
 
     contracts = plan.get("platform_contracts_required")
     if not isinstance(contracts, list) or "ordax.app-data/1" not in contracts:
