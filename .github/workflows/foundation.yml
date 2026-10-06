@@ -47,6 +47,9 @@ jobs:
       - name: Prove fail-closed Notes package cutover
         run: python3 tools/verify_notes_package.py
 
+      - name: Prove portable Notes source boundary
+        run: python3 apps/notes/tests/test_portable_boundary.py
+
       - name: Prove pinned public App SDK from platform repository
         run: python3 tools/verify_platform_sdk.py
 
