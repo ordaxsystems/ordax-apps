@@ -23,6 +23,10 @@ jobs:
           python3 -m json.tool ordax-apps.workspace.json >/dev/null
           python3 -m json.tool platform-sdk.lock.json >/dev/null
           python3 -m json.tool migrations/notes.externalization.json >/dev/null
+          python3 -m json.tool migrations/notes.source-snapshot.json >/dev/null
+          python3 -m json.tool migrations/notes.gate-b-transfer-map.json >/dev/null
+          python3 -m json.tool migrations/notes.host-boundary.json >/dev/null
+          python3 -m json.tool migrations/notes.distribution.json >/dev/null
           python3 -m json.tool migrations/studio.legacy-method-ownership.json >/dev/null
           python3 -m json.tool migrations/studio.distribution.json >/dev/null
 
@@ -31,6 +35,9 @@ jobs:
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
+
+      - name: Prove deterministic external app package builder
+        run: python3 -m unittest tests/test_app_package_builder.py
 
       - name: Prove pinned public App SDK from platform repository
         run: python3 tools/verify_platform_sdk.py
