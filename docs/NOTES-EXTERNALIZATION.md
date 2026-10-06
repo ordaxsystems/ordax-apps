@@ -163,6 +163,8 @@ Only after Gate B, adapt and prove the external source:
 
 The remaining blockers are therefore production trust/authorization gates, not Notes product or lifecycle gaps. `tools/verify_notes_production_trust.py` checks them against an exact platform policy lock and fails closed.
 
+The production trust verifier does not trust policy booleans alone. While the canonical anchor gate is false, the pinned checkout must not contain a canonical runtime-component anchor. Once that gate becomes true, CI independently requires the exact public anchor file, validates its SHA-256 against policy, enforces the expected trust schema/key id and verifies exactly 32 Ed25519 public bytes. Publication cannot become true before the anchor gate, and production component-slot activation cannot become true before publication. This preserves the intended three-stage progression: operator ceremony/public-anchor pin → publication authorization → production activation authorization.
+
 Long-lived dual source is forbidden. Temporary absence is explicitly allowed for this pre-launch migration.
 ## CI preflight
 

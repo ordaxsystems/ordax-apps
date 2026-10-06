@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
+import base64
+import binascii
+import hashlib
 import json
+import stat
 import subprocess
 from pathlib import Path
 
@@ -7,6 +11,10 @@ ROOT = Path(__file__).resolve().parents[1]
 PLAN_PATH = ROOT / "migrations" / "notes.externalization.json"
 LOCK_PATH = ROOT / "migrations" / "notes.platform-trust.lock.json"
 CHECKOUT = ROOT / ".ordax-platform-trust"
+
+TRUST_REPOSITORY_PATH = "system/trust/runtime-components-ed25519.json"
+TRUST_RUNTIME_PATH = "/srv/ordax-system/trust/runtime-components-ed25519.json"
+TRUST_SCHEMA = "prototype-ordax.runtime-component-trust/1"
 
 REQUIRED_GATES = (
     "canonical_component_trust_anchor_pinned",
@@ -23,6 +31,117 @@ BLOCKER_BY_GATE = {
 
 def fail(message: str) -> None:
     raise SystemExit(f"NOTES_PRODUCTION_TRUST=FAIL\n{message}")
+
+
+def _no_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            fail(f"duplicate JSON key in production trust material: {key}")
+        result[key] = value
+    return result
+
+
+def _load_json_bytes(payload: bytes, label: str) -> dict:
+    try:
+        text = payload.decode("utf-8")
+        value = json.loads(text, object_pairs_hook=_no_duplicate_keys)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        fail(f"invalid {label} JSON: {exc}")
+    if not isinstance(value, dict):
+        fail(f"{label} must contain one JSON object")
+    return value
+
+
+def _strict_anchor_file(path: Path) -> bytes:
+    try:
+        metadata = path.lstat()
+    except OSError:
+        fail("pinned runtime-component public anchor file is missing")
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        fail("runtime-component public anchor must be a regular non-symlink file")
+    if metadata.st_size <= 0 or metadata.st_size > 16 * 1024:
+        fail("runtime-component public anchor size is outside the allowed range")
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        fail(f"cannot read runtime-component public anchor: {exc}")
+
+
+def validate_public_anchor(checkout: Path, policy: dict, expected_key_id: str) -> None:
+    gates = policy.get("current_gates") or {}
+    anchor_gate = gates.get("canonical_component_trust_anchor_pinned")
+    publish_gate = gates.get("component_publish_allowed")
+    activation_gate = gates.get("production_component_slot_activation_allowed")
+
+    if publish_gate is True and anchor_gate is not True:
+        fail("component publication cannot be authorized before the canonical anchor is pinned")
+    if activation_gate is True and publish_gate is not True:
+        fail("production component-slot activation cannot be authorized before publication")
+
+    anchor = policy.get("public_anchor")
+    if not isinstance(anchor, dict) or set(anchor) != {
+        "repository_path",
+        "runtime_path",
+        "pinned",
+        "sha256",
+    }:
+        fail("platform trust policy public_anchor shape drifted")
+    if anchor.get("repository_path") != TRUST_REPOSITORY_PATH:
+        fail("platform trust policy repository anchor path drifted")
+    if anchor.get("runtime_path") != TRUST_RUNTIME_PATH:
+        fail("platform trust policy runtime anchor path drifted")
+
+    anchor_path = checkout / TRUST_REPOSITORY_PATH
+
+    if anchor_gate is False:
+        if anchor.get("pinned") is not False or anchor.get("sha256") is not None:
+            fail("unpinned platform trust policy has inconsistent anchor metadata")
+        if anchor_path.exists() or anchor_path.is_symlink():
+            fail("canonical anchor file exists while the platform trust gate says unpinned")
+        return
+
+    if anchor_gate is not True:
+        fail("canonical component trust anchor gate must be boolean")
+    if anchor.get("pinned") is not True:
+        fail("canonical anchor gate is green but public_anchor.pinned is not true")
+
+    expected_sha256 = anchor.get("sha256")
+    if (
+        not isinstance(expected_sha256, str)
+        or len(expected_sha256) != 64
+        or any(c not in "0123456789abcdef" for c in expected_sha256)
+    ):
+        fail("pinned runtime-component public anchor must carry an exact lowercase SHA-256")
+
+    payload = _strict_anchor_file(anchor_path)
+    actual_sha256 = hashlib.sha256(payload).hexdigest()
+    if actual_sha256 != expected_sha256:
+        fail(
+            "runtime-component public anchor digest mismatch: "
+            f"expected {expected_sha256}, got {actual_sha256}"
+        )
+
+    trust = _load_json_bytes(payload, "runtime-component public anchor")
+    if set(trust) != {"$schema", "key_id", "public_key_base64"}:
+        fail("runtime-component public anchor contains unexpected fields")
+    if trust.get("$schema") != TRUST_SCHEMA:
+        fail("runtime-component public anchor schema drifted")
+    if trust.get("key_id") != expected_key_id:
+        fail("runtime-component public anchor key id does not match the platform trust policy")
+
+    encoded = trust.get("public_key_base64")
+    if not isinstance(encoded, str):
+        fail("runtime-component public anchor public key is missing")
+    try:
+        public_key = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        fail("runtime-component public anchor public key is not strict base64")
+    if len(public_key) != 32:
+        fail("runtime-component public anchor must contain exactly 32 Ed25519 public bytes")
+
+    if policy.get("status") in {"operator-ceremony-pending", "foundation-only"}:
+        fail("pinned runtime-component public anchor cannot use a pending/foundation-only policy status")
 
 
 def main() -> None:
@@ -71,6 +190,8 @@ def main() -> None:
     missing = [gate for gate in REQUIRED_GATES if not isinstance(gates.get(gate), bool)]
     if missing:
         fail(f"platform trust policy is missing boolean gates: {missing}")
+
+    validate_public_anchor(CHECKOUT, policy, lock["key_id"])
 
     activation = plan.get("distribution_activation_allowed")
     if activation not in (False, True):

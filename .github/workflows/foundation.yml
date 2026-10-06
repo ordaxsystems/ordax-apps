@@ -69,6 +69,9 @@ jobs:
       - name: Prove Notes App Data store
         run: node --test apps/notes/tests/app_data_store.test.mjs
 
+      - name: Prove Notes production trust state transitions
+        run: python3 -m unittest tests/test_notes_production_trust.py
+
       - name: Checkout pinned OrdaX OS production trust policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
