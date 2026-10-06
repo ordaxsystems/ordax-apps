@@ -5,6 +5,7 @@ import {
 
 const NOTES_RUNTIME_VERSION = "0.4.1";
 import { createNotesRuntime } from "./domain/runtime.mjs";
+import { createNotesAppDataStore } from "./services/app-data-store.mjs";
 import { mountNotesWorkspaceControls } from "./ui/workspace-controls.mjs";
 
 const NOTES_STYLESHEET_URL = new URL("../assets/notes.css", import.meta.url).href;
@@ -65,15 +66,12 @@ export const componentRuntime = Object.freeze({
   version: NOTES_RUNTIME_VERSION,
   async mount({
     root,
-    createStore = null,
+    appData,
     surfaceLifecycle,
     fileSpace = null,
     appActivation = null,
     intelligence = null,
   } = {}) {
-    if (createStore !== null && typeof createStore !== "function") {
-      throw new TypeError("Notes createStore must be a function or null");
-    }
     const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
     const releaseStyles = await mountNotesStyles(root);
     let notesRuntime = null;
@@ -90,7 +88,7 @@ export const componentRuntime = Object.freeze({
     };
 
     try {
-      const store = createStore?.() ?? null;
+      const store = await createNotesAppDataStore(appData);
       notesRuntime = createNotesRuntime({ store });
       controls = mountNotesWorkspaceControls(
         root,
