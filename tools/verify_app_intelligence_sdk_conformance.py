@@ -80,8 +80,8 @@ def main() -> None:
     if not isinstance(bundle_version, str):
         fail("App SDK bundle version is missing")
     match = re.fullmatch(
-        r"(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
-        r"(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?",
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+        r"(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?",
         bundle_version,
     )
     if match is None:
