@@ -64,6 +64,12 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         self.assertIn("As duas autoriza??es s?o necess?rias", self.computer)
         self.assertIn("Isso n?o cria grant remoto", self.computer)
 
+    def test_legacy_custom_grants_are_visible_but_never_auto_upgraded(self) -> None:
+        self.assertIn("custom-device-grant", self.computer)
+        self.assertIn("Autoriza??o legada detectada", self.computer)
+        self.assertIn("nunca amplia um grant existente automaticamente", self.computer)
+        self.assertIn("Revogar legado", self.computer)
+
 
 if __name__ == "__main__":
     unittest.main()
