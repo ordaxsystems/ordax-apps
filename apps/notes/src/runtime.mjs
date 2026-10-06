@@ -6,6 +6,11 @@ import {
 const NOTES_RUNTIME_VERSION = "0.4.1";
 import { createNotesRuntime } from "./domain/runtime.mjs";
 import { createNotesAppDataStore } from "./services/app-data-store.mjs";
+import {
+  createNotesDomainCopy,
+  createNotesLocalization,
+  createNotesSurfaceLifecycle,
+} from "./i18n/localization.mjs";
 import { mountNotesWorkspaceControls } from "./ui/workspace-controls.mjs";
 
 const NOTES_STYLESHEET_URL = new URL("../assets/notes.css", import.meta.url).href;
@@ -72,7 +77,11 @@ export const componentRuntime = Object.freeze({
     appActivation = null,
     intelligence = null,
   } = {}) {
-    const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
+    const hostLifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
+    const localization = createNotesLocalization(hostLifecycle.localization);
+    const lifecycle = assertSurfaceRenderLifecycle(
+      createNotesSurfaceLifecycle(hostLifecycle, localization),
+    );
     const releaseStyles = await mountNotesStyles(root);
     let notesRuntime = null;
     let controls = null;
@@ -89,16 +98,19 @@ export const componentRuntime = Object.freeze({
 
     try {
       const store = await createNotesAppDataStore(appData);
-      notesRuntime = createNotesRuntime({ store });
+      notesRuntime = createNotesRuntime({
+        store,
+        copy: createNotesDomainCopy(localization),
+      });
       controls = mountNotesWorkspaceControls(
         root,
         notesRuntime,
         lifecycle,
         { fileSpace, appActivation, intelligence },
       );
-      const syncAccessibility = () => syncNotesEditorAccessibility(root, lifecycle.localization);
+      const syncAccessibility = () => syncNotesEditorAccessibility(root, localization);
       unsubscribeRender = lifecycle.subscribeRender(syncAccessibility);
-      unsubscribeLocale = lifecycle.localization.subscribe(syncAccessibility);
+      unsubscribeLocale = localization.subscribe(syncAccessibility);
       syncAccessibility();
 
       let destroyed = false;
