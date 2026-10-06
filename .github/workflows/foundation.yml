@@ -77,6 +77,15 @@ jobs:
       - name: Prove Notes text-file import
         run: node --test apps/notes/tests/file_import.test.mjs
 
+      - name: Prove app-owned Notes behavior coverage
+        run: |
+          node --test apps/notes/tests/editor_save.test.mjs
+          node --test apps/notes/tests/file_picker.test.mjs
+          node --test apps/notes/tests/image_previews.test.mjs
+          node --test apps/notes/tests/list_model.test.mjs
+          node --test apps/notes/tests/reference_links.test.mjs
+          python3 apps/notes/tests/test_deep_localization.py
+
       - name: Prove Notes production trust state transitions
         run: python3 -m unittest tests/test_notes_production_trust.py
 
