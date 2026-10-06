@@ -74,6 +74,9 @@ jobs:
       - name: Prove Notes App Data store
         run: node --test apps/notes/tests/app_data_store.test.mjs
 
+      - name: Prove Notes text-file import
+        run: node --test apps/notes/tests/file_import.test.mjs
+
       - name: Prove Notes production trust state transitions
         run: python3 -m unittest tests/test_notes_production_trust.py
 
