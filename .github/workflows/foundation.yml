@@ -84,6 +84,8 @@ jobs:
           node --test apps/notes/tests/image_previews.test.mjs
           node --test apps/notes/tests/list_model.test.mjs
           node --test apps/notes/tests/reference_links.test.mjs
+          node --test apps/notes/tests/runtime_core.test.mjs
+          node --test apps/notes/tests/intelligence_summary.test.mjs
           python3 apps/notes/tests/test_deep_localization.py
 
       - name: Prove Notes production trust state transitions
