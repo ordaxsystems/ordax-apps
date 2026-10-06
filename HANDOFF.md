@@ -30,7 +30,7 @@ O antigo `washingtonmsdj/mcp-blender` é legado em retirada. Não deve voltar a 
 
 ## App SDK atual
 
-`platform-sdk.lock.json` fixa atualmente o App SDK **1.7.0** no commit exato da plataforma que publica `ordax.app-intelligence-manifest/1`:
+`platform-sdk.lock.json` fixa atualmente o App SDK **1.8.0** no commit exato da plataforma. O contrato `ordax.app-intelligence-manifest/1`, introduzido na linha 1.7, permanece publicado; a linha 1.8 acrescenta os contratos públicos usados pelo Studio runtime v3:
 
 `580d61605051a0d9da2b8dbccc46fb3cf9aef7b1`
 
