@@ -76,8 +76,21 @@ def main() -> None:
         bundle = json.loads(bundle_bytes.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:
         fail(f"pinned App SDK bundle is invalid JSON: {exc}")
-    if bundle.get("bundle_version") != "1.7.0":
-        fail("app intelligence conformance requires reviewed App SDK 1.7.0")
+    bundle_version = bundle.get("bundle_version")
+    if not isinstance(bundle_version, str):
+        fail("App SDK bundle version is missing")
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
+        r"(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?",
+        bundle_version,
+    )
+    if match is None:
+        fail("App SDK bundle version is not valid SemVer")
+    major, minor, _patch = (int(part) for part in match.groups()[:3])
+    if major != 1 or minor < 7:
+        fail("app intelligence conformance requires App SDK >=1.7 within reviewed major 1")
+    if bundle.get("compatibility_policy") != "contract-major":
+        fail("App SDK compatibility policy must remain contract-major")
     if bundle.get("authority") != "none":
         fail("pinned App SDK unexpectedly carries authority")
 
@@ -134,7 +147,7 @@ def main() -> None:
 
     print("ORDAX_APP_INTELLIGENCE_SDK_CONFORMANCE=PASS")
     print(f"SDK_COMMIT={commit}")
-    print("SDK_VERSION=1.7.0")
+    print(f"SDK_VERSION={bundle_version}")
     print("CONTRACT=ordax.app-intelligence-manifest/1")
     print("FIRST_PARTY_MANIFESTS=notes,studio")
     print("AUTHORITY=none")
