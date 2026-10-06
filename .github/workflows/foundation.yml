@@ -44,6 +44,9 @@ jobs:
       - name: Prove deterministic external app package builder
         run: python3 -m unittest tests/test_app_package_builder.py
 
+      - name: Prove fail-closed Notes package cutover
+        run: python3 tools/verify_notes_package.py
+
       - name: Prove pinned public App SDK from platform repository
         run: python3 tools/verify_platform_sdk.py
 
