@@ -40,6 +40,9 @@
     "remoteComputerGrants",
     "authorizeRemoteComputerGrant",
     "revokeRemoteComputerGrant",
+    "remoteBrowserGrants",
+    "authorizeRemoteBrowserGrant",
+    "revokeRemoteBrowserGrant",
   ]);
 
   function validateHost(host) {
