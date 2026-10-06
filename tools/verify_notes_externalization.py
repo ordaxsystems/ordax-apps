@@ -10,6 +10,7 @@ SOURCE_INVENTORY_PATH = ROOT / "migrations" / "notes.source-snapshot.json"
 TRANSFER_MAP_PATH = ROOT / "migrations" / "notes.gate-b-transfer-map.json"
 HOST_BOUNDARY_PATH = ROOT / "migrations" / "notes.host-boundary.json"
 DISTRIBUTION_PATH = ROOT / "migrations" / "notes.distribution.json"
+COMPATIBILITY_PATH = ROOT / "migrations" / "notes.compatibility.json"
 
 REQUIRED_PROOFS = {
     "sdk-contracts-pinned",
@@ -380,6 +381,35 @@ def main() -> None:
     }:
         if activation.get(key) is not True:
             fail(f"Notes distribution activation proof drifted: {key}")
+
+    if plan.get("compatibility_descriptor") != "migrations/notes.compatibility.json":
+        fail("Notes migration must bind the canonical compatibility descriptor")
+    compatibility = json.loads(COMPATIBILITY_PATH.read_text(encoding="utf-8"))
+    expected_compatibility = {
+        "schema": "ordax.component-compatibility/1",
+        "componentId": "notes",
+        "componentVersion": "0.4.1",
+        "provides": [
+            {"id": "ordax.component-runtime", "major": 1},
+        ],
+        "requires": [
+            {"id": "ordax.app-activation", "minMajor": 1, "maxMajor": 1, "optional": False},
+            {"id": "ordax.app-data", "minMajor": 1, "maxMajor": 1, "optional": False},
+            {"id": "ordax.file-space", "minMajor": 11, "maxMajor": 11, "optional": True},
+            {"id": "ordax.intelligence", "minMajor": 1, "maxMajor": 1, "optional": True},
+            {"id": "ordax.localization", "minMajor": 1, "maxMajor": 1, "optional": False},
+            {"id": "ordax.surface-render-lifecycle", "minMajor": 4, "maxMajor": 4, "optional": False},
+        ],
+        "state": {
+            "id": "ordax.notes-store",
+            "writeVersion": 2,
+            "readableFrom": 1,
+            "readableThrough": 2,
+        },
+        "authority": "none",
+    }
+    if compatibility != expected_compatibility:
+        fail("Notes component compatibility descriptor drifted")
 
     contracts = plan.get("platform_contracts_required")
     if not isinstance(contracts, list) or "ordax.app-data/1" not in contracts:
