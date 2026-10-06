@@ -25,6 +25,7 @@ jobs:
           python3 -m json.tool apps/notes/ai/manifest.json >/dev/null
           python3 -m json.tool apps/studio/ai/manifest.json >/dev/null
           python3 -m json.tool migrations/notes.externalization.json >/dev/null
+          python3 -m json.tool migrations/projects.externalization.json >/dev/null
           python3 -m json.tool migrations/notes.source-snapshot.json >/dev/null
           python3 -m json.tool migrations/notes.gate-b-transfer-map.json >/dev/null
           python3 -m json.tool migrations/notes.host-boundary.json >/dev/null
@@ -44,6 +45,9 @@ jobs:
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
+
+      - name: Prove Projects externalization preflight
+        run: python3 tools/verify_projects_externalization.py
 
       - name: Prove Notes-specific App SDK 1.6 pin
         run: python3 tools/verify_notes_platform_sdk.py
