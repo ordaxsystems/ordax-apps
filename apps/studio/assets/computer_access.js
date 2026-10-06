@@ -1,3 +1,4 @@
+const APP_INTELLIGENCE_PROFILE='app-intelligence-read';
 const REMOTE_COMPUTER_PROFILES=Object.freeze([
   {mode:'interactive-computer-control',title:'Controle interativo',description:'Janelas, screenshot, mouse, click/drag, scroll, digita??o, hotkeys e abertura de aplicativos permitidos.',recommended:true,risk:'normal'},
   {mode:'computer-filesystem',title:'Arquivos do computador',description:'Leitura e altera??es de arquivos somente dentro da pol?tica local de pastas autorizadas.',recommended:false,risk:'elevated'},
@@ -29,10 +30,30 @@ async function loadRemoteComputerGrants(){
   state.remoteComputerGrants=result?.ok?(result.data||null):null;
   return result;
 }
+async function loadRemoteAppIntelligenceGrants(){
+  const result=await call('remote_app_intelligence_grants');
+  state.remoteAppIntelligenceGrantStatus=result||null;
+  state.remoteAppIntelligenceGrants=result?.ok?(result.data||null):null;
+  return result;
+}
+function selectedAppIntelligenceLinkId(){
+  const select=document.getElementById('remoteAppIntelligenceLink');
+  if(select?.value)return select.value;
+  const links=state.remoteAppIntelligenceGrants?.links||[];
+  return links.length===1?String(links[0].link_id||''):'';
+}
+function activeAppIntelligenceGrant(){
+  return (state.remoteAppIntelligenceGrants?.grants||[]).find(grant=>
+    grant.mode===APP_INTELLIGENCE_PROFILE&&remoteGrantIsActive(grant)
+  )||null;
+}
 async function loadComputerAccess(){
   const result=await call('computer_access_settings');
   state.computerAccess=result?.ok?(result.data||null):null;
-  await loadRemoteComputerGrants();
+  await Promise.all([
+    loadRemoteComputerGrants(),
+    loadRemoteAppIntelligenceGrants(),
+  ]);
   renderComputerAccessCanvas(result);
 }
 function removeComputerAccessValue(field,index){
@@ -66,19 +87,55 @@ function renderRemoteComputerAuthorization(){
   const legacyRows=legacyCustom.map(grant=>`<div class="accessItem remoteGrantItem"><span><strong>Grant legado / customizado</strong><small>${escapeHtml((grant.actions||[]).join(', ')||'A??es n?o informadas')}</small><small>${escapeHtml(remoteGrantExpiry(grant))}</small></span><button type="button" data-revoke-remote-grant="${escapeHtml(grant.id||'')}">Revogar legado</button></div>`).join('');
   return `<div class="infoCard"><div class="accessHeading"><div><h4>AUTORIZA??O REMOTA</h4><div class="sideMeta">A pol?tica local abaixo define o limite m?ximo do PC. Estes grants definem o que um cliente ORDAX autenticado pode pedir. As duas autoriza??es s?o necess?rias.</div></div></div>${linkPicker}${legacyWarning}<div class="accessList">${cards}${legacyRows}</div><div class="sideMeta">${active.length} autoriza??o(?es) remota(s) ativa(s). O modo amplo de compatibilidade n?o ? oferecido por esta interface.</div></div>`;
 }
+function renderAppIntelligenceAuthorization(){
+  const result=state.remoteAppIntelligenceGrantStatus;
+  const data=state.remoteAppIntelligenceGrants;
+  if(!result?.ok){
+    const needsAccount=result?.code==='product_auth_session_required';
+    return `<div class="infoCard"><h4>INTELIGÊNCIA DE APLICATIVOS</h4><div class="sideMeta">${escapeHtml(needsAccount?'Conecte sua Conta ORDAX para permitir que clientes autenticados consultem somente os manifests declarativos dos apps.':(result?.summary||'Autorização de inteligência de aplicativos indisponível.'))}</div>${needsAccount?'<div class="accessFooter"><span class="sideMeta">Este grant não concede Computer Control.</span><button id="remoteAppIntelligenceConnectAccount" class="primary" type="button">Conectar conta ORDAX</button></div>':''}</div>`;
+  }
+  const links=data?.links||[];
+  const grant=activeAppIntelligenceGrant();
+  const linkPicker=links.length>1
+    ?`<label class="accessHeading"><span><strong>Vínculo deste computador</strong><small>Escolha o vínculo que receberá somente leitura de semântica dos apps.</small></span><select id="remoteAppIntelligenceLink">${links.map(link=>`<option value="${escapeHtml(link.link_id||'')}">${escapeHtml(link.link_id||'vínculo')}</option>`).join('')}</select></label>`
+    :(links.length===1?`<div class="sideMeta">Vínculo: <code>${escapeHtml(links[0].link_id||'')}</code></div>`:'<div class="accessWarning"><strong>Sem vínculo ativo</strong><span>Conecte sua Conta ORDAX a este computador antes de autorizar a leitura de inteligência dos apps.</span></div>');
+  const action=grant
+    ?`<button type="button" id="revokeRemoteAppIntelligence" data-grant-id="${escapeHtml(grant.id||'')}">Revogar</button>`
+    :`<button type="button" id="authorizeRemoteAppIntelligence" class="primary" ${links.length?'':'disabled'}>Autorizar 30 dias</button>`;
+  return `<div class="infoCard"><div class="accessHeading"><div><h4>INTELIGÊNCIA DE APLICATIVOS</h4><div class="sideMeta">Permite somente <code>intelligence.app_catalog</code> e <code>intelligence.app_detail</code>. Não concede mouse, teclado, clipboard, filesystem, processos, terminal, Git ou execução de apps.</div></div></div>${linkPicker}<div class="accessItem remoteGrantItem"><span><strong>Leitura semântica dos apps</strong><span class="managedBadge">Somente leitura</span><small>Catálogo compacto e detalhe declarativo sob demanda.</small><small>${grant?escapeHtml(remoteGrantExpiry(grant)):'Não autorizado remotamente'}</small></span>${action}</div></div>`;
+}
+async function authorizeRemoteAppIntelligence(){
+  const linkId=selectedAppIntelligenceLinkId();
+  if(!linkId){setStatus('Nenhum vínculo ativo selecionado');return}
+  if(!window.confirm('Autorizar somente leitura da inteligência declarativa dos aplicativos por 30 dias?'))return;
+  setStatus('Criando autorização de inteligência dos apps...');
+  const result=await call('authorize_remote_app_intelligence_grant',linkId,30);
+  if(!result?.ok){setStatus(result?.summary||'Falha ao autorizar inteligência dos apps');await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();return}
+  await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();setStatus('Inteligência dos apps autorizada');setTimeout(()=>setStatus('Pronto'),1200);
+}
+async function revokeRemoteAppIntelligence(grantId){
+  if(!grantId||!window.confirm('Revogar a leitura remota da inteligência dos aplicativos agora?'))return;
+  setStatus('Revogando autorização de inteligência dos apps...');
+  const result=await call('revoke_remote_app_intelligence_grant',grantId);
+  if(!result?.ok){setStatus(result?.summary||'Falha ao revogar inteligência dos apps');await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();return}
+  await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();setStatus('Autorização de inteligência dos apps revogada');setTimeout(()=>setStatus('Pronto'),1200);
+}
 function bindRemoteComputerAuthorization(){
   const connect=document.getElementById('remoteComputerConnectAccount');if(connect)connect.onclick=()=>document.getElementById('accountButton')?.click();
   document.querySelectorAll('[data-authorize-remote-mode]').forEach(button=>button.onclick=()=>authorizeRemoteComputerProfile(button.dataset.authorizeRemoteMode));
   document.querySelectorAll('[data-revoke-remote-grant]').forEach(button=>button.onclick=()=>revokeRemoteComputerProfile(button.dataset.revokeRemoteGrant));
+  const appConnect=document.getElementById('remoteAppIntelligenceConnectAccount');if(appConnect)appConnect.onclick=()=>document.getElementById('accountButton')?.click();
+  const appAuthorize=document.getElementById('authorizeRemoteAppIntelligence');if(appAuthorize)appAuthorize.onclick=authorizeRemoteAppIntelligence;
+  const appRevoke=document.getElementById('revokeRemoteAppIntelligence');if(appRevoke)appRevoke.onclick=()=>revokeRemoteAppIntelligence(appRevoke.dataset.grantId);
 }
 function renderComputerAccessCanvas(result=null){
   const root=$('computerCanvas'),access=state.computerAccess;
   if(!root)return;
-  if(!access){root.innerHTML=`<div class="panelContent"><div class="infoCard"><h4>ACESSO AO COMPUTADOR</h4><div class="sideMeta">${escapeHtml(result?.summary||'Pol?tica local indispon?vel.')}</div></div>${renderRemoteComputerAuthorization()}</div>`;bindRemoteComputerAuthorization();return}
+  if(!access){root.innerHTML=`<div class="panelContent"><div class="infoCard"><h4>ACESSO AO COMPUTADOR</h4><div class="sideMeta">${escapeHtml(result?.summary||'Pol?tica local indispon?vel.')}</div></div>${renderRemoteComputerAuthorization()}${renderAppIntelligenceAuthorization()}</div>`;bindRemoteComputerAuthorization();return}
   const roots=(access.allowed_roots||[]).map((value,index)=>`<div class="accessItem"><code>${escapeHtml(value)}</code>${computerManaged('allowed_roots')?'':`<button data-remove-root="${index}" title="Remover pasta">?</button>`}</div>`).join('')||'<div class="sideMeta">Nenhuma pasta autorizada.</div>';
   const apps=(access.allowed_applications||[]).map((value,index)=>`<div class="accessItem"><code>${escapeHtml(value)}</code>${computerManaged('allowed_applications')?'':`<button data-remove-app="${index}" title="Remover aplicativo">?</button>`}</div>`).join('')||'<div class="sideMeta">Nenhum aplicativo autorizado no modo limitado.</div>';
   const fullAccess=Boolean(access.full_access);
-  root.innerHTML=`<div class="panelContent accessPanel"><section class="agentWelcome"><div class="agentWelcomeTop"><span class="orb"></span><div><div class="eyebrow">POL?TICA LOCAL DO DONO</div><h2>Acesso ao computador</h2></div></div><p>O Runtime aplica a pol?tica local e o Control Plane aplica grants remotos separados. Nenhum cliente ou modelo pode ampliar esses limites por conta pr?pria.</p></section>${renderRemoteComputerAuthorization()}<div class="infoCard"><h4>CONTROLE LOCAL PRINCIPAL</h4><label class="accessToggle"><span><strong>Permitir Computer Control</strong><small>Desative para bloquear o controle do computador pelo Runtime.</small></span><input id="computerEnabled" type="checkbox" ${access.enabled?'checked':''} ${computerManaged('enabled')?'disabled':''}></label>${managedNote('enabled')}<label class="accessToggle accessDanger"><span><strong>Full Access local</strong><small>Remove as allowlists ORDAX de pastas e aplicativos no Runtime local. Isso n?o cria grant remoto.</small></span><input id="computerFullAccess" type="checkbox" ${fullAccess?'checked':''} ${computerManaged('full_access')?'disabled':''}></label>${managedNote('full_access')}<div class="accessWarning"><strong>Acesso local amplo</strong><span>Full Access local amplia apenas o limite do Runtime neste PC. O cliente remoto ainda precisa de grant autenticado separado e o Windows/UAC continua sendo a fronteira final.</span></div><label class="accessToggle"><span><strong>Filesystem completo, mantendo allowlist de apps</strong><small>Remove apenas a restri??o por pastas; aplicativos continuam limitados pela lista abaixo.</small></span><input id="computerFullFilesystem" type="checkbox" ${access.full_filesystem?'checked':''} ${computerManaged('full_filesystem')?'disabled':''}></label>${managedNote('full_filesystem')}</div><div class="infoCard"><div class="accessHeading"><div><h4>PASTAS PERMITIDAS ? MODO LIMITADO</h4><div class="sideMeta">At? 32 ra?zes absolutas. Esta lista ? ignorada enquanto Full Access local estiver ativo.</div></div>${managedNote('allowed_roots')}</div><div class="accessList">${roots}</div><div class="accessComposer"><input id="computerRootInput" placeholder="C:\\Users\\SeuUsuario\\Documents" ${computerManaged('allowed_roots')?'disabled':''}><button id="computerRootAdd" ${computerManaged('allowed_roots')?'disabled':''}>Adicionar pasta</button></div></div><div class="infoCard"><div class="accessHeading"><div><h4>APLICATIVOS PERMITIDOS ? MODO LIMITADO</h4><div class="sideMeta">At? 64 execut?veis. Esta lista ? ignorada enquanto Full Access local estiver ativo.</div></div>${managedNote('allowed_applications')}</div><div class="accessList">${apps}</div><div class="accessComposer"><input id="computerAppInput" placeholder="notepad.exe ou C:\\Program Files\\App\\app.exe" ${computerManaged('allowed_applications')?'disabled':''}><button id="computerAppAdd" ${computerManaged('allowed_applications')?'disabled':''}>Adicionar aplicativo</button></div></div><div class="accessFooter"><div class="sideMeta">Arquivo: ${escapeHtml(access.settings_path||'agent-settings.json')}<br>Revis?o ${escapeHtml(String(access.revision||'').slice(0,12))}</div><button id="computerAccessSave" class="primary">Salvar pol?tica local</button></div></div>`;
+  root.innerHTML=`<div class="panelContent accessPanel"><section class="agentWelcome"><div class="agentWelcomeTop"><span class="orb"></span><div><div class="eyebrow">POL?TICA LOCAL DO DONO</div><h2>Acesso ao computador</h2></div></div><p>O Runtime aplica a pol?tica local e o Control Plane aplica grants remotos separados. Nenhum cliente ou modelo pode ampliar esses limites por conta pr?pria.</p></section>${renderRemoteComputerAuthorization()}${renderAppIntelligenceAuthorization()}<div class="infoCard"><h4>CONTROLE LOCAL PRINCIPAL</h4><label class="accessToggle"><span><strong>Permitir Computer Control</strong><small>Desative para bloquear o controle do computador pelo Runtime.</small></span><input id="computerEnabled" type="checkbox" ${access.enabled?'checked':''} ${computerManaged('enabled')?'disabled':''}></label>${managedNote('enabled')}<label class="accessToggle accessDanger"><span><strong>Full Access local</strong><small>Remove as allowlists ORDAX de pastas e aplicativos no Runtime local. Isso n?o cria grant remoto.</small></span><input id="computerFullAccess" type="checkbox" ${fullAccess?'checked':''} ${computerManaged('full_access')?'disabled':''}></label>${managedNote('full_access')}<div class="accessWarning"><strong>Acesso local amplo</strong><span>Full Access local amplia apenas o limite do Runtime neste PC. O cliente remoto ainda precisa de grant autenticado separado e o Windows/UAC continua sendo a fronteira final.</span></div><label class="accessToggle"><span><strong>Filesystem completo, mantendo allowlist de apps</strong><small>Remove apenas a restri??o por pastas; aplicativos continuam limitados pela lista abaixo.</small></span><input id="computerFullFilesystem" type="checkbox" ${access.full_filesystem?'checked':''} ${computerManaged('full_filesystem')?'disabled':''}></label>${managedNote('full_filesystem')}</div><div class="infoCard"><div class="accessHeading"><div><h4>PASTAS PERMITIDAS ? MODO LIMITADO</h4><div class="sideMeta">At? 32 ra?zes absolutas. Esta lista ? ignorada enquanto Full Access local estiver ativo.</div></div>${managedNote('allowed_roots')}</div><div class="accessList">${roots}</div><div class="accessComposer"><input id="computerRootInput" placeholder="C:\\Users\\SeuUsuario\\Documents" ${computerManaged('allowed_roots')?'disabled':''}><button id="computerRootAdd" ${computerManaged('allowed_roots')?'disabled':''}>Adicionar pasta</button></div></div><div class="infoCard"><div class="accessHeading"><div><h4>APLICATIVOS PERMITIDOS ? MODO LIMITADO</h4><div class="sideMeta">At? 64 execut?veis. Esta lista ? ignorada enquanto Full Access local estiver ativo.</div></div>${managedNote('allowed_applications')}</div><div class="accessList">${apps}</div><div class="accessComposer"><input id="computerAppInput" placeholder="notepad.exe ou C:\\Program Files\\App\\app.exe" ${computerManaged('allowed_applications')?'disabled':''}><button id="computerAppAdd" ${computerManaged('allowed_applications')?'disabled':''}>Adicionar aplicativo</button></div></div><div class="accessFooter"><div class="sideMeta">Arquivo: ${escapeHtml(access.settings_path||'agent-settings.json')}<br>Revis?o ${escapeHtml(String(access.revision||'').slice(0,12))}</div><button id="computerAccessSave" class="primary">Salvar pol?tica local</button></div></div>`;
   root.querySelectorAll('[data-remove-root]').forEach(button=>button.onclick=()=>removeComputerAccessValue('allowed_roots',Number(button.dataset.removeRoot)));
   root.querySelectorAll('[data-remove-app]').forEach(button=>button.onclick=()=>removeComputerAccessValue('allowed_applications',Number(button.dataset.removeApp)));
   $('computerRootAdd').onclick=()=>addComputerAccessValue('allowed_roots','computerRootInput');
