@@ -4,7 +4,7 @@
 
 O source portátil do **ORDAX Studio** é canônico em `washingtonmsdj/ordax-apps/apps/studio`.
 
-`washingtonmsdj/mcp-blender` não é mais fonte de produto do Studio e não deve receber novas features. Runtime, Control Plane e connector já possuem owners canônicos próprios. **A exclusão física do legado ainda não é segura apenas porque o deploy de produção do Control Plane ainda depende do token Cloudflare que não foi reprovisionado no repositório novo.**
+`washingtonmsdj/mcp-blender` não é mais fonte de produto do Studio e não deve receber novas features. Runtime, Control Plane e connector já possuem owners canônicos próprios. **Todos os gates de aposentadoria foram concluídos e o OrdaX OS autorizou a limpeza do conteúdo legado.**
 
 ## O que já está seguro em ordax-apps
 
@@ -47,13 +47,18 @@ Só considerar o repositório legado deletável quando todos forem verdadeiros:
 3. ORDAX Runtime está publicado/construído fora de `mcp-blender`;
 4. Product MCP/Control Plane está publicado/construído fora de `mcp-blender`;
 5. connector do ChatGPT não depende de arquivos/CI/deploy do legado;
-6. provisionar um novo `CLOUDFLARE_API_TOKEN` de escopo mínimo no environment `cloudflare-v3` de `ordax-control-plane`;
-7. executar o deploy de produção a partir de `ordax-control-plane` e exigir health/verificação remota verdes;
-8. busca final em build/deploy/launch não encontra dependência funcional do legado;
-9. smoke E2E ChatGPT -> Control Plane -> Runtime -> capability -> receipt permanece verde;
-10. CI prova que OrdaX OS e Windows usam o mesmo source portátil;
-11. somente então limpar o conteúdo e arquivar/deletar o legado.
+6. produção está em `ordax-control-plane` (Cloudflare Worker versão 118, deployment `8928350d-3b49-4a1c-a7dc-1ee91c645fa3`);
+7. health/E2E pós-cutover estão verdes;
+8. busca final em build/deploy/launch não encontrou dependência funcional do legado;
+9. source-lock e recovery OIDC do OrdaX OS apontam para `ordax-runtime`;
+10. o SSOT do OrdaX OS registra `safe_to_delete_legacy_repository=true`;
+11. a limpeza do conteúdo legado está autorizada. O histórico Git pode permanecer como provenance.
 
 ## Regra
 
 Não resolver a aposentadoria copiando Runtime ou Control Plane para `ordax-apps`. Isso eliminaria o nome antigo, mas violaria o boundary do produto e criaria uma nova dívida arquitetural.
+
+
+## Automação de deploy
+
+A credencial futura para deploy automático via GitHub Actions é hardening de CI rastreado em `washingtonmsdj/ordax-control-plane#10`. Ela não é dependência operacional da produção nem blocker da aposentadoria do código legado.
