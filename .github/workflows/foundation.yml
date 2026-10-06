@@ -27,6 +27,7 @@ jobs:
           python3 -m json.tool migrations/notes.gate-b-transfer-map.json >/dev/null
           python3 -m json.tool migrations/notes.host-boundary.json >/dev/null
           python3 -m json.tool migrations/notes.distribution.json >/dev/null
+          python3 -m json.tool migrations/notes.compatibility.json >/dev/null
           python3 -m json.tool migrations/studio.legacy-method-ownership.json >/dev/null
           python3 -m json.tool migrations/studio.distribution.json >/dev/null
 
