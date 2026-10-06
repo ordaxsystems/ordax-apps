@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-intelligence-manifest/1",
   "appId": "studio",
-  "appVersion": "0.4.3",
+  "appVersion": "0.4.4",
   "authority": "none",
   "execution": "declarative-only",
   "instructions": [
@@ -109,6 +109,24 @@
       "examples": [
         "Verifique a saúde do projeto.",
         "O runtime está funcionando?"
+      ]
+    },
+    {
+      "id": "studio.open-managed-browser",
+      "description": "Abrir ou navegar uma sessão de navegador gerenciado pelo Runtime no contexto do projeto atual, sem degradar para automação por coordenadas do desktop.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "url",
+          "type": "string",
+          "required": true,
+          "description": "URL HTTP ou HTTPS que deve ser aberta na sessão de navegador gerenciada pelo projeto."
+        }
+      ],
+      "examples": [
+        "Abra o YouTube no navegador gerenciado deste projeto.",
+        "Navegue para https://example.com usando o browser do Runtime."
       ]
     },
     {
