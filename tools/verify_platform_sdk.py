@@ -18,6 +18,7 @@ EXPECTED_CONTRACTS = {
     "ordax.app-intelligence-manifest/1",
     "ordax.application-action-capability/1",
     "ordax.application-action-capability-registry/1",
+    "ordax.application-action-manifest/1",
     "ordax.application-action-proposal/1",
     "prototype-ordax.component-localization/1",
     "ordax.component-manifest/1",
