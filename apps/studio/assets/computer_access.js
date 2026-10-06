@@ -54,6 +54,7 @@ function renderRemoteComputerAuthorization(){
   }
   const links=data?.links||[];
   const active=(data?.grants||[]).filter(remoteGrantIsActive);
+  const legacyCustom=active.filter(grant=>grant.mode==='custom-device-grant');
   const linkPicker=links.length>1?`<label class="accessHeading"><span><strong>V?nculo deste computador</strong><small>Escolha qual v?nculo da sua conta receber? a autoriza??o.</small></span><select id="remoteComputerLink">${links.map(link=>`<option value="${escapeHtml(link.link_id||'')}">${escapeHtml(link.link_id||'v?nculo')}</option>`).join('')}</select></label>`:(links.length===1?`<div class="sideMeta">V?nculo: <code>${escapeHtml(links[0].link_id||'')}</code></div>`:'<div class="accessWarning"><strong>Sem v?nculo ativo</strong><span>Reconecte sua Conta ORDAX a este computador antes de autorizar controle remoto.</span></div>');
   const cards=REMOTE_COMPUTER_PROFILES.map(profile=>{
     const grant=active.find(item=>item.mode===profile.mode)||null;
@@ -61,7 +62,9 @@ function renderRemoteComputerAuthorization(){
     const action=grant?`<button type="button" data-revoke-remote-grant="${escapeHtml(grant.id||'')}">Revogar</button>`:`<button type="button" data-authorize-remote-mode="${escapeHtml(profile.mode)}" ${links.length?'':'disabled'}>Autorizar 30 dias</button>`;
     return `<div class="accessItem remoteGrantItem"><span><strong>${escapeHtml(profile.title)}</strong>${badge}<small>${escapeHtml(profile.description)}</small><small>${grant?escapeHtml(remoteGrantExpiry(grant)):'N?o autorizado remotamente'}</small></span>${action}</div>`;
   }).join('');
-  return `<div class="infoCard"><div class="accessHeading"><div><h4>AUTORIZA??O REMOTA</h4><div class="sideMeta">A pol?tica local abaixo define o limite m?ximo do PC. Estes grants definem o que um cliente ORDAX autenticado pode pedir. As duas autoriza??es s?o necess?rias.</div></div></div>${linkPicker}<div class="accessList">${cards}</div><div class="sideMeta">${active.length} perfil(is) remoto(s) ativo(s). O modo amplo de compatibilidade n?o ? oferecido por esta interface.</div></div>`;
+  const legacyWarning=legacyCustom.length?`<div class="accessWarning"><strong>Autoriza??o legada detectada</strong><span>${legacyCustom.length} grant(s) antigo(s) n?o correspondem exatamente aos perfis atuais. Eles continuam limitados ?s a??es originalmente concedidas. Autorize o perfil atual desejado e revogue o legado depois; o Studio nunca amplia um grant existente automaticamente.</span></div>`:'';
+  const legacyRows=legacyCustom.map(grant=>`<div class="accessItem remoteGrantItem"><span><strong>Grant legado / customizado</strong><small>${escapeHtml((grant.actions||[]).join(', ')||'A??es n?o informadas')}</small><small>${escapeHtml(remoteGrantExpiry(grant))}</small></span><button type="button" data-revoke-remote-grant="${escapeHtml(grant.id||'')}">Revogar legado</button></div>`).join('');
+  return `<div class="infoCard"><div class="accessHeading"><div><h4>AUTORIZA??O REMOTA</h4><div class="sideMeta">A pol?tica local abaixo define o limite m?ximo do PC. Estes grants definem o que um cliente ORDAX autenticado pode pedir. As duas autoriza??es s?o necess?rias.</div></div></div>${linkPicker}${legacyWarning}<div class="accessList">${cards}${legacyRows}</div><div class="sideMeta">${active.length} autoriza??o(?es) remota(s) ativa(s). O modo amplo de compatibilidade n?o ? oferecido por esta interface.</div></div>`;
 }
 function bindRemoteComputerAuthorization(){
   const connect=document.getElementById('remoteComputerConnectAccount');if(connect)connect.onclick=()=>document.getElementById('accountButton')?.click();
