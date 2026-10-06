@@ -658,20 +658,65 @@ def discover_app_files(app_root: Path) -> list[PurePosixPath]:
 
 
 
-def _javascript_tokens(source: str):
-    """Yield only code/string tokens needed for literal ES module imports.
+REGEX_PREFIX_IDENTIFIERS = {
+    "await", "case", "delete", "do", "else", "in", "instanceof",
+    "new", "of", "return", "throw", "typeof", "void", "yield",
+}
+REGEX_PREFIX_PUNCT = set("([{=,:;!?&|+-*%^~<>")
 
-    Comments and template literals are skipped as atomic regions so UI strings
-    containing words such as "import" or "from" cannot become dependencies.
-    """
-    index = 0
+
+def _regex_literal_allowed(previous_token) -> bool:
+    if previous_token is None:
+        return True
+    kind, value, _ = previous_token
+    if kind == "identifier":
+        return value in REGEX_PREFIX_IDENTIFIERS
+    if kind == "punct":
+        return value in REGEX_PREFIX_PUNCT
+    return False
+
+
+def _consume_javascript_regex(source: str, index: int) -> int:
+    index += 1
+    in_class = False
+    while index < len(source):
+        char = source[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char in {"\n", "\r"}:
+            raise AppPackageError("unterminated JavaScript regex literal")
+        if char == "[":
+            in_class = True
+            index += 1
+            continue
+        if char == "]" and in_class:
+            in_class = False
+            index += 1
+            continue
+        if char == "/" and not in_class:
+            index += 1
+            while index < len(source) and source[index].isalpha():
+                index += 1
+            return index
+        index += 1
+    raise AppPackageError("unterminated JavaScript regex literal")
+
+
+def _javascript_code_tokens(source: str, index: int = 0, *, stop_at_template_brace: bool = False):
+    previous_token = None
+    brace_depth = 0
     length = len(source)
+
     while index < length:
         char = source[index]
 
         if char.isspace():
             index += 1
             continue
+
+        if stop_at_template_brace and char == "}" and brace_depth == 0:
+            return index + 1
 
         if char == "/" and index + 1 < length and source[index + 1] == "/":
             newline = source.find("\n", index + 2)
@@ -685,9 +730,16 @@ def _javascript_tokens(source: str):
             index = end + 2
             continue
 
+        if char == "/" and _regex_literal_allowed(previous_token):
+            index = _consume_javascript_regex(source, index)
+            token = ("regex", "", index)
+            previous_token = token
+            yield token
+            continue
+
         if char in {"'", '"'}:
             quote = char
-            start = index
+            token_start = index
             index += 1
             value = []
             while index < length:
@@ -700,7 +752,9 @@ def _javascript_tokens(source: str):
                     continue
                 if current == quote:
                     index += 1
-                    yield ("string", "".join(value), start)
+                    token = ("string", "".join(value), token_start)
+                    previous_token = token
+                    yield token
                     break
                 if current in {"\n", "\r"}:
                     raise AppPackageError("unterminated JavaScript string literal")
@@ -710,35 +764,68 @@ def _javascript_tokens(source: str):
                 raise AppPackageError("unterminated JavaScript string literal")
             continue
 
-        if char == "`":
-            start = index
+        if char == chr(96):
+            token_start = index
             index += 1
             while index < length:
                 current = source[index]
                 if current == "\\":
                     index += 2
                     continue
-                if current == "`":
+                if current == chr(96):
                     index += 1
+                    token = ("template", "", token_start)
+                    previous_token = token
+                    yield token
                     break
+                if current == "$" and index + 1 < length and source[index + 1] == "{":
+                    nested = _javascript_code_tokens(
+                        source,
+                        index + 2,
+                        stop_at_template_brace=True,
+                    )
+                    while True:
+                        try:
+                            nested_token = next(nested)
+                        except StopIteration as stopped:
+                            index = stopped.value
+                            break
+                        yield nested_token
+                    continue
                 index += 1
             else:
                 raise AppPackageError("unterminated JavaScript template literal")
-            yield ("template", "", start)
             continue
 
         if char.isalpha() or char in {"_", "$"}:
-            start = index
+            token_start = index
             index += 1
             while index < length and (
                 source[index].isalnum() or source[index] in {"_", "$"}
             ):
                 index += 1
-            yield ("identifier", source[start:index], start)
+            token = ("identifier", source[token_start:index], token_start)
+            previous_token = token
+            yield token
             continue
 
-        yield ("punct", char, index)
+        if char == "{":
+            brace_depth += 1
+        elif char == "}" and brace_depth > 0:
+            brace_depth -= 1
+
+        token = ("punct", char, index)
+        previous_token = token
+        yield token
         index += 1
+
+    if stop_at_template_brace:
+        raise AppPackageError("unterminated JavaScript template expression")
+    return index
+
+
+def _javascript_tokens(source: str):
+    yield from _javascript_code_tokens(source)
 
 
 def literal_module_specifiers(source: str) -> list[str]:
