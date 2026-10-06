@@ -1,5 +1,6 @@
 const APP_INTELLIGENCE_PROFILE='app-intelligence-read';
 const REMOTE_COMPUTER_PROFILES=Object.freeze([
+  {mode:'full-computer-control',title:'Acesso total remoto',description:'Todas as capacidades tipadas de Computer Control: tela, janelas, mouse/teclado, clipboard, processos, aplicativos e filesystem. Exige Full Access local ativo no Runtime e continua limitado pelo Windows/UAC.',recommended:false,risk:'critical'},
   {mode:'interactive-computer-control',title:'Controle interativo',description:'Janelas, screenshot, mouse, click/drag, scroll, digita??o, hotkeys e abertura de aplicativos permitidos.',recommended:true,risk:'normal'},
   {mode:'computer-filesystem',title:'Arquivos do computador',description:'Leitura e altera??es de arquivos somente dentro da pol?tica local de pastas autorizadas.',recommended:false,risk:'elevated'},
   {mode:'computer-clipboard',title:'?rea de transfer?ncia',description:'Permite leitura e escrita do clipboard do Windows.',recommended:false,risk:'elevated'},
@@ -85,7 +86,7 @@ function renderRemoteComputerAuthorization(){
   }).join('');
   const legacyWarning=legacyCustom.length?`<div class="accessWarning"><strong>Autoriza??o legada detectada</strong><span>${legacyCustom.length} grant(s) antigo(s) n?o correspondem exatamente aos perfis atuais. Eles continuam limitados ?s a??es originalmente concedidas. Autorize o perfil atual desejado e revogue o legado depois; o Studio nunca amplia um grant existente automaticamente.</span></div>`:'';
   const legacyRows=legacyCustom.map(grant=>`<div class="accessItem remoteGrantItem"><span><strong>Grant legado / customizado</strong><small>${escapeHtml((grant.actions||[]).join(', ')||'A??es n?o informadas')}</small><small>${escapeHtml(remoteGrantExpiry(grant))}</small></span><button type="button" data-revoke-remote-grant="${escapeHtml(grant.id||'')}">Revogar legado</button></div>`).join('');
-  return `<div class="infoCard"><div class="accessHeading"><div><h4>AUTORIZA??O REMOTA</h4><div class="sideMeta">A pol?tica local abaixo define o limite m?ximo do PC. Estes grants definem o que um cliente ORDAX autenticado pode pedir. As duas autoriza??es s?o necess?rias.</div></div></div>${linkPicker}${legacyWarning}<div class="accessList">${cards}${legacyRows}</div><div class="sideMeta">${active.length} autoriza??o(?es) remota(s) ativa(s). O modo amplo de compatibilidade n?o ? oferecido por esta interface.</div></div>`;
+  return `<div class="infoCard"><div class="accessHeading"><div><h4>AUTORIZA??O REMOTA</h4><div class="sideMeta">A pol?tica local abaixo define o limite m?ximo do PC. Estes grants definem o que um cliente ORDAX autenticado pode pedir. As duas autoriza??es s?o necess?rias.</div></div></div>${linkPicker}${legacyWarning}<div class="accessList">${cards}${legacyRows}</div><div class="sideMeta">${active.length} autoriza??o(?es) remota(s) ativa(s). O perfil Acesso total remoto s? fica plenamente efetivo quando Full Access local tamb?m estiver ativo neste computador.</div></div>`;
 }
 function renderAppIntelligenceAuthorization(){
   const result=state.remoteAppIntelligenceGrantStatus;
@@ -146,7 +147,10 @@ function renderComputerAccessCanvas(result=null){
 async function authorizeRemoteComputerProfile(mode){
   const profile=REMOTE_COMPUTER_PROFILES.find(item=>item.mode===mode);if(!profile)return;
   const linkId=selectedRemoteLinkId();if(!linkId){setStatus('Nenhum v?nculo ativo selecionado');return}
-  const warning=profile.risk==='high'?`${profile.title}: esta autoriza??o pode encerrar processos no computador. Autorizar por 30 dias?`:`Autorizar ?${profile.title}? para clientes ORDAX autenticados por 30 dias?`;
+  if(profile.risk==='critical'&&!state.computerAccess?.full_access){setStatus('Ative e salve Full Access local antes de autorizar Acesso total remoto.');return}
+  const warning=profile.risk==='critical'
+    ?'Autorizar ACESSO TOTAL REMOTO por 30 dias? Este grant inclui todas as capacidades Computer Control suportadas. Full Access local e Windows/UAC continuam sendo limites independentes.'
+    :(profile.risk==='high'?`${profile.title}: esta autoriza??o pode encerrar processos no computador. Autorizar por 30 dias?`:`Autorizar ?${profile.title}? para clientes ORDAX autenticados por 30 dias?`);
   if(!window.confirm(warning))return;
   setStatus('Criando autoriza??o remota...');
   const result=await call('authorize_remote_computer_grant',mode,linkId,30);
