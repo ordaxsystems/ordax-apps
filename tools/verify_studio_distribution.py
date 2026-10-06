@@ -86,7 +86,7 @@ def main() -> None:
     require(windows.get("windows_uac_remains_final_platform_boundary") is True, "Windows/UAC must remain the final platform boundary")
 
     remote_full = windows.get("remote_full_access_gate") or {}
-    require(remote_full.get("status") == "required-before-cutover", "remote Full Access gate status drifted")
+    require(remote_full.get("status") == "implemented-validated", "remote Full Access gate status drifted")
     require(remote_full.get("device_scoped") is True, "remote Full Access must be device-scoped")
     require(remote_full.get("project_id_nullable_for_device_control") is True, "device control must not fabricate a project id")
     require(remote_full.get("derived_from_authenticated_subject_and_active_device_link") is True, "remote owner authorization must derive from subject + active device link")
@@ -94,6 +94,11 @@ def main() -> None:
     require(remote_full.get("model_callable_grant_mint_forbidden") is True, "model-callable grant mint must stay forbidden")
     require(remote_full.get("local_full_access_consent_required") is True, "remote Full Access must remain bound to local owner consent")
     require(remote_full.get("legacy_operator_only_project_grant_is_not_product_path") is True, "legacy operator-only project grant must not become the normal product path")
+    evidence = remote_full.get("evidence") or {}
+    require(evidence.get("studio_commit") == "f279ebd996a9ee5cdbbd75912dfa5109e91ad3cc", "Studio Full Access evidence drifted")
+    require(evidence.get("runtime_commit") == "435699d30471b8aa1c5080d08be554a23f15a896", "Runtime Full Access evidence drifted")
+    require(evidence.get("control_plane_commit") == "124630ee55367ac8fbe2debc8d9ba8545b0915c0", "Control Plane Full Access evidence drifted")
+    require(evidence.get("windows_product_build_run") == 37536311885, "Windows Full Access build evidence drifted")
 
     invariants = distribution.get("shared_release_invariants") or {}
     required_true = {
@@ -149,6 +154,7 @@ def main() -> None:
     print("WINDOWS_FULL_ACCESS_OWNER_APPROVED=true")
     print("WINDOWS_FULL_ACCESS_REMOTE_ENABLE=false")
     print("WINDOWS_FULL_ACCESS_REMOTE_SCOPE=device")
+    print("WINDOWS_FULL_ACCESS_REMOTE_GATE=implemented-validated")
     print("WINDOWS_FULL_ACCESS_OPERATOR_TOKEN_REQUIRED=false")
     print("ORDAX_OS_DUPLICATE_RUNTIME=false")
     print("STUDIO_AUTHORITY=none")

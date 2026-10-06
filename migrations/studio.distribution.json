@@ -54,14 +54,20 @@
       "full_filesystem_intermediate_mode_supported": true,
       "windows_uac_remains_final_platform_boundary": true,
       "remote_full_access_gate": {
-        "status": "required-before-cutover",
+        "status": "implemented-validated",
         "device_scoped": true,
         "project_id_nullable_for_device_control": true,
         "derived_from_authenticated_subject_and_active_device_link": true,
         "operator_token_not_required_for_normal_owner_use": true,
         "model_callable_grant_mint_forbidden": true,
         "local_full_access_consent_required": true,
-        "legacy_operator_only_project_grant_is_not_product_path": true
+        "legacy_operator_only_project_grant_is_not_product_path": true,
+        "evidence": {
+          "studio_commit": "f279ebd996a9ee5cdbbd75912dfa5109e91ad3cc",
+          "runtime_commit": "435699d30471b8aa1c5080d08be554a23f15a896",
+          "control_plane_commit": "124630ee55367ac8fbe2debc8d9ba8545b0915c0",
+          "windows_product_build_run": 37536311885
+        }
       }
     }
   },
