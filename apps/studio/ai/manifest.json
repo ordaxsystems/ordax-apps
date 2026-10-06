@@ -1,0 +1,134 @@
+{
+  "schema": "ordax.app-intelligence-manifest/1",
+  "appId": "studio",
+  "appVersion": "0.4.3",
+  "authority": "none",
+  "execution": "declarative-only",
+  "instructions": [
+    "Use o ORDAX Studio somente através dos ports públicos fornecidos pelo host.",
+    "Não trate o Studio como proprietário de Identity, permissões, Control Plane ou execução do Device Agent.",
+    "Antes de alterar arquivos, preserve o contexto do projeto e respeite as permissões e confirmações do OrdaX."
+  ],
+  "intents": [
+    {
+      "id": "studio.list-projects",
+      "description": "Consultar os projetos disponíveis no ORDAX Studio.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [],
+      "examples": [
+        "Quais projetos estão disponíveis?",
+        "Mostre meus projetos no Studio."
+      ]
+    },
+    {
+      "id": "studio.select-project",
+      "description": "Selecionar um projeto existente como contexto ativo no Studio.",
+      "effect": "none",
+      "confirmation": "none",
+      "parameters": [
+        {
+          "name": "project",
+          "type": "string",
+          "required": true,
+          "description": "Projeto que deve se tornar o contexto ativo."
+        }
+      ],
+      "examples": [
+        "Abra o projeto ordax-apps.",
+        "Selecione o projeto do jogo."
+      ]
+    },
+    {
+      "id": "studio.inspect-project",
+      "description": "Inspecionar inventário, arquivos, busca, diff ou briefing do projeto selecionado.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [
+        {
+          "name": "query",
+          "type": "string",
+          "required": false,
+          "description": "Pergunta, termo de busca ou arquivo que deve ser inspecionado."
+        }
+      ],
+      "examples": [
+        "Analise o projeto atual.",
+        "Mostre o diff do projeto.",
+        "Procure por ProductGateway."
+      ]
+    },
+    {
+      "id": "studio.edit-file",
+      "description": "Salvar uma alteração em arquivo dentro do projeto autorizado.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "path",
+          "type": "string",
+          "required": true,
+          "description": "Caminho do arquivo dentro do projeto."
+        },
+        {
+          "name": "content",
+          "type": "string",
+          "required": true,
+          "description": "Conteúdo que deve ser salvo no arquivo."
+        }
+      ],
+      "examples": [
+        "Atualize este arquivo com a correção aprovada."
+      ]
+    },
+    {
+      "id": "studio.preview-project",
+      "description": "Consultar, iniciar, parar ou capturar o preview supervisionado do projeto.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "operation",
+          "type": "string",
+          "required": true,
+          "description": "Operação de preview solicitada, como status, iniciar, parar, captura ou logs."
+        }
+      ],
+      "examples": [
+        "Inicie o preview do projeto.",
+        "Mostre os logs do preview.",
+        "Pare o preview."
+      ]
+    },
+    {
+      "id": "studio.check-project-health",
+      "description": "Consultar saúde, status de execução e estado do produto para o projeto atual.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [],
+      "examples": [
+        "Verifique a saúde do projeto.",
+        "O runtime está funcionando?"
+      ]
+    },
+    {
+      "id": "studio.prepare-blender",
+      "description": "Preparar a integração do Blender, instalar a bridge autorizada ou trabalhar com instâncias conhecidas.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "operation",
+          "type": "string",
+          "required": true,
+          "description": "Operação Blender solicitada, como preparar, instalar bridge, listar, adotar ou iniciar instância."
+        }
+      ],
+      "examples": [
+        "Prepare o Blender para este projeto.",
+        "Liste as instâncias do Blender.",
+        "Inicie o Blender do projeto."
+      ]
+    }
+  ]
+}
