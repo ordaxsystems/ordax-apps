@@ -22,6 +22,8 @@ PACKAGE_SCHEMA = "prototype-ordax.runtime-component-package/1"
 RELEASE_SCHEMA_V2 = "prototype-ordax.runtime-component-release/2"
 COMPATIBILITY_SCHEMA = "ordax.component-compatibility/1"
 COMPONENT_MANIFEST_SCHEMA = "ordax.component-manifest/1"
+APP_INTELLIGENCE_MANIFEST_SCHEMA = "ordax.app-intelligence-manifest/1"
+APP_INTELLIGENCE_EXECUTION_MODE = "declarative-only"
 SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
 CREATED_FROM_RECIPE = "runtime-component/package/1"
 PACKAGE_MANIFEST_NAME = "component-package.json"
@@ -31,14 +33,20 @@ SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[
 SHA40_RE = re.compile(r"^[0-9a-f]{40}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CONTRACT_ID_RE = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*$")
+INTENT_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}(?:\.[a-z][a-z0-9-]{0,63})+$")
+PARAMETER_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+AI_EFFECTS = {"none", "read", "write", "external-write", "destructive"}
+AI_CONFIRMATION_MODES = {"none", "policy", "explicit"}
+AI_PARAMETER_TYPES = {"string", "number", "integer", "boolean", "string-list", "json"}
 
 MAX_FILES = 256
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_TOTAL_BYTES = 16 * 1024 * 1024
 MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_COMPATIBILITY_BYTES = 64 * 1024
+MAX_AI_MANIFEST_BYTES = 128 * 1024
 
-INCLUDED_ROOTS = ("src", "assets")
+INCLUDED_ROOTS = ("src", "assets", "ai")
 SOURCE_EXTENSIONS = {".mjs", ".js"}
 IMPORT_RE = re.compile(
     r"""(?:\bfrom\s*["']([^"']+)["']|\bimport\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["'])"""
@@ -121,7 +129,7 @@ def validate_app_manifest(value: dict) -> dict:
 
 
 def _bounded_ai_text(value: object, label: str, max_chars: int) -> str:
-    if not isinstance(value, str) or "\\x00" in value:
+    if not isinstance(value, str) or chr(0) in value:
         raise AppPackageError(f"{label} must be a string")
     normalized = value.strip()
     if not normalized or len(normalized) > max_chars:
@@ -405,6 +413,13 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
     if output.exists():
         raise AppPackageError("refusing to overwrite package")
     app = validate_app_manifest(load_json(app_root / "app.json", max_bytes=64 * 1024, label="app.json"))
+    ai_manifest_path = app_root / "ai" / "manifest.json"
+    if not ai_manifest_path.is_file() or ai_manifest_path.is_symlink():
+        raise AppPackageError("first-party app must provide ai/manifest.json")
+    validate_app_intelligence_manifest(
+        load_json(ai_manifest_path, max_bytes=MAX_AI_MANIFEST_BYTES, label="ai/manifest.json"),
+        app,
+    )
     files = discover_app_files(app_root)
     validate_source_graph(app_root, files)
     records = source_records(app_root, app["id"], files)
@@ -500,6 +515,19 @@ def verify_package(package: Path) -> tuple[dict, bytes]:
             raise AppPackageError("package archive file set does not match manifest")
         if manifest["entrypoint"] not in seen:
             raise AppPackageError("package entrypoint is not bound by manifest")
+        ai_path = f"system/apps/{app_id}/ai/manifest.json"
+        if ai_path not in seen:
+            raise AppPackageError("package AI manifest is missing")
+        try:
+            ai_manifest = json.loads(archive.read(ai_path).decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise AppPackageError("package AI manifest is invalid UTF-8 JSON") from exc
+        if not isinstance(ai_manifest, dict):
+            raise AppPackageError("package AI manifest must be a JSON object")
+        validate_app_intelligence_manifest(
+            ai_manifest,
+            {"id": app_id, "version": component.get("version")},
+        )
     return manifest, payload
 
 
