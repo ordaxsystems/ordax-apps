@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLAN_PATH = ROOT / "migrations" / "notes.externalization.json"
 SDK_LOCK_PATH = ROOT / "platform-sdk.lock.json"
 TARGET_PATH = ROOT / "apps" / "notes"
+SOURCE_INVENTORY_PATH = ROOT / "migrations" / "notes.source-snapshot.json"
 
 REQUIRED_PROOFS = {
     "sdk-contracts-pinned",
@@ -88,6 +89,39 @@ def main() -> None:
         fail("Notes source snapshot must be explicitly pre-removal")
     if source_snapshot.get("app_source_path") != "system/apps/notes":
         fail("Notes source snapshot app path drifted")
+    if source_snapshot.get("inventory_file") != "migrations/notes.source-snapshot.json":
+        fail("Notes source snapshot inventory path drifted")
+    if source_snapshot.get("file_count") != 19:
+        fail("Notes source snapshot file count drifted")
+
+    inventory = json.loads(SOURCE_INVENTORY_PATH.read_text(encoding="utf-8"))
+    if inventory.get("$schema") != "ordax.notes-source-snapshot/1":
+        fail("unexpected Notes source inventory schema")
+    if inventory.get("repository") != source_snapshot.get("repository"):
+        fail("Notes source inventory repository drifted")
+    if inventory.get("commit") != snapshot_commit:
+        fail("Notes source inventory commit drifted")
+    if inventory.get("captured_before_gate_a_removal") is not True:
+        fail("Notes source inventory must be pre-removal")
+    if inventory.get("authority") != "none":
+        fail("Notes source inventory must not carry authority")
+    files = inventory.get("files")
+    if not isinstance(files, list) or len(files) != 19 or inventory.get("file_count") != 19:
+        fail("Notes source inventory must contain exactly 19 owned files")
+    paths = [item.get("path") for item in files if isinstance(item, dict)]
+    if len(paths) != 19 or len(set(paths)) != 19:
+        fail("Notes source inventory paths must be unique")
+    for item in files:
+        if not isinstance(item, dict):
+            fail("Notes source inventory entry is invalid")
+        blob_sha = item.get("blob_sha")
+        size = item.get("size")
+        if not isinstance(blob_sha, str) or len(blob_sha) != 40 or any(
+            char not in "0123456789abcdef" for char in blob_sha
+        ):
+            fail("Notes source inventory blob SHA is invalid")
+        if not isinstance(size, int) or size < 0:
+            fail("Notes source inventory size is invalid")
 
     contracts = plan.get("platform_contracts_required")
     if not isinstance(contracts, list) or "ordax.app-data/1" not in contracts:
