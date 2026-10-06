@@ -164,14 +164,14 @@ def validate_studio_migration() -> None:
         fail("Studio target repository is invalid")
     if plan.get("target_path") != "apps/studio":
         fail("Studio target path is invalid")
-    if plan.get("source_of_truth_state") != "ordax-apps-canonical-legacy-removal-pending":
-        fail("Studio source of truth must be ordax-apps while legacy removal is pending")
+    if plan.get("source_of_truth_state") != "ordax-apps-canonical-legacy-removal-authorized":
+        fail("Studio source of truth must record authorized legacy removal")
     if plan.get("cutover_scope") != "distribution":
         fail("Studio cutover_allowed must describe distribution cutover, not source ownership")
     if plan.get("cutover_allowed") is not False:
         fail("Studio distribution cutover must remain blocked until lifecycle proofs are complete")
-    if plan.get("cutover_phase") != "portable-source-canonical":
-        fail("Studio portable source phase drifted")
+    if plan.get("cutover_phase") != "legacy-retirement-authorized":
+        fail("Studio cutover phase must record authorized legacy retirement")
     if not (ROOT / "apps" / "studio" / "app.json").is_file():
         fail("canonical Studio app manifest is missing from ordax-apps")
     if plan.get("authority") != "none":
@@ -238,11 +238,21 @@ def validate_studio_migration() -> None:
         fail("legacy repository retirement must be explicitly requested")
     if legacy_gate.get("portable_source_dependency_remaining") is not False:
         fail("portable Studio must not depend on the legacy repository")
-    if legacy_gate.get("safe_to_delete_legacy_repository") is not False:
-        fail("legacy repository deletion must remain blocked until Runtime/Control Plane owners move")
+    if legacy_gate.get("runtime_host_repointed") is not True:
+        fail("Runtime must be repointed before legacy deletion")
+    if legacy_gate.get("provider_connector_repointed") is not True:
+        fail("provider connector must be repointed before legacy deletion")
+    if legacy_gate.get("production_control_plane_repointed") is not True:
+        fail("production Control Plane must be repointed before legacy deletion")
+    if legacy_gate.get("chatgpt_control_plane_runtime_e2e_green") is not True:
+        fail("post-cutover GPT to Runtime smoke must be green")
+    if legacy_gate.get("no_functional_legacy_build_deploy_launch_reference") is not True:
+        fail("functional legacy reference audit must be green")
+    if legacy_gate.get("safe_to_delete_legacy_repository") is not True:
+        fail("legacy repository deletion must be authorized after all gates")
     blockers = legacy_gate.get("blockers")
-    if not isinstance(blockers, list) or len(blockers) < 4:
-        fail("legacy repository deletion blockers must remain explicit")
+    if blockers != []:
+        fail("authorized legacy retirement must have no remaining blockers")
 
     proofs = plan.get("proofs_required")
     required_proofs = {
