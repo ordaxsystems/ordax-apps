@@ -35,14 +35,14 @@
     },
     {
       "id": "ordax.localization",
-      "minMajor": 1,
-      "maxMajor": 1,
+      "minMajor": 2,
+      "maxMajor": 2,
       "optional": false
     },
     {
       "id": "ordax.surface-render-lifecycle",
-      "minMajor": 4,
-      "maxMajor": 4,
+      "minMajor": 5,
+      "maxMajor": 5,
       "optional": false
     }
   ],
