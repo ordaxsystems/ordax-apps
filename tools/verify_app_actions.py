@@ -59,6 +59,23 @@ def main() -> None:
                 app,
                 ai_manifest,
             )
+            provider_path = app_root / "actions" / "providers" / "manifest.json"
+            if not provider_path.is_file() or provider_path.is_symlink():
+                fail(f"{app['id']} must provide actions/providers/manifest.json")
+            builder.validate_application_action_provider_manifest(
+                builder.load_json(
+                    provider_path,
+                    max_bytes=builder.MAX_ACTION_PROVIDER_MANIFEST_BYTES,
+                    label=f"{app['id']}/actions/providers/manifest.json",
+                ),
+                app,
+                manifest,
+                lambda module: builder.read_regular(
+                    app_root / Path(*builder.PurePosixPath(module).parts),
+                    max_bytes=builder.MAX_FILE_BYTES,
+                    label=module,
+                ),
+            )
         except (builder.AppPackageError, OSError, ValueError) as exc:
             fail(f"{app_root.name}: {exc}")
 
@@ -74,6 +91,7 @@ def main() -> None:
     print("APPLICATION_ACTION_MANIFEST_SCHEMA=ordax.application-action-manifest/1")
     print("APPLICATION_ACTION_AUTHORITY=none")
     print("APPLICATION_ACTION_EXECUTION=proposal-only")
+    print("APPLICATION_ACTION_PROVIDER_ARTIFACTS=verified-non-executing")
 
 
 if __name__ == "__main__":
