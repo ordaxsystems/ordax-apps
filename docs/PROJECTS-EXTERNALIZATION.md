@@ -17,7 +17,7 @@ The target App SDK baseline is **1.9.0**.
 Required public contracts:
 
 - `ordax.project-catalog/1`;
-- `ordax.project-cloud-links/1`;
+- `ordax.project-cloud-links-reader/1`;
 - `ordax.device-agent-capability-reader/1`;
 - `ordax.device-agent-capabilities/1`;
 - `ordax.app-activation/1`;
@@ -29,7 +29,7 @@ Projects must never receive raw Device Agent execution. Capability discovery is 
 
 ## Platform prerequisite
 
-Platform PR #1168 publishes `ordax.project-cloud-links/1` in App SDK 1.9 and changes Projects to consume the narrowed public Device Capabilities contract.
+Platform PR #1168 publishes the read-only `ordax.project-cloud-links-reader/1` in App SDK 1.9, injects a facade without `link()`, `unlink()` or `destroy()`, and changes Projects to consume the narrowed public Device Capabilities contract.
 
 Until that PR is merged and its exact merge commit is pinned, the source snapshot remains intentionally unset.
 
@@ -43,7 +43,7 @@ Moves with the app:
 Stays in the platform:
 
 - project catalog owner and persistence;
-- project cloud-link owner and persistence;
+- project cloud-link mutable owner and persistence; the app receives only the read-only reader facade;
 - Device Agent capability reader;
 - app activation;
 - localization/runtime host;
