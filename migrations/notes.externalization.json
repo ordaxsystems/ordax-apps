@@ -48,15 +48,18 @@
     }
   ],
   "storage_migration": {
-    "current_runtime_injection": "createStore",
+    "current_runtime_injection": "appData",
     "target_contract": "ordax.app-data/1",
-    "state": "blocked-pending-runtime-port-cutover",
+    "state": "ready-app-data-runtime",
     "data_owner": "notes",
     "cutover_mode": "clean-prelaunch",
     "production_user_data_present": false,
     "legacy_seed_required": false,
     "legacy_payload_may_be_discarded_at_cutover": true,
-    "uninstall_data_separation_required": true
+    "uninstall_data_separation_required": true,
+    "layout": "ordax.notes-app-data-layout/1",
+    "transition_journal": "ordax.notes-app-data-transition-journal/1",
+    "crash_safe_commit": true
   },
   "proofs_required": [
     "sdk-contracts-pinned",
@@ -154,6 +157,7 @@
   "cutover_evidence": {
     "gate_a_platform_commit": "a8e736ab27b03da6da981959d9c115c4d7de8136",
     "gate_b_source_snapshot": "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6",
-    "distribution_activation": "blocked"
+    "distribution_activation": "blocked",
+    "storage_gate": "app-data-v2-ready"
   }
 }
