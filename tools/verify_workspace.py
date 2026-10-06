@@ -84,8 +84,8 @@ def validate_notes_migration() -> tuple[bool, bool]:
         fail("Notes source coupling inventory drifted")
 
     storage = plan.get("storage_migration") or {}
-    if storage.get("current_runtime_injection") != "createStore":
-        fail("Notes current storage injection must remain explicit until migration")
+    if storage.get("current_runtime_injection") != "appData":
+        fail("Notes runtime storage injection must be App Data")
     if storage.get("target_contract") != "ordax.app-data/1":
         fail("Notes durable state must target ordax.app-data/1")
     if storage.get("cutover_mode") != "clean-prelaunch":
