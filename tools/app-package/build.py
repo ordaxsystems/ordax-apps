@@ -41,7 +41,7 @@ MAX_COMPATIBILITY_BYTES = 64 * 1024
 INCLUDED_ROOTS = ("src", "assets")
 SOURCE_EXTENSIONS = {".mjs", ".js"}
 IMPORT_RE = re.compile(
-    r"""(?:\bfrom\s*|\bimport\s*\(\s*)["']([^"']+)["']"""
+    r"""(?:\bfrom\s*["']([^"']+)["']|\bimport\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["'])"""
 )
 
 
@@ -228,7 +228,8 @@ def validate_source_graph(app_root: Path, files: list[PurePosixPath]) -> None:
             source = payload.decode("utf-8")
         except UnicodeError as exc:
             raise AppPackageError(f"JavaScript source is not UTF-8: {relative}") from exc
-        for specifier in IMPORT_RE.findall(source):
+        for match in IMPORT_RE.finditer(source):
+            specifier = next(group for group in match.groups() if group is not None)
             if not specifier.startswith("."):
                 raise AppPackageError(
                     f"bare/remote import is forbidden in portable app package: {relative} -> {specifier}"
