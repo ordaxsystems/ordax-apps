@@ -123,12 +123,10 @@ class DeterministicAppPackageTests(unittest.TestCase):
             app = fixture(root)
             package = root / "fixture.zip"
             builder.build_package(app, SOURCE_COMMIT, package)
-            with package.open("ab") as stream:
-                stream.write(b"tampered")
-            # zip permits trailing bytes, so deterministic release binding catches this
-            manifest, package_bytes = builder.verify_package(package)
-            self.assertEqual(manifest["component"]["id"], "fixture")
-            self.assertGreater(len(package_bytes), 0)
+            with zipfile.ZipFile(package, "a", compression=zipfile.ZIP_STORED) as archive:
+                archive.writestr("system/apps/fixture/src/runtime.mjs", b"tampered")
+            with self.assertRaisesRegex(builder.AppPackageError, "duplicated"):
+                builder.verify_package(package)
 
     def test_bare_platform_or_remote_import_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
