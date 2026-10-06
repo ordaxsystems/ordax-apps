@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import tempfile
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -16,6 +17,7 @@ LOCK_PATH = ROOT / "platform-sdk.lock.json"
 TEST_PATHS = (
     ROOT / "tests" / "studio_sdk_conformance.mjs",
     ROOT / "tests" / "studio_sdk_v2_conformance.mjs",
+    ROOT / "tests" / "studio_sdk_v3_conformance.mjs",
 )
 MAX_BUNDLE_BYTES = 1024 * 1024
 MAX_CONTRACT_BYTES = 512 * 1024
@@ -27,15 +29,18 @@ COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 SOURCE_PATHS = (
     "system/contracts/device-action-envelope.mjs",
     "system/contracts/device-action-envelope-v2.mjs",
+    "system/contracts/device-action-result.mjs",
     "system/contracts/device-capabilities.mjs",
     "system/contracts/file-space.mjs",
     "system/contracts/intelligence.mjs",
+    "system/contracts/locale-profile.mjs",
     "system/contracts/localization.mjs",
     "system/contracts/memory.mjs",
     "system/contracts/project-catalog.mjs",
     "system/contracts/studio-action-context.mjs",
     "system/contracts/studio-runtime.mjs",
     "system/contracts/studio-runtime-v2.mjs",
+    "system/contracts/studio-runtime-v3.mjs",
 )
 
 
@@ -150,8 +155,8 @@ def main() -> None:
     print("ORDAX_STUDIO_SDK_CONFORMANCE=PASS")
     print(f"SDK_COMMIT={commit}")
     print(f"SDK_CONTRACT_MODULE_COUNT={len(SOURCE_PATHS)}")
-    print("STUDIO_PUBLIC_PORTS=studio-runtime-v2,memory,intelligence,localization")
-    print("STUDIO_COMPATIBILITY_PORT=studio-runtime-v1")
+    print("STUDIO_PUBLIC_PORTS=studio-runtime-v3,memory,intelligence,localization")
+    print("STUDIO_COMPATIBILITY_PORTS=studio-runtime-v1,studio-runtime-v2")
     print("RAW_DEVICE_AGENT_EXPORTED=NO")
     print("PORTABLE_STUDIO_AUTHORITY=none")
 
