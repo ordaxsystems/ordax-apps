@@ -1,0 +1,12 @@
+{
+  "$schema": "ordax.notes-platform-lifecycle-lock/1",
+  "repository": "washingtonmsdj/prototipo-ordax-os",
+  "commit": "e221069507871659f1a7597ffb8b7e04d17dcc23",
+  "tool_path": "tools/runtime-component-channel",
+  "release_schema": "prototype-ordax.runtime-component-release/2",
+  "package_schema": "prototype-ordax.runtime-component-package/1",
+  "compatibility_schema": "ordax.component-compatibility/1",
+  "canonical_source_repository": "washingtonmsdj/ordax-apps",
+  "component_id": "notes",
+  "authority": "none"
+}
