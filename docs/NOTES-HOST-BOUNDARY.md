@@ -8,8 +8,8 @@ The host injects one object, `ordaxNotesHost`, whose facets implement the pinned
 - `appActivation` → `ordax.app-activation/1`;
 - `fileSpace` → `ordax.file-space/11`;
 - `intelligence` → `ordax.intelligence/1`;
-- `localization` → `ordax.localization/1`;
-- `surfaceLifecycle` → `ordax.surface-render-lifecycle/4`.
+- `localization` → `ordax.localization/2`;
+- `surfaceLifecycle` → `ordax.surface-render-lifecycle/5`.
 
 `fileSpace` and `intelligence` are optional product capabilities. The other facets are required before a distributable Notes package may be promoted.
 
