@@ -536,6 +536,8 @@ def validate_application_action_provider_manifest(
         key = (adapter_id, revision)
         if key in declared:
             raise AppPackageError("Application Action provider artifact is duplicated")
+        if not isinstance(provider["module"], str):
+            raise AppPackageError("Application Action provider module path must be text")
         module = safe_relative(
             provider["module"],
             "Application Action provider module",
