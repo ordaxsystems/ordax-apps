@@ -1,0 +1,14 @@
+{
+  "schema": "ordax.component-manifest/1",
+  "id": "notes",
+  "title": "Notas",
+  "kind": "app",
+  "version": "0.4.1",
+  "releaseMode": "component-slot",
+  "criticality": "optional",
+  "failureDomain": "app",
+  "restartScope": "component",
+  "healthMode": "runtime",
+  "owner": "washingtonmsdj/ordax-apps",
+  "dependencies": []
+}

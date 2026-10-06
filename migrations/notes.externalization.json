@@ -1,11 +1,11 @@
 {
   "$schema": "ordax.app-externalization-plan/1",
   "app_id": "notes",
-  "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
-  "source_path_current": "system/apps/notes",
+  "source_repository_current": "washingtonmsdj/ordax-apps",
+  "source_path_current": "apps/notes",
   "target_repository": "washingtonmsdj/ordax-apps",
   "target_path": "apps/notes",
-  "source_of_truth_state": "platform-until-cutover",
+  "source_of_truth_state": "ordax-apps-canonical",
   "platform_contracts_required": [
     "ordax.app-activation/1",
     "ordax.app-data/1",
@@ -146,9 +146,14 @@
     "file_count": 19,
     "transfer_map": "migrations/notes.gate-b-transfer-map.json"
   },
-  "source_cutover_allowed": false,
+  "source_cutover_allowed": true,
   "distribution_activation_allowed": false,
   "host_boundary": "migrations/notes.host-boundary.json",
   "distribution_contract": "migrations/notes.distribution.json",
-  "compatibility_descriptor": "migrations/notes.compatibility.json"
+  "compatibility_descriptor": "migrations/notes.compatibility.json",
+  "cutover_evidence": {
+    "gate_a_platform_commit": "a8e736ab27b03da6da981959d9c115c4d7de8136",
+    "gate_b_source_snapshot": "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6",
+    "distribution_activation": "blocked"
+  }
 }
