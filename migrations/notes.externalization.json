@@ -6,7 +6,6 @@
   "target_repository": "washingtonmsdj/ordax-apps",
   "target_path": "apps/notes",
   "source_of_truth_state": "platform-until-cutover",
-  "cutover_allowed": false,
   "platform_contracts_required": [
     "ordax.app-activation/1",
     "ordax.app-data/1",
@@ -86,7 +85,9 @@
     "dual_source_allowed": false,
     "platform_absence_proof_required_before_copy": true,
     "package_lifecycle_proof_runs_after_source_cutover": true,
-    "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
+    "production_rule_after_first_user_data": "staged-handoff-no-data-loss",
+    "source_gate": "platform-absence-before-copy",
+    "distribution_gate": "sdk-app-data-package-lifecycle-after-copy"
   },
   "gate_a_platform_removal": {
     "remove_owned_source": [
@@ -140,5 +141,7 @@
       "system/services/i18n/catalog/notes.mjs"
     ],
     "purpose": "reproducible Gate B source transfer after platform absence proof"
-  }
+  },
+  "source_cutover_allowed": false,
+  "distribution_activation_allowed": false
 }
