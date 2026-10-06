@@ -251,7 +251,7 @@ class DeterministicAppPackageTests(unittest.TestCase):
             root = Path(td)
             app = fixture(
                 root,
-                runtime_source='export const componentRuntime = `\${import("remote-package")}`;\\n',
+                runtime_source='export const componentRuntime = `${import("remote-package")}`;\\n',
             )
             with self.assertRaisesRegex(builder.AppPackageError, "bare/remote import"):
                 builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
