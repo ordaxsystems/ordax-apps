@@ -13,9 +13,9 @@ O boundary público e a conformance externa do Studio estão publicados e integr
 - `prototipo-ordax-os#1140` integrou `ordax.device-action-result/1` + `ordax.studio-runtime/3` após Foundation/Release/USB/QEMU/UEFI verdes;
 - `prototipo-ordax-os#1144` publicou esses contratos originalmente no App SDK **1.8.0**;
 - `ordax-apps#61` avançou o consumidor Studio para esse boundary e provou v1/v2/v3 no CI externo;
-- o pin global atual avançou de forma aditiva para App SDK **1.11.0** após Projects 1.9 + Application Actions 1.10;
-- `platform-sdk.lock.json` aponta para `prototipo-ordax-os@6c79b182c582182035d7a01c196953b7a3fd8cba`;
-- bundle SHA-256: `477d1f889d53296ffa562208a6751376740baaccd09bb3e032fb40aec5b3b15f`;
+- o pin global atual avançou de forma aditiva para App SDK **1.12.0** após Projects 1.9 + Application Actions 1.10/1.11 e provider tipado 1.12;
+- `platform-sdk.lock.json` aponta para `prototipo-ordax-os@8f96e79075d06bd79bd550e5c5593985e11dce38`;
+- bundle SHA-256: `de6bb777dde45d553035136b63fb685aab9232388c1145705c4303936a5ac85c`;
 - `authority:none` permanece obrigatório.
 
 O verificador externo não copia implementação da plataforma. Ele baixa somente módulos públicos registrados no bundle e valida cada Git blob antes de executar os fixtures.
@@ -51,9 +51,9 @@ Windows e OrdaX OS devem expor a mesma semântica tipada pelo boundary público.
 
 Pin global do Studio:
 
-- bundle: **1.11.0**;
-- platform commit: `298f62c9ab237efa90be5462398b4d90a0639006`;
-- digest: `f21bfa559d9fff9284ed20003fa278e6ee9681c49b340af3ab34e09fa7e232a6`;
+- bundle: **1.12.0**;
+- platform commit: `8f96e79075d06bd79bd550e5c5593985e11dce38`;
+- digest: `de6bb777dde45d553035136b63fb685aab9232388c1145705c4303936a5ac85c`;
 - compatibility policy: `contract-major`;
 - authority: `none`.
 
