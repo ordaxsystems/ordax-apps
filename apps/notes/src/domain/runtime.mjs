@@ -15,13 +15,33 @@ import {
 export const NOTES_RUNTIME_SCHEMA = "ordax.notes-runtime/1";
 export const NOTES_HOME_PROJECT_ID = "meu-espaco";
 
-function defaultSnapshot(now = Date.now()) {
+function domainCopyText(value, field, maxLength) {
+  if (typeof value !== "string" || value.length === 0 || value.length > maxLength || value.includes("\0")) {
+    throw new TypeError(`Notes domain copy ${field} is invalid`);
+  }
+  return value;
+}
+
+function assertNotesDomainCopy(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Notes domain copy is required");
+  }
+  return Object.freeze({
+    homeProjectName: domainCopyText(value.homeProjectName, "homeProjectName", 160),
+    untitledNoteTitle: domainCopyText(value.untitledNoteTitle, "untitledNoteTitle", 1024),
+    duplicateSuffix: domainCopyText(value.duplicateSuffix, "duplicateSuffix", 64),
+    newTaskText: domainCopyText(value.newTaskText, "newTaskText", 2048),
+    referenceFallback: domainCopyText(value.referenceFallback, "referenceFallback", 512),
+  });
+}
+
+function defaultSnapshot(now = Date.now(), copy) {
   return validateNotesSnapshot({
     $schema: NOTES_SNAPSHOT_SCHEMA,
     selectedProjectId: NOTES_HOME_PROJECT_ID,
     selectedNoteId: null,
     projects: [
-      { id: NOTES_HOME_PROJECT_ID, name: "Meu espaço", createdAt: now, updatedAt: now },
+      { id: NOTES_HOME_PROJECT_ID, name: copy.homeProjectName, createdAt: now, updatedAt: now },
     ],
     notes: [],
   });
@@ -73,13 +93,14 @@ function mutationPatch(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
-function duplicateNoteTitle(title) {
-  const source = String(title ?? "").trim() || "Sem título";
-  const suffix = " — cópia";
+function duplicateNoteTitle(title, copy) {
+  const source = String(title ?? "").trim() || copy.untitledNoteTitle;
+  const suffix = copy.duplicateSuffix;
   return `${source.slice(0, 1024 - suffix.length)}${suffix}`;
 }
 
-export function createNotesRuntime({ store = null, now = () => Date.now() } = {}) {
+export function createNotesRuntime({ store = null, now = () => Date.now(), copy } = {}) {
+  const domainCopy = assertNotesDomainCopy(copy);
   let memoryStore = null;
   if (store === null) {
     let memory = null;
@@ -95,9 +116,9 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
   let snapshot;
   try {
     snapshot = notesStore.load();
-    snapshot = snapshot === null ? defaultSnapshot(now()) : validateNotesSnapshot(snapshot);
+    snapshot = snapshot === null ? defaultSnapshot(now(), domainCopy) : validateNotesSnapshot(snapshot);
   } catch {
-    snapshot = defaultSnapshot(now());
+    snapshot = defaultSnapshot(now(), domainCopy);
   }
   let initialSaveSucceeded = true;
   try {
@@ -233,7 +254,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       draft.notes.unshift({
         id: noteId,
         projectId,
-        title: "Sem título",
+        title: domainCopy.untitledNoteTitle,
         body: "",
         richBody: createNotesRichBodyFromPlainText(""),
         favorite: false,
@@ -259,7 +280,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       const duplicate = {
         ...source,
         id: duplicateId,
-        title: duplicateNoteTitle(source.title),
+        title: duplicateNoteTitle(source.title, domainCopy),
         favorite: false,
         deletedAt: null,
         createdAt: stamp,
@@ -432,7 +453,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       }
       return commit(draft);
     },
-    addTask(noteId, text = "Novo item") {
+    addTask(noteId, text = domainCopy.newTaskText) {
       const draft = thaw(snapshot);
       const index = requireNoteIndex(draft, noteId);
       if (draft.notes[index].deletedAt !== null) return runtime.getSnapshot();
@@ -486,7 +507,7 @@ export function createNotesRuntime({ store = null, now = () => Date.now() } = {}
       draft.notes[index].references.push({
         id: id("ref"),
         kind: reference?.kind === "file" ? "file" : "link",
-        title: String(reference?.title ?? "Referência").slice(0, 512),
+        title: String(reference?.title ?? domainCopy.referenceFallback).slice(0, 512),
         detail: String(reference?.detail ?? "").slice(0, 1024),
         href: reference?.kind === "file" ? "" : String(reference?.href ?? "").slice(0, 4096),
         path: reference?.kind === "file" ? String(reference?.path ?? "").slice(0, 4096) : "",
