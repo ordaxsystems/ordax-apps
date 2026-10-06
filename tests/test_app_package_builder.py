@@ -48,6 +48,27 @@ def fixture(root: Path, *, runtime_source: str = 'import { value } from "./domai
     (app / "src" / "domain.mjs").write_text("export const value = 7;\n", encoding="utf-8")
     (app / "assets" / "fixture.css").write_text(".fixture { display: block; }\n", encoding="utf-8")
     write_json(
+        app / "ai" / "manifest.json",
+        {
+            "schema": "ordax.app-intelligence-manifest/1",
+            "appId": "fixture",
+            "appVersion": "0.1.0",
+            "authority": "none",
+            "execution": "declarative-only",
+            "instructions": ["Use o Fixture apenas para os recursos declarados pelo app."],
+            "intents": [
+                {
+                    "id": "fixture.read-value",
+                    "description": "Ler o valor de teste do app.",
+                    "effect": "read",
+                    "confirmation": "none",
+                    "parameters": [],
+                    "examples": ["Leia o valor do Fixture."],
+                }
+            ],
+        },
+    )
+    write_json(
         app / "compatibility.json",
         {
             "schema": "ordax.component-compatibility/1",
@@ -105,6 +126,7 @@ class DeterministicAppPackageTests(unittest.TestCase):
                 self.assertIn("system/apps/fixture/src/runtime.mjs", names)
                 self.assertIn("system/apps/fixture/src/domain.mjs", names)
                 self.assertIn("system/apps/fixture/assets/fixture.css", names)
+                self.assertIn("system/apps/fixture/ai/manifest.json", names)
                 self.assertNotIn("system/apps/fixture/compatibility.json", names)
 
             release = json.loads(release_a.read_text(encoding="utf-8"))
@@ -158,6 +180,47 @@ class DeterministicAppPackageTests(unittest.TestCase):
             manifest["owner"] = "washingtonmsdj/prototipo-ordax-os"
             write_json(manifest_path, manifest)
             with self.assertRaisesRegex(builder.AppPackageError, "owner must be"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_first_party_app_requires_ai_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            (app / "ai" / "manifest.json").unlink()
+            with self.assertRaisesRegex(builder.AppPackageError, "must provide ai/manifest.json"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_ai_manifest_identity_must_match_app_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            path = app / "ai" / "manifest.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["appId"] = "other"
+            write_json(path, value)
+            with self.assertRaisesRegex(builder.AppPackageError, "identity does not match"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_ai_manifest_cannot_grant_execution_or_skip_external_confirmation(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            path = app / "ai" / "manifest.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["execution"] = "direct"
+            write_json(path, value)
+            with self.assertRaisesRegex(builder.AppPackageError, "cannot grant execution"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            path = app / "ai" / "manifest.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["intents"][0]["effect"] = "external-write"
+            value["intents"][0]["confirmation"] = "none"
+            write_json(path, value)
+            with self.assertRaisesRegex(builder.AppPackageError, "require confirmation policy"):
                 builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
 
     @unittest.skipIf(os.name == "nt", "symlink creation semantics are platform-dependent on Windows")
