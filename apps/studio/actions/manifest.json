@@ -1,0 +1,221 @@
+{
+  "schema": "ordax.application-action-manifest/1",
+  "appId": "studio",
+  "appVersion": "0.4.4",
+  "authority": "none",
+  "execution": "proposal-only",
+  "capabilities": [
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "studio",
+      "actionId": "studio.list-projects",
+      "title": "Listar projetos",
+      "description": "Consultar os projetos disponíveis no ORDAX Studio.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "studio-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [],
+      "riskClass": "read-only",
+      "confirmation": "none",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/studio/actions/manifest.json"
+    },
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "studio",
+      "actionId": "studio.select-project",
+      "title": "Selecionar projeto",
+      "description": "Selecionar um projeto existente como contexto ativo.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "studio-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [
+        {
+          "id": "project",
+          "type": "string",
+          "required": true,
+          "maxLength": 240
+        }
+      ],
+      "riskClass": "local-change",
+      "confirmation": "none",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/studio/actions/manifest.json"
+    },
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "studio",
+      "actionId": "studio.inspect-project",
+      "title": "Inspecionar projeto",
+      "description": "Consultar inventário, busca, diff ou briefing do projeto selecionado.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "studio-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [
+        {
+          "id": "query",
+          "type": "string",
+          "required": false,
+          "maxLength": 1024
+        }
+      ],
+      "riskClass": "read-only",
+      "confirmation": "none",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/studio/actions/manifest.json"
+    },
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "studio",
+      "actionId": "studio.preview-project",
+      "title": "Controlar preview",
+      "description": "Consultar ou controlar o preview supervisionado do projeto.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "studio-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [
+        {
+          "id": "operation",
+          "type": "enum",
+          "required": true,
+          "values": [
+            "status",
+            "start",
+            "stop",
+            "capture",
+            "logs"
+          ]
+        }
+      ],
+      "riskClass": "local-change",
+      "confirmation": "policy-gated",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/studio/actions/manifest.json"
+    },
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "studio",
+      "actionId": "studio.check-project-health",
+      "title": "Verificar saúde do projeto",
+      "description": "Consultar saúde, runtime e estado do produto para o projeto atual.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "studio-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [],
+      "riskClass": "read-only",
+      "confirmation": "none",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/studio/actions/manifest.json"
+    },
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "studio",
+      "actionId": "studio.open-managed-browser",
+      "title": "Abrir navegador gerenciado",
+      "description": "Abrir uma URL HTTP ou HTTPS no navegador gerenciado pelo Runtime.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "studio-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [
+        {
+          "id": "url",
+          "type": "uri",
+          "required": true,
+          "maxLength": 2048,
+          "schemes": [
+            "http",
+            "https"
+          ]
+        }
+      ],
+      "riskClass": "external-effect",
+      "confirmation": "policy-gated",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/studio/actions/manifest.json"
+    },
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "studio",
+      "actionId": "studio.prepare-blender",
+      "title": "Preparar Blender",
+      "description": "Preparar ou consultar a integração autorizada do Blender.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "studio-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [
+        {
+          "id": "operation",
+          "type": "enum",
+          "required": true,
+          "values": [
+            "prepare",
+            "install-bridge",
+            "list",
+            "adopt",
+            "start"
+          ]
+        }
+      ],
+      "riskClass": "local-change",
+      "confirmation": "policy-gated",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/studio/actions/manifest.json"
+    }
+  ]
+}
