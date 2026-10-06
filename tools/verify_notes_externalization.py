@@ -383,6 +383,9 @@ def main() -> None:
 
     if plan.get("compatibility_descriptor") != "migrations/notes.compatibility.json":
         fail("Notes migration must bind the canonical compatibility descriptor")
+
+    if plan.get("production_trust_lock") != "migrations/notes.platform-trust.lock.json":
+        fail("Notes migration must bind the canonical production trust lock")
     compatibility = json.loads(COMPATIBILITY_PATH.read_text(encoding="utf-8"))
     expected_compatibility = {
         "schema": "ordax.component-compatibility/1",

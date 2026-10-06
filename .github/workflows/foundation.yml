@@ -30,6 +30,7 @@ jobs:
           python3 -m json.tool migrations/notes.compatibility.json >/dev/null
           python3 -m json.tool migrations/notes.platform-sdk.lock.json >/dev/null
           python3 -m json.tool migrations/notes.platform-lifecycle.lock.json >/dev/null
+          python3 -m json.tool migrations/notes.platform-trust.lock.json >/dev/null
           python3 -m json.tool migrations/studio.legacy-method-ownership.json >/dev/null
           python3 -m json.tool migrations/studio.distribution.json >/dev/null
 
@@ -53,6 +54,17 @@ jobs:
 
       - name: Prove Notes App Data store
         run: node --test apps/notes/tests/app_data_store.test.mjs
+
+      - name: Checkout pinned OrdaX OS production trust policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: washingtonmsdj/prototipo-ordax-os
+          ref: ef319ba940fa36c81699b73ba4195a178891e70f
+          path: .ordax-platform-trust
+          persist-credentials: false
+
+      - name: Prove Notes production trust gate
+        run: python3 tools/verify_notes_production_trust.py
 
       - name: Checkout pinned OrdaX OS lifecycle owner
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

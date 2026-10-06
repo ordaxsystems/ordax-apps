@@ -177,9 +177,11 @@
     ],
     "platform_trust_policy": {
       "repository": "washingtonmsdj/prototipo-ordax-os",
-      "commit": "f46603909ffd08d442a6be5ff6539b8c2a273c77",
+      "commit": "ef319ba940fa36c81699b73ba4195a178891e70f",
       "path": "docs/contracts/runtime-component-trust-policy.json",
-      "status": "operator-ceremony-pending"
+      "status": "operator-ceremony-pending",
+      "lock_file": "migrations/notes.platform-trust.lock.json"
     }
-  }
+  },
+  "production_trust_lock": "migrations/notes.platform-trust.lock.json"
 }

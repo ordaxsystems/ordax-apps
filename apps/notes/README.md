@@ -6,7 +6,7 @@ Fonte portátil canônica do aplicativo **Notas** no ecossistema OrdaX.
 
 Este diretório é o owner de produto após o cutover remove-first do OrdaX OS.
 
-O app ainda **não está autorizado para distribuição/instalação**. O manifesto usa `component-slot`, mas `distribution_activation_allowed=false` permanece no plano de externalização até os gates de lifecycle e rollback serem concluídos. O boundary de persistência App Data v2 já está concluído.
+O app ainda **não está autorizado para distribuição/instalação em produção**. O manifesto usa `component-slot`, e os gates técnicos de package, lifecycle, failed-update retention, rollback, offline reinstall e uninstall preservando App Data já foram provados em CI. `distribution_activation_allowed=false` permanece porque o trust de produção da plataforma ainda está em `operator-ceremony-pending`: o anchor canônico não está pinado e publicação/ativação de `component-slot` continuam desautorizadas. O boundary de persistência App Data v2 também está concluído.
 
 ## Boundary
 

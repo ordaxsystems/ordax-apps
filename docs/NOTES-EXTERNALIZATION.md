@@ -46,9 +46,9 @@ is no longer present in the current platform source. Notes now owns `system/apps
 
 Do not reconstruct the private helper import during extraction. The migration plan records this dependency as resolved evidence rather than an open blocker.
 
-## Durable storage blocker
+## Durable storage — concluído
 
-The current Notes component runtime still receives a host factory named `createStore` and creates the Notes runtime from that store. This is still platform-composition coupling and is not the final external-app storage boundary.
+The external Notes runtime now receives the public `appData` port and persists exclusively through `ordax.app-data/1`. The former `createStore` platform-composition coupling was removed during Gate B/Gate C.
 
 The target is:
 
@@ -115,9 +115,9 @@ Before copying Notes into `ordax-apps`:
 - [x] pre-launch cutover explicitly requires no legacy data seed;
 - [x] Notes Intelligence uses app-owned code over the injected public Intelligence port;
 - [x] Notes-owned contracts have an explicit migration destination: the Notes package;
-- [ ] product/catalog metadata no longer imports repo-local Notes implementation;
-- [ ] platform works, boots and reports Notes as absent/uninstalled;
-- [ ] old platform app implementation and residual launch paths are removed.
+- [x] product/catalog metadata no longer imports repo-local Notes implementation;
+- [x] platform works, boots and reports Notes as absent/uninstalled;
+- [x] old platform app implementation and residual launch paths are removed.
 
 App SDK 1.6/App Data are deliberately **not** Gate A requirements. They are Gate C requirements because this migration allows temporary app absence and has no production user data.
 
@@ -148,15 +148,20 @@ After Gate A, copy the last canonical Notes source into `apps/notes` and mark `o
 
 Only after Gate B, adapt and prove the external source:
 
-- [ ] required public platform contracts are accepted from App SDK 1.6.0 or a compatible newer bundle;
-- [ ] `ordax.app-data/1` replaces the old `createStore` runtime boundary;
+- [x] required public platform contracts are accepted from the exact App SDK 1.6.0 lock;
+- [x] `ordax.app-data/1` replaces the old `createStore` runtime boundary;
+- [x] deterministic Notes package builds entirely in `ordax-apps`;
+- [x] platform verifies package identity/provenance/compatibility without source checkout;
+- [x] install/stage/health/promote proof exists;
+- [x] failed update retains last-known-good and rollback is proven;
+- [x] offline reinstall works from a verified local artifact;
+- [x] uninstall keeps App Data separate from payload deletion;
+- [ ] canonical runtime-component trust anchor is pinned after the operator ceremony;
+- [ ] component publication is explicitly authorized;
+- [ ] production component-slot activation is explicitly authorized;
+- [ ] signed catalog/Store projection exposes Notes only when the production artifact is genuinely publishable.
 
-- [ ] deterministic Notes package builds entirely in `ordax-apps`;
-- [ ] platform verifies package identity/provenance/compatibility without source checkout;
-- [ ] install/stage/health/promote/rollback proof exists;
-- [ ] offline reinstall works from a verified local artifact;
-- [ ] uninstall keeps App Data separate from payload deletion;
-- [ ] signed catalog/Store projection exposes Notes only when the artifact is genuinely available.
+The remaining blockers are therefore production trust/authorization gates, not Notes product or lifecycle gaps. `tools/verify_notes_production_trust.py` checks them against an exact platform policy lock and fails closed.
 
 Long-lived dual source is forbidden. Temporary absence is explicitly allowed for this pre-launch migration.
 ## CI preflight
