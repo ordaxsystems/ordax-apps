@@ -14,24 +14,31 @@ BUNDLE_VERSION_RE = re.compile(
 
 EXPECTED_CONTRACTS = {
     "ordax.app-activation/1",
+    "ordax.app-data/1",
+    "ordax.app-intelligence-manifest/1",
+    "prototype-ordax.component-localization/1",
     "ordax.component-manifest/1",
     "ordax.component-runtime/1",
     "ordax.device-action-receipt/1",
     "ordax.device-action-request/1",
     "ordax.device-action-request/2",
+    "ordax.device-action-result/1",
     "ordax.device-agent-capabilities/1",
     "ordax.device-agent-capability-reader/1",
     "ordax.file-space/11",
     "ordax.first-party-app-delivery-policy/1",
     "ordax.intelligence/1",
-    "ordax.localization/1",
+    "ordax.locale-profile/1",
+    "ordax.localization/2",
     "prototype-ordax.localization-pack/1",
+    "prototype-ordax.localization-pack-release/1",
     "ordax.memory/1",
     "ordax.project-catalog/1",
     "ordax.studio-action-context/1",
     "ordax.studio-runtime/1",
     "ordax.studio-runtime/2",
-    "ordax.surface-render-lifecycle/4",
+    "ordax.studio-runtime/3",
+    "ordax.surface-render-lifecycle/5",
 }
 
 
@@ -62,7 +69,7 @@ def main() -> None:
         fail("SDK lock must not carry authority")
 
     expected_hash = lock.get("sha256")
-    if not isinstance(expected_hash, str) or len(expected_hash) != 64:
+    if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
         fail("SDK SHA-256 pin is invalid")
 
     url = (
