@@ -36,6 +36,15 @@ class NotesPortableBoundaryTests(unittest.TestCase):
         for token in FORBIDDEN:
             self.assertNotIn(token, text)
 
+    def test_text_file_import_is_wired_through_app_owned_service(self):
+        ui = (SRC / "ui" / "workspace-controls.mjs").read_text(encoding="utf-8")
+        importer = (SRC / "services" / "file-import.mjs").read_text(encoding="utf-8")
+        self.assertIn('createNotesFileImporter', ui)
+        self.assertIn('"import-text-file"', ui)
+        self.assertIn('"import-selected-text-file"', ui)
+        self.assertIn('files.readTextFile(path)', importer)
+        self.assertNotIn("/__ordax/native/", importer)
+
     def test_runtime_version_mirror_matches_manifest(self):
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         runtime = (SRC / "runtime.mjs").read_text(encoding="utf-8")
