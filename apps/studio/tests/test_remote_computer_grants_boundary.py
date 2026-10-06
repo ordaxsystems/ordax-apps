@@ -20,13 +20,15 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
 
     def test_portable_ui_exposes_only_reviewed_owner_profiles(self) -> None:
         for mode in (
+            "full-computer-control",
             "interactive-computer-control",
             "computer-filesystem",
             "computer-clipboard",
             "computer-process-control",
         ):
             self.assertIn(mode, self.computer)
-        self.assertNotIn("full-computer-control", self.computer)
+        self.assertIn("Acesso total remoto", self.computer)
+        self.assertIn("Ative e salve Full Access local", self.computer)
         self.assertNotIn("terminal.exec", self.computer)
 
     def test_portable_ui_has_no_control_plane_or_token_implementation(self) -> None:
