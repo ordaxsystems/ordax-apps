@@ -19,14 +19,34 @@ def validate_notes_migration() -> None:
         fail("unexpected Notes externalization plan schema")
     if plan.get("app_id") != "notes":
         fail("Notes externalization plan has wrong app id")
-    if plan.get("source_repository_current") != "washingtonmsdj/prototipo-ordax-os":
-        fail("Notes source repository must remain platform until cutover")
+    source_cutover_allowed = plan.get("source_cutover_allowed")
+    distribution_activation_allowed = plan.get("distribution_activation_allowed")
+    if source_cutover_allowed not in (False, True):
+        fail("Notes source_cutover_allowed must be boolean")
+    if distribution_activation_allowed not in (False, True):
+        fail("Notes distribution_activation_allowed must be boolean")
+
+    expected_source_repo = (
+        "washingtonmsdj/ordax-apps"
+        if source_cutover_allowed
+        else "washingtonmsdj/prototipo-ordax-os"
+    )
+    expected_source_path = "apps/notes" if source_cutover_allowed else "system/apps/notes"
+    expected_source_state = (
+        "ordax-apps-canonical"
+        if source_cutover_allowed
+        else "platform-until-cutover"
+    )
+    if plan.get("source_repository_current") != expected_source_repo:
+        fail("Notes source repository does not match source cutover state")
+    if plan.get("source_path_current") != expected_source_path:
+        fail("Notes source path does not match source cutover state")
     if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
         fail("Notes target repository is invalid")
-    if plan.get("source_of_truth_state") != "platform-until-cutover":
-        fail("Notes must retain one source of truth before cutover")
-    if plan.get("cutover_allowed") is not False:
-        fail("Notes cutover must remain blocked until proofs are complete")
+    if plan.get("source_of_truth_state") != expected_source_state:
+        fail("Notes source-of-truth state does not match source cutover state")
+    if distribution_activation_allowed and not source_cutover_allowed:
+        fail("Notes distribution cannot activate before source cutover")
     if plan.get("authority") != "none":
         fail("externalization metadata must not carry authority")
 
@@ -310,7 +330,8 @@ def main() -> None:
     print(f"FIRST_PARTY_TARGET_COUNT={len(targets)}")
     print(f"PUBLISHED_CONTRACT_COUNT={len(expected_contracts)}")
     print("STORE_STRUCTURAL_NON_REMOVABLE=YES")
-    print("NOTES_CUTOVER_ALLOWED=NO")
+    print(f"NOTES_SOURCE_CUTOVER_ALLOWED={'YES' if source_cutover_allowed else 'NO'}")
+    print(f"NOTES_DISTRIBUTION_ACTIVATION_ALLOWED={'YES' if distribution_activation_allowed else 'NO'}")
     print("STUDIO_SOURCE_CANONICAL=ORDAX_APPS")
     print("STUDIO_DISTRIBUTION_CUTOVER_ALLOWED=NO")
     print("APP_INSTALL_AUTHORITY=PLATFORM_ONLY")
