@@ -17,14 +17,15 @@
     "ordax.localization/2",
     "prototype-ordax.localization-pack/1",
     "ordax.project-catalog/1",
+    "ordax.project-cloud-links/1",
     "ordax.project-cloud-links-reader/1",
     "ordax.surface-render-lifecycle/5"
   ],
   "target_sdk": {
     "minimum_bundle_version": "1.9.0",
-    "reason": "Projects externalization requires public project-cloud-links-reader and the narrowed Device Agent capability-reader boundary",
+    "reason": "Projects externalization requires public cloud-link data plus read-only cloud-links reader and the narrowed Device Agent capability-reader boundary",
     "platform_pr": 1168,
-    "platform_pr_head": "c35f22ccab4f47da4211547a7e7a929f4ff254e8",
+    "platform_pr_head": "86e57b54f9e059c45da80d7579873528ddb45e89",
     "state": "pending-platform-merge"
   },
   "app_owned_source": [
