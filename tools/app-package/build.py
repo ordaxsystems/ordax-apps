@@ -24,6 +24,9 @@ COMPATIBILITY_SCHEMA = "ordax.component-compatibility/1"
 COMPONENT_MANIFEST_SCHEMA = "ordax.component-manifest/1"
 APP_INTELLIGENCE_MANIFEST_SCHEMA = "ordax.app-intelligence-manifest/1"
 APP_INTELLIGENCE_EXECUTION_MODE = "declarative-only"
+APPLICATION_ACTION_MANIFEST_SCHEMA = "ordax.application-action-manifest/1"
+APPLICATION_ACTION_CAPABILITY_SCHEMA = "ordax.application-action-capability/1"
+APPLICATION_ACTION_EXECUTION_MODE = "proposal-only"
 SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
 CREATED_FROM_RECIPE = "runtime-component/package/1"
 PACKAGE_MANIFEST_NAME = "component-package.json"
@@ -35,9 +38,20 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 CONTRACT_ID_RE = re.compile(r"^[a-z0-9]+(?:[.-][a-z0-9]+)*$")
 INTENT_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}(?:\.[a-z][a-z0-9-]{0,63})+$")
 PARAMETER_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+ACTION_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
+ACTION_PARAMETER_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+PROVIDER_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,127}$")
+URI_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]{0,31}$")
 AI_EFFECTS = {"none", "read", "write", "external-write", "destructive"}
 AI_CONFIRMATION_MODES = {"none", "policy", "explicit"}
 AI_PARAMETER_TYPES = {"string", "number", "integer", "boolean", "string-list", "json"}
+ACTION_PARAMETER_TYPES = {"string", "boolean", "integer", "number", "enum", "uri", "resource-grant-id"}
+ACTION_RISK_CLASSES = {"read-only", "local-change", "external-effect", "privileged"}
+ACTION_CONFIRMATION_MODES = {"none", "policy-gated", "always"}
+FORBIDDEN_ACTION_PARAMETER_IDS = {
+    "path", "raw-path", "host-path", "command", "shell", "executable", "executable-path",
+    "wineprefix", "wine-prefix", "argv", "environment", "env", "working-directory",
+}
 
 MAX_FILES = 256
 MAX_FILE_BYTES = 2 * 1024 * 1024
@@ -45,8 +59,9 @@ MAX_TOTAL_BYTES = 16 * 1024 * 1024
 MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_COMPATIBILITY_BYTES = 64 * 1024
 MAX_AI_MANIFEST_BYTES = 128 * 1024
+MAX_ACTION_MANIFEST_BYTES = 256 * 1024
 
-INCLUDED_ROOTS = ("src", "assets", "ai")
+INCLUDED_ROOTS = ("src", "assets", "ai", "actions")
 SOURCE_EXTENSIONS = {".mjs", ".js"}
 IMPORT_RE = re.compile(
     r"""(?:\bfrom\s*["']([^"']+)["']|\bimport\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["'])"""
@@ -218,6 +233,264 @@ def validate_app_intelligence_manifest(value: dict, app: dict) -> dict:
         ]
         if len(set(normalized_examples)) != len(normalized_examples):
             raise AppPackageError("AI manifest intent examples must be unique")
+    return value
+
+
+
+def _bounded_action_text(value: object, label: str, max_chars: int) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > max_chars
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+    ):
+        raise AppPackageError(f"{label} is invalid")
+    return value
+
+
+def _validate_action_parameter(value: dict) -> dict:
+    if not isinstance(value, dict):
+        raise AppPackageError("application action parameter must be an object")
+    allowed = {"id", "type", "required", "maxLength", "minimum", "maximum", "values", "schemes"}
+    if not {"id", "type", "required"}.issubset(value) or set(value) - allowed:
+        raise AppPackageError("application action parameter fields are invalid")
+
+    parameter_id = value["id"]
+    parameter_type = value["type"]
+    if (
+        not isinstance(parameter_id, str)
+        or ACTION_PARAMETER_ID_RE.fullmatch(parameter_id) is None
+        or parameter_id in FORBIDDEN_ACTION_PARAMETER_IDS
+    ):
+        raise AppPackageError("application action parameter id is invalid or exposes raw authority")
+    if parameter_type not in ACTION_PARAMETER_TYPES:
+        raise AppPackageError("application action parameter type is invalid")
+    if not isinstance(value["required"], bool):
+        raise AppPackageError("application action parameter required flag is invalid")
+
+    if parameter_type == "string":
+        maximum = value.get("maxLength", 1024)
+        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1 or maximum > 8192:
+            raise AppPackageError("application action string maxLength is invalid")
+        if any(key in value for key in ("minimum", "maximum", "values", "schemes")):
+            raise AppPackageError("string application action parameter has incompatible constraints")
+    elif parameter_type == "uri":
+        maximum = value.get("maxLength", 2048)
+        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1 or maximum > 8192:
+            raise AppPackageError("application action URI maxLength is invalid")
+        schemes = value.get("schemes")
+        if not isinstance(schemes, list) or not schemes or len(schemes) > 16:
+            raise AppPackageError("application action URI schemes are invalid")
+        if any(
+            not isinstance(scheme, str) or URI_SCHEME_RE.fullmatch(scheme) is None
+            for scheme in schemes
+        ) or len(set(schemes)) != len(schemes):
+            raise AppPackageError("application action URI schemes are invalid or duplicated")
+        if any(key in value for key in ("minimum", "maximum", "values")):
+            raise AppPackageError("URI application action parameter has incompatible constraints")
+    elif parameter_type == "resource-grant-id":
+        maximum = value.get("maxLength", 128)
+        if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1 or maximum > 128:
+            raise AppPackageError("application action resource grant maxLength is invalid")
+        if any(key in value for key in ("minimum", "maximum", "values", "schemes")):
+            raise AppPackageError("resource grant application action parameter has incompatible constraints")
+    elif parameter_type in {"integer", "number"}:
+        minimum = value.get("minimum")
+        maximum = value.get("maximum")
+        if minimum is not None and (
+            not isinstance(minimum, (int, float))
+            or isinstance(minimum, bool)
+        ):
+            raise AppPackageError("application action numeric minimum is invalid")
+        if maximum is not None and (
+            not isinstance(maximum, (int, float))
+            or isinstance(maximum, bool)
+        ):
+            raise AppPackageError("application action numeric maximum is invalid")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            raise AppPackageError("application action numeric range is invalid")
+        if any(key in value for key in ("maxLength", "values", "schemes")):
+            raise AppPackageError("numeric application action parameter has incompatible constraints")
+    elif parameter_type == "enum":
+        values = value.get("values")
+        if (
+            not isinstance(values, list)
+            or not values
+            or len(values) > 64
+            or any(
+                not isinstance(item, str)
+                or not item
+                or len(item) > 160
+                or any(ord(char) < 32 or ord(char) == 127 for char in item)
+                for item in values
+            )
+            or len(set(values)) != len(values)
+        ):
+            raise AppPackageError("application action enum values are invalid")
+        if any(key in value for key in ("maxLength", "minimum", "maximum", "schemes")):
+            raise AppPackageError("enum application action parameter has incompatible constraints")
+    elif any(key in value for key in ("maxLength", "minimum", "maximum", "values", "schemes")):
+        raise AppPackageError("boolean application action parameter has incompatible constraints")
+    return value
+
+
+def _validate_action_risk_confirmation(risk_class: object, confirmation: object) -> None:
+    if risk_class not in ACTION_RISK_CLASSES:
+        raise AppPackageError("application action risk class is invalid")
+    if confirmation not in ACTION_CONFIRMATION_MODES:
+        raise AppPackageError("application action confirmation mode is invalid")
+    if risk_class == "privileged" and confirmation != "always":
+        raise AppPackageError("privileged application action requires confirmation")
+    if risk_class == "external-effect" and confirmation == "none":
+        raise AppPackageError("external-effect application action requires policy or confirmation")
+
+
+def _validate_action_matches_intent(capability: dict, intent: dict) -> None:
+    ai_parameters = {parameter["name"]: parameter for parameter in intent["parameters"]}
+    action_parameters = {parameter["id"]: parameter for parameter in capability["parameters"]}
+    if set(ai_parameters) != set(action_parameters):
+        raise AppPackageError(
+            f"application action parameters drifted from AI intent: {capability['actionId']}"
+        )
+    compatible_types = {
+        "string": {"string", "enum", "uri", "resource-grant-id"},
+        "number": {"number"},
+        "integer": {"integer"},
+        "boolean": {"boolean"},
+    }
+    for name, action_parameter in action_parameters.items():
+        ai_parameter = ai_parameters[name]
+        if ai_parameter["type"] not in compatible_types:
+            raise AppPackageError(
+                f"AI intent parameter type is not representable by Application Actions: {name}"
+            )
+        if action_parameter["type"] not in compatible_types[ai_parameter["type"]]:
+            raise AppPackageError(
+                f"application action parameter type drifted from AI intent: {name}"
+            )
+        if action_parameter["required"] is not ai_parameter["required"]:
+            raise AppPackageError(
+                f"application action required flag drifted from AI intent: {name}"
+            )
+
+    risk_rank = {
+        "read-only": 0,
+        "local-change": 1,
+        "external-effect": 2,
+        "privileged": 3,
+    }
+    minimum_risk = {
+        "none": 0,
+        "read": 0,
+        "write": 1,
+        "external-write": 2,
+        "destructive": 1,
+    }[intent["effect"]]
+    if risk_rank[capability["riskClass"]] < minimum_risk:
+        raise AppPackageError(
+            f"application action risk is weaker than AI intent: {capability['actionId']}"
+        )
+
+    confirmation_rank = {"none": 0, "policy-gated": 1, "always": 2}
+    minimum_confirmation = {
+        "none": 0,
+        "policy": 1,
+        "explicit": 2,
+    }[intent["confirmation"]]
+    if confirmation_rank[capability["confirmation"]] < minimum_confirmation:
+        raise AppPackageError(
+            f"application action confirmation is weaker than AI intent: {capability['actionId']}"
+        )
+    if intent["effect"] == "destructive" and capability["confirmation"] != "always":
+        raise AppPackageError(
+            f"destructive AI intent requires always-confirm Application Action: {capability['actionId']}"
+        )
+
+
+def validate_application_action_manifest(value: dict, app: dict, ai_manifest: dict) -> dict:
+    expected = {"schema", "appId", "appVersion", "authority", "execution", "capabilities"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise AppPackageError("actions/manifest.json fields are not canonical")
+    if value["schema"] != APPLICATION_ACTION_MANIFEST_SCHEMA:
+        raise AppPackageError("actions/manifest.json schema is incompatible")
+    if value["appId"] != app["id"] or value["appVersion"] != app["version"]:
+        raise AppPackageError("Application Action manifest identity does not match app.json")
+    if value["authority"] != "none":
+        raise AppPackageError("Application Action manifest must not carry authority")
+    if value["execution"] != APPLICATION_ACTION_EXECUTION_MODE:
+        raise AppPackageError("Application Action manifest cannot grant execution")
+
+    capabilities = value["capabilities"]
+    if not isinstance(capabilities, list) or len(capabilities) > 128:
+        raise AppPackageError("Application Action capabilities must be a bounded array")
+
+    ai_intents = {intent["id"]: intent for intent in ai_manifest["intents"]}
+    seen_actions: set[str] = set()
+    for capability in capabilities:
+        expected_capability = {
+            "schema", "appId", "actionId", "title", "description", "sourceClass", "platform",
+            "provider", "binding", "parameters", "riskClass", "confirmation",
+            "executionAuthorized", "modelDirectExecutionAuthorized", "provenance",
+        }
+        if not isinstance(capability, dict) or set(capability) != expected_capability:
+            raise AppPackageError("Application Action capability fields are not canonical")
+        if capability["schema"] != APPLICATION_ACTION_CAPABILITY_SCHEMA:
+            raise AppPackageError("Application Action capability schema is incompatible")
+        action_id = capability["actionId"]
+        if (
+            capability["appId"] != app["id"]
+            or not isinstance(action_id, str)
+            or len(action_id) > 120
+            or ACTION_ID_RE.fullmatch(action_id) is None
+            or not action_id.startswith(f"{app['id']}.")
+            or action_id in seen_actions
+        ):
+            raise AppPackageError(
+                "Application Action id is invalid, duplicated or not app-namespaced"
+            )
+        seen_actions.add(action_id)
+        if action_id not in ai_intents:
+            raise AppPackageError(
+                f"Application Action has no matching AI intent: {action_id}"
+            )
+        _bounded_action_text(capability["title"], "Application Action title", 160)
+        _bounded_action_text(capability["description"], "Application Action description", 800)
+        _bounded_action_text(capability["provenance"], "Application Action provenance", 320)
+
+        if capability["sourceClass"] != "first-party" or capability["platform"] != "ordax":
+            raise AppPackageError("Application Action manifest must remain first-party OrdaX")
+
+        provider = capability["provider"]
+        if (
+            not isinstance(provider, dict)
+            or set(provider) != {"kind", "adapterId", "revision"}
+            or provider["kind"] != "first-party-native"
+            or not isinstance(provider["adapterId"], str)
+            or PROVIDER_ID_RE.fullmatch(provider["adapterId"]) is None
+        ):
+            raise AppPackageError("Application Action provider is invalid")
+        _bounded_action_text(provider["revision"], "Application Action provider revision", 160)
+
+        binding = capability["binding"]
+        if not isinstance(binding, dict) or set(binding) != {"payloadSha256"}:
+            raise AppPackageError("Application Action binding is invalid")
+        if binding["payloadSha256"] is not None:
+            raise AppPackageError("first-party Application Action must not claim payload binding")
+
+        parameters = capability["parameters"]
+        if not isinstance(parameters, list) or len(parameters) > 24:
+            raise AppPackageError("Application Action parameters must be a bounded array")
+        normalized_parameters = [_validate_action_parameter(parameter) for parameter in parameters]
+        if len({parameter["id"] for parameter in normalized_parameters}) != len(normalized_parameters):
+            raise AppPackageError("Application Action parameter ids must be unique")
+
+        _validate_action_risk_confirmation(capability["riskClass"], capability["confirmation"])
+        if (
+            capability["executionAuthorized"] is not False
+            or capability["modelDirectExecutionAuthorized"] is not False
+        ):
+            raise AppPackageError("Application Action manifest must remain non-executing")
+        _validate_action_matches_intent(capability, ai_intents[action_id])
     return value
 
 
@@ -416,9 +689,21 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
     ai_manifest_path = app_root / "ai" / "manifest.json"
     if not ai_manifest_path.is_file() or ai_manifest_path.is_symlink():
         raise AppPackageError("first-party app must provide ai/manifest.json")
-    validate_app_intelligence_manifest(
+    ai_manifest = validate_app_intelligence_manifest(
         load_json(ai_manifest_path, max_bytes=MAX_AI_MANIFEST_BYTES, label="ai/manifest.json"),
         app,
+    )
+    action_manifest_path = app_root / "actions" / "manifest.json"
+    if not action_manifest_path.is_file() or action_manifest_path.is_symlink():
+        raise AppPackageError("first-party app must provide actions/manifest.json")
+    validate_application_action_manifest(
+        load_json(
+            action_manifest_path,
+            max_bytes=MAX_ACTION_MANIFEST_BYTES,
+            label="actions/manifest.json",
+        ),
+        app,
+        ai_manifest,
     )
     files = discover_app_files(app_root)
     validate_source_graph(app_root, files)
@@ -524,9 +809,25 @@ def verify_package(package: Path) -> tuple[dict, bytes]:
             raise AppPackageError("package AI manifest is invalid UTF-8 JSON") from exc
         if not isinstance(ai_manifest, dict):
             raise AppPackageError("package AI manifest must be a JSON object")
-        validate_app_intelligence_manifest(
+        ai_manifest = validate_app_intelligence_manifest(
             ai_manifest,
             {"id": app_id, "version": component.get("version")},
+        )
+        action_path = f"system/apps/{app_id}/actions/manifest.json"
+        if action_path not in seen:
+            raise AppPackageError("package Application Action manifest is missing")
+        try:
+            action_manifest = json.loads(archive.read(action_path).decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise AppPackageError(
+                "package Application Action manifest is invalid UTF-8 JSON"
+            ) from exc
+        if not isinstance(action_manifest, dict):
+            raise AppPackageError("package Application Action manifest must be a JSON object")
+        validate_application_action_manifest(
+            action_manifest,
+            {"id": app_id, "version": component.get("version")},
+            ai_manifest,
         )
     return manifest, payload
 

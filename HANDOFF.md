@@ -62,6 +62,17 @@ O App SDK 1.11 preserva os contratos anteriores e publica, entre outros:
 
 O CI prova digest, majors, dependências públicas transitivas, ausência de raw Device Agent e `authority:none`.
 
+### Application Actions declarativas
+
+Apps oficiais first-party mantêm dois contratos complementares dentro do próprio pacote:
+
+- `ai/manifest.json` — conhecimento/intents, `declarative-only`;
+- `actions/manifest.json` — capabilities/proposals, `proposal-only`.
+
+Ambos são metadata sem authority. O pacote determinístico inclui e verifica os dois arquivos. O CI exige conformance contra o App SDK pinado e proíbe que uma action enfraqueça risco/confirmação do intent correspondente.
+
+Notes declara as 7 ações atuais. Studio declara somente as ações compatíveis com o boundary sem authority bruta; `studio.edit-file` fica fora até existir resource-grant opaco.
+
 ## Notes — piloto first-party externo
 
 Issue canônica: `ordax-apps#1`.
