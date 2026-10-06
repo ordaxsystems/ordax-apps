@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import posixpath
 import re
 import subprocess
 import tempfile
@@ -20,6 +21,7 @@ TEST_PATHS = (
 MAX_BUNDLE_BYTES = 1024 * 1024
 MAX_CONTRACT_BYTES = 512 * 1024
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+RELATIVE_IMPORT_RE = re.compile(r'\bfrom\s+["\'](\.[^"\']+)["\']')
 
 # Only public contract modules required by the portable Studio composition.
 # Nothing from system/services, composition, adapters or runtime implementation
@@ -93,22 +95,60 @@ def main() -> None:
     if bundle.get("authority") != "none" or bundle.get("compatibility_policy") != "contract-major":
         fail("pinned App SDK authority/compatibility policy drifted")
 
-    blobs_by_path: dict[str, set[str]] = {path: set() for path in SOURCE_PATHS}
+    bundle_blobs: dict[str, set[str]] = {}
     for entry in bundle.get("contracts") or []:
         if not isinstance(entry, dict):
             continue
         path = entry.get("source_path")
         blob = entry.get("source_git_blob")
-        if path in blobs_by_path:
-            if not isinstance(blob, str) or not COMMIT_RE.fullmatch(blob):
-                fail(f"SDK contract has invalid Git blob identity: {path}")
-            blobs_by_path[path].add(blob)
+        if not isinstance(path, str) or not path.startswith("system/contracts/"):
+            continue
+        if not isinstance(blob, str) or not COMMIT_RE.fullmatch(blob):
+            fail(f"SDK contract has invalid Git blob identity: {path}")
+        bundle_blobs.setdefault(path, set()).add(blob)
 
-    for path, blobs in blobs_by_path.items():
+    for path in SOURCE_PATHS:
+        blobs = bundle_blobs.get(path, set())
         if len(blobs) != 1:
             fail(f"SDK must expose exactly one canonical Git blob for {path}")
-        if not path.startswith("system/contracts/"):
-            fail(f"Studio conformance source escaped public contract layer: {path}")
+
+    # Materialize the complete relative-import closure of the Studio public
+    # contract seeds. This prevents conformance from depending on a brittle
+    # hand-maintained list when a public contract gains another public helper.
+    payloads: dict[str, bytes] = {}
+    pending = list(SOURCE_PATHS)
+    while pending:
+        source_path = pending.pop()
+        if source_path in payloads:
+            continue
+        blobs = bundle_blobs.get(source_path, set())
+        if len(blobs) != 1:
+            fail(f"SDK dependency is not uniquely published: {source_path}")
+        payload = fetch_bounded(raw_url(repository, commit, source_path), MAX_CONTRACT_BYTES)
+        expected_blob = next(iter(blobs))
+        if git_blob_sha1(payload) != expected_blob:
+            fail(f"Git blob mismatch for pinned SDK contract: {source_path}")
+        try:
+            source = payload.decode("utf-8", errors="strict")
+        except UnicodeError as exc:
+            fail(f"SDK contract is not UTF-8: {source_path}: {exc}")
+        payloads[source_path] = payload
+
+        source_dir = posixpath.dirname(source_path)
+        for specifier in RELATIVE_IMPORT_RE.findall(source):
+            dependency = posixpath.normpath(posixpath.join(source_dir, specifier))
+            if not dependency.startswith("system/contracts/"):
+                fail(
+                    "Studio conformance dependency escaped public contract layer: "
+                    f"{source_path} -> {specifier}"
+                )
+            if dependency not in bundle_blobs:
+                fail(
+                    "Studio conformance dependency is not published by the pinned SDK: "
+                    f"{source_path} -> {dependency}"
+                )
+            if dependency not in payloads:
+                pending.append(dependency)
 
     for test_path in TEST_PATHS:
         if not test_path.is_file():
@@ -116,15 +156,7 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="ordax-studio-sdk-") as temporary:
         temp_root = Path(temporary)
-        for source_path, blobs in blobs_by_path.items():
-            payload = fetch_bounded(raw_url(repository, commit, source_path), MAX_CONTRACT_BYTES)
-            expected_blob = next(iter(blobs))
-            if git_blob_sha1(payload) != expected_blob:
-                fail(f"Git blob mismatch for pinned SDK contract: {source_path}")
-            try:
-                payload.decode("utf-8", errors="strict")
-            except UnicodeError as exc:
-                fail(f"SDK contract is not UTF-8: {source_path}: {exc}")
+        for source_path, payload in payloads.items():
             target = temp_root / source_path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(payload)
@@ -149,7 +181,7 @@ def main() -> None:
 
     print("ORDAX_STUDIO_SDK_CONFORMANCE=PASS")
     print(f"SDK_COMMIT={commit}")
-    print(f"SDK_CONTRACT_MODULE_COUNT={len(SOURCE_PATHS)}")
+    print(f"SDK_CONTRACT_MODULE_COUNT={len(payloads)}")
     print("STUDIO_PUBLIC_PORTS=studio-runtime-v2,memory,intelligence,localization")
     print("STUDIO_COMPATIBILITY_PORT=studio-runtime-v1")
     print("RAW_DEVICE_AGENT_EXPORTED=NO")
