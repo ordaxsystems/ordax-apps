@@ -146,5 +146,6 @@
     "transfer_map": "migrations/notes.gate-b-transfer-map.json"
   },
   "source_cutover_allowed": false,
-  "distribution_activation_allowed": false
+  "distribution_activation_allowed": false,
+  "host_boundary": "migrations/notes.host-boundary.json"
 }
