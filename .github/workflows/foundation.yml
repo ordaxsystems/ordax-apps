@@ -63,7 +63,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: washingtonmsdj/prototipo-ordax-os
-          ref: e221069507871659f1a7597ffb8b7e04d17dcc23
+          ref: f46603909ffd08d442a6be5ff6539b8c2a273c77
           path: .ordax-platform-lifecycle
           persist-credentials: false
 
