@@ -69,6 +69,39 @@ def fixture(root: Path, *, runtime_source: str = 'import { value } from "./domai
         },
     )
     write_json(
+        app / "actions" / "manifest.json",
+        {
+            "schema": "ordax.application-action-manifest/1",
+            "appId": "fixture",
+            "appVersion": "0.1.0",
+            "authority": "none",
+            "execution": "proposal-only",
+            "capabilities": [
+                {
+                    "schema": "ordax.application-action-capability/1",
+                    "appId": "fixture",
+                    "actionId": "fixture.read-value",
+                    "title": "Ler valor",
+                    "description": "Consultar o valor de teste do Fixture.",
+                    "sourceClass": "first-party",
+                    "platform": "ordax",
+                    "provider": {
+                        "kind": "first-party-native",
+                        "adapterId": "fixture-native",
+                        "revision": "1",
+                    },
+                    "binding": {"payloadSha256": None},
+                    "parameters": [],
+                    "riskClass": "read-only",
+                    "confirmation": "none",
+                    "executionAuthorized": False,
+                    "modelDirectExecutionAuthorized": False,
+                    "provenance": "ordax-apps:fixture/actions/manifest.json",
+                }
+            ],
+        },
+    )
+    write_json(
         app / "compatibility.json",
         {
             "schema": "ordax.component-compatibility/1",
@@ -127,6 +160,7 @@ class DeterministicAppPackageTests(unittest.TestCase):
                 self.assertIn("system/apps/fixture/src/domain.mjs", names)
                 self.assertIn("system/apps/fixture/assets/fixture.css", names)
                 self.assertIn("system/apps/fixture/ai/manifest.json", names)
+                self.assertIn("system/apps/fixture/actions/manifest.json", names)
                 self.assertNotIn("system/apps/fixture/compatibility.json", names)
 
             release = json.loads(release_a.read_text(encoding="utf-8"))
@@ -188,6 +222,66 @@ class DeterministicAppPackageTests(unittest.TestCase):
             app = fixture(root)
             (app / "ai" / "manifest.json").unlink()
             with self.assertRaisesRegex(builder.AppPackageError, "must provide ai/manifest.json"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_first_party_app_requires_action_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            (app / "actions" / "manifest.json").unlink()
+            with self.assertRaisesRegex(
+                builder.AppPackageError,
+                "must provide actions/manifest.json",
+            ):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_action_manifest_identity_and_authority_are_fail_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            path = app / "actions" / "manifest.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["appVersion"] = "0.2.0"
+            write_json(path, value)
+            with self.assertRaisesRegex(builder.AppPackageError, "identity does not match"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            path = app / "actions" / "manifest.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["authority"] = "write"
+            write_json(path, value)
+            with self.assertRaisesRegex(builder.AppPackageError, "must not carry authority"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_action_manifest_rejects_hidden_raw_authority_and_semantic_drift(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            path = app / "actions" / "manifest.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["capabilities"][0]["parameters"] = [
+                {
+                    "id": "path",
+                    "type": "string",
+                    "required": True,
+                    "maxLength": 1024,
+                }
+            ]
+            write_json(path, value)
+            with self.assertRaisesRegex(builder.AppPackageError, "exposes raw authority"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            path = app / "actions" / "manifest.json"
+            value = json.loads(path.read_text(encoding="utf-8"))
+            value["capabilities"][0]["actionId"] = "fixture.unknown-action"
+            write_json(path, value)
+            with self.assertRaisesRegex(builder.AppPackageError, "no matching AI intent"):
                 builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
 
     def test_ai_manifest_identity_must_match_app_manifest(self):
