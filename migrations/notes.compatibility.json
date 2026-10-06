@@ -1,0 +1,56 @@
+{
+  "schema": "ordax.component-compatibility/1",
+  "componentId": "notes",
+  "componentVersion": "0.4.1",
+  "provides": [
+    {
+      "id": "ordax.component-runtime",
+      "major": 1
+    }
+  ],
+  "requires": [
+    {
+      "id": "ordax.app-activation",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    },
+    {
+      "id": "ordax.app-data",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    },
+    {
+      "id": "ordax.file-space",
+      "minMajor": 11,
+      "maxMajor": 11,
+      "optional": true
+    },
+    {
+      "id": "ordax.intelligence",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.localization",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    },
+    {
+      "id": "ordax.surface-render-lifecycle",
+      "minMajor": 4,
+      "maxMajor": 4,
+      "optional": false
+    }
+  ],
+  "state": {
+    "id": "ordax.notes-store",
+    "writeVersion": 2,
+    "readableFrom": 1,
+    "readableThrough": 2
+  },
+  "authority": "none"
+}
