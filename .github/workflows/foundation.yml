@@ -22,6 +22,8 @@ jobs:
         run: |
           python3 -m json.tool ordax-apps.workspace.json >/dev/null
           python3 -m json.tool platform-sdk.lock.json >/dev/null
+          python3 -m json.tool apps/notes/ai/manifest.json >/dev/null
+          python3 -m json.tool apps/studio/ai/manifest.json >/dev/null
           python3 -m json.tool migrations/notes.externalization.json >/dev/null
           python3 -m json.tool migrations/notes.source-snapshot.json >/dev/null
           python3 -m json.tool migrations/notes.gate-b-transfer-map.json >/dev/null
@@ -35,6 +37,9 @@ jobs:
 
       - name: Prove repository boundary invariants
         run: python3 tools/verify_workspace.py
+
+      - name: Prove first-party app intelligence manifests
+        run: python3 tools/verify_app_intelligence.py
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
