@@ -231,26 +231,16 @@ async function commitTransition(appData, rawSnapshot, state) {
   });
 }
 
-export async function createNotesAppDataStore(appDataValue, {
-  seedSnapshot = null,
-} = {}) {
+export async function createNotesAppDataStore(appDataValue, ...legacyArguments) {
+  if (legacyArguments.length !== 0) {
+    throw new TypeError("Notes App Data store does not accept legacy seed options");
+  }
   const appData = assertAppDataPort(appDataValue);
   if (appData.identity.appId !== "notes") {
     throw new TypeError("Notes App Data port must be bound to the notes app");
   }
 
-  let canonical = await loadCanonicalState(appData);
-
-  if (canonical.head === null && seedSnapshot !== null) {
-    const rawSeed = typeof seedSnapshot === "function"
-      ? await seedSnapshot()
-      : seedSnapshot;
-    if (rawSeed !== null && rawSeed !== undefined) {
-      const seed = validateNotesSnapshot(rawSeed);
-      await commitInitialSnapshot(appData, seed, canonical);
-      canonical = await loadCanonicalState(appData);
-    }
-  }
+  const canonical = await loadCanonicalState(appData);
 
   let memory = canonical.snapshot;
   let desiredRevision = 0;

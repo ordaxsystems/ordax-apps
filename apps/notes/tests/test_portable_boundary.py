@@ -14,6 +14,7 @@ FORBIDDEN = (
     "system/services/",
     "createNativeNotesStore",
     "createStore",
+    "seedSnapshot",
 )
 
 class NotesPortableBoundaryTests(unittest.TestCase):
