@@ -1,0 +1,136 @@
+name: Notes Unsigned Production Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/notes/**'
+      - 'migrations/notes.compatibility.json'
+      - 'tools/app-package/**'
+      - 'tests/test_unsigned_candidate_handoff.py'
+      - '.github/workflows/notes-unsigned-candidate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/notes/**'
+      - 'migrations/notes.compatibility.json'
+      - 'tools/app-package/**'
+      - 'tests/test_unsigned_candidate_handoff.py'
+      - '.github/workflows/notes-unsigned-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unsigned-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Prove unsigned handoff boundary
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests/test_unsigned_candidate_handoff.py
+
+      - name: Build and verify exact Notes candidate
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-notes-unsigned"
+          rm -rf "$out"
+          mkdir -p "$out/release"
+
+          python3 tools/app-package/build.py build \
+            --app-root apps/notes \
+            --source-commit "$GITHUB_SHA" \
+            --compatibility migrations/notes.compatibility.json \
+            --package-out "$out/notes.zip" \
+            --release-dir "$out/release"
+
+          python3 tools/app-package/build.py verify \
+            --package "$out/notes.zip" \
+            --release "$out/release/notes.release.json" \
+            --compatibility "$out/release/notes.compatibility.json"
+
+          python3 tools/app-package/render_unsigned_handoff.py \
+            --package "$out/notes.zip" \
+            --release "$out/release/notes.release.json" \
+            --compatibility "$out/release/notes.compatibility.json" \
+            --app-id notes \
+            --source-commit "$GITHUB_SHA" \
+            --out "$out/notes.unsigned-candidate.json"
+
+          cp "$out/release/notes.release.json" "$out/notes.release.json"
+          cp "$out/release/notes.compatibility.json" "$out/notes.compatibility.json"
+          rm -rf "$out/release"
+
+          (
+            cd "$out"
+            sha256sum \
+              notes.zip \
+              notes.release.json \
+              notes.compatibility.json \
+              notes.unsigned-candidate.json \
+              > SHA256SUMS
+          )
+
+      - name: Assert candidate is public-only and authority-free
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-notes-unsigned"
+          test -z "$(find "$out" -type f \( -iname '*.pem' -o -iname '*.key' -o -iname '*.p12' -o -iname '*.pfx' \) -print -quit)"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["RUNNER_TEMP"]) / "ordax-notes-unsigned"
+          expected = {
+              "notes.zip",
+              "notes.release.json",
+              "notes.compatibility.json",
+              "notes.unsigned-candidate.json",
+              "SHA256SUMS",
+          }
+          actual = {path.name for path in root.iterdir() if path.is_file()}
+          assert actual == expected, (actual, expected)
+
+          handoff = json.loads(
+              (root / "notes.unsigned-candidate.json").read_text(encoding="utf-8")
+          )
+          assert handoff["$schema"] == "ordax-apps.unsigned-component-candidate/1"
+          assert handoff["status"] == "unsigned-candidate"
+          assert handoff["component"]["id"] == "notes"
+          assert handoff["source"]["repository"] == "washingtonmsdj/ordax-apps"
+          assert handoff["source"]["commit"] == os.environ["GITHUB_SHA"]
+          assert handoff["authority"] == {
+              "signing": False,
+              "publication": False,
+              "installation": False,
+              "activation": False,
+          }
+          assert handoff["safety"]["containsPrivateKeyMaterial"] is False
+          assert handoff["safety"]["directActivationAllowed"] is False
+          assert handoff["safety"]["platformLifecycleRequired"] is True
+          print("NOTES_UNSIGNED_CANDIDATE_PUBLIC_ONLY=PASS")
+          print("SIGNING_AUTHORITY=NO")
+          print("PUBLICATION_AUTHORITY=NO")
+          print("PRODUCTION_ACTIVATION=NO")
+          PY
+
+      - name: Upload unsigned Notes candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-notes-unsigned-candidate-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ordax-notes-unsigned/notes.zip
+            ${{ runner.temp }}/ordax-notes-unsigned/notes.release.json
+            ${{ runner.temp }}/ordax-notes-unsigned/notes.compatibility.json
+            ${{ runner.temp }}/ordax-notes-unsigned/notes.unsigned-candidate.json
+            ${{ runner.temp }}/ordax-notes-unsigned/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
