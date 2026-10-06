@@ -29,6 +29,7 @@ jobs:
           python3 -m json.tool migrations/notes.distribution.json >/dev/null
           python3 -m json.tool migrations/notes.compatibility.json >/dev/null
           python3 -m json.tool migrations/notes.platform-sdk.lock.json >/dev/null
+          python3 -m json.tool migrations/notes.platform-lifecycle.lock.json >/dev/null
           python3 -m json.tool migrations/studio.legacy-method-ownership.json >/dev/null
           python3 -m json.tool migrations/studio.distribution.json >/dev/null
 
@@ -52,6 +53,87 @@ jobs:
 
       - name: Prove Notes App Data store
         run: node --test apps/notes/tests/app_data_store.test.mjs
+
+      - name: Checkout pinned OrdaX OS lifecycle owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: washingtonmsdj/prototipo-ordax-os
+          ref: e221069507871659f1a7597ffb8b7e04d17dcc23
+          path: .ordax-platform-lifecycle
+          persist-credentials: false
+
+      - name: Verify pinned lifecycle checkout
+        run: |
+          set -euo pipefail
+          expected="$(python3 - <<'PY'
+          import json
+          print(json.load(open("migrations/notes.platform-lifecycle.lock.json", encoding="utf-8"))["commit"])
+          PY
+          )"
+          actual="$(git -C .ordax-platform-lifecycle rev-parse HEAD)"
+          test "$actual" = "$expected"
+
+      - name: Set up Go for platform lifecycle proof
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: .ordax-platform-lifecycle/tools/runtime-component-channel/go.mod
+          cache: false
+
+      - name: Build real Notes component candidate
+        run: |
+          set -euo pipefail
+          out="/tmp/ordax-notes-lifecycle"
+          rm -rf "$out"
+          mkdir -p "$out/release"
+          source_commit="$(git rev-parse HEAD)"
+          python3 tools/app-package/build.py build \
+            --app-root apps/notes \
+            --source-commit "$source_commit" \
+            --compatibility migrations/notes.compatibility.json \
+            --package-out "$out/notes.zip" \
+            --release-dir "$out/release"
+          python3 tools/app-package/build.py verify \
+            --package "$out/notes.zip" \
+            --release "$out/release/notes.release.json" \
+            --compatibility "$out/release/notes.compatibility.json"
+
+      - name: Prove Notes through canonical platform lifecycle
+        env:
+          ORDAX_NOTES_PACKAGE: /tmp/ordax-notes-lifecycle/notes.zip
+          ORDAX_NOTES_RELEASE: /tmp/ordax-notes-lifecycle/release/notes.release.json
+          ORDAX_NOTES_COMPATIBILITY: /tmp/ordax-notes-lifecycle/release/notes.compatibility.json
+          ORDAX_NOTES_RUNTIME: ${{ github.workspace }}/apps/notes/src/runtime.mjs
+        run: |
+          set -euo pipefail
+          target=".ordax-platform-lifecycle/tools/runtime-component-channel/notes_external_integration_test.go"
+          cp tests/notes_platform_lifecycle_integration_test.go "$target"
+          trap 'rm -f "$target"' EXIT
+          (
+            cd .ordax-platform-lifecycle/tools/runtime-component-channel
+            go test -run '^TestExternalNotesPackageCompletesCanonicalLifecycle
+        run: python3 tools/verify_platform_sdk.py
+
+      - name: Prove Studio public SDK conformance
+        run: python3 tools/verify_studio_sdk_conformance.py
+
+      - name: Prove Studio typed host bridge boundary
+        run: node --test tests/studio_host_bridge_conformance.mjs
+
+      - name: Prove Studio legacy method ownership boundary
+        run: python3 tools/verify_studio_legacy_method_ownership.py
+
+      - name: Prove portable Studio source boundary
+        run: python3 apps/studio/tests/test_portable_boundary.py
+
+      - name: Prove Studio remote Computer grant boundary
+        run: python3 apps/studio/tests/test_remote_computer_grants_boundary.py
+
+      - name: Prove Studio OrdaX OS and Windows distribution invariants
+        run: |
+          python3 tools/verify_studio_distribution.py
+          python3 tests/studio_distribution_contract_test.py
+ -count=1
+          )
 
       - name: Prove pinned public App SDK from platform repository
         run: python3 tools/verify_platform_sdk.py
