@@ -710,7 +710,7 @@ def _javascript_tokens(source: str):
                 raise AppPackageError("unterminated JavaScript string literal")
             continue
 
-        if char == "\`":
+        if char == "`":
             start = index
             index += 1
             while index < length:
@@ -718,7 +718,7 @@ def _javascript_tokens(source: str):
                 if current == "\\":
                     index += 2
                     continue
-                if current == "\`":
+                if current == "`":
                     index += 1
                     break
                 index += 1
