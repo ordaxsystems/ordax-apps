@@ -1,0 +1,166 @@
+{
+  "schema": "ordax.app-intelligence-manifest/1",
+  "appId": "notes",
+  "appVersion": "0.4.1",
+  "authority": "none",
+  "execution": "declarative-only",
+  "instructions": [
+    "Use o Notas somente para conteúdo pertencente ao escopo autorizado do usuário.",
+    "Não invente títulos, conteúdo, tarefas ou referências que o usuário não forneceu ou aprovou.",
+    "Ações destrutivas devem permanecer sujeitas à confirmação e às permissões do OrdaX."
+  ],
+  "intents": [
+    {
+      "id": "notes.inspect-notes",
+      "description": "Consultar as notas e o estado atual do aplicativo.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [
+        {
+          "name": "query",
+          "type": "string",
+          "required": false,
+          "description": "Texto opcional para localizar ou filtrar conteúdo relevante."
+        }
+      ],
+      "examples": [
+        "Mostre minhas notas sobre o projeto.",
+        "Encontre a nota sobre orçamento."
+      ]
+    },
+    {
+      "id": "notes.create-note",
+      "description": "Criar uma nova nota e, quando informado, preencher título e conteúdo.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "project",
+          "type": "string",
+          "required": false,
+          "description": "Projeto de notas onde a nota deve ser criada."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "Título desejado para a nova nota."
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "required": false,
+          "description": "Conteúdo inicial da nota."
+        }
+      ],
+      "examples": [
+        "Crie uma nota chamada Ideias.",
+        "Anote no projeto atual que precisamos revisar o orçamento."
+      ]
+    },
+    {
+      "id": "notes.update-note",
+      "description": "Atualizar o título ou o conteúdo de uma nota existente.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "note",
+          "type": "string",
+          "required": true,
+          "description": "Nota que deve ser atualizada."
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "required": false,
+          "description": "Novo título, quando solicitado."
+        },
+        {
+          "name": "body",
+          "type": "string",
+          "required": false,
+          "description": "Novo conteúdo, quando solicitado."
+        }
+      ],
+      "examples": [
+        "Atualize a nota Ideias com esse texto.",
+        "Renomeie essa nota para Planejamento."
+      ]
+    },
+    {
+      "id": "notes.add-task",
+      "description": "Adicionar uma tarefa a uma nota existente.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "note",
+          "type": "string",
+          "required": true,
+          "description": "Nota que receberá a tarefa."
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "required": true,
+          "description": "Texto da nova tarefa."
+        }
+      ],
+      "examples": [
+        "Adicione a tarefa revisar imagens nessa nota."
+      ]
+    },
+    {
+      "id": "notes.trash-note",
+      "description": "Mover uma nota existente para a lixeira.",
+      "effect": "destructive",
+      "confirmation": "explicit",
+      "parameters": [
+        {
+          "name": "note",
+          "type": "string",
+          "required": true,
+          "description": "Nota que deve ser movida para a lixeira."
+        }
+      ],
+      "examples": [
+        "Mova essa nota para a lixeira."
+      ]
+    },
+    {
+      "id": "notes.restore-note",
+      "description": "Restaurar uma nota que está na lixeira.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "note",
+          "type": "string",
+          "required": true,
+          "description": "Nota que deve ser restaurada."
+        }
+      ],
+      "examples": [
+        "Restaure a nota que apaguei."
+      ]
+    },
+    {
+      "id": "notes.permanently-delete-note",
+      "description": "Excluir definitivamente uma nota que já está na lixeira.",
+      "effect": "destructive",
+      "confirmation": "explicit",
+      "parameters": [
+        {
+          "name": "note",
+          "type": "string",
+          "required": true,
+          "description": "Nota na lixeira que deve ser excluída definitivamente."
+        }
+      ],
+      "examples": [
+        "Exclua definitivamente essa nota da lixeira."
+      ]
+    }
+  ]
+}
