@@ -45,7 +45,7 @@ def main() -> None:
     if sdk.get("platform_pr") != 1168:
         fail("Projects SDK prerequisite PR drifted")
     head = sdk.get("platform_pr_head")
-    if head != "2105051af68505f0cbdf3cb67069560b803bb20b":
+    if head != "c35f22ccab4f47da4211547a7e7a929f4ff254e8":
         fail("Projects SDK prerequisite must pin the reviewed read-only PR head")
 
     contracts = set(plan.get("platform_contracts_required") or [])
