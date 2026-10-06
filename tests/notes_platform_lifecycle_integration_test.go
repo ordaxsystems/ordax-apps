@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,6 +35,27 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 	failedUpdateEnvelopePath := filepath.Join(fixture, "notes.failed-update.envelope.json")
 	healthyUpdateEnvelopePath := filepath.Join(fixture, "notes.healthy-update.envelope.json")
 	keyID := "notes-ci-ephemeral-1"
+
+	appDataRoot := filepath.Join(fixture, "app-data", "ordax-official", "notes")
+	if err := os.MkdirAll(appDataRoot, 0o700); err != nil {
+		t.Fatalf("create Notes App Data sentinel root: %v", err)
+	}
+	appDataPath := filepath.Join(appDataRoot, "document.snapshot")
+	appDataBytes := []byte(`{"$schema":"ordax.notes-app-data-sentinel/1","body":"preserve-across-uninstall"}`)
+	if err := os.WriteFile(appDataPath, appDataBytes, 0o600); err != nil {
+		t.Fatalf("write Notes App Data sentinel: %v", err)
+	}
+
+	assertAppDataPreserved := func(stage string) {
+		t.Helper()
+		payload, err := os.ReadFile(appDataPath)
+		if err != nil {
+			t.Fatalf("%s: read Notes App Data sentinel: %v", stage, err)
+		}
+		if !bytes.Equal(payload, appDataBytes) {
+			t.Fatalf("%s: Notes App Data changed across component lifecycle mutation", stage)
+		}
+	}
 
 	if _, err := generateKey(privatePath, trustPath, keyID); err != nil {
 		t.Fatalf("generate ephemeral CI trust: %v", err)
@@ -171,6 +193,7 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 	if string(runtimeBytes) != string(canonicalRuntime) {
 		t.Fatal("promoted Notes runtime bytes differ from canonical source")
 	}
+	assertAppDataPreserved("initial promotion")
 
 	failedUpdateRelease, err := signReleaseV2(
 		failedUpdateReleasePath,
@@ -216,6 +239,7 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 	if state.Rejected == nil || state.Rejected.SourceCommit != failedUpdateRelease.SourceCommit {
 		t.Fatalf("failed Notes update rejection identity drifted: %+v", state)
 	}
+	assertAppDataPreserved("failed update rejection")
 
 	healthyUpdateRelease, err := signReleaseV2(
 		healthyUpdateReleasePath,
@@ -270,6 +294,55 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 	if state.Previous != nil || state.Rejected == nil || state.Rejected.SourceCommit != healthyUpdateRelease.SourceCommit {
 		t.Fatalf("Notes rollback bookkeeping drifted: %+v", state)
 	}
+	assertAppDataPreserved("rollback")
+
+	installedBeforeUninstall := *state.Current
+	uninstallRevision := state.Revision
+	state, err = uninstallCurrentStateAtRevision(
+		root,
+		"notes",
+		installedBeforeUninstall,
+		uninstallRevision,
+		trustPath,
+	)
+	if err != nil {
+		t.Fatalf("uninstall Notes current slot: %v", err)
+	}
+	if state.Revision != uninstallRevision+1 || state.Current != nil || state.Previous != nil || state.Pending != nil || state.Rejected != nil || state.PendingHealth != "unknown" {
+		t.Fatalf("unexpected Notes uninstall state: %+v", state)
+	}
+
+	retryState, err := uninstallCurrentStateAtRevision(
+		root,
+		"notes",
+		installedBeforeUninstall,
+		uninstallRevision,
+		trustPath,
+	)
+	if err != nil {
+		t.Fatalf("idempotent Notes uninstall retry: %v", err)
+	}
+	if retryState.Revision != state.Revision || retryState.Current != nil {
+		t.Fatalf("Notes uninstall retry changed state: before=%+v after=%+v", state, retryState)
+	}
+
+	absentState, absentSlot, absentManifest, absentBundled, err := resolveRuntimeSlot(
+		root,
+		"notes",
+		trustPath,
+		"current",
+	)
+	if err != nil {
+		t.Fatalf("resolve uninstalled Notes: %v", err)
+	}
+	if absentBundled || absentState.Current != nil || absentSlot != "" || absentManifest.Entrypoint != "" {
+		t.Fatalf("uninstalled external Notes did not resolve as absent: bundled=%t slot=%q state=%+v manifest=%+v", absentBundled, absentSlot, absentState, absentManifest)
+	}
+	assertAppDataPreserved("uninstall")
+
+	if _, err := verifySlotV2WithTrustBytes(slot, trustBytes); err != nil {
+		t.Fatalf("verified Notes slot cache was damaged by uninstall: %v", err)
+	}
 
 	_, restagedSlot, restagedChanged, err := stageComponentV2(
 		envelopePath,
@@ -279,9 +352,45 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 		root,
 	)
 	if err != nil {
-		t.Fatalf("restage verified local Notes artifact: %v", err)
+		t.Fatalf("offline restage verified local Notes artifact: %v", err)
 	}
 	if restagedChanged || restagedSlot != slot {
-		t.Fatalf("verified local Notes artifact was not idempotently reusable: changed=%t slot=%q", restagedChanged, restagedSlot)
+		t.Fatalf("offline Notes reinstall did not reuse verified local artifact: changed=%t slot=%q", restagedChanged, restagedSlot)
 	}
+
+	state, err = armPendingState(restagedSlot, trustPath, root)
+	if err != nil {
+		t.Fatalf("arm offline Notes reinstall: %v", err)
+	}
+	reinstallPending := *state.Pending
+	reinstallProbationRevision := state.Revision
+	state, err = recordPendingHealthAtRevision(root, "notes", reinstallPending, "healthy", &reinstallProbationRevision)
+	if err != nil {
+		t.Fatalf("record offline Notes reinstall health: %v", err)
+	}
+	state, err = promotePendingStateAtRevision(root, "notes", reinstallPending, state.Revision, trustPath)
+	if err != nil {
+		t.Fatalf("promote offline Notes reinstall: %v", err)
+	}
+	if state.Current == nil || state.Current.Version != version || state.Current.SourceCommit != sourceCommit {
+		t.Fatalf("offline Notes reinstall identity drifted: %+v", state)
+	}
+	if state.Previous != nil || state.Pending != nil {
+		t.Fatalf("offline Notes reinstall retained invalid activation references: %+v", state)
+	}
+
+	reinstalledRuntime, err := readVerifiedRuntimeFile(
+		root,
+		"notes",
+		trustPath,
+		"current",
+		manifest.Entrypoint,
+	)
+	if err != nil {
+		t.Fatalf("read offline-reinstalled Notes runtime: %v", err)
+	}
+	if !bytes.Equal(reinstalledRuntime, canonicalRuntime) {
+		t.Fatal("offline-reinstalled Notes runtime differs from canonical source")
+	}
+	assertAppDataPreserved("offline reinstall")
 }
