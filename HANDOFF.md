@@ -30,17 +30,17 @@ O repositório histórico `washingtonmsdj/mcp-blender` não é owner canônico d
 
 ## App SDK global do Studio
 
-`platform-sdk.lock.json` fixa o App SDK **1.11.0** na plataforma:
+`platform-sdk.lock.json` fixa o App SDK **1.12.0** na plataforma:
 
-- commit: `6c79b182c582182035d7a01c196953b7a3fd8cba`;
+- commit: `8f96e79075d06bd79bd550e5c5593985e11dce38`;
 - bundle: `sdk/app-sdk-v1/bundle.json`;
-- SHA-256: `477d1f889d53296ffa562208a6751376740baaccd09bb3e032fb40aec5b3b15f`;
+- SHA-256: `de6bb777dde45d553035136b63fb685aab9232388c1145705c4303936a5ac85c`;
 - authority: `none`;
-- contratos publicados no bundle: 32.
+- contratos publicados no bundle: 35.
 
 A conformance externa materializa somente módulos públicos `system/contracts/**` pelo Git blob registrado no bundle e prova Studio Runtime v1/v2/v3 sem copiar serviços privados.
 
-O App SDK 1.11 preserva os contratos anteriores e publica, entre outros:
+O App SDK 1.12 preserva os contratos anteriores e publica, entre outros:
 
 - `ordax.application-action-capability/1`;
 - `ordax.application-action-capability-registry/1`;
@@ -155,7 +155,7 @@ A publicação pública entrou no App SDK 1.8 por `prototipo-ordax-os#1144`. O c
 
 1. concluir a cerimônia operacional de trust de runtime-components fora do Git/CI e piná-la pela policy canônica;
 2. somente depois autorizar component publication e production component-slot activation do Notes;
-3. manter evolução do Studio sobre App SDK 1.11+ com pins exatos e host/runtime authority fora do app;
+3. manter evolução do Studio sobre App SDK 1.12+ com pins exatos e host/runtime authority fora do app;
 4. continuar limpeza documental/legado somente quando não alterar ownership ou gates já comprovados;
 5. não abrir uma segunda implementação de Notes, Studio, Runtime ou Control Plane.
 
