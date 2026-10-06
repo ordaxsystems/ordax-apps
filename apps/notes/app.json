@@ -3,7 +3,7 @@
   "id": "notes",
   "title": "Notas",
   "kind": "app",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "releaseMode": "component-slot",
   "criticality": "optional",
   "failureDomain": "app",
