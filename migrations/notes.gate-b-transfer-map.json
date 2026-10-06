@@ -1,0 +1,127 @@
+{
+  "$schema": "ordax.notes-gate-b-transfer-map/1",
+  "source_snapshot": "migrations/notes.source-snapshot.json",
+  "source_commit": "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6",
+  "target_root": "apps/notes",
+  "source_file_count": 19,
+  "target_manifest": "apps/notes/app.json",
+  "rules": {
+    "copy_platform_private_imports": false,
+    "copy_legacy_storage_adapters": false,
+    "copy_legacy_native_endpoint": false,
+    "app_owned_contracts_move_with_product": true,
+    "localization_moves_with_product": true,
+    "public_platform_contracts_consumed_via_sdk_or_injected_ports": true,
+    "dual_source_allowed": false
+  },
+  "manifest_replacement": {
+    "schema": "ordax.component-manifest/1",
+    "id": "notes",
+    "kind": "app",
+    "releaseMode": "component-slot",
+    "owner": "washingtonmsdj/ordax-apps",
+    "version_source": "system/apps/notes/version.mjs@source_snapshot",
+    "legacy_platform_metadata_sources": [
+      "system/apps/notes/app.mjs",
+      "system/apps/notes/component.mjs"
+    ]
+  },
+  "mappings": [
+    {
+      "source": "system/apps/notes/app.mjs",
+      "operation": "replace-by-manifest",
+      "target": "apps/notes/app.json"
+    },
+    {
+      "source": "system/apps/notes/component.mjs",
+      "operation": "replace-by-manifest",
+      "target": "apps/notes/app.json"
+    },
+    {
+      "source": "system/apps/notes/version.mjs",
+      "operation": "fold-version-into-manifest",
+      "target": "apps/notes/app.json"
+    },
+    {
+      "source": "system/apps/notes/notes.css",
+      "operation": "relocate",
+      "target": "apps/notes/assets/notes.css"
+    },
+    {
+      "source": "system/apps/notes/runtime.mjs",
+      "operation": "relocate-and-rewire-public-contract-imports",
+      "target": "apps/notes/src/runtime.mjs"
+    },
+    {
+      "source": "system/apps/notes/domain/runtime.mjs",
+      "operation": "relocate-and-rewire-app-contract-imports",
+      "target": "apps/notes/src/domain/runtime.mjs"
+    },
+    {
+      "source": "system/apps/notes/domain/statistics.mjs",
+      "operation": "relocate",
+      "target": "apps/notes/src/domain/statistics.mjs"
+    },
+    {
+      "source": "system/apps/notes/platform/intelligence-summary.mjs",
+      "operation": "relocate-and-rewire-public-contract-imports",
+      "target": "apps/notes/src/platform/intelligence-summary.mjs"
+    },
+    {
+      "source": "system/apps/notes/services/file-import.mjs",
+      "operation": "relocate-and-rewire-contract-imports",
+      "target": "apps/notes/src/services/file-import.mjs"
+    },
+    {
+      "source": "system/apps/notes/ui/editor-save.mjs",
+      "operation": "relocate",
+      "target": "apps/notes/src/ui/editor-save.mjs"
+    },
+    {
+      "source": "system/apps/notes/ui/file-picker.mjs",
+      "operation": "relocate",
+      "target": "apps/notes/src/ui/file-picker.mjs"
+    },
+    {
+      "source": "system/apps/notes/ui/image-previews.mjs",
+      "operation": "relocate",
+      "target": "apps/notes/src/ui/image-previews.mjs"
+    },
+    {
+      "source": "system/apps/notes/ui/list-model.mjs",
+      "operation": "relocate",
+      "target": "apps/notes/src/ui/list-model.mjs"
+    },
+    {
+      "source": "system/apps/notes/ui/reference-links.mjs",
+      "operation": "relocate",
+      "target": "apps/notes/src/ui/reference-links.mjs"
+    },
+    {
+      "source": "system/apps/notes/ui/rich-editor.mjs",
+      "operation": "relocate",
+      "target": "apps/notes/src/ui/rich-editor.mjs"
+    },
+    {
+      "source": "system/apps/notes/ui/workspace-controls.mjs",
+      "operation": "relocate-and-rewire-public-contract-imports",
+      "target": "apps/notes/src/ui/workspace-controls.mjs"
+    },
+    {
+      "source": "system/contracts/notes-store.mjs",
+      "operation": "move-app-owned-contract",
+      "target": "apps/notes/src/contracts/notes-store.mjs"
+    },
+    {
+      "source": "system/contracts/notes-file-importer.mjs",
+      "operation": "move-app-owned-contract",
+      "target": "apps/notes/src/contracts/notes-file-importer.mjs"
+    },
+    {
+      "source": "system/services/i18n/catalog/notes.mjs",
+      "operation": "move-app-owned-localization",
+      "target": "apps/notes/src/i18n/messages.mjs"
+    }
+  ],
+  "authority": "none"
+}
