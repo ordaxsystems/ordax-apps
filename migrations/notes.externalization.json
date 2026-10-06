@@ -142,7 +142,8 @@
     ],
     "purpose": "reproducible Gate B source transfer after platform absence proof",
     "inventory_file": "migrations/notes.source-snapshot.json",
-    "file_count": 19
+    "file_count": 19,
+    "transfer_map": "migrations/notes.gate-b-transfer-map.json"
   },
   "source_cutover_allowed": false,
   "distribution_activation_allowed": false

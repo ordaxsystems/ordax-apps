@@ -7,6 +7,7 @@ PLAN_PATH = ROOT / "migrations" / "notes.externalization.json"
 SDK_LOCK_PATH = ROOT / "platform-sdk.lock.json"
 TARGET_PATH = ROOT / "apps" / "notes"
 SOURCE_INVENTORY_PATH = ROOT / "migrations" / "notes.source-snapshot.json"
+TRANSFER_MAP_PATH = ROOT / "migrations" / "notes.gate-b-transfer-map.json"
 
 REQUIRED_PROOFS = {
     "sdk-contracts-pinned",
@@ -122,6 +123,96 @@ def main() -> None:
             fail("Notes source inventory blob SHA is invalid")
         if not isinstance(size, int) or size < 0:
             fail("Notes source inventory size is invalid")
+
+    transfer = json.loads(TRANSFER_MAP_PATH.read_text(encoding="utf-8"))
+    if transfer.get("$schema") != "ordax.notes-gate-b-transfer-map/1":
+        fail("unexpected Notes Gate B transfer-map schema")
+    if transfer.get("source_snapshot") != "migrations/notes.source-snapshot.json":
+        fail("Notes Gate B transfer map must bind the pinned source snapshot")
+    if transfer.get("source_commit") != snapshot_commit:
+        fail("Notes Gate B transfer map source commit drifted")
+    if transfer.get("target_root") != "apps/notes":
+        fail("Notes Gate B target root drifted")
+    if transfer.get("source_file_count") != 19:
+        fail("Notes Gate B transfer map must account for 19 source files")
+    if transfer.get("target_manifest") != "apps/notes/app.json":
+        fail("Notes Gate B target manifest drifted")
+    if transfer.get("authority") != "none":
+        fail("Notes Gate B transfer metadata must not carry authority")
+
+    transfer_rules = transfer.get("rules") or {}
+    required_true_rules = {
+        "app_owned_contracts_move_with_product",
+        "localization_moves_with_product",
+        "public_platform_contracts_consumed_via_sdk_or_injected_ports",
+    }
+    required_false_rules = {
+        "copy_platform_private_imports",
+        "copy_legacy_storage_adapters",
+        "copy_legacy_native_endpoint",
+        "dual_source_allowed",
+    }
+    for rule in required_true_rules:
+        if transfer_rules.get(rule) is not True:
+            fail(f"Notes Gate B rule must remain true: {rule}")
+    for rule in required_false_rules:
+        if transfer_rules.get(rule) is not False:
+            fail(f"Notes Gate B rule must remain false: {rule}")
+
+    mappings = transfer.get("mappings")
+    if not isinstance(mappings, list) or len(mappings) != 19:
+        fail("Notes Gate B transfer map must contain exactly 19 mappings")
+    mapped_sources = [item.get("source") for item in mappings if isinstance(item, dict)]
+    if len(mapped_sources) != 19 or set(mapped_sources) != set(paths):
+        fail("Notes Gate B transfer map must account for every pinned source path exactly once")
+    if len(set(mapped_sources)) != 19:
+        fail("Notes Gate B transfer sources must be unique")
+
+    allowed_operations = {
+        "replace-by-manifest",
+        "fold-version-into-manifest",
+        "relocate",
+        "relocate-and-rewire-public-contract-imports",
+        "relocate-and-rewire-app-contract-imports",
+        "relocate-and-rewire-contract-imports",
+        "move-app-owned-contract",
+        "move-app-owned-localization",
+    }
+    for item in mappings:
+        operation = item.get("operation")
+        target = item.get("target")
+        if operation not in allowed_operations:
+            fail(f"unsupported Notes Gate B transfer operation: {operation!r}")
+        if not isinstance(target, str) or not target.startswith("apps/notes/"):
+            fail("every Notes Gate B target must stay inside apps/notes")
+
+    manifest_sources = {
+        item.get("source")
+        for item in mappings
+        if item.get("target") == "apps/notes/app.json"
+    }
+    if manifest_sources != {
+        "system/apps/notes/app.mjs",
+        "system/apps/notes/component.mjs",
+        "system/apps/notes/version.mjs",
+    }:
+        fail("Notes external manifest must replace exactly app.mjs, component.mjs and version.mjs")
+
+    manifest = transfer.get("manifest_replacement") or {}
+    expected_manifest = {
+        "schema": "ordax.component-manifest/1",
+        "id": "notes",
+        "kind": "app",
+        "releaseMode": "component-slot",
+        "owner": "washingtonmsdj/ordax-apps",
+        "version_source": "system/apps/notes/version.mjs@source_snapshot",
+        "legacy_platform_metadata_sources": [
+            "system/apps/notes/app.mjs",
+            "system/apps/notes/component.mjs",
+        ],
+    }
+    if manifest != expected_manifest:
+        fail("Notes Gate B manifest replacement contract drifted")
 
     contracts = plan.get("platform_contracts_required")
     if not isinstance(contracts, list) or "ordax.app-data/1" not in contracts:
