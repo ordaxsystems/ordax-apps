@@ -65,11 +65,7 @@ jobs:
       - name: Verify pinned lifecycle checkout
         run: |
           set -euo pipefail
-          expected="$(python3 - <<'PY'
-          import json
-          print(json.load(open("migrations/notes.platform-lifecycle.lock.json", encoding="utf-8"))["commit"])
-          PY
-          )"
+          expected="$(python3 -c 'import json; print(json.load(open("migrations/notes.platform-lifecycle.lock.json", encoding="utf-8"))["commit"])')"
           actual="$(git -C .ordax-platform-lifecycle rev-parse HEAD)"
           test "$actual" = "$expected"
 
@@ -110,29 +106,7 @@ jobs:
           trap 'rm -f "$target"' EXIT
           (
             cd .ordax-platform-lifecycle/tools/runtime-component-channel
-            go test -run '^TestExternalNotesPackageCompletesCanonicalLifecycle
-        run: python3 tools/verify_platform_sdk.py
-
-      - name: Prove Studio public SDK conformance
-        run: python3 tools/verify_studio_sdk_conformance.py
-
-      - name: Prove Studio typed host bridge boundary
-        run: node --test tests/studio_host_bridge_conformance.mjs
-
-      - name: Prove Studio legacy method ownership boundary
-        run: python3 tools/verify_studio_legacy_method_ownership.py
-
-      - name: Prove portable Studio source boundary
-        run: python3 apps/studio/tests/test_portable_boundary.py
-
-      - name: Prove Studio remote Computer grant boundary
-        run: python3 apps/studio/tests/test_remote_computer_grants_boundary.py
-
-      - name: Prove Studio OrdaX OS and Windows distribution invariants
-        run: |
-          python3 tools/verify_studio_distribution.py
-          python3 tests/studio_distribution_contract_test.py
- -count=1
+            go test -run '^TestExternalNotesPackageCompletesCanonicalLifecycle$' -count=1
           )
 
       - name: Prove pinned public App SDK from platform repository
