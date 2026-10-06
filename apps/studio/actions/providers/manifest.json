@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "studio",
+  "appVersion": "0.4.6",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "studio-native",
+      "revision": "1",
+      "module": "actions/providers/studio-native.mjs",
+      "sha256": "0aea7f6ebf078e57dfeb385f0d593209ae380f40f664c8e55ff70d68d694588f"
+    }
+  ]
+}
