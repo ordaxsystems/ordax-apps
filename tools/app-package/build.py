@@ -120,6 +120,99 @@ def validate_app_manifest(value: dict) -> dict:
     return value
 
 
+def _bounded_ai_text(value: object, label: str, max_chars: int) -> str:
+    if not isinstance(value, str) or "\\x00" in value:
+        raise AppPackageError(f"{label} must be a string")
+    normalized = value.strip()
+    if not normalized or len(normalized) > max_chars:
+        raise AppPackageError(f"{label} is outside allowed bounds")
+    return normalized
+
+
+def validate_app_intelligence_manifest(value: dict, app: dict) -> dict:
+    expected = {"schema", "appId", "appVersion", "authority", "execution", "instructions", "intents"}
+    if set(value) != expected:
+        raise AppPackageError("ai/manifest.json fields are not canonical")
+    if value["schema"] != APP_INTELLIGENCE_MANIFEST_SCHEMA:
+        raise AppPackageError("ai/manifest.json schema is incompatible")
+    if value["appId"] != app["id"] or value["appVersion"] != app["version"]:
+        raise AppPackageError("AI manifest identity does not match app.json")
+    if value["authority"] != "none":
+        raise AppPackageError("AI manifest must not carry authority")
+    if value["execution"] != APP_INTELLIGENCE_EXECUTION_MODE:
+        raise AppPackageError("AI manifest cannot grant execution")
+
+    instructions = value["instructions"]
+    if not isinstance(instructions, list) or not instructions or len(instructions) > 32:
+        raise AppPackageError("AI manifest instructions must be a bounded non-empty array")
+    normalized_instructions = [
+        _bounded_ai_text(item, "AI manifest instruction", 640)
+        for item in instructions
+    ]
+    if len(set(normalized_instructions)) != len(normalized_instructions):
+        raise AppPackageError("AI manifest instructions must be unique")
+
+    intents = value["intents"]
+    if not isinstance(intents, list) or len(intents) > 64:
+        raise AppPackageError("AI manifest intents must be a bounded array")
+    seen_intents: set[str] = set()
+    for intent in intents:
+        if not isinstance(intent, dict) or set(intent) != {
+            "id", "description", "effect", "confirmation", "parameters", "examples"
+        }:
+            raise AppPackageError("AI manifest intent is malformed")
+        intent_id = intent["id"]
+        if (
+            not isinstance(intent_id, str)
+            or INTENT_ID_RE.fullmatch(intent_id) is None
+            or not intent_id.startswith(f"{app['id']}.")
+            or intent_id in seen_intents
+        ):
+            raise AppPackageError("AI manifest intent id is invalid, duplicated or not app-namespaced")
+        seen_intents.add(intent_id)
+        _bounded_ai_text(intent["description"], "AI manifest intent description", 640)
+        if intent["effect"] not in AI_EFFECTS:
+            raise AppPackageError("AI manifest intent effect is invalid")
+        if intent["confirmation"] not in AI_CONFIRMATION_MODES:
+            raise AppPackageError("AI manifest intent confirmation mode is invalid")
+        if intent["effect"] in {"external-write", "destructive"} and intent["confirmation"] == "none":
+            raise AppPackageError("external/destructive AI intents require confirmation policy")
+
+        parameters = intent["parameters"]
+        if not isinstance(parameters, list) or len(parameters) > 32:
+            raise AppPackageError("AI manifest intent parameters must be a bounded array")
+        seen_parameters: set[str] = set()
+        for parameter in parameters:
+            if not isinstance(parameter, dict) or set(parameter) != {
+                "name", "type", "required", "description"
+            }:
+                raise AppPackageError("AI manifest intent parameter is malformed")
+            name = parameter["name"]
+            if (
+                not isinstance(name, str)
+                or PARAMETER_NAME_RE.fullmatch(name) is None
+                or name in seen_parameters
+            ):
+                raise AppPackageError("AI manifest parameter name is invalid or duplicated")
+            seen_parameters.add(name)
+            if parameter["type"] not in AI_PARAMETER_TYPES:
+                raise AppPackageError("AI manifest parameter type is invalid")
+            if not isinstance(parameter["required"], bool):
+                raise AppPackageError("AI manifest parameter required flag must be boolean")
+            _bounded_ai_text(parameter["description"], "AI manifest parameter description", 320)
+
+        examples = intent["examples"]
+        if not isinstance(examples, list) or len(examples) > 8:
+            raise AppPackageError("AI manifest intent examples must be a bounded array")
+        normalized_examples = [
+            _bounded_ai_text(item, "AI manifest intent example", 320)
+            for item in examples
+        ]
+        if len(set(normalized_examples)) != len(normalized_examples):
+            raise AppPackageError("AI manifest intent examples must be unique")
+    return value
+
+
 def validate_compatibility(value: dict, app: dict) -> dict:
     expected = {"schema", "componentId", "componentVersion", "provides", "requires", "state", "authority"}
     if set(value) != expected:
