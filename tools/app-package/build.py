@@ -66,10 +66,6 @@ MAX_ACTION_PROVIDER_MANIFEST_BYTES = 64 * 1024
 
 INCLUDED_ROOTS = ("src", "assets", "ai", "actions")
 SOURCE_EXTENSIONS = {".mjs", ".js"}
-IMPORT_RE = re.compile(
-    r"""(?:\bfrom\s*["']([^"']+)["']|\bimport\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["'])"""
-)
-
 
 class AppPackageError(RuntimeError):
     pass
@@ -661,6 +657,224 @@ def discover_app_files(app_root: Path) -> list[PurePosixPath]:
     return selected
 
 
+
+REGEX_PREFIX_IDENTIFIERS = {
+    "await", "case", "delete", "do", "else", "in", "instanceof",
+    "new", "of", "return", "throw", "typeof", "void", "yield",
+}
+REGEX_PREFIX_PUNCT = set("([{=,:;!?&|+-*%^~<>")
+
+
+def _regex_literal_allowed(previous_token) -> bool:
+    if previous_token is None:
+        return True
+    kind, value, _ = previous_token
+    if kind == "identifier":
+        return value in REGEX_PREFIX_IDENTIFIERS
+    if kind == "punct":
+        return value in REGEX_PREFIX_PUNCT
+    return False
+
+
+def _consume_javascript_regex(source: str, index: int) -> int:
+    index += 1
+    in_class = False
+    while index < len(source):
+        char = source[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char in {"\n", "\r"}:
+            raise AppPackageError("unterminated JavaScript regex literal")
+        if char == "[":
+            in_class = True
+            index += 1
+            continue
+        if char == "]" and in_class:
+            in_class = False
+            index += 1
+            continue
+        if char == "/" and not in_class:
+            index += 1
+            while index < len(source) and source[index].isalpha():
+                index += 1
+            return index
+        index += 1
+    raise AppPackageError("unterminated JavaScript regex literal")
+
+
+def _javascript_code_tokens(source: str, index: int = 0, *, stop_at_template_brace: bool = False):
+    previous_token = None
+    brace_depth = 0
+    length = len(source)
+
+    while index < length:
+        char = source[index]
+
+        if char.isspace():
+            index += 1
+            continue
+
+        if stop_at_template_brace and char == "}" and brace_depth == 0:
+            return index + 1
+
+        if char == "/" and index + 1 < length and source[index + 1] == "/":
+            newline = source.find("\n", index + 2)
+            index = length if newline < 0 else newline + 1
+            continue
+
+        if char == "/" and index + 1 < length and source[index + 1] == "*":
+            end = source.find("*/", index + 2)
+            if end < 0:
+                raise AppPackageError("unterminated JavaScript block comment")
+            index = end + 2
+            continue
+
+        if char == "/" and _regex_literal_allowed(previous_token):
+            index = _consume_javascript_regex(source, index)
+            token = ("regex", "", index)
+            previous_token = token
+            yield token
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+            token_start = index
+            index += 1
+            value = []
+            while index < length:
+                current = source[index]
+                if current == "\\":
+                    if index + 1 >= length:
+                        raise AppPackageError("unterminated JavaScript string escape")
+                    value.append(source[index:index + 2])
+                    index += 2
+                    continue
+                if current == quote:
+                    index += 1
+                    token = ("string", "".join(value), token_start)
+                    previous_token = token
+                    yield token
+                    break
+                if current in {"\n", "\r"}:
+                    raise AppPackageError("unterminated JavaScript string literal")
+                value.append(current)
+                index += 1
+            else:
+                raise AppPackageError("unterminated JavaScript string literal")
+            continue
+
+        if char == chr(96):
+            token_start = index
+            index += 1
+            while index < length:
+                current = source[index]
+                if current == "\\":
+                    index += 2
+                    continue
+                if current == chr(96):
+                    index += 1
+                    token = ("template", "", token_start)
+                    previous_token = token
+                    yield token
+                    break
+                if current == "$" and index + 1 < length and source[index + 1] == "{":
+                    nested = _javascript_code_tokens(
+                        source,
+                        index + 2,
+                        stop_at_template_brace=True,
+                    )
+                    while True:
+                        try:
+                            nested_token = next(nested)
+                        except StopIteration as stopped:
+                            index = stopped.value
+                            break
+                        yield nested_token
+                    continue
+                index += 1
+            else:
+                raise AppPackageError("unterminated JavaScript template literal")
+            continue
+
+        if char.isalpha() or char in {"_", "$"}:
+            token_start = index
+            index += 1
+            while index < length and (
+                source[index].isalnum() or source[index] in {"_", "$"}
+            ):
+                index += 1
+            token = ("identifier", source[token_start:index], token_start)
+            previous_token = token
+            yield token
+            continue
+
+        if char == "{":
+            brace_depth += 1
+        elif char == "}" and brace_depth > 0:
+            brace_depth -= 1
+
+        token = ("punct", char, index)
+        previous_token = token
+        yield token
+        index += 1
+
+    if stop_at_template_brace:
+        raise AppPackageError("unterminated JavaScript template expression")
+    return index
+
+
+def _javascript_tokens(source: str):
+    yield from _javascript_code_tokens(source)
+
+
+def literal_module_specifiers(source: str) -> list[str]:
+    tokens = list(_javascript_tokens(source))
+    specifiers = []
+
+    for offset, token in enumerate(tokens):
+        kind, value, _ = token
+        if kind != "identifier" or value not in {"import", "export"}:
+            continue
+
+        previous = tokens[offset - 1] if offset > 0 else None
+        if previous is not None and previous[0] == "punct" and previous[1] == ".":
+            continue
+
+        cursor = offset + 1
+        if cursor >= len(tokens):
+            continue
+
+        next_kind, next_value, _ = tokens[cursor]
+
+        if value == "import":
+            if next_kind == "punct" and next_value == ".":
+                continue
+            if next_kind == "string":
+                specifiers.append(next_value)
+                continue
+            if next_kind == "punct" and next_value == "(":
+                if cursor + 1 < len(tokens) and tokens[cursor + 1][0] == "string":
+                    specifiers.append(tokens[cursor + 1][1])
+                continue
+
+        while cursor < len(tokens):
+            current_kind, current_value, _ = tokens[cursor]
+            if current_kind == "punct" and current_value == ";":
+                break
+            if (
+                current_kind == "identifier"
+                and current_value == "from"
+                and cursor + 1 < len(tokens)
+                and tokens[cursor + 1][0] == "string"
+            ):
+                specifiers.append(tokens[cursor + 1][1])
+                break
+            cursor += 1
+
+    return specifiers
+
+
 def validate_source_graph(app_root: Path, files: list[PurePosixPath]) -> None:
     available = {p.as_posix() for p in files}
     if "src/runtime.mjs" not in available:
@@ -679,8 +893,7 @@ def validate_source_graph(app_root: Path, files: list[PurePosixPath]) -> None:
             source = payload.decode("utf-8")
         except UnicodeError as exc:
             raise AppPackageError(f"JavaScript source is not UTF-8: {relative}") from exc
-        for match in IMPORT_RE.finditer(source):
-            specifier = next(group for group in match.groups() if group is not None)
+        for specifier in literal_module_specifiers(source):
             if not specifier.startswith("."):
                 raise AppPackageError(
                     f"bare/remote import is forbidden in portable app package: {relative} -> {specifier}"

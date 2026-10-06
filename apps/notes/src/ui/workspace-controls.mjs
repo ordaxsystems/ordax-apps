@@ -13,6 +13,7 @@ import {
 } from "../domain/runtime.mjs";
 import { createNotesStatistics } from "../domain/statistics.mjs";
 import { summarizeNoteWithIntelligence } from "../platform/intelligence-summary.mjs";
+import { createNotesFileImporter } from "../services/file-import.mjs";
 import {
   createNotesImagePreviewCache,
   isNotesImageFileName,
@@ -170,6 +171,13 @@ function buildShell(documentObject, t) {
     "duplicate-note",
     t("notes.action.duplicate"),
   );
+  const importTextAction = button(
+    documentObject,
+    "ordax-notes-menu-item ordax-notes-import-text",
+    t("notes.action.importText"),
+    "import-text-file",
+    t("notes.action.importText"),
+  );
   const trashAction = button(
     documentObject,
     "ordax-notes-menu-item ordax-notes-trash-action",
@@ -190,7 +198,7 @@ function buildShell(documentObject, t) {
     node(documentObject, "span", "ordax-notes-menu-label", t("notes.move.heading")),
     node(documentObject, "div", "ordax-notes-move-projects"),
   );
-  menu.append(duplicateAction, trashAction, permanentDeleteAction, moveSection);
+  menu.append(importTextAction, duplicateAction, trashAction, permanentDeleteAction, moveSection);
   top.append(breadcrumb, topActions, menu);
   editor.append(top);
 
@@ -408,10 +416,16 @@ export function mountNotesWorkspaceControls(
   };
 
   const filePicker = createNotesFilePicker({ fileSpace: filePort });
+  const fileImporter = filePort === null
+    ? null
+    : createNotesFileImporter({ fileSpace: filePort, notesRuntime: runtime });
+  let filePickerIntent = "reference";
+  let importPending = false;
 
   const resetReferenceFlow = () => {
     referenceChooserOpen = false;
     referenceNoteId = null;
+    filePickerIntent = "reference";
     filePicker.close();
   };
 
@@ -697,7 +711,13 @@ export function mountNotesWorkspaceControls(
         documentObject,
         "strong",
         "",
-        t(pickerState.purpose === "image" ? "notes.filePicker.title.image" : "notes.filePicker.title.file"),
+        t(
+          filePickerIntent === "import"
+            ? "notes.filePicker.title.importText"
+            : pickerState.purpose === "image"
+              ? "notes.filePicker.title.image"
+              : "notes.filePicker.title.file",
+        ),
       ),
       node(documentObject, "small", "", pickerState.path),
     );
@@ -755,17 +775,31 @@ export function mountNotesWorkspaceControls(
     }
     picker.append(list);
 
+    const importingText = filePickerIntent === "import";
     const attach = button(
       documentObject,
       "ordax-notes-file-picker-attach",
-      t(pickerState.purpose === "image" ? "notes.filePicker.attachSelectedImage" : "notes.filePicker.attachSelectedFile"),
-      "attach-file-reference",
-      t(pickerState.purpose === "image" ? "notes.filePicker.attachImage" : "notes.filePicker.attachFile"),
+      t(
+        importingText
+          ? "notes.filePicker.importSelectedText"
+          : pickerState.purpose === "image"
+            ? "notes.filePicker.attachSelectedImage"
+            : "notes.filePicker.attachSelectedFile",
+      ),
+      importingText ? "import-selected-text-file" : "attach-file-reference",
+      t(
+        importingText
+          ? "notes.filePicker.importText"
+          : pickerState.purpose === "image"
+            ? "notes.filePicker.attachImage"
+            : "notes.filePicker.attachFile",
+      ),
     );
-    attach.disabled = readOnly
-      || !pickerState.selectedPath
+    attach.disabled = !pickerState.selectedPath
       || pickerState.pending
-      || note.references.length >= MAX_NOTE_REFERENCES;
+      || importPending
+      || (!importingText && (readOnly || note.references.length >= MAX_NOTE_REFERENCES))
+      || (importingText && state.document.notes.length >= MAX_NOTES);
     picker.append(attach);
   };
 
@@ -1046,9 +1080,18 @@ export function mountNotesWorkspaceControls(
     const star = view.querySelector(".ordax-notes-star");
     star.textContent = note.favorite ? "★" : "☆";
     star.setAttribute("aria-label", note.favorite ? t("notes.favorite.remove") : t("notes.favorite.add"));
+    const importTextAction = view.querySelector(".ordax-notes-import-text");
     const duplicateAction = view.querySelector(".ordax-notes-duplicate");
     const menuAction = view.querySelector(".ordax-notes-trash-action");
     const permanentDeleteAction = view.querySelector(".ordax-notes-delete-forever");
+    importTextAction.disabled = fileImporter === null
+      || importPending
+      || state.document.notes.length >= MAX_NOTES;
+    importTextAction.title = fileImporter === null
+      ? t("notes.action.importTextUnavailable")
+      : state.document.notes.length >= MAX_NOTES
+        ? t("notes.capacity.notes", { limit: MAX_NOTES })
+        : t("notes.action.importText");
     duplicateAction.hidden = note.deletedAt !== null;
     duplicateAction.disabled = note.deletedAt !== null || state.document.notes.length >= MAX_NOTES;
     duplicateAction.title = state.document.notes.length >= MAX_NOTES
@@ -1429,6 +1472,16 @@ export function mountNotesWorkspaceControls(
       resetReferenceFlow();
       runtime.addReference(note.id, createNotesLinkReference(parsed.href, title));
     }
+    if (action === "import-text-file" && fileImporter && !importPending) {
+      flushEditor();
+      referencesOpen = true;
+      referenceChooserOpen = false;
+      referenceNoteId = note.id;
+      filePickerIntent = "import";
+      const menu = mountedSlot?.querySelector(".ordax-notes-menu");
+      if (menu) menu.hidden = true;
+      void filePicker.open("file");
+    }
     if (
       action === "add-file-reference"
       && filePort
@@ -1436,9 +1489,11 @@ export function mountNotesWorkspaceControls(
     ) {
       referenceNoteId = note.id;
       referenceChooserOpen = false;
+      filePickerIntent = "reference";
       void filePicker.open("file");
     }
     if (action === "close-file-picker") {
+      if (importPending) return;
       resetReferenceFlow();
       render();
     }
@@ -1450,6 +1505,32 @@ export function mountNotesWorkspaceControls(
     }
     if (action === "file-picker-select-file") {
       filePicker.select(actionNode.dataset.filePath);
+    }
+    if (action === "import-selected-text-file" && fileImporter && !importPending) {
+      const path = filePicker.getSnapshot().selectedPath;
+      if (!path) return;
+      importPending = true;
+      render();
+      void fileImporter.importTextFile(path)
+        .then((result) => {
+          if (destroyed) return;
+          if (result.status === "created") {
+            mode = "project";
+            referencesOpen = false;
+            resetReferenceFlow();
+          } else {
+            windowObject.alert?.(t("notes.import.failed"));
+          }
+        })
+        .catch(() => {
+          if (!destroyed) windowObject.alert?.(t("notes.import.failed"));
+        })
+        .finally(() => {
+          if (destroyed) return;
+          importPending = false;
+          render();
+        });
+      return;
     }
     if (
       action === "attach-file-reference"
