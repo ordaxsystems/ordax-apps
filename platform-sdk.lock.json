@@ -1,7 +1,7 @@
 {
   "$schema": "ordax.app-sdk-lock/1",
   "repository": "washingtonmsdj/prototipo-ordax-os",
-  "commit": "5995c1fc17c2f2c8debdeea009ed518f6b4c3c3b",
+  "commit": "580d61605051a0d9da2b8dbccc46fb3cf9aef7b1",
   "bundle_path": "sdk/app-sdk-v1/bundle.json",
   "bundle_schema": "ordax.app-sdk-bundle/1",
   "bundle_version": "1.7.0",
