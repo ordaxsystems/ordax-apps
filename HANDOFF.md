@@ -45,6 +45,9 @@ O App SDK 1.12 preserva os contratos anteriores e publica, entre outros:
 - `ordax.application-action-capability/1`;
 - `ordax.application-action-capability-registry/1`;
 - `ordax.application-action-manifest/1`;
+- `ordax.application-action-provider/1`;
+- `ordax.application-action-provider-invocation/1`;
+- `ordax.application-action-provider-result/1`;
 - `ordax.application-action-proposal/1`;
 - `ordax.project-cloud-links/1`;
 - `ordax.project-cloud-links-reader/1`;
@@ -92,7 +95,7 @@ Estado machine-readable em `migrations/notes.externalization.json`:
 
 ### SDK e App Data
 
-Notes mantém seu lock específico em App SDK **1.6.0** porque esse é o baseline comprovado para App Data 1 + Localization 2 + Surface Lifecycle 5. O lock global em 1.11 não deve substituir esse baseline histórico do Notes às cegas.
+Notes mantém seu lock específico em App SDK **1.6.0** porque esse é o baseline comprovado para App Data 1 + Localization 2 + Surface Lifecycle 5. O lock global em 1.12 não deve substituir esse baseline histórico do Notes às cegas.
 
 Persistência do Notes usa o boundary público `ordax.app-data/1`; uninstall e delete de App Data permanecem operações distintas.
 
