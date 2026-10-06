@@ -7,6 +7,8 @@ Estrutura alvo mínima:
 ```text
 apps/<app-id>/
   app.json
+  ai/
+    manifest.json
   src/
   assets/
   i18n/
@@ -16,6 +18,9 @@ apps/<app-id>/
 ## Regras de ownership
 
 - `app-id` estável e compatível com `ordax.component-manifest/1`;
+- todo app first-party distribuível declara `ai/manifest.json` compatível com `ordax.app-intelligence-manifest/1`;
+- o manifesto de IA é declarativo (`authority=none`, `execution=declarative-only`) e nunca concede execução ou permissões;
+- integrações com produtos externos expõem capacidades por conectores/adapters; software de terceiros não é tratado como first-party;
 - nenhuma cópia de serviços centrais do OrdaX;
 - dependências da plataforma declaradas por contrato público/versionado, nunca por import de source privado;
 - localization component-scoped;

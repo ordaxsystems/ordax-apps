@@ -10,6 +10,8 @@ A plataforma continua pertencendo ao repositório `prototipo-ordax-os` e fornece
 
 Os apps deste repositório devem consumir esses contratos; não podem criar implementações paralelas de identidade, Memory, autorização, sync ou update.
 
+Apps first-party também expõem sua semântica ao OrdaX Intelligence por `ai/manifest.json`, usando o contrato público `ordax.app-intelligence-manifest/1`. O manifesto descreve instruções e intents, mas carrega `authority=none` e não concede execução. O padrão está documentado em [`docs/APP-INTELLIGENCE.md`](docs/APP-INTELLIGENCE.md).
+
 ## Regra de arquitetura
 
 - app source/release pode evoluir independentemente;
