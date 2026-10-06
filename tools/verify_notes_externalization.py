@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PLAN_PATH = ROOT / "migrations" / "notes.externalization.json"
 SDK_LOCK_PATH = ROOT / "platform-sdk.lock.json"
+NOTES_SDK_LOCK_PATH = ROOT / "migrations" / "notes.platform-sdk.lock.json"
 TARGET_PATH = ROOT / "apps" / "notes"
 SOURCE_INVENTORY_PATH = ROOT / "migrations" / "notes.source-snapshot.json"
 TRANSFER_MAP_PATH = ROOT / "migrations" / "notes.gate-b-transfer-map.json"
@@ -238,8 +239,8 @@ def main() -> None:
         "appActivation": ("ordax.app-activation/1", True),
         "fileSpace": ("ordax.file-space/11", False),
         "intelligence": ("ordax.intelligence/1", False),
-        "localization": ("ordax.localization/1", True),
-        "surfaceLifecycle": ("ordax.surface-render-lifecycle/4", True),
+        "localization": ("ordax.localization/2", True),
+        "surfaceLifecycle": ("ordax.surface-render-lifecycle/5", True),
     }
     if set(facets) != set(expected_facets):
         fail("Notes host facets drifted")
@@ -397,8 +398,8 @@ def main() -> None:
             {"id": "ordax.app-data", "minMajor": 1, "maxMajor": 1, "optional": False},
             {"id": "ordax.file-space", "minMajor": 11, "maxMajor": 11, "optional": True},
             {"id": "ordax.intelligence", "minMajor": 1, "maxMajor": 1, "optional": True},
-            {"id": "ordax.localization", "minMajor": 1, "maxMajor": 1, "optional": False},
-            {"id": "ordax.surface-render-lifecycle", "minMajor": 4, "maxMajor": 4, "optional": False},
+            {"id": "ordax.localization", "minMajor": 2, "maxMajor": 2, "optional": False},
+            {"id": "ordax.surface-render-lifecycle", "minMajor": 5, "maxMajor": 5, "optional": False},
         ],
         "state": {
             "id": "ordax.notes-store",
@@ -418,7 +419,22 @@ def main() -> None:
     target_sdk = plan.get("target_sdk") or {}
     target_version = target_sdk.get("minimum_bundle_version")
     if target_version != "1.6.0":
-        fail("Notes App Data migration must target App SDK 1.6.0 baseline")
+        fail("Notes distribution must target App SDK 1.6.0 baseline")
+    if target_sdk.get("lock_file") != "migrations/notes.platform-sdk.lock.json":
+        fail("Notes target SDK must use its own exact lock instead of the Studio/global lock")
+    notes_sdk_lock = json.loads(NOTES_SDK_LOCK_PATH.read_text(encoding="utf-8"))
+    expected_notes_sdk_lock = {
+        "$schema": "ordax.app-sdk-lock/1",
+        "repository": "washingtonmsdj/prototipo-ordax-os",
+        "commit": "4229f9e381203a09036bff7955bd87ea971cf231",
+        "bundle_path": "sdk/app-sdk-v1/bundle.json",
+        "bundle_schema": "ordax.app-sdk-bundle/1",
+        "bundle_version": "1.6.0",
+        "sha256": "89628d27ea33ec0a5085bd5b61acba6028edae1a7ca2df54b86ce4d009817f0c",
+        "authority": "none",
+    }
+    if notes_sdk_lock != expected_notes_sdk_lock:
+        fail("Notes App SDK 1.6 exact lock drifted")
 
     resolved = plan.get("resolved_dependencies")
     if not isinstance(resolved, list):
