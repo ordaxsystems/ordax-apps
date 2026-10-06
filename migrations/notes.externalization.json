@@ -148,5 +148,6 @@
   "source_cutover_allowed": false,
   "distribution_activation_allowed": false,
   "host_boundary": "migrations/notes.host-boundary.json",
-  "distribution_contract": "migrations/notes.distribution.json"
+  "distribution_contract": "migrations/notes.distribution.json",
+  "compatibility_descriptor": "migrations/notes.compatibility.json"
 }
