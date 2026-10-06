@@ -1,103 +1,116 @@
 # OrdaX Apps — canonical handoff
 
-Atualizado em 2026-10-04.
+Atualizado em 2026-10-05.
 
-## Estado
+## Estado canônico
 
 Este repositório é o source workspace oficial de apps first-party removíveis/bootstrap/on-demand do OrdaX.
 
-A plataforma/core continua em `washingtonmsdj/prototipo-ordax-os`.
+Owners separados:
+
+- plataforma/core: `washingtonmsdj/prototipo-ordax-os`;
+- apps portáteis: `washingtonmsdj/ordax-apps`;
+- runtime/host: `washingtonmsdj/ordax-runtime`;
+- control plane + provider connector: `washingtonmsdj/ordax-control-plane`.
+
+O antigo `washingtonmsdj/mcp-blender` é legado em retirada. Não deve voltar a ser source de produto, Runtime ou provider connector. A exclusão física continua bloqueada até o deployment de produção estar repontado e não existir caminho funcional residual de build/deploy/launch.
 
 ### Invariantes
 
 - Store é estrutural e **não removível**;
 - Store UI não possui install authority;
-- Identity, Memory, Intelligence implementation, permissions, sync, trust e updater não são copiados para este repo;
-- apps usam contratos públicos/versionados;
-- uninstall de app não implica delete de dados;
+- Identity, Memory, Intelligence implementation, permissions, sync, trust e updater permanecem na plataforma/owners próprios;
+- apps consomem contratos públicos/versionados;
+- uninstall de app não implica delete de App Data;
 - localization é component-scoped;
 - um app possui uma única fonte de verdade por vez;
-- third-party/user apps devem poder seguir o mesmo modelo público em repositórios próprios.
+- package/manifest/catalog não concedem authority;
+- third-party/user apps devem poder seguir o mesmo modelo público em repositórios próprios;
+- source cutover e distribution activation são gates distintos.
 
 ## App SDK atual
 
-`platform-sdk.lock.json` fixa o App SDK v1.2.0 no commit exato da plataforma:
+`platform-sdk.lock.json` fixa atualmente o App SDK **1.3.0** no commit exato da plataforma:
 
-`73c86c684abcd38b846e6eed40a5cd75cacf50ae`
+`d8b993c68752a8dfb76a15f860df6a96f03e6b8e`
 
 SHA-256 do bundle:
 
-`cade7d57236cd49ab9a34f4ba97eabbb7fd6b778156adf47aefed9f111a35ea8`
+`5386d21f3d16fd972690edfbde65af96cb063778b2a49f19b8b89a8ffc533638`
 
-O CI baixa o bundle desse commit exato e verifica SHA-256 antes de aceitar o workspace. Compatibilidade é por major dos contratos; o bundle não é consumido por `main`, `latest` ou branch flutuante.
+O CI verifica o bundle desse commit exato. Compatibilidade é por major dos contratos; `main`/`latest` não são identidade de SDK.
 
-Contratos publicados no SDK 1.2.0:
+O Notes tem como baseline de **distribuição** App SDK 1.6.0 (ou bundle compatível mais novo) porque `ordax.app-data/1` é obrigatório para seu estado durável externo. Isso não autoriza atualizar o pin global às cegas: Studio e demais consumidores mantêm seus próprios gates de conformance.
 
-- `ordax.app-activation/1`
-- `ordax.component-manifest/1`
-- `ordax.component-runtime/1`
-- `ordax.device-action-receipt/1`
-- `ordax.device-action-request/1`
-- `ordax.device-agent-capabilities/1`
-- `ordax.device-agent-capability-reader/1`
-- `ordax.file-space/11`
-- `ordax.first-party-app-delivery-policy/1`
-- `ordax.intelligence/1`
-- `ordax.localization/1`
-- `prototype-ordax.localization-pack/1`
-- `ordax.memory/1`
-- `ordax.project-catalog/1`
-- `ordax.studio-runtime/1`
-- `ordax.surface-render-lifecycle/4`
-
-O SDK é contrato/tooling público com `authority:none`. Ele não contém updater, chaves privadas, grants, provider credentials, raw `DeviceAgent.execute`, implementação do Control Plane nem implementações privadas de Identity/Memory/Intelligence.
-
-## Piloto de lifecycle — Notes
+## Piloto Notes — remove-first pre-launch
 
 Issue canônica: `ordax-apps#1`.
 
-Notes continua sendo o primeiro app do lifecycle porque tem blast radius menor que Studio. O source ainda não deve ser copiado/movido enquanto os gates de package/install/rollback/uninstall/reinstall não estiverem provados.
+O projeto continua pre-launch, sem produção de Notes nem dados de usuário a preservar. A estratégia canônica atual é **remove-platform-first**, sem dual source:
 
-### Blockers restantes
+### Gate A — remover da plataforma
 
-- concluir a trilha genérica `ordax.app-data/1` até existir binding Native com provenance de publisher verificada e port operacional seguro;
-- publicar App Data no SDK apenas depois desse binding existir; manifest/package não podem fabricar a capability;
-- construir package determinístico do Notes fora do core;
-- provar install -> verify -> stage -> health -> promote -> rollback;
-- provar ausência, reinstall offline e uninstall preservando user data;
-- executar o source-of-truth cutover em uma única janela e remover a cópia antiga do core no mesmo ciclo.
+PR atual: `prototipo-ordax-os#1127`.
+
+Remove implementação/source local, contratos Notes-owned, adapters especializados, endpoint/state legado, imports de composição, launcher fixo e testes de produto que pertencem ao app. Retém delivery policy `on-demand + store-only`, App Data genérico, trust, lifecycle/probation/rollback e Store estrutural.
+
+Gate A só termina quando a plataforma prova boot/operação com Notes ausente e nenhuma rota residual consegue lançar a implementação removida.
+
+### Gate B — tornar `ordax-apps` o único source
+
+Somente após Gate A comprovado:
+
+1. copiar o snapshot canônico pré-remoção pinado em `migrations/notes.source-snapshot.json` (plataforma `f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6`);
+2. estabelecer `apps/notes` como única fonte de verdade;
+3. mover também os artefatos Notes-owned que antes viviam fora da pasta do app (`notes-store`, `notes-file-importer` e mensagens de localização) para ownership do pacote;
+4. avançar `source_cutover_allowed=true`, `source_repository_current=washingtonmsdj/ordax-apps` e `source_of_truth_state=ordax-apps-canonical` no mesmo ciclo atômico;
+5. manter `distribution_activation_allowed=false` até Gate C.
+
+A ausência temporária do Notes entre Gate A e Gate B é permitida. Duas fontes autoritativas simultâneas não são.
+
+### Gate C — tornar o app externo distribuível
+
+Depois de Gate B:
+
+- adaptar o source para consumir contratos públicos do App SDK, sem imports privados do core;
+- substituir o antigo `createStore` por `ordax.app-data/1`;
+- manter schema/validação de documento e importação como código Notes-owned;
+- construir package determinístico inteiramente em `ordax-apps`;
+- provar package identity/provenance/compatibility no platform owner;
+- provar install -> verify -> stage -> health -> promote e rollback last-known-good;
+- provar reinstall offline de artifact local verificado;
+- provar uninstall separado de delete de App Data;
+- expor Notes no catálogo/Store somente quando houver artifact realmente disponível.
+
+A plataforma já possui owner Native de App Data e, após `prototipo-ordax-os#1109`, também owner Web durável com CAS/isolamento e fail-closed quando durable storage/Web Locks não estão disponíveis. Isso é fundação genérica; não ativa por si só a distribuição do Notes nem third-party.
 
 ## Studio
 
 Issue canônica: `ordax-apps#5`.
 
-O inventário e o plano executável de externalização já estão na `main`. `migrations/studio.externalization.json` mantém `cutover_allowed:false` e impede que Runtime, Control Plane, provider connectors ou adapters especializados sejam tratados como source do app.
+`apps/studio` já é o **source portátil canônico**. `migrations/studio.externalization.json` registra `source_repository_current=washingtonmsdj/ordax-apps`, `source_of_truth_state=ordax-apps-canonical-legacy-removal-pending` e `portable_app_canonical=true`.
 
-O SDK 1.2 publica o boundary necessário para discovery/action requests/projects sem expor raw Device Agent execution. Ainda faltam:
+O source portátil não deve regredir para `mcp-blender`. Runtime/host, Control Plane e provider connector permanecem nos seus repositórios próprios. A retirada física do legado continua bloqueada por deployment de produção e prova de ausência de referências funcionais residuais.
 
-- remover dependências privadas de `ordax_dev_agent` do código portátil, deixando-as somente nos hosts/adapters;
-- separar o host bridge WebView/pywebview da UI portátil;
-- usar App Data para estado privado do Studio quando o port estiver operacional/publicado;
-- provar paridade do mesmo app core sobre OrdaX OS e Windows host;
-- construir e validar package/lifecycle antes do source cutover.
+A fundação `ordax.studio-runtime/3` está sendo tratada em `prototipo-ordax-os#1063`; ela adiciona leitura de resultados de Device Actions com binding e bounds, sem expor raw `execute` e sem ativar dispatch por si só. Não integrar enquanto a matriz completa de Foundation/Release/QEMU não estiver verde no HEAD reconciliado.
 
-Computer Control policy, device pairing/identity, grants e updater permanecem autoridades da plataforma/host, não do Studio.
+## Próxima ordem de trabalho
 
-## Próximos passos
-
-1. validar/mesclar este pin do SDK 1.2;
-2. concluir a fundação Native de App Data sem publicar capability prematuramente;
-3. completar o lifecycle Notes e provar o padrão externo de ponta a ponta;
-4. em paralelo, desacoplar a UI portátil do Studio dos detalhes do host Windows;
-5. somente depois do lifecycle provado, executar cutovers com fonte única e remoção da cópia anterior.
+1. fechar `prototipo-ordax-os#1127` somente após o QEMU/OVMF final verde;
+2. executar Gate B do Notes em uma janela atômica, usando o snapshot pinado e sem dual source;
+3. executar Gate C no source já canônico de `ordax-apps`;
+4. reconciliar `prototipo-ordax-os#1063` com a `main` e repetir a matriz completa antes de integrar;
+5. continuar a retirada do legado somente quando os gates de produção permitirem.
 
 ## Não fazer
 
+- não recriar Notes dentro da plataforma após Gate A;
+- não copiar `system/services/*` para este repo;
+- não promover `notes-store`/`notes-file-importer` a APIs globais apenas por conveniência;
+- não manter duas cópias autoritativas do mesmo app;
 - não usar git submodule do core como substituto de SDK;
 - não importar `raw.githubusercontent.com/main`/`latest` em build de produção;
-- não copiar `system/services/*` para cá;
-- não manter duas cópias do mesmo app por tempo indeterminado;
 - não transformar Store em segundo updater;
 - não conceder authority com manifest/package/catalog;
 - não expor raw Device Agent `execute()` ao app portátil;
-- não mover Computer Control policy, pairing ou grants para dentro do Studio.
+- não mover Computer Control policy, pairing, grants ou secrets para dentro do Studio/Notes.
