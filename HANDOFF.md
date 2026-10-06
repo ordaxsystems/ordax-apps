@@ -32,7 +32,7 @@ O antigo `washingtonmsdj/mcp-blender` é legado em retirada. Não deve voltar a 
 
 `platform-sdk.lock.json` fixa atualmente o App SDK **1.7.0** no commit exato da plataforma que publica `ordax.app-intelligence-manifest/1`:
 
-`5995c1fc17c2f2c8debdeea009ed518f6b4c3c3b`
+`580d61605051a0d9da2b8dbccc46fb3cf9aef7b1`
 
 SHA-256 do bundle:
 
