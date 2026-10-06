@@ -148,6 +148,9 @@ jobs:
       - name: Prove pinned public App SDK from platform repository
         run: python3 tools/verify_platform_sdk.py
 
+      - name: Prove app intelligence against pinned public SDK
+        run: python3 tools/verify_app_intelligence_sdk_conformance.py
+
       - name: Prove Studio public SDK conformance
         run: python3 tools/verify_studio_sdk_conformance.py
 
