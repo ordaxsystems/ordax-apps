@@ -4,7 +4,7 @@
 
 O source portátil do **ORDAX Studio** é canônico em `washingtonmsdj/ordax-apps/apps/studio`.
 
-`washingtonmsdj/mcp-blender` não é mais fonte de produto do Studio e não deve receber novas features. Porém, **a exclusão física do repositório ainda não é segura** enquanto responsabilidades não-app continuarem hospedadas nele.
+`washingtonmsdj/mcp-blender` não é mais fonte de produto do Studio e não deve receber novas features. Runtime, Control Plane e connector já possuem owners canônicos próprios. **A exclusão física do legado ainda não é segura apenas porque o deploy de produção do Control Plane ainda depende do token Cloudflare que não foi reprovisionado no repositório novo.**
 
 ## O que já está seguro em ordax-apps
 
@@ -47,11 +47,12 @@ Só considerar o repositório legado deletável quando todos forem verdadeiros:
 3. ORDAX Runtime está publicado/construído fora de `mcp-blender`;
 4. Product MCP/Control Plane está publicado/construído fora de `mcp-blender`;
 5. connector do ChatGPT não depende de arquivos/CI/deploy do legado;
-6. produção foi repointada para os novos owners;
-7. busca em build/deploy/launch não encontra dependência funcional do legado;
-8. smoke E2E prova ChatGPT -> Control Plane -> Runtime -> capability -> receipt;
-9. CI prova que OrdaX OS e Windows usam o mesmo source portátil;
-10. somente então arquivar/deletar o legado.
+6. provisionar um novo `CLOUDFLARE_API_TOKEN` de escopo mínimo no environment `cloudflare-v3` de `ordax-control-plane`;
+7. executar o deploy de produção a partir de `ordax-control-plane` e exigir health/verificação remota verdes;
+8. busca final em build/deploy/launch não encontra dependência funcional do legado;
+9. smoke E2E ChatGPT -> Control Plane -> Runtime -> capability -> receipt permanece verde;
+10. CI prova que OrdaX OS e Windows usam o mesmo source portátil;
+11. somente então limpar o conteúdo e arquivar/deletar o legado.
 
 ## Regra
 
