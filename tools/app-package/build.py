@@ -27,6 +27,8 @@ APP_INTELLIGENCE_EXECUTION_MODE = "declarative-only"
 APPLICATION_ACTION_MANIFEST_SCHEMA = "ordax.application-action-manifest/1"
 APPLICATION_ACTION_CAPABILITY_SCHEMA = "ordax.application-action-capability/1"
 APPLICATION_ACTION_EXECUTION_MODE = "proposal-only"
+APPLICATION_ACTION_PROVIDER_MANIFEST_SCHEMA = "ordax.application-action-provider-manifest/1"
+APPLICATION_ACTION_PROVIDER_EXECUTION_MODE = "unavailable"
 SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
 CREATED_FROM_RECIPE = "runtime-component/package/1"
 PACKAGE_MANIFEST_NAME = "component-package.json"
@@ -60,6 +62,7 @@ MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_COMPATIBILITY_BYTES = 64 * 1024
 MAX_AI_MANIFEST_BYTES = 128 * 1024
 MAX_ACTION_MANIFEST_BYTES = 256 * 1024
+MAX_ACTION_PROVIDER_MANIFEST_BYTES = 64 * 1024
 
 INCLUDED_ROOTS = ("src", "assets", "ai", "actions")
 SOURCE_EXTENSIONS = {".mjs", ".js"}
@@ -494,6 +497,78 @@ def validate_application_action_manifest(value: dict, app: dict, ai_manifest: di
     return value
 
 
+def validate_application_action_provider_manifest(
+    value: dict,
+    app: dict,
+    action_manifest: dict,
+    module_loader,
+) -> dict:
+    expected = {"schema", "appId", "appVersion", "authority", "execution", "providers"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise AppPackageError("actions/providers/manifest.json fields are not canonical")
+    if value["schema"] != APPLICATION_ACTION_PROVIDER_MANIFEST_SCHEMA:
+        raise AppPackageError("Application Action provider manifest schema is incompatible")
+    if value["appId"] != app["id"] or value["appVersion"] != app["version"]:
+        raise AppPackageError("Application Action provider manifest identity does not match app.json")
+    if value["authority"] != "none" or value["execution"] != APPLICATION_ACTION_PROVIDER_EXECUTION_MODE:
+        raise AppPackageError("Application Action provider manifest cannot grant execution")
+
+    providers = value["providers"]
+    if not isinstance(providers, list) or not providers or len(providers) > 16:
+        raise AppPackageError("Application Action providers must be a bounded non-empty array")
+
+    declared = {}
+    for provider in providers:
+        if not isinstance(provider, dict) or set(provider) != {
+            "kind", "adapterId", "revision", "module", "sha256"
+        }:
+            raise AppPackageError("Application Action provider descriptor is malformed")
+        if provider["kind"] != "first-party-native":
+            raise AppPackageError("Application Action provider artifact must be first-party native")
+        adapter_id = provider["adapterId"]
+        if not isinstance(adapter_id, str) or PROVIDER_ID_RE.fullmatch(adapter_id) is None:
+            raise AppPackageError("Application Action provider adapter id is invalid")
+        revision = _bounded_action_text(
+            provider["revision"],
+            "Application Action provider artifact revision",
+            160,
+        )
+        key = (adapter_id, revision)
+        if key in declared:
+            raise AppPackageError("Application Action provider artifact is duplicated")
+        module = safe_relative(
+            provider["module"],
+            "Application Action provider module",
+        ).as_posix()
+        expected_module = f"actions/providers/{adapter_id}.mjs"
+        if module != expected_module:
+            raise AppPackageError("Application Action provider module path is not canonical")
+        digest = provider["sha256"]
+        if not isinstance(digest, str) or SHA256_RE.fullmatch(digest) is None:
+            raise AppPackageError("Application Action provider artifact SHA-256 is invalid")
+        try:
+            payload = module_loader(module)
+        except (OSError, KeyError) as exc:
+            raise AppPackageError(
+                f"Application Action provider artifact is unavailable: {module}"
+            ) from exc
+        if not isinstance(payload, bytes) or not payload or len(payload) > MAX_FILE_BYTES:
+            raise AppPackageError("Application Action provider artifact size is outside bounds")
+        if sha256_bytes(payload) != digest:
+            raise AppPackageError("Application Action provider artifact SHA-256 mismatch")
+        declared[key] = module
+
+    required = {
+        (capability["provider"]["adapterId"], capability["provider"]["revision"])
+        for capability in action_manifest["capabilities"]
+    }
+    if set(declared) != required:
+        raise AppPackageError(
+            "Application Action provider artifacts do not exactly cover declared capabilities"
+        )
+    return value
+
+
 def validate_compatibility(value: dict, app: dict) -> dict:
     expected = {"schema", "componentId", "componentVersion", "provides", "requires", "state", "authority"}
     if set(value) != expected:
@@ -696,7 +771,7 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
     action_manifest_path = app_root / "actions" / "manifest.json"
     if not action_manifest_path.is_file() or action_manifest_path.is_symlink():
         raise AppPackageError("first-party app must provide actions/manifest.json")
-    validate_application_action_manifest(
+    action_manifest = validate_application_action_manifest(
         load_json(
             action_manifest_path,
             max_bytes=MAX_ACTION_MANIFEST_BYTES,
@@ -704,6 +779,23 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
         ),
         app,
         ai_manifest,
+    )
+    provider_manifest_path = app_root / "actions" / "providers" / "manifest.json"
+    if not provider_manifest_path.is_file() or provider_manifest_path.is_symlink():
+        raise AppPackageError("first-party app must provide actions/providers/manifest.json")
+    validate_application_action_provider_manifest(
+        load_json(
+            provider_manifest_path,
+            max_bytes=MAX_ACTION_PROVIDER_MANIFEST_BYTES,
+            label="actions/providers/manifest.json",
+        ),
+        app,
+        action_manifest,
+        lambda module: read_regular(
+            app_root / Path(*PurePosixPath(module).parts),
+            max_bytes=MAX_FILE_BYTES,
+            label=module,
+        ),
     )
     files = discover_app_files(app_root)
     validate_source_graph(app_root, files)
@@ -824,10 +916,27 @@ def verify_package(package: Path) -> tuple[dict, bytes]:
             ) from exc
         if not isinstance(action_manifest, dict):
             raise AppPackageError("package Application Action manifest must be a JSON object")
-        validate_application_action_manifest(
+        action_manifest = validate_application_action_manifest(
             action_manifest,
             {"id": app_id, "version": component.get("version")},
             ai_manifest,
+        )
+        provider_path = f"system/apps/{app_id}/actions/providers/manifest.json"
+        if provider_path not in seen:
+            raise AppPackageError("package Application Action provider manifest is missing")
+        try:
+            provider_manifest = json.loads(archive.read(provider_path).decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise AppPackageError(
+                "package Application Action provider manifest is invalid UTF-8 JSON"
+            ) from exc
+        if not isinstance(provider_manifest, dict):
+            raise AppPackageError("package Application Action provider manifest must be a JSON object")
+        validate_application_action_provider_manifest(
+            provider_manifest,
+            {"id": app_id, "version": component.get("version")},
+            action_manifest,
+            lambda module: archive.read(f"system/apps/{app_id}/{module}"),
         )
     return manifest, payload
 
