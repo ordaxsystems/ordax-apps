@@ -45,7 +45,7 @@ def main() -> None:
     if sdk.get("platform_pr") != 1168:
         fail("Projects SDK prerequisite PR drifted")
     head = sdk.get("platform_pr_head")
-    if head != "c35f22ccab4f47da4211547a7e7a929f4ff254e8":
+    if head != "86e57b54f9e059c45da80d7579873528ddb45e89":
         fail("Projects SDK prerequisite must pin the reviewed read-only PR head")
 
     contracts = set(plan.get("platform_contracts_required") or [])
@@ -58,6 +58,7 @@ def main() -> None:
         "ordax.localization/2",
         "prototype-ordax.localization-pack/1",
         "ordax.project-catalog/1",
+        "ordax.project-cloud-links/1",
         "ordax.project-cloud-links-reader/1",
         "ordax.surface-render-lifecycle/5",
     }
