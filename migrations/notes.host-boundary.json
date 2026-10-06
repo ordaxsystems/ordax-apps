@@ -23,11 +23,11 @@
       "required_for_distribution": false
     },
     "localization": {
-      "contract": "ordax.localization/1",
+      "contract": "ordax.localization/2",
       "required_for_distribution": true
     },
     "surfaceLifecycle": {
-      "contract": "ordax.surface-render-lifecycle/4",
+      "contract": "ordax.surface-render-lifecycle/5",
       "required_for_distribution": true
     }
   },
