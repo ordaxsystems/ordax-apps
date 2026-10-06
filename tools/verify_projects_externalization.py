@@ -45,8 +45,8 @@ def main() -> None:
     if sdk.get("platform_pr") != 1168:
         fail("Projects SDK prerequisite PR drifted")
     head = sdk.get("platform_pr_head")
-    if not isinstance(head, str) or len(head) != 40:
-        fail("Projects SDK prerequisite must pin an exact PR head")
+    if head != "2105051af68505f0cbdf3cb67069560b803bb20b":
+        fail("Projects SDK prerequisite must pin the reviewed read-only PR head")
 
     contracts = set(plan.get("platform_contracts_required") or [])
     required = {
@@ -58,7 +58,7 @@ def main() -> None:
         "ordax.localization/2",
         "prototype-ordax.localization-pack/1",
         "ordax.project-catalog/1",
-        "ordax.project-cloud-links/1",
+        "ordax.project-cloud-links-reader/1",
         "ordax.surface-render-lifecycle/5",
     }
     if contracts != required:
@@ -71,6 +71,16 @@ def main() -> None:
         fail("Projects Device Agent replacement must use the public read-only port")
     if private.get("state") != "pending-platform-pr-1168":
         fail("Projects private dependency state drifted")
+
+    cloud_boundary = (plan.get("private_dependencies") or {}).get("project_cloud_links_mutation_boundary") or {}
+    if cloud_boundary.get("former_dependency") != "ordax.project-cloud-links/1 mutable port":
+        fail("Projects mutable cloud-links dependency is not tracked")
+    if cloud_boundary.get("replacement") != "ordax.project-cloud-links-reader/1":
+        fail("Projects must consume the read-only cloud-links reader")
+    if cloud_boundary.get("state") != "pending-platform-pr-1168":
+        fail("Projects cloud-links reader gate drifted")
+    if set(cloud_boundary.get("forbidden_methods") or []) != {"link", "unlink", "destroy"}:
+        fail("Projects cloud-links reader must forbid link/unlink/destroy")
 
     state = plan.get("state") or {}
     if state.get("app_owned_durable_state") is not False:
