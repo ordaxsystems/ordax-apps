@@ -88,6 +88,14 @@ def validate_notes_migration() -> tuple[bool, bool]:
         fail("Notes runtime storage injection must be App Data")
     if storage.get("target_contract") != "ordax.app-data/1":
         fail("Notes durable state must target ordax.app-data/1")
+    if storage.get("state") != "ready-app-data-runtime":
+        fail("Notes App Data runtime state must be ready")
+    if storage.get("layout") != "ordax.notes-app-data-layout/1":
+        fail("Notes App Data layout contract drifted")
+    if storage.get("transition_journal") != "ordax.notes-app-data-transition-journal/1":
+        fail("Notes App Data transition journal contract drifted")
+    if storage.get("crash_safe_commit") is not True:
+        fail("Notes App Data commit must remain crash-safe")
     if storage.get("cutover_mode") != "clean-prelaunch":
         fail("Notes must use clean pre-launch cutover")
     if storage.get("production_user_data_present") is not False:
