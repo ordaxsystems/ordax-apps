@@ -1,0 +1,100 @@
+{
+  "$schema": "ordax.app-externalization-plan/1",
+  "app_id": "projects",
+  "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+  "source_path_current": "system/apps/projects",
+  "target_repository": "washingtonmsdj/ordax-apps",
+  "target_path": "apps/projects",
+  "source_of_truth_state": "platform-until-cutover",
+  "source_cutover_allowed": false,
+  "distribution_activation_allowed": false,
+  "platform_contracts_required": [
+    "ordax.app-activation/1",
+    "ordax.component-manifest/1",
+    "ordax.component-runtime/1",
+    "ordax.device-agent-capabilities/1",
+    "ordax.device-agent-capability-reader/1",
+    "ordax.localization/2",
+    "prototype-ordax.localization-pack/1",
+    "ordax.project-catalog/1",
+    "ordax.project-cloud-links/1",
+    "ordax.surface-render-lifecycle/5"
+  ],
+  "target_sdk": {
+    "minimum_bundle_version": "1.9.0",
+    "reason": "Projects externalization requires public project-cloud-links and the narrowed Device Agent capability-reader boundary",
+    "platform_pr": 1168,
+    "platform_pr_head": "106cbdfdfeafff4c216c750c6f6e77ce75399238",
+    "state": "pending-platform-merge"
+  },
+  "app_owned_source": [
+    "system/apps/projects/**",
+    "system/services/i18n/catalog/projects.mjs"
+  ],
+  "platform_owned_contracts": [
+    "system/contracts/app-activation.mjs",
+    "system/contracts/component-manifest.mjs",
+    "system/contracts/component-runtime.mjs",
+    "system/contracts/device-capabilities.mjs",
+    "system/contracts/project-catalog.mjs",
+    "system/contracts/project-cloud-links.mjs",
+    "system/contracts/localization.mjs",
+    "system/contracts/localization-pack.mjs",
+    "system/contracts/surface-render-lifecycle.mjs"
+  ],
+  "private_dependencies": {
+    "device_agent_private_import": {
+      "former_dependency": "system/contracts/device-agent.mjs",
+      "replacement": "system/contracts/device-capabilities.mjs / ordax.device-agent-capability-reader/1",
+      "state": "pending-platform-pr-1168"
+    }
+  },
+  "state": {
+    "app_owned_durable_state": false,
+    "project_catalog_owner": "platform",
+    "project_cloud_links_owner": "platform",
+    "mutation_authority": "none"
+  },
+  "delivery": {
+    "delivery_class": "on-demand",
+    "discovery": "store-only",
+    "store_is_install_authority": false,
+    "install_owner": "platform-component-lifecycle",
+    "auto_install": false
+  },
+  "source_cutover": {
+    "mode": "remove-platform-first",
+    "prelaunch_only": true,
+    "temporary_app_absence_allowed": true,
+    "dual_source_allowed": false,
+    "platform_absence_proof_required_before_copy": true,
+    "sdk_public_boundary_required_before_snapshot": true,
+    "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
+  },
+  "source_snapshot": {
+    "state": "pending-platform-sdk-1.9-merge",
+    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "commit": null,
+    "inventory_file": null
+  },
+  "gate_a_platform_removal": {
+    "remove_owned_source": [
+      "system/apps/projects/**",
+      "system/services/i18n/catalog/projects.mjs"
+    ],
+    "remove_platform_implementation_couplings": [
+      "system/apps/catalog.mjs -> ./projects/app.mjs",
+      "system/apps/component-catalog.mjs -> ./projects/component.mjs",
+      "system/composition/native/main.mjs -> ../../apps/projects/runtime.mjs",
+      "system/composition/web/main.mjs -> ../../apps/projects/runtime.mjs"
+    ],
+    "retain_platform_owned": [
+      "first-party delivery policy for projects",
+      "ordax.project-catalog/1 owner",
+      "ordax.project-cloud-links/1 owner",
+      "ordax.device-agent-capability-reader/1 owner",
+      "generic component lifecycle/trust/probation infrastructure"
+    ]
+  },
+  "authority": "none"
+}
