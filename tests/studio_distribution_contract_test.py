@@ -84,7 +84,7 @@ class StudioDistributionContractTests(unittest.TestCase):
     def test_remote_full_access_requires_runtime_v2_device_scope_not_legacy_operator_grant(self) -> None:
         target = self.contract["targets"]["windows"]
         gate = target["remote_full_access_gate"]
-        self.assertEqual(gate["status"], "required-before-cutover")
+        self.assertEqual(gate["status"], "implemented-validated")
         self.assertTrue(gate["device_scoped"])
         self.assertTrue(gate["project_id_nullable_for_device_control"])
         self.assertTrue(gate["derived_from_authenticated_subject_and_active_device_link"])
@@ -92,6 +92,15 @@ class StudioDistributionContractTests(unittest.TestCase):
         self.assertTrue(gate["model_callable_grant_mint_forbidden"])
         self.assertTrue(gate["local_full_access_consent_required"])
         self.assertTrue(gate["legacy_operator_only_project_grant_is_not_product_path"])
+        self.assertEqual(
+            gate["evidence"],
+            {
+                "studio_commit": "f279ebd996a9ee5cdbbd75912dfa5109e91ad3cc",
+                "runtime_commit": "435699d30471b8aa1c5080d08be554a23f15a896",
+                "control_plane_commit": "124630ee55367ac8fbe2debc8d9ba8545b0915c0",
+                "windows_product_build_run": 37536311885,
+            },
+        )
         self.assertTrue(
             self.contract["shared_release_invariants"][
                 "remote_full_access_must_use_runtime_v2_device_scope"
