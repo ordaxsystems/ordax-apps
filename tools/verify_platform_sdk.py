@@ -14,6 +14,8 @@ BUNDLE_VERSION_RE = re.compile(
 
 EXPECTED_CONTRACTS = {
     "ordax.app-activation/1",
+    "ordax.app-data/1",
+    "ordax.app-intelligence-manifest/1",
     "ordax.component-manifest/1",
     "ordax.component-runtime/1",
     "ordax.device-action-receipt/1",
@@ -24,14 +26,14 @@ EXPECTED_CONTRACTS = {
     "ordax.file-space/11",
     "ordax.first-party-app-delivery-policy/1",
     "ordax.intelligence/1",
-    "ordax.localization/1",
+    "ordax.localization/2",
     "prototype-ordax.localization-pack/1",
     "ordax.memory/1",
     "ordax.project-catalog/1",
     "ordax.studio-action-context/1",
     "ordax.studio-runtime/1",
     "ordax.studio-runtime/2",
-    "ordax.surface-render-lifecycle/4",
+    "ordax.surface-render-lifecycle/5",
 }
 
 
