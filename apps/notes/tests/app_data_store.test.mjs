@@ -161,6 +161,15 @@ test("failed head flip preserves the previous canonical Notes generation", async
   assert.equal((await base.get(NOTES_APP_DATA_TRANSITION_JOURNAL_KEY)).found, false);
 });
 
+test("Notes App Data store rejects legacy seed arguments", async () => {
+  const port = inMemoryPort();
+  await assert.rejects(
+    () => createNotesAppDataStore(port, { seedSnapshot: snapshot([note("legacy", "old")]) }),
+    /does not accept legacy seed options/,
+  );
+  assert.deepEqual((await port.list()).keys, []);
+});
+
 test("Notes App Data store rejects a port bound to another app", async () => {
   const base = inMemoryPort();
   const wrong = portWithIdentity(base, {
