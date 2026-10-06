@@ -13,13 +13,14 @@
     "ordax.component-runtime/1",
     "ordax.file-space/11",
     "ordax.intelligence/1",
-    "ordax.localization/1",
+    "ordax.localization/2",
     "prototype-ordax.localization-pack/1",
-    "ordax.surface-render-lifecycle/4"
+    "ordax.surface-render-lifecycle/5"
   ],
   "target_sdk": {
     "minimum_bundle_version": "1.6.0",
-    "reason": "ordax.app-data/1 is required for external durable Notes state"
+    "reason": "ordax.app-data/1 plus Localization 2 and Surface Render Lifecycle 5 are required for external Notes distribution",
+    "lock_file": "migrations/notes.platform-sdk.lock.json"
   },
   "app_owned_contracts": [
     "notes-store",

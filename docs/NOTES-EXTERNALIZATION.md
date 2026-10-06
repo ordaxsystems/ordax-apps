@@ -10,16 +10,17 @@ Current Notes code consumes platform capabilities/contracts that remain owned by
 
 - `ordax.component-manifest/1` — component identity/version/lifecycle metadata;
 - `ordax.component-runtime/1` — runtime mount/destroy boundary;
-- `ordax.surface-render-lifecycle/4` — render/localization lifecycle supplied by Surface;
+- `ordax.surface-render-lifecycle/5` — render/localization lifecycle supplied by Surface;
 - `ordax.intelligence/1` — local/cloud-neutral Intelligence port;
 - `ordax.file-space/11` — user file-space capability port;
 - `ordax.app-data/1` — device-local private durable state for an independently delivered app;
-- app activation contract — navigation/activation request boundary;
-- localization contracts — component-scoped locale/fallback behavior.
+- `ordax.app-activation/1` — navigation/activation request boundary;
+- `ordax.localization/2` — component-scoped locale behavior;
+- `prototype-ordax.localization-pack/1` — component-owned message pack metadata.
 
 An external app must consume these through a versioned SDK/runtime host boundary, never by importing files from `system/contracts` in another repository checkout.
 
-The current repository-wide SDK pin remains 1.3.0. The platform bundle inspected at commit `4229f9e381203a09036bff7955bd87ea971cf231` publishes App SDK 1.6.0 including `ordax.app-data/1`. Notes therefore targets **App SDK 1.6.0 or newer compatible contract-major coverage before distribution activation**, not before source ownership moves. The global pin must not be bumped blindly because Studio and other consumers have their own conformance gates.
+The repository-wide Studio SDK pin remains 1.3.0. Notes has its own exact lock at `migrations/notes.platform-sdk.lock.json`, pinned to platform commit `4229f9e381203a09036bff7955bd87ea971cf231`, App SDK 1.6.0, SHA-256 `89628d27ea33ec0a5085bd5b61acba6028edae1a7ca2df54b86ce4d009817f0c`. That bundle publishes `ordax.app-data/1`, `ordax.localization/2` and `ordax.surface-render-lifecycle/5`. Notes therefore targets **App SDK 1.6.0 or newer compatible contract-major coverage before distribution activation**, not before source ownership moves. The global pin must not be bumped blindly because Studio and other consumers have their own conformance gates.
 
 ## Notes-owned contracts/code
 
