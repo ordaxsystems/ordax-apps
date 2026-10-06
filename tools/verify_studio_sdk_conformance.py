@@ -32,6 +32,7 @@ SOURCE_PATHS = (
     "system/contracts/device-capabilities.mjs",
     "system/contracts/file-space.mjs",
     "system/contracts/intelligence.mjs",
+    "system/contracts/locale-profile.mjs",
     "system/contracts/localization.mjs",
     "system/contracts/memory.mjs",
     "system/contracts/project-catalog.mjs",
