@@ -13,6 +13,7 @@ FORBIDDEN = (
     "system/contracts/",
     "system/services/",
     "createNativeNotesStore",
+    "createStore",
 )
 
 class NotesPortableBoundaryTests(unittest.TestCase):
@@ -47,6 +48,8 @@ class NotesPortableBoundaryTests(unittest.TestCase):
         facade = (SRC / "sdk" / "public-contracts.mjs").read_text(encoding="utf-8")
         self.assertIn("App SDK 1.6.0", facade)
         self.assertIn('ordax.app-data/1', facade)
+        runtime = (SRC / "runtime.mjs").read_text(encoding="utf-8")
+        self.assertIn("createNotesAppDataStore(appData)", runtime)
         self.assertIn('ordax.localization/2', facade)
         self.assertIn('ordax.surface-render-lifecycle/5', facade)
         self.assertNotIn("install", facade.lower())
