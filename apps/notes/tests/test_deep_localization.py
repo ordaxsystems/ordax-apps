@@ -21,7 +21,7 @@ class NotesDeepLocalizationTests(unittest.TestCase):
             't("notes.prompt.newProjectName")',
             't("notes.confirm.deleteForever"',
             't("notes.action.importText")',
-            't("notes.filePicker.title.importText")',
+            '"notes.filePicker.title.importText"',
             't("notes.import.failed")',
             'intelligenceErrorMessageId = "notes.intelligence.failed"',
         ):
