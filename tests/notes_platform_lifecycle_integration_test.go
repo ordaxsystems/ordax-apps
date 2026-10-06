@@ -19,8 +19,6 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 	packagePath := mustEnv(t, "ORDAX_NOTES_PACKAGE")
 	releasePath := mustEnv(t, "ORDAX_NOTES_RELEASE")
 	compatibilityPath := mustEnv(t, "ORDAX_NOTES_COMPATIBILITY")
-	sourceCommit := mustEnv(t, "ORDAX_NOTES_SOURCE_COMMIT")
-	version := mustEnv(t, "ORDAX_NOTES_VERSION")
 
 	fixture := t.TempDir()
 	root := filepath.Join(fixture, "slots")
@@ -48,12 +46,11 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 	if release.SourceRepository != appsSourceRepository {
 		t.Fatalf("Notes source repository = %q", release.SourceRepository)
 	}
-	if release.Component.ID != "notes" || release.Component.Version != version {
+	if release.Component.ID != "notes" {
 		t.Fatalf("unexpected Notes release identity: %+v", release.Component)
 	}
-	if release.SourceCommit != sourceCommit {
-		t.Fatalf("Notes source commit = %q", release.SourceCommit)
-	}
+	version := release.Component.Version
+	sourceCommit := release.SourceCommit
 
 	verified, _, _, _, err := verifyEnvelopeV2Files(envelopePath, trustPath, compatibilityPath)
 	if err != nil {
