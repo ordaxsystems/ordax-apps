@@ -13,7 +13,7 @@ def fail(message: str) -> None:
     raise SystemExit(f"ORDAX_APPS_WORKSPACE=FAIL\n{message}")
 
 
-def validate_notes_migration() -> None:
+def validate_notes_migration() -> tuple[bool, bool]:
     plan = json.loads(NOTES_MIGRATION.read_text(encoding="utf-8"))
     if plan.get("$schema") != "ordax.app-externalization-plan/1":
         fail("unexpected Notes externalization plan schema")
@@ -142,6 +142,8 @@ def validate_notes_migration() -> None:
     }
     if not isinstance(proofs, list) or set(proofs) != required_proofs:
         fail("Notes cutover proof set drifted")
+
+    return source_cutover_allowed, distribution_activation_allowed
 
 
 def validate_studio_migration() -> None:
@@ -323,7 +325,7 @@ def main() -> None:
     if unexpected:
         fail(f"platform-owned top-level paths present: {', '.join(unexpected)}")
 
-    validate_notes_migration()
+    source_cutover_allowed, distribution_activation_allowed = validate_notes_migration()
     validate_studio_migration()
 
     print("ORDAX_APPS_WORKSPACE=PASS")
