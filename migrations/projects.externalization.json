@@ -18,13 +18,14 @@
     "prototype-ordax.localization-pack/1",
     "ordax.project-catalog/1",
     "ordax.project-cloud-links/1",
+    "ordax.project-cloud-links-reader/1",
     "ordax.surface-render-lifecycle/5"
   ],
   "target_sdk": {
     "minimum_bundle_version": "1.9.0",
-    "reason": "Projects externalization requires public project-cloud-links and the narrowed Device Agent capability-reader boundary",
+    "reason": "Projects externalization requires public cloud-link data plus read-only cloud-links reader and the narrowed Device Agent capability-reader boundary",
     "platform_pr": 1168,
-    "platform_pr_head": "106cbdfdfeafff4c216c750c6f6e77ce75399238",
+    "platform_pr_head": "86e57b54f9e059c45da80d7579873528ddb45e89",
     "state": "pending-platform-merge"
   },
   "app_owned_source": [
@@ -47,6 +48,16 @@
       "former_dependency": "system/contracts/device-agent.mjs",
       "replacement": "system/contracts/device-capabilities.mjs / ordax.device-agent-capability-reader/1",
       "state": "pending-platform-pr-1168"
+    },
+    "project_cloud_links_mutation_boundary": {
+      "former_dependency": "ordax.project-cloud-links/1 mutable port",
+      "replacement": "ordax.project-cloud-links-reader/1",
+      "state": "pending-platform-pr-1168",
+      "forbidden_methods": [
+        "link",
+        "unlink",
+        "destroy"
+      ]
     }
   },
   "state": {
@@ -91,7 +102,7 @@
     "retain_platform_owned": [
       "first-party delivery policy for projects",
       "ordax.project-catalog/1 owner",
-      "ordax.project-cloud-links/1 owner",
+      "ordax.project-cloud-links/1 mutable owner + ordax.project-cloud-links-reader/1 app boundary",
       "ordax.device-agent-capability-reader/1 owner",
       "generic component lifecycle/trust/probation infrastructure"
     ]
