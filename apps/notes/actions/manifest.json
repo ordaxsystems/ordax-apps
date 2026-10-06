@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-manifest/1",
   "appId": "notes",
-  "appVersion": "0.4.1",
+  "appVersion": "0.4.2",
   "authority": "none",
   "execution": "proposal-only",
   "capabilities": [

@@ -3,7 +3,7 @@ import {
   assertSurfaceRenderLifecycle,
 } from "./sdk/public-contracts.mjs";
 
-const NOTES_RUNTIME_VERSION = "0.4.1";
+const NOTES_RUNTIME_VERSION = "0.4.2";
 import { createNotesRuntime } from "./domain/runtime.mjs";
 import { createNotesAppDataStore } from "./services/app-data-store.mjs";
 import { mountNotesWorkspaceControls } from "./ui/workspace-controls.mjs";
