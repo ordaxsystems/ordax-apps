@@ -157,7 +157,29 @@
   "cutover_evidence": {
     "gate_a_platform_commit": "a8e736ab27b03da6da981959d9c115c4d7de8136",
     "gate_b_source_snapshot": "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6",
-    "distribution_activation": "blocked",
+    "distribution_activation": "blocked-production-trust-ceremony",
     "storage_gate": "app-data-v2-ready"
+  },
+  "distribution_evidence": {
+    "lifecycle_owner_commit": "f46603909ffd08d442a6be5ff6539b8c2a273c77",
+    "deterministic_package": "proven-ci",
+    "platform_package_verification": "proven-ci",
+    "install_stage_health_promote": "proven-ci",
+    "failed_update_retains_last_known_good": "proven-ci",
+    "rollback_last_known_good": "proven-ci",
+    "offline_reinstall_from_verified_local_cache": "proven-ci",
+    "uninstall_preserves_app_data_boundary": "proven-ci",
+    "production_activation": "blocked",
+    "production_blockers": [
+      "canonical-runtime-component-trust-anchor-not-pinned",
+      "component-publication-not-authorized",
+      "production-component-slot-activation-not-authorized"
+    ],
+    "platform_trust_policy": {
+      "repository": "washingtonmsdj/prototipo-ordax-os",
+      "commit": "f46603909ffd08d442a6be5ff6539b8c2a273c77",
+      "path": "docs/contracts/runtime-component-trust-policy.json",
+      "status": "operator-ceremony-pending"
+    }
   }
 }
