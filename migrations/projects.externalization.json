@@ -24,7 +24,7 @@
     "minimum_bundle_version": "1.9.0",
     "reason": "Projects externalization requires public project-cloud-links-reader and the narrowed Device Agent capability-reader boundary",
     "platform_pr": 1168,
-    "platform_pr_head": "2105051af68505f0cbdf3cb67069560b803bb20b",
+    "platform_pr_head": "c35f22ccab4f47da4211547a7e7a929f4ff254e8",
     "state": "pending-platform-merge"
   },
   "app_owned_source": [
