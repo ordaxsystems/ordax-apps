@@ -75,29 +75,60 @@ jobs:
           go-version-file: .ordax-platform-lifecycle/tools/runtime-component-channel/go.mod
           cache: false
 
-      - name: Build real Notes component candidate
+      - name: Build real Notes component candidates
         run: |
           set -euo pipefail
           out="/tmp/ordax-notes-lifecycle"
           rm -rf "$out"
-          mkdir -p "$out/release"
+          mkdir -p "$out/current/release" "$out/failed/release" "$out/healthy/release"
           source_commit="$(git rev-parse HEAD)"
+          failed_source_commit="1111111111111111111111111111111111111111"
+          healthy_source_commit="2222222222222222222222222222222222222222"
+
           python3 tools/app-package/build.py build \
             --app-root apps/notes \
             --source-commit "$source_commit" \
             --compatibility migrations/notes.compatibility.json \
-            --package-out "$out/notes.zip" \
-            --release-dir "$out/release"
+            --package-out "$out/current/notes.zip" \
+            --release-dir "$out/current/release"
           python3 tools/app-package/build.py verify \
-            --package "$out/notes.zip" \
-            --release "$out/release/notes.release.json" \
-            --compatibility "$out/release/notes.compatibility.json"
+            --package "$out/current/notes.zip" \
+            --release "$out/current/release/notes.release.json" \
+            --compatibility "$out/current/release/notes.compatibility.json"
+
+          python3 tools/app-package/build.py build \
+            --app-root apps/notes \
+            --source-commit "$failed_source_commit" \
+            --compatibility migrations/notes.compatibility.json \
+            --package-out "$out/failed/notes.zip" \
+            --release-dir "$out/failed/release"
+          python3 tools/app-package/build.py verify \
+            --package "$out/failed/notes.zip" \
+            --release "$out/failed/release/notes.release.json" \
+            --compatibility "$out/failed/release/notes.compatibility.json"
+
+          python3 tools/app-package/build.py build \
+            --app-root apps/notes \
+            --source-commit "$healthy_source_commit" \
+            --compatibility migrations/notes.compatibility.json \
+            --package-out "$out/healthy/notes.zip" \
+            --release-dir "$out/healthy/release"
+          python3 tools/app-package/build.py verify \
+            --package "$out/healthy/notes.zip" \
+            --release "$out/healthy/release/notes.release.json" \
+            --compatibility "$out/healthy/release/notes.compatibility.json"
 
       - name: Prove Notes through canonical platform lifecycle
         env:
-          ORDAX_NOTES_PACKAGE: /tmp/ordax-notes-lifecycle/notes.zip
-          ORDAX_NOTES_RELEASE: /tmp/ordax-notes-lifecycle/release/notes.release.json
-          ORDAX_NOTES_COMPATIBILITY: /tmp/ordax-notes-lifecycle/release/notes.compatibility.json
+          ORDAX_NOTES_PACKAGE: /tmp/ordax-notes-lifecycle/current/notes.zip
+          ORDAX_NOTES_RELEASE: /tmp/ordax-notes-lifecycle/current/release/notes.release.json
+          ORDAX_NOTES_COMPATIBILITY: /tmp/ordax-notes-lifecycle/current/release/notes.compatibility.json
+          ORDAX_NOTES_FAILED_UPDATE_PACKAGE: /tmp/ordax-notes-lifecycle/failed/notes.zip
+          ORDAX_NOTES_FAILED_UPDATE_RELEASE: /tmp/ordax-notes-lifecycle/failed/release/notes.release.json
+          ORDAX_NOTES_FAILED_UPDATE_COMPATIBILITY: /tmp/ordax-notes-lifecycle/failed/release/notes.compatibility.json
+          ORDAX_NOTES_HEALTHY_UPDATE_PACKAGE: /tmp/ordax-notes-lifecycle/healthy/notes.zip
+          ORDAX_NOTES_HEALTHY_UPDATE_RELEASE: /tmp/ordax-notes-lifecycle/healthy/release/notes.release.json
+          ORDAX_NOTES_HEALTHY_UPDATE_COMPATIBILITY: /tmp/ordax-notes-lifecycle/healthy/release/notes.compatibility.json
           ORDAX_NOTES_RUNTIME: ${{ github.workspace }}/apps/notes/src/runtime.mjs
         run: |
           set -euo pipefail

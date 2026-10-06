@@ -19,12 +19,20 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 	packagePath := mustEnv(t, "ORDAX_NOTES_PACKAGE")
 	releasePath := mustEnv(t, "ORDAX_NOTES_RELEASE")
 	compatibilityPath := mustEnv(t, "ORDAX_NOTES_COMPATIBILITY")
+	failedUpdatePackagePath := mustEnv(t, "ORDAX_NOTES_FAILED_UPDATE_PACKAGE")
+	failedUpdateReleasePath := mustEnv(t, "ORDAX_NOTES_FAILED_UPDATE_RELEASE")
+	failedUpdateCompatibilityPath := mustEnv(t, "ORDAX_NOTES_FAILED_UPDATE_COMPATIBILITY")
+	healthyUpdatePackagePath := mustEnv(t, "ORDAX_NOTES_HEALTHY_UPDATE_PACKAGE")
+	healthyUpdateReleasePath := mustEnv(t, "ORDAX_NOTES_HEALTHY_UPDATE_RELEASE")
+	healthyUpdateCompatibilityPath := mustEnv(t, "ORDAX_NOTES_HEALTHY_UPDATE_COMPATIBILITY")
 
 	fixture := t.TempDir()
 	root := filepath.Join(fixture, "slots")
 	privatePath := filepath.Join(fixture, "ephemeral-private.pem")
 	trustPath := filepath.Join(fixture, "ephemeral-trust.json")
 	envelopePath := filepath.Join(fixture, "notes.envelope.json")
+	failedUpdateEnvelopePath := filepath.Join(fixture, "notes.failed-update.envelope.json")
+	healthyUpdateEnvelopePath := filepath.Join(fixture, "notes.healthy-update.envelope.json")
 	keyID := "notes-ci-ephemeral-1"
 
 	if _, err := generateKey(privatePath, trustPath, keyID); err != nil {
@@ -162,6 +170,105 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 	}
 	if string(runtimeBytes) != string(canonicalRuntime) {
 		t.Fatal("promoted Notes runtime bytes differ from canonical source")
+	}
+
+	failedUpdateRelease, err := signReleaseV2(
+		failedUpdateReleasePath,
+		failedUpdateCompatibilityPath,
+		privatePath,
+		trustPath,
+		failedUpdateEnvelopePath,
+		keyID,
+	)
+	if err != nil {
+		t.Fatalf("sign failed-update Notes release/2: %v", err)
+	}
+	_, failedUpdateSlot, failedUpdateChanged, err := stageComponentV2(
+		failedUpdateEnvelopePath,
+		trustPath,
+		failedUpdatePackagePath,
+		failedUpdateCompatibilityPath,
+		root,
+	)
+	if err != nil {
+		t.Fatalf("stage failed-update Notes candidate: %v", err)
+	}
+	if !failedUpdateChanged || failedUpdateSlot == slot {
+		t.Fatalf("failed-update Notes candidate did not create a distinct slot: changed=%t slot=%q", failedUpdateChanged, failedUpdateSlot)
+	}
+	state, err = armPendingState(failedUpdateSlot, trustPath, root)
+	if err != nil {
+		t.Fatalf("arm failed-update Notes candidate: %v", err)
+	}
+	failedPending := *state.Pending
+	failedProbationRevision := state.Revision
+	state, err = recordPendingHealthAtRevision(root, "notes", failedPending, "failed", &failedProbationRevision)
+	if err != nil {
+		t.Fatalf("record failed Notes update health: %v", err)
+	}
+	state, err = rejectPendingStateAtRevision(root, "notes", failedPending, state.Revision)
+	if err != nil {
+		t.Fatalf("reject failed Notes update: %v", err)
+	}
+	if state.Current == nil || state.Current.Version != version || state.Current.SourceCommit != sourceCommit {
+		t.Fatalf("failed Notes update replaced last-known-good: %+v", state)
+	}
+	if state.Rejected == nil || state.Rejected.SourceCommit != failedUpdateRelease.SourceCommit {
+		t.Fatalf("failed Notes update rejection identity drifted: %+v", state)
+	}
+
+	healthyUpdateRelease, err := signReleaseV2(
+		healthyUpdateReleasePath,
+		healthyUpdateCompatibilityPath,
+		privatePath,
+		trustPath,
+		healthyUpdateEnvelopePath,
+		keyID,
+	)
+	if err != nil {
+		t.Fatalf("sign healthy-update Notes release/2: %v", err)
+	}
+	_, healthyUpdateSlot, healthyUpdateChanged, err := stageComponentV2(
+		healthyUpdateEnvelopePath,
+		trustPath,
+		healthyUpdatePackagePath,
+		healthyUpdateCompatibilityPath,
+		root,
+	)
+	if err != nil {
+		t.Fatalf("stage healthy-update Notes candidate: %v", err)
+	}
+	if !healthyUpdateChanged || healthyUpdateSlot == slot || healthyUpdateSlot == failedUpdateSlot {
+		t.Fatalf("healthy-update Notes candidate did not create a distinct slot: changed=%t slot=%q", healthyUpdateChanged, healthyUpdateSlot)
+	}
+	state, err = armPendingState(healthyUpdateSlot, trustPath, root)
+	if err != nil {
+		t.Fatalf("arm healthy-update Notes candidate: %v", err)
+	}
+	healthyPending := *state.Pending
+	healthyProbationRevision := state.Revision
+	state, err = recordPendingHealthAtRevision(root, "notes", healthyPending, "healthy", &healthyProbationRevision)
+	if err != nil {
+		t.Fatalf("record healthy Notes update probation: %v", err)
+	}
+	state, err = promotePendingStateAtRevision(root, "notes", healthyPending, state.Revision, trustPath)
+	if err != nil {
+		t.Fatalf("promote healthy Notes update: %v", err)
+	}
+	if state.Current == nil || state.Current.SourceCommit != healthyUpdateRelease.SourceCommit || state.Previous == nil || state.Previous.SourceCommit != sourceCommit {
+		t.Fatalf("healthy Notes update did not retain previous last-known-good: %+v", state)
+	}
+
+	promotedUpdate := *state.Current
+	state, err = rollbackCurrentStateAtRevision(root, "notes", promotedUpdate, state.Revision, trustPath)
+	if err != nil {
+		t.Fatalf("rollback healthy Notes update: %v", err)
+	}
+	if state.Current == nil || state.Current.Version != version || state.Current.SourceCommit != sourceCommit {
+		t.Fatalf("Notes rollback did not restore last-known-good: %+v", state)
+	}
+	if state.Previous != nil || state.Rejected == nil || state.Rejected.SourceCommit != healthyUpdateRelease.SourceCommit {
+		t.Fatalf("Notes rollback bookkeeping drifted: %+v", state)
 	}
 
 	_, restagedSlot, restagedChanged, err := stageComponentV2(
