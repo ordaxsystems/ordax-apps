@@ -64,6 +64,13 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
             "revokeRemoteAppIntelligenceGrant",
         ):
             self.assertIn(method, self.host)
+            self.assertIn(method, self.studio)
+        for route in (
+            "remote_app_intelligence_grants",
+            "authorize_remote_app_intelligence_grant",
+            "revoke_remote_app_intelligence_grant",
+        ):
+            self.assertIn(route, self.studio)
         self.assertNotIn("/v3/product/device-intelligence-grants", self.computer)
 
     def test_product_login_emits_state_only_event_without_credentials(self) -> None:
