@@ -216,6 +216,39 @@ class DeterministicAppPackageTests(unittest.TestCase):
             with self.assertRaisesRegex(builder.AppPackageError, "duplicated"):
                 builder.verify_package(package)
 
+    def test_import_keywords_inside_strings_are_not_treated_as_dependencies(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(
+                root,
+                runtime_source=(
+                    'const mode = "import";\n'
+                    'const prose = "from \\"not-a-module\\"";\n'
+                    'const dynamic_example = "import(\\\"remote-package\\\")";\n'
+                    'import { value } from "./domain.mjs";\n'
+                    'export const componentRuntime = { value, mode, prose, dynamic_example };\n'
+                ),
+            )
+            manifest, _ = builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+            self.assertEqual(manifest["component"]["id"], "fixture")
+
+    def test_literal_dynamic_remote_import_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(
+                root,
+                runtime_source='export async function load() { return import("remote-package"); }\n',
+            )
+            with self.assertRaisesRegex(builder.AppPackageError, "bare/remote import"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_export_from_remote_module_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root, runtime_source='export { value } from "remote-package";\n')
+            with self.assertRaisesRegex(builder.AppPackageError, "bare/remote import"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
     def test_bare_platform_or_remote_import_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
