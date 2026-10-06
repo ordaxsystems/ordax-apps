@@ -1,0 +1,106 @@
+{
+  "$schema": "ordax.notes-source-snapshot/1",
+  "repository": "washingtonmsdj/prototipo-ordax-os",
+  "commit": "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6",
+  "captured_before_gate_a_removal": true,
+  "purpose": "reproducible Gate B transfer into ordax-apps after platform absence proof",
+  "files": [
+    {
+      "path": "system/apps/notes/app.mjs",
+      "blob_sha": "eca760594300405bc1c360022b63fa263242d679",
+      "size": 789
+    },
+    {
+      "path": "system/apps/notes/component.mjs",
+      "blob_sha": "ef1172edc1a0ef2d9b356fe3add328f430ff1d58",
+      "size": 460
+    },
+    {
+      "path": "system/apps/notes/domain/runtime.mjs",
+      "blob_sha": "71e48c0b373104fb10e5eba9b131c30b2babc922",
+      "size": 19382
+    },
+    {
+      "path": "system/apps/notes/domain/statistics.mjs",
+      "blob_sha": "5df4eece04681e8c71ec465e3032a409ad4e8630",
+      "size": 1211
+    },
+    {
+      "path": "system/apps/notes/notes.css",
+      "blob_sha": "af2e06cd5013b79672c6d253a0131f6349ad5d4d",
+      "size": 28678
+    },
+    {
+      "path": "system/apps/notes/platform/intelligence-summary.mjs",
+      "blob_sha": "a1ef8365802889f5dad63b70c4daa78af2bcbb77",
+      "size": 2960
+    },
+    {
+      "path": "system/apps/notes/runtime.mjs",
+      "blob_sha": "fd701a3002ab4cae5962bcc7fa167800e17eee0d",
+      "size": 3576
+    },
+    {
+      "path": "system/apps/notes/services/file-import.mjs",
+      "blob_sha": "506eb297ef58e4a7b478aeb1f995851970227684",
+      "size": 3783
+    },
+    {
+      "path": "system/apps/notes/ui/editor-save.mjs",
+      "blob_sha": "8ee3cd5d20ba5627cc0a8620350884fdb5fd903a",
+      "size": 3291
+    },
+    {
+      "path": "system/apps/notes/ui/file-picker.mjs",
+      "blob_sha": "a116cd0eebacc3d514816b58a3f11dfb04a5724b",
+      "size": 5730
+    },
+    {
+      "path": "system/apps/notes/ui/image-previews.mjs",
+      "blob_sha": "92d1664e8465aaaeb41b82262257c7f19070de27",
+      "size": 3965
+    },
+    {
+      "path": "system/apps/notes/ui/list-model.mjs",
+      "blob_sha": "8c2d4777afb63524ecba9f0b43c2f6f56b62475f",
+      "size": 2137
+    },
+    {
+      "path": "system/apps/notes/ui/reference-links.mjs",
+      "blob_sha": "37de1072a047cf6317c1ee8f126dbe24c27da5e6",
+      "size": 994
+    },
+    {
+      "path": "system/apps/notes/ui/rich-editor.mjs",
+      "blob_sha": "989043a2ed06e34a5f0f04a4a96409a1763d2de1",
+      "size": 21334
+    },
+    {
+      "path": "system/apps/notes/ui/workspace-controls.mjs",
+      "blob_sha": "4aef3d652f138e185901bdecec16bcfc7733cabb",
+      "size": 70286
+    },
+    {
+      "path": "system/apps/notes/version.mjs",
+      "blob_sha": "c7c4ae880c1c40b3e71de292920f2823cc03066d",
+      "size": 38
+    },
+    {
+      "path": "system/contracts/notes-file-importer.mjs",
+      "blob_sha": "3a04ba15266523f28f1b8df82250e299b480e2df",
+      "size": 2246
+    },
+    {
+      "path": "system/contracts/notes-store.mjs",
+      "blob_sha": "e4b83ecbb7d0987972b52904dc1c1a358ef2230a",
+      "size": 9884
+    },
+    {
+      "path": "system/services/i18n/catalog/notes.mjs",
+      "blob_sha": "571b8b30ce175209fdcd09ff219d45518f4d3d87",
+      "size": 18447
+    }
+  ],
+  "file_count": 19,
+  "authority": "none"
+}

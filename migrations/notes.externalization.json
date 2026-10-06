@@ -140,7 +140,9 @@
       "system/contracts/notes-file-importer.mjs",
       "system/services/i18n/catalog/notes.mjs"
     ],
-    "purpose": "reproducible Gate B source transfer after platform absence proof"
+    "purpose": "reproducible Gate B source transfer after platform absence proof",
+    "inventory_file": "migrations/notes.source-snapshot.json",
+    "file_count": 19
   },
   "source_cutover_allowed": false,
   "distribution_activation_allowed": false
