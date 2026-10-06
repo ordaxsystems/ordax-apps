@@ -32,6 +32,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout pinned OrdaX OS verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: washingtonmsdj/prototipo-ordax-os
+          ref: 499d370eaf8da424618da5e50207aec0f39f1b98
+          path: .ordax-platform-unsigned
+          persist-credentials: false
+
       - name: Prove unsigned handoff boundary
         run: |
           set -euo pipefail
@@ -77,6 +85,24 @@ jobs:
               notes.unsigned-candidate.json \
               > SHA256SUMS
           )
+
+      - name: Verify candidate with pinned platform owner
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-notes-unsigned"
+
+          python3 .ordax-platform-unsigned/tools/runtime-component-channel/verify_unsigned_candidate.py \
+            --candidate-dir "$out" \
+            --package-policy .ordax-platform-unsigned/docs/contracts/runtime-component-package.json
+
+          python3 .ordax-platform-unsigned/tools/runtime-component-channel/check_production_readiness.py \
+            --root .ordax-platform-unsigned \
+            | tee "$RUNNER_TEMP/notes-production-readiness.txt"
+
+          grep -F 'RUNTIME_COMPONENT_PRODUCTION_READINESS=PASS' "$RUNNER_TEMP/notes-production-readiness.txt"
+          grep -F 'CANONICAL_COMPONENT_TRUST_ANCHOR_PINNED=NO' "$RUNNER_TEMP/notes-production-readiness.txt"
+          grep -F 'COMPONENT_PUBLISH_ALLOWED=NO' "$RUNNER_TEMP/notes-production-readiness.txt"
+          grep -F 'PRODUCTION_COMPONENT_SLOT_ACTIVATION_ALLOWED=NO' "$RUNNER_TEMP/notes-production-readiness.txt"
 
       - name: Assert candidate is public-only and authority-free
         run: |
