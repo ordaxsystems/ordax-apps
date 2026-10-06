@@ -1,0 +1,62 @@
+{
+  "$schema": "ordax-apps.notes-distribution/1",
+  "product": {
+    "app_id": "notes",
+    "name": "Notas",
+    "portable_source": "apps/notes",
+    "canonical_version_source": "apps/notes/app.json#version"
+  },
+  "ordax_os": {
+    "supported": true,
+    "distribution_kind": "first-party-app-component",
+    "release_mode": "component-slot",
+    "delivery_class": "on-demand",
+    "discovery": "store-only",
+    "auto_install": false,
+    "bundled_in_base": false,
+    "runtime_owner": "ordax-os-platform"
+  },
+  "store": {
+    "role": "presentation-and-request",
+    "install_authority": false,
+    "signing_authority": false,
+    "permission_authority": false,
+    "rollback_authority": false,
+    "requests_platform_lifecycle": true
+  },
+  "lifecycle": {
+    "owner": "platform-component-lifecycle",
+    "flow": [
+      "catalog",
+      "artifact-identity",
+      "trust-provenance",
+      "compatibility",
+      "stage",
+      "health-probation",
+      "promote",
+      "installed-inventory-receipt"
+    ],
+    "failed_update_retains_last_known_good": true,
+    "uninstall_payload_preserves_app_data": true,
+    "user_data_deletion_requires_separate_action": true,
+    "offline_reinstall_from_verified_local_artifact_required": true
+  },
+  "pre_store": {
+    "allowed": true,
+    "channel": "official-signed-stable-release",
+    "must_use_same_platform_lifecycle": true,
+    "may_create_parallel_updater": false
+  },
+  "activation": {
+    "source_cutover_required": true,
+    "sdk_minimum_bundle": "1.6.0",
+    "app_data_contract": "ordax.app-data/1",
+    "deterministic_package_required": true,
+    "platform_verification_required": true,
+    "install_stage_health_promote_proof_required": true,
+    "rollback_proof_required": true,
+    "offline_reinstall_proof_required": true,
+    "uninstall_preserves_data_proof_required": true
+  },
+  "authority": "none"
+}

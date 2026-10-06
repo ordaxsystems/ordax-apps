@@ -9,6 +9,7 @@ TARGET_PATH = ROOT / "apps" / "notes"
 SOURCE_INVENTORY_PATH = ROOT / "migrations" / "notes.source-snapshot.json"
 TRANSFER_MAP_PATH = ROOT / "migrations" / "notes.gate-b-transfer-map.json"
 HOST_BOUNDARY_PATH = ROOT / "migrations" / "notes.host-boundary.json"
+DISTRIBUTION_PATH = ROOT / "migrations" / "notes.distribution.json"
 
 REQUIRED_PROOFS = {
     "sdk-contracts-pinned",
@@ -286,6 +287,99 @@ def main() -> None:
     }:
         if parity.get(key) is not True:
             fail(f"Notes host parity rule drifted: {key}")
+
+    if plan.get("distribution_contract") != "migrations/notes.distribution.json":
+        fail("Notes migration must bind the canonical distribution contract")
+
+    distribution = json.loads(DISTRIBUTION_PATH.read_text(encoding="utf-8"))
+    if distribution.get("$schema") != "ordax-apps.notes-distribution/1":
+        fail("unexpected Notes distribution schema")
+    if distribution.get("authority") != "none":
+        fail("Notes distribution metadata must carry no authority")
+
+    product = distribution.get("product") or {}
+    if product != {
+        "app_id": "notes",
+        "name": "Notas",
+        "portable_source": "apps/notes",
+        "canonical_version_source": "apps/notes/app.json#version",
+    }:
+        fail("Notes distribution product identity drifted")
+
+    ordax_os = distribution.get("ordax_os") or {}
+    expected_os = {
+        "supported": True,
+        "distribution_kind": "first-party-app-component",
+        "release_mode": "component-slot",
+        "delivery_class": "on-demand",
+        "discovery": "store-only",
+        "auto_install": False,
+        "bundled_in_base": False,
+        "runtime_owner": "ordax-os-platform",
+    }
+    if ordax_os != expected_os:
+        fail("Notes OrdaX OS distribution policy drifted")
+
+    store = distribution.get("store") or {}
+    if store != {
+        "role": "presentation-and-request",
+        "install_authority": False,
+        "signing_authority": False,
+        "permission_authority": False,
+        "rollback_authority": False,
+        "requests_platform_lifecycle": True,
+    }:
+        fail("Notes Store authority boundary drifted")
+
+    lifecycle = distribution.get("lifecycle") or {}
+    if lifecycle.get("owner") != "platform-component-lifecycle":
+        fail("Notes lifecycle owner drifted")
+    if lifecycle.get("flow") != [
+        "catalog",
+        "artifact-identity",
+        "trust-provenance",
+        "compatibility",
+        "stage",
+        "health-probation",
+        "promote",
+        "installed-inventory-receipt",
+    ]:
+        fail("Notes canonical install lifecycle drifted")
+    for key in {
+        "failed_update_retains_last_known_good",
+        "uninstall_payload_preserves_app_data",
+        "user_data_deletion_requires_separate_action",
+        "offline_reinstall_from_verified_local_artifact_required",
+    }:
+        if lifecycle.get(key) is not True:
+            fail(f"Notes lifecycle invariant drifted: {key}")
+
+    pre_store = distribution.get("pre_store") or {}
+    if pre_store != {
+        "allowed": True,
+        "channel": "official-signed-stable-release",
+        "must_use_same_platform_lifecycle": True,
+        "may_create_parallel_updater": False,
+    }:
+        fail("Notes pre-Store delivery policy drifted")
+
+    activation = distribution.get("activation") or {}
+    if activation.get("source_cutover_required") is not True:
+        fail("Notes distribution requires source cutover")
+    if activation.get("sdk_minimum_bundle") != "1.6.0":
+        fail("Notes distribution minimum SDK drifted")
+    if activation.get("app_data_contract") != "ordax.app-data/1":
+        fail("Notes distribution App Data contract drifted")
+    for key in {
+        "deterministic_package_required",
+        "platform_verification_required",
+        "install_stage_health_promote_proof_required",
+        "rollback_proof_required",
+        "offline_reinstall_proof_required",
+        "uninstall_preserves_data_proof_required",
+    }:
+        if activation.get(key) is not True:
+            fail(f"Notes distribution activation proof drifted: {key}")
 
     contracts = plan.get("platform_contracts_required")
     if not isinstance(contracts, list) or "ordax.app-data/1" not in contracts:
