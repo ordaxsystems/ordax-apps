@@ -390,7 +390,7 @@ def main() -> None:
     expected_compatibility = {
         "schema": "ordax.component-compatibility/1",
         "componentId": "notes",
-        "componentVersion": "0.4.2",
+        "componentVersion": "0.4.3",
         "provides": [
             {"id": "ordax.component-runtime", "major": 1},
         ],
