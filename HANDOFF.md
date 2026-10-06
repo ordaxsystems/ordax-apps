@@ -30,18 +30,23 @@ O repositório histórico `washingtonmsdj/mcp-blender` não é owner canônico d
 
 ## App SDK global do Studio
 
-`platform-sdk.lock.json` fixa o App SDK **1.8.0** na plataforma:
+`platform-sdk.lock.json` fixa o App SDK **1.10.0** na plataforma:
 
-- commit: `ef319ba940fa36c81699b73ba4195a178891e70f`;
+- commit: `298f62c9ab237efa90be5462398b4d90a0639006`;
 - bundle: `sdk/app-sdk-v1/bundle.json`;
-- SHA-256: `c87bc9a6666163ccfc45e0a72c20d89f6ba0a7069ed92298ff672a3e8cd1ba3b`;
+- SHA-256: `f21bfa559d9fff9284ed20003fa278e6ee9681c49b340af3ab34e09fa7e232a6`;
 - authority: `none`;
-- contratos publicados no bundle: 26.
+- contratos publicados no bundle: 31.
 
 A conformance externa materializa somente módulos públicos `system/contracts/**` pelo Git blob registrado no bundle e prova Studio Runtime v1/v2/v3 sem copiar serviços privados.
 
-O App SDK 1.8 mantém os contratos anteriores e publica, entre outros:
+O App SDK 1.10 preserva os contratos anteriores e publica, entre outros:
 
+- `ordax.application-action-capability/1`;
+- `ordax.application-action-capability-registry/1`;
+- `ordax.application-action-proposal/1`;
+- `ordax.project-cloud-links/1`;
+- `ordax.project-cloud-links-reader/1`;
 - `ordax.device-action-request/2`;
 - `ordax.device-action-result/1`;
 - `ordax.studio-action-context/1`;
@@ -75,7 +80,7 @@ Estado machine-readable em `migrations/notes.externalization.json`:
 
 ### SDK e App Data
 
-Notes mantém seu lock específico em App SDK **1.6.0** porque esse é o baseline comprovado para App Data 1 + Localization 2 + Surface Lifecycle 5. O lock global do Studio em 1.8 não deve substituir esse baseline às cegas.
+Notes mantém seu lock específico em App SDK **1.6.0** porque esse é o baseline comprovado para App Data 1 + Localization 2 + Surface Lifecycle 5. O lock global em 1.10 não deve substituir esse baseline histórico do Notes às cegas.
 
 Persistência do Notes usa o boundary público `ordax.app-data/1`; uninstall e delete de App Data permanecem operações distintas.
 
@@ -138,7 +143,7 @@ A publicação pública entrou no App SDK 1.8 por `prototipo-ordax-os#1144`. O c
 
 1. concluir a cerimônia operacional de trust de runtime-components fora do Git/CI e piná-la pela policy canônica;
 2. somente depois autorizar component publication e production component-slot activation do Notes;
-3. manter evolução do Studio sobre App SDK 1.8+ com pins exatos e host/runtime authority fora do app;
+3. manter evolução do Studio sobre App SDK 1.10+ com pins exatos e host/runtime authority fora do app;
 4. continuar limpeza documental/legado somente quando não alterar ownership ou gates já comprovados;
 5. não abrir uma segunda implementação de Notes, Studio, Runtime ou Control Plane.
 
