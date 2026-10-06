@@ -271,17 +271,132 @@ func TestExternalNotesPackageCompletesCanonicalLifecycle(t *testing.T) {
 		t.Fatalf("Notes rollback bookkeeping drifted: %+v", state)
 	}
 
-	_, restagedSlot, restagedChanged, err := stageComponentV2(
-		envelopePath,
-		trustPath,
-		packagePath,
-		compatibilityPath,
+	appDataRoot := filepath.Join(fixture, "app-data", "ordax-official", "notes")
+	if err := os.MkdirAll(appDataRoot, 0o700); err != nil {
+		t.Fatalf("prepare independent Notes App Data sentinel: %v", err)
+	}
+	appDataSentinel := filepath.Join(appDataRoot, "preserved.bin")
+	appDataBytes := []byte("notes-user-data-must-survive-payload-uninstall")
+	if err := os.WriteFile(appDataSentinel, appDataBytes, 0o600); err != nil {
+		t.Fatalf("write independent Notes App Data sentinel: %v", err)
+	}
+
+	installedIdentity := *state.Current
+	uninstallRevision := state.Revision
+	state, err = uninstallCurrentStateAtRevision(
 		root,
+		"notes",
+		installedIdentity,
+		uninstallRevision,
+		trustPath,
 	)
 	if err != nil {
-		t.Fatalf("restage verified local Notes artifact: %v", err)
+		t.Fatalf("uninstall promoted Notes payload: %v", err)
 	}
-	if restagedChanged || restagedSlot != slot {
-		t.Fatalf("verified local Notes artifact was not idempotently reusable: changed=%t slot=%q", restagedChanged, restagedSlot)
+	if state.Revision != uninstallRevision+1 ||
+		state.Current != nil ||
+		state.Previous != nil ||
+		state.Pending != nil ||
+		state.Rejected != nil ||
+		state.PendingHealth != "unknown" {
+		t.Fatalf("unexpected Notes uninstall state: %+v", state)
+	}
+
+	absentState, absentSlot, bundledFallback, err := resolveCurrentState(
+		root,
+		"notes",
+		trustPath,
+	)
+	if err != nil {
+		t.Fatalf("resolve Notes after uninstall: %v", err)
+	}
+	if bundledFallback || absentSlot != "" || absentState.Current != nil {
+		t.Fatalf(
+			"external Notes remained installed or fell back to bundled source: bundled=%t slot=%q state=%+v",
+			bundledFallback,
+			absentSlot,
+			absentState,
+		)
+	}
+
+	preserved, err := os.ReadFile(appDataSentinel)
+	if err != nil {
+		t.Fatalf("Notes uninstall touched independent App Data: %v", err)
+	}
+	if string(preserved) != string(appDataBytes) {
+		t.Fatal("Notes uninstall changed independent App Data bytes")
+	}
+
+	cached, err := verifySlotV2WithTrustBytes(slot, trustBytes)
+	if err != nil {
+		t.Fatalf("Notes verified local slot cache was damaged by uninstall: %v", err)
+	}
+	if !sameReleaseV2(cached, release) {
+		t.Fatal("Notes cached release identity changed after uninstall")
+	}
+
+	state, err = armPendingState(slot, trustPath, root)
+	if err != nil {
+		t.Fatalf("offline reinstall could not rearm cached Notes slot: %v", err)
+	}
+	if state.Pending == nil ||
+		state.Pending.Version != version ||
+		state.Pending.SourceCommit != sourceCommit {
+		t.Fatalf("offline reinstall armed wrong Notes identity: %+v", state)
+	}
+
+	reinstallPending := *state.Pending
+	reinstallProbationRevision := state.Revision
+	state, err = recordPendingHealthAtRevision(
+		root,
+		"notes",
+		reinstallPending,
+		"healthy",
+		&reinstallProbationRevision,
+	)
+	if err != nil {
+		t.Fatalf("record offline reinstall Notes health: %v", err)
+	}
+	state, err = promotePendingStateAtRevision(
+		root,
+		"notes",
+		reinstallPending,
+		state.Revision,
+		trustPath,
+	)
+	if err != nil {
+		t.Fatalf("promote offline reinstalled Notes: %v", err)
+	}
+	if state.Current == nil ||
+		state.Current.Version != version ||
+		state.Current.SourceCommit != sourceCommit {
+		t.Fatalf("offline reinstall did not restore Notes identity: %+v", state)
+	}
+
+	resolvedAfterReinstall, slotAfterReinstall, bundledAfterReinstall, err := resolveCurrentState(
+		root,
+		"notes",
+		trustPath,
+	)
+	if err != nil {
+		t.Fatalf("resolve Notes after offline reinstall: %v", err)
+	}
+	if bundledAfterReinstall ||
+		resolvedAfterReinstall.Current == nil ||
+		slotAfterReinstall != slot {
+		t.Fatalf(
+			"offline reinstalled Notes did not resolve from cached component slot: bundled=%t slot=%q state=%+v",
+			bundledAfterReinstall,
+			slotAfterReinstall,
+			resolvedAfterReinstall,
+		)
+	}
+
+	preservedAfterReinstall, err := os.ReadFile(appDataSentinel)
+	if err != nil {
+		t.Fatalf("offline Notes reinstall lost preserved App Data: %v", err)
+	}
+	if string(preservedAfterReinstall) != string(appDataBytes) {
+		t.Fatal("offline Notes reinstall changed preserved App Data bytes")
 	}
 }
