@@ -19,7 +19,7 @@ Current Notes code consumes platform capabilities/contracts that remain owned by
 
 An external app must consume these through a versioned SDK/runtime host boundary, never by importing files from `system/contracts` in another repository checkout.
 
-The current repository-wide SDK pin remains 1.3.0. The platform bundle inspected at commit `4229f9e381203a09036bff7955bd87ea971cf231` publishes App SDK 1.6.0 including `ordax.app-data/1`. Notes therefore targets **App SDK 1.6.0 or newer compatible contract-major coverage** before source cutover; the global pin must not be bumped blindly because Studio and other consumers have their own conformance gates.
+The current repository-wide SDK pin remains 1.3.0. The platform bundle inspected at commit `4229f9e381203a09036bff7955bd87ea971cf231` publishes App SDK 1.6.0 including `ordax.app-data/1`. Notes therefore targets **App SDK 1.6.0 or newer compatible contract-major coverage before distribution activation**, not before source ownership moves. The global pin must not be bumped blindly because Studio and other consumers have their own conformance gates.
 
 ## Notes-owned contracts/code
 
@@ -61,7 +61,7 @@ platform-owned App Data owner
 
 The Notes-owned schema/validation remains with the product. The platform owns isolation, verified app identity, durability and lifecycle of the private App Data partition.
 
-Source cutover remains blocked until the Notes runtime is adapted to the public App Data port and the platform can operate with Notes absent. Package/lifecycle proof no longer blocks the source move in this pre-launch mode; it is performed **after** the single-source move, from `ordax-apps`. This is a **clean pre-launch cutover**: there are no production users or production Notes data to migrate, so a legacy seed bridge is not a requirement. The old payload may be discarded at cutover instead of being carried forward as compatibility debt.
+Source cutover is blocked only until the platform proves that it operates with Notes absent. The App Data/runtime adaptation and package/lifecycle proof block **distribution activation**, not ownership transfer. They are performed **after** the single-source move, from `ordax-apps`. This is a **clean pre-launch cutover**: there are no production users or production Notes data to migrate, so a legacy seed bridge is not a requirement. The old payload may be discarded at cutover instead of being carried forward as compatibility debt.
 
 This does **not** weaken the permanent lifecycle rule: once real user data exists, uninstalling the app must remain separate from deleting its App Data.
 
@@ -111,14 +111,14 @@ Browser/Surface integration must not require Notes source to be inside the platf
 
 Before copying Notes into `ordax-apps`:
 
-- [ ] required platform contracts are published in a pinned App SDK bundle accepted by Notes;
-- [ ] `ordax.app-data/1` is the runtime storage boundary instead of `createStore`;
 - [x] pre-launch cutover explicitly requires no legacy data seed;
 - [x] Notes Intelligence uses app-owned code over the injected public Intelligence port;
-- [ ] Notes-owned contracts have an explicit migration destination;
+- [x] Notes-owned contracts have an explicit migration destination: the Notes package;
 - [ ] product/catalog metadata no longer imports repo-local Notes implementation;
 - [ ] platform works, boots and reports Notes as absent/uninstalled;
 - [ ] old platform app implementation and residual launch paths are removed.
+
+App SDK 1.6/App Data are deliberately **not** Gate A requirements. They are Gate C requirements because this migration allows temporary app absence and has no production user data.
 
 ### Gate A removal scope
 
@@ -143,9 +143,12 @@ Gate A is complete only when OrdaX boots and operates with Notes absent and no r
 
 After Gate A, copy the last canonical Notes source into `apps/notes` and mark `ordax-apps` as the only source of truth.
 
-### Gate C — package and delivery
+### Gate C — make the external app distributable
 
-Then prove from the external source:
+Only after Gate B, adapt and prove the external source:
+
+- [ ] required public platform contracts are accepted from App SDK 1.6.0 or a compatible newer bundle;
+- [ ] `ordax.app-data/1` replaces the old `createStore` runtime boundary;
 
 - [ ] deterministic Notes package builds entirely in `ordax-apps`;
 - [ ] platform verifies package identity/provenance/compatibility without source checkout;

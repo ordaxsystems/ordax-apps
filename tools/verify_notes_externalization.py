@@ -43,16 +43,34 @@ def main() -> None:
         fail("unexpected Notes externalization plan schema")
     if plan.get("app_id") != "notes":
         fail("wrong app id")
-    if plan.get("source_repository_current") != "washingtonmsdj/prototipo-ordax-os":
-        fail("platform must remain the Notes source before cutover")
-    if plan.get("source_path_current") != "system/apps/notes":
-        fail("current Notes source path drifted")
+    source_cutover_allowed = plan.get("source_cutover_allowed")
+    distribution_activation_allowed = plan.get("distribution_activation_allowed")
+    if source_cutover_allowed not in (False, True):
+        fail("source_cutover_allowed must be boolean")
+    if distribution_activation_allowed not in (False, True):
+        fail("distribution_activation_allowed must be boolean")
+
+    expected_source_repo = (
+        "washingtonmsdj/ordax-apps"
+        if source_cutover_allowed
+        else "washingtonmsdj/prototipo-ordax-os"
+    )
+    expected_source_path = "apps/notes" if source_cutover_allowed else "system/apps/notes"
+    if plan.get("source_repository_current") != expected_source_repo:
+        fail("Notes source repository does not match source cutover state")
+    if plan.get("source_path_current") != expected_source_path:
+        fail("Notes source path does not match source cutover state")
     if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
         fail("wrong Notes target repository")
     if plan.get("target_path") != "apps/notes":
         fail("wrong Notes target path")
-    if plan.get("source_of_truth_state") != "platform-until-cutover":
-        fail("Notes must have exactly one authoritative source before cutover")
+    expected_source_state = (
+        "ordax-apps-canonical"
+        if source_cutover_allowed
+        else "platform-until-cutover"
+    )
+    if plan.get("source_of_truth_state") != expected_source_state:
+        fail("Notes source-of-truth state does not match source cutover state")
     if plan.get("authority") != "none":
         fail("app externalization metadata must not carry authority")
 
@@ -150,6 +168,8 @@ def main() -> None:
         "platform_absence_proof_required_before_copy": True,
         "package_lifecycle_proof_runs_after_source_cutover": True,
         "production_rule_after_first_user_data": "staged-handoff-no-data-loss",
+        "source_gate": "platform-absence-before-copy",
+        "distribution_gate": "sdk-app-data-package-lifecycle-after-copy",
     }
     if source_cutover != expected_cutover:
         fail("Notes source cutover mode drifted")
@@ -180,22 +200,25 @@ def main() -> None:
     if not isinstance(proofs, list) or set(proofs) != REQUIRED_PROOFS:
         fail("Notes cutover proof set drifted")
 
-    cutover_allowed = plan.get("cutover_allowed")
     source_present = TARGET_PATH.exists()
-    if cutover_allowed is not False and cutover_allowed is not True:
-        fail("cutover_allowed must be boolean")
 
     current_sdk = lock.get("bundle_version")
     current_sdk_tuple = version_tuple(current_sdk)
     target_sdk_tuple = version_tuple(target_version)
 
-    if cutover_allowed:
+    if source_cutover_allowed:
         if not source_present:
-            fail("cutover cannot be enabled without apps/notes")
-        if current_sdk_tuple < target_sdk_tuple:
-            fail("cutover cannot be enabled below the Notes target SDK")
+            fail("source cutover cannot be enabled without apps/notes")
     elif source_present:
-        fail("apps/notes must not exist while cutover is blocked; dual source is forbidden")
+        fail("apps/notes must not exist before Gate A platform absence is proven")
+
+    if distribution_activation_allowed:
+        if not source_cutover_allowed or not source_present:
+            fail("distribution cannot activate before ordax-apps is the canonical Notes source")
+        if current_sdk_tuple < target_sdk_tuple:
+            fail("distribution cannot activate below the Notes target SDK")
+        if storage.get("state") != "ready-app-data-runtime":
+            fail("distribution cannot activate before Notes uses ordax.app-data/1")
 
     print("NOTES_EXTERNALIZATION=PASS")
     print(f"SDK_PIN={current_sdk}")
@@ -209,10 +232,23 @@ def main() -> None:
     print("DUAL_SOURCE_ALLOWED=NO")
     print("GATE_A_PLATFORM_REMOVAL=DEFINED")
     print(f"NOTES_SOURCE_PRESENT={'YES' if source_present else 'NO'}")
-    print(f"NOTES_CUTOVER_ALLOWED={'YES' if cutover_allowed else 'NO'}")
+    print(f"NOTES_SOURCE_CUTOVER_ALLOWED={'YES' if source_cutover_allowed else 'NO'}")
+    print(f"NOTES_DISTRIBUTION_ACTIVATION_ALLOWED={'YES' if distribution_activation_allowed else 'NO'}")
     print(
-        "NOTES_CUTOVER_READY="
-        + ("YES" if cutover_allowed and source_present and current_sdk_tuple >= target_sdk_tuple else "NO")
+        "NOTES_SOURCE_CUTOVER_READY="
+        + ("YES" if source_cutover_allowed and source_present else "NO")
+    )
+    print(
+        "NOTES_DISTRIBUTION_READY="
+        + (
+            "YES"
+            if distribution_activation_allowed
+            and source_cutover_allowed
+            and source_present
+            and current_sdk_tuple >= target_sdk_tuple
+            and storage.get("state") == "ready-app-data-runtime"
+            else "NO"
+        )
     )
 
 
