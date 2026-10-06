@@ -21,6 +21,7 @@ SOURCE_PATHS = (
     "system/contracts/component-manifest.mjs",
     "system/contracts/application-action-capability.mjs",
     "system/contracts/application-action-manifest.mjs",
+    "system/contracts/application-action-provider.mjs",
 )
 
 
@@ -84,8 +85,8 @@ def main() -> None:
     if match is None:
         fail("App SDK bundle version is invalid")
     major, minor, _patch = (int(part) for part in match.groups()[:3])
-    if major != 1 or minor < 11:
-        fail("Application Action manifest conformance requires App SDK >=1.11")
+    if major != 1 or minor < 12:
+        fail("Application Action provider conformance requires App SDK >=1.12")
     if bundle.get("authority") != "none":
         fail("pinned App SDK unexpectedly carries authority")
 
@@ -107,6 +108,9 @@ def main() -> None:
     for schema in (
         "ordax.application-action-capability/1",
         "ordax.application-action-manifest/1",
+        "ordax.application-action-provider/1",
+        "ordax.application-action-provider-invocation/1",
+        "ordax.application-action-provider-result/1",
     ):
         if schema not in schemas:
             fail(f"App SDK does not publish {schema}")
@@ -147,6 +151,7 @@ def main() -> None:
     print(f"SDK_COMMIT={commit}")
     print(f"SDK_VERSION={version}")
     print("CONTRACT=ordax.application-action-manifest/1")
+    print("PROVIDER_CONTRACT=ordax.application-action-provider/1")
     print("FIRST_PARTY_MANIFESTS=notes,studio")
     print("AUTHORITY=none")
 
