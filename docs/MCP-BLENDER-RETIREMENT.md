@@ -4,7 +4,7 @@
 
 O source portátil do **ORDAX Studio** é canônico em `washingtonmsdj/ordax-apps/apps/studio`.
 
-`washingtonmsdj/mcp-blender` não é mais fonte de produto do Studio e não deve receber novas features. Runtime, Control Plane e connector já possuem owners canônicos próprios. **Todos os gates de aposentadoria foram concluídos e o OrdaX OS autorizou a limpeza do conteúdo legado.**
+`washingtonmsdj/mcp-blender` não é mais fonte de produto do Studio e não deve receber novas features. Runtime, Control Plane e connector já possuem owners canônicos próprios. **A aposentadoria foi concluída. O conteúdo operacional legado foi removido da `main` em `ab9d6924d66539fcd10bc3b497971d9a44409bd5`; apenas o README de redirecionamento e o histórico Git permanecem.**
 
 ## O que já está seguro em ordax-apps
 
@@ -62,3 +62,8 @@ Não resolver a aposentadoria copiando Runtime ou Control Plane para `ordax-apps
 ## Automação de deploy
 
 A credencial futura para deploy automático via GitHub Actions é hardening de CI rastreado em `washingtonmsdj/ordax-control-plane#10`. Ela não é dependência operacional da produção nem blocker da aposentadoria do código legado.
+
+
+## Prova pós-retirement
+
+Após a limpeza da `main`, o connector continuou autenticado com `mcp_tool_surface_revision=2026-10-05.1`, 85 tools e `computer.windows=succeeded` no request `d0008c97-481f-4f50-980c-9d846c185c2e`.

@@ -164,14 +164,14 @@ def validate_studio_migration() -> None:
         fail("Studio target repository is invalid")
     if plan.get("target_path") != "apps/studio":
         fail("Studio target path is invalid")
-    if plan.get("source_of_truth_state") != "ordax-apps-canonical-legacy-removal-authorized":
-        fail("Studio source of truth must record authorized legacy removal")
+    if plan.get("source_of_truth_state") != "ordax-apps-canonical-legacy-retired":
+        fail("Studio source of truth must record completed legacy retirement")
     if plan.get("cutover_scope") != "distribution":
         fail("Studio cutover_allowed must describe distribution cutover, not source ownership")
     if plan.get("cutover_allowed") is not False:
         fail("Studio distribution cutover must remain blocked until lifecycle proofs are complete")
-    if plan.get("cutover_phase") != "legacy-retirement-authorized":
-        fail("Studio cutover phase must record authorized legacy retirement")
+    if plan.get("cutover_phase") != "legacy-retired":
+        fail("Studio cutover phase must record completed legacy retirement")
     if not (ROOT / "apps" / "studio" / "app.json").is_file():
         fail("canonical Studio app manifest is missing from ordax-apps")
     if plan.get("authority") != "none":
@@ -252,7 +252,14 @@ def validate_studio_migration() -> None:
         fail("legacy repository deletion must be authorized after all gates")
     blockers = legacy_gate.get("blockers")
     if blockers != []:
-        fail("authorized legacy retirement must have no remaining blockers")
+        fail("retired legacy repository must have no remaining blockers")
+    if legacy_gate.get("legacy_repository_contents_removed") is not True:
+        fail("legacy repository contents must be recorded as removed")
+    retirement_commit = legacy_gate.get("retirement_commit")
+    if not isinstance(retirement_commit, str) or re.fullmatch(r"[0-9a-f]{40}", retirement_commit) is None:
+        fail("legacy retirement commit must be exact")
+    if legacy_gate.get("post_retirement_smoke_status") != "succeeded":
+        fail("post-retirement smoke must remain green")
 
     proofs = plan.get("proofs_required")
     required_proofs = {

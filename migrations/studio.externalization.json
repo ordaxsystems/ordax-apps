@@ -6,7 +6,7 @@
   "inventory_commit": "7d2b6769b9afecb0b63535ab15161b81cb8907fe",
   "target_repository": "washingtonmsdj/ordax-apps",
   "target_path": "apps/studio",
-  "source_of_truth_state": "ordax-apps-canonical-legacy-removal-authorized",
+  "source_of_truth_state": "ordax-apps-canonical-legacy-retired",
   "cutover_allowed": false,
   "platform_contracts_required": [
     "ordax.app-activation/1",
@@ -94,7 +94,7 @@
     "no-residual-launch-path"
   ],
   "authority": "none",
-  "cutover_phase": "legacy-retirement-authorized",
+  "cutover_phase": "legacy-retired",
   "replacement_repositories": {
     "portable_app": "washingtonmsdj/ordax-apps",
     "runtime_host": "washingtonmsdj/ordax-runtime",
@@ -123,7 +123,11 @@
       "cloudflare_worker_version": 118,
       "cloudflare_deployment_id": "8928350d-3b49-4a1c-a7dc-1ee91c645fa3",
       "post_cutover_smoke_request_id": "c8395c15-ebf4-4f54-a80d-48989cdb708d"
-    }
+    },
+    "legacy_repository_contents_removed": true,
+    "retirement_commit": "ab9d6924d66539fcd10bc3b497971d9a44409bd5",
+    "post_retirement_smoke_request_id": "d0008c97-481f-4f50-980c-9d846c185c2e",
+    "post_retirement_smoke_status": "succeeded"
   },
   "legacy_source_repository": "washingtonmsdj/mcp-blender",
   "legacy_source_path": "ordax_studio",
