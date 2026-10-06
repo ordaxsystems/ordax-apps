@@ -186,3 +186,39 @@ O repositório deve falhar fechado quando:
 - ação externa/destrutiva tenta remover a política de confirmação.
 
 Esses gates são parte do pacote e do CI, não apenas convenção documental.
+
+
+## Application Actions manifest
+
+O `ai/manifest.json` ensina ao OrdaX o que o app entende e quais intents existem. Ele **não** autoriza execução.
+
+Apps first-party oficiais também fornecem:
+
+```text
+actions/manifest.json
+```
+
+no schema público:
+
+```text
+ordax.application-action-manifest/1
+```
+
+Esse arquivo descreve quais intents possuem uma capability semântica que poderá, futuramente, gerar uma proposal para o App Action Broker. Ele continua:
+
+```text
+authority = none
+execution = proposal-only
+executionAuthorized = false
+modelDirectExecutionAuthorized = false
+```
+
+O package builder exige o manifesto, inclui seus bytes no pacote determinístico e o valida contra `app.json` e `ai/manifest.json`. Uma capability não pode existir sem intent correspondente, reduzir risco/confirmação, usar ids duplicados ou transportar authority bruta.
+
+O CI também baixa o App SDK global pinado, verifica o SHA-256 do bundle e os Git blobs dos contratos e valida Notes/Studio com o próprio `validateApplicationActionManifest()` público da plataforma.
+
+### Studio e recursos de arquivo
+
+`studio.edit-file` permanece somente como intent declarativo por enquanto. Ele **não** está em `actions/manifest.json`, porque o intent atual ainda usa `path` e o contrato de Application Actions proíbe caminhos brutos, comandos, argv, environment e outros canais de authority.
+
+A edição de arquivos só deve virar capability quando o fluxo usar um identificador opaco de resource grant emitido pelo OrdaX. Não contornar essa regra renomeando `path` ou escondendo o caminho em JSON/string.
