@@ -232,6 +232,30 @@ class DeterministicAppPackageTests(unittest.TestCase):
             manifest, _ = builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
             self.assertEqual(manifest["component"]["id"], "fixture")
 
+    def test_regex_literal_with_quotes_is_not_treated_as_a_string(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(
+                root,
+                runtime_source=(
+                    "const count = (value) => value.match(/[\\\\p{L}\\\\p{N}]+(?:[’'][\\\\p{L}\\\\p{N}]+)*/gu)?.length ?? 0;\\n"
+                    'import { value } from "./domain.mjs";\\n'
+                    "export const componentRuntime = { count, value };\\n"
+                ),
+            )
+            manifest, _ = builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+            self.assertEqual(manifest["component"]["id"], "fixture")
+
+    def test_dynamic_remote_import_inside_template_expression_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(
+                root,
+                runtime_source='export const componentRuntime = `\${import("remote-package")}`;\\n',
+            )
+            with self.assertRaisesRegex(builder.AppPackageError, "bare/remote import"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
     def test_literal_dynamic_remote_import_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
