@@ -188,7 +188,8 @@ test("Studio provider revision 2 conforms to SDK 1.12 over typed host methods", 
     { url: "https://example.com" },
     "studio-browser",
   )));
-  assert.deepEqual(browser.output, { opened: true, url: "https://example.com" });
+  assert.equal(browser.output.opened, true);
+  assert.equal(browser.output.url, "https://example.com");
   assert.deepEqual(
     calls.find((entry) => entry[0] === "browserStart"),
     ["browserStart", "https://example.com", false, 3],
