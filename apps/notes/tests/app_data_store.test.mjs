@@ -74,6 +74,13 @@ function wrappedPort(base, hooks = {}) {
   });
 }
 
+function portWithIdentity(base, identity) {
+  return Object.freeze({
+    ...base,
+    identity: Object.freeze(identity),
+  });
+}
+
 function note(id, body, updatedAt = 1) {
   return {
     id,
@@ -156,16 +163,39 @@ test("failed head flip preserves the previous canonical Notes generation", async
 
 test("Notes App Data store rejects a port bound to another app", async () => {
   const base = inMemoryPort();
-  const wrong = Object.freeze({
-    ...base,
-    identity: Object.freeze({
-      appId: "assistant",
-      publisherId: "ordax-official",
-      ownerScope: "device",
-    }),
+  const wrong = portWithIdentity(base, {
+    appId: "assistant",
+    publisherId: "ordax-official",
+    ownerScope: "device",
   });
   await assert.rejects(
     () => createNotesAppDataStore(wrong),
-    /bound to notes/,
+    /ordax-official\/notes device data/,
+  );
+});
+
+test("Notes App Data store rejects the notes id under another publisher", async () => {
+  const base = inMemoryPort();
+  const wrong = portWithIdentity(base, {
+    appId: "notes",
+    publisherId: "third-party.example",
+    ownerScope: "device",
+  });
+  await assert.rejects(
+    () => createNotesAppDataStore(wrong),
+    /ordax-official\/notes device data/,
+  );
+});
+
+test("Notes App Data store rejects a non-device owner scope", async () => {
+  const base = inMemoryPort();
+  const wrong = portWithIdentity(base, {
+    appId: "notes",
+    publisherId: "ordax-official",
+    ownerScope: "account",
+  });
+  await assert.rejects(
+    () => createNotesAppDataStore(wrong),
+    /ordax-official\/notes device data/,
   );
 });

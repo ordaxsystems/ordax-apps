@@ -8,6 +8,8 @@ export const FILE_SPACE_SCHEMA = "ordax.file-space/11";
 export const INTELLIGENCE_PORT_SCHEMA = "ordax.intelligence/1";
 export const INTELLIGENCE_MAX_CONTEXT_ITEM_CHARS = 8192;
 export const APP_DATA_SCHEMA = "ordax.app-data/1";
+export const APP_DATA_OWNER_SCOPE = "device";
+export const NOTES_APP_DATA_PUBLISHER_ID = "ordax-official";
 export const MAX_APP_DATA_KEY_CHARS = 128;
 export const MAX_APP_DATA_VALUE_BYTES = 1024 * 1024;
 export const MAX_APP_DATA_PARTITION_KEYS = 4096;
@@ -144,8 +146,14 @@ export function assertAppDataPort(port) {
   if (!port || typeof port !== "object" || port.schema !== APP_DATA_SCHEMA) {
     throw new TypeError("A compatible App Data port is required");
   }
-  if (!port.identity || port.identity.appId !== "notes") {
-    throw new TypeError("Notes App Data port must be bound to notes");
+  const identity = port.identity;
+  if (
+    !identity || typeof identity !== "object"
+    || identity.appId !== "notes"
+    || identity.publisherId !== NOTES_APP_DATA_PUBLISHER_ID
+    || identity.ownerScope !== APP_DATA_OWNER_SCOPE
+  ) {
+    throw new TypeError("Notes App Data port must be bound to ordax-official/notes device data");
   }
   for (const method of ["get", "list", "put", "delete"]) {
     if (typeof port[method] !== "function") throw new TypeError(`App Data port is missing ${method}()`);
