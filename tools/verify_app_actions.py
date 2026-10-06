@@ -91,7 +91,7 @@ def main() -> None:
     print("APPLICATION_ACTION_MANIFEST_SCHEMA=ordax.application-action-manifest/1")
     print("APPLICATION_ACTION_AUTHORITY=none")
     print("APPLICATION_ACTION_EXECUTION=proposal-only")
-    print("APPLICATION_ACTION_PROVIDER_ARTIFACTS=verified-non-executing")
+    print("APPLICATION_ACTION_PROVIDER_ARTIFACTS=verified-typed-inactive")
 
 
 if __name__ == "__main__":

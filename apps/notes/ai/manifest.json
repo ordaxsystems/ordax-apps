@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-intelligence-manifest/1",
   "appId": "notes",
-  "appVersion": "0.4.2",
+  "appVersion": "0.4.3",
   "authority": "none",
   "execution": "declarative-only",
   "instructions": [

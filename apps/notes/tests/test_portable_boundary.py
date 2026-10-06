@@ -27,7 +27,7 @@ class NotesPortableBoundaryTests(unittest.TestCase):
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         self.assertEqual(manifest["schema"], "ordax.component-manifest/1")
         self.assertEqual(manifest["id"], "notes")
-        self.assertEqual(manifest["version"], "0.4.2")
+        self.assertEqual(manifest["version"], "0.4.3")
         self.assertEqual(manifest["releaseMode"], "component-slot")
         self.assertEqual(manifest["owner"], "washingtonmsdj/ordax-apps")
 

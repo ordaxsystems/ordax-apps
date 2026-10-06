@@ -46,7 +46,7 @@ class UnsignedCandidateHandoffTests(unittest.TestCase):
         self.assertEqual(value["$schema"], "ordax-apps.unsigned-component-candidate/1")
         self.assertEqual(value["status"], "unsigned-candidate")
         self.assertEqual(value["component"]["id"], "notes")
-        self.assertEqual(value["component"]["version"], "0.4.2")
+        self.assertEqual(value["component"]["version"], "0.4.3")
         self.assertEqual(value["component"]["releaseMode"], "component-slot")
         self.assertEqual(value["source"]["repository"], "washingtonmsdj/ordax-apps")
         self.assertEqual(value["source"]["commit"], source_commit)

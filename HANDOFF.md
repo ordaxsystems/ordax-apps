@@ -74,7 +74,9 @@ Apps oficiais first-party mantêm dois contratos complementares dentro do própr
 
 Ambos são metadata sem authority. O pacote determinístico inclui e verifica os dois arquivos. O CI exige conformance contra o App SDK pinado e proíbe que uma action enfraqueça risco/confirmação do intent correspondente.
 
-Notes declara as 7 ações atuais. Studio declara somente as ações compatíveis com o boundary sem authority bruta; `studio.edit-file` fica fora até existir resource-grant opaco.
+Notes 0.4.3 e Studio 0.4.7 também publicam provider revision `2` como factory tipada conforme App SDK 1.12. O artifact continua `authority=none` e `execution=unavailable`: ainda não existe caminho app/modelo → execução direta. A plataforma deve revalidar o slot/provider atual e passar pelo Personal OrdaX, grant, Action Gateway, wrapper privado e executor/receipt existentes.
+
+Notes declara as 7 ações atuais. Studio declara somente as ações compatíveis com o boundary sem authority bruta; `studio.edit-file` fica fora até existir resource-grant opaco. `studio.prepare-blender` não expõe `adopt` sem PID/target explícito; essa operação permanece na UI manual.
 
 ## Notes — piloto first-party externo
 

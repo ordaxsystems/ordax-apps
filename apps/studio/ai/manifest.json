@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-intelligence-manifest/1",
   "appId": "studio",
-  "appVersion": "0.4.6",
+  "appVersion": "0.4.7",
   "authority": "none",
   "execution": "declarative-only",
   "instructions": [
@@ -131,7 +131,7 @@
     },
     {
       "id": "studio.prepare-blender",
-      "description": "Preparar a integração do Blender, instalar a bridge autorizada ou trabalhar com instâncias conhecidas.",
+      "description": "Preparar a integração do Blender, instalar a bridge autorizada, listar instâncias conhecidas ou iniciar o Blender do projeto.",
       "effect": "write",
       "confirmation": "policy",
       "parameters": [
@@ -139,7 +139,7 @@
           "name": "operation",
           "type": "string",
           "required": true,
-          "description": "Operação Blender solicitada, como preparar, instalar bridge, listar, adotar ou iniciar instância."
+          "description": "Operação Blender solicitada: preparar, instalar bridge, listar instâncias ou iniciar o Blender do projeto."
         }
       ],
       "examples": [

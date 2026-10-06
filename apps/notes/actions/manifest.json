@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-manifest/1",
   "appId": "notes",
-  "appVersion": "0.4.2",
+  "appVersion": "0.4.3",
   "authority": "none",
   "execution": "proposal-only",
   "capabilities": [
@@ -16,7 +16,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "notes-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -46,7 +46,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "notes-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -88,7 +88,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "notes-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -130,7 +130,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "notes-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -166,7 +166,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "notes-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -196,7 +196,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "notes-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -226,7 +226,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "notes-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null

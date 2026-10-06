@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-manifest/1",
   "appId": "studio",
-  "appVersion": "0.4.6",
+  "appVersion": "0.4.7",
   "authority": "none",
   "execution": "proposal-only",
   "capabilities": [
@@ -16,7 +16,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "studio-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -39,7 +39,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "studio-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -69,7 +69,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "studio-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -99,7 +99,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "studio-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -135,7 +135,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "studio-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -158,7 +158,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "studio-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -192,7 +192,7 @@
       "provider": {
         "kind": "first-party-native",
         "adapterId": "studio-native",
-        "revision": "1"
+        "revision": "2"
       },
       "binding": {
         "payloadSha256": null
@@ -206,7 +206,6 @@
             "prepare",
             "install-bridge",
             "list",
-            "adopt",
             "start"
           ]
         }
