@@ -133,6 +133,7 @@
         status.textContent=connectedEmail?`Computador vinculado a ${connectedEmail}.`:'Computador vinculado à conta ORDAX.';
       }
       setGlobalStatus(restartRequired?'ORDAX registrado · Runtime precisa reiniciar':'ORDAX conectado à conta');
+      window.dispatchEvent(new CustomEvent('ordax:product-account-connected',{detail:{email:connectedEmail||null}}));
       setTimeout(close,restartRequired?2400:1100);
     });
   }
