@@ -4,7 +4,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PLAN_PATH = ROOT / "migrations" / "notes.externalization.json"
-SDK_LOCK_PATH = ROOT / "platform-sdk.lock.json"
 NOTES_SDK_LOCK_PATH = ROOT / "migrations" / "notes.platform-sdk.lock.json"
 TARGET_PATH = ROOT / "apps" / "notes"
 SOURCE_INVENTORY_PATH = ROOT / "migrations" / "notes.source-snapshot.json"
@@ -43,7 +42,6 @@ def version_tuple(value: str) -> tuple[int, int, int]:
 
 def main() -> None:
     plan = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
-    lock = json.loads(SDK_LOCK_PATH.read_text(encoding="utf-8"))
 
     if plan.get("$schema") != "ordax.app-externalization-plan/1":
         fail("unexpected Notes externalization plan schema")
@@ -540,7 +538,7 @@ def main() -> None:
 
     source_present = TARGET_PATH.exists()
 
-    current_sdk = lock.get("bundle_version")
+    current_sdk = notes_sdk_lock.get("bundle_version")
     current_sdk_tuple = version_tuple(current_sdk)
     target_sdk_tuple = version_tuple(target_version)
 
@@ -559,7 +557,7 @@ def main() -> None:
             fail("distribution cannot activate before Notes uses ordax.app-data/1")
 
     print("NOTES_EXTERNALIZATION=PASS")
-    print(f"SDK_PIN={current_sdk}")
+    print(f"NOTES_SDK_PIN={current_sdk}")
     print(f"SDK_TARGET={target_version}")
     print("APP_DATA_REQUIRED=YES")
     print("LEGACY_DATA_SEED_REQUIRED=NO")
