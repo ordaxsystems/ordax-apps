@@ -11,10 +11,11 @@ Canonical boundary: `docs/STUDIO-BOUNDARY.md`.
 O boundary público e a conformance externa do Studio estão publicados e integrados:
 
 - `prototipo-ordax-os#1140` integrou `ordax.device-action-result/1` + `ordax.studio-runtime/3` após Foundation/Release/USB/QEMU/UEFI verdes;
-- `prototipo-ordax-os#1144` publicou esses contratos no App SDK **1.8.0**;
-- `ordax-apps#61` avançou o consumidor Studio para esse bundle e provou v1/v2/v3 no CI externo;
-- o pin global atual está em `platform-sdk.lock.json` e aponta para `prototipo-ordax-os@ef319ba940fa36c81699b73ba4195a178891e70f`;
-- bundle SHA-256: `c87bc9a6666163ccfc45e0a72c20d89f6ba0a7069ed92298ff672a3e8cd1ba3b`;
+- `prototipo-ordax-os#1144` publicou esses contratos originalmente no App SDK **1.8.0**;
+- `ordax-apps#61` avançou o consumidor Studio para esse boundary e provou v1/v2/v3 no CI externo;
+- o pin global atual avançou de forma aditiva para App SDK **1.10.0** após Projects 1.9 + Application Actions 1.10;
+- `platform-sdk.lock.json` aponta para `prototipo-ordax-os@298f62c9ab237efa90be5462398b4d90a0639006`;
+- bundle SHA-256: `f21bfa559d9fff9284ed20003fa278e6ee9681c49b340af3ab34e09fa7e232a6`;
 - `authority:none` permanece obrigatório.
 
 O verificador externo não copia implementação da plataforma. Ele baixa somente módulos públicos registrados no bundle e valida cada Git blob antes de executar os fixtures.
@@ -50,14 +51,19 @@ Windows e OrdaX OS devem expor a mesma semântica tipada pelo boundary público.
 
 Pin global do Studio:
 
-- bundle: **1.8.0**;
-- platform commit: `ef319ba940fa36c81699b73ba4195a178891e70f`;
-- digest: `c87bc9a6666163ccfc45e0a72c20d89f6ba0a7069ed92298ff672a3e8cd1ba3b`;
+- bundle: **1.10.0**;
+- platform commit: `298f62c9ab237efa90be5462398b4d90a0639006`;
+- digest: `f21bfa559d9fff9284ed20003fa278e6ee9681c49b340af3ab34e09fa7e232a6`;
 - compatibility policy: `contract-major`;
 - authority: `none`.
 
 Contratos Studio e facets atualmente comprovados incluem:
 
+- `ordax.application-action-capability/1`;
+- `ordax.application-action-capability-registry/1`;
+- `ordax.application-action-proposal/1`;
+- `ordax.project-cloud-links/1`;
+- `ordax.project-cloud-links-reader/1`;
 - `ordax.device-agent-capabilities/1`;
 - `ordax.device-agent-capability-reader/1`;
 - `ordax.device-action-request/1`;
