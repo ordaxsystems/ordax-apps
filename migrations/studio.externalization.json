@@ -6,7 +6,7 @@
   "inventory_commit": "7d2b6769b9afecb0b63535ab15161b81cb8907fe",
   "target_repository": "washingtonmsdj/ordax-apps",
   "target_path": "apps/studio",
-  "source_of_truth_state": "ordax-apps-canonical-legacy-removal-pending",
+  "source_of_truth_state": "ordax-apps-canonical-legacy-removal-authorized",
   "cutover_allowed": false,
   "platform_contracts_required": [
     "ordax.app-activation/1",
@@ -94,7 +94,7 @@
     "no-residual-launch-path"
   ],
   "authority": "none",
-  "cutover_phase": "portable-source-canonical",
+  "cutover_phase": "legacy-retirement-authorized",
   "replacement_repositories": {
     "portable_app": "washingtonmsdj/ordax-apps",
     "runtime_host": "washingtonmsdj/ordax-runtime",
@@ -104,22 +104,26 @@
   "legacy_repository_deletion_gate": {
     "source_preserved": true,
     "portable_app_staged": true,
-    "production_control_plane_repointed": false,
+    "production_control_plane_repointed": true,
     "windows_build_repointed": true,
-    "safe_to_delete_legacy_repository": false,
+    "safe_to_delete_legacy_repository": true,
     "portable_app_canonical": true,
     "legacy_app_new_features_allowed": false,
     "retirement_requested": true,
     "portable_source_dependency_remaining": false,
     "runtime_host_repointed": true,
     "provider_connector_repointed": true,
-    "blockers": [
-      "provision a new minimally scoped CLOUDFLARE_API_TOKEN in washingtonmsdj/ordax-control-plane environment cloudflare-v3",
-      "deploy production Control Plane from washingtonmsdj/ordax-control-plane and require health plus remote verification to pass",
-      "prove no residual functional build, deploy or launch path references washingtonmsdj/mcp-blender",
-      "remove legacy repository contents only after the deletion gate becomes true"
-    ],
-    "chatgpt_control_plane_runtime_e2e_green": true
+    "blockers": [],
+    "chatgpt_control_plane_runtime_e2e_green": true,
+    "no_functional_legacy_build_deploy_launch_reference": true,
+    "evidence": {
+      "ordax_os_gate_main": "2d6963b2b4fa1f43b78f0b72a19203acc07506b6",
+      "ordax_runtime_main": "218e049cc1364e270c566f41de048725ec692c26",
+      "ordax_control_plane_main": "53f46d10d7a58c606086ce404a7d764a1949ccbf",
+      "cloudflare_worker_version": 118,
+      "cloudflare_deployment_id": "8928350d-3b49-4a1c-a7dc-1ee91c645fa3",
+      "post_cutover_smoke_request_id": "c8395c15-ebf4-4f54-a80d-48989cdb708d"
+    }
   },
   "legacy_source_repository": "washingtonmsdj/mcp-blender",
   "legacy_source_path": "ordax_studio",
