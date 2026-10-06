@@ -52,6 +52,20 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         self.assertNotIn("remoteComputerGrants", required_block)
         self.assertIn("const OPTIONAL_METHODS", self.host)
 
+    def test_app_intelligence_read_grant_is_separate_and_owner_visible(self) -> None:
+        self.assertIn("app-intelligence-read", self.computer)
+        self.assertIn("INTELIGÊNCIA DE APLICATIVOS", self.computer)
+        self.assertIn("intelligence.app_catalog", self.computer)
+        self.assertIn("intelligence.app_detail", self.computer)
+        self.assertIn("Não concede mouse, teclado, clipboard, filesystem, processos, terminal, Git ou execução de apps.", self.computer)
+        for method in (
+            "remoteAppIntelligenceGrants",
+            "authorizeRemoteAppIntelligenceGrant",
+            "revokeRemoteAppIntelligenceGrant",
+        ):
+            self.assertIn(method, self.host)
+        self.assertNotIn("/v3/product/device-intelligence-grants", self.computer)
+
     def test_product_login_emits_state_only_event_without_credentials(self) -> None:
         self.assertIn("ordax:product-account-connected", self.account)
         event_line = next(line for line in self.account.splitlines() if "ordax:product-account-connected" in line)
