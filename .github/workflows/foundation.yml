@@ -178,6 +178,9 @@ jobs:
       - name: Prove Studio remote Computer grant boundary
         run: python3 apps/studio/tests/test_remote_computer_grants_boundary.py
 
+      - name: Prove Studio managed browser grant boundary
+        run: python3 apps/studio/tests/test_remote_browser_grants_boundary.py
+
       - name: Prove Studio OrdaX OS and Windows distribution invariants
         run: |
           python3 tools/verify_studio_distribution.py
