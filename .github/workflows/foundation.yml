@@ -26,6 +26,8 @@ jobs:
           python3 -m json.tool apps/studio/ai/manifest.json >/dev/null
           python3 -m json.tool apps/notes/actions/manifest.json >/dev/null
           python3 -m json.tool apps/studio/actions/manifest.json >/dev/null
+          python3 -m json.tool apps/notes/actions/providers/manifest.json >/dev/null
+          python3 -m json.tool apps/studio/actions/providers/manifest.json >/dev/null
           python3 -m json.tool migrations/notes.externalization.json >/dev/null
           python3 -m json.tool migrations/projects.externalization.json >/dev/null
           python3 -m json.tool migrations/notes.source-snapshot.json >/dev/null
@@ -45,8 +47,11 @@ jobs:
       - name: Prove first-party app intelligence manifests
         run: python3 tools/verify_app_intelligence.py
 
-      - name: Prove first-party Application Action manifests
-        run: python3 tools/verify_app_actions.py
+      - name: Prove first-party Application Action manifests and provider artifacts
+        run: |
+          node --check apps/notes/actions/providers/notes-native.mjs
+          node --check apps/studio/actions/providers/studio-native.mjs
+          python3 tools/verify_app_actions.py
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py

@@ -101,6 +101,36 @@ def fixture(root: Path, *, runtime_source: str = 'import { value } from "./domai
             ],
         },
     )
+    provider_source = (
+        'export const applicationActionProviderArtifact = Object.freeze({\n'
+        '  schema: "ordax.application-action-provider-artifact/1",\n'
+        '  appId: "fixture",\n'
+        '  adapterId: "fixture-native",\n'
+        '  revision: "1",\n'
+        '  authority: "none",\n'
+        '  execution: "unavailable",\n'
+        '});\n'
+    )
+    provider_path = app / "actions" / "providers" / "fixture-native.mjs"
+    provider_path.parent.mkdir(parents=True, exist_ok=True)
+    provider_path.write_text(provider_source, encoding="utf-8")
+    write_json(
+        app / "actions" / "providers" / "manifest.json",
+        {
+            "schema": "ordax.application-action-provider-manifest/1",
+            "appId": "fixture",
+            "appVersion": "0.1.0",
+            "authority": "none",
+            "execution": "unavailable",
+            "providers": [{
+                "kind": "first-party-native",
+                "adapterId": "fixture-native",
+                "revision": "1",
+                "module": "actions/providers/fixture-native.mjs",
+                "sha256": builder.sha256_bytes(provider_source.encode("utf-8")),
+            }],
+        },
+    )
     write_json(
         app / "compatibility.json",
         {
@@ -161,6 +191,8 @@ class DeterministicAppPackageTests(unittest.TestCase):
                 self.assertIn("system/apps/fixture/assets/fixture.css", names)
                 self.assertIn("system/apps/fixture/ai/manifest.json", names)
                 self.assertIn("system/apps/fixture/actions/manifest.json", names)
+                self.assertIn("system/apps/fixture/actions/providers/manifest.json", names)
+                self.assertIn("system/apps/fixture/actions/providers/fixture-native.mjs", names)
                 self.assertNotIn("system/apps/fixture/compatibility.json", names)
 
             release = json.loads(release_a.read_text(encoding="utf-8"))
@@ -233,6 +265,51 @@ class DeterministicAppPackageTests(unittest.TestCase):
                 builder.AppPackageError,
                 "must provide actions/manifest.json",
             ):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_first_party_app_requires_provider_manifest(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            (app / "actions" / "providers" / "manifest.json").unlink()
+            with self.assertRaisesRegex(
+                builder.AppPackageError,
+                "must provide actions/providers/manifest.json",
+            ):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_provider_artifact_hash_and_declared_provider_are_fail_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            provider = app / "actions" / "providers" / "fixture-native.mjs"
+            provider.write_text("export const changed = true;\n", encoding="utf-8")
+            with self.assertRaisesRegex(builder.AppPackageError, "SHA-256 mismatch"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            manifest_path = app / "actions" / "providers" / "manifest.json"
+            value = json.loads(manifest_path.read_text(encoding="utf-8"))
+            value["providers"][0]["adapterId"] = "other-native"
+            value["providers"][0]["module"] = "actions/providers/other-native.mjs"
+            write_json(manifest_path, value)
+            with self.assertRaisesRegex(
+                builder.AppPackageError,
+                "artifact is unavailable|do not exactly cover",
+            ):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
+    def test_provider_manifest_cannot_claim_execution(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            manifest_path = app / "actions" / "providers" / "manifest.json"
+            value = json.loads(manifest_path.read_text(encoding="utf-8"))
+            value["execution"] = "direct"
+            write_json(manifest_path, value)
+            with self.assertRaisesRegex(builder.AppPackageError, "cannot grant execution"):
                 builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
 
     def test_action_manifest_identity_and_authority_are_fail_closed(self):
