@@ -62,6 +62,9 @@ Contratos Studio e facets atualmente comprovados incluem:
 - `ordax.application-action-capability/1`;
 - `ordax.application-action-capability-registry/1`;
 - `ordax.application-action-manifest/1`;
+- `ordax.application-action-provider/1`;
+- `ordax.application-action-provider-invocation/1`;
+- `ordax.application-action-provider-result/1`;
 - `ordax.application-action-proposal/1`;
 - `ordax.project-cloud-links/1`;
 - `ordax.project-cloud-links-reader/1`;
