@@ -113,6 +113,8 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
             "sess?o",
             "autoriza??o",
             "necess?rias",
+            "mem?ria",
+            "sessão ? mantida",
         ):
             self.assertNotIn(broken, self.computer)
         self.assertIn("accessSummary", self.computer)
