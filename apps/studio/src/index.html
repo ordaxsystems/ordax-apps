@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
@@ -8,85 +8,195 @@
 <link rel="stylesheet" href="../assets/computer_access.css">
 <link rel="stylesheet" href="../assets/product_account.css">
 <link rel="stylesheet" href="../assets/blender-connection.css">
+<link rel="stylesheet" href="../assets/ide_shell.css">
 </head>
 <body>
 <header class="appbar">
   <div class="brandMark">O</div>
-  <div class="brandLockup"><div class="brandText">ORDAX <span>Studio</span></div><div class="brandCaption">Seu ambiente de criaÃ§Ã£o</div></div>
+  <div class="brandLockup">
+    <div class="brandText">ORDAX <span>Studio</span></div>
+    <div class="brandCaption">Seu ambiente de criação com IA</div>
+  </div>
   <div id="topProject" class="topProject hidden"></div>
   <div class="topSpacer"></div>
   <div id="runtimePill" class="statusPill"><span class="statusDot"></span>Runtime local</div>
   <div id="globalStatus" class="globalStatus">Inicializando...</div>
 </header>
+
 <main id="projectHome" class="homeShell">
   <section class="homeMain">
     <div class="homeHeading">
-      <div><div class="eyebrow">WORKSPACES</div><h1>Projetos</h1><p>O ORDAX mantÃ©m seus projetos e ferramentas disponÃ­veis para clientes MCP autorizados, inclusive o ChatGPT normal.</p></div>
+      <div>
+        <div class="eyebrow">WORKSPACES</div>
+        <h1>Projetos</h1>
+        <p>Escolha um projeto para abrir o ambiente IDE com assistente, preview e ferramentas operacionais.</p>
+      </div>
       <input id="projectFilter" class="projectFilter" placeholder="Buscar projeto..." autocomplete="off">
     </div>
     <div id="homeStats" class="homeStats"></div>
     <div id="projectGrid" class="projectGrid"></div>
   </section>
   <aside class="homeAside">
-    <div class="asideCard"><div class="eyebrow">CONTINUIDADE</div><h3>Retome de onde parou</h3><p id="resumeText">O ORDAX mantÃ©m memÃ³ria, tarefas e checkpoints por projeto.</p><button id="resumeButton" class="primary wide" disabled>Continuar projeto</button></div>
-    <div class="asideCard"><div class="eyebrow">HOST LOCAL</div><div class="agentStatus"><span class="orb"></span><div><strong>Runtime persistente</strong><small>O app pode ser fechado; o ORDAX Runtime continua no Windows.</small></div></div><div class="miniList"><span>Projetos locais</span><span>MCP remoto</span><span>Git + arquivos</span><span>Blender + Unity</span></div></div>
+    <div class="asideCard">
+      <div class="eyebrow">CONTINUIDADE</div>
+      <h3>Retome de onde parou</h3>
+      <p id="resumeText">O ORDAX mantém memória, tarefas e checkpoints por projeto.</p>
+      <button id="resumeButton" class="primary wide" disabled>Continuar projeto</button>
+    </div>
+    <div class="asideCard">
+      <div class="eyebrow">HOST LOCAL</div>
+      <div class="agentStatus"><span class="orb"></span><div><strong>Runtime persistente</strong><small>O Studio pode fechar; o Runtime continua no Windows.</small></div></div>
+      <div class="miniList"><span>Projetos locais</span><span>MCP remoto</span><span>Git + arquivos</span><span>Blender + Unity</span></div>
+    </div>
   </aside>
 </main>
+
 <main id="workspace" class="workspace hidden">
-  <div class="workspaceBar">
-    <button class="backButton" onclick="backToProjects()" title="Voltar aos projetos">â†</button>
-    <div class="repoIdentity"><strong id="workspaceRepo">Projeto</strong><span id="workspaceMeta"></span></div>
-    <div class="workspaceSpacer"></div>
-    <span id="workspaceHealth" class="statusPill"></span>
-    <span id="workspaceSession" class="workspaceSession"></span>
-  </div>
-  <div class="workGrid">
-    <aside class="projectSidebar">
-      <div class="projectSidebarHead"><div><div class="eyebrow">PROJETOS</div><strong>Workspaces</strong></div><button class="iconButton" onclick="backToProjects()" title="Todos os projetos">âŒ‚</button></div>
-      <input id="workspaceProjectFilter" class="sidebarSearch" placeholder="Filtrar projetos..." autocomplete="off">
+  <div class="workGrid ideWorkGrid">
+    <aside class="projectSidebar ideSidebar">
+      <div class="ideBrandBlock">
+        <div class="brandMark compact">O</div>
+        <div><strong>ORDAX Studio</strong><small>Projetos</small></div>
+      </div>
+      <input id="workspaceProjectFilter" class="sidebarSearch" placeholder="Buscar projetos..." autocomplete="off">
+      <button class="primary ideNewProject" type="button" disabled title="Criação de projeto será integrada ao host">+ Novo projeto</button>
+      <div class="sidebarSectionLabel">PROJETOS</div>
       <div id="workspaceProjectList" class="workspaceProjectList"></div>
       <div class="sidebarDivider"></div>
-      <nav class="workspaceTools" aria-label="Ferramentas do projeto">
-        <button class="toolButton active" data-view="overview"><span>â—</span>VisÃ£o geral</button>
-        <button class="toolButton" data-view="sessions"><span>â—Ž</span>SessÃµes de IA</button>
-        <button class="toolButton" data-view="files"><span>âŒ˜</span>Arquivos</button>
-        <button class="toolButton" data-view="search"><span>âŒ•</span>Buscar</button>
-        <button class="toolButton" data-view="git"><span>â‘‚</span>Git</button>
-        <button class="toolButton" data-view="memory"><span>â—«</span>MemÃ³ria</button>
-        <button class="toolButton" data-view="computer"><span>C</span>Acesso ao computador</button>
-        <button class="toolButton" data-view="browser"><span>W</span>Navegador</button>
-        <button class="toolButton" data-view="mcp"><span>M</span>MCP</button>
+      <div class="sidebarSectionLabel">SISTEMA</div>
+      <nav class="systemNav" aria-label="Sistema">
+        <button type="button" data-system-action="account">Conta</button>
+        <button type="button" data-system-action="device">Dispositivo</button>
+        <button type="button" data-system-action="settings">Configurações</button>
       </nav>
       <div id="sidebarProjectMeta" class="sidebarProjectMeta"></div>
     </aside>
-    <section class="mainPane">
-      <div class="mainHeader"><div><div class="eyebrow">PROJETO</div><strong id="mainTitle">VisÃ£o geral</strong></div></div>
-      <div id="overviewCanvas" class="mainCanvas"></div>
-      <div id="sessionsCanvas" class="mainCanvas hidden"></div>
-      <div id="editorCanvas" class="mainCanvas hidden"><div class="editorToolbar"><span id="fileTitle">Nenhum arquivo aberto</span><button id="saveButton" class="primary" onclick="saveFile()" disabled>Salvar</button></div><textarea id="editor" spellcheck="false" placeholder="Abra um arquivo na lista do projeto"></textarea></div>
-      <div id="searchCanvas" class="mainCanvas hidden"><div class="searchHeader"><input id="codeSearch" class="searchBox large" placeholder="Busque arquivos, sÃ­mbolos ou trechos..." autocomplete="off"></div><div id="searchResults" class="searchResults"></div></div>
-      <div id="diffCanvas" class="mainCanvas hidden"><div class="editorToolbar"><span>AlteraÃ§Ãµes Git</span><button onclick="loadGitDiff()">Atualizar</button></div><pre id="diffView" class="codeView"></pre></div>
-      <div id="memoryCanvas" class="mainCanvas hidden"></div>
-      <div id="computerCanvas" class="mainCanvas hidden"></div>
-      <div id="browserCanvas" class="mainCanvas hidden"></div>
-      <div id="mcpCanvas" class="mainCanvas hidden"></div>
-    </section>
-    <section class="previewPane">
-      <div class="previewToolbar">
-        <div class="previewIdentity"><div class="eyebrow">LIVE</div><strong>Preview</strong><span id="previewState">parado</span></div>
-        <div class="previewActions"><button onclick="runPreview()" title="Executar preview">â–¶</button><button onclick="capturePreview()" title="Capturar">â—‰</button><button onclick="togglePreviewLogs()" title="Logs">â‰¡</button><button onclick="refreshPreview(true)" title="Atualizar">â†»</button><button onclick="togglePreviewFocus()" title="Maximizar preview">â›¶</button></div>
+
+    <section class="assistantPane">
+      <div class="assistantProjectHeader">
+        <div class="assistantProjectIdentity">
+          <strong id="workspaceRepo">Projeto</strong>
+          <span id="workspaceMeta"></span>
+        </div>
+        <span id="workspaceHealth" class="statusPill"></span>
       </div>
-      <div id="previewSurface" class="previewSurface"><iframe id="webPreview" title="Preview web do projeto"></iframe><img id="imagePreview" alt="Preview do projeto"><div id="emptyPreview" class="emptyPreview"><div class="previewPulse"></div><strong>Preparando preview</strong><span>Projetos visuais abrem aqui automaticamente.</span></div></div>
-      <div id="previewMeta" class="previewMeta"></div><pre id="previewLogs" class="previewLogs"></pre>
+
+      <div class="assistantToolbar">
+        <div>
+          <div class="eyebrow">ASSISTENTE</div>
+          <strong>Chats e modelos de IA</strong>
+        </div>
+        <div class="assistantSelectors">
+          <label>Conta IA
+            <select id="assistantAccount" aria-label="Conta de IA"></select>
+          </label>
+          <label>Modelo / provedor
+            <select id="assistantProvider" aria-label="Modelo e provedor"></select>
+          </label>
+        </div>
+      </div>
+
+      <div class="assistantTabsRow">
+        <div id="assistantChatTabs" class="assistantChatTabs"></div>
+        <button id="assistantNewChat" class="assistantNewChat" type="button">+ Novo chat</button>
+      </div>
+
+      <div id="assistantThread" class="assistantThread"></div>
+
+      <div class="assistantComposer">
+        <textarea id="assistantPrompt" rows="2" placeholder="Digite sua mensagem para o ORDAX..." spellcheck="true"></textarea>
+        <div class="assistantComposerActions">
+          <div class="composerLeft">
+            <button type="button" disabled title="Integração de anexos depende do host">Anexar</button>
+            <button type="button" id="assistantContextButton">Contexto</button>
+            <button type="button" id="assistantExecuteButton">Executar</button>
+          </div>
+          <div class="composerRight">
+            <span id="assistantProviderBadge" class="providerBadge"></span>
+            <button id="assistantSend" class="primary" type="button">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workspacePane">
+      <div class="workspaceTopTabs" role="tablist" aria-label="Ferramentas do workspace">
+        <button class="workspaceTab active" data-view="preview" type="button">Preview</button>
+        <button class="workspaceTab" data-view="browser" type="button">Browser</button>
+        <button class="workspaceTab" data-view="overview" type="button">Diagnóstico</button>
+        <button class="workspaceTab" data-view="sessions" type="button">Execuções</button>
+        <button class="workspaceTab" data-view="files" type="button">Arquivos</button>
+        <button class="workspaceTab" data-view="git" type="button">Git</button>
+        <button class="workspaceTab" data-view="computer" type="button">Computador</button>
+        <button class="workspaceTab workspaceTabMore" data-view="mcp" type="button">MCP</button>
+      </div>
+
+      <div class="workspaceStatusStrip">
+        <span id="workspaceSession" class="workspaceSession"></span>
+        <span id="statusBranch">branch —</span>
+        <span id="statusChanges">Git —</span>
+        <span id="statusMemory">Memória —</span>
+        <span id="statusAdapters">Adapters —</span>
+      </div>
+
+      <div class="workspaceViewport">
+        <div id="previewCanvas" class="workspaceView">
+          <div class="previewToolbar idePreviewToolbar">
+            <div class="previewIdentity"><div class="eyebrow">LIVE</div><strong>Preview</strong><span id="previewState">parado</span></div>
+            <div class="previewActions">
+              <button onclick="runPreview()" title="Executar preview">▶</button>
+              <button onclick="capturePreview()" title="Capturar">◉</button>
+              <button onclick="togglePreviewLogs()" title="Logs">≡</button>
+              <button onclick="refreshPreview(true)" title="Atualizar">↻</button>
+              <button onclick="togglePreviewFocus()" title="Maximizar preview">⛶</button>
+            </div>
+          </div>
+          <div id="previewSurface" class="previewSurface">
+            <iframe id="webPreview" title="Preview web do projeto"></iframe>
+            <img id="imagePreview" alt="Preview do projeto">
+            <div id="emptyPreview" class="emptyPreview"><div class="previewPulse"></div><strong>Preparando preview</strong><span>Projetos visuais abrem aqui automaticamente.</span></div>
+          </div>
+          <div id="previewMeta" class="previewMeta"></div>
+          <pre id="previewLogs" class="previewLogs"></pre>
+        </div>
+
+        <div id="overviewCanvas" class="workspaceView mainCanvas hidden"></div>
+        <div id="sessionsCanvas" class="workspaceView mainCanvas hidden"></div>
+        <div id="editorCanvas" class="workspaceView mainCanvas hidden">
+          <div class="editorToolbar"><span id="fileTitle">Nenhum arquivo aberto</span><button id="saveButton" class="primary" onclick="saveFile()" disabled>Salvar</button></div>
+          <textarea id="editor" spellcheck="false" placeholder="Abra um arquivo na lista do projeto"></textarea>
+        </div>
+        <div id="searchCanvas" class="workspaceView mainCanvas hidden">
+          <div class="searchHeader"><input id="codeSearch" class="searchBox large" placeholder="Busque arquivos, símbolos ou trechos..." autocomplete="off"></div>
+          <div id="searchResults" class="searchResults"></div>
+        </div>
+        <div id="diffCanvas" class="workspaceView mainCanvas hidden">
+          <div class="editorToolbar"><span>Alterações Git</span><button onclick="loadGitDiff()">Atualizar</button></div>
+          <pre id="diffView" class="codeView"></pre>
+        </div>
+        <div id="memoryCanvas" class="workspaceView mainCanvas hidden"></div>
+        <div id="computerCanvas" class="workspaceView mainCanvas hidden"></div>
+        <div id="browserCanvas" class="workspaceView mainCanvas hidden"></div>
+        <div id="mcpCanvas" class="workspaceView mainCanvas hidden"></div>
+      </div>
     </section>
   </div>
-  <footer class="statusbar"><span id="statusBranch">branch â€”</span><span id="statusChanges">Git â€”</span><span id="statusMemory">MemÃ³ria â€”</span><span id="statusAdapters">Adapters â€”</span><span class="statusGrow"></span><span>ORDAX MCP</span></footer>
+
+  <footer class="statusbar ideStatusbar">
+    <span id="assistantStatus">Assistente pronto</span>
+    <span class="statusGrow"></span>
+    <span>Runtime local</span>
+    <span>·</span>
+    <span>ORDAX MCP</span>
+  </footer>
 </main>
+
 <script src="host_contract.js"></script>
 <script src="../assets/studio.js"></script>
 <script src="../assets/computer_access.js"></script>
 <script src="../assets/browser_access.js"></script>
 <script src="../assets/blender-connection.js"></script>
 <script src="../assets/product_account.js"></script>
+<script src="../assets/ide_shell.js"></script>
 </body>
 </html>
