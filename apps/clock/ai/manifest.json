@@ -1,7 +1,7 @@
 {
   "schema":"ordax.app-intelligence-manifest/1",
   "appId":"clock",
-  "appVersion":"0.2.0",
+  "appVersion":"0.3.0",
   "authority":"none",
   "execution":"declarative-only",
   "instructions":["Use o Relógio para consultar hora local e recursos temporais locais sem alegar acesso a alarmes ou agendamento em background."],
