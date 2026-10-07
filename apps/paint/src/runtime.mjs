@@ -1,4 +1,4 @@
-const COMPONENT_RUNTIME_SCHEMA="ordax.component-runtime/1",SURFACE_SCHEMA="ordax.surface-render-lifecycle/5",VERSION="0.1.0";
+const COMPONENT_RUNTIME_SCHEMA="ordax.component-runtime/1",SURFACE_SCHEMA="ordax.surface-render-lifecycle/5",VERSION="0.2.0";
 const STYLE_URL=new URL("../assets/paint.css",import.meta.url).href;
 async function styles(root){const d=root.ownerDocument;let l=d.querySelector('link[data-ordax-component-style="paint"]');if(l)return()=>{};l=d.createElement("link");l.rel="stylesheet";l.href=STYLE_URL;l.dataset.ordaxComponentStyle="paint";d.head.append(l);return()=>l.remove();}
 function labels(locale){return String(locale||"").toLowerCase().startsWith("pt")?{title:"Desenho",clear:"Limpar",erase:"Borracha",draw:"Desenhar",save:"Salvar PNG",size:"Tamanho"}:{title:"Paint",clear:"Clear",erase:"Eraser",draw:"Draw",save:"Save PNG",size:"Size"};}
