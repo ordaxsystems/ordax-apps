@@ -55,3 +55,16 @@ def test_legacy_controller_routes_views_through_workspace_tabs():
     assert "document.querySelectorAll('.workspaceTab')" in source
     assert "view='preview'" in source
     assert "'previewCanvas'" in source
+
+
+def test_assistant_selection_works_before_first_chat_and_has_shortcuts():
+    source = (ROOT / "assets" / "ide_shell.js").read_text(encoding="utf-8")
+    assert "draftSelection" in source
+    assert "syncDraftSelection" in source
+    assert "select.disabled=!connected.length" in source
+    assert "select.disabled=!options.length" in source
+    assert "if(active())void updateChat" in source
+    assert "event.ctrlKey||event.metaKey" in source
+    assert "event.shiftKey&&String(event.key).toLowerCase()==='n'" in source
+    assert "/^[1-9]$/.test(event.key)" in source
+    assert "event.altKey&&String(event.key).toLowerCase()==='c'" in source
