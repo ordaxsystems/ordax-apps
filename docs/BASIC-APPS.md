@@ -46,3 +46,55 @@ Objetivos arquiteturais:
 ## Invariante
 
 Nenhum app básico pode copiar Identity, Memory, updater, permissions, sync, Store authority ou serviços centrais para dentro de seu pacote.
+
+
+## Matriz de aplicativos básicos do MVP
+
+Estado arquitetural em 2026-10-07:
+
+| Recurso | Forma correta | Estado |
+|---|---|---|
+| Calculadora | app first-party | implementado |
+| Conversor de unidades | app first-party | implementado |
+| Relógio | app first-party | implementado |
+| Cronômetro | recurso do Relógio | implementado |
+| Temporizador | recurso foreground do Relógio | implementado |
+| Calendário | app first-party | implementado em modo local/read-only |
+| Visualizador de texto | app first-party | implementado |
+| Visualizador de imagens | app first-party | implementado |
+| Áudio/vídeo | Media Player first-party | implementado; requer media-preview público |
+| PDF | PDF Viewer first-party | implementado; requer document-preview público |
+| Alarmes/background timer | recurso do Relógio | bloqueado até scheduling/notifications público |
+| Eventos de calendário | recurso do Calendário | bloqueado até persistência/scheduling público |
+| Câmera | app first-party futuro | bloqueado até camera/permission broker público |
+| Gravador de áudio | app first-party futuro | bloqueado até capture/permission broker público |
+| Captura de tela | app first-party futuro | bloqueado até screen-capture grant público |
+| Área de transferência | app/recurso futuro | bloqueado até clipboard permission contract |
+| Compactador/ZIP | app first-party futuro | bloqueado até binary file I/O público e bounded |
+| Editor de imagem/Paint | app first-party futuro | canvas local é possível, mas salvar deve esperar write/file-picker grant adequado |
+| Terminal | app privilegiado futuro | não é utilitário inocente; requer process-execution authority explícita |
+| Clima | app/conector futuro | requer fonte de rede autorizada e dados atuais |
+| Mapas | app/conector futuro | requer rede/geodados autorizados |
+| E-mail | conector/app futuro | requer identidade/OAuth e provider contract |
+| Contatos | app futuro | requer storage sensível e permission boundary |
+| Calculadora de câmbio | recurso/conector | não deve usar taxa estática; requer fonte atual autorizada |
+
+### Regra de MVP
+
+Ter um ícone não conta como ter um app.
+
+Um aplicativo básico só é considerado implementado quando possui:
+
+1. runtime funcional;
+2. `app.json` canônico;
+3. compatibility descriptor;
+4. localization apropriada;
+5. `ai/manifest.json`;
+6. Application Actions fail-closed;
+7. package determinístico;
+8. testes de boundary/comportamento;
+9. CI verde;
+10. nenhum acesso privado ao host;
+11. lifecycle de instalação independente compatível com o OrdaX OS.
+
+Quando uma capacidade depende de autoridade ainda inexistente, o app deve permanecer parcial e explícito, ou bloqueado, em vez de criar um fallback privilegiado.
