@@ -72,7 +72,7 @@ function renderRemoteComputerAuthorization(){
   const data=state.remoteComputerGrants;
   if(!result?.ok){
     const needsAccount=result?.code==='product_auth_session_required';
-    return `<div class="infoCard"><h4>AUTORIZAÇÃO REMOTA</h4><div class="sideMeta">${escapeHtml(needsAccount?'Conecte sua Conta ORDAX nesta sessão para gerenciar quais capacidades clientes remotos autenticados podem usar.':(result?.summary||'Autorizações remotas indisponíveis.'))}</div>${needsAccount?'<div class="accessFooter"><span class="sideMeta">A sessão ? mantida somente em mem?ria.</span><button id="remoteComputerConnectAccount" class="primary" type="button">Conectar conta ORDAX</button></div>':''}</div>`;
+    return `<div class="infoCard"><h4>AUTORIZAÇÃO REMOTA</h4><div class="sideMeta">${escapeHtml(needsAccount?'Conecte sua Conta ORDAX nesta sessão para gerenciar quais capacidades clientes remotos autenticados podem usar.':(result?.summary||'Autorizações remotas indisponíveis.'))}</div>${needsAccount?'<div class="accessFooter"><span class="sideMeta">A sessão é mantida somente em memória.</span><button id="remoteComputerConnectAccount" class="primary" type="button">Conectar conta ORDAX</button></div>':''}</div>`;
   }
   const links=data?.links||[];
   const active=(data?.grants||[]).filter(remoteGrantIsActive);
