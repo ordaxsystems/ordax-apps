@@ -114,7 +114,7 @@ Já estão provados em CI:
 - uninstall do component-slot sem apagar App Data;
 - ausência de fallback para implementação antiga na plataforma.
 
-Lifecycle owner pinado: `prototipo-ordax-os@f46603909ffd08d442a6be5ff6539b8c2a273c77`.
+Lifecycle owner pinado: `prototipo-ordax-os@2560e3d8302a88a424cfa3b49e560a8367d97eab`.
 
 ### Produção continua fail-closed
 
