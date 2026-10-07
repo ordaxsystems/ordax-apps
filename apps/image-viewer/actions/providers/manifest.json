@@ -1,4 +1,4 @@
 {
-  "schema":"ordax.application-action-provider-manifest/1","appId":"image-viewer","appVersion":"0.1.0","authority":"none","execution":"unavailable",
+  "schema":"ordax.application-action-provider-manifest/1","appId":"image-viewer","appVersion":"0.2.0,"authority":"none","execution":"unavailable",
   "providers":[{"kind":"first-party-native","adapterId":"image-viewer-native","revision":"1","module":"actions/providers/image-viewer-native.mjs","sha256":"e33ab11cd2e9b3b8945bcb48154dbd3c6c2889641ebfb98d79edde1fffbd6ac7"}]
 }
