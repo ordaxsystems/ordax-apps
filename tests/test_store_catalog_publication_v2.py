@@ -265,5 +265,24 @@ class StoreCatalogPublicationV2Tests(unittest.TestCase):
             self.render(runner=lambda *args, **kwargs: Result(stdout=duplicate))
 
 
+    def test_v2_rejects_artifact_identity_above_platform_role_ceiling(self) -> None:
+        cases = [
+            ("package", (32 * 1024 * 1024) + 1),
+            ("release", (256 * 1024) + 1),
+            ("compatibility", (64 * 1024) + 1),
+        ]
+        for role, size in cases:
+            with self.subTest(role=role):
+                candidate = json.loads(json.dumps(self.candidate_value))
+                candidate["entries"][0]["artifacts"][role]["size"] = size
+                self.candidate_path.write_bytes(canonical(candidate))
+                with self.assertRaisesRegex(
+                    publication.CatalogPublicationV2Error,
+                    f"{role} size is invalid",
+                ):
+                    publication.read_candidate(self.candidate_path)
+                self.candidate_path.write_bytes(canonical(self.candidate_value))
+
+
 if __name__ == "__main__":
     unittest.main()
