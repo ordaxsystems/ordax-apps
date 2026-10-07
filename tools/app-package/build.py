@@ -29,6 +29,7 @@ APPLICATION_ACTION_CAPABILITY_SCHEMA = "ordax.application-action-capability/1"
 APPLICATION_ACTION_EXECUTION_MODE = "proposal-only"
 APPLICATION_ACTION_PROVIDER_MANIFEST_SCHEMA = "ordax.application-action-provider-manifest/1"
 APPLICATION_ACTION_PROVIDER_EXECUTION_MODE = "unavailable"
+FILE_ASSOCIATION_MANIFEST_SCHEMA = "ordax.file-association-manifest/1"
 SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
 CREATED_FROM_RECIPE = "runtime-component/package/1"
 PACKAGE_MANIFEST_NAME = "component-package.json"
@@ -44,6 +45,10 @@ ACTION_ID_RE = re.compile(r"^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$")
 ACTION_PARAMETER_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 PROVIDER_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,127}$")
 URI_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]{0,31}$")
+FILE_EXTENSION_RE = re.compile(r"^\.[a-z0-9][a-z0-9.+_-]{0,15}$")
+MEDIA_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9!#URI_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]{0,31}$")
+^_.+-]{0,63}/[a-z0-9][a-z0-9!#URI_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]{0,31}$")
+^_.+-]{0,127}$")
 AI_EFFECTS = {"none", "read", "write", "external-write", "destructive"}
 AI_CONFIRMATION_MODES = {"none", "policy", "explicit"}
 AI_PARAMETER_TYPES = {"string", "number", "integer", "boolean", "string-list", "json"}
@@ -63,8 +68,9 @@ MAX_COMPATIBILITY_BYTES = 64 * 1024
 MAX_AI_MANIFEST_BYTES = 128 * 1024
 MAX_ACTION_MANIFEST_BYTES = 256 * 1024
 MAX_ACTION_PROVIDER_MANIFEST_BYTES = 64 * 1024
+MAX_FILE_ASSOCIATION_MANIFEST_BYTES = 32 * 1024
 
-INCLUDED_ROOTS = ("src", "assets", "ai", "actions")
+INCLUDED_ROOTS = ("src", "assets", "ai", "actions", "associations")
 SOURCE_EXTENSIONS = {".mjs", ".js"}
 
 class AppPackageError(RuntimeError):
@@ -139,6 +145,54 @@ def validate_app_manifest(value: dict) -> dict:
         raise AppPackageError("app dependency is invalid")
     if len(set(dependencies)) != len(dependencies):
         raise AppPackageError("app dependencies must be unique")
+    return value
+
+
+def validate_file_association_manifest(value: dict, app: dict) -> dict:
+    expected = {
+        "schema", "appId", "appVersion", "authority", "role",
+        "extensions", "mediaTypes",
+    }
+    if not isinstance(value, dict) or set(value) != expected:
+        raise AppPackageError("associations/manifest.json fields are not canonical")
+    if value["schema"] != FILE_ASSOCIATION_MANIFEST_SCHEMA:
+        raise AppPackageError("file association manifest schema is incompatible")
+    if value["appId"] != app["id"] or value["appVersion"] != app["version"]:
+        raise AppPackageError("file association manifest identity does not match app.json")
+    if value["authority"] != "none":
+        raise AppPackageError("file association manifest must not carry authority")
+    if value["role"] not in {"viewer", "player", "editor"}:
+        raise AppPackageError("file association role is invalid")
+
+    extensions = value["extensions"]
+    if not isinstance(extensions, list) or not extensions or len(extensions) > 64:
+        raise AppPackageError("file association extensions must be a bounded non-empty array")
+    if (
+        any(
+            not isinstance(extension, str)
+            or FILE_EXTENSION_RE.fullmatch(extension) is None
+            for extension in extensions
+        )
+        or extensions != sorted(set(extensions))
+    ):
+        raise AppPackageError(
+            "file association extensions must be unique, lowercase and sorted"
+        )
+
+    media_types = value["mediaTypes"]
+    if not isinstance(media_types, list) or not media_types or len(media_types) > 64:
+        raise AppPackageError("file association media types must be a bounded non-empty array")
+    if (
+        any(
+            not isinstance(media_type, str)
+            or MEDIA_TYPE_RE.fullmatch(media_type) is None
+            for media_type in media_types
+        )
+        or media_types != sorted(set(media_types))
+    ):
+        raise AppPackageError(
+            "file association media types must be unique, lowercase and sorted"
+        )
     return value
 
 
@@ -1012,6 +1066,18 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
             label=module,
         ),
     )
+    association_manifest_path = app_root / "associations" / "manifest.json"
+    if association_manifest_path.exists():
+        if not association_manifest_path.is_file() or association_manifest_path.is_symlink():
+            raise AppPackageError("associations/manifest.json must be a regular file")
+        validate_file_association_manifest(
+            load_json(
+                association_manifest_path,
+                max_bytes=MAX_FILE_ASSOCIATION_MANIFEST_BYTES,
+                label="associations/manifest.json",
+            ),
+            app,
+        )
     files = discover_app_files(app_root)
     validate_source_graph(app_root, files)
     records = source_records(app_root, app["id"], files)
@@ -1120,6 +1186,21 @@ def verify_package(package: Path) -> tuple[dict, bytes]:
             ai_manifest,
             {"id": app_id, "version": component.get("version")},
         )
+        association_path = f"system/apps/{app_id}/associations/manifest.json"
+        if association_path in seen:
+            try:
+                association_manifest = json.loads(
+                    archive.read(association_path).decode("utf-8")
+                )
+            except (UnicodeError, json.JSONDecodeError) as exc:
+                raise AppPackageError(
+                    "package file association manifest is invalid UTF-8 JSON"
+                ) from exc
+            validate_file_association_manifest(
+                association_manifest,
+                {"id": app_id, "version": component.get("version")},
+            )
+
         action_path = f"system/apps/{app_id}/actions/manifest.json"
         if action_path not in seen:
             raise AppPackageError("package Application Action manifest is missing")
