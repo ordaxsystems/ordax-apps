@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "video-player",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "video-player-native",
+      "revision": "1",
+      "module": "actions/providers/video-player-native.mjs",
+      "sha256": "698abf39416ec2ebed6c7e3a563aab739c9932c432eb497cbe5b29539c8743a9"
+    }
+  ]
+}

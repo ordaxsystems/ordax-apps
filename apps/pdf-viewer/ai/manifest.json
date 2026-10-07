@@ -1,0 +1,24 @@
+{
+  "schema": "ordax.app-intelligence-manifest/1",
+  "appId": "pdf-viewer",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "declarative-only",
+  "instructions": [
+    "Use PDF somente para o escopo local explicitamente aberto pelo usuário.",
+    "Não invente conteúdo, arquivos ou estado que não tenham sido fornecidos pelo runtime.",
+    "O manifesto descreve intenção e nunca concede execução direta ou autoridade ao modelo."
+  ],
+  "intents": [
+    {
+      "id": "pdf-viewer.inspect-viewer",
+      "description": "Consultar o estado do visualizador de PDF local.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [],
+      "examples": [
+        "Mostre o visualizador de PDF."
+      ]
+    }
+  ]
+}
