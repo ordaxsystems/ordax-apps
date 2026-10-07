@@ -1,7 +1,7 @@
 {
   "schema":"ordax.application-action-manifest/1",
   "appId":"calendar",
-  "appVersion":"0.1.0",
+  "appVersion":"0.2.0",
   "authority":"none",
   "execution":"proposal-only",
   "capabilities":[{"schema":"ordax.application-action-capability/1","appId":"calendar","actionId":"calendar.inspect-date","title":"Consultar data","description":"Consultar uma data no calendário local.","sourceClass":"first-party","platform":"ordax","provider":{"kind":"first-party-native","adapterId":"calendar-native","revision":"1"},"binding":{"payloadSha256":null},"parameters":[{"id":"date","type":"string","required":false,"maxLength":64}],"riskClass":"read-only","confirmation":"none","executionAuthorized":false,"modelDirectExecutionAuthorized":false,"provenance":"ordax-apps:apps/calendar/actions/manifest.json"}]

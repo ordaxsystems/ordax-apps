@@ -1,4 +1,4 @@
 {
-  "schema":"ordax.application-action-provider-manifest/1","appId":"media-player","appVersion":"0.1.0","authority":"none","execution":"unavailable",
+  "schema":"ordax.application-action-provider-manifest/1","appId":"media-player","appVersion":"0.2.0","authority":"none","execution":"unavailable",
   "providers":[{"kind":"first-party-native","adapterId":"media-player-native","revision":"1","module":"actions/providers/media-player-native.mjs","sha256":"3d91365be2b9aa7e92c97b8a21f440b07b91b0abd8607661602074a1210bc3ca"}]
 }

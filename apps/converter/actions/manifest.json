@@ -1,4 +1,4 @@
 {
-  "schema":"ordax.application-action-manifest/1","appId":"converter","appVersion":"0.1.0","authority":"none","execution":"proposal-only",
+  "schema":"ordax.application-action-manifest/1","appId":"converter","appVersion":"0.2.0","authority":"none","execution":"proposal-only",
   "capabilities":[{"schema":"ordax.application-action-capability/1","appId":"converter","actionId":"converter.convert","title":"Converter unidade","description":"Converter localmente entre unidades compatíveis.","sourceClass":"first-party","platform":"ordax","provider":{"kind":"first-party-native","adapterId":"converter-native","revision":"1"},"binding":{"payloadSha256":null},"parameters":[{"id":"value","type":"number","required":true},{"id":"from","type":"string","required":true,"maxLength":32},{"id":"to","type":"string","required":true,"maxLength":32}],"riskClass":"read-only","confirmation":"none","executionAuthorized":false,"modelDirectExecutionAuthorized":false,"provenance":"ordax-apps:apps/converter/actions/manifest.json"}]
 }

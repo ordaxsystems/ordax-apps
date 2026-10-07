@@ -1,1 +1,1 @@
-{"schema":"ordax.component-manifest/1","id":"colors","title":"Cores","kind":"app","version":"0.1.0","releaseMode":"component-slot","criticality":"optional","failureDomain":"app","restartScope":"component","healthMode":"runtime","owner":"washingtonmsdj/ordax-apps","dependencies":[]}
+{"schema":"ordax.component-manifest/1","id":"colors","title":"Cores","kind":"app","version":"0.2.0","releaseMode":"component-slot","criticality":"optional","failureDomain":"app","restartScope":"component","healthMode":"runtime","owner":"washingtonmsdj/ordax-apps","dependencies":[]}
