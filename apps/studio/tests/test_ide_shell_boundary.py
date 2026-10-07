@@ -116,8 +116,10 @@ def test_web_ai_is_primary_assistant_surface_with_local_mode_secondary():
     assert "var mode='web'" in surface
     assert "ordax-assistant-surface" in surface
     assert "ResizeObserver" in surface
-    assert "window.chrome" in surface
-    assert "webview.postMessage" in surface
+    assert "presentAssistantSurface" in surface
+    assert "window.chrome" not in surface
+    assert "window.pywebview" not in surface
+    assert "presentAssistantSurface" in contract
     assert "chatgpt.com" not in html
     assert "iframe" not in surface
     assert ".localAssistantPanel" in css
