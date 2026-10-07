@@ -107,6 +107,7 @@ def test_web_ai_is_primary_assistant_surface_with_local_mode_secondary():
     html = (ROOT / "src" / "index.html").read_text(encoding="utf-8-sig")
     surface = (ROOT / "assets" / "assistant_surface.js").read_text(encoding="utf-8")
     css = (ROOT / "assets" / "assistant_surface.css").read_text(encoding="utf-8")
+    contract = (ROOT / "src" / "host_contract.js").read_text(encoding="utf-8")
     assert 'id="assistantWebMode"' in html
     assert 'id="assistantLocalMode"' in html
     assert 'id="assistantWebSlot"' in html
@@ -144,6 +145,6 @@ def test_studio_release_is_056():
     app = json.loads((ROOT / "app.json").read_text(encoding="utf-8"))
     ai = json.loads((ROOT / "ai" / "manifest.json").read_text(encoding="utf-8"))
     actions = json.loads((ROOT / "actions" / "manifest.json").read_text(encoding="utf-8"))
-    assert app["version"] == "0.5.6"
-    assert ai["appVersion"] == "0.5.6"
-    assert actions["appVersion"] == "0.5.6"
+    assert app["version"] == "0.5.7"
+    assert ai["appVersion"] == app["version"]
+    assert actions["appVersion"] == app["version"]
