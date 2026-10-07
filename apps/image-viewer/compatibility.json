@@ -1,5 +1,5 @@
 {
-  "schema":"ordax.component-compatibility/1","componentId":"image-viewer","componentVersion":"0.1.0",
+  "schema":"ordax.component-compatibility/1","componentId":"image-viewer","componentVersion":"0.2.0",
   "provides":[{"id":"ordax.component-runtime","major":1}],
   "requires":[
     {"id":"ordax.app-activation","minMajor":1,"maxMajor":1,"optional":false},

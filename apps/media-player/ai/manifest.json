@@ -1,5 +1,5 @@
 {
-  "schema":"ordax.app-intelligence-manifest/1","appId":"media-player","appVersion":"0.1.0","authority":"none","execution":"declarative-only",
+  "schema":"ordax.app-intelligence-manifest/1","appId":"media-player","appVersion":"0.2.0","authority":"none","execution":"declarative-only",
   "instructions":["Use o app Mídia apenas para o arquivo já aberto por um fluxo autorizado do File Space. Não alegue reprodução em background nem controle de mídia fora do runtime do app."],
   "intents":[{"id":"media-player.inspect-current","description":"Consultar a identidade da mídia atualmente aberta.","effect":"read","confirmation":"none","parameters":[],"examples":["Qual vídeo está aberto?","Qual áudio está tocando?"]}]
 }

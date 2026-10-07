@@ -1,7 +1,7 @@
 {
   "schema": "ordax.file-association-manifest/1",
   "appId": "image-viewer",
-  "appVersion": "0.1.0",
+  "appVersion": "0.2.0",
   "authority": "none",
   "role": "viewer",
   "extensions": [
