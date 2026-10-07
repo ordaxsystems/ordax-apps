@@ -27,7 +27,8 @@
     "calendar",
     "colors",
     "character-map",
-    "paint"
+    "paint",
+    "media-player"
   ],
   "initial_extraction_candidate": "notes",
   "contracts": {
