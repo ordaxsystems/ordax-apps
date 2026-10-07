@@ -402,3 +402,24 @@
   .workspace:not(.previewFocus) .workspacePane{display:none}
   .workspace.previewFocus .workspacePane{display:flex;width:100%}
 }
+
+
+.assistantNewChat kbd,
+.workspaceTab kbd{
+  margin-left:6px;
+  padding:1px 5px;
+  border:1px solid rgba(127,185,255,.22);
+  border-radius:5px;
+  background:rgba(127,185,255,.07);
+  color:#7890ad;
+  font:600 8px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;
+  vertical-align:middle;
+}
+.workspaceTab.active kbd{
+  color:#a9cfff;
+  border-color:rgba(127,185,255,.38);
+  background:rgba(45,140,255,.12);
+}
+@media(max-width:1320px){
+  .workspaceTab kbd{display:none}
+}

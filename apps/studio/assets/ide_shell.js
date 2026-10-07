@@ -7,6 +7,7 @@ var shell={
   activeConversationId:null,
   messages:[],
   catalog:{accounts:[],providers:[],send_supported:false,send_summary:''},
+  draftSelection:{account_id:'',provider_id:'',model_id:''},
   loading:false
 };
 var lastProject=null;
@@ -17,6 +18,20 @@ function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,funct
 function status(text){var node=byId('assistantStatus');if(node)node.textContent=text||'Assistente pronto'}
 function hostMethod(name){var host=window.ordaxStudioHost;return host&&typeof host[name]==='function'?host[name].bind(host):null}
 function active(){return shell.conversations.find(function(item){return String(item.id)===String(shell.activeConversationId)})||null}
+function connectedAccounts(){return (Array.isArray(shell.catalog.accounts)?shell.catalog.accounts:[]).filter(function(item){return item.connected!==false})}
+function availableModels(){var out=[];(Array.isArray(shell.catalog.providers)?shell.catalog.providers:[]).forEach(function(provider){(Array.isArray(provider.models)?provider.models:[]).forEach(function(model){out.push({provider:provider,model:model})})});return out}
+function syncDraftSelection(){
+  var current=active(),accounts=connectedAccounts(),models=availableModels();
+  if(current){
+    shell.draftSelection={account_id:String(current.account_id||''),provider_id:String(current.provider_id||''),model_id:String(current.model_id||'')};
+    return;
+  }
+  if(!accounts.some(function(item){return String(item.id)===String(shell.draftSelection.account_id)}))shell.draftSelection.account_id=accounts.length?String(accounts[0].id||''):'';
+  if(!models.some(function(item){return String(item.provider.id)===String(shell.draftSelection.provider_id)&&String(item.model.id)===String(shell.draftSelection.model_id)})){
+    shell.draftSelection.provider_id=models.length?String(models[0].provider.id||''):'';
+    shell.draftSelection.model_id=models.length?String(models[0].model.id||''):'';
+  }
+}
 function providerValue(providerId,modelId){return String(providerId||'')+'::'+String(modelId||'')}
 function parseProviderValue(value){var parts=String(value||'').split('::');return{providerId:parts[0]||'',modelId:parts.slice(1).join('::')||''}}
 
@@ -29,6 +44,7 @@ function applyState(data){
   var selection=data.selection||{};
   shell.activeConversationId=selection.active_conversation_id||null;
   if(!active()&&shell.conversations.length)shell.activeConversationId=shell.conversations[0].id;
+  syncDraftSelection();
 }
 
 async function reload(){
@@ -52,14 +68,11 @@ function renderAccounts(){
     var connected=item.connected!==false;
     return '<option value="'+esc(item.id)+'" '+(connected?'':'disabled')+'>'+esc(item.label||item.id)+(connected?'':' · desconectada')+'</option>';
   }).join('');
-  var current=active();
-  var connectedAccounts=accounts.filter(function(item){return item.connected!==false});
-  if(current&&connectedAccounts.some(function(item){return String(item.id)===String(current.account_id)})){
-    select.value=current.account_id;
-  }else if(connectedAccounts.length){
-    select.value=String(connectedAccounts[0].id||'');
-  }
-  select.disabled=!current||!connectedAccounts.length;
+  var connected=connectedAccounts();
+  var desired=shell.draftSelection.account_id;
+  if(connected.some(function(item){return String(item.id)===String(desired)}))select.value=desired;
+  else if(connected.length)select.value=String(connected[0].id||'');
+  select.disabled=!connected.length;
 }
 
 function renderProviders(){
@@ -75,12 +88,13 @@ function renderProviders(){
   });
   select.innerHTML=options.join('');
   var current=active();
-  if(current)select.value=providerValue(current.provider_id,current.model_id);
-  select.disabled=!current||!options.length;
+  var desired=providerValue(shell.draftSelection.provider_id,shell.draftSelection.model_id);
+  if(options.length)select.value=desired;
+  select.disabled=!options.length;
   var badge=byId('assistantProviderBadge');
   if(badge){
     var selected=providers.flatMap(function(provider){return (provider.models||[]).map(function(model){return{provider:provider,model:model}})}).find(function(item){
-      return current&&String(item.provider.id)===String(current.provider_id)&&String(item.model.id)===String(current.model_id);
+      return String(item.provider.id)===String(shell.draftSelection.provider_id)&&String(item.model.id)===String(shell.draftSelection.model_id);
     });
     badge.textContent=selected?(selected.model.label+' · '+selected.provider.label):'Provider não configurado';
   }
@@ -142,9 +156,9 @@ async function createChat(){
   var accountSelect=byId('assistantAccount');
   var providerSelect=byId('assistantProvider');
   var selectedProvider=parseProviderValue(providerSelect?providerSelect.value:'');
-  var accountId=accountSelect&&accountSelect.value?String(accountSelect.value):(current?String(current.account_id||''):'');
-  var providerId=selectedProvider.providerId||(current?String(current.provider_id||''):'');
-  var modelId=selectedProvider.modelId||(current?String(current.model_id||''):'');
+  var accountId=accountSelect&&accountSelect.value?String(accountSelect.value):String(shell.draftSelection.account_id||'');
+  var providerId=selectedProvider.providerId||String(shell.draftSelection.provider_id||'');
+  var modelId=selectedProvider.modelId||String(shell.draftSelection.model_id||'');
   status('Criando chat...');
   try{
     var result=await method(
@@ -197,10 +211,14 @@ async function updateChat(changes){
 
 function bind(){
   var add=byId('assistantNewChat');if(add)add.onclick=function(){void createChat()};
-  var account=byId('assistantAccount');if(account)account.onchange=function(event){void updateChat({account_id:String(event.target.value)})};
+  var account=byId('assistantAccount');if(account)account.onchange=function(event){
+    shell.draftSelection.account_id=String(event.target.value||'');
+    if(active())void updateChat({account_id:shell.draftSelection.account_id});else render();
+  };
   var providers=byId('assistantProvider');if(providers)providers.onchange=function(event){
     var value=parseProviderValue(event.target.value);
-    void updateChat({provider_id:value.providerId,model_id:value.modelId});
+    shell.draftSelection.provider_id=value.providerId;shell.draftSelection.model_id=value.modelId;
+    if(active())void updateChat({provider_id:value.providerId,model_id:value.modelId});else render();
   };
   var send=byId('assistantSend');if(send)send.onclick=function(){status(shell.catalog.send_summary||'Envio ainda não disponível')};
   var prompt=byId('assistantPrompt');if(prompt)prompt.onkeydown=function(event){
@@ -214,12 +232,25 @@ function bind(){
     else if(action==='device'){if(window.switchView)window.switchView('computer')}
     else status('Configurações gerais permanecem no shell do produto.');
   }});
+  document.addEventListener('keydown',function(event){
+    var modifier=event.ctrlKey||event.metaKey;
+    if(modifier&&event.shiftKey&&String(event.key).toLowerCase()==='n'){
+      event.preventDefault();void createChat();return;
+    }
+    if(modifier&&!event.shiftKey&&/^[1-9]$/.test(event.key)){
+      var index=Number(event.key)-1;
+      if(shell.conversations[index]){event.preventDefault();void selectChat(shell.conversations[index].id)}
+    }
+    if(modifier&&event.altKey&&String(event.key).toLowerCase()==='c'&&window.switchView){
+      event.preventDefault();window.switchView('computer');
+    }
+  });
 }
 
 async function syncProject(){
   var project=(typeof state!=='undefined'&&state.project)||null;
   if(project&&project!==lastProject){
-    lastProject=project;shell.project=project;shell.conversations=[];shell.messages=[];shell.activeConversationId=null;
+    lastProject=project;shell.project=project;shell.conversations=[];shell.messages=[];shell.activeConversationId=null;shell.draftSelection={account_id:'',provider_id:'',model_id:''};
     await reload();
   }else if(!project&&lastProject){
     lastProject=null;shell.project=null;shell.conversations=[];shell.messages=[];shell.activeConversationId=null;render();

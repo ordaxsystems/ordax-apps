@@ -88,17 +88,17 @@
         </div>
         <div class="assistantSelectors">
           <label>Conta IA
-            <select id="assistantAccount" aria-label="Conta de IA"></select>
+            <select id="assistantAccount" aria-label="Conta de IA" title="Conta usada pelo chat atual ou pelo próximo chat"></select>
           </label>
           <label>Modelo / provedor
-            <select id="assistantProvider" aria-label="Modelo e provedor"></select>
+            <select id="assistantProvider" aria-label="Modelo e provedor" title="Modelo usado pelo chat atual ou pelo próximo chat"></select>
           </label>
         </div>
       </div>
 
       <div class="assistantTabsRow">
         <div id="assistantChatTabs" class="assistantChatTabs"></div>
-        <button id="assistantNewChat" class="assistantNewChat" type="button">+ Novo chat</button>
+        <button id="assistantNewChat" class="assistantNewChat" type="button" title="Novo chat · Ctrl+Shift+N">+ Novo chat <kbd>Ctrl⇧N</kbd></button>
       </div>
 
       <div id="assistantThread" class="assistantThread"></div>
@@ -127,7 +127,7 @@
         <button class="workspaceTab" data-view="sessions" type="button">Execuções</button>
         <button class="workspaceTab" data-view="files" type="button">Arquivos</button>
         <button class="workspaceTab" data-view="git" type="button">Git</button>
-        <button class="workspaceTab" data-view="computer" type="button">Computador</button>
+        <button class="workspaceTab" data-view="computer" type="button" title="Acesso ao computador · Ctrl+Alt+C">Computador <kbd>Ctrl⌥C</kbd></button>
         <button class="workspaceTab workspaceTabMore" data-view="mcp" type="button">MCP</button>
       </div>
 
