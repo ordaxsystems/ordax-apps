@@ -104,3 +104,27 @@ A assinatura de produção do catálogo e dos component envelopes deve ocorrer e
 fronteira externa controlada, usando o trust domain `runtime-components` e key
 id `ordax-runtime-components-v1`. O OS só poderá projetar o catálogo depois da
 validação Native da assinatura e do anti-replay persistente.
+
+### Layout content-addressed dos artifacts
+
+O catálogo v2 continua contendo somente identidade de conteúdo; ele **não**
+carrega URL. `tools/app-package/materialize_store_artifact_bundle.py` verifica
+novamente os bytes nomeados pelo publication v2 e materializa um bundle
+determinístico com a forma:
+
+```text
+sha256/<primeiros-2-do-sha256>/<sha256-completo>
+```
+
+`store-artifact-layout.json` descreve apenas esse protocolo e prende o bundle ao
+SHA-256 dos bytes exatos de `ordax-apps.store-catalog-publication/2`. Ele não
+repete um inventário alternativo de apps e declara `authority` de publicação,
+instalação e ativação como `false`.
+
+O futuro transport owner poderá combinar um **base origin configurado
+separadamente** com esse caminho determinístico. A Store, o catálogo e o
+lifecycle request nunca recebem nem escolhem URL arbitrária.
+
+A prova de CI materializa esse bundle usando o envelope efêmero do protocolo,
+valida todos os blobs e destrói o bundle antes de qualquer upload. Isso não
+configura transporte remoto nem constitui publicação de produção.
