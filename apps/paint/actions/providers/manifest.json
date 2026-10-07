@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "paint",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "paint-native",
+      "revision": "1",
+      "module": "actions/providers/paint-native.mjs",
+      "sha256": "bed5e7155041942741fb2656878f53cf3ff687ecad42716144fd9c5f6a62694e"
+    }
+  ]
+}

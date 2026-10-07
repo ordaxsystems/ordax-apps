@@ -1,0 +1,32 @@
+{
+  "schema": "ordax.application-action-manifest/1",
+  "appId": "paint",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "proposal-only",
+  "capabilities": [
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "paint",
+      "actionId": "paint.inspect-canvas",
+      "title": "Consultar canvas de desenho",
+      "description": "Consultar o estado do canvas local de desenho.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "paint-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [],
+      "riskClass": "read-only",
+      "confirmation": "none",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/paint/actions/manifest.json"
+    }
+  ]
+}

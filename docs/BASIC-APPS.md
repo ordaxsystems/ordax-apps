@@ -35,6 +35,10 @@ Objetivos arquiteturais:
 - manter zero autoridade e zero acesso privilegiado;
 - servir de referência pequena para próximos apps.
 
+## Estado da suíte básica
+
+A suíte básica já cobre Calculadora, Conversor, Relógio/Cronômetro/Timer foreground, Calendário, Texto, Imagens, Cores, Mapa de Caracteres e Desenho/Paint. Mídia e PDF seguem em PRs próprias (`#108` e `#110`) porque dependem da boundary pública `readMediaPreview()` / `readDocumentPreview()` do OrdaX OS (`prototipo-ordax-os#1322`). Não existe fallback por caminho físico, endpoint Native ou file picker que contorne essa boundary.
+
 ## Próximos candidatos
 
 - **Relógio**: relógio mundial e cronômetro podem ser app-owned; timers em background devem esperar contrato público de scheduling/notifications, sem polling oculto ou daemon próprio.
@@ -62,8 +66,8 @@ Estado arquitetural em 2026-10-07:
 | Calendário | app first-party | implementado em modo local/read-only |
 | Visualizador de texto | app first-party | implementado |
 | Visualizador de imagens | app first-party | implementado |
-| Áudio/vídeo | Media Player first-party | implementado; requer media-preview público |
-| PDF | PDF Viewer first-party | implementado; requer document-preview público |
+| Áudio/vídeo | `media-player` first-party | PR #108 pronta; depende da boundary pública do OS em `prototipo-ordax-os#1322` |
+| PDF | `pdf-viewer` first-party | PR #110 pronta; depende da boundary pública do OS em `prototipo-ordax-os#1322` |
 | Alarmes/background timer | recurso do Relógio | bloqueado até scheduling/notifications público |
 | Eventos de calendário | recurso do Calendário | bloqueado até persistência/scheduling público |
 | Câmera | app first-party futuro | bloqueado até camera/permission broker público |
@@ -71,7 +75,7 @@ Estado arquitetural em 2026-10-07:
 | Captura de tela | app first-party futuro | bloqueado até screen-capture grant público |
 | Área de transferência | app/recurso futuro | bloqueado até clipboard permission contract |
 | Compactador/ZIP | app first-party futuro | bloqueado até binary file I/O público e bounded |
-| Editor de imagem/Paint | app first-party futuro | canvas local é possível, mas salvar deve esperar write/file-picker grant adequado |
+| Desenho/Paint | app first-party | implementado com canvas local e exportação PNG iniciada pelo usuário; salvar direto no File Space aguarda write grant |
 | Terminal | app privilegiado futuro | não é utilitário inocente; requer process-execution authority explícita |
 | Clima | app/conector futuro | requer fonte de rede autorizada e dados atuais |
 | Mapas | app/conector futuro | requer rede/geodados autorizados |

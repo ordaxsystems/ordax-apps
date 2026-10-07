@@ -26,7 +26,8 @@
     "image-viewer",
     "calendar",
     "colors",
-    "character-map"
+    "character-map",
+    "paint"
   ],
   "initial_extraction_candidate": "notes",
   "contracts": {
