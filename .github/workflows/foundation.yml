@@ -28,6 +28,11 @@ jobs:
           python3 -m json.tool apps/studio/actions/manifest.json >/dev/null
           python3 -m json.tool apps/notes/actions/providers/manifest.json >/dev/null
           python3 -m json.tool apps/studio/actions/providers/manifest.json >/dev/null
+          python3 -m json.tool apps/calculator/app.json >/dev/null
+          python3 -m json.tool apps/calculator/compatibility.json >/dev/null
+          python3 -m json.tool apps/calculator/ai/manifest.json >/dev/null
+          python3 -m json.tool apps/calculator/actions/manifest.json >/dev/null
+          python3 -m json.tool apps/calculator/actions/providers/manifest.json >/dev/null
           python3 -m json.tool migrations/notes.externalization.json >/dev/null
           python3 -m json.tool migrations/projects.externalization.json >/dev/null
           python3 -m json.tool migrations/notes.source-snapshot.json >/dev/null
@@ -51,7 +56,27 @@ jobs:
         run: |
           node --check apps/notes/actions/providers/notes-native.mjs
           node --check apps/studio/actions/providers/studio-native.mjs
+          node --check apps/calculator/actions/providers/calculator-native.mjs
           python3 tools/verify_app_actions.py
+
+      - name: Prove Calculator portable behavior and package boundary
+        run: |
+          node --check apps/calculator/src/runtime.mjs
+          node --check apps/calculator/src/expression.mjs
+          node --test apps/calculator/tests/expression.test.mjs
+          out="/tmp/ordax-calculator"
+          rm -rf "$out"
+          mkdir -p "$out/release"
+          python3 tools/app-package/build.py build \
+            --app-root apps/calculator \
+            --source-commit "$(git rev-parse HEAD)" \
+            --compatibility apps/calculator/compatibility.json \
+            --package-out "$out/calculator.zip" \
+            --release-dir "$out/release"
+          python3 tools/app-package/build.py verify \
+            --package "$out/calculator.zip" \
+            --release "$out/release/calculator.release.json" \
+            --compatibility "$out/release/calculator.compatibility.json"
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
