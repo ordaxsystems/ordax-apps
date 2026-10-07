@@ -65,6 +65,9 @@ jobs:
       - name: Prove app-owned presentation manifests
         run: python3 tools/verify_app_presentation.py
 
+      - name: Prove runtime identity matches package manifest
+        run: node tools/verify_runtime_identity.mjs
+
       - name: Prove first-party Application Action manifests and provider artifacts
         run: |
           node --check apps/notes/actions/providers/notes-native.mjs
