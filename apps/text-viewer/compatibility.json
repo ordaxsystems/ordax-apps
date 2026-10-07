@@ -1,0 +1,11 @@
+{
+  "schema":"ordax.component-compatibility/1","componentId":"text-viewer","componentVersion":"0.1.0",
+  "provides":[{"id":"ordax.component-runtime","major":1}],
+  "requires":[
+    {"id":"ordax.app-activation","minMajor":1,"maxMajor":1,"optional":false},
+    {"id":"ordax.file-space","minMajor":11,"maxMajor":11,"optional":false},
+    {"id":"ordax.localization","minMajor":2,"maxMajor":2,"optional":false},
+    {"id":"ordax.surface-render-lifecycle","minMajor":5,"maxMajor":5,"optional":false}
+  ],
+  "state":{"id":"ordax.text-viewer-stateless","writeVersion":1,"readableFrom":1,"readableThrough":1},"authority":"none"
+}

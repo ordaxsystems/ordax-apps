@@ -1,0 +1,4 @@
+{
+  "schema":"ordax.application-action-provider-manifest/1","appId":"text-viewer","appVersion":"0.1.0","authority":"none","execution":"unavailable",
+  "providers":[{"kind":"first-party-native","adapterId":"text-viewer-native","revision":"1","module":"actions/providers/text-viewer-native.mjs","sha256":"3c60477c01ab65265bb018b3f81b999e15127bb69f2850d39c7fa71dd517b46f"}]
+}

@@ -1,0 +1,15 @@
+{
+  "schema":"ordax.application-action-manifest/1",
+  "appId":"clock",
+  "appVersion":"0.1.0",
+  "authority":"none",
+  "execution":"proposal-only",
+  "capabilities":[{
+    "schema":"ordax.application-action-capability/1","appId":"clock","actionId":"clock.read-time",
+    "title":"Consultar hora","description":"Consultar a hora local atual.","sourceClass":"first-party","platform":"ordax",
+    "provider":{"kind":"first-party-native","adapterId":"clock-native","revision":"1"},
+    "binding":{"payloadSha256":null},"parameters":[],"riskClass":"read-only","confirmation":"none",
+    "executionAuthorized":false,"modelDirectExecutionAuthorized":false,
+    "provenance":"ordax-apps:apps/clock/actions/manifest.json"
+  }]
+}
