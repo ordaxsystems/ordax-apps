@@ -29,6 +29,7 @@ APPLICATION_ACTION_CAPABILITY_SCHEMA = "ordax.application-action-capability/1"
 APPLICATION_ACTION_EXECUTION_MODE = "proposal-only"
 APPLICATION_ACTION_PROVIDER_MANIFEST_SCHEMA = "ordax.application-action-provider-manifest/1"
 APPLICATION_ACTION_PROVIDER_EXECUTION_MODE = "unavailable"
+FILE_ASSOCIATION_MANIFEST_SCHEMA = "ordax.file-association-manifest/1"
 SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
 CREATED_FROM_RECIPE = "runtime-component/package/1"
 PACKAGE_MANIFEST_NAME = "component-package.json"
@@ -63,8 +64,9 @@ MAX_COMPATIBILITY_BYTES = 64 * 1024
 MAX_AI_MANIFEST_BYTES = 128 * 1024
 MAX_ACTION_MANIFEST_BYTES = 256 * 1024
 MAX_ACTION_PROVIDER_MANIFEST_BYTES = 64 * 1024
+MAX_FILE_ASSOCIATION_MANIFEST_BYTES = 64 * 1024
 
-INCLUDED_ROOTS = ("src", "assets", "ai", "actions")
+INCLUDED_ROOTS = ("src", "assets", "ai", "actions", "files")
 SOURCE_EXTENSIONS = {".mjs", ".js"}
 
 class AppPackageError(RuntimeError):
@@ -567,6 +569,60 @@ def validate_application_action_provider_manifest(
     return value
 
 
+def validate_file_association_manifest(value: dict, app: dict) -> dict:
+    expected = {"schema", "appId", "appVersion", "authority", "handlers"}
+    if not isinstance(value, dict) or set(value) != expected:
+        raise AppPackageError("files/manifest.json fields are not canonical")
+    if value["schema"] != FILE_ASSOCIATION_MANIFEST_SCHEMA:
+        raise AppPackageError("files/manifest.json schema is incompatible")
+    if value["appId"] != app["id"] or value["appVersion"] != app["version"]:
+        raise AppPackageError("file association manifest identity does not match app.json")
+    if value["authority"] != "none":
+        raise AppPackageError("file association manifest must not carry authority")
+
+    handlers = value["handlers"]
+    if not isinstance(handlers, list) or not handlers or len(handlers) > 16:
+        raise AppPackageError("file association handlers must be a bounded non-empty array")
+
+    seen_extensions: set[str] = set()
+    seen_mimes: set[str] = set()
+    for handler in handlers:
+        if not isinstance(handler, dict) or set(handler) != {"role", "extensions", "mimeTypes"}:
+            raise AppPackageError("file association handler is malformed")
+        if handler["role"] != "view":
+            raise AppPackageError("file association v1 supports only read-only view handlers")
+
+        extensions = handler["extensions"]
+        mime_types = handler["mimeTypes"]
+        if not isinstance(extensions, list) or not extensions or len(extensions) > 64:
+            raise AppPackageError("file association extensions must be bounded and non-empty")
+        if not isinstance(mime_types, list) or not mime_types or len(mime_types) > 64:
+            raise AppPackageError("file association MIME types must be bounded and non-empty")
+
+        for extension in extensions:
+            if (
+                not isinstance(extension, str)
+                or re.fullmatch(r"\.[a-z0-9][a-z0-9.+-]{0,15}", extension) is None
+                or extension != extension.lower()
+                or extension in seen_extensions
+            ):
+                raise AppPackageError("file association extension is invalid or duplicated")
+            seen_extensions.add(extension)
+
+        for mime in mime_types:
+            if (
+                not isinstance(mime, str)
+                or re.fullmatch(r"[a-z0-9][a-z0-9!#def validate_compatibility(value: dict, app: dict) -> dict:
+^_.+-]{0,63}/[a-z0-9][a-z0-9!#def validate_compatibility(value: dict, app: dict) -> dict:
+^_.+-]{0,95}", mime) is None
+                or mime != mime.lower()
+                or mime in seen_mimes
+            ):
+                raise AppPackageError("file association MIME type is invalid or duplicated")
+            seen_mimes.add(mime)
+    return value
+
+
 def validate_compatibility(value: dict, app: dict) -> dict:
     expected = {"schema", "componentId", "componentVersion", "provides", "requires", "state", "authority"}
     if set(value) != expected:
@@ -995,6 +1051,19 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
         app,
         ai_manifest,
     )
+    file_association_path = app_root / "files" / "manifest.json"
+    if file_association_path.exists():
+        if not file_association_path.is_file() or file_association_path.is_symlink():
+            raise AppPackageError("files/manifest.json must be a regular file")
+        validate_file_association_manifest(
+            load_json(
+                file_association_path,
+                max_bytes=MAX_FILE_ASSOCIATION_MANIFEST_BYTES,
+                label="files/manifest.json",
+            ),
+            app,
+        )
+
     provider_manifest_path = app_root / "actions" / "providers" / "manifest.json"
     if not provider_manifest_path.is_file() or provider_manifest_path.is_symlink():
         raise AppPackageError("first-party app must provide actions/providers/manifest.json")
