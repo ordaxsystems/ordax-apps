@@ -56,3 +56,21 @@ A distribuição só pode ser ativada depois que o app canônico:
 - Gate C: adaptar o source canônico ao App SDK/App Data/package lifecycle e, somente depois das provas completas, liberar distribuição.
 
 Os SSOTs do piloto são `migrations/notes.externalization.json`, `migrations/notes.source-snapshot.json` e `docs/NOTES-EXTERNALIZATION.md`.
+
+
+## Catálogo da Loja
+
+O catálogo de distribuição não é montado manualmente e não é autoridade de instalação.
+
+`tools/app-package/render_store_catalog_candidate.py` agrega somente handoffs
+`ordax-apps.unsigned-component-candidate/1` já verificados, todos presos ao mesmo
+commit exato de `ordax-apps`. O resultado `ordax-apps.store-catalog-candidate/1`
+é determinístico, ordenado por `appId` e contém apenas identidade pública dos
+artefatos (nome, SHA-256 e tamanho), versão, origem e requisitos de trust.
+
+Esse arquivo ainda é **candidato não assinado**. Ele não autoriza assinatura,
+publicação, instalação, ativação ou rollback. A futura etapa de publicação deve
+assinar/verificar o catálogo em uma fronteira separada; mesmo um catálogo
+autêntico apenas torna uma release elegível para o lifecycle da plataforma.
+A Store continua sem selecionar versão/artefato e o owner de instalação continua
+sendo `platform-component-lifecycle`.
