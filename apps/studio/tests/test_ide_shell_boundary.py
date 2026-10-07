@@ -34,6 +34,8 @@ def test_assistant_shell_uses_runtime_ssot_not_browser_local_storage():
     assert "assistantUpdateChat" in source
     assert "assistantCloseChat" in source
     assert "localStorage" not in source
+    assert "accountSelect.value" in source
+    assert "providerSelect.value" in source
     assert "openai:gpt-4o" not in source
     assert "xai:grok" not in source
     assert "anthropic:claude" not in source
