@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import json
@@ -44,7 +45,12 @@ class StoreCatalogPublicationV2Tests(unittest.TestCase):
         self.package.write_bytes(b"notes-package")
         self.release.write_bytes(b'{"release":"notes"}\n')
         self.compatibility.write_bytes(b'{"compatibility":"notes"}\n')
-        self.envelope.write_bytes(b'{"signed":"component-envelope"}\n')
+        self.envelope.write_bytes(canonical({
+            "$schema": "prototype-ordax.runtime-component-envelope/1",
+            "payload": base64.b64encode(self.release.read_bytes()).decode("ascii"),
+            "signature": base64.b64encode(bytes(range(64))).decode("ascii"),
+            "key_id": "ordax-runtime-components-v1",
+        }))
 
         self.verifier = self.root / "ordax-runtime-component-channel"
         self.verifier.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -212,6 +218,19 @@ class StoreCatalogPublicationV2Tests(unittest.TestCase):
             with self.subTest(expected=expected):
                 with self.assertRaisesRegex(publication.CatalogPublicationV2Error, expected):
                     self.render(runner=lambda *args, _stdout=stdout, **kwargs: Result(stdout=_stdout))
+
+    def test_v2_rejects_component_envelope_whose_signed_payload_differs_from_catalog_release(self) -> None:
+        self.envelope.write_bytes(canonical({
+            "$schema": "prototype-ordax.runtime-component-envelope/1",
+            "payload": base64.b64encode(b'{"different":"release"}\n').decode("ascii"),
+            "signature": base64.b64encode(bytes(range(64))).decode("ascii"),
+            "key_id": "ordax-runtime-components-v1",
+        }))
+        with self.assertRaisesRegex(
+            publication.CatalogPublicationV2Error,
+            "signed payload does not match catalog release bytes",
+        ):
+            self.render()
 
     def test_v2_rejects_missing_or_symlink_component_envelope(self) -> None:
         self.envelope.unlink()
