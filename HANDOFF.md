@@ -10,7 +10,7 @@ Owners separados:
 
 - plataforma/core e contratos públicos: `washingtonmsdj/prototipo-ordax-os`;
 - apps first-party portáteis: `washingtonmsdj/ordax-apps`;
-- Runtime/Device Host/Computer Control: `washingtonmsdj/ordax-runtime`;
+- Runtime/Device Host/Computer Control: `ordaxsystems/ordax-runtime`;
 - Control Plane, Product MCP, grants e conectores de provider: `washingtonmsdj/ordax-control-plane`.
 
 O repositório histórico `washingtonmsdj/mcp-blender` não é owner canônico de produto, Runtime, Control Plane ou connector e não deve voltar a ser fonte de implementação.
