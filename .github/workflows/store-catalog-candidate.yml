@@ -42,11 +42,31 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Resolve pinned platform lifecycle owner
+        id: lifecycle-lock
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          from pathlib import Path
+
+          lock = json.loads(Path("migrations/notes.platform-lifecycle.lock.json").read_text(encoding="utf-8"))
+          repository = lock.get("repository")
+          commit = lock.get("commit")
+          assert repository == "washingtonmsdj/prototipo-ordax-os"
+          assert isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
+          assert lock.get("tool_path") == "tools/runtime-component-channel"
+          assert lock.get("authority") == "none"
+          print(f"repository={repository}")
+          print(f"commit={commit}")
+          PY
+
       - name: Checkout pinned platform lifecycle verifier
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          repository: washingtonmsdj/prototipo-ordax-os
-          ref: 2560e3d8302a88a424cfa3b49e560a8367d97eab
+          repository: ${{ steps.lifecycle-lock.outputs.repository }}
+          ref: ${{ steps.lifecycle-lock.outputs.commit }}
           path: .ordax-platform-lifecycle
           persist-credentials: false
 
