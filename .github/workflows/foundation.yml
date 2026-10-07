@@ -210,7 +210,10 @@ jobs:
         run: python3 apps/studio/tests/test_portable_boundary.py
 
       - name: Prove Studio grant selection and UTF-8 UI behavior
-        run: node --test apps/studio/tests/*.test.mjs
+        run: |
+          node --test apps/studio/tests/*.test.mjs
+          python3 -m pip install --disable-pip-version-check pytest==9.1.1
+          python3 -m pytest apps/studio/tests -q
 
       - name: Prove Studio remote Computer grant boundary
         run: python3 apps/studio/tests/test_remote_computer_grants_boundary.py
