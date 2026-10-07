@@ -9,6 +9,7 @@ on:
       - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
       - 'tests/test_store_catalog_candidate.py'
+      - 'tests/test_store_catalog_inventory.py'
       - 'tests/test_store_catalog_publication.py'
       - 'tests/test_store_catalog_publication_v2.py'
       - 'tests/test_store_artifact_bundle.py'
@@ -21,6 +22,7 @@ on:
       - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
       - 'tests/test_store_catalog_candidate.py'
+      - 'tests/test_store_catalog_inventory.py'
       - 'tests/test_store_catalog_publication.py'
       - 'tests/test_store_catalog_publication_v2.py'
       - 'tests/test_store_artifact_bundle.py'
@@ -66,11 +68,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile \
+            tools/app-package/catalog_inventory.py \
             tools/app-package/render_store_catalog_candidate.py \
             tools/app-package/render_store_catalog_publication.py \
             tools/app-package/render_store_catalog_publication_v2.py \
             tools/app-package/materialize_store_artifact_bundle.py
           python3 -m unittest \
+            tests/test_store_catalog_inventory.py \
             tests/test_store_catalog_candidate.py \
             tests/test_store_catalog_publication.py \
             tests/test_store_catalog_publication_v2.py \
@@ -89,35 +93,51 @@ jobs:
           )
           test -x "$out/ordax-runtime-component-channel"
 
-      - name: Build exact Notes catalog input
+      - name: Build exact first-party catalog input
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/ordax-store-catalog-proof"
           rm -rf "$out"
-          mkdir -p "$out/artifacts/notes/release"
+          mkdir -p "$out/artifacts"
 
-          python3 tools/app-package/build.py build \
-            --app-root apps/notes \
-            --source-commit "$GITHUB_SHA" \
-            --compatibility migrations/notes.compatibility.json \
-            --package-out "$out/artifacts/notes/notes.zip" \
-            --release-dir "$out/artifacts/notes/release"
+          mapfile -t inventory < <(
+            python3 tools/app-package/catalog_inventory.py --format tsv
+          )
+          test "${#inventory[@]}" -gt 0
 
-          python3 tools/app-package/build.py verify \
-            --package "$out/artifacts/notes/notes.zip" \
-            --release "$out/artifacts/notes/release/notes.release.json" \
-            --compatibility "$out/artifacts/notes/release/notes.compatibility.json"
+          handoff_args=()
+          for row in "${inventory[@]}"; do
+            IFS=$'\t' read -r app app_root compatibility <<<"$row"
+            app_out="$out/artifacts/$app"
+            mkdir -p "$app_out/release"
 
-          python3 tools/app-package/render_unsigned_handoff.py \
-            --package "$out/artifacts/notes/notes.zip" \
-            --release "$out/artifacts/notes/release/notes.release.json" \
-            --compatibility "$out/artifacts/notes/release/notes.compatibility.json" \
-            --app-id notes \
-            --source-commit "$GITHUB_SHA" \
-            --out "$out/notes.unsigned-candidate.json"
+            python3 tools/app-package/build.py build \
+              --app-root "$app_root" \
+              --source-commit "$GITHUB_SHA" \
+              --compatibility "$compatibility" \
+              --package-out "$app_out/$app.zip" \
+              --release-dir "$app_out/release"
+
+            python3 tools/app-package/build.py verify \
+              --package "$app_out/$app.zip" \
+              --release "$app_out/release/$app.release.json" \
+              --compatibility "$app_out/release/$app.compatibility.json"
+
+            python3 tools/app-package/render_unsigned_handoff.py \
+              --package "$app_out/$app.zip" \
+              --release "$app_out/release/$app.release.json" \
+              --compatibility "$app_out/release/$app.compatibility.json" \
+              --app-id "$app" \
+              --source-commit "$GITHUB_SHA" \
+              --out "$out/$app.unsigned-candidate.json"
+
+            cp "$app_out/release/$app.release.json" "$app_out/$app.release.json"
+            cp "$app_out/release/$app.compatibility.json" "$app_out/$app.compatibility.json"
+            handoff_args+=(--handoff "$out/$app.unsigned-candidate.json")
+          done
 
           python3 tools/app-package/render_store_catalog_candidate.py \
-            --handoff "$out/notes.unsigned-candidate.json" \
+            "${handoff_args[@]}" \
             --apps-root apps \
             --source-commit "$GITHUB_SHA" \
             --out "$out/store.catalog-candidate.json"
@@ -126,11 +146,6 @@ jobs:
             --candidate "$out/store.catalog-candidate.json" \
             --sequence 1 \
             --out "$out/store.catalog-publication-v1.json"
-
-          cp "$out/artifacts/notes/release/notes.release.json" \
-            "$out/artifacts/notes/notes.release.json"
-          cp "$out/artifacts/notes/release/notes.compatibility.json" \
-            "$out/artifacts/notes/notes.compatibility.json"
 
       - name: Prove signed component envelope requirement for catalog v2
         run: |
@@ -147,18 +162,22 @@ jobs:
             --trust "$out/runtime-components-ci-trust.json" \
             --key-id ordax-runtime-components-v1
 
-          "$verifier" sign-v2 \
-            --release "$out/artifacts/notes/notes.release.json" \
-            --compatibility "$out/artifacts/notes/notes.compatibility.json" \
-            --private-key "$secrets_dir/runtime-components-private.pem" \
-            --trust "$out/runtime-components-ci-trust.json" \
-            --key-id ordax-runtime-components-v1 \
-            --out "$out/artifacts/notes/notes.runtime-component-envelope.json"
+          python3 tools/app-package/catalog_inventory.py --format tsv |
+          while IFS=$'\t' read -r app _app_root _compatibility; do
+            app_out="$out/artifacts/$app"
+            "$verifier" sign-v2 \
+              --release "$app_out/$app.release.json" \
+              --compatibility "$app_out/$app.compatibility.json" \
+              --private-key "$secrets_dir/runtime-components-private.pem" \
+              --trust "$out/runtime-components-ci-trust.json" \
+              --key-id ordax-runtime-components-v1 \
+              --out "$app_out/$app.runtime-component-envelope.json"
 
-          "$verifier" verify-envelope-v2 \
-            --envelope "$out/artifacts/notes/notes.runtime-component-envelope.json" \
-            --trust "$out/runtime-components-ci-trust.json" \
-            --compatibility "$out/artifacts/notes/notes.compatibility.json"
+            "$verifier" verify-envelope-v2 \
+              --envelope "$app_out/$app.runtime-component-envelope.json" \
+              --trust "$out/runtime-components-ci-trust.json" \
+              --compatibility "$app_out/$app.compatibility.json"
+          done
 
           python3 tools/app-package/render_store_catalog_publication_v2.py \
             --candidate "$out/store.catalog-candidate.json" \
@@ -185,15 +204,31 @@ jobs:
           test -z "$(find "$out" -type f \( -iname '*.pem' -o -iname '*.key' -o -iname '*.p12' -o -iname '*.pfx' \) -print -quit)"
           python3 - <<'PY'
           import hashlib
+          import importlib.util
           import json
           import os
           from pathlib import Path
 
           root = Path(os.environ['RUNNER_TEMP']) / 'ordax-store-catalog-proof'
+          repo = Path.cwd()
           candidate_path = root / 'store.catalog-candidate.json'
           v1_path = root / 'store.catalog-publication-v1.json'
           v2_path = root / 'store.catalog-publication-v2.protocol-proof.json'
-          envelope_path = root / 'artifacts' / 'notes' / 'notes.runtime-component-envelope.json'
+
+          spec = importlib.util.spec_from_file_location(
+              'catalog_inventory',
+              repo / 'tools' / 'app-package' / 'catalog_inventory.py',
+          )
+          inventory_module = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(inventory_module)
+          expected_ids = [
+              entry['appId']
+              for entry in inventory_module.discover_catalog_apps(
+                  repo / 'apps',
+                  repo / 'migrations',
+              )
+          ]
 
           candidate_bytes = candidate_path.read_bytes()
           candidate = json.loads(candidate_bytes.decode('utf-8'))
@@ -206,7 +241,8 @@ jobs:
               'repository': 'washingtonmsdj/ordax-apps',
               'commit': os.environ['GITHUB_SHA'],
           }
-          assert [entry['appId'] for entry in candidate['entries']] == ['notes']
+          assert [entry['appId'] for entry in candidate['entries']] == expected_ids
+          assert len(expected_ids) > 1
           assert candidate['authority'] == {
               'signing': False,
               'publication': False,
@@ -241,18 +277,8 @@ jobs:
               'platformLifecycleRequired': True,
               'payloadGrantsAuthority': False,
           }
-          entry = v2['entries'][0]
-          envelope_bytes = envelope_path.read_bytes()
-          assert entry['artifacts']['componentEnvelope'] == {
-              'name': 'notes.runtime-component-envelope.json',
-              'sha256': hashlib.sha256(envelope_bytes).hexdigest(),
-              'size': len(envelope_bytes),
-          }
-          assert set(entry['artifacts']) == {
-              'package', 'release', 'compatibility', 'componentEnvelope'
-          }
 
-
+          assert [entry['appId'] for entry in v2['entries']] == expected_ids
           layout_root = root / 'store-artifact-bundle.protocol-proof'
           layout = json.loads(
               (layout_root / 'store-artifact-layout.json').read_text(encoding='utf-8')
@@ -267,18 +293,34 @@ jobs:
               'algorithm': 'sha256',
               'pathTemplate': 'sha256/{prefix2}/{sha256}',
           }
-          assert layout['blobCount'] == 4
+          assert layout['blobCount'] == len(expected_ids) * 4
           assert layout['authority'] == {
               'publication': False,
               'installation': False,
               'activation': False,
           }
-          for artifact in entry['artifacts'].values():
-              blob = layout_root / 'sha256' / artifact['sha256'][:2] / artifact['sha256']
-              payload = blob.read_bytes()
-              assert len(payload) == artifact['size']
-              assert hashlib.sha256(payload).hexdigest() == artifact['sha256']
+
+          for entry in v2['entries']:
+              app_id = entry['appId']
+              envelope_path = root / 'artifacts' / app_id / f'{app_id}.runtime-component-envelope.json'
+              envelope_bytes = envelope_path.read_bytes()
+              assert entry['artifacts']['componentEnvelope'] == {
+                  'name': f'{app_id}.runtime-component-envelope.json',
+                  'sha256': hashlib.sha256(envelope_bytes).hexdigest(),
+                  'size': len(envelope_bytes),
+              }
+              assert set(entry['artifacts']) == {
+                  'package', 'release', 'compatibility', 'componentEnvelope'
+              }
+              for artifact in entry['artifacts'].values():
+                  blob = layout_root / 'sha256' / artifact['sha256'][:2] / artifact['sha256']
+                  payload = blob.read_bytes()
+                  assert len(payload) == artifact['size']
+                  assert hashlib.sha256(payload).hexdigest() == artifact['sha256']
+
           assert 'http' not in json.dumps(layout).lower()
+          print('ORDAX_STORE_CATALOG_INVENTORY_SSOT=PASS')
+          print(f'CATALOG_APP_COUNT={len(expected_ids)}')
           print('ORDAX_STORE_CATALOG_V2_STAGEABLE_IDENTITY=PASS')
           print('CANONICAL_RUNTIME_COMPONENT_TRUST=NO')
           print('PRODUCTION_COMPONENT_PUBLICATION=NO')
@@ -289,13 +331,12 @@ jobs:
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/ordax-store-catalog-proof"
-          rm -f \
-            "$out/runtime-components-ci-trust.json" \
-            "$out/artifacts/notes/notes.runtime-component-envelope.json" \
-            "$out/store.catalog-publication-v2.protocol-proof.json"
+          rm -f "$out/runtime-components-ci-trust.json"
+          find "$out/artifacts" -type f -name '*.runtime-component-envelope.json' -delete
+          rm -f "$out/store.catalog-publication-v2.protocol-proof.json"
           rm -rf "$out/store-artifact-bundle.protocol-proof"
           test ! -e "$out/runtime-components-ci-trust.json"
-          test ! -e "$out/artifacts/notes/notes.runtime-component-envelope.json"
+          test -z "$(find "$out/artifacts" -type f -name '*.runtime-component-envelope.json' -print -quit)"
           test ! -e "$out/store.catalog-publication-v2.protocol-proof.json"
           test ! -e "$out/store-artifact-bundle.protocol-proof"
 
