@@ -1,0 +1,9 @@
+{
+  "schema":"ordax.app-intelligence-manifest/1",
+  "appId":"calendar",
+  "appVersion":"0.1.0",
+  "authority":"none",
+  "execution":"declarative-only",
+  "instructions":["Use o Calendário para navegação de datas locais. Esta versão não declara criação de eventos, alarmes ou sincronização."],
+  "intents":[{"id":"calendar.inspect-date","description":"Consultar uma data ou mês no calendário local.","effect":"read","confirmation":"none","parameters":[{"name":"date","type":"string","required":false,"description":"Data opcional a consultar."}],"examples":["Mostre o calendário deste mês.","Que dia da semana cai 10 de outubro?"]}]
+}
