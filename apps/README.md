@@ -74,3 +74,20 @@ assinar/verificar o catálogo em uma fronteira separada; mesmo um catálogo
 autêntico apenas torna uma release elegível para o lifecycle da plataforma.
 A Store continua sem selecionar versão/artefato e o owner de instalação continua
 sendo `platform-component-lifecycle`.
+
+
+### Payload de publicação
+
+`tools/app-package/render_store_catalog_publication.py` transforma um único
+`ordax-apps.store-catalog-candidate/1` canônico no payload exato
+`ordax-apps.store-catalog-publication/1`.
+
+O payload adiciona uma `sequence` monotônica e prende a provenance ao SHA-256
+dos bytes exatos do candidate. Ele continua **não assinado e sem autoridade**:
+não lê chave privada, não emite assinatura, não publica, não instala e não ativa
+componentes.
+
+A assinatura futura deve ocorrer em uma fronteira externa sobre os bytes exatos
+desse payload, usando o trust domain `runtime-components` e key id
+`ordax-runtime-components-v1`. O OS só poderá projetá-lo como catálogo
+verificado depois da validação Native da assinatura e do anti-replay persistente.
