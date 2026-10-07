@@ -1,7 +1,7 @@
 {
   "schema":"ordax.component-compatibility/1",
   "componentId":"calendar",
-  "componentVersion":"0.1.0",
+  "componentVersion":"0.2.0",
   "provides":[{"id":"ordax.component-runtime","major":1}],
   "requires":[
     {"id":"ordax.localization","minMajor":2,"maxMajor":2,"optional":false},
