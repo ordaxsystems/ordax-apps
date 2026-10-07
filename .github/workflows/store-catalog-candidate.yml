@@ -11,6 +11,7 @@ on:
       - 'tests/test_store_catalog_candidate.py'
       - 'tests/test_store_catalog_publication.py'
       - 'tests/test_store_catalog_publication_v2.py'
+      - 'tests/test_store_artifact_bundle.py'
       - '.github/workflows/store-catalog-candidate.yml'
   pull_request:
     branches: [main]
@@ -22,6 +23,7 @@ on:
       - 'tests/test_store_catalog_candidate.py'
       - 'tests/test_store_catalog_publication.py'
       - 'tests/test_store_catalog_publication_v2.py'
+      - 'tests/test_store_artifact_bundle.py'
       - '.github/workflows/store-catalog-candidate.yml'
   workflow_dispatch:
 
@@ -66,11 +68,13 @@ jobs:
           python3 -m py_compile \
             tools/app-package/render_store_catalog_candidate.py \
             tools/app-package/render_store_catalog_publication.py \
-            tools/app-package/render_store_catalog_publication_v2.py
+            tools/app-package/render_store_catalog_publication_v2.py \
+            tools/app-package/materialize_store_artifact_bundle.py
           python3 -m unittest \
             tests/test_store_catalog_candidate.py \
             tests/test_store_catalog_publication.py \
-            tests/test_store_catalog_publication_v2.py
+            tests/test_store_catalog_publication_v2.py \
+            tests/test_store_artifact_bundle.py
 
       - name: Build canonical platform verifier
         run: |
@@ -164,6 +168,11 @@ jobs:
             --sequence 1 \
             --out "$out/store.catalog-publication-v2.protocol-proof.json"
 
+          python3 tools/app-package/materialize_store_artifact_bundle.py \
+            --publication "$out/store.catalog-publication-v2.protocol-proof.json" \
+            --artifacts-root "$out/artifacts" \
+            --out-root "$out/store-artifact-bundle.protocol-proof"
+
           rm -f "$secrets_dir/runtime-components-private.pem"
           test ! -e "$secrets_dir/runtime-components-private.pem"
           test -z "$(find "$secrets_dir" -type f -print -quit)"
@@ -242,6 +251,34 @@ jobs:
           assert set(entry['artifacts']) == {
               'package', 'release', 'compatibility', 'componentEnvelope'
           }
+
+
+          layout_root = root / 'store-artifact-bundle.protocol-proof'
+          layout = json.loads(
+              (layout_root / 'store-artifact-layout.json').read_text(encoding='utf-8')
+          )
+          assert layout['$schema'] == 'ordax-apps.store-artifact-layout/1'
+          assert layout['status'] == 'materialized-candidate'
+          assert layout['sourcePublication'] == {
+              'schema': 'ordax-apps.store-catalog-publication/2',
+              'sha256': hashlib.sha256(v2_path.read_bytes()).hexdigest(),
+          }
+          assert layout['addressing'] == {
+              'algorithm': 'sha256',
+              'pathTemplate': 'sha256/{prefix2}/{sha256}',
+          }
+          assert layout['blobCount'] == 4
+          assert layout['authority'] == {
+              'publication': False,
+              'installation': False,
+              'activation': False,
+          }
+          for artifact in entry['artifacts'].values():
+              blob = layout_root / 'sha256' / artifact['sha256'][:2] / artifact['sha256']
+              payload = blob.read_bytes()
+              assert len(payload) == artifact['size']
+              assert hashlib.sha256(payload).hexdigest() == artifact['sha256']
+          assert 'http' not in json.dumps(layout).lower()
           print('ORDAX_STORE_CATALOG_V2_STAGEABLE_IDENTITY=PASS')
           print('CANONICAL_RUNTIME_COMPONENT_TRUST=NO')
           print('PRODUCTION_COMPONENT_PUBLICATION=NO')
@@ -256,9 +293,11 @@ jobs:
             "$out/runtime-components-ci-trust.json" \
             "$out/artifacts/notes/notes.runtime-component-envelope.json" \
             "$out/store.catalog-publication-v2.protocol-proof.json"
+          rm -rf "$out/store-artifact-bundle.protocol-proof"
           test ! -e "$out/runtime-components-ci-trust.json"
           test ! -e "$out/artifacts/notes/notes.runtime-component-envelope.json"
           test ! -e "$out/store.catalog-publication-v2.protocol-proof.json"
+          test ! -e "$out/store-artifact-bundle.protocol-proof"
 
       - name: Upload public-only pre-publication artifacts
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
