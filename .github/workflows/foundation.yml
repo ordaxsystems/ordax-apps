@@ -33,7 +33,7 @@ jobs:
           python3 -m json.tool apps/calculator/ai/manifest.json >/dev/null
           python3 -m json.tool apps/calculator/actions/manifest.json >/dev/null
           python3 -m json.tool apps/calculator/actions/providers/manifest.json >/dev/null
-          for app in clock converter text-viewer image-viewer calendar colors character-map paint media-player; do
+          for app in clock converter text-viewer image-viewer calendar colors character-map paint media-player pdf-viewer; do
             python3 -m json.tool "apps/$app/app.json" >/dev/null
             python3 -m json.tool "apps/$app/compatibility.json" >/dev/null
             python3 -m json.tool "apps/$app/ai/manifest.json" >/dev/null
@@ -73,6 +73,7 @@ jobs:
           node --check apps/character-map/actions/providers/character-map-native.mjs
           node --check apps/paint/actions/providers/paint-native.mjs
           node --check apps/media-player/actions/providers/media-player-native.mjs
+          node --check apps/pdf-viewer/actions/providers/pdf-viewer-native.mjs
           python3 tools/verify_app_actions.py
 
       - name: Prove Calculator portable behavior and package boundary
@@ -106,7 +107,8 @@ jobs:
           node --test apps/character-map/tests/*.test.mjs
           node --test apps/paint/tests/*.test.mjs
           node --test apps/media-player/tests/*.test.mjs
-          for app in clock converter text-viewer image-viewer calendar colors character-map paint media-player; do
+          node --test apps/pdf-viewer/tests/*.test.mjs
+          for app in clock converter text-viewer image-viewer calendar colors character-map paint media-player pdf-viewer; do
             node --check "apps/$app/src/runtime.mjs"
             out="/tmp/ordax-$app"
             rm -rf "$out"

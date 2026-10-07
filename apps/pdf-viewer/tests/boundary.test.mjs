@@ -1,0 +1,2 @@
+import assert from"node:assert/strict";import test from"node:test";import{readFile}from"node:fs/promises";
+test("PDF viewer uses document preview only",async()=>{const s=await readFile(new URL("../src/runtime.mjs",import.meta.url),"utf8");assert.equal(s.includes("readDocumentPreview"),true);assert.equal(s.includes("/__ordax/native"),false);assert.equal(s.includes("fetch("),false);assert.equal(s.includes("<iframe"),false);assert.equal(s.includes("text/html"),false);});

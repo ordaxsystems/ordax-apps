@@ -1,0 +1,4 @@
+{
+  "schema":"ordax.application-action-manifest/1","appId":"pdf-viewer","appVersion":"0.1.0","authority":"none","execution":"proposal-only",
+  "capabilities":[{"schema":"ordax.application-action-capability/1","appId":"pdf-viewer","actionId":"pdf-viewer.inspect-current","title":"Consultar PDF aberto","description":"Consultar a identidade do PDF já aberto no visualizador.","sourceClass":"first-party","platform":"ordax","provider":{"kind":"first-party-native","adapterId":"pdf-viewer-native","revision":"1"},"binding":{"payloadSha256":null},"parameters":[],"riskClass":"read-only","confirmation":"none","executionAuthorized":false,"modelDirectExecutionAuthorized":false,"provenance":"ordax-apps:apps/pdf-viewer/actions/manifest.json"}]
+}
