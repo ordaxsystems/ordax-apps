@@ -209,6 +209,9 @@ jobs:
       - name: Prove portable Studio source boundary
         run: python3 apps/studio/tests/test_portable_boundary.py
 
+      - name: Prove Studio grant selection and UTF-8 UI behavior
+        run: node --test apps/studio/tests/*.test.mjs
+
       - name: Prove Studio remote Computer grant boundary
         run: python3 apps/studio/tests/test_remote_computer_grants_boundary.py
 

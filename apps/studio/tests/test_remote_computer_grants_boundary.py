@@ -106,7 +106,6 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         ):
             self.assertIn(expected, self.computer)
         for broken in (
-            "??",
             "n?o",
             "pol?tica",
             "v?nculo",

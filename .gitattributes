@@ -1,0 +1,3 @@
+# Public provider artifacts carry SHA-256 pins over these exact source bytes.
+# Windows checkouts must preserve the same LF bytes used by release/SDK checks.
+*.mjs text eol=lf

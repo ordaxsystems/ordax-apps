@@ -10,14 +10,12 @@ function browserGrantForProject(){
   return (state.remoteProjectBrowserGrants?.grants||[]).find(grant=>
     grant.mode===MANAGED_BROWSER_PROFILE&&
     browserGrantActive(grant)&&
+    grantMatchesLink(grant,selectedGrantLink(state.remoteProjectBrowserGrants,'remoteBrowserLinkId'))&&
     (grant.projects||[]).includes(state.project)
   )||null;
 }
 function selectedBrowserLinkId(){
-  const select=document.getElementById('remoteBrowserLink');
-  if(select?.value)return select.value;
-  const links=state.remoteProjectBrowserGrants?.links||[];
-  return links.length===1?String(links[0].link_id||''):'';
+  return selectedGrantLink(state.remoteProjectBrowserGrants,'remoteBrowserLinkId')?.link_id||'';
 }
 async function loadRemoteProjectBrowserGrants(){
   const result=await call('remote_project_browser_grants');
@@ -48,7 +46,7 @@ function renderBrowserGrant(){
   const links=data?.links||[];
   const grant=browserGrantForProject();
   const linkPicker=links.length>1
-    ?`<label class="accessHeading"><span><strong>Vínculo deste computador</strong><small>Escolha o vínculo que receberá autorização somente para este projeto.</small></span><select id="remoteBrowserLink">${links.map(link=>`<option value="${escapeHtml(link.link_id||'')}">${escapeHtml(link.link_id||'vínculo')}</option>`).join('')}</select></label>`
+    ?`<label class="accessHeading"><span><strong>Vínculo deste computador</strong><small>Escolha o vínculo que receberá autorização somente para este projeto.</small></span><select id="remoteBrowserLink">${links.map(link=>`<option value="${escapeHtml(link.link_id||'')}" ${link.link_id===selectedBrowserLinkId()?'selected':''}>${escapeHtml(link.link_id||'vínculo')}</option>`).join('')}</select></label>`
     :(links.length===1?`<div class="sideMeta">Vínculo: <code>${escapeHtml(links[0].link_id||'')}</code></div>`:'<div class="accessWarning"><strong>Sem vínculo ativo</strong><span>Conecte sua Conta ORDAX a este computador antes de autorizar automação remota do navegador.</span></div>');
   const action=grant
     ?`<button type="button" id="revokeRemoteBrowserGrant" data-grant-id="${escapeHtml(grant.id||'')}">Revogar</button>`
@@ -78,6 +76,8 @@ function renderBrowserAccess(grantResult=null,sessionResult=null){
     <div class="infoCard"><div class="accessHeading"><div><h4>SESSÕES</h4><div class="sideMeta">${escapeHtml(sessionResult?.summary||'Sessões Chromium pertencentes ao projeto atual.')}</div></div><button id="managedBrowserRefresh">Atualizar</button></div><div class="accessList">${browserSessionRows()}</div></div>
   </div>`;
   const connect=document.getElementById('remoteBrowserConnectAccount');if(connect)connect.onclick=()=>document.getElementById('accountButton')?.click();
+  const link=document.getElementById('remoteBrowserLink');
+  if(link)link.onchange=()=>{state.remoteBrowserLinkId=link.value;renderBrowserAccess()};
   const authorize=document.getElementById('authorizeRemoteBrowserGrant');if(authorize)authorize.onclick=authorizeRemoteProjectBrowser;
   const revoke=document.getElementById('revokeRemoteBrowserGrant');if(revoke)revoke.onclick=()=>revokeRemoteProjectBrowser(revoke.dataset.grantId);
   const open=document.getElementById('managedBrowserOpen');if(open)open.onclick=startManagedBrowser;
