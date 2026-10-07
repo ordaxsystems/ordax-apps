@@ -30,7 +30,7 @@ class NotesPortableBoundaryTests(unittest.TestCase):
         self.assertEqual(manifest["id"], "notes")
         self.assertEqual(manifest["version"], "0.4.3")
         self.assertEqual(manifest["releaseMode"], "component-slot")
-        self.assertEqual(manifest["owner"], "washingtonmsdj/ordax-apps")
+        self.assertEqual(manifest["owner"], "ordaxsystems/ordax-apps")
 
     def test_source_has_no_platform_private_or_legacy_native_paths(self):
         text = self.source_text()

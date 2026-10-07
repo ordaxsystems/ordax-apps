@@ -2,7 +2,7 @@
 
 Status: **portable source cut over**. `apps/studio` em `ordax-apps` é a fonte canônica do produto Studio. O código histórico não é uma segunda fonte de produto.
 
-Canonical product source: `washingtonmsdj/ordax-apps/apps/studio`.
+Canonical product source: `ordaxsystems/ordax-apps/apps/studio`.
 
 Canonical boundary: `docs/STUDIO-BOUNDARY.md`.
 

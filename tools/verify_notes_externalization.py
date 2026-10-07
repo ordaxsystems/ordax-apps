@@ -55,7 +55,7 @@ def main() -> None:
         fail("distribution_activation_allowed must be boolean")
 
     expected_source_repo = (
-        "washingtonmsdj/ordax-apps"
+        "ordaxsystems/ordax-apps"
         if source_cutover_allowed
         else "washingtonmsdj/prototipo-ordax-os"
     )
@@ -64,7 +64,7 @@ def main() -> None:
         fail("Notes source repository does not match source cutover state")
     if plan.get("source_path_current") != expected_source_path:
         fail("Notes source path does not match source cutover state")
-    if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
+    if plan.get("target_repository") != "ordaxsystems/ordax-apps":
         fail("wrong Notes target repository")
     if plan.get("target_path") != "apps/notes":
         fail("wrong Notes target path")
@@ -206,7 +206,7 @@ def main() -> None:
         "id": "notes",
         "kind": "app",
         "releaseMode": "component-slot",
-        "owner": "washingtonmsdj/ordax-apps",
+        "owner": "ordaxsystems/ordax-apps",
         "version_source": "system/apps/notes/version.mjs@source_snapshot",
         "legacy_platform_metadata_sources": [
             "system/apps/notes/app.mjs",

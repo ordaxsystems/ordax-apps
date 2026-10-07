@@ -40,7 +40,7 @@ def fixture(root: Path, *, runtime_source: str = 'import { value } from "./domai
             "failureDomain": "app",
             "restartScope": "component",
             "healthMode": "runtime",
-            "owner": "washingtonmsdj/ordax-apps",
+            "owner": "ordaxsystems/ordax-apps",
             "dependencies": [],
         },
     )
@@ -178,7 +178,7 @@ class DeterministicAppPackageTests(unittest.TestCase):
 
             verified, _ = builder.verify_package(package_a)
             self.assertEqual(verified["entrypoint"], "system/apps/fixture/src/runtime.mjs")
-            self.assertEqual(verified["component"]["owner"], "washingtonmsdj/ordax-apps")
+            self.assertEqual(verified["component"]["owner"], "ordaxsystems/ordax-apps")
             self.assertFalse(verified["activation_allowed"])
             self.assertTrue(verified["signature_required_before_activation"])
 
@@ -197,7 +197,7 @@ class DeterministicAppPackageTests(unittest.TestCase):
 
             release = json.loads(release_a.read_text(encoding="utf-8"))
             self.assertEqual(release["$schema"], "prototype-ordax.runtime-component-release/2")
-            self.assertEqual(release["source_repository"], "washingtonmsdj/ordax-apps")
+            self.assertEqual(release["source_repository"], "ordaxsystems/ordax-apps")
             self.assertEqual(release["source_commit"], SOURCE_COMMIT)
             self.assertEqual(release["created_from_ci_recipe"], "runtime-component/package/1")
             self.assertEqual(release["component"]["release_mode"], "component-slot")

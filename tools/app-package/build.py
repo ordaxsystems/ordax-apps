@@ -29,7 +29,7 @@ APPLICATION_ACTION_CAPABILITY_SCHEMA = "ordax.application-action-capability/1"
 APPLICATION_ACTION_EXECUTION_MODE = "proposal-only"
 APPLICATION_ACTION_PROVIDER_MANIFEST_SCHEMA = "ordax.application-action-provider-manifest/1"
 APPLICATION_ACTION_PROVIDER_EXECUTION_MODE = "unavailable"
-SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
+SOURCE_REPOSITORY = "ordaxsystems/ordax-apps"
 CREATED_FROM_RECIPE = "runtime-component/package/1"
 PACKAGE_MANIFEST_NAME = "component-package.json"
 
@@ -128,7 +128,7 @@ def validate_app_manifest(value: dict) -> dict:
     if value["releaseMode"] != "component-slot":
         raise AppPackageError("external first-party app must use component-slot release mode")
     if value["owner"] != SOURCE_REPOSITORY:
-        raise AppPackageError("external app owner must be washingtonmsdj/ordax-apps")
+        raise AppPackageError("external app owner must be ordaxsystems/ordax-apps")
     for key in ("title", "criticality", "failureDomain", "restartScope", "healthMode"):
         if not isinstance(value[key], str) or not value[key] or len(value[key]) > 160:
             raise AppPackageError(f"app manifest field is invalid: {key}")

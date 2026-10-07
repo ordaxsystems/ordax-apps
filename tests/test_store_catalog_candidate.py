@@ -32,7 +32,7 @@ def app_manifest(app_id: str, title: str, version: str) -> dict:
         "failureDomain": "app",
         "restartScope": "component",
         "healthMode": "runtime",
-        "owner": "washingtonmsdj/ordax-apps",
+        "owner": "ordaxsystems/ordax-apps",
         "dependencies": [],
     }
 
@@ -51,7 +51,7 @@ def handoff(app_id: str, version: str, char: str = "b") -> dict:
             "releaseMode": "component-slot",
         },
         "source": {
-            "repository": "washingtonmsdj/ordax-apps",
+            "repository": "ordaxsystems/ordax-apps",
             "commit": SOURCE_COMMIT,
         },
         "artifacts": {

@@ -28,7 +28,7 @@ def manifest(app_id: str, *, release_mode: str = "component-slot") -> dict:
         "failureDomain": "app",
         "restartScope": "component",
         "healthMode": "runtime",
-        "owner": "washingtonmsdj/ordax-apps",
+        "owner": "ordaxsystems/ordax-apps",
         "dependencies": [],
     }
 

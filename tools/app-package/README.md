@@ -27,7 +27,7 @@ The builder rejects:
 - source imports that escape app ownership;
 - bare/remote JavaScript imports;
 - incomplete relative imports;
-- manifests not owned by `washingtonmsdj/ordax-apps`;
+- manifests not owned by `ordaxsystems/ordax-apps`;
 - release modes other than `component-slot`;
 - non-canonical compatibility descriptors.
 
@@ -41,6 +41,6 @@ The builder produces:
 - `<app>.compatibility.json` using `ordax.component-compatibility/1`;
 - `<app>.release.json` using `prototype-ordax.runtime-component-release/2`.
 
-The release descriptor records `washingtonmsdj/ordax-apps` as the real source repository and requires pending health before activation.
+The release descriptor records `ordaxsystems/ordax-apps` as the real source repository and requires pending health before activation.
 
 These files are **not installable authority by themselves**. The OrdaX platform must verify provenance, sign through its component trust domain, stage the immutable slot, run health/probation, and explicitly promote it.

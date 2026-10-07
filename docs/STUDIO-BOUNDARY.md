@@ -4,7 +4,7 @@
 
 This document defines the target product boundary for **ORDAX Studio** as a first-party OrdaX application with two official distribution targets: OrdaX OS and Windows.
 
-`apps/studio/` in `washingtonmsdj/ordax-apps` is the **canonical portable source of truth** for ORDAX Studio. The historical `mcp-blender` repository is legacy migration residue only and must not receive new Studio product features. Distribution/runtime cutover remains separately gated until Windows Runtime, Control Plane, connector and lifecycle ownership are proven outside the legacy repository.
+`apps/studio/` in `ordaxsystems/ordax-apps` is the **canonical portable source of truth** for ORDAX Studio. The historical `mcp-blender` repository is legacy migration residue only and must not receive new Studio product features. Distribution/runtime cutover remains separately gated until Windows Runtime, Control Plane, connector and lifecycle ownership are proven outside the legacy repository.
 
 ## Product identity
 

@@ -52,12 +52,12 @@
     "third_party_apps_use_public_contracts": true
   },
   "repository_migration": {
-    "status": "target-ready-cutover-pending",
-    "current_repository": "washingtonmsdj/ordax-apps",
-    "target_repository": "ordaxsystems/ordax-apps",
+    "status": "cutover-complete",
+    "previous_repository": "washingtonmsdj/ordax-apps",
+    "canonical_repository": "ordaxsystems/ordax-apps",
     "current_platform_repository": "washingtonmsdj/prototipo-ordax-os",
     "target_platform_repository": "ordaxsystems/prototipo-ordax-os",
-    "current_runtime_repository": "washingtonmsdj/ordax-runtime",
+    "current_runtime_repository": "ordaxsystems/ordax-runtime",
     "target_runtime_repository": "ordaxsystems/ordax-runtime",
     "current_control_plane_repository": "washingtonmsdj/ordax-control-plane",
     "target_control_plane_repository": "ordaxsystems/ordax-control-plane",

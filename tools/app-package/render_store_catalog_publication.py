@@ -19,7 +19,7 @@ import sys
 
 CANDIDATE_SCHEMA = "ordax-apps.store-catalog-candidate/1"
 PUBLICATION_SCHEMA = "ordax-apps.store-catalog-publication/1"
-SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
+SOURCE_REPOSITORY = "ordaxsystems/ordax-apps"
 TRUST_DOMAIN = "runtime-components"
 KEY_ID = "ordax-runtime-components-v1"
 MAX_CATALOG_BYTES = 2 * 1024 * 1024

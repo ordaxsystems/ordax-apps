@@ -19,7 +19,7 @@
     "id": "notes",
     "kind": "app",
     "releaseMode": "component-slot",
-    "owner": "washingtonmsdj/ordax-apps",
+    "owner": "ordaxsystems/ordax-apps",
     "version_source": "system/apps/notes/version.mjs@source_snapshot",
     "legacy_platform_metadata_sources": [
       "system/apps/notes/app.mjs",

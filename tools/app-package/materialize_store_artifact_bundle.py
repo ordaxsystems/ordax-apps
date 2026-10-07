@@ -23,7 +23,7 @@ import tempfile
 PUBLICATION_SCHEMA = "ordax-apps.store-catalog-publication/2"
 CANDIDATE_SCHEMA = "ordax-apps.store-catalog-candidate/1"
 LAYOUT_SCHEMA = "ordax-apps.store-artifact-layout/1"
-SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
+SOURCE_REPOSITORY = "ordaxsystems/ordax-apps"
 TRUST_DOMAIN = "runtime-components"
 KEY_ID = "ordax-runtime-components-v1"
 MAX_PUBLICATION_BYTES = 2 * 1024 * 1024

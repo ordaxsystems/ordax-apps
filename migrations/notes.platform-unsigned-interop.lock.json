@@ -2,15 +2,15 @@
   "$schema": "ordax-apps.notes-unsigned-platform-interop-lock/1",
   "component": {
     "id": "notes",
-    "version": "0.4.2"
+    "version": "0.4.3"
   },
   "source": {
-    "repository": "washingtonmsdj/ordax-apps",
-    "commit": "8efdfa90ff43eb464b1b25fca385a805be42b643"
+    "repository": "ordaxsystems/ordax-apps",
+    "commit": "acaa6b0ae910b89334dbb1cbf3cfe9203f5faa5e"
   },
   "platform": {
     "repository": "washingtonmsdj/prototipo-ordax-os",
-    "commit": "499d370eaf8da424618da5e50207aec0f39f1b98",
+    "commit": "029d88b5e26fd1c976c1e5acbc1ff393481eb087",
     "interop_contract": "docs/contracts/external-unsigned-candidate-interop.json",
     "verifier": "tools/runtime-component-channel/verify_unsigned_candidate.py",
     "readiness_checker": "tools/runtime-component-channel/check_production_readiness.py"

@@ -48,7 +48,7 @@ class UnsignedCandidateHandoffTests(unittest.TestCase):
         self.assertEqual(value["component"]["id"], "notes")
         self.assertEqual(value["component"]["version"], "0.4.3")
         self.assertEqual(value["component"]["releaseMode"], "component-slot")
-        self.assertEqual(value["source"]["repository"], "washingtonmsdj/ordax-apps")
+        self.assertEqual(value["source"]["repository"], "ordaxsystems/ordax-apps")
         self.assertEqual(value["source"]["commit"], source_commit)
         self.assertEqual(value["trust"]["domain"], "runtime-components")
         self.assertEqual(value["trust"]["requiredKeyId"], "ordax-runtime-components-v1")

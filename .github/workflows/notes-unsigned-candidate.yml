@@ -163,7 +163,7 @@ jobs:
           assert handoff['$schema'] == 'ordax-apps.unsigned-component-candidate/1'
           assert handoff['status'] == 'unsigned-candidate'
           assert handoff['component']['id'] == 'notes'
-          assert handoff['source']['repository'] == 'washingtonmsdj/ordax-apps'
+          assert handoff['source']['repository'] == 'ordaxsystems/ordax-apps'
           assert handoff['source']['commit'] == os.environ['GITHUB_SHA']
           assert handoff['authority'] == {
               'signing': False,

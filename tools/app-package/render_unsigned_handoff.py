@@ -24,7 +24,7 @@ assert _spec.loader is not None
 _spec.loader.exec_module(builder)
 
 HANDOFF_SCHEMA = "ordax-apps.unsigned-component-candidate/1"
-SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
+SOURCE_REPOSITORY = "ordaxsystems/ordax-apps"
 TRUST_DOMAIN = "runtime-components"
 KEY_ID = "ordax-runtime-components-v1"
 MAX_DESCRIPTOR_BYTES = 512 * 1024

@@ -2,7 +2,7 @@
 
 ## Estado
 
-O source portátil do **ORDAX Studio** é canônico em `washingtonmsdj/ordax-apps/apps/studio`.
+O source portátil do **ORDAX Studio** é canônico em `ordaxsystems/ordax-apps/apps/studio`.
 
 `washingtonmsdj/mcp-blender` não é mais fonte de produto do Studio e não deve receber novas features. Runtime, Control Plane e connector já possuem owners canônicos próprios. **A aposentadoria foi concluída. O conteúdo operacional legado foi removido da `main` em `ab9d6924d66539fcd10bc3b497971d9a44409bd5`; apenas o README de redirecionamento e o histórico Git permanecem.**
 

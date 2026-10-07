@@ -64,7 +64,7 @@ def main() -> None:
 
     if not source_present or not TARGET_PATH.is_dir():
         fail("source cutover is enabled but apps/notes is absent")
-    if plan.get("source_repository_current") != "washingtonmsdj/ordax-apps":
+    if plan.get("source_repository_current") != "ordaxsystems/ordax-apps":
         fail("source cutover is enabled without ordax-apps canonical ownership")
     if plan.get("source_path_current") != "apps/notes":
         fail("source cutover is enabled with the wrong canonical source path")
@@ -105,7 +105,7 @@ def main() -> None:
         component = verified_manifest.get("component") or {}
         if component.get("id") != "notes":
             fail("built package component id is not notes")
-        if component.get("owner") != "washingtonmsdj/ordax-apps":
+        if component.get("owner") != "ordaxsystems/ordax-apps":
             fail("built Notes package owner is not ordax-apps")
         if component.get("releaseMode") != "component-slot":
             fail("built Notes package is not component-slot")
@@ -117,7 +117,7 @@ def main() -> None:
             fail("Notes package must require platform trust before activation")
 
         release = json.loads(release_a.read_text(encoding="utf-8"))
-        if release.get("source_repository") != "washingtonmsdj/ordax-apps":
+        if release.get("source_repository") != "ordaxsystems/ordax-apps":
             fail("Notes release source repository is not canonical")
         if release.get("source_commit") != source_commit:
             fail("Notes release is not bound to the checked-out commit")
