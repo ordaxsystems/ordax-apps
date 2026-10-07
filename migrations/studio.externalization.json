@@ -97,7 +97,7 @@
   "cutover_phase": "legacy-retired",
   "replacement_repositories": {
     "portable_app": "washingtonmsdj/ordax-apps",
-    "runtime_host": "washingtonmsdj/ordax-runtime",
+    "runtime_host": "ordaxsystems/ordax-runtime",
     "remote_infrastructure": "washingtonmsdj/ordax-control-plane",
     "provider_connectors": "washingtonmsdj/ordax-control-plane"
   },
