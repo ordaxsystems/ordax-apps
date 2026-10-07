@@ -22,7 +22,8 @@
     "calculator",
     "clock",
     "converter",
-    "text-viewer"
+    "text-viewer",
+    "image-viewer"
   ],
   "initial_extraction_candidate": "notes",
   "contracts": {
