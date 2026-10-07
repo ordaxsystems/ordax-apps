@@ -3,15 +3,14 @@
   "appId": "image-viewer",
   "appVersion": "0.1.0",
   "authority": "none",
+  "sourceLocale": "pt-BR",
   "description": "Visualize imagens locais por meio do File Space público.",
   "monogram": "IM",
   "singleton": true,
-  "localization": {
-    "sourceLocale": "pt-BR",
-    "bundledLocales": [
-      "en-US",
-      "pt-BR"
-    ],
-    "packPolicy": "component-scoped"
+  "translations": {
+    "en-US": {
+      "title": "Images",
+      "description": "View local images through the public File Space."
+    }
   }
 }

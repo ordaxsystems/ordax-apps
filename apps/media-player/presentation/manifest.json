@@ -3,15 +3,14 @@
   "appId": "media-player",
   "appVersion": "0.1.0",
   "authority": "none",
+  "sourceLocale": "pt-BR",
   "description": "Reproduza áudio e vídeo locais por meio do File Space público.",
   "monogram": "MI",
   "singleton": true,
-  "localization": {
-    "sourceLocale": "pt-BR",
-    "bundledLocales": [
-      "en-US",
-      "pt-BR"
-    ],
-    "packPolicy": "component-scoped"
+  "translations": {
+    "en-US": {
+      "title": "Media",
+      "description": "Play local audio and video through the public File Space."
+    }
   }
 }

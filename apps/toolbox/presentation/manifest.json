@@ -3,15 +3,14 @@
   "appId": "toolbox",
   "appVersion": "0.1.0",
   "authority": "none",
+  "sourceLocale": "pt-BR",
   "description": "Use utilitários locais como UUID, senha forte, SHA-256, Base64 e URL encode.",
   "monogram": "FE",
   "singleton": true,
-  "localization": {
-    "sourceLocale": "pt-BR",
-    "bundledLocales": [
-      "en-US",
-      "pt-BR"
-    ],
-    "packPolicy": "component-scoped"
+  "translations": {
+    "en-US": {
+      "title": "Toolbox",
+      "description": "Use local utilities such as UUID, strong passwords, SHA-256, Base64, and URL encoding."
+    }
   }
 }

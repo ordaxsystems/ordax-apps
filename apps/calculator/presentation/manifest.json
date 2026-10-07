@@ -3,12 +3,14 @@
   "appId": "calculator",
   "appVersion": "0.1.0",
   "authority": "none",
+  "sourceLocale": "pt-BR",
   "description": "Calcule expressões matemáticas locais sem depender de rede.",
   "monogram": "CA",
   "singleton": true,
-  "localization": {
-    "sourceLocale": "pt-BR",
-    "bundledLocales": ["en-US", "pt-BR"],
-    "packPolicy": "component-scoped"
+  "translations": {
+    "en-US": {
+      "title": "Calculator",
+      "description": "Calculate mathematical expressions locally without depending on the network."
+    }
   }
 }

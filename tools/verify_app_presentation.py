@@ -13,13 +13,16 @@ SCHEMA = "ordax.app-presentation-manifest/1"
 APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 MONOGRAM_RE = re.compile(r"^[A-Z0-9]{1,8}$")
 EXPECTED_FIELDS = {
-    "schema", "appId", "appVersion", "authority",
-    "description", "monogram", "singleton", "localization",
+    "schema", "appId", "appVersion", "authority", "sourceLocale",
+    "description", "monogram", "singleton", "translations",
 }
-LOCALIZATION_FIELDS = {"sourceLocale", "bundledLocales", "packPolicy"}
+COPY_FIELDS = {"title", "description"}
 
 def fail(message: str) -> None:
     raise SystemExit(f"ORDAX_APP_PRESENTATION=FAIL\n{message}")
+
+def valid_text(value: object, maximum: int) -> bool:
+    return isinstance(value, str) and bool(value.strip()) and len(value) <= maximum and "\x00" not in value
 
 def main() -> None:
     count = 0
@@ -42,23 +45,22 @@ def main() -> None:
             fail(f"{app_root.name}: presentation identity drifted from app.json")
         if not APP_ID_RE.fullmatch(str(value["appId"])):
             fail(f"{app_root.name}: invalid app id")
-        description = value["description"]
-        if not isinstance(description, str) or not description.strip() or len(description) > 320:
-            fail(f"{app_root.name}: invalid description")
+        if value["sourceLocale"] != "pt-BR":
+            fail(f"{app_root.name}: source locale must be pt-BR")
+        if not valid_text(value["description"], 320):
+            fail(f"{app_root.name}: invalid source description")
         if not isinstance(value["monogram"], str) or not MONOGRAM_RE.fullmatch(value["monogram"]):
             fail(f"{app_root.name}: invalid monogram")
         if value["singleton"] is not True:
             fail(f"{app_root.name}: MVP utility apps must currently be singleton")
-        localization = value["localization"]
-        if not isinstance(localization, dict) or set(localization) != LOCALIZATION_FIELDS:
-            fail(f"{app_root.name}: invalid localization descriptor")
-        if localization["sourceLocale"] != "pt-BR":
-            fail(f"{app_root.name}: source locale must be pt-BR")
-        locales = localization["bundledLocales"]
-        if not isinstance(locales, list) or locales != sorted(locales) or len(set(locales)) != len(locales):
-            fail(f"{app_root.name}: bundled locales must be sorted and unique")
-        if "pt-BR" not in locales or localization["packPolicy"] != "component-scoped":
-            fail(f"{app_root.name}: localization policy is invalid")
+        translations = value["translations"]
+        if not isinstance(translations, dict) or set(translations) != {"en-US"}:
+            fail(f"{app_root.name}: exactly en-US translation is required for MVP")
+        copy = translations["en-US"]
+        if not isinstance(copy, dict) or set(copy) != COPY_FIELDS:
+            fail(f"{app_root.name}: en-US presentation copy is invalid")
+        if not valid_text(copy["title"], 160) or not valid_text(copy["description"], 320):
+            fail(f"{app_root.name}: en-US copy is outside bounds")
         count += 1
     if count == 0:
         fail("no app presentation manifests were found")
