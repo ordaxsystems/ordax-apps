@@ -15,8 +15,10 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import sys
+import tempfile
 
 PUBLICATION_SCHEMA = "ordax-apps.store-catalog-publication/2"
 LAYOUT_SCHEMA = "ordax-apps.store-artifact-layout/1"
@@ -238,48 +240,72 @@ def materialize_bundle(
     if out_root.exists() or out_root.is_symlink():
         raise StoreArtifactBundleError("refusing to overwrite Store artifact bundle output")
     parent = _real_directory(out_root.parent, "Store artifact bundle parent")
-    out_root.mkdir(mode=0o755)
-    out_root = _real_directory(out_root, "Store artifact bundle root")
-
-    seen: set[str] = set()
-    total_bytes = 0
-    for entry in publication.pop("_normalizedEntries"):
-        app_id = entry["appId"]
-        app_root = _real_directory(artifacts_root / app_id, f"{app_id} artifact source")
-        for role in ("package", "release", "compatibility", "componentEnvelope"):
-            identity = entry["artifacts"][role]
-            payload = _read_bound_artifact(app_root / identity["name"], identity, role, app_id)
-            target = out_root / blob_relative_path(identity["sha256"])
-            _write_blob(target, payload)
-            if identity["sha256"] not in seen:
-                seen.add(identity["sha256"])
-                total_bytes += len(payload)
-
-    descriptor = {
-        "$schema": LAYOUT_SCHEMA,
-        "status": "materialized-candidate",
-        "sourcePublication": {
-            "schema": PUBLICATION_SCHEMA,
-            "sha256": hashlib.sha256(publication_bytes).hexdigest(),
-        },
-        "addressing": {
-            "algorithm": "sha256",
-            "pathTemplate": "sha256/{prefix2}/{sha256}",
-        },
-        "blobCount": len(seen),
-        "totalBytes": total_bytes,
-        "authority": {
-            "publication": False,
-            "installation": False,
-            "activation": False,
-        },
-    }
-    descriptor_path = out_root / "store-artifact-layout.json"
+    staging = Path(tempfile.mkdtemp(prefix=f".{out_root.name}.stage-", dir=parent))
+    committed = False
     try:
-        descriptor_path.write_bytes(canonical_json(descriptor))
-    except OSError as exc:
-        raise StoreArtifactBundleError("Store artifact layout descriptor could not be written") from exc
-    return descriptor
+        staging = _real_directory(staging, "Store artifact bundle staging root")
+        seen: set[str] = set()
+        total_bytes = 0
+        normalized_entries = publication.pop("_normalizedEntries")
+        for entry in normalized_entries:
+            app_id = entry["appId"]
+            app_root = _real_directory(artifacts_root / app_id, f"{app_id} artifact source")
+            for role in ("package", "release", "compatibility", "componentEnvelope"):
+                identity = entry["artifacts"][role]
+                payload = _read_bound_artifact(app_root / identity["name"], identity, role, app_id)
+                target = staging / blob_relative_path(identity["sha256"])
+                _write_blob(target, payload)
+                if identity["sha256"] not in seen:
+                    seen.add(identity["sha256"])
+                    total_bytes += len(payload)
+
+        descriptor = {
+            "$schema": LAYOUT_SCHEMA,
+            "status": "materialized-candidate",
+            "sourcePublication": {
+                "schema": PUBLICATION_SCHEMA,
+                "sha256": hashlib.sha256(publication_bytes).hexdigest(),
+            },
+            "addressing": {
+                "algorithm": "sha256",
+                "pathTemplate": "sha256/{prefix2}/{sha256}",
+            },
+            "blobCount": len(seen),
+            "totalBytes": total_bytes,
+            "authority": {
+                "publication": False,
+                "installation": False,
+                "activation": False,
+            },
+        }
+        descriptor_path = staging / "store-artifact-layout.json"
+        descriptor_bytes = canonical_json(descriptor)
+        try:
+            descriptor_fd = os.open(
+                descriptor_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o444,
+            )
+            with os.fdopen(descriptor_fd, "wb") as handle:
+                handle.write(descriptor_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.rename(staging, out_root)
+            if os.name != "nt":
+                directory_fd = os.open(parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+        except OSError as exc:
+            raise StoreArtifactBundleError(
+                "Store artifact bundle commit failed"
+            ) from exc
+        committed = True
+        return descriptor
+    finally:
+        if not committed:
+            shutil.rmtree(staging, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:
