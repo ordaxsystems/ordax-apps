@@ -39,8 +39,10 @@ SOURCE_REPOSITORY = _v1.SOURCE_REPOSITORY
 TRUST_DOMAIN = _v1.TRUST_DOMAIN
 KEY_ID = _v1.KEY_ID
 MAX_CATALOG_BYTES = _v1.MAX_CATALOG_BYTES
-MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
-MAX_ENVELOPE_BYTES = 2 * 1024 * 1024
+MAX_ARTIFACT_BYTES = 32 * 1024 * 1024
+MAX_RELEASE_BYTES = 256 * 1024
+MAX_COMPATIBILITY_BYTES = 64 * 1024
+MAX_ENVELOPE_BYTES = 1 * 1024 * 1024
 MAX_TRUST_BYTES = 16 * 1024
 MAX_VERIFIER_STDOUT = 32 * 1024
 APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
@@ -78,7 +80,7 @@ def _regular_file(path: Path, label: str, max_bytes: int, *, executable: bool = 
     return metadata
 
 
-def _artifact(value: object, label: str) -> dict:
+def _artifact(value: object, label: str, max_bytes: int) -> dict:
     if not isinstance(value, dict) or set(value) != EXPECTED_ARTIFACT_FIELDS:
         raise CatalogPublicationV2Error(f"{label} fields are not canonical")
     name = value.get("name")
@@ -88,7 +90,7 @@ def _artifact(value: object, label: str) -> dict:
         raise CatalogPublicationV2Error(f"{label} name is invalid")
     if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
         raise CatalogPublicationV2Error(f"{label} sha256 is invalid")
-    if not isinstance(size, int) or isinstance(size, bool) or size <= 0 or size > MAX_ARTIFACT_BYTES:
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0 or size > max_bytes:
         raise CatalogPublicationV2Error(f"{label} size is invalid")
     return {"name": name, "sha256": digest, "size": size}
 
@@ -127,9 +129,21 @@ def _validate_candidate_entry(entry: object, source_commit: str) -> dict:
         "releaseMode": "component-slot",
         "sourceCommit": source_commit,
         "artifacts": {
-            "package": _artifact(artifacts["package"], f"{app_id} package"),
-            "release": _artifact(artifacts["release"], f"{app_id} release"),
-            "compatibility": _artifact(artifacts["compatibility"], f"{app_id} compatibility"),
+            "package": _artifact(
+                artifacts["package"],
+                f"{app_id} package",
+                MAX_ARTIFACT_BYTES,
+            ),
+            "release": _artifact(
+                artifacts["release"],
+                f"{app_id} release",
+                MAX_RELEASE_BYTES,
+            ),
+            "compatibility": _artifact(
+                artifacts["compatibility"],
+                f"{app_id} compatibility",
+                MAX_COMPATIBILITY_BYTES,
+            ),
         },
         "trust": {"domain": TRUST_DOMAIN, "requiredKeyId": KEY_ID},
     }
@@ -157,9 +171,9 @@ def read_candidate(path: Path) -> tuple[dict, bytes]:
     return normalized, payload
 
 
-def _verify_bound_artifact(root: Path, record: dict, label: str) -> Path:
+def _verify_bound_artifact(root: Path, record: dict, label: str, max_bytes: int) -> Path:
     path = root / record["name"]
-    metadata = _regular_file(path, label, MAX_ARTIFACT_BYTES)
+    metadata = _regular_file(path, label, max_bytes)
     if metadata.st_size != record["size"]:
         raise CatalogPublicationV2Error(f"{label} size does not match candidate")
     try:
@@ -328,12 +342,23 @@ def render_publication_v2(
             raise CatalogPublicationV2Error(f"{app_id} signed artifact directory must be a real directory")
 
         bound = candidate_entry["artifacts"]
-        package_path = _verify_bound_artifact(app_root, bound["package"], f"{app_id} package")
-        release_path = _verify_bound_artifact(app_root, bound["release"], f"{app_id} release")
+        package_path = _verify_bound_artifact(
+            app_root,
+            bound["package"],
+            f"{app_id} package",
+            MAX_ARTIFACT_BYTES,
+        )
+        release_path = _verify_bound_artifact(
+            app_root,
+            bound["release"],
+            f"{app_id} release",
+            MAX_RELEASE_BYTES,
+        )
         compatibility_path = _verify_bound_artifact(
             app_root,
             bound["compatibility"],
             f"{app_id} compatibility",
+            MAX_COMPATIBILITY_BYTES,
         )
         # Reading and hashing package/release above is intentional even though
         # verify-envelope-v2 authenticates release+compatibility. The candidate
