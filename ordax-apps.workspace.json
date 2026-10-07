@@ -24,7 +24,9 @@
     "converter",
     "text-viewer",
     "image-viewer",
-    "calendar"
+    "calendar",
+    "colors",
+    "character-map"
   ],
   "initial_extraction_candidate": "notes",
   "contracts": {

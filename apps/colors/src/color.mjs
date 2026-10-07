@@ -1,0 +1,3 @@
+export function hexToRgb(value){const m=/^#?([0-9a-f]{6})$/i.exec(String(value).trim());if(!m)throw new TypeError("invalid hex");const n=Number.parseInt(m[1],16);return Object.freeze({r:(n>>16)&255,g:(n>>8)&255,b:n&255});}
+export function rgbToHex(r,g,b){const c=n=>{n=Number(n);if(!Number.isInteger(n)||n<0||n>255)throw new TypeError("invalid rgb");return n.toString(16).padStart(2,"0");};return "#"+c(r)+c(g)+c(b);}
+export function rgbToHsl(r,g,b){r/=255;g/=255;b/=255;const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;let h=0,s=0;const l=(max+min)/2;if(d){s=l>.5?d/(2-max-min):d/(max+min);if(max===r)h=((g-b)/d+(g<b?6:0));else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;}return Object.freeze({h:Math.round(h),s:Math.round(s*100),l:Math.round(l*100)});}
