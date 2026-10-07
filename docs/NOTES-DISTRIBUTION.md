@@ -75,3 +75,40 @@ ordax-apps/main
   -> promote / installed inventory
 ```
 
+
+
+## Catálogo stageable v2
+
+O catálogo de pré-publicação v1 não é suficiente para instalação porque
+`stage-v2` exige também um `runtime-component-envelope` assinado e verificável.
+
+A montagem final usa `ordax-apps.store-catalog-publication/2`. Para cada app,
+a entrada contém as identidades públicas de:
+
+- package;
+- release descriptor v2;
+- compatibility descriptor;
+- `componentEnvelope`.
+
+O finalizador v2 não confia apenas em nome/hash declarados. Antes de incluir
+`componentEnvelope`, ele executa o verifier canônico pinado da plataforma:
+
+```text
+ordax-runtime-component-channel verify-envelope-v2
+  -> assinatura Ed25519 válida no trust fornecido
+  -> component id exato
+  -> versão exata
+  -> source commit exato
+  -> pending health obrigatório
+  -> direct activation proibida
+```
+
+Mesmo depois disso, o catálogo continua sem autoridade. A plataforma deve
+baixar os bytes identificados e executar novamente a verificação do envelope,
+package e compatibility antes de stage. O catálogo nunca substitui o lifecycle.
+
+A CI comprova esse protocolo com chave efêmera e apaga todo material transitório
+antes de publicar artifacts. Enquanto o trust canônico
+`ordax-runtime-components-v1` não estiver pinado e publicação/ativação não
+forem autorizadas, **nenhum payload v2 produzido em CI é publicação de
+produção**.
