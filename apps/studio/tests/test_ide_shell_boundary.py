@@ -25,14 +25,27 @@ def test_workspace_tools_live_on_right_panel():
     assert 'data-view="computer"' in html
 
 
-def test_assistant_shell_is_project_scoped_and_provider_aware():
+def test_assistant_shell_uses_runtime_ssot_not_browser_local_storage():
     source = (ROOT / "assets" / "ide_shell.js").read_text(encoding="utf-8")
-    assert "assistant-shell-v" in source
-    assert "openai:gpt-4o" in source
-    assert "xai:grok" in source
-    assert "anthropic:claude" in source
-    assert "sendAssistantMessage" in source
-    assert "Studio nao simula respostas" in source
+    contract = (ROOT / "src" / "host_contract.js").read_text(encoding="utf-8")
+    assert "assistantState" in source
+    assert "assistantCreateChat" in source
+    assert "assistantSelectChat" in source
+    assert "assistantUpdateChat" in source
+    assert "assistantCloseChat" in source
+    assert "localStorage" not in source
+    assert "openai:gpt-4o" not in source
+    assert "xai:grok" not in source
+    assert "anthropic:claude" not in source
+    for method in (
+        "assistantCatalog",
+        "assistantState",
+        "assistantCreateChat",
+        "assistantSelectChat",
+        "assistantUpdateChat",
+        "assistantCloseChat",
+    ):
+        assert method in contract
 
 
 def test_legacy_controller_routes_views_through_workspace_tabs():

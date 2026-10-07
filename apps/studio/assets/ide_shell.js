@@ -1,178 +1,228 @@
-
 (function(){
 'use strict';
 
-var VERSION=1;
-var PROVIDERS=[
-  {id:'openai:gpt-4o',provider:'OpenAI',model:'GPT-4o'},
-  {id:'xai:grok',provider:'xAI',model:'Grok'},
-  {id:'anthropic:claude',provider:'Anthropic',model:'Claude'}
-];
-var ACCOUNTS=[
-  {id:'ordax',label:'Conta ORDAX'},
-  {id:'local',label:'Sessao local'}
-];
-var shell={project:null,chats:[],activeChatId:null,accountId:'ordax',lastProviderId:'openai:gpt-4o'};
+var shell={
+  project:null,
+  conversations:[],
+  activeConversationId:null,
+  messages:[],
+  catalog:{accounts:[],providers:[],send_supported:false,send_summary:''},
+  loading:false
+};
 var lastProject=null;
+var loadEpoch=0;
 
 function byId(id){return document.getElementById(id)}
-function now(){return new Date().toISOString()}
-function uid(){return 'chat-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8)}
-function key(project){return 'ordax-studio:'+project+':assistant-shell-v'+VERSION}
-function provider(id){return PROVIDERS.find(function(item){return item.id===id})||PROVIDERS[0]}
 function esc(value){return String(value==null?'':value).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-function validAccount(id){return ACCOUNTS.some(function(item){return item.id===id})}
-function validProvider(id){return PROVIDERS.some(function(item){return item.id===id})}
-function chat(index){
-  return {id:uid(),title:'Chat '+index,providerId:shell.lastProviderId,accountId:shell.accountId,createdAt:now(),updatedAt:now(),messages:[]};
-}
-function active(){return shell.chats.find(function(item){return item.id===shell.activeChatId})||null}
-function save(){
-  if(!shell.project)return;
-  localStorage.setItem(key(shell.project),JSON.stringify({
-    version:VERSION,accountId:shell.accountId,lastProviderId:shell.lastProviderId,
-    activeChatId:shell.activeChatId,chats:shell.chats
-  }));
-}
-function load(project){
-  shell={project:project,chats:[],activeChatId:null,accountId:'ordax',lastProviderId:'openai:gpt-4o'};
-  try{
-    var raw=JSON.parse(localStorage.getItem(key(project))||'null');
-    if(raw&&raw.version===VERSION){
-      shell.accountId=validAccount(raw.accountId)?raw.accountId:'ordax';
-      shell.lastProviderId=validProvider(raw.lastProviderId)?raw.lastProviderId:'openai:gpt-4o';
-      shell.chats=Array.isArray(raw.chats)?raw.chats.filter(function(item){return item&&item.id}).map(function(item,i){
-        return {
-          id:String(item.id),title:String(item.title||('Chat '+(i+1))).slice(0,80),
-          providerId:validProvider(item.providerId)?item.providerId:'openai:gpt-4o',
-          accountId:validAccount(item.accountId)?item.accountId:'ordax',
-          createdAt:String(item.createdAt||now()),updatedAt:String(item.updatedAt||now()),
-          messages:Array.isArray(item.messages)?item.messages.slice(-80):[]
-        };
-      }):[];
-      shell.activeChatId=String(raw.activeChatId||'');
-    }
-  }catch(error){}
-  if(!shell.chats.length)shell.chats=[chat(1)];
-  if(!shell.chats.some(function(item){return item.id===shell.activeChatId}))shell.activeChatId=shell.chats[0].id;
-  save();render();
-}
 function status(text){var node=byId('assistantStatus');if(node)node.textContent=text||'Assistente pronto'}
+function hostMethod(name){var host=window.ordaxStudioHost;return host&&typeof host[name]==='function'?host[name].bind(host):null}
+function active(){return shell.conversations.find(function(item){return String(item.id)===String(shell.activeConversationId)})||null}
+function providerValue(providerId,modelId){return String(providerId||'')+'::'+String(modelId||'')}
+function parseProviderValue(value){var parts=String(value||'').split('::');return{providerId:parts[0]||'',modelId:parts.slice(1).join('::')||''}}
+
+function applyState(data){
+  data=data||{};
+  shell.project=String(data.project||shell.project||'');
+  shell.conversations=Array.isArray(data.conversations)?data.conversations:[];
+  shell.messages=Array.isArray(data.messages)?data.messages:[];
+  shell.catalog=data.catalog&&typeof data.catalog==='object'?data.catalog:{accounts:[],providers:[],send_supported:false,send_summary:''};
+  var selection=data.selection||{};
+  shell.activeConversationId=selection.active_conversation_id||null;
+  if(!active()&&shell.conversations.length)shell.activeConversationId=shell.conversations[0].id;
+}
+
+async function reload(){
+  if(!shell.project||shell.loading)return;
+  var method=hostMethod('assistantState');
+  if(!method){status('Runtime incompatível com o assistente persistente');return}
+  var epoch=++loadEpoch;shell.loading=true;
+  try{
+    var result=await method();
+    if(epoch!==loadEpoch)return;
+    if(!result||!result.ok)throw new Error((result&&result.summary)||'Falha ao carregar assistente');
+    applyState(result.data);render();status('Assistente pronto');
+  }catch(error){status(String(error))}
+  finally{if(epoch===loadEpoch)shell.loading=false}
+}
+
 function renderAccounts(){
   var select=byId('assistantAccount');if(!select)return;
-  select.innerHTML=ACCOUNTS.map(function(item){return '<option value="'+esc(item.id)+'">'+esc(item.label)+'</option>'}).join('');
-  select.value=(active()&&active().accountId)||shell.accountId;
+  var accounts=Array.isArray(shell.catalog.accounts)?shell.catalog.accounts:[];
+  select.innerHTML=accounts.map(function(item){
+    var connected=item.connected!==false;
+    return '<option value="'+esc(item.id)+'" '+(connected?'':'disabled')+'>'+esc(item.label||item.id)+(connected?'':' · desconectada')+'</option>';
+  }).join('');
+  var current=active();
+  if(current&&accounts.some(function(item){return String(item.id)===String(current.account_id)&&item.connected!==false})){
+    select.value=current.account_id;
+  }
+  select.disabled=!current||!accounts.length;
 }
+
 function renderProviders(){
   var select=byId('assistantProvider');if(!select)return;
-  select.innerHTML=PROVIDERS.map(function(item){return '<option value="'+esc(item.id)+'">'+esc(item.model)+' · '+esc(item.provider)+'</option>'}).join('');
-  var selected=(active()&&active().providerId)||shell.lastProviderId;
-  select.value=selected;
-  var badge=byId('assistantProviderBadge'),p=provider(selected);
-  if(badge)badge.textContent=p.model+' · '+p.provider;
+  var providers=Array.isArray(shell.catalog.providers)?shell.catalog.providers:[];
+  var options=[];
+  providers.forEach(function(provider){
+    var models=Array.isArray(provider.models)?provider.models:[];
+    models.forEach(function(model){
+      var suffix=model.can_send?'':(model.session_available?' · sessão ativa':' · sem adapter');
+      options.push('<option value="'+esc(providerValue(provider.id,model.id))+'">'+esc((model.label||model.id)+' · '+(provider.label||provider.id)+suffix)+'</option>');
+    });
+  });
+  select.innerHTML=options.join('');
+  var current=active();
+  if(current)select.value=providerValue(current.provider_id,current.model_id);
+  select.disabled=!current||!options.length;
+  var badge=byId('assistantProviderBadge');
+  if(badge){
+    var selected=providers.flatMap(function(provider){return (provider.models||[]).map(function(model){return{provider:provider,model:model}})}).find(function(item){
+      return current&&String(item.provider.id)===String(current.provider_id)&&String(item.model.id)===String(current.model_id);
+    });
+    badge.textContent=selected?(selected.model.label+' · '+selected.provider.label):'Provider não configurado';
+  }
 }
+
 function renderTabs(){
   var root=byId('assistantChatTabs');if(!root)return;root.innerHTML='';
-  shell.chats.forEach(function(item){
+  shell.conversations.forEach(function(item){
     var wrap=document.createElement('div');
-    wrap.className='assistantChatTab'+(item.id===shell.activeChatId?' active':'');
+    wrap.className='assistantChatTab'+(String(item.id)===String(shell.activeConversationId)?' active':'');
     var label=document.createElement('button');
-    label.type='button';label.className='assistantChatLabel';label.textContent=item.title;
-    label.onclick=function(){shell.activeChatId=item.id;shell.accountId=item.accountId;shell.lastProviderId=item.providerId;save();render()};
+    label.type='button';label.className='assistantChatLabel';label.textContent=item.title||'Chat';
+    label.onclick=function(){void selectChat(item.id)};
     wrap.appendChild(label);
-    if(shell.chats.length>1){
+    if(shell.conversations.length>1){
       var close=document.createElement('button');
       close.type='button';close.className='closeChat';close.title='Fechar chat';close.textContent='×';
-      close.onclick=function(){closeChat(item.id)};
+      close.onclick=function(event){event.stopPropagation();void closeChat(item.id)};
       wrap.appendChild(close);
     }
     root.appendChild(wrap);
   });
 }
-function runtimeSessionFor(providerId){
-  var data=(typeof state!=='undefined'&&state.aiSessions)||null;
-  var items=(data&&data.continuations)||[];
-  var p=provider(providerId);
-  return items.find(function(item){
-    var session=(item&&item.session)||{};
-    if(session.state==='completed'||session.state==='failed')return false;
-    var text=((session.provider||'')+' '+(session.model||'')).toLowerCase();
-    return text.indexOf(p.provider.toLowerCase())>=0||text.indexOf(p.model.toLowerCase())>=0;
-  })||null;
-}
+
 function renderThread(){
   var root=byId('assistantThread');if(!root)return;
   var current=active();
-  if(!current){root.innerHTML='<div class="assistantEmpty"><div class="assistantEmptyInner"><h3>Nenhum chat aberto</h3></div></div>';return}
-  var p=provider(current.providerId),session=runtimeSessionFor(current.providerId);
-  if(!current.messages.length&&!session){
-    root.innerHTML='<div class="assistantEmpty"><div class="assistantEmptyInner"><h3>'+esc(current.title)+'</h3><p>'+esc(p.model)+' · '+esc(p.provider)+'</p><p style="margin-top:8px">Chats, conta e provedor sao persistidos por projeto. O host atual ainda nao expoe envio direto de mensagens nesta superficie; o Studio nao simula respostas.</p></div></div>';
+  if(!current){
+    root.innerHTML='<div class="assistantEmpty"><div class="assistantEmptyInner"><h3>Nenhum chat aberto</h3></div></div>';
     return;
   }
-  var html=current.messages.map(function(message){
-    var mine=message.role==='user',time=new Date(message.at||now()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-    return '<div class="assistantMessage '+(mine?'me':'')+'"><div class="assistantMessageBubble"><div class="assistantMessageMeta">'+(mine?'Voce':'ORDAX')+' · '+esc(time)+'</div>'+esc(message.text||'')+'</div></div>';
+  if(!shell.messages.length){
+    var summary=shell.catalog.send_summary||'O chat está pronto para receber um provider configurado.';
+    root.innerHTML='<div class="assistantEmpty"><div class="assistantEmptyInner"><h3>'+esc(current.title||'Chat')+'</h3><p>'+esc(current.model_id||'')+' · '+esc(current.provider_id||'')+'</p><p style="margin-top:8px">'+esc(summary)+'</p></div></div>';
+    return;
+  }
+  root.innerHTML=shell.messages.map(function(message){
+    var mine=String(message.role)==='user';
+    var at=message.created_at?new Date(message.created_at):null;
+    var time=at&&!Number.isNaN(at.getTime())?at.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'';
+    return '<div class="assistantMessage '+(mine?'me':'')+'"><div class="assistantMessageBubble"><div class="assistantMessageMeta">'+esc(mine?'Você':String(message.role||'ORDAX'))+(time?' · '+esc(time):'')+'</div>'+esc(message.content||'')+'</div></div>';
   }).join('');
-  if(session)html+='<div class="assistantMessage"><div class="assistantMessageBubble"><div class="assistantMessageMeta">Sessao autorizada</div>'+esc(p.model)+' possui uma sessao ativa. Use <strong>Execucoes</strong> para acompanhar o estado.</div></div>';
-  root.innerHTML=html;root.scrollTop=root.scrollHeight;
+  root.scrollTop=root.scrollHeight;
 }
+
 function updateSend(){
   var send=byId('assistantSend'),prompt=byId('assistantPrompt');if(!send)return;
-  var enabled=typeof (window.ordaxStudioHost&&window.ordaxStudioHost.sendAssistantMessage)==='function';
+  var enabled=Boolean(shell.catalog.send_supported)&&Boolean(active());
   send.disabled=!enabled;
-  send.title=enabled?'Enviar mensagem para a sessao autorizada':'O host atual ainda nao expoe envio direto para providers';
-  if(prompt)prompt.title=send.title;
+  var title=enabled?'Enviar mensagem':'Envio indisponível: '+String(shell.catalog.send_summary||'nenhum adapter de provider configurado');
+  send.title=title;if(prompt)prompt.title=title;
 }
+
 function render(){renderAccounts();renderProviders();renderTabs();renderThread();updateSend()}
-function addChat(){
-  var item=chat(shell.chats.length+1);shell.chats.push(item);shell.activeChatId=item.id;save();render();
-  var prompt=byId('assistantPrompt');if(prompt)prompt.focus();
-}
-function closeChat(id){
-  var index=shell.chats.findIndex(function(item){return item.id===id});if(index<0)return;
-  shell.chats.splice(index,1);if(!shell.chats.length)shell.chats.push(chat(1));
-  if(shell.activeChatId===id)shell.activeChatId=(shell.chats[Math.max(0,index-1)]||shell.chats[0]).id;
-  save();render();
-}
-async function sendMessage(){
-  var prompt=byId('assistantPrompt'),current=active();
-  var method=window.ordaxStudioHost&&window.ordaxStudioHost.sendAssistantMessage;
-  if(!prompt||!current||typeof method!=='function')return;
-  var text=prompt.value.trim();if(!text)return;status('Enviando...');
+
+async function createChat(){
+  var method=hostMethod('assistantCreateChat'),current=active();
+  if(!method){status('Runtime sem suporte a criação de chats');return}
+  status('Criando chat...');
   try{
-    var result=await method({project:shell.project,chat_id:current.id,account_id:current.accountId,provider_id:current.providerId,text:text});
-    if(!result||!result.ok)throw new Error((result&&result.summary)||'Falha ao enviar mensagem');
-    current.messages.push({role:'user',text:text,at:now()});
-    if(result.data&&result.data.reply)current.messages.push({role:'system',text:String(result.data.reply),at:now()});
-    current.updatedAt=now();prompt.value='';save();renderThread();status('Assistente pronto');
+    var result=await method(
+      '',
+      current?current.account_id:'',
+      current?current.provider_id:'',
+      current?current.model_id:''
+    );
+    if(!result||!result.ok)throw new Error((result&&result.summary)||'Falha ao criar chat');
+    await reload();
+    var prompt=byId('assistantPrompt');if(prompt)prompt.focus();
   }catch(error){status(String(error))}
 }
+
+async function selectChat(id){
+  var method=hostMethod('assistantSelectChat');if(!method)return;
+  status('Abrindo chat...');
+  try{
+    var result=await method(String(id));
+    if(!result||!result.ok)throw new Error((result&&result.summary)||'Falha ao abrir chat');
+    await reload();
+  }catch(error){status(String(error))}
+}
+
+async function closeChat(id){
+  var method=hostMethod('assistantCloseChat');if(!method)return;
+  status('Fechando chat...');
+  try{
+    var result=await method(String(id));
+    if(!result||!result.ok)throw new Error((result&&result.summary)||'Falha ao fechar chat');
+    await reload();
+  }catch(error){status(String(error))}
+}
+
+async function updateChat(changes){
+  var current=active(),method=hostMethod('assistantUpdateChat');if(!current||!method)return;
+  status('Atualizando chat...');
+  try{
+    var result=await method(
+      String(current.id),
+      changes.title===undefined?null:changes.title,
+      changes.account_id===undefined?null:changes.account_id,
+      changes.provider_id===undefined?null:changes.provider_id,
+      changes.model_id===undefined?null:changes.model_id
+    );
+    if(!result||!result.ok)throw new Error((result&&result.summary)||'Falha ao atualizar chat');
+    await reload();
+  }catch(error){status(String(error))}
+}
+
 function bind(){
-  var add=byId('assistantNewChat');if(add)add.onclick=addChat;
-  var account=byId('assistantAccount');if(account)account.onchange=function(event){var current=active();if(!current)return;var value=String(event.target.value);if(!validAccount(value))return;current.accountId=value;shell.accountId=value;current.updatedAt=now();save();render()};
-  var providers=byId('assistantProvider');if(providers)providers.onchange=function(event){var current=active();if(!current)return;var value=String(event.target.value);if(!validProvider(value))return;current.providerId=value;shell.lastProviderId=value;current.updatedAt=now();save();render()};
-  var send=byId('assistantSend');if(send)send.onclick=sendMessage;
-  var prompt=byId('assistantPrompt');if(prompt)prompt.onkeydown=function(event){if(event.key==='Enter'&&!event.shiftKey&&!byId('assistantSend').disabled){event.preventDefault();sendMessage()}};
+  var add=byId('assistantNewChat');if(add)add.onclick=function(){void createChat()};
+  var account=byId('assistantAccount');if(account)account.onchange=function(event){void updateChat({account_id:String(event.target.value)})};
+  var providers=byId('assistantProvider');if(providers)providers.onchange=function(event){
+    var value=parseProviderValue(event.target.value);
+    void updateChat({provider_id:value.providerId,model_id:value.modelId});
+  };
+  var send=byId('assistantSend');if(send)send.onclick=function(){status(shell.catalog.send_summary||'Envio ainda não disponível')};
+  var prompt=byId('assistantPrompt');if(prompt)prompt.onkeydown=function(event){
+    if(event.key==='Enter'&&!event.shiftKey&&!byId('assistantSend').disabled){event.preventDefault();byId('assistantSend').click()}
+  };
   var context=byId('assistantContextButton');if(context)context.onclick=function(){if(window.switchView)window.switchView('overview')};
   var execute=byId('assistantExecuteButton');if(execute)execute.onclick=function(){if(window.switchView)window.switchView('sessions')};
   document.querySelectorAll('[data-system-action]').forEach(function(button){button.onclick=function(){
     var action=button.dataset.systemAction;
     if(action==='account'){var accountButton=document.getElementById('accountButton');if(accountButton)accountButton.click()}
     else if(action==='device'){if(window.switchView)window.switchView('computer')}
-    else status('Configuracoes gerais permanecem no shell do produto.');
+    else status('Configurações gerais permanecem no shell do produto.');
   }});
 }
-async function refreshSessions(){
-  if(!shell.project||typeof loadAiSessions!=='function')return;
-  try{await loadAiSessions();renderThread()}catch(error){}
-}
-function syncProject(){
+
+async function syncProject(){
   var project=(typeof state!=='undefined'&&state.project)||null;
-  if(project&&project!==lastProject){lastProject=project;load(project);refreshSessions()}
-  else if(!project&&lastProject){lastProject=null;shell.project=null}
+  if(project&&project!==lastProject){
+    lastProject=project;shell.project=project;shell.conversations=[];shell.messages=[];shell.activeConversationId=null;
+    await reload();
+  }else if(!project&&lastProject){
+    lastProject=null;shell.project=null;shell.conversations=[];shell.messages=[];shell.activeConversationId=null;render();
+  }
 }
-window.ordaxIdeShell=Object.freeze({getState:function(){return JSON.parse(JSON.stringify(shell))},addChat:addChat,refresh:render});
-bind();syncProject();
-setInterval(syncProject,350);
-setInterval(function(){if(shell.project)refreshSessions()},10000);
+
+window.ordaxIdeShell=Object.freeze({
+  getState:function(){return JSON.parse(JSON.stringify(shell))},
+  refresh:function(){return reload()}
+});
+bind();
+void syncProject();
+setInterval(function(){void syncProject()},350);
+setInterval(function(){if(shell.project)void reload()},15000);
 })();
