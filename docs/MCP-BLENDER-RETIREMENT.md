@@ -19,7 +19,7 @@ O source portátil do **ORDAX Studio** é canônico em `washingtonmsdj/ordax-app
 
 Os itens abaixo não pertencem ao app e precisam de owners próprios:
 
-### washingtonmsdj/ordax-runtime
+### ordaxsystems/ordax-runtime
 
 - ORDAX Runtime para Windows;
 - device host/agent;
