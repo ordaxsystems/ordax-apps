@@ -1,0 +1,4 @@
+{
+  "schema":"ordax.application-action-manifest/1","appId":"image-viewer","appVersion":"0.1.0","authority":"none","execution":"proposal-only",
+  "capabilities":[{"schema":"ordax.application-action-capability/1","appId":"image-viewer","actionId":"image-viewer.inspect-current","title":"Consultar imagem aberta","description":"Consultar a identidade da imagem já aberta no visualizador.","sourceClass":"first-party","platform":"ordax","provider":{"kind":"first-party-native","adapterId":"image-viewer-native","revision":"1"},"binding":{"payloadSha256":null},"parameters":[],"riskClass":"read-only","confirmation":"none","executionAuthorized":false,"modelDirectExecutionAuthorized":false,"provenance":"ordax-apps:apps/image-viewer/actions/manifest.json"}]
+}
