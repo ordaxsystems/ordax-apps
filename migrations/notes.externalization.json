@@ -161,7 +161,7 @@
     "storage_gate": "app-data-v2-ready"
   },
   "distribution_evidence": {
-    "lifecycle_owner_commit": "f46603909ffd08d442a6be5ff6539b8c2a273c77",
+    "lifecycle_owner_commit": "2560e3d8302a88a424cfa3b49e560a8367d97eab",
     "deterministic_package": "proven-ci",
     "platform_package_verification": "proven-ci",
     "install_stage_health_promote": "proven-ci",
