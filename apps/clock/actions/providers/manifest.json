@@ -1,5 +1,5 @@
 {
   "schema":"ordax.application-action-provider-manifest/1",
-  "appId":"clock","appVersion":"0.1.0","authority":"none","execution":"unavailable",
+  "appId":"clock","appVersion":"0.2.0","authority":"none","execution":"unavailable",
   "providers":[{"kind":"first-party-native","adapterId":"clock-native","revision":"1","module":"actions/providers/clock-native.mjs","sha256":"f40a8635f01360cc18256367e5532dfdfc275cfd067fdf6e3364cbde7bbc1e9f"}]
 }
