@@ -174,5 +174,31 @@ class StoreArtifactBundleTests(unittest.TestCase):
             )
 
 
+    def test_bundle_rejects_provenance_or_safety_drift(self) -> None:
+        self.publication["provenance"]["candidateSha256"] = "not-a-digest"
+        self.publication_path.write_bytes(canonical(self.publication))
+        with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "provenance is invalid"):
+            bundle.read_publication(self.publication_path)
+
+        self.publication["provenance"]["candidateSha256"] = "b" * 64
+        self.publication["safety"]["unexpected"] = True
+        self.publication_path.write_bytes(canonical(self.publication))
+        with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "safety boundary drifted"):
+            bundle.read_publication(self.publication_path)
+
+    def test_failed_materialization_leaves_no_partial_bundle(self) -> None:
+        out = self.root / "partial"
+        self.package = self.notes / self.identities["package"]["name"]
+        self.package.write_bytes(b"tampered-after-publication")
+        with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "(size|sha256) does not match"):
+            bundle.materialize_bundle(
+                publication_path=self.publication_path,
+                artifacts_root=self.artifacts,
+                out_root=out,
+            )
+        self.assertFalse(out.exists())
+        self.assertEqual(list(self.root.glob(".partial.stage-*")), [])
+
+
 if __name__ == "__main__":
     unittest.main()
