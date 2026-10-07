@@ -451,6 +451,68 @@ class DeterministicAppPackageTests(unittest.TestCase):
             with self.assertRaisesRegex(builder.AppPackageError, "require confirmation policy"):
                 builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
 
+    def test_file_association_manifest_is_packaged_and_fail_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            write_json(
+                app / "files" / "manifest.json",
+                {
+                    "schema": "ordax.file-association-manifest/1",
+                    "appId": "fixture",
+                    "appVersion": "0.1.0",
+                    "authority": "none",
+                    "handlers": [
+                        {
+                            "role": "view",
+                            "extensions": [".txt"],
+                            "mimeTypes": ["text/plain"],
+                        }
+                    ],
+                },
+            )
+            package = root / "fixture.zip"
+            builder.build_package(app, SOURCE_COMMIT, package)
+            with zipfile.ZipFile(package, "r") as archive:
+                self.assertIn(
+                    "system/apps/fixture/files/manifest.json",
+                    set(archive.namelist()),
+                )
+
+            manifest_path = app / "files" / "manifest.json"
+            value = json.loads(manifest_path.read_text(encoding="utf-8"))
+            value["authority"] = "read-files"
+            write_json(manifest_path, value)
+            with self.assertRaisesRegex(
+                builder.AppPackageError,
+                "file association manifest must not carry authority",
+            ):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture-bad.zip")
+
+    def test_file_association_manifest_rejects_duplicate_or_non_view_handlers(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root)
+            path = app / "files" / "manifest.json"
+            write_json(
+                path,
+                {
+                    "schema": "ordax.file-association-manifest/1",
+                    "appId": "fixture",
+                    "appVersion": "0.1.0",
+                    "authority": "none",
+                    "handlers": [
+                        {
+                            "role": "edit",
+                            "extensions": [".txt"],
+                            "mimeTypes": ["text/plain"],
+                        }
+                    ],
+                },
+            )
+            with self.assertRaisesRegex(builder.AppPackageError, "read-only view handlers"):
+                builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+
     @unittest.skipIf(os.name == "nt", "symlink creation semantics are platform-dependent on Windows")
     def test_symlink_source_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
