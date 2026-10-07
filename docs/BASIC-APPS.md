@@ -37,7 +37,7 @@ Objetivos arquiteturais:
 
 ## Estado da suíte básica
 
-A suíte básica já cobre Calculadora, Conversor, Relógio/Cronômetro/Timer foreground, Calendário, Texto, Imagens, Cores, Mapa de Caracteres, Vídeo, Áudio, PDF e Desenho/Paint. Apps de mídia que ainda não possuem byte-source público usam somente seleção explícita do usuário e Blob URL local; não recebem acesso a caminhos do host, rede ou autoridade adicional.
+A suíte básica já cobre Calculadora, Conversor, Relógio/Cronômetro/Timer foreground, Calendário, Texto, Imagens, Cores, Mapa de Caracteres e Desenho/Paint. Mídia e PDF seguem em PRs próprias (`#108` e `#110`) porque dependem da boundary pública `readMediaPreview()` / `readDocumentPreview()` do OrdaX OS (`prototipo-ordax-os#1322`). Não existe fallback por caminho físico, endpoint Native ou file picker que contorne essa boundary.
 
 ## Próximos candidatos
 
@@ -66,9 +66,8 @@ Estado arquitetural em 2026-10-07:
 | Calendário | app first-party | implementado em modo local/read-only |
 | Visualizador de texto | app first-party | implementado |
 | Visualizador de imagens | app first-party | implementado |
-| Vídeo | app first-party | implementado para seleção local explícita; integração com Arquivos aguarda media-source público |
-| Áudio | app first-party | implementado para seleção local explícita; integração com Arquivos aguarda media-source público |
-| PDF | app first-party | implementado para seleção local explícita; integração com Arquivos aguarda document/media-source público |
+| Áudio/vídeo | `media-player` first-party | PR #108 pronta; depende da boundary pública do OS em `prototipo-ordax-os#1322` |
+| PDF | `pdf-viewer` first-party | PR #110 pronta; depende da boundary pública do OS em `prototipo-ordax-os#1322` |
 | Alarmes/background timer | recurso do Relógio | bloqueado até scheduling/notifications público |
 | Eventos de calendário | recurso do Calendário | bloqueado até persistência/scheduling público |
 | Câmera | app first-party futuro | bloqueado até camera/permission broker público |

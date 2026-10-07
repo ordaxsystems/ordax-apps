@@ -27,9 +27,6 @@
     "calendar",
     "colors",
     "character-map",
-    "video-player",
-    "audio-player",
-    "pdf-viewer",
     "paint"
   ],
   "initial_extraction_candidate": "notes",

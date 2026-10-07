@@ -33,7 +33,7 @@ jobs:
           python3 -m json.tool apps/calculator/ai/manifest.json >/dev/null
           python3 -m json.tool apps/calculator/actions/manifest.json >/dev/null
           python3 -m json.tool apps/calculator/actions/providers/manifest.json >/dev/null
-          for app in clock converter text-viewer image-viewer calendar colors character-map video-player audio-player pdf-viewer paint; do
+          for app in clock converter text-viewer image-viewer calendar colors character-map paint; do
             python3 -m json.tool "apps/$app/app.json" >/dev/null
             python3 -m json.tool "apps/$app/compatibility.json" >/dev/null
             python3 -m json.tool "apps/$app/ai/manifest.json" >/dev/null
@@ -71,9 +71,6 @@ jobs:
           node --check apps/calendar/actions/providers/calendar-native.mjs
           node --check apps/colors/actions/providers/colors-native.mjs
           node --check apps/character-map/actions/providers/character-map-native.mjs
-          node --check apps/video-player/actions/providers/video-player-native.mjs
-          node --check apps/audio-player/actions/providers/audio-player-native.mjs
-          node --check apps/pdf-viewer/actions/providers/pdf-viewer-native.mjs
           node --check apps/paint/actions/providers/paint-native.mjs
           python3 tools/verify_app_actions.py
 
@@ -106,9 +103,6 @@ jobs:
           node --test apps/calendar/tests/*.test.mjs
           node --test apps/colors/tests/*.test.mjs
           node --test apps/character-map/tests/*.test.mjs
-          node --test apps/video-player/tests/*.test.mjs
-          node --test apps/audio-player/tests/*.test.mjs
-          node --test apps/pdf-viewer/tests/*.test.mjs
           node --test apps/paint/tests/*.test.mjs
           for app in clock converter text-viewer image-viewer calendar colors character-map video-player audio-player pdf-viewer paint; do
             node --check "apps/$app/src/runtime.mjs"
