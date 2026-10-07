@@ -1,0 +1,1 @@
+{"schema":"ordax.application-action-provider-manifest/1","appId":"character-map","appVersion":"0.1.0","authority":"none","execution":"unavailable","providers":[{"kind":"first-party-native","adapterId":"character-map-native","revision":"1","module":"actions/providers/character-map-native.mjs","sha256":"302901e6c6d0408d95c2e59ed09d2654747766f3ffbed753cce2903e343a47a5"}]}

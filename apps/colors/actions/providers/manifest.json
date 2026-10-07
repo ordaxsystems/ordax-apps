@@ -1,0 +1,1 @@
+{"schema":"ordax.application-action-provider-manifest/1","appId":"colors","appVersion":"0.1.0","authority":"none","execution":"unavailable","providers":[{"kind":"first-party-native","adapterId":"colors-native","revision":"1","module":"actions/providers/colors-native.mjs","sha256":"19f27dac76be4e776fefe709953caef023ccecd290fe720cde7b8fdd5d6ed448"}]}
