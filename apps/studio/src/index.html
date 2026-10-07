@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="../assets/product_account.css">
 <link rel="stylesheet" href="../assets/blender-connection.css">
 <link rel="stylesheet" href="../assets/ide_shell.css">
+<link rel="stylesheet" href="../assets/assistant_surface.css">
 </head>
 <body>
 <header class="appbar">
@@ -83,6 +84,18 @@
         <span id="workspaceHealth" class="statusPill"></span>
       </div>
 
+      <div class="assistantModeBar" role="tablist" aria-label="Modo do assistente">
+        <button id="assistantWebMode" class="assistantMode active" type="button" role="tab" aria-selected="true">Web IA</button>
+        <button id="assistantLocalMode" class="assistantMode" type="button" role="tab" aria-selected="false">IA local / API</button>
+        <span class="assistantModeHint">ChatGPT padrão · Grok, Claude e outros prontos para validação</span>
+      </div>
+      <div id="assistantWebSlot" class="assistantWebSlot" aria-label="Navegador do assistente">
+        <div class="assistantWebFallback">
+          <span class="orb"></span>
+          <div><strong>Assistente Web</strong><small>Carregando o navegador nativo do provedor…</small></div>
+        </div>
+      </div>
+      <div id="localAssistantPanel" class="localAssistantPanel hidden">
       <div class="assistantToolbar">
         <div>
           <div class="eyebrow">ASSISTENTE</div>
@@ -118,6 +131,7 @@
             <button id="assistantSend" class="primary" type="button">Enviar</button>
           </div>
         </div>
+      </div>
       </div>
     </section>
 
@@ -202,6 +216,7 @@
 <script src="../assets/blender-connection.js"></script>
 <script src="../assets/product_account.js"></script>
 <script src="../assets/ide_shell.js"></script>
+<script src="../assets/assistant_surface.js"></script>
 <script src="../assets/ide_layout.js"></script>
 </body>
 </html>
