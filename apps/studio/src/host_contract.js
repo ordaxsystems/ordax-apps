@@ -43,6 +43,7 @@
   ]);
 
   const OPTIONAL_METHODS = Object.freeze([
+    "presentAssistantSurface",
     "remoteComputerGrants",
     "authorizeRemoteComputerGrant",
     "revokeRemoteComputerGrant",
