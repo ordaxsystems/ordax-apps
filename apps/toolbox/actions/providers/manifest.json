@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "toolbox",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "toolbox-native",
+      "revision": "1",
+      "module": "actions/providers/toolbox-native.mjs",
+      "sha256": "11b15226df40c7aa1e6578feda485312a24eee1f23dbbcc2c7f2d947f0a6e1a9"
+    }
+  ]
+}

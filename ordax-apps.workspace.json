@@ -29,7 +29,8 @@
     "character-map",
     "paint",
     "media-player",
-    "pdf-viewer"
+    "pdf-viewer",
+    "toolbox"
   ],
   "initial_extraction_candidate": "notes",
   "contracts": {

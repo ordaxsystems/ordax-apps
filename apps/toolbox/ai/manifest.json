@@ -1,0 +1,25 @@
+{
+  "schema": "ordax.app-intelligence-manifest/1",
+  "appId": "toolbox",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "declarative-only",
+  "instructions": [
+    "Use Ferramentas para utilitários locais e determinísticos ou criptograficamente aleatórios executados no próprio app.",
+    "Não represente senha gerada como armazenada, sincronizada ou recuperável pelo OrdaX.",
+    "O manifesto descreve a capacidade do app e não concede execução direta ao modelo."
+  ],
+  "intents": [
+    {
+      "id": "toolbox.inspect-tools",
+      "description": "Consultar quais utilitários locais estão disponíveis na Caixa de Ferramentas.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [],
+      "examples": [
+        "Quais ferramentas locais estão disponíveis?",
+        "Abra a caixa de ferramentas."
+      ]
+    }
+  ]
+}
