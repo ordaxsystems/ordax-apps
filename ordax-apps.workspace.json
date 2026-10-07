@@ -26,7 +26,11 @@
     "image-viewer",
     "calendar",
     "colors",
-    "character-map"
+    "character-map",
+    "video-player",
+    "audio-player",
+    "pdf-viewer",
+    "paint"
   ],
   "initial_extraction_candidate": "notes",
   "contracts": {
