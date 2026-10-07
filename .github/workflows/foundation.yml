@@ -33,6 +33,13 @@ jobs:
           python3 -m json.tool apps/calculator/ai/manifest.json >/dev/null
           python3 -m json.tool apps/calculator/actions/manifest.json >/dev/null
           python3 -m json.tool apps/calculator/actions/providers/manifest.json >/dev/null
+          for app in clock converter text-viewer; do
+            python3 -m json.tool "apps/$app/app.json" >/dev/null
+            python3 -m json.tool "apps/$app/compatibility.json" >/dev/null
+            python3 -m json.tool "apps/$app/ai/manifest.json" >/dev/null
+            python3 -m json.tool "apps/$app/actions/manifest.json" >/dev/null
+            python3 -m json.tool "apps/$app/actions/providers/manifest.json" >/dev/null
+          done
           python3 -m json.tool migrations/notes.externalization.json >/dev/null
           python3 -m json.tool migrations/projects.externalization.json >/dev/null
           python3 -m json.tool migrations/notes.source-snapshot.json >/dev/null
@@ -57,6 +64,9 @@ jobs:
           node --check apps/notes/actions/providers/notes-native.mjs
           node --check apps/studio/actions/providers/studio-native.mjs
           node --check apps/calculator/actions/providers/calculator-native.mjs
+          node --check apps/clock/actions/providers/clock-native.mjs
+          node --check apps/converter/actions/providers/converter-native.mjs
+          node --check apps/text-viewer/actions/providers/text-viewer-native.mjs
           python3 tools/verify_app_actions.py
 
       - name: Prove Calculator portable behavior and package boundary
@@ -77,6 +87,29 @@ jobs:
             --package "$out/calculator.zip" \
             --release "$out/release/calculator.release.json" \
             --compatibility "$out/release/calculator.compatibility.json"
+
+      - name: Prove basic MVP utility apps
+        run: |
+          set -euo pipefail
+          node --test apps/clock/tests/*.test.mjs
+          node --test apps/converter/tests/*.test.mjs
+          node --test apps/text-viewer/tests/*.test.mjs
+          for app in clock converter text-viewer; do
+            node --check "apps/$app/src/runtime.mjs"
+            out="/tmp/ordax-$app"
+            rm -rf "$out"
+            mkdir -p "$out/release"
+            python3 tools/app-package/build.py build \
+              --app-root "apps/$app" \
+              --source-commit "$(git rev-parse HEAD)" \
+              --compatibility "apps/$app/compatibility.json" \
+              --package-out "$out/$app.zip" \
+              --release-dir "$out/release"
+            python3 tools/app-package/build.py verify \
+              --package "$out/$app.zip" \
+              --release "$out/release/$app.release.json" \
+              --compatibility "$out/release/$app.compatibility.json"
+          done
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
