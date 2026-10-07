@@ -138,7 +138,9 @@ class ComponentSigningRequestTests(unittest.TestCase):
                     artifacts_root=artifacts,
                 )
 
-            handoff_path, artifacts, value, _payload = self.build_candidate(root / "second")
+            second = root / "second"
+            second.mkdir()
+            handoff_path, artifacts, value, _payload = self.build_candidate(second)
             value["trust"]["requiredKeyId"] = "other-key"
             handoff_path.write_bytes(signing.canonical_json(value))
             with self.assertRaisesRegex(
