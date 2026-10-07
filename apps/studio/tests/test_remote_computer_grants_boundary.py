@@ -84,14 +84,43 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         self.assertNotIn("sessionStorage", self.account)
 
     def test_remote_and_local_authority_are_presented_as_independent_gates(self) -> None:
-        self.assertIn("As duas autoriza??es s?o necess?rias", self.computer)
-        self.assertIn("Isso n?o cria grant remoto", self.computer)
+        self.assertIn("As duas autorizações são necessárias", self.computer)
+        self.assertIn("Isso não cria grant remoto", self.computer)
 
     def test_legacy_custom_grants_are_visible_but_never_auto_upgraded(self) -> None:
         self.assertIn("custom-device-grant", self.computer)
-        self.assertIn("Autoriza??o legada detectada", self.computer)
+        self.assertIn("Autorização legada detectada", self.computer)
         self.assertIn("nunca amplia um grant existente automaticamente", self.computer)
         self.assertIn("Revogar legado", self.computer)
+
+    def test_computer_access_ui_has_clean_portuguese_and_status_summary(self) -> None:
+        for expected in (
+            "Área de transferência",
+            "Sem expiração",
+            "Válido até",
+            "AUTORIZAÇÃO REMOTA",
+            "POLÍTICA LOCAL DO DONO",
+            "Até 32 raízes absolutas",
+            "Até 64 executáveis",
+            "Revisão",
+        ):
+            self.assertIn(expected, self.computer)
+        for broken in (
+            "??",
+            "n?o",
+            "pol?tica",
+            "v?nculo",
+            "sess?o",
+            "autoriza??o",
+            "necess?rias",
+            "mem?ria",
+            "sessão ? mantida",
+        ):
+            self.assertNotIn(broken, self.computer)
+        self.assertIn("accessSummary", self.computer)
+        self.assertIn("accessStatusChip", self.computer)
+        self.assertIn("Computer Control", self.computer)
+
 
 
 if __name__ == "__main__":
