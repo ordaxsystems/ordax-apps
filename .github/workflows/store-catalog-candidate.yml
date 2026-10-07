@@ -1,0 +1,113 @@
+name: Store Catalog Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**/app.json'
+      - 'migrations/*.compatibility.json'
+      - 'tools/app-package/**'
+      - 'tests/test_store_catalog_candidate.py'
+      - '.github/workflows/store-catalog-candidate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/**/app.json'
+      - 'migrations/*.compatibility.json'
+      - 'tools/app-package/**'
+      - 'tests/test_store_catalog_candidate.py'
+      - '.github/workflows/store-catalog-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Prove deterministic catalog boundary
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tools/app-package/render_store_catalog_candidate.py
+          python3 -m unittest tests/test_store_catalog_candidate.py
+
+      - name: Build exact Notes catalog input
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          rm -rf "$out"
+          mkdir -p "$out/notes/release"
+
+          python3 tools/app-package/build.py build \
+            --app-root apps/notes \
+            --source-commit "$GITHUB_SHA" \
+            --compatibility migrations/notes.compatibility.json \
+            --package-out "$out/notes/notes.zip" \
+            --release-dir "$out/notes/release"
+
+          python3 tools/app-package/build.py verify \
+            --package "$out/notes/notes.zip" \
+            --release "$out/notes/release/notes.release.json" \
+            --compatibility "$out/notes/release/notes.compatibility.json"
+
+          python3 tools/app-package/render_unsigned_handoff.py \
+            --package "$out/notes/notes.zip" \
+            --release "$out/notes/release/notes.release.json" \
+            --compatibility "$out/notes/release/notes.compatibility.json" \
+            --app-id notes \
+            --source-commit "$GITHUB_SHA" \
+            --out "$out/notes/notes.unsigned-candidate.json"
+
+          python3 tools/app-package/render_store_catalog_candidate.py \
+            --handoff "$out/notes/notes.unsigned-candidate.json" \
+            --apps-root apps \
+            --source-commit "$GITHUB_SHA" \
+            --out "$out/store.catalog-candidate.json"
+
+      - name: Assert catalog cannot grant lifecycle authority
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          test -z "$(find "$out" -type f \( -iname '*.pem' -o -iname '*.key' -o -iname '*.p12' -o -iname '*.pfx' \) -print -quit)"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ['RUNNER_TEMP']) / 'ordax-store-catalog-proof' / 'store.catalog-candidate.json'
+          value = json.loads(path.read_text(encoding='utf-8'))
+          assert value['$schema'] == 'ordax-apps.store-catalog-candidate/1'
+          assert value['status'] == 'unsigned-catalog-candidate'
+          assert value['source'] == {
+              'repository': 'washingtonmsdj/ordax-apps',
+              'commit': os.environ['GITHUB_SHA'],
+          }
+          assert [entry['appId'] for entry in value['entries']] == ['notes']
+          assert value['authority'] == {
+              'signing': False,
+              'publication': False,
+              'installation': False,
+              'activation': False,
+              'rollback': False,
+          }
+          assert value['safety']['catalogGrantsAuthority'] is False
+          assert value['safety']['platformLifecycleRequired'] is True
+          assert value['safety']['requestSelectsArtifact'] is False
+          assert value['safety']['requestSelectsVersion'] is False
+          print('ORDAX_STORE_CATALOG_AUTHORITY_BOUNDARY=PASS')
+          PY
+
+      - name: Upload public-only catalog candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-store-catalog-candidate-${{ github.sha }}
+          path: ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-candidate.json
+          if-no-files-found: error
+          retention-days: 14
