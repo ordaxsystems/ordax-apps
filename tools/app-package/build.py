@@ -46,9 +46,7 @@ ACTION_PARAMETER_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 PROVIDER_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,127}$")
 URI_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]{0,31}$")
 FILE_EXTENSION_RE = re.compile(r"^\.[a-z0-9][a-z0-9.+_-]{0,15}$")
-MEDIA_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9!#URI_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]{0,31}$")
-^_.+-]{0,63}/[a-z0-9][a-z0-9!#URI_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]{0,31}$")
-^_.+-]{0,127}$")
+MEDIA_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}/[a-z0-9][a-z0-9!#$&^_.+-]{0,127}$")
 AI_EFFECTS = {"none", "read", "write", "external-write", "destructive"}
 AI_CONFIRMATION_MODES = {"none", "policy", "explicit"}
 AI_PARAMETER_TYPES = {"string", "number", "integer", "boolean", "string-list", "json"}
