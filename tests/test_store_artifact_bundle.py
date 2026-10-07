@@ -1,0 +1,178 @@
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+TOOL = ROOT / "tools" / "app-package" / "materialize_store_artifact_bundle.py"
+_spec = importlib.util.spec_from_file_location("store_artifact_bundle", TOOL)
+bundle = importlib.util.module_from_spec(_spec)
+assert _spec.loader is not None
+_spec.loader.exec_module(bundle)
+
+COMMIT = "a" * 40
+
+
+def canonical(value: object) -> bytes:
+    return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def identity(name: str, payload: bytes) -> dict:
+    return {"name": name, "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)}
+
+
+class StoreArtifactBundleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.artifacts = self.root / "artifacts"
+        self.notes = self.artifacts / "notes"
+        self.notes.mkdir(parents=True)
+        self.bytes = {
+            "package": b"notes-package",
+            "release": b'{"release":"notes"}\n',
+            "compatibility": b'{"compatibility":"notes"}\n',
+            "componentEnvelope": b'{"envelope":"notes"}\n',
+        }
+        names = {
+            "package": "notes.zip",
+            "release": "notes.release.json",
+            "compatibility": "notes.compatibility.json",
+            "componentEnvelope": "notes.runtime-component-envelope.json",
+        }
+        self.identities = {}
+        for role, payload in self.bytes.items():
+            record = identity(names[role], payload)
+            self.identities[role] = record
+            (self.notes / record["name"]).write_bytes(payload)
+        self.publication = {
+            "$schema": "ordax-apps.store-catalog-publication/2",
+            "status": "unsigned-publication-payload",
+            "sequence": 9,
+            "source": {"repository": "washingtonmsdj/ordax-apps", "commit": COMMIT},
+            "entries": [{
+                "appId": "notes",
+                "title": "Notas",
+                "version": "0.4.3",
+                "releaseMode": "component-slot",
+                "sourceCommit": COMMIT,
+                "artifacts": self.identities,
+                "trust": {
+                    "domain": "runtime-components",
+                    "requiredKeyId": "ordax-runtime-components-v1",
+                },
+            }],
+            "trust": {
+                "domain": "runtime-components",
+                "requiredKeyId": "ordax-runtime-components-v1",
+            },
+            "provenance": {
+                "candidateSchema": "ordax-apps.store-catalog-candidate/1",
+                "candidateSha256": "b" * 64,
+            },
+            "authority": {
+                "signing": False,
+                "publication": False,
+                "installation": False,
+                "activation": False,
+                "rollback": False,
+            },
+            "safety": {
+                "requiresExternalSignature": True,
+                "canonicalPublicAnchorRequired": True,
+                "componentEnvelopesRequired": True,
+                "componentEnvelopesVerifiedBeforeCatalogAssembly": True,
+                "componentEnvelopesReverifiedByPlatformLifecycle": True,
+                "platformLifecycleRequired": True,
+                "payloadGrantsAuthority": False,
+            },
+        }
+        self.publication_path = self.root / "publication.json"
+        self.publication_path.write_bytes(canonical(self.publication))
+
+    def tearDown(self) -> None:
+        self.temp.cleanup()
+
+    def test_bundle_materializes_only_content_addressed_blobs_without_urls(self) -> None:
+        out = self.root / "bundle"
+        descriptor = bundle.materialize_bundle(
+            publication_path=self.publication_path,
+            artifacts_root=self.artifacts,
+            out_root=out,
+        )
+        self.assertEqual(descriptor["$schema"], "ordax-apps.store-artifact-layout/1")
+        self.assertEqual(descriptor["addressing"], {
+            "algorithm": "sha256",
+            "pathTemplate": "sha256/{prefix2}/{sha256}",
+        })
+        self.assertEqual(descriptor["blobCount"], 4)
+        self.assertEqual(descriptor["authority"], {
+            "publication": False,
+            "installation": False,
+            "activation": False,
+        })
+        self.assertNotIn("url", json.dumps(descriptor).lower())
+        for role, record in self.identities.items():
+            path = out / bundle.blob_relative_path(record["sha256"])
+            self.assertEqual(path.read_bytes(), self.bytes[role])
+
+    def test_bundle_is_bound_to_exact_publication_bytes(self) -> None:
+        out = self.root / "bundle"
+        descriptor = bundle.materialize_bundle(
+            publication_path=self.publication_path,
+            artifacts_root=self.artifacts,
+            out_root=out,
+        )
+        self.assertEqual(
+            descriptor["sourcePublication"]["sha256"],
+            hashlib.sha256(self.publication_path.read_bytes()).hexdigest(),
+        )
+
+    def test_bundle_rejects_tampered_or_oversized_identity_before_output(self) -> None:
+        self.publication["entries"][0]["artifacts"]["package"]["sha256"] = "c" * 64
+        self.publication_path.write_bytes(canonical(self.publication))
+        with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "sha256 does not match"):
+            bundle.materialize_bundle(
+                publication_path=self.publication_path,
+                artifacts_root=self.artifacts,
+                out_root=self.root / "tampered",
+            )
+
+        self.publication["entries"][0]["artifacts"]["package"] = {
+            "name": "notes.zip",
+            "sha256": "d" * 64,
+            "size": (32 * 1024 * 1024) + 1,
+        }
+        self.publication_path.write_bytes(canonical(self.publication))
+        with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "identity is invalid"):
+            bundle.read_publication(self.publication_path)
+
+    def test_bundle_rejects_authority_or_url_smuggling(self) -> None:
+        self.publication["authority"]["publication"] = True
+        self.publication_path.write_bytes(canonical(self.publication))
+        with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "authority-free"):
+            bundle.read_publication(self.publication_path)
+
+        self.publication["authority"]["publication"] = False
+        self.publication["entries"][0]["artifacts"]["package"]["url"] = "https://example.invalid/notes.zip"
+        self.publication_path.write_bytes(canonical(self.publication))
+        with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "identity fields"):
+            bundle.read_publication(self.publication_path)
+
+    def test_bundle_refuses_output_overwrite(self) -> None:
+        out = self.root / "bundle"
+        out.mkdir()
+        with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "refusing to overwrite"):
+            bundle.materialize_bundle(
+                publication_path=self.publication_path,
+                artifacts_root=self.artifacts,
+                out_root=out,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
