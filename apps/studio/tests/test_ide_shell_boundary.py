@@ -126,7 +126,11 @@ def test_web_ai_is_primary_assistant_surface_with_local_mode_secondary():
 
 
 def test_studio_opens_directly_into_three_column_shell():
+    html = (ROOT / "src" / "index.html").read_text(encoding="utf-8-sig")
     source = (ROOT / "assets" / "studio.js").read_text(encoding="utf-8")
+    assert 'id="projectHome" class="homeShell hidden"' in html
+    assert 'id="workspace" class="workspace"' in html
+    assert 'id="workspace" class="workspace hidden"' not in html
     assert "$('projectHome').classList.add('hidden')" in source
     assert "$('workspace').classList.remove('hidden')" in source
     assert "state.projects[0]?.slug" in source
