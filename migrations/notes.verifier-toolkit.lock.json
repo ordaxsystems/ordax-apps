@@ -1,7 +1,7 @@
 {
   "$schema": "ordax-apps.notes-verifier-toolkit-lock/1",
   "repository": "washingtonmsdj/prototipo-ordax-os",
-  "commit": "e4aff747906b31bb2a409bb9b0fd751f909a72d8",
+  "commit": "029d88b5e26fd1c976c1e5acbc1ff393481eb087",
   "verifier_path": "sdk/app-sdk-v1/verify_unsigned_candidate.py",
   "policy_path": "sdk/app-sdk-v1/runtime-component-package-policy.json",
   "authority": "none"
