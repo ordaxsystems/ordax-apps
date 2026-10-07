@@ -69,12 +69,14 @@ jobs:
             tools/app-package/render_store_catalog_candidate.py \
             tools/app-package/render_store_catalog_publication.py \
             tools/app-package/render_store_catalog_publication_v2.py \
-            tools/app-package/materialize_store_artifact_bundle.py
+            tools/app-package/materialize_store_artifact_bundle.py \
+            tools/app-package/render_component_signing_request.py
           python3 -m unittest \
             tests/test_store_catalog_candidate.py \
             tests/test_store_catalog_publication.py \
             tests/test_store_catalog_publication_v2.py \
-            tests/test_store_artifact_bundle.py
+            tests/test_store_artifact_bundle.py \
+            tests/test_component_signing_request.py
 
       - name: Build canonical platform verifier
         run: |
@@ -131,6 +133,12 @@ jobs:
             "$out/artifacts/notes/notes.release.json"
           cp "$out/artifacts/notes/release/notes.compatibility.json" \
             "$out/artifacts/notes/notes.compatibility.json"
+
+
+          python3 tools/app-package/render_component_signing_request.py \
+            --handoff "$out/notes.unsigned-candidate.json" \
+            --artifacts-root "$out/artifacts/notes" \
+            --out "$out/notes.component-signing-request.json"
 
       - name: Prove signed component envelope requirement for catalog v2
         run: |
@@ -304,6 +312,8 @@ jobs:
         with:
           name: ordax-store-catalog-prepublication-${{ github.sha }}
           path: |
+            ${{ runner.temp }}/ordax-store-catalog-proof/notes.unsigned-candidate.json
+            ${{ runner.temp }}/ordax-store-catalog-proof/notes.component-signing-request.json
             ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-candidate.json
             ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-publication-v1.json
           if-no-files-found: error
