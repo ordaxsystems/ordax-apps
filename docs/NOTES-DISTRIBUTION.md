@@ -125,3 +125,22 @@ candidate.
 Assim, `release` e `componentEnvelope` não podem representar descritores
 diferentes com a mesma identidade superficial. O lifecycle continua obrigado a
 reverificar envelope, compatibility e package antes do stage.
+
+### Layout de distribuição dos bytes
+
+A identidade `{name, sha256, size}` do catálogo não contém URL. Os artifacts
+stageable são materializados pelo publisher em layout content-addressed:
+
+```text
+sha256/<primeiros-2-do-sha256>/<sha256-completo>
+```
+
+Assim, um transport owner futuro precisa apenas de um **base origin configurado
+fora do catálogo** e da identidade já autenticada. O nome do arquivo não
+participa da seleção do endpoint e nenhuma tabela paralela de versão/URL é
+necessária.
+
+O descritor `ordax-apps.store-artifact-layout/1` prende a materialização ao
+SHA-256 dos bytes exatos do publication v2 e permanece `authority=false`.
+Durante a CI atual, o bundle usa apenas o envelope efêmero de prova e é removido
+antes do upload; portanto não é canal público nem publicação de produção.
