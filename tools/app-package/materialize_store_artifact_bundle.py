@@ -37,7 +37,7 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
-SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$")
+SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$")
 
 
 class StoreArtifactBundleError(RuntimeError):
