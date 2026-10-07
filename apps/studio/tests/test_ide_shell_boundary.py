@@ -68,3 +68,36 @@ def test_assistant_selection_works_before_first_chat_and_has_shortcuts():
     assert "event.shiftKey&&String(event.key).toLowerCase()==='n'" in source
     assert "/^[1-9]$/.test(event.key)" in source
     assert "event.altKey&&String(event.key).toLowerCase()==='c'" in source
+
+
+def test_ide_layout_is_project_scoped_and_accessible():
+    html = (ROOT / "src" / "index.html").read_text(encoding="utf-8-sig")
+    layout = (ROOT / "assets" / "ide_layout.js").read_text(encoding="utf-8")
+    css = (ROOT / "assets" / "ide_shell.css").read_text(encoding="utf-8")
+    assert 'id="sidebarResizeHandle"' in html
+    assert 'id="assistantResizeHandle"' in html
+    assert 'role="separator"' in html
+    assert '../assets/ide_layout.js' in html
+    assert "ide-layout-v1" in layout
+    assert "shellProject()" in layout
+    assert "localStorage.setItem(storageKey(currentProject)" in layout
+    assert "setPointerCapture" in layout
+    assert "ArrowLeft" in layout and "ArrowRight" in layout
+    assert "event.altKey&&event.key==='0'" in layout
+    assert "--ide-sidebar-width" in css
+    assert "--ide-assistant-width" in css
+    assert "body.ideResizing iframe" in css
+
+
+def test_layout_state_does_not_duplicate_assistant_runtime_ssot():
+    layout = (ROOT / "assets" / "ide_layout.js").read_text(encoding="utf-8")
+    for forbidden in (
+        "assistantState",
+        "assistantCreateChat",
+        "account_id",
+        "provider_id",
+        "model_id",
+        "conversations",
+        "messages",
+    ):
+        assert forbidden not in layout
