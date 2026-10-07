@@ -6,18 +6,22 @@ on:
     paths:
       - 'apps/**/app.json'
       - 'migrations/*.compatibility.json'
+      - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
       - 'tests/test_store_catalog_candidate.py'
       - 'tests/test_store_catalog_publication.py'
+      - 'tests/test_store_catalog_publication_v2.py'
       - '.github/workflows/store-catalog-candidate.yml'
   pull_request:
     branches: [main]
     paths:
       - 'apps/**/app.json'
       - 'migrations/*.compatibility.json'
+      - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
       - 'tests/test_store_catalog_candidate.py'
       - 'tests/test_store_catalog_publication.py'
+      - 'tests/test_store_catalog_publication_v2.py'
       - '.github/workflows/store-catalog-candidate.yml'
   workflow_dispatch:
 
@@ -27,52 +31,89 @@ permissions:
 jobs:
   catalog-candidate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Checkout exact source
+      - name: Checkout exact app source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+
+      - name: Checkout pinned platform lifecycle verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: washingtonmsdj/prototipo-ordax-os
+          ref: f46603909ffd08d442a6be5ff6539b8c2a273c77
+          path: .ordax-platform-lifecycle
+          persist-credentials: false
+
+      - name: Verify pinned platform lifecycle identity
+        run: |
+          set -euo pipefail
+          expected="$(python3 -c 'import json; print(json.load(open("migrations/notes.platform-lifecycle.lock.json", encoding="utf-8"))["commit"])')"
+          actual="$(git -C .ordax-platform-lifecycle rev-parse HEAD)"
+          test "$actual" = "$expected"
+          test "$(python3 -c 'import json; print(json.load(open("migrations/notes.platform-lifecycle.lock.json", encoding="utf-8"))["tool_path"])')" = "tools/runtime-component-channel"
+
+      - name: Set up Go for canonical platform verifier
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: .ordax-platform-lifecycle/tools/runtime-component-channel/go.mod
+          cache: false
 
       - name: Prove deterministic catalog boundaries
         run: |
           set -euo pipefail
           python3 -m py_compile \
             tools/app-package/render_store_catalog_candidate.py \
-            tools/app-package/render_store_catalog_publication.py
+            tools/app-package/render_store_catalog_publication.py \
+            tools/app-package/render_store_catalog_publication_v2.py
           python3 -m unittest \
             tests/test_store_catalog_candidate.py \
-            tests/test_store_catalog_publication.py
+            tests/test_store_catalog_publication.py \
+            tests/test_store_catalog_publication_v2.py
+
+      - name: Build canonical platform verifier
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-platform-verifier"
+          mkdir -p "$out"
+          (
+            cd .ordax-platform-lifecycle/tools/runtime-component-channel
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o "$out/ordax-runtime-component-channel" .
+          )
+          test -x "$out/ordax-runtime-component-channel"
 
       - name: Build exact Notes catalog input
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/ordax-store-catalog-proof"
           rm -rf "$out"
-          mkdir -p "$out/notes/release"
+          mkdir -p "$out/artifacts/notes/release"
 
           python3 tools/app-package/build.py build \
             --app-root apps/notes \
             --source-commit "$GITHUB_SHA" \
             --compatibility migrations/notes.compatibility.json \
-            --package-out "$out/notes/notes.zip" \
-            --release-dir "$out/notes/release"
+            --package-out "$out/artifacts/notes/notes.zip" \
+            --release-dir "$out/artifacts/notes/release"
 
           python3 tools/app-package/build.py verify \
-            --package "$out/notes/notes.zip" \
-            --release "$out/notes/release/notes.release.json" \
-            --compatibility "$out/notes/release/notes.compatibility.json"
+            --package "$out/artifacts/notes/notes.zip" \
+            --release "$out/artifacts/notes/release/notes.release.json" \
+            --compatibility "$out/artifacts/notes/release/notes.compatibility.json"
 
           python3 tools/app-package/render_unsigned_handoff.py \
-            --package "$out/notes/notes.zip" \
-            --release "$out/notes/release/notes.release.json" \
-            --compatibility "$out/notes/release/notes.compatibility.json" \
+            --package "$out/artifacts/notes/notes.zip" \
+            --release "$out/artifacts/notes/release/notes.release.json" \
+            --compatibility "$out/artifacts/notes/release/notes.compatibility.json" \
             --app-id notes \
             --source-commit "$GITHUB_SHA" \
-            --out "$out/notes/notes.unsigned-candidate.json"
+            --out "$out/notes.unsigned-candidate.json"
 
           python3 tools/app-package/render_store_catalog_candidate.py \
-            --handoff "$out/notes/notes.unsigned-candidate.json" \
+            --handoff "$out/notes.unsigned-candidate.json" \
             --apps-root apps \
             --source-commit "$GITHUB_SHA" \
             --out "$out/store.catalog-candidate.json"
@@ -80,7 +121,53 @@ jobs:
           python3 tools/app-package/render_store_catalog_publication.py \
             --candidate "$out/store.catalog-candidate.json" \
             --sequence 1 \
-            --out "$out/store.catalog-publication.json"
+            --out "$out/store.catalog-publication-v1.json"
+
+          cp "$out/artifacts/notes/release/notes.release.json" \
+            "$out/artifacts/notes/notes.release.json"
+          cp "$out/artifacts/notes/release/notes.compatibility.json" \
+            "$out/artifacts/notes/notes.compatibility.json"
+
+      - name: Prove signed component envelope requirement for catalog v2
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          verifier="$RUNNER_TEMP/ordax-platform-verifier/ordax-runtime-component-channel"
+          secrets_dir="$RUNNER_TEMP/ordax-store-catalog-secrets"
+          rm -rf "$secrets_dir"
+          mkdir -p "$secrets_dir"
+          chmod 0700 "$secrets_dir"
+
+          "$verifier" generate-key \
+            --private-key "$secrets_dir/runtime-components-private.pem" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --key-id ordax-runtime-components-v1
+
+          "$verifier" sign-v2 \
+            --release "$out/artifacts/notes/notes.release.json" \
+            --compatibility "$out/artifacts/notes/notes.compatibility.json" \
+            --private-key "$secrets_dir/runtime-components-private.pem" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --key-id ordax-runtime-components-v1 \
+            --out "$out/artifacts/notes/notes.runtime-component-envelope.json"
+
+          "$verifier" verify-envelope-v2 \
+            --envelope "$out/artifacts/notes/notes.runtime-component-envelope.json" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --compatibility "$out/artifacts/notes/notes.compatibility.json"
+
+          python3 tools/app-package/render_store_catalog_publication_v2.py \
+            --candidate "$out/store.catalog-candidate.json" \
+            --artifacts-root "$out/artifacts" \
+            --verifier "$verifier" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --sequence 1 \
+            --out "$out/store.catalog-publication-v2.protocol-proof.json"
+
+          rm -f "$secrets_dir/runtime-components-private.pem"
+          test ! -e "$secrets_dir/runtime-components-private.pem"
+          test -z "$(find "$secrets_dir" -type f -print -quit)"
+          rmdir "$secrets_dir"
 
       - name: Assert catalog boundaries remain authority-free
         run: |
@@ -95,11 +182,14 @@ jobs:
 
           root = Path(os.environ['RUNNER_TEMP']) / 'ordax-store-catalog-proof'
           candidate_path = root / 'store.catalog-candidate.json'
-          publication_path = root / 'store.catalog-publication.json'
+          v1_path = root / 'store.catalog-publication-v1.json'
+          v2_path = root / 'store.catalog-publication-v2.protocol-proof.json'
+          envelope_path = root / 'artifacts' / 'notes' / 'notes.runtime-component-envelope.json'
 
           candidate_bytes = candidate_path.read_bytes()
           candidate = json.loads(candidate_bytes.decode('utf-8'))
-          publication = json.loads(publication_path.read_text(encoding='utf-8'))
+          v1 = json.loads(v1_path.read_text(encoding='utf-8'))
+          v2 = json.loads(v2_path.read_text(encoding='utf-8'))
 
           assert candidate['$schema'] == 'ordax-apps.store-catalog-candidate/1'
           assert candidate['status'] == 'unsigned-catalog-candidate'
@@ -115,40 +205,67 @@ jobs:
               'activation': False,
               'rollback': False,
           }
-          assert candidate['safety']['catalogGrantsAuthority'] is False
-          assert candidate['safety']['platformLifecycleRequired'] is True
-          assert candidate['safety']['requestSelectsArtifact'] is False
-          assert candidate['safety']['requestSelectsVersion'] is False
 
-          assert publication['$schema'] == 'ordax-apps.store-catalog-publication/1'
-          assert publication['status'] == 'unsigned-publication-payload'
-          assert publication['sequence'] == 1
-          assert publication['source'] == candidate['source']
-          assert publication['entries'] == candidate['entries']
-          assert publication['trust'] == {
+          assert v1['$schema'] == 'ordax-apps.store-catalog-publication/1'
+          assert v1['entries'] == candidate['entries']
+          assert v1['authority'] == candidate['authority']
+
+          assert v2['$schema'] == 'ordax-apps.store-catalog-publication/2'
+          assert v2['status'] == 'unsigned-publication-payload'
+          assert v2['sequence'] == 1
+          assert v2['source'] == candidate['source']
+          assert v2['trust'] == {
               'domain': 'runtime-components',
               'requiredKeyId': 'ordax-runtime-components-v1',
           }
-          assert publication['provenance'] == {
+          assert v2['provenance'] == {
               'candidateSchema': 'ordax-apps.store-catalog-candidate/1',
               'candidateSha256': hashlib.sha256(candidate_bytes).hexdigest(),
           }
-          assert publication['authority'] == candidate['authority']
-          assert publication['safety'] == {
+          assert v2['authority'] == candidate['authority']
+          assert v2['safety'] == {
               'requiresExternalSignature': True,
               'canonicalPublicAnchorRequired': True,
+              'componentEnvelopesRequired': True,
+              'componentEnvelopesVerifiedBeforeCatalogAssembly': True,
+              'componentEnvelopesReverifiedByPlatformLifecycle': True,
               'platformLifecycleRequired': True,
               'payloadGrantsAuthority': False,
           }
-          print('ORDAX_STORE_CATALOG_AUTHORITY_BOUNDARY=PASS')
+          entry = v2['entries'][0]
+          envelope_bytes = envelope_path.read_bytes()
+          assert entry['artifacts']['componentEnvelope'] == {
+              'name': 'notes.runtime-component-envelope.json',
+              'sha256': hashlib.sha256(envelope_bytes).hexdigest(),
+              'size': len(envelope_bytes),
+          }
+          assert set(entry['artifacts']) == {
+              'package', 'release', 'compatibility', 'componentEnvelope'
+          }
+          print('ORDAX_STORE_CATALOG_V2_STAGEABLE_IDENTITY=PASS')
+          print('CANONICAL_RUNTIME_COMPONENT_TRUST=NO')
+          print('PRODUCTION_COMPONENT_PUBLICATION=NO')
+          print('PRODUCTION_COMPONENT_ACTIVATION=NO')
           PY
 
-      - name: Upload public-only catalog artifacts
+      - name: Remove ephemeral signed protocol proof
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          rm -f \
+            "$out/runtime-components-ci-trust.json" \
+            "$out/artifacts/notes/notes.runtime-component-envelope.json" \
+            "$out/store.catalog-publication-v2.protocol-proof.json"
+          test ! -e "$out/runtime-components-ci-trust.json"
+          test ! -e "$out/artifacts/notes/notes.runtime-component-envelope.json"
+          test ! -e "$out/store.catalog-publication-v2.protocol-proof.json"
+
+      - name: Upload public-only pre-publication artifacts
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: ordax-store-catalog-${{ github.sha }}
+          name: ordax-store-catalog-prepublication-${{ github.sha }}
           path: |
             ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-candidate.json
-            ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-publication.json
+            ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-publication-v1.json
           if-no-files-found: error
           retention-days: 14
