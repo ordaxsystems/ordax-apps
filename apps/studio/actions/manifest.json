@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-manifest/1",
   "appId": "studio",
-  "appVersion": "0.5.3",
+  "appVersion": "0.5.4",
   "authority": "none",
   "execution": "proposal-only",
   "capabilities": [
