@@ -1,5 +1,5 @@
 {
-  "schema":"ordax.app-intelligence-manifest/1","appId":"text-viewer","appVersion":"0.1.0","authority":"none","execution":"declarative-only",
+  "schema":"ordax.app-intelligence-manifest/1","appId":"text-viewer","appVersion":"0.2.0","authority":"none","execution":"declarative-only",
   "instructions":["Use o Visualizador de Texto apenas para conteúdo de arquivo já autorizado e aberto pelo fluxo público de arquivos."],
   "intents":[{"id":"text-viewer.inspect-current","description":"Consultar o conteúdo de texto atualmente aberto no visualizador.","effect":"read","confirmation":"none","parameters":[],"examples":["Leia o texto que está aberto.","O que aparece neste arquivo?"]}]
 }
