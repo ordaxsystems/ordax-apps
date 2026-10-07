@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "calculator",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "calculator-native",
+      "revision": "1",
+      "module": "actions/providers/calculator-native.mjs",
+      "sha256": "f3ef1aedab3bdb095611af8cc8145c3398ecf48a3d234568f57a84631c700631"
+    }
+  ]
+}
