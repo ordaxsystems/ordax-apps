@@ -196,7 +196,7 @@ Retiring the historical repository must follow this invariant:
 8. freeze the migration boundary;
 9. keep `apps/studio/` as the only portable product source;
 10. repoint platform catalog and Windows packaging to that same source;
-11. migrate Windows Runtime/device host to `washingtonmsdj/ordax-runtime`;
+11. migrate Windows Runtime/device host to `ordaxsystems/ordax-runtime`;
 12. migrate Product MCP/Control Plane and provider connector ownership to `washingtonmsdj/ordax-control-plane`;
 13. prove production no longer fetches/builds/launches anything from `mcp-blender`;
 14. only then delete/archive the historical repository;
