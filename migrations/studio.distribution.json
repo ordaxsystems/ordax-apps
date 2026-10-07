@@ -127,7 +127,7 @@
   "migration_repositories": {
     "portable_app": "ordaxsystems/ordax-apps",
     "windows_runtime": "ordaxsystems/ordax-runtime",
-    "control_plane": "washingtonmsdj/ordax-control-plane"
+    "control_plane": "ordaxsystems/ordax-control-plane"
   },
   "legacy_repository": {
     "repository": "washingtonmsdj/mcp-blender",
