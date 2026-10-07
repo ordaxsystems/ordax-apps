@@ -312,7 +312,7 @@ def main() -> None:
         "target_platform_repository": "ordaxsystems/prototipo-ordax-os",
         "current_runtime_repository": "ordaxsystems/ordax-runtime",
         "target_runtime_repository": "ordaxsystems/ordax-runtime",
-        "current_control_plane_repository": "washingtonmsdj/ordax-control-plane",
+        "current_control_plane_repository": "ordaxsystems/ordax-control-plane",
         "target_control_plane_repository": "ordaxsystems/ordax-control-plane",
         "redirect_dependency_allowed": False,
         "mirror_repository_allowed": False,
