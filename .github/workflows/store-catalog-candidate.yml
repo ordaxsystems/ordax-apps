@@ -7,7 +7,7 @@ on:
       - 'apps/**/app.json'
       - 'migrations/*.compatibility.json'
       - 'tools/app-package/**'
-      - 'tests/test_store_catalog_candidate.py'
+      - 'tests/test_store_catalog_candidate.py'\n      - 'tests/test_store_catalog_publication.py'
       - '.github/workflows/store-catalog-candidate.yml'
   pull_request:
     branches: [main]
@@ -71,6 +71,11 @@ jobs:
             --source-commit "$GITHUB_SHA" \
             --out "$out/store.catalog-candidate.json"
 
+          python3 tools/app-package/render_store_catalog_publication.py \
+            --candidate "$out/store.catalog-candidate.json" \
+            --sequence 1 \
+            --out "$out/store.catalog-publication.json"
+
       - name: Assert catalog cannot grant lifecycle authority
         run: |
           set -euo pipefail
@@ -108,6 +113,8 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-store-catalog-candidate-${{ github.sha }}
-          path: ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-candidate.json
+          path: |
+            ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-candidate.json
+            ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-publication.json
           if-no-files-found: error
           retention-days: 14
