@@ -1,0 +1,64 @@
+.assistantModeBar{
+  flex:0 0 auto;
+  min-height:42px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-bottom:1px solid var(--border);
+  background:#07111d;
+}
+.assistantMode{
+  height:29px;
+  padding:0 10px;
+  border:1px solid transparent;
+  border-radius:7px;
+  background:transparent;
+  color:#8397b1;
+}
+.assistantMode:hover{background:#0d1d30;color:var(--text)}
+.assistantMode.active{
+  color:#dce9f9;
+  border-color:#2b5c8f;
+  background:#102542;
+  box-shadow:inset 0 -2px 0 var(--ide-blue);
+}
+.assistantModeHint{
+  min-width:0;
+  margin-left:auto;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#6f829c;
+  font-size:9px;
+}
+.assistantWebSlot{
+  position:relative;
+  flex:1 1 auto;
+  min-height:0;
+  overflow:hidden;
+  background:#07111c;
+}
+.assistantWebFallback{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  color:#8197b3;
+}
+.assistantWebFallback strong{display:block;color:#cbd8e8;font-size:13px}
+.assistantWebFallback small{display:block;margin-top:3px}
+.localAssistantPanel{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+.assistantWebSlot.hidden,
+.localAssistantPanel.hidden{display:none!important}
+.localAssistantPanel .assistantThread{flex:1 1 auto}
+@media(max-width:1320px){
+  .assistantModeHint{display:none}
+}
