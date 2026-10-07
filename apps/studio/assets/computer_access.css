@@ -18,3 +18,48 @@
 .accessFooter{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:8px 0 20px}
 .accessFooter .sideMeta{overflow-wrap:anywhere}
 @media(max-width:760px){.accessComposer{grid-template-columns:1fr}.accessFooter,.accessWarning,.accessHeading{align-items:stretch;flex-direction:column}.accessFooter button{width:100%}}
+
+
+.computerAccessHero{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.accessSummary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:4px;
+}
+.accessStatusChip{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-height:30px;
+  padding:5px 9px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background:var(--panel2);
+  color:var(--soft);
+  font-size:10px;
+}
+.accessStatusChip strong{
+  color:var(--muted);
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.6px;
+}
+.accessStatusChip.ok{
+  border-color:rgba(59,174,105,.36);
+  background:rgba(59,174,105,.08);
+  color:#bfe8cb;
+}
+.accessStatusChip.off{
+  border-color:rgba(222,92,92,.35);
+  background:rgba(222,92,92,.08);
+  color:#f0b8b8;
+}
+.accessStatusChip.neutral{
+  border-color:rgba(127,185,255,.22);
+  background:rgba(127,185,255,.06);
+}
