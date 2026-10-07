@@ -1,0 +1,14 @@
+{
+  "schema":"ordax.component-manifest/1",
+  "id":"calendar",
+  "title":"Calendário",
+  "kind":"app",
+  "version":"0.1.0",
+  "releaseMode":"component-slot",
+  "criticality":"optional",
+  "failureDomain":"app",
+  "restartScope":"component",
+  "healthMode":"runtime",
+  "owner":"washingtonmsdj/ordax-apps",
+  "dependencies":[]
+}
