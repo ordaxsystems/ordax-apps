@@ -1,0 +1,5 @@
+{
+  "schema":"ordax.app-intelligence-manifest/1","appId":"converter","appVersion":"0.1.0","authority":"none","execution":"declarative-only",
+  "instructions":["Use o Conversor apenas para conversões determinísticas locais de unidades suportadas; não use para câmbio ou valores que dependam de dados atuais."],
+  "intents":[{"id":"converter.convert","description":"Converter um valor entre unidades compatíveis.","effect":"read","confirmation":"none","parameters":[{"name":"value","type":"number","required":true,"description":"Valor numérico."},{"name":"from","type":"string","required":true,"description":"Unidade de origem."},{"name":"to","type":"string","required":true,"description":"Unidade de destino."}],"examples":["Converta 5 km para milhas.","Quanto são 32 °F em °C?"]}]
+}

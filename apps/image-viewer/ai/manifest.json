@@ -1,0 +1,5 @@
+{
+  "schema":"ordax.app-intelligence-manifest/1","appId":"image-viewer","appVersion":"0.1.0","authority":"none","execution":"declarative-only",
+  "instructions":["Use o app Imagens apenas para a imagem atualmente aberta por um fluxo autorizado de arquivos; não invente conteúdo visual que não tenha sido fornecido ao Intelligence."],
+  "intents":[{"id":"image-viewer.inspect-current","description":"Consultar a identidade da imagem atualmente aberta.","effect":"read","confirmation":"none","parameters":[],"examples":["Qual imagem está aberta?","Mostre a imagem atual."]}]
+}

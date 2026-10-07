@@ -1,0 +1,9 @@
+{
+  "schema":"ordax.app-intelligence-manifest/1",
+  "appId":"clock",
+  "appVersion":"0.1.0",
+  "authority":"none",
+  "execution":"declarative-only",
+  "instructions":["Use o Relógio para consultar hora local e recursos temporais locais sem alegar acesso a alarmes ou agendamento em background."],
+  "intents":[{"id":"clock.read-time","description":"Consultar a hora local atual.","effect":"read","confirmation":"none","parameters":[],"examples":["Que horas são?","Mostre a hora local."]}]
+}

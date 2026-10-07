@@ -19,7 +19,11 @@
     "activity",
     "notes",
     "network",
-    "calculator"
+    "calculator",
+    "clock",
+    "converter",
+    "text-viewer",
+    "image-viewer"
   ],
   "initial_extraction_candidate": "notes",
   "contracts": {

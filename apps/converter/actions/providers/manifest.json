@@ -1,0 +1,4 @@
+{
+  "schema":"ordax.application-action-provider-manifest/1","appId":"converter","appVersion":"0.1.0","authority":"none","execution":"unavailable",
+  "providers":[{"kind":"first-party-native","adapterId":"converter-native","revision":"1","module":"actions/providers/converter-native.mjs","sha256":"87afb57c2a1eb1001f0a262c30e995eec3090e4e508f443548b2f36d32eb2d28"}]
+}
