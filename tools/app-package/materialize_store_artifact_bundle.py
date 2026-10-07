@@ -21,6 +21,7 @@ import sys
 import tempfile
 
 PUBLICATION_SCHEMA = "ordax-apps.store-catalog-publication/2"
+CANDIDATE_SCHEMA = "ordax-apps.store-catalog-candidate/1"
 LAYOUT_SCHEMA = "ordax-apps.store-artifact-layout/1"
 SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
 TRUST_DOMAIN = "runtime-components"
@@ -36,6 +37,7 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 NAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?$")
 
 
 class StoreArtifactBundleError(RuntimeError):
@@ -134,16 +136,25 @@ def read_publication(path: Path) -> tuple[dict, bytes]:
         "rollback": False,
     }:
         raise StoreArtifactBundleError("Store publication v2 must remain authority-free")
-    safety = value.get("safety")
+    provenance = value.get("provenance")
     if (
-        not isinstance(safety, dict)
-        or safety.get("requiresExternalSignature") is not True
-        or safety.get("componentEnvelopesRequired") is not True
-        or safety.get("componentEnvelopesVerifiedBeforeCatalogAssembly") is not True
-        or safety.get("componentEnvelopesReverifiedByPlatformLifecycle") is not True
-        or safety.get("platformLifecycleRequired") is not True
-        or safety.get("payloadGrantsAuthority") is not False
+        not isinstance(provenance, dict)
+        or set(provenance) != {"candidateSchema", "candidateSha256"}
+        or provenance.get("candidateSchema") != CANDIDATE_SCHEMA
+        or not isinstance(provenance.get("candidateSha256"), str)
+        or not SHA256_RE.fullmatch(provenance["candidateSha256"])
     ):
+        raise StoreArtifactBundleError("Store publication v2 provenance is invalid")
+    safety = value.get("safety")
+    if safety != {
+        "requiresExternalSignature": True,
+        "canonicalPublicAnchorRequired": True,
+        "componentEnvelopesRequired": True,
+        "componentEnvelopesVerifiedBeforeCatalogAssembly": True,
+        "componentEnvelopesReverifiedByPlatformLifecycle": True,
+        "platformLifecycleRequired": True,
+        "payloadGrantsAuthority": False,
+    }:
         raise StoreArtifactBundleError("Store publication v2 safety boundary drifted")
 
     entries = value.get("entries")
@@ -157,9 +168,21 @@ def read_publication(path: Path) -> tuple[dict, bytes]:
         }:
             raise StoreArtifactBundleError("Store publication v2 entry fields are not canonical")
         app_id = entry.get("appId")
+        title = entry.get("title")
+        version = entry.get("version")
         if not isinstance(app_id, str) or not APP_ID_RE.fullmatch(app_id):
             raise StoreArtifactBundleError("Store publication v2 app id is invalid")
-        if entry.get("releaseMode") != "component-slot" or entry.get("sourceCommit") != source["commit"]:
+        if (
+            not isinstance(title, str)
+            or not title
+            or title != title.strip()
+            or len(title) > 160
+            or any(ord(char) < 32 or ord(char) == 127 for char in title)
+            or not isinstance(version, str)
+            or not SEMVER_RE.fullmatch(version)
+            or entry.get("releaseMode") != "component-slot"
+            or entry.get("sourceCommit") != source["commit"]
+        ):
             raise StoreArtifactBundleError(f"{app_id} release/source identity drifted")
         if entry.get("trust") != {"domain": TRUST_DOMAIN, "requiredKeyId": KEY_ID}:
             raise StoreArtifactBundleError(f"{app_id} trust identity drifted")
