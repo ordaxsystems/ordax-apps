@@ -33,7 +33,7 @@ jobs:
           python3 -m json.tool apps/calculator/ai/manifest.json >/dev/null
           python3 -m json.tool apps/calculator/actions/manifest.json >/dev/null
           python3 -m json.tool apps/calculator/actions/providers/manifest.json >/dev/null
-          for app in clock converter text-viewer image-viewer; do
+          for app in clock converter text-viewer image-viewer calendar; do
             python3 -m json.tool "apps/$app/app.json" >/dev/null
             python3 -m json.tool "apps/$app/compatibility.json" >/dev/null
             python3 -m json.tool "apps/$app/ai/manifest.json" >/dev/null
@@ -68,6 +68,7 @@ jobs:
           node --check apps/converter/actions/providers/converter-native.mjs
           node --check apps/text-viewer/actions/providers/text-viewer-native.mjs
           node --check apps/image-viewer/actions/providers/image-viewer-native.mjs
+          node --check apps/calendar/actions/providers/calendar-native.mjs
           python3 tools/verify_app_actions.py
 
       - name: Prove Calculator portable behavior and package boundary
@@ -96,7 +97,8 @@ jobs:
           node --test apps/converter/tests/*.test.mjs
           node --test apps/text-viewer/tests/*.test.mjs
           node --test apps/image-viewer/tests/*.test.mjs
-          for app in clock converter text-viewer image-viewer; do
+          node --test apps/calendar/tests/*.test.mjs
+          for app in clock converter text-viewer image-viewer calendar; do
             node --check "apps/$app/src/runtime.mjs"
             out="/tmp/ordax-$app"
             rm -rf "$out"
