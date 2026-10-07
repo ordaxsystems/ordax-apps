@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-presentation-manifest/1",
   "appId": "toolbox",
-  "appVersion": "0.1.0",
+  "appVersion": "0.2.0",
   "authority": "none",
   "sourceLocale": "pt-BR",
   "description": "Use utilitários locais como UUID, senha forte, SHA-256, Base64 e URL encode.",
