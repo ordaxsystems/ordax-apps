@@ -1,0 +1,17 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "paint",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "description": "Desenhe em um canvas local e exporte a imagem criada.",
+  "monogram": "DE",
+  "singleton": true,
+  "localization": {
+    "sourceLocale": "pt-BR",
+    "bundledLocales": [
+      "en-US",
+      "pt-BR"
+    ],
+    "packPolicy": "component-scoped"
+  }
+}

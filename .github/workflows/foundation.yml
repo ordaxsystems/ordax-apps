@@ -62,6 +62,9 @@ jobs:
       - name: Prove canonical file association ownership
         run: python3 tools/verify_file_associations.py
 
+      - name: Prove app-owned presentation manifests
+        run: python3 tools/verify_app_presentation.py
+
       - name: Prove first-party Application Action manifests and provider artifacts
         run: |
           node --check apps/notes/actions/providers/notes-native.mjs

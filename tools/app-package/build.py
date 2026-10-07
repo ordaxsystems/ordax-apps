@@ -64,7 +64,7 @@ MAX_AI_MANIFEST_BYTES = 128 * 1024
 MAX_ACTION_MANIFEST_BYTES = 256 * 1024
 MAX_ACTION_PROVIDER_MANIFEST_BYTES = 64 * 1024
 
-INCLUDED_ROOTS = ("src", "assets", "ai", "actions", "associations")
+INCLUDED_ROOTS = ("src", "assets", "ai", "actions", "associations", "presentation")
 SOURCE_EXTENSIONS = {".mjs", ".js"}
 
 class AppPackageError(RuntimeError):

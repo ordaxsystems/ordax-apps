@@ -1,0 +1,17 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "media-player",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "description": "Reproduza áudio e vídeo locais por meio do File Space público.",
+  "monogram": "MI",
+  "singleton": true,
+  "localization": {
+    "sourceLocale": "pt-BR",
+    "bundledLocales": [
+      "en-US",
+      "pt-BR"
+    ],
+    "packPolicy": "component-scoped"
+  }
+}

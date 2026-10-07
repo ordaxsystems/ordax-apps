@@ -1,0 +1,17 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "text-viewer",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "description": "Leia arquivos de texto locais em modo somente leitura.",
+  "monogram": "TX",
+  "singleton": true,
+  "localization": {
+    "sourceLocale": "pt-BR",
+    "bundledLocales": [
+      "en-US",
+      "pt-BR"
+    ],
+    "packPolicy": "component-scoped"
+  }
+}
