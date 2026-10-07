@@ -9,7 +9,7 @@ Este repositório é o source workspace oficial dos apps first-party removíveis
 Owners separados:
 
 - plataforma/core e contratos públicos: `washingtonmsdj/prototipo-ordax-os`;
-- apps first-party portáteis: `washingtonmsdj/ordax-apps`;
+- apps first-party portáteis: `ordaxsystems/ordax-apps`;
 - Runtime/Device Host/Computer Control: `ordaxsystems/ordax-runtime`;
 - Control Plane, Product MCP, grants e conectores de provider: `washingtonmsdj/ordax-control-plane`.
 
@@ -88,7 +88,7 @@ O Gate A remove-first da plataforma já foi concluído e `apps/notes` é a únic
 
 Estado machine-readable em `migrations/notes.externalization.json`:
 
-- `source_repository_current=washingtonmsdj/ordax-apps`;
+- `source_repository_current=ordaxsystems/ordax-apps`;
 - `source_path_current=apps/notes`;
 - `source_of_truth_state=ordax-apps-canonical`;
 - `source_cutover_allowed=true`;

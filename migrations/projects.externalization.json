@@ -3,7 +3,7 @@
   "app_id": "projects",
   "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
   "source_path_current": "system/apps/projects",
-  "target_repository": "washingtonmsdj/ordax-apps",
+  "target_repository": "ordaxsystems/ordax-apps",
   "target_path": "apps/projects",
   "source_of_truth_state": "platform-until-cutover",
   "source_cutover_allowed": false,

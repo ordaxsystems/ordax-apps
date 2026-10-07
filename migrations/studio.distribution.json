@@ -125,7 +125,7 @@
   "cutover_allowed": false,
   "authority": "none",
   "migration_repositories": {
-    "portable_app": "washingtonmsdj/ordax-apps",
+    "portable_app": "ordaxsystems/ordax-apps",
     "windows_runtime": "ordaxsystems/ordax-runtime",
     "control_plane": "washingtonmsdj/ordax-control-plane"
   },

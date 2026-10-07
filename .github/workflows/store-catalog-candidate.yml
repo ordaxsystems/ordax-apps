@@ -238,7 +238,7 @@ jobs:
           assert candidate['$schema'] == 'ordax-apps.store-catalog-candidate/1'
           assert candidate['status'] == 'unsigned-catalog-candidate'
           assert candidate['source'] == {
-              'repository': 'washingtonmsdj/ordax-apps',
+              'repository': 'ordaxsystems/ordax-apps',
               'commit': os.environ['GITHUB_SHA'],
           }
           assert [entry['appId'] for entry in candidate['entries']] == expected_ids

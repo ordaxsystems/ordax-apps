@@ -24,7 +24,7 @@ def main() -> None:
         fail("Projects source must remain in the platform before Gate A")
     if plan.get("source_path_current") != "system/apps/projects":
         fail("Projects source path drifted")
-    if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
+    if plan.get("target_repository") != "ordaxsystems/ordax-apps":
         fail("Projects target repository drifted")
     if plan.get("target_path") != "apps/projects":
         fail("Projects target path drifted")

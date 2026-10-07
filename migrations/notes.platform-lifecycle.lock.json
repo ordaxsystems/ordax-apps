@@ -6,7 +6,7 @@
   "release_schema": "prototype-ordax.runtime-component-release/2",
   "package_schema": "prototype-ordax.runtime-component-package/1",
   "compatibility_schema": "ordax.component-compatibility/1",
-  "canonical_source_repository": "washingtonmsdj/ordax-apps",
+  "canonical_source_repository": "ordaxsystems/ordax-apps",
   "component_id": "notes",
   "authority": "none"
 }

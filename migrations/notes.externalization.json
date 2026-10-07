@@ -1,9 +1,9 @@
 {
   "$schema": "ordax.app-externalization-plan/1",
   "app_id": "notes",
-  "source_repository_current": "washingtonmsdj/ordax-apps",
+  "source_repository_current": "ordaxsystems/ordax-apps",
   "source_path_current": "apps/notes",
-  "target_repository": "washingtonmsdj/ordax-apps",
+  "target_repository": "ordaxsystems/ordax-apps",
   "target_path": "apps/notes",
   "source_of_truth_state": "ordax-apps-canonical",
   "platform_contracts_required": [

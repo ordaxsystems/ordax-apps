@@ -27,7 +27,7 @@ def validate_notes_migration() -> tuple[bool, bool]:
         fail("Notes distribution_activation_allowed must be boolean")
 
     expected_source_repo = (
-        "washingtonmsdj/ordax-apps"
+        "ordaxsystems/ordax-apps"
         if source_cutover_allowed
         else "washingtonmsdj/prototipo-ordax-os"
     )
@@ -41,7 +41,7 @@ def validate_notes_migration() -> tuple[bool, bool]:
         fail("Notes source repository does not match source cutover state")
     if plan.get("source_path_current") != expected_source_path:
         fail("Notes source path does not match source cutover state")
-    if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
+    if plan.get("target_repository") != "ordaxsystems/ordax-apps":
         fail("Notes target repository is invalid")
     if plan.get("source_of_truth_state") != expected_source_state:
         fail("Notes source-of-truth state does not match source cutover state")
@@ -160,7 +160,7 @@ def validate_studio_migration() -> None:
         fail("unexpected Studio externalization plan schema")
     if plan.get("app_id") != "studio":
         fail("Studio externalization plan has wrong app id")
-    if plan.get("source_repository_current") != "washingtonmsdj/ordax-apps":
+    if plan.get("source_repository_current") != "ordaxsystems/ordax-apps":
         fail("Studio portable source must be canonical in ordax-apps after source cutover")
     if plan.get("source_path_current") != "apps/studio":
         fail("Studio canonical source path drifted")
@@ -168,7 +168,7 @@ def validate_studio_migration() -> None:
         fail("Studio legacy source repository must remain explicitly tracked until removal")
     if plan.get("legacy_source_path") != "ordax_studio":
         fail("Studio legacy source path drifted")
-    if plan.get("target_repository") != "washingtonmsdj/ordax-apps":
+    if plan.get("target_repository") != "ordaxsystems/ordax-apps":
         fail("Studio target repository is invalid")
     if plan.get("target_path") != "apps/studio":
         fail("Studio target path is invalid")
@@ -305,12 +305,12 @@ def main() -> None:
 
     migration = data.get("repository_migration") or {}
     expected_migration = {
-        "status": "target-ready-cutover-pending",
-        "current_repository": "washingtonmsdj/ordax-apps",
-        "target_repository": "ordaxsystems/ordax-apps",
+        "status": "cutover-complete",
+        "previous_repository": "washingtonmsdj/ordax-apps",
+        "canonical_repository": "ordaxsystems/ordax-apps",
         "current_platform_repository": "washingtonmsdj/prototipo-ordax-os",
         "target_platform_repository": "ordaxsystems/prototipo-ordax-os",
-        "current_runtime_repository": "washingtonmsdj/ordax-runtime",
+        "current_runtime_repository": "ordaxsystems/ordax-runtime",
         "target_runtime_repository": "ordaxsystems/ordax-runtime",
         "current_control_plane_repository": "washingtonmsdj/ordax-control-plane",
         "target_control_plane_repository": "ordaxsystems/ordax-control-plane",

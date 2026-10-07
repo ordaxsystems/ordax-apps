@@ -1,5 +1,14 @@
 {
-  "schema":"ordax.component-manifest/1","id":"text-viewer","title":"Visualizador de Texto","kind":"app","version":"0.2.0",
-  "releaseMode":"component-slot","criticality":"optional","failureDomain":"app","restartScope":"component","healthMode":"runtime",
-  "owner":"washingtonmsdj/ordax-apps","dependencies":[]
+  "schema": "ordax.component-manifest/1",
+  "id": "text-viewer",
+  "title": "Visualizador de Texto",
+  "kind": "app",
+  "version": "0.2.0",
+  "releaseMode": "component-slot",
+  "criticality": "optional",
+  "failureDomain": "app",
+  "restartScope": "component",
+  "healthMode": "runtime",
+  "owner": "ordaxsystems/ordax-apps",
+  "dependencies": []
 }

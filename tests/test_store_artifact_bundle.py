@@ -53,7 +53,7 @@ class StoreArtifactBundleTests(unittest.TestCase):
             "$schema": "ordax-apps.store-catalog-publication/2",
             "status": "unsigned-publication-payload",
             "sequence": 9,
-            "source": {"repository": "washingtonmsdj/ordax-apps", "commit": COMMIT},
+            "source": {"repository": "ordaxsystems/ordax-apps", "commit": COMMIT},
             "entries": [{
                 "appId": "notes",
                 "title": "Notas",

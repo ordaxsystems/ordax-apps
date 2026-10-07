@@ -21,7 +21,7 @@ import sys
 
 COMPONENT_SCHEMA = "ordax.component-manifest/1"
 COMPATIBILITY_SCHEMA = "ordax.component-compatibility/1"
-SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
+SOURCE_REPOSITORY = "ordaxsystems/ordax-apps"
 APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 
 

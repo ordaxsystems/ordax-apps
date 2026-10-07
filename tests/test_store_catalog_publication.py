@@ -24,7 +24,7 @@ def candidate() -> dict:
         "$schema": "ordax-apps.store-catalog-candidate/1",
         "status": "unsigned-catalog-candidate",
         "source": {
-            "repository": "washingtonmsdj/ordax-apps",
+            "repository": "ordaxsystems/ordax-apps",
             "commit": "a" * 40,
         },
         "entries": [

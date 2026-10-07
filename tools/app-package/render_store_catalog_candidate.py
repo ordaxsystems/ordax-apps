@@ -19,7 +19,7 @@ import sys
 CATALOG_SCHEMA = "ordax-apps.store-catalog-candidate/1"
 HANDOFF_SCHEMA = "ordax-apps.unsigned-component-candidate/1"
 COMPONENT_MANIFEST_SCHEMA = "ordax.component-manifest/1"
-SOURCE_REPOSITORY = "washingtonmsdj/ordax-apps"
+SOURCE_REPOSITORY = "ordaxsystems/ordax-apps"
 TRUST_DOMAIN = "runtime-components"
 KEY_ID = "ordax-runtime-components-v1"
 MAX_HANDOFF_BYTES = 512 * 1024
