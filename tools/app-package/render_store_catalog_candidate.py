@@ -37,7 +37,13 @@ def _canonical_json(value: object) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
 
 
-def _read_canonical_json(path: Path, label: str, max_bytes: int) -> dict:
+def _read_json(
+    path: Path,
+    label: str,
+    max_bytes: int,
+    *,
+    require_canonical: bool,
+) -> dict:
     try:
         metadata = path.lstat()
     except OSError as exc:
@@ -53,7 +59,7 @@ def _read_canonical_json(path: Path, label: str, max_bytes: int) -> dict:
         raise CatalogCandidateError(f"{label} must be valid UTF-8 JSON") from exc
     if not isinstance(value, dict):
         raise CatalogCandidateError(f"{label} must contain a JSON object")
-    if payload != _canonical_json(value):
+    if require_canonical and payload != _canonical_json(value):
         raise CatalogCandidateError(f"{label} is not canonical deterministic JSON")
     return value
 
@@ -77,7 +83,12 @@ def _validate_artifact(value: object, label: str) -> dict:
 
 def _validate_manifest(apps_root: Path, app_id: str, version: str) -> dict:
     path = apps_root / app_id / "app.json"
-    manifest = _read_canonical_json(path, f"{app_id} app manifest", MAX_MANIFEST_BYTES)
+    manifest = _read_json(
+        path,
+        f"{app_id} app manifest",
+        MAX_MANIFEST_BYTES,
+        require_canonical=False,
+    )
     if manifest.get("schema") != COMPONENT_MANIFEST_SCHEMA:
         raise CatalogCandidateError(f"{app_id} app manifest schema is unsupported")
     if manifest.get("id") != app_id:
@@ -95,10 +106,11 @@ def _validate_manifest(apps_root: Path, app_id: str, version: str) -> dict:
 
 
 def _catalog_entry(handoff_path: Path, apps_root: Path, source_commit: str) -> dict:
-    handoff = _read_canonical_json(
+    handoff = _read_json(
         handoff_path,
         f"unsigned component handoff {handoff_path.name}",
         MAX_HANDOFF_BYTES,
+        require_canonical=True,
     )
     if handoff.get("$schema") != HANDOFF_SCHEMA or handoff.get("status") != "unsigned-candidate":
         raise CatalogCandidateError("unsupported unsigned component handoff")
