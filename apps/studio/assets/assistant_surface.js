@@ -5,14 +5,17 @@ var mode='web';
 var lastPayload='';
 
 function byId(id){return document.getElementById(id)}
-function webview(){return window.chrome&&window.chrome.webview&&typeof window.chrome.webview.postMessage==='function'?window.chrome.webview:null}
+function surfaceHost(){
+  var host=window.ordaxStudioHost;
+  return host&&typeof host.presentAssistantSurface==='function'?host.presentAssistantSurface.bind(host):null;
+}
 function post(payload){
-  var bridge=webview();
-  if(!bridge)return;
+  var present=surfaceHost();
+  if(!present)return;
   var serialized=JSON.stringify(payload);
   if(serialized===lastPayload)return;
   lastPayload=serialized;
-  bridge.postMessage(payload);
+  present(payload);
 }
 function usableRect(node){
   if(!node||mode!=='web'||document.hidden)return null;
