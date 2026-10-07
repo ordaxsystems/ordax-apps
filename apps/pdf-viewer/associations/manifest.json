@@ -1,0 +1,13 @@
+{
+  "schema": "ordax.file-association-manifest/1",
+  "appId": "pdf-viewer",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "role": "viewer",
+  "extensions": [
+    ".pdf"
+  ],
+  "mediaTypes": [
+    "application/pdf"
+  ]
+}

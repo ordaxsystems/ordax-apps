@@ -1,0 +1,29 @@
+{
+  "schema": "ordax.file-association-manifest/1",
+  "appId": "text-viewer",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "role": "viewer",
+  "extensions": [
+    ".cfg",
+    ".csv",
+    ".ini",
+    ".json",
+    ".log",
+    ".markdown",
+    ".md",
+    ".toml",
+    ".txt",
+    ".xml",
+    ".yaml",
+    ".yml"
+  ],
+  "mediaTypes": [
+    "application/json",
+    "application/xml",
+    "text/csv",
+    "text/markdown",
+    "text/plain",
+    "text/xml"
+  ]
+}

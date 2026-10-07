@@ -1,0 +1,31 @@
+{
+  "schema": "ordax.file-association-manifest/1",
+  "appId": "media-player",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "role": "player",
+  "extensions": [
+    ".aac",
+    ".flac",
+    ".m4a",
+    ".m4v",
+    ".mp3",
+    ".mp4",
+    ".oga",
+    ".ogg",
+    ".ogv",
+    ".wav",
+    ".webm"
+  ],
+  "mediaTypes": [
+    "audio/aac",
+    "audio/flac",
+    "audio/mp4",
+    "audio/mpeg",
+    "audio/ogg",
+    "audio/wav",
+    "video/mp4",
+    "video/ogg",
+    "video/webm"
+  ]
+}

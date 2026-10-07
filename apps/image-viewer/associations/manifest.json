@@ -1,0 +1,24 @@
+{
+  "schema": "ordax.file-association-manifest/1",
+  "appId": "image-viewer",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "role": "viewer",
+  "extensions": [
+    ".avif",
+    ".bmp",
+    ".gif",
+    ".jpeg",
+    ".jpg",
+    ".png",
+    ".webp"
+  ],
+  "mediaTypes": [
+    "image/avif",
+    "image/bmp",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp"
+  ]
+}
