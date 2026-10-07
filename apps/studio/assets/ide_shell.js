@@ -53,10 +53,13 @@ function renderAccounts(){
     return '<option value="'+esc(item.id)+'" '+(connected?'':'disabled')+'>'+esc(item.label||item.id)+(connected?'':' · desconectada')+'</option>';
   }).join('');
   var current=active();
-  if(current&&accounts.some(function(item){return String(item.id)===String(current.account_id)&&item.connected!==false})){
+  var connectedAccounts=accounts.filter(function(item){return item.connected!==false});
+  if(current&&connectedAccounts.some(function(item){return String(item.id)===String(current.account_id)})){
     select.value=current.account_id;
+  }else if(connectedAccounts.length){
+    select.value=String(connectedAccounts[0].id||'');
   }
-  select.disabled=!current||!accounts.length;
+  select.disabled=!current||!connectedAccounts.length;
 }
 
 function renderProviders(){
@@ -136,13 +139,19 @@ function render(){renderAccounts();renderProviders();renderTabs();renderThread()
 async function createChat(){
   var method=hostMethod('assistantCreateChat'),current=active();
   if(!method){status('Runtime sem suporte a criação de chats');return}
+  var accountSelect=byId('assistantAccount');
+  var providerSelect=byId('assistantProvider');
+  var selectedProvider=parseProviderValue(providerSelect?providerSelect.value:'');
+  var accountId=accountSelect&&accountSelect.value?String(accountSelect.value):(current?String(current.account_id||''):'');
+  var providerId=selectedProvider.providerId||(current?String(current.provider_id||''):'');
+  var modelId=selectedProvider.modelId||(current?String(current.model_id||''):'');
   status('Criando chat...');
   try{
     var result=await method(
       '',
-      current?current.account_id:'',
-      current?current.provider_id:'',
-      current?current.model_id:''
+      accountId,
+      providerId,
+      modelId
     );
     if(!result||!result.ok)throw new Error((result&&result.summary)||'Falha ao criar chat');
     await reload();
