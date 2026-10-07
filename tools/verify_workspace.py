@@ -303,6 +303,27 @@ def main() -> None:
     if data.get("source_of_truth_policy") != "single-repository-per-app":
         fail("single source of truth policy is required")
 
+    migration = data.get("repository_migration") or {}
+    expected_migration = {
+        "status": "target-ready-cutover-pending",
+        "current_repository": "washingtonmsdj/ordax-apps",
+        "target_repository": "ordaxsystems/ordax-apps",
+        "current_platform_repository": "washingtonmsdj/prototipo-ordax-os",
+        "target_platform_repository": "ordaxsystems/prototipo-ordax-os",
+        "current_runtime_repository": "washingtonmsdj/ordax-runtime",
+        "target_runtime_repository": "ordaxsystems/ordax-runtime",
+        "current_control_plane_repository": "washingtonmsdj/ordax-control-plane",
+        "target_control_plane_repository": "ordaxsystems/ordax-control-plane",
+        "redirect_dependency_allowed": False,
+        "mirror_repository_allowed": False,
+        "dual_authority_allowed": False,
+        "rename_during_transfer_allowed": False,
+        "provenance_rewrite_allowed": False,
+        "transfer_first_then_repoint": True,
+    }
+    if migration != expected_migration:
+        fail("repository namespace migration contract drifted")
+
     structural = data.get("structural_surfaces_owned_by_platform")
     if structural != ["store", "settings", "account", "system"]:
         fail("structural platform surfaces drifted")
