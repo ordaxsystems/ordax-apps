@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import hashlib
 import importlib.util
 import json
@@ -270,7 +271,7 @@ def _assert_envelope_release_binding(
             envelope["payload"],
             validate=True,
         )
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise CatalogPublicationV2Error(
             f"{app_id} component envelope payload is not strict base64"
         ) from exc
