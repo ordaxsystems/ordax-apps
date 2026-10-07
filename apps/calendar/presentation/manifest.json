@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "calendar",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Consulte datas e navegue pelo calendário local.",
+  "monogram": "CL",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Calendar",
+      "description": "Browse dates and navigate the local calendar."
+    }
+  }
+}

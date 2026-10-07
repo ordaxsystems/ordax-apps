@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "converter",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Converta unidades comuns sem depender de serviços externos.",
+  "monogram": "CV",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Converter",
+      "description": "Convert common units without depending on external services."
+    }
+  }
+}

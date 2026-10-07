@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "colors",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Inspecione e converta valores de cor localmente.",
+  "monogram": "CO",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Colors",
+      "description": "Inspect and convert color values locally."
+    }
+  }
+}

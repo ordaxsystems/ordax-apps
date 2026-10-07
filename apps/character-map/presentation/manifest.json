@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "character-map",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Explore e copie caracteres Unicode disponíveis localmente.",
+  "monogram": "MC",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Character Map",
+      "description": "Explore and copy Unicode characters available locally."
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "clock",
+  "appVersion": "0.2.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Consulte a hora local e use cronômetro e temporizador.",
+  "monogram": "RE",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Clock",
+      "description": "Check local time and use the stopwatch and timer."
+    }
+  }
+}

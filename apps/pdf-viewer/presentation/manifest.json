@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "pdf-viewer",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Visualize documentos PDF locais em modo somente leitura.",
+  "monogram": "PD",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "PDF",
+      "description": "View local PDF documents in read-only mode."
+    }
+  }
+}
