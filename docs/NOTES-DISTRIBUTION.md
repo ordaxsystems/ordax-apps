@@ -112,3 +112,16 @@ antes de publicar artifacts. Enquanto o trust canônico
 `ordax-runtime-components-v1` não estiver pinado e publicação/ativação não
 forem autorizadas, **nenhum payload v2 produzido em CI é publicação de
 produção**.
+
+
+### Binding exato do release assinado
+
+Antes de uma entrada v2 ser montada, o finalizador não verifica apenas
+`appId/version/sourceCommit`. Depois que o verifier canônico autentica o
+`runtime-component-envelope`, o finalizador decodifica o `payload` assinado
+e exige igualdade byte a byte com o `*.release.json` já preso pelo SHA-256 do
+candidate.
+
+Assim, `release` e `componentEnvelope` não podem representar descritores
+diferentes com a mesma identidade superficial. O lifecycle continua obrigado a
+reverificar envelope, compatibility e package antes do stage.
