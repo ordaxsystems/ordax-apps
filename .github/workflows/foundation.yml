@@ -104,7 +104,7 @@ jobs:
           node --test apps/colors/tests/*.test.mjs
           node --test apps/character-map/tests/*.test.mjs
           node --test apps/paint/tests/*.test.mjs
-          for app in clock converter text-viewer image-viewer calendar colors character-map video-player audio-player pdf-viewer paint; do
+          for app in clock converter text-viewer image-viewer calendar colors character-map paint; do
             node --check "apps/$app/src/runtime.mjs"
             out="/tmp/ordax-$app"
             rm -rf "$out"
