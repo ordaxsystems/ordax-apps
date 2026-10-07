@@ -13,6 +13,7 @@ components, activates apps or grants lifecycle authority.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import importlib.util
 import json
@@ -242,6 +243,43 @@ def _verify_component_envelope(
         raise CatalogPublicationV2Error("verified component envelope source commit mismatch")
 
 
+def _assert_envelope_release_binding(
+    envelope_path: Path,
+    release_path: Path,
+    app_id: str,
+) -> None:
+    try:
+        envelope_bytes = envelope_path.read_bytes()
+        release_bytes = release_path.read_bytes()
+        envelope = json.loads(envelope_bytes.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CatalogPublicationV2Error(
+            f"{app_id} component envelope cannot be parsed for release binding"
+        ) from exc
+    if (
+        not isinstance(envelope, dict)
+        or set(envelope) != {"$schema", "payload", "signature", "key_id"}
+        or envelope.get("$schema") != "prototype-ordax.runtime-component-envelope/1"
+        or not isinstance(envelope.get("payload"), str)
+    ):
+        raise CatalogPublicationV2Error(
+            f"{app_id} component envelope shape is not canonical"
+        )
+    try:
+        signed_release = base64.b64decode(
+            envelope["payload"],
+            validate=True,
+        )
+    except (ValueError, base64.binascii.Error) as exc:
+        raise CatalogPublicationV2Error(
+            f"{app_id} component envelope payload is not strict base64"
+        ) from exc
+    if signed_release != release_bytes:
+        raise CatalogPublicationV2Error(
+            f"{app_id} component envelope signed payload does not match catalog release bytes"
+        )
+
+
 def _envelope_artifact(path: Path, app_id: str) -> dict:
     metadata = _regular_file(path, f"{app_id} component envelope", MAX_ENVELOPE_BYTES)
     try:
@@ -299,7 +337,7 @@ def render_publication_v2(
         # Reading and hashing package/release above is intentional even though
         # verify-envelope-v2 authenticates release+compatibility. The candidate
         # package binding remains part of the catalog publication identity.
-        del package_path, release_path
+        del package_path
 
         envelope_path = app_root / f"{app_id}.runtime-component-envelope.json"
         _regular_file(envelope_path, f"{app_id} component envelope", MAX_ENVELOPE_BYTES)
@@ -312,6 +350,11 @@ def render_publication_v2(
             expected_version=candidate_entry["version"],
             expected_source_commit=candidate_entry["sourceCommit"],
             runner=runner,
+        )
+        _assert_envelope_release_binding(
+            envelope_path,
+            release_path,
+            app_id,
         )
 
         entry = {
