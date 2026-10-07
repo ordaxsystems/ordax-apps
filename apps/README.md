@@ -76,18 +76,31 @@ A Store continua sem selecionar versão/artefato e o owner de instalação conti
 sendo `platform-component-lifecycle`.
 
 
-### Payload de publicação
+### Payloads de publicação
 
-`tools/app-package/render_store_catalog_publication.py` transforma um único
-`ordax-apps.store-catalog-candidate/1` canônico no payload exato
-`ordax-apps.store-catalog-publication/1`.
+`ordax-apps.store-catalog-publication/1` permanece o **payload de
+pré-publicação** derivado diretamente do candidate. Ele prende `sequence` e
+provenance ao SHA-256 dos bytes exatos do candidate, mas não inclui o envelope
+assinado exigido pelo lifecycle `component-slot`. Portanto, v1 não é
+suficiente para tornar uma entrada instalável.
 
-O payload adiciona uma `sequence` monotônica e prende a provenance ao SHA-256
-dos bytes exatos do candidate. Ele continua **não assinado e sem autoridade**:
-não lê chave privada, não emite assinatura, não publica, não instala e não ativa
-componentes.
+`tools/app-package/render_store_catalog_publication_v2.py` produz
+`ordax-apps.store-catalog-publication/2` somente quando cada entrada também
+possui `componentEnvelope` e esse envelope passa pelo
+`ordax-runtime-component-channel verify-envelope-v2` canônico da plataforma
+contra o trust público fornecido. O finalizador compara ainda app id, versão e
+source commit retornados pelo verifier com o candidate.
 
-A assinatura futura deve ocorrer em uma fronteira externa sobre os bytes exatos
-desse payload, usando o trust domain `runtime-components` e key id
-`ordax-runtime-components-v1`. O OS só poderá projetá-lo como catálogo
-verificado depois da validação Native da assinatura e do anti-replay persistente.
+O v2 continua **não assinado e sem autoridade**: não lê chave privada, não
+publica, não instala, não faz stage e não ativa componentes. O catálogo v2,
+quando futuramente assinado, apenas autentica a identidade dos artefatos que o
+lifecycle da plataforma deverá baixar e **reverificar** antes do stage.
+
+A CI usa uma chave efêmera somente para prova do protocolo v2 e remove chave,
+trust, component envelope e payload v2 transitórios antes do upload. Ela não
+satisfaz o trust canônico, não autoriza publicação e não autoriza ativação.
+
+A assinatura de produção do catálogo e dos component envelopes deve ocorrer em
+fronteira externa controlada, usando o trust domain `runtime-components` e key
+id `ordax-runtime-components-v1`. O OS só poderá projetar o catálogo depois da
+validação Native da assinatura e do anti-replay persistente.
