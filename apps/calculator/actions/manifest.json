@@ -1,0 +1,39 @@
+{
+  "schema": "ordax.application-action-manifest/1",
+  "appId": "calculator",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "proposal-only",
+  "capabilities": [
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "calculator",
+      "actionId": "calculator.calculate",
+      "title": "Calcular expressão",
+      "description": "Calcular localmente uma expressão matemática suportada pela Calculadora.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "calculator-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [
+        {
+          "id": "expression",
+          "type": "string",
+          "required": true,
+          "maxLength": 512
+        }
+      ],
+      "riskClass": "read-only",
+      "confirmation": "none",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/calculator/actions/manifest.json"
+    }
+  ]
+}
