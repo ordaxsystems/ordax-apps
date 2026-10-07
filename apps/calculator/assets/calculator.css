@@ -1,0 +1,87 @@
+.ordax-calculator {
+  box-sizing: border-box;
+  width: min(100%, 420px);
+  margin: 0 auto;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+  font: inherit;
+  color: inherit;
+}
+
+.ordax-calculator *,
+.ordax-calculator *::before,
+.ordax-calculator *::after {
+  box-sizing: border-box;
+}
+
+.ordax-calculator__display {
+  min-height: 132px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  align-content: end;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+
+.ordax-calculator__input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1rem;
+  text-align: right;
+}
+
+.ordax-calculator__result {
+  min-height: 1.25em;
+  overflow-wrap: anywhere;
+  font-size: clamp(1.65rem, 7vw, 2.5rem);
+  font-weight: 650;
+  line-height: 1.1;
+  text-align: right;
+}
+
+.ordax-calculator__result[data-state="error"] {
+  font-size: 1rem;
+}
+
+.ordax-calculator__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ordax-calculator__grid button {
+  min-height: 54px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.ordax-calculator__grid button:hover {
+  background: color-mix(in srgb, currentColor 11%, transparent);
+}
+
+.ordax-calculator__grid button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.ordax-calculator__grid button[data-kind="operator"],
+.ordax-calculator__grid button[data-kind="equals"] {
+  font-weight: 700;
+}
+
+.ordax-calculator__grid button[data-kind="equals"] {
+  border-width: 2px;
+}
