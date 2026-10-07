@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-presentation-manifest/1",
   "appId": "paint",
-  "appVersion": "0.1.0",
+  "appVersion": "0.2.0",
   "authority": "none",
   "sourceLocale": "pt-BR",
   "description": "Desenhe em um canvas local e exporte a imagem criada.",

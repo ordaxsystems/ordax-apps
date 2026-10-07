@@ -1,5 +1,5 @@
 {
-  "schema":"ordax.app-intelligence-manifest/1","appId":"pdf-viewer","appVersion":"0.1.0","authority":"none","execution":"declarative-only",
+  "schema":"ordax.app-intelligence-manifest/1","appId":"pdf-viewer","appVersion":"0.2.0","authority":"none","execution":"declarative-only",
   "instructions":["Use o app PDF apenas para o documento atualmente aberto por um fluxo autorizado do File Space. Esta versão é somente leitura e não executa HTML ou scripts."],
   "intents":[{"id":"pdf-viewer.inspect-current","description":"Consultar a identidade do PDF atualmente aberto.","effect":"read","confirmation":"none","parameters":[],"examples":["Qual PDF está aberto?","Mostre o documento atual."]}]
 }

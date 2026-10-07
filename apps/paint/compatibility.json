@@ -1,7 +1,7 @@
 {
   "schema": "ordax.component-compatibility/1",
   "componentId": "paint",
-  "componentVersion": "0.1.0",
+  "componentVersion": "0.2.0",
   "provides": [
     {
       "id": "ordax.component-runtime",
