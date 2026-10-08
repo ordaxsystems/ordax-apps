@@ -409,7 +409,7 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Novos testes determinísticos de cronômetro, pausa/retomada, vencimento, troca de view, limites de duração e ausência de reset implícito; já descobertos por `apps/clock/tests/*.test.mjs` na Foundation.
 - **Limite de prova:** uso apenas em primeiro plano; sem notifications/scheduling em background, host de produção ou lifecycle novo. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
-### Execução G2.3 — Text Viewer: concorrência de ativações e cleanup de File Space
+### Execução G2.3 — Text Viewer: concorrência de ativações e cleanup de File Space (PR #140)
 
 - Problema encontrado no **source canônico**: `readTextFile()` é assíncrono, mas o runtime não distinguia respostas fora de ordem nem invalidava uma leitura depois do `destroy`; conteúdo antigo podia substituir o arquivo atual ou atualizar UI desmontada.
 - Correção app-owned: contador de abertura por montagem; somente última ativação atualiza a view. Resposta precisa conferir `file.path` com o caminho lógico solicitado e `file.text` string; arquivo divergente falha fechado. Mensagens de carregamento/erro acompanham mudanças de locale.
