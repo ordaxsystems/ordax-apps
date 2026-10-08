@@ -29,7 +29,7 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
             (ROOT / "platform-sdk.lock.json").read_text(encoding="utf-8")
         )
         cls.old = mod.OLD_OWNER + "/" + mod.PLATFORM_NAME
-        cls.target = mod.NEW_OWNER + "/" + mod.PLATFORM_NAME
+        cls.target = mod.NEW_OWNER + "/ordax-os"
 
     def test_repointed_source_does_not_claim_physical_transfer_or_signature(self):
         state = mod.validate(self.workspace, self.lock)
@@ -256,13 +256,13 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
             self.assertEqual(fetch.call_args.args[0].full_url,
                              "https://api.github.com/repos/" + destination)
         with mock.patch.object(mod.urllib.request, "urlopen",
-                               return_value=Response({**physical, "full_name": self.target})):
+                               return_value=Response({**physical, "full_name": mod.NEW_OWNER + "/" + mod.PLATFORM_NAME})):
             with self.assertRaisesRegex(ValueError, "mismatch"):
                 mod.verify_physical_owner(verified)
         with self.assertRaisesRegex(ValueError, "source contracts"):
             mod.verify_physical_owner({**verified, "source_conformance_after_transfer": False})
         wrong = copy.deepcopy(renamed)
-        wrong["repository_migration"]["target_platform_repository"] = self.target
+        wrong["repository_migration"]["target_platform_repository"] = mod.NEW_OWNER + "/" + mod.PLATFORM_NAME
         with self.assertRaisesRegex(ValueError, "unrecognized physical platform"):
             mod.validate(wrong, lock)
         wrong = copy.deepcopy(renamed)
