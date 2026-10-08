@@ -10,6 +10,7 @@ configured base origin to the fixed content-addressed relative path.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -71,6 +72,37 @@ def _real_directory(path: Path, label: str) -> Path:
     if resolved != path.absolute():
         raise StoreArtifactBundleError(f"{label} may not traverse symlinks")
     return resolved
+
+
+def publish_directory_exclusive(staging: Path, destination: Path) -> None:
+    """Atomically commit a staged directory without replacing an existing entry.
+
+    POSIX os.rename() can replace an empty directory created after the
+    caller's existence check. Linux RENAME_NOREPLACE closes that race.
+    Windows os.rename() rejects existing destinations. Other platforms and
+    unsupported kernels fail closed rather than publish unsafely.
+    """
+    if staging.parent != destination.parent:
+        raise StoreArtifactBundleError("atomic directory publication requires the same parent")
+    _real_directory(staging, "atomic staging directory")
+    _real_directory(staging.parent, "atomic output parent")
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(f"refusing to overwrite existing directory: {destination}")
+    if os.name == "nt":
+        os.rename(staging, destination)
+        return
+    if not sys.platform.startswith("linux"):
+        raise StoreArtifactBundleError("atomic no-replace directory publication is unsupported")
+    try:
+        renameat2 = ctypes.CDLL(None, use_errno=True).renameat2
+    except AttributeError as exc:
+        raise StoreArtifactBundleError("Linux renameat2 RENAME_NOREPLACE is required") from exc
+    renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    renameat2.restype = ctypes.c_int
+    result = renameat2(-100, os.fsencode(staging), -100, os.fsencode(destination), 1)
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(destination))
 
 
 def _identity(value: object, role: str, app_id: str) -> dict:
@@ -313,7 +345,7 @@ def materialize_bundle(
                 handle.write(descriptor_bytes)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.rename(staging, out_root)
+            publish_directory_exclusive(staging, out_root)
             if os.name != "nt":
                 directory_fd = os.open(parent, os.O_RDONLY)
                 try:
