@@ -55,9 +55,9 @@ test('native host receives only one bounded assistant envelope, without credenti
   const delivered=[];
   const ui=fixture((payload)=>{delivered.push(payload);return true;});
   assert.equal(delivered.length,1);
-  assert.deepEqual(Object.keys(delivered[0]).sort(),['active','provider','rect','type','viewport'].sort());
+  assert.deepEqual(Object.keys(delivered[0]).sort(),['active','rect','type','viewport'].sort());
   assert.equal(delivered[0].type,'ordax-assistant-surface');
-  assert.equal(delivered[0].provider,'chatgpt');
+  assert.equal(Object.hasOwn(delivered[0],'provider'),false,'web provider selection belongs to the native host');
   assert.equal(delivered[0].active,true);
   assert.deepEqual({...delivered[0].rect},{left:20,top:30,width:300,height:400});
   assert.equal(ui.elements.get('assistantWebFallback').dataset.transport,'pending');
