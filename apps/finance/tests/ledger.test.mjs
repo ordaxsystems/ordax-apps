@@ -238,3 +238,68 @@ test("finance journal query does not expose out-of-window entries or accept unbo
     ...opts, expectedRevision: 2,
   }), /revision conflict/);
 });
+
+test("lost acknowledgement retries the exact original append after concurrent later events", () => {
+  const original = event("sale.1", "income", 1000);
+  const state0 = createFinanceLedger(scope);
+  const state1 = write(state0, original);
+  const state2 = write(state1, event("rent.1", "expense", 250));
+  const state3 = write(state2, event("sale.2", "income", 1250));
+  const retry = appendFinanceEntry(state3, {
+    authorizedScope: scope, expectedRevision: 0, value: original,
+  });
+  assert.equal(retry, state3);
+  assert.equal(retry.revision, 3);
+  assert.equal(retry.entries.length, 3);
+  assert.deepEqual(
+    [summarizeFinanceLedger(retry, period()).incomeCents,
+      summarizeFinanceLedger(retry, period()).netCents],
+    [2250, 2000],
+  );
+  assert.equal(state0.entries.length, 0);
+  // When the original write was revision 1, its exact position remains 1.
+  assert.equal(appendFinanceEntry(state3, {
+    authorizedScope: scope, expectedRevision: 1, value: state2.entries[1],
+  }), state3);
+});
+
+test("stale writes cannot disguise a different event, payload or original revision as a retry", () => {
+  const state1 = write(createFinanceLedger(scope), event("sale.1", "income", 1000));
+  const state2 = write(state1, event("rent.1", "expense", 250));
+  for (const [expectedRevision, value] of [
+    [0, event("sale.new", "income", 1000)],
+    [0, event("sale.1", "income", 999)],
+    [0, event("sale.1", "expense", 1000)],
+    [1, event("sale.1", "income", 1000)],
+  ]) {
+    assert.throws(() => appendFinanceEntry(state2, {
+      authorizedScope: scope, expectedRevision, value,
+    }), /revision conflict|conflicting content/);
+  }
+  assert.throws(() => appendFinanceEntry(state2, {
+    authorizedScope: { ownerId: "account-1", spaceId: "pizzaria-shopping" },
+    expectedRevision: 0, value: state1.entries[0],
+  }), /another owner or Space/);
+  assert.equal(state2.revision, 2);
+  assert.equal(state2.entries.length, 2);
+});
+
+test("a lost acknowledgement for a reversal never applies the compensation twice", () => {
+  const initial = write(createFinanceLedger(scope), event("sale.1", "income", 15000));
+  const reversal = event("refund.1", "reversal", 15000, {
+    description: "Estorno", occurredAt: tomorrow, reversesId: "sale.1",
+  });
+  const state2 = write(initial, reversal);
+  const state3 = write(state2, event("rent.1", "expense", 1200));
+  const replay = appendFinanceEntry(state3, {
+    authorizedScope: scope, expectedRevision: 1, value: reversal,
+  });
+  assert.equal(replay, state3);
+  assert.equal(replay.entries.filter((item) => item.kind === "reversal").length, 1);
+  assert.equal(summarizeFinanceLedger(replay, period()).incomeCents, 15000);
+  const day2 = summarizeFinanceLedger(replay, {
+    authorizedScope: scope, start: "2026-10-09T00:00:00Z",
+    end: "2026-10-10T00:00:00Z",
+  });
+  assert.equal(day2.incomeCents, -15000);
+});
