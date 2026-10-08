@@ -381,6 +381,13 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Source sem compatibility (ex.: Studio) é marcado como **bloqueado para essa prova**, não como pacote validado. Alvos sem source continuam não avaliados.
 - **Gate de aceite:** Foundation CI verde e hashes idênticos. Mesmo com esse gate aprovado, `production_releases_verified=0` e trust, runtime, lifecycle, instalação e rollback permanecem separados. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
+### Execução G1 — compatibilidade declarada com o SDK público pinado (em revisão)
+
+- A verificação \`tools/verify_platform_sdk.py\` já valida a integridade do bundle pelo lock canônico; o novo módulo \`tools/verify_app_sdk_compatibility.py\` recebe **o mesmo bundle verificado**, sem segunda cópia, e deriva os alvos do auditor G0.
+- Para cada app com descriptor canônico, resolve \`requires\` obrigatório pelo intervalo de majors publicados; incompatibilidade **falha a CI**. Contratos opcionais ausentes são relatados, sem alegar suporte.
+- Studio e apps sem source continuam \`not-assessed\`. Nenhum teste de presença de schema substitui runtime, host, lifecycle, grants, signing ou trust.
+- **Gate de aceite:** Foundation CI verde, testes negativos de major ausente/intervalo incompatível/ownership duplicado e matriz por app. Detalhes em [\`docs/APP-READINESS-AUDIT.md\`](docs/APP-READINESS-AUDIT.md).
+
 ## 13. Registro de alterações
 
 - **2026-10-08 — v0.1:** roadmap inicial criado a partir do inventário canônico de `ordax-apps`, documentação do SDK/trust e levantamento preliminar de oportunidades open source e apps com IA. **Não constitui relatório final de pesquisa externa nem autorização de ativação em produção.**
