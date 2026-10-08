@@ -16,7 +16,7 @@ sem reivindicar o stylesheet de outra janela ou do host. O navegador pode
 reutilizar os bytes em cache, mas a posse e o `destroy()` permanecem locais
 ao mount. A Foundation verifica o comportamento real em duas janelas para
 Calculator e Calendar e impede o retorno da reutilização global sem posse
-nos outros runtimes. Isso não cria host, gerenciador paralelo de CSS ou
+nos outros runtimes, inclusive Notes. Isso não cria host, gerenciador paralelo de CSS ou
 dependência entre pacotes.
 
 5. **Empacotamento:** `tools/app-package/build.py` é o único builder; ZIP, compatibility e release sidecars têm identidade e hashes verificáveis, são determinísticos e entregam handoff não assinado. Testes de contrato e smoke fazem parte da Foundation.
