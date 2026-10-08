@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-presentation-manifest/1",
   "appId": "calendar",
-  "appVersion": "0.2.0",
+  "appVersion": "0.2.1",
   "authority": "none",
   "sourceLocale": "pt-BR",
   "description": "Consulte datas e navegue pelo calendário local.",
