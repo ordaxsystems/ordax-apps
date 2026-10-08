@@ -49,31 +49,10 @@ jobs:
           python3 -m unittest tests/test_audit_app_readiness.py
           python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 
-      - name: Prove real candidate-package runtime imports and missing-host-port denial
-        run: |
-          python3 -m unittest tests/test_packaged_runtime_smoke.py
-          python3 tools/verify_packaged_runtimes.py --format markdown
-
       - name: Prove Files cutover stays blocked until platform source removal
         run: |
           python3 -m unittest tests/test_files_cutover.py
           python3 tools/verify_files_cutover.py --format markdown
-
-      - name: Prove first-party app intelligence manifests
-        run: python3 tools/verify_app_intelligence.py
-
-      - name: Prove canonical file association ownership and package receipt
-        run: |
-          python3 -m unittest tests/test_file_associations.py
-          python3 tools/verify_file_associations.py
-
-      - name: Prove app-owned presentation manifests
-        run: python3 tools/verify_app_presentation.py
-
-      - name: Prove first-party Application Action manifests and provider artifacts
-        run: |
-          python3 -m unittest tests/test_provider_syntax_ssot.py
-          python3 tools/verify_app_actions.py --check-provider-syntax
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
@@ -333,4 +312,26 @@ jobs:
               --release "$out/release/$app.release.json" \
               --compatibility "$out/release/$app.compatibility.json"
           done <<< "$inventory"
+
+
+      - name: Prove real candidate-package runtime imports and missing-host-port denial
+        run: |
+          python3 -m unittest tests/test_packaged_runtime_smoke.py
+          python3 tools/verify_packaged_runtimes.py --format markdown
+
+      - name: Prove first-party app intelligence manifests
+        run: python3 tools/verify_app_intelligence.py
+
+      - name: Prove canonical file association ownership and package receipt
+        run: |
+          python3 -m unittest tests/test_file_associations.py
+          python3 tools/verify_file_associations.py
+
+      - name: Prove app-owned presentation manifests
+        run: python3 tools/verify_app_presentation.py
+
+      - name: Prove first-party Application Action manifests and provider artifacts
+        run: |
+          python3 -m unittest tests/test_provider_syntax_ssot.py
+          python3 tools/verify_app_actions.py --check-provider-syntax
 
