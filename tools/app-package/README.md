@@ -126,6 +126,19 @@ publicação respeita o vencedor, não remove os arquivos alheios e limpa apenas
 seu próprio staging. Isso não transfere assinatura, trust ou autoridade de
 instalação.
 
+### Leitura íntegra do arquivo efetivamente aberto
+
+Os metadados de publicação e os blobs do bundle Store são recebidos por uma
+**única função de leitura limitada**, no owner
+`materialize_store_artifact_bundle`. Ela confronta o `lstat` com o
+`fstat` do próprio descritor aberto (`O_NOFOLLOW` quando disponível),
+revalida tipo regular e tamanho **depois** da abertura e só lê até o limite
+canônico mais um byte. Assim, trocar o path por symlink/outro inode, aumentar
+seu tamanho ou alterar os bytes no intervalo entre `stat` e leitura não
+permite seguir um arquivo substituto nem contornar o limite de memória; o
+SHA-256 do payload recebido continua obrigatório. Não é criado um
+segundo validador de publicação nem um mecanismo de assinatura.
+
 ### Propriedade de blobs e deduplicação concorrente
 
 A persistência dos blobs de conteúdo endereçado por SHA-256 utiliza

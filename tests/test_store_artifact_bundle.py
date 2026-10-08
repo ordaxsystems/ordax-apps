@@ -268,6 +268,72 @@ class StoreArtifactBundleTests(unittest.TestCase):
                 bundle._write_blob(target, payload)
         self.assertFalse(target.exists())
 
+    def test_replaced_regular_publication_after_initial_stat_is_rejected(self):
+        from unittest.mock import patch
+
+        original = bundle._regular_file
+        replacement = self.root / "alternate-publication.json"
+        replacement.write_bytes(self.publication_path.read_bytes())
+        def replace_after_stat(path, label, max_bytes):
+            metadata = original(path, label, max_bytes)
+            if path == self.publication_path:
+                replacement.replace(path)
+            return metadata
+
+        with patch.object(bundle, "_regular_file", side_effect=replace_after_stat):
+            with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "changed identity"):
+                bundle.read_publication(self.publication_path)
+
+    def test_symlink_swap_after_initial_stat_fails_before_read(self):
+        from unittest.mock import patch
+
+        target = self.root / "foreign-publication.json"
+        target.write_bytes(self.publication_path.read_bytes())
+        original = bundle._regular_file
+        before_bytes = target.read_bytes()
+        def swap_to_symlink(path, label, max_bytes):
+            metadata = original(path, label, max_bytes)
+            if path == self.publication_path:
+                path.unlink()
+                path.symlink_to(target)
+            return metadata
+
+        with patch.object(bundle, "_regular_file", side_effect=swap_to_symlink):
+            with self.assertRaises(bundle.StoreArtifactBundleError):
+                bundle.read_publication(self.publication_path)
+        self.assertEqual(target.read_bytes(), before_bytes)
+
+    def test_in_place_growth_after_stat_is_bounded_and_rejected(self):
+        from unittest.mock import patch
+
+        original = bundle._regular_file
+        def grow_after_stat(path, label, max_bytes):
+            metadata = original(path, label, max_bytes)
+            if path == self.publication_path:
+                path.write_bytes(b"X" * (bundle.MAX_PUBLICATION_BYTES + 1))
+            return metadata
+
+        with patch.object(bundle, "_regular_file", side_effect=grow_after_stat):
+            with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "size is outside allowed bounds"):
+                bundle.read_publication(self.publication_path)
+
+    def test_in_place_same_size_artifact_mutation_fails_hash_check(self):
+        from unittest.mock import patch
+
+        source = self.notes / self.identities["package"]["name"]
+        original = bundle._regular_file
+        def mutate_after_stat(path, label, max_bytes):
+            metadata = original(path, label, max_bytes)
+            if path == source:
+                path.write_bytes(b"X" * metadata.st_size)
+            return metadata
+
+        with patch.object(bundle, "_regular_file", side_effect=mutate_after_stat):
+            with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "sha256 does not match"):
+                bundle._read_bound_artifact(
+                    source, self.identities["package"], "package", "notes",
+                )
+
     def test_atomic_no_replace_survives_destination_race_after_exists_check(self):
         from unittest.mock import patch
 
