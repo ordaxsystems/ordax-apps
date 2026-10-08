@@ -1,4 +1,4 @@
-const COMPONENT_RUNTIME_SCHEMA="ordax.component-runtime/1", SURFACE_SCHEMA="ordax.surface-render-lifecycle/5", FILE_SPACE_SCHEMA="ordax.file-space/11", APP_ACTIVATION_SCHEMA="ordax.app-activation/1", VERSION="0.1.0";
+const COMPONENT_RUNTIME_SCHEMA="ordax.component-runtime/1", SURFACE_SCHEMA="ordax.surface-render-lifecycle/5", FILE_SPACE_SCHEMA="ordax.file-space/11", APP_ACTIVATION_SCHEMA="ordax.app-activation/1", VERSION="0.2.0";
 const STYLE_URL=new URL("../assets/text-viewer.css",import.meta.url).href;
 function validPath(path){return typeof path==="string"&&path.startsWith("/")&&!path.includes("\0")&&!path.split("/").includes("..");}
 async function styles(root){const d=root.ownerDocument;let l=d.querySelector('link[data-ordax-component-style="text-viewer"]');if(l)return()=>{};l=d.createElement("link");l.rel="stylesheet";l.href=STYLE_URL;l.dataset.ordaxComponentStyle="text-viewer";d.head.append(l);return()=>l.remove();}
