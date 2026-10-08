@@ -61,6 +61,40 @@ def _regular_file(path: Path, label: str, max_bytes: int) -> os.stat_result:
     return metadata
 
 
+def _read_bounded_regular_bytes(
+    path: Path, label: str, max_bytes: int, *, expected_size: int | None = None,
+) -> bytes:
+    """Read only verified regular-file bytes through one pinned descriptor.
+
+    A path's type or size can change between lstat() and read_bytes().
+    Pin an O_NOFOLLOW descriptor where supported, check its inode/size, and
+    cap the *actual* read. No caller is allowed an unbounded read after stat.
+    """
+    before = _regular_file(path, label, max_bytes)
+    try:
+        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(path, flags)
+        with os.fdopen(fd, "rb") as stream:
+            current = os.fstat(stream.fileno())
+            if (
+                not stat.S_ISREG(current.st_mode)
+                or (current.st_dev, current.st_ino) != (before.st_dev, before.st_ino)
+            ):
+                raise StoreArtifactBundleError(f"{label} changed identity during read")
+            if current.st_size < 1 or current.st_size > max_bytes:
+                raise StoreArtifactBundleError(f"{label} size is outside allowed bounds")
+            if expected_size is not None and current.st_size != expected_size:
+                raise StoreArtifactBundleError(f"{label} size does not match publication")
+            payload = stream.read(max_bytes + 1)
+    except OSError as exc:
+        raise StoreArtifactBundleError(f"{label} could not be safely read") from exc
+    if len(payload) < 1 or len(payload) > max_bytes:
+        raise StoreArtifactBundleError(f"{label} size is outside allowed bounds")
+    if expected_size is not None and len(payload) != expected_size:
+        raise StoreArtifactBundleError(f"{label} size does not match publication")
+    return payload
+
+
 def _real_directory(path: Path, label: str) -> Path:
     try:
         metadata = path.lstat()
@@ -128,9 +162,10 @@ def _identity(value: object, role: str, app_id: str) -> dict:
 
 
 def read_publication(path: Path) -> tuple[dict, bytes]:
-    _regular_file(path, "Store publication v2", MAX_PUBLICATION_BYTES)
+    payload = _read_bounded_regular_bytes(
+        path, "Store publication v2", MAX_PUBLICATION_BYTES,
+    )
     try:
-        payload = path.read_bytes()
         value = json.loads(payload.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise StoreArtifactBundleError("Store publication v2 must be valid UTF-8 JSON") from exc
@@ -239,13 +274,10 @@ def blob_relative_path(digest: str) -> Path:
 
 
 def _read_bound_artifact(path: Path, identity: dict, role: str, app_id: str) -> bytes:
-    metadata = _regular_file(path, f"{app_id} {role}", ROLE_MAX_BYTES[role])
-    if metadata.st_size != identity["size"]:
-        raise StoreArtifactBundleError(f"{app_id} {role} size does not match publication")
-    try:
-        payload = path.read_bytes()
-    except OSError as exc:
-        raise StoreArtifactBundleError(f"{app_id} {role} could not be read") from exc
+    payload = _read_bounded_regular_bytes(
+        path, f"{app_id} {role}", ROLE_MAX_BYTES[role],
+        expected_size=identity["size"],
+    )
     if hashlib.sha256(payload).hexdigest() != identity["sha256"]:
         raise StoreArtifactBundleError(f"{app_id} {role} sha256 does not match publication")
     return payload
