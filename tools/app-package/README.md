@@ -52,6 +52,20 @@ divergentes, claims extras e conteúdo não UTF-8 falham fechados — mesmo que
 o pacote tenha sido re-hasheado internamente. O verificador não precisa da
 árvore original de source; assinatura/trust continuam exclusivos da plataforma.
 
+## Snapshot consistente e publicação atômica do builder
+
+`build.py build` lê cada arquivo-fonte incluído **uma vez** para o snapshot
+imutável em memória. A mesma coleção de bytes é usada para validação dos
+imports, registros SHA-256/tamanho e montagem do ZIP. O pacote é escrito
+em staging privado no mesmo diretório, verificado integralmente por
+`verify_package` e publicado por hard link exclusivo (`os.link`) para impedir
+sobrescrita em corrida. Falhas de gravação, verificação ou publicação removem o
+staging e não expõem ZIP parcial. Ambientes sem suporte a hard links devem
+falhar fechados; não há fallback que exponha arquivos parciais.
+
+Essa garantia é **local** e não substitui provenance do commit, assinatura,
+trust ou lifecycle do OrdaX OS.
+
 ## Outputs
 
 The builder produces:

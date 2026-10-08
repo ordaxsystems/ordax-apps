@@ -141,7 +141,7 @@ jobs:
         run: python3 tools/verify_notes_platform_sdk.py
 
       - name: Prove deterministic external app package builder
-        run: python3 -m unittest tests/test_app_package_builder.py tests/test_package_receipt_source_semantics.py
+        run: python3 -m unittest tests/test_app_package_builder.py tests/test_package_receipt_source_semantics.py tests/test_app_package_atomic_snapshot.py
 
       - name: Prove fail-closed Notes package cutover
         run: python3 tools/verify_notes_package.py
