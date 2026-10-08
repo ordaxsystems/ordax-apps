@@ -19,6 +19,7 @@ fixtures = importlib.util.module_from_spec(fixture_spec)
 assert fixture_spec.loader is not None
 fixture_spec.loader.exec_module(fixtures)
 COMMIT = "a" * 40
+SDK_REPOSITORY = "washingtonmsdj/prototipo-ordax-os"
 
 
 def bundle(*schemas: str) -> dict:
@@ -59,7 +60,7 @@ class SdkCompatibilityTests(unittest.TestCase):
             report = sdk.audit_compatibility(root, bundle(
                 "ordax.localization/2",
                 "ordax.surface-render-lifecycle/5",
-            ), COMMIT)
+            ), COMMIT, SDK_REPOSITORY)
             self.assertEqual(report["summary"]["target_count"], 3)
             self.assertEqual(report["summary"]["required_contracts_verified_apps"], 1)
             self.assertEqual(report["summary"]["not_assessed_apps"], 2)
@@ -81,7 +82,7 @@ class SdkCompatibilityTests(unittest.TestCase):
             fixtures.make_app(root)
             set_requirements(root, [requirement("ordax.file-space", 11, 11)])
             with self.assertRaisesRegex(sdk.SdkCompatibilityError, "alpha: required SDK contract"):
-                sdk.audit_compatibility(root, bundle("ordax.localization/2"), COMMIT)
+                sdk.audit_compatibility(root, bundle("ordax.localization/2"), COMMIT, SDK_REPOSITORY)
 
     def test_disjoint_major_range_fails_even_when_contract_name_exists(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -90,7 +91,7 @@ class SdkCompatibilityTests(unittest.TestCase):
             fixtures.make_app(root)
             set_requirements(root, [requirement("ordax.localization", 3, 4)])
             with self.assertRaisesRegex(sdk.SdkCompatibilityError, "ordax.localization/3..4"):
-                sdk.audit_compatibility(root, bundle("ordax.localization/2"), COMMIT)
+                sdk.audit_compatibility(root, bundle("ordax.localization/2"), COMMIT, SDK_REPOSITORY)
 
     def test_optional_contract_gap_is_visible_but_does_not_block(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -101,7 +102,7 @@ class SdkCompatibilityTests(unittest.TestCase):
                 requirement("ordax.localization", 2, 2),
                 requirement("ordax.file-space", 11, 11, optional=True),
             ])
-            report = sdk.audit_compatibility(root, bundle("ordax.localization/2"), COMMIT)
+            report = sdk.audit_compatibility(root, bundle("ordax.localization/2"), COMMIT, SDK_REPOSITORY)
             self.assertEqual(report["summary"]["required_contracts_verified_apps"], 1)
             self.assertEqual(report["summary"]["unresolved_optional_requirements"], 1)
             self.assertEqual(report["apps"][0]["unresolved_optional"], ["ordax.file-space/11"])
@@ -114,7 +115,7 @@ class SdkCompatibilityTests(unittest.TestCase):
             set_requirements(root, [requirement("ordax.file-space", 10, 12)])
             report = sdk.audit_compatibility(root, bundle(
                 "ordax.file-space/10", "ordax.file-space/11", "ordax.file-space/13"
-            ), COMMIT)
+            ), COMMIT, SDK_REPOSITORY)
             self.assertEqual(report["apps"][0]["resolved_requirements"][0]["major"], 11)
 
     def test_bundle_schema_policy_and_entries_are_not_trusted(self):
@@ -141,13 +142,13 @@ class SdkCompatibilityTests(unittest.TestCase):
                 "source_cutover_allowed": False,
             })
             with self.assertRaisesRegex(sdk.SdkCompatibilityError, "duplicate app source"):
-                sdk.audit_compatibility(root, bundle("ordax.localization/2"), COMMIT)
+                sdk.audit_compatibility(root, bundle("ordax.localization/2"), COMMIT, SDK_REPOSITORY)
 
     def test_commit_identity_must_be_exact(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             with self.assertRaisesRegex(sdk.SdkCompatibilityError, "exact 40-hex"):
-                sdk.audit_compatibility(root, bundle("ordax.localization/2"), "main")
+                sdk.audit_compatibility(root, bundle("ordax.localization/2"), "main", SDK_REPOSITORY)
 
 
 if __name__ == "__main__":
