@@ -176,12 +176,25 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
         raise FilesCutoverError("source snapshot owner is invalid")
     sha_or_none(snapshot.get("commit"), "source snapshot commit")
     sha_or_none(plan.get("gate_a_platform_commit"), "Gate A platform commit")
-    if plan["source_cutover_allowed"] and (
-        snapshot.get("commit") is None
-        or not snapshot.get("inventory_file")
-        or plan.get("gate_a_platform_commit") is None
-    ):
-        raise FilesCutoverError("cutover cannot be authorized without snapshot and Gate A pins")
+    if plan["source_cutover_allowed"]:
+        if (
+            snapshot.get("state") != "captured"
+            or snapshot.get("commit") is None
+            or not snapshot.get("inventory_file")
+            or plan.get("gate_a_platform_commit") is None
+            or snapshot["commit"] == plan["gate_a_platform_commit"]
+        ):
+            raise FilesCutoverError("cutover cannot be authorized without distinct snapshot and Gate A pins")
+        inventory_path = root / safe_path(snapshot["inventory_file"])
+        inventory = read_json(inventory_path)
+        if (
+            inventory.get("app_id") != "files"
+            or inventory.get("repository") != platform
+            or inventory.get("commit") != snapshot["commit"]
+            or not isinstance(inventory.get("file_count"), int)
+            or inventory["file_count"] <= 0
+        ):
+            raise FilesCutoverError("source snapshot inventory is not pinned to Files")
     delivery = plan.get("delivery")
     if (
         not isinstance(delivery, dict)
