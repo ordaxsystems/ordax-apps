@@ -39,7 +39,11 @@ App Data paralelo, autenticação ad hoc, nem substituir o próximo marco de
 20 apps do MVP por candidatos inventados. Os 20 alvos existentes e o piso
 de 13 candidatos não mudam nesta etapa.
 
-SSOT técnico e próximos gates: [`apps/finance/README.md`](apps/finance/README.md).
+SSOT técnico e próximos gates: [`apps/finance/README.md`](apps/finance/README.md)
+e [`docs/BUSINESS-APPS-DOMAINS.md`](docs/BUSINESS-APPS-DOMAINS.md).
+Os domínios de Vendas (pedidos e transições) e Estoque (movimentos físicos,
+quantidade não negativa e estornos) também têm source e testes reais, mas
+permanecem não distribuíveis até haver App Data por owner/Space.
 O aplicativo de Vendas deverá ser proprietário de pedidos; Estoque, de
 movimentações de quantidade; Finanças, de movimentos financeiros. A
 integração futura será mediada por actions/eventos idempotentes do SDK,
