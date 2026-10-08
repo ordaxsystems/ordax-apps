@@ -39,6 +39,18 @@ Os apps visualizadores podem fornecer `associations/manifest.json`. O contrato d
 
 O manifesto declara formatos mas **não** seleciona arquivos, rotas, grants ou programas padrão no host. Esses direitos continuam no owner do OrdaX OS. O fluxo evita um segundo SSOT de associações na plataforma ou permissões implícitas no pacote.
 
+## ZIP determinístico e limites de recebimento
+
+O `build.py verify` confere **antes de ler qualquer conteúdo** o número
+de membros e seus metadados: nomes POSIX canônicos, modos regulares `0644`,
+timestamp fixo, nenhuma compactação inesperada, comentários ou extra fields,
+ordem e tamanhos individuais/totais limitados. O único builder produz
+`ZIP_STORED`; ZIPs comprimidos são recusados, sem descompressão.
+
+Um ZIP alterado ou não canônico falha fechado mesmo com hashes internos
+consistentes. A verificação estrutural não confere assinatura ou permissão
+para publicação/instalação: essas autoridades permanecem no OrdaX OS.
+
 ## Segurança do recebimento do ZIP
 
 O verificador de pacote `build.py verify` **não confia apenas nos hashes

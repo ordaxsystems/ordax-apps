@@ -70,6 +70,7 @@ MAX_FILES = 256
 MAX_FILE_BYTES = 2 * 1024 * 1024
 MAX_TOTAL_BYTES = 16 * 1024 * 1024
 MAX_PACKAGE_BYTES = 32 * 1024 * 1024
+MAX_PACKAGE_MANIFEST_BYTES = 256 * 1024
 MAX_COMPATIBILITY_BYTES = 64 * 1024
 MAX_AI_MANIFEST_BYTES = 128 * 1024
 MAX_ACTION_MANIFEST_BYTES = 256 * 1024
@@ -91,11 +92,17 @@ def sha256_bytes(payload: bytes) -> str:
 
 
 def safe_relative(value: str, label: str) -> PurePosixPath:
-    if not value or "\\" in value or value.startswith("/"):
+    if (
+        not isinstance(value, str)
+        or not value
+        or "\\" in value
+        or value.startswith("/")
+        or any(part in {"", ".", ".."} for part in value.split("/"))
+    ):
         raise AppPackageError(f"{label} is not a safe relative POSIX path")
     path = PurePosixPath(value)
-    if any(part in {"", ".", ".."} for part in path.parts):
-        raise AppPackageError(f"{label} is not a safe relative POSIX path")
+    if path.as_posix() != value:
+        raise AppPackageError(f"{label} is not a canonical POSIX path")
     return path
 
 
@@ -1111,18 +1118,51 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
     return manifest, manifest_bytes
 
 
+def _verify_archive_structure(archive: zipfile.ZipFile) -> list[str]:
+    """Enforce the exact format the sole official builder produces.
+
+    Validate member metadata and bounded uncompressed sizes *before* any
+    archive.read() call. Compressed/encrypted/noncanonical ZIPs cannot reach
+    manifest or JavaScript parsing, even with self-consistent internal hashes.
+    """
+    infos = archive.infolist()
+    if len(infos) < 2 or len(infos) > MAX_FILES + 1:
+        raise AppPackageError("package archive member count exceeds bound")
+    names = [info.filename for info in infos]
+    if len(names) != len(set(names)) or names[0] != PACKAGE_MANIFEST_NAME:
+        raise AppPackageError("package entries are duplicated or manifest is missing/unsorted")
+    if archive.comment:
+        raise AppPackageError("package archive comment is not canonical")
+    total = 0
+    for info in infos:
+        safe_relative(info.filename, "package path")
+        bound = MAX_PACKAGE_MANIFEST_BYTES if info.filename == PACKAGE_MANIFEST_NAME else MAX_FILE_BYTES
+        if info.file_size <= 0 or info.file_size > bound:
+            raise AppPackageError(f"package ZIP member uncompressed size exceeds bound: {info.filename}")
+        if info.compress_type != zipfile.ZIP_STORED or info.compress_size != info.file_size:
+            raise AppPackageError(f"package ZIP must use bounded stored entries: {info.filename}")
+        if (
+            info.is_dir()
+            or info.create_system != 3
+            or info.external_attr != (stat.S_IFREG | 0o644) << 16
+            or info.date_time != (1980, 1, 1, 0, 0, 0)
+            or info.extra
+            or info.comment
+            or info.flag_bits & (0x1 | 0x8 | 0x40)
+        ):
+            raise AppPackageError(f"package ZIP member metadata is not canonical: {info.filename}")
+        total += info.file_size
+        if total > MAX_TOTAL_BYTES + MAX_PACKAGE_MANIFEST_BYTES:
+            raise AppPackageError("package ZIP total uncompressed size exceeds bound")
+    if names[1:] != sorted(names[1:]):
+        raise AppPackageError("package ZIP source entries must be sorted")
+    return names
+
+
 def verify_package(package: Path) -> tuple[dict, bytes]:
     payload = read_regular(package, max_bytes=MAX_PACKAGE_BYTES, label="app package")
     with zipfile.ZipFile(package, "r") as archive:
-        infos = archive.infolist()
-        names = [info.filename for info in infos]
-        if len(names) != len(set(names)) or PACKAGE_MANIFEST_NAME not in names:
-            raise AppPackageError("package entries are duplicated or manifest is missing")
-        for info in infos:
-            safe_relative(info.filename, "package path")
-            mode = (info.external_attr >> 16) & 0o170000
-            if info.is_dir() or mode == stat.S_IFLNK:
-                raise AppPackageError("package contains unsafe entry type")
+        names = _verify_archive_structure(archive)
         manifest_bytes = archive.read(PACKAGE_MANIFEST_NAME)
         try:
             manifest = json.loads(manifest_bytes.decode("utf-8"))
@@ -1184,6 +1224,8 @@ def verify_package(package: Path) -> tuple[dict, bytes]:
             expected_names.add(path)
         if set(names) != expected_names:
             raise AppPackageError("package archive file set does not match manifest")
+        if names != [PACKAGE_MANIFEST_NAME] + [record["path"] for record in records]:
+            raise AppPackageError("package ZIP member order does not match canonical file records")
         if manifest["entrypoint"] not in seen:
             raise AppPackageError("package entrypoint is not bound by manifest")
 
