@@ -1,7 +1,7 @@
 {
   "schema":"ordax.app-intelligence-manifest/1",
   "appId":"calendar",
-  "appVersion":"0.2.0",
+  "appVersion":"0.2.1",
   "authority":"none",
   "execution":"declarative-only",
   "instructions":["Use o Calendário para navegação de datas locais. Esta versão não declara criação de eventos, alarmes ou sincronização."],
