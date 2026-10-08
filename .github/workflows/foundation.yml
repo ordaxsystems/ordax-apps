@@ -42,6 +42,11 @@ jobs:
           python3 -m unittest tests/test_audit_app_readiness.py
           python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 
+      - name: Prove real candidate-package runtime imports and missing-host-port denial
+        run: |
+          python3 -m unittest tests/test_packaged_runtime_smoke.py
+          python3 tools/verify_packaged_runtimes.py --format markdown
+
       - name: Prove Files cutover stays blocked until platform source removal
         run: |
           python3 -m unittest tests/test_files_cutover.py

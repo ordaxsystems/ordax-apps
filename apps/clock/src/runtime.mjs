@@ -1,6 +1,6 @@
 const COMPONENT_RUNTIME_SCHEMA = "ordax.component-runtime/1";
 const SURFACE_SCHEMA = "ordax.surface-render-lifecycle/5";
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const STYLE_URL = new URL("../assets/clock.css", import.meta.url).href;
 
 function assertLifecycle(value) {

@@ -3,7 +3,7 @@ import { calculatorMessages } from "./i18n/messages.mjs";
 
 const COMPONENT_RUNTIME_SCHEMA = "ordax.component-runtime/1";
 const SURFACE_RENDER_LIFECYCLE_SCHEMA = "ordax.surface-render-lifecycle/5";
-const CALCULATOR_VERSION = "0.1.0";
+const CALCULATOR_VERSION = "0.2.0";
 const STYLESHEET_URL = new URL("../assets/calculator.css", import.meta.url).href;
 const STYLE_SELECTOR = 'link[data-ordax-component-style="calculator"]';
 
