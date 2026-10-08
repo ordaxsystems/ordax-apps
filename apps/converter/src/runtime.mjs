@@ -1,5 +1,5 @@
 import { convert, formatConversion } from "./conversions.mjs";
-const COMPONENT_RUNTIME_SCHEMA="ordax.component-runtime/1", SURFACE_SCHEMA="ordax.surface-render-lifecycle/5", VERSION="0.1.0";
+const COMPONENT_RUNTIME_SCHEMA="ordax.component-runtime/1", SURFACE_SCHEMA="ordax.surface-render-lifecycle/5", VERSION="0.2.0";
 const STYLE_URL=new URL("../assets/converter.css",import.meta.url).href;
 const UNITS=[["m","metros"],["km","quilômetros"],["cm","centímetros"],["in","polegadas"],["ft","pés"],["mi","milhas"],["kg","quilogramas"],["g","gramas"],["lb","libras"],["oz","onças"],["l","litros"],["ml","mililitros"],["cup","xícaras"],["c","°C"],["f","°F"],["k","K"]];
 async function styles(root){const d=root.ownerDocument;let l=d.querySelector('link[data-ordax-component-style="converter"]');if(l)return()=>{};l=d.createElement("link");l.rel="stylesheet";l.href=STYLE_URL;l.dataset.ordaxComponentStyle="converter";d.head.append(l);return()=>l.remove();}
