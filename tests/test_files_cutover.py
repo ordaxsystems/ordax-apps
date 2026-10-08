@@ -199,6 +199,28 @@ class FilesCutoverTests(unittest.TestCase):
             with self.assertRaisesRegex(files.FilesCutoverError, "snapshot inventory"):
                 files.report(root)
 
+    def test_snapshot_cannot_include_platform_owned_contracts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = make_root(Path(temp))
+            authorize(root)
+            path = root / "migrations" / "files.source-snapshot.json"
+            inventory = json.loads(path.read_text(encoding="utf-8"))
+            inventory["files"][1]["path"] = "system/contracts/file-space.mjs"
+            write_json(path, inventory)
+            with self.assertRaisesRegex(files.FilesCutoverError, "unowned or unpinned"):
+                files.report(root)
+
+    def test_snapshot_duplicate_paths_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = make_root(Path(temp))
+            authorize(root)
+            path = root / "migrations" / "files.source-snapshot.json"
+            inventory = json.loads(path.read_text(encoding="utf-8"))
+            inventory["files"][1]["path"] = inventory["files"][0]["path"]
+            write_json(path, inventory)
+            with self.assertRaisesRegex(files.FilesCutoverError, "unique Files app source"):
+                files.report(root)
+
     def test_missing_coupling_owner_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
             parent = Path(temp)
