@@ -107,7 +107,9 @@ class ZipStructureTests(unittest.TestCase):
 
     def test_zip_with_extra_member_is_rejected(self):
         def extra(data):
-            return data + [("system/apps/fixture/assets/unexpected.bin", b"extra")]
+            return [data[0]] + sorted(
+                data[1:] + [("system/apps/fixture/assets/unexpected.bin", b"extra")],
+            )
         self.forge(order=extra)
         with self.assertRaisesRegex(builder.AppPackageError, "file set does not match manifest"):
             builder.verify_package(self.forged)
