@@ -252,20 +252,32 @@ def _read_bound_artifact(path: Path, identity: dict, role: str, app_id: str) -> 
 
 
 def _write_blob(path: Path, payload: bytes) -> None:
+    """Persist one content-addressed blob and clean up only our own writes.
+
+    O_EXCL is the ownership boundary: a competing writer can create the
+    destination after any preliminary existence check. If the exclusive open
+    fails, never unlink that destination, even when verification rejects it.
+    """
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     _real_directory(path.parent, "artifact bundle digest directory")
-    if path.exists() or path.is_symlink():
-        existing = _read_bound_artifact(
-            path,
-            {"name": path.name, "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)},
-            "package",
-            "deduplicated",
-        )
+    identity = {
+        "name": path.name,
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "size": len(payload),
+    }
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
+    except FileExistsError:
+        # An existing blob (including one created in a race) is not ours.
+        # Accept only fully matching, regular, non-symlink bytes.
+        existing = _read_bound_artifact(path, identity, "package", "deduplicated")
         if existing != payload:
             raise StoreArtifactBundleError("content-addressed artifact collision detected")
         return
+    except OSError as exc:
+        raise StoreArtifactBundleError("content-addressed artifact creation failed") from exc
+
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
             handle.flush()
@@ -277,6 +289,8 @@ def _write_blob(path: Path, payload: bytes) -> None:
             finally:
                 os.close(directory_fd)
     except OSError as exc:
+        # This path was created by our successful O_EXCL operation. Never
+        # remove a path after a failed O_EXCL: another writer owns that file.
         try:
             path.unlink()
         except OSError:
