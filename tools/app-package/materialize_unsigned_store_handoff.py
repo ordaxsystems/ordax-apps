@@ -17,6 +17,7 @@ import stat
 import sys
 import zipfile
 
+import catalog_inventory as inventory_module
 import render_store_catalog_candidate as candidate_module
 import render_store_catalog_publication as publication_module
 import render_unsigned_handoff as unsigned_module
@@ -45,7 +46,7 @@ def read_regular(path: Path, *, label: str, limit: int) -> bytes:
 def create_handoff(
     *, candidate_path: Path, publication_path: Path,
     artifacts_root: Path, handoffs_dir: Path, apps_root: Path,
-    output_root: Path,
+    migrations_root: Path, output_root: Path,
 ) -> dict:
     if output_root.exists() or output_root.is_symlink():
         raise UnsignedHandoffError("refusing to overwrite an existing public handoff directory")
@@ -56,6 +57,22 @@ def create_handoff(
 
     source_commit = candidate["source"]["commit"]
     entries = candidate["entries"]
+    # A self-consistent catalog can still silently omit an eligible app.
+    # This operation claims a *complete* pre-publication handoff, so validate
+    # membership against the one canonical catalog inventory. No fixed ID
+    # allowlist or second catalog is maintained by this exporter.
+    try:
+        eligible_ids = [
+            item["appId"]
+            for item in inventory_module.discover_catalog_apps(apps_root, migrations_root)
+        ]
+    except inventory_module.CatalogInventoryError as exc:
+        raise UnsignedHandoffError("canonical catalog inventory is unavailable") from exc
+    ids = [entry["appId"] for entry in entries]
+    if ids != eligible_ids:
+        raise UnsignedHandoffError(
+            "catalog candidate is incomplete or contains apps outside canonical eligible inventory"
+        )
     publication_bytes = read_regular(
         publication_path, label="unsigned publication v1", limit=MAX_METADATA_BYTES,
     )
@@ -75,12 +92,10 @@ def create_handoff(
         (candidate_path, Path("store.catalog-candidate.json"), candidate_bytes),
         (publication_path, Path("store.catalog-publication-v1.json"), publication_bytes),
     ]
-    ids: list[str] = []
     for entry in entries:
         app_id = entry.get("appId")
         if not isinstance(app_id, str) or not APP_ID_RE.fullmatch(app_id):
             raise UnsignedHandoffError("invalid catalog app id")
-        ids.append(app_id)
         handoff = handoffs_dir / f"{app_id}.unsigned-candidate.json"
         handoff_bytes = read_regular(
             handoff, label=f"{app_id} unsigned handoff", limit=MAX_METADATA_BYTES,
@@ -155,6 +170,7 @@ def main() -> int:
     parser.add_argument("--artifacts-root", type=Path, required=True)
     parser.add_argument("--handoffs-dir", type=Path, required=True)
     parser.add_argument("--apps-root", type=Path, default=Path("apps"))
+    parser.add_argument("--migrations-root", type=Path, default=Path("migrations"))
     parser.add_argument("--out-root", type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -164,6 +180,7 @@ def main() -> int:
             artifacts_root=args.artifacts_root,
             handoffs_dir=args.handoffs_dir,
             apps_root=args.apps_root,
+            migrations_root=args.migrations_root,
             output_root=args.out_root,
         )
     except (UnsignedHandoffError, OSError, ValueError, TypeError, KeyError) as exc:
