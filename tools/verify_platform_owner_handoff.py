@@ -94,7 +94,7 @@ def validate(workspace: dict, lock: dict) -> dict:
     return {
         "phase": "pre-transfer" if current.startswith(f"{OLD_OWNER}/") else "post-transfer-source",
         "current_platform": current,
-        "target_platform": expected["target_platform_repository"],
+        "target_platform": target,
         "platform_repository_id": IMMUTABLE_PLATFORM_ID,
         "sdk_commit": lock["commit"],
         "sdk_sha256": lock["sha256"],
