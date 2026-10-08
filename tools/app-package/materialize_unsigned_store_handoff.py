@@ -15,9 +15,11 @@ from pathlib import Path
 import re
 import stat
 import sys
+import zipfile
 
 import render_store_catalog_candidate as candidate_module
 import render_store_catalog_publication as publication_module
+import render_unsigned_handoff as unsigned_module
 
 MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_METADATA_BYTES = 2 * 1024 * 1024
@@ -111,6 +113,27 @@ def create_handoff(
             files.append((
                 location, Path("artifacts") / app_id / expected_name, payload,
             ))
+
+        # Hashes in a candidate are not evidence that the *package itself* is
+        # valid: an attacker can recalculate every digest for a forged ZIP.
+        # Reuse the exact canonical unsigned-handoff validator instead of
+        # introducing another release/compatibility validator here.
+        try:
+            _, canonical_handoff_bytes = unsigned_module.render_handoff(
+                package=artifacts_root / app_id / f"{app_id}.zip",
+                release=artifacts_root / app_id / f"{app_id}.release.json",
+                compatibility=artifacts_root / app_id / f"{app_id}.compatibility.json",
+                app_id=app_id,
+                source_commit=source_commit,
+            )
+        except (unsigned_module.HandoffError, OSError, ValueError, zipfile.BadZipFile) as exc:
+            raise UnsignedHandoffError(
+                f"{app_id} canonical package/descriptor verification failed"
+            ) from exc
+        if handoff_bytes != canonical_handoff_bytes:
+            raise UnsignedHandoffError(
+                f"{app_id} unsigned handoff is not canonical for verified artifacts"
+            )
 
     if ids != sorted(ids) or len(set(ids)) != len(ids):
         raise UnsignedHandoffError("catalog app ids must be unique and sorted")
