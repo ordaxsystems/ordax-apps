@@ -274,6 +274,145 @@ def inspect_platform(platform_root: Path, plan: dict, observed_commit: str, *, d
     }
 
 
+
+def _git_bytes(platform_root: Path, *args: str) -> bytes:
+    """Read exact local Git objects; never fetch, checkout, write or run shell."""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(platform_root), *args],
+            check=True, capture_output=True, timeout=20,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise FilesCutoverError(f"cannot prove Git history ({' '.join(args[:2])})") from exc
+
+
+def _git_text(platform_root: Path, *args: str) -> str:
+    try:
+        return _git_bytes(platform_root, *args).decode("utf-8").strip()
+    except UnicodeError as exc:
+        raise FilesCutoverError("Git metadata is not UTF-8") from exc
+
+
+def _verify_git_checkout(platform_root: Path, plan: dict) -> str:
+    """Require a clean checkout at the expected platform origin, not an arbitrary folder."""
+    if platform_root.is_symlink() or not platform_root.is_dir():
+        raise FilesCutoverError("platform checkout must be a real directory")
+    top = _git_text(platform_root, "rev-parse", "--show-toplevel")
+    if Path(top).resolve() != platform_root.resolve():
+        raise FilesCutoverError("platform checkout must be the Git worktree root")
+    expected = plan["source_repository_current"]
+    allowed = {
+        f"https://github.com/{expected}",
+        f"https://github.com/{expected}.git",
+        f"git@github.com:{expected}",
+        f"git@github.com:{expected}.git",
+        f"ssh://git@github.com/{expected}",
+        f"ssh://git@github.com/{expected}.git",
+    }
+    origin = _git_text(platform_root, "config", "--get", "remote.origin.url")
+    if origin not in allowed:
+        raise FilesCutoverError("Git origin does not match the canonical platform repository")
+    if _git_bytes(platform_root, "status", "--porcelain", "--untracked-files=all").strip():
+        raise FilesCutoverError("platform Git checkout contains uncommitted or untracked files")
+    return _git_text(platform_root, "rev-parse", "HEAD")
+
+
+def _tree_files(platform_root: Path, commit: str, removed_paths: list[str]) -> list[dict]:
+    """Read the complete tracked app-owned tree at a commit, preserving Git blob identity."""
+    sha_or_none(commit, "tree commit")
+    if commit is None:
+        raise FilesCutoverError("source tree requires a pinned commit")
+    if not removed_paths:
+        raise FilesCutoverError("source tree paths must not be empty")
+    raw = _git_bytes(platform_root, "ls-tree", "-r", "-z", commit, "--", *removed_paths)
+    result = []
+    seen = set()
+    for entry in raw.split(b"\0"):
+        if not entry:
+            continue
+        try:
+            metadata, name = entry.split(b"\t", 1)
+            mode, kind, blob = metadata.decode("ascii").split(" ")
+            path = safe_path(name.decode("utf-8"))
+        except (ValueError, UnicodeError) as exc:
+            raise FilesCutoverError("invalid Git tree entry") from exc
+        if kind != "blob" or mode not in ("100644", "100755"):
+            raise FilesCutoverError(f"non-regular app-owned Git source: {path}")
+        if not SHA40.fullmatch(blob):
+            raise FilesCutoverError(f"invalid Git blob id: {path}")
+        if not any(path == prefix or path.startswith(prefix + "/") for prefix in removed_paths):
+            raise FilesCutoverError(f"Git source outside app-owned removal inventory: {path}")
+        if path in seen:
+            raise FilesCutoverError(f"duplicate Git source path: {path}")
+        seen.add(path)
+        result.append({"path": path, "git_blob_sha": blob})
+    return sorted(result, key=lambda item: item["path"])
+
+
+def capture_source_snapshot(platform_root: Path, plan: dict) -> dict:
+    """Generate derived inventory from the platform's Git tree; output only, no writes."""
+    if plan["source_cutover_allowed"]:
+        raise FilesCutoverError("cannot capture initial source snapshot after cutover authorization")
+    commit = _verify_git_checkout(platform_root, plan)
+    entries = _tree_files(
+        platform_root, commit, plan["gate_a_platform_removal"]["remove_owned_source"]
+    )
+    if not entries or "system/apps/files/app.mjs" not in {item["path"] for item in entries}:
+        raise FilesCutoverError("Files source must exist before Gate A removal")
+    return {
+        "$schema": "ordax.source-snapshot-inventory/1",
+        "app_id": "files",
+        "repository": plan["source_repository_current"],
+        "commit": commit,
+        "file_count": len(entries),
+        "files": entries,
+    }
+
+
+def verify_source_history(platform_root: Path, plan: dict, inventory: dict) -> dict:
+    """Prove snapshot and Gate A against real Git commits, not asserted JSON alone."""
+    gate_commit = plan["gate_a_platform_commit"]
+    source_commit = plan["source_snapshot"]["commit"]
+    if gate_commit is None or source_commit is None:
+        raise FilesCutoverError("Gate A and source snapshot commits must be pinned")
+    head = _verify_git_checkout(platform_root, plan)
+    if head != gate_commit:
+        raise FilesCutoverError("checkout HEAD differs from pinned Gate A commit")
+    if source_commit == gate_commit:
+        raise FilesCutoverError("snapshot and Gate A cannot be the same commit")
+    _git_bytes(platform_root, "cat-file", "-e", f"{source_commit}^{{commit}}")
+    _git_bytes(platform_root, "cat-file", "-e", f"{gate_commit}^{{commit}}")
+    _git_bytes(platform_root, "merge-base", "--is-ancestor", source_commit, gate_commit)
+
+    owned = plan["gate_a_platform_removal"]["remove_owned_source"]
+    actual_snapshot = _tree_files(platform_root, source_commit, owned)
+    if not actual_snapshot or "system/apps/files/app.mjs" not in {
+        item["path"] for item in actual_snapshot
+    }:
+        raise FilesCutoverError("pinned source commit does not contain the Files app")
+    if inventory.get("files") != actual_snapshot:
+        raise FilesCutoverError("snapshot inventory differs from Git blobs or is incomplete")
+    if _tree_files(platform_root, gate_commit, owned):
+        raise FilesCutoverError("Gate A Git commit still contains app-owned Files source")
+    for path in plan["gate_a_platform_removal"]["retain_platform_owned"]:
+        record = _git_bytes(platform_root, "ls-tree", gate_commit, "--", path)
+        if not record or b" blob " not in record:
+            raise FilesCutoverError(f"Gate A removed platform-owned port: {path}")
+    for coupling in plan["gate_a_platform_removal"]["remove_platform_implementation_couplings"]:
+        path = coupling["path"]
+        content = _git_bytes(platform_root, "show", f"{gate_commit}:{path}")
+        for literal in coupling["forbidden_literals"]:
+            if literal.encode("utf-8") in content:
+                raise FilesCutoverError(f"Gate A retains Files implementation coupling: {path}")
+    return {
+        "verified": True,
+        "snapshot_commit": source_commit,
+        "gate_a_commit": gate_commit,
+        "snapshot_file_count": len(actual_snapshot),
+        "origin": plan["source_repository_current"],
+    }
+
+
 def report(root: Path = ROOT, platform_root: Path | None = None,
            observed_commit: str | None = None, *, dirty: bool = False) -> dict:
     workspace, plan, sdk = load_plan(root.resolve())
@@ -285,6 +424,7 @@ def report(root: Path = ROOT, platform_root: Path | None = None,
     if plan["source_snapshot"]["commit"] is None:
         blockers.append("source-snapshot-not-captured")
     inspection = None
+    source_history = {"verified": False, "status": "not-assessed"}
     if platform_root is None:
         blockers.append("platform-absence-not-inspected")
     else:
@@ -301,6 +441,15 @@ def report(root: Path = ROOT, platform_root: Path | None = None,
             blockers.append("platform-coupling-owner-missing")
         if inspection["missing_retained_platform_ports"]:
             blockers.append("platform-owned-file-space-ports-missing")
+        if plan["source_cutover_allowed"]:
+            try:
+                inventory_path = root.resolve() / safe_path(plan["source_snapshot"]["inventory_file"])
+                source_history = verify_source_history(
+                    platform_root.resolve(), plan, read_json(inventory_path)
+                )
+            except FilesCutoverError as exc:
+                blockers.append("source-git-history-not-proven")
+                source_history = {"verified": False, "status": "blocked", "reason": str(exc)}
     return {
         "schema": SCHEMA,
         "authority": "none",
@@ -315,6 +464,7 @@ def report(root: Path = ROOT, platform_root: Path | None = None,
             "ready": not blockers,
             "blockers": sorted(set(blockers)),
             "platform_inspection": inspection,
+            "source_history_evidence": source_history,
         },
         "distribution_activation": "blocked",
         "disclaimer": (
@@ -372,8 +522,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--platform-root", type=Path)
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
     parser.add_argument("--require-cutover-ready", action="store_true")
+    parser.add_argument(
+        "--emit-source-snapshot", action="store_true",
+        help="Print a derived, read-only Git blob inventory before Gate A (no writes)",
+    )
     args = parser.parse_args(argv)
     try:
+        if args.emit_source_snapshot:
+            if args.platform_root is None or args.format != "json" or args.require_cutover_ready:
+                raise FilesCutoverError("snapshot output requires --platform-root and JSON format")
+            _, plan, _ = load_plan(args.root.resolve())
+            print(json.dumps(
+                capture_source_snapshot(args.platform_root, plan),
+                indent=2, ensure_ascii=False, sort_keys=True,
+            ))
+            return 0
         head, dirty = git_checkout_state(args.platform_root) if args.platform_root else (None, False)
         result = report(args.root, args.platform_root, head, dirty=dirty)
     except FilesCutoverError as exc:
