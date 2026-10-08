@@ -76,10 +76,15 @@ def authorize(root: Path) -> dict:
     plan["source_snapshot"]["inventory_file"] = "migrations/files.source-snapshot.json"
     write_json(root / "migrations" / "files.externalization.json", plan)
     write_json(root / "migrations" / "files.source-snapshot.json", {
+        "$schema": "ordax.source-snapshot-inventory/1",
         "app_id": "files",
         "repository": plan["source_repository_current"],
         "commit": SNAPSHOT_SHA,
-        "file_count": 17,
+        "file_count": 2,
+        "files": [
+            {"path": "system/apps/files/app.mjs", "git_blob_sha": "c" * 40},
+            {"path": "system/surface/ui/file-space-controls.mjs", "git_blob_sha": "d" * 40},
+        ],
     })
     return plan
 
