@@ -80,3 +80,26 @@ lifecycle.
 The App SDK conformance gate independently validates the exported providers, invocations and results
 against the exact SDK 1.12 source blob pinned in `platform-sdk.lock.json`. It also proves that
 provider artifacts remain `authority=none` and `execution=unavailable`.
+
+
+## Proteção da identidade exata da nota criada
+
+O provedor tipado `notes-native` somente modifica título/corpo de uma
+nota recém-criada se a diferença entre o snapshot antes/depois de
+`createNote()` contiver **exatamente uma** nota nova, ativa,
+selecionada e pertencente ao projeto solicitado.
+
+Uma criação sem efeito (por exemplo, quando a quota de notas foi atingida)
+**não** pode usar a nota selecionada anteriormente como fallback: isso
+alteraria silenciosamente conteúdo preexistente. A mesma restrição vale
+para retorno inconsistente de projeto/seleção. Em todos esses casos, a
+ação retorna `failed` sem editar a nota preexistente.
+
+Os testes ficam em `apps/notes/tests/action_provider_create.test.mjs`,
+incluídos na `foundation.yml` canônica. Como o pacote é selado por
+artefato, o SHA-256 de `actions/providers/notes-native.mjs` foi
+recalculado e atualizado em `actions/providers/manifest.json`.
+
+Essa correção **não** altera `execution=unavailable`: o provedor
+continua desabilitado para invocação por IA/OS até existir o broker
+de execução verificada, consentimento e grants pelo proprietário canônico.
