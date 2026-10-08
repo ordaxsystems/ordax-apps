@@ -36,6 +36,22 @@ def main() -> None:
     require(target_source == "apps/studio", "externalization target must remain apps/studio")
     require(product.get("portable_source") == target_source, "distribution and externalization source targets disagree")
 
+    # The component manifest owns the version. Declarative copies must match it
+    # exactly; no separate AI/actions/provider release track is permitted.
+    source_manifest = json.loads((ROOT / "apps" / "studio" / "app.json").read_text(encoding="utf-8"))
+    source_version = source_manifest.get("version")
+    import re
+    require(
+        isinstance(source_version, str) and re.fullmatch(r"[0-9]+[.][0-9]+[.][0-9]+", source_version) is not None,
+        "Studio canonical app version must be a numeric SemVer",
+    )
+    for relative in ("ai/manifest.json", "actions/manifest.json", "actions/providers/manifest.json"):
+        manifest = json.loads((ROOT / "apps" / "studio" / relative).read_text(encoding="utf-8"))
+        require(
+            manifest.get("appVersion") == source_version,
+            f"Studio {relative} must match canonical app.json version {source_version}",
+        )
+
     versioning = distribution.get("release_versioning") or {}
     require(versioning.get("single_app_version") is True, "Studio must have one canonical application version")
     require(
