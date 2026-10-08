@@ -166,6 +166,40 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source contracts"):
                 mod.verify_physical_owner({**report, "source_conformance_after_transfer": False})
 
+    def test_physical_owner_uses_ephemeral_read_only_ci_token_without_bypass(self):
+        state = mod.evaluate(ROOT)
+        correct = {
+            "id": int(mod.IMMUTABLE_PLATFORM_ID),
+            "full_name": self.target,
+            "archived": False,
+            "default_branch": "main",
+        }
+
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, n=-1): return json.dumps(correct).encode("utf-8")
+
+        with mock.patch.dict(mod.os.environ, {"ORDAX_GITHUB_API_TOKEN": "fixture-read-only"}, clear=False):
+            with mock.patch.object(mod.urllib.request, "urlopen", return_value=Response()) as fetch:
+                self.assertTrue(mod.verify_physical_owner(state))
+                request = fetch.call_args.args[0]
+                self.assertEqual(request.get_header("Authorization"), "Bearer fixture-read-only")
+                self.assertEqual(fetch.call_args.kwargs["timeout"], 15)
+
+        with mock.patch.dict(mod.os.environ, {"ORDAX_GITHUB_API_TOKEN": "fixture-read-only"}, clear=False):
+            with mock.patch.object(mod.urllib.request, "urlopen", side_effect=mod.urllib.error.HTTPError(
+                "https://api.github.com", 403, "Forbidden", {}, None,
+            )):
+                with self.assertRaises(mod.urllib.error.HTTPError):
+                    mod.verify_physical_owner(state)
+        with mock.patch.dict(mod.os.environ, {"ORDAX_GITHUB_API_TOKEN": "fixture-read-only"}, clear=False):
+            with mock.patch.object(mod.urllib.request, "urlopen", return_value=Response()) as fetch:
+                with self.assertRaisesRegex(ValueError, "source owner or immutable"):
+                    mod.verify_physical_owner({**state, "platform_repository_id": "wrong"})
+                fetch.assert_not_called()
+
     def test_live_migration_source_is_operational_not_historical(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
