@@ -141,6 +141,21 @@ Regressões cobrem leitura concorrente fora de ordem, lista obsoleta, resposta d
 
 **Limites:** sucesso com fixture não equivale à montagem em um host/browser real nem prova grants, sandbox, instalação, atualização, rollback, assinatura, trust ou release de produção. Esses gates continuam separados e fechados até evidência do owner da plataforma.
 
+## G2.6 — Conversor e Cores: estado de formulário entre mudanças de idioma
+
+O `converter` destruía e recriava a view inteira quando o locale mudava, perdendo o valor digitado e as unidades selecionadas. O app `colors` fazia o mesmo com a cor HEX, descartando inclusive valores inválidos em edição e criando um listener novo sobre cada novo input sem desmontar explicitamente o anterior.
+
+Os runtimes canônicos agora **preservam o estado da interação do usuário** entre re-renderizações localizadas. O Conversor captura os valores dos controles antes de liberar listeners e remontar a view; Cores mantém a entrada HEX escolhida na própria instância de app e reconstrói o preview/mensagem usando o locale atual. Ambos rejeitam portas incompatíveis, liberam subscriptions/DOM/stylesheet ao falhar o mount e tornam `destroy()` idempotente.
+
+```sh
+node --test apps/converter/tests/*.test.mjs
+node --test apps/colors/tests/*.test.mjs
+```
+
+Os testes executam os runtimes reais sobre a **mesma fixture mínima de DOM e porta pública já utilizada nos testes PDF/mídia**, em `tests/support/preview_mount_fixture.mjs`. Verificam valores preservados, erros traduzidos, ausência de listeners antigos e cleanup em falhas de subscribe. Essa fixture **não** é navegador, host de produção ou store de estado persistente.
+
+Continuam pendentes as provas de montagem nos hosts reais, instalações, rollback, grants, sandbox e assinatura de produção; nenhum desses contratos foi copiado para os aplicativos.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
