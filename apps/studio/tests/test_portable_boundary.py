@@ -32,7 +32,7 @@ class PortableBoundaryTests(unittest.TestCase):
         manifest = (ROOT / "app.json").read_text(encoding="utf-8")
         self.assertIn('"schema": "ordax.component-manifest/1"', manifest)
         self.assertIn('"id": "studio"', manifest)
-        self.assertIn('"version": "0.5.8"', manifest)
+        self.assertIn('"version": "0.5.9"', manifest)
 
     def test_html_uses_host_contract(self):
         html = (ROOT / "src" / "index.html").read_text(encoding="utf-8")
