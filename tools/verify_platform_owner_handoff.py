@@ -75,7 +75,7 @@ def validate(workspace: dict, lock: dict) -> dict:
         raise ValueError("OrdaX Apps own migration state drifted")
 
     current = migration.get("current_platform_repository")
-    if current not in (f"{OLD_OWNER}/{PLATFORM_NAME}", expected["target_platform_repository"]):
+    if current not in (f"{OLD_OWNER}/{PLATFORM_NAME}", target):
         raise ValueError("unrecognized physical platform repository")
     if workspace.get("platform_repository") != current:
         raise ValueError("workspace platform owner differs from migration SSOT")
