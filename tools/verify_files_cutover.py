@@ -187,14 +187,34 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
             raise FilesCutoverError("cutover cannot be authorized without distinct snapshot and Gate A pins")
         inventory_path = root / safe_path(snapshot["inventory_file"])
         inventory = read_json(inventory_path)
+        entries = inventory.get("files")
         if (
-            inventory.get("app_id") != "files"
+            inventory.get("$schema") != "ordax.source-snapshot-inventory/1"
+            or inventory.get("app_id") != "files"
             or inventory.get("repository") != platform
             or inventory.get("commit") != snapshot["commit"]
+            or not isinstance(entries, list) or not entries
             or not isinstance(inventory.get("file_count"), int)
-            or inventory["file_count"] <= 0
+            or isinstance(inventory["file_count"], bool)
+            or inventory["file_count"] != len(entries)
         ):
             raise FilesCutoverError("source snapshot inventory is not pinned to Files")
+        snapshot_paths = []
+        for entry in entries:
+            if not isinstance(entry, dict) or set(entry) != {"path", "git_blob_sha"}:
+                raise FilesCutoverError("source snapshot entry must pin a Git blob")
+            path = safe_path(entry["path"])
+            sha_or_none(entry["git_blob_sha"], "source snapshot Git blob")
+            if entry["git_blob_sha"] is None or not any(
+                path.startswith(removed_root + "/") for removed_root in removed
+            ):
+                raise FilesCutoverError("source snapshot contains unowned or unpinned source")
+            snapshot_paths.append(path)
+        if (
+            len(snapshot_paths) != len(set(snapshot_paths))
+            or "system/apps/files/app.mjs" not in snapshot_paths
+        ):
+            raise FilesCutoverError("source snapshot must include unique Files app source")
     delivery = plan.get("delivery")
     if (
         not isinstance(delivery, dict)
