@@ -40,7 +40,7 @@ jobs:
       - name: Guard OrdaX OS owner handoff and exact Platform SDK lock
         run: |
           python3 -m unittest -v tests/test_platform_owner_handoff.py
-          python3 tools/verify_platform_owner_handoff.py
+          python3 tools/verify_platform_owner_handoff.py --require-post-transfer-source --require-physical-owner
 
       - name: Audit canonical app readiness and prove deterministic unsigned package candidates
         run: |

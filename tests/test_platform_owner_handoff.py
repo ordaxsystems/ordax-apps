@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
+import io
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools/verify_platform_owner_handoff.py"
@@ -118,6 +120,51 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
                 "tools/verify_notes_platform_sdk.py",
                 mod.stale_references(root, self.old)["operational_paths"],
             )
+
+    def test_physical_owner_uses_exact_canonical_id_and_never_signs(self):
+        report = mod.evaluate(ROOT)
+        correct = {
+            "id": int(mod.IMMUTABLE_PLATFORM_ID),
+            "full_name": self.target,
+            "archived": False,
+            "default_branch": "main",
+        }
+
+        class Response:
+            status = 200
+
+            def __init__(self, payload):
+                self.stream = io.BytesIO(json.dumps(payload).encode("utf-8"))
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, n=-1):
+                return self.stream.read(n)
+
+        with mock.patch.object(mod.urllib.request, "urlopen", return_value=Response(correct)) as fetch:
+            self.assertTrue(mod.verify_physical_owner(report))
+            self.assertEqual(fetch.call_args.kwargs["timeout"], 15)
+            self.assertEqual(fetch.call_args.args[0].full_url, "https://api.github.com/repos/" + self.target)
+        for change in (
+            {"id": 0},
+            {"full_name": self.old},
+            {"archived": True},
+            {"default_branch": "legacy"},
+        ):
+            with self.subTest(change=change):
+                with mock.patch.object(mod.urllib.request, "urlopen", return_value=Response({**correct, **change})):
+                    with self.assertRaises(ValueError):
+                        mod.verify_physical_owner(report)
+        with mock.patch.object(mod.urllib.request, "urlopen", side_effect=mod.urllib.error.URLError("offline")):
+            with self.assertRaises(mod.urllib.error.URLError):
+                mod.verify_physical_owner(report)
+        with mock.patch.object(mod.urllib.request, "urlopen", side_effect=AssertionError("must not contact GitHub")):
+            with self.assertRaisesRegex(ValueError, "source contracts"):
+                mod.verify_physical_owner({**report, "source_conformance_after_transfer": False})
 
     def test_unknown_owner_or_unsigned_sdk_lock_fails(self):
         bad = copy.deepcopy(self.workspace)

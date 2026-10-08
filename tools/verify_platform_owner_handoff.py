@@ -12,6 +12,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 OLD_OWNER = "washingtonmsdj"
@@ -182,17 +184,53 @@ def evaluate(root: Path) -> dict:
     }
 
 
+
+def verify_physical_owner(state: dict) -> bool:
+    """Verify immutable GitHub identity, never infer authority from redirects."""
+    target = f"{NEW_OWNER}/{PLATFORM_NAME}"
+    if state.get("source_conformance_after_transfer") is not True:
+        raise ValueError("source contracts must be post-transfer before physical verification")
+    if state.get("current_platform") != target or state.get("platform_repository_id") != IMMUTABLE_PLATFORM_ID:
+        raise ValueError("source owner or immutable repository ID drifted")
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{target}",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "ordax-apps-platform-owner-handoff",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        if response.status != 200:
+            raise ValueError("canonical GitHub repository metadata is unavailable")
+        payload = response.read(1024 * 1024 + 1)
+    if len(payload) > 1024 * 1024:
+        raise ValueError("canonical GitHub metadata exceeds size limit")
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        raise ValueError("canonical GitHub metadata is not an object")
+    if data.get("id") != int(IMMUTABLE_PLATFORM_ID) or data.get("full_name") != target:
+        raise ValueError("GitHub owner or immutable repository ID mismatch")
+    if data.get("archived") is not False or data.get("default_branch") != "main":
+        raise ValueError("canonical GitHub repository is archived or its default branch drifted")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--require-post-transfer-source", action="store_true")
+    parser.add_argument("--require-physical-owner", action="store_true")
     args = parser.parse_args()
     try:
         report = evaluate(ROOT)
-        print(json.dumps(report, indent=2, ensure_ascii=False))
         if args.require_post_transfer_source and not report["source_conformance_after_transfer"]:
+            print(json.dumps(report, indent=2, ensure_ascii=False))
             return 1
+        if args.require_physical_owner:
+            report["github_physical_transfer_verified"] = verify_physical_owner(report)
+        print(json.dumps(report, indent=2, ensure_ascii=False))
         return 0
-    except (ValueError, KeyError, RuntimeError, OSError, subprocess.SubprocessError) as exc:
+    except (ValueError, KeyError, RuntimeError, OSError, subprocess.SubprocessError, urllib.error.URLError) as exc:
         print(f"ORDAX_APPS_PLATFORM_OWNER_HANDOFF=FAIL: {exc}", file=sys.stderr)
         return 2
 
