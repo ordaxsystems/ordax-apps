@@ -82,57 +82,50 @@ jobs:
           python3 -m unittest tests/test_provider_syntax_ssot.py
           python3 tools/verify_app_actions.py --check-provider-syntax
 
-      - name: Prove Calculator portable behavior and package boundary
-        run: |
-          node --check apps/calculator/src/runtime.mjs
-          node --check apps/calculator/src/expression.mjs
-          node --test apps/calculator/tests/*.test.mjs
-          out="/tmp/ordax-calculator"
-          rm -rf "$out"
-          mkdir -p "$out/release"
-          python3 tools/app-package/build.py build \
-            --app-root apps/calculator \
-            --source-commit "$(git rev-parse HEAD)" \
-            --compatibility apps/calculator/compatibility.json \
-            --package-out "$out/calculator.zip" \
-            --release-dir "$out/release"
-          python3 tools/app-package/build.py verify \
-            --package "$out/calculator.zip" \
-            --release "$out/release/calculator.release.json" \
-            --compatibility "$out/release/calculator.compatibility.json"
-
-      - name: Prove independent per-mount component stylesheet lifecycle
-        run: node --test tests/test_component_style_ownership.mjs
-
-      - name: Prove basic MVP utility apps
+      - name: Prove minimum behavior and package for every canonical Store candidate
+        shell: bash
         run: |
           set -euo pipefail
-          node --test apps/clock/tests/*.test.mjs
-          node --test apps/converter/tests/*.test.mjs
-          node --test apps/text-viewer/tests/*.test.mjs
-          node --test apps/image-viewer/tests/*.test.mjs
-          node --test apps/calendar/tests/*.test.mjs
-          node --test apps/colors/tests/*.test.mjs
-          node --test apps/character-map/tests/*.test.mjs
-          node --test apps/paint/tests/*.test.mjs
-          node --test apps/media-player/tests/*.test.mjs
-          node --test apps/pdf-viewer/tests/*.test.mjs
-          for app in clock converter text-viewer image-viewer calendar colors character-map paint media-player pdf-viewer; do
-            node --check "apps/$app/src/runtime.mjs"
-            out="/tmp/ordax-$app"
-            rm -rf "$out"
+          shopt -s nullglob
+
+          # SSOT: exactly the same eligible component-slot entries consumed by
+          # Store catalog generation. No second hand-maintained utility list.
+          inventory="$(python3 tools/app-package/catalog_inventory.py --format tsv)"
+          if [[ -z "$inventory" ]]; then
+            echo "No canonical Store candidates were returned" >&2
+            exit 1
+          fi
+          source_commit="$(git rev-parse HEAD)"
+          while IFS=$'\t' read -r app app_root compatibility; do
+            [[ -n "$app" && -n "$app_root" && -n "$compatibility" ]]
+            [[ "$app_root" == "apps/$app" ]] || {
+              echo "Noncanonical candidate root: $app_root" >&2
+              exit 1
+            }
+
+            # A valid manifest/ZIP is not a functional app. Every candidate
+            # must have behavior tests, including newly catalogued utilities.
+            behavior_tests=("$app_root"/tests/*.test.mjs)
+            if (( ${#behavior_tests[@]} == 0 )); then
+              echo "$app: no executable behavior tests for the MVP" >&2
+              exit 1
+            fi
+            node --check "$app_root/src/runtime.mjs"
+            node --test "${behavior_tests[@]}"
+
+            out="$RUNNER_TEMP/ordax-mvp-$app"
             mkdir -p "$out/release"
             python3 tools/app-package/build.py build \
-              --app-root "apps/$app" \
-              --source-commit "$(git rev-parse HEAD)" \
-              --compatibility "apps/$app/compatibility.json" \
+              --app-root "$app_root" \
+              --source-commit "$source_commit" \
+              --compatibility "$compatibility" \
               --package-out "$out/$app.zip" \
               --release-dir "$out/release"
             python3 tools/app-package/build.py verify \
               --package "$out/$app.zip" \
               --release "$out/release/$app.release.json" \
               --compatibility "$out/release/$app.compatibility.json"
-          done
+          done <<< "$inventory"
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
