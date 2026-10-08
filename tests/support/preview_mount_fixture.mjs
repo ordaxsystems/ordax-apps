@@ -30,7 +30,7 @@ class TestNode {
   set innerHTML(value) {
     if (this.tagName !== "section") throw new Error("Unexpected innerHTML target");
     this.targets.clear();
-    for (const [, name] of value.matchAll(/data-([a-z]+)(?=[\s=>])/g)) {
+    for (const [, name] of value.matchAll(/data-([a-z][a-z-]*)(?=[\s=>])/g)) {
       if (this.targets.has(name)) continue;
       const tag = name === "stage" ? "main" : name === "canvas" ? "canvas" : "span";
       this.targets.set(name, new TestNode(tag, this.ownerDocument));
@@ -40,7 +40,7 @@ class TestNode {
     }
   }
   querySelector(query) {
-    const match = /^\[data-([a-z]+)\]$/.exec(query);
+    const match = /^\[data-([a-z][a-z-]*)\]$/.exec(query);
     return match ? this.targets.get(match[1]) ?? null : null;
   }
   append(child) {
