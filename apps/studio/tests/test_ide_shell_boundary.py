@@ -140,11 +140,13 @@ def test_studio_opens_directly_into_three_column_shell():
     assert "window.ordaxAssistantSurface?.refresh()" in source
 
 
-def test_studio_release_is_058():
+def test_studio_release_manifest_parity():
     import json
+    import re
     app = json.loads((ROOT / "app.json").read_text(encoding="utf-8"))
-    ai = json.loads((ROOT / "ai" / "manifest.json").read_text(encoding="utf-8"))
-    actions = json.loads((ROOT / "actions" / "manifest.json").read_text(encoding="utf-8"))
-    assert app["version"] == "0.5.8"
-    assert ai["appVersion"] == app["version"]
-    assert actions["appVersion"] == app["version"]
+    version = app["version"]
+    assert version == "0.5.9"
+    assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version)
+    for relative in ("ai/manifest.json", "actions/manifest.json", "actions/providers/manifest.json"):
+        manifest = json.loads((ROOT / relative).read_text(encoding="utf-8"))
+        assert manifest["appVersion"] == version, relative
