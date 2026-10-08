@@ -353,6 +353,13 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 6. Propor o menor incremento verificável; nunca substituir um gate por um atalho.
 7. Atualizar este roadmap se o estado comprovado mudou; distinguir **fato, plano e hipótese**.
 
+### Execução G0 — auditoria de prontidão (em PR, ainda não integrada)
+
+- Código inicial: `tools/audit_app_readiness.py` (inventário de fonte, metadados e blockers; **não** prova release).
+- Testes: `tests/test_audit_app_readiness.py`; CI: `.github/workflows/foundation.yml`.
+- Uso/limitações: [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
+- **Estado:** implementação inicial em revisão; não declarar G0 concluído até testes e PR aprovados. Próximo gate: conferir evidências de runtime/package/lifecycle por app e mapear contratos de Files sem duplicar source bootstrap da plataforma.
+
 ## 13. Registro de alterações
 
 - **2026-10-08 — v0.1:** roadmap inicial criado a partir do inventário canônico de `ordax-apps`, documentação do SDK/trust e levantamento preliminar de oportunidades open source e apps com IA. **Não constitui relatório final de pesquisa externa nem autorização de ativação em produção.**
