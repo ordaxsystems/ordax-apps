@@ -213,3 +213,53 @@ export function summarizeFinanceLedger(ledger, {
     isAccountingProfit: false,
   });
 }
+
+
+// Read-only, bounded journal browsing for a future authorized Finance UI.
+// Every page carries the revision pinned by its first request; a concurrent
+// append invalidates the continuation instead of skipping/repeating entries.
+// This is not a storage port, Identity check, or accounting statement.
+export function queryFinanceEntries(ledger, {
+  authorizedScope, expectedRevision, start, end,
+  kinds = ["income", "expense", "reversal"],
+  offset = 0, limit = 50,
+} = {}) {
+  const snapshot = assertFinanceScope(ledger, authorizedScope);
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision !== snapshot.revision) {
+    throw new Error("Finance query revision conflict");
+  }
+  const from = instant(start);
+  const until = instant(end);
+  if (Date.parse(until) <= Date.parse(from)) {
+    throw new TypeError("Finance query period must have a positive duration");
+  }
+  if (!Array.isArray(kinds) || kinds.length === 0 || kinds.length > 3
+    || new Set(kinds).size !== kinds.length || kinds.some((kind) => !KINDS.has(kind))) {
+    throw new TypeError("Finance query kinds are invalid");
+  }
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > MAX_FINANCE_ENTRIES
+    || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new TypeError("Finance query pagination is outside bounds");
+  }
+  const allowed = new Set(kinds);
+  const filtered = snapshot.entries.filter((item) => (
+    allowed.has(item.kind)
+    && Date.parse(item.occurredAt) >= Date.parse(from)
+    && Date.parse(item.occurredAt) < Date.parse(until)
+  ));
+  const page = filtered.slice(offset, offset + limit);
+  return Object.freeze({
+    schema: "ordax.finance-ledger-query/1",
+    ownerId: snapshot.ownerId,
+    spaceId: snapshot.spaceId,
+    currency: snapshot.currency,
+    revision: snapshot.revision,
+    start: from,
+    end: until,
+    total: filtered.length,
+    offset,
+    nextOffset: offset + page.length < filtered.length
+      ? offset + page.length : null,
+    entries: Object.freeze([...page]),
+  });
+}
