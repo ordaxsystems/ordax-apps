@@ -265,8 +265,10 @@ jobs:
             go test -run '^TestExternalNotesPackageCompletesCanonicalLifecycle$' -count=1
           )
 
-      - name: Prove pinned public App SDK from platform repository
-        run: python3 tools/verify_platform_sdk.py
+      - name: Prove pinned public App SDK and all canonical app required contract majors
+        run: |
+          python3 -m unittest tests/test_app_sdk_compatibility.py
+          python3 tools/verify_platform_sdk.py
 
       - name: Prove app intelligence against pinned public SDK
         run: python3 tools/verify_app_intelligence_sdk_conformance.py
