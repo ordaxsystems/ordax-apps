@@ -430,6 +430,14 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Testes adicionados aos diretórios canônicos dos apps e fixture comum em `tests/support/preview_mount_fixture.mjs`; a CI Foundation já descobre ambos sem duplicar lista ou pipeline.
 - Sem novo owner para File Space, host, grants, Store, lifecycle ou signing. **Estabilidade de produto/produção ainda não comprovada**: faltam browser/host real, gestão de grants e lifecycle por app. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
+### Execução G2.6 — Converter e Colors: estado preservado após locale (PR em validação)
+
+- Conversor: entrada numérica e par de unidades deixaram de reiniciar ao trocar idioma; estado em edição sobrevive à reconstrução da view sem duplicar store global.
+- Cores: HEX selecionado ou inválido permanece no input após mudança de locale; mensagens/preview são recalculados na linguagem atual; listeners antigos são explicitamente liberados.
+- Montagem/desmontagem: ambos validam as portas do contrato público, fazem cleanup de stylesheet, inscrições e DOM em erro e garantem `destroy()` idempotente.
+- Testes de regressão via descoberta da Foundation CI já existente. Reuso da fixture mínima `tests/support/preview_mount_fixture.mjs` dos tests G2.5, sem nova implementação de host.
+- **Bloqueios de estabilidade:** testes locais não provam navegador/host real, grants, lifecycle, rollback, signing ou distribuição; nenhum app é declarado release estável por estes testes.
+
 ## 13. Registro de alterações
 
 - **2026-10-08 — v0.1:** roadmap inicial criado a partir do inventário canônico de `ordax-apps`, documentação do SDK/trust e levantamento preliminar de oportunidades open source e apps com IA. **Não constitui relatório final de pesquisa externa nem autorização de ativação em produção.**
