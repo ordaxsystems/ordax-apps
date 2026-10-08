@@ -423,7 +423,7 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Testes em `apps/image-viewer/tests/mount_contract.test.mjs` (descobertos pela CI existente) verificam concorrência de leituras, erros de retornos/DOM, unmount com leitura pendente, revogação de URLs e falha no subscribe; sem segunda lista de apps/portas.
 - **Limite:** fixtures de host/DOM locais não provam integração no OS, grants, sandbox, instalação, assinatura nem rollback; File Space continua no owner da plataforma. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
-### Execução G2.5 — PDF Viewer e Media Player: previews e teardown (PR em validação)
+### Execução G2.5 — PDF Viewer e Media Player: previews e teardown (PR #142)
 
 - PDF Viewer: revisão de estado de montagem/desmontagem, identidade e tipo do preview, concorrência de leituras e revogação de URL temporária mesmo quando a criação de `<embed>` falha.
 - Media Player: uma única geração para `fileSpace.list()` e `readMediaPreview()`; resultados antigos não sobrescrevem navegação nem conteúdo atual. Entradas de diretório inseguras são ignoradas; vídeo/áudio são pausados e URLs revogadas em troca ou desmontagem.
