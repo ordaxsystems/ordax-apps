@@ -99,6 +99,42 @@ def operational_path(path: str) -> bool:
     )
 
 
+
+# Exact, historically issued assertions remain evidence; never exempt a
+# whole source/workflow file or a checkout URL. Extra references fail closed.
+def verified_historical_assertions(root: Path, path: str, old: str) -> bool:
+    allowed = {
+        "tools/verify_notes_platform_sdk.py": [
+            f'if lock["repository"] != "{old}":',
+        ],
+        "tools/verify_notes_production_trust.py": [
+            f'if lock.get("repository") != "{old}":',
+        ],
+        "tools/verify_notes_externalization.py": [
+            f'if source_snapshot.get("repository") != "{old}":',
+            f'"repository": "{old}",',
+        ],
+        ".github/workflows/foundation.yml": [
+            f'assert repository == "{old}"',
+        ],
+        ".github/workflows/store-catalog-candidate.yml": [
+            f'assert repository == "{old}"',
+        ],
+        ".github/workflows/notes-unsigned-candidate.yml": [
+            f"'repository': '{old}',",
+        ],
+    }
+    expected = allowed.get(path)
+    if expected is None:
+        return False
+    try:
+        lines = (root / path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return False
+    actual = [line.strip() for line in lines if old in line]
+    return actual == expected
+
+
 def stale_references(root: Path, legacy: str) -> dict:
     grep = subprocess.run(
         ["git", "grep", "--null", "-l", "-I", "-F", legacy, "--"],
@@ -113,8 +149,14 @@ def stale_references(root: Path, legacy: str) -> dict:
     ]
     # No file-wide exemptions: any stale reference in tools, apps or
     # workflows is treated as operational after the physical transfer.
-    operational = sorted(path for path in paths if operational_path(path))
-    archival = sorted(path for path in paths if not operational_path(path))
+    operational = sorted(
+        path for path in paths
+        if operational_path(path) and not verified_historical_assertions(root, path, old)
+    )
+    archival = sorted(
+        path for path in paths
+        if not operational_path(path) or verified_historical_assertions(root, path, old)
+    )
     return {"operational_paths": operational, "historical_paths": archival}
 
 

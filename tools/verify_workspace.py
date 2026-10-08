@@ -29,7 +29,7 @@ def validate_notes_migration() -> tuple[bool, bool]:
     expected_source_repo = (
         "ordaxsystems/ordax-apps"
         if source_cutover_allowed
-        else "washingtonmsdj/prototipo-ordax-os"
+        else "ordaxsystems/prototipo-ordax-os"
     )
     expected_source_path = "apps/notes" if source_cutover_allowed else "system/apps/notes"
     expected_source_state = (

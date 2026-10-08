@@ -2,7 +2,7 @@
 
 Projects is the second first-party extraction pilot after Notes.
 
-The current source of truth remains `washingtonmsdj/prototipo-ordax-os/system/apps/projects`. No source is copied into `apps/projects` until the public SDK boundary is merged and a reproducible source snapshot is pinned.
+After the physical GitHub transfer, the source of truth remains `ordaxsystems/prototipo-ordax-os/system/apps/projects` (the same repository ID and Git commit history). No source is copied into `apps/projects` until the public SDK boundary is merged and a reproducible source snapshot is pinned.
 
 ## Why Projects is the second pilot
 
