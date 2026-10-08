@@ -15,7 +15,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import stat
 import sys
 import tempfile
 import zipfile
@@ -37,15 +36,15 @@ class UnsignedHandoffError(ValueError):
 
 
 def read_regular(path: Path, *, label: str, limit: int) -> bytes:
+    """Read unsigned inputs through the single Store bounded-descriptor reader.
+
+    Preserve the published UnsignedHandoffError boundary without duplicating
+    lstat/fstat, symlink rejection, inode identity, or actual-byte-size checks.
+    """
     try:
-        metadata = path.lstat()
-    except OSError as exc:
-        raise UnsignedHandoffError(f"{label} is missing") from exc
-    if not stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-        raise UnsignedHandoffError(f"{label} must be a regular, non-symlink file")
-    if metadata.st_size < 1 or metadata.st_size > limit:
-        raise UnsignedHandoffError(f"{label} exceeds size limits")
-    return path.read_bytes()
+        return bundle_module._read_bounded_regular_bytes(path, label, limit)
+    except bundle_module.StoreArtifactBundleError as exc:
+        raise UnsignedHandoffError(f"{label}: {exc}") from exc
 
 
 def _render_signing_request(handoff: dict, handoff_bytes: bytes) -> bytes:

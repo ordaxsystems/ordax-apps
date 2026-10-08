@@ -278,7 +278,7 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         path = self.handoffs[0]
         original = path.read_bytes()
         path.unlink()
-        with self.assertRaisesRegex(handoff.UnsignedHandoffError, "missing"):
+        with self.assertRaisesRegex(handoff.UnsignedHandoffError, "unavailable"):
             self.materialize()
         path.symlink_to(self.root / "store.catalog-candidate.json")
         with self.assertRaisesRegex(handoff.UnsignedHandoffError, "non-symlink"):
@@ -403,6 +403,69 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         ):
             self.materialize()
         self.assertFalse((self.root / "export").exists())
+
+    def test_unsigned_reader_rejects_inode_replacement_after_lstat(self):
+        original_check = handoff.bundle_module._regular_file
+        source = self.root / "unsigned-input.bin"
+        source.write_bytes(b"trusted-data")
+        replacement = self.root / "replaced-data.bin"
+        replacement.write_bytes(b"trusted-data")
+
+        def swap(path, label, limit):
+            stat_result = original_check(path, label, limit)
+            if path == source:
+                replacement.replace(path)
+            return stat_result
+
+        with patch.object(handoff.bundle_module, "_regular_file", side_effect=swap):
+            with self.assertRaisesRegex(handoff.UnsignedHandoffError, "changed identity"):
+                handoff.read_regular(source, label="unsigned input", limit=1024)
+
+    def test_unsigned_reader_rejects_symlink_swap_after_lstat(self):
+        original_check = handoff.bundle_module._regular_file
+        source = self.root / "unsigned-input.bin"
+        source.write_bytes(b"trusted-data")
+        outside = self.root / "outside.bin"
+        outside.write_bytes(b"outside")
+
+        def swap(path, label, limit):
+            stat_result = original_check(path, label, limit)
+            if path == source:
+                path.unlink()
+                path.symlink_to(outside)
+            return stat_result
+
+        with patch.object(handoff.bundle_module, "_regular_file", side_effect=swap):
+            with self.assertRaisesRegex(handoff.UnsignedHandoffError, "safely read"):
+                handoff.read_regular(source, label="unsigned input", limit=1024)
+        self.assertEqual(outside.read_bytes(), b"outside")
+
+    def test_unsigned_reader_rejects_growth_after_initial_stat(self):
+        original_check = handoff.bundle_module._regular_file
+        source = self.root / "unsigned-input.bin"
+        source.write_bytes(b"trusted-data")
+
+        def grow(path, label, limit):
+            stat_result = original_check(path, label, limit)
+            if path == source:
+                path.write_bytes(b"x" * 2048)
+            return stat_result
+
+        with patch.object(handoff.bundle_module, "_regular_file", side_effect=grow):
+            with self.assertRaisesRegex(handoff.UnsignedHandoffError, "size is outside allowed bounds"):
+                handoff.read_regular(source, label="unsigned input", limit=1024)
+
+    def test_unsigned_reader_uses_store_single_bounded_reader(self):
+        source = self.root / "existing-input.bin"
+        source.write_bytes(b"actual")
+        with patch.object(
+            handoff.bundle_module, "_read_bounded_regular_bytes", return_value=b"actual",
+        ) as verify:
+            self.assertEqual(
+                handoff.read_regular(source, label="unsigned input", limit=1234),
+                b"actual",
+            )
+        verify.assert_called_once_with(source, "unsigned input", 1234)
 
     def test_output_never_overwrites_existing_directory(self):
         self.output.mkdir()

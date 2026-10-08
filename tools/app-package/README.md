@@ -64,6 +64,18 @@ divergentes, claims extras e conteúdo não UTF-8 falham fechados — mesmo que
 o pacote tenha sido re-hasheado internamente. O verificador não precisa da
 árvore original de source; assinatura/trust continuam exclusivos da plataforma.
 
+## Snapshot único na verificação e na emissão do release
+
+`build.py verify_package` lê o ZIP recebido uma vez, com o limite de pacote
+existente, e usa exatamente esses bytes para inspecionar os membros do ZIP,
+validar o conteúdo e calcular a identidade SHA-256 devolvida ao caller.
+A validação nunca reabre o nome do arquivo, que poderia apontar para outro
+conteúdo durante a operação. `render_release_v2` deriva o hash do manifesto
+dos bytes canônicos que o verificador já comparou com o ZIP, em vez de abrir
+novamente o arquivo. Isso impede que um `release.json` vincule o digest de
+um ZIP ao manifesto de outro. A garantia é de consistência de snapshot;
+não substitui assinatura externa nem o lifecycle do OrdaX OS.
+
 ## Snapshot consistente e publicação atômica do builder
 
 `build.py build` lê cada arquivo-fonte incluído **uma vez** para o snapshot
@@ -125,6 +137,16 @@ Mesmo se outro processo criar o diretório destino durante o commit, a
 publicação respeita o vencedor, não remove os arquivos alheios e limpa apenas
 seu próprio staging. Isso não transfere assinatura, trust ou autoridade de
 instalação.
+
+### Leitura SSOT também na exportação não assinada
+
+`materialize_unsigned_store_handoff.read_regular` e o verificador do
+handoff público delegam ao **mesmo** leitor de arquivos limitados
+`materialize_store_artifact_bundle._read_bounded_regular_bytes`. Dessa
+forma, candidatos, descritores e ZIPs recebidos não podem contornar as
+verificações de arquivo regular, identidade do descritor aberto, prevenção
+de symlinks e limites reais de tamanho. A validação de hashes e dos
+descriptors permanece sob os verificadores canônicos existentes.
 
 ### Leitura íntegra do arquivo efetivamente aberto
 

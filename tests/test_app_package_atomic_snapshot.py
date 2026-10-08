@@ -107,6 +107,65 @@ class PackageSnapshotAtomicTests(unittest.TestCase):
         self.assertFalse(self.out.exists())
         self.assertFalse(self.staging())
 
+    def test_verifier_uses_bytes_snapshotted_before_path_replacement(self):
+        builder.build_package(self.app, fixtures.SOURCE_COMMIT, self.out)
+        original_bytes = self.out.read_bytes()
+        original_read = builder.read_regular
+
+        def replace_zip_after_read(path, *, max_bytes, label):
+            content = original_read(path, max_bytes=max_bytes, label=label)
+            if Path(path) == self.out:
+                self.out.write_bytes(b"replaced by a different process")
+            return content
+
+        with patch.object(builder, "read_regular", side_effect=replace_zip_after_read):
+            manifest, payload = builder.verify_package(self.out)
+        self.assertEqual(manifest["component"]["id"], "fixture")
+        self.assertEqual(payload, original_bytes)
+        self.assertNotEqual(self.out.read_bytes(), original_bytes)
+
+    def test_verifier_never_accepts_different_zip_than_returned_digest(self):
+        builder.build_package(self.app, fixtures.SOURCE_COMMIT, self.out)
+        valid_bytes = self.out.read_bytes()
+        corrupt_bytes = b"not a zip but the contents of the first read"
+        self.out.write_bytes(corrupt_bytes)
+        original_read = builder.read_regular
+
+        def restore_valid_zip_after_read(path, *, max_bytes, label):
+            content = original_read(path, max_bytes=max_bytes, label=label)
+            if Path(path) == self.out:
+                self.out.write_bytes(valid_bytes)
+            return content
+
+        with patch.object(builder, "read_regular", side_effect=restore_valid_zip_after_read):
+            with self.assertRaises(zipfile.BadZipFile):
+                builder.verify_package(self.out)
+        self.assertEqual(self.out.read_bytes(), valid_bytes)
+
+    def test_release_manifest_hash_is_bound_to_verified_package_bytes(self):
+        builder.build_package(self.app, fixtures.SOURCE_COMMIT, self.out)
+        pristine_bytes = self.out.read_bytes()
+        original_verify = builder.verify_package
+        observed_manifest = {}
+
+        def verify_then_replace(path):
+            manifest, payload = original_verify(path)
+            observed_manifest.update(manifest)
+            self.out.write_bytes(b"the path changed after validation")
+            return manifest, payload
+
+        with patch.object(builder, "verify_package", side_effect=verify_then_replace):
+            release, compatibility_bytes = builder.render_release_v2(
+                self.out, self.app / "compatibility.json",
+            )
+        self.assertEqual(release["package"]["sha256"], builder.sha256_bytes(pristine_bytes))
+        self.assertEqual(release["package"]["size"], len(pristine_bytes))
+        self.assertEqual(
+            release["package"]["manifest_sha256"],
+            builder.sha256_bytes(builder.canonical_json_bytes(observed_manifest)),
+        )
+        self.assertGreater(len(compatibility_bytes), 0)
+
     def test_existing_final_zip_is_preserved(self):
         self.out.write_bytes(b"existing candidate")
         with self.assertRaisesRegex(builder.AppPackageError, "refusing to overwrite"):
