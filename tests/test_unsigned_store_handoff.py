@@ -380,6 +380,20 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertFalse(list(self.root.glob(f".{self.output.name}.stage-*")))
 
+    def test_raced_empty_output_does_not_replace_prior_export(self):
+        original_publish = handoff.bundle_module.publish_directory_exclusive
+
+        def competing_export(stage, destination):
+            destination.mkdir()
+            (destination / "winner").write_text("other export", encoding="utf-8")
+            return original_publish(stage, destination)
+
+        with patch.object(handoff.bundle_module, "publish_directory_exclusive", side_effect=competing_export):
+            with self.assertRaises(OSError):
+                self.materialize()
+        self.assertEqual((self.output / "winner").read_text(encoding="utf-8"), "other export")
+        self.assertFalse(list(self.root.glob(f".{self.output.name}.stage-*")))
+
     def test_symlinked_output_parent_is_rejected(self):
         alias = self.root / "alias"
         alias.symlink_to(self.root, target_is_directory=True)
