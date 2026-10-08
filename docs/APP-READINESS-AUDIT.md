@@ -72,6 +72,18 @@ O check revelou e corrigiu 12 versões de runtime desatualizadas em relação a 
 
 **Limite de evidência:** importar o módulo em Node e rejeitar `mount({})` **não constitui sandbox de segurança**, prova de host com portas válidas, renderização de UI, acesso a grants, funcionamento de timer de background, instalação, atualização, rollback, trust ou release de produção. Os testes de comportamento e lifecycle do Notes continuam provas separadas. O probe não executa nenhuma operação de instalação/publicação ou contato com a Store.
 
+## G2.1 — montagem pública e desmontagem do aplicativo Calculator
+
+Como primeiro teste comportamental de montagem (distinto do smoke G2 dos pacotes), `apps/calculator/tests/mount_contract.test.mjs` executa o `componentRuntime.mount` real com uma implementação **de teste e mínima** da porta pública `ordax.surface-render-lifecycle/5` e dos elementos DOM que a Calculadora utiliza. Não duplica um runtime, host nativo ou serviço de grants.
+
+O teste verifica: interface montada e operações por evento de usuário; expressão em edição preservada na mudança de idioma; resultado sem recomputação implícita; inscrição única em eventos de localização; `destroy()` idempotente; remoção de listeners/DOM/stylesheet; recusa de host inválido; erro na folha de estilos sem montagem parcial; e rollback de recursos quando a inscrição de localização falha.
+
+```sh
+node --test apps/calculator/tests/*.test.mjs
+```
+
+**Limite:** a porta e o DOM usados nesses testes são fixtures estritas locais, não um browser real nem um host instalado no OrdaX OS. O teste não comprova isolamento de sandbox, pipeline de render real, grants, gerenciamento de processo, install, update, rollback, Store ou ativação em produção. Não se soma como `host_mounts_verified` no relatório de candidatos de pacote; a validação em host real continua pendente.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
