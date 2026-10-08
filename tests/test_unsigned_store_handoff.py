@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools" / "app-package"))
@@ -13,6 +15,13 @@ sys.path.insert(0, str(ROOT / "tools" / "app-package"))
 import materialize_unsigned_store_handoff as handoff  # noqa: E402
 import render_store_catalog_candidate as candidate_tool  # noqa: E402
 import render_store_catalog_publication as publication_tool  # noqa: E402
+
+fixture_spec = importlib.util.spec_from_file_location(
+    "readiness_fixtures", ROOT / "tests" / "test_audit_app_readiness.py",
+)
+fixtures = importlib.util.module_from_spec(fixture_spec)
+assert fixture_spec.loader is not None
+fixture_spec.loader.exec_module(fixtures)
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -40,41 +49,28 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         self.commit = "b" * 40
         self.handoffs = []
         for app_id in ("calculator", "notes"):
-            manifest = {
-                "schema": "ordax.component-manifest/1",
-                "id": app_id,
-                "title": app_id.title(),
-                "owner": "ordaxsystems/ordax-apps",
-                "releaseMode": "component-slot",
-                "version": "0.2.0",
-            }
-            write_json(self.apps_root / app_id / "app.json", manifest)
+            # Real component packages are essential: exporter verification must
+            # reject self-consistent forged hashes, not merely match JSON data.
+            fixtures.make_app(self.root, app_id)
             paths = self.artifacts / app_id
-            package = artifact(paths / (app_id + ".zip"), b"unsigned-test-package-" + app_id.encode())
-            release = artifact(paths / (app_id + ".release.json"), b'{"schema":"test"}\n')
-            compatibility = artifact(paths / (app_id + ".compatibility.json"), b'{"schema":"test"}\n')
-            record = {
-                "$schema": "ordax-apps.unsigned-component-candidate/1",
-                "status": "unsigned-candidate",
-                "component": {"id": app_id, "version": "0.2.0", "releaseMode": "component-slot"},
-                "source": {"repository": "ordaxsystems/ordax-apps", "commit": self.commit},
-                "artifacts": {"package": package, "release": release, "compatibility": compatibility},
-                "trust": {
-                    "domain": "runtime-components",
-                    "requiredKeyId": "ordax-runtime-components-v1",
-                    "canonicalPublicAnchorRequiredBeforeProductionSigning": True,
-                },
-                "authority": {
-                    "signing": False, "publication": False, "installation": False, "activation": False,
-                },
-                "safety": {
-                    "containsPrivateKeyMaterial": False,
-                    "directActivationAllowed": False,
-                    "platformLifecycleRequired": True,
-                },
-            }
-            path = self.root / (app_id + ".unsigned-candidate.json")
-            write_json(path, record)
+            paths.mkdir(parents=True, exist_ok=True)
+            package_path = paths / f"{app_id}.zip"
+            handoff.unsigned_module.builder.build_package(
+                self.apps_root / app_id, self.commit, package_path,
+            )
+            release_path, compatibility_path = handoff.unsigned_module.builder.write_release_v2(
+                package_path, self.apps_root / app_id / "compatibility.json", paths,
+            )
+            record, record_bytes = handoff.unsigned_module.render_handoff(
+                package=package_path,
+                release=release_path,
+                compatibility=compatibility_path,
+                app_id=app_id,
+                source_commit=self.commit,
+            )
+            self.assertEqual(record["status"], "unsigned-candidate")
+            path = self.root / f"{app_id}.unsigned-candidate.json"
+            path.write_bytes(record_bytes)
             self.handoffs.append(path)
 
         self.candidate, candidate_bytes = candidate_tool.render_catalog_candidate(
@@ -152,6 +148,35 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
     def test_noncanonical_publication_or_wrong_catalog_identity_rejected(self):
         self.publication_path.write_bytes(b'{"status":"fake"}\n')
         with self.assertRaisesRegex(handoff.UnsignedHandoffError, "publication v1"):
+            self.materialize()
+        self.assertFalse(self.output.exists())
+
+    def test_self_consistent_forged_package_digest_still_fails_closed(self):
+        # Modify the real ZIP, then forge the matching hash in the handoff,
+        # catalog and v1 publication. Pure digest comparisons would all pass.
+        app_id = "calculator"
+        package_path = self.artifacts / app_id / f"{app_id}.zip"
+        with zipfile.ZipFile(package_path, "a") as archive:
+            archive.writestr("unexpected-file.txt", b"not-from-canonical-build")
+        handoff_path = self.root / f"{app_id}.unsigned-candidate.json"
+        record = json.loads(handoff_path.read_text(encoding="utf-8"))
+        payload = package_path.read_bytes()
+        record["artifacts"]["package"]["sha256"] = hashlib.sha256(payload).hexdigest()
+        record["artifacts"]["package"]["size"] = len(payload)
+        write_json(handoff_path, record)
+
+        forged_catalog, candidate_bytes = candidate_tool.render_catalog_candidate(
+            handoffs=self.handoffs, apps_root=self.apps_root, source_commit=self.commit,
+        )
+        self.candidate_path.write_bytes(candidate_bytes)
+        _, publication_bytes = publication_tool.render_publication(
+            candidate=forged_catalog, candidate_bytes=candidate_bytes, sequence=1,
+        )
+        self.publication_path.write_bytes(publication_bytes)
+
+        with self.assertRaisesRegex(
+            handoff.UnsignedHandoffError, "canonical package/descriptor verification failed",
+        ):
             self.materialize()
         self.assertFalse(self.output.exists())
 
