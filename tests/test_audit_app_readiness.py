@@ -4,8 +4,10 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "audit_app_readiness.py"
@@ -107,6 +109,9 @@ def make_app(root: Path, app_id: str = "alpha", *, compatibility: bool = True) -
             "sha256": hashlib.sha256(module.read_bytes()).hexdigest(),
         }],
     })
+    runtime = base / "src" / "runtime.mjs"
+    runtime.parent.mkdir(parents=True, exist_ok=True)
+    runtime.write_text("export const authority = 'none';\n", encoding="utf-8")
     if compatibility:
         write_json(base / "compatibility.json", {
             "schema": "ordax.component-compatibility/1",
@@ -215,6 +220,99 @@ class ReadinessAuditTests(unittest.TestCase):
             make_workspace(root, ["store"])
             with self.assertRaisesRegex(audit.AuditError, "structural surfaces"):
                 audit.audit_workspace(root)
+
+    def test_unsigned_package_candidate_is_verified_twice_without_release_authority(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            make_workspace(root, ["alpha", "files"])
+            make_app(root)
+            report = audit.prove_package_candidates(
+                root, audit.audit_workspace(root), "a" * 40
+            )
+            self.assertEqual(report["summary"]["package_candidates_verified"], 1)
+            self.assertEqual(report["summary"]["production_releases_verified"], 0)
+            row = report["apps"][0]
+            self.assertEqual(
+                row["release_evidence"]["package_build"], "verified-deterministic-candidate"
+            )
+            candidate = row["release_evidence"]["package_candidate"]
+            self.assertEqual(candidate["source_commit"], "a" * 40)
+            self.assertRegex(candidate["package_sha256"], r"^[0-9a-f]{64}$")
+            self.assertGreater(candidate["package_size"], 0)
+            self.assertEqual(row["release_evidence"]["production_activation"], "not-assessed")
+            self.assertEqual(report["apps"][1]["release_evidence"]["package_build"], "not-assessed")
+            self.assertFalse(list(root.rglob("*.zip")), "no unsigned candidate should remain in repo")
+
+    def test_missing_compatibility_cannot_be_reported_as_verified_package(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            make_workspace(root, ["alpha"])
+            make_app(root, compatibility=False)
+            report = audit.prove_package_candidates(
+                root, audit.audit_workspace(root), "a" * 40
+            )
+            self.assertEqual(report["summary"]["package_candidates_verified"], 0)
+            self.assertEqual(
+                report["apps"][0]["release_evidence"]["package_build"],
+                "blocked-missing-compatibility",
+            )
+
+    def test_invalid_portable_source_fails_package_proof_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            make_workspace(root, ["alpha"])
+            make_app(root)
+            (root / "apps" / "alpha" / "src" / "runtime.mjs").write_text(
+                "import { secret } from 'private-platform';\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(audit.AuditError, "bare/remote import"):
+                audit.prove_package_candidates(root, audit.audit_workspace(root), "a" * 40)
+
+    def test_non_deterministic_candidate_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            make_workspace(root, ["alpha"])
+            make_app(root)
+            fake = {
+                "package_sha256": "a" * 64, "package_size": 1,
+                "release_sha256": "b" * 64, "compatibility_sha256": "c" * 64,
+                "source_commit": "a" * 40,
+            }
+            changed = {**fake, "package_sha256": "d" * 64}
+            with patch.object(audit, "_build_candidate_once", side_effect=[fake, changed]):
+                with self.assertRaisesRegex(audit.AuditError, "non-deterministic"):
+                    audit.prove_package_candidates(root, audit.audit_workspace(root), "a" * 40)
+
+    def test_git_provenance_requires_clean_canonical_checkout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            make_workspace(root, ["alpha"])
+            make_app(root)
+            def git(*args: str) -> str:
+                return subprocess.run(
+                    ["git", "-C", str(root), *args],
+                    check=True, capture_output=True, text=True, timeout=10,
+                ).stdout.strip()
+            git("init", "-q")
+            git("config", "user.name", "OrdaX Test")
+            git("config", "user.email", "ordax-test@invalid.example")
+            git("remote", "add", "origin", "https://github.com/ordaxsystems/ordax-apps.git")
+            git("add", "--all")
+            git("commit", "-qm", "fixture")
+            commit = audit.checked_git_commit(root)
+            self.assertRegex(commit, r"^[0-9a-f]{40}$")
+            (root / "unexpected-untracked").write_text("dirty", encoding="utf-8")
+            with self.assertRaisesRegex(audit.AuditError, "clean Git checkout"):
+                audit.checked_git_commit(root)
+            (root / "unexpected-untracked").unlink()
+            git("remote", "set-url", "origin", "https://github.com/attacker/fake.git")
+            with self.assertRaisesRegex(audit.AuditError, "Git origin"):
+                audit.checked_git_commit(root)
+
+    def test_git_provenance_rejects_non_git_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaises(audit.AuditError):
+                audit.checked_git_commit(Path(temp))
 
     def test_notes_production_gate_remains_blocked(self):
         with tempfile.TemporaryDirectory() as temp:
