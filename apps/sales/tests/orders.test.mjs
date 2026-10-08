@@ -98,12 +98,12 @@ test("rejects invalid prices, order IDs, timestamps and rogue authority fields",
   assert.throws(() => save(empty, created({ orderId: "../private" })),
     /order id is invalid/);
   assert.throws(() => save(empty, { ...created(), grant: "root" }),
-    /incompatible fields/);
+    /fields are incompatible/);
   assert.throws(() => save(empty, created({
     lines: [{ sku: "PIZZA-MARGHERITA", quantity: 2, unitPriceCents: 100, stockMovementId: "x" }],
-  })), /incompatible fields/);
+  })), /fields are incompatible/);
   assert.throws(() => createSalesBook({ ...scope, subjectKey: "secret" }),
-    /incompatible fields/);
+    /fields are incompatible/);
 });
 
 test("order transitions cannot predate creation or replace line items", () => {
