@@ -126,6 +126,16 @@ publicação respeita o vencedor, não remove os arquivos alheios e limpa apenas
 seu próprio staging. Isso não transfere assinatura, trust ou autoridade de
 instalação.
 
+### Leitura SSOT também na exportação não assinada
+
+`materialize_unsigned_store_handoff.read_regular` e o verificador do
+handoff público delegam ao **mesmo** leitor de arquivos limitados
+`materialize_store_artifact_bundle._read_bounded_regular_bytes`. Dessa
+forma, candidatos, descritores e ZIPs recebidos não podem contornar as
+verificações de arquivo regular, identidade do descritor aberto, prevenção
+de symlinks e limites reais de tamanho. A validação de hashes e dos
+descriptors permanece sob os verificadores canônicos existentes.
+
 ### Leitura íntegra do arquivo efetivamente aberto
 
 Os metadados de publicação e os blobs do bundle Store são recebidos por uma
