@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -215,13 +216,20 @@ def verify_physical_owner(state: dict) -> bool:
         raise ValueError("source contracts must be post-transfer before physical verification")
     if state.get("current_platform") != target or state.get("platform_repository_id") != IMMUTABLE_PLATFORM_ID:
         raise ValueError("source owner or immutable repository ID drifted")
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "ordax-apps-platform-owner-handoff",
+    }
+    # CI supplies its ephemeral, read-only GitHub Actions token. Anonymous
+    # requests share the tiny public-IP quota and used to fail with HTTP 403
+    # under concurrent OrdaX jobs. Never log/store the token or permit an
+    # authentication failure to bypass immutable physical identity checks.
+    token = os.environ.get("ORDAX_GITHUB_API_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
-        f"https://api.github.com/repos/{target}",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "ordax-apps-platform-owner-handoff",
-        },
+        f"https://api.github.com/repos/{target}", headers=headers,
     )
     with urllib.request.urlopen(request, timeout=15) as response:
         if response.status != 200:
