@@ -31,7 +31,10 @@ export const componentRuntime=Object.freeze({
       || fileSpace?.schema!==FILE_SPACE_SCHEMA
       || typeof fileSpace.readImagePreview!=="function"
       || typeof fileSpace.list!=="function"
+      || typeof surfaceLifecycle.localization?.getLocale!=="function"
+      || typeof surfaceLifecycle.localization?.subscribe!=="function"
       || appActivation?.schema!==APP_ACTIVATION_SCHEMA
+      || typeof appActivation.subscribe!=="function"
     ) throw new TypeError("Image Viewer requires compatible public ports");
 
     const releaseStyles=await styles(root);
@@ -68,10 +71,13 @@ export const componentRuntime=Object.freeze({
     const one=section.querySelector("[data-one]");
 
     let url="",img=null,currentPath="",siblings=[],zoom=1,fitMode=true,openSequence=0;
+    let destroyed=false,unsubscribeActivation=null,unsubscribeLocale=null;
 
-    const revoke=()=>{if(url){globalThis.URL?.revokeObjectURL?.(url);url="";}};
+    const revoke=()=>{if(url){const old=url;url="";globalThis.URL?.revokeObjectURL?.(old);}};
+    const current=sequence=>!destroyed&&sequence===openSequence;
     const pt=()=>String(surfaceLifecycle.localization.getLocale()).toLowerCase().startsWith("pt");
     const applyLocale=()=>{
+      if(destroyed)return;
       title.textContent=pt()?"Imagens":"Images";
       fit.textContent=pt()?"Ajustar":"Fit";
       prev.setAttribute("aria-label",pt()?"Imagem anterior":"Previous image");
@@ -100,39 +106,55 @@ export const componentRuntime=Object.freeze({
       prev.disabled=index<=0;
       next.disabled=index<0||index>=siblings.length-1;
     };
-    const loadSiblings=async path=>{
+    const loadSiblings=async (path,sequence)=>{
+      let candidatePaths;
       try{
         const parent=parentPath(path);
         const listing=await fileSpace.list(parent);
-        siblings=listing.entries
-          .filter(entry=>entry.kind==="file"&&IMAGE_RE.test(entry.name))
+        if(!Array.isArray(listing?.entries))throw new TypeError("Invalid File Space listing");
+        candidatePaths=listing.entries
+          .filter(entry=>entry?.kind==="file"
+            && typeof entry.name==="string"
+            && entry.name!=="."&&entry.name!==".."
+            && !entry.name.includes("/")&&!entry.name.includes("\\")
+            && !entry.name.includes("\0")
+            && IMAGE_RE.test(entry.name))
           .map(entry=>joinPath(parent,entry.name))
-          .sort((a,b)=>a.localeCompare(b));
+          .sort((left,right)=>left.localeCompare(right));
       }catch{
-        siblings=[path];
+        candidatePaths=[path];
       }
-      if(!siblings.includes(path)) siblings.push(path);
+      if(!current(sequence))return;
+      if(!candidatePaths.includes(path))candidatePaths.push(path);
+      siblings=candidatePaths;
       updateNavigation();
     };
     const openPath=async path=>{
-      if(!validPath(path))return;
+      if(destroyed||!validPath(path))return;
       const sequence=++openSequence;
       currentPath=path;
+      siblings=[path];
+      updateNavigation();
       pathNode.textContent=path;
       pathNode.dataset.loaded="true";
       empty.hidden=false;
       empty.textContent=pt()?"Carregando…":"Loading…";
       if(img){img.remove();img=null;}
       revoke();
-      await loadSiblings(path);
       try{
+        await loadSiblings(path,sequence);
+        if(!current(sequence))return;
         const preview=await fileSpace.readImagePreview(path);
-        if(sequence!==openSequence)return;
-        if(!(preview?.bytes instanceof Uint8Array)||typeof preview.mime!=="string")throw new TypeError("Invalid image preview");
-        if(preview.path!==path)throw new TypeError("Preview path mismatch");
+        if(!current(sequence))return;
+        if(!(preview?.bytes instanceof Uint8Array)
+          || preview.bytes.byteLength===0
+          || !/^image\/(?:avif|bmp|gif|jpeg|png|webp)$/.test(preview.mime)
+          || preview.path!==path)
+          throw new TypeError("Invalid or mismatched image preview");
         const BlobCtor=globalThis.Blob;
         const create=globalThis.URL?.createObjectURL?.bind(globalThis.URL);
-        if(typeof BlobCtor!=="function"||typeof create!=="function")throw new TypeError("Image URL primitives unavailable");
+        if(typeof BlobCtor!=="function"||typeof create!=="function")
+          throw new TypeError("Image URL primitives unavailable");
         url=create(new BlobCtor([preview.bytes],{type:preview.mime}));
         img=d.createElement("img");
         img.alt=path.split("/").at(-1)||"";
@@ -142,11 +164,13 @@ export const componentRuntime=Object.freeze({
         empty.hidden=true;
         zoom=1;fitMode=true;applyZoom();
       }catch{
-        if(sequence!==openSequence)return;
+        if(!current(sequence))return;
+        if(img){img.remove();img=null;}
+        revoke();
         empty.hidden=false;
         empty.textContent=pt()?"Não foi possível abrir esta imagem.":"This image could not be opened.";
       }
-      updateNavigation();
+      if(current(sequence))updateNavigation();
     };
     const navigate=delta=>{
       const index=siblings.indexOf(currentPath);
@@ -172,37 +196,54 @@ export const componentRuntime=Object.freeze({
       else if(event.key==="0"){event.preventDefault();setZoom(1);}
     };
 
-    prev.addEventListener("click",onPrev);
-    next.addEventListener("click",onNext);
-    zoomOut.addEventListener("click",onOut);
-    zoomIn.addEventListener("click",onIn);
-    fit.addEventListener("click",onFit);
-    one.addEventListener("click",onOne);
-    section.addEventListener("keydown",onKey);
-    section.tabIndex=0;
+    const destroy=()=>{
+      if(destroyed)return;
+      destroyed=true;
+      openSequence+=1;
+      try{
+        unsubscribeActivation?.();
+      }finally{
+        try{
+          unsubscribeLocale?.();
+        }finally{
+          prev.removeEventListener("click",onPrev);
+          next.removeEventListener("click",onNext);
+          zoomOut.removeEventListener("click",onOut);
+          zoomIn.removeEventListener("click",onIn);
+          fit.removeEventListener("click",onFit);
+          one.removeEventListener("click",onOne);
+          section.removeEventListener("keydown",onKey);
+          try{
+            if(img){img.remove();img=null;}
+            revoke();
+          }finally{
+            root.replaceChildren();
+            releaseStyles();
+          }
+        }
+      }
+    };
 
-    const ua=appActivation.subscribe(activation=>{
-      if(activation?.appId==="image-viewer"&&validPath(activation.target))openPath(activation.target);
-    });
-    const ul=surfaceLifecycle.localization.subscribe(applyLocale);
-    applyLocale();
-    updateNavigation();
-
-    return Object.freeze({
-      destroy(){
-        openSequence+=1;
-        ua?.();ul?.();
-        prev.removeEventListener("click",onPrev);
-        next.removeEventListener("click",onNext);
-        zoomOut.removeEventListener("click",onOut);
-        zoomIn.removeEventListener("click",onIn);
-        fit.removeEventListener("click",onFit);
-        one.removeEventListener("click",onOne);
-        section.removeEventListener("keydown",onKey);
-        revoke();
-        root.replaceChildren();
-        releaseStyles();
-      },
-    });
+    try{
+      prev.addEventListener("click",onPrev);
+      next.addEventListener("click",onNext);
+      zoomOut.addEventListener("click",onOut);
+      zoomIn.addEventListener("click",onIn);
+      fit.addEventListener("click",onFit);
+      one.addEventListener("click",onOne);
+      section.addEventListener("keydown",onKey);
+      section.tabIndex=0;
+      unsubscribeActivation=appActivation.subscribe(activation=>{
+        if(activation?.appId==="image-viewer"&&validPath(activation.target))
+          void openPath(activation.target);
+      });
+      unsubscribeLocale=surfaceLifecycle.localization.subscribe(applyLocale);
+      applyLocale();
+      updateNavigation();
+      return Object.freeze({destroy});
+    }catch(error){
+      destroy();
+      throw error;
+    }
   },
 });
