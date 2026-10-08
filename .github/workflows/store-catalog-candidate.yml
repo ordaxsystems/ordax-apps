@@ -20,6 +20,7 @@ on:
       - 'tests/test_store_catalog_publication_v2.py'
       - 'tests/test_store_artifact_bundle.py'
       - 'tests/test_unsigned_store_handoff.py'
+      - 'tests/test_package_receipt_source_semantics.py'
       - '.github/workflows/store-catalog-candidate.yml'
   pull_request:
     branches: [main]
@@ -117,7 +118,8 @@ jobs:
             tests/test_store_catalog_publication.py \
             tests/test_store_catalog_publication_v2.py \
             tests/test_store_artifact_bundle.py \
-            tests/test_unsigned_store_handoff.py
+            tests/test_unsigned_store_handoff.py \
+            tests/test_package_receipt_source_semantics.py
 
       - name: Guard minimum entry for every planned app and current Store candidate set
         run: |
