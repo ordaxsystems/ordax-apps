@@ -430,7 +430,7 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Testes adicionados aos diretórios canônicos dos apps e fixture comum em `tests/support/preview_mount_fixture.mjs`; a CI Foundation já descobre ambos sem duplicar lista ou pipeline.
 - Sem novo owner para File Space, host, grants, Store, lifecycle ou signing. **Estabilidade de produto/produção ainda não comprovada**: faltam browser/host real, gestão de grants e lifecycle por app. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
-### Execução G2.6 — Converter e Colors: estado preservado após locale (PR em validação)
+### Execução G2.6 — Converter e Colors: estado preservado após locale (PR #143)
 
 - Conversor: entrada numérica e par de unidades deixaram de reiniciar ao trocar idioma; estado em edição sobrevive à reconstrução da view sem duplicar store global.
 - Cores: HEX selecionado ou inválido permanece no input após mudança de locale; mensagens/preview são recalculados na linguagem atual; listeners antigos são explicitamente liberados.
