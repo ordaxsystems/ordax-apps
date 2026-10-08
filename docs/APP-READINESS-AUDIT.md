@@ -156,6 +156,20 @@ Os testes executam os runtimes reais sobre a **mesma fixture mínima de DOM e po
 
 Continuam pendentes as provas de montagem nos hosts reais, instalações, rollback, grants, sandbox e assinatura de produção; nenhum desses contratos foi copiado para os aplicativos.
 
+## G2.7 — Desenho/Paint: montagem transacional e liberação de Canvas/ponteiros
+
+O runtime canônico de `paint` podia deixar view e folha de estilos após uma falha em `canvas.getContext('2d')` ou em `localization.subscribe()`, pois recursos DOM e listeners eram montados antes da assinatura sem rollback. A correção usa uma única trilha de `destroy()` **idempotente**, com registros de listeners instalados e cleanup também nos erros de inicialização.
+
+Além da validação dos métodos do contrato público de localização, coordenadas de toque sobre Canvas de dimensões temporariamente nulas deixam de gerar infinitos/números inválidos. Mudanças de idioma continuam atualizando apenas rótulos, sem limpar ou recriar a superfície pintada. O app não ganhou acesso arbitrário a arquivos; export PNG continua iniciativa direta do usuário.
+
+```sh
+node --test apps/paint/tests/*.test.mjs
+```
+
+A fixture DOM local `tests/support/preview_mount_fixture.mjs` foi estendida estritamente com um contexto Canvas 2D observável por testes; os novos casos exercitam desenho, stroke, idioma sem perda dos traços, unsubscribe/remoção de eventos e falhas de Canvas 2D e de inscrição com liberação completa.
+
+**Limite:** fixture de Canvas não comprova navegador/host OrdaX, GPU real, armazenamento de desenhos, File Space write grants, instalabilidade nem assinatura ou release estável. Nenhuma dessas autoridades foi duplicada.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
