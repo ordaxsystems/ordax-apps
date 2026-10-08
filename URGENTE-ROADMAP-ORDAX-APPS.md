@@ -438,7 +438,7 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Testes de regressão via descoberta da Foundation CI já existente. Reuso da fixture mínima `tests/support/preview_mount_fixture.mjs` dos tests G2.5, sem nova implementação de host.
 - **Bloqueios de estabilidade:** testes locais não provam navegador/host real, grants, lifecycle, rollback, signing ou distribuição; nenhum app é declarado release estável por estes testes.
 
-### Execução G2.7 — Paint: recuperação de falha no Canvas 2D e lifecycle de recursos
+### Execução G2.7 — Paint: recuperação de falha no Canvas 2D e lifecycle de recursos (PR #144)
 
 - Bug: erro ao criar contexto Canvas 2D ou assinar localização podia deixar folha de estilos, listeners e DOM presos a uma montagem parcialmente concluída.
 - Runtime app-owned utiliza cleanup idempotente até em erro de mount e não calcula coordenadas inválidas quando Canvas está temporariamente sem área.
