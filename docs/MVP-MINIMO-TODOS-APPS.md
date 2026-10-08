@@ -23,15 +23,17 @@ A execução de `python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13
 | Situação | Alvos | Próxima ação |
 | --- | --- | --- |
 | **13 com source, metadados e descriptor para candidato não assinado** | `notes`, `calculator`, `clock`, `converter`, `text-viewer`, `image-viewer`, `calendar`, `colors`, `character-map`, `paint`, `media-player`, `pdf-viewer`, `toolbox` | Manter gates G0/G1/G2 e testar os candidatos na cadeia assinada oficial; não fazer polishing extra antes dos alvos bloqueados |
-| **Source canônico, caminho de distribuição especial** | `studio` | Contrato de instalação/distribuição adequado ao source portátil Windows/OS; **não** criar `src/runtime.mjs` de fachada nem descriptor genérico sem prova |
-| **Source ainda pertence à plataforma** | `files`, `projects` | Owner da plataforma prova Gate A remove-first; somente depois adicionar a fonte canônica aqui |
-| **Dependem de source/ports/elegibilidade ainda não comprovados** | `internet`, `assistant`, `activity`, `network` | Escolher MVP simples com contratos públicos, host isolation e grants adequados; source nasce no owner correto, sem serviços duplicados |
+| **Distribuição especial** | `studio` | Source portátil canônico próprio OS/Windows; não aplicar descriptor ou runtime fictício só para aumentar a contagem |
+| **Source ainda pertence à plataforma** | `files`, `projects`, `internet`, `assistant`, `activity`, `network` | Os seis têm source real em `washingtonmsdj/prototipo-ordax-os/system/apps/<id>`; registrar o Gate A remove-first antes de transferir código ou autorizar distribuição |
+
 
 A verificação de **13** é um piso de regressão, não uma contagem manual de identidades nem um compromisso de 13 releases em produção. Aumentar o piso conforme novos apps tornam-se elegíveis, nunca diminuí-lo para esconder regressões. Estado de instalação pública validada permanece **zero** nessa auditoria, porque o verificador não consulta a autoridade nativa.
 
+**Nova prova de ownership:** `migrations/{internet,assistant,activity,network}.externalization.json` registra `platform-until-cutover`, `source_cutover_allowed=false`, `distribution_activation_allowed=false` e o caminho exato do source no owner OS. `tools/verify_mvp_app_minimum.py` já deriva os estados dessas migrations (sem copiar serviços). `tests/test_mvp_platform_ownership.py` impede que seis fontes platform-owned sejam tratadas como candidatos ou apps publicados. O OS está preparando a extensão separada de política de Loja para os 12 utilitários pela PR `washingtonmsdj/prototipo-ordax-os#1372`; registro de policy **não** autoriza instalação.
+
 ## Sequência acelerada de implementação
 
-1. **P0: mínimo e catalogação para o conjunto.** Proteger as 13 entradas de catálogo já comprovadas, resolver a rota especial do Studio e os cutovers de Files/Projects com seus owners. Para os 4 restantes, entregar **somente** a menor capacidade autorizada (ou declarar bloqueio de contrato), não um sistema inteiro.
+1. **P0: mínimo e catalogação para o conjunto.** Proteger as 13 entradas de catálogo já comprovadas, resolver a rota especial do Studio e os cutovers de Files/Projects com seus owners. Para os outros seis, usar exclusivamente as implementações já existentes no owner da plataforma e seguir os gates remove-first; **não criar uma segunda fonte** só para aumentar a contagem. Após o cutover, portar a menor capacidade autorizada e documentar cada grant/port, sem um segundo runtime.
 2. **P0: entrega inicial viável.** O owner da plataforma define quais apps entram no **MVP Stable assinado**; os opcionais podem ser acrescentados por atualizações oficiais de Stable, sem recriar USB. Manter Store UI instalada como superfície estrutural, mas não alegar instalação independente enquanto o executor/verificador não estiver pronto.
 3. **P0: contrato de catálogo/install independente.** Reutilizar o pipeline **já existente** de candidate/Store publication v2/envelopes; obter os gates reais de trust, monotonicidade de catálogo, inventory da ativação, install, reinstall offline, failed update, rollback e uninstall preservando dados. Não implantar segundo updater.
 4. **P1: melhorias individuais após baseline.** Ajustar UI, idioma, performance, funcionalidades extras e novas versões dos aplicativos; bug de segurança/corrupção de dados continua P0 e não é adiado.
