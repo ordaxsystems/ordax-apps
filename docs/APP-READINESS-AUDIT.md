@@ -57,6 +57,21 @@ O gate compara cada requisito `requires` de `apps/<id>/compatibility.json` (ou d
 
 **Limite de evidência:** contrato *publicado no SDK* não significa host que o implementa, grant efetivo, execução do runtime, assinatura, instalação, rollback ou ativação. Essas provas continuam com seus owners e testes específicos. A compatibilidade histórica do Notes não é reescrita: o gate avalia somente seu descriptor de distribuição canônico.
 
+## G2 — smoke dos runtimes reais dentro dos candidatos de pacote
+
+O incremento G2 não cria outro runtime do OrdaX: reutiliza o **builder/verificador oficial** de `tools/app-package/build.py` e o inventário/ownership do auditor G0. A verificação `tools/verify_packaged_runtimes.py` constrói candidatos locais a partir do checkout Git canônico e limpo, valida seus bytes e extrai o `entrypoint` **do ZIP verificado**, não do source solto.
+
+Em subprocessos Node com timeout, `tools/probes/packaged-runtime-probe.mjs` importa cada módulo real e exige `componentRuntime` público com `schema=ordax.component-runtime/1`, `componentId` e `version` iguais aos do manifesto do pacote, além de `mount()` presente e **rejeição da montagem quando não existe host/ports**. Qualquer drift ou montagem indevida faz a CI falhar; o relatório é derivado em tempo de execução, sem gravar uma segunda lista de apps ou SSOT persistente.
+
+```sh
+python3 -m unittest tests/test_packaged_runtime_smoke.py
+python3 tools/verify_packaged_runtimes.py --format markdown
+```
+
+O check revelou e corrigiu 12 versões de runtime desatualizadas em relação a `app.json`. Notes já declarava a versão correta; Studio continua `not-assessed-no-package-boundary` e alvos sem source continuam `not-assessed-no-canonical-source`.
+
+**Limite de evidência:** importar o módulo em Node e rejeitar `mount({})` **não constitui sandbox de segurança**, prova de host com portas válidas, renderização de UI, acesso a grants, funcionamento de timer de background, instalação, atualização, rollback, trust ou release de produção. Os testes de comportamento e lifecycle do Notes continuam provas separadas. O probe não executa nenhuma operação de instalação/publicação ou contato com a Store.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
@@ -83,7 +98,7 @@ A auditoria **sem flags** não prova execução de runtime, integração com hos
 
 ## Próximos incrementos
 
-1. Após os gates G0 de pacote e G1 de presença de contratos no SDK, integrar provas de execução de runtime e lifecycle **por app**, sem supor publicação ou disponibilidade.
+1. Após G0 de pacote, G1 de presença de contratos e G2 de importação/identidade/negação sem host, ampliar os testes de **montagem com host real** e lifecycle de instalação/rollback por app, sem supor publicação ou disponibilidade.
 2. Especificar os contratos de acesso autorizado a recursos do Files e o caminho de cutover da implementação bootstrap, sem duplicar o source da plataforma.
 3. Abrir MVPs de Internet e Assistant somente após confirmar host isolation e Action Gateway/permissions públicos.
 4. Avançar Projects apenas quando o owner da plataforma registrar `source_cutover_allowed=true` e a ausência do source antigo for comprovada.
