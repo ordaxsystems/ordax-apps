@@ -18,7 +18,10 @@ dentro do Profile Pizzaria nem no OrdaX Intelligence.
   moeda BRL e identidade explícita;
 - `appendFinanceEntry(snapshot, {authorizedScope, expectedRevision, value})`:
   entradas `income`, `expense` e `reversal` em **centavos inteiros**,
-  com IDs exclusivos, controle de revisão e retry idempotente de conteúdo exato;
+  com IDs exclusivos e controle de revisão; retry idempotente apenas quando
+  o mesmo evento corresponder exatamente à posição da revisão original,
+  mesmo após lançamentos posteriores (confirmação perdida); qualquer gravação
+  nova/alterada com revisão obsoleta continua sendo recusada;
 - `summarizeFinanceLedger(snapshot, {authorizedScope, start, end})`:
   receitas, despesas e saldo líquido do **fluxo de caixa**, por período
   UTC semiaberto, sem arredondamento de ponto flutuante;
