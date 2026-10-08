@@ -35,6 +35,28 @@ O modo opt-in `--prove-package-candidates` avança a auditoria além dos metadad
 
 A Foundation CI executa esse modo, que produz **apenas evidência de candidatos não assinados**. A ferramenta não instala, publica, ativa, gera chaves ou modifica a plataforma. `production_releases_verified=0` continua por definição. O `origin` local e o SHA do `HEAD` não provam assinatura/identidade remota: a autenticação de checkout e as políticas de publicação pertencem à CI e aos owners de trust/lifecycle.
 
+## G1 — contratos declarados versus SDK público pinado
+
+A mesma etapa Foundation que já verifica o SHA-256 de \`platform-sdk.lock.json\` agora executa uma auditoria **offline sobre o bundle já verificado**, sem baixar uma segunda cópia e sem criar catálogo paralelo. \`tools/verify_app_sdk_compatibility.py\` reutiliza o inventário/ownership do auditor G0 e o validador de compatibilidade do builder canônico.
+
+\`\`\`sh
+# Testes locais com bundle sintético: não acessam a rede.
+python3 -m unittest tests/test_app_sdk_compatibility.py
+
+# Gate real: verifica o bundle público do commit pinado e cruza todos os apps.
+python3 tools/verify_platform_sdk.py
+\`\`\`
+
+O gate compara cada requisito \`requires\` de \`apps/<id>/compatibility.json\` (ou descriptor canônico de migration) com os contratos \`id/major\` realmente publicados no **bundle pinado**:
+
+- Requisito **obrigatório** sem major compatível: CI falha fechada e informa o app e contrato faltante.
+- Requisito **opcional** ausente: fica explícito na matriz e na contagem de lacunas, sem converter opcional em obrigatório.
+- App sem descriptor (Studio) e alvo sem source: \`not-assessed\`, não \`pass\`.
+- \`provides\` do app não é interpretado como uma API da plataforma, nem usado para conceder permissões.
+- O relatório \`ordax.app-sdk-compatibility-audit/1\` inclui o commit do lock e estados por app; nenhuma lista de apps ou majors foi copiada para o código de CI.
+
+**Limite de evidência:** contrato *publicado no SDK* não significa host que o implementa, grant efetivo, execução do runtime, assinatura, instalação, rollback ou ativação. Essas provas continuam com seus owners e testes específicos. A compatibilidade histórica do Notes não é reescrita: o gate avalia somente seu descriptor de distribuição canônico.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
@@ -48,7 +70,7 @@ A descoberta dinâmica **não substitui** os gates de assinatura, instalação, 
 
 ## O que a ferramenta NÃO prova
 
-Não prova execução de runtime, integração com host, build determinístico do pacote, assinatura, trust, publicação, install, rollback, reinstall offline, ativação de produção nem disponibilidade na Store. O campo `production_releases_verified` fica em zero **por desenho**: essa evidência pertence aos gates de lifecycle e ao operador.
+A auditoria **sem flags** não prova execução de runtime, integração com host, build determinístico, assinatura, trust, publicação, install, rollback, reinstall offline, ativação de produção nem disponibilidade na Store. Os modos G0/G1 específicos provam apenas determinismo local dos candidatos e presença estática dos contratos declarados no SDK pinado, respectivamente. O campo `production_releases_verified` fica em zero **por desenho**: essa evidência pertence aos gates de lifecycle e ao operador.
 
 **Estados importantes:**
 
@@ -61,7 +83,7 @@ Não prova execução de runtime, integração com host, build determinístico d
 
 ## Próximos incrementos
 
-1. Usar as provas determinísticas de package candidate da CI como evidência **parcial**; cruzar com SDK pinado, runtime e testes de lifecycle **por app**, sem supor publicação ou disponibilidade.
+1. Após os gates G0 de pacote e G1 de presença de contratos no SDK, integrar provas de execução de runtime e lifecycle **por app**, sem supor publicação ou disponibilidade.
 2. Especificar os contratos de acesso autorizado a recursos do Files e o caminho de cutover da implementação bootstrap, sem duplicar o source da plataforma.
 3. Abrir MVPs de Internet e Assistant somente após confirmar host isolation e Action Gateway/permissions públicos.
 4. Avançar Projects apenas quando o owner da plataforma registrar `source_cutover_allowed=true` e a ausência do source antigo for comprovada.
