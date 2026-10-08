@@ -110,7 +110,7 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         artifact(self.root / "private-key.pem", b"ephemeral-key")
         record = self.materialize()
         self.assertEqual(record, {
-            "app_count": 2, "file_count": 10, "source_commit": self.commit,
+            "app_count": 2, "file_count": 12, "source_commit": self.commit,
         })
         actual = {
             p.relative_to(self.output).as_posix()
@@ -119,6 +119,7 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         expected = {"store.catalog-candidate.json", "store.catalog-publication-v1.json"}
         for app_id in ("calculator", "notes"):
             expected.add(f"unsigned/{app_id}.unsigned-candidate.json")
+            expected.add(f"signing-requests/{app_id}.component-signing-request.json")
             for extension in (".zip", ".release.json", ".compatibility.json"):
                 expected.add(f"artifacts/{app_id}/{app_id}{extension}")
         self.assertEqual(actual, expected)
@@ -130,6 +131,74 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
             (self.output / "store.catalog-candidate.json").read_bytes(),
             self.candidate_path.read_bytes(),
         )
+
+    def test_each_request_binds_exact_verified_candidate_and_has_zero_authority(self):
+        self.materialize()
+        for app_id in ("calculator", "notes"):
+            request_bytes = (
+                self.output / "signing-requests" / f"{app_id}.component-signing-request.json"
+            ).read_bytes()
+            request = json.loads(request_bytes)
+            original = (self.root / f"{app_id}.unsigned-candidate.json").read_bytes()
+            handoff_value = json.loads(original)
+            self.assertEqual(request_bytes, candidate_tool._canonical_json(request))
+            self.assertEqual(request["$schema"], "ordax-apps.component-signing-request/1")
+            self.assertEqual(request["status"], "external-signature-required")
+            self.assertEqual(request["component"], handoff_value["component"])
+            self.assertEqual(request["source"], handoff_value["source"])
+            self.assertEqual(request["inputs"], handoff_value["artifacts"])
+            self.assertEqual(request["sourceHandoff"], {
+                "schema": handoff_value["$schema"],
+                "sha256": hashlib.sha256(original).hexdigest(),
+            })
+            self.assertEqual(request["output"], {
+                "name": f"{app_id}.runtime-component-envelope.json",
+                "schema": "prototype-ordax.runtime-component-envelope/1",
+                "releaseSchema": "prototype-ordax.runtime-component-release/2",
+                "signatureAlgorithm": "ed25519",
+            })
+            self.assertEqual(request["trust"], {
+                "domain": handoff_value["trust"]["domain"],
+                "requiredKeyId": handoff_value["trust"]["requiredKeyId"],
+                "canonicalPublicAnchorRequired": True,
+            })
+            self.assertEqual(request["authority"], {
+                "signing": False, "publication": False, "installation": False,
+                "activation": False, "rollback": False,
+            })
+            self.assertEqual(request["verification"], {
+                "signerMustRevalidateInputHashes": True,
+                "signedPayloadMustEqualReleaseBytes": True,
+                "compatibilityMustBeBoundByEnvelope": True,
+                "canonicalPlatformVerifierRequiredBeforeCatalogAssembly": True,
+            })
+            self.assertEqual(request["safety"], {
+                "containsPrivateKeyMaterial": False,
+                "privateKeyPathAllowed": False,
+                "remoteSignerCredentialAllowed": False,
+                "directActivationAllowed": False,
+                "platformLifecycleRequired": True,
+            })
+            self.assertNotIn("privateKey", request)
+            self.assertNotIn("credential", request)
+
+    def test_signed_protocol_material_does_not_leak_into_signing_requests(self):
+        artifact(self.artifacts / "notes/notes.runtime-component-envelope.json",
+                 b"ephemeral-signed-envelope")
+        artifact(self.root / "private-key.pem", b"ephemeral-private-key")
+        artifact(self.root / "runtime-components-ci-trust.json", b"ephemeral-ci-trust")
+        self.materialize()
+        self.assertEqual(
+            len(list((self.output / "signing-requests").glob("*.json"))), 2
+        )
+        joined = b"".join(
+            p.read_bytes() for p in (self.output / "signing-requests").glob("*.json")
+        )
+        for secret in (b"ephemeral-signed-envelope", b"ephemeral-private-key",
+                       b"ephemeral-ci-trust"):
+            self.assertNotIn(secret, joined)
+        self.assertFalse(list(self.output.rglob("*.pem")))
+        self.assertFalse(list(self.output.rglob("*.runtime-component-envelope.json")))
 
     def test_modified_package_fails_without_partial_output(self):
         (self.artifacts / "notes/notes.zip").write_bytes(b"tampered-package")
