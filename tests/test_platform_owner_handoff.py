@@ -186,6 +186,56 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
             path.write_text(json.dumps(base), encoding="utf-8")
             self.assertEqual(mod.stale_references(root, self.old)["operational_paths"], [])
 
+    def test_repo_rename_uses_single_workspace_target_and_physical_github_id(self):
+        renamed = copy.deepcopy(self.workspace)
+        lock = copy.deepcopy(self.lock)
+        destination = "ordaxsystems/ordax-os"
+        renamed["repository_migration"]["target_platform_repository"] = destination
+        renamed["repository_migration"]["current_platform_repository"] = destination
+        renamed["platform_repository"] = destination
+        lock["repository"] = destination
+        state = mod.validate(renamed, lock)
+        self.assertEqual(state["target_platform"], destination)
+        self.assertEqual(state["current_platform"], destination)
+        self.assertEqual(state["platform_repository_id"], mod.IMMUTABLE_PLATFORM_ID)
+
+        class Response:
+            status = 200
+            def __init__(self, payload):
+                self.payload = payload
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, n=-1):
+                return json.dumps(self.payload).encode("utf-8")
+
+        verified = {**state, "source_conformance_after_transfer": True}
+        physical = {
+            "id": int(mod.IMMUTABLE_PLATFORM_ID),
+            "full_name": destination,
+            "archived": False,
+            "default_branch": "main",
+        }
+        with mock.patch.object(mod.urllib.request, "urlopen", return_value=Response(physical)) as fetch:
+            self.assertTrue(mod.verify_physical_owner(verified))
+            self.assertEqual(fetch.call_args.args[0].full_url,
+                             "https://api.github.com/repos/" + destination)
+        with mock.patch.object(mod.urllib.request, "urlopen",
+                               return_value=Response({**physical, "full_name": self.target})):
+            with self.assertRaisesRegex(ValueError, "mismatch"):
+                mod.verify_physical_owner(verified)
+        with self.assertRaisesRegex(ValueError, "source contracts"):
+            mod.verify_physical_owner({**verified, "source_conformance_after_transfer": False})
+        wrong = copy.deepcopy(renamed)
+        wrong["repository_migration"]["target_platform_repository"] = self.target
+        with self.assertRaisesRegex(ValueError, "unrecognized physical platform"):
+            mod.validate(wrong, lock)
+        wrong = copy.deepcopy(renamed)
+        wrong["repository_migration"]["target_platform_repository"] = "ordaxsystems/wrong"
+        with self.assertRaisesRegex(ValueError, "unrecognized platform rename"):
+            mod.validate(wrong, lock)
+
     def test_unknown_owner_or_unsigned_sdk_lock_fails(self):
         bad = copy.deepcopy(self.workspace)
         bad["repository_migration"]["current_platform_repository"] = "other/repo"
