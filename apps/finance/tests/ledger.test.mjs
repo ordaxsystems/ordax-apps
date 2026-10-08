@@ -8,6 +8,7 @@ import {
   assertFinanceScope,
   appendFinanceEntry,
   summarizeFinanceLedger,
+  queryFinanceEntries,
 } from "../src/domain/ledger.mjs";
 
 const scope = Object.freeze({ ownerId: "account-1", spaceId: "pizzaria-centro" });
@@ -164,4 +165,76 @@ test("snapshot corruption and revisions are detected before query or append", ()
   assert.throws(() => validateFinanceLedger({
     ...first, entries: [{ ...first.entries[0], prompt: "ignore policies" }],
   }), /incompatible fields/);
+});
+
+test("finance journal pagination is deterministic, scoped, revision-pinned and read-only", () => {
+  let snapshot = createFinanceLedger(scope);
+  snapshot = write(snapshot, event("sale.1", "income", 1000));
+  snapshot = write(snapshot, event("cost.1", "expense", 300));
+  snapshot = write(snapshot, event("sale.2", "income", 2000));
+  const options = {
+    authorizedScope: scope, expectedRevision: snapshot.revision,
+    start: "2026-10-08T00:00:00Z", end: "2026-10-09T00:00:00Z",
+    limit: 2,
+  };
+  const first = queryFinanceEntries(snapshot, options);
+  assert.equal(first.schema, "ordax.finance-ledger-query/1");
+  assert.deepEqual(first.entries.map((item) => item.id), ["sale.1", "cost.1"]);
+  assert.equal(first.total, 3);
+  assert.equal(first.nextOffset, 2);
+  assert.equal(first.revision, 3);
+  const second = queryFinanceEntries(snapshot, { ...options, offset: first.nextOffset });
+  assert.deepEqual(second.entries.map((item) => item.id), ["sale.2"]);
+  assert.equal(second.nextOffset, null);
+  assert.deepEqual(queryFinanceEntries(snapshot, options), first);
+  assert.ok(Object.isFrozen(first));
+  assert.ok(Object.isFrozen(first.entries));
+  assert.equal(snapshot.entries.length, 3);
+
+  const changed = write(snapshot, event("sale.3", "income", 100));
+  assert.throws(() => queryFinanceEntries(changed, {
+    ...options, offset: first.nextOffset,
+  }), /revision conflict/);
+  assert.throws(() => queryFinanceEntries(snapshot, {
+    ...options, authorizedScope: { ownerId: "other", spaceId: scope.spaceId },
+  }), /another owner or Space/);
+  assert.deepEqual(queryFinanceEntries(snapshot, {
+    ...options, kinds: ["income"],
+  }).entries.map((item) => item.id), ["sale.1", "sale.2"]);
+});
+
+test("finance journal query does not expose out-of-window entries or accept unbounded parameters", () => {
+  let ledger = createFinanceLedger(scope);
+  ledger = write(ledger, event("before", "income", 100, {
+    occurredAt: "2026-10-07T23:59:59Z",
+  }));
+  ledger = write(ledger, event("inside", "expense", 200, {
+    occurredAt: "2026-10-08T00:00:00Z",
+  }));
+  ledger = write(ledger, event("after", "income", 300, {
+    occurredAt: "2026-10-09T00:00:00Z",
+  }));
+  const opts = {
+    authorizedScope: scope, expectedRevision: ledger.revision,
+    start: "2026-10-08T00:00:00Z", end: "2026-10-09T00:00:00Z",
+  };
+  assert.deepEqual(queryFinanceEntries(ledger, opts).entries.map(x => x.id), ["inside"]);
+  for (const limit of [0, 101, 1.5, Infinity, null]) {
+    assert.throws(() => queryFinanceEntries(ledger, { ...opts, limit }), /pagination is outside bounds/);
+  }
+  for (const offset of [-1, 2049, 1.5, "0", null]) {
+    assert.throws(() => queryFinanceEntries(ledger, { ...opts, offset }), /pagination is outside bounds/);
+  }
+  for (const kinds of [[], ["income", "income"], ["payout"], ["income", "admin"], null]) {
+    assert.throws(() => queryFinanceEntries(ledger, { ...opts, kinds }), /kinds are invalid/);
+  }
+  assert.throws(() => queryFinanceEntries(ledger, {
+    ...opts, start: opts.end,
+  }), /positive duration/);
+  assert.throws(() => queryFinanceEntries(ledger, {
+    ...opts, expectedRevision: "3",
+  }), /revision conflict/);
+  assert.throws(() => queryFinanceEntries(ledger, {
+    ...opts, expectedRevision: 2,
+  }), /revision conflict/);
 });

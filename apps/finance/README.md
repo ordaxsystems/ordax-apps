@@ -22,6 +22,12 @@ dentro do Profile Pizzaria nem no OrdaX Intelligence.
 - `summarizeFinanceLedger(snapshot, {authorizedScope, start, end})`:
   receitas, despesas e saldo líquido do **fluxo de caixa**, por período
   UTC semiaberto, sem arredondamento de ponto flutuante;
+- `queryFinanceEntries(snapshot, {authorizedScope, expectedRevision, start, end, kinds, offset, limit})`:
+  consulta **somente leitura** do diário por período e tipo, paginação
+  limitada a 100 eventos por página e continuação protegida pela revisão
+  imutável do snapshot. Alteração concorrente provoca conflito, em vez de
+  repetir ou omitir itens silenciosamente. É uma projeção transitória:
+  não cria persistência, autoriza o usuário ou armazena outro ledger;
 - `validateFinanceLedger`, `assertFinanceScope`: limites rígidos,
   isolamento de escopo, no extra authority, histórico append-only,
   estornos sem apagar lançamentos e verificação de snapshots adulterados.
