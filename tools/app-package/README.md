@@ -39,6 +39,19 @@ Os apps visualizadores podem fornecer `associations/manifest.json`. O contrato d
 
 O manifesto declara formatos mas **não** seleciona arquivos, rotas, grants ou programas padrão no host. Esses direitos continuam no owner do OrdaX OS. O fluxo evita um segundo SSOT de associações na plataforma ou permissões implícitas no pacote.
 
+## Segurança do recebimento do ZIP
+
+O verificador de pacote `build.py verify` **não confia apenas nos hashes
+declarados pelo próprio ZIP**. Ele lê `app.json` *dentro* do pacote,
+reaplica `validate_app_manifest` e exige que o
+`component-package.json` seja idêntico ao manifesto produzido pelo builder
+canônico. Revalida o grafo de imports de todo JavaScript empacotado com
+`validate_source_graph_from_payloads`, compartilhado com o build.
+Imports remotos/privados, dependências relativas ausentes, identidades de app
+divergentes, claims extras e conteúdo não UTF-8 falham fechados — mesmo que
+o pacote tenha sido re-hasheado internamente. O verificador não precisa da
+árvore original de source; assinatura/trust continuam exclusivos da plataforma.
+
 ## Outputs
 
 The builder produces:
