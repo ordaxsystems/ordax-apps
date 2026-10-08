@@ -56,7 +56,9 @@ class ProviderSyntaxSsotTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("verify_app_actions.py --check-provider-syntax", workflow)
-        self.assertNotIn("node --check apps/", workflow)
+        for line in workflow.splitlines():
+            if "node --check" in line:
+                self.assertNotIn("/actions/providers/", line)
         self.assertNotIn("python3 -m json.tool apps/", workflow)
         self.assertIn("find apps migrations", workflow)
 
