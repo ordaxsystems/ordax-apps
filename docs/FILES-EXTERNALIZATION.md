@@ -39,7 +39,13 @@ O App SDK global pinado em `platform-sdk.lock.json` é **1.12.0**, commit `8f96e
 python3 tools/verify_files_cutover.py --format markdown
 python3 -m unittest tests/test_files_cutover.py
 
-# Em um checkout Git limpo e pinado da plataforma:
+# ANTES da remoção Gate A, derive o snapshot de Git blobs do OS canônico:
+# O comando apenas imprime JSON; a saída é evidência DERIVADA, não outra fonte.
+python3 tools/verify_files_cutover.py \
+  --platform-root /caminho/para/checkout-limpo-do-os \
+  --emit-source-snapshot > /tmp/files.source-snapshot.json
+
+# DEPOIS da remoção Gate A, use checkout limpo do commit pinado:
 python3 tools/verify_files_cutover.py \
   --platform-root /caminho/para/checkout-exato-do-os \
   --format json
@@ -49,6 +55,19 @@ python3 tools/verify_files_cutover.py --require-cutover-ready
 ```
 
 A verificação de checkout lê `git rev-parse HEAD` e `git status --porcelain` localmente. Ela procura source remanescente, couplings de implementação, ports da plataforma que devem permanecer, snapshot de origem e commit exato do Gate A. **Não clona, não altera, não assina e não instala nada.**
+
+### SSOT comprovada pelo Git, não por declaração
+
+O JSON de `migrations/files.source-snapshot.json` é um **inventário derivado**. A fonte autoritativa continua sendo o histórico Git do repositório da plataforma. O comando `--emit-source-snapshot` calcula, no commit anterior ao Gate A, todos os blobs dos paths app-owned definidos **uma única vez** em `migrations/files.externalization.json`, em ordem determinística. O operador revisa a saída e só então registra os commits e o inventário no plano.
+
+Mesmo que alguém edite `source_cutover_allowed=true` ou invente hashes no JSON, o gate rejeita a prova sem:
+
+- checkout Git **limpo**, na raiz, com `origin` exatamente igual ao owner canônico no workspace;
+- commit do snapshot existente e **ancestral** ao commit Gate A, que deve ser o HEAD exato;
+- inventário **completo e idêntico** aos Git blobs da árvore antiga (incluindo app e UI);
+- árvore Git do Gate A sem nenhum path app-owned antigo, com ports da plataforma preservados e sem imports de implementação Files.
+
+O preflight não valida assinaturas Git nem a identidade do operador; a procedência remota deve ser atestada pelo CI/owner da plataforma, que faz checkout do repositório autorizado. **A prova de source não autoriza distribuição nem resolve as lacunas de grants.**
 
 ## Sequência de entrega
 
