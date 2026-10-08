@@ -1,7 +1,7 @@
 {
   "schema": "ordax.component-compatibility/1",
   "componentId": "toolbox",
-  "componentVersion": "0.2.0",
+  "componentVersion": "0.2.1",
   "provides": [
     {
       "id": "ordax.component-runtime",
