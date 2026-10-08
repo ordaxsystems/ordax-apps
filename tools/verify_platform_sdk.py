@@ -63,7 +63,7 @@ def main() -> None:
     lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
     if lock.get("$schema") != "ordax.app-sdk-lock/1":
         fail("unexpected SDK lock schema")
-    if lock.get("repository") != "ordaxsystems/prototipo-ordax-os":
+    if lock.get("repository") != "ordaxsystems/ordax-os":
         fail("SDK repository is not canonical")
     commit = lock.get("commit")
     if not isinstance(commit, str) or len(commit) != 40 or any(ch not in "0123456789abcdef" for ch in commit):
