@@ -7,9 +7,13 @@ duplicate source ownership fails closed; planned apps and gates are reported.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -214,28 +218,135 @@ def audit_workspace(root: Path = ROOT) -> dict:
     }
 
 
+def checked_git_commit(root: Path) -> str:
+    """Bind candidate evidence to an exact, clean canonical Git checkout; never fetch."""
+    if root.is_symlink() or not root.is_dir():
+        raise AuditError("package proof requires a real Git checkout root")
+
+    def git(*args: str) -> str:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(root), *args],
+                check=True, capture_output=True, text=True, timeout=20,
+            ).stdout.strip()
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise AuditError(f"cannot verify local Git checkout: {' '.join(args[:2])}") from exc
+
+    if Path(git("rev-parse", "--show-toplevel")).resolve() != root.resolve():
+        raise AuditError("package proof must run at the Git checkout root")
+    origin = git("config", "--get", "remote.origin.url")
+    allowed = {
+        f"https://github.com/{REPOSITORY}",
+        f"https://github.com/{REPOSITORY}.git",
+        f"git@github.com:{REPOSITORY}",
+        f"git@github.com:{REPOSITORY}.git",
+        f"ssh://git@github.com/{REPOSITORY}",
+        f"ssh://git@github.com/{REPOSITORY}.git",
+    }
+    if origin not in allowed:
+        raise AuditError("package proof Git origin does not match canonical app repository")
+    if git("status", "--porcelain", "--untracked-files=all"):
+        raise AuditError("package proof requires a clean Git checkout")
+    commit = git("rev-parse", "--verify", "HEAD")
+    if not builder.SHA40_RE.fullmatch(commit):
+        raise AuditError("package proof HEAD is not a canonical commit SHA")
+    return commit
+
+
+def _build_candidate_once(root: Path, app_id: str, compatibility: Path,
+                          source_commit: str, output_root: Path) -> dict:
+    """Build and verify a candidate in a temporary directory; never publish it."""
+    app_root = root / "apps" / app_id
+    package = output_root / f"{app_id}.zip"
+    release_dir = output_root / "release"
+    try:
+        manifest, _ = builder.build_package(app_root, source_commit, package)
+        verified, _ = builder.verify_package(package)
+        release_path, sidecar_path = builder.write_release_v2(
+            package, compatibility, release_dir
+        )
+        release, canonical_sidecar = builder.render_release_v2(package, sidecar_path)
+        if (
+            verified != manifest
+            or manifest["component"]["id"] != app_id
+            or manifest["source_commit"] != source_commit
+            or release_path.read_bytes() != builder.canonical_json_bytes(release)
+            or sidecar_path.read_bytes() != canonical_sidecar
+            or release["activation"]["direct_activation_allowed"] is not False
+        ):
+            raise AuditError(f"{app_id}: candidate identity or sidecar verification failed")
+        return {
+            "package_sha256": hashlib.sha256(package.read_bytes()).hexdigest(),
+            "package_size": package.stat().st_size,
+            "release_sha256": hashlib.sha256(release_path.read_bytes()).hexdigest(),
+            "compatibility_sha256": hashlib.sha256(canonical_sidecar).hexdigest(),
+            "source_commit": source_commit,
+        }
+    except (builder.AppPackageError, OSError, ValueError, zipfile.BadZipFile) as exc:
+        raise AuditError(f"{app_id}: candidate package build/verify failed: {exc}") from exc
+
+
+def prove_package_candidates(root: Path, report: dict, source_commit: str) -> dict:
+    """Prove reproducible unsigned packages only for canonical apps with compatibility."""
+    if not builder.SHA40_RE.fullmatch(source_commit):
+        raise AuditError("package proof source commit must be an exact 40-hex SHA")
+    verified = 0
+    with tempfile.TemporaryDirectory(prefix="ordax-g0-candidates-") as temp:
+        for row in report["apps"]:
+            if row["source_state"] != "canonical-source":
+                continue
+            metadata = row["metadata"]
+            if not metadata or not metadata["compatibility"]:
+                row["release_evidence"]["package_build"] = "blocked-missing-compatibility"
+                continue
+            compatibility = root / metadata["compatibility"]
+            app_id = row["app_id"]
+            first = _build_candidate_once(
+                root, app_id, compatibility, source_commit,
+                Path(temp) / app_id / "first",
+            )
+            second = _build_candidate_once(
+                root, app_id, compatibility, source_commit,
+                Path(temp) / app_id / "second",
+            )
+            if first != second:
+                raise AuditError(f"{app_id}: non-deterministic candidate package/release bytes")
+            row["release_evidence"]["package_build"] = "verified-deterministic-candidate"
+            row["release_evidence"]["package_candidate"] = first
+            verified += 1
+    report["summary"]["package_candidates_verified"] = verified
+    report["disclaimer"] = (
+        "Two identical, verified unsigned package candidates prove only local deterministic "
+        "packaging from this checkout. They do not prove runtime, signing, trust, "
+        "publication, install, rollback, offline reinstall or production activation."
+    )
+    return report
+
+
 def render_markdown(report: dict) -> str:
     lines = [
         "# OrdaX Apps — auditoria G0 de prontidão",
         "",
         "> Inventário gerado do workspace e manifests; não autoriza distribuição.",
         "",
-        "| App | Fonte | Metadados | Bloqueios conhecidos | Release |",
-        "| --- | --- | --- | --- | --- |",
+        "| App | Fonte | Metadados | Pacote | Bloqueios conhecidos | Ativação |",
+        "| --- | --- | --- | --- | --- | --- |",
     ]
     for row in report["apps"]:
         status = "validado" if row["metadata"] and row["metadata"]["metadata_verified"] else "pendente"
         blockers = ", ".join(row["blockers"]) or "nenhum gate conhecido nesta auditoria"
         release = row["release_evidence"]["production_activation"]
+        package = row["release_evidence"]["package_build"]
         lines.append(
-            f"| §{row['app_id']}§ | {row['source_state']} | {status} | {blockers} | {release} |"
+            f"| §{row['app_id']}§ | {row['source_state']} | {status} | {package} | {blockers} | {release} |"
         )
     summary = report["summary"]
     lines.extend([
         "",
         f"**Alvos:** {summary['target_count']}; **source canônico:** "
         f"{summary['canonical_source_count']}; **metadados validados:** "
-        f"{summary['metadata_verified_count']}.",
+        f"{summary['metadata_verified_count']}; **candidatos determinísticos verificados:** "
+        f"{summary.get('package_candidates_verified', 0)}.",
         "",
         report["disclaimer"],
         "",
@@ -247,9 +358,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
+    parser.add_argument(
+        "--prove-package-candidates", action="store_true",
+        help="Build/verify each eligible unsigned package twice in temporary storage from clean Git HEAD",
+    )
     args = parser.parse_args(argv)
     try:
         report = audit_workspace(args.root)
+        if args.prove_package_candidates:
+            root = args.root.resolve()
+            report = prove_package_candidates(root, report, checked_git_commit(root))
     except AuditError as exc:
         print(f"ORDAX_APP_READINESS=FAIL\n{exc}", file=sys.stderr)
         return 1
