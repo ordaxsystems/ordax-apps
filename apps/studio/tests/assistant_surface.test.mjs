@@ -36,6 +36,7 @@ function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, widt
   };
   runInNewContext(source,{
     window, document,
+    ResizeObserver: window.ResizeObserver,
     requestAnimationFrame(callback){frames.push(callback);},
     MutationObserver:class {observe() {}},
   });
