@@ -62,3 +62,5 @@
 @media(max-width:1320px){
   .assistantModeHint{display:none}
 }
+.assistantWebFallback[data-transport="unavailable"] .orb{opacity:.35}
+.assistantWebFallback[data-transport="unavailable"] small{color:#b8c7db;max-width:310px;line-height:1.5}
