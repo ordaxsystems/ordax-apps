@@ -56,6 +56,11 @@ jobs:
       - name: Prove repository boundary invariants
         run: python3 tools/verify_workspace.py
 
+      - name: Audit canonical app readiness without claiming production activation
+        run: |
+          python3 -m unittest tests/test_audit_app_readiness.py
+          python3 tools/audit_app_readiness.py --format markdown
+
       - name: Prove first-party app intelligence manifests
         run: python3 tools/verify_app_intelligence.py
 
