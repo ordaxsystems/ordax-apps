@@ -95,5 +95,70 @@ class CatalogInventoryTests(unittest.TestCase):
                 catalog_inventory.discover_catalog_apps(apps, migrations)
 
 
+    def test_rejects_symlinked_app_directory_even_when_manifest_is_valid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apps = root / "apps"
+            apps.mkdir()
+            migrations = root / "migrations"
+            migrations.mkdir()
+            external = root / "external" / "alpha"
+            write_json(external / "app.json", manifest("alpha"))
+            write_json(external / "compatibility.json", compatibility("alpha"))
+            (apps / "alpha").symlink_to(external, target_is_directory=True)
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "symlink"):
+                catalog_inventory.discover_catalog_apps(apps, migrations)
+
+    def test_rejects_symlinked_manifest_or_compatibility_including_dangling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apps = root / "apps"
+            migrations = root / "migrations"
+            migrations.mkdir()
+            write_json(root / "external" / "app.json", manifest("alpha"))
+            path = apps / "alpha" / "app.json"
+            path.parent.mkdir(parents=True)
+            path.symlink_to(root / "external" / "app.json")
+            write_json(apps / "alpha" / "compatibility.json", compatibility("alpha"))
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "non-symlink"):
+                catalog_inventory.discover_catalog_apps(apps, migrations)
+
+            path.unlink()
+            write_json(path, manifest("alpha"))
+            compat = apps / "alpha" / "compatibility.json"
+            compat.unlink()
+            compat.symlink_to(root / "does-not-exist.json")
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "non-symlink"):
+                catalog_inventory.discover_catalog_apps(apps, migrations)
+
+    def test_rejects_nonregular_compatibility_instead_of_silent_skip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apps = root / "apps"
+            migrations = root / "migrations"
+            migrations.mkdir()
+            write_json(apps / "alpha" / "app.json", manifest("alpha"))
+            (apps / "alpha" / "compatibility.json").mkdir()
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "regular"):
+                catalog_inventory.discover_catalog_apps(apps, migrations)
+
+    def test_rejects_symlinked_inventory_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apps = root / "apps"
+            migrations = root / "migrations"
+            migrations.mkdir()
+            write_json(apps / "alpha" / "app.json", manifest("alpha"))
+            write_json(apps / "alpha" / "compatibility.json", compatibility("alpha"))
+            alias_apps = root / "apps-alias"
+            alias_apps.symlink_to(apps, target_is_directory=True)
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "real directory"):
+                catalog_inventory.discover_catalog_apps(alias_apps, migrations)
+            alias_migrations = root / "migrations-alias"
+            alias_migrations.symlink_to(migrations, target_is_directory=True)
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "real directory"):
+                catalog_inventory.discover_catalog_apps(apps, alias_migrations)
+
+
 if __name__ == "__main__":
     unittest.main()
