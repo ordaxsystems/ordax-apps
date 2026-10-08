@@ -90,7 +90,7 @@ class ProjectsExternalizationTests(unittest.TestCase):
         self._write()
         with self.assertRaisesRegex(SystemExit, "provenance drifted"):
             self.verify()
-        self.snapshot["repository"] = self.plan["source_repository_current"]
+        self.snapshot["repository"] = self.plan["source_snapshot"]["repository"]
         self.snapshot["authority"] = "install"
         self._write()
         with self.assertRaisesRegex(SystemExit, "cannot grant authority"):
