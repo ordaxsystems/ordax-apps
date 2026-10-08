@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -17,6 +18,14 @@ import stat
 import sys
 import zipfile
 from pathlib import Path, PurePosixPath
+
+_association_spec = importlib.util.spec_from_file_location(
+    "ordax_app_package_association_contract",
+    Path(__file__).with_name("association_contract.py"),
+)
+association_contract = importlib.util.module_from_spec(_association_spec)
+assert _association_spec.loader is not None
+_association_spec.loader.exec_module(association_contract)
 
 PACKAGE_SCHEMA = "prototype-ordax.runtime-component-package/1"
 RELEASE_SCHEMA_V2 = "prototype-ordax.runtime-component-release/2"
@@ -1012,6 +1021,24 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
             label=module,
         ),
     )
+    # Association declarations are optional, but once the directory exists
+    # its manifest must be present and valid *before* packaging any bytes.
+    association_dir = app_root / "associations"
+    association_path = association_dir / "manifest.json"
+    if association_dir.exists() or association_dir.is_symlink():
+        if association_dir.is_symlink() or not association_dir.is_dir():
+            raise AppPackageError("associations must be a real directory")
+        try:
+            association_contract.validate_manifest_bytes(
+                read_regular(
+                    association_path,
+                    max_bytes=association_contract.MAX_MANIFEST_BYTES,
+                    label="associations/manifest.json",
+                ),
+                app_id=app["id"], version=app["version"],
+            )
+        except (association_contract.AssociationContractError, OSError) as exc:
+            raise AppPackageError(f"association manifest is invalid: {exc}") from exc
     files = discover_app_files(app_root)
     validate_source_graph(app_root, files)
     records = source_records(app_root, app["id"], files)
@@ -1153,6 +1180,19 @@ def verify_package(package: Path) -> tuple[dict, bytes]:
             action_manifest,
             lambda module: archive.read(f"system/apps/{app_id}/{module}"),
         )
+        association_prefix = f"system/apps/{app_id}/associations/"
+        association_path = association_prefix + "manifest.json"
+        if any(path.startswith(association_prefix) for path in seen):
+            if association_path not in seen:
+                raise AppPackageError("package associations directory has no manifest")
+            try:
+                association_contract.validate_manifest_bytes(
+                    archive.read(association_path),
+                    app_id=app_id,
+                    version=component.get("version"),
+                )
+            except association_contract.AssociationContractError as exc:
+                raise AppPackageError(f"package association manifest is invalid: {exc}") from exc
     return manifest, payload
 
 
