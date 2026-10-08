@@ -18,13 +18,21 @@ class TestNode {
     this.textContent = "";
     this.paused = false;
     this.pauseCalls = 0;
+    this.width = tagName === "canvas" ? 1280 : undefined;
+    this.height = tagName === "canvas" ? 720 : undefined;
+    this.context = tagName === "canvas" ? {
+      fills: 0, strokes: 0,
+      fillRect() { this.fills += 1; },
+      beginPath() {}, moveTo() {}, lineTo() {},
+      stroke() { this.strokes += 1; },
+    } : null;
   }
   set innerHTML(value) {
     if (this.tagName !== "section") throw new Error("Unexpected innerHTML target");
     this.targets.clear();
     for (const [, name] of value.matchAll(/data-([a-z]+)(?=[\s=>])/g)) {
       if (this.targets.has(name)) continue;
-      const tag = name === "stage" ? "main" : "span";
+      const tag = name === "stage" ? "main" : name === "canvas" ? "canvas" : "span";
       this.targets.set(name, new TestNode(tag, this.ownerDocument));
     }
     if (this.targets.has("stage") && this.targets.has("empty")) {
@@ -67,11 +75,22 @@ class TestNode {
     this.pauseCalls += 1;
     this.paused = true;
   }
+  getContext(kind) {
+    if (this.tagName !== "canvas" || kind !== "2d") return null;
+    return this.ownerDocument.noCanvasContext ? null : this.context;
+  }
+  getBoundingClientRect() {
+    return {left:0,top:0,width:this.width ?? 0,height:this.height ?? 0};
+  }
+  setPointerCapture(pointerId) { this.pointerId = pointerId; }
+  toDataURL() { return "data:image/png;base64,dGVzdA=="; }
+  click() { this.clicked = true; }
 }
 
-export function createDocument({failCreateTag = null, failAppendTag = null} = {}) {
+export function createDocument({failCreateTag = null, failAppendTag = null, noCanvasContext = false} = {}) {
   const document = {
     failAppendTag,
+    noCanvasContext,
     createElement(tagName) {
       if (tagName === failCreateTag) throw new Error("DOM creation rejected: " + tagName);
       return new TestNode(tagName, document);
