@@ -222,7 +222,7 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
             self.assertEqual(fetch.call_args.args[0].full_url,
                              "https://api.github.com/repos/" + destination)
         with mock.patch.object(mod.urllib.request, "urlopen",
-                               return_value=Response({**physical, "full_name": self.target})):
+                               return_value=Response({**physical, "full_name": "ordaxsystems/prototipo-ordax-os"})):
             with self.assertRaisesRegex(ValueError, "mismatch"):
                 mod.verify_physical_owner(verified)
         with self.assertRaisesRegex(ValueError, "source contracts"):
