@@ -96,6 +96,20 @@ node --test apps/clock/tests/*.test.mjs
 
 Os testes do modelo usam um clock injetável e determinístico para verificar cronômetro rodando/pausado, temporizador configurado e expirado, troca de view sem perda de progresso, retomada, reset e validação de duração. A Foundation já executa essa suite por descoberta de testes. **Limites:** esses testes não constituem prova de renderização real com host OrdaX, instalação, notifications ou agendamento em segundo plano; esses gates continuam separados.
 
+## G2.3 — Visualizador de Texto: leituras concorrentes, identidade e desmontagem
+
+O Visualizador de Texto recebia ativações de `ordax.app-activation/1` e chamava `ordax.file-space/11.readTextFile()` sem distinguir respostas antigas de novas. Como o File Space é assíncrono, um resultado atrasado podia sobrescrever o arquivo mais recente ou modificar uma view já desmontada.
+
+A correção no **runtime canônico** `apps/text-viewer/src/runtime.mjs` mantém uma sequência de abertura local à montagem: só a última ativação válida pode aplicar sucesso ou erro; `destroy()` é idempotente e invalida todas as leituras em andamento, mesmo que o broker ainda as conclua. O resultado precisa corresponder ao caminho lógico requisitado e conter texto; resposta divergente falha fechada com mensagem localizada. Eventos de outro app e caminhos lógicos inválidos não acessam o File Space. Erros de assinatura da porta pública fazem limpeza de subscriptions, view e stylesheet.
+
+```sh
+node --test apps/text-viewer/tests/*.test.mjs
+```
+
+Os testes provocam respostas fora de ordem, rejeições antigas, resposta de caminho divergente, tipo de conteúdo malformado, mudança de idioma durante leitura, unmount antes da resolução, recusa de portas públicas inválidas e cleanup após falha de subscribe. A CI já usa descoberta dos testes deste app, sem inventário separado.
+
+**Escopo:** esta prova é uma fixture mínima de DOM e portas públicas, não um host de produção ou mecanismo de revogação do File Space. Os grants, isolamento, sandbox, install, rollback, signing e ativação continuam no owner da plataforma. O app não tenta cancelar ou substituir a autoridade do broker: apenas ignora resultados obsoletos.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
