@@ -142,7 +142,10 @@ function renderThread(){
 
 function updateSend(){
   var send=byId('assistantSend'),prompt=byId('assistantPrompt');if(!send)return;
-  var enabled=Boolean(shell.catalog.send_supported)&&Boolean(active());
+  var current=active();
+  var provider=(shell.catalog.providers||[]).find(function(p){return current&&p.id===current.provider_id});
+  var model=provider&&(provider.models||[]).find(function(m){return current&&m.id===current.model_id});
+  var enabled=Boolean(current&&model&&model.can_send);
   send.disabled=!enabled;
   var title=enabled?'Enviar mensagem':'Envio indisponível: '+String(shell.catalog.send_summary||'nenhum adapter de provider configurado');
   send.title=title;if(prompt)prompt.title=title;
@@ -220,7 +223,20 @@ function bind(){
     shell.draftSelection.provider_id=value.providerId;shell.draftSelection.model_id=value.modelId;
     if(active())void updateChat({provider_id:value.providerId,model_id:value.modelId});else render();
   };
-  var send=byId('assistantSend');if(send)send.onclick=function(){status(shell.catalog.send_summary||'Envio ainda não disponível')};
+  var send=byId('assistantSend');if(send)send.onclick=async function(){
+    var current=active(),input=byId('assistantPrompt'),method=hostMethod('assistantSendMessage');
+    if(!current||!input||!input.value.trim()||!method){status('Conector de envio não está pronto');return}
+    var message=input.value.trim();
+    send.disabled=true;input.disabled=true;status('Aguardando resposta do provedor selecionado...');
+    try{
+      var result=await method(String(current.id),message);
+      if(!result||!result.ok)throw new Error((result&&result.summary)||'Conector falhou');
+      input.value='';
+      await reload();
+      status('Resposta recebida do provedor');
+    }catch(error){status(String(error.message||error))}
+    finally{input.disabled=false;render();input.focus()}
+  };
   var prompt=byId('assistantPrompt');if(prompt)prompt.onkeydown=function(event){
     if(event.key==='Enter'&&!event.shiftKey&&!byId('assistantSend').disabled){event.preventDefault();byId('assistantSend').click()}
   };
