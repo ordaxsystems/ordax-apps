@@ -44,6 +44,8 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.apps_root = self.root / "apps"
+        self.migrations_root = self.root / "migrations"
+        self.migrations_root.mkdir()
         self.artifacts = self.root / "artifacts"
         self.output = self.root / "export"
         self.commit = "b" * 40
@@ -95,6 +97,7 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
             artifacts_root=self.artifacts,
             handoffs_dir=self.root,
             apps_root=self.apps_root,
+            migrations_root=self.migrations_root,
             output_root=self.output,
         )
 
@@ -176,6 +179,43 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
             handoff.UnsignedHandoffError, "canonical package/descriptor verification failed",
+        ):
+            self.materialize()
+        self.assertFalse(self.output.exists())
+
+    def test_complete_export_rejects_valid_but_partial_catalog(self):
+        # An otherwise internally consistent candidate/publication with fewer
+        # entries is not a complete Store pre-publication export.
+        partial, payload = candidate_tool.render_catalog_candidate(
+            handoffs=self.handoffs[:1],
+            apps_root=self.apps_root,
+            source_commit=self.commit,
+        )
+        self.candidate_path.write_bytes(payload)
+        _, publication_bytes = publication_tool.render_publication(
+            candidate=partial, candidate_bytes=payload, sequence=1,
+        )
+        self.publication_path.write_bytes(publication_bytes)
+        with self.assertRaisesRegex(
+            handoff.UnsignedHandoffError, "incomplete or contains apps outside",
+        ):
+            self.materialize()
+        self.assertFalse(self.output.exists())
+
+    def test_complete_export_rejects_app_outside_current_eligibility(self):
+        # Source eligibility changes must not be hidden by a stale candidate:
+        # the exact eligible inventory comes from the canonical discoverer.
+        (self.apps_root / "notes" / "compatibility.json").unlink()
+        with self.assertRaisesRegex(
+            handoff.UnsignedHandoffError, "incomplete or contains apps outside",
+        ):
+            self.materialize()
+        self.assertFalse(self.output.exists())
+
+    def test_unavailable_canonical_inventory_fails_without_partial_output(self):
+        self.migrations_root.rmdir()
+        with self.assertRaisesRegex(
+            handoff.UnsignedHandoffError, "canonical catalog inventory is unavailable",
         ):
             self.materialize()
         self.assertFalse(self.output.exists())
