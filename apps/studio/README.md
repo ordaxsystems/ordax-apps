@@ -11,7 +11,7 @@ O ambiente de execução deve injetar `window.ordaxStudioHost` (ou `window.__ord
 ## Repositórios relacionados
 
 - `ordaxsystems/ordax-runtime`: Runtime/host Windows e adapters.
-- `ordaxsystems/ordax-control-plane`: Control Plane remoto, Product MCP e conectores de provider.
+- `ordaxsystems/ordax-platform`: Control Plane remoto, Product MCP e conectores de provider.
 
 O repositório histórico `mcp-blender` não é fonte para novas features e está em processo de retirada.
 

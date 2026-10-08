@@ -98,8 +98,8 @@
   "replacement_repositories": {
     "portable_app": "ordaxsystems/ordax-apps",
     "runtime_host": "ordaxsystems/ordax-runtime",
-    "remote_infrastructure": "ordaxsystems/ordax-control-plane",
-    "provider_connectors": "ordaxsystems/ordax-control-plane"
+    "remote_infrastructure": "ordaxsystems/ordax-platform",
+    "provider_connectors": "ordaxsystems/ordax-platform"
   },
   "legacy_repository_deletion_gate": {
     "source_preserved": true,
