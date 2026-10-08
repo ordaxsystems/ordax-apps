@@ -409,6 +409,13 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Novos testes determinísticos de cronômetro, pausa/retomada, vencimento, troca de view, limites de duração e ausência de reset implícito; já descobertos por `apps/clock/tests/*.test.mjs` na Foundation.
 - **Limite de prova:** uso apenas em primeiro plano; sem notifications/scheduling em background, host de produção ou lifecycle novo. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
+### Execução G2.3 — Text Viewer: concorrência de ativações e cleanup de File Space
+
+- Problema encontrado no **source canônico**: `readTextFile()` é assíncrono, mas o runtime não distinguia respostas fora de ordem nem invalidava uma leitura depois do `destroy`; conteúdo antigo podia substituir o arquivo atual ou atualizar UI desmontada.
+- Correção app-owned: contador de abertura por montagem; somente última ativação atualiza a view. Resposta precisa conferir `file.path` com o caminho lógico solicitado e `file.text` string; arquivo divergente falha fechado. Mensagens de carregamento/erro acompanham mudanças de locale.
+- Testes de concorrência/rejeição obsoleta, mismatch de identidade, unmount com read pendente, input inválido e rollback de subscriptions são incorporados a `apps/text-viewer/tests/*.test.mjs`, já descobertos pela Foundation CI; não há duplicação de testes no YAML.
+- **Limite:** não concede grants, não implementa um segundo File Space, não cria host/sandbox/install/updater. Escopo restrito à segurança da apresentação app-owned. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
+
 ## 13. Registro de alterações
 
 - **2026-10-08 — v0.1:** roadmap inicial criado a partir do inventário canônico de `ordax-apps`, documentação do SDK/trust e levantamento preliminar de oportunidades open source e apps com IA. **Não constitui relatório final de pesquisa externa nem autorização de ativação em produção.**
