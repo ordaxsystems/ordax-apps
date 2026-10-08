@@ -151,11 +151,22 @@ export function appendFinanceEntry(ledger, {
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
     throw new TypeError("Finance expected revision must be a safe integer");
   }
-  // Optimistic check must occur before considering duplicate requests.
+  const next = entry(value);
   if (snapshot.revision !== expectedRevision) {
+    // A caller may lose the acknowledgement for a committed append. A true
+    // retry carries its ORIGINAL expectedRevision, which is exactly the index
+    // occupied by that append in the immutable journal. Only that byte-for-
+    // byte equivalent entry may be acknowledged without another mutation.
+    // Later/foreign events and other stale writes must still conflict.
+    const originallyCommitted = snapshot.entries[expectedRevision];
+    if (expectedRevision < snapshot.revision && originallyCommitted?.id === next.id) {
+      if (JSON.stringify(originallyCommitted) !== JSON.stringify(next)) {
+        throw new Error("Finance entry id has conflicting content");
+      }
+      return snapshot;
+    }
     throw new Error("Finance ledger revision conflict");
   }
-  const next = entry(value);
   const duplicate = snapshot.entries.find((item) => item.id === next.id);
   if (duplicate) {
     if (JSON.stringify(duplicate) !== JSON.stringify(next)) {
