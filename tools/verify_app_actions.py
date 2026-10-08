@@ -25,6 +25,15 @@ def fail(message: str) -> None:
 def check_provider_syntax(app_root: Path, provider_manifest: dict) -> int:
     """Check only modules declared in the validated canonical provider manifest."""
     checked = 0
+    declared = {provider["module"] for provider in provider_manifest["providers"]}
+    provider_dir = app_root / "actions" / "providers"
+    for path in provider_dir.iterdir():
+        if path.is_symlink():
+            fail(f"symlink forbidden in provider directory: {path.name}")
+        if path.suffix == ".mjs" and path.is_file():
+            relative = path.relative_to(app_root).as_posix()
+            if relative not in declared:
+                fail(f"unlisted provider module: {relative}")
     for provider in provider_manifest["providers"]:
         module = builder.safe_relative(
             provider["module"], "Application Action provider module"
