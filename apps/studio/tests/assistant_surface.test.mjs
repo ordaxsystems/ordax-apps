@@ -8,6 +8,8 @@ const source = readFileSync(new URL('../assets/assistant_surface.js', import.met
 function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, width:300, height:400}) {
   const frames = [];
   const elements = new Map();
+  const documentEvents = new Map();
+  const windowEvents = new Map();
   function node(id) {
     return {
       id,
@@ -25,14 +27,14 @@ function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, widt
   const document = {
     readyState:'complete', hidden:false, body:{},
     getElementById(id) {return elements.get(id)||null;},
-    addEventListener() {},
+    addEventListener(name, callback) {documentEvents.set(name,callback);},
   };
   const window = {
     ordaxStudioHost: present ? {presentAssistantSurface: present} : undefined,
     innerWidth:800,innerHeight:600,
     ResizeObserver:class {observe() {}},
     getComputedStyle() {return {display:'block',visibility:'visible'};},
-    addEventListener() {},
+    addEventListener(name, callback) {windowEvents.set(name,callback);},
   };
   runInNewContext(source,{
     window, document,
@@ -48,7 +50,7 @@ function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, widt
     }
   }
   flush();
-  return {window,document,elements,flush};
+  return {window,document,elements,flush,documentEvents,windowEvents};
 }
 
 test('native host receives only one bounded assistant envelope, without credentials', () => {
@@ -105,4 +107,52 @@ test('surface geometry stays clipped within viewport', () => {
   fixture((payload)=>{delivered.push(payload);return true;},
     {left:-20,top:20,right:900,bottom:720,width:920,height:700});
   assert.deepEqual({...delivered[0].rect},{left:0,top:20,width:800,height:580});
+});
+
+test('changing the native host invalidates acknowledged geometry without leaking provider state', () => {
+  const oldHost=[];
+  const freshHost=[];
+  const ui=fixture(payload=>{oldHost.push(payload);return true;});
+  assert.equal(oldHost.length,1);
+  ui.window.ordaxStudioHost={presentAssistantSurface(payload){freshHost.push(payload);return true;}};
+  ui.window.ordaxAssistantSurface.setMode('web');
+  ui.flush();
+  assert.equal(freshHost.length,1,'same geometry must reach the replacement host');
+  assert.equal(freshHost[0].active,true);
+  assert.deepEqual(Object.keys(freshHost[0]).sort(),['active','rect','type','viewport'].sort());
+  ui.window.ordaxAssistantSurface.setMode('web');
+  ui.flush();
+  assert.equal(freshHost.length,1,'identical acknowledgement should not flood the host');
+});
+
+test('visibility and unload deactivate provider overlay rather than exposing stale web content', () => {
+  const delivered=[];
+  const ui=fixture(payload=>{delivered.push(payload);return true;});
+  ui.document.hidden=true;
+  ui.documentEvents.get('visibilitychange')();
+  assert.equal(delivered.at(-1).active,false);
+  ui.document.hidden=false;
+  ui.documentEvents.get('visibilitychange')();
+  assert.equal(delivered.at(-1).active,true);
+  ui.windowEvents.get('beforeunload')();
+  assert.equal(delivered.at(-1).active,false);
+});
+
+test('invalid and entirely offscreen geometry never activates a native provider view', () => {
+  for (const bounds of [
+    {left:500,top:20,right:400,bottom:200},
+    {left:850,top:20,right:900,bottom:200},
+    {left:20,top:650,right:400,bottom:700},
+    {left:NaN,top:0,right:300,bottom:300},
+  ]) {
+    const delivered=[];
+    fixture(payload=>{delivered.push(payload);return true;},bounds);
+    assert.equal(delivered[0].active,false,JSON.stringify(bounds));
+  }
+});
+
+test('host promise acknowledgement is insufficient; synchronous transport must be explicit', () => {
+  const ui=fixture(()=>Promise.resolve(true));
+  assert.equal(ui.elements.get('assistantWebFallback').dataset.transport,'unavailable');
+  assert.match(ui.elements.get('assistantWebStatus').textContent,/recusou/);
 });

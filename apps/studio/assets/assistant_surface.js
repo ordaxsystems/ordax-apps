@@ -3,6 +3,7 @@
 
 var mode='web';
 var lastPayload='';
+var lastHost=null;
 
 function transportStatus(message,state){
   var target=byId('assistantWebStatus');
@@ -14,30 +15,34 @@ function transportStatus(message,state){
 function byId(id){return document.getElementById(id)}
 function surfaceHost(){
   var host=window.ordaxStudioHost;
-  return host&&typeof host.presentAssistantSurface==='function'?host.presentAssistantSurface.bind(host):null;
+  return host&&typeof host.presentAssistantSurface==='function'?host:null;
 }
 function post(payload){
   var serialized=JSON.stringify(payload);
-  if(serialized===lastPayload)return true;
-  var present=surfaceHost();
-  if(!present){
+  var host=surfaceHost();
+  if(!host){
     lastPayload='';
+    lastHost=null;
     if(payload.active)transportStatus('Este host não oferece o navegador Web integrado. Use IA local / API ou atualize o Runtime.','unavailable');
     return false;
   }
   try{
     // The host acknowledges transport only; it does not certify remote login or browser readiness.
-    if(present(payload)!==true){
+    if(serialized===lastPayload&&host===lastHost)return true;
+    if(host.presentAssistantSurface(payload)!==true){
       lastPayload='';
+      lastHost=null;
       if(payload.active)transportStatus('O host recusou a superfície Web. Confira a compatibilidade do Runtime.','unavailable');
       return false;
     }
     lastPayload=serialized;
+    lastHost=host;
     if(payload.active)transportStatus('Solicitação entregue ao host. A sessão depende do navegador nativo.','pending');
     return true;
   }catch(_error){
     // Do not expose native exception details, which may contain host/environment information.
     lastPayload='';
+    lastHost=null;
     if(payload.active)transportStatus('Falha ao comunicar com o navegador Web nativo.','unavailable');
     return false;
   }
@@ -48,6 +53,7 @@ function usableRect(node){
   var viewportWidth=Number(window.innerWidth),viewportHeight=Number(window.innerHeight);
   if(!Number.isFinite(viewportWidth)||!Number.isFinite(viewportHeight)||viewportWidth<2||viewportHeight<2)return null;
   if(![rect.left,rect.top,rect.right,rect.bottom].every(Number.isFinite))return null;
+  if(rect.right<=rect.left||rect.bottom<=rect.top)return null;
   var style=window.getComputedStyle(node);
   if(style.display==='none'||style.visibility==='hidden')return null;
   // The native surface must never cover panels outside the visible assistant slot.
