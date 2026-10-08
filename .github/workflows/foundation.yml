@@ -37,6 +37,11 @@ jobs:
       - name: Prove repository boundary invariants
         run: python3 tools/verify_workspace.py
 
+      - name: Guard OrdaX OS owner handoff and exact Platform SDK lock
+        run: |
+          python3 -m unittest -v tests/test_platform_owner_handoff.py
+          python3 tools/verify_platform_owner_handoff.py
+
       - name: Audit canonical app readiness and prove deterministic unsigned package candidates
         run: |
           python3 -m unittest tests/test_audit_app_readiness.py
