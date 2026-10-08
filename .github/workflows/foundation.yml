@@ -75,7 +75,7 @@ jobs:
         run: |
           node --check apps/calculator/src/runtime.mjs
           node --check apps/calculator/src/expression.mjs
-          node --test apps/calculator/tests/expression.test.mjs
+          node --test apps/calculator/tests/*.test.mjs
           out="/tmp/ordax-calculator"
           rm -rf "$out"
           mkdir -p "$out/release"

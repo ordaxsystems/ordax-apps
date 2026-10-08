@@ -395,6 +395,13 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Suite gera evidência efêmera da CI usando o workspace como SSOT; não inventa registro de release/distribuição ou novas permissões.
 - **Limite:** ainda não valida mount de UI com host real, sandbox, instalação, remoção, offline reinstall, rollback ou trust. Studio permanece fora do package boundary e Notes mantém testes reais de lifecycle separados. Detalhes: [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
+### Execução G2.1 — Calculator: montagem em fixture de porta pública e teardown (PR #138)
+
+- O source da Calculadora permanece em `apps/calculator` como **único owner**. O runtime real agora preserva expressão, resultado e estado durante mudança de locale, sem perder uma operação não finalizada.
+- Cobertura adicionada ao teste do próprio app e CI Foundation: montagem por `ordax.surface-render-lifecycle/5` (fixture mínima, sem autoridade), teclado/cliques, preservação de estado e liberação idempotente de UI/listeners/stylesheet.
+- `mount` agora faz unwind em erro de inscrição/renderização e o stylesheet não permanece órfão após falha de carregamento.
+- **Limite de prova:** fixture não é um host de produção; continua pendente render em browser real, grants, lifecycle por app, assinatura e install/rollback de produção. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
+
 ## 13. Registro de alterações
 
 - **2026-10-08 — v0.1:** roadmap inicial criado a partir do inventário canônico de `ordax-apps`, documentação do SDK/trust e levantamento preliminar de oportunidades open source e apps com IA. **Não constitui relatório final de pesquisa externa nem autorização de ativação em produção.**

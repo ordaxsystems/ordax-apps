@@ -55,7 +55,7 @@ function createButton(documentObject, label, value, kind = "") {
   return button;
 }
 
-function render(root, lifecycle) {
+function render(root, lifecycle, previous = null) {
   const documentObject = root.ownerDocument;
   const messages = calculatorMessages(lifecycle.localization.getLocale());
 
@@ -74,11 +74,13 @@ function render(root, lifecycle) {
   input.spellcheck = false;
   input.maxLength = 512;
   input.setAttribute("aria-label", messages.expression);
+  input.value = previous?.expression ?? "";
 
   const output = documentObject.createElement("output");
   output.className = "ordax-calculator__result";
   output.setAttribute("aria-label", messages.result);
-  output.textContent = "0";
+  output.textContent = previous?.state === "error" ? messages.invalid : (previous?.result ?? "0");
+  if (previous?.state) output.dataset.state = previous.state;
 
   display.append(input, output);
 
@@ -141,10 +143,15 @@ function render(root, lifecycle) {
   input.addEventListener("keydown", onKeyDown);
   input.focus();
 
-  return () => {
-    grid.removeEventListener("click", onClick);
-    input.removeEventListener("keydown", onKeyDown);
-  };
+  return Object.freeze({
+    snapshot() {
+      return { expression: input.value, result: output.textContent, state: output.dataset.state };
+    },
+    destroy() {
+      grid.removeEventListener("click", onClick);
+      input.removeEventListener("keydown", onKeyDown);
+    },
+  });
 }
 
 export const componentRuntime = Object.freeze({
@@ -155,24 +162,34 @@ export const componentRuntime = Object.freeze({
     if (!root?.ownerDocument) throw new TypeError("Calculator requires a valid mount root");
     const lifecycle = assertLifecycle(surfaceLifecycle);
     const releaseStyles = await mountStyles(root);
-    let releaseRender = render(root, lifecycle);
-
-    const rerender = () => {
-      releaseRender?.();
+    let releaseRender = null;
+    let unsubscribeLocale = null;
+    try {
       releaseRender = render(root, lifecycle);
-    };
-    const unsubscribeLocale = lifecycle.localization.subscribe(rerender);
+      const rerender = () => {
+        const previous = releaseRender.snapshot();
+        releaseRender.destroy();
+        releaseRender = render(root, lifecycle, previous);
+      };
+      unsubscribeLocale = lifecycle.localization.subscribe(rerender);
 
-    let destroyed = false;
-    return Object.freeze({
-      destroy() {
-        if (destroyed) return;
-        destroyed = true;
-        unsubscribeLocale?.();
-        releaseRender?.();
-        root.replaceChildren();
-        releaseStyles();
-      },
-    });
+      let destroyed = false;
+      return Object.freeze({
+        destroy() {
+          if (destroyed) return;
+          destroyed = true;
+          unsubscribeLocale?.();
+          releaseRender?.destroy();
+          root.replaceChildren();
+          releaseStyles();
+        },
+      });
+    } catch (error) {
+      unsubscribeLocale?.();
+      releaseRender?.destroy();
+      root.replaceChildren();
+      releaseStyles();
+      throw error;
+    }
   },
 });
