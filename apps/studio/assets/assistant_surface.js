@@ -20,6 +20,7 @@ function nativeStatus(event){
   if(state==='loading')transportStatus('Carregando a página no navegador nativo…','loading');
   else if(state==='ready')transportStatus('Página carregada no navegador nativo. Login e sessão não verificados.','ready');
   else if(state==='error')transportStatus('Falha ao carregar a página do provedor. Verifique a rede e tente atualizar.','unavailable');
+  else if(state==='unavailable')transportStatus('Navegador Web nativo indisponível. Confira o WebView2 e tente novamente.','unavailable');
   else if(state==='hidden')transportStatus('Navegador nativo oculto.','hidden');
 }
 
@@ -108,6 +109,8 @@ function bind(){
   var webButton=byId('assistantWebMode'),localButton=byId('assistantLocalMode'),slot=byId('assistantWebSlot');
   if(webButton)webButton.addEventListener('click',function(){apply('web')});
   if(localButton)localButton.addEventListener('click',function(){apply('local')});
+  var retryButton=byId('assistantWebRetry');
+  if(retryButton)retryButton.addEventListener('click',function(){window.ordaxAssistantSurface.refresh()});
   if(slot&&window.ResizeObserver)new ResizeObserver(function(){requestAnimationFrame(publish)}).observe(slot);
   window.addEventListener('resize',function(){requestAnimationFrame(publish)});
   window.addEventListener('scroll',function(){requestAnimationFrame(publish)},true);
