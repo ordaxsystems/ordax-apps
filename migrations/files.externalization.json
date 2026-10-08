@@ -1,0 +1,132 @@
+{
+  "$schema": "ordax.app-externalization-plan/1",
+  "app_id": "files",
+  "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+  "source_path_current": "system/apps/files",
+  "target_repository": "ordaxsystems/ordax-apps",
+  "target_path": "apps/files",
+  "source_of_truth_state": "platform-until-cutover",
+  "source_cutover_allowed": false,
+  "distribution_activation_allowed": false,
+  "platform_contracts_required": [
+    "ordax.app-activation/1",
+    "ordax.app-intelligence-manifest/1",
+    "ordax.application-action-capability/1",
+    "ordax.application-action-manifest/1",
+    "ordax.component-manifest/1",
+    "ordax.component-runtime/1",
+    "ordax.file-space/11",
+    "ordax.localization/2",
+    "ordax.surface-render-lifecycle/5",
+    "prototype-ordax.localization-pack/1"
+  ],
+  "target_sdk": {
+    "minimum_bundle_version": "1.12.0",
+    "lock_file": "platform-sdk.lock.json",
+    "reason": "Pinned SDK exports File Space 11, App Activation 1, Localization 2 and Surface Lifecycle 5; this does not imply opaque-grant UX or production distribution."
+  },
+  "unresolved_capabilities": [
+    {
+      "id": "opaque-resource-grant-broker",
+      "state": "unproven-in-public-sdk",
+      "impact": "No raw host paths or grant fabrication; write/open-with flows stay blocked pending a public authorized broker."
+    },
+    {
+      "id": "space-scoped-resource-selection",
+      "state": "unproven-in-public-sdk",
+      "impact": "Read-only logical paths must not be misrepresented as scoped opaque grants."
+    },
+    {
+      "id": "files-native-mutations",
+      "state": "platform-owned",
+      "impact": "Do not copy filesystem adapters or execute mutations directly in app source."
+    }
+  ],
+  "source_cutover": {
+    "mode": "remove-platform-first",
+    "prelaunch_only": true,
+    "temporary_app_absence_allowed": true,
+    "dual_source_allowed": false,
+    "platform_absence_proof_required_before_copy": true,
+    "sdk_public_boundary_required_before_snapshot": true,
+    "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
+  },
+  "source_snapshot": {
+    "state": "not-captured",
+    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "commit": null,
+    "inventory_file": null
+  },
+  "gate_a_platform_commit": null,
+  "gate_a_platform_removal": {
+    "remove_owned_source": [
+      "system/apps/files",
+      "system/surface/ui/file-space-controls.mjs",
+      "system/surface/ui/file-notes-action.mjs",
+      "system/surface/ui/files.css",
+      "system/services/i18n/catalog/files.mjs"
+    ],
+    "remove_platform_implementation_couplings": [
+      {
+        "path": "system/apps/catalog.mjs",
+        "forbidden_literals": [
+          "./files/app.mjs",
+          "filesApp"
+        ]
+      },
+      {
+        "path": "system/apps/intelligence-catalog.mjs",
+        "forbidden_literals": [
+          "./files/ai/manifest.mjs",
+          "filesIntelligenceManifest"
+        ]
+      },
+      {
+        "path": "system/services/components/manifests/apps.mjs",
+        "forbidden_literals": [
+          "export const filesComponent"
+        ]
+      },
+      {
+        "path": "system/composition/native/main.mjs",
+        "forbidden_literals": [
+          "../../surface/ui/file-space-controls.mjs",
+          "mountFileSpaceControls("
+        ]
+      },
+      {
+        "path": "system/composition/native/index.html",
+        "forbidden_literals": [
+          "../../surface/ui/files.css"
+        ]
+      },
+      {
+        "path": "system/composition/web/index.html",
+        "forbidden_literals": [
+          "../../surface/ui/files.css"
+        ]
+      },
+      {
+        "path": "tools/surface-web/browser-smoke.mjs",
+        "forbidden_literals": [
+          "system/surface/ui/files.css"
+        ]
+      }
+    ],
+    "retain_platform_owned": [
+      "system/contracts/file-space.mjs",
+      "system/adapters/native/file-space.mjs",
+      "system/contracts/app-activation.mjs",
+      "system/contracts/recent-files.mjs",
+      "system/contracts/project-catalog.mjs",
+      "system/services/files/recent-files.mjs"
+    ]
+  },
+  "delivery": {
+    "delivery_class": "bootstrap",
+    "store_is_install_authority": false,
+    "install_owner": "platform-component-lifecycle",
+    "auto_install": false
+  },
+  "authority": "none"
+}

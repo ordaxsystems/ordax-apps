@@ -353,12 +353,19 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 6. Propor o menor incremento verificável; nunca substituir um gate por um atalho.
 7. Atualizar este roadmap se o estado comprovado mudou; distinguir **fato, plano e hipótese**.
 
-### Execução G0 — auditoria de prontidão (em PR, ainda não integrada)
+### Execução G0 — auditoria de prontidão (PR #127 integrada)
 
-- Código inicial: `tools/audit_app_readiness.py` (inventário de fonte, metadados e blockers; **não** prova release).
-- Testes: `tests/test_audit_app_readiness.py`; CI: `.github/workflows/foundation.yml`.
+- Auditor: `tools/audit_app_readiness.py` (inventário de source, metadados e blockers; **não** prova release).
+- Testes: `tests/test_audit_app_readiness.py`; CI Foundation **verde** na PR #127.
 - Uso/limitações: [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
-- **Estado:** implementação inicial em revisão; não declarar G0 concluído até testes e PR aprovados. Próximo gate: conferir evidências de runtime/package/lifecycle por app e mapear contratos de Files sem duplicar source bootstrap da plataforma.
+- **Estado:** primeira etapa de G0 integrada; G0 completo ainda depende de evidências de runtime/package/lifecycle por app.
+
+### Execução P0 Files — preflight de source cutover (em revisão)
+
+- Plano: `migrations/files.externalization.json`, `source_cutover_allowed=false` e `distribution_activation_allowed=false`.
+- Auditor read-only: `tools/verify_files_cutover.py`; testes: `tests/test_files_cutover.py`.
+- Evidência de ownership, dependências e lacunas do App SDK: [`docs/FILES-EXTERNALIZATION.md`](docs/FILES-EXTERNALIZATION.md).
+- **Estado:** implementação de preflight em revisão. O Files ainda pertence à plataforma; não criar `apps/files` nem copiar o código até o Gate A remove-first estar comprovado.
 
 ## 13. Registro de alterações
 
