@@ -79,7 +79,7 @@ def main() -> None:
     bundle_path = lock.get("bundle_path")
     expected_bundle_sha256 = lock.get("sha256")
 
-    if repository != "ordaxsystems/prototipo-ordax-os":
+    if repository != "ordaxsystems/ordax-os":
         fail("Studio conformance requires the canonical platform repository")
     if not isinstance(commit, str) or not COMMIT_RE.fullmatch(commit):
         fail("Studio conformance requires an exact platform commit")

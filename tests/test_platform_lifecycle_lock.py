@@ -20,7 +20,7 @@ class CanonicalLifecycleLockTests(unittest.TestCase):
         lock = json.loads(LIFECYCLE_LOCK.read_text(encoding="utf-8"))
         workspace = json.loads(WORKSPACE.read_text(encoding="utf-8"))
         canonical_repo = workspace["platform_repository"]
-        self.assertEqual(canonical_repo, "ordaxsystems/prototipo-ordax-os")
+        self.assertEqual(canonical_repo, "ordaxsystems/ordax-os")
         self.assertEqual(lock["repository"], canonical_repo)
         self.assertRegex(lock["commit"], r"\A[0-9a-f]{40}\Z")
         self.assertEqual(lock["tool_path"], "tools/runtime-component-channel")

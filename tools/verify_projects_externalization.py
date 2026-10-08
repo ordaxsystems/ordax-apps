@@ -20,7 +20,7 @@ def main() -> None:
         fail("wrong app id")
     if plan.get("authority") != "none":
         fail("externalization metadata must not carry authority")
-    if plan.get("source_repository_current") != "ordaxsystems/prototipo-ordax-os":
+    if plan.get("source_repository_current") != "ordaxsystems/ordax-os":
         fail("Projects source must remain in the platform before Gate A")
     if plan.get("source_path_current") != "system/apps/projects":
         fail("Projects source path drifted")
