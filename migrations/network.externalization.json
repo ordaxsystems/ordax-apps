@@ -1,0 +1,33 @@
+{
+  "$schema": "ordax.app-externalization-plan/1",
+  "app_id": "network",
+  "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+  "source_path_current": "system/apps/network",
+  "target_repository": "ordaxsystems/ordax-apps",
+  "target_path": "apps/network",
+  "source_of_truth_state": "platform-until-cutover",
+  "source_cutover_allowed": false,
+  "distribution_activation_allowed": false,
+  "source_cutover": {
+    "mode": "remove-platform-first",
+    "prelaunch_only": true,
+    "temporary_app_absence_allowed": true,
+    "dual_source_allowed": false,
+    "platform_absence_proof_required_before_copy": true,
+    "sdk_public_boundary_required_before_snapshot": true,
+    "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
+  },
+  "source_snapshot": {
+    "state": "not-captured",
+    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "commit": null,
+    "inventory_file": null
+  },
+  "delivery": {
+    "delivery_class": "on-demand",
+    "store_is_install_authority": false,
+    "install_owner": "platform-component-lifecycle",
+    "auto_install": false
+  },
+  "authority": "none"
+}
