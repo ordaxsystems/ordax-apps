@@ -200,5 +200,51 @@ class StoreArtifactBundleTests(unittest.TestCase):
         self.assertEqual(list(self.root.glob(".partial.stage-*")), [])
 
 
+    def test_atomic_no_replace_survives_destination_race_after_exists_check(self):
+        from unittest.mock import patch
+
+        staging = self.root / ".race.stage"
+        staging.mkdir()
+        (staging / "payload").write_text("staged", encoding="utf-8")
+        destination = self.root / "race"
+        destination.mkdir()
+        sentinel = destination / "winner"
+        sentinel.write_text("prior writer", encoding="utf-8")
+
+        # Deliberately simulate a destination that appears after the
+        # optimistic existence check: only the kernel primitive may decide.
+        original_exists = Path.exists
+        def exists_before_race(path):
+            if path == destination:
+                return False
+            return original_exists(path)
+        with patch.object(Path, "exists", exists_before_race):
+            with self.assertRaises(OSError):
+                bundle.publish_directory_exclusive(staging, destination)
+        self.assertEqual(sentinel.read_text(encoding="utf-8"), "prior writer")
+        self.assertEqual((staging / "payload").read_text(encoding="utf-8"), "staged")
+
+    def test_bundle_race_does_not_replace_concurrent_output_or_leave_staging(self):
+        from unittest.mock import patch
+        output = self.root / "concurrent-bundle"
+        original_publish = bundle.publish_directory_exclusive
+
+        def competing_writer(stage, destination):
+            destination.mkdir()
+            (destination / "winner").write_text("other publisher", encoding="utf-8")
+            return original_publish(stage, destination)
+
+        with patch.object(bundle, "publish_directory_exclusive", side_effect=competing_writer):
+            with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "commit failed"):
+                bundle.materialize_bundle(
+                    publication_path=self.publication_path,
+                    artifacts_root=self.artifacts,
+                    out_root=output,
+                )
+        self.assertEqual((output / "winner").read_text(encoding="utf-8"), "other publisher")
+        self.assertFalse(list(self.root.glob(".concurrent-bundle.stage-*")))
+
+
+
 if __name__ == "__main__":
     unittest.main()
