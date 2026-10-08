@@ -65,7 +65,7 @@ def main() -> None:
     workspace = json.loads((ROOT / "ordax-apps.workspace.json").read_text(encoding="utf-8"))
     current_lock = json.loads((ROOT / "platform-sdk.lock.json").read_text(encoding="utf-8"))
     canonical = workspace.get("platform_repository")
-    if canonical != "ordaxsystems/prototipo-ordax-os" or current_lock.get("repository") != canonical:
+    if canonical != "ordaxsystems/ordax-os" or current_lock.get("repository") != canonical:
         fail("Notes SDK download owner disagrees with the canonical workspace SDK owner")
     url = (
         "https://raw.githubusercontent.com/"
