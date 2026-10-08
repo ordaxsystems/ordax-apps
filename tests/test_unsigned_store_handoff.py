@@ -374,7 +374,7 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         self.assertFalse(list(self.root.glob(f".{self.output.name}.stage-*")))
 
     def test_atomic_publish_failure_cleans_staging_without_replacing_target(self):
-        with patch.object(handoff.os, "rename", side_effect=OSError("injected rename failure")):
+        with patch.object(handoff.bundle_module, "publish_directory_exclusive", side_effect=OSError("injected rename failure")):
             with self.assertRaisesRegex(OSError, "injected rename failure"):
                 self.materialize()
         self.assertFalse(self.output.exists())
