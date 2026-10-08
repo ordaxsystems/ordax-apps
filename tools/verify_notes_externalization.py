@@ -57,7 +57,7 @@ def main() -> None:
     expected_source_repo = (
         "ordaxsystems/ordax-apps"
         if source_cutover_allowed
-        else "ordaxsystems/prototipo-ordax-os"
+        else "ordaxsystems/ordax-os"
     )
     expected_source_path = "apps/notes" if source_cutover_allowed else "system/apps/notes"
     if plan.get("source_repository_current") != expected_source_repo:
