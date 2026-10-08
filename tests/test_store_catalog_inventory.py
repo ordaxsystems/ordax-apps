@@ -160,5 +160,79 @@ class CatalogInventoryTests(unittest.TestCase):
                 catalog_inventory.discover_catalog_apps(apps, alias_migrations)
 
 
+    def test_rejects_app_fields_builder_would_reject(self):
+        mutations = [
+            ({"dependencies": ["duplicate", "duplicate"]}, "dependencies"),
+            ({"version": "not-semver"}, "version"),
+            ({"owner": "foreign/signer"}, "owner"),
+            ({"kind": "service"}, "kind"),
+            ({"extraAuthority": True}, "fields"),
+            ({"title": ""}, "title"),
+        ]
+        for patch, message in mutations:
+            with self.subTest(patch=patch), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                apps, migrations = root / "apps", root / "migrations"
+                migrations.mkdir()
+                write_json(apps / "alpha" / "app.json", {**manifest("alpha"), **patch})
+                write_json(apps / "alpha" / "compatibility.json", compatibility("alpha"))
+                with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, message):
+                    catalog_inventory.discover_catalog_apps(apps, migrations)
+
+    def test_rejects_compatibility_contract_and_state_forgery(self):
+        cases = [
+            ({"provides": [{"id": "ordax.component-runtime", "major": True}]}, "major"),
+            ({"provides": [{"id": "ordax.component-runtime", "major": 1}] * 2}, "unique"),
+            ({"requires": [{"id": "ordax.other", "minMajor": 1, "maxMajor": 3, "optional": "false"}]}, "optional"),
+            ({"state": {"id": "ordax.alpha-stateless", "writeVersion": 3, "readableFrom": 1, "readableThrough": 2}}, "readable range"),
+            ({"extraPermission": "install"}, "fields"),
+        ]
+        for patch, message in cases:
+            with self.subTest(patch=patch), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                apps, migrations = root / "apps", root / "migrations"
+                migrations.mkdir()
+                write_json(apps / "alpha" / "app.json", manifest("alpha"))
+                write_json(apps / "alpha" / "compatibility.json", {**compatibility("alpha"), **patch})
+                with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, message):
+                    catalog_inventory.discover_catalog_apps(apps, migrations)
+
+    def test_oversized_manifest_and_compatibility_fail_before_eligibility(self):
+        for size_target in ("manifest", "compatibility"):
+            with self.subTest(size_target=size_target), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                apps, migrations = root / "apps", root / "migrations"
+                migrations.mkdir()
+                app_path = apps / "alpha" / "app.json"
+                compatibility_path = apps / "alpha" / "compatibility.json"
+                write_json(app_path, manifest("alpha"))
+                write_json(compatibility_path, compatibility("alpha"))
+                path = app_path if size_target == "manifest" else compatibility_path
+                path.write_bytes(b" " * (64 * 1024 + 1))
+                with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "size is outside allowed bounds"):
+                    catalog_inventory.discover_catalog_apps(apps, migrations)
+
+    def test_catalog_invokes_exact_builder_contract_not_independent_schema(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apps, migrations = root / "apps", root / "migrations"
+            migrations.mkdir()
+            write_json(apps / "alpha" / "app.json", manifest("alpha"))
+            write_json(apps / "alpha" / "compatibility.json", compatibility("alpha"))
+            canonical = catalog_inventory.builder.validate_compatibility
+            with mock.patch.object(
+                catalog_inventory.builder, "validate_compatibility",
+                side_effect=catalog_inventory.builder.AppPackageError("owner contract drift"),
+            ) as verify:
+                with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "owner contract drift"):
+                    catalog_inventory.discover_catalog_apps(apps, migrations)
+                verify.assert_called_once()
+            self.assertEqual(
+                [entry["appId"] for entry in catalog_inventory.discover_catalog_apps(apps, migrations)],
+                ["alpha"],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
