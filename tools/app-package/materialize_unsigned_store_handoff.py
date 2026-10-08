@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import zipfile
 
 import render_store_catalog_candidate as candidate_module
 import render_store_catalog_publication as publication_module
@@ -125,7 +126,7 @@ def create_handoff(
                 app_id=app_id,
                 source_commit=source_commit,
             )
-        except (unsigned_module.HandoffError, OSError, ValueError) as exc:
+        except (unsigned_module.HandoffError, OSError, ValueError, zipfile.BadZipFile) as exc:
             raise UnsignedHandoffError(
                 f"{app_id} canonical package/descriptor verification failed"
             ) from exc
