@@ -13,6 +13,14 @@
 | Responsabilidade | Produto dos apps aqui; serviços centrais e autoridade permanecem nos owners definidos abaixo |
 | Regra de leitura | Ler este arquivo **junto com** `README.md`, `HANDOFF.md`, `apps/README.md` e os contratos pertinentes antes de alterar código |
 
+## PRIORIDADE ATUAL — MVP MÍNIMO PARA TODOS ANTES DO POLIMENTO
+
+**Decisão operacional (2026-10-08):** fechar o mínimo comum de **todos os 20 alvos** antes de retomar ciclos de melhoria detalhada de cada app. A fonte única continua `ordax-apps.workspace.json`, e a elegibilidade de Store já pertence a `tools/app-package/catalog_inventory.py`. A auditoria integrada `tools/verify_mvp_app_minimum.py` apenas cruza essas fontes, aplica piso mínimo de 13 candidatos existentes e relata explicitamente os alvos bloqueados. **Não publica, instala nem habilita apps.**
+
+**Primeira linha de execução:** priorizar source/cutover/metadata/compatibility/entrypoint/package verificável para cada app elegível e preservar Studio como caso de distribuição próprio. **Segunda linha:** encaminhar os releases pelas rotas assinadas já previstas na plataforma, não recriar o instalador da Store. **Terceira:** atualizações e polimento por app, exceto falhas de segurança ou perda de dados que continuam P0.
+
+**Documento executável:** [MVP MÍNIMO — todos os aplicativos](docs/MVP-MINIMO-TODOS-APPS.md). O Store candidate unsigned não autoriza instalação; as políticas MVP/Stable, catálogo verificado e lifecycle de produção pertencem ao OrdaX OS.
+
 ## 1. Decisão de produto
 
 **Criar experiências OrdaX próprias sempre que a integração profunda ao sistema for o diferencial.** Reutilizar bibliotecas, protocolos e serviços open source quando reduzirem custo e risco, sem copiar marca, UX proprietária, código incompatível ou criar uma segunda autoridade da plataforma.
