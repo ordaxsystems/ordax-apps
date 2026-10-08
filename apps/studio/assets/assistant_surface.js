@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 
-var mode='web';
+var mode='local';
 var lastPayload='';
 var lastHost=null;
 var surfaceActive=false;
@@ -115,7 +115,7 @@ function bind(){
   document.addEventListener('visibilitychange',publish);
   window.addEventListener('beforeunload',function(){post({type:'ordax-assistant-surface',active:false})});
   new MutationObserver(function(){requestAnimationFrame(publish)}).observe(document.body,{attributes:true,attributeFilter:['class'],subtree:true});
-  apply('web');
+  apply('local');
 }
 window.ordaxAssistantSurface=Object.freeze({
   setMode:apply,
