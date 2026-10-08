@@ -87,12 +87,12 @@
       <div class="assistantModeBar" role="tablist" aria-label="Modo do assistente">
         <button id="assistantWebMode" class="assistantMode active" type="button" role="tab" aria-selected="true">Web IA</button>
         <button id="assistantLocalMode" class="assistantMode" type="button" role="tab" aria-selected="false">IA local / API</button>
-        <span class="assistantModeHint">ChatGPT padrão · Grok, Claude e outros prontos para validação</span>
+        <span class="assistantModeHint">ChatGPT Web · outros provedores dependem de integração validada</span>
       </div>
       <div id="assistantWebSlot" class="assistantWebSlot" aria-label="Navegador do assistente">
-        <div class="assistantWebFallback">
+        <div id="assistantWebFallback" class="assistantWebFallback" data-transport="pending">
           <span class="orb"></span>
-          <div><strong>Assistente Web</strong><small>Carregando o navegador nativo do provedor…</small></div>
+          <div><strong>ChatGPT Web</strong><small id="assistantWebStatus" role="status" aria-live="polite">Aguardando a superfície do host nativo…</small></div>
         </div>
       </div>
       <div id="localAssistantPanel" class="localAssistantPanel hidden">
