@@ -12,6 +12,8 @@ permissions:
 jobs:
   workspace-boundary:
     runs-on: ubuntu-24.04
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -35,10 +37,10 @@ jobs:
       - name: Prove repository boundary invariants
         run: python3 tools/verify_workspace.py
 
-      - name: Audit canonical app readiness without claiming production activation
+      - name: Audit canonical app readiness and prove deterministic unsigned package candidates
         run: |
           python3 -m unittest tests/test_audit_app_readiness.py
-          python3 tools/audit_app_readiness.py --format markdown
+          python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 
       - name: Prove Files cutover stays blocked until platform source removal
         run: |

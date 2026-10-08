@@ -7,6 +7,8 @@ Este incremento inicia a implementação do [roadmap urgente](../URGENTE-ROADMAP
 ```sh
 python3 tools/audit_app_readiness.py --format markdown
 python3 tools/audit_app_readiness.py --format json
+# Prova opcional de candidatos não assinados: requer checkout Git canônico e limpo.
+python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 python3 -m unittest tests/test_audit_app_readiness.py
 ```
 
@@ -20,6 +22,18 @@ O relatório JSON tem schema `ordax.app-readiness-audit/1` e `authority=none`. A
 - Um app ainda owned pela plataforma (por exemplo, Projects antes do cutover) não pode ganhar uma segunda implementação canônica em `ordax-apps`.
 - Alvos sem source, candidatos bootstrap e blockers conhecidos são relatados sem tornar a CI vermelha apenas por ainda serem planejados.
 - Gates de produção de Notes e de distribuição de Studio continuam visíveis como bloqueios conhecidos.
+
+## G0 — prova de pacote determinístico por app (sem autoridade)
+
+O modo opt-in `--prove-package-candidates` avança a auditoria além dos metadados, **sem confundir pacote com release**. Ele usa o **mesmo** builder canônico de `tools/app-package/build.py`, não um empacotador paralelo, e para cada app com source e compatibility descriptor:
+
+1. Confirma checkout Git limpo, na raiz, com `origin` do repositório canônico e SHA exato do `HEAD` (não aceita SHA fornecido manualmente na CLI).
+2. Constrói **duas vezes** o pacote ZIP e seus sidecars de release/compatibility em diretórios temporários separados.
+3. Verifica cada pacote pelo verificador do builder e compara SHA-256 dos bytes de pacote, release e compatibility. Divergência ou source/import inválido faz a CI falhar.
+4. Registra no relatório JSON o estado `verified-deterministic-candidate`, `source_commit`, hashes e tamanho; **não persiste** os artefatos no repositório.
+5. Mantém `blocked-missing-compatibility` para source sem descriptor (por exemplo, Studio enquanto não existir um package boundary aplicável) e `not-assessed` para alvos sem source.
+
+A Foundation CI executa esse modo, que produz **apenas evidência de candidatos não assinados**. A ferramenta não instala, publica, ativa, gera chaves ou modifica a plataforma. `production_releases_verified=0` continua por definição. O `origin` local e o SHA do `HEAD` não provam assinatura/identidade remota: a autenticação de checkout e as políticas de publicação pertencem à CI e aos owners de trust/lifecycle.
 
 ## SSOT também na Foundation CI
 
@@ -47,7 +61,7 @@ Não prova execução de runtime, integração com host, build determinístico d
 
 ## Próximos incrementos
 
-1. Cruzar este relatório com CI, SDK pinado, package build e testes de lifecycle por app, adicionando **evidências reais** à auditoria (sem supor resultado).
+1. Usar as provas determinísticas de package candidate da CI como evidência **parcial**; cruzar com SDK pinado, runtime e testes de lifecycle **por app**, sem supor publicação ou disponibilidade.
 2. Especificar os contratos de acesso autorizado a recursos do Files e o caminho de cutover da implementação bootstrap, sem duplicar o source da plataforma.
 3. Abrir MVPs de Internet e Assistant somente após confirmar host isolation e Action Gateway/permissions públicos.
 4. Avançar Projects apenas quando o owner da plataforma registrar `source_cutover_allowed=true` e a ausência do source antigo for comprovada.

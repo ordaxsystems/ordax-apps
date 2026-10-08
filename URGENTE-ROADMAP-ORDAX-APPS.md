@@ -374,6 +374,13 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Implementação: `tools/verify_app_actions.py --check-provider-syntax` e `tests/test_provider_syntax_ssot.py`; documentação em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 - **Estado:** integrada à `main` com Foundation CI verde. Sintaxe validada **não** significa autorização de execução, assinatura, distribuição ou produção.
 
+### Execução G0 — evidência de candidatos de pacote (PR #133)
+
+- `tools/audit_app_readiness.py --prove-package-candidates` deriva a lista de apps do workspace e valida source e compatibility pelos contratos canônicos; não há inventário paralelo.
+- Exige checkout Git limpo, origem canônica e commit exato; constrói e verifica **duas vezes** o ZIP e os sidecars de release/compatibility por app elegível, comparando SHA-256 dos bytes.
+- Source sem compatibility (ex.: Studio) é marcado como **bloqueado para essa prova**, não como pacote validado. Alvos sem source continuam não avaliados.
+- **Gate de aceite:** Foundation CI verde e hashes idênticos. Mesmo com esse gate aprovado, `production_releases_verified=0` e trust, runtime, lifecycle, instalação e rollback permanecem separados. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
+
 ## 13. Registro de alterações
 
 - **2026-10-08 — v0.1:** roadmap inicial criado a partir do inventário canônico de `ordax-apps`, documentação do SDK/trust e levantamento preliminar de oportunidades open source e apps com IA. **Não constitui relatório final de pesquisa externa nem autorização de ativação em produção.**
