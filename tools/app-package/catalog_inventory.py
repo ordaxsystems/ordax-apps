@@ -14,36 +14,29 @@ not distribution-ready and are excluded.
 from __future__ import annotations
 
 import argparse
-import json
+import importlib.util
 from pathlib import Path
-import re
-import stat
 import sys
 
-COMPONENT_SCHEMA = "ordax.component-manifest/1"
-COMPATIBILITY_SCHEMA = "ordax.component-compatibility/1"
-SOURCE_REPOSITORY = "ordaxsystems/ordax-apps"
-APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+# Canonical packaging validation is the single source of app manifest and
+# compatibility semantics. Catalog discovery adds only ownership/eligibility.
+_spec = importlib.util.spec_from_file_location(
+    "ordax_catalog_inventory_builder", Path(__file__).with_name("build.py"),
+)
+builder = importlib.util.module_from_spec(_spec)
+assert _spec.loader is not None
+_spec.loader.exec_module(builder)
 
 
 class CatalogInventoryError(RuntimeError):
     pass
 
 
-def _read_json(path: Path, label: str) -> dict:
+def _read_json(path: Path, label: str, *, max_bytes: int = 64 * 1024) -> dict:
     try:
-        metadata = path.lstat()
-    except OSError as exc:
-        raise CatalogInventoryError(f"cannot read {label}: {path}") from exc
-    if not stat.S_ISREG(metadata.st_mode):
-        raise CatalogInventoryError(f"{label} must be a regular non-symlink file")
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise CatalogInventoryError(f"cannot read {label}: {path}") from exc
-    if not isinstance(value, dict):
-        raise CatalogInventoryError(f"{label} must be a JSON object")
-    return value
+        return builder.load_json(path, max_bytes=max_bytes, label=label)
+    except (builder.AppPackageError, OSError) as exc:
+        raise CatalogInventoryError(f"invalid {label}: {exc}") from exc
 
 
 def _compatibility_path(apps_root: Path, migrations_root: Path, app_id: str) -> Path | None:
@@ -81,9 +74,9 @@ def discover_catalog_apps(apps_root: Path, migrations_root: Path) -> list[dict]:
         manifest = _read_json(manifest_path, f"{app_dir.name} app manifest")
         app_id = manifest.get("id")
         if (
-            manifest.get("schema") != COMPONENT_SCHEMA
+            manifest.get("schema") != builder.COMPONENT_MANIFEST_SCHEMA
             or not isinstance(app_id, str)
-            or APP_ID_RE.fullmatch(app_id) is None
+            or builder.APP_ID_RE.fullmatch(app_id) is None
             or app_id != app_dir.name
         ):
             raise CatalogInventoryError(f"invalid app manifest identity: {manifest_path}")
@@ -93,20 +86,22 @@ def discover_catalog_apps(apps_root: Path, migrations_root: Path) -> list[dict]:
 
         if manifest.get("releaseMode") != "component-slot":
             continue
-        if manifest.get("owner") != SOURCE_REPOSITORY:
-            raise CatalogInventoryError(f"{app_id} component-slot owner is not canonical")
+        try:
+            manifest = builder.validate_app_manifest(manifest)
+        except builder.AppPackageError as exc:
+            raise CatalogInventoryError(f"{app_id} app manifest is invalid: {exc}") from exc
 
         compatibility_path = _compatibility_path(apps_root, migrations_root, app_id)
         if compatibility_path is None:
             continue
-        compatibility = _read_json(compatibility_path, f"{app_id} compatibility")
-        if (
-            compatibility.get("schema") != COMPATIBILITY_SCHEMA
-            or compatibility.get("componentId") != app_id
-            or compatibility.get("componentVersion") != manifest.get("version")
-            or compatibility.get("authority") != "none"
-        ):
-            raise CatalogInventoryError(f"{app_id} compatibility identity is invalid")
+        compatibility = _read_json(
+            compatibility_path, f"{app_id} compatibility",
+            max_bytes=builder.MAX_COMPATIBILITY_BYTES,
+        )
+        try:
+            builder.validate_compatibility(compatibility, manifest)
+        except builder.AppPackageError as exc:
+            raise CatalogInventoryError(f"{app_id} compatibility is invalid: {exc}") from exc
 
         entries.append({
             "appId": app_id,
