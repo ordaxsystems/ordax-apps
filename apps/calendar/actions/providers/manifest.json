@@ -1,7 +1,7 @@
 {
   "schema":"ordax.application-action-provider-manifest/1",
   "appId":"calendar",
-  "appVersion":"0.2.0",
+  "appVersion":"0.2.1",
   "authority":"none",
   "execution":"unavailable",
   "providers":[{"kind":"first-party-native","adapterId":"calendar-native","revision":"1","module":"actions/providers/calendar-native.mjs","sha256":"cebb62d08f0bd2380ac06a7a7f43ec675213f442fde135ed1ce9f42de7052edd"}]
