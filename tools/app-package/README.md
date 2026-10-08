@@ -51,4 +51,10 @@ These files are **not installable authority by themselves**. The OrdaX platform 
 
 A exportação completa é preparada fora do caminho público em um diretório temporário do mesmo volume. Somente após todos os arquivos validados serem gravados o diretório é publicado por renomeação; falhas de escrita/publicação descartam o staging sem expor um conjunto parcial. O commit não modifica arquivos preexistentes do destino.
 
+### Solicitações de assinatura externa
+
+Cada app elegível e validado também recebe `signing-requests/<app>.component-signing-request.json` no **mesmo** diretório de pré-publicação e no **mesmo** commit. Esse artefato `ordax-apps.component-signing-request/1` é derivado **somente** do handoff já comparado ao verificador canônico do ZIP e descritores, usando as identidades `sourceHandoff.sha256`, `inputs.package/release/compatibility` e o domínio de trust fornecidos por esse handoff. Não há outro inventário, validador de pacote ou receita alternativa de release.
+
+A solicitação descreve o envelope Ed25519 esperado, mas não contém chave privada, token do signer, assinatura ou envelope pronto. O assinador **externo e autorizado** deverá revalidar todas as identidades e produzir um envelope verificável; `render_store_catalog_publication_v2.py` já exige o verificador canônico da plataforma antes de aceitar qualquer envelope e o lifecycle continua responsável por instalação e promoção. A CI prova uma solicitação para **cada** app elegível, derivando a lista de `catalog_inventory.py` sem IDs fixos. Apenas gerar a solicitação não muda nenhum gate de produção.
+
 Essa é apenas uma garantia de integridade/completude do handoff público. Não assina, publica, instala, autoriza, ativa ou altera a política de distribuição do sistema. O Studio e apps sem cutover/compatibilidade continuam fora desse inventário.

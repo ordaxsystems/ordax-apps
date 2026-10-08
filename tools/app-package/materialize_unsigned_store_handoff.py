@@ -29,6 +29,7 @@ import render_unsigned_handoff as unsigned_module
 MAX_PACKAGE_BYTES = 32 * 1024 * 1024
 MAX_METADATA_BYTES = 2 * 1024 * 1024
 APP_ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
+SIGNING_REQUEST_SCHEMA = "ordax-apps.component-signing-request/1"
 
 
 class UnsignedHandoffError(ValueError):
@@ -45,6 +46,58 @@ def read_regular(path: Path, *, label: str, limit: int) -> bytes:
     if metadata.st_size < 1 or metadata.st_size > limit:
         raise UnsignedHandoffError(f"{label} exceeds size limits")
     return path.read_bytes()
+
+
+def _render_signing_request(handoff: dict, handoff_bytes: bytes) -> bytes:
+    """Describe externally required signing for an already canonically verified handoff.
+
+    No independent artifact parser, trust store, key or signing implementation:
+    the caller must have just compared these bytes with render_unsigned_handoff.
+    """
+    app_id = handoff["component"]["id"]
+    request = {
+        "$schema": SIGNING_REQUEST_SCHEMA,
+        "status": "external-signature-required",
+        "component": handoff["component"],
+        "source": handoff["source"],
+        "sourceHandoff": {
+            "schema": handoff["$schema"],
+            "sha256": hashlib.sha256(handoff_bytes).hexdigest(),
+        },
+        "inputs": handoff["artifacts"],
+        "output": {
+            "name": f"{app_id}.runtime-component-envelope.json",
+            "schema": "prototype-ordax.runtime-component-envelope/1",
+            "releaseSchema": "prototype-ordax.runtime-component-release/2",
+            "signatureAlgorithm": "ed25519",
+        },
+        "trust": {
+            "domain": handoff["trust"]["domain"],
+            "requiredKeyId": handoff["trust"]["requiredKeyId"],
+            "canonicalPublicAnchorRequired": True,
+        },
+        "verification": {
+            "signerMustRevalidateInputHashes": True,
+            "signedPayloadMustEqualReleaseBytes": True,
+            "compatibilityMustBeBoundByEnvelope": True,
+            "canonicalPlatformVerifierRequiredBeforeCatalogAssembly": True,
+        },
+        "authority": {
+            "signing": False,
+            "publication": False,
+            "installation": False,
+            "activation": False,
+            "rollback": False,
+        },
+        "safety": {
+            "containsPrivateKeyMaterial": False,
+            "privateKeyPathAllowed": False,
+            "remoteSignerCredentialAllowed": False,
+            "directActivationAllowed": False,
+            "platformLifecycleRequired": True,
+        },
+    }
+    return publication_module.canonical_json(request)
 
 
 def create_handoff(
@@ -138,7 +191,7 @@ def create_handoff(
         # Reuse the exact canonical unsigned-handoff validator instead of
         # introducing another release/compatibility validator here.
         try:
-            _, canonical_handoff_bytes = unsigned_module.render_handoff(
+            canonical_handoff, canonical_handoff_bytes = unsigned_module.render_handoff(
                 package=artifacts_root / app_id / f"{app_id}.zip",
                 release=artifacts_root / app_id / f"{app_id}.release.json",
                 compatibility=artifacts_root / app_id / f"{app_id}.compatibility.json",
@@ -153,10 +206,17 @@ def create_handoff(
             raise UnsignedHandoffError(
                 f"{app_id} unsigned handoff is not canonical for verified artifacts"
             )
+        # Derive one authority-free request from precisely the already verified
+        # handoff bytes. The external signer remains the sole signing authority.
+        files.append((
+            handoff,
+            Path("signing-requests") / f"{app_id}.component-signing-request.json",
+            _render_signing_request(canonical_handoff, canonical_handoff_bytes),
+        ))
 
     if ids != sorted(ids) or len(set(ids)) != len(ids):
         raise UnsignedHandoffError("catalog app ids must be unique and sorted")
-    if len(files) != len(entries) * 4 + 2:
+    if len(files) != len(entries) * 5 + 2:
         raise UnsignedHandoffError("public handoff file inventory is incomplete")
 
     # Match the already-established Store artifact-bundle commit boundary.
@@ -215,6 +275,7 @@ def main() -> int:
     print(f"APP_COUNT={result['app_count']}")
     print(f"PUBLIC_FILES={result['file_count']}")
     print(f"SOURCE_COMMIT={result['source_commit']}")
+    print(f"SIGNING_REQUESTS={result['app_count']}")
     print("SIGNED_ENVELOPES=NO")
     print("PRIVATE_KEY_MATERIAL=NO")
     print("INSTALLATION_AUTHORITY=NO")
