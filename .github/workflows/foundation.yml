@@ -61,6 +61,11 @@ jobs:
           python3 -m unittest tests/test_audit_app_readiness.py
           python3 tools/audit_app_readiness.py --format markdown
 
+      - name: Prove Files cutover stays blocked until platform source removal
+        run: |
+          python3 -m unittest tests/test_files_cutover.py
+          python3 tools/verify_files_cutover.py --format markdown
+
       - name: Prove first-party app intelligence manifests
         run: python3 tools/verify_app_intelligence.py
 
