@@ -248,7 +248,9 @@ test("lost acknowledgement retries the exact original append after concurrent la
   const retry = appendFinanceEntry(state3, {
     authorizedScope: scope, expectedRevision: 0, value: original,
   });
-  assert.equal(retry, state3);
+  assert.deepEqual(retry, state3);
+  assert.ok(Object.isFrozen(retry));
+  assert.ok(Object.isFrozen(retry.entries));
   assert.equal(retry.revision, 3);
   assert.equal(retry.entries.length, 3);
   assert.deepEqual(
@@ -258,7 +260,7 @@ test("lost acknowledgement retries the exact original append after concurrent la
   );
   assert.equal(state0.entries.length, 0);
   // When the original write was revision 1, its exact position remains 1.
-  assert.equal(appendFinanceEntry(state3, {
+  assert.deepEqual(appendFinanceEntry(state3, {
     authorizedScope: scope, expectedRevision: 1, value: state2.entries[1],
   }), state3);
 });
@@ -294,7 +296,8 @@ test("a lost acknowledgement for a reversal never applies the compensation twice
   const replay = appendFinanceEntry(state3, {
     authorizedScope: scope, expectedRevision: 1, value: reversal,
   });
-  assert.equal(replay, state3);
+  assert.deepEqual(replay, state3);
+  assert.ok(Object.isFrozen(replay));
   assert.equal(replay.entries.filter((item) => item.kind === "reversal").length, 1);
   assert.equal(summarizeFinanceLedger(replay, period()).incomeCents, 15000);
   const day2 = summarizeFinanceLedger(replay, {
