@@ -11,13 +11,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import shutil
 import stat
 import sys
+import tempfile
 import zipfile
 
 import catalog_inventory as inventory_module
+import materialize_store_artifact_bundle as bundle_module
 import render_store_catalog_candidate as candidate_module
 import render_store_catalog_publication as publication_module
 import render_unsigned_handoff as unsigned_module
@@ -155,11 +159,32 @@ def create_handoff(
     if len(files) != len(entries) * 4 + 2:
         raise UnsignedHandoffError("public handoff file inventory is incomplete")
 
-    output_root.mkdir(parents=True, exist_ok=False)
-    for _, relative, payload in files:
-        destination = output_root / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(payload)
+    # Match the already-established Store artifact-bundle commit boundary.
+    # Do not expose a partially written public handoff when any write fails.
+    try:
+        parent = bundle_module._real_directory(
+            output_root.parent, "unsigned handoff output parent",
+        )
+    except bundle_module.StoreArtifactBundleError as exc:
+        raise UnsignedHandoffError(str(exc)) from exc
+    staging = Path(tempfile.mkdtemp(
+        prefix=f".{output_root.name}.stage-", dir=parent,
+    ))
+    committed = False
+    try:
+        for _, relative, payload in files:
+            destination = staging / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        if output_root.exists() or output_root.is_symlink():
+            raise UnsignedHandoffError(
+                "refusing to overwrite an existing public handoff directory"
+            )
+        os.rename(staging, output_root)
+        committed = True
+    finally:
+        if not committed:
+            shutil.rmtree(staging, ignore_errors=True)
     return {"app_count": len(entries), "file_count": len(files), "source_commit": source_commit}
 
 

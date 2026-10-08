@@ -49,4 +49,6 @@ These files are **not installable authority by themselves**. The OrdaX platform 
 
 `materialize_unsigned_store_handoff.py` exporta somente artefatos **não assinados**, após revalidar os ZIPs e descritores pelo builder canônico. Diferente da montagem genérica de candidatos, esse exportador promete um conjunto **completo**: compara os IDs ordenados do catálogo com `catalog_inventory.discover_catalog_apps(apps, migrations)`, a mesma fonte de elegibilidade usada no workflow. Um catálogo válido, mas parcial/obsoleto, falha **antes** de criar o diretório de saída. Não existe lista de IDs replicada no exportador; novos apps elegíveis entram automaticamente.
 
+A exportação completa é preparada fora do caminho público em um diretório temporário do mesmo volume. Somente após todos os arquivos validados serem gravados o diretório é publicado por renomeação; falhas de escrita/publicação descartam o staging sem expor um conjunto parcial. O commit não modifica arquivos preexistentes do destino.
+
 Essa é apenas uma garantia de integridade/completude do handoff público. Não assina, publica, instala, autoriza, ativa ou altera a política de distribuição do sistema. O Studio e apps sem cutover/compatibilidade continuam fora desse inventário.

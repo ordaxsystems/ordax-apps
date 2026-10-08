@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -219,6 +220,38 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         ):
             self.materialize()
         self.assertFalse(self.output.exists())
+
+
+    def test_write_failure_never_exposes_partial_export_and_cleans_staging(self):
+        original_write = Path.write_bytes
+
+        def fail_one_staged_write(path, payload):
+            if path.name == "notes.release.json" and ".stage-" in str(path):
+                raise OSError("injected staging disk failure")
+            return original_write(path, payload)
+
+        with patch.object(Path, "write_bytes", fail_one_staged_write):
+            with self.assertRaisesRegex(OSError, "injected staging disk failure"):
+                self.materialize()
+        self.assertFalse(self.output.exists())
+        self.assertFalse(list(self.root.glob(f".{self.output.name}.stage-*")))
+
+    def test_atomic_publish_failure_cleans_staging_without_replacing_target(self):
+        with patch.object(handoff.os, "rename", side_effect=OSError("injected rename failure")):
+            with self.assertRaisesRegex(OSError, "injected rename failure"):
+                self.materialize()
+        self.assertFalse(self.output.exists())
+        self.assertFalse(list(self.root.glob(f".{self.output.name}.stage-*")))
+
+    def test_symlinked_output_parent_is_rejected(self):
+        alias = self.root / "alias"
+        alias.symlink_to(self.root, target_is_directory=True)
+        self.output = alias / "export"
+        with self.assertRaisesRegex(
+            handoff.UnsignedHandoffError, "must be a real directory",
+        ):
+            self.materialize()
+        self.assertFalse((self.root / "export").exists())
 
     def test_output_never_overwrites_existing_directory(self):
         self.output.mkdir()
