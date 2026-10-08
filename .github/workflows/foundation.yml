@@ -47,6 +47,13 @@ jobs:
           python3 -m unittest tests/test_audit_app_readiness.py
           python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 
+      - name: Guard minimum MVP entry for all canonical app targets
+        run: |
+          python3 -m unittest tests/test_mvp_app_minimum.py
+          # Quality floor is a count (not an app-id inventory). Raise as apps
+          # enter the catalog; never reduce it to mask missing candidates.
+          python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
+
       - name: Prove real candidate-package runtime imports and missing-host-port denial
         run: |
           python3 -m unittest tests/test_packaged_runtime_smoke.py
