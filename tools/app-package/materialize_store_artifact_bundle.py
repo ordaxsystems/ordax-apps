@@ -85,7 +85,8 @@ def _read_bounded_regular_bytes(
                 raise StoreArtifactBundleError(f"{label} size is outside allowed bounds")
             if expected_size is not None and current.st_size != expected_size:
                 raise StoreArtifactBundleError(f"{label} size does not match publication")
-            payload = stream.read(max_bytes + 1)
+            read_limit = min(max_bytes, expected_size) if expected_size is not None else max_bytes
+            payload = stream.read(read_limit + 1)
     except OSError as exc:
         raise StoreArtifactBundleError(f"{label} could not be safely read") from exc
     if len(payload) < 1 or len(payload) > max_bytes:
