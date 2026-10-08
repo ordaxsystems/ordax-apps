@@ -1,5 +1,10 @@
 # OrdaX Apps
 
+> [!IMPORTANT]
+> **Leitura prioritária:** antes de analisar, planejar ou implementar aplicativos, leia o [URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS](URGENTE-ROADMAP-ORDAX-APPS.md).
+> Para agentes e assistentes, consulte também [AGENTS.md](AGENTS.md). O roadmap é um plano vivo e não substitui os contratos, o CI nem os gates canônicos de trust e distribuição.
+
+
 Repositório oficial dos aplicativos first-party do OrdaX.
 
 ## Papel deste repositório
