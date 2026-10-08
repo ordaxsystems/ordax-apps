@@ -360,12 +360,19 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Uso/limitações: [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 - **Estado:** primeira etapa de G0 integrada; G0 completo ainda depende de evidências de runtime/package/lifecycle por app.
 
-### Execução P0 Files — preflight de source cutover (em revisão)
+### Execução P0 Files — preflight de source cutover (PRs #129 e #130 integradas)
 
 - Plano: `migrations/files.externalization.json`, `source_cutover_allowed=false` e `distribution_activation_allowed=false`.
 - Auditor read-only: `tools/verify_files_cutover.py`; testes: `tests/test_files_cutover.py`.
+- PR #130: snapshot **derivado do histórico Git real**, com inventário completo de blobs, ancestralidade e remoção comprovada no Gate A. JSON sozinho **não** é prova de SSOT.
 - Evidência de ownership, dependências e lacunas do App SDK: [`docs/FILES-EXTERNALIZATION.md`](docs/FILES-EXTERNALIZATION.md).
-- **Estado:** implementação de preflight em revisão. O Files ainda pertence à plataforma; não criar `apps/files` nem copiar o código até o Gate A remove-first estar comprovado.
+- **Estado:** proteção de cutover integrada; **cutover ainda bloqueado**. O Files pertence à plataforma; não criar `apps/files` nem copiar código até Gate A remove-first comprovado.
+
+### Execução G0 — SSOT dos inventários de CI (em revisão)
+
+- A Foundation deve derivar checks de JSON da árvore canônica, e a lista de providers exclusivamente de `actions/providers/manifest.json`, não de IDs copiados para o YAML.
+- Implementação: `tools/verify_app_actions.py --check-provider-syntax` e `tests/test_provider_syntax_ssot.py`; documentação em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
+- **Estado:** refatoração em revisão; não confundir validação de sintaxe com autorização de execução de providers.
 
 ## 13. Registro de alterações
 

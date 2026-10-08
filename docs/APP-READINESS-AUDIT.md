@@ -21,6 +21,17 @@ O relatório JSON tem schema `ordax.app-readiness-audit/1` e `authority=none`. A
 - Alvos sem source, candidatos bootstrap e blockers conhecidos são relatados sem tornar a CI vermelha apenas por ainda serem planejados.
 - Gates de produção de Notes e de distribuição de Studio continuam visíveis como bloqueios conhecidos.
 
+## SSOT também na Foundation CI
+
+A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
+
+```sh
+python3 -m unittest tests/test_provider_syntax_ssot.py
+python3 tools/verify_app_actions.py --check-provider-syntax
+```
+
+A descoberta dinâmica **não substitui** os gates de assinatura, instalação, rollback e produção. A origem autoritativa dos alvos é `ordax-apps.workspace.json`; a origem autoritativa dos módulos de provider é o manifesto de cada app, e não o YAML de CI.
+
 ## O que a ferramenta NÃO prova
 
 Não prova execução de runtime, integração com host, build determinístico do pacote, assinatura, trust, publicação, install, rollback, reinstall offline, ativação de produção nem disponibilidade na Store. O campo `production_releases_verified` fica em zero **por desenho**: essa evidência pertence aos gates de lifecycle e ao operador.
