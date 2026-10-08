@@ -8,7 +8,7 @@ Este repositório é o source workspace oficial dos apps first-party removíveis
 
 Owners separados:
 
-- plataforma/core e contratos públicos: `washingtonmsdj/prototipo-ordax-os`;
+- plataforma/core e contratos públicos: `ordaxsystems/prototipo-ordax-os`;
 - apps first-party portáteis: `ordaxsystems/ordax-apps`;
 - Runtime/Device Host/Computer Control: `ordaxsystems/ordax-runtime`;
 - Control Plane, Product MCP, grants e conectores de provider: `ordaxsystems/ordax-control-plane`.

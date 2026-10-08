@@ -296,7 +296,7 @@ def main() -> None:
         fail("unexpected workspace schema")
     if data.get("role") != "first-party-app-source":
         fail("unexpected repository role")
-    if data.get("platform_repository") != "washingtonmsdj/prototipo-ordax-os":
+    if data.get("platform_repository") != "ordaxsystems/prototipo-ordax-os":
         fail("platform repository must remain canonical")
     if data.get("authority") != "none":
         fail("apps workspace must not own authority")
@@ -308,7 +308,7 @@ def main() -> None:
         "status": "cutover-complete",
         "previous_repository": "washingtonmsdj/ordax-apps",
         "canonical_repository": "ordaxsystems/ordax-apps",
-        "current_platform_repository": "washingtonmsdj/prototipo-ordax-os",
+        "current_platform_repository": "ordaxsystems/prototipo-ordax-os",
         "target_platform_repository": "ordaxsystems/prototipo-ordax-os",
         "current_runtime_repository": "ordaxsystems/ordax-runtime",
         "target_runtime_repository": "ordaxsystems/ordax-runtime",
