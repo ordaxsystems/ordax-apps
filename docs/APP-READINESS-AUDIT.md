@@ -124,6 +124,23 @@ Testes do runtime real com **fixture estreita local** cobrem respostas de listag
 
 **Limite de evidência:** o File Space continua sendo a autoridade exclusiva de grants e de validação de dados. Estes testes não implementam outro broker ou sandbox, não substituem um navegador/host real e não autorizam assinatura, Store, install, rollback ou produção.
 
+## G2.5 — PDF e Media Player: prevenção de leituras obsoletas e liberação de recursos
+
+O runtime canônico do `pdf-viewer` já protegia parte dos previews por contador de requisição, mas não marcava a instância como destruída e não revogava imediatamente uma URL temporária se a construção do elemento `<embed>` falhasse após `createObjectURL()`. O `media-player` tinha o mesmo risco de URL, acrescido de `fileSpace.list()` assíncrono **sem guard de geração**, permitindo que resultados de diretórios antigos alterassem a navegação da mídia aberta mais recentemente.
+
+Agora ambos exigem portas públicas tipadas (`ordax.app-activation/1`, `ordax.file-space/11`, `ordax.surface-render-lifecycle/5`), ignoram respostas obsoletas ou posteriores ao unmount, rejeitam identidade/categoria de preview incompatíveis e liberam subscriptions, elementos, object URLs e stylesheet mesmo no caminho de erro. O Media Player descarta listagens antigas, ignora entradas que cruzariam diretórios e pausa a mídia antes de removê-la.
+
+Apenas os aplicativos são donos do estado visual. Os bytes e grants continuam controlados pelo File Space; não há novo servidor de arquivos, instalador, API privada, assinatura ou autoridade de Store. A fixture DOM/portas foi consolidada em `tests/support/preview_mount_fixture.mjs` para os dois aplicativos sem reproduzir runtime ou host de produção.
+
+```sh
+node --test apps/pdf-viewer/tests/*.test.mjs
+node --test apps/media-player/tests/*.test.mjs
+```
+
+Regressões cobrem leitura concorrente fora de ordem, lista obsoleta, resposta de identidade/MIME divergente, bytes vazios, fechamento com preview pendente, mudança de locale, URL revogada ao erro, pausa e revogação na substituição, rollback de subscrição e caminhos de ativação inválidos.
+
+**Limites:** sucesso com fixture não equivale à montagem em um host/browser real nem prova grants, sandbox, instalação, atualização, rollback, assinatura, trust ou release de produção. Esses gates continuam separados e fechados até evidência do owner da plataforma.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
