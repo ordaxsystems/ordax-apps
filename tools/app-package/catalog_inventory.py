@@ -17,6 +17,7 @@ import argparse
 import json
 from pathlib import Path
 import re
+import stat
 import sys
 
 COMPONENT_SCHEMA = "ordax.component-manifest/1"
@@ -31,6 +32,12 @@ class CatalogInventoryError(RuntimeError):
 
 def _read_json(path: Path, label: str) -> dict:
     try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise CatalogInventoryError(f"cannot read {label}: {path}") from exc
+    if not stat.S_ISREG(metadata.st_mode):
+        raise CatalogInventoryError(f"{label} must be a regular non-symlink file")
+    try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise CatalogInventoryError(f"cannot read {label}: {path}") from exc
@@ -42,7 +49,12 @@ def _read_json(path: Path, label: str) -> dict:
 def _compatibility_path(apps_root: Path, migrations_root: Path, app_id: str) -> Path | None:
     local = apps_root / app_id / "compatibility.json"
     migration = migrations_root / f"{app_id}.compatibility.json"
-    present = [path for path in (local, migration) if path.is_file()]
+    # Never treat an existing directory or a dangling symlink as an absent
+    # descriptor: it is invalid source state, not an ineligible app.
+    present = [
+        path for path in (local, migration)
+        if path.exists() or path.is_symlink()
+    ]
     if len(present) > 1:
         raise CatalogInventoryError(
             f"{app_id} compatibility is ambiguous: both local and migration descriptors exist"
@@ -51,16 +63,20 @@ def _compatibility_path(apps_root: Path, migrations_root: Path, app_id: str) -> 
 
 
 def discover_catalog_apps(apps_root: Path, migrations_root: Path) -> list[dict]:
-    if not apps_root.is_dir():
-        raise CatalogInventoryError(f"apps root is unavailable: {apps_root}")
-    if not migrations_root.is_dir():
-        raise CatalogInventoryError(f"migrations root is unavailable: {migrations_root}")
+    if apps_root.is_symlink() or not apps_root.is_dir():
+        raise CatalogInventoryError(f"apps root must be a real directory: {apps_root}")
+    if migrations_root.is_symlink() or not migrations_root.is_dir():
+        raise CatalogInventoryError(f"migrations root must be a real directory: {migrations_root}")
 
     entries: list[dict] = []
     seen: set[str] = set()
-    for app_dir in sorted(path for path in apps_root.iterdir() if path.is_dir()):
+    for app_dir in sorted(apps_root.iterdir()):
+        if app_dir.is_symlink():
+            raise CatalogInventoryError(f"apps directory entry must not be a symlink: {app_dir}")
+        if not app_dir.is_dir():
+            continue
         manifest_path = app_dir / "app.json"
-        if not manifest_path.is_file():
+        if not manifest_path.exists() and not manifest_path.is_symlink():
             continue
         manifest = _read_json(manifest_path, f"{app_dir.name} app manifest")
         app_id = manifest.get("id")
