@@ -33,6 +33,12 @@ The builder rejects:
 
 Outputs are deterministic ZIP/JSON bytes. ZIP entries are sorted, stored without compression, use a fixed timestamp and fixed regular-file permissions.
 
+## Associação de arquivos — contrato declarativo único
+
+Os apps visualizadores podem fornecer `associations/manifest.json`. O contrato de extensões `ordax.file-association-manifest/1` é validado **uma única vez em código**, por `tools/app-package/association_contract.py`, e utilizado por: `tools/verify_file_associations.py` (ausência de colisões entre apps), `build.py build` (antes da montagem do ZIP) e `build.py verify` (diretamente do conteúdo autenticado pelo manifesto do ZIP). Ausência do manifesto em um diretório `associations/` existente, symlink, campos extras, role/authority incorretos e versão divergente falham fechados.
+
+O manifesto declara formatos mas **não** seleciona arquivos, rotas, grants ou programas padrão no host. Esses direitos continuam no owner do OrdaX OS. O fluxo evita um segundo SSOT de associações na plataforma ou permissões implícitas no pacote.
+
 ## Outputs
 
 The builder produces:
