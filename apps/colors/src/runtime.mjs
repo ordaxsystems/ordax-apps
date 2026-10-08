@@ -13,8 +13,6 @@ function messages(locale) {
 
 async function mountStyles(root) {
   const d = root.ownerDocument;
-  const existing = d.querySelector('link[data-ordax-component-style="colors"]');
-  if (existing) return () => {};
   const link = d.createElement("link");
   link.rel = "stylesheet";
   link.href = STYLE_URL;

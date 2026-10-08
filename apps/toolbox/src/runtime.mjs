@@ -20,9 +20,7 @@ function labels(locale){
 }
 async function styles(root){
   const d=root.ownerDocument;
-  let link=d.querySelector('link[data-ordax-component-style="toolbox"]');
-  if(link)return()=>{};
-  link=d.createElement("link");link.rel="stylesheet";link.href=STYLE_URL;link.dataset.ordaxComponentStyle="toolbox";d.head.append(link);
+  const link=d.createElement("link");link.rel="stylesheet";link.href=STYLE_URL;link.dataset.ordaxComponentStyle="toolbox";d.head.append(link);
   return()=>link.remove();
 }
 export const componentRuntime=Object.freeze({

@@ -5,7 +5,6 @@ const COMPONENT_RUNTIME_SCHEMA = "ordax.component-runtime/1";
 const SURFACE_RENDER_LIFECYCLE_SCHEMA = "ordax.surface-render-lifecycle/5";
 const CALCULATOR_VERSION = "0.2.0";
 const STYLESHEET_URL = new URL("../assets/calculator.css", import.meta.url).href;
-const STYLE_SELECTOR = 'link[data-ordax-component-style="calculator"]';
 
 function assertLifecycle(value) {
   if (
@@ -24,9 +23,6 @@ function assertLifecycle(value) {
 async function mountStyles(root) {
   const documentObject = root?.ownerDocument;
   if (!documentObject?.head) throw new TypeError("Calculator requires a document head");
-
-  const existing = documentObject.querySelector(STYLE_SELECTOR);
-  if (existing) return () => {};
 
   const link = documentObject.createElement("link");
   link.rel = "stylesheet";
