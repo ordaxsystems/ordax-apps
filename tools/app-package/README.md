@@ -109,6 +109,23 @@ A contagem dos candidatos não constitui permissão de instalação.
 
 A exportação completa é preparada fora do caminho público em um diretório temporário do mesmo volume. Somente após todos os arquivos validados serem gravados o diretório é publicado por renomeação; falhas de escrita/publicação descartam o staging sem expor um conjunto parcial. O commit não modifica arquivos preexistentes do destino.
 
+### Commit atômico sem substituição
+
+Tanto o bundle de artefatos quanto a exportação pública não assinada
+publicam o diretório final pela mesma função
+`materialize_store_artifact_bundle.publish_directory_exclusive`.
+A validação antecipada de existência não é suficiente: no Linux, `os.rename`
+pode substituir silenciosamente um destino vazio criado por outra execução.
+Por isso, o commit usa o primitivo de kernel `renameat2(RENAME_NOREPLACE)`
+no Linux; no Windows, `os.rename` já recusa o destino existente.
+Em outros sistemas, ou se o kernel não oferecer a operação, a exportação
+falha fechada em vez de recorrer a uma renomeação insegura.
+
+Mesmo se outro processo criar o diretório destino durante o commit, a
+publicação respeita o vencedor, não remove os arquivos alheios e limpa apenas
+seu próprio staging. Isso não transfere assinatura, trust ou autoridade de
+instalação.
+
 ### Solicitações de assinatura externa
 
 Cada app elegível e validado também recebe `signing-requests/<app>.component-signing-request.json` no **mesmo** diretório de pré-publicação e no **mesmo** commit. Esse artefato `ordax-apps.component-signing-request/1` é derivado **somente** do handoff já comparado ao verificador canônico do ZIP e descritores, usando as identidades `sourceHandoff.sha256`, `inputs.package/release/compatibility` e o domínio de trust fornecidos por esse handoff. Não há outro inventário, validador de pacote ou receita alternativa de release.
