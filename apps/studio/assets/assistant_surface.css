@@ -64,3 +64,16 @@
 }
 .assistantWebFallback[data-transport="unavailable"] .orb{opacity:.35}
 .assistantWebFallback[data-transport="unavailable"] small{color:#b8c7db;max-width:310px;line-height:1.5}
+
+.assistantWebFallback .assistantRetry{
+  display:none;
+  margin-top:12px;
+  padding:7px 12px;
+  border:1px solid var(--border);
+  border-radius:7px;
+  background:#102542;
+  color:var(--text);
+  cursor:pointer;
+}
+.assistantWebFallback[data-transport="unavailable"] .assistantRetry{display:inline-flex}
+.assistantWebFallback .assistantRetry:focus-visible{outline:2px solid var(--ide-blue);outline-offset:2px}
