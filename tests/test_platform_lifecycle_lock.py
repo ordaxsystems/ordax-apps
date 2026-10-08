@@ -23,6 +23,7 @@ class CanonicalLifecycleLockTests(unittest.TestCase):
         self.assertEqual(canonical_repo, "ordaxsystems/ordax-os")
         self.assertEqual(lock["repository"], canonical_repo)
         self.assertRegex(lock["commit"], r"\A[0-9a-f]{40}\Z")
+        self.assertEqual(lock["commit"], "029d88b5e26fd1c976c1e5acbc1ff393481eb087")
         self.assertEqual(lock["tool_path"], "tools/runtime-component-channel")
         self.assertEqual(lock["authority"], "none")
         self.assertEqual(lock["canonical_source_repository"], "ordaxsystems/ordax-apps")
