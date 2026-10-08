@@ -4,7 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/**/app.json'
+      - 'apps/**'
+      - 'ordax-apps.workspace.json'
+      - 'tools/audit_app_readiness.py'
+      - 'tools/verify_mvp_app_minimum.py'
+      - 'tests/test_mvp_app_minimum.py'
       - 'migrations/*.compatibility.json'
       - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
@@ -17,7 +21,11 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'apps/**/app.json'
+      - 'apps/**'
+      - 'ordax-apps.workspace.json'
+      - 'tools/audit_app_readiness.py'
+      - 'tools/verify_mvp_app_minimum.py'
+      - 'tests/test_mvp_app_minimum.py'
       - 'migrations/*.compatibility.json'
       - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
@@ -99,6 +107,11 @@ jobs:
             tests/test_store_catalog_publication.py \
             tests/test_store_catalog_publication_v2.py \
             tests/test_store_artifact_bundle.py
+
+      - name: Guard minimum entry for every planned app and current Store candidate set
+        run: |
+          python3 -m unittest tests/test_mvp_app_minimum.py
+          python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
 
       - name: Build canonical platform verifier
         run: |
