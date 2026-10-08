@@ -29,7 +29,7 @@ Os itens abaixo não pertencem ao app e precisam de owners próprios:
 - política local e enforcement;
 - adapters de execução especializados quando forem runtime-owned.
 
-### ordaxsystems/ordax-control-plane
+### ordaxsystems/ordax-platform
 
 - Product MCP remoto;
 - Cloudflare/control plane;
@@ -61,7 +61,7 @@ Não resolver a aposentadoria copiando Runtime ou Control Plane para `ordax-apps
 
 ## Automação de deploy
 
-A credencial futura para deploy automático via GitHub Actions é hardening de CI rastreado em `ordaxsystems/ordax-control-plane#10`. Ela não é dependência operacional da produção nem blocker da aposentadoria do código legado.
+A credencial futura para deploy automático via GitHub Actions é hardening de CI rastreado em `ordaxsystems/ordax-platform#10`. Ela não é dependência operacional da produção nem blocker da aposentadoria do código legado.
 
 
 ## Prova pós-retirement

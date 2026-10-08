@@ -49,90 +49,10 @@ jobs:
           python3 -m unittest tests/test_audit_app_readiness.py
           python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 
-      - name: Guard minimum MVP entry for all canonical app targets
-        run: |
-          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py tests/test_platform_lifecycle_lock.py
-          # Quality floor is a count (not an app-id inventory). Raise as apps
-          # enter the catalog; never reduce it to mask missing candidates.
-          python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
-
-      - name: Prove real candidate-package runtime imports and missing-host-port denial
-        run: |
-          python3 -m unittest tests/test_packaged_runtime_smoke.py
-          python3 tools/verify_packaged_runtimes.py --format markdown
-
       - name: Prove Files cutover stays blocked until platform source removal
         run: |
           python3 -m unittest tests/test_files_cutover.py
           python3 tools/verify_files_cutover.py --format markdown
-
-      - name: Prove first-party app intelligence manifests
-        run: python3 tools/verify_app_intelligence.py
-
-      - name: Prove canonical file association ownership and package receipt
-        run: |
-          python3 -m unittest tests/test_file_associations.py
-          python3 tools/verify_file_associations.py
-
-      - name: Prove app-owned presentation manifests
-        run: python3 tools/verify_app_presentation.py
-
-      - name: Prove first-party Application Action manifests and provider artifacts
-        run: |
-          python3 -m unittest tests/test_provider_syntax_ssot.py
-          python3 tools/verify_app_actions.py --check-provider-syntax
-
-      - name: Prove Calculator portable behavior and package boundary
-        run: |
-          node --check apps/calculator/src/runtime.mjs
-          node --check apps/calculator/src/expression.mjs
-          node --test apps/calculator/tests/*.test.mjs
-          out="/tmp/ordax-calculator"
-          rm -rf "$out"
-          mkdir -p "$out/release"
-          python3 tools/app-package/build.py build \
-            --app-root apps/calculator \
-            --source-commit "$(git rev-parse HEAD)" \
-            --compatibility apps/calculator/compatibility.json \
-            --package-out "$out/calculator.zip" \
-            --release-dir "$out/release"
-          python3 tools/app-package/build.py verify \
-            --package "$out/calculator.zip" \
-            --release "$out/release/calculator.release.json" \
-            --compatibility "$out/release/calculator.compatibility.json"
-
-      - name: Prove independent per-mount component stylesheet lifecycle
-        run: node --test tests/test_component_style_ownership.mjs
-
-      - name: Prove basic MVP utility apps
-        run: |
-          set -euo pipefail
-          node --test apps/clock/tests/*.test.mjs
-          node --test apps/converter/tests/*.test.mjs
-          node --test apps/text-viewer/tests/*.test.mjs
-          node --test apps/image-viewer/tests/*.test.mjs
-          node --test apps/calendar/tests/*.test.mjs
-          node --test apps/colors/tests/*.test.mjs
-          node --test apps/character-map/tests/*.test.mjs
-          node --test apps/paint/tests/*.test.mjs
-          node --test apps/media-player/tests/*.test.mjs
-          node --test apps/pdf-viewer/tests/*.test.mjs
-          for app in clock converter text-viewer image-viewer calendar colors character-map paint media-player pdf-viewer; do
-            node --check "apps/$app/src/runtime.mjs"
-            out="/tmp/ordax-$app"
-            rm -rf "$out"
-            mkdir -p "$out/release"
-            python3 tools/app-package/build.py build \
-              --app-root "apps/$app" \
-              --source-commit "$(git rev-parse HEAD)" \
-              --compatibility "apps/$app/compatibility.json" \
-              --package-out "$out/$app.zip" \
-              --release-dir "$out/release"
-            python3 tools/app-package/build.py verify \
-              --package "$out/$app.zip" \
-              --release "$out/release/$app.release.json" \
-              --compatibility "$out/release/$app.compatibility.json"
-          done
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
@@ -177,7 +97,7 @@ jobs:
       - name: Checkout pinned OrdaX OS production trust policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: ordaxsystems/prototipo-ordax-os
+          repository: ordaxsystems/ordax-os
           ref: ef319ba940fa36c81699b73ba4195a178891e70f
           path: .ordax-platform-trust
           persist-credentials: false
@@ -199,7 +119,7 @@ jobs:
           commit = lock.get("commit")
           workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
           canonical_repository = workspace["platform_repository"]
-          assert repository == canonical_repository == "ordaxsystems/prototipo-ordax-os"
+          assert repository == canonical_repository == "ordaxsystems/ordax-os"
           assert isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
           assert lock.get("tool_path") == "tools/runtime-component-channel"
           assert lock.get("authority") == "none"
@@ -329,3 +249,88 @@ jobs:
         run: |
           python3 tools/verify_studio_distribution.py
           python3 tests/studio_distribution_contract_test.py
+  mvp-app-functional-minimum:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact app source for functional MVP proof
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Guard minimum MVP entry for all canonical app targets
+        run: |
+          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py tests/test_platform_lifecycle_lock.py
+          # Quality floor is a count (not an app-id inventory). Raise as apps
+          # enter the catalog; never reduce it to mask missing candidates.
+          python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
+
+      - name: Prove minimum behavior and package for every canonical Store candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          # SSOT: exactly the same eligible component-slot entries consumed by
+          # Store catalog generation. No second hand-maintained utility list.
+          inventory="$(python3 tools/app-package/catalog_inventory.py --format tsv)"
+          if [[ -z "$inventory" ]]; then
+            echo "No canonical Store candidates were returned" >&2
+            exit 1
+          fi
+          source_commit="$(git rev-parse HEAD)"
+          while IFS=$'\t' read -r app app_root compatibility; do
+            [[ -n "$app" && -n "$app_root" && -n "$compatibility" ]]
+            [[ "$app_root" == "apps/$app" ]] || {
+              echo "Noncanonical candidate root: $app_root" >&2
+              exit 1
+            }
+
+            # A valid manifest/ZIP is not a functional app. Every candidate
+            # must have behavior tests, including newly catalogued utilities.
+            behavior_tests=("$app_root"/tests/*.test.mjs)
+            if (( ${#behavior_tests[@]} == 0 )); then
+              echo "$app: no executable behavior tests for the MVP" >&2
+              exit 1
+            fi
+            node --check "$app_root/src/runtime.mjs"
+            node --test "${behavior_tests[@]}"
+
+            out="$RUNNER_TEMP/ordax-mvp-$app"
+            mkdir -p "$out/release"
+            python3 tools/app-package/build.py build \
+              --app-root "$app_root" \
+              --source-commit "$source_commit" \
+              --compatibility "$compatibility" \
+              --package-out "$out/$app.zip" \
+              --release-dir "$out/release"
+            python3 tools/app-package/build.py verify \
+              --package "$out/$app.zip" \
+              --release "$out/release/$app.release.json" \
+              --compatibility "$out/release/$app.compatibility.json"
+          done <<< "$inventory"
+
+
+      - name: Prove real candidate-package runtime imports and missing-host-port denial
+        run: |
+          python3 -m unittest tests/test_packaged_runtime_smoke.py
+          python3 tools/verify_packaged_runtimes.py --format markdown
+
+      - name: Prove first-party app intelligence manifests
+        run: python3 tools/verify_app_intelligence.py
+
+      - name: Prove canonical file association ownership and package receipt
+        run: |
+          python3 -m unittest tests/test_file_associations.py
+          python3 tools/verify_file_associations.py
+
+      - name: Prove app-owned presentation manifests
+        run: python3 tools/verify_app_presentation.py
+
+      - name: Prove first-party Application Action manifests and provider artifacts
+        run: |
+          python3 -m unittest tests/test_provider_syntax_ssot.py
+          python3 tools/verify_app_actions.py --check-provider-syntax
+

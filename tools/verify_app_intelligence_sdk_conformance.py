@@ -60,7 +60,7 @@ def main() -> None:
     bundle_path = lock.get("bundle_path")
     expected_bundle_sha256 = lock.get("sha256")
 
-    if repository != "ordaxsystems/prototipo-ordax-os":
+    if repository != "ordaxsystems/ordax-os":
         fail("canonical platform repository is required")
     if not isinstance(commit, str) or COMMIT_RE.fullmatch(commit) is None:
         fail("exact lowercase platform commit is required")

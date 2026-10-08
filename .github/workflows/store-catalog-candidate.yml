@@ -73,7 +73,7 @@ jobs:
           commit = lock.get("commit")
           workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
           canonical_repository = workspace["platform_repository"]
-          assert repository == canonical_repository == "ordaxsystems/prototipo-ordax-os"
+          assert repository == canonical_repository == "ordaxsystems/ordax-os"
           assert isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
           assert lock.get("tool_path") == "tools/runtime-component-channel"
           assert lock.get("authority") == "none"

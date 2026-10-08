@@ -21,7 +21,7 @@ def main() -> None:
         fail("wrong app id")
     if plan.get("authority") != "none":
         fail("externalization metadata must not carry authority")
-    if plan.get("source_repository_current") != "ordaxsystems/prototipo-ordax-os":
+    if plan.get("source_repository_current") != "ordaxsystems/ordax-os":
         fail("Projects source must remain in the platform before Gate A")
     if plan.get("source_path_current") != "system/apps/projects":
         fail("Projects source path drifted")
@@ -109,8 +109,8 @@ def main() -> None:
     snapshot = plan.get("source_snapshot") or {}
     if snapshot.get("state") != "pinned":
         fail("Projects source snapshot must be pinned after SDK merge")
-    if snapshot.get("repository") != plan["source_repository_current"]:
-        fail("Projects source snapshot repository is not canonical")
+    if snapshot.get("repository") != "ordaxsystems/prototipo-ordax-os":
+        fail("Projects pinned historical source snapshot repository drifted")
     if snapshot.get("commit") != sdk["platform_merge_commit"]:
         fail("Projects source snapshot must pin the reviewed SDK merge commit")
     if snapshot.get("inventory_file") != "migrations/projects.source-snapshot.json":

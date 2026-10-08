@@ -57,8 +57,8 @@ def validate(workspace: dict, lock: dict) -> dict:
         "canonical_repository": CANONICAL_APPS,
         "current_runtime_repository": "ordaxsystems/ordax-runtime",
         "target_runtime_repository": "ordaxsystems/ordax-runtime",
-        "current_control_plane_repository": "ordaxsystems/ordax-control-plane",
-        "target_control_plane_repository": "ordaxsystems/ordax-control-plane",
+        "current_control_plane_repository": "ordaxsystems/ordax-platform",
+        "target_control_plane_repository": "ordaxsystems/ordax-platform",
     }
     for field, value in expected.items():
         if migration.get(field) != value:

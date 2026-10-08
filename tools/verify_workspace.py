@@ -29,7 +29,7 @@ def validate_notes_migration() -> tuple[bool, bool]:
     expected_source_repo = (
         "ordaxsystems/ordax-apps"
         if source_cutover_allowed
-        else "ordaxsystems/prototipo-ordax-os"
+        else "ordaxsystems/ordax-os"
     )
     expected_source_path = "apps/notes" if source_cutover_allowed else "system/apps/notes"
     expected_source_state = (
@@ -296,7 +296,7 @@ def main() -> None:
         fail("unexpected workspace schema")
     if data.get("role") != "first-party-app-source":
         fail("unexpected repository role")
-    if data.get("platform_repository") != "ordaxsystems/prototipo-ordax-os":
+    if data.get("platform_repository") != "ordaxsystems/ordax-os":
         fail("platform repository must remain canonical")
     if data.get("authority") != "none":
         fail("apps workspace must not own authority")
@@ -308,12 +308,12 @@ def main() -> None:
         "status": "cutover-complete",
         "previous_repository": "washingtonmsdj/ordax-apps",
         "canonical_repository": "ordaxsystems/ordax-apps",
-        "current_platform_repository": "ordaxsystems/prototipo-ordax-os",
-        "target_platform_repository": "ordaxsystems/prototipo-ordax-os",
+        "current_platform_repository": "ordaxsystems/ordax-os",
+        "target_platform_repository": "ordaxsystems/ordax-os",
         "current_runtime_repository": "ordaxsystems/ordax-runtime",
         "target_runtime_repository": "ordaxsystems/ordax-runtime",
-        "current_control_plane_repository": "ordaxsystems/ordax-control-plane",
-        "target_control_plane_repository": "ordaxsystems/ordax-control-plane",
+        "current_control_plane_repository": "ordaxsystems/ordax-platform",
+        "target_control_plane_repository": "ordaxsystems/ordax-platform",
         "redirect_dependency_allowed": False,
         "mirror_repository_allowed": False,
         "dual_authority_allowed": False,
