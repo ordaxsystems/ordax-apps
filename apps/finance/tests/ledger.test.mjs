@@ -80,7 +80,7 @@ test("optimistic revision and conflicting duplicate IDs fail closed", () => {
     authorizedScope: scope, expectedRevision: 0,
     value: event("sale.2", "income", 800),
   }), /revision conflict/);
-  assert.equal(write(saved, first), saved); // exact idempotent retry
+  assert.deepEqual(write(saved, first), saved); // same ledger data, no extra event or revision
   assert.throws(() => write(saved, { ...first, amountCents: 500 }), /conflicting content/);
   assert.throws(() => write(saved, { ...first, kind: "expense" }), /conflicting content/);
 });
