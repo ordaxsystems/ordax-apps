@@ -156,3 +156,45 @@ test('host promise acknowledgement is insufficient; synchronous transport must b
   assert.equal(ui.elements.get('assistantWebFallback').dataset.transport,'unavailable');
   assert.match(ui.elements.get('assistantWebStatus').textContent,/recusou/);
 });
+
+test('native loading, navigation success and error update only transport readiness', () => {
+  const ui=fixture(()=>true);
+  const event=ui.windowEvents.get('ordax-assistant-surface-status');
+  assert.equal(typeof event,'function');
+  event({detail:{state:'loading'}});
+  assert.equal(ui.elements.get('assistantWebFallback').dataset.transport,'loading');
+  event({detail:{state:'ready'}});
+  assert.equal(ui.elements.get('assistantWebFallback').dataset.transport,'ready');
+  assert.match(ui.elements.get('assistantWebStatus').textContent,/não verificados/);
+  event({detail:{state:'error'}});
+  assert.equal(ui.elements.get('assistantWebFallback').dataset.transport,'unavailable');
+  assert.match(ui.elements.get('assistantWebStatus').textContent,/Falha ao carregar/);
+});
+
+test('unrecognized status and source-supplied text are ignored', () => {
+  const ui=fixture(()=>true);
+  const event=ui.windowEvents.get('ordax-assistant-surface-status');
+  const before=ui.elements.get('assistantWebStatus').textContent;
+  event({detail:{state:'authenticated',url:'https://untrusted.example',token:'secret'}});
+  assert.equal(ui.elements.get('assistantWebStatus').textContent,before);
+  event({detail:{state:'ready',message:'pretend login authenticated'}});
+  assert.doesNotMatch(ui.elements.get('assistantWebStatus').textContent,/pretend login/);
+  assert.doesNotMatch(ui.elements.get('assistantWebStatus').textContent,/secret/);
+});
+
+test('late provider navigation result never updates hidden or local assistant', () => {
+  const ui=fixture(()=>true);
+  const event=ui.windowEvents.get('ordax-assistant-surface-status');
+  ui.window.ordaxAssistantSurface.setMode('local');
+  ui.flush();
+  const before=ui.elements.get('assistantWebStatus').textContent;
+  event({detail:{state:'ready'}});
+  assert.equal(ui.elements.get('assistantWebStatus').textContent,before);
+  ui.window.ordaxAssistantSurface.setMode('web');
+  ui.flush();
+  ui.document.hidden=true;
+  ui.documentEvents.get('visibilitychange')();
+  const hiddenBefore=ui.elements.get('assistantWebStatus').textContent;
+  event({detail:{state:'error'}});
+  assert.equal(ui.elements.get('assistantWebStatus').textContent,hiddenBefore);
+});

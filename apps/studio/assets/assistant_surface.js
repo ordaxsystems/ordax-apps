@@ -4,12 +4,23 @@
 var mode='web';
 var lastPayload='';
 var lastHost=null;
+var surfaceActive=false;
 
 function transportStatus(message,state){
   var target=byId('assistantWebStatus');
   if(target)target.textContent=message;
   var fallback=byId('assistantWebFallback');
   if(fallback)fallback.dataset.transport=state;
+}
+
+function nativeStatus(event){
+  if(mode!=='web'||document.hidden||!surfaceActive)return;
+  var state=event&&event.detail&&event.detail.state;
+  // A loaded document is not proof of account login, available models, or consent.
+  if(state==='loading')transportStatus('Carregando a página no navegador nativo…','loading');
+  else if(state==='ready')transportStatus('Página carregada no navegador nativo. Login e sessão não verificados.','ready');
+  else if(state==='error')transportStatus('Falha ao carregar a página do provedor. Verifique a rede e tente atualizar.','unavailable');
+  else if(state==='hidden')transportStatus('Navegador nativo oculto.','hidden');
 }
 
 function byId(id){return document.getElementById(id)}
@@ -23,6 +34,7 @@ function post(payload){
   if(!host){
     lastPayload='';
     lastHost=null;
+    surfaceActive=false;
     if(payload.active)transportStatus('Este host não oferece o navegador Web integrado. Use IA local / API ou atualize o Runtime.','unavailable');
     return false;
   }
@@ -32,17 +44,20 @@ function post(payload){
     if(host.presentAssistantSurface(payload)!==true){
       lastPayload='';
       lastHost=null;
+      surfaceActive=false;
       if(payload.active)transportStatus('O host recusou a superfície Web. Confira a compatibilidade do Runtime.','unavailable');
       return false;
     }
     lastPayload=serialized;
     lastHost=host;
+    surfaceActive=payload.active===true;
     if(payload.active)transportStatus('Solicitação entregue ao host. A sessão depende do navegador nativo.','pending');
     return true;
   }catch(_error){
     // Do not expose native exception details, which may contain host/environment information.
     lastPayload='';
     lastHost=null;
+    surfaceActive=false;
     if(payload.active)transportStatus('Falha ao comunicar com o navegador Web nativo.','unavailable');
     return false;
   }
@@ -96,6 +111,7 @@ function bind(){
   if(slot&&window.ResizeObserver)new ResizeObserver(function(){requestAnimationFrame(publish)}).observe(slot);
   window.addEventListener('resize',function(){requestAnimationFrame(publish)});
   window.addEventListener('scroll',function(){requestAnimationFrame(publish)},true);
+  window.addEventListener('ordax-assistant-surface-status',nativeStatus);
   document.addEventListener('visibilitychange',publish);
   window.addEventListener('beforeunload',function(){post({type:'ordax-assistant-surface',active:false})});
   new MutationObserver(function(){requestAnimationFrame(publish)}).observe(document.body,{attributes:true,attributeFilter:['class'],subtree:true});
