@@ -368,11 +368,11 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Evidência de ownership, dependências e lacunas do App SDK: [`docs/FILES-EXTERNALIZATION.md`](docs/FILES-EXTERNALIZATION.md).
 - **Estado:** proteção de cutover integrada; **cutover ainda bloqueado**. O Files pertence à plataforma; não criar `apps/files` nem copiar código até Gate A remove-first comprovado.
 
-### Execução G0 — SSOT dos inventários de CI (em revisão)
+### Execução G0 — SSOT dos inventários de CI (PR #131 integrada)
 
-- A Foundation deve derivar checks de JSON da árvore canônica, e a lista de providers exclusivamente de `actions/providers/manifest.json`, não de IDs copiados para o YAML.
+- A Foundation deriva checks de JSON da árvore canônica, e a lista de providers exclusivamente de `actions/providers/manifest.json`, sem IDs de apps copiados para o YAML.
 - Implementação: `tools/verify_app_actions.py --check-provider-syntax` e `tests/test_provider_syntax_ssot.py`; documentação em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
-- **Estado:** refatoração em revisão; não confundir validação de sintaxe com autorização de execução de providers.
+- **Estado:** integrada à `main` com Foundation CI verde. Sintaxe validada **não** significa autorização de execução, assinatura, distribuição ou produção.
 
 ## 13. Registro de alterações
 
