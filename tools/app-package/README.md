@@ -90,6 +90,19 @@ The release descriptor records `ordaxsystems/ordax-apps` as the real source repo
 
 These files are **not installable authority by themselves**. The OrdaX platform must verify provenance, sign through its component trust domain, stage the immutable slot, run health/probation, and explicitly promote it.
 
+## Inventário elegível com validação canônica única
+
+O inventário da Loja é derivado de `catalog_inventory.discover_catalog_apps`,
+sem lista fixa de IDs nem uma segunda implementação das regras de segurança.
+Um app com `component-slot` só entra na lista quando o inventário aplica
+diretamente `build.validate_app_manifest` e
+`build.validate_compatibility`, sobre JSONs lidos com os mesmos limites do
+builder oficial. O catálogo, portanto, falha já na descoberta diante de
+contratos inválidos, campos extras, dependências duplicadas, versões ou
+ranges ilegais e descritores superdimensionados. A ausência legítima de
+compatibility mantém Studio e apps ainda não habilitados fora dos candidatos.
+A contagem dos candidatos não constitui permissão de instalação.
+
 ## Exportação pública completa antes da publicação
 
 `materialize_unsigned_store_handoff.py` exporta somente artefatos **não assinados**, após revalidar os ZIPs e descritores pelo builder canônico. Diferente da montagem genérica de candidatos, esse exportador promete um conjunto **completo**: compara os IDs ordenados do catálogo com `catalog_inventory.discover_catalog_apps(apps, migrations)`, a mesma fonte de elegibilidade usada no workflow. Um catálogo válido, mas parcial/obsoleto, falha **antes** de criar o diretório de saída. Não existe lista de IDs replicada no exportador; novos apps elegíveis entram automaticamente.
