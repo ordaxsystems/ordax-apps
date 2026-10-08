@@ -164,7 +164,7 @@ test('invalid and entirely offscreen geometry never activates a native provider 
   ]) {
     const delivered=[];
     fixture(payload=>{delivered.push(payload);return true;},bounds);
-    assert.equal(delivered[0].active,false,JSON.stringify(bounds));
+    assert.equal(delivered.some(function(packet){return packet.active===true}),false,JSON.stringify(bounds));
   }
 });
 
