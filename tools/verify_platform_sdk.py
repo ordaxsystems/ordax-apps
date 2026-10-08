@@ -5,6 +5,10 @@ import re
 import urllib.request
 from pathlib import Path
 
+from verify_app_sdk_compatibility import (
+    SdkCompatibilityError, audit_compatibility, render_markdown,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 LOCK_PATH = ROOT / "platform-sdk.lock.json"
 BUNDLE_VERSION_RE = re.compile(
@@ -115,11 +119,19 @@ def main() -> None:
         missing = sorted(EXPECTED_CONTRACTS - schemas)
         fail(f"SDK is missing required contracts: {', '.join(missing)}")
 
+    try:
+        app_evidence = audit_compatibility(ROOT, bundle, commit, lock["repository"])
+    except SdkCompatibilityError as exc:
+        fail(f"app compatibility against pinned SDK failed: {exc}")
+
     print("ORDAX_PLATFORM_SDK=PASS")
     print(f"SDK_COMMIT={commit}")
     print(f"SDK_VERSION={bundle_version}")
     print(f"SDK_CONTRACT_COUNT={len(contracts)}")
     print("SDK_AUTHORITY=none")
+    print(f"APP_SDK_REQUIRED_CONTRACTS_VERIFIED_APPS={app_evidence['summary']['required_contracts_verified_apps']}")
+    print(f"APP_SDK_UNRESOLVED_OPTIONAL_REQUIREMENTS={app_evidence['summary']['unresolved_optional_requirements']}")
+    print(render_markdown(app_evidence))
 
 
 if __name__ == "__main__":
