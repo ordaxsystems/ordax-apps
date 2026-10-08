@@ -83,16 +83,20 @@ export const componentRuntime = Object.freeze({
       globalThis.URL?.revokeObjectURL?.(oldUrl);
     };
     const releaseMedia = () => {
-      if (element) {
-        const old = element;
-        element = null;
-        try {
-          old.pause?.();
-        } finally {
-          old.remove();
+      try {
+        if (element) {
+          const old = element;
+          element = null;
+          try {
+            old.pause?.();
+          } finally {
+            old.remove();
+          }
         }
+      } finally {
+        // Revoke even if pausing or detaching the media element throws.
+        revoke();
       }
-      revoke();
     };
     const locale = () => {
       if (destroyed) return;
