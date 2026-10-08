@@ -14,7 +14,7 @@ function labels(locale) {
     ? {title:"Relógio",local:"Hora local",stopwatch:"Cronômetro",timer:"Temporizador",start:"Iniciar",pause:"Pausar",reset:"Zerar",minutes:"Min",seconds:"Seg",finished:"Concluído"}
     : {title:"Clock",local:"Local time",stopwatch:"Stopwatch",timer:"Timer",start:"Start",pause:"Pause",reset:"Reset",minutes:"Min",seconds:"Sec",finished:"Finished"};
 }
-async function styles(root){const d=root.ownerDocument;let link=d.querySelector('link[data-ordax-component-style="clock"]');if(link)return()=>{};link=d.createElement("link");link.rel="stylesheet";link.href=STYLE_URL;link.dataset.ordaxComponentStyle="clock";d.head.append(link);return()=>link.remove();}
+async function styles(root){const d=root.ownerDocument;const link=d.createElement("link");link.rel="stylesheet";link.href=STYLE_URL;link.dataset.ordaxComponentStyle="clock";d.head.append(link);return()=>link.remove();}
 function mountView(root,lifecycle,session){
   const d=root.ownerDocument,t=labels(lifecycle.localization.getLocale()),section=d.createElement("section");
   section.className="ordax-clock";

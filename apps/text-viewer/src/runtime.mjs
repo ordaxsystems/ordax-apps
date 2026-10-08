@@ -14,9 +14,7 @@ function validPath(path) {
 
 async function styles(root) {
   const documentObject = root.ownerDocument;
-  let link = documentObject.querySelector('link[data-ordax-component-style="text-viewer"]');
-  if (link) return () => {};
-  link = documentObject.createElement("link");
+  const link = documentObject.createElement("link");
   link.rel = "stylesheet";
   link.href = STYLE_URL;
   link.dataset.ordaxComponentStyle = "text-viewer";

@@ -10,6 +10,15 @@ Este documento fixa a ordem de trabalho. **Não substitui** os SSOTs: `ordax-app
 2. **Identidade e metadados:** manifesto `ordax.component-manifest/1` com `owner`, id, semver, `component-slot` quando esta modalidade for suportada; AI manifest declarativo `authority:none`, action manifest `proposal-only` e provider manifest verificados. A declaração não autoriza ação.
 3. **Compatibilidade pública:** um único `compatibility.json` local ou `migrations/<id>.compatibility.json`, conforme owner existente; os `requires` obrigatórios devem existir no App SDK pinado. Sem imports privados, grants improvisados ou host paralelo.
 4. **Runtime mínimo real:** entrypoint canônico exporta `componentRuntime` com schema, identidade e versão do manifesto, aceita somente ports autorizadas; UI ou uma operação mínima útil, estado/erros claros, limpeza de subscriptions/URLs/listeners e destroy seguro. Não confundir teste Node com prova de host nativo.
+**Ciclo de vida visual no MVP:** quando duas superfícies montam o mesmo app,
+cada instância mantém e remove seu próprio `<link rel="stylesheet">`,
+sem reivindicar o stylesheet de outra janela ou do host. O navegador pode
+reutilizar os bytes em cache, mas a posse e o `destroy()` permanecem locais
+ao mount. A Foundation verifica o comportamento real em duas janelas para
+Calculator e Calendar e impede o retorno da reutilização global sem posse
+nos outros runtimes, inclusive Notes. Isso não cria host, gerenciador paralelo de CSS ou
+dependência entre pacotes.
+
 5. **Empacotamento:** `tools/app-package/build.py` é o único builder; ZIP, compatibility e release sidecars têm identidade e hashes verificáveis, são determinísticos e entregam handoff não assinado. Testes de contrato e smoke fazem parte da Foundation.
 6. **Entrada no catálogo:** `tools/app-package/catalog_inventory.py` deriva os apps elegíveis; `render_store_catalog_candidate.py` agrega somente handoffs comprovados do **mesmo commit**. Artefato não assinado é **entrada de catálogo**, não aplicativo instalável.
 7. **Entrega efetiva:** somente o runtime/platform owner pode autenticar assinatura e catálogo v2, selecionar release verificada, instalar, verificar saúde, promover e fazer rollback preservando App Data. A Store apresenta e solicita, sem poder de instalar ou conceder permissões. Sem essas provas, manter `blocked`/não instalável — nunca habilitar flags como atalho.

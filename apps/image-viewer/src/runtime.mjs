@@ -12,9 +12,7 @@ function joinPath(parent,name){return parent==="/"?"/"+name:parent+"/"+name;}
 
 async function styles(root){
   const d=root.ownerDocument;
-  let l=d.querySelector('link[data-ordax-component-style="image-viewer"]');
-  if(l)return()=>{};
-  l=d.createElement("link");
+  const l=d.createElement("link");
   l.rel="stylesheet";l.href=STYLE_URL;l.dataset.ordaxComponentStyle="image-viewer";
   d.head.append(l);
   return()=>l.remove();

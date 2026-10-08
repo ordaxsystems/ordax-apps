@@ -9,21 +9,12 @@ import { createNotesAppDataStore } from "./services/app-data-store.mjs";
 import { mountNotesWorkspaceControls } from "./ui/workspace-controls.mjs";
 
 const NOTES_STYLESHEET_URL = new URL("../assets/notes.css", import.meta.url).href;
-const NOTES_STYLE_SELECTOR = 'link[data-ordax-component-style="notes"]';
 const NOTES_BODY_SELECTOR = '[data-notes-body]';
 
 async function mountNotesStyles(root) {
   const documentObject = root?.ownerDocument;
   if (!documentObject?.head) {
     throw new TypeError("Notes runtime requires a document head for component styles");
-  }
-
-  const existing = documentObject.querySelector(NOTES_STYLE_SELECTOR);
-  if (existing) {
-    if (existing.href !== NOTES_STYLESHEET_URL) {
-      throw new TypeError("Notes component stylesheet identity mismatch");
-    }
-    return () => {};
   }
 
   const link = documentObject.createElement("link");

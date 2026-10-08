@@ -101,6 +101,9 @@ jobs:
             --release "$out/release/calculator.release.json" \
             --compatibility "$out/release/calculator.compatibility.json"
 
+      - name: Prove independent per-mount component stylesheet lifecycle
+        run: node --test tests/test_component_style_ownership.mjs
+
       - name: Prove basic MVP utility apps
         run: |
           set -euo pipefail
