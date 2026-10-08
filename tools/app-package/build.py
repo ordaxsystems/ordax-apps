@@ -1093,6 +1093,12 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
                 )
         if staging.stat().st_size <= 0 or staging.stat().st_size > MAX_PACKAGE_BYTES:
             raise AppPackageError("built package size is outside allowed bounds")
+        # Reuse the exact recipient verifier before exposing the final path.
+        # This catches any manifest/AI/provider drift between initial metadata
+        # reads and the single immutable payload snapshot.
+        verified, _ = verify_package(staging)
+        if verified != manifest:
+            raise AppPackageError("staged package differs from validated source")
         if output.exists() or output.is_symlink():
             raise AppPackageError("refusing to overwrite package")
         os.chmod(staging, 0o644)
