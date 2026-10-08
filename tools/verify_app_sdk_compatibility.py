@@ -49,10 +49,12 @@ def published_contracts(bundle: dict) -> dict[str, set[int]]:
     return index
 
 
-def audit_compatibility(root: Path, bundle: dict, sdk_commit: str) -> dict:
+def audit_compatibility(root: Path, bundle: dict, sdk_commit: str, sdk_repository: str) -> dict:
     """Check required/optional ranges without claiming host or lifecycle execution."""
     if not builder.SHA40_RE.fullmatch(sdk_commit):
         raise SdkCompatibilityError("SDK evidence requires an exact 40-hex pinned commit")
+    if not isinstance(sdk_repository, str) or not sdk_repository or "/" not in sdk_repository:
+        raise SdkCompatibilityError("SDK evidence requires the canonical repository from the lock")
     index = published_contracts(bundle)
     try:
         workspace = audit_workspace(root)
@@ -136,7 +138,7 @@ def audit_compatibility(root: Path, bundle: dict, sdk_commit: str) -> dict:
         "authority": "none",
         "repository": workspace["repository"],
         "sdk": {
-            "repository": "washingtonmsdj/prototipo-ordax-os",
+            "repository": sdk_repository,
             "commit": sdk_commit,
             "bundle_version": bundle["bundle_version"],
             "compatibility_policy": "contract-major",
