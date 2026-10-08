@@ -133,7 +133,6 @@ class AssociationSingleSourceTests(unittest.TestCase):
                     associations_audit.main()
                 (another / "associations" / "manifest.json").unlink()
                 (another / "associations").rmdir()
-                another.rmdir() if False else None
                 linked = apps / "linked"
                 linked.symlink_to(app_a, target_is_directory=True)
                 with self.assertRaisesRegex(SystemExit, "must not be a symlink"):
