@@ -37,23 +37,23 @@ A Foundation CI executa esse modo, que produz **apenas evidência de candidatos 
 
 ## G1 — contratos declarados versus SDK público pinado
 
-A mesma etapa Foundation que já verifica o SHA-256 de \`platform-sdk.lock.json\` agora executa uma auditoria **offline sobre o bundle já verificado**, sem baixar uma segunda cópia e sem criar catálogo paralelo. \`tools/verify_app_sdk_compatibility.py\` reutiliza o inventário/ownership do auditor G0 e o validador de compatibilidade do builder canônico.
+A mesma etapa Foundation que já verifica o SHA-256 de `platform-sdk.lock.json` agora executa uma auditoria **offline sobre o bundle já verificado**, sem baixar uma segunda cópia e sem criar catálogo paralelo. `tools/verify_app_sdk_compatibility.py` reutiliza o inventário/ownership do auditor G0 e o validador de compatibilidade do builder canônico.
 
-\`\`\`sh
+```sh
 # Testes locais com bundle sintético: não acessam a rede.
 python3 -m unittest tests/test_app_sdk_compatibility.py
 
 # Gate real: verifica o bundle público do commit pinado e cruza todos os apps.
 python3 tools/verify_platform_sdk.py
-\`\`\`
+```
 
-O gate compara cada requisito \`requires\` de \`apps/<id>/compatibility.json\` (ou descriptor canônico de migration) com os contratos \`id/major\` realmente publicados no **bundle pinado**:
+O gate compara cada requisito `requires` de `apps/<id>/compatibility.json` (ou descriptor canônico de migration) com os contratos `id/major` realmente publicados no **bundle pinado**:
 
 - Requisito **obrigatório** sem major compatível: CI falha fechada e informa o app e contrato faltante.
 - Requisito **opcional** ausente: fica explícito na matriz e na contagem de lacunas, sem converter opcional em obrigatório.
-- App sem descriptor (Studio) e alvo sem source: \`not-assessed\`, não \`pass\`.
-- \`provides\` do app não é interpretado como uma API da plataforma, nem usado para conceder permissões.
-- O relatório \`ordax.app-sdk-compatibility-audit/1\` inclui o commit do lock e estados por app; nenhuma lista de apps ou majors foi copiada para o código de CI.
+- App sem descriptor (Studio) e alvo sem source: `not-assessed`, não `pass`.
+- `provides` do app não é interpretado como uma API da plataforma, nem usado para conceder permissões.
+- O relatório `ordax.app-sdk-compatibility-audit/1` inclui o commit do lock e estados por app; nenhuma lista de apps ou majors foi copiada para o código de CI.
 
 **Limite de evidência:** contrato *publicado no SDK* não significa host que o implementa, grant efetivo, execução do runtime, assinatura, instalação, rollback ou ativação. Essas provas continuam com seus owners e testes específicos. A compatibilidade histórica do Notes não é reescrita: o gate avalia somente seu descriptor de distribuição canônico.
 
