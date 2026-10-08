@@ -2,7 +2,7 @@ const COMPONENT_RUNTIME_SCHEMA="ordax.component-runtime/1";
 const SURFACE_SCHEMA="ordax.surface-render-lifecycle/5";
 const FILE_SPACE_SCHEMA="ordax.file-space/11";
 const APP_ACTIVATION_SCHEMA="ordax.app-activation/1";
-const VERSION="0.1.0";
+const VERSION="0.2.0";
 const STYLE_URL=new URL("../assets/pdf-viewer.css",import.meta.url).href;
 
 function validPath(v){return typeof v==="string"&&v.startsWith("/")&&!v.includes("\0")&&!v.split("/").includes("..")&&/\.pdf$/i.test(v);}
