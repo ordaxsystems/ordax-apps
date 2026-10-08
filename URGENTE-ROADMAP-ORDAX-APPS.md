@@ -21,6 +21,30 @@
 
 **Documento executável:** [MVP MÍNIMO — todos os aplicativos](docs/MVP-MINIMO-TODOS-APPS.md). O Store candidate unsigned não autoriza instalação; as políticas MVP/Stable, catálogo verificado e lifecycle de produção pertencem ao OrdaX OS.
 
+## Trilho empresarial compartilhado — fundação Financeiro (08/10/2026)
+
+A solicitação de reutilizar aplicativos genéricos em centenas de nichos
+(Pizzaria, Impressão 3D, Varejo etc.) **não cria apps por profissão**.
+`apps/finance/src/domain/ledger.mjs` inicia a implementação do domínio de
+fluxo de caixa, com centavos inteiros, histórico imutável, escopo declarado e
+testes de revisão/estorno. O source é preparação **não distribuível**, pois
+não possui manifesto, runtime, compatibilidade ou dados persistentes.
+
+**Bloqueio externo verificável:** `ordax.app-data/1` publicado atualmente
+suporta `ownerScope=device`, não autoriza dados financeiros multiempresa.
+A escrita e o lançamento de Finanças, Vendas ou Estoque ficam bloqueados
+até existir um port público empresarial por owner/Space com grants,
+persistência transacional e prova de isolamento/revogação. Não criar
+App Data paralelo, autenticação ad hoc, nem substituir o próximo marco de
+20 apps do MVP por candidatos inventados. Os 20 alvos existentes e o piso
+de 13 candidatos não mudam nesta etapa.
+
+SSOT técnico e próximos gates: [`apps/finance/README.md`](apps/finance/README.md).
+O aplicativo de Vendas deverá ser proprietário de pedidos; Estoque, de
+movimentações de quantidade; Finanças, de movimentos financeiros. A
+integração futura será mediada por actions/eventos idempotentes do SDK,
+não pela cópia de dados entre apps ou Profiles.
+
 ## 1. Decisão de produto
 
 **Criar experiências OrdaX próprias sempre que a integração profunda ao sistema for o diferencial.** Reutilizar bibliotecas, protocolos e serviços open source quando reduzirem custo e risco, sem copiar marca, UX proprietária, código incompatível ou criar uma segunda autoridade da plataforma.
