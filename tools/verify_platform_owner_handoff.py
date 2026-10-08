@@ -21,6 +21,12 @@ NEW_OWNER = "ordaxsystems"
 PLATFORM_NAME = "prototipo-ordax-os"
 CANONICAL_APPS = "ordaxsystems/ordax-apps"
 IMMUTABLE_PLATFORM_ID = "1371063347"
+# The workspace migration contract selects exactly one owner at a time.
+# The future slug is not authorized until the physical GitHub identity matches.
+POST_TRANSFER_PLATFORM_TARGETS = frozenset({
+    f"{NEW_OWNER}/{PLATFORM_NAME}",
+    f"{NEW_OWNER}/ordax-os",
+})
 SOURCE_PATHS = ("tools/", "apps/", ".github/workflows/", "sdk/")
 ACTIVE_DOCS = frozenset({
     "docs/ARCHITECTURE.md",
@@ -43,9 +49,11 @@ def validate(workspace: dict, lock: dict) -> dict:
     migration = workspace.get("repository_migration")
     if not isinstance(migration, dict):
         raise ValueError("missing namespace transfer policy")
+    target = migration.get("target_platform_repository")
+    if target not in POST_TRANSFER_PLATFORM_TARGETS:
+        raise ValueError("unrecognized platform rename destination")
     expected = {
         "canonical_repository": CANONICAL_APPS,
-        "target_platform_repository": f"{NEW_OWNER}/{PLATFORM_NAME}",
         "current_runtime_repository": "ordaxsystems/ordax-runtime",
         "target_runtime_repository": "ordaxsystems/ordax-runtime",
         "current_control_plane_repository": "ordaxsystems/ordax-control-plane",
@@ -67,7 +75,7 @@ def validate(workspace: dict, lock: dict) -> dict:
         raise ValueError("OrdaX Apps own migration state drifted")
 
     current = migration.get("current_platform_repository")
-    if current not in (f"{OLD_OWNER}/{PLATFORM_NAME}", expected["target_platform_repository"]):
+    if current not in (f"{OLD_OWNER}/{PLATFORM_NAME}", target):
         raise ValueError("unrecognized physical platform repository")
     if workspace.get("platform_repository") != current:
         raise ValueError("workspace platform owner differs from migration SSOT")
@@ -86,7 +94,7 @@ def validate(workspace: dict, lock: dict) -> dict:
     return {
         "phase": "pre-transfer" if current.startswith(f"{OLD_OWNER}/") else "post-transfer-source",
         "current_platform": current,
-        "target_platform": expected["target_platform_repository"],
+        "target_platform": target,
         "platform_repository_id": IMMUTABLE_PLATFORM_ID,
         "sdk_commit": lock["commit"],
         "sdk_sha256": lock["sha256"],
@@ -200,7 +208,9 @@ def evaluate(root: Path) -> dict:
 
 def verify_physical_owner(state: dict) -> bool:
     """Verify immutable GitHub identity, never infer authority from redirects."""
-    target = f"{NEW_OWNER}/{PLATFORM_NAME}"
+    target = state.get("target_platform")
+    if target not in POST_TRANSFER_PLATFORM_TARGETS:
+        raise ValueError("invalid physical platform destination")
     if state.get("source_conformance_after_transfer") is not True:
         raise ValueError("source contracts must be post-transfer before physical verification")
     if state.get("current_platform") != target or state.get("platform_repository_id") != IMMUTABLE_PLATFORM_ID:
