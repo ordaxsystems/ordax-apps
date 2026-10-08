@@ -200,6 +200,74 @@ class StoreArtifactBundleTests(unittest.TestCase):
         self.assertEqual(list(self.root.glob(".partial.stage-*")), [])
 
 
+    def test_raced_blob_owned_by_another_writer_must_never_be_deleted(self):
+        import errno
+        from unittest.mock import patch
+
+        payload = b"our verified bytes"
+        digest = hashlib.sha256(payload).hexdigest()
+        target = self.root / bundle.blob_relative_path(digest)
+        competitor = b"a different publisher's bytes"
+        original_open = bundle.os.open
+        races = []
+
+        def competing_open(path, flags, mode=0o777):
+            if Path(path) == target and flags & bundle.os.O_EXCL:
+                target.write_bytes(competitor)
+                races.append(True)
+                raise FileExistsError(errno.EEXIST, "existing concurrent blob", str(path))
+            return original_open(path, flags, mode)
+
+        with patch.object(bundle.os, "open", side_effect=competing_open):
+            with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "does not match"):
+                bundle._write_blob(target, payload)
+        self.assertEqual(races, [True])
+        self.assertEqual(target.read_bytes(), competitor, "must not unlink another publisher's blob")
+
+    def test_raced_blob_with_identical_content_is_only_read_not_rewritten(self):
+        import errno
+        from unittest.mock import patch
+
+        payload = b"identical content-addressed data"
+        target = self.root / bundle.blob_relative_path(hashlib.sha256(payload).hexdigest())
+        original_open = bundle.os.open
+
+        def competing_open(path, flags, mode=0o777):
+            if Path(path) == target and flags & bundle.os.O_EXCL:
+                target.write_bytes(payload)
+                raise FileExistsError(errno.EEXIST, "another writer won", str(path))
+            return original_open(path, flags, mode)
+
+        with patch.object(bundle.os, "open", side_effect=competing_open):
+            bundle._write_blob(target, payload)
+        self.assertEqual(target.read_bytes(), payload)
+
+    def test_failed_owned_blob_write_removes_only_our_new_file(self):
+        from unittest.mock import patch
+
+        payload = b"owned incomplete blob"
+        target = self.root / bundle.blob_relative_path(hashlib.sha256(payload).hexdigest())
+        with patch.object(bundle.os, "fsync", side_effect=OSError("injected disk failure")):
+            with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "persistence failed"):
+                bundle._write_blob(target, payload)
+        self.assertFalse(target.exists(), "our incomplete blob must not remain")
+
+    def test_failed_exclusive_open_does_not_remove_external_destination(self):
+        from unittest.mock import patch
+
+        payload = b"not written"
+        target = self.root / bundle.blob_relative_path(hashlib.sha256(payload).hexdigest())
+        original_open = bundle.os.open
+        def blocked_open(path, flags, mode=0o777):
+            if Path(path) == target and flags & bundle.os.O_EXCL:
+                raise PermissionError("injected exclusive open denied")
+            return original_open(path, flags, mode)
+
+        with patch.object(bundle.os, "open", side_effect=blocked_open):
+            with self.assertRaisesRegex(bundle.StoreArtifactBundleError, "creation failed"):
+                bundle._write_blob(target, payload)
+        self.assertFalse(target.exists())
+
     def test_atomic_no_replace_survives_destination_race_after_exists_check(self):
         from unittest.mock import patch
 

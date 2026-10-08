@@ -126,6 +126,18 @@ publicação respeita o vencedor, não remove os arquivos alheios e limpa apenas
 seu próprio staging. Isso não transfere assinatura, trust ou autoridade de
 instalação.
 
+### Propriedade de blobs e deduplicação concorrente
+
+A persistência dos blobs de conteúdo endereçado por SHA-256 utiliza
+`os.open(O_CREAT | O_EXCL)` como limite real de propriedade. Se o arquivo
+já existe — inclusive quando foi criado entre a inspeção de diretório e
+a abertura exclusiva — o exportador **somente lê e verifica** os bytes
+contra tamanho e SHA-256. Se houver colisão, falha fechada sem apagar ou
+reescrever o arquivo do outro processo. Somente um arquivo efetivamente
+criado pela própria operação pode ser removido após falha na gravação ou
+no `fsync`. Essa regra é distinta, mas complementar, ao commit atômico
+do diretório completo: a deduplicação não pode remover artefatos alheios.
+
 ### Solicitações de assinatura externa
 
 Cada app elegível e validado também recebe `signing-requests/<app>.component-signing-request.json` no **mesmo** diretório de pré-publicação e no **mesmo** commit. Esse artefato `ordax-apps.component-signing-request/1` é derivado **somente** do handoff já comparado ao verificador canônico do ZIP e descritores, usando as identidades `sourceHandoff.sha256`, `inputs.package/release/compatibility` e o domínio de trust fornecidos por esse handoff. Não há outro inventário, validador de pacote ou receita alternativa de release.
