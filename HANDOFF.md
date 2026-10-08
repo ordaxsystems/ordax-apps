@@ -1,6 +1,6 @@
 # OrdaX Apps — canonical handoff
 
-Atualizado em 2026-10-06.
+Atualizado em 2026-10-08.
 
 ## Estado canônico
 
@@ -12,6 +12,8 @@ Owners separados:
 - apps first-party portáteis: `ordaxsystems/ordax-apps`;
 - Runtime/Device Host/Computer Control: `ordaxsystems/ordax-runtime`;
 - Control Plane, Product MCP, grants e conectores de provider: `ordaxsystems/ordax-control-plane`.
+
+A identidade dos repositórios é governada por `ordax-apps.workspace.json` (`repository_migration`); este handoff é descritivo e não substitui esse SSOT. A transferência do repositório de apps para `ordaxsystems/ordax-apps` foi concluída; redirects históricos não são dependências operacionais.
 
 O repositório histórico `washingtonmsdj/mcp-blender` não é owner canônico de produto, Runtime, Control Plane ou connector e não deve voltar a ser fonte de implementação.
 
@@ -155,6 +157,10 @@ O contrato rejeita:
 - objetos não JSON-safe.
 
 A publicação pública entrou no App SDK 1.8 por `prototipo-ordax-os#1144`. O consumidor foi atualizado em `ordax-apps#61`, preservando v1/v2 como compatibilidade e provando v3 contra o commit/digest pinado.
+
+## Estado dos candidatos ao MVP (2026-10-08)
+
+O conjunto de 20 alvos, incluindo 13 candidatos com fonte e handoff público não assinado, o Studio com distribuição própria e seis apps ainda platform-owned, é derivado de `ordax-apps.workspace.json` e das migrations pelo verificador `tools/verify_mvp_app_minimum.py`. Não manter uma segunda lista de inventário neste handoff: consultar `docs/MVP-MINIMO-TODOS-APPS.md` para os gates e executar o verificador no commit desejado. O workflow de Store exporta os 13 ZIPs e sidecars verificados como artefatos **não assinados**; CI bem-sucedida não concede publicação, instalação nem ativação.
 
 ## Próxima ordem de trabalho
 
