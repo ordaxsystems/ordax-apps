@@ -64,6 +64,18 @@ divergentes, claims extras e conteúdo não UTF-8 falham fechados — mesmo que
 o pacote tenha sido re-hasheado internamente. O verificador não precisa da
 árvore original de source; assinatura/trust continuam exclusivos da plataforma.
 
+## Snapshot único na verificação e na emissão do release
+
+`build.py verify_package` lê o ZIP recebido uma vez, com o limite de pacote
+existente, e usa exatamente esses bytes para inspecionar os membros do ZIP,
+validar o conteúdo e calcular a identidade SHA-256 devolvida ao caller.
+A validação nunca reabre o nome do arquivo, que poderia apontar para outro
+conteúdo durante a operação. `render_release_v2` deriva o hash do manifesto
+dos bytes canônicos que o verificador já comparou com o ZIP, em vez de abrir
+novamente o arquivo. Isso impede que um `release.json` vincule o digest de
+um ZIP ao manifesto de outro. A garantia é de consistência de snapshot;
+não substitui assinatura externa nem o lifecycle do OrdaX OS.
+
 ## Snapshot consistente e publicação atômica do builder
 
 `build.py build` lê cada arquivo-fonte incluído **uma vez** para o snapshot
