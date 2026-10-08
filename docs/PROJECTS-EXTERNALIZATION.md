@@ -2,7 +2,7 @@
 
 Projects is the second first-party extraction pilot after Notes.
 
-After the physical GitHub transfer, the source of truth remains `ordaxsystems/prototipo-ordax-os/system/apps/projects` (the same repository ID and Git commit history). No source is copied into `apps/projects` until the public SDK boundary is merged and a reproducible source snapshot is pinned.
+After the physical GitHub transfer, the source of truth remains `ordaxsystems/prototipo-ordax-os/system/apps/projects` (the same repository ID and Git commit history). No source is copied into `apps/projects` until Gate A proves removal of the platform-owned implementation. SDK 1.9 is already merged and an immutable, reproducible source baseline is pinned; this **does not authorize copying**.
 
 ## Why Projects is the second pilot
 
@@ -32,7 +32,7 @@ Projects must never receive raw Device Agent execution. Capability discovery is 
 
 Platform PR #1168 publishes the bounded cloud-link data contract plus the read-only `ordax.project-cloud-links-reader/1` in App SDK 1.9. The mutable owner module is excluded from the SDK; the injected facade has no `link()`, `unlink()` or `destroy()`. Projects also consumes the narrowed public Device Capabilities contract.
 
-Until that PR is merged and its exact merge commit is pinned, the source snapshot remains intentionally unset.
+Platform PR #1168 is **merged** at immutable commit `d2abf5a6012c744ba66568d4ff27661913c81489`. `migrations/projects.source-snapshot.json` pins the 9 app-owned files and their exact Git blob SHAs from that commit in the canonical physical repository `ordaxsystems/prototipo-ordax-os`. These nine blobs were rechecked against the remote Git tree and remained byte-identical in the platform `main` as inspected on 2026-10-08. This is a review baseline, **not** a Gate A removal proof, production trust proof or authorization to make `apps/projects` a second owner.
 
 ## Ownership
 
@@ -54,9 +54,9 @@ Stays in the platform:
 
 Gate A — platform preparation:
 
-1. merge the public SDK 1.9 boundary;
-2. pin exact source commit and file inventory;
-3. remove embedded Projects implementation and repo-local catalog/composition imports;
+1. [concluído] merge the public SDK 1.9 boundary;
+2. [concluído] pin exact SDK 1.9 source commit and file inventory as pre-cutover baseline;
+3. [pendente] remove embedded Projects implementation and repo-local catalog/composition imports;
 4. prove OrdaX boots with Projects absent while delivery policy still advertises it as on-demand/store-only.
 
 Gate B — source ownership:
