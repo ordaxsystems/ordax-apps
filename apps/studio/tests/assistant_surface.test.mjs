@@ -17,11 +17,12 @@ function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, widt
       dataset: {},
       classList: {toggle() {}},
       setAttribute() {},
-      addEventListener() {},
+      listeners:new Map(),
+      addEventListener(name,handler) {this.listeners.set(name,handler);},
       getBoundingClientRect() {return bounds;},
     };
   }
-  for (const id of ['assistantWebMode','assistantLocalMode','assistantWebSlot','localAssistantPanel','assistantWebStatus','assistantWebFallback']) {
+  for (const id of ['assistantWebMode','assistantLocalMode','assistantWebSlot','localAssistantPanel','assistantWebStatus','assistantWebFallback','assistantWebRetry']) {
     elements.set(id,node(id));
   }
   const document = {
@@ -197,4 +198,33 @@ test('late provider navigation result never updates hidden or local assistant', 
   const hiddenBefore=ui.elements.get('assistantWebStatus').textContent;
   event({detail:{state:'error'}});
   assert.equal(ui.elements.get('assistantWebStatus').textContent,hiddenBefore);
+});
+
+test('native WebView2 initialization failure is recoverable without login claims or secrets', () => {
+  const sent=[];
+  const ui=fixture(payload=>{sent.push(payload);return true;});
+  const nativeEvent=ui.windowEvents.get('ordax-assistant-surface-status');
+  nativeEvent({detail:{state:'unavailable',error:'access token',url:'https://secret.invalid'}});
+  const fallback=ui.elements.get('assistantWebFallback');
+  assert.equal(fallback.dataset.transport,'unavailable');
+  const message=ui.elements.get('assistantWebStatus').textContent;
+  assert.match(message,/WebView2/);
+  assert.doesNotMatch(message,/access token|secret.invalid|autenticad/);
+  const before=sent.length;
+  const retry=ui.elements.get('assistantWebRetry');
+  assert.equal(typeof retry.listeners.get('click'),'function');
+  retry.listeners.get('click')();
+  assert.equal(sent.length,before+1);
+  assert.equal(sent.at(-1).active,true);
+  assert.equal(fallback.dataset.transport,'pending');
+});
+
+test('unavailable WebView2 statuses cannot reopen a hidden or local provider overlay', () => {
+  const ui=fixture(()=>true);
+  const event=ui.windowEvents.get('ordax-assistant-surface-status');
+  ui.window.ordaxAssistantSurface.setMode('local');
+  ui.flush();
+  const old=ui.elements.get('assistantWebStatus').textContent;
+  event({detail:{state:'unavailable'}});
+  assert.equal(ui.elements.get('assistantWebStatus').textContent,old);
 });
