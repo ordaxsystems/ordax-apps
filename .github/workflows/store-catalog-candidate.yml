@@ -12,6 +12,7 @@ on:
       - 'tools/audit_app_readiness.py'
       - 'tools/verify_mvp_app_minimum.py'
       - 'tests/test_mvp_app_minimum.py'
+      - 'tests/test_platform_lifecycle_lock.py'
       - 'tools/app-package/**'
       - 'tests/test_store_catalog_candidate.py'
       - 'tests/test_store_catalog_inventory.py'
@@ -30,6 +31,7 @@ on:
       - 'tools/audit_app_readiness.py'
       - 'tools/verify_mvp_app_minimum.py'
       - 'tests/test_mvp_app_minimum.py'
+      - 'tests/test_platform_lifecycle_lock.py'
       - 'tools/app-package/**'
       - 'tests/test_store_catalog_candidate.py'
       - 'tests/test_store_catalog_inventory.py'
@@ -64,13 +66,12 @@ jobs:
           lock = json.loads(Path("migrations/notes.platform-lifecycle.lock.json").read_text(encoding="utf-8"))
           repository = lock.get("repository")
           commit = lock.get("commit")
-          assert repository == "washingtonmsdj/prototipo-ordax-os"
+          workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
+          canonical_repository = workspace["platform_repository"]
+          assert repository == canonical_repository == "ordaxsystems/prototipo-ordax-os"
           assert isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
           assert lock.get("tool_path") == "tools/runtime-component-channel"
           assert lock.get("authority") == "none"
-          workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
-          canonical_repository = workspace["platform_repository"]
-          assert canonical_repository == "ordaxsystems/prototipo-ordax-os"
           print(f"repository={canonical_repository}")
           print(f"commit={commit}")
           PY
@@ -115,7 +116,7 @@ jobs:
 
       - name: Guard minimum entry for every planned app and current Store candidate set
         run: |
-          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py
+          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py tests/test_platform_lifecycle_lock.py
           python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
 
       - name: Build canonical platform verifier

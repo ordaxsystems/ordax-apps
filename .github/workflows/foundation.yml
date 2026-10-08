@@ -49,7 +49,7 @@ jobs:
 
       - name: Guard minimum MVP entry for all canonical app targets
         run: |
-          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py
+          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py tests/test_platform_lifecycle_lock.py
           # Quality floor is a count (not an app-id inventory). Raise as apps
           # enter the catalog; never reduce it to mask missing candidates.
           python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
@@ -188,13 +188,12 @@ jobs:
           lock = json.loads(Path("migrations/notes.platform-lifecycle.lock.json").read_text(encoding="utf-8"))
           repository = lock.get("repository")
           commit = lock.get("commit")
-          assert repository == "washingtonmsdj/prototipo-ordax-os"
+          workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
+          canonical_repository = workspace["platform_repository"]
+          assert repository == canonical_repository == "ordaxsystems/prototipo-ordax-os"
           assert isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
           assert lock.get("tool_path") == "tools/runtime-component-channel"
           assert lock.get("authority") == "none"
-          workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
-          canonical_repository = workspace["platform_repository"]
-          assert canonical_repository == "ordaxsystems/prototipo-ordax-os"
           print(f"repository={canonical_repository}")
           print(f"commit={commit}")
           PY
