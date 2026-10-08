@@ -18,6 +18,7 @@ import stat
 import sys
 import zipfile
 from pathlib import Path, PurePosixPath
+from typing import Callable
 
 _association_spec = importlib.util.spec_from_file_location(
     "ordax_app_package_association_contract",
@@ -884,15 +885,19 @@ def literal_module_specifiers(source: str) -> list[str]:
     return specifiers
 
 
-def validate_source_graph(app_root: Path, files: list[PurePosixPath]) -> None:
+def validate_source_graph_from_payloads(
+    files: list[PurePosixPath],
+    load_payload: Callable[[PurePosixPath], bytes],
+) -> None:
     available = {p.as_posix() for p in files}
     if "src/runtime.mjs" not in available:
         raise AppPackageError("external app must provide src/runtime.mjs")
 
     total = 0
     for relative in files:
-        path = app_root / Path(*relative.parts)
-        payload = read_regular(path, max_bytes=MAX_FILE_BYTES, label=relative.as_posix())
+        payload = load_payload(relative)
+        if not isinstance(payload, bytes) or not 0 < len(payload) <= MAX_FILE_BYTES:
+            raise AppPackageError(f"package source file size is invalid: {relative}")
         total += len(payload)
         if total > MAX_TOTAL_BYTES:
             raise AppPackageError("app package source exceeds total size bound")
@@ -923,6 +928,18 @@ def validate_source_graph(app_root: Path, files: list[PurePosixPath]) -> None:
                 raise AppPackageError(
                     f"portable app package is not self-contained: {relative} -> {specifier}"
                 )
+
+
+def validate_source_graph(app_root: Path, files: list[PurePosixPath]) -> None:
+    """Apply the same source rules to live files as the received ZIP bytes."""
+    validate_source_graph_from_payloads(
+        files,
+        lambda relative: read_regular(
+            app_root / Path(*relative.parts),
+            max_bytes=MAX_FILE_BYTES,
+            label=relative.as_posix(),
+        ),
+    )
 
 
 def package_path(app_id: str, relative: PurePosixPath) -> str:
@@ -1134,6 +1151,34 @@ def verify_package(package: Path) -> tuple[dict, bytes]:
             raise AppPackageError("package archive file set does not match manifest")
         if manifest["entrypoint"] not in seen:
             raise AppPackageError("package entrypoint is not bound by manifest")
+
+        # A recomputed ZIP/file hash is not proof of source identity or
+        # self-containment. Reconstruct the exact package manifest from the
+        # included app.json and apply the same JavaScript import graph rules
+        # used when the package was first built.
+        app_path = f"system/apps/{app_id}/app.json"
+        if app_path not in seen:
+            raise AppPackageError("package app.json is missing")
+        try:
+            app_value = json.loads(archive.read(app_path).decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise AppPackageError("package app.json is invalid UTF-8 JSON") from exc
+        if not isinstance(app_value, dict):
+            raise AppPackageError("package app.json must be an object")
+        app = validate_app_manifest(app_value)
+        if manifest != render_package_manifest(app, manifest["source_commit"], records):
+            raise AppPackageError("package manifest identity differs from validated app.json")
+
+        prefix = f"system/apps/{app_id}/"
+        relative_files = sorted(
+            (PurePosixPath(path[len(prefix):]) for path in seen),
+            key=lambda path: path.as_posix(),
+        )
+        validate_source_graph_from_payloads(
+            relative_files,
+            lambda relative: archive.read(prefix + relative.as_posix()),
+        )
+
         ai_path = f"system/apps/{app_id}/ai/manifest.json"
         if ai_path not in seen:
             raise AppPackageError("package AI manifest is missing")
