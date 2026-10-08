@@ -109,8 +109,8 @@ def main() -> None:
     snapshot = plan.get("source_snapshot") or {}
     if snapshot.get("state") != "pinned":
         fail("Projects source snapshot must be pinned after SDK merge")
-    if snapshot.get("repository") != plan["source_repository_current"]:
-        fail("Projects source snapshot repository is not canonical")
+    if snapshot.get("repository") != "ordaxsystems/prototipo-ordax-os":
+        fail("Projects pinned historical source snapshot repository drifted")
     if snapshot.get("commit") != sdk["platform_merge_commit"]:
         fail("Projects source snapshot must pin the reviewed SDK merge commit")
     if snapshot.get("inventory_file") != "migrations/projects.source-snapshot.json":
