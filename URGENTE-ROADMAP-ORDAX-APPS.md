@@ -416,7 +416,7 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Testes de concorrência/rejeição obsoleta, mismatch de identidade, unmount com read pendente, input inválido e rollback de subscriptions são incorporados a `apps/text-viewer/tests/*.test.mjs`, já descobertos pela Foundation CI; não há duplicação de testes no YAML.
 - **Limite:** não concede grants, não implementa um segundo File Space, não cria host/sandbox/install/updater. Escopo restrito à segurança da apresentação app-owned. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
-### Execução G2.4 — Image Viewer: File Space assíncrono e object URLs (PR em revisão)
+### Execução G2.4 — Image Viewer: File Space assíncrono e object URLs (PR #141)
 
 - Defeito real: listagens `fileSpace.list()` antigas podiam sobrescrever os irmãos/navegação após a abertura de outra imagem ou após a desmontagem; uma falha de DOM após a criação da URL temporária não a revogava imediatamente.
 - Correção no **source canônico** `apps/image-viewer/src/runtime.mjs`: sequência única para listagem e preview, bloqueio de commits obsoletos/fora do ciclo de vida, validação do caminho/MIME/bytes de preview e limpeza idempotente de subscriptions, listeners, DOM e URLs.
