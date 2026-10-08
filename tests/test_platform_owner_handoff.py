@@ -29,7 +29,7 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
             (ROOT / "platform-sdk.lock.json").read_text(encoding="utf-8")
         )
         cls.old = mod.OLD_OWNER + "/" + mod.PLATFORM_NAME
-        cls.target = mod.NEW_OWNER + "/" + mod.PLATFORM_NAME
+        cls.target = cls.workspace["repository_migration"]["target_platform_repository"]
 
     def test_repointed_source_does_not_claim_physical_transfer_or_signature(self):
         state = mod.validate(self.workspace, self.lock)
