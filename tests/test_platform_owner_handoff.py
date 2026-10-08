@@ -166,6 +166,26 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source contracts"):
                 mod.verify_physical_owner({**report, "source_conformance_after_transfer": False})
 
+    def test_live_migration_source_is_operational_not_historical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            folder = root / "migrations"
+            folder.mkdir()
+            path = folder / "activity.externalization.json"
+            base = {
+                "source_of_truth_state": "platform-until-cutover",
+                "source_cutover_allowed": False,
+                "source_repository_current": self.old,
+            }
+            path.write_text(json.dumps(base), encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+            self.assertIn("migrations/activity.externalization.json",
+                          mod.stale_references(root, self.old)["operational_paths"])
+            base["source_repository_current"] = self.target
+            path.write_text(json.dumps(base), encoding="utf-8")
+            self.assertEqual(mod.stale_references(root, self.old)["operational_paths"], [])
+
     def test_unknown_owner_or_unsigned_sdk_lock_fails(self):
         bad = copy.deepcopy(self.workspace)
         bad["repository_migration"]["current_platform_repository"] = "other/repo"

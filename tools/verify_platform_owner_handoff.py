@@ -137,6 +137,17 @@ def verified_historical_assertions(root: Path, path: str, old: str) -> bool:
     return actual == expected
 
 
+def live_externalization_source(root: Path, path: str) -> bool:
+    """Live platform-owned sources in migration plans are operational SSOT."""
+    if not (path.startswith("migrations/") and path.endswith(".externalization.json")):
+        return False
+    data = json.loads((root / path).read_text(encoding="utf-8"))
+    return (
+        data.get("source_of_truth_state") == "platform-until-cutover"
+        and data.get("source_cutover_allowed") is False
+    )
+
+
 def stale_references(root: Path, legacy: str) -> dict:
     grep = subprocess.run(
         ["git", "grep", "--null", "-l", "-I", "-F", legacy, "--"],
@@ -153,11 +164,13 @@ def stale_references(root: Path, legacy: str) -> dict:
     # workflows is treated as operational after the physical transfer.
     operational = sorted(
         path for path in paths
-        if operational_path(path) and not verified_historical_assertions(root, path, legacy)
+        if (operational_path(path) or live_externalization_source(root, path))
+        and not verified_historical_assertions(root, path, legacy)
     )
     archival = sorted(
         path for path in paths
-        if not operational_path(path) or verified_historical_assertions(root, path, legacy)
+        if not (operational_path(path) or live_externalization_source(root, path))
+        or verified_historical_assertions(root, path, legacy)
     )
     return {"operational_paths": operational, "historical_paths": archival}
 
