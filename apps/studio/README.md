@@ -18,7 +18,7 @@ O repositório histórico `mcp-blender` não é fonte para novas features e est�
 ## Assistente Web nativo (handshake de transporte)
 
 - A coluna central usa `presentAssistantSurface(payload)` no **host injetado**, sem iframe, scraping, controle por coordenadas nem credenciais no app.
-- O Studio transmite somente visibilidade, provider inicial `chatgpt`, geometria recortada ao viewport e dimensões do viewport. Um retorno `true` do host confirma apenas o **recebimento do envelope**, não login, carregamento ou disponibilidade do ChatGPT.
+- O Studio transmite somente visibilidade, geometria recortada ao viewport e dimensões do viewport. A seleção e URL do provedor pertencem ao catálogo do host nativo; o Studio não envia um `provider` fixo que possa divergir dessa seleção. Um retorno `true` do host confirma apenas o **recebimento do envelope**, não login, carregamento ou disponibilidade do ChatGPT.
 - Host ausente, retorno diferente de `true` ou exceção deixam o navegador Web explicitamente indisponível e permitem nova tentativa por `refresh`. O envelope recusado nunca é cacheado como entrega bem-sucedida.
 - Ao sair do modo Web, ocultar a página ou fechar o Studio, o app solicita desativação da superfície nativa; a IA local/API mantém seleção e conversas no SSOT já publicado pelo host.
 - O navegador gerenciado por projeto (`browser.*`) é **outra capacidade** e não substitui a superfície Web do assistente. Extensões para Grok/Claude/Gemini dependem de catálogo, aprovação e adaptação comprovados nos owners dos hosts/provedores; não existem flags de integração fictícia nesta UI.
