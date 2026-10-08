@@ -81,7 +81,7 @@ class AssociationSingleSourceTests(unittest.TestCase):
             with self.assertRaisesRegex(builder.AppPackageError, "association manifest"):
                 builder.build_package(app, fixture_module.SOURCE_COMMIT, root / "fixture.zip")
             (app / "associations" / "manifest.json").symlink_to(app / "absent.json")
-            with self.assertRaisesRegex(builder.AppPackageError, "association manifest"):
+            with self.assertRaisesRegex(builder.AppPackageError, "regular non-symlink"):
                 builder.build_package(app, fixture_module.SOURCE_COMMIT, root / "fixture.zip")
 
     def test_package_receipt_rejects_semantic_forgery_even_with_recomputed_sha(self):
