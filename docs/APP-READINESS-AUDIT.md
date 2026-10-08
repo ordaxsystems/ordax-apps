@@ -110,6 +110,20 @@ Os testes provocam respostas fora de ordem, rejeições antigas, resposta de cam
 
 **Escopo:** esta prova é uma fixture mínima de DOM e portas públicas, não um host de produção ou mecanismo de revogação do File Space. Os grants, isolamento, sandbox, install, rollback, signing e ativação continuam no owner da plataforma. O app não tenta cancelar ou substituir a autoridade do broker: apenas ignora resultados obsoletos.
 
+## G2.4 — Visualizador de Imagens: concorrência de leituras, URLs temporárias e desmontagem
+
+O `image-viewer` recebia duas respostas independentes do File Space: `list()` para navegação e `readImagePreview()` para bytes. Apenas o preview era parcialmente protegido por sequência, permitindo que uma listagem antiga sobrescrevesse a navegação da imagem atual. A desmontagem também não impedia atualizações da lista, e falhas depois de `URL.createObjectURL()` podiam deixar uma URL temporária viva até uma futura abertura.
+
+O runtime canônico agora guarda a mesma sequência da ativação para **ambas** as operações assíncronas, não aplica resultados depois do `destroy()` e invalida leituras pendentes. Há revogação imediata de URL em falhas após sua criação; `destroy()` é idempotente e remove callbacks, listeners, imagem/URL, DOM e stylesheet inclusive quando a subscrição do host falha. O retorno do File Space precisa preservar `preview.path`, bytes e MIME de imagem suportada, rejeitando previews incorretos. A lista de irmãos ignora nomes de arquivo que tentariam atravessar diretórios.
+
+```sh
+node --test apps/image-viewer/tests/*.test.mjs
+```
+
+Testes do runtime real com **fixture estreita local** cobrem respostas de listagens fora de ordem, falha de preview antigo, fechamento durante leitura, revogação de URLs antigas e em falhas da UI, MIME/identidade inválidos e rollback de subscriptions. Eles já são descobertos pela etapa atual de utilitários da Foundation CI.
+
+**Limite de evidência:** o File Space continua sendo a autoridade exclusiva de grants e de validação de dados. Estes testes não implementam outro broker ou sandbox, não substituem um navegador/host real e não autorizam assinatura, Store, install, rollback ou produção.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.
