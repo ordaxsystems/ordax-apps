@@ -248,7 +248,7 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
         alias.symlink_to(self.root, target_is_directory=True)
         self.output = alias / "export"
         with self.assertRaisesRegex(
-            handoff.UnsignedHandoffError, "may not traverse symlinks",
+            handoff.UnsignedHandoffError, "must be a real directory",
         ):
             self.materialize()
         self.assertFalse((self.root / "export").exists())
