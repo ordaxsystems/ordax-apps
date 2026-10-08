@@ -151,11 +151,11 @@ def stale_references(root: Path, legacy: str) -> dict:
     # workflows is treated as operational after the physical transfer.
     operational = sorted(
         path for path in paths
-        if operational_path(path) and not verified_historical_assertions(root, path, old)
+        if operational_path(path) and not verified_historical_assertions(root, path, legacy)
     )
     archival = sorted(
         path for path in paths
-        if not operational_path(path) or verified_historical_assertions(root, path, old)
+        if not operational_path(path) or verified_historical_assertions(root, path, legacy)
     )
     return {"operational_paths": operational, "historical_paths": archival}
 
