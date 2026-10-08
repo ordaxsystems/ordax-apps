@@ -16,6 +16,7 @@ import os
 import re
 import stat
 import sys
+import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Callable
@@ -946,16 +947,16 @@ def package_path(app_id: str, relative: PurePosixPath) -> str:
     return f"system/apps/{app_id}/{relative.as_posix()}"
 
 
-def source_records(app_root: Path, app_id: str, files: list[PurePosixPath]) -> list[dict]:
-    records = []
-    for relative in files:
-        payload = (app_root / Path(*relative.parts)).read_bytes()
-        records.append({
-            "path": package_path(app_id, relative),
-            "sha256": sha256_bytes(payload),
-            "size": len(payload),
-        })
-    return records
+def source_records(
+    app_id: str,
+    files: list[PurePosixPath],
+    payloads: dict[PurePosixPath, bytes],
+) -> list[dict]:
+    return [{
+        "path": package_path(app_id, relative),
+        "sha256": sha256_bytes(payloads[relative]),
+        "size": len(payloads[relative]),
+    } for relative in files]
 
 
 def zip_info(name: str) -> zipfile.ZipInfo:
@@ -1057,22 +1058,50 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
         except (association_contract.AssociationContractError, OSError) as exc:
             raise AppPackageError(f"association manifest is invalid: {exc}") from exc
     files = discover_app_files(app_root)
-    validate_source_graph(app_root, files)
-    records = source_records(app_root, app["id"], files)
+    # Freeze every source byte once. Validation, manifest hashes and ZIP writing
+    # must use the identical snapshot even if the source tree changes while
+    # CI is preparing the artifact.
+    payloads = {
+        relative: read_regular(
+            app_root / Path(*relative.parts),
+            max_bytes=MAX_FILE_BYTES,
+            label=relative.as_posix(),
+        )
+        for relative in files
+    }
+    validate_source_graph_from_payloads(files, lambda relative: payloads[relative])
+    records = source_records(app["id"], files, payloads)
     manifest = render_package_manifest(app, source_commit, records)
     manifest_bytes = canonical_json_bytes(manifest)
 
+    # Never expose a partial ZIP at its final output path. Stage on the same
+    # filesystem and publish by exclusive hard link; an already-created output
+    # cannot be replaced, including if another writer races the final commit.
     output.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
-        archive.writestr(zip_info(PACKAGE_MANIFEST_NAME), manifest_bytes)
-        for relative in files:
-            archive.writestr(
-                zip_info(package_path(app["id"], relative)),
-                (app_root / Path(*relative.parts)).read_bytes(),
-            )
-    if output.stat().st_size <= 0 or output.stat().st_size > MAX_PACKAGE_BYTES:
-        output.unlink(missing_ok=True)
-        raise AppPackageError("built package size is outside allowed bounds")
+    fd, staging_name = tempfile.mkstemp(
+        prefix=f".{output.name}.stage-", suffix=".zip", dir=output.parent,
+    )
+    os.close(fd)
+    staging = Path(staging_name)
+    try:
+        with zipfile.ZipFile(staging, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr(zip_info(PACKAGE_MANIFEST_NAME), manifest_bytes)
+            for relative in files:
+                archive.writestr(
+                    zip_info(package_path(app["id"], relative)),
+                    payloads[relative],
+                )
+        if staging.stat().st_size <= 0 or staging.stat().st_size > MAX_PACKAGE_BYTES:
+            raise AppPackageError("built package size is outside allowed bounds")
+        if output.exists() or output.is_symlink():
+            raise AppPackageError("refusing to overwrite package")
+        os.chmod(staging, 0o644)
+        try:
+            os.link(staging, output)
+        except FileExistsError as exc:
+            raise AppPackageError("refusing to overwrite package") from exc
+    finally:
+        staging.unlink(missing_ok=True)
     return manifest, manifest_bytes
 
 
