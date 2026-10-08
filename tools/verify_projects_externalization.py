@@ -147,7 +147,7 @@ def main() -> None:
         if not isinstance(name, str) or not (
             name.startswith("system/apps/projects/") or
             name == "system/services/i18n/catalog/projects.mjs"
-        ) or ".." in name.split("/") or "\\\\" in name:
+        ) or ".." in name.split("/") or "\\" in name:
             fail("Projects source inventory path is outside the app ownership boundary")
         if not isinstance(blob_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", blob_sha):
             fail("Projects source inventory must pin exact lowercase Git blob SHAs")
