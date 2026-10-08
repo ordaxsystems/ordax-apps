@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
@@ -1161,7 +1162,10 @@ def _verify_archive_structure(archive: zipfile.ZipFile) -> list[str]:
 
 def verify_package(package: Path) -> tuple[dict, bytes]:
     payload = read_regular(package, max_bytes=MAX_PACKAGE_BYTES, label="app package")
-    with zipfile.ZipFile(package, "r") as archive:
+    # ZIP structure, content hashes and the returned package digest must
+    # refer to the same bounded snapshot. Reopening the path after read_regular
+    # would allow a different archive to be swapped in between the two reads.
+    with zipfile.ZipFile(io.BytesIO(payload), "r") as archive:
         names = _verify_archive_structure(archive)
         manifest_bytes = archive.read(PACKAGE_MANIFEST_NAME)
         try:
@@ -1332,8 +1336,9 @@ def render_release_v2(package: Path, compatibility_path: Path) -> tuple[dict, by
     if len(compatibility_bytes) > MAX_COMPATIBILITY_BYTES:
         raise AppPackageError("compatibility descriptor exceeds size bound")
 
-    with zipfile.ZipFile(package, "r") as archive:
-        manifest_bytes = archive.read(PACKAGE_MANIFEST_NAME)
+    # verify_package already compared the embedded manifest with these exact
+    # canonical bytes. Do not reopen a path that may now point to another ZIP.
+    manifest_bytes = canonical_json_bytes(manifest)
 
     release = {
         "$schema": RELEASE_SCHEMA_V2,
