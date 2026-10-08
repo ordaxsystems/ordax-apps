@@ -240,7 +240,7 @@ def create_handoff(
             raise UnsignedHandoffError(
                 "refusing to overwrite an existing public handoff directory"
             )
-        os.rename(staging, output_root)
+        bundle_module.publish_directory_exclusive(staging, output_root)
         committed = True
     finally:
         if not committed:
