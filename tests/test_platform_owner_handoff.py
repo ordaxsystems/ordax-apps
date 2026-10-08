@@ -228,7 +228,7 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "source contracts"):
             mod.verify_physical_owner({**verified, "source_conformance_after_transfer": False})
         wrong = copy.deepcopy(renamed)
-        wrong["repository_migration"]["target_platform_repository"] = self.target
+        wrong["repository_migration"]["target_platform_repository"] = "ordaxsystems/prototipo-ordax-os"
         with self.assertRaisesRegex(ValueError, "unrecognized physical platform"):
             mod.validate(wrong, lock)
         wrong = copy.deepcopy(renamed)
