@@ -161,7 +161,7 @@ jobs:
       - name: Checkout pinned OrdaX OS production trust policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          repository: washingtonmsdj/prototipo-ordax-os
+          repository: ordaxsystems/prototipo-ordax-os
           ref: ef319ba940fa36c81699b73ba4195a178891e70f
           path: .ordax-platform-trust
           persist-credentials: false
@@ -185,7 +185,10 @@ jobs:
           assert isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
           assert lock.get("tool_path") == "tools/runtime-component-channel"
           assert lock.get("authority") == "none"
-          print(f"repository={repository}")
+          workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
+          canonical_repository = workspace["platform_repository"]
+          assert canonical_repository == "ordaxsystems/prototipo-ordax-os"
+          print(f"repository={canonical_repository}")
           print(f"commit={commit}")
           PY
 
