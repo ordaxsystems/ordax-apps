@@ -111,17 +111,10 @@ def stale_references(root: Path, legacy: str) -> dict:
         for part in grep.stdout.split(b"\x00")
         if part
     ]
-    # This test fixture asserts the old owner must be rejected; it is not a
-    # runtime dependency. Do not exempt any other tools/tests or app source.
-    negative_test = "tests/test_platform_owner_handoff.py"
-    operational = sorted(
-        path for path in paths
-        if operational_path(path) and path != negative_test
-    )
-    archival = sorted(
-        path for path in paths
-        if not operational_path(path) or path == negative_test
-    )
+    # No file-wide exemptions: any stale reference in tools, apps or
+    # workflows is treated as operational after the physical transfer.
+    operational = sorted(path for path in paths if operational_path(path))
+    archival = sorted(path for path in paths if not operational_path(path))
     return {"operational_paths": operational, "historical_paths": archival}
 
 
