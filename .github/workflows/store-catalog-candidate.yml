@@ -9,6 +9,7 @@ on:
       - 'tools/audit_app_readiness.py'
       - 'tools/verify_mvp_app_minimum.py'
       - 'tests/test_mvp_app_minimum.py'
+      - 'tests/test_mvp_platform_ownership.py'
       - 'migrations/*.compatibility.json'
       - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
@@ -26,6 +27,7 @@ on:
       - 'tools/audit_app_readiness.py'
       - 'tools/verify_mvp_app_minimum.py'
       - 'tests/test_mvp_app_minimum.py'
+      - 'tests/test_mvp_platform_ownership.py'
       - 'migrations/*.compatibility.json'
       - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
@@ -110,7 +112,7 @@ jobs:
 
       - name: Guard minimum entry for every planned app and current Store candidate set
         run: |
-          python3 -m unittest tests/test_mvp_app_minimum.py
+          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py
           python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
 
       - name: Build canonical platform verifier
