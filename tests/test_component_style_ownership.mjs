@@ -132,5 +132,5 @@ test("every portable runtime owns style releases rather than borrowing another m
     );
     checked += 1;
   }
-  assert.ok(checked >= 11, "regression floor: basic portable stylesheet owners");
+  assert.ok(checked >= 12, "regression floor: basic portable stylesheet owners");
 });
