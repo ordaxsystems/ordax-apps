@@ -79,11 +79,20 @@ function inspect(runtime, query) {
   );
 }
 
-function createdNote(runtime, beforeIds) {
+function createdNote(runtime, beforeIds, expectedProjectId) {
   const document = snapshotDocument(runtime);
-  return document.notes.find((note) => !beforeIds.has(note.id))
-    ?? document.notes.find((note) => note.id === document.selectedNoteId)
-    ?? null;
+  const additions = document.notes.filter((note) => !beforeIds.has(note.id));
+  if (additions.length !== 1) return null;
+  const [created] = additions;
+  // Never reuse the previously selected note as a fallback. If createNote()
+  // was a no-op (for example, the note limit was reached), changing that
+  // existing note would silently mutate the wrong user document.
+  if (
+    created.deletedAt !== null
+    || created.projectId !== expectedProjectId
+    || document.selectedNoteId !== created.id
+  ) return null;
+  return created;
 }
 
 export function createApplicationActionProvider(notesRuntime) {
@@ -117,7 +126,7 @@ export function createApplicationActionProvider(notesRuntime) {
             const projectId = resolveProject(runtime, args.project);
             const beforeIds = new Set(snapshotDocument(runtime).notes.map((note) => note.id));
             runtime.createNote(projectId);
-            const created = createdNote(runtime, beforeIds);
+            const created = createdNote(runtime, beforeIds, projectId);
             if (!created) return result("failed", "A nota não pôde ser criada");
             const patch = {};
             if (args.title !== undefined) patch.title = args.title;
