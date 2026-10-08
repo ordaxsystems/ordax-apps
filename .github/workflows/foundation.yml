@@ -49,13 +49,6 @@ jobs:
           python3 -m unittest tests/test_audit_app_readiness.py
           python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 
-      - name: Guard minimum MVP entry for all canonical app targets
-        run: |
-          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py tests/test_platform_lifecycle_lock.py
-          # Quality floor is a count (not an app-id inventory). Raise as apps
-          # enter the catalog; never reduce it to mask missing candidates.
-          python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
-
       - name: Prove real candidate-package runtime imports and missing-host-port denial
         run: |
           python3 -m unittest tests/test_packaged_runtime_smoke.py
@@ -81,51 +74,6 @@ jobs:
         run: |
           python3 -m unittest tests/test_provider_syntax_ssot.py
           python3 tools/verify_app_actions.py --check-provider-syntax
-
-      - name: Prove minimum behavior and package for every canonical Store candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-
-          # SSOT: exactly the same eligible component-slot entries consumed by
-          # Store catalog generation. No second hand-maintained utility list.
-          inventory="$(python3 tools/app-package/catalog_inventory.py --format tsv)"
-          if [[ -z "$inventory" ]]; then
-            echo "No canonical Store candidates were returned" >&2
-            exit 1
-          fi
-          source_commit="$(git rev-parse HEAD)"
-          while IFS=$'\t' read -r app app_root compatibility; do
-            [[ -n "$app" && -n "$app_root" && -n "$compatibility" ]]
-            [[ "$app_root" == "apps/$app" ]] || {
-              echo "Noncanonical candidate root: $app_root" >&2
-              exit 1
-            }
-
-            # A valid manifest/ZIP is not a functional app. Every candidate
-            # must have behavior tests, including newly catalogued utilities.
-            behavior_tests=("$app_root"/tests/*.test.mjs)
-            if (( ${#behavior_tests[@]} == 0 )); then
-              echo "$app: no executable behavior tests for the MVP" >&2
-              exit 1
-            fi
-            node --check "$app_root/src/runtime.mjs"
-            node --test "${behavior_tests[@]}"
-
-            out="$RUNNER_TEMP/ordax-mvp-$app"
-            mkdir -p "$out/release"
-            python3 tools/app-package/build.py build \
-              --app-root "$app_root" \
-              --source-commit "$source_commit" \
-              --compatibility "$compatibility" \
-              --package-out "$out/$app.zip" \
-              --release-dir "$out/release"
-            python3 tools/app-package/build.py verify \
-              --package "$out/$app.zip" \
-              --release "$out/release/$app.release.json" \
-              --compatibility "$out/release/$app.compatibility.json"
-          done <<< "$inventory"
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
@@ -322,3 +270,67 @@ jobs:
         run: |
           python3 tools/verify_studio_distribution.py
           python3 tests/studio_distribution_contract_test.py
+
+  mvp-app-functional-minimum:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact app source for functional MVP proof
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Guard minimum MVP entry for all canonical app targets
+        run: |
+          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py tests/test_platform_lifecycle_lock.py
+          # Quality floor is a count (not an app-id inventory). Raise as apps
+          # enter the catalog; never reduce it to mask missing candidates.
+          python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
+
+      - name: Prove minimum behavior and package for every canonical Store candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          # SSOT: exactly the same eligible component-slot entries consumed by
+          # Store catalog generation. No second hand-maintained utility list.
+          inventory="$(python3 tools/app-package/catalog_inventory.py --format tsv)"
+          if [[ -z "$inventory" ]]; then
+            echo "No canonical Store candidates were returned" >&2
+            exit 1
+          fi
+          source_commit="$(git rev-parse HEAD)"
+          while IFS=$'\t' read -r app app_root compatibility; do
+            [[ -n "$app" && -n "$app_root" && -n "$compatibility" ]]
+            [[ "$app_root" == "apps/$app" ]] || {
+              echo "Noncanonical candidate root: $app_root" >&2
+              exit 1
+            }
+
+            # A valid manifest/ZIP is not a functional app. Every candidate
+            # must have behavior tests, including newly catalogued utilities.
+            behavior_tests=("$app_root"/tests/*.test.mjs)
+            if (( ${#behavior_tests[@]} == 0 )); then
+              echo "$app: no executable behavior tests for the MVP" >&2
+              exit 1
+            fi
+            node --check "$app_root/src/runtime.mjs"
+            node --test "${behavior_tests[@]}"
+
+            out="$RUNNER_TEMP/ordax-mvp-$app"
+            mkdir -p "$out/release"
+            python3 tools/app-package/build.py build \
+              --app-root "$app_root" \
+              --source-commit "$source_commit" \
+              --compatibility "$compatibility" \
+              --package-out "$out/$app.zip" \
+              --release-dir "$out/release"
+            python3 tools/app-package/build.py verify \
+              --package "$out/$app.zip" \
+              --release "$out/release/$app.release.json" \
+              --compatibility "$out/release/$app.compatibility.json"
+          done <<< "$inventory"
+
