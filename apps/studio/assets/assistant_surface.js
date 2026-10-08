@@ -67,7 +67,6 @@ function publish(){
   post({
     type:'ordax-assistant-surface',
     active:true,
-    provider:'chatgpt',
     rect:{left:rect.left,top:rect.top,width:rect.width,height:rect.height},
     viewport:{width:window.innerWidth,height:window.innerHeight}
   });
