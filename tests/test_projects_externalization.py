@@ -9,6 +9,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+FUTURE = "ordaxsystems/ordax-os"
+PRE_RENAME = "ordaxsystems/prototipo-ordax-os"
+PLANS = ("activity", "assistant", "files", "internet", "network", "projects")
 VERIFIER = ROOT / "tools" / "verify_projects_externalization.py"
 spec = importlib.util.spec_from_file_location("ordax_projects_externalization", VERIFIER)
 project_verifier = importlib.util.module_from_spec(spec)
