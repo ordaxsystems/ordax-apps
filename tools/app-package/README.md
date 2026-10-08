@@ -55,6 +55,16 @@ A exportação completa é preparada fora do caminho público em um diretório t
 
 Cada app elegível e validado também recebe `signing-requests/<app>.component-signing-request.json` no **mesmo** diretório de pré-publicação e no **mesmo** commit. Esse artefato `ordax-apps.component-signing-request/1` é derivado **somente** do handoff já comparado ao verificador canônico do ZIP e descritores, usando as identidades `sourceHandoff.sha256`, `inputs.package/release/compatibility` e o domínio de trust fornecidos por esse handoff. Não há outro inventário, validador de pacote ou receita alternativa de release.
 
+### Verificação independente no recebimento
+
+Após baixar ou transferir o diretório público de pré-publicação, o consumidor executa:
+
+```sh
+python3 tools/app-package/verify_store_unsigned_export.py --root /caminho/para/store-prepublication-handoff
+```
+
+O verificador **não exige a árvore de source `apps/` ou `migrations/`**: valida o catálogo, payload v1, todas as identidades de pacote/release/compatibilidade com o verificador canônico existente, título do manifesto autenticado dentro do ZIP, bytes exatos dos handoffs e pedidos de assinatura. Rejeita symlinks, arquivos ausentes ou extras (inclusive material efêmero de CI e chaves), e não altera os artefatos. A CI executa essa verificação após a exportação e **antes** do upload. O conjunto recebido ainda não é confiável como assinatura de produção; verificação de bytes não substitui autenticação do produtor ou a trust anchor canônica do OrdaX OS.
+
 A solicitação descreve o envelope Ed25519 esperado, mas não contém chave privada, token do signer, assinatura ou envelope pronto. O assinador **externo e autorizado** deverá revalidar todas as identidades e produzir um envelope verificável; `render_store_catalog_publication_v2.py` já exige o verificador canônico da plataforma antes de aceitar qualquer envelope e o lifecycle continua responsável por instalação e promoção. A CI prova uma solicitação para **cada** app elegível, derivando a lista de `catalog_inventory.py` sem IDs fixos. Apenas gerar a solicitação não muda nenhum gate de produção.
 
 Essa é apenas uma garantia de integridade/completude do handoff público. Não assina, publica, instala, autoriza, ativa ou altera a política de distribuição do sistema. O Studio e apps sem cutover/compatibilidade continuam fora desse inventário.

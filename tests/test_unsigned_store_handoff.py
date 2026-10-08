@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 import sys
 import tempfile
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools" / "app-package"))
 
 import materialize_unsigned_store_handoff as handoff  # noqa: E402
+import verify_store_unsigned_export as receipt  # noqa: E402
 import render_store_catalog_candidate as candidate_tool  # noqa: E402
 import render_store_catalog_publication as publication_tool  # noqa: E402
 
@@ -199,6 +201,72 @@ class UnsignedStoreHandoffTests(unittest.TestCase):
             self.assertNotIn(secret, joined)
         self.assertFalse(list(self.output.rglob("*.pem")))
         self.assertFalse(list(self.output.rglob("*.runtime-component-envelope.json")))
+
+    def test_receiver_accepts_complete_export_without_original_app_sources(self):
+        self.materialize()
+        shutil.rmtree(self.apps_root)
+        shutil.rmtree(self.migrations_root)
+        result = receipt.verify_export(self.output)
+        self.assertEqual(result, {
+            "app_count": 2,
+            "file_count": 12,
+            "signing_requests": 2,
+            "source_commit": self.commit,
+        })
+
+    def test_receiver_rejects_modified_signing_request_and_missing_request(self):
+        self.materialize()
+        request = self.output / "signing-requests" / "notes.component-signing-request.json"
+        value = json.loads(request.read_text(encoding="utf-8"))
+        value["authority"]["signing"] = True
+        write_json(request, value)
+        with self.assertRaisesRegex(receipt.ExportReceiptError, "signing request"):
+            receipt.verify_export(self.output)
+        request.unlink()
+        with self.assertRaisesRegex(receipt.ExportReceiptError, "missing, unexpected"):
+            receipt.verify_export(self.output)
+
+    def test_receiver_rejects_extra_files_and_symlink_entries(self):
+        self.materialize()
+        extra = self.output / "private-key.pem"
+        extra.write_text("unexpected private material", encoding="utf-8")
+        with self.assertRaisesRegex(receipt.ExportReceiptError, "missing, unexpected"):
+            receipt.verify_export(self.output)
+        extra.unlink()
+        extra.symlink_to(self.output / "store.catalog-candidate.json")
+        with self.assertRaisesRegex(receipt.ExportReceiptError, "symbolic link"):
+            receipt.verify_export(self.output)
+
+    def test_receiver_rejects_forged_catalog_title_even_if_v1_is_rebound(self):
+        self.materialize()
+        candidate_path = self.output / "store.catalog-candidate.json"
+        candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+        candidate["entries"][0]["title"] = "Forged title"
+        write_json(candidate_path, candidate)
+        _, candidate_bytes = receipt.publication_v2.read_candidate(candidate_path)
+        _, publication_bytes = publication_tool.render_publication(
+            candidate=candidate, candidate_bytes=candidate_bytes, sequence=1,
+        )
+        (self.output / "store.catalog-publication-v1.json").write_bytes(publication_bytes)
+        with self.assertRaisesRegex(receipt.ExportReceiptError, "catalog entry is not bound"):
+            receipt.verify_export(self.output)
+
+    def test_receiver_rejects_changed_zip_after_export(self):
+        self.materialize()
+        package = self.output / "artifacts" / "notes" / "notes.zip"
+        with zipfile.ZipFile(package, "a") as archive:
+            archive.writestr("forged.dat", b"extra")
+        with self.assertRaisesRegex(receipt.ExportReceiptError, "package/descriptor"):
+            receipt.verify_export(self.output)
+
+    def test_receiver_rejects_noncanonical_v1_publication(self):
+        self.materialize()
+        path = self.output / "store.catalog-publication-v1.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
+        value["authority"]["installation"] = True
+        write_json(path, value)
+        with self.assertRaisesRegex(receipt.ExportReceiptError, "unsigned publication v1"):
+            receipt.verify_export(self.output)
 
     def test_modified_package_fails_without_partial_output(self):
         (self.artifacts / "notes/notes.zip").write_bytes(b"tampered-package")

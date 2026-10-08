@@ -109,7 +109,8 @@ jobs:
             tools/app-package/render_store_catalog_publication.py \
             tools/app-package/render_store_catalog_publication_v2.py \
             tools/app-package/materialize_store_artifact_bundle.py \
-            tools/app-package/materialize_unsigned_store_handoff.py
+            tools/app-package/materialize_unsigned_store_handoff.py \
+            tools/app-package/verify_store_unsigned_export.py
           python3 -m unittest \
             tests/test_store_catalog_inventory.py \
             tests/test_store_catalog_candidate.py \
@@ -400,50 +401,11 @@ jobs:
           test ! -e "$out/store.catalog-publication-v2.protocol-proof.json"
           test ! -e "$out/store-artifact-bundle.protocol-proof"
 
-      - name: Prove one zero-authority signing request per catalog candidate
+      - name: Verify complete exported handoff as an untrusted receiver
         run: |
-          python3 - <<'PY'
-          import hashlib
-          import importlib.util
-          import json
-          import os
-          from pathlib import Path
-
-          root = Path(os.environ["RUNNER_TEMP"]) / "ordax-store-catalog-proof" / "store-prepublication-handoff"
-          spec = importlib.util.spec_from_file_location(
-              "catalog_inventory", Path("tools/app-package/catalog_inventory.py"),
-          )
-          inventory = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(inventory)
-          app_ids = [
-              entry["appId"] for entry in inventory.discover_catalog_apps(
-                  Path("apps"), Path("migrations"),
-              )
-          ]
-          requests = sorted(p.name for p in (root / "signing-requests").glob("*.json"))
-          assert requests == [f"{app}.component-signing-request.json" for app in app_ids]
-          for app in app_ids:
-              unsigned = (root / "unsigned" / f"{app}.unsigned-candidate.json").read_bytes()
-              request = json.loads(
-                  (root / "signing-requests" / f"{app}.component-signing-request.json").read_bytes()
-              )
-              handoff = json.loads(unsigned)
-              assert request["$schema"] == "ordax-apps.component-signing-request/1"
-              assert request["sourceHandoff"]["sha256"] == hashlib.sha256(unsigned).hexdigest()
-              assert request["component"] == handoff["component"]
-              assert request["inputs"] == handoff["artifacts"]
-              assert request["trust"]["requiredKeyId"] == handoff["trust"]["requiredKeyId"]
-              assert request["authority"] == dict.fromkeys(
-                  ("signing", "publication", "installation", "activation", "rollback"), False,
-              )
-              assert request["safety"]["containsPrivateKeyMaterial"] is False
-              assert request["safety"]["privateKeyPathAllowed"] is False
-              assert request["safety"]["remoteSignerCredentialAllowed"] is False
-          print("ORDAX_EXTERNAL_SIGNING_REQUEST_BATCH=PASS")
-          print(f"SIGNING_REQUESTS={len(requests)}")
-          print("EXTERNAL_SIGNATURES=REQUIRED")
-          print("SIGNING_AUTHORITY=NO")
-          PY
+          set -euo pipefail
+          python3 tools/app-package/verify_store_unsigned_export.py \
+            --root "$RUNNER_TEMP/ordax-store-catalog-proof/store-prepublication-handoff"
 
       - name: Upload public-only pre-publication artifacts
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
