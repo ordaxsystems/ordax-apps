@@ -39,6 +39,18 @@ A verificação de **13** é um piso de regressão, não uma contagem manual de 
 4. **P1: melhorias individuais após baseline.** Ajustar UI, idioma, performance, funcionalidades extras e novas versões dos aplicativos; bug de segurança/corrupção de dados continua P0 e não é adiado.
 5. **P1: aceite global.** CI verde, nenhuma fonte duplicada, todos os 20 alvos classificados sem falso positivo, release assinado somente por operador autorizado, e testes de integração no host da plataforma dos aplicativos que serão anunciados como disponíveis.
 
+## Entrega dos pacotes de CI — candidato público não assinado
+
+O workflow \`Store Catalog Candidate\` agora materializa uma **única pasta de handoff público somente-leitura**. A ferramenta \`tools/app-package/materialize_unsigned_store_handoff.py\` usa o próprio candidato de catálogo e os sidecars já verificados (SSOT), revalida SHA-256/tamanho de cada artefato e entrega, por aplicativo elegível, o ZIP não assinado, release/compatibility e o handoff \`unsigned-candidate\`. Também entrega o candidato de catálogo e a publicação **v1 não assinada**. O artefato de CI é retido por 14 dias no GitHub Actions.
+
+O material de prova com chaves efêmeras, trust de CI, envelopes temporários de assinatura e publicação v2 de protocolo continua removido **antes** dessa cópia. O exportador copia somente uma allowlist positiva de arquivos e falha em qualquer identidade ou digest divergente; não faz glob de todos os arquivos de build. Nenhum artefato de CI concede confiança canônica, autoridade de Store, instalação, promoção ou rollback.
+
+**Uso:** reproduzir e conferir os artefatos mínimos dos 13 candidatos no mesmo commit; a cadeia oficial de assinatura, verificação de catálogo v2 e lifecycle de produção pertence à plataforma e permanece um gate separado. A existência de ZIP ou handoff público não coloca automaticamente o app na Loja e não altera o status do Studio ou dos seis alvos com source platform-owned.
+
+\`\`\`sh
+python3 -m unittest tests/test_unsigned_store_handoff.py
+\`\`\`
+
 ## Gates que não podem ser confundidos
 
 - **Alvo planejado**: id existe no workspace — não significa código.

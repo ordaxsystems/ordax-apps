@@ -19,6 +19,7 @@ on:
       - 'tests/test_store_catalog_publication.py'
       - 'tests/test_store_catalog_publication_v2.py'
       - 'tests/test_store_artifact_bundle.py'
+      - 'tests/test_unsigned_store_handoff.py'
       - '.github/workflows/store-catalog-candidate.yml'
   pull_request:
     branches: [main]
@@ -38,6 +39,7 @@ on:
       - 'tests/test_store_catalog_publication.py'
       - 'tests/test_store_catalog_publication_v2.py'
       - 'tests/test_store_artifact_bundle.py'
+      - 'tests/test_unsigned_store_handoff.py'
       - '.github/workflows/store-catalog-candidate.yml'
   workflow_dispatch:
 
@@ -106,13 +108,15 @@ jobs:
             tools/app-package/render_store_catalog_candidate.py \
             tools/app-package/render_store_catalog_publication.py \
             tools/app-package/render_store_catalog_publication_v2.py \
-            tools/app-package/materialize_store_artifact_bundle.py
+            tools/app-package/materialize_store_artifact_bundle.py \
+            tools/app-package/materialize_unsigned_store_handoff.py
           python3 -m unittest \
             tests/test_store_catalog_inventory.py \
             tests/test_store_catalog_candidate.py \
             tests/test_store_catalog_publication.py \
             tests/test_store_catalog_publication_v2.py \
-            tests/test_store_artifact_bundle.py
+            tests/test_store_artifact_bundle.py \
+            tests/test_unsigned_store_handoff.py
 
       - name: Guard minimum entry for every planned app and current Store candidate set
         run: |
@@ -379,12 +383,27 @@ jobs:
           test ! -e "$out/store.catalog-publication-v2.protocol-proof.json"
           test ! -e "$out/store-artifact-bundle.protocol-proof"
 
+      - name: Materialize complete public-only unsigned component handoff
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          python3 tools/app-package/materialize_unsigned_store_handoff.py \
+            --candidate "$out/store.catalog-candidate.json" \
+            --publication "$out/store.catalog-publication-v1.json" \
+            --artifacts-root "$out/artifacts" \
+            --handoffs-dir "$out" \
+            --apps-root apps \
+            --out-root "$out/store-prepublication-handoff"
+          test -z "$(find "$out/store-prepublication-handoff" -type f \
+            \( -name '*.pem' -o -name '*.key' -o -name '*.runtime-component-envelope.json' -o -iname '*trust*' \) -print -quit)"
+          test ! -e "$out/runtime-components-ci-trust.json"
+          test ! -e "$out/store.catalog-publication-v2.protocol-proof.json"
+          test ! -e "$out/store-artifact-bundle.protocol-proof"
+
       - name: Upload public-only pre-publication artifacts
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: ordax-store-catalog-prepublication-${{ github.sha }}
-          path: |
-            ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-candidate.json
-            ${{ runner.temp }}/ordax-store-catalog-proof/store.catalog-publication-v1.json
+          path: ${{ runner.temp }}/ordax-store-catalog-proof/store-prepublication-handoff/
           if-no-files-found: error
           retention-days: 14
