@@ -84,6 +84,18 @@ node --test apps/calculator/tests/*.test.mjs
 
 **Limite:** a porta e o DOM usados nesses testes são fixtures estritas locais, não um browser real nem um host instalado no OrdaX OS. O teste não comprova isolamento de sandbox, pipeline de render real, grants, gerenciamento de processo, install, update, rollback, Store ou ativação em produção. Não se soma como `host_mounts_verified` no relatório de candidatos de pacote; a validação em host real continua pendente.
 
+## G2.2 — Relógio: sessão de primeiro plano independente da interface
+
+O runtime do `clock` anteriormente declarava `stopwatchElapsed`/`timerRemaining` dentro de `mountView()`. Alterar o idioma destruía e recriava a view, reiniciando o cronômetro e o temporizador. A implementação agora mantém uma **única sessão app-owned** em `apps/clock/src/clock-session.mjs` durante toda a montagem do aplicativo. Vistas podem ser destruídas e reconstruídas pela porta pública `ordax.surface-render-lifecycle/5` sem reiniciar o tempo, estado de execução, duração configurada ou indicação de conclusão.
+
+A sessão usa `performance.now()` monotônico apenas para medir passagem de tempo durante a vida do app, sem serviço de background ou novo contrato de sistema. Ela é a única fonte do estado de tempo do app; a UI não mantém uma segunda contagem. Ao desmontar, o runtime libera o intervalo de renderização de 100 ms, os listeners e a inscrição de localização. A inicialização faz cleanup caso o `subscribe` falhe.
+
+```sh
+node --test apps/clock/tests/*.test.mjs
+```
+
+Os testes do modelo usam um clock injetável e determinístico para verificar cronômetro rodando/pausado, temporizador configurado e expirado, troca de view sem perda de progresso, retomada, reset e validação de duração. A Foundation já executa essa suite por descoberta de testes. **Limites:** esses testes não constituem prova de renderização real com host OrdaX, instalação, notifications ou agendamento em segundo plano; esses gates continuam separados.
+
 ## SSOT também na Foundation CI
 
 A CI **não mantém uma segunda lista de apps ou de providers**. A sintaxe dos arquivos JSON é verificada por descoberta do filesystem (árvores `apps/` e `migrations/`), enquanto a identidade e os contratos são validados pelo workspace, pelo package builder e pelos manifests canônicos. O verificador de Application Actions agora executa `node --check` exclusivamente nos módulos declarados em `actions/providers/manifest.json` e rejeita módulos `.mjs` extras ou symlinks no diretório de providers.

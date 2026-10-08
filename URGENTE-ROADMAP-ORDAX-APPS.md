@@ -402,6 +402,13 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - `mount` agora faz unwind em erro de inscrição/renderização e o stylesheet não permanece órfão após falha de carregamento.
 - **Limite de prova:** fixture não é um host de produção; continua pendente render em browser real, grants, lifecycle por app, assinatura e install/rollback de produção. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
+### Execução G2.2 — Clock: estado de cronômetro/temporizador separado da view (PR #139)
+
+- Foi identificado um bug real: ao mudar o idioma, `mountView()` recriava estados locais de cronômetro e temporizador; ambos reiniciavam sem solicitação do usuário.
+- Correção no **único source do app**: `apps/clock/src/clock-session.mjs` passa a ser o SSOT de tempo, estado pausado/rodando, duração configurada e conclusão. `apps/clock/src/runtime.mjs` recria somente a UI sobre a mesma sessão.
+- Novos testes determinísticos de cronômetro, pausa/retomada, vencimento, troca de view, limites de duração e ausência de reset implícito; já descobertos por `apps/clock/tests/*.test.mjs` na Foundation.
+- **Limite de prova:** uso apenas em primeiro plano; sem notifications/scheduling em background, host de produção ou lifecycle novo. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
+
 ## 13. Registro de alterações
 
 - **2026-10-08 — v0.1:** roadmap inicial criado a partir do inventário canônico de `ordax-apps`, documentação do SDK/trust e levantamento preliminar de oportunidades open source e apps com IA. **Não constitui relatório final de pesquisa externa nem autorização de ativação em produção.**

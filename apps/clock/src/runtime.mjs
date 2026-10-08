@@ -1,3 +1,5 @@
+import { createClockSession, formatStopwatch, formatTimer } from "./clock-session.mjs";
+
 const COMPONENT_RUNTIME_SCHEMA = "ordax.component-runtime/1";
 const SURFACE_SCHEMA = "ordax.surface-render-lifecycle/5";
 const VERSION = "0.3.0";
@@ -13,10 +15,7 @@ function labels(locale) {
     : {title:"Clock",local:"Local time",stopwatch:"Stopwatch",timer:"Timer",start:"Start",pause:"Pause",reset:"Reset",minutes:"Min",seconds:"Sec",finished:"Finished"};
 }
 async function styles(root){const d=root.ownerDocument;let link=d.querySelector('link[data-ordax-component-style="clock"]');if(link)return()=>{};link=d.createElement("link");link.rel="stylesheet";link.href=STYLE_URL;link.dataset.ordaxComponentStyle="clock";d.head.append(link);return()=>link.remove();}
-function formatStopwatch(ms){const minutes=Math.floor(ms/60000),seconds=Math.floor((ms%60000)/1000),tenths=Math.floor((ms%1000)/100);return `${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}.${tenths}`;}
-function formatTimer(ms){const total=Math.max(0,Math.ceil(ms/1000)),minutes=Math.floor(total/60),seconds=total%60;return `${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}`;}
-
-function mountView(root,lifecycle){
+function mountView(root,lifecycle,session){
   const d=root.ownerDocument,t=labels(lifecycle.localization.getLocale()),section=d.createElement("section");
   section.className="ordax-clock";
   section.innerHTML=`
@@ -40,31 +39,82 @@ function mountView(root,lifecycle){
   const time=section.querySelector("[data-time]"),date=section.querySelector("[data-date]");
   const sw=section.querySelector("[data-stopwatch]"),swToggle=section.querySelector("[data-sw-toggle]"),swReset=section.querySelector("[data-sw-reset]");
   const timer=section.querySelector("[data-timer]"),timerToggle=section.querySelector("[data-timer-toggle]"),timerReset=section.querySelector("[data-timer-reset]"),minInput=section.querySelector("[data-min]"),secInput=section.querySelector("[data-sec]"),timerState=section.querySelector("[data-timer-state]");
-  let swRunning=false,swElapsed=0,swStarted=0;
-  let timerRunning=false,timerRemaining=0,timerStarted=0;
+  const initial = session.snapshot();
+  minInput.value = String(Math.floor(initial.timerConfiguredMs / 60_000));
+  secInput.value = String(Math.floor((initial.timerConfiguredMs % 60_000) / 1_000));
 
-  const configuredMs=()=>{const m=Math.max(0,Math.min(999,Number(minInput.value)||0)),s=Math.max(0,Math.min(59,Number(secInput.value)||0));return (m*60+s)*1000;};
-  const currentTimerMs=()=>timerRunning?Math.max(0,timerRemaining-(performance.now()-timerStarted)):timerRemaining;
-  const render=()=>{
-    const now=new Date(),locale=lifecycle.localization.getLocale();
-    time.textContent=new Intl.DateTimeFormat(locale,{hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(now);
-    date.textContent=new Intl.DateTimeFormat(locale,{dateStyle:"full"}).format(now);
-    sw.textContent=formatStopwatch(swElapsed+(swRunning?performance.now()-swStarted:0));
-    const remaining=currentTimerMs();
-    timer.textContent=formatTimer(remaining);
-    if(timerRunning&&remaining<=0){timerRunning=false;timerRemaining=0;timerToggle.textContent=t.start;timerState.textContent=t.finished;section.dataset.timerFinished="true";}
+  const configuredMs = () => {
+    const minutes = Math.max(0, Math.min(999, Number(minInput.value) || 0));
+    const seconds = Math.max(0, Math.min(59, Number(secInput.value) || 0));
+    return Math.round((minutes * 60 + seconds) * 1_000);
   };
-  const tick=setInterval(render,100);render();
 
-  const onSwToggle=()=>{if(swRunning){swElapsed+=performance.now()-swStarted;swRunning=false;swToggle.textContent=t.start;}else{swStarted=performance.now();swRunning=true;swToggle.textContent=t.pause;}};
-  const onSwReset=()=>{swElapsed=0;swStarted=performance.now();render();};
-  const resetTimer=()=>{timerRunning=false;timerRemaining=configuredMs();timerStarted=performance.now();timerToggle.textContent=t.start;timerState.textContent="";delete section.dataset.timerFinished;render();};
-  const onTimerToggle=()=>{if(timerRunning){timerRemaining=currentTimerMs();timerRunning=false;timerToggle.textContent=t.start;}else{if(timerRemaining<=0)timerRemaining=configuredMs();if(timerRemaining<=0)return;timerStarted=performance.now();timerRunning=true;timerToggle.textContent=t.pause;timerState.textContent="";delete section.dataset.timerFinished;}render();};
-  const onTimerReset=()=>resetTimer();
-  const onTimerInput=()=>{if(!timerRunning)resetTimer();};
+  const render = () => {
+    const now = new Date(), locale = lifecycle.localization.getLocale();
+    const state = session.snapshot();
+    time.textContent = new Intl.DateTimeFormat(locale, {hour:"2-digit",minute:"2-digit",second:"2-digit"}).format(now);
+    date.textContent = new Intl.DateTimeFormat(locale, {dateStyle:"full"}).format(now);
+    sw.textContent = formatStopwatch(state.stopwatchElapsedMs);
+    timer.textContent = formatTimer(state.timerRemainingMs);
+    swToggle.textContent = state.stopwatchRunning ? t.pause : t.start;
+    timerToggle.textContent = state.timerRunning ? t.pause : t.start;
+    timerState.textContent = state.timerFinished ? t.finished : "";
+    if (state.timerFinished) section.dataset.timerFinished = "true";
+    else delete section.dataset.timerFinished;
+  };
 
-  swToggle.addEventListener("click",onSwToggle);swReset.addEventListener("click",onSwReset);timerToggle.addEventListener("click",onTimerToggle);timerReset.addEventListener("click",onTimerReset);minInput.addEventListener("input",onTimerInput);secInput.addEventListener("input",onTimerInput);resetTimer();
+  const onSwToggle = () => { session.toggleStopwatch(); render(); };
+  const onSwReset = () => { session.resetStopwatch(); render(); };
+  const onTimerToggle = () => { session.toggleTimer(); render(); };
+  const onTimerReset = () => { session.resetTimer(); render(); };
+  const onTimerInput = () => { session.setTimerDuration(configuredMs()); render(); };
+
+  swToggle.addEventListener("click",onSwToggle);swReset.addEventListener("click",onSwReset);timerToggle.addEventListener("click",onTimerToggle);timerReset.addEventListener("click",onTimerReset);minInput.addEventListener("input",onTimerInput);secInput.addEventListener("input",onTimerInput);
+  render();
+  const tick = setInterval(render,100);
 
   return()=>{clearInterval(tick);swToggle.removeEventListener("click",onSwToggle);swReset.removeEventListener("click",onSwReset);timerToggle.removeEventListener("click",onTimerToggle);timerReset.removeEventListener("click",onTimerReset);minInput.removeEventListener("input",onTimerInput);secInput.removeEventListener("input",onTimerInput);};
 }
-export const componentRuntime=Object.freeze({schema:COMPONENT_RUNTIME_SCHEMA,componentId:"clock",version:VERSION,async mount({root,surfaceLifecycle}={}){if(!root?.ownerDocument)throw new TypeError("Clock requires a mount root");const lifecycle=assertLifecycle(surfaceLifecycle),releaseStyles=await styles(root);let releaseView=mountView(root,lifecycle);const unsubscribe=lifecycle.localization.subscribe(()=>{releaseView();releaseView=mountView(root,lifecycle);});return Object.freeze({destroy(){unsubscribe?.();releaseView?.();root.replaceChildren();releaseStyles();}});}});
+export const componentRuntime = Object.freeze({
+  schema: COMPONENT_RUNTIME_SCHEMA,
+  componentId: "clock",
+  version: VERSION,
+  async mount({root, surfaceLifecycle} = {}) {
+    if (!root?.ownerDocument) throw new TypeError("Clock requires a mount root");
+    const lifecycle = assertLifecycle(surfaceLifecycle);
+    if (typeof lifecycle.localization.getLocale !== "function"
+      || typeof lifecycle.localization.subscribe !== "function") {
+      throw new TypeError("Clock requires the public localization port");
+    }
+
+    const releaseStyles = await styles(root);
+    const session = createClockSession();
+    let releaseView = null;
+    let unsubscribe = null;
+    try {
+      releaseView = mountView(root, lifecycle, session);
+      unsubscribe = lifecycle.localization.subscribe(() => {
+        releaseView?.();
+        releaseView = null;
+        releaseView = mountView(root, lifecycle, session);
+      });
+      let destroyed = false;
+      return Object.freeze({
+        destroy() {
+          if (destroyed) return;
+          destroyed = true;
+          unsubscribe?.();
+          releaseView?.();
+          root.replaceChildren();
+          releaseStyles();
+        },
+      });
+    } catch (error) {
+      unsubscribe?.();
+      releaseView?.();
+      root.replaceChildren();
+      releaseStyles();
+      throw error;
+    }
+  },
+});
