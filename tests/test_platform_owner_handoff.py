@@ -8,6 +8,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
+import io
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tools/verify_platform_owner_handoff.py"
@@ -29,38 +31,40 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
         cls.old = mod.OLD_OWNER + "/" + mod.PLATFORM_NAME
         cls.target = mod.NEW_OWNER + "/" + mod.PLATFORM_NAME
 
-    def test_existing_owner_is_valid_but_not_post_transfer_source(self):
+    def test_repointed_source_does_not_claim_physical_transfer_or_signature(self):
         state = mod.validate(self.workspace, self.lock)
-        self.assertEqual(state["phase"], "pre-transfer")
-        self.assertEqual(state["current_platform"], self.old)
+        self.assertEqual(state["phase"], "post-transfer-source")
+        self.assertEqual(state["current_platform"], self.target)
         self.assertEqual(state["target_platform"], self.target)
         self.assertEqual(state["platform_repository_id"], "1371063347")
         report = mod.evaluate(ROOT)
-        self.assertFalse(report["source_conformance_after_transfer"])
+        self.assertTrue(report["source_conformance_after_transfer"])
         self.assertFalse(report["github_physical_transfer_verified"])
         self.assertFalse(report["release_signature_verified"])
-        self.assertGreater(report["operational_old_owner_files"], 0)
+        self.assertEqual(report["operational_old_owner_files"], 0)
+        self.assertGreater(report["historical_old_owner_files"], 0)
 
     def test_owner_lock_must_match_workspace_ssot(self):
         inconsistent = copy.deepcopy(self.lock)
-        inconsistent["repository"] = self.target
+        inconsistent["repository"] = self.old
         with self.assertRaisesRegex(ValueError, "lock owner differs"):
             mod.validate(self.workspace, inconsistent)
         inconsistent = copy.deepcopy(self.workspace)
-        inconsistent["platform_repository"] = self.target
+        inconsistent["platform_repository"] = self.old
         with self.assertRaisesRegex(ValueError, "workspace platform owner differs"):
             mod.validate(inconsistent, self.lock)
 
     def test_target_repoint_must_not_change_exact_sdk_pin(self):
-        future_workspace = copy.deepcopy(self.workspace)
-        future_lock = copy.deepcopy(self.lock)
-        future_workspace["platform_repository"] = self.target
-        future_workspace["repository_migration"]["current_platform_repository"] = self.target
-        future_lock["repository"] = self.target
-        state = mod.validate(future_workspace, future_lock)
+        legacy_workspace = copy.deepcopy(self.workspace)
+        legacy_lock = copy.deepcopy(self.lock)
+        legacy_workspace["platform_repository"] = self.old
+        legacy_workspace["repository_migration"]["current_platform_repository"] = self.old
+        legacy_lock["repository"] = self.old
+        self.assertEqual(mod.validate(legacy_workspace, legacy_lock)["phase"], "pre-transfer")
+        state = mod.validate(self.workspace, self.lock)
         self.assertEqual(state["phase"], "post-transfer-source")
-        self.assertEqual(state["sdk_commit"], self.lock["commit"])
-        self.assertEqual(state["sdk_sha256"], self.lock["sha256"])
+        self.assertEqual(state["sdk_commit"], legacy_lock["commit"])
+        self.assertEqual(state["sdk_sha256"], legacy_lock["sha256"])
 
     def test_never_allow_redirect_mirror_or_dual_owner_authority(self):
         for field in (
@@ -94,6 +98,93 @@ class PlatformOwnerHandoffTests(unittest.TestCase):
             (root / "tools/verify_other.py").write_text(self.target, encoding="utf-8")
             result = mod.stale_references(root, old)
             self.assertEqual(result["operational_paths"], [])
+
+    def test_historical_assertion_exemption_is_exact_not_file_wide(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "tools/verify_notes_platform_sdk.py"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                'if lock["repository"] != "' + self.old + '":\n',
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+            self.assertEqual(mod.stale_references(root, self.old)["operational_paths"], [])
+            path.write_text(
+                path.read_text(encoding="utf-8") +
+                'runtime_owner = "' + self.old + '"\n',
+                encoding="utf-8",
+            )
+            self.assertIn(
+                "tools/verify_notes_platform_sdk.py",
+                mod.stale_references(root, self.old)["operational_paths"],
+            )
+
+    def test_physical_owner_uses_exact_canonical_id_and_never_signs(self):
+        report = mod.evaluate(ROOT)
+        correct = {
+            "id": int(mod.IMMUTABLE_PLATFORM_ID),
+            "full_name": self.target,
+            "archived": False,
+            "default_branch": "main",
+        }
+
+        class Response:
+            status = 200
+
+            def __init__(self, payload):
+                self.stream = io.BytesIO(json.dumps(payload).encode("utf-8"))
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, n=-1):
+                return self.stream.read(n)
+
+        with mock.patch.object(mod.urllib.request, "urlopen", return_value=Response(correct)) as fetch:
+            self.assertTrue(mod.verify_physical_owner(report))
+            self.assertEqual(fetch.call_args.kwargs["timeout"], 15)
+            self.assertEqual(fetch.call_args.args[0].full_url, "https://api.github.com/repos/" + self.target)
+        for change in (
+            {"id": 0},
+            {"full_name": self.old},
+            {"archived": True},
+            {"default_branch": "legacy"},
+        ):
+            with self.subTest(change=change):
+                with mock.patch.object(mod.urllib.request, "urlopen", return_value=Response({**correct, **change})):
+                    with self.assertRaises(ValueError):
+                        mod.verify_physical_owner(report)
+        with mock.patch.object(mod.urllib.request, "urlopen", side_effect=mod.urllib.error.URLError("offline")):
+            with self.assertRaises(mod.urllib.error.URLError):
+                mod.verify_physical_owner(report)
+        with mock.patch.object(mod.urllib.request, "urlopen", side_effect=AssertionError("must not contact GitHub")):
+            with self.assertRaisesRegex(ValueError, "source contracts"):
+                mod.verify_physical_owner({**report, "source_conformance_after_transfer": False})
+
+    def test_live_migration_source_is_operational_not_historical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            folder = root / "migrations"
+            folder.mkdir()
+            path = folder / "activity.externalization.json"
+            base = {
+                "source_of_truth_state": "platform-until-cutover",
+                "source_cutover_allowed": False,
+                "source_repository_current": self.old,
+            }
+            path.write_text(json.dumps(base), encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True, capture_output=True)
+            subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)
+            self.assertIn("migrations/activity.externalization.json",
+                          mod.stale_references(root, self.old)["operational_paths"])
+            base["source_repository_current"] = self.target
+            path.write_text(json.dumps(base), encoding="utf-8")
+            self.assertEqual(mod.stale_references(root, self.old)["operational_paths"], [])
 
     def test_unknown_owner_or_unsigned_sdk_lock_fails(self):
         bad = copy.deepcopy(self.workspace)

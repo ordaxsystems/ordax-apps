@@ -1,7 +1,7 @@
 {
   "$schema": "ordax.app-externalization-plan/1",
   "app_id": "assistant",
-  "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+  "source_repository_current": "ordaxsystems/prototipo-ordax-os",
   "source_path_current": "system/apps/assistant",
   "target_repository": "ordaxsystems/ordax-apps",
   "target_path": "apps/assistant",
@@ -19,7 +19,7 @@
   },
   "source_snapshot": {
     "state": "not-captured",
-    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "repository": "ordaxsystems/prototipo-ordax-os",
     "commit": null,
     "inventory_file": null
   },

@@ -1,7 +1,7 @@
 {
   "$schema": "ordax.app-externalization-plan/1",
   "app_id": "projects",
-  "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+  "source_repository_current": "ordaxsystems/prototipo-ordax-os",
   "source_path_current": "system/apps/projects",
   "target_repository": "ordaxsystems/ordax-apps",
   "target_path": "apps/projects",
@@ -84,7 +84,7 @@
   },
   "source_snapshot": {
     "state": "pending-platform-sdk-1.9-merge",
-    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "repository": "ordaxsystems/prototipo-ordax-os",
     "commit": null,
     "inventory_file": null
   },

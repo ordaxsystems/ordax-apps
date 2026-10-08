@@ -19,7 +19,7 @@ fixtures = importlib.util.module_from_spec(fixture_spec)
 assert fixture_spec.loader is not None
 fixture_spec.loader.exec_module(fixtures)
 COMMIT = "a" * 40
-SDK_REPOSITORY = "washingtonmsdj/prototipo-ordax-os"
+SDK_REPOSITORY = "ordaxsystems/prototipo-ordax-os"
 
 
 def bundle(*schemas: str) -> dict:
@@ -138,7 +138,7 @@ class SdkCompatibilityTests(unittest.TestCase):
             fixtures.make_app(root, "projects")
             fixtures.write_json(root / "migrations" / "projects.externalization.json", {
                 "app_id": "projects",
-                "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+                "source_repository_current": "ordaxsystems/prototipo-ordax-os",
                 "source_cutover_allowed": False,
             })
             with self.assertRaisesRegex(sdk.SdkCompatibilityError, "duplicate app source"):

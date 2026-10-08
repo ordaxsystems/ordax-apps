@@ -4,7 +4,7 @@
 
 ## Evidência observada (2026-10-08)
 
-O owner atual da plataforma é `washingtonmsdj/prototipo-ordax-os`, enquanto a migração de organização ainda aponta para `ordaxsystems/prototipo-ordax-os` no workspace. Não presumir que a transferência já aconteceu.
+Esta evidência foi registrada antes da transferência física do OS e não define a autoridade operacional após o corte. O proprietário canônico preparado é `ordaxsystems/prototipo-ordax-os`; confirmar a transferência do repositório GitHub ID `1371063347` antes de mesclar as alterações de namespace.
 
 No source atual da plataforma, o Files continua implementado como app `bundled`:
 

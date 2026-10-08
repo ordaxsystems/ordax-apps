@@ -2,7 +2,7 @@
 
 Este repositório **não copia** os contratos autoritativos da plataforma OrdaX.
 
-Apps compilam e testam contra contratos públicos fixados pelo `platform-sdk.lock.json`. Contratos de plataforma continuam nascendo e sendo versionados em `washingtonmsdj/prototipo-ordax-os`; incompatibilidade nunca é resolvida copiando implementação privada do sistema para este repositório.
+Apps compilam e testam contra contratos públicos fixados pelo `platform-sdk.lock.json`. Contratos de plataforma continuam nascendo e sendo versionados em `ordaxsystems/prototipo-ordax-os`; incompatibilidade nunca é resolvida copiando implementação privada do sistema para este repositório.
 
 Contratos públicos atualmente relevantes incluem:
 

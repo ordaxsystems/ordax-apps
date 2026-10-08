@@ -24,12 +24,12 @@ A execução de `python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13
 | --- | --- | --- |
 | **13 com source, metadados e descriptor para candidato não assinado** | `notes`, `calculator`, `clock`, `converter`, `text-viewer`, `image-viewer`, `calendar`, `colors`, `character-map`, `paint`, `media-player`, `pdf-viewer`, `toolbox` | Manter gates G0/G1/G2 e testar os candidatos na cadeia assinada oficial; não fazer polishing extra antes dos alvos bloqueados |
 | **Distribuição especial** | `studio` | Source portátil canônico próprio OS/Windows; não aplicar descriptor ou runtime fictício só para aumentar a contagem |
-| **Source ainda pertence à plataforma** | `files`, `projects`, `internet`, `assistant`, `activity`, `network` | Os seis têm source real em `washingtonmsdj/prototipo-ordax-os/system/apps/<id>`; registrar o Gate A remove-first antes de transferir código ou autorizar distribuição |
+| **Source ainda pertence à plataforma** | `files`, `projects`, `internet`, `assistant`, `activity`, `network` | Os seis têm source real em `ordaxsystems/prototipo-ordax-os/system/apps/<id>`; registrar o Gate A remove-first antes de transferir código ou autorizar distribuição |
 
 
 A verificação de **13** é um piso de regressão, não uma contagem manual de identidades nem um compromisso de 13 releases em produção. Aumentar o piso conforme novos apps tornam-se elegíveis, nunca diminuí-lo para esconder regressões. Estado de instalação pública validada permanece **zero** nessa auditoria, porque o verificador não consulta a autoridade nativa.
 
-**Nova prova de ownership:** `migrations/{internet,assistant,activity,network}.externalization.json` registra `platform-until-cutover`, `source_cutover_allowed=false`, `distribution_activation_allowed=false` e o caminho exato do source no owner OS. `tools/verify_mvp_app_minimum.py` já deriva os estados dessas migrations (sem copiar serviços). `tests/test_mvp_platform_ownership.py` impede que seis fontes platform-owned sejam tratadas como candidatos ou apps publicados. O OS está preparando a extensão separada de política de Loja para os 12 utilitários pela PR `washingtonmsdj/prototipo-ordax-os#1372`; registro de policy **não** autoriza instalação.
+**Nova prova de ownership:** `migrations/{internet,assistant,activity,network}.externalization.json` registra `platform-until-cutover`, `source_cutover_allowed=false`, `distribution_activation_allowed=false` e o caminho exato do source no owner OS. `tools/verify_mvp_app_minimum.py` já deriva os estados dessas migrations (sem copiar serviços). `tests/test_mvp_platform_ownership.py` impede que seis fontes platform-owned sejam tratadas como candidatos ou apps publicados. O OS está preparando a extensão separada de política de Loja para os 12 utilitários pela PR `ordaxsystems/prototipo-ordax-os#1372`; registro de policy **não** autoriza instalação.
 
 ## Sequência acelerada de implementação
 

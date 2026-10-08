@@ -26,7 +26,7 @@ class PlatformOwnerMvpTests(unittest.TestCase):
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
             self.assertEqual(plan["$schema"], "ordax.app-externalization-plan/1")
             self.assertEqual(plan["app_id"], app_id)
-            self.assertEqual(plan["source_repository_current"], "washingtonmsdj/prototipo-ordax-os")
+            self.assertEqual(plan["source_repository_current"], "ordaxsystems/prototipo-ordax-os")
             self.assertEqual(plan["source_path_current"], "system/apps/" + app_id)
             self.assertEqual(plan["target_repository"], "ordaxsystems/ordax-apps")
             self.assertEqual(plan["target_path"], "apps/" + app_id)

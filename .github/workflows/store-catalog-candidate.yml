@@ -5,13 +5,13 @@ on:
     branches: [main]
     paths:
       - 'apps/**'
+      - 'tests/test_mvp_platform_ownership.py'
+      - 'migrations/**'
+      - 'migrations/notes.platform-lifecycle.lock.json'
       - 'ordax-apps.workspace.json'
       - 'tools/audit_app_readiness.py'
       - 'tools/verify_mvp_app_minimum.py'
       - 'tests/test_mvp_app_minimum.py'
-      - 'tests/test_mvp_platform_ownership.py'
-      - 'migrations/**'
-      - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
       - 'tests/test_store_catalog_candidate.py'
       - 'tests/test_store_catalog_inventory.py'
@@ -23,13 +23,13 @@ on:
     branches: [main]
     paths:
       - 'apps/**'
+      - 'tests/test_mvp_platform_ownership.py'
+      - 'migrations/**'
+      - 'migrations/notes.platform-lifecycle.lock.json'
       - 'ordax-apps.workspace.json'
       - 'tools/audit_app_readiness.py'
       - 'tools/verify_mvp_app_minimum.py'
       - 'tests/test_mvp_app_minimum.py'
-      - 'tests/test_mvp_platform_ownership.py'
-      - 'migrations/**'
-      - 'migrations/notes.platform-lifecycle.lock.json'
       - 'tools/app-package/**'
       - 'tests/test_store_catalog_candidate.py'
       - 'tests/test_store_catalog_inventory.py'
@@ -68,7 +68,10 @@ jobs:
           assert isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
           assert lock.get("tool_path") == "tools/runtime-component-channel"
           assert lock.get("authority") == "none"
-          print(f"repository={repository}")
+          workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
+          canonical_repository = workspace["platform_repository"]
+          assert canonical_repository == "ordaxsystems/prototipo-ordax-os"
+          print(f"repository={canonical_repository}")
           print(f"commit={commit}")
           PY
 

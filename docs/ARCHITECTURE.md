@@ -6,7 +6,7 @@ This repository owns first-party application source that can evolve independentl
 
 It does **not** own boot, kernel, recovery, Surface/Shell, Identity, Memory, Intelligence, permissions, sync, Component Manager, Store service, update trust, or authority.
 
-Those remain platform-owned by `washingtonmsdj/prototipo-ordax-os`.
+Those remain platform-owned by `ordaxsystems/prototipo-ordax-os`.
 
 ## Repository model
 

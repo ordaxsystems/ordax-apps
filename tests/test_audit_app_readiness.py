@@ -137,7 +137,7 @@ class ReadinessAuditTests(unittest.TestCase):
             make_app(root)
             write_json(root / "migrations" / "projects.externalization.json", {
                 "app_id": "projects",
-                "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+                "source_repository_current": "ordaxsystems/prototipo-ordax-os",
                 "source_cutover_allowed": False,
                 "distribution_activation_allowed": False,
             })
@@ -191,7 +191,7 @@ class ReadinessAuditTests(unittest.TestCase):
             make_app(root, "projects")
             write_json(root / "migrations" / "projects.externalization.json", {
                 "app_id": "projects",
-                "source_repository_current": "washingtonmsdj/prototipo-ordax-os",
+                "source_repository_current": "ordaxsystems/prototipo-ordax-os",
                 "source_cutover_allowed": False,
             })
             with self.assertRaisesRegex(audit.AuditError, "duplicate app source"):

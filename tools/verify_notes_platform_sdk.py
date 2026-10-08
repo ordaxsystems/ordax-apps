@@ -61,9 +61,15 @@ def main() -> None:
     if re.fullmatch(r"[0-9a-f]{64}", str(lock["sha256"])) is None:
         fail("Notes SDK SHA-256 is invalid")
 
+    # The historical lock records provenance, not a redirect-dependent download owner.
+    workspace = json.loads((ROOT / "ordax-apps.workspace.json").read_text(encoding="utf-8"))
+    current_lock = json.loads((ROOT / "platform-sdk.lock.json").read_text(encoding="utf-8"))
+    canonical = workspace.get("platform_repository")
+    if canonical != "ordaxsystems/prototipo-ordax-os" or current_lock.get("repository") != canonical:
+        fail("Notes SDK download owner disagrees with the canonical workspace SDK owner")
     url = (
         "https://raw.githubusercontent.com/"
-        f"{lock['repository']}/{commit}/{lock['bundle_path']}"
+        f"{canonical}/{commit}/{lock['bundle_path']}"
     )
     request = urllib.request.Request(url, headers={"User-Agent": "ordax-notes-sdk-verifier/1"})
     with urllib.request.urlopen(request, timeout=30) as response:
