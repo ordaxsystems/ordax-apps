@@ -388,7 +388,7 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Studio e apps sem source continuam `not-assessed`. Nenhum teste de presença de schema substitui runtime, host, lifecycle, grants, signing ou trust.
 - **Gate de aceite:** Foundation CI verde, testes negativos de major ausente/intervalo incompatível/ownership duplicado e matriz por app. A execução do gate verificou **13 apps com descriptor canônico**, sem lacunas opcionais no SDK 1.12.0 pinado; os demais alvos permanecem não avaliados. Detalhes em [`docs/APP-READINESS-AUDIT.md`](docs/APP-READINESS-AUDIT.md).
 
-### Execução G2 — identidade e importação de runtimes a partir do pacote (PR em revisão)
+### Execução G2 — identidade e importação de runtimes a partir do pacote (PR #135)
 
 - O probe G2 extrai somente arquivos de um ZIP recém-construído e validado pelo builder canônico e usa Node para importar o `entrypoint` real, conferir `componentId`, `schema`, `version` e rejeição de `mount({})` sem host.
 - Correção de drift encontrada: 12 aplicativos possuíam `componentRuntime.version` anterior a `app.json`; suas versões exportadas foram alinhadas ao manifesto de produto. Testes negativos impedem regressão de identidade/versão e mount sem portas.
