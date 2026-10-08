@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-manifest/1",
   "appId": "toolbox",
-  "appVersion": "0.2.0",
+  "appVersion": "0.2.1",
   "authority": "none",
   "execution": "proposal-only",
   "capabilities": [
