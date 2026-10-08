@@ -206,7 +206,8 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
             path = safe_path(entry["path"])
             sha_or_none(entry["git_blob_sha"], "source snapshot Git blob")
             if entry["git_blob_sha"] is None or not any(
-                path.startswith(removed_root + "/") for removed_root in removed
+                path == removed_root or path.startswith(removed_root + "/")
+                for removed_root in removed
             ):
                 raise FilesCutoverError("source snapshot contains unowned or unpinned source")
             snapshot_paths.append(path)
