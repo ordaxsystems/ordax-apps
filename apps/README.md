@@ -15,6 +15,12 @@ apps/<app-id>/
   tests/
 ```
 
+## Mínimo necessário para um app entrar no fluxo do MVP
+
+A ordem atual é **fechar o mínimo em todos os apps** e somente depois polir funcionalidades individuais. Para `component-slot` elegível: `app.json`, runtime que realmente monta, `ai/manifest.json`, `actions/manifest.json`, `actions/providers/manifest.json` e seus providers, `compatibility.json` (ou descriptor único validado nas migrations), testes de boundary e pacote determinístico. Recursos avançados são opcionais; identidades, compatibilidade e segurança não são.
+
+O catálogo deriva os apps elegíveis de `tools/app-package/catalog_inventory.py`; **não** manter lista duplicada e **não** preencher apps platform-owned com placeholders falsos. A matriz de todos os 20 alvos é gerada por `tools/verify_mvp_app_minimum.py`, e o escopo/bloqueios por [docs/MVP-MINIMO-TODOS-APPS.md](../docs/MVP-MINIMO-TODOS-APPS.md). Um candidato de catálogo não assinado **não é instalável**; Store, trust e ativação pertencem à plataforma.
+
 ## Regras de ownership
 
 - `app-id` estável e compatível com `ordax.component-manifest/1`;

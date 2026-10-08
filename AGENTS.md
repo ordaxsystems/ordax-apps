@@ -18,6 +18,10 @@
 - Não confundir ideia, `app.json`, package candidate, CI verde ou demo com release disponível.
 - Não incorporar código externo sem revisão de licença, segurança, provenance e manutenção.
 
+## Prioridade de produto (MVP)
+
+Antes de iniciar outra rodada de polimento individual, ler [docs/MVP-MINIMO-TODOS-APPS.md](docs/MVP-MINIMO-TODOS-APPS.md) e executar `python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown`. Priorizar completar estrutura/ports/pacote de todos os 20 alvos sem inventar source ou grants onde os owners ainda não autorizaram. O verificador gera apenas evidência de candidato não assinado; não representa catálogo verificado nem instalação. Bugs de segurança/corrupção de dados continuam prioridade imediata.
+
 ## Como trabalhar
 
 - Vincular cada mudança ao item/épico do roadmap ou justificar claramente a exceção.
