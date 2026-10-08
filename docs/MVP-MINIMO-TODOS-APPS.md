@@ -10,20 +10,26 @@ Este documento fixa a ordem de trabalho. **Não substitui** os SSOTs: `ordax-app
 2. **Identidade e metadados:** manifesto `ordax.component-manifest/1` com `owner`, id, semver, `component-slot` quando esta modalidade for suportada; AI manifest declarativo `authority:none`, action manifest `proposal-only` e provider manifest verificados. A declaração não autoriza ação.
 3. **Compatibilidade pública:** um único `compatibility.json` local ou `migrations/<id>.compatibility.json`, conforme owner existente; os `requires` obrigatórios devem existir no App SDK pinado. Sem imports privados, grants improvisados ou host paralelo.
 4. **Runtime mínimo real:** entrypoint canônico exporta `componentRuntime` com schema, identidade e versão do manifesto, aceita somente ports autorizadas; UI ou uma operação mínima útil, estado/erros claros, limpeza de subscriptions/URLs/listeners e destroy seguro. Não confundir teste Node com prova de host nativo.
-**Ciclo de vida visual no MVP:** quando duas superfícies montam o mesmo app,
-cada instância mantém e remove seu próprio `<link rel="stylesheet">`,
-sem reivindicar o stylesheet de outra janela ou do host. O navegador pode
-reutilizar os bytes em cache, mas a posse e o `destroy()` permanecem locais
-ao mount. A Foundation verifica o comportamento real em duas janelas para
-Calculator e Calendar e impede o retorno da reutilização global sem posse
-nos outros runtimes, inclusive Notes. Isso não cria host, gerenciador paralelo de CSS ou
-dependência entre pacotes.
-
 5. **Empacotamento:** `tools/app-package/build.py` é o único builder; ZIP, compatibility e release sidecars têm identidade e hashes verificáveis, são determinísticos e entregam handoff não assinado. Testes de contrato e smoke fazem parte da Foundation.
 6. **Entrada no catálogo:** `tools/app-package/catalog_inventory.py` deriva os apps elegíveis; `render_store_catalog_candidate.py` agrega somente handoffs comprovados do **mesmo commit**. Artefato não assinado é **entrada de catálogo**, não aplicativo instalável.
 7. **Entrega efetiva:** somente o runtime/platform owner pode autenticar assinatura e catálogo v2, selecionar release verificada, instalar, verificar saúde, promover e fazer rollback preservando App Data. A Store apresenta e solicita, sem poder de instalar ou conceder permissões. Sem essas provas, manter `blocked`/não instalável — nunca habilitar flags como atalho.
 
 **Regra de produto:** todos os 20 alvos devem aparecer na auditoria, inclusive os bloqueados. Não exigir para essa fase: funcionalidades avançadas, IA obrigatória, alarmes de background, edição de PDF, cloud/sync, desenho persistente ou suporte a todos os formatos. Essas extensões chegam por atualização do app ou Stable release oficial quando os contratos necessários existirem.
+
+## Política de entrega contínua — mínimo funcional, sem esperar o lançamento
+
+**Diretriz:** `MVP` é uma versão distribuível da menor experiência **realmente funcional** de cada app incluído, não o ponto em que o desenvolvimento é interrompido. Correções, integrações, segurança, acessibilidade, desempenho e novas funcionalidades podem e devem ser integradas **antes do lançamento** quando estiverem validadas. Depois continuam chegando por novas versões assinadas, sem exigir a reinstalação do USB. Um recurso opcional não pronto fica fora do release; não bloqueia a publicação de outros apps prontos ou da Base saudável.
+
+Para declarar um app **funcional no escopo anunciado** é necessário, além de manifest/ZIP/compatibilidade:
+
+1. **Fluxo útil concluído:** ao menos uma tarefa principal de produto funciona do início ao fim, com entrada, resultado verificável e erros reais comunicados. Omitir/desabilitar capacidades ainda não suportadas; não simular sucesso nem exibir um app apenas com placeholder/ícone.
+2. **Contrato e isolamento comprovados:** runtime monta e desmonta sem vazamentos, usa apenas as portas públicas do App SDK pinado, valida entradas, respeita grants/limites e falha fechado na ausência de serviços Native.
+3. **Provas automatizadas por candidato:** CI deriva a lista de `component-slot` do mesmo `tools/app-package/catalog_inventory.py`, executa pelo menos uma suíte de comportamento `apps/<id>/tests/*.test.mjs`, confere a sintaxe do runtime e constrói/verifica o pacote determinístico do commit exato. Isso inclui novos candidatos automaticamente e elimina a lista manual dos utilitários no workflow Foundation. Suites especializadas de Notes, Studio e integrações continuam como provas adicionais.
+4. **Prova de host e distribuição em separado:** os testes Node/package não demonstram que o app montou no host OrdaX, que foi instalado de verdade ou que pode ser anunciado publicamente. Para ser **disponível no MVP**, o owner de release deve provar a interação essencial no host alvo, saúde, compatibilidade e o caminho de entrega realmente autorizado (Stable assinado ou componente independente com trust/lifecycle).
+5. **Atualizações pequenas e reversíveis:** cada correção/melhoria evolui a mesma fonte de app, com SemVer, CI e provas proporcionais ao risco. Atualização independente por app só quando o `component-slot` houver sido comprovado; até lá, distribuir pelo canal Stable assinado do `system/supervisor`. Não duplicar updater, Store ou inventário instalado.
+6. **Lançamento possível a qualquer momento:** manter sempre um candidato Stable coerente e testável, com funções fundamentais confiáveis e trabalho incompleto isolado em branches/flags de disponibilidade legítimas. Não rebaixar critérios de segurança para acelerar; não reter correções prontas artificialmente para o pós-lançamento.
+
+**Distinção de relatórios:** `unsigned-store-catalog-input` na auditoria G0 indica **elegibilidade técnica do pacote**, não o estado `functional`, `installed` ou `production-ready`. A existência de suíte de teste também não substitui a prova de host e o aceite funcional pelo owner. Os seis alvos ainda platform-owned e a rota especial Studio mantêm seus gates de ownership e seus testes no owner correto, sem skeleton paralelo no `ordax-apps`.
 
 ## Estado real — baseline de outubro/2026
 
