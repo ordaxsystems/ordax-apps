@@ -1,5 +1,9 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Dependência — migração do plugin e acompanhamento de tarefas (2026-10-09)
+
+MVP-04, continuidade solicitada: Platform prepara a mesma camada de leitura OAuth para dispositivos e status de requests, vinculada ao usuário/cliente exato e aos RPCs PostgreSQL existentes. As rotas atuais continuam legadas e o Runtime auditado ainda espera outro envelope; vínculo UUID/slug, consumidor, grants, queue/audit e proteção contra replay precisam migrar juntos. Owner Platform/Runtime; Apps registra a dependência sem criar Identity/execução ou mudar a versão 0.14.1. [Estado e critérios](docs/STUDIO-WEB-INTEGRATION.md), [source no owner Platform](https://github.com/ordaxsystems/ordax-platform/pull/112). Remoto OS 90f3549 preservado. Piso auditado: 13 candidatos não assinados, 7 bloqueios, 0 instalações públicas verificadas; source/CI não removem os gates de produção.
+
 ## Incremento — disponibilidade remota do Studio (2026-10-09)
 
 MVP-04, continuidade solicitada: candidato 0.14.1 preserva nome/presença do Product, separa plataforma conectada de dispositivo informado online/offline/desconhecido e revalida antes de envios. Offline, remoção e falha de consulta bloqueiam POST sem repetir ações aceitas. Owner Apps; projeção do plugin pertence a Platform. Remotos consultados e PR OS 1546 do outro chat preservada. [Contratos, riscos, aceite e dependências reais Web/nuvem](docs/STUDIO-WEB-INTEGRATION.md). Não entrega executor GitHub/Cloudflare, sync global, composição Web, assinatura ou ativação; piso mantém 13 candidatos não assinados, 7 bloqueios, 0 instalações públicas verificadas.

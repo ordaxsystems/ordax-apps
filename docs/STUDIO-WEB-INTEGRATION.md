@@ -2,6 +2,29 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Dependência Platform/Runtime — leituras canônicas preparadas
+
+Continuidade MVP-04: a [PR Platform 112](https://github.com/ordaxsystems/ordax-platform/pull/112)
+prepara `createCanonicalProductMcpReadHandlers` para sessão OAuth, catálogo de
+dispositivos e consulta de tarefas por usuário/cliente exato, usando os RPCs
+PostgreSQL já existentes. Preserva estados/UUIDs, separa erro de catálogo
+vazio e não repete uma ação aceita ao consultar seu status. Trata-se de source
+testado, **sem ativação das rotas**; o `index.ts` ainda usa D1 para essas consultas.
+
+O consumidor Runtime auditado no remoto `113c49e72e` ainda espera o envelope
+legado `action/arguments/context/grant`. O novo contrato também usa UUIDs de
+projeto, enquanto a superfície legada usa slugs. A migração precisa ser
+coordenada entre enqueue, grants, consumidor, report/audit e status, com vínculo
+de projeto oficial e prevenção de replay; a UI não deve resolver isso com
+conversões, paths ou execução alternativa. [Contratos, evidência fixada e aceite
+no owner Platform](https://github.com/ordaxsystems/ordax-platform/blob/codex/studio-target-presence/docs/PRODUCT_MCP_CONNECT.md).
+
+Remotos revistos: Platform `main` `0a862b3837`, Apps `main` `f3815e0311`,
+Runtime `113c49e72e`; OS `main` avançou até `90f3549` durante esta rodada.
+O trabalho paralelo no OS foi preservado. A versão do app permanece 0.14.1:
+nenhuma nova capacidade de dispositivo foi ativada pelo app nesta rodada.
+Readiness de produção e teste com conta/dispositivo reais continuam pendentes.
+
 ## Continuidade Web/desktop/nuvem — incremento 0.14.1
 
 Remotos consultados antes de implementar: Apps `main` `f3815e031181cc6b30f986c2878f60aae651acf5`, PR 195 `dc52ea011076f81f0b2c8241ba6d3075732924eb`; OS `main` `95e64ce087d695ac0e0eee8bb0b0f5b12291860b`, reconciliação visual do outro chat na PR 1546; Platform `main` `0a862b3837`, Runtime `113c49e72e`. Snapshots de source não provam deploy. O trabalho paralelo no OS foi preservado.
