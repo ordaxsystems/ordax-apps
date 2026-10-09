@@ -97,8 +97,8 @@ def git(root: Path, *args: str) -> str:
     ).stdout.strip()
 
 
-def make_git_gate(parent: Path, root: Path) -> tuple[Path, str, dict]:
-    """Create real source and Gate A commits; no fabricated SHA or Git blob."""
+def make_pinned_source(parent: Path, root: Path) -> tuple[Path, dict]:
+    """Build one real Git snapshot before removing any Files source."""
     plan = load_plan(root)
     platform = make_platform(parent, plan, old_source=True)
     for path in plan["gate_a_platform_removal"]["remove_owned_source"]:
@@ -114,6 +114,23 @@ def make_git_gate(parent: Path, root: Path) -> tuple[Path, str, dict]:
     git(platform, "add", "--all")
     git(platform, "commit", "-qm", "source before Files removal")
     inventory = files.capture_source_snapshot(platform, plan)
+    plan["source_snapshot"]["state"] = "captured"
+    plan["source_snapshot"]["commit"] = inventory["commit"]
+    plan["source_snapshot"]["inventory_file"] = "migrations/files.source-snapshot.json"
+    write_json(root / "migrations" / "files.externalization.json", plan)
+    write_json(root / "migrations" / "files.source-snapshot.json", inventory)
+    return platform, inventory
+
+
+def make_git_gate(parent: Path, root: Path, *, change_after_snapshot: bool = False) -> tuple[Path, str, dict]:
+    """Build a Gate A; optionally introduce post-snapshot changes to block."""
+    platform, inventory = make_pinned_source(parent, root)
+    plan = load_plan(root)
+    if change_after_snapshot:
+        source = platform / "system/apps/files/app.mjs"
+        source.write_text("export const filesApp = { changedAfterSnapshot: true };\n", encoding="utf-8")
+        git(platform, "add", "--all")
+        git(platform, "commit", "-qm", "Files changed between snapshot and Gate A")
     for path in plan["gate_a_platform_removal"]["remove_owned_source"]:
         owned = platform / path
         if owned.is_dir():
@@ -231,6 +248,54 @@ class FilesCutoverTests(unittest.TestCase):
             write_json(root / "migrations" / "files.externalization.json", plan)
             with self.assertRaisesRegex(files.FilesCutoverError, "distinct snapshot"):
                 files.report(root)
+
+    def test_pinned_source_proof_succeeds_without_authorizing_cutover(self):
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp)
+            root = make_root(parent)
+            platform, inventory = make_pinned_source(parent, root)
+            proof = files.verify_pinned_source_snapshot(root, platform, load_plan(root))
+            self.assertTrue(proof["verified"])
+            self.assertEqual(proof["source_commit"], inventory["commit"])
+            self.assertEqual(proof["file_count"], inventory["file_count"])
+            self.assertEqual(proof["distribution_activation"], "blocked")
+            self.assertFalse(proof["source_cutover_allowed"])
+            with contextlib.redirect_stdout(io.StringIO()) as stdout:
+                self.assertEqual(files.main([
+                    "--root", str(root), "--platform-root", str(platform),
+                    "--verify-pinned-source",
+                ]), 0)
+            self.assertTrue(json.loads(stdout.getvalue())["verified"])
+
+    def test_pinned_proof_rejects_tampered_blob_wrong_head_and_checkout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp)
+            root = make_root(parent)
+            platform, inventory = make_pinned_source(parent, root)
+            path = root / "migrations/files.source-snapshot.json"
+            altered = json.loads(path.read_text(encoding="utf-8"))
+            altered["files"][0]["git_blob_sha"] = "f" * 40
+            write_json(path, altered)
+            with self.assertRaisesRegex(files.FilesCutoverError, "real Git blobs"):
+                files.verify_pinned_source_snapshot(root, platform, load_plan(root))
+            write_json(path, inventory)
+            (platform / "unrelated.txt").write_text("unrelated", encoding="utf-8")
+            with self.assertRaisesRegex(files.FilesCutoverError, "uncommitted"):
+                files.verify_pinned_source_snapshot(root, platform, load_plan(root))
+            git(platform, "add", "--all")
+            git(platform, "commit", "-qm", "newer source HEAD")
+            with self.assertRaisesRegex(files.FilesCutoverError, "HEAD differs"):
+                files.verify_pinned_source_snapshot(root, platform, load_plan(root))
+
+    def test_snapshot_change_between_capture_and_gate_a_blocks_data_loss(self):
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp)
+            root = make_root(parent)
+            platform, gate, _ = make_git_gate(parent, root, change_after_snapshot=True)
+            report = files.report(root, platform, gate)
+            self.assertFalse(report["source_cutover"]["ready"])
+            self.assertIn("source-git-history-not-proven", report["source_cutover"]["blockers"])
+            self.assertIn("changed after snapshot", report["source_cutover"]["source_history_evidence"]["reason"])
 
     def test_real_git_gate_a_can_pass_but_not_production(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -76,6 +76,47 @@ def semver_tuple(value: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in value.split("."))
 
 
+def validate_source_inventory(root: Path, plan: dict) -> dict:
+    """Validate a single canonical inventory for preflight and Gate A."""
+    snapshot = plan["source_snapshot"]
+    platform = plan["source_repository_current"]
+    removed = plan["gate_a_platform_removal"]["remove_owned_source"]
+    if snapshot.get("state") != "captured" or not snapshot.get("commit") or not snapshot.get("inventory_file"):
+        raise FilesCutoverError("source snapshot inventory must be captured and pinned")
+    inventory_path = root / safe_path(snapshot["inventory_file"])
+    inventory = read_json(inventory_path)
+    entries = inventory.get("files")
+    if (
+        inventory.get("$schema") != "ordax.source-snapshot-inventory/1"
+        or inventory.get("app_id") != "files"
+        or inventory.get("repository") != platform
+        or inventory.get("commit") != snapshot["commit"]
+        or not isinstance(entries, list) or not entries
+        or not isinstance(inventory.get("file_count"), int)
+        or isinstance(inventory["file_count"], bool)
+        or inventory["file_count"] != len(entries)
+    ):
+        raise FilesCutoverError("source snapshot inventory is not pinned to Files")
+    snapshot_paths = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"path", "git_blob_sha"}:
+            raise FilesCutoverError("source snapshot entry must pin a Git blob")
+        path = safe_path(entry["path"])
+        sha_or_none(entry["git_blob_sha"], "source snapshot Git blob")
+        if entry["git_blob_sha"] is None or not any(
+            path == removed_root or path.startswith(removed_root + "/")
+            for removed_root in removed
+        ):
+            raise FilesCutoverError("source snapshot contains unowned or unpinned source")
+        snapshot_paths.append(path)
+    if (
+        len(snapshot_paths) != len(set(snapshot_paths))
+        or "system/apps/files/app.mjs" not in snapshot_paths
+    ):
+        raise FilesCutoverError("source snapshot must include unique Files app source")
+    return inventory
+
+
 def load_plan(root: Path) -> tuple[dict, dict, dict]:
     """Validate ownership and contract claims; do not imply Gate A is complete."""
     workspace = read_json(root / "ordax-apps.workspace.json")
@@ -188,37 +229,7 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
             or snapshot["commit"] == plan["gate_a_platform_commit"]
         ):
             raise FilesCutoverError("cutover cannot be authorized without distinct snapshot and Gate A pins")
-        inventory_path = root / safe_path(snapshot["inventory_file"])
-        inventory = read_json(inventory_path)
-        entries = inventory.get("files")
-        if (
-            inventory.get("$schema") != "ordax.source-snapshot-inventory/1"
-            or inventory.get("app_id") != "files"
-            or inventory.get("repository") != platform
-            or inventory.get("commit") != snapshot["commit"]
-            or not isinstance(entries, list) or not entries
-            or not isinstance(inventory.get("file_count"), int)
-            or isinstance(inventory["file_count"], bool)
-            or inventory["file_count"] != len(entries)
-        ):
-            raise FilesCutoverError("source snapshot inventory is not pinned to Files")
-        snapshot_paths = []
-        for entry in entries:
-            if not isinstance(entry, dict) or set(entry) != {"path", "git_blob_sha"}:
-                raise FilesCutoverError("source snapshot entry must pin a Git blob")
-            path = safe_path(entry["path"])
-            sha_or_none(entry["git_blob_sha"], "source snapshot Git blob")
-            if entry["git_blob_sha"] is None or not any(
-                path == removed_root or path.startswith(removed_root + "/")
-                for removed_root in removed
-            ):
-                raise FilesCutoverError("source snapshot contains unowned or unpinned source")
-            snapshot_paths.append(path)
-        if (
-            len(snapshot_paths) != len(set(snapshot_paths))
-            or "system/apps/files/app.mjs" not in snapshot_paths
-        ):
-            raise FilesCutoverError("source snapshot must include unique Files app source")
+        validate_source_inventory(root, plan)
     delivery = plan.get("delivery")
     if (
         not isinstance(delivery, dict)
@@ -372,6 +383,30 @@ def capture_source_snapshot(platform_root: Path, plan: dict) -> dict:
     }
 
 
+def verify_pinned_source_snapshot(root: Path, platform_root: Path, plan: dict) -> dict:
+    """Verify a pinned pre-cutover source against a clean canonical Git checkout."""
+    if plan["source_cutover_allowed"]:
+        raise FilesCutoverError("pinned source proof is pre-cutover only")
+    inventory = validate_source_inventory(root, plan)
+    head = _verify_git_checkout(platform_root, plan)
+    if head != inventory["commit"]:
+        raise FilesCutoverError("pinned source checkout HEAD differs from snapshot commit")
+    actual = _tree_files(platform_root, head, plan["gate_a_platform_removal"]["remove_owned_source"])
+    if inventory["files"] != actual:
+        raise FilesCutoverError("pinned Files snapshot differs from real Git blobs")
+    return {
+        "schema": "ordax.files-pinned-source-proof/1",
+        "app_id": "files",
+        "verified": True,
+        "repository": inventory["repository"],
+        "source_commit": head,
+        "file_count": len(actual),
+        "source_cutover_allowed": False,
+        "distribution_activation": "blocked",
+        "authority": "none",
+    }
+
+
 def verify_source_history(platform_root: Path, plan: dict, inventory: dict) -> dict:
     """Prove snapshot and Gate A against real Git commits, not asserted JSON alone."""
     gate_commit = plan["gate_a_platform_commit"]
@@ -395,6 +430,12 @@ def verify_source_history(platform_root: Path, plan: dict, inventory: dict) -> d
         raise FilesCutoverError("pinned source commit does not contain the Files app")
     if inventory.get("files") != actual_snapshot:
         raise FilesCutoverError("snapshot inventory differs from Git blobs or is incomplete")
+    parents = _git_text(platform_root, "rev-list", "--parents", "-n", "1", gate_commit).split()
+    if len(parents) != 2 or parents[0] != gate_commit:
+        raise FilesCutoverError("Gate A must be a single-parent removal commit")
+    immediately_before_gate = _tree_files(platform_root, parents[1], owned)
+    if immediately_before_gate != actual_snapshot:
+        raise FilesCutoverError("Files source changed after snapshot and before Gate A; capture a fresh snapshot")
     if _tree_files(platform_root, gate_commit, owned):
         raise FilesCutoverError("Gate A Git commit still contains app-owned Files source")
     for path in plan["gate_a_platform_removal"]["retain_platform_owned"]:
@@ -525,12 +566,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--platform-root", type=Path)
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
     parser.add_argument("--require-cutover-ready", action="store_true")
+    parser.add_argument("--verify-pinned-source", action="store_true", help="Prove pre-cutover snapshot against exact clean Git checkout")
     parser.add_argument(
         "--emit-source-snapshot", action="store_true",
         help="Print a derived, read-only Git blob inventory before Gate A (no writes)",
     )
     args = parser.parse_args(argv)
     try:
+        if args.verify_pinned_source:
+            if args.emit_source_snapshot or args.require_cutover_ready or args.platform_root is None or args.format != "json":
+                raise FilesCutoverError("pinned source proof requires --platform-root and JSON-only pre-cutover mode")
+            _, plan, _ = load_plan(args.root.resolve())
+            proof = verify_pinned_source_snapshot(args.root.resolve(), args.platform_root.resolve(), plan)
+            print(json.dumps(proof, indent=2, ensure_ascii=False, sort_keys=True))
+            return 0
         if args.emit_source_snapshot:
             if args.platform_root is None or args.format != "json" or args.require_cutover_ready:
                 raise FilesCutoverError("snapshot output requires --platform-root and JSON format")
