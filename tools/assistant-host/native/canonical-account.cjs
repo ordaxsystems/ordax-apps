@@ -21,7 +21,7 @@ async function locateInstalledRuntime(executable = process.execPath, platform = 
   }
   const root = path.resolve(path.dirname(executable), '..');
   let manifest;
-  try { manifest = JSON.parse(await readFile(path.join(root, 'product-manifest.json'), 'utf8')); }
+  try { manifest = JSON.parse((await readFile(path.join(root, 'product-manifest.json'), 'utf8')).replace(/^\uFEFF/, '')); }
   catch { throw fail('Manifesto de instalação do Runtime não encontrado.'); }
   if (manifest?.schema !== 'ordax.windows-product/1' || manifest?.product !== 'ORDAX Studio'
       || manifest?.entrypoints?.studio_ui !== 'presentation\\ORDAX Studio.exe'
@@ -39,13 +39,13 @@ async function locateInstalledRuntime(executable = process.execPath, platform = 
 }
 
 function validCredentials(data) {
-  return data && typeof data === 'object' && !Array.isArray(data)
+  return Boolean(data && typeof data === 'object' && !Array.isArray(data)
     && Object.keys(data).length === 2 && Object.hasOwn(data, 'email')
     && Object.hasOwn(data, 'password') && typeof data.email === 'string'
     && data.email.length > 2 && data.email.length <= 320 && data.email.includes('@')
     && typeof data.password === 'string' && data.password.length > 0
     && data.password.length <= 2048
-    && !/[\x00-\x1f]/.test(data.email) && !/[\x00]/.test(data.password);
+    && !/[\x00-\x1f]/.test(data.email) && !/[\x00]/.test(data.password));
 }
 
 async function invokeCanonicalProductSignIn(data, {
