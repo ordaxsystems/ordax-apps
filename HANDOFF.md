@@ -1,6 +1,25 @@
 # OrdaX Apps — canonical handoff
 
-Atualizado em 2026-10-08.
+Atualizado em 2026-10-09.
+
+## Continuidade Studio/plugin — IA do OS
+
+MVP-04: [OS PR 1556](https://github.com/ordaxsystems/ordax-os/pull/1556)
+protege a composição canônica Memory/Intelligence contra respostas pendentes
+após mudança de conta/Space ou encerramento. Não cria serviço no app/plugin;
+owner OS, ports públicos existentes e autoridade consultiva preservados.
+388 Node e 13 Python passaram localmente; a prova da cadeia usa backend de teste.
+Apps segue 0.14.1 e não invoca automaticamente IA/Memory do OS pelo plugin.
+Transporte público, identidade de cliente/dispositivo e autorização de
+contexto/egress permanecem dependências dos owners. Remotos revistos e
+mudanças paralelas do OS preservadas. [Aceite, risco e estado](docs/STUDIO-WEB-INTEGRATION.md).
+
+[Platform PR 115](https://github.com/ordaxsystems/ordax-platform/pull/115)
+alinha o display name ORDAX Studio, preservando ID `ordax-chatgpt` e versão
+independente 0.4.7 no manifest canônico. Guias corrigem o owner Windows e
+registram a cadeia de IA do OS e suas dependências; nenhuma IA foi ativada
+pelo conector. Package/CI não atualizam automaticamente o plugin instalado.
+PR de presença 114 mesclada em `5d4c681`, sem consumidor Runtime atual.
 
 ## Estado canônico
 
