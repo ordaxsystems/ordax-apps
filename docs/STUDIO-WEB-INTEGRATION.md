@@ -22,8 +22,10 @@ Aceite local: 166 testes da suíte Runtime, quatro pulados, 57 de pacote/host,
 compilação/PowerShell e wheel com identidade/dependências verificadas. As
 ferramentas registradas FastMCP demonstram POST → falha GET → recuperação GET com
 um único POST, além de revogação, ID trocado, timeout, JSON/UTF-8 inválidos,
-streams limitados e encerrados. CI de contratos/mínimo/pacote passou; build do
-instalador em acompanhamento. Risco: respostas malformadas ou acima do orçamento
+streams limitados e encerrados. CI Runtime passou contratos (166, um pulado),
+SDK mínimo (39), pacote, build do instalador e instalação/upgrade Windows
+efêmera; publicação de release pulada. [Execução remota](https://github.com/ordaxsystems/ordax-runtime/actions/runs/37989569268).
+Risco: respostas malformadas ou acima do orçamento
 de transporte agora falham explicitamente; nenhum fallback concede execução.
 
 [Contrato, limites e testes no Runtime](https://github.com/ordaxsystems/ordax-runtime/blob/codex/product-action-response-integrity/docs/PRODUCT-ACTION-RECOVERY.md).
@@ -31,6 +33,10 @@ A migração do envelope legado, vínculo UUID/local, queue/leases/report/audit 
 grants por cliente permanece coordenada com Platform PR 112. Não representa
 deploy do plugin, instalação do candidato, execução em nuvem ou E2E com conta
 real. OS remoto observado em `1dcf620`; trabalho do outro chat preservado.
+
+Platform PR 112 foi mesclada durante a rodada. O handoff adicional ficou na
+[PR 113](https://github.com/ordaxsystems/ordax-platform/pull/113), baseada no main
+`eb3cce6`, apenas documental e com CI verde; nenhum commit mesclado foi repetido.
 
 ## Dependência Platform/Runtime — leituras canônicas preparadas
 
