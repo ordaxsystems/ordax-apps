@@ -252,6 +252,9 @@ jobs:
           python3 -m pip install --disable-pip-version-check pytest==9.1.1
           python3 -m pytest apps/studio/tests -q
 
+      - name: Prove Studio conversation transport and durable operation recovery
+        run: node --test apps/studio/conversation/tests/*.test.mjs tools/assistant-host/test/*.test.mjs
+
       - name: Prove Studio remote Computer grant boundary
         run: python3 apps/studio/tests/test_remote_computer_grants_boundary.py
 

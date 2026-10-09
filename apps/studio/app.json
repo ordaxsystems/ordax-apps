@@ -3,7 +3,7 @@
   "id": "studio",
   "title": "ORDAX Studio",
   "kind": "app",
-  "version": "0.5.10",
+  "version": "0.13.0",
   "releaseMode": "component-slot",
   "criticality": "optional",
   "failureDomain": "app",

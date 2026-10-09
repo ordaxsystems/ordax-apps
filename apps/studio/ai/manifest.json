@@ -1,7 +1,7 @@
 {
   "schema": "ordax.app-intelligence-manifest/1",
   "appId": "studio",
-  "appVersion": "0.5.10",
+  "appVersion": "0.13.0",
   "authority": "none",
   "execution": "declarative-only",
   "instructions": [

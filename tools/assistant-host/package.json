@@ -1,0 +1,22 @@
+{
+  "name": "ordax-studio-web-host",
+  "version": "0.13.0",
+  "private": true,
+  "repository": { "type": "git", "url": "https://github.com/ordaxsystems/ordax-apps.git" },
+  "type": "module",
+  "scripts": {
+    "start": "electron native/main.cjs",
+    "test": "node --test ../../apps/studio/conversation/tests/*.test.mjs test/*.test.mjs",
+    "setup:native": "node node_modules/electron/install.js",
+    "check:plugin": "node check-plugin.mjs",
+    "test:native": "electron test/native-fixture.cjs",
+    "test:preview": "electron test/preview-fixture.cjs",
+    "build:windows": "node build-windows.mjs"
+  },
+  "dependencies": {
+    "electron": "44.7.0"
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

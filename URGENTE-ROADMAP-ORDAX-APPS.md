@@ -1,5 +1,53 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Incremento comprovado — conversa Web principal e proteção de modo (2026-10-09)
+
+Solicitação explícita do usuário, exceção à rodada geral de polimento, MVP-04/Studio: candidato local 0.13.0 abre novas conversas na sessão ChatGPT Web à esquerda, com preview fixo à direita; Studio · beta é a alternativa experimental. Compositor novo seleciona Chat apenas por controle público identificado e verifica o resultado. Modo desconhecido/Work/Codex bloqueia envio automatizado e início de áudio pelo Studio, incluindo mudança de modo antes do clique. Cota/modo são visíveis; modelos/raciocínio abrem controles observados da conta, sem catálogo fabricado. Falha ao iniciar áudio libera o estado local.
+
+Owner Apps para UX; host oficial/execução Runtime e plugin Platform preservam contratos/grants. 127 testes unitários, 35 cenários nativos, 18 preview/áudio/exclusão, 27 Python, 20 Node avançados, 5 host bridge e 8 de distribuição passaram. Candidato portátil conferido com 141 hashes/65 cópias de fonte. Fonte/conta real continuam estados separados: a sessão Free inspecionada não expôs seletor Chat/Work; sem identificação, automação bloqueada. Chat não é ilimitado nem promessa de “zero tokens”; envio manual no Web continua sob controle do usuário. [Política, aceite e limitações](docs/STUDIO-CHAT-MODE-SAFETY.md), [provas](apps/studio/conversation/VERIFICATION.md). CI remoto será acompanhado pela PR; não se anuncia promoção, assinatura, conta real, hardware ou paridade OS. Os 20 alvos mantêm 13 candidatos não assinados, 7 bloqueios e 0 instalações públicas verificadas.
+
+## Incremento comprovado — atividade, contexto e recuperação do Studio (2026-10-09)
+
+Solicitação explícita do usuário, exceção à rodada geral de polimento, MVP-04/Studio: candidato local 0.12.0 oferece Atividade por projeto/dispositivo, pendências visíveis, recibo copiável sem conteúdo privado e acesso direto ao contexto com fonte/horário/recibo antes do anexo ao rascunho. Corrige publicação de resultado/revisão antes da persistência, valida request/action/project, recupera ACK por consulta sem repetir POST e aplica espera crescente após falha de acompanhamento. Journals críticos danificados/perdidos bloqueiam envio, preservando evidência inclusive após reinício; backups anteriores não são promovidos silenciosamente.
+
+124 unitários, 34 cenários Electron nativos e 17 de preview/áudio/exclusão passaram; checks de contratos/distribuição e pacote local 0.12.0 estão registrados nas [provas](apps/studio/conversation/VERIFICATION.md). Personal Jarvis, Letta, Pipecat/LiveKit e demais referências foram avaliados sem incorporar código/dependências externas. OS remoto foi consultado: Memory/Intelligence mantêm ownership, captura automática de projeto/sessão e adapters externos não foram habilitados. ChatGPT Web permanece transporte escolhido. [Referências, licenças, owner, riscos, aceite e próximos contratos](docs/STUDIO-ASSISTANT-REFERENCES.md). Não houve alteração de serviço remoto, mudança de SDK pin, execução real de dispositivo ou promoção de release; piso MVP continua 13 candidatos não assinados, 7 bloqueios e 0 instalações públicas verificadas.
+
+## Incremento comprovado — áudio e exclusão de conversas (2026-10-09)
+
+Solicitação explícita do usuário, exceção à rodada geral de polimento, MVP-04/Studio: candidato local 0.11.0 oferece menu por conversa na lateral, exclusão local ou também no ChatGPT com confirmação e journal anterior ao clique irreversível. Erros/estados incertos não repetem exclusão; falha de disco preserva histórico, rascunho e nome. Renomear/mover/excluir pela lateral não exige abrir a conversa alvo.
+
+Leitura de respostas usa somente voz local disponível. Ditado/voz abrem controles públicos da mesma sessão ChatGPT na área de conversa, com preview preservado. Ditado volta para revisão e só limpa o Web após cópia durável; microfone exige ação/consentimento, com isolamento de frame/origem e encerramento ao recarregar/perder a UI. 112 testes unitários, 31 cenários Electron de compatibilidade e 17 de preview/áudio/exclusão passaram; regressão avançada 20 Node, 17 unittest e 10 boundary. Workspace/AI/actions e piso MVP passaram. Não houve exclusão na conta real, captura de áudio real, instalação/deploy do plugin ou mudança de autoridade. [Owner, contratos, riscos e aceite](docs/STUDIO-VOICE-CONVERSATION-ACTIONS.md), [provas](apps/studio/conversation/VERIFICATION.md). Gates de instalação oficial/produção e dependências Runtime/Platform permanecem intactos.
+
+## Incremento comprovado — projetos e cadastro do plugin Studio (2026-10-09)
+
+Solicitação explícita do usuário, exceção à rodada geral de polimento, MVP-04/Studio: candidato local 0.10.0 separa Criar projeto/Abrir projeto em diálogo compacto; criação deriva pasta e envia uma ação tipada, importação pede somente pasta relativa e vínculo exige catálogo autorizado. Cliques duplos não duplicam criação. Correção de concorrência drena observação anterior antes de abrir um novo compositor Web.
+
+Diagnóstico sem login do **plugin ORDAX Studio** confirmou disponibilidade/OAuth/DCR e drift do issuer publicado. Cadastro assistido preenche campos públicos na sessão Web à esquerda, preserva edição do usuário e não conclui login, consentimento ou instalação. 97 unitários e 44 cenários Electron; no owner Platform, 35 testes MCP/OAuth e 18 de pacote/grants/anotações. Não foi liberada execução anônima nem mudado o serviço remoto. Sessão Product real, teste de ferramenta em dispositivo e instalação na conta seguem sem prova; picker externo/GitHub/preview automático dependem dos owners. [Provas e limites](docs/STUDIO-PLUGIN-TESTING.md). Gates de assinatura/publicação/produção intactos; continuam 13 candidatos MVP e nenhuma instalação pública verificada.
+
+## Incremento comprovado — entrada e projetos no Studio (2026-10-09)
+
+Solicitação explícita do usuário, MVP-04/Studio: candidato local 0.9.0 abre em Início sem selecionar conversa/projeto; entrar no projeto mostra visão geral e preview, sem enviar mensagem nem selecionar o último chat. Notas do projeto são contexto opcional e visível no primeiro envio, dentro dos limites existentes. A ponte corrigiu envio multilinha e continua bloqueando mudança no rascunho preparado.
+
+Cliente/UX de criação e importação usam os contratos públicos já existentes `workspace.project_create`/`workspace.bind_project`, após revisão, por Product REST; vínculo local exige catálogo confirmado. Execução real requer sessão/grants do Runtime. Seleção de pasta externa, clone GitHub, recuperação automática de contexto canônico e provisionamento do preview continuam dependências dos owners, sem execução alternativa via paths/shell. Ownership, riscos, critérios e handoff em [STUDIO-PROJECT-ONBOARDING.md](docs/STUDIO-PROJECT-ONBOARDING.md); provas em [VERIFICATION.md](apps/studio/conversation/VERIFICATION.md). Os 20 alvos permanecem com 13 candidatos não assinados, 7 bloqueios e nenhuma instalação pública verificada; pacote local não autoriza distribuição/produção.
+
+## Incremento comprovado — navegador e preview responsivo do Studio (2026-10-09)
+
+Por solicitação explícita do usuário, MVP-04/Studio recebe candidato local 0.8.0: entrar em um projeto sincroniza seu endereço de preview; o painel oferece navegador manual separado, voltar/avançar/host e retorno ao preview preservado. Desktop/tablet/celular, rotação e escala usam viewport CSS real. Trocar projeto fecha o navegador anterior e retorna ao preview atual. Nenhuma automação de browser ou execução de servidor foi acrescentada à autoridade do app.
+
+Owner Apps para UX/source, Runtime para host oficial/execução e plataforma para contratos/lifecycle. O pacote Windows local inclui Electron/Chromium; não inclui todo o ORDAX Runtime nem instala dependências dos projetos. Integração OS/instalador oficial e provisionamento seguem pendentes, detalhados em [STUDIO-PREVIEW-DEPENDENCIES.md](docs/STUDIO-PREVIEW-DEPENDENCIES.md). Evidências em [VERIFICATION.md](apps/studio/conversation/VERIFICATION.md); candidato local não promove release.
+
+## Incremento comprovado — preview fixo no Studio (2026-10-09)
+
+Por solicitação explícita do usuário, MVP-04/Studio recebe o candidato local 0.7.0: preview visual fixo à direita, endereço persistido por projeto e ChatGPT Web como alternativa na área esquerda, preservando sessão/conversa/rascunho. O preview usa view isolada sem preload/Node/IPC, não compartilha cookies do ChatGPT e bloqueia navegação para outras origens. Falhas não exibem conteúdo antigo. UI Apps, host/execução Runtime e Product/plugin Platform mantêm ownership separado.
+
+**Dependência confirmada:** o Runtime local tem start/stop, mas seu gateway Product e a Platform expõem somente `project.preview_status`; a resposta Product remove a URL. O candidato carrega um endereço configurado de servidor já ativo; não provisiona host nem contorna grants via terminal. O próximo contrato necessário e seus critérios de aceite estão em [STUDIO-PREVIEW-HANDOFF.md](docs/STUDIO-PREVIEW-HANDOFF.md). Evidências em [VERIFICATION.md](apps/studio/conversation/VERIFICATION.md); publicação, integração no host oficial, conta real e paridade integral continuam pendentes.
+
+## Incremento comprovado — conversas por projeto no Studio (2026-10-09)
+
+Por solicitação explícita do usuário, MVP-04/Studio recebe o candidato local 0.6.1 em `apps/studio/conversation`: lateral de projetos, Sem projeto, busca restrita ao agrupamento, conversas e rascunhos por projeto, mover conversas, renomear/remover grupos sem excluir chats. Histórico schema 2 é preservado em Sem projeto; schema 3 registra projetos e vínculos opcionais de dispositivo/projeto. As operações de organização exigem persistência e desfazem mudanças em memória em caso de falha. Não cria Projects no ChatGPT nem duplica o serviço global Projects do OS.
+
+O vínculo com arquivos parte de `projects.list` observado no Product API autorizado; não cria grants. Troca de contexto com edição/continuidade pendente é bloqueada. Owner Apps para UI/histórico local, Runtime para execução/host oficial e Platform para plugin. Evidências e comandos em [VERIFICATION.md](apps/studio/conversation/VERIFICATION.md). Distribuição local continua sem assinatura/publicação; paridade integral do workspace avançado e ativação oficial permanecem pendentes.
+
 > **LEITURA PRIORITÁRIA EM TODA ANÁLISE, PLANEJAMENTO OU IMPLEMENTAÇÃO DE `ordax-apps`.**
 > Este é o plano de produto e de execução; **não** substitui os contratos, os locks, os manifests, o CI nem as políticas de trust canônicas. A palavra "urgente" indica prioridade de leitura e triagem, não permissão para ignorar gates.
 
@@ -483,4 +531,17 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 
 ## 13. Registro de alterações
 
+### Alinhamento local do checkout e host ChatGPT Web (2026-10-09)
+
+- Origem local alinhada a `ordaxsystems/ordax-apps` e base atualizada por fast-forward para `f3815e031181cc6b30f986c2878f60aae651acf5`, por solicitação do usuário após a transferência da organização.
+- O host desktop ChatGPT Web desenvolvido nesta conversa permanece trabalho local não publicado em `prototypes/chatgpt-web-assistant` e `tools/assistant-host`, fora do inventário canônico de apps. Owner do manifesto e metadata do host apontam ao projeto transferido; arquivos preservados com backup e hashes.
+- Este registro não altera `migrations/assistant.externalization.json`, nem declara cutover do Assistant embutido no OS, compatibilidade de pacote, entrada na Store ou ativação. Evidências locais em `prototypes/chatgpt-web-assistant/VERIFICATION.md`.
+
 - **2026-10-08 — v0.1:** roadmap inicial criado a partir do inventário canônico de `ordax-apps`, documentação do SDK/trust e levantamento preliminar de oportunidades open source e apps com IA. **Não constitui relatório final de pesquisa externa nem autorização de ativação em produção.**
+## Atualização local — Studio como destino da conversa (2026-10-09)
+
+Por instrução explícita do usuário, o incremento da experiência desktop passa ao **MVP-04 / Studio**, em vez de criar outro Assistant. Source consolidado em `apps/studio/conversation`, sob a identidade `studio` versão candidata `0.6.0`. Manifests Studio/AI/actions foram alinhados sem conceder execução. O antigo provider `assistant-native` e seu manifesto de protótipo foram aposentados com backup externo; não há novo `apps/assistant`.
+
+A conversa sincronizada continua usando ChatGPT Web. O projeto passou de modal a espaço de trabalho com Arquivos, Git, Busca, Preview (estado) e Continuidade (briefing/get/update). As ações usam o mesmo Product API autorizado, lista fixa, limites, revisão para mutações e journal sem reenvio automático. Perfil, session partition e rascunhos mantêm os nomes internos anteriores para preservar dados/login. Plugin no owner Platform: display name `ORDAX Studio`, source `0.4.8`, ID estável `ordax-chatgpt`; seleção aceita também o nome legado.
+
+O workspace avançado Studio foi preservado; sua adoção completa e o host Windows canônico exigem paridade no Runtime. Não portar informalmente pairing, grants ou execution authority. Fonte local e pacote portátil não representam publicação/ativação. Critérios de aceite, contratos, riscos e matriz de recursos em [STUDIO-CONVERSATION-REPLACEMENT.md](docs/STUDIO-CONVERSATION-REPLACEMENT.md).
