@@ -54,10 +54,14 @@ jobs:
           python3 -m unittest tests/test_files_cutover.py
           python3 tools/verify_files_cutover.py --format markdown
 
-      - name: Prove isolated first-party Finance domain without unapproved persistence
+      - name: Prove independent business domains without unapproved persistence
         run: |
           node --check apps/finance/src/domain/ledger.mjs
+          node --check apps/inventory/src/domain/movements.mjs
+          node --check apps/sales/src/domain/orders.mjs
           node --test apps/finance/tests/ledger.test.mjs
+          node --test apps/inventory/tests/movements.test.mjs
+          node --test apps/sales/tests/orders.test.mjs
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
