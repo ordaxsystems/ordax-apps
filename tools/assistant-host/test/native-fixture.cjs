@@ -235,7 +235,10 @@ app.whenReady().then(async () => {
     assert.equal(surface.webContents.getURL(), 'https://chatgpt.com/c/fixture');
     // The native browser call may be observed before its IPC promise resolves.
     // Wait for the actual UI transition, not a fixed delay or a weaker assert.
-    await until('!document.getElementById("accountDialog").open');
+    for (let attempt = 0; attempt < 100
+      && await window.webContents.executeJavaScript('document.getElementById("accountDialog").open'); attempt++) {
+      await pause(50);
+    }
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("accountDialog").open'), false);
     console.log('PASS: botões Ampliar Web, Voltar à conversa e Abrir no navegador executam ações nativas via IPC.');
 
