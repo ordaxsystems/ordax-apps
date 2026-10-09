@@ -12,7 +12,7 @@ No source atual da plataforma, o Files continua implementado como app `bundled`:
 | --- | --- | --- |
 | Manifest/app | `system/apps/files/app.mjs` e `system/apps/files/ai/manifest.mjs` | Extrair app-owned source **depois** de remover o antigo |
 | UI de Files | `system/surface/ui/file-space-controls.mjs` (3.087 linhas) | Reescrever/portar sobre ports públicos, não copiar dependências privadas |
-| Integração Files → Notes | `system/surface/ui/file-notes-action.mjs` | Substituir dependências de Notes privadas por contrato público |
+| Integração Files → Notes | Módulo legado removido no `ordax-os@e1890d18` | Retomar somente após contrato público de transferência autorizada, sem restaurar o importer privado |
 | CSS e traduções | `system/surface/ui/files.css` e `system/services/i18n/catalog/files.mjs` | Component-scoped e app-owned |
 | Wiring Native | `system/composition/native/main.mjs` | Remover mount direto; host injeta ports públicos |
 | Catálogo e inteligência | `system/apps/catalog.mjs`, `system/apps/intelligence-catalog.mjs` | Remover imports da implementação; manter metadata de descoberta |
@@ -20,6 +20,12 @@ No source atual da plataforma, o Files continua implementado como app `bundled`:
 | CSS de Surface | `system/composition/{native,web}/index.html` | Remover stylesheet global do Files |
 
 **Não remover nem duplicar** `system/contracts/file-space.mjs`, `system/adapters/native/file-space.mjs`, `system/contracts/app-activation.mjs`, `system/contracts/recent-files.mjs`, `system/contracts/project-catalog.mjs` e os serviços centrais de Files. Esses são owners da plataforma, não produto app-owned.
+
+## Correção comprovada do owner OS — 2026-10-09
+
+O commit [`ordax-os@e1890d18`](https://github.com/ordaxsystems/ordax-os/commit/e1890d18e1ccbd238f1c08b0676d100942f398d9) retirou de `system/surface/ui/file-space-controls.mjs` o import quebrado do antigo contrato `notes-file-importer.mjs`, já ausente após a extração do Notes. O helper legado `file-notes-action.mjs` também foi removido. O caminho de importação de texto para Notas já não tinha o port injetado na composição Native atual; a correção recupera a resolubilidade do módulo Files sem conceder nova autoridade. A suíte de regressão verifica o import ESM do Files e ausência do vínculo antigo.
+
+O app Files continua **platform-owned** e o Gate A **não** foi executado. Criar nota a partir de arquivo só pode ser reintroduzido com port público autorizado e comprovado, não com o antigo importer privado. CI verde não prova host real nem distribuição.
 
 ## Contratos públicos e lacunas
 
