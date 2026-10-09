@@ -61,6 +61,37 @@ contratos Mobile e permissões nativas. Login na conta não ativa essas funçõe
 
 ## Origem dos arquivos — Web, nuvem e dispositivos
 
+### Sincronização e independência do conector
+
+Leitura/edição local pelo GPT e sincronização cloud são operações diferentes.
+Account Sync atual cobre aparência, preferências e metadados portáteis, não
+sincronização bidirecional do conteúdo do workspace. User Cloud Storage segue
+sem rollout, bucket e executor de mutações ativados. Não anunciar upload
+automático após edição local. Integração futura deve definir seleção, revisões,
+conflitos, exclusão e recuperação no owner OS/storage/sync, sem dual-write ou
+serviço paralelo no Studio.
+
+O conector MCP pertence à Platform e acessa capacidades publicadas pelo
+OS/Runtime; Studio é uma interface consumidora. O nome no ChatGPT não limita
+a infraestrutura ao app Studio nem concede acesso total. Profile Packs dão
+contexto e intenções, não grants. Controle de impressora 3D exige adapter,
+canal e autorização próprios; adapter operacional não comprovado nesta análise.
+
+Remover apenas a UI preservando o Runtime é objetivo de lifecycle, não
+comportamento comprovado do pacote Windows atual. No source Runtime `c192505`,
+[instalador Windows](https://github.com/ordaxsystems/ordax-runtime/blob/c192505/packaging/windows/ordax-studio.iss)
+instala ambos na mesma raiz; o uninstaller encerra Studio e Runtime, remove
+arquivos instalados e o autostart do Runtime. Desinstalar esse pacote encerra
+o caminho local do plugin. Fechar a UI é uma operação diferente. Não inferir
+exclusão de arquivos do usuário ou revogação de identidade global.
+
+Dependência: owner Runtime/OS lifecycle deve provar remoção só da UI mantendo
+o serviço quando escolhido, remoção explícita do Runtime, reconexão/revogação
+e gestão local de permissões disponível sem Studio. Apps não deve modificar
+o desinstalador de outro owner nem deixar agente oculto como paliativo. Aceite
+exige instalação/desinstalação real e prova do canal autorizado; inspeção de
+source não substitui essa prova.
+
 O lugar onde a interface abre não determina onde os arquivos estão. Hospedar o
 Studio/Control Plane na Cloudflare não sincroniza arquivos do computador nem
 cria um executor de projetos. O plugin precisa encaminhar cada operação à
