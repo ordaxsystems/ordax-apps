@@ -108,7 +108,13 @@ app.whenReady().then(async () => {
       return { schema: 'ordax.studio-local-runtime-observation/1',
         observed: true, authorization: 'not-established', canExecute: false,
         reason: 'loopback-response', version: '0.4.5', state: 'local-ready' };
-    } }); registerWebControls(ipcMain, { window, origin: host.origin, controls }); await window.loadURL(host.origin + '/src/index.html');
+    } }); registerWebControls(ipcMain, { window, origin: host.origin, controls });
+    ipcMain.handle('studio-product:availability', event => {
+      if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame
+          || event.senderFrame.url !== host.origin + '/src/index.html') throw new Error('Untrusted Studio account fixture frame');
+      return false; // The test runner has no installed Product account host.
+    });
+    await window.loadURL(host.origin + '/src/index.html');
     for (let i = 0; i < 50; i++) { if (await window.webContents.executeJavaScript('document.getElementById("hostAvailability").dataset.state === "unavailable"')) break; await pause(50); }
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("hostAvailability").dataset.state'), 'unavailable');
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("newChat").disabled && document.getElementById("send").disabled && document.getElementById("welcomeConnect").disabled'), true);
@@ -472,7 +478,23 @@ app.whenReady().then(async () => {
     assert.ok(bridge.chats.some(c=>c.id===organizedChat));assert.equal(bridge.drafts.state()[organizedChat].text,'Rascunho da loja');
     await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectB}"]').click()`);
     await until('document.getElementById("prompt").value==="Rascunho do jogo" && !document.getElementById("newChat").disabled');
-    await window.webContents.reload();
+    // Electron webContents.reload() returns void. Await the real navigation,
+    // otherwise the post-reload assertion races the old renderer/disposal.
+    const reloaded = new Promise((resolve, reject) => {
+      const finish = error => {
+        window.webContents.removeListener('did-finish-load', onLoaded);
+        window.webContents.removeListener('did-fail-load', onFailed);
+        if (error) reject(error); else resolve();
+      };
+      const onLoaded = () => finish();
+      const onFailed = (_event, code, description, _url, mainFrame) => {
+        if (mainFrame && code !== -3) finish(new Error(`Studio reload failed: ${code} ${description}`));
+      };
+      window.webContents.on('did-finish-load', onLoaded);
+      window.webContents.on('did-fail-load', onFailed);
+    });
+    window.webContents.reload();
+    await reloaded;
     await until('document.getElementById("projectScopeName").textContent==="Jogo" && document.getElementById("prompt").value==="Rascunho do jogo" && !document.getElementById("newChat").disabled');
     await pause(250); await fs.writeFile(path.join(__dirname,'../.data/studio-projects-preview.png'),(await window.webContents.capturePage()).toPNG());
     console.log('PASS: mover mantém URL e rascunho; renomear e remover projeto preservam chats; recarregar restaura escopo e rascunho do projeto.');

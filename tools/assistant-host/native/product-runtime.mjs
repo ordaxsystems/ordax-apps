@@ -9,12 +9,28 @@ const names = { projects: 'projects.list', projectCreate: 'workspace.project_cre
 const statuses = ['prepared','submitting','queued','running','succeeded','failed','cancelled','uncertain','not-sent','reviewed'];
 export const validOperations = data => data?.schemaVersion === 1 && Array.isArray(data.operations) && data.operations.length <= 40 && new Set(data.operations.map(o => o?.id)).size === data.operations.length && data.operations.every(o => o && identifier(o.id) && Object.hasOwn(names, o.kind) && statuses.includes(o.status) && identifier(o.deviceId) && (o.project == null || identifier(o.project)) && (o.path == null || relative(o.path)) && (o.requestId == null || identifier(o.requestId)) && typeof o.createdAt === 'string' && typeof o.label === 'string' && o.label.length <= 1200) && JSON.stringify(data).length <= 8000000;
 
+// An account's operation receipts are never stored under the old anonymous
+// key. The full verified Product subject is bound inside the critical journal;
+// the filename is a bounded opaque digest, compatible with LocalStorage.
+const PRODUCT_SUBJECT_UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
+export const productSubjectJournalKey = subject => {
+  if (typeof subject !== 'string' || !PRODUCT_SUBJECT_UUID.test(subject)) throw fail('Identidade Product inválida.', 403);
+  return 'product-ops-' + createHash('sha256').update(subject, 'utf8').digest('hex').slice(0, 28);
+};
+export const validSubjectJournal = (record, subject) =>
+  Boolean(record && typeof record === 'object' && !Array.isArray(record)
+    && Object.keys(record).length === 3 && record.schemaVersion === 2
+    && record.subjectId === subject
+    && validOperations({ schemaVersion: 1, operations: record.operations }));
+
+
 // Thin client for the canonical Product REST contract. ControlPlane supplies identity,
 // grants and audit; only this fixed set of project capabilities is exposed to the UI.
 export class ProductRuntime {
   #token;
   constructor({ storage, env = process.env, fetcher = fetch, interval = 1000 }) {
     this.storage = storage; this.fetcher = fetcher; this.interval = interval; this.operations = []; this.tasks = new Set(); this.observations = new Set(); this.unpersisted = new Set(); this.polling = new Map(); this.targets = []; this.version = 0;
+    this.journalKey = 'runtime-operations'; this.journalSubject = null; this.acceptingAccount = false;
     this.#token = env.ORDAX_PRODUCT_ACCESS_TOKEN?.trim() || '';
     this.spaceId = env.ORDAX_PRODUCT_SPACE_ID?.trim() || null;
     this.base = env.ORDAX_PRODUCT_CONTROL_PLANE_URL?.trim() || 'https://ordax-control-plane-v3.ordax-ac1ca1b50d09.workers.dev';
@@ -40,7 +56,14 @@ export class ProductRuntime {
     }, this.interval);
   }
   state({ since } = {}) { return { version: this.version, configured: this.configured, connected: this.connected || false, catalogAvailable: this.catalogAvailable, targetsCheckedAt: this.targetsCheckedAt, targetIssue: this.targetIssue, recoveryRequired: Boolean(this.recoveryRequired), issue: this.issue || '', targets: structuredClone(this.targets), ...(since === this.version ? {} : { operations: structuredClone(this.operations) }) }; }
-  async persist(operations = this.operations) { if (this.recoveryRequired) throw fail(this.issue, 503); await this.storage.write('runtime-operations', { schemaVersion: 1, operations: structuredClone(operations) }); this.version++; }
+  async persist(operations = this.operations) {
+    if (this.recoveryRequired) throw fail(this.issue, 503);
+    const payload = this.journalSubject
+      ? { schemaVersion: 2, subjectId: this.journalSubject, operations: structuredClone(operations) }
+      : { schemaVersion: 1, operations: structuredClone(operations) };
+    await this.storage.write(this.journalKey, payload);
+    this.version++;
+  }
   async commitOperation(operation, next) {
     await this.persist(this.operations.map(item => item === operation ? next : item));
     Object.assign(operation, next);
@@ -76,36 +99,64 @@ export class ProductRuntime {
     })().finally(() => { this.targetsPending = null; });
     return this.targetsPending;
   }
-  // Installed host-only account handoff. A credential is never part of the
-  // renderer, persisted journal, HTTP diagnostics or project action payload.
-  // Do not switch subjects while any accepted/unconfirmed effect may exist.
+  // Product account handoff. Legacy operation receipts are preserved
+  // untouched under their anonymous key; only a verified subject may access
+  // a versioned subject-bound journal. No silent ownership inference.
   async acceptAccountToken(token) {
     if (typeof token !== 'string' || !token || token.length > 16000 || /[\r\n]/.test(token)) throw fail('Sessão ORDAX inválida.', 400);
-    if (this.configured || this.connected || this.connectPending || this.targetsPending) throw fail('Já existe uma sessão Product neste host. Encerre o app para trocar de conta.');
+    if (this.configured || this.connected || this.connectPending || this.targetsPending || this.acceptingAccount) throw fail('Já existe uma sessão Product neste host. Encerre o app para trocar de conta.');
     if (this.recoveryRequired || this.unpersisted.size || this.tasks.size ||
       this.operations.some(op => !['succeeded','failed','cancelled','reviewed'].includes(op.status))) {
       throw fail('Confira ou recupere as operações anteriores antes de entrar em outra conta.');
     }
+    const previous = { key: this.journalKey, subject: this.journalSubject, operations: this.operations };
+    this.acceptingAccount = true;
     this.#token = token;
     this.configured = true;
     try {
-      return await this.connect();
+      // Identity is derived ONLY from the Platform's authenticated session,
+      // never from the login form, JWT claims parsed locally or a device name.
+      const account = await this.request('/v3/product/session');
+      const subject = account.session?.subject_id;
+      const journalKey = productSubjectJournalKey(subject);
+      const fallback = { schemaVersion: 2, subjectId: subject, operations: [] };
+      const record = await this.storage.read(journalKey, fallback, {
+        validate: data => validSubjectJournal(data, subject), requireRecovery: true,
+      });
+      if (!validSubjectJournal(record, subject)) throw fail('Diário Product de conta inválido.', 503);
+      this.journalKey = journalKey;
+      this.journalSubject = subject;
+      this.operations = record.operations;
+      for (const op of this.operations) if (['prepared','submitting'].includes(op.status)) op.status = 'uncertain';
+      this.version++;
+      await this.refreshTargets();
+      this.connected = true;
+      this.issue = '';
+      return this.state();
     } catch (error) {
       this.#token = '';
       this.configured = false;
       this.connected = false;
       this.catalogAvailable = false;
       this.targets = [];
+      this.journalKey = previous.key;
+      this.journalSubject = previous.subject;
+      this.operations = previous.operations;
+      if (error.code === 'STORAGE_RECOVERY_REQUIRED') this.recoveryRequired = true;
+      this.issue = error.message;
       this.version++;
       throw error;
-    }
+    } finally { this.acceptingAccount = false; }
   }
   async connect() {
+    if (this.acceptingAccount) throw fail('Aguarde a confirmação da identidade Product antes de reconectar.', 409);
     if (this.recoveryRequired) throw fail(this.issue, 503);
     if (this.connectPending) return this.connectPending;
     this.connectPending = (async () => {
       try {
-        await this.request('/v3/product/session'); await this.refreshTargets();
+        const verified = await this.request('/v3/product/session');
+        if (this.journalSubject && verified.session?.subject_id !== this.journalSubject) throw fail('A identidade Product mudou. Encerre a sessão antes de operar.', 403);
+        await this.refreshTargets();
         this.connected = true; this.issue = ''; return this.state();
       } catch (error) { this.connected = false; this.catalogAvailable = false; this.targets = []; this.issue = error.message; throw error; }
     })().finally(() => { this.connectPending = null; });
