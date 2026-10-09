@@ -8,6 +8,8 @@ A fixture Electron de produção terminou com código 0 e 34 provas `PASS`, incl
 
 Reprodução: `npm.cmd --prefix tools/assistant-host test`, `npm.cmd --prefix tools/assistant-host run test:native`, `node --test apps/studio/tests/*.test.mjs tests/studio_host_bridge_conformance.mjs`, verificadores de workspace/manifests/distribuição/ownership e auditor MVP. Resultados remotos devem ser consultados na [PR 195](https://github.com/ordaxsystems/ordax-apps/pull/195), não inferidos pelos testes locais. Esta versão não afirma nova prova de áudio/preview, paridade OS, promoção na Store ou publicação do plugin.
 
+Pacote Windows local: `tools/assistant-host/.data/portable/ORDAX-Studio-0.13.3-win-x64-414908a6/ORDAX Studio.exe`. Verificação independente confirmou 142 hashes e 66 cópias de fonte idênticas aos arquivos do projeto; recibo ignorado `.data/studio-0.13.3-delivery-evidence.json`. É candidato portátil não assinado do host de desenvolvimento. Não substituiu a instalação em uso, não é instalador oficial e não é entrega do OS Web. Build reproduzível pelo script existente `npm.cmd --prefix tools/assistant-host run build:windows`.
+
 # Histórico — ORDAX Studio 0.13.1
 
 132 testes unitários, 35 cenários Electron nativos e 25 de preview/áudio/exclusão aprovados. A correção limita início/encerramento a 10 segundos por operação, mantém recuperação após falha/recarregamento e rejeita snapshots antigos. A fixture cobre início sem ACK, encerramento falho, cancelamento durante espera, resposta atrasada, perda de IPC depois do início e consulta do host indisponível. Nenhum caso repete o clique de voz. O ditado recuperado sem sua revisão original não é importado automaticamente.
