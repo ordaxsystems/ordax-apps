@@ -69,6 +69,8 @@ Mesmo que alguém edite `source_cutover_allowed=true` ou invente hashes no JSON,
 
 O preflight não valida assinaturas Git nem a identidade do operador; a procedência remota deve ser atestada pelo CI/owner da plataforma, que faz checkout do repositório autorizado. **A prova de source não autoriza distribuição nem resolve as lacunas de grants.**
 
+O preflight também recusa qualquer árvore prematura `apps/files`, inclusive arquivos sem `app.json` ou diretório vazio, enquanto `source_cutover_allowed=false`. A verificação ocorre antes de uma eventual cópia e impede que uma implementação paralela seja escondida apenas pela ausência do manifesto. A futura permissão exige os pins e a prova Git do Gate A; não é autorização de distribuição.
+
 ## Sequência de entrega
 
 1. Plataforma/owner confirma repositório final após a migração e captura snapshot **pinado** do source Files antes da remoção, com inventário de arquivos.

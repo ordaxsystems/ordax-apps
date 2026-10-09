@@ -102,8 +102,11 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
         or plan.get("distribution_activation_allowed") is not False
     ):
         raise FilesCutoverError("Files migration identity, owner or distribution gate is invalid")
-    if (root / "apps" / "files" / "app.json").exists():
-        raise FilesCutoverError("Files already has a second canonical app manifest")
+    # Before Gate A, even an unmanifested runtime is a duplicate source.
+    # A later verified cutover may populate this directory without creating a second owner.
+    target_source = root / "apps" / "files"
+    if not plan.get("source_cutover_allowed") and (target_source.exists() or target_source.is_symlink()):
+        raise FilesCutoverError("Files already has a second canonical source before Gate A")
     cutover = plan.get("source_cutover")
     if (
         not isinstance(cutover, dict)

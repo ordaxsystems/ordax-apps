@@ -168,6 +168,22 @@ class FilesCutoverTests(unittest.TestCase):
             with self.assertRaisesRegex(files.FilesCutoverError, "second canonical"):
                 files.report(root)
 
+    def test_unmanifested_duplicate_files_runtime_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = make_root(Path(temp))
+            runtime = root / "apps" / "files" / "src" / "runtime.mjs"
+            runtime.parent.mkdir(parents=True)
+            runtime.write_text("export const componentRuntime = {};\n", encoding="utf-8")
+            with self.assertRaisesRegex(files.FilesCutoverError, "second canonical"):
+                files.report(root)
+
+    def test_empty_premature_files_tree_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = make_root(Path(temp))
+            (root / "apps" / "files").mkdir()
+            with self.assertRaisesRegex(files.FilesCutoverError, "second canonical"):
+                files.report(root)
+
     def test_platform_owned_port_cannot_be_deleted_in_gate_a(self):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
