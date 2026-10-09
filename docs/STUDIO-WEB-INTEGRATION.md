@@ -40,6 +40,15 @@ Contratos consultados no OS main `5b31bc0`:
 [Mobile Companion](https://github.com/ordaxsystems/ordax-os/blob/5b31bc0/docs/contracts/mobile-companion.json).
 Esses contratos não provam rollout ou acesso pelo plugin.
 
+[Platform PR 117](https://github.com/ordaxsystems/ordax-platform/pull/117),
+source `8fbe9b8`, atualiza a orientação MCP existente para distinguir cliente
+da conversa e alvo de execução, preservar seleção explícita e não inferir
+acesso mobile ou executor cloud a partir de metadados/login/presença.
+96 testes Node passaram localmente, incluindo catálogo misto desktop/mobile,
+zero dispatch e remoção de campos privados de arquivos/câmera/execução.
+Não adiciona tools, schemas, grants, agente, storage ou executor. O protocolo
+e seus handlers permanecem no owner Platform; deploy/conta real são separados.
+
 ## Preview local — diferença entre atualização e composição
 
 O checkout usado no preview Web foi atualizado por fast-forward de `f4361c7`
