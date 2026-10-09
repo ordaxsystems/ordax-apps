@@ -2,6 +2,36 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Recuperação no Runtime — mesma tarefa, mesmo cliente
+
+[Runtime PR 65](https://github.com/ordaxsystems/ordax-runtime/pull/65), source
+`fd72a79`, corrige o consumidor HTTP/MCP existente: status exige o mesmo ID e um
+estado publicado; falha/espera expirada conserva o ID aceito e orienta consulta
+`product_action_status`, sem novo POST. ACK perdido ou inválido informa aceitação
+incerta; nunca anuncia sucesso, cancelamento ou ausência de efeito sem prova.
+O status usa o token atual e a mesma rota autorizada, sem lookup/grant local.
+
+Owner Runtime; Platform mantém autenticação, grants, tarefas e audit. O app não
+copiou o cliente Python nem ganhou um segundo orquestrador. Versão do pacote
+Runtime deriva de seus metadados, separada de Blender/Device Agent/Studio.
+O candidato Runtime é 0.4.5; Apps continua 0.14.1 e o lock da UI instalada não
+foi atualizado neste incremento. Dependência MCP Python mínima foi ajustada para
+1.30.0 após prova de incompatibilidade dos wrappers com 1.9.0, sem monkey-patch.
+
+Aceite local: 166 testes da suíte Runtime, quatro pulados, 57 de pacote/host,
+compilação/PowerShell e wheel com identidade/dependências verificadas. As
+ferramentas registradas FastMCP demonstram POST → falha GET → recuperação GET com
+um único POST, além de revogação, ID trocado, timeout, JSON/UTF-8 inválidos,
+streams limitados e encerrados. CI de contratos/mínimo/pacote passou; build do
+instalador em acompanhamento. Risco: respostas malformadas ou acima do orçamento
+de transporte agora falham explicitamente; nenhum fallback concede execução.
+
+[Contrato, limites e testes no Runtime](https://github.com/ordaxsystems/ordax-runtime/blob/codex/product-action-response-integrity/docs/PRODUCT-ACTION-RECOVERY.md).
+A migração do envelope legado, vínculo UUID/local, queue/leases/report/audit e
+grants por cliente permanece coordenada com Platform PR 112. Não representa
+deploy do plugin, instalação do candidato, execução em nuvem ou E2E com conta
+real. OS remoto observado em `1dcf620`; trabalho do outro chat preservado.
+
 ## Dependência Platform/Runtime — leituras canônicas preparadas
 
 Continuidade MVP-04: a [PR Platform 112](https://github.com/ordaxsystems/ordax-platform/pull/112)
