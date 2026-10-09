@@ -37,6 +37,28 @@ class PlatformOwnerMvpTests(unittest.TestCase):
             self.assertIn("source-cutover-not-authorized", row["blockers"])
             self.assertFalse((ROOT / "apps" / app_id / "app.json").exists())
 
+    def test_internet_cutover_must_not_duplicate_native_browser_engine(self):
+        plan = json.loads((ROOT / "migrations/internet.externalization.json").read_text(
+            encoding="utf-8"
+        ))
+        boundary = plan["runtime_boundary"]
+        self.assertEqual(plan["source_of_truth_state"], "platform-until-cutover")
+        self.assertIs(plan["source_cutover_allowed"], False)
+        self.assertIs(plan["distribution_activation_allowed"], False)
+        self.assertEqual(plan["delivery"]["delivery_class"], "bootstrap")
+        self.assertFalse((ROOT / "apps/internet").exists())
+        self.assertEqual(boundary["application_ui_and_app_owned_state"], "application")
+        for key in (
+            "webkitgtk_engine",
+            "unprivileged_webview_isolation",
+            "network_and_site_permission_policy",
+            "native_download_storage_and_filesystem_security",
+            "verified_install_update_rollback",
+        ):
+            self.assertEqual(boundary[key], "platform", key)
+        self.assertIs(boundary["private_platform_source_imports_after_cutover_allowed"], False)
+        self.assertIs(boundary["second_web_engine_in_app_allowed"], False)
+
     def test_mvp_matrix_cannot_pretend_platform_owned_apps_are_package_candidates(self):
         report = audit_mvp_minimum(ROOT, minimum_candidates=13)
         blocked = [row for row in report["apps"]
