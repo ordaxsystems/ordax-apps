@@ -40,6 +40,15 @@ jobs:
         shell: pwsh
         run: npm.cmd --prefix tools/assistant-host ci --no-audit --no-fund
 
+      - name: Materialize the pinned Electron Windows runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm.cmd --prefix tools/assistant-host run setup:native
+          if (-not (Test-Path 'tools/assistant-host/node_modules/electron/dist/electron.exe' -PathType Leaf)) {
+            throw 'Pinned Electron runtime was not installed; refusing an incomplete candidate.'
+          }
+
       - name: Confirm canonical manifests and Windows-specific source syntax
         shell: pwsh
         run: |
