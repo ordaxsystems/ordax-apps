@@ -103,7 +103,7 @@ def test_layout_state_does_not_duplicate_assistant_runtime_ssot():
         assert forbidden not in layout
 
 
-def test_web_ai_is_primary_assistant_surface_with_local_mode_secondary():
+def test_native_chat_is_primary_with_chatgpt_browser_fallback():
     html = (ROOT / "src" / "index.html").read_text(encoding="utf-8-sig")
     surface = (ROOT / "assets" / "assistant_surface.js").read_text(encoding="utf-8")
     css = (ROOT / "assets" / "assistant_surface.css").read_text(encoding="utf-8")
@@ -114,7 +114,14 @@ def test_web_ai_is_primary_assistant_surface_with_local_mode_secondary():
     assert 'id="localAssistantPanel"' in html
     assert '../assets/assistant_surface.js' in html
     assert '../assets/assistant_surface.css' in html
-    assert "var mode='web'" in surface
+    assert 'id="assistantWebMode" class="assistantMode"' in html
+    assert 'id="assistantLocalMode" class="assistantMode active"' in html
+    assert "ChatGPT no navegador" in html
+    assert "Chat nativo" in html
+    assert "var mode='local'" in surface
+    assert "apply('local')" in surface
+    assert "assistantSendMessage" in (ROOT / "assets" / "ide_shell.js").read_text(encoding="utf-8")
+    assert "assistantSendMessage" in contract
     assert "ordax-assistant-surface" in surface
     assert "ResizeObserver" in surface
     assert "presentAssistantSurface" in surface

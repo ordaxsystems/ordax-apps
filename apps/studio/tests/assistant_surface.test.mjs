@@ -5,7 +5,8 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('../assets/assistant_surface.js', import.meta.url), 'utf8');
 
-function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, width:300, height:400}) {
+function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, width:300, height:400}, startWeb = true) {
+  let initialDeactivation = true;
   const frames = [];
   const elements = new Map();
   const documentEvents = new Map();
@@ -31,7 +32,12 @@ function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, widt
     addEventListener(name, callback) {documentEvents.set(name,callback);},
   };
   const window = {
-    ordaxStudioHost: present ? {presentAssistantSurface: present} : undefined,
+    ordaxStudioHost: present ? {presentAssistantSurface(payload) {
+      // Native chat is the real default. Suppress the initial hidden-WebView
+      // deactivation only in the browser-specific test harness.
+      if(initialDeactivation && !payload.active){initialDeactivation=false;return true}
+      initialDeactivation=false;return present(payload);
+    }} : undefined,
     innerWidth:800,innerHeight:600,
     ResizeObserver:class {observe() {}},
     getComputedStyle() {return {display:'block',visibility:'visible'};},
@@ -51,8 +57,19 @@ function fixture(present, bounds = {left:20, top:30, right:320, bottom:430, widt
     }
   }
   flush();
+  if(startWeb){window.ordaxAssistantSurface.setMode('web');flush()}
   return {window,document,elements,flush,documentEvents,windowEvents};
 }
+
+test('native chat is the default and no WebView is exposed until requested', () => {
+  const delivered=[];
+  const ui=fixture(payload=>{delivered.push(payload);return true;},undefined,false);
+  assert.equal(ui.window.ordaxAssistantSurface.getMode(),'local');
+  assert.equal(delivered.length,0);
+  ui.window.ordaxAssistantSurface.setMode('web');
+  ui.flush();
+  assert.equal(delivered.at(-1).active,true);
+});
 
 test('native host receives only one bounded assistant envelope, without credentials', () => {
   const delivered=[];
@@ -148,7 +165,7 @@ test('invalid and entirely offscreen geometry never activates a native provider 
   ]) {
     const delivered=[];
     fixture(payload=>{delivered.push(payload);return true;},bounds);
-    assert.equal(delivered[0].active,false,JSON.stringify(bounds));
+    assert.equal(delivered.some(function(packet){return packet.active===true}),false,JSON.stringify(bounds));
   }
 });
 
