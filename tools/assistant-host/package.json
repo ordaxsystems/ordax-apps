@@ -1,6 +1,6 @@
 {
   "name": "ordax-studio-web-host",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "private": true,
   "repository": { "type": "git", "url": "https://github.com/ordaxsystems/ordax-apps.git" },
   "type": "module",

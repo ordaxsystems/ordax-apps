@@ -10,8 +10,9 @@ import { createPreviewPanel } from './preview-panel.mjs';
 import { projectMessage } from './project-context.mjs';
 import { createAudioPanel } from './audio-panel.mjs';
 import { createProjectEntry } from './project-entry.mjs';
+import { createStartup } from './startup.mjs';
 
-const host = validateHost(window.ordaxStudioConversationHost || window.ordaxAssistantHost || createHttpHost());
+const host = window.ordaxStudioConversationHost || window.ordaxAssistantHost || createHttpHost();
 const nativeWeb = window.ordaxStudioWebHost || window.ordaxAssistantWebHost;
 if (nativeWeb) document.body.classList.add('web-bridge');
 const $ = id => document.getElementById(id);
@@ -107,7 +108,7 @@ function updateControls() {
   $('messageBudget').textContent = invalid || `${length.toLocaleString('pt-BR')} / ${MESSAGE_LIMIT.toLocaleString('pt-BR')} caracteres, incluindo arquivos`;
   $('messageBudget').classList.toggle('invalid', Boolean(invalid));
   const modeBlocked = connection.mode === 'chatgpt-web' && webSnapshot.chatModeRequired === true && webSnapshot.automatedSendAllowed !== true;
-  $('send').disabled = locked() || unconfirmed || Boolean(invalid) || modeBlocked || !ready || (!$('prompt').value.trim() && !attachments.length);
+  $('send').disabled = !initialized || locked() || unconfirmed || Boolean(invalid) || modeBlocked || !ready || (!$('prompt').value.trim() && !attachments.length);
   $('send').hidden = busy || externalBusy; $('stop').hidden = !busy && !externalBusy;
   $('prompt').disabled = !initialized || locked(); $('attach').disabled = !initialized || locked(); $('newChat').disabled = !initialized || locked(); $('model').disabled = connection.mode === 'chatgpt-web' || locked() || !models.length;
   $('exportChat').disabled = !chat()?.messages.length;
@@ -127,7 +128,7 @@ function updateControls() {
   $('openHome').disabled = locked() || !initialized || !host.openHome;
   $('homeNewProject').disabled = locked() || !initialized || !host.createProject;
   $('homeWorkspace').disabled = locked() || !initialized;
-  $('accountButton').disabled = Boolean(audioPanel?.active()); $('openPlugin').disabled = locked();
+  $('accountButton').disabled = !initialized || Boolean(audioPanel?.active()); $('openPlugin').disabled = locked();
   audioPanel?.paint();
 }
 function renderSidebar() {
@@ -297,15 +298,18 @@ async function loadModels() {
   if (account()?.connected && account()?.planEnabled) { try { models = await host.models(); } catch (error) { notify(error.message); } }
 }
 async function loadState() {
+  validateHost(host);
+  const state = await host.state();
+  if (!Array.isArray(state?.chats) || !Array.isArray(state?.connection?.accounts)) throw new Error('O host não forneceu uma sessão compatível do Studio.');
   await drafts.init();
-  const state = await host.state(); chats = state.chats; connection = state.connection; supportsWebDelete = state.capabilities?.deleteOnWeb === true; webDeletionRecovery = state.capabilities?.deletionRecoveryRequired === true;
+  chats = state.chats; connection = state.connection; supportsWebDelete = state.capabilities?.deleteOnWeb === true; webDeletionRecovery = state.capabilities?.deletionRecoveryRequired === true;
   home = state.home === true;
   projects = state.projects || []; activeProjectId = state.activeProjectId ?? chats.find(value => value.id === state.activeId)?.projectId ?? null;
   webSnapshot = state.web || {}; renderSession();
   if (Object.hasOwn(state, 'activeId')) activeId = state.activeId; else activeId = null;
   externalBusy = Boolean(state.web?.busy); lastVersion = state.version ?? -1;
-  initialized = true; restoreDraft();
-  projectPanel.setContext(project()?.binding || null); await loadModels(); render();
+  projectPanel.setContext(project()?.binding || null); await loadModels();
+  restoreDraft(); render(); initialized = true; updateControls();
 }
 async function newChat() {
   return navigate(async () => {
@@ -641,4 +645,14 @@ const projectEntry = createProjectEntry({ host, enter: openWorkspaceConversation
   projectPanel.assertContext(null);
 } });
 window.addEventListener('beforeunload', () => { clearInterval(activityTimer); clearInterval(webTimer); audioPanel.dispose(); });
-run(loadState);
+const startup = createStartup({ load: loadState, changed: ({ state, message }) => {
+  $('hostAvailability').hidden = state === 'ready';
+  $('hostAvailability').dataset.state = state;
+  $('hostAvailabilityTitle').textContent = state === 'loading' ? 'Conectando ao Studio…' : 'Studio sem conexão com o host';
+  $('hostAvailabilityMessage').textContent = message || 'Conferindo a sessão e os rascunhos antes de abrir suas conversas.';
+  $('hostRetry').disabled = state !== 'unavailable';
+  for (const id of ['welcomeConnect','connectAccount','accountButton','welcomeBrowser','connectBrowser','openProject','openActivity','openContext','homeWorkspace','chatOptions','exportDiagnostics']) $(id).disabled = state !== 'ready';
+  updateControls();
+} });
+$('hostRetry').addEventListener('click', () => startup.start());
+startup.start();

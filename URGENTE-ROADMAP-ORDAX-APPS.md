@@ -1,5 +1,10 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Incremento comprovado — disponibilidade Web e recuperação de abertura do Studio (2026-10-09)
+
+Solicitação explícita do usuário, MVP-04/Studio: candidato 0.13.2 rejeita transporte ausente/HTML/JSON inválido, consulta estado antes dos rascunhos e só libera ações após inicialização. Retry explícito é serializado e conserva a sessão existente. O OS recebeu acesso Studio na navegação e apresentação honesta do painel de host. Isso ainda não integra a interface completa no OS Web: entrega canônica, adapter de conversas e preview continuam pendentes, com owners e critérios em [STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md). Não foi criada outra fonte de Studio, Memory ou execução, nem habilitada instalação/produção.
+
+
 ## Incremento comprovado — recuperação de áudio do Studio (2026-10-09)
 
 Solicitação explícita do usuário, exceção à rodada geral de polimento, MVP-04/Studio: candidato 0.13.1 corrige espera indefinida de áudio, perda do controle de encerramento ao recarregar, snapshots atrasados e resposta IPC perdida após início. Host publica estado/revisão, aplica prazo de 10 segundos por início/encerramento e conserva bloqueio quando não consegue provar saída. Cancelar durante início não repete voz nem aceita confirmação atrasada. UI recuperada não importa ditado sem sua revisão original.

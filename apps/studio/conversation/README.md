@@ -1,6 +1,8 @@
 # ORDAX Studio
 
-Esta é a experiência de conversa do **ORDAX Studio**, consolidada em `apps/studio/conversation` no owner `ordaxsystems/ordax-apps`. O candidato local 0.13.1 evolui o Studio existente; o Assistant nativo do OrdaX OS permanece independente. Veja [a matriz de substituição e os limites reais](../../../docs/STUDIO-CONVERSATION-REPLACEMENT.md).
+A versão Web do OS ainda depende da composição do host e da entrega da interface canônica. [Estado real e critérios de integração Web](../../../docs/STUDIO-WEB-INTEGRATION.md). Candidato 0.13.2 corrige falhas de inicialização e oferece tentativa explícita sem recriar a sessão.
+
+Esta é a experiência de conversa do **ORDAX Studio**, consolidada em `apps/studio/conversation` no owner `ordaxsystems/ordax-apps`. O candidato local 0.13.2 evolui o Studio existente; o Assistant nativo do OrdaX OS permanece independente. Veja [a matriz de substituição e os limites reais](../../../docs/STUDIO-CONVERSATION-REPLACEMENT.md).
 
 A abertura começa em **Início**, sem selecionar conversa ou projeto. Adicionar projeto distingue espaço de conversas de pasta conectada; criação/importação passam por revisão e Runtime autorizado. Cada projeto pode ter notas enviadas opcionalmente no primeiro envio de uma conversa. [Estado e limites dos fluxos de projeto](../../../docs/STUDIO-PROJECT-ONBOARDING.md).
 
@@ -10,7 +12,7 @@ Novos compositores tentam selecionar **Chat** pelo controle público, verificand
 
 ## Abrir no Windows
 
-**Versão portátil 0.13.1:** abra `ORDAX Studio.exe` na pasta gerada em `tools/assistant-host/.data/portable/`. Mantenha a pasta inteira, que contém o runtime. Não precisa de npm, Node.js, Codex ou Work para abrir. É uma compilação local sem assinatura digital; não foi publicada na Store.
+**Versão portátil 0.13.2:** abra `ORDAX Studio.exe` na pasta gerada em `tools/assistant-host/.data/portable/`. Mantenha a pasta inteira, que contém o runtime. Não precisa de npm, Node.js, Codex ou Work para abrir. É uma compilação local sem assinatura digital; não foi publicada na Store.
 
 Para gerar a versão portátil a partir do código, execute na raiz deste repositório:
 

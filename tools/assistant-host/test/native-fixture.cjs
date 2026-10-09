@@ -99,7 +99,18 @@ app.whenReady().then(async () => {
     const controls = createWebControls({ window, surface, plugin, resumeURL: () => bridge.resumeURL(), isReady: () => Boolean(bridge?.page?.ready), isBusy: () => Boolean(bridge?.run || bridge?.sending || bridge?.page?.busy), openExternal: async url => browserOpened.push(url) });
     bridge = new WebBridge({ surface, storage, openLogin: controls.login, setupActive: () => controls.state().pluginSetup, interval: 100 }); await bridge.init();
     const chat = await bridge.createChat();
+    const realState = bridge.state.bind(bridge);
+    let failInitialState = true;
+    bridge.state = (...args) => { if (failInitialState) { failInitialState = false; return null; } return realState(...args); };
     host = await createWebServer({ bridge, runtime }); registerWebControls(ipcMain, { window, origin: host.origin, controls }); await window.loadURL(host.origin + '/src/index.html');
+    for (let i = 0; i < 50; i++) { if (await window.webContents.executeJavaScript('document.getElementById("hostAvailability").dataset.state === "unavailable"')) break; await pause(50); }
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("hostAvailability").dataset.state'), 'unavailable');
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("newChat").disabled && document.getElementById("send").disabled && document.getElementById("welcomeConnect").disabled'), true);
+    await window.webContents.executeJavaScript('document.getElementById("hostRetry").click(); document.getElementById("hostRetry").click()');
+    for (let i = 0; i < 50; i++) { if (await window.webContents.executeJavaScript('document.getElementById("hostAvailability").hidden')) break; await pause(50); }
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("hostAvailability").hidden'), true);
+    assert.equal(bridge.chats.length, 1); assert.equal(bridge.chats[0].id, chat.id);
+    console.log('PASS BOOT: resposta incompatível bloqueia ações; tentativa explícita recupera o mesmo host sem criar conversa.');
     for (let i = 0; i < 50 && !bridge.page; i++) { await bridge.refresh(); await pause(100); }
     assert.equal(bridge.page?.ready, false);
     await window.webContents.executeJavaScript('document.getElementById("welcomeBrowser").click()');

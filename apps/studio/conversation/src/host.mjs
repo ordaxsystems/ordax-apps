@@ -1,9 +1,15 @@
 import { readSSE } from './stream.mjs';
 
-async function request(url, method = 'GET', data) {
-  const response = await fetch(url, { method, credentials: 'same-origin', signal: AbortSignal.timeout(20000), headers: data ? { 'Content-Type': 'application/json' } : {}, body: data ? JSON.stringify(data) : undefined });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || 'Não foi possível concluir a operação.');
+export async function request(url, method = 'GET', data, fetchImpl = fetch) {
+  const response = await fetchImpl(url, { method, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(20000), headers: data ? { 'Content-Type': 'application/json' } : {}, body: data ? JSON.stringify(data) : undefined });
+  // Static previews do not provide this transport; HTML is never app state.
+  if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') || '')) {
+    throw new Error('O host do Studio não está disponível neste endereço. Abra o app pelo host configurado; uma página estática não conecta o Runtime nem o ChatGPT.');
+  }
+  let payload;
+  try { payload = await response.json(); }
+  catch { throw new Error('O host retornou uma resposta inválida. Tente conectar novamente.'); }
+  if (!response.ok) throw new Error(typeof payload?.error === 'string' ? payload.error : 'Não foi possível concluir a operação.');
   return payload;
 }
 
