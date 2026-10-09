@@ -1,6 +1,74 @@
 # OrdaX Apps — canonical handoff
 
-Atualizado em 2026-10-08.
+Atualizado em 2026-10-09.
+
+## Recorte Studio Web — PC online, telefone como cliente
+
+MVP-04: decisão solicitada pelo usuário prioriza trabalhar em um PC autorizado
+e online a partir do Web/telefone. Workspace e execução ficam no Runtime do
+PC; leituras autorizadas podem retornar conteúdo ao GPT. Storage/executor
+cloud e agente Android não são pré-requisitos, nem capacidades já entregues.
+Primeiro fluxo Web deve apresentar projetos/tarefas/resultados e abrir
+explicitamente o ChatGPT com plugin, sem replicar sua sessão. Composição,
+transporte canônico e E2E real continuam pendentes.
+
+OS main consultado `a9ff030` declara Android como arquitetura e
+`ORDAX_ANDROID_APK_IMPLEMENTED=NO`; Mobile runtime permanece desativado.
+Não há APK implementado nos sources consultados. Cliente Web de telefone e
+agente de capacidades Android são entregas diferentes.
+[Owners, riscos e critérios de aceite](docs/STUDIO-WEB-INTEGRATION.md).
+
+## Web e outros dispositivos — estado de acesso aos arquivos
+
+MVP-04: preview local OS atualizado de `f4361c7` para main `5b31bc0`, sem
+mudanças de source. Asset servido coincide com o checkout; browser recarregado.
+Studio Web ainda é o componente de integração 0.1.0, não o front portátil
+0.14.1; composição verificada/conversa/preview continuam pendentes.
+
+Plugin não recebeu executor ou acesso a arquivos cloud. User Cloud Storage
+do OS está em fundação com rollout desativado; Mobile Companion tem runtime
+desativado. Product setup aceita identidade mobile, sem disponibilizar agente
+ou capacidades. Telefone como cliente e
+telefone como origem de arquivos/capacidades são fluxos diferentes; login e
+presença não concedem execução. [Matriz, owners e dependências](docs/STUDIO-WEB-INTEGRATION.md).
+
+## Continuidade Studio/plugin — consumidor de presença
+
+MVP-04: o remoto Runtime já contém o cliente canônico da PR 66 e a prova
+Electron da PR 68. A [PR 69](https://github.com/ordaxsystems/ordax-runtime/pull/69),
+source `c192505`, aprimora esse mesmo cliente, sem outra implementação:
+autenticação de conta herdada é recusada antes da rede, confirmação tem prazo
+total e a versão segue o limite UTF-16 do servidor. Candidato Runtime 0.4.6;
+198 testes locais passaram, com quatro pulados pelo ambiente.
+
+A [Platform PR 116](https://github.com/ordaxsystems/ordax-platform/pull/116),
+source `ec3e7bf`, recebe seis checks do Worker que estavam no Runtime e os
+mantém em CI. 95 Node, 181 Python e bundle passaram no commit exato.
+Nenhum serviço D1 de retenção foi restaurado; o gate existente é preservado.
+Apps mantém 0.14.1, sem serviço/loop/credencial de presença ou novo grant.
+Remotos Apps `72234d0` e Runtime `2eed135` reconciliados; trabalho paralelo
+preservado. UUID/credencial real, migração do transporte e E2E seguem pendentes.
+[Riscos, aceite e dependências](docs/STUDIO-WEB-INTEGRATION.md).
+
+## Continuidade Studio/plugin — IA do OS
+
+MVP-04: [OS PR 1556](https://github.com/ordaxsystems/ordax-os/pull/1556)
+protege a composição canônica Memory/Intelligence contra respostas pendentes
+após mudança de conta/Space ou encerramento. Não cria serviço no app/plugin;
+owner OS, ports públicos existentes e autoridade consultiva preservados.
+388 Node e 13 Python passaram localmente; a prova da cadeia usa backend de teste.
+Apps segue 0.14.1 e não invoca automaticamente IA/Memory do OS pelo plugin.
+Transporte público, identidade de cliente/dispositivo e autorização de
+contexto/egress permanecem dependências dos owners. Remotos revistos e
+mudanças paralelas do OS preservadas. [Aceite, risco e estado](docs/STUDIO-WEB-INTEGRATION.md).
+
+[Platform PR 115](https://github.com/ordaxsystems/ordax-platform/pull/115)
+alinha o display name ORDAX Studio, preservando ID `ordax-chatgpt` e versão
+independente 0.4.7 no manifest canônico. Guias corrigem o owner Windows e
+registram a cadeia de IA do OS e suas dependências; nenhuma IA foi ativada
+pelo conector. Package/CI não atualizam automaticamente o plugin instalado.
+PR de presença 114 mesclada em `5d4c681`; cliente explícito Runtime na PR 66
+já mesclada, mas o heartbeat legado não o chama automaticamente.
 
 ## Estado canônico
 

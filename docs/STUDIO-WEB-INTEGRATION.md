@@ -2,6 +2,304 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Recorte de entrega — cliente Web/mobile e PC online
+
+Decisão de escopo solicitada em 2026-10-09: priorizar o Studio Web como cliente
+de um PC autorizado e online. Os arquivos e a execução permanecem no Runtime
+desse PC; User Cloud Storage, executor cloud e agente Android não são
+pré-requisitos desse fluxo. Essas capacidades futuras continuam nos seus
+owners, sem serem anunciadas como entregues nem removidas do roadmap global.
+
+O fluxo pretendido é ChatGPT com plugin MCP → Platform com identidade,
+grants e acompanhamento → Runtime do PC escolhido. Studio apresenta projetos,
+estado das tarefas, contexto e resultados pelas mesmas fontes autorizadas.
+Não cria cadastro, fila, credenciais de dispositivo ou executor próprios.
+Presença ajuda a informar disponibilidade, mas não prova que o canal de
+execução esteja disponível ou que uma operação tenha sido autorizada.
+
+“Sem arquivos na Web” significa não manter uma cópia do workspace no cliente,
+e não impedir o GPT de consultar arquivos necessários: leituras autorizadas
+continuam no Runtime e retornam conteúdo pelo protocolo. Esse conteúdo pode
+entrar no contexto do provedor de IA; não prometer que todos os dados ficam
+exclusivamente no PC. Preview acessado de outro aparelho também precisa de
+um endereço/serviço autorizado e alcançável; `localhost` do PC não é o
+`localhost` do telefone. Não expor uma porta ou criar túnel paralelo no Apps.
+
+Para a primeira entrega Web, priorizar projetos, acompanhamento e resultados,
+com abertura explícita do ChatGPT e uso do plugin. A conversa permanece no
+ChatGPT enquanto não houver adapter público adequado. Não embutir a sessão
+via iframe, compartilhar cookies ou reproduzir APIs privadas. A superfície
+Electron existente não é um adapter Web e não comprova paridade no browser.
+
+Critérios de aceite deste recorte: composição a partir do source portátil
+canônico; cliente Web autenticado usando os contratos públicos dos owners;
+seleção explícita de PC/projeto; verificação de canal e autorização antes de
+envios; offline/falha sem troca silenciosa de alvo ou reenvio de ações aceitas;
+recuperação por consulta da mesma tarefa; resultado/preview autorizado; E2E
+com PC real e browser de telefone. Owner Apps para apresentação; OS/SDK para
+host e composição; Platform para transporte/identidade/grants/audit; Runtime
+para execução. Riscos principais: confundir presença com execução, divulgar
+arquivos além do escopo e duplicar uma tarefa após desconexão. O recorte é
+planejamento de entrega, não nova prova de produto funcional.
+
+### Android — contrato existente, aplicativo ainda não implementado
+
+No OS main consultado em 2026-10-09 (`a9ff030`),
+[CURRENT-STATE](https://github.com/ordaxsystems/ordax-os/blob/a9ff030/docs/CURRENT-STATE.md)
+declara `ORDAX_ANDROID_APK_IMPLEMENTED=NO` e
+`ORDAX_MOBILE_ADAPTER_STATUS=ARCHITECTURE_ONLY`.
+[Mobile Companion](https://github.com/ordaxsystems/ordax-os/blob/a9ff030/docs/contracts/mobile-companion.json)
+mantém `mobile_runtime_enabled=false`. A busca nos repositórios acessíveis da
+organização e no source OS não encontrou projeto Android/Gradle ou APK
+implementado. Há projeto arquitetural, não app Android entregue. Locks de
+pacotes APK do Alpine no OS não são um aplicativo Android.
+
+O telefone pode ser cliente Web do PC sem instalar um agente no telefone,
+quando composição/transporte/E2E acima forem entregues. Oferecer arquivos,
+sensores ou execução do próprio telefone exige outra implementação dos
+contratos Mobile e permissões nativas. Login na conta não ativa essas funções.
+
+## Origem dos arquivos — Web, nuvem e dispositivos
+
+### Sincronização e independência do conector
+
+#### Ajustes do OS — acesso remoto independente do Studio
+
+Clarificação do usuário: a independência após remover Studio é requisito do
+OrdaX OS. No Windows, UI e Runtime podem continuar no mesmo pacote. Não
+transformar essa limitação Windows em bloqueio ou redesign de sua distribuição.
+No OS, a gestão do acesso externo deve permanecer nas Configurações do sistema,
+mesmo sem Studio, consumindo Identity/Policy/Platform/Runtime existentes.
+
+Direção de UX: uma seção de conexões de IA deve distinguir **pausar acesso
+remoto**, **revisar permissões** e **desconectar/revogar**. Não chamar o primeiro
+controle de sincronização: ele não pausa armazenamento, sync da conta ou IA
+local. Escopo de pausa (conector/dispositivo) deve ser explícito. A operação
+precisa de confirmação da autoridade; estado desconhecido ou falha não podem
+ser apresentados como bloqueio bem-sucedido.
+
+Pause/resume requer contrato público no owner Platform/Policy e enforcement
+no caminho de admissão/execução. A pausa deve bloquear novas operações no
+escopo, sem apagar arquivos ou alterar grants. Retomar exige revalidar conta,
+dispositivo e grants; não recria permissão revogada. Tarefas aceitas/em execução
+precisam de política explícita do owner: pausa não implica cancelamento e não
+deve provocar reenvio. Revogação já existente não é uma pausa reversível.
+Não implementar apenas boolean local, ocultar tool ou desconectar o painel.
+
+Contrato e superfície OS ainda não comprovados para essa pausa. Aceite: pausa
+persiste/reconcilia nos clientes; não é atravessada pelo MCP ou reconexão; outro
+conector fora do escopo não é bloqueado; retomada não amplia grants; auditoria
+e tarefas existentes preservadas; remoção de Studio não remove os controles.
+
+#### Planos, assinatura e armazenamento — consolidação antes dos preços
+
+OS main consultado `388b71f` mantém uma estrutura canônica de planos e quotas:
+[entitlements](https://github.com/ordaxsystems/ordax-os/blob/388b71f/docs/contracts/entitlements.json),
+[quota ledger](https://github.com/ordaxsystems/ordax-os/blob/388b71f/docs/contracts/service-quotas.json),
+[storage](https://github.com/ordaxsystems/ordax-os/blob/388b71f/docs/contracts/user-cloud-storage.json).
+Planos free/personal/professional/team possuem identidade definida; preços e
+quotas sensíveis a custo ficam abertos, e apenas Free é atribuível antes da
+ativação de billing. Reserva/uso/redução de quota têm fundamento transacional
+canônico; essa base não torna assinatura ou upload operacional.
+
+Requisito solicitado: concluir engenharia independentemente de preços finais.
+Lacunas técnicas comprovadas: `billing_implemented=false`, planos pagos não
+compráveis, bucket de usuário não provisionado, executor de mutações de storage
+não ativado, rollout público desabilitado e E2E real pendente. Não tratar tudo
+como simples preenchimento de GB/preço nem alterar flags para anunciar pronto.
+
+Critérios de consolidação nos owners: assinatura e atualização de entitlement
+server-authoritative com eventos idempotentes/reconciliáveis; expiração e
+cancelamento/downgrade sem apagar dados; storage com reserva de quota, upload
+autorizado, tamanho/hash verificados, isolamento conta/Space, exportação/exclusão
+e recuperação; integração de arquivos/sync com conflito e tombstones; UI de uso
+baseada nos mesmos contratos. Definição de preço, limites comerciais e provedor
+de cobrança permanece decisão separada. Apps não cria ledger, subscription,
+storage ou sync próprios. Nada foi provisionado ou ativado nesta análise.
+
+Leitura/edição local pelo GPT e sincronização cloud são operações diferentes.
+Account Sync atual cobre aparência, preferências e metadados portáteis, não
+sincronização bidirecional do conteúdo do workspace. User Cloud Storage segue
+sem rollout, bucket e executor de mutações ativados. Não anunciar upload
+automático após edição local. Integração futura deve definir seleção, revisões,
+conflitos, exclusão e recuperação no owner OS/storage/sync, sem dual-write ou
+serviço paralelo no Studio.
+
+O conector MCP pertence à Platform e acessa capacidades publicadas pelo
+OS/Runtime; Studio é uma interface consumidora. O nome no ChatGPT não limita
+a infraestrutura ao app Studio nem concede acesso total. Profile Packs dão
+contexto e intenções, não grants. Controle de impressora 3D exige adapter,
+canal e autorização próprios; adapter operacional não comprovado nesta análise.
+
+Remover apenas a UI preservando o Runtime é objetivo de lifecycle, não
+comportamento comprovado do pacote Windows atual. No source Runtime `c192505`,
+[instalador Windows](https://github.com/ordaxsystems/ordax-runtime/blob/c192505/packaging/windows/ordax-studio.iss)
+instala ambos na mesma raiz; o uninstaller encerra Studio e Runtime, remove
+arquivos instalados e o autostart do Runtime. Desinstalar esse pacote encerra
+o caminho local do plugin. Fechar a UI é uma operação diferente. Não inferir
+exclusão de arquivos do usuário ou revogação de identidade global.
+
+Dependência: owner Runtime/OS lifecycle deve provar remoção só da UI mantendo
+o serviço quando escolhido, remoção explícita do Runtime, reconexão/revogação
+e gestão local de permissões disponível sem Studio. Apps não deve modificar
+o desinstalador de outro owner nem deixar agente oculto como paliativo. Aceite
+exige instalação/desinstalação real e prova do canal autorizado; inspeção de
+source não substitui essa prova.
+
+O lugar onde a interface abre não determina onde os arquivos estão. Hospedar o
+Studio/Control Plane na Cloudflare não sincroniza arquivos do computador nem
+cria um executor de projetos. O plugin precisa encaminhar cada operação à
+origem autorizada do projeto pelo mesmo gateway, com identidade, escopo e audit.
+
+| Origem do projeto | Caminho necessário | Estado comprovado |
+| --- | --- | --- |
+| Computador local/remoto | Runtime do dispositivo, vínculo do projeto, grants e canal disponível | Ferramentas de projeto no Runtime; migração canônica/E2E seguem pendentes. O dispositivo precisa estar ligado para operações locais. |
+| Arquivos já na nuvem | Serviço canônico de arquivos ou conector autorizado do repositório | OS tem fundação de User Cloud Storage, com rollout desativado; plugin não possui integração de leitura/edição desses projetos. |
+| Executar build/preview na nuvem | Executor provisionado e autorizado, com workspace do projeto e resultado alcançável | Não implementado; armazenamento, hospedagem da UI e GitHub não equivalem a um executor. |
+| Telefone como cliente Web | Mesma UI portátil e adapters Web, usando origens remotas autorizadas | Composição completa do Studio ainda pendente; navegar no preview não ativa o produto Mobile. |
+| Telefone como origem de capacidades/arquivos | Agente/adapter Android/iOS, permissões da plataforma e sessão/grants explícitos | Contratos Mobile Companion somente; `mobile_runtime_enabled=false`. Product setup aceita identidade `mobile`, mas isso não instala um agente nem disponibiliza capacidades. |
+
+Usar somente um projeto já hospedado na nuvem não exige instalar o Runtime no
+computador do usuário. Ainda exige implementar a integração de arquivos e, para
+executar código, o executor remoto. Seleção/upload de arquivos pelo usuário é
+uma operação explícita diferente de acesso contínuo à pasta local pelo plugin;
+esse fluxo Web/telefone não está entregue pelo Studio atual.
+
+Instalar um app no telefone não concede controle irrestrito do aparelho. As
+capacidades mobile previstas são delimitadas, revogáveis e visíveis; login ou
+presença na conta não concedem acesso a arquivos, câmera ou microfone. Um
+telefone cliente pode solicitar trabalho em outro dispositivo autorizado, mas
+não executa automaticamente as ferramentas desktop nesse telefone.
+
+Owners: Apps apresenta origem/estado e contexto de projeto; OS mantém File Space,
+User Cloud Storage, Identity/Spaces e permissões; Platform mantém protocolo,
+conectores, grants e audit; Runtime executa nos dispositivos. Integração de
+repositório e executor cloud devem consumir os owners existentes, sem outro
+storage, cadastro de dispositivo, fila ou autoridade no Studio.
+
+Contratos consultados no OS main `5b31bc0`:
+[User Cloud Storage](https://github.com/ordaxsystems/ordax-os/blob/5b31bc0/docs/contracts/user-cloud-storage.json),
+[Mobile Companion](https://github.com/ordaxsystems/ordax-os/blob/5b31bc0/docs/contracts/mobile-companion.json).
+Esses contratos não provam rollout ou acesso pelo plugin.
+
+[Platform PR 117](https://github.com/ordaxsystems/ordax-platform/pull/117),
+source `8fbe9b8`, atualiza a orientação MCP existente para distinguir cliente
+da conversa e alvo de execução, preservar seleção explícita e não inferir
+acesso mobile ou executor cloud a partir de metadados/login/presença.
+96 testes Node passaram localmente, incluindo catálogo misto desktop/mobile,
+zero dispatch e remoção de campos privados de arquivos/câmera/execução.
+Não adiciona tools, schemas, grants, agente, storage ou executor. O protocolo
+e seus handlers permanecem no owner Platform; deploy/conta real são separados.
+
+## Preview local — diferença entre atualização e composição
+
+O checkout usado no preview Web foi atualizado por fast-forward de `f4361c7`
+para OS main `5b31bc0`, preservando mudanças paralelas. O asset servido foi
+comparado byte a byte com o checkout e a página recarregada/verificada no
+browser. Não houve instalação, ativação de serviço ou alteração do source OS.
+
+A janela Web continua usando `system/apps/studio/runtime.mjs`, componente de
+integração 0.1.0; o produto portátil canônico no Apps continua 0.14.1. A UI
+observada avisa que o Studio completo ainda não está integrado ao OS. A
+diferença não se resolve só com cache/reload: faltam entrega/composição
+verificada da interface e adapter de conversa/preview. Não copiar a UI para o
+OS nem apontar um iframe para o host local como substituto desses contratos.
+
+## Consumidor de presença — correções no source canônico existente
+
+Runtime main avançou até `2eed135`: PR 66 entrega o cliente explícito
+`ProductDevicePresenceClient` e PR 68 a prova de handoff Electron. Apps main
+avançou até `72234d0` com fixtures de conversa/preview Windows; ambos foram
+reconciliados antes do push. O rascunho local alternativo de presença foi
+descartado em favor da implementação já mesclada, sem publicar duas fontes.
+
+[Runtime PR 69](https://github.com/ordaxsystems/ordax-runtime/pull/69), source
+`c192505`, corrige autenticação de conta herdada pelo transporte HTTP antes
+de qualquer request, prazo total durante chunks/EOF e limite de versão de
+80 unidades UTF-16 conforme Platform. Reutiliza o cliente existente, conserva
+recibo coalescido, limite de 8 KiB descomprimidos, erros públicos, stream closure
+e um único POST. Credencial é fornecida por chamada e não retida pelo cliente.
+Não presume equivalência entre credencial WebSocket legada e PostgreSQL.
+
+Aceite local: 198 testes Runtime/compatibilidade/handoff, quatro pulados pelo
+ambiente, incluindo 29 de presença/transporte. Os seis novos casos cobrem
+autenticação herdada, UTF-16, leitura lenta/EOF tardio, limite durante streaming,
+rotação por chamada e transporte externo, e supressão de redirects.
+Owner Runtime; candidato 0.4.6 em seus metadados e snapshot de compatibilidade.
+Device Agent, Apps 0.14.1 e conector mantêm versionamento independente.
+Compilação e wheel 0.4.6 passaram localmente. Contratos Windows (195 testes,
+um pulado), mínimo MCP SDK e contratos de pacote passaram no commit exato;
+build/instalação Windows seguem a prova de candidato separada.
+[CI Runtime](https://github.com/ordaxsystems/ordax-runtime/actions/runs/37998584378).
+
+[Platform PR 116](https://github.com/ordaxsystems/ordax-platform/pull/116), source
+`ec3e7bf`, move seis checks do Worker para seu owner e os executa em CI.
+Os 14 testes de transporte Runtime permanecem no Runtime e entram em sua CI.
+Scopes de navegador usam o registro público existente; revogação segue o
+handler administrativo atual. A prova antiga de retenção D1 foi substituída
+por verificação do bloqueio canônico existente e rejeição de readiness
+contraditória; não anuncia retenção agendada nem restaura um serviço paralelo.
+95 Node, 181 Python (incluindo pacote) e Wrangler bundle passaram no mesmo
+commit. [CI Platform](https://github.com/ordaxsystems/ordax-platform/actions/runs/37998396343).
+
+Risco tratado: misturar autenticação de conta/dispositivo, confirmar presença
+após o prazo ou aceitar metadados incompatíveis. O cliente é explícito e ainda
+não ligado ao heartbeat normal. Registro/rotação/revogação canônicos, migração
+conjunta de canal/grants/bindings/leases/reports/audit, fencing e E2E real seguem
+dependências dos owners. Presença não concede execução ou IA/Memory remota.
+Gates de produção permanecem intactos; nenhuma instalação ou ativação ocorreu.
+
+## Reutilização de IA do OS — continuidade do contexto canônico
+
+Apps PR 195 já foi mesclada em `744eec6`; a prova Windows independente da
+PR 196 está em `21fe363`. Este handoff parte desse main e não reapresenta os
+commits mesclados nem altera o candidato portátil. Trabalho paralelo preservado.
+
+O candidato do conector passa a exibir **ORDAX Studio** na
+[Platform PR 115](https://github.com/ordaxsystems/ordax-platform/pull/115),
+source `cdaf40c`, versão independente 0.4.7 e ID estável `ordax-chatgpt`.
+Manifest, pacote determinístico, cópia pública e guias de conexão/revisão estão
+alinhados. O workflow compara o manifest completo do ZIP ao source validado,
+preservando os gates sem um segundo lock de branding. 11 testes do pacote e 95
+Node do Control Plane passaram localmente; os quatro checks remotos de pacote,
+source e bundle Worker passaram no mesmo commit. [CI](https://github.com/ordaxsystems/ordax-platform/actions/runs/37995750407),
+[ZIP de revisão](https://github.com/ordaxsystems/ordax-platform/actions/runs/37995750409).
+Essa versão não foi publicada nem instalada na conta. Platform PR 114 foi
+mesclada em `5d4c681`; Runtime PR 66 adicionou o consumidor explícito,
+mas seu heartbeat normal ainda não o chama automaticamente.
+
+[OS PR 1556](https://github.com/ordaxsystems/ordax-os/pull/1556), source
+`e8660f8`, corrige a composição Memory → Intelligence → Model Router → IA local.
+Mudança de conta, logout ou Space invalida a resposta pendente, inclusive ao
+retornar ao contexto original. Mudança durante a consulta de Memory impede
+envio ao modelo. Consultas concorrentes têm observação independente e liberam
+seus observadores; falha de observação/limpeza e runtime encerrado não publicam
+uma resposta antiga. Não há troca automática de alvo nem repetição de inferência.
+
+Owner OS; os mesmos ports de Identity/Space/Memory/Intelligence e a autoridade
+consultiva `none` permanecem. Apps mantém seu source portátil e Platform mantém
+o protocolo do plugin, autenticação, grants, fila e audit. Catálogo semântico
+de apps e presença de dispositivo não são acesso a Memory nem disponibilidade
+de IA. Apps não recebeu implementação privada, outro router ou permissão.
+
+Aceite local: 388 testes Node do Intelligence Foundation, incluindo a cadeia
+existente com backend de teste; 40 focados após reconciliação com OS `main`
+`3ddaf5e`; 5 Python de consumidor/contrato no Windows e 8 de contexto Native
+Profile no Linux. Source baseado no remoto atual, preservando as mudanças
+paralelas de autenticação/armazenamento. Os nove checks remotos de Foundation,
+Intelligence, Surface Web, contratos, pacote, mount e boot QEMU passaram no
+commit exato. [Intelligence CI](https://github.com/ordaxsystems/ordax-os/actions/runs/37995128264),
+[QEMU CI](https://github.com/ordaxsystems/ordax-os/actions/runs/37995128368).
+
+Risco tratado: resposta atrasada carregar contexto de outra conta/Space.
+Limite: inferência já iniciada não ganhou API fictícia de cancelamento; sua
+conclusão é descartada. A prova não usa hardware/modelo físico ou conta real.
+O plugin **ainda não invoca a IA do OS**: faltam transporte público autenticado,
+vínculo de cliente/dispositivo, escopos e egress explícitos para esse consumidor.
+Essas dependências devem entrar nos owners canônicos antes da composição Web,
+sem expor a porta Native privada ou herdar toda a Memory local. Apps segue
+0.14.1; fonte/CI não significam deploy ou ativação.
+
 ## Presença canônica — transporte no owner Platform
 
 [Platform PR 114](https://github.com/ordaxsystems/ordax-platform/pull/114), source
@@ -21,7 +319,8 @@ compilação Wrangler 4.141.0 e três checks remotos verdes no commit exato.
 [Contrato e limites](https://github.com/ordaxsystems/ordax-platform/blob/0c85bf2fad6b1648d3e8f73ec16e49e206cc77a3/docs/PRODUCT_DEVICE_PRESENCE.md).
 
 Risco: confundir presença observada/coalescência com disponibilidade imediata.
-O Runtime atual ainda usa `/v3/device/ws` legado e **não chama** a nova rota.
+O heartbeat normal Runtime ainda usa `/v3/device/ws` legado e **não chama**
+a nova rota; o consumidor explícito foi adicionado pela PR 66.
 Canal, consumidor, grants, bindings canônicos, leases/reports e audit continuam
 pendências coordenadas; nenhum dispositivo real foi anunciado online por esta
 prova. Queda abrupta, ordenação entre sessões e alcance exigem seus contratos;
