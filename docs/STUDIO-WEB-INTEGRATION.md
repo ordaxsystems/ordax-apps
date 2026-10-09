@@ -2,6 +2,51 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Reutilização de IA do OS — continuidade do contexto canônico
+
+O candidato do conector passa a exibir **ORDAX Studio** na
+[Platform PR 115](https://github.com/ordaxsystems/ordax-platform/pull/115),
+source `cdaf40c`, versão independente 0.4.7 e ID estável `ordax-chatgpt`.
+Manifest, pacote determinístico, cópia pública e guias de conexão/revisão estão
+alinhados. O workflow compara o manifest completo do ZIP ao source validado,
+preservando os gates sem um segundo lock de branding. 11 testes do pacote e 95
+Node do Control Plane passaram localmente; os quatro checks remotos de pacote,
+source e bundle Worker passaram no mesmo commit. [CI](https://github.com/ordaxsystems/ordax-platform/actions/runs/37995750407),
+[ZIP de revisão](https://github.com/ordaxsystems/ordax-platform/actions/runs/37995750409).
+Essa versão não foi publicada nem instalada na conta. Platform PR 114 foi
+mesclada em `5d4c681`; a rota de presença continua sem consumidor Runtime atual.
+
+[OS PR 1556](https://github.com/ordaxsystems/ordax-os/pull/1556), source
+`e8660f8`, corrige a composição Memory → Intelligence → Model Router → IA local.
+Mudança de conta, logout ou Space invalida a resposta pendente, inclusive ao
+retornar ao contexto original. Mudança durante a consulta de Memory impede
+envio ao modelo. Consultas concorrentes têm observação independente e liberam
+seus observadores; falha de observação/limpeza e runtime encerrado não publicam
+uma resposta antiga. Não há troca automática de alvo nem repetição de inferência.
+
+Owner OS; os mesmos ports de Identity/Space/Memory/Intelligence e a autoridade
+consultiva `none` permanecem. Apps mantém seu source portátil e Platform mantém
+o protocolo do plugin, autenticação, grants, fila e audit. Catálogo semântico
+de apps e presença de dispositivo não são acesso a Memory nem disponibilidade
+de IA. Apps não recebeu implementação privada, outro router ou permissão.
+
+Aceite local: 388 testes Node do Intelligence Foundation, incluindo a cadeia
+existente com backend de teste; 40 focados após reconciliação com OS `main`
+`3ddaf5e`; 5 Python de consumidor/contrato no Windows e 8 de contexto Native
+Profile no Linux. Source baseado no remoto atual, preservando as mudanças
+paralelas de autenticação/armazenamento. Os oito checks remotos de Foundation,
+Intelligence, Surface Web, contratos, pacote e mount passaram no commit exato;
+a prova QEMU com build do kernel segue em execução. [Intelligence CI](https://github.com/ordaxsystems/ordax-os/actions/runs/37995128264).
+
+Risco tratado: resposta atrasada carregar contexto de outra conta/Space.
+Limite: inferência já iniciada não ganhou API fictícia de cancelamento; sua
+conclusão é descartada. A prova não usa hardware/modelo físico ou conta real.
+O plugin **ainda não invoca a IA do OS**: faltam transporte público autenticado,
+vínculo de cliente/dispositivo, escopos e egress explícitos para esse consumidor.
+Essas dependências devem entrar nos owners canônicos antes da composição Web,
+sem expor a porta Native privada ou herdar toda a Memory local. Apps segue
+0.14.1; fonte/CI não significam deploy ou ativação.
+
 ## Presença canônica — transporte no owner Platform
 
 [Platform PR 114](https://github.com/ordaxsystems/ordax-platform/pull/114), source
