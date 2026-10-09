@@ -2,6 +2,58 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Origem dos arquivos — Web, nuvem e dispositivos
+
+O lugar onde a interface abre não determina onde os arquivos estão. Hospedar o
+Studio/Control Plane na Cloudflare não sincroniza arquivos do computador nem
+cria um executor de projetos. O plugin precisa encaminhar cada operação à
+origem autorizada do projeto pelo mesmo gateway, com identidade, escopo e audit.
+
+| Origem do projeto | Caminho necessário | Estado comprovado |
+| --- | --- | --- |
+| Computador local/remoto | Runtime do dispositivo, vínculo do projeto, grants e canal disponível | Ferramentas de projeto no Runtime; migração canônica/E2E seguem pendentes. O dispositivo precisa estar ligado para operações locais. |
+| Arquivos já na nuvem | Serviço canônico de arquivos ou conector autorizado do repositório | OS tem fundação de User Cloud Storage, com rollout desativado; plugin não possui integração de leitura/edição desses projetos. |
+| Executar build/preview na nuvem | Executor provisionado e autorizado, com workspace do projeto e resultado alcançável | Não implementado; armazenamento, hospedagem da UI e GitHub não equivalem a um executor. |
+| Telefone como cliente Web | Mesma UI portátil e adapters Web, usando origens remotas autorizadas | Composição completa do Studio ainda pendente; navegar no preview não ativa o produto Mobile. |
+| Telefone como origem de capacidades/arquivos | Agente/adapter Android/iOS, permissões da plataforma e sessão/grants explícitos | Contratos Mobile Companion somente; `mobile_runtime_enabled=false`. Product setup aceita identidade `mobile`, mas isso não instala um agente nem disponibiliza capacidades. |
+
+Usar somente um projeto já hospedado na nuvem não exige instalar o Runtime no
+computador do usuário. Ainda exige implementar a integração de arquivos e, para
+executar código, o executor remoto. Seleção/upload de arquivos pelo usuário é
+uma operação explícita diferente de acesso contínuo à pasta local pelo plugin;
+esse fluxo Web/telefone não está entregue pelo Studio atual.
+
+Instalar um app no telefone não concede controle irrestrito do aparelho. As
+capacidades mobile previstas são delimitadas, revogáveis e visíveis; login ou
+presença na conta não concedem acesso a arquivos, câmera ou microfone. Um
+telefone cliente pode solicitar trabalho em outro dispositivo autorizado, mas
+não executa automaticamente as ferramentas desktop nesse telefone.
+
+Owners: Apps apresenta origem/estado e contexto de projeto; OS mantém File Space,
+User Cloud Storage, Identity/Spaces e permissões; Platform mantém protocolo,
+conectores, grants e audit; Runtime executa nos dispositivos. Integração de
+repositório e executor cloud devem consumir os owners existentes, sem outro
+storage, cadastro de dispositivo, fila ou autoridade no Studio.
+
+Contratos consultados no OS main `5b31bc0`:
+[User Cloud Storage](https://github.com/ordaxsystems/ordax-os/blob/5b31bc0/docs/contracts/user-cloud-storage.json),
+[Mobile Companion](https://github.com/ordaxsystems/ordax-os/blob/5b31bc0/docs/contracts/mobile-companion.json).
+Esses contratos não provam rollout ou acesso pelo plugin.
+
+## Preview local — diferença entre atualização e composição
+
+O checkout usado no preview Web foi atualizado por fast-forward de `f4361c7`
+para OS main `5b31bc0`, preservando mudanças paralelas. O asset servido foi
+comparado byte a byte com o checkout e a página recarregada/verificada no
+browser. Não houve instalação, ativação de serviço ou alteração do source OS.
+
+A janela Web continua usando `system/apps/studio/runtime.mjs`, componente de
+integração 0.1.0; o produto portátil canônico no Apps continua 0.14.1. A UI
+observada avisa que o Studio completo ainda não está integrado ao OS. A
+diferença não se resolve só com cache/reload: faltam entrega/composição
+verificada da interface e adapter de conversa/preview. Não copiar a UI para o
+OS nem apontar um iframe para o host local como substituto desses contratos.
+
 ## Consumidor de presença — correções no source canônico existente
 
 Runtime main avançou até `2eed135`: PR 66 entrega o cliente explícito

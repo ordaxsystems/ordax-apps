@@ -2,6 +2,20 @@
 
 Atualizado em 2026-10-09.
 
+## Web e outros dispositivos — estado de acesso aos arquivos
+
+MVP-04: preview local OS atualizado de `f4361c7` para main `5b31bc0`, sem
+mudanças de source. Asset servido coincide com o checkout; browser recarregado.
+Studio Web ainda é o componente de integração 0.1.0, não o front portátil
+0.14.1; composição verificada/conversa/preview continuam pendentes.
+
+Plugin não recebeu executor ou acesso a arquivos cloud. User Cloud Storage
+do OS está em fundação com rollout desativado; Mobile Companion tem runtime
+desativado. Product setup aceita identidade mobile, sem disponibilizar agente
+ou capacidades. Telefone como cliente e
+telefone como origem de arquivos/capacidades são fluxos diferentes; login e
+presença não concedem execução. [Matriz, owners e dependências](docs/STUDIO-WEB-INTEGRATION.md).
+
 ## Continuidade Studio/plugin — consumidor de presença
 
 MVP-04: o remoto Runtime já contém o cliente canônico da PR 66 e a prova
