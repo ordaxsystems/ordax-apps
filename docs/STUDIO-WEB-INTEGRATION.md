@@ -2,6 +2,50 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Consumidor de presença — correções no source canônico existente
+
+Runtime main avançou até `2eed135`: PR 66 entrega o cliente explícito
+`ProductDevicePresenceClient` e PR 68 a prova de handoff Electron. Apps main
+avançou até `72234d0` com fixtures de conversa/preview Windows; ambos foram
+reconciliados antes do push. O rascunho local alternativo de presença foi
+descartado em favor da implementação já mesclada, sem publicar duas fontes.
+
+[Runtime PR 69](https://github.com/ordaxsystems/ordax-runtime/pull/69), source
+`c192505`, corrige autenticação de conta herdada pelo transporte HTTP antes
+de qualquer request, prazo total durante chunks/EOF e limite de versão de
+80 unidades UTF-16 conforme Platform. Reutiliza o cliente existente, conserva
+recibo coalescido, limite de 8 KiB descomprimidos, erros públicos, stream closure
+e um único POST. Credencial é fornecida por chamada e não retida pelo cliente.
+Não presume equivalência entre credencial WebSocket legada e PostgreSQL.
+
+Aceite local: 198 testes Runtime/compatibilidade/handoff, quatro pulados pelo
+ambiente, incluindo 29 de presença/transporte. Os seis novos casos cobrem
+autenticação herdada, UTF-16, leitura lenta/EOF tardio, limite durante streaming,
+rotação por chamada e transporte externo, e supressão de redirects.
+Owner Runtime; candidato 0.4.6 em seus metadados e snapshot de compatibilidade.
+Device Agent, Apps 0.14.1 e conector mantêm versionamento independente.
+Compilação e wheel 0.4.6 passaram localmente. Contratos Windows (195 testes,
+um pulado), mínimo MCP SDK e contratos de pacote passaram no commit exato;
+build/instalação Windows seguem a prova de candidato separada.
+[CI Runtime](https://github.com/ordaxsystems/ordax-runtime/actions/runs/37998584378).
+
+[Platform PR 116](https://github.com/ordaxsystems/ordax-platform/pull/116), source
+`ec3e7bf`, move seis checks do Worker para seu owner e os executa em CI.
+Os 14 testes de transporte Runtime permanecem no Runtime e entram em sua CI.
+Scopes de navegador usam o registro público existente; revogação segue o
+handler administrativo atual. A prova antiga de retenção D1 foi substituída
+por verificação do bloqueio canônico existente e rejeição de readiness
+contraditória; não anuncia retenção agendada nem restaura um serviço paralelo.
+95 Node, 181 Python (incluindo pacote) e Wrangler bundle passaram no mesmo
+commit. [CI Platform](https://github.com/ordaxsystems/ordax-platform/actions/runs/37998396343).
+
+Risco tratado: misturar autenticação de conta/dispositivo, confirmar presença
+após o prazo ou aceitar metadados incompatíveis. O cliente é explícito e ainda
+não ligado ao heartbeat normal. Registro/rotação/revogação canônicos, migração
+conjunta de canal/grants/bindings/leases/reports/audit, fencing e E2E real seguem
+dependências dos owners. Presença não concede execução ou IA/Memory remota.
+Gates de produção permanecem intactos; nenhuma instalação ou ativação ocorreu.
+
 ## Reutilização de IA do OS — continuidade do contexto canônico
 
 Apps PR 195 já foi mesclada em `744eec6`; a prova Windows independente da
@@ -18,7 +62,8 @@ Node do Control Plane passaram localmente; os quatro checks remotos de pacote,
 source e bundle Worker passaram no mesmo commit. [CI](https://github.com/ordaxsystems/ordax-platform/actions/runs/37995750407),
 [ZIP de revisão](https://github.com/ordaxsystems/ordax-platform/actions/runs/37995750409).
 Essa versão não foi publicada nem instalada na conta. Platform PR 114 foi
-mesclada em `5d4c681`; a rota de presença continua sem consumidor Runtime atual.
+mesclada em `5d4c681`; Runtime PR 66 adicionou o consumidor explícito,
+mas seu heartbeat normal ainda não o chama automaticamente.
 
 [OS PR 1556](https://github.com/ordaxsystems/ordax-os/pull/1556), source
 `e8660f8`, corrige a composição Memory → Intelligence → Model Router → IA local.
@@ -38,9 +83,10 @@ Aceite local: 388 testes Node do Intelligence Foundation, incluindo a cadeia
 existente com backend de teste; 40 focados após reconciliação com OS `main`
 `3ddaf5e`; 5 Python de consumidor/contrato no Windows e 8 de contexto Native
 Profile no Linux. Source baseado no remoto atual, preservando as mudanças
-paralelas de autenticação/armazenamento. Os oito checks remotos de Foundation,
-Intelligence, Surface Web, contratos, pacote e mount passaram no commit exato;
-a prova QEMU com build do kernel segue em execução. [Intelligence CI](https://github.com/ordaxsystems/ordax-os/actions/runs/37995128264).
+paralelas de autenticação/armazenamento. Os nove checks remotos de Foundation,
+Intelligence, Surface Web, contratos, pacote, mount e boot QEMU passaram no
+commit exato. [Intelligence CI](https://github.com/ordaxsystems/ordax-os/actions/runs/37995128264),
+[QEMU CI](https://github.com/ordaxsystems/ordax-os/actions/runs/37995128368).
 
 Risco tratado: resposta atrasada carregar contexto de outra conta/Space.
 Limite: inferência já iniciada não ganhou API fictícia de cancelamento; sua
@@ -70,7 +116,8 @@ compilação Wrangler 4.141.0 e três checks remotos verdes no commit exato.
 [Contrato e limites](https://github.com/ordaxsystems/ordax-platform/blob/0c85bf2fad6b1648d3e8f73ec16e49e206cc77a3/docs/PRODUCT_DEVICE_PRESENCE.md).
 
 Risco: confundir presença observada/coalescência com disponibilidade imediata.
-O Runtime atual ainda usa `/v3/device/ws` legado e **não chama** a nova rota.
+O heartbeat normal Runtime ainda usa `/v3/device/ws` legado e **não chama**
+a nova rota; o consumidor explícito foi adicionado pela PR 66.
 Canal, consumidor, grants, bindings canônicos, leases/reports e audit continuam
 pendências coordenadas; nenhum dispositivo real foi anunciado online por esta
 prova. Queda abrupta, ordenação entre sessões e alcance exigem seus contratos;
