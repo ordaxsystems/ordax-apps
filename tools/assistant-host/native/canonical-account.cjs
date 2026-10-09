@@ -56,7 +56,7 @@ async function invokeCanonicalProductSignIn(data, {
   const payload = JSON.stringify({ schema: SCHEMA, operation: 'sign-in', ...data });
   if (Buffer.byteLength(payload) > 3000) throw Object.assign(new Error('Dados de acesso muito extensos.'), { status: 400 });
   return new Promise((resolve, reject) => {
-    let complete = false, bytes = 0, chunks = [];
+    let complete = false, bytes = 0, chunks = [], deadline;
     const finish = (error, value) => {
       if (complete) return;
       complete = true;
@@ -73,7 +73,7 @@ async function invokeCanonicalProductSignIn(data, {
         env: { ...process.env, PYTHONPATH: '', PYTHONHOME: '' },
       });
     } catch { return finish(fail('Não foi possível iniciar o Runtime instalado.')); }
-    const deadline = setTimeout(() => { child.kill(); finish(fail('A autenticação expirou sem confirmação.')); }, timeout);
+    deadline = setTimeout(() => { child.kill(); finish(fail('A autenticação expirou sem confirmação.')); }, timeout);
     child.once('error', () => finish(fail('Runtime local indisponível para autenticação.')));
     child.stdout.on('data', chunk => {
       bytes += chunk.length;
@@ -86,7 +86,7 @@ async function invokeCanonicalProductSignIn(data, {
       try {
         if (code !== 0 || bytes < 2) throw new Error('failed');
         const raw = Buffer.concat(chunks).toString('utf8');
-        if (raw.trimEnd().split('\n').length !== 1) throw new Error('framing');
+        if (!raw.endsWith('\n') || raw.indexOf('\n') !== raw.length - 1) throw new Error('framing');
         const value = JSON.parse(raw);
         if (!value || value.schema !== SCHEMA || value.ok !== true
             || typeof value.access_token !== 'string' || !value.access_token
