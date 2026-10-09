@@ -153,6 +153,18 @@ def audit_workspace(root: Path = ROOT) -> dict:
     for app_id in targets:
         manifest = apps_root / app_id / "app.json"
         migration = read_migration(root, app_id)
+        # A missing app.json is not proof that a second app source is absent.
+        # Disallow even unfinished scaffolds before the canonical remove-first
+        # gate, so another chat cannot quietly fork a platform-owned product.
+        if (
+            migration
+            and migration.get("source_repository_current") == "ordaxsystems/ordax-os"
+            and migration.get("source_cutover_allowed") is False
+            and ((apps_root / app_id).exists() or (apps_root / app_id).is_symlink())
+        ):
+            raise AuditError(
+                f"{app_id}: duplicate app source forbidden before platform cutover"
+            )
         blockers = []
         metadata = None
         if manifest.exists():
