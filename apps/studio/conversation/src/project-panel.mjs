@@ -181,7 +181,34 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     catch (error) { await refresh(); throw error; }
     finally { await refresh({ fresh: true }); submitting--; controls(); }
   }
-  async function open() { showWorkspace(true); await refresh(); }
+  let localObservationInFlight = false;
+  async function refreshLocalObservation() {
+    const el = $('localRuntimeObservation'), check = $('localRuntimeCheck');
+    if (localObservationInFlight || !host.localRuntimeObservation) return;
+    localObservationInFlight = true;
+    check.disabled = true;
+    el.textContent = 'Consultando serviço local — isto não autoriza ações.';
+    try {
+      const observation = await host.localRuntimeObservation();
+      if (observation?.schema !== 'ordax.studio-local-runtime-observation/1'
+          || observation.authorization !== 'not-established' || observation.canExecute !== false) {
+        el.textContent = 'Resposta local incompatível. Nenhuma autorização concedida.';
+      } else if (observation.observed === true
+          && typeof observation.version === 'string' && /^[0-9.]{1,20}$/.test(observation.version)
+          && typeof observation.state === 'string' && /^[a-z0-9-]{1,64}$/.test(observation.state)) {
+        el.textContent = `Serviço local respondeu (v${observation.version}; estado: ${observation.state}). Isso NÃO confirma identidade, conta, grants ou execução.`;
+      } else {
+        el.textContent = 'Serviço local não confirmado. Conecte o Product Runtime com sessão e permissões válidas para operar projetos.';
+      }
+    } catch {
+      el.textContent = 'Serviço local indisponível. Nenhum comando foi enviado.';
+    } finally {
+      localObservationInFlight = false;
+      check.disabled = false;
+    }
+  }
+  $('localRuntimeCheck').addEventListener('click', () => { void refreshLocalObservation(); });
+  async function open() { showWorkspace(true); await refresh(); void refreshLocalObservation(); }
   $('openProject').addEventListener('click', () => task(open));
   $('openActivity').addEventListener('click', () => task(async () => { await open(); tab('studioActivity'); $('studioTabActivity').focus(); }));
   $('openContext').addEventListener('click', () => task(async () => { await open(); tab('studioContinuity'); $('studioTabContinuity').focus(); }));
