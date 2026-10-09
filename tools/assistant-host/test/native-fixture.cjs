@@ -207,7 +207,7 @@ app.whenReady().then(async () => {
     for(let i=0;i<30 && controls.state().ratio!==0.7;i++) await pause(50);
     assert.equal(surface.getBounds().x, Math.floor(width*0.7));
     const dialogRect = await window.webContents.executeJavaScript('({right:document.getElementById("integrationDialog").getBoundingClientRect().right,width:innerWidth})');
-    assert.ok(dialogRect.right <= Math.floor(width*0.7));
+    assert.ok(dialogRect.right <= Math.floor(width*0.7), `Native dialog escaped the Studio pane: ${JSON.stringify({ dialogRect, studioPaneEnd: Math.floor(width*0.7) })}`);
     await window.webContents.executeJavaScript('document.getElementById("splitRatio").value="60"; document.getElementById("splitRatio").dispatchEvent(new Event("change")); document.getElementById("integrationDialog").close()');
     for(let i=0;i<30 && controls.state().ratio!==0.6;i++) await pause(50);
     console.log('PASS: ocultar/mostrar Web e ajustar proporção preservam a conversa; o diálogo fica inteiramente na área do app.');
