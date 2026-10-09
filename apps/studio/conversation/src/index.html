@@ -84,6 +84,8 @@
   <section id="projectDialog" hidden class="studio-workspace" aria-labelledby="projectTitle">
     <div class="dialog-heading"><div><p class="eyebrow">CONTEXTO E OPERAÇÕES</p><h2 id="projectTitle">Espaço de trabalho</h2></div><button id="projectClose" class="icon-button" aria-label="Voltar à conversa">← Conversa</button></div>
     <div class="runtime-connection"><span id="runtimeState">Conferindo conexão…</span><button id="runtimeConnect" class="connect-secondary">Conectar Runtime</button></div>
+    <p id="localRuntimeObservation" class="dialog-help" role="status">Serviço local não verificado. Presença não significa autorização.</p>
+    <button id="localRuntimeCheck" class="connect-secondary" type="button">Verificar serviço local (somente leitura)</button>
     <p id="runtimeHelp" class="dialog-help">Arquivos e terminal precisam de uma sessão do OrdaX Runtime fornecida pelo host e de um dispositivo autorizado. O chat continua disponível com sua sessão do ChatGPT Web.</p>
     <p id="projectNotice" class="project-notice" role="status" aria-live="polite">Selecione o dispositivo e o projeto para consultar arquivos.</p>
     <div class="project-selectors"><label>Dispositivo<select id="runtimeDevice"><option value="">Selecione um dispositivo</option></select></label><label>Projeto<select id="runtimeProject"><option value="">Selecione um projeto</option></select></label></div>
