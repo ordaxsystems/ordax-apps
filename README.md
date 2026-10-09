@@ -11,7 +11,7 @@ Repositório oficial dos aplicativos first-party do OrdaX.
 
 `ordax-apps` contém **aplicativos de produto**, não os serviços centrais do sistema operacional.
 
-A plataforma continua pertencendo ao repositório `prototipo-ordax-os` e fornece contratos estáveis para Identity, Memory, Intelligence, permissions, Spaces/Projects, localization, component delivery e lifecycle.
+A plataforma continua pertencendo ao repositório `ordaxsystems/ordax-os` e fornece contratos estáveis para Identity, Memory, Intelligence, permissions, Spaces/Projects, localization, component delivery e lifecycle.
 
 Os apps deste repositório devem consumir esses contratos; não podem criar implementações paralelas de identidade, Memory, autorização, sync ou update.
 
@@ -51,7 +51,18 @@ tools/
   ...              # build/validation local de apps
 ```
 
-Files e Internet permanecem bootstrap candidates até haver prova completa de install/reinstall/offline/rollback/uninstall. Settings, Account, System e Store são superfícies estruturais e permanecem na plataforma/base apropriada.
+Files e Internet permanecem bootstrap candidates até haver prova completa de install/reinstall/offline/rollback/uninstall.
+
+**Owner atual do Internet:** `ordaxsystems/ordax-os/system/apps/internet`.
+**Owner de produto previsto após cutover:** `ordaxsystems/ordax-apps/apps/internet`.
+A decisão canônica (e seus gates) está somente em
+[`migrations/internet.externalization.json`](migrations/internet.externalization.json).
+Até o Gate A, não criar `apps/internet`, nem uma cópia parcial sem manifesto.
+Quando o cutover ocorrer, migrar apenas o produto/UI/estado pertencente ao app:
+WebKitGTK, isolamento dos sites, ports do host, permissões e política nativa
+de downloads continuarão na plataforma. O Internet externo consumirá contratos
+públicos versionados do App SDK e nunca importará código privado do OS.
+A passagem de source e a publicação assinada são provas independentes. Settings, Account, System e Store são superfícies estruturais e permanecem na plataforma/base apropriada.
 
 ## Migração
 
