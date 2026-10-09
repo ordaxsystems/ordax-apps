@@ -17,6 +17,25 @@ function fixture(t) {
   } }); t.after(() => surfaces.close());
   return { surfaces, views, chat, window, chatBounds, chatVisible, external, events, select: value => { selected = value; } };
 }
+
+test('measured responsive slots show only the selected surface and never overlap navigation or dialogs', async t => {
+  const f = fixture(t); f.select({ id: 'a', previewUrl: 'http://localhost:5173/' }); await f.surfaces.sync();
+  f.window.getContentSize = () => [390, 844];
+  f.surfaces.setBounds(null);
+  f.surfaces.setFallbackBounds({ x: 0, y: 190, width: 389, height: 576 });
+  f.surfaces.layout({ expanded: true, mode: 'web', ratio: .6 });
+  assert.equal(f.chatVisible.at(-1), true); assert.equal(f.views[0].visible, false);
+  f.surfaces.setFallbackBounds(null);
+  f.surfaces.setBounds({ x: 0, y: 268, width: 389, height: 467 });
+  assert.equal(f.chatVisible.at(-1), false); assert.equal(f.views[0].visible, true);
+  assert.deepEqual(f.views[0].bounds, { x: 0, y: 268, width: 389, height: 467 });
+  f.surfaces.setFallbackBounds({ x: 0, y: 200, width: 389, height: 500 });
+  assert.equal(f.chatVisible.at(-1), false);
+  f.surfaces.setBounds(null); f.surfaces.setFallbackBounds(null);
+  assert.equal(f.views[0].visible, false); assert.equal(f.chatVisible.at(-1), false);
+  f.surfaces.setBounds({ x: 0, y: 268, width: 391, height: 467 }); assert.equal(f.views[0].visible, false);
+  for (const value of [{ x: -1, y: 0, width: 390, height: 500 }, { x: 0, y: 0, width: Infinity, height: 500 }, { x: 0, y: 0, width: 390, height: 500, script: 'bad' }, {}]) assert.throws(() => f.surfaces.setBounds(value));
+});
 test('preview addresses exclude credentials, providers, executable URLs and arbitrary HTTP hosts', () => {
   assert.equal(normalizePreviewURL('http://localhost:5173'), 'http://localhost:5173/');
   assert.equal(normalizePreviewURL('https://project.example/preview'), 'https://project.example/preview');

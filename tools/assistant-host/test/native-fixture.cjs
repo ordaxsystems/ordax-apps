@@ -265,7 +265,7 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.getElementById("prompt").value="Rascunho original";document.getElementById("prompt").dispatchEvent(new Event("input"));document.getElementById("newChat").click()');
     for(let i=0;i<50 && bridge.activeId===chat.id;i++)await pause(100);
     const nextId=bridge.activeId;assert.notEqual(nextId,chat.id);await pause(1000);
-    await window.webContents.executeJavaScript('document.getElementById("prompt").value="Outro rascunho";document.getElementById("prompt").dispatchEvent(new Event("input"));document.querySelector(\'[data-chat-id="' + chat.id + '"]\').click()');
+    await window.webContents.executeJavaScript('document.getElementById("prompt").value="Outro rascunho";document.getElementById("prompt").dispatchEvent(new Event("input"));document.querySelector(\'button[data-studio-page=recent]\').click();document.querySelector(\'[data-chat-id="' + chat.id + '"]\').click()');
     for(let i=0;i<50 && bridge.activeId!==chat.id;i++)await pause(100);await pause(1000);
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("prompt").value'),'Rascunho original');
     console.log('PASS: trocar conversas preserva rascunhos separados na interface sem enviar o texto ao ChatGPT.');
@@ -428,11 +428,11 @@ app.whenReady().then(async () => {
     const projectB = bridge.projects.find(p=>p.name==='Jogo').id;
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("prompt").value'),'');
     await window.webContents.executeJavaScript('document.getElementById("prompt").value="Rascunho do jogo";document.getElementById("prompt").dispatchEvent(new Event("input"))');
-    await window.webContents.executeJavaScript(`document.querySelector('[data-project-id="${projectA}"]').click()`);
+    await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectA}"]').click()`);
     await until('document.getElementById("prompt").value==="Rascunho da loja" && !document.getElementById("newChat").disabled');
     assert.equal(await window.webContents.executeJavaScript('document.querySelectorAll("#chatList [data-chat-id]").length'),0);
     await window.webContents.executeJavaScript('document.getElementById("newChat").click()');
-    await until('document.querySelectorAll("#chatList [data-chat-id]").length===1 && !document.getElementById("chatOptions").disabled');
+    await until('!document.getElementById("chatOptions").disabled');
     const organizedChat = bridge.activeId;
     assert.equal(bridge.findChat(organizedChat).projectId,projectA);
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("prompt").value'),'Rascunho da loja');
@@ -443,14 +443,14 @@ app.whenReady().then(async () => {
     await until('document.getElementById("projectScopeName").textContent==="Sem projeto" && !document.getElementById("optionsDialog").open');
     assert.equal(bridge.findChat(organizedChat).projectId,null); assert.equal(surface.webContents.getURL(),loadsBeforeMove);
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("prompt").value'),'Rascunho da loja');
-    await window.webContents.executeJavaScript(`document.querySelector('[data-project-id="${projectA}"]').click()`);
+    await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectA}"]').click()`);
     await until('document.getElementById("projectScopeName").textContent==="Site da loja" && !document.getElementById("conversationProjectOptions").disabled');
     await window.webContents.executeJavaScript('document.getElementById("conversationProjectOptions").click();document.getElementById("conversationProjectName").value="Loja revisada";document.getElementById("saveConversationProject").click()');
     await until('document.getElementById("projectScopeName").textContent==="Loja revisada" && !document.getElementById("conversationProjectDialog").open');
     await window.webContents.executeJavaScript('document.getElementById("conversationProjectOptions").click();document.getElementById("removeConversationProject").click();document.getElementById("removeConversationProject").click()');
     await until('document.getElementById("projectScopeName").textContent==="Sem projeto" && !document.getElementById("conversationProjectDialog").open');
     assert.ok(bridge.chats.some(c=>c.id===organizedChat));assert.equal(bridge.drafts.state()[organizedChat].text,'Rascunho da loja');
-    await window.webContents.executeJavaScript(`document.querySelector('[data-project-id="${projectB}"]').click()`);
+    await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectB}"]').click()`);
     await until('document.getElementById("prompt").value==="Rascunho do jogo" && !document.getElementById("newChat").disabled');
     await window.webContents.reload();
     await until('document.getElementById("projectScopeName").textContent==="Jogo" && document.getElementById("prompt").value==="Rascunho do jogo" && !document.getElementById("newChat").disabled');
@@ -489,11 +489,11 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.querySelector("#projectFiles button").click()');
     await until('!document.getElementById("projectEditor").disabled');
     await window.webContents.executeJavaScript('document.getElementById("projectEditor").value="edição pendente";document.getElementById("projectEditor").dispatchEvent(new Event("input"))');
-    await window.webContents.executeJavaScript(`document.querySelector('[data-project-id="${projectB}"]').click()`);
+    await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectB}"]').click()`);
     await until('document.getElementById("notice").textContent.includes("antes de trocar de projeto")');
     assert.equal(bridge.activeProjectId,boundProject.id);assert.equal(await window.webContents.executeJavaScript('document.getElementById("projectEditor").value'),'edição pendente');
     await window.webContents.executeJavaScript('document.getElementById("projectDiscard").click()');
-    await window.webContents.executeJavaScript(`document.querySelector('[data-project-id="${projectB}"]').click()`);
+    await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectB}"]').click()`);
     await until('document.getElementById("projectScopeName").textContent==="Jogo" && document.getElementById("prompt").value==="Rascunho do jogo"');
     console.log('PASS: projeto autorizado do Runtime abre seu grupo de conversas; edição pendente impede troca de contexto e permanece intacta.');
     for (const [mode, slug] of [['projectCreate','created-site'],['projectImport','existing-site']]) {
@@ -520,7 +520,7 @@ app.whenReady().then(async () => {
     console.log('PASS: Atividade separa o histórico do projeto atual, preserva seu recibo de importação e permite consultar explicitamente todos os projetos.');
     window.setBounds({ x: 0, y: 0, width: 1000, height: 900 });
     await until(`window.innerWidth===${window.getContentSize()[0]}`); await pause(300);
-    assert.equal(await window.webContents.executeJavaScript(`(() => { const bounds=document.querySelector('.main').getBoundingClientRect(), header=document.querySelector('.topbar').getBoundingClientRect(); return bounds.left>=0&&bounds.right<=innerWidth+1&&[...document.querySelectorAll('.top-actions button')].filter(button=>button.getClientRects().length).every(button=>{const rect=button.getBoundingClientRect();return rect.left>=bounds.left-1&&rect.right<=bounds.right+1&&rect.bottom<=header.bottom+1;}); })()`), true);
+    assert.equal(await window.webContents.executeJavaScript(`(() => { const bounds=document.querySelector('.main').getBoundingClientRect(), header=document.querySelector('.topbar').getBoundingClientRect(); return bounds.left>=0&&bounds.right<=innerWidth+1&&[...document.querySelectorAll('.top-actions button')].filter(button=>button.getClientRects().length && !button.closest('details:not([open])')).every(button=>{const rect=button.getBoundingClientRect();return rect.left>=bounds.left-1&&rect.right<=bounds.right+1&&rect.bottom<=header.bottom+1;}); })()`), true);
     await fs.writeFile(path.join(__dirname,'../.data/studio-narrow-toolbar-preview.png'), (await capture(window.webContents)).toPNG());
     window.setSize(1550, 900); await pause(200);
     console.log('PASS: janela de 1000 pixels reorganiza os controles do topo dentro da coluna do Studio, sem cortar Atividade ou Contexto.');

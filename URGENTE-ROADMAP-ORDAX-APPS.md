@@ -1,5 +1,9 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Incremento — navegação responsiva do Studio (2026-10-09)
+
+MVP-04/Studio, exceção solicitada explicitamente para implementar o conceito aprovado: candidato 0.14.0 abre a conversa como entrada principal e separa Continuar, Projetos e visão do projeto. A mesma fonte oferece navegação inferior no mobile, contexto/rascunhos preservados, busca e preview em tela inteira ou lado a lado. A geometria nativa segue os slots DOM e oculta superfícies sob diálogos/navegação. Owner Apps; Runtime, Platform, SDK 1.12.0 e gates mantidos. [Escopo, risco, aceite e dependência real do OS Web](docs/STUDIO-RESPONSIVE-NAVIGATION.md), [provas](apps/studio/conversation/VERIFICATION.md). O painel OS não foi substituído por uma cópia da UI: composição verificada e adapter de conversas continuam pendentes. Auditor MVP: 13 candidatos não assinados, 7 bloqueados e 0 instalações públicas verificadas.
+
 ## Incremento comprovado — transporte Web do Studio (2026-10-09)
 
 Continuidade explicitamente solicitada, MVP-04/Studio: candidato 0.13.3 valida o protocolo SSE, prazo de conexão/inatividade, confirmação terminal e eventos JSON/UTF-8; libera leitor/timers mesmo após cancelamento travado. Erro, EOF e perda de comunicação não repetem POST nem anunciam conclusão. Keepalive conserva gerações longas; recuperação consulta a mesma sessão. Owner Apps para cliente/parser; Runtime, Platform, SDK/grants e gates de entrega intactos. [Critérios, risco e pendências reais](docs/STUDIO-WEB-INTEGRATION.md), [provas](apps/studio/conversation/VERIFICATION.md). A revisão mobile do painel OS está na PR ordax-os#1532; a interface completa ainda não foi composta no OS Web.

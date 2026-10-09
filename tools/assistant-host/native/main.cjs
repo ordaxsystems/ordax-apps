@@ -42,7 +42,7 @@ else {
     runtime = new ProductRuntime({ storage }); await runtime.init();
     console.log('ORDAX Studio: perfil local pronto.');
     nativeTheme.themeSource = 'dark';
-    window = new BrowserWindow({ show: false, width: 1550, height: 900, minWidth: 1000, minHeight: 650, title: 'ORDAX Studio · Projetos e preview', backgroundColor: '#101115', autoHideMenuBar: true,
+    window = new BrowserWindow({ show: false, width: 1550, height: 900, minWidth: 360, minHeight: 520, title: 'ORDAX Studio · Projetos e preview', backgroundColor: '#080f19', autoHideMenuBar: true,
       webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
     window.webContents.on('will-navigate', event => event.preventDefault());
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -81,7 +81,7 @@ else {
     surface.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => { if (mainFrame && code !== -3) { loadFailed = true; status('error', 'Não foi possível carregar o ChatGPT. Use Recarregar.'); } });
     surface.webContents.on('render-process-gone', () => status('error', 'A área Web foi interrompida. Use Recarregar.'));
     registerWebControls(ipcMain, { window, origin: host.origin, controls });
-    for (const [name, action] of Object.entries({ state: studioSurfaces.state, reload: studioSurfaces.reload, browser: studioSurfaces.browser, mode:studioSurfaces.setMode, navigate:studioSurfaces.navigate, device:studioSurfaces.setDevice, history:studioSurfaces.history, project:async()=>{await studioSurfaces.sync();return studioSurfaces.state();} })) ipcMain.handle('studio-preview:' + name, (event,value) => {
+    for (const [name, action] of Object.entries({ state: studioSurfaces.state, bounds: studioSurfaces.setBounds, reload: studioSurfaces.reload, browser: studioSurfaces.browser, mode:studioSurfaces.setMode, navigate:studioSurfaces.navigate, device:studioSurfaces.setDevice, history:studioSurfaces.history, project:async()=>{await studioSurfaces.sync();return studioSurfaces.state();} })) ipcMain.handle('studio-preview:' + name, (event,value) => {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== host.origin + '/src/index.html') throw new Error('Untrusted IPC sender');
       return action(value);
     });

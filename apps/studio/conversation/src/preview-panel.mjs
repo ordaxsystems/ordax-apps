@@ -1,6 +1,6 @@
-export function createPreviewPanel({ nativePreview, nativeWeb, project, configure, notify }) {
+export function createPreviewPanel({ nativePreview, nativeWeb, project, configure, openProjects, notify }) {
   const $ = id => document.getElementById(id);
-  let enabled = false, last = { status: 'empty' }, scheduled = false, geometryStamp = '', scopeStamp='';
+  let enabled = false, last = { status: 'empty' }, scheduled = false, geometryStamp = '', previewStamp = '', scopeStamp='';
   const task = fn => Promise.resolve().then(fn).catch(error => notify(error.message));
   function paint(value = last) {
     last = value; if (!enabled) return;
@@ -31,19 +31,26 @@ export function createPreviewPanel({ nativePreview, nativeWeb, project, configur
   function measure() {
     scheduled = false; if (!enabled || !nativeWeb?.setFallbackBounds) return;
     const active = document.body.classList.contains('chatgpt-fallback');
-    const overlay = [...document.querySelectorAll('dialog')].some(dialog => dialog.open) || !$('projectDialog').hidden || $('sidebar').classList.contains('open');
-    const hidden = !active || !$('projectDialog').hidden;
+    const collection = document.body.dataset.studioPage !== 'conversation';
+    const overlay = [...document.querySelectorAll('dialog')].some(dialog => dialog.open) || !$('projectDialog').hidden || $('sidebar').classList.contains('open') || $('studioTools').open;
+    const hidden = !active || !$('projectDialog').hidden || collection || document.body.classList.contains('mobile-preview');
     if ($('chatgptFallback').hidden !== hidden) $('chatgptFallback').hidden = hidden;
     const rect = $('fallbackCanvas').getBoundingClientRect();
-    const value = active && !overlay && rect.width && rect.height ? { x: Math.ceil(rect.x), y: Math.ceil(rect.y), width: Math.floor(rect.width) - 1, height: Math.floor(rect.height) } : null;
-    const stamp = JSON.stringify(value); if (stamp === geometryStamp) return; geometryStamp = stamp;
-    task(() => nativeWeb.setFallbackBounds(value));
+    const bounds = value => value.width > 1 && value.height > 1 ? { x: Math.ceil(value.x), y: Math.ceil(value.y), width: Math.floor(value.width) - 1, height: Math.floor(value.height) - 1 } : null;
+    const value = !hidden && !overlay ? bounds(rect) : null;
+    const stamp = JSON.stringify(value);
+    if (stamp !== geometryStamp) { geometryStamp = stamp; task(() => nativeWeb.setFallbackBounds(value)); }
+    const preview = !overlay && !collection ? bounds($('previewCanvas').getBoundingClientRect()) : null;
+    const next = JSON.stringify(preview);
+    if (next !== previewStamp) { previewStamp = next; if (nativePreview?.setBounds) task(async () => paint(await nativePreview.setBounds(preview))); }
   }
   function geometry() { if (!scheduled) { scheduled = true; requestAnimationFrame(measure); } }
   const observer = new MutationObserver(geometry);
-  observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class','open','hidden','style'] });
+  observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ['class','open','hidden','style','data-studio-page'] });
   window.addEventListener('resize', geometry);
-  const openConfiguration = () => { if (!project()) { $('sidebar').classList.add('open'); $('menuButton').setAttribute('aria-expanded','true'); geometry(); } else configure(project().id); };
+  window.visualViewport?.addEventListener('resize', geometry);
+  const sizes = new ResizeObserver(geometry); sizes.observe($('fallbackCanvas')); sizes.observe($('previewCanvas'));
+  const openConfiguration = () => { if (!project()) openProjects(); else configure(project().id); };
   $('previewConfigure').addEventListener('click', openConfiguration); $('previewConnect').addEventListener('click', openConfiguration);
   $('previewReload').addEventListener('click', () => task(async () => paint(await nativePreview.reload())));
   $('previewBrowser').addEventListener('click', () => task(() => nativePreview.openBrowser()));

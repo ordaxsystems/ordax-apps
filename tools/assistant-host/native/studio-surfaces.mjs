@@ -6,7 +6,7 @@ const { surfaceBounds } = createRequire(import.meta.url)('./policy.cjs');
 
 // Native adapter only: isolated project content has no preload, IPC or ChatGPT session.
 export function createStudioSurfaces({ window, chatSurface, createPreviewView, project, ownOrigin, blockedOrigins = [], openExternal }) {
-  let view = null, selectedId = null, address = null, stamp = '', epoch = 0, fallbackBounds = null;
+  let view = null, selectedId = null, address = null, stamp = '', epoch = 0, fallbackBounds = null, previewBounds;
   let panelMode='preview', device={preset:'fit',rotated:false}, viewport=null, emulationStamp='',emulationEnabled=false;
   const devicePreferences=new Map();
   let presentation = { expanded: false, mode: 'split', ratio: 0.6, pluginSetup: false };
@@ -19,21 +19,28 @@ export function createStudioSurfaces({ window, chatSurface, createPreviewView, p
     presentation = value;
     const [width, height] = window.getContentSize(), split = Math.floor(width * value.ratio);
     const bounds = fallbackBounds;
-    const showChat = Boolean(value.expanded && bounds && bounds.x >= 0 && bounds.y >= 64 && bounds.x + bounds.width <= split + 1 && bounds.y + bounds.height <= height && bounds.width > 0 && bounds.height > 0);
+    const within = rect => Boolean(rect && rect.x >= 0 && rect.y >= 0 && rect.width > 0 && rect.height > 0 && rect.x + rect.width <= width && rect.y + rect.height <= height);
+    const overlap = bounds && previewBounds && bounds.x < previewBounds.x + previewBounds.width && bounds.x + bounds.width > previewBounds.x && bounds.y < previewBounds.y + previewBounds.height && bounds.y + bounds.height > previewBounds.y;
+    const showChat = Boolean(value.expanded && within(bounds) && !overlap && (previewBounds !== undefined || bounds.x + bounds.width <= split + 1));
     chatSurface.setVisible(showChat);
     chatSurface.setBounds(showChat ? bounds : { x: 0, y: 64, width: Math.max(1, split), height: Math.max(1, height - 64) });
-    const base=surfaceBounds(width,height,false,value.ratio), area={...base,y:116,height:Math.max(1,base.height-52)};
+    const base=surfaceBounds(width,height,false,value.ratio), area=within(previewBounds)?previewBounds:{...base,y:116,height:Math.max(1,base.height-52)};
+    const showPreview = previewBounds === undefined ? value.mode !== 'conversation' : within(previewBounds);
     const display=previewDisplay(device.preset,device.rotated,area);viewport={width:display.width,height:display.height,scale:display.scale};
     if (view) {
-      view.setBounds(display.bounds);view.setVisible(panelMode==='preview'&&value.mode!=='conversation'&&snapshot.status==='ready');
+      view.setBounds(display.bounds);view.setVisible(panelMode==='preview'&&showPreview&&snapshot.status==='ready');
       const next=JSON.stringify([device,area]);
       if(snapshot.status==='ready'&&next!==emulationStamp){emulationStamp=next;if(display.emulation){view.webContents.enableDeviceEmulation(display.emulation);emulationEnabled=true;}else if(emulationEnabled){view.webContents.disableDeviceEmulation();emulationEnabled=false;}}
     }
-    const browserView=manualBrowser.view();if(browserView){browserView.setBounds(area);browserView.setVisible(panelMode==='browser'&&value.mode!=='conversation'&&manualBrowser.state().status==='ready');}
+    const browserView=manualBrowser.view();if(browserView){browserView.setBounds(area);browserView.setVisible(panelMode==='browser'&&showPreview&&manualBrowser.state().status==='ready');}
   }
+  function validateBounds(value) {
+    if (value !== null && (!value || Object.keys(value).some(key => !['x','y','width','height'].includes(key)) || !['x','y','width','height'].every(key => Number.isFinite(value[key]) && value[key] >= 0 && value[key] <= 20000))) throw new Error('Área da superfície inválida.');
+    return value ? Object.fromEntries(Object.entries(value).map(([key, size]) => [key, Math.floor(size)])) : null;
+  }
+  function setBounds(value) { previewBounds = validateBounds(value); layout(); return state(); }
   function setFallbackBounds(value) {
-    if (value !== null && (!value || Object.keys(value).some(key => !['x','y','width','height'].includes(key)) || !['x','y','width','height'].every(key => Number.isFinite(value[key]) && value[key] >= 0 && value[key] <= 20000))) throw new Error('Área da conversa inválida.');
-    fallbackBounds = value ? Object.fromEntries(Object.entries(value).map(([key, size]) => [key, Math.floor(size)])) : null;
+    fallbackBounds = validateBounds(value);
     layout(); return state();
   }
   function allowedURL(value) {
@@ -86,5 +93,5 @@ export function createStudioSurfaces({ window, chatSurface, createPreviewView, p
   }
   async function history(value){await sync();manualBrowser.history(value);layout();send();return state();}
   const timer = setInterval(() => sync().catch(() => {}), 300);
-  return { state, layout, setFallbackBounds, sync, reload, browser, setMode, navigate, setDevice, history, close() { clearInterval(timer); epoch++; destroyView();manualBrowser.close(); } };
+  return { state, layout, setBounds, setFallbackBounds, sync, reload, browser, setMode, navigate, setDevice, history, close() { clearInterval(timer); epoch++; destroyView();manualBrowser.close(); } };
 }

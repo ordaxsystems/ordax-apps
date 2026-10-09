@@ -1,4 +1,18 @@
-# Estado atual — ORDAX Studio 0.13.3
+# Estado atual — ORDAX Studio 0.14.0
+
+A navegação responsiva implementa o conceito aprovado: Conversa, Continuar, Projetos e visão do projeto, a partir do mesmo HTML/CSS/módulos. Tokens e composição têm uma camada de apresentação única; geometria nativa usa os slots DOM, sem duplicar os breakpoints no adapter. [Owner, riscos, aceite e limites do OS Web](../../../docs/STUDIO-RESPONSIVE-NAVIGATION.md).
+
+149 testes unitários passaram: transporte, conversa, projetos, áudio, modo, persistência, histórico e isolamento de superfícies; inclui ordenação/busca/escopo de recentes e validação de áreas responsivas. 36 provas da fixture Electron de conversa e 28 da fixture de preview/áudio/exclusão/navegação passaram com código 0. Logs ignorados: `tools/assistant-host/.data/layout-unit-0.14.0.log`, `layout-native-final-0.14.0.log` e `layout-preview-final-0.14.0.log`.
+
+A verificação responsiva percorreu larguras nominais 360, 390, 768, 1000, 1024, 1280 e 1550, usando a largura CSS efetivamente aplicada no Windows em escala 200%. Não houve overflow horizontal; recentes/projetos não criaram conversa nem mudaram a sessão; retomar restaurou o mesmo rascunho; a visão do projeto filtrou seu histórico; alternar preview ocultou ChatGPT e manteve os bounds dentro da janela. Abrir GPT Web a partir de Recentes retornou à área de conversa. Capturas locais da UI: `.data/studio-responsive-{home,conversation,recent,projects,project,preview}.png`. Captura do documento/chrome não substitui prova dos pixels de cada view nativa; visibilidade, bounds e viewport são verificados separadamente na fixture.
+
+17 testes Python do Studio, 25 Node de workspace/host bridge e 8 de distribuição passaram; workspace, AI/actions, version parity e ownership passaram. Auditor mínimo: 20 alvos, 13 candidatos não assinados, 7 bloqueados, nenhuma instalação pública verificada.
+
+Pacote Windows pelo builder existente: candidato 0.14.0 não assinado, com 144 hashes e 68 cópias de fonte comparados independentemente sem drift. O caminho corrente é registrado em `tools/assistant-host/.data/portable/latest-build.json`; recibo em `.data/studio-0.14.0-delivery-evidence.json`. Não substitui uma instalação em uso, não é instalador oficial e não entrega a composição OS Web. Fonte remota: [PR 195](https://github.com/ordaxsystems/ordax-apps/pull/195).
+
+Conta ChatGPT, plugin, Product Runtime e projetos das fixtures são simulados. Esses resultados não certificam login/OAuth, microfone físico, ferramentas de dispositivo ou instalação do plugin na conta real. SDK, grants, trust e gates de publicação continuam intactos. Reprodução: `npm.cmd --prefix tools/assistant-host test`, `run test:native`, `run test:preview` e `run build:windows`.
+
+# Histórico — ORDAX Studio 0.13.3
 
 146 testes unitários de conversa/host passaram, incluindo 11 novos testes de transporte. O teste loopback usa o cliente HTTP portátil real e confirma envio único; erros HTML/JSON, sessão expirada, espera sem headers, silêncio, cancelamento travado, UTF-8/eventos inválidos e EOF sem confirmação falham fechado. `done`/`error` liberam a conexão, e heartbeat mantém o fluxo vivo sem limite total de geração. Nenhuma falha repete o POST ou cancela implicitamente a geração no ChatGPT.
 

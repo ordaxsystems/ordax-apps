@@ -1,4 +1,4 @@
-export function createPluginPanel({ nativeWeb, notify, preparePrompt, snapshot }) {
+export function createPluginPanel({ nativeWeb, notify, preparePrompt, snapshot, showConversation = () => {} }) {
   const $ = id => document.getElementById(id);
   let service = { status: 'unchecked' }, checking = false, detailMessage = '';
   function render() {
@@ -33,7 +33,7 @@ export function createPluginPanel({ nativeWeb, notify, preparePrompt, snapshot }
     try { await navigator.clipboard.writeText(input.value); detailMessage = 'Campo copiado. Cole no cadastro do ChatGPT.'; render(); } catch { input.select(); }
   });
   for (const [id, method] of [['pluginOpen', 'pluginSetup'], ['pluginReturn', 'pluginReturn'], ['pluginBrowser', 'pluginBrowser']]) $(id).addEventListener('click', async () => {
-    try { if (id === 'pluginOpen') $('pluginDialog').close(); const value = await nativeWeb[id === 'pluginOpen' && nativeWeb.pluginPrepare ? 'pluginPrepare' : method](); if (value?.message) { detailMessage = value.message; render(); notify(value.message); } } catch (error) { notify(error.message); }
+    try { if (id !== 'pluginBrowser') showConversation(); if (id === 'pluginOpen') $('pluginDialog').close(); const value = await nativeWeb[id === 'pluginOpen' && nativeWeb.pluginPrepare ? 'pluginPrepare' : method](); if (value?.message) { detailMessage = value.message; render(); notify(value.message); } } catch (error) { notify(error.message); }
   });
   $('pluginTest').addEventListener('click', () => {
     try {

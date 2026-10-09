@@ -5,7 +5,8 @@ import { paintActivity, tickActivityClocks, elapsedLabel, phaseNames } from './a
 import { DraftController } from './drafts.mjs';
 import { createProjectPanel } from './project-panel.mjs';
 import { createPluginPanel } from './plugin-panel.mjs';
-import { projectDraftKey, chatsInProject, bindingEquals, renderProjectList } from './project-organization.mjs';
+import { projectDraftKey, bindingEquals } from './project-organization.mjs';
+import { createNavigation } from './navigation.mjs';
 import { createPreviewPanel } from './preview-panel.mjs';
 import { projectMessage } from './project-context.mjs';
 import { createAudioPanel } from './audio-panel.mjs';
@@ -19,7 +20,7 @@ const $ = id => document.getElementById(id);
 let chats = [], connection = { active: null, accounts: [] }, models = [], activeId = null, busy = false, attachments = [];
 let webSnapshot = {}, layoutState = { mode: 'split', ratio: 0.6 }, connectionStamp = '', modelStamp = '';
 let streamingNode = null, renderScheduled = false, externalBusy = false, pollRunning = false, lastVersion = -1, lastIssue = '', loginOpening = false, browserOpening = false, returnAfterLogin = false;
-let sidebarStamp = '', recoveringStream = false;
+let recoveringStream = false, navigation;
 let projects = [], activeProjectId = null, navigationPending = false, editingProjectId = null;
 let contextBlocked = false;
 let home = true, supportsWebDelete = false, webDeletionRecovery = false, deleting = false, optionsChatId = null;
@@ -71,7 +72,7 @@ async function selectProjectScope(id) {
     projectPanel.assertContext(binding); saveDraft(); await drafts.flush();
     applyOrganizationState(await host.selectConversationProject(id));
     if (layoutState.studioPreview && layoutState.expanded) await nativeWeb.collapse();
-    projectPanel.setContext(binding); projectPanel.showConversation(); notify(''); render(); closeSidebar();
+    projectPanel.setContext(binding); projectPanel.showConversation(); navigation.go('project'); notify(''); render(); closeSidebar();
   });
 }
 function openProjectOptions(id = null) {
@@ -96,7 +97,7 @@ async function openWorkspaceConversations({ name, binding }) {
     if (!value) { value = await host.createProject({ name: name.slice(0, 80), binding }); projects.push(value); }
     applyOrganizationState(await host.selectConversationProject(value.id));
     if (layoutState.studioPreview && layoutState.expanded) await nativeWeb.collapse();
-    projectPanel.setContext(binding); projectPanel.showConversation(); render(); closeSidebar();
+    projectPanel.setContext(binding); projectPanel.showConversation(); navigation.go('project'); render(); closeSidebar();
   });
 }
 function updateControls() {
@@ -130,32 +131,33 @@ function updateControls() {
   $('homeWorkspace').disabled = locked() || !initialized;
   $('accountButton').disabled = !initialized || Boolean(audioPanel?.active()); $('openPlugin').disabled = locked();
   audioPanel?.paint();
+  navigation?.paint();
+  $('showPreview').disabled = !window.ordaxStudioPreviewHost || !project() || locked() || !initialized;
 }
-function renderSidebar() {
-  const query = $('search').value.trim().toLocaleLowerCase('pt-BR');
-  const scoped = chatsInProject(chats, activeProjectId);
-  const visible = scoped.filter(c => c.title.toLocaleLowerCase('pt-BR').includes(query) || c.messages.some(m => m.text.toLocaleLowerCase('pt-BR').includes(query)));
-  const stamp = JSON.stringify([home, activeId, activeProjectId, projects, chats.map(value => [value.id,value.projectId]), locked(), query, visible.map(c => [c.id, c.title])]);
-  if (stamp === sidebarStamp) return; sidebarStamp = stamp;
-  renderProjectList({ root: $('conversationProjects'), projects, chats, activeProjectId: home ? 'home' : activeProjectId, disabled: locked(), select: id => run(() => selectProjectScope(id)) });
-  $('projectScopeName').textContent = project()?.name || 'Sem projeto';
-  $('conversationProjectOptions').hidden = !activeProjectId;
-  $('search').placeholder = activeProjectId ? 'Buscar neste projeto' : 'Buscar conversas sem projeto';
-  $('newChat').title = `Nova conversa em ${project()?.name || 'Sem projeto'}`;
-  previewPanel.paint();
-  $('openHome').setAttribute('aria-current', home ? 'page' : 'false');
-  $('chatCount').textContent = scoped.length;
-  $('chatList').replaceChildren();
-  for (const c of visible) {
-    const button = document.createElement('button'); button.dataset.chatId = c.id; button.className = `chat-item${c.id === activeId ? ' active' : ''}`;
-    if (c.id === activeId) button.setAttribute('aria-current', 'page');
-    const icon = document.createElement('span'); icon.className = 'chat-icon'; icon.textContent = '◌'; icon.setAttribute('aria-hidden', 'true');
-    const title = document.createElement('span'); title.textContent = c.title; button.append(icon, title); button.title = c.title;
-    button.disabled = locked();
-    button.addEventListener('click', () => run(() => navigate(async () => { if (host.selectChat) await host.selectChat(c.id); selectLocal(c.id); projectPanel.showConversation(); notify(''); render(); closeSidebar(); if (layoutState.studioPreview) await nativeWeb.expand(); })));
-    const row = document.createElement('div'); row.className = 'chat-row'; const options = document.createElement('button'); options.className = 'chat-row-options'; options.textContent = '•••'; options.title = `Opções de ${c.title}`; options.setAttribute('aria-label', options.title); options.disabled = locked(); options.dataset.chatOptions = c.id; options.addEventListener('click', () => showChatOptions(c.id)); row.append(button, options); $('chatList').append(row);
-  }
-  if (!visible.length) { const empty = document.createElement('p'); empty.className = 'empty-history'; empty.textContent = query ? 'Nenhuma conversa encontrada neste espaço.' : activeProjectId ? 'Este projeto ainda não tem conversas. Crie a primeira.' : 'As conversas sem projeto aparecerão aqui.'; $('chatList').append(empty); }
+function renderSidebar() { navigation?.paint(); previewPanel.paint(); }
+async function openConversation(id) {
+  return navigate(async () => {
+    const value = chats.find(chat => chat.id === id);
+    if (!value) throw new Error('Conversa não encontrada.');
+    const binding = projects.find(project => project.id === value.projectId)?.binding || null;
+    projectPanel.assertContext(binding); saveDraft(); await drafts.flush();
+    if (host.selectChat) await host.selectChat(id);
+    selectLocal(id, value.projectId || null); projectPanel.setContext(binding);
+    projectPanel.showConversation(); navigation.go('conversation'); notify(''); render(); closeSidebar();
+    if (layoutState.studioPreview) await nativeWeb.expand();
+  });
+}
+function showConversationView() {
+  document.body.classList.remove('mobile-preview');
+  $('showConversation').setAttribute('aria-pressed', 'true'); $('showPreview').setAttribute('aria-pressed', 'false');
+  previewPanel.geometry();
+}
+function showProjectPreview() {
+  if (!window.ordaxStudioPreviewHost || !project() || locked()) return;
+  projectPanel.showConversation(); navigation.go('conversation');
+  document.body.classList.add('mobile-preview');
+  $('showConversation').setAttribute('aria-pressed', 'false'); $('showPreview').setAttribute('aria-pressed', 'true');
+  previewPanel.geometry();
 }
 function renderConnection() {
   const stamp = JSON.stringify(connection); if (stamp === connectionStamp) return; connectionStamp = stamp;
@@ -230,14 +232,7 @@ function renderMessages() {
   $('welcome').hidden = populated || activity?.endedAt === null; $('messages').hidden = !populated;
   $('conversationTitle').textContent = current?.title || (home ? 'Início' : project()?.name || 'Nova conversa sem projeto');
   $('welcome').querySelector('h1').textContent = home ? 'O que vamos criar hoje?' : project() ? `Vamos trabalhar em ${project().name}?` : 'Comece uma nova conversa';
-  $('welcome').querySelector('.welcome-description').textContent = home ? 'Abra um projeto, conecte seu espaço de trabalho ou comece uma conversa sem projeto.' : 'Selecione uma conversa na barra lateral ou envie a primeira mensagem para iniciar outra.';
-  $('homeProjects').hidden = !home; $('homeProjects').replaceChildren();
-  if (home) for (const value of projects.slice(0, 8)) {
-    const button = document.createElement('button'); button.className = 'home-project-card';
-    const title = document.createElement('strong'); title.textContent = value.name;
-    const detail = document.createElement('small'); detail.textContent = `${chatsInProject(chats, value.id).length} conversas · ${value.binding ? 'Workspace conectado' : 'Espaço de conversas'}`;
-    button.append(title, detail); button.disabled = locked(); button.addEventListener('click', () => run(() => selectProjectScope(value.id))); $('homeProjects').append(button);
-  }
+  $('welcome').querySelector('.welcome-description').textContent = home ? 'Comece uma conversa ou retome uma ideia.' : 'Seu contexto acompanha esta conversa. Comece pela próxima ideia.';
   $('projectContextHint').hidden = Boolean(current?.messages.length) || !project()?.instructions?.trim();
   $('projectContextText').textContent = project()?.instructions || '';
   const existing = new Map([...$('messages').children].map(node => [node.dataset.messageId, node]));
@@ -309,23 +304,24 @@ async function loadState() {
   if (Object.hasOwn(state, 'activeId')) activeId = state.activeId; else activeId = null;
   externalBusy = Boolean(state.web?.busy); lastVersion = state.version ?? -1;
   projectPanel.setContext(project()?.binding || null); await loadModels();
-  restoreDraft(); render(); initialized = true; updateControls();
+  restoreDraft(); navigation.go(!activeId && activeProjectId ? 'project' : 'conversation', { focus: false }); render(); initialized = true; updateControls();
 }
 async function newChat() {
   return navigate(async () => {
     saveDraft(); await drafts.flush();
     const sourceKey = draftKey(), carry = !activeId ? { text: $('prompt').value, attachments: [...attachments] } : null;
     const value = await host.createChat(activeProjectId); updateChat(value); selectLocal(value.id);
-    home = false; $('useProjectContext').checked = true;
+    home = false; navigation.go('conversation'); $('useProjectContext').checked = true;
     if (carry) { drafts.set(value.id, carry); drafts.set(sourceKey, { text: '', attachments: [] }); restoreDraft(); await drafts.flush(); }
     projectPanel.showConversation(); notify(''); render(); closeSidebar(); $('prompt').focus();
     if (layoutState.studioPreview) await nativeWeb.expand();
     if (carry && (carry.text.trim() || carry.attachments.length)) notify('Rascunho preservado em Studio · beta. Abra essa opção para revisar antes de enviar.');
   });
 }
-function closeSidebar() { $('sidebar').classList.remove('open'); $('menuButton').setAttribute('aria-expanded', 'false'); }
+function closeSidebar() { $('sidebar').classList.remove('open'); $('sidebarBackdrop').hidden = true; document.querySelector('.main').inert = false; document.querySelector('.studio-bottom-navigation').inert = false; $('menuButton').setAttribute('aria-expanded', 'false'); }
 function connect() {
   if (loginOpening) return;
+  navigation.go('conversation');
   loginOpening = true; returnAfterLogin = !account()?.connected;
   $('accountDialog').close(); notify('Abrindo a área de login do ChatGPT…');
   $('welcomeConnect').disabled = true; $('connectAccount').disabled = true;
@@ -442,7 +438,7 @@ function exportConversation() {
 
 $('newChat').addEventListener('click', () => run(newChat));
 $('openHome').addEventListener('click', () => run(() => navigate(async () => {
-  projectPanel.assertContext(null); saveDraft(); await drafts.flush(); applyOrganizationState(await host.openHome()); projectPanel.setContext(null); projectPanel.showConversation(); if (layoutState.studioPreview && layoutState.expanded) await nativeWeb.collapse(); render(); closeSidebar();
+  projectPanel.assertContext(null); saveDraft(); await drafts.flush(); applyOrganizationState(await host.openHome()); navigation.go('conversation'); projectPanel.setContext(null); projectPanel.showConversation(); if (layoutState.studioPreview && layoutState.expanded) await nativeWeb.collapse(); render(); closeSidebar();
 })));
 document.querySelector('.brand').addEventListener('click', event => { event.preventDefault(); $('openHome').click(); });
 $('homeNewProject').addEventListener('click', () => projectEntry.open('create'));
@@ -473,8 +469,11 @@ $('removeConversationProject').addEventListener('click', () => projectTask(async
     projectPanel.setContext(null); lastVersion = -1; $('conversationProjectDialog').close(); notify('Projeto removido. As conversas foram mantidas em Sem projeto.'); render();
   });
 }));
-$('search').addEventListener('input', renderSidebar);
-$('menuButton').addEventListener('click', () => { const open = $('sidebar').classList.toggle('open'); $('menuButton').setAttribute('aria-expanded', String(open)); });
+$('menuButton').addEventListener('click', () => {
+  const open = $('sidebar').classList.toggle('open'); $('menuButton').setAttribute('aria-expanded', String(open)); $('sidebarBackdrop').hidden = !open;
+  document.querySelector('.main').inert = open; document.querySelector('.studio-bottom-navigation').inert = open;
+  if (open) $('sidebar').querySelector('button:not(:disabled)')?.focus();
+});
 $('conversation').addEventListener('click', closeSidebar);
 $('conversation').addEventListener('scroll', updateJump, { passive: true }); $('jumpLatest').addEventListener('click', scrollBottom);
 $('messages').addEventListener('click', e => {
@@ -545,6 +544,7 @@ $('deleteChat').addEventListener('click', () => run(async () => {
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); run(newChat); } });
 async function toggleWeb() {
   if (!nativeWeb) return;
+  if (navigation.current() !== 'conversation') { projectPanel.showConversation(); navigation.go('conversation'); await nativeWeb.expand(); return; }
   if (layoutState.studioPreview) { if (layoutState.expanded) await nativeWeb.collapse(); else await nativeWeb.expand(); }
   else await nativeWeb.setPresentation({ mode: layoutState.mode === 'conversation' ? 'split' : 'conversation', ratio: layoutState.ratio });
 }
@@ -594,7 +594,34 @@ async function pollWeb() {
     renderRunStatus(); renderSession(); pluginPanel.render();
   } catch (error) { notify(error.message); } finally { pollRunning = false; }
 }
-const previewPanel = createPreviewPanel({ nativePreview: window.ordaxStudioPreviewHost, nativeWeb, project, configure: openProjectOptions, notify });
+const previewPanel = createPreviewPanel({ nativePreview: window.ordaxStudioPreviewHost, nativeWeb, project, configure: openProjectOptions, openProjects: () => navigation.go('projects'), notify });
+navigation = createNavigation({
+  state: () => ({ chats, projects, activeId, projectId: activeProjectId, disabled: locked() || !initialized, previewAvailable: Boolean(window.ordaxStudioPreviewHost) }),
+  openChat: id => run(() => openConversation(id)), openProject: id => run(() => selectProjectScope(id)),
+  newChat: () => run(newChat), options: showChatOptions,
+  changed: () => { showConversationView(); closeSidebar(); previewPanel.geometry(); },
+});
+for (const button of document.querySelectorAll('button[data-studio-page]')) button.addEventListener('click', () => {
+  if (locked() || !initialized) return;
+  try { projectPanel.assertContext(project()?.binding || null); projectPanel.showConversation(); navigation.go(button.dataset.studioPage); }
+  catch (error) { notify(error.message); }
+});
+$('contextSelect').addEventListener('click', () => navigation.go('projects'));
+$('projectsBack').addEventListener('click', () => navigation.go('projects'));
+$('projectResources').addEventListener('click', () => $('openProject').click());
+$('projectPreview').addEventListener('click', showProjectPreview);
+$('showPreview').addEventListener('click', showProjectPreview);
+$('showConversation').addEventListener('click', showConversationView);
+$('sidebarBackdrop').addEventListener('click', closeSidebar);
+$('studioTools').addEventListener('click', event => { if (event.target.closest('button')) $('studioTools').open = false; });
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && $('sidebar').classList.contains('open')) { closeSidebar(); $('menuButton').focus(); } });
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Tab' || !$('sidebar').classList.contains('open') || document.querySelector('dialog[open]')) return;
+  const items = [...$('sidebar').querySelectorAll('a[href],button:not(:disabled)')].filter(item => item.getClientRects().length);
+  const first = items[0], last = items.at(-1);
+  if ((event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
+});
+window.addEventListener('resize', () => { if (getComputedStyle($('menuButton')).display === 'none') closeSidebar(); });
 const webTimer = setInterval(pollWeb, 900);
 if (nativeWeb) {
   let layoutAudioRevision = -1;
@@ -610,7 +637,7 @@ if (nativeWeb) {
     $('webToggle').hidden = studioPreview && expanded;
     $('webReturnChat').hidden = !pluginSetup;
     $('webTag').textContent = pluginSetup ? 'CADASTRO DO PLUGIN' : 'MESMA CONVERSA';
-    document.querySelector('.conversation-heading .eyebrow').textContent = studioPreview ? expanded ? 'CHATGPT WEB · CONVERSA PRINCIPAL' : 'STUDIO · CONVERSA EXPERIMENTAL' : 'ESPAÇO DE CONVERSA';
+    document.querySelector('.conversation-heading .eyebrow').textContent = studioPreview ? expanded ? 'CHATGPT WEB' : 'STUDIO · BETA' : 'ORDAX STUDIO';
     const label = studioPreview ? expanded ? 'Abrir conversa experimental do Studio' : 'Abrir ChatGPT Web na conversa' : mode === 'conversation' ? 'Mostrar área Web' : 'Ocultar área Web';
     $('webToggle').textContent = studioPreview ? expanded ? 'Studio · beta' : 'GPT Web' : '▥';
     $('webToggle').classList.toggle('composer-web-control', studioPreview);
@@ -635,7 +662,7 @@ const projectPanel = createProjectPanel({ host, notify, onProjectConversations: 
   composeTextMessage({ text: $('prompt').value, attachments: [...attachments, attachment] });
   attachments.push(attachment); saveDraft(); await drafts.flush(); renderAttachments();
 } });
-const pluginPanel = createPluginPanel({ nativeWeb, notify, snapshot: () => webSnapshot, preparePrompt: text => {
+const pluginPanel = createPluginPanel({ nativeWeb, notify, snapshot: () => webSnapshot, showConversation: () => { projectPanel.showConversation(); navigation.go('conversation'); }, preparePrompt: text => {
   if (locked()) throw new Error('Aguarde a resposta antes de preparar o teste.');
   if ($('prompt').value.trim() || attachments.length) throw new Error('Guarde ou envie seu rascunho antes de preparar o teste de conexão.');
   $('prompt').value = text; saveDraft(); autosize(); updateControls(); $('prompt').focus();

@@ -46,6 +46,7 @@ const studioWebHost = Object.freeze({
 contextBridge.exposeInMainWorld('ordaxStudioWebHost', studioWebHost);
 contextBridge.exposeInMainWorld('ordaxStudioPreviewHost', Object.freeze({
   state: () => ipcRenderer.invoke('studio-preview:state'),
+  setBounds: value => ipcRenderer.invoke('studio-preview:bounds', value),
   reload: () => ipcRenderer.invoke('studio-preview:reload'),
   openBrowser: () => ipcRenderer.invoke('studio-preview:browser'),
   setMode: value => ipcRenderer.invoke('studio-preview:mode',value),
