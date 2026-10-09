@@ -63,6 +63,60 @@ contratos Mobile e permissões nativas. Login na conta não ativa essas funçõe
 
 ### Sincronização e independência do conector
 
+#### Ajustes do OS — acesso remoto independente do Studio
+
+Clarificação do usuário: a independência após remover Studio é requisito do
+OrdaX OS. No Windows, UI e Runtime podem continuar no mesmo pacote. Não
+transformar essa limitação Windows em bloqueio ou redesign de sua distribuição.
+No OS, a gestão do acesso externo deve permanecer nas Configurações do sistema,
+mesmo sem Studio, consumindo Identity/Policy/Platform/Runtime existentes.
+
+Direção de UX: uma seção de conexões de IA deve distinguir **pausar acesso
+remoto**, **revisar permissões** e **desconectar/revogar**. Não chamar o primeiro
+controle de sincronização: ele não pausa armazenamento, sync da conta ou IA
+local. Escopo de pausa (conector/dispositivo) deve ser explícito. A operação
+precisa de confirmação da autoridade; estado desconhecido ou falha não podem
+ser apresentados como bloqueio bem-sucedido.
+
+Pause/resume requer contrato público no owner Platform/Policy e enforcement
+no caminho de admissão/execução. A pausa deve bloquear novas operações no
+escopo, sem apagar arquivos ou alterar grants. Retomar exige revalidar conta,
+dispositivo e grants; não recria permissão revogada. Tarefas aceitas/em execução
+precisam de política explícita do owner: pausa não implica cancelamento e não
+deve provocar reenvio. Revogação já existente não é uma pausa reversível.
+Não implementar apenas boolean local, ocultar tool ou desconectar o painel.
+
+Contrato e superfície OS ainda não comprovados para essa pausa. Aceite: pausa
+persiste/reconcilia nos clientes; não é atravessada pelo MCP ou reconexão; outro
+conector fora do escopo não é bloqueado; retomada não amplia grants; auditoria
+e tarefas existentes preservadas; remoção de Studio não remove os controles.
+
+#### Planos, assinatura e armazenamento — consolidação antes dos preços
+
+OS main consultado `388b71f` mantém uma estrutura canônica de planos e quotas:
+[entitlements](https://github.com/ordaxsystems/ordax-os/blob/388b71f/docs/contracts/entitlements.json),
+[quota ledger](https://github.com/ordaxsystems/ordax-os/blob/388b71f/docs/contracts/service-quotas.json),
+[storage](https://github.com/ordaxsystems/ordax-os/blob/388b71f/docs/contracts/user-cloud-storage.json).
+Planos free/personal/professional/team possuem identidade definida; preços e
+quotas sensíveis a custo ficam abertos, e apenas Free é atribuível antes da
+ativação de billing. Reserva/uso/redução de quota têm fundamento transacional
+canônico; essa base não torna assinatura ou upload operacional.
+
+Requisito solicitado: concluir engenharia independentemente de preços finais.
+Lacunas técnicas comprovadas: `billing_implemented=false`, planos pagos não
+compráveis, bucket de usuário não provisionado, executor de mutações de storage
+não ativado, rollout público desabilitado e E2E real pendente. Não tratar tudo
+como simples preenchimento de GB/preço nem alterar flags para anunciar pronto.
+
+Critérios de consolidação nos owners: assinatura e atualização de entitlement
+server-authoritative com eventos idempotentes/reconciliáveis; expiração e
+cancelamento/downgrade sem apagar dados; storage com reserva de quota, upload
+autorizado, tamanho/hash verificados, isolamento conta/Space, exportação/exclusão
+e recuperação; integração de arquivos/sync com conflito e tombstones; UI de uso
+baseada nos mesmos contratos. Definição de preço, limites comerciais e provedor
+de cobrança permanece decisão separada. Apps não cria ledger, subscription,
+storage ou sync próprios. Nada foi provisionado ou ativado nesta análise.
+
 Leitura/edição local pelo GPT e sincronização cloud são operações diferentes.
 Account Sync atual cobre aparência, preferências e metadados portáteis, não
 sincronização bidirecional do conteúdo do workspace. User Cloud Storage segue
