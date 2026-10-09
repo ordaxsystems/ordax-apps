@@ -79,6 +79,16 @@ O preflight também recusa qualquer árvore prematura `apps/files`, inclusive ar
 
 A leitura do gerenciador ganhou validação adicional de **identidade lógica da resposta**, implementada na plataforma no commit [`ordax-os@4f8dcc17`](https://github.com/ordaxsystems/ordax-os/commit/4f8dcc176003d531a0dd04fe226ee2aa0a3ab0c0). O helper `system/surface/ui/file-space-response-identity.mjs` é **código do aplicativo**, incluído no mesmo inventário obrigatório do Gate A; deve ser transferido com Files, não permanecer duplicado no OS. Listagens e previews que indicam caminho diferente do solicitado são recusados antes de atualizar navegação, seleção ou histórico. A correção não cria permissões nem novo File Space.
 
+### Prova automatizada do snapshot pinado
+
+A Foundation do `ordax-apps` agora faz checkout **somente leitura** do `ordax-os` no SHA exato declarado em `source_snapshot.commit` e executa:
+
+```sh
+python3 tools/verify_files_cutover.py --platform-root .ordax-files-source --verify-pinned-source
+```
+
+O verificador exige origem Git canônica, checkout limpo, HEAD igual ao snapshot e todos os Git blobs correspondentes ao inventário. Essa comprovação **não** cria pacote nem autoriza o cutover. No Gate A, também é obrigatória a comparação com o pai direto do commit de remoção: se o código Files tiver mudado após a captura, a remoção é rejeitada até recapturar o snapshot. Isso preserva alterações concorrentes feitas na `main`.
+
 ### Snapshot verificável antes da remoção
 
 O inventário `migrations/files.source-snapshot.json` foi capturado do commit exato [`ordax-os@a8749add`](https://github.com/ordaxsystems/ordax-os/commit/a8749add2efffabfc5ecdbe3834dc6fd5c86797a), ainda com Files pré-instalado e seu runtime original. São **6 Git blobs** app-owned pinados. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.

@@ -54,6 +54,38 @@ jobs:
           python3 -m unittest tests/test_files_cutover.py
           python3 tools/verify_files_cutover.py --format markdown
 
+      - name: Resolve exact Files source snapshot (read-only proof)
+        id: files-source-lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          from pathlib import Path
+
+          plan = json.loads(Path("migrations/files.externalization.json").read_text(encoding="utf-8"))
+          assert plan["source_repository_current"] == "ordaxsystems/ordax-os"
+          assert plan["source_cutover_allowed"] is False
+          assert plan["distribution_activation_allowed"] is False
+          snapshot = plan["source_snapshot"]
+          assert snapshot["state"] == "captured"
+          assert snapshot["repository"] == "ordaxsystems/ordax-os"
+          assert re.fullmatch(r"[0-9a-f]{40}", snapshot["commit"])
+          print("commit=" + snapshot["commit"])
+          PY
+
+      - name: Checkout exact canonical Files snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: ${{ steps.files-source-lock.outputs.commit }}
+          path: .ordax-files-source
+          persist-credentials: false
+
+      - name: Verify Files snapshot inventory against actual Git blobs
+        run: python3 tools/verify_files_cutover.py --platform-root .ordax-files-source --verify-pinned-source
+
       - name: Prove independent business domains without unapproved persistence
         run: |
           node --check apps/finance/src/domain/ledger.mjs
