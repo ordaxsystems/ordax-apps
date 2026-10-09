@@ -75,6 +75,18 @@ else {
     contain(surface.webContents, url => controls.state().pluginSetup ? isPluginURL(url) : isAccountURL(url));
     bridge = new WebBridge({ surface, storage, openLogin: controls.login, setupActive: () => controls.state().pluginSetup });
     await bridge.init(); host = await createWebServer({ bridge, runtime });
+    ipcMain.handle('studio-product:sign-in', async (event, data) => {
+      if (!host || !window || window.isDestroyed()
+          || event.sender !== window.webContents
+          || event.senderFrame !== window.webContents.mainFrame
+          || event.senderFrame.url !== host.origin + '/src/index.html') {
+        throw new Error('Untrusted Studio Product IPC sender');
+      }
+      // A single Product token is confined to this privileged main process.
+      // The Python subprocess implements the existing Runtime auth owner.
+      const { token } = await invokeCanonicalProductSignIn(data);
+      return runtime.acceptAccountToken(token);
+    });
     console.log('ORDAX Studio: transporte local pronto.');
     let loadFailed = false;
     surface.webContents.on('did-start-loading', () => { loadFailed = false; status('loading'); });
