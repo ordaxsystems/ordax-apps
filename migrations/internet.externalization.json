@@ -29,5 +29,15 @@
     "install_owner": "platform-component-lifecycle",
     "auto_install": false
   },
-  "authority": "none"
+  "authority": "none",
+  "runtime_boundary": {
+    "application_ui_and_app_owned_state": "application",
+    "webkitgtk_engine": "platform",
+    "unprivileged_webview_isolation": "platform",
+    "network_and_site_permission_policy": "platform",
+    "native_download_storage_and_filesystem_security": "platform",
+    "verified_install_update_rollback": "platform",
+    "private_platform_source_imports_after_cutover_allowed": false,
+    "second_web_engine_in_app_allowed": false
+  }
 }
