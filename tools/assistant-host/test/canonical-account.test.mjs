@@ -83,7 +83,7 @@ test('session adopts a Product token once and only after confirming canonical se
   const fetcher=async(url, opts)=>{
     calls.push({url,opts});
     return Response.json(url.endsWith('/session')
-      ? {ok:true,session:{subject_id:'user-1'}}
+      ? {ok:true,session:{subject_id:'00000000-0000-4000-8000-00000000000a'}}
       : {ok:true,targets:[{device_id:'device-1',online:true}]});
   };
   const runtime=new ProductRuntime({ storage, env:{ORDAX_PRODUCT_CONTROL_PLANE_URL:'https://control.example.test'},
