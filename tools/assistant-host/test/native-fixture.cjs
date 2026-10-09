@@ -102,7 +102,13 @@ app.whenReady().then(async () => {
     const realState = bridge.state.bind(bridge);
     let failInitialState = true;
     bridge.state = (...args) => { if (failInitialState) { failInitialState = false; return null; } return realState(...args); };
-    host = await createWebServer({ bridge, runtime }); registerWebControls(ipcMain, { window, origin: host.origin, controls }); await window.loadURL(host.origin + '/src/index.html');
+    let localProbeCount = 0;
+    host = await createWebServer({ bridge, runtime, observeInstalled: async () => {
+      localProbeCount++;
+      return { schema: 'ordax.studio-local-runtime-observation/1',
+        observed: true, authorization: 'not-established', canExecute: false,
+        reason: 'loopback-response', version: '0.4.5', state: 'local-ready' };
+    } }); registerWebControls(ipcMain, { window, origin: host.origin, controls }); await window.loadURL(host.origin + '/src/index.html');
     for (let i = 0; i < 50; i++) { if (await window.webContents.executeJavaScript('document.getElementById("hostAvailability").dataset.state === "unavailable"')) break; await pause(50); }
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("hostAvailability").dataset.state'), 'unavailable');
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("newChat").disabled && document.getElementById("send").disabled && document.getElementById("welcomeConnect").disabled'), true);
@@ -278,6 +284,14 @@ app.whenReady().then(async () => {
     const projectSubmitsBefore = await surface.webContents.executeJavaScript('document.body.dataset.submits || "0"');
     await window.webContents.executeJavaScript('document.getElementById("openProject").click()');
     await until('!document.getElementById("projectDialog").hidden && !document.getElementById("runtimeConnect").disabled');
+    await until('document.getElementById("localRuntimeObservation").textContent.includes("NÃO confirma identidade")');
+    const remoteCallsBeforeProbe = remoteCalls.length;
+    await window.webContents.executeJavaScript('document.getElementById("localRuntimeCheck").click()');
+    await until('!document.getElementById("localRuntimeCheck").disabled && document.getElementById("localRuntimeObservation").textContent.includes("NÃO confirma identidade")');
+    assert.ok(localProbeCount >= 2);
+    assert.equal(remoteCalls.length, remoteCallsBeforeProbe);
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("runtimeState").textContent.includes("Plataforma conectada")'), false);
+    console.log('PASS RUNTIME LOCAL: health responde sem autorizar Product, executar comandos ou alterar grants.');
     await window.webContents.executeJavaScript('document.getElementById("runtimeConnect").click()');
     await until('document.getElementById("runtimeProject").value==="fixture-project" && !document.getElementById("projectList").disabled');
     await window.webContents.executeJavaScript('document.getElementById("projectList").click()');
