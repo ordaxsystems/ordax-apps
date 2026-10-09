@@ -65,6 +65,22 @@ jobs:
         shell: pwsh
         run: node tools/assistant-host/verify-windows-candidate.mjs
 
+      - name: Prove real Electron UI and host isolation on Windows (fixture session)
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          ORDAX_STUDIO_FIXTURE_ONLY: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The existing fixtures run Chromium, preload, local HTTP, browser
+          # views and IPC on the Windows runner. They use isolated in-memory
+          # accounts/devices and must never touch real profiles or remote apps.
+          npm.cmd --prefix tools/assistant-host run test:native
+          if ($LASTEXITCODE -ne 0) { throw 'Studio native Electron fixture failed.' }
+          npm.cmd --prefix tools/assistant-host run test:preview
+          if ($LASTEXITCODE -ne 0) { throw 'Studio preview/audio Electron fixture failed.' }
+          Write-Output 'STUDIO_WINDOWS_ELECTRON_UI_FIXTURES=PASS'
+
       - name: Require this proof to remain unsigned and unpromoted
         shell: pwsh
         run: |
