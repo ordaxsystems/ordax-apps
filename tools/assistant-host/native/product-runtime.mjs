@@ -149,6 +149,7 @@ export class ProductRuntime {
     } finally { this.acceptingAccount = false; }
   }
   async connect() {
+    if (this.acceptingAccount) throw fail('Aguarde a confirmação da identidade Product antes de reconectar.', 409);
     if (this.recoveryRequired) throw fail(this.issue, 503);
     if (this.connectPending) return this.connectPending;
     this.connectPending = (async () => {
