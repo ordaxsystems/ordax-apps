@@ -207,6 +207,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       check.disabled = false;
     }
   }
+  $('localRuntimeCheck').disabled = typeof host.localRuntimeObservation !== 'function';
+  if ($('localRuntimeCheck').disabled) $('localRuntimeObservation').textContent = 'Observação do serviço local não disponível neste host. Nenhuma autorização foi inferida.';
   $('localRuntimeCheck').addEventListener('click', () => { void refreshLocalObservation(); });
   async function open() { showWorkspace(true); await refresh(); void refreshLocalObservation(); }
   $('openProject').addEventListener('click', () => task(open));
