@@ -1,8 +1,8 @@
 # ORDAX Studio
 
-Candidato 0.14.0: [navegação responsiva com Conversa, Continuar e Projetos](../../docs/STUDIO-RESPONSIVE-NAVIGATION.md), na mesma fonte portátil; preview em tela inteira no mobile e lado a lado no desktop.
+Candidato 0.14.1: [navegação responsiva com Conversa, Continuar e Projetos](../../docs/STUDIO-RESPONSIVE-NAVIGATION.md), na mesma fonte portátil; preview em tela inteira no mobile e lado a lado no desktop.
 
-A versão Web do OS ainda depende da composição do host e da entrega da interface canônica. [Estado real e critérios de integração Web](../../docs/STUDIO-WEB-INTEGRATION.md). Candidato 0.14.0 corrige falhas de inicialização e oferece tentativa explícita sem recriar a sessão.
+A versão Web do OS ainda depende da composição do host e da entrega da interface canônica. [Estado real e critérios de integração Web](../../docs/STUDIO-WEB-INTEGRATION.md). Candidato 0.14.1 corrige falhas de inicialização e oferece tentativa explícita sem recriar a sessão.
 
 Fonte portable canônica do ORDAX Studio.
 
@@ -32,7 +32,7 @@ O repositório histórico `mcp-blender` não é fonte para novas features e est�
 ## Recuperação do navegador Web nativo
 
 Se a inicialização do WebView2 falhar, o host Windows informa somente o estado tipado `unavailable` ao Studio, sem URLs, cookies, tokens, ou mensagens de autenticação. A coluna do assistente mostra o erro e o botão **Tentar novamente**, que reenvia a superfície pelo mesmo contrato do host. Erros de navegação continuam distintos de falhas na criação do WebView2. O estado `ready` significa somente página carregada, nunca login confirmado. A superfície permanece inativa no modo IA local, e resultados atrasados não devem reabri-la.
-# Experiência de conversa — candidato 0.14.0
+# Experiência de conversa — candidato 0.14.1
 
 A experiência desktop de conversa antes chamada Assistant foi consolidada em `apps/studio/conversation` para evoluir e substituir a experiência do **ORDAX Studio**. Inclui ChatGPT Web sincronizado, espaço de projeto, editor com revisão/SHA-256, Git, busca, preview visual por endereço de projeto, terminal e continuidade. O nome público do plugin também passa a **ORDAX Studio**; o ID `ordax-chatgpt` permanece estável no owner `ordax-platform`.
 
@@ -45,4 +45,4 @@ O candidato 0.11.0 acrescenta opções por conversa na lateral, exclusão local 
 
 O candidato 0.12.0 acrescenta Atividade por projeto e origem/recibo do contexto, confirma resultados somente após persistência e bloqueia journals danificados sem restaurar backups que poderiam omitir ações já enviadas. [Referências avaliadas e limites de integração](../../docs/STUDIO-ASSISTANT-REFERENCES.md).
 
-O candidato 0.14.0 abre ChatGPT Web como conversa principal ao iniciar/selecionar chat, mantém preview fixo e marca a conversa própria como beta. Novos compositores selecionam Chat somente por controle público identificado, com confirmação; modo desconhecido/Work/Codex bloqueiam envio experimental e início de áudio pelo Studio. Modelo e raciocínio abrem controles reais da conta. [Proteção de modo e limites](../../docs/STUDIO-CHAT-MODE-SAFETY.md).
+O candidato 0.14.1 abre ChatGPT Web como conversa principal ao iniciar/selecionar chat, mantém preview fixo e marca a conversa própria como beta. Novos compositores selecionam Chat somente por controle público identificado, com confirmação; modo desconhecido/Work/Codex bloqueiam envio experimental e início de áudio pelo Studio. Modelo e raciocínio abrem controles reais da conta. [Proteção de modo e limites](../../docs/STUDIO-CHAT-MODE-SAFETY.md).

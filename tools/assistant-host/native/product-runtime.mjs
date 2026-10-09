@@ -1,4 +1,5 @@
 import { randomUUID, createHash } from 'node:crypto';
+import { runtimeTargets } from '../../../apps/studio/conversation/src/runtime-targets.mjs';
 
 const fail = (message, status = 409) => Object.assign(new Error(message), { status });
 const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 128 && /^[a-zA-Z0-9:_-]+$/.test(value);
@@ -18,6 +19,7 @@ export class ProductRuntime {
     this.spaceId = env.ORDAX_PRODUCT_SPACE_ID?.trim() || null;
     this.base = env.ORDAX_PRODUCT_CONTROL_PLANE_URL?.trim() || 'https://ordax-control-plane-v3.ordax-ac1ca1b50d09.workers.dev';
     this.configured = false;
+    this.catalogAvailable = false; this.targetsCheckedAt = null; this.targetIssue = ''; this.targetsPending = null; this.connectPending = null; this.nextTargetsAt = 0;
     try {
       const url = new URL(this.base);
       if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error();
@@ -32,9 +34,12 @@ export class ProductRuntime {
     for (const operation of this.operations) {
       if (['prepared','submitting'].includes(operation.status)) operation.status = 'uncertain';
     }
-    this.timer = setInterval(() => { for (const op of this.operations) if (this.configured && op.requestId && ['queued','running'].includes(op.status)) this.track(() => this.observe(op, { background: true })); }, this.interval);
+    this.timer = setInterval(() => {
+      if (this.connected && Date.now() >= this.nextTargetsAt) this.track(() => this.refreshTargets());
+      for (const op of this.operations) if (this.configured && op.requestId && ['queued','running'].includes(op.status)) this.track(() => this.observe(op, { background: true }));
+    }, this.interval);
   }
-  state({ since } = {}) { return { version: this.version, configured: this.configured, connected: this.connected || false, recoveryRequired: Boolean(this.recoveryRequired), issue: this.issue || '', targets: structuredClone(this.targets), ...(since === this.version ? {} : { operations: structuredClone(this.operations) }) }; }
+  state({ since } = {}) { return { version: this.version, configured: this.configured, connected: this.connected || false, catalogAvailable: this.catalogAvailable, targetsCheckedAt: this.targetsCheckedAt, targetIssue: this.targetIssue, recoveryRequired: Boolean(this.recoveryRequired), issue: this.issue || '', targets: structuredClone(this.targets), ...(since === this.version ? {} : { operations: structuredClone(this.operations) }) }; }
   async persist(operations = this.operations) { if (this.recoveryRequired) throw fail(this.issue, 503); await this.storage.write('runtime-operations', { schemaVersion: 1, operations: structuredClone(operations) }); this.version++; }
   async commitOperation(operation, next) {
     await this.persist(this.operations.map(item => item === operation ? next : item));
@@ -55,18 +60,37 @@ export class ProductRuntime {
     }
     return result;
   }
+  async refreshTargets() {
+    if (this.targetsPending) return this.targetsPending;
+    this.targetsPending = (async () => {
+      try {
+        const data = await this.request('/v3/product/targets' + (this.spaceId ? '?space_id=' + encodeURIComponent(this.spaceId) : ''));
+        this.targets = runtimeTargets(data.targets); this.catalogAvailable = true; this.targetIssue = '';
+        this.targetsCheckedAt = new Date().toISOString(); this.version++;
+        return this.state();
+      } catch (error) {
+        if (error.status === 401 || error.status === 403) { this.connected = false; this.targets = []; }
+        this.catalogAvailable = false; this.targetIssue = error.message; this.version++;
+        throw error;
+      } finally { this.nextTargetsAt = Date.now() + 30000; }
+    })().finally(() => { this.targetsPending = null; });
+    return this.targetsPending;
+  }
   async connect() {
     if (this.recoveryRequired) throw fail(this.issue, 503);
-    try {
-      await this.request('/v3/product/session');
-      const data = await this.request('/v3/product/targets' + (this.spaceId ? '?space_id=' + encodeURIComponent(this.spaceId) : ''));
-      if (!Array.isArray(data.targets)) throw fail('Catálogo inválido do OrdaX Runtime.', 502);
-      this.targets = data.targets.filter(t => identifier(t.device_id)).slice(0, 100).map(t => ({ deviceId: t.device_id, name: String(t.name || t.device_id).slice(0, 128) }));
-      this.connected = true; this.issue = ''; return this.state();
-    } catch (error) { this.connected = false; this.targets = []; this.issue = error.message; throw error; }
+    if (this.connectPending) return this.connectPending;
+    this.connectPending = (async () => {
+      try {
+        await this.request('/v3/product/session'); await this.refreshTargets();
+        this.connected = true; this.issue = ''; return this.state();
+      } catch (error) { this.connected = false; this.catalogAvailable = false; this.targets = []; this.issue = error.message; throw error; }
+    })().finally(() => { this.connectPending = null; });
+    return this.connectPending;
   }
   input(data) {
     if (!data || !Object.hasOwn(names, data.kind) || !identifier(data.deviceId) || !this.targets.some(t => t.deviceId === data.deviceId)) throw fail('Selecione um dispositivo autorizado.', 400);
+    if (!this.catalogAvailable) throw fail('Atualize a disponibilidade dos dispositivos antes de executar.', 503);
+    if (this.targets.find(t => t.deviceId === data.deviceId).online === false) throw fail('O dispositivo foi informado offline. Ligue-o ou selecione outro dispositivo autorizado. Nada foi enviado.', 409);
     const fields = { projects: [], projectCreate: ['slug','name'], projectImport: ['slug','relativePath'], directory: ['path'], read: ['path'], write: ['path','content','expectedSha256'], terminal: ['argv','cwd'], gitStatus: [], gitDiff: [], search: ['query'], briefing: ['query'], preview: [], continuity: [], continuitySave: ['summary','nextAction','completed','blockers','changedPaths'] };
     if (Object.keys(data).some(key => !['kind','deviceId','project',...fields[data.kind]].includes(key))) throw fail('Campo não suportado pela operação.', 400);
     const globalProjectAction = ['projectCreate','projectImport'].includes(data.kind);
@@ -117,6 +141,8 @@ export class ProductRuntime {
     const operation = { id: randomUUID(), kind: data.kind, deviceId: data.deviceId, project: data.project || null, path: data.path || null, ...(data.slug ? { slug: data.slug } : {}), label, status: 'prepared', requestId: null, createdAt: new Date().toISOString(), ...(data.kind === 'write' ? { expectedSha256: data.expectedSha256, proposedSha256: createHash('sha256').update(data.content).digest('hex') } : {}) };
     this.submitting = true;
     try {
+      await this.refreshTargets();
+      this.input(data);
       const previous = this.operations; this.operations = [...this.operations.slice(-39), operation];
       try { await this.persist(); } catch { this.operations = previous; throw fail('Não foi possível registrar a operação no dispositivo. Nada foi enviado.', 503); }
       this.track(() => this.dispatch(operation, payload)); return structuredClone(operation);

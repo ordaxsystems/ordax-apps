@@ -1,4 +1,14 @@
-# Estado atual — ORDAX Studio 0.14.0
+# Estado atual — ORDAX Studio 0.14.1
+
+Preserva nome/presença/última atividade canônicos e revalida catálogo antes de ação. Desconhecido não vira online a partir de timestamp; consulta falha/offline/revogação bloqueiam POST sem alterar ações aceitas. [Owner, remotos consultados, riscos e pendências Web/nuvem](../../../docs/STUDIO-WEB-INTEGRATION.md).
+
+155 testes unitários passaram, incluindo queda após conexão, revogação, expiração da autorização, falha de catálogo, leituras concorrentes e metadados legados/inválidos. Log: `tools/assistant-host/.data/presence-unit-final.log`. Conta/dispositivo simulados; não comprova conta real ou deploy.
+
+37 cenários Electron de conversa e 28 de preview/áudio/exclusão/navegação passaram com código 0. A fixture mostra plataforma conectada com desktop informado offline, bloqueia arquivos/terminal/criação sem POST e conserva controles de conversa. Logs: `.data/presence-native-final.log` e `.data/presence-preview.log`. Workspace, AI/actions, distribuição e seus 8 testes passaram; piso MVP mantém 13 candidatos não assinados, 7 bloqueios e 0 instalações públicas verificadas.
+
+Candidato portátil 0.14.1 gerado pelo builder existente; 145 hashes e 69 cópias de source comparados independentemente sem drift. Recibo: `.data/studio-0.14.1-delivery-evidence.json`; caminho em `.data/portable/latest-build.json`. Não é instalação oficial nem entrega do OS Web. Platform: 56 testes Node e 18 Python passaram; projeção do plugin em [PR 112](https://github.com/ordaxsystems/ordax-platform/pull/112), sem deploy.
+
+## Evidência histórica — 0.14.0
 
 A navegação responsiva implementa o conceito aprovado: Conversa, Continuar, Projetos e visão do projeto, a partir do mesmo HTML/CSS/módulos. Tokens e composição têm uma camada de apresentação única; geometria nativa usa os slots DOM, sem duplicar os breakpoints no adapter. [Owner, riscos, aceite e limites do OS Web](../../../docs/STUDIO-RESPONSIVE-NAVIGATION.md).
 

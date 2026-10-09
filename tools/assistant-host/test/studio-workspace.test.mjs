@@ -4,7 +4,7 @@ import { ProductRuntime } from '../native/product-runtime.mjs';
 import { workspaceText, workspaceResultBelongs } from '../../../apps/studio/conversation/src/workspace-results.mjs';
 
 test('Studio tools cannot inject arbitrary actions, scope, or terminal arguments into read capabilities', () => {
-  const runtime = new ProductRuntime({ storage: {}, env: {} }); runtime.targets = [{ deviceId: 'device-a' }];
+  const runtime = new ProductRuntime({ storage: {}, env: {} }); runtime.targets = [{ deviceId: 'device-a' }]; runtime.catalogAvailable = true;
   const selected = { deviceId: 'device-a', project: 'project-a' };
   assert.equal(runtime.input({ ...selected, kind: 'gitStatus' }).action, 'git.status');
   assert.equal(runtime.input({ ...selected, kind: 'preview' }).action, 'project.preview_status');

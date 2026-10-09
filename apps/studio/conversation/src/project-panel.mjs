@@ -2,6 +2,7 @@ import { changePreview } from './changes.mjs';
 import { workspaceTools, workspaceText, workspaceResultBelongs } from './workspace-results.mjs';
 import { bindingEquals } from './project-organization.mjs';
 import { operationLabels as labels, operationPending as pending, operationBlocking, visibleOperations, operationReceipt } from './runtime-activity.mjs';
+import { deviceAvailable, deviceLabel, deviceStatus } from './runtime-targets.mjs';
 
 const resultData = op => op?.result?.data || op?.result || {};
 
@@ -61,7 +62,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   }
   function controls() {
     const active = submitting || state.operations.some(pending), blocked = active || state.recoveryRequired || state.operations.some(op => op.status === 'uncertain');
-    const ready = state.connected && selected().deviceId && selected().project;
+    const ready = deviceAvailable(state, selected().deviceId) && selected().project;
     $('workspaceProjectConversations').disabled = blocked || !ready || !onProjectConversations;
     for (const id of ['studioGitStatus','studioGitDiff','studioSearchRun','studioBriefing','studioContinuityRead','studioPreviewStatus','studioContinuityReview']) $(id).disabled = blocked || !ready;
     $('studioContinuityReview').disabled ||= !continuityBase;
@@ -74,10 +75,15 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     $('projectList').disabled = blocked || !ready || dirty(); $('projectPath').disabled = blocked || !ready || dirty();
     $('projectEditor').disabled = blocked || !file;
     $('projectAttach').disabled = !file || dirty() || blocked; $('projectDiscard').disabled = !dirty() || active;
-    $('projectReview').disabled = !dirty() || blocked; $('projectApply').disabled = reviewed?.kind !== 'write' || blocked;
-    $('terminalReview').disabled = blocked || !ready; $('terminalRun').disabled = blocked || !reviewed || reviewed.kind !== 'terminal';
-    for (const button of $('projectFiles').querySelectorAll('button')) button.disabled = blocked || dirty();
-    $('runtimeState').textContent = state.recoveryRequired ? 'Registro local requer recuperação' : state.connected ? 'Runtime conectado' : state.configured ? 'Conexão disponível' : 'Conexão não configurada';
+    $('projectReview').disabled = !dirty() || blocked; $('projectApply').disabled = reviewed?.kind !== 'write' || blocked || !ready;
+    $('terminalReview').disabled = blocked || !ready; $('terminalRun').disabled = blocked || !ready || !reviewed || reviewed.kind !== 'terminal';
+    for (const button of $('projectFiles').querySelectorAll('button')) button.disabled = blocked || dirty() || !ready;
+    $('runtimeState').textContent = state.recoveryRequired ? 'Registro local requer recuperação' : state.connected ? state.catalogAvailable === false ? 'Consulta de disponibilidade interrompida' : 'Plataforma conectada' : state.configured ? 'Conexão disponível' : 'Conexão não configurada';
+    $('runtimeDeviceStatus').textContent = deviceStatus(state, selected().deviceId);
+    for (const option of $('runtimeDevice').options) {
+      const target = state.targets?.find(item => item.deviceId === option.value);
+      if (target) option.textContent = deviceLabel(target);
+    }
     $('runtimeHelp').hidden = Boolean(state.configured);
     $('projectFileInfo').textContent = file ? `${file.path} · ${dirty() ? 'Alteração ainda não aplicada' : 'Versão lida do Runtime'}` : 'Selecione um arquivo de texto para abrir.';
   }
@@ -164,7 +170,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     if (refreshPromise) { await refreshPromise; if (!fresh) return; }
     if (refreshPromise) return refresh({ fresh });
     refreshPromise = (async () => {
-      try { state = { ...state, ...await host.runtimeState(state.version) }; handleResults(); renderOperations(); controls(); if (state.issue) message(state.issue); }
+      try { state = { ...state, ...await host.runtimeState(state.version) }; handleResults(); renderOperations(); controls(); if (state.issue || state.targetIssue) message(state.issue || state.targetIssue); }
       catch (error) { message(error.message); }
     })().finally(() => { refreshPromise = null; });
     return refreshPromise;
@@ -188,13 +194,13 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       state = await host.runtimeConnect(); handled = new Set(state.operations.map(op => op.id));
       file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
       $('runtimeDevice').replaceChildren(new Option('Selecione um dispositivo', ''));
-      for (const device of state.targets) $('runtimeDevice').append(new Option(device.name, device.deviceId));
+      for (const device of state.targets) $('runtimeDevice').append(new Option(deviceLabel(device), device.deviceId));
       const deviceId = desiredBinding ? state.targets.find(target => target.deviceId === desiredBinding.deviceId)?.deviceId : state.targets.length === 1 ? state.targets[0].deviceId : null;
-      if (deviceId) { $('runtimeDevice').value = deviceId; await submit({ kind: 'projects' }); }
-      message(state.targets.length ? 'Selecione o projeto autorizado para começar.' : 'Nenhum dispositivo autorizado disponível.');
+      if (deviceId) { $('runtimeDevice').value = deviceId; if (deviceAvailable(state, deviceId)) await submit({ kind: 'projects' }); }
+      message(state.targetIssue || (state.targets.length ? 'Selecione o projeto autorizado para começar.' : 'Nenhum dispositivo autorizado disponível.'));
     } finally { submitting--; controls(); }
   }));
-  $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); if (selected().deviceId) await submit({ kind: 'projects' }); }));
+  $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
   $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
   $('projectList').addEventListener('click', () => task(() => submit({ kind: 'directory', path: $('projectPath').value })));
   $('projectFilter').addEventListener('input', renderEntries);

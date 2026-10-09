@@ -22,6 +22,48 @@ function fixture() {
   return { disk, calls, storage, fetcher, options, setBehavior: value => { behavior = value; } };
 }
 const command = { kind: 'terminal', deviceId: 'fake-device', project: 'demo', cwd: '.', argv: ['git', 'status', '--short'] };
+test('desktop goes offline after connection: a fresh authorized read prevents every action POST', async t => {
+  const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();
+  const previous = runtime.fetcher;
+  runtime.fetcher = async (url, options) => new URL(url).pathname.endsWith('/targets')
+    ? Response.json({ ok: true, targets: [{ device_id: 'fake-device', device_name: 'Desktop principal', online: false, last_seen_at: '2026-10-09T12:00:00Z' }] }) : previous(url, options);
+  await assert.rejects(runtime.submit(command), /offline/);
+  assert.equal(runtime.operations.length, 0); assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 0);
+  assert.equal(runtime.state().connected, true); assert.equal(runtime.state().catalogAvailable, true);
+  assert.equal(runtime.state().targets[0].name, 'Desktop principal'); assert.equal(runtime.state().targets[0].online, false);
+  runtime.fetcher = previous; await runtime.refreshTargets();
+  await runtime.submit(command); await wait(() => runtime.operations[0].status === 'queued');
+  assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+});
+test('failed or revoked target discovery blocks new execution without damaging the operation journal', async t => {
+  const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();
+  const previous = runtime.fetcher;
+  runtime.fetcher = async () => { throw new Error('Network offline'); };
+  await assert.rejects(runtime.submit(command), /interrompida/);
+  assert.equal(runtime.state().catalogAvailable, false); assert.ok(runtime.state().targetIssue);
+  assert.equal(runtime.operations.length, 0); assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 0);
+  runtime.fetcher = async () => Response.json({ ok: true, targets: [] }); await runtime.refreshTargets();
+  await assert.rejects(runtime.submit(command), /autorizado/);
+  runtime.fetcher = previous; await runtime.connect(); assert.equal(runtime.state().catalogAvailable, true);
+});
+test('concurrent catalog and connection reads share a request and metadata never leaks credentials', async t => {
+  const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close());
+  await Promise.all([runtime.connect(), runtime.connect(), runtime.connect()]);
+  assert.equal(f.calls.filter(call => call.url.endsWith('/session')).length, 1);
+  assert.equal(f.calls.filter(call => call.url.endsWith('/targets')).length, 1);
+  await Promise.all([runtime.refreshTargets(), runtime.refreshTargets()]);
+  assert.equal(f.calls.filter(call => call.url.endsWith('/targets')).length, 2);
+  assert.ok(runtime.state().targetsCheckedAt); assert.ok(!JSON.stringify(runtime.state()).includes('fake-token'));
+});
+test('expired authorization clears the target catalog while accepted requests keep their original receipt', async t => {
+  const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();
+  await runtime.submit(command); await wait(() => runtime.operations[0].status === 'queued');
+  runtime.fetcher = async () => Response.json({ ok: false, error: 'expired' }, { status: 401 });
+  await assert.rejects(runtime.refreshTargets(), /expired/);
+  assert.equal(runtime.state().connected, false); assert.deepEqual(runtime.state().targets, []);
+  assert.equal(runtime.operations[0].requestId, 'fake-request'); assert.equal(runtime.operations[0].status, 'queued');
+  await assert.rejects(runtime.submit(command)); assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+});
 test('journal recovery failure disables Runtime actions without overwriting evidence on close', async () => {
   const f = fixture(); let writes = 0;
   f.storage.read = async () => { throw new Error('Registro requer recuperação.'); }; f.storage.write = async () => { writes++; };

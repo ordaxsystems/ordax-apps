@@ -1,5 +1,9 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Incremento — disponibilidade remota do Studio (2026-10-09)
+
+MVP-04, continuidade solicitada: candidato 0.14.1 preserva nome/presença do Product, separa plataforma conectada de dispositivo informado online/offline/desconhecido e revalida antes de envios. Offline, remoção e falha de consulta bloqueiam POST sem repetir ações aceitas. Owner Apps; projeção do plugin pertence a Platform. Remotos consultados e PR OS 1546 do outro chat preservada. [Contratos, riscos, aceite e dependências reais Web/nuvem](docs/STUDIO-WEB-INTEGRATION.md). Não entrega executor GitHub/Cloudflare, sync global, composição Web, assinatura ou ativação; piso mantém 13 candidatos não assinados, 7 bloqueios, 0 instalações públicas verificadas.
+
 ## Incremento — navegação responsiva do Studio (2026-10-09)
 
 MVP-04/Studio, exceção solicitada explicitamente para implementar o conceito aprovado: candidato 0.14.0 abre a conversa como entrada principal e separa Continuar, Projetos e visão do projeto. A mesma fonte oferece navegação inferior no mobile, contexto/rascunhos preservados, busca e preview em tela inteira ou lado a lado. A geometria nativa segue os slots DOM e oculta superfícies sob diálogos/navegação. Owner Apps; Runtime, Platform, SDK 1.12.0 e gates mantidos. [Escopo, risco, aceite e dependência real do OS Web](docs/STUDIO-RESPONSIVE-NAVIGATION.md), [provas](apps/studio/conversation/VERIFICATION.md). O painel OS não foi substituído por uma cópia da UI: composição verificada e adapter de conversas continuam pendentes. Auditor MVP: 13 candidatos não assinados, 7 bloqueados e 0 instalações públicas verificadas.

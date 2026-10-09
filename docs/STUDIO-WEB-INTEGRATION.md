@@ -2,6 +2,26 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Continuidade Web/desktop/nuvem — incremento 0.14.1
+
+Remotos consultados antes de implementar: Apps `main` `f3815e031181cc6b30f986c2878f60aae651acf5`, PR 195 `dc52ea011076f81f0b2c8241ba6d3075732924eb`; OS `main` `95e64ce087d695ac0e0eee8bb0b0f5b12291860b`, reconciliação visual do outro chat na PR 1546; Platform `main` `0a862b3837`, Runtime `113c49e72e`. Snapshots de source não provam deploy. O trabalho paralelo no OS foi preservado.
+
+O catálogo público canônico retorna `device_name`, `online`, `last_seen_at`, `grant_groups`; o legado usa `name`/`grants` e pode não informar presença. O host Apps preserva nome/presença/última atividade e distingue **Plataforma conectada** de disponibilidade do computador. Presença ausente permanece desconhecida; timestamp não é convertido em online, nem aplicado um prazo de heartbeat inventado. Presença é informação da plataforma, não prova de execução ao vivo.
+
+Após conexão, catálogo é atualizado a cada 30 segundos e antes de cada novo envio; leituras concorrentes são unificadas. Consulta falha, dispositivo removido ou explicitamente offline impedem novo POST/journal de ação. Operações aceitas continuam acompanhadas pelo mesmo request sem repetição/cancelamento automático. Criar/abrir projeto, arquivos e terminal respeitam a disponibilidade; conversa e preview publicado são independentes dessa operação. Risco: consulta adicional por ação e corrida entre consulta/execução; Runtime/grants seguem como autoridade final.
+
+| Recurso | Contrato/source atual | Estado |
+| --- | --- | --- |
+| Dispositivo autorizado | Product `/v3/product/targets`, Platform | Apps 0.14.1 corrige metadados/bloqueio; dispositivo real não homologado |
+| Plugin MCP | Platform `mcp_http.ts`, mesma descoberta autenticada | Projeção corrigida em source: presença e grupos de capacidades sem tokens/paths/ids internos; deploy separado |
+| Vínculo local/nuvem | SDK `ordax.project-cloud-links-reader/1` | Somente leitura do vínculo; não sincroniza arquivos nem concede execução GitHub/Cloudflare |
+| GitHub/Cloudflare sem desktop | Nenhum executor de nuvem nesses ports do Studio | Depende de contratos públicos/composição dos owners; sem execução alternativa via shell/tokens |
+| Studio completo no OS Web | Composição canônica + sessão de conversas | Continua pendente conforme critérios abaixo |
+
+Aceite: nome legível; offline/desconhecido distintos; queda/revogação entre conexão e envio sem POST; recuperação; nenhuma ação duplicada; plugin exporta apenas metadados já autorizados. Não cria Identity, Memory, executor ou sync paralelo. Trabalho com desktop desligado exige destino de execução na nuvem aprovado, fonte/revisão do código e preview publicado separados, além do adapter Web de sessão. Não selecionar outro executor silenciosamente.
+
+Source do plugin: [Platform PR 112](https://github.com/ordaxsystems/ordax-platform/pull/112), commit `03130da`. Testes/provas do candidato Apps em [VERIFICATION.md](../apps/studio/conversation/VERIFICATION.md). Deploy MCP e integração OS continuam separados.
+
 Candidato 0.14.0 implementa a navegação responsiva aprovada na mesma interface canônica: Conversa, Continuar, Projetos e visão do projeto. [Fonte única, critérios e provas por ambiente](STUDIO-RESPONSIVE-NAVIGATION.md). Isso não altera o estado de composição do OS descrito abaixo.
 
 O Studio deve servir Web e desktop a partir de `apps/studio`, owner `ordaxsystems/ordax-apps`. Web é uma composição do alvo OrdaX OS, não outro produto, outro Assistant ou uma versão independente. A versão do produto permanece no `app.json`.

@@ -60,13 +60,13 @@ app.whenReady().then(async () => {
     const surface = new WebContentsView({ webPreferences: { session: isolated, nodeIntegration: false, contextIsolation: true, sandbox: true, backgroundThrottling: false } });
     window.contentView.addChildView(surface); const [width,height]=window.getContentSize(); surface.setBounds(surfaceBounds(width,height));
     const disk = {}, storage = { read: async (key, fallback) => structuredClone(disk[key] || fallback), write: async (key,value) => { disk[key] = structuredClone(value); } };
-    let fileContent = 'print("original")\n', remoteSequence = 0, simulateConflict = false;
+    let fileContent = 'print("original")\n', remoteSequence = 0, simulateConflict = false, deviceOnline = true;
     const remoteCalls = [], remoteActions = new Map(), digest = text => require('node:crypto').createHash('sha256').update(text).digest('hex');
     const fixtureProjects = [{ slug: 'fixture-project', name: 'Projeto de teste' }];
     runtime = new ProductRuntime({ storage, interval: 100, env: { ORDAX_PRODUCT_ACCESS_TOKEN: 'fixture-token-only', ORDAX_PRODUCT_CONTROL_PLANE_URL: 'https://runtime.fixture.invalid' }, fetcher: async (url, options) => {
       const route = new URL(url).pathname; let data;
       if (route.endsWith('/session')) data = { session: { subject_id: 'fixture-subject' } };
-      else if (route.endsWith('/targets')) data = { targets: [{ device_id: 'fixture-device', name: 'Dispositivo de teste' }] };
+      else if (route.endsWith('/targets')) data = { targets: [{ device_id: 'fixture-device', device_name: 'Dispositivo de teste', online: deviceOnline, last_seen_at: '2026-10-09T12:00:00Z' }] };
       else if (options.method === 'POST') {
         const body = JSON.parse(options.body), request = 'fixture-request-' + ++remoteSequence; remoteCalls.push(body);
         let result = { ok: true, data: {} };
@@ -540,6 +540,22 @@ app.whenReady().then(async () => {
     assert.equal(await surface.webContents.executeJavaScript('document.body.dataset.submits || "0"'),beforeMultiline);
     await surface.webContents.executeJavaScript('document.getElementById("prompt-textarea").innerHTML=""');
     console.log('PASS: preparação multilinha preserva indentação; editar o rascunho preparado bloqueia o clique e não gera envio.');
+    const beforeOffline = remoteCalls.length;
+    deviceOnline = false; await runtime.refreshTargets();
+    await window.webContents.executeJavaScript('document.getElementById("openProject").click()');
+    await until('!document.getElementById("projectDialog").hidden');
+    await window.webContents.executeJavaScript('document.getElementById("runtimeDevice").value="fixture-device";document.getElementById("runtimeDevice").dispatchEvent(new Event("change"))');
+    await until('document.getElementById("runtimeDeviceStatus").textContent.includes("offline") && document.getElementById("projectList").disabled && document.getElementById("terminalReview").disabled');
+    assert.match(await window.webContents.executeJavaScript('document.getElementById("runtimeState").textContent'), /Plataforma conectada/);
+    assert.equal(remoteCalls.length, beforeOffline);
+    await window.webContents.executeJavaScript('document.getElementById("projectClose").click();document.getElementById("homeNewProject").click()');
+    await until('document.getElementById("projectEntryDialog").open && document.getElementById("entryDeviceStatus").textContent.includes("offline")');
+    await window.webContents.executeJavaScript('document.getElementById("entryName").value="Projeto offline";document.getElementById("entryName").dispatchEvent(new Event("input"))');
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("entryCreateSubmit").disabled'), true);
+    assert.equal(remoteCalls.length, beforeOffline);
+    await window.webContents.executeJavaScript('document.getElementById("entryClose").click()');
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("newChat").disabled'), false);
+    console.log('PASS: desktop offline mantém conexão de plataforma e conversas, mas bloqueia arquivos, terminal e criação sem POST nem execução alternativa.');
     await bridge.close(); await runtime.close(); await host.close(); window.destroy(); app.exit(0);
   } catch(error) {
     console.error(error); await bridge?.close().catch(()=>{}); await runtime?.close().catch(()=>{}); await host?.close().catch(()=>{}); if(window && !window.isDestroyed()) window.destroy(); app.exit(1);

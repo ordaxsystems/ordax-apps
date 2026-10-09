@@ -87,6 +87,7 @@
     <p id="runtimeHelp" class="dialog-help">Arquivos e terminal precisam de uma sessão do OrdaX Runtime fornecida pelo host e de um dispositivo autorizado. O chat continua disponível com sua sessão do ChatGPT Web.</p>
     <p id="projectNotice" class="project-notice" role="status" aria-live="polite">Selecione o dispositivo e o projeto para consultar arquivos.</p>
     <div class="project-selectors"><label>Dispositivo<select id="runtimeDevice"><option value="">Selecione um dispositivo</option></select></label><label>Projeto<select id="runtimeProject"><option value="">Selecione um projeto</option></select></label></div>
+    <p id="runtimeDeviceStatus" class="dialog-help" role="status"></p>
     <button id="workspaceProjectConversations" class="connect-secondary" disabled>Abrir conversas deste projeto</button>
 
 
@@ -154,6 +155,7 @@
     <div id="entryChoice" class="entry-choices"><button id="entryChooseCreate"><span aria-hidden="true">＋</span><strong>Criar projeto</strong><small>Comece do zero. A pasta é criada automaticamente.</small></button><button id="entryChooseOpen"><span aria-hidden="true">▱</span><strong>Abrir projeto</strong><small>Continue um projeto ou conecte uma pasta existente.</small></button></div>
     <p id="entryConnection" class="entry-connection" hidden></p><button id="entryConnectionHelp" class="text-button" hidden>Configurar conexão com o computador</button>
     <label id="entryDeviceField" class="field-label" hidden>Computador<select id="entryDevice" class="text-input"><option value="">Escolha um computador</option></select></label>
+    <p id="entryDeviceStatus" class="dialog-help" role="status" hidden></p>
     <section id="entryCreate" hidden><p class="dialog-help">Dê um nome ao projeto. Seus arquivos, conversas e preview ficarão organizados no mesmo espaço.</p><label class="field-label" for="entryName">Nome do projeto</label><input id="entryName" class="text-input" maxlength="80" placeholder="Meu aplicativo" autocomplete="off"><p id="entryFolderPreview" class="dialog-help">A pasta será criada automaticamente.</p><button id="entryCreateSubmit" class="connect-primary full-width" disabled>Criar projeto</button></section>
     <section id="entryOpen" hidden><nav class="entry-origins" aria-label="Origem do projeto"><button id="entryRegistered" aria-pressed="true">Meus projetos</button><button id="entryFolderTab" aria-pressed="false">Pasta existente</button><button id="entryGitHubTab" aria-pressed="false" disabled title="Importação direta ainda não disponível">GitHub · em breve</button></nav>
       <div id="entryRegisteredContent"><p class="dialog-help">Projetos disponíveis no computador conectado.</p><nav id="entryProjects" class="entry-projects" aria-label="Projetos disponíveis"></nav><p id="entryProjectsEmpty" class="dialog-help" hidden>Nenhum projeto registrado ainda.</p></div>

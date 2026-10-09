@@ -1,3 +1,5 @@
+import { deviceAvailable, deviceLabel, deviceStatus } from './runtime-targets.mjs';
+
 export function projectSlug(name) {
   return String(name).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
 }
@@ -31,7 +33,9 @@ export function createProjectEntry({ host, enter, assertCanEnter, notify }) {
     $('entryConnection').hidden = mode === 'choice' || Boolean(state.connected);
     $('entryConnection').textContent = state.configured ? 'Conectando ao computador configurado no ORDAX…' : 'Conecte este computador ao ORDAX para criar ou abrir projetos. Suas conversas continuam disponíveis em Sem projeto.';
     $('entryConnectionHelp').hidden = mode === 'choice' || Boolean(state.connected);
-    const ready = state.connected && device() && !busy;
+    const ready = deviceAvailable(state, device()) && !busy;
+    $('entryDeviceStatus').hidden = mode === 'choice';
+    $('entryDeviceStatus').textContent = deviceStatus(state, device());
     $('entryCreateSubmit').disabled = !ready || !$('entryName').value.trim();
     $('entryImportSubmit').disabled = !ready || !$('entryFolder').value.trim();
     $('entryBack').hidden = mode === 'choice'; $('entryClose').disabled = busy; $('entryBack').disabled = busy; $('entryDevice').disabled = busy;
@@ -47,7 +51,7 @@ export function createProjectEntry({ host, enter, assertCanEnter, notify }) {
   }
   async function readCatalog() {
     catalog = []; $('entryProjects').replaceChildren();
-    if (!state.connected || !device()) return;
+    if (!deviceAvailable(state, device())) { message(deviceStatus(state, device())); return; }
     const operation = await awaitProjectOperation(host, await host.runtimeSubmit({ kind: 'projects', deviceId: device() }));
     catalog = (operation.result?.data?.projects || []).filter(project => typeof project.slug === 'string');
     $('entryProjectsEmpty').hidden = catalog.length > 0;
@@ -62,10 +66,10 @@ export function createProjectEntry({ host, enter, assertCanEnter, notify }) {
     const nextState = host.runtimeState ? await host.runtimeState() : { configured: false, connected: false, targets: [] };
     if (ticket !== revision || !dialog.open) return;
     state = nextState;
-    if (state.configured && !state.connected) { const connected = await host.runtimeConnect(); if (ticket !== revision || !dialog.open) return; state = connected; }
+    if (state.configured) { const connected = await host.runtimeConnect(); if (ticket !== revision || !dialog.open) return; state = connected; }
     if (ticket !== revision || !dialog.open) return;
     $('entryDevice').replaceChildren(new Option('Escolha um computador', ''));
-    for (const target of state.targets || []) $('entryDevice').append(new Option(target.name || 'Computador ORDAX', target.deviceId));
+    for (const target of state.targets || []) $('entryDevice').append(new Option(deviceLabel(target), target.deviceId));
     if (state.targets?.length === 1) $('entryDevice').value = state.targets[0].deviceId;
     paint();
     if (mode === 'open' && origin === 'registered') await execute(readCatalog);
@@ -85,7 +89,7 @@ export function createProjectEntry({ host, enter, assertCanEnter, notify }) {
   $('entryDevice').addEventListener('change', () => task(() => execute(readCatalog)));
   for (const [id, value] of [['entryRegistered','registered'],['entryFolderTab','folder'],['entryGitHubTab','github']]) $(id).addEventListener('click', () => { origin = value; message(''); paint(); });
   async function register(kind) {
-    if (!state.connected || !device()) throw new Error('Conecte o computador ao ORDAX antes de continuar.');
+    if (!deviceAvailable(state, device())) throw new Error(deviceStatus(state, device()));
     const name = kind === 'projectCreate' ? $('entryName').value.trim() : $('entryFolder').value.trim().replaceAll('\\','/').split('/').filter(Boolean).at(-1);
     const slug = projectSlug(name || '');
     if (!slug || !name || name.length > 80) throw new Error('Informe um nome válido com até 80 caracteres.');

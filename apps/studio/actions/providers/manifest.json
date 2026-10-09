@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-provider-manifest/1",
   "appId": "studio",
-  "appVersion": "0.14.0",
+  "appVersion": "0.14.1",
   "authority": "none",
   "execution": "unavailable",
   "providers": [
