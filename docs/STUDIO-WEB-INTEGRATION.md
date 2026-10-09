@@ -2,9 +2,37 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Presença canônica — transporte no owner Platform
+
+[Platform PR 114](https://github.com/ordaxsystems/ordax-platform/pull/114), source
+`0c85bf2`, liga `POST /v3/product/device/presence` no Worker. O handler valida
+credencial/UUID do dispositivo, envia apenas SHA-256 ao RPC de autenticação e
+grava o mesmo UUID pelo RPC de presença existente. Conta/OAuth e campos do
+caller não selecionam owner, grants, dispositivo alternativo ou `force`.
+JSON/UTF-8/metadados são limitados; falha de autoridade não gera fallback,
+repetição, detalhes privados ou sucesso. Heartbeat coalescido retorna
+`changed:false`, sem fabricar atualização de timestamp.
+
+Owner Platform; Runtime mantém canal, execução e políticas locais. Apps consome
+a descoberta e não ganhou serviço/loop de presença, grants ou outra fila.
+Aceite: 95 testes Node (14 novos), 175 Python no source Git com LF canônico,
+compilação Wrangler 4.141.0 e três checks remotos verdes no commit exato.
+[CI](https://github.com/ordaxsystems/ordax-platform/actions/runs/37992563264).
+[Contrato e limites](https://github.com/ordaxsystems/ordax-platform/blob/0c85bf2fad6b1648d3e8f73ec16e49e206cc77a3/docs/PRODUCT_DEVICE_PRESENCE.md).
+
+Risco: confundir presença observada/coalescência com disponibilidade imediata.
+O Runtime atual ainda usa `/v3/device/ws` legado e **não chama** a nova rota.
+Canal, consumidor, grants, bindings canônicos, leases/reports e audit continuam
+pendências coordenadas; nenhum dispositivo real foi anunciado online por esta
+prova. Queda abrupta, ordenação entre sessões e alcance exigem seus contratos;
+não foi inventado timeout offline ou autorização atômica. O gate de produção
+Cloudflare permanece bloqueado por sete dependências. Source/CI não são deploy,
+instalação, ativação do plugin ou E2E real. Apps continua 0.14.1.
+
 ## Recuperação no Runtime — mesma tarefa, mesmo cliente
 
-[Runtime PR 65](https://github.com/ordaxsystems/ordax-runtime/pull/65), source
+[Runtime PR 65](https://github.com/ordaxsystems/ordax-runtime/pull/65), já mesclada
+em `573984b`, source
 `fd72a79`, corrige o consumidor HTTP/MCP existente: status exige o mesmo ID e um
 estado publicado; falha/espera expirada conserva o ID aceito e orienta consulta
 `product_action_status`, sem novo POST. ACK perdido ou inválido informa aceitação
@@ -34,9 +62,10 @@ grants por cliente permanece coordenada com Platform PR 112. Não representa
 deploy do plugin, instalação do candidato, execução em nuvem ou E2E com conta
 real. OS remoto observado em `1dcf620`; trabalho do outro chat preservado.
 
-Platform PR 112 foi mesclada durante a rodada. O handoff adicional ficou na
-[PR 113](https://github.com/ordaxsystems/ordax-platform/pull/113), baseada no main
-`eb3cce6`, apenas documental e com CI verde; nenhum commit mesclado foi repetido.
+Platform PR 112 foi mesclada durante a rodada. O handoff adicional da
+[PR 113](https://github.com/ordaxsystems/ordax-platform/pull/113), baseado no main
+`eb3cce6`, também foi mesclado em `984f41c`; apenas documental e com CI verde.
+Nenhum commit mesclado foi repetido.
 
 ## Dependência Platform/Runtime — leituras canônicas preparadas
 
