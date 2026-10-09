@@ -65,3 +65,36 @@ criptográfica contra malware executando no mesmo usuário.
 
 Testes: `npm --prefix tools/assistant-host test` e as fixtures Electron
 no Windows. Não haverá publicação nem migração de instalação nesta PR.
+
+
+## Jornal de operações por titular confirmado
+
+A autenticação Product passa a selecionar o diário local **somente
+depois** de confirmar `/v3/product/session`. O `subject_id` UUID
+canônico vem da plataforma, nunca do formulário, cabeçalho, renderer,
+token analisado pelo cliente ou device. A chave do armazenamento é
+`product-ops-<28 hex SHA-256 do subject>`, compatível com os limites
+do `LocalStorage`. A chave é opaca; a titularidade é comprovada
+pelo **valor completo do subject dentro do registro crítico**.
+
+O registro usa `schemaVersion:2`, `subjectId`, `operations`.
+Validação exata de esquema e titularidade é aplicada em leitura
+`requireRecovery:true` e nas escritas atômicas e backups. Uma troca
+de conta exige carregar seu **próprio** diário e catálogo de grants;
+uma falha de leitura/recovery não transforma o diário em vazio nem
+libera nova ação. Pedidos antigos `prepared/submitting` da mesma
+conta são marcados `uncertain`, nunca automaticamente reenviados.
+
+O diário legado `runtime-operations` permanece **inalterado e sem
+titular presumido**; nunca é copiado para a nova conta por aparência
+de nome, dispositivo ou e-mail. Se seu registro ainda tem ações
+pendentes/incertas, o login é bloqueado até a revisão/reconciliação.
+O acesso antigo via token de ambiente continua lendo o legado para
+preservar compatibilidade; a migração do dono só poderá ocorrer com
+evidência verificável.
+
+A mesma rotina de persistência do Product Runtime escolhe a chave
+apropriada, sem segundo executor, cookie, driver ou storage paralelo.
+Os testes cobrem contas A e B, reinício, isolamento de recibos, legado
+sem inferência, adulteração do subject, rollback do login negado e
+troca de identidade durante a reconexão.
