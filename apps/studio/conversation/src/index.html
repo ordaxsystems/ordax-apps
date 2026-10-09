@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="Seu espaço de conversa com o ChatGPT, integrado ao ORDAX Studio.">
+  <meta name="color-scheme" content="dark">
+  <title>ORDAX Studio</title>
+  <link rel="icon" type="image/svg+xml" href="../assets/mark.svg">
+  <link rel="stylesheet" href="../assets/app.css">
+  <link rel="stylesheet" href="../assets/layout.css">
+</head>
+<body class="studio-home" data-studio-page="conversation">
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Conversas e conta">
+      <a class="brand" href="/" aria-label="ORDAX Studio, início"><img src="../assets/mark.svg" alt="" width="34" height="34"><span>ORDAX <strong>Studio</strong></span></a>
+      <button class="new-chat" id="newChat"><span aria-hidden="true">＋</span> Nova conversa <kbd>Ctrl K</kbd></button>
+      <nav class="studio-navigation" aria-label="Áreas do Studio"><button data-studio-page="conversation">Conversa</button><button data-studio-page="recent">Continuar</button><button data-studio-page="projects">Projetos</button></nav>
+      <button class="sidebar-home" id="openHome">Voltar ao início</button>
+      <div class="sidebar-bottom">
+        <div class="local-note"><span class="dot"></span> Histórico neste dispositivo</div>
+        <button class="account-button" id="accountButton"><span class="avatar" id="accountAvatar">↗</span><span><strong id="accountLabel">Conecte o ChatGPT</strong><small id="accountDetail">Use sua conta e seu plano</small></span><span aria-hidden="true">⌄</span></button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button id="menuButton" class="icon-button mobile-only" aria-label="Abrir navegação e conta" aria-controls="sidebar" aria-expanded="false">☰</button>
+        <div class="conversation-heading"><span class="eyebrow">ORDAX STUDIO</span><strong id="conversationTitle" tabindex="-1">Início</strong></div>
+        <div class="top-actions"><span class="connection-badge" id="connectionBadge"><span class="dot"></span> Aguardando conexão</span><button class="icon-button" id="webToggle" title="Ocultar área Web" aria-label="Ocultar área Web">▥</button><details class="studio-tools" id="studioTools"><summary aria-label="Ferramentas e opções">•••</summary><nav class="studio-tools-menu" aria-label="Ferramentas e opções"><button id="openPlugin" class="composer-web-control" title="Conectar o ChatGPT ao computador">Plugin Studio</button><button id="openProject" class="composer-web-control" title="Arquivos e operações do projeto">Espaço de trabalho</button><button id="openActivity" class="composer-web-control" title="Acompanhar operações e recuperar recibos">Atividade</button><button id="openContext" class="composer-web-control" title="Consultar e revisar o contexto do projeto">Contexto</button><button class="icon-button" id="integrationInfo" title="Conexão e aparência" aria-label="Conexão e aparência">Conexão e aparência</button><button class="icon-button" id="exportChat" title="Exportar conversa" aria-label="Exportar conversa">Exportar conversa</button><button class="icon-button" id="chatOptions" title="Opções da conversa" aria-label="Opções da conversa">Opções da conversa</button></nav></details></div>
+      </header>
+      <div class="conversation-context"><button id="contextSelect" class="context-select" aria-label="Escolher o projeto da conversa">Sem projeto</button><div class="conversation-view-switch" aria-label="Visualização"><button id="showConversation" aria-pressed="true">Conversa</button><button id="showPreview" aria-pressed="false" disabled>Preview</button></div></div>
+      <section id="studioDirectory" class="studio-directory" aria-labelledby="directoryTitle" hidden>
+        <button id="projectsBack" class="directory-back" hidden>‹ Projetos</button>
+        <header class="directory-heading"><div><h1 id="directoryTitle" tabindex="-1">Continuar</h1><p id="directoryDescription"></p></div><button id="createConversationProject" class="directory-primary" hidden>＋ Novo projeto</button><button id="directoryNewChat" class="directory-primary" aria-label="Nova conversa">＋ Nova</button></header>
+        <section id="projectOverview" class="project-overview" hidden><div class="project-identity"><span id="projectMonogram" class="studio-monogram" aria-hidden="true"></span><div><h1 id="projectScopeName" tabindex="-1"></h1><small id="projectBindingInfo"></small></div><button id="conversationProjectOptions" class="icon-button" aria-label="Opções do projeto" hidden>•••</button></div><div class="project-overview-actions"><button id="projectNewChat" class="directory-primary">＋ Nova conversa</button><button id="projectPreview" class="directory-secondary">Preview ↗</button></div><button id="projectResources" class="project-resource">Arquivos e contexto <span aria-hidden="true">›</span></button></section>
+        <label class="directory-search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Buscar conversas" aria-label="Buscar conversas" autocomplete="off"></label>
+        <nav id="conversationProjects" class="directory-projects" aria-label="Seus projetos" hidden></nav>
+        <nav id="chatList" class="directory-chats" aria-label="Conversas"></nav>
+      </section>
+      <section id="chatSafety" class="session-safety" hidden aria-label="Modo e limites da sessão"><div><strong id="chatModeStatus">Modo não identificado</strong><nav><button id="useChatMode">Selecionar Chat</button><button id="webModelPicker">Modelo</button><button id="webEffortPicker" hidden>Raciocínio</button><button id="webDictate" hidden>Ditar</button><button id="webVoice" hidden>Voz</button></nav></div><small id="quotaPolicy">Chat tem limites próprios. Work e Codex compartilham uma cota diferente. Confira o modo antes de enviar no Web.</small><p id="webNotice" role="status" hidden></p></section>
+      <section id="chatgptFallback" class="chatgpt-fallback-pane" hidden aria-label="ChatGPT Web, conversa principal"><header class="fallback-toolbar"><span id="fallbackStatus">ChatGPT Web · mesma sessão</span><nav><button id="fallbackPluginReturn" hidden>Voltar ao chat</button><button id="fallbackReturn">Studio · beta</button><button id="fallbackReload" aria-label="Recarregar ChatGPT Web">↻</button><button id="fallbackBrowser" aria-label="Abrir ChatGPT no navegador">↗</button></nav></header><div id="audioSession" class="audio-session" hidden><span id="audioSessionText"></span><button id="audioFinish">Trazer ditado</button><button id="audioCancel">Encerrar sem importar</button></div><div id="fallbackCanvas" class="fallback-canvas"></div></section>
+      <section id="hostAvailability" class="host-availability" role="status" aria-live="polite" hidden><div><strong id="hostAvailabilityTitle"></strong><p id="hostAvailabilityMessage"></p></div><button id="hostRetry" type="button" class="connect-secondary" disabled>Tentar conectar novamente</button></section>
+      <section class="conversation" id="conversation" aria-label="Área da conversa">
+        <div class="welcome" id="welcome">
+          <div class="welcome-mark"><img src="../assets/mark.svg" alt="" width="44" height="44"></div>
+          <p class="eyebrow">PENSE, CRIE, CONTINUE.</p>
+          <h1>O que vamos criar hoje?</h1>
+          <p class="welcome-description">Comece uma conversa ou retome uma ideia.</p>
+          <button class="connect-primary" id="welcomeConnect">Entrar no ChatGPT Web <span aria-hidden="true">↗</span></button>
+          <button class="connect-secondary" id="welcomeBrowser">Entrar pelo navegador <span aria-hidden="true">↗</span></button>
+          <p class="browser-login-help">Já está logado? Abra sua sessão no navegador padrão.</p>
+          <p class="welcome-note" id="welcomeNote">Conecte sua conta para começar a conversar.</p>
+          <div class="home-actions"><button id="homeNewProject" class="connect-primary">Criar projeto</button><button id="homeWorkspace" class="connect-secondary">Abrir projeto</button></div>
+          <div class="suggestions">
+            <button data-prompt="Ajude-me a planejar um aplicativo. Primeiro vamos definir objetivo, usuários e uma primeira versão verificável."><span class="suggestion-icon violet">✧</span><strong>Criar algo novo</strong><small>Transforme uma ideia em algo real</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Quero revisar um projeto existente. Vamos definir o escopo e quais arquivos ou ferramentas autorizadas precisamos consultar."><span class="suggestion-icon blue">◎</span><strong>Explorar uma ideia</strong><small>Aprofunde um conceito ou descubra possibilidades</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Ajude-me a organizar a próxima etapa deste projeto, usando o contexto disponível e identificando o que ainda precisa ser confirmado."><span class="suggestion-icon green">⌁</span><strong>Definir a próxima etapa</strong><small>Contexto, decisões e prioridades</small><span class="suggestion-arrow">↗</span></button>
+          </div>
+        </div>
+        <div id="messages" class="messages" role="log" aria-label="Mensagens" aria-live="off"></div>
+        <div id="pendingActivity" class="pending-activity" hidden></div>
+        <button id="jumpLatest" class="jump-latest" hidden>↓ Ir para a resposta</button>
+      </section>
+      <div class="composer-area">
+        <details id="projectContextHint" class="project-context-hint" hidden><summary>Contexto para esta nova conversa</summary><label><input id="useProjectContext" type="checkbox" checked> Incluir as instruções deste projeto no primeiro envio</label><pre id="projectContextText"></pre><p>Este texto será enviado ao ChatGPT junto com sua mensagem. Revise em Opções do projeto. Arquivos e memória do Runtime precisam ser consultados pelas ferramentas autorizadas.</p></details>
+        <div id="deliveryReview" class="delivery-review" role="status" hidden><strong>Envio sem confirmação</strong><p>Confira a conversa no ChatGPT antes de enviar novamente. A mensagem pode ter sido recebida.</p><div><button id="reviewOpen" type="button">Conferir no Web</button><button id="reviewConfirm" type="button">Conferi o Web · liberar envio</button></div></div>
+        <div id="runStatus" class="run-status" role="status" aria-live="polite" hidden><span class="activity-orbit" aria-hidden="true"></span><strong id="runLabel"></strong><span id="runElapsed" aria-hidden="true"></span></div>
+        <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+        <form id="composer" class="composer">
+          <div id="attachmentList" class="attachment-list"></div>
+          <textarea id="prompt" rows="1" maxlength="100000" placeholder="Escreva uma mensagem…" aria-label="Mensagem para o ChatGPT" disabled></textarea>
+          <div class="composer-toolbar">
+            <div class="composer-tools"><button type="button" id="attach" class="icon-button" title="Adicionar texto ou código ao prompt" aria-label="Anexar arquivo de texto">＋</button><button type="button" id="webAttach" class="composer-web-control" title="Abrir os anexos nativos do ChatGPT">Arquivos no Web</button><span class="toolbar-separator"></span><label class="model-picker"><span class="model-dot"></span><select id="model" aria-label="Modelo ChatGPT"><option value="">Conecte sua conta</option></select></label><button type="button" id="chooseModel" class="composer-web-control" title="Escolher modelo na sessão ChatGPT">Alterar</button></div>
+            <button type="button" id="dictate" class="composer-web-control" title="Ditado">Ditado</button><button type="button" id="voiceChat" class="composer-web-control" title="Conversar por voz">Voz</button>
+            <button type="submit" id="send" class="send-button" aria-label="Enviar mensagem" disabled>↑</button>
+            <button type="button" id="stop" class="send-button stop-button" aria-label="Parar resposta" hidden>■</button>
+          </div>
+        </form>
+        <div id="speechPlayer" class="speech-player" hidden><span id="speechStatus" role="status"></span><label class="sr-only" for="speechVoice">Voz de leitura</label><select id="speechVoice"><option value="">Voz do dispositivo</option></select><button id="speechPause">Pausar</button><button id="speechStop">Parar</button></div>
+        <p id="messageBudget" class="message-budget" hidden></p>
+        <p class="composer-note"><span id="draftState">Rascunhos neste dispositivo</span><span>Conversa Studio · experimental · Enter envia</span></p>
+        <input type="file" id="fileInput" multiple accept=".txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.xml,.yaml,.yml,.log" hidden>
+      </div>
+  <section id="projectDialog" hidden class="studio-workspace" aria-labelledby="projectTitle">
+    <div class="dialog-heading"><div><p class="eyebrow">CONTEXTO E OPERAÇÕES</p><h2 id="projectTitle">Espaço de trabalho</h2></div><button id="projectClose" class="icon-button" aria-label="Voltar à conversa">← Conversa</button></div>
+    <div class="runtime-connection"><span id="runtimeState">Conferindo conexão…</span><button id="runtimeConnect" class="connect-secondary">Conectar Runtime</button></div>
+    <p id="runtimeHelp" class="dialog-help">Arquivos e terminal precisam de uma sessão do OrdaX Runtime fornecida pelo host e de um dispositivo autorizado. O chat continua disponível com sua sessão do ChatGPT Web.</p>
+    <p id="projectNotice" class="project-notice" role="status" aria-live="polite">Selecione o dispositivo e o projeto para consultar arquivos.</p>
+    <div class="project-selectors"><label>Dispositivo<select id="runtimeDevice"><option value="">Selecione um dispositivo</option></select></label><label>Projeto<select id="runtimeProject"><option value="">Selecione um projeto</option></select></label></div>
+    <p id="runtimeDeviceStatus" class="dialog-help" role="status"></p>
+    <button id="workspaceProjectConversations" class="connect-secondary" disabled>Abrir conversas deste projeto</button>
+
+
+    <p id="projectActivitySummary" class="project-notice" role="status" aria-live="polite">Nenhuma operação em andamento.</p>
+    <nav class="studio-tabs" role="tablist" aria-label="Ferramentas do projeto">
+      <button id="studioTabFiles" role="tab" aria-selected="true" aria-controls="studioFiles" data-studio-tab="studioFiles">Arquivos</button>
+      <button id="studioTabGit" role="tab" aria-selected="false" aria-controls="studioGit" data-studio-tab="studioGit" tabindex="-1">Git</button>
+      <button id="studioTabSearch" role="tab" aria-selected="false" aria-controls="studioSearch" data-studio-tab="studioSearch" tabindex="-1">Busca</button>
+      <button id="studioTabPreview" role="tab" aria-selected="false" aria-controls="studioPreview" data-studio-tab="studioPreview" tabindex="-1">Preview</button>
+      <button id="studioTabContinuity" role="tab" aria-selected="false" aria-controls="studioContinuity" data-studio-tab="studioContinuity" tabindex="-1">Continuidade</button>
+      <button id="studioTabActivity" role="tab" aria-selected="false" aria-controls="studioActivity" data-studio-tab="studioActivity" tabindex="-1">Atividade</button>
+    </nav>
+    <section id="studioFiles" role="tabpanel" aria-labelledby="studioTabFiles">
+    <div class="project-directory"><label class="field-label" for="projectPath">Diretório relativo ao projeto</label><div><input id="projectPath" value="." class="text-input" maxlength="1024"><button id="projectList" class="connect-secondary">Listar arquivos</button></div></div>
+    <div class="project-workspace"><section class="project-explorer" aria-label="Arquivos do projeto"><label class="field-label" for="projectFilter">Filtrar arquivos</label><input id="projectFilter" class="text-input" type="search" placeholder="Nome ou caminho"><nav id="projectFiles" aria-label="Lista de arquivos"></nav></section><section class="project-editing" aria-label="Editor do arquivo"><p id="projectFileInfo">Selecione um arquivo de texto para abrir.</p><textarea id="projectEditor" spellcheck="false" aria-label="Conteúdo do arquivo" maxlength="500000" disabled></textarea><div class="project-editor-actions"><button id="projectAttach" class="connect-secondary">Usar na conversa</button><button id="projectDiscard" class="text-button">Descartar edição</button><button id="projectReview" class="connect-primary">Revisar alteração</button></div></section></div>
+    <details class="project-terminal"><summary>Terminal do projeto</summary><p class="dialog-help">Prepare o comando e confira os argumentos antes de executar no dispositivo autorizado. O resultado e o registro da operação aparecem abaixo.</p><label class="field-label" for="terminalArgv">Programa e argumentos (lista JSON)</label><textarea id="terminalArgv" class="text-input" rows="2" placeholder='["git", "status", "--short"]'></textarea><label class="field-label" for="terminalCwd">Diretório relativo ao projeto</label><input id="terminalCwd" class="text-input" value="." maxlength="1024"><button id="terminalReview" class="connect-secondary">Revisar comando</button></details>
+    <section id="projectReviewArea" class="project-review" hidden aria-label="Revisão da operação"><strong>Confira antes de aplicar</strong><p id="projectReviewDescription"></p><pre id="projectDiff"></pre><button id="projectApply" class="connect-primary">Aplicar alteração no Runtime</button><button id="terminalRun" class="connect-primary" hidden>Executar comando no Runtime</button></section>
+
+    </section>
+    <section id="studioGit" role="tabpanel" aria-labelledby="studioTabGit" hidden><p class="dialog-help">Confira a branch e as mudanças antes de aplicar uma proposta.</p><div class="session-actions"><button id="studioGitStatus" class="connect-secondary">Consultar Git</button><button id="studioGitDiff" class="connect-secondary">Ver diff</button></div><pre id="studioGitResult" class="studio-output">Consulte o projeto para ver o estado do Git.</pre></section>
+    <section id="studioSearch" role="tabpanel" aria-labelledby="studioTabSearch" hidden><label class="field-label" for="studioSearchQuery">Buscar no conteúdo dos arquivos</label><div class="session-actions"><input id="studioSearchQuery" class="text-input" maxlength="200" placeholder="Nome, função ou trecho de código"><button id="studioSearchRun" class="connect-secondary">Buscar</button></div><pre id="studioSearchResult" class="studio-output">Os resultados aparecerão aqui.</pre></section>
+    <section id="studioPreview" role="tabpanel" aria-labelledby="studioTabPreview" hidden><p class="dialog-help">Consulte o preview supervisionado do dispositivo selecionado, incluindo estado, modo e artefatos disponíveis.</p><button id="studioPreviewStatus" class="connect-secondary">Consultar preview</button><pre id="studioPreviewResult" class="studio-output">Nenhum preview consultado neste projeto.</pre></section>
+    <section id="studioContinuity" role="tabpanel" aria-labelledby="studioTabContinuity" hidden><p class="dialog-help">Recupere o contexto do projeto e registre o próximo passo para outra conversa. Consulte a continuidade antes de salvar; concluídos, pendências e arquivos existentes serão preservados.</p><div class="session-actions"><button id="studioBriefing" class="connect-secondary">Carregar contexto</button><button id="studioContinuityRead" class="connect-secondary">Consultar continuidade</button></div><pre id="studioContinuityResult" class="studio-output">A continuidade pertence ao projeto no Runtime.</pre><p id="studioContextSource" class="dialog-help">Nenhum contexto recuperado. Consulte o Runtime autorizado para este projeto.</p><button id="studioContextAttach" class="connect-secondary" disabled>Usar resultado na conversa</button><label class="field-label" for="studioSummary">Resumo do progresso</label><textarea id="studioSummary" class="text-input" maxlength="4000" rows="3"></textarea><label class="field-label" for="studioNextAction">Próximo passo</label><textarea id="studioNextAction" class="text-input" maxlength="2000" rows="2"></textarea><button id="studioContinuityReview" class="connect-secondary">Revisar registro</button><button id="studioContinuityDiscard" class="text-button">Descartar rascunho do registro</button><section id="studioContinuityReviewArea" hidden class="project-review"><strong>Confira o registro do projeto</strong><pre id="studioContinuityProposal"></pre><button id="studioContinuityApply" class="connect-primary">Salvar continuidade no Runtime</button><button id="studioContinuityCancel" class="text-button">Cancelar</button></section></section>
+    <section id="studioActivity" role="tabpanel" aria-labelledby="studioTabActivity" hidden><strong id="activityProjectName"></strong><p class="dialog-help">Acompanhe os recibos do Runtime. Ao reabrir, o Studio consulta a mesma operação; não repete o envio. Operações pendentes de outros projetos também aparecem para você conferir os bloqueios.</p><div class="session-actions"><label for="activityScope">Mostrar</label><select id="activityScope"><option value="project">Projeto selecionado e pendências</option><option value="all">Todos os projetos neste dispositivo</option></select><button id="activityRefresh" class="connect-secondary">Atualizar acompanhamento</button></div><p id="activityEmpty" class="dialog-help">Nenhuma operação registrada neste escopo.</p><div id="projectOperations" aria-label="Registro das operações"></div></section>
+  </section>
+      <aside id="previewPanel" class="studio-preview-panel" aria-label="Preview fixo do projeto"><header class="web-toolbar"><div><strong id="previewTitle">Preview do projeto</strong><span class="web-tag">RESULTADO EM TEMPO REAL</span></div><nav aria-label="Controles do preview"><button id="previewConfigure" title="Configurar endereço deste projeto">Configurar</button><button id="previewReload" aria-label="Atualizar preview" disabled>↻</button><button id="previewBrowser" aria-label="Abrir preview no navegador" disabled>↗</button></nav></header><div class="preview-controls"><label class="sr-only" for="previewMode">Conteúdo do painel</label><select id="previewMode" aria-label="Conteúdo do painel"><option value="preview">Preview</option><option value="browser">Navegador</option></select><div id="previewDeviceControls" class="preview-device-controls"><select id="previewDevice" aria-label="Dispositivo do preview"><option value="fit">Ajustar</option><option value="desktop">Desktop</option><option value="tablet">Tablet</option><option value="mobile">Celular</option></select><button id="previewRotate" type="button" aria-label="Girar dispositivo">⤾</button><span id="previewDimensions"></span></div><form id="previewNavigation" class="preview-navigation" hidden><button id="previewBack" type="button" aria-label="Voltar página">←</button><button id="previewForward" type="button" aria-label="Avançar página">→</button><input id="previewLocation" type="text" inputmode="url" aria-label="Endereço do navegador" placeholder="https://exemplo.com" maxlength="2048"><button type="submit">Ir</button><button id="previewProjectHost" type="button" title="Abrir o endereço do projeto">Host</button></form></div><div id="previewCanvas" class="preview-canvas"></div><div id="previewEmpty" class="preview-empty"><span class="preview-symbol" aria-hidden="true">▱</span><h2 id="previewEmptyTitle">Seu projeto aparece aqui</h2><p id="previewEmptyText">Selecione um projeto e configure o endereço do preview. O ChatGPT continua conectado em segundo plano.</p><button id="previewConnect" class="connect-secondary">Escolher um projeto</button></div><footer><span class="dot"></span><span id="previewStatus">Aguardando projeto</span><small id="previewAddress"></small></footer></aside>
+    </main>
+  </div>
+  <button id="sidebarBackdrop" class="sidebar-backdrop" aria-label="Fechar navegação" hidden></button>
+  <nav class="studio-bottom-navigation" aria-label="Áreas do Studio"><button data-studio-page="conversation">Conversa</button><button data-studio-page="recent">Continuar</button><button data-studio-page="projects">Projetos</button></nav>
+  <dialog id="accountDialog" class="dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">CONEXÃO</p><h2>Sua conta ChatGPT</h2></div><button class="icon-button" data-close="accountDialog" aria-label="Fechar">×</button></div>
+    <p class="dialog-description">Entre na sua conta diretamente na página do ChatGPT na área da conversa. O app envia suas mensagens para essa mesma conversa e acompanha as respostas. O uso segue os limites do ChatGPT Web.</p>
+    <div id="accounts" class="accounts"></div>
+    <button id="connectAccount" class="connect-primary full-width">Entrar no ChatGPT Web <span aria-hidden="true">↗</span></button>
+    <button id="connectBrowser" class="connect-secondary full-width">Entrar pelo navegador <span aria-hidden="true">↗</span></button>
+    <p class="dialog-help">Abre o ChatGPT no navegador padrão, aproveitando o login que já existe nele. Essa sessão é separada da sessão interna usada para sincronizar as mensagens do app.</p>
+    <p class="dialog-help">Escolha o modelo, gerencie sua conta e anexe imagens na área Web. A sessão fica salva neste dispositivo.</p>
+    <div class="dialog-links"><span>Franquia do ChatGPT Web</span><button id="disconnect" class="text-button">Gerenciar login no Web</button></div>
+  </dialog>
+  <dialog id="optionsDialog" class="dialog compact-dialog">
+    <div class="dialog-heading"><h2>Opções da conversa</h2><button class="icon-button" data-close="optionsDialog" aria-label="Fechar">×</button></div>
+    <label class="field-label" for="rename">Nome no Studio</label><input id="rename" maxlength="100" class="text-input">
+    <button id="saveTitle" class="connect-primary full-width">Salvar nome</button>
+    <label class="field-label" for="chatProjectDestination">Projeto da conversa</label><select id="chatProjectDestination" class="text-input"></select>
+    <button id="moveConversationProject" class="connect-secondary full-width">Mover conversa</button>
+    <label class="field-label" for="deleteScope">Onde excluir</label><select id="deleteScope" class="text-input"><option value="local">Somente neste dispositivo</option><option value="web">Neste dispositivo e no ChatGPT</option></select>
+    <button id="deleteChat" class="danger-button">Excluir esta conversa do dispositivo</button>
+    <p id="deleteHelp" class="dialog-help">A exclusão local preserva a conversa na conta ChatGPT.</p><button id="deleteOpenWeb" class="text-button">Conferir no ChatGPT Web</button><p id="deleteStatus" class="dialog-help" role="status"></p>
+  </dialog>
+  <dialog id="conversationProjectDialog" class="dialog compact-dialog" aria-labelledby="conversationProjectDialogTitle">
+    <div class="dialog-heading"><h2 id="conversationProjectDialogTitle">Novo projeto</h2><button class="icon-button" data-close="conversationProjectDialog" aria-label="Fechar">×</button></div>
+    <p class="dialog-help">Organize suas conversas por projeto. Você também pode conversar em “Sem projeto” e mover a conversa depois.</p>
+    <label class="field-label" for="conversationProjectName">Nome do projeto</label><input id="conversationProjectName" class="text-input" maxlength="80" placeholder="Meu próximo projeto">
+    <label class="field-label" for="conversationProjectInstructions">Instruções e contexto do projeto (opcional)</label><textarea id="conversationProjectInstructions" class="text-input" rows="5" maxlength="4000" placeholder="Objetivo, stack, decisões e regras que devem acompanhar novas conversas"></textarea><p class="dialog-help">Reutilizado no primeiro envio de novas conversas, com opção de não incluir. Não substitui a memória e a continuidade do Runtime.</p>
+    <label class="field-label" for="conversationProjectPreviewUrl">Endereço do preview (opcional)</label><input id="conversationProjectPreviewUrl" class="text-input" type="url" maxlength="2048" placeholder="http://127.0.0.1:5173">
+    <p class="dialog-help">O endereço fica salvo neste projeto e abre automaticamente à direita. Use o servidor de desenvolvimento já iniciado pelo Runtime ou um endereço HTTPS acessível. Um endereço local se refere a este computador; para outro dispositivo, use um endereço acessível pela rede.</p>
+    <p id="conversationProjectBinding" class="dialog-help"></p>
+    <button id="saveConversationProject" class="connect-primary full-width">Salvar alterações</button>
+    <button id="removeConversationProject" class="danger-button" hidden>Remover projeto, manter conversas</button>
+    <p id="conversationProjectDialogStatus" class="dialog-help" role="status"></p>
+  </dialog>
+  <dialog id="projectEntryDialog" class="dialog project-entry-dialog" aria-labelledby="entryTitle">
+    <div class="dialog-heading"><div><p class="eyebrow">PROJETOS</p><h2 id="entryTitle">Seu próximo projeto</h2></div><button id="entryClose" class="icon-button" aria-label="Fechar">×</button></div>
+    <div id="entryChoice" class="entry-choices"><button id="entryChooseCreate"><span aria-hidden="true">＋</span><strong>Criar projeto</strong><small>Comece do zero. A pasta é criada automaticamente.</small></button><button id="entryChooseOpen"><span aria-hidden="true">▱</span><strong>Abrir projeto</strong><small>Continue um projeto ou conecte uma pasta existente.</small></button></div>
+    <p id="entryConnection" class="entry-connection" hidden></p><button id="entryConnectionHelp" class="text-button" hidden>Configurar conexão com o computador</button>
+    <label id="entryDeviceField" class="field-label" hidden>Computador<select id="entryDevice" class="text-input"><option value="">Escolha um computador</option></select></label>
+    <p id="entryDeviceStatus" class="dialog-help" role="status" hidden></p>
+    <section id="entryCreate" hidden><p class="dialog-help">Dê um nome ao projeto. Seus arquivos, conversas e preview ficarão organizados no mesmo espaço.</p><label class="field-label" for="entryName">Nome do projeto</label><input id="entryName" class="text-input" maxlength="80" placeholder="Meu aplicativo" autocomplete="off"><p id="entryFolderPreview" class="dialog-help">A pasta será criada automaticamente.</p><button id="entryCreateSubmit" class="connect-primary full-width" disabled>Criar projeto</button></section>
+    <section id="entryOpen" hidden><nav class="entry-origins" aria-label="Origem do projeto"><button id="entryRegistered" aria-pressed="true">Meus projetos</button><button id="entryFolderTab" aria-pressed="false">Pasta existente</button><button id="entryGitHubTab" aria-pressed="false" disabled title="Importação direta ainda não disponível">GitHub · em breve</button></nav>
+      <div id="entryRegisteredContent"><p class="dialog-help">Projetos disponíveis no computador conectado.</p><nav id="entryProjects" class="entry-projects" aria-label="Projetos disponíveis"></nav><p id="entryProjectsEmpty" class="dialog-help" hidden>Nenhum projeto registrado ainda.</p></div>
+      <div id="entryFolderContent" hidden><label class="field-label" for="entryFolder">Pasta dentro do workspace ORDAX</label><input id="entryFolder" class="text-input" maxlength="1024" placeholder="sites/meu-app" autocomplete="off"><p class="dialog-help">O nome será identificado pela pasta. Seus arquivos serão preservados. Nesta versão, a pasta precisa estar dentro do workspace configurado no computador.</p><button id="entryImportSubmit" class="connect-primary full-width" disabled>Abrir projeto</button></div>
+      <div id="entryGitHubContent" hidden><p class="dialog-help">Importação direta do GitHub ainda não está disponível nesta versão. Para continuar um repositório já baixado, use Pasta existente.</p></div>
+    </section>
+    <p id="entryStatus" class="entry-status" role="status" aria-live="polite"></p><button id="entryBack" class="text-button">← Escolher outra opção</button>
+  </dialog>
+  <dialog id="integrationDialog" class="dialog">
+    <div class="dialog-heading"><div><p class="eyebrow">SEU ESPAÇO</p><h2>Conexão e aparência</h2></div><button class="icon-button" data-close="integrationDialog" aria-label="Fechar">×</button></div>
+    <p class="dialog-help">Projetos com arquivos precisam do computador conectado ao ORDAX Runtime. Esta compilação local recebe a sessão autorizada do host; se a conexão não foi configurada, criar e abrir pastas permanece indisponível. Cadastrar o plugin no ChatGPT não configura automaticamente essa sessão do app.</p>
+    <dl class="session-details"><div><dt>Sessão interna</dt><dd id="sessionState">Conferindo…</dd></div><div><dt>Modelo no Web</dt><dd id="sessionModel">—</dd></div><div><dt>Última leitura da página</dt><dd id="sessionLastSync">—</dd></div></dl>
+    <div class="session-actions"><button id="sessionLogin" class="connect-secondary">Abrir sessão Web</button><button id="sessionRefresh" class="connect-secondary">Recarregar Web</button></div>
+    <button id="exportDiagnostics" class="connect-secondary full-width">Exportar diagnóstico do app</button>
+    <p class="dialog-help">Inclui a versão, o estado da conexão e contagens locais. O diagnóstico não inclui suas mensagens, arquivos ou dados de login.</p>
+    <label class="field-label split-label" for="splitRatio">Espaço para a conversa <output id="splitValue">60%</output></label><input id="splitRatio" class="split-range" type="range" min="45" max="75" step="5" value="60">
+    <p class="dialog-help">O preview do projeto fica à direita. O botão GPT Web ou Ctrl + Shift + B troca a área da conversa para o ChatGPT na mesma sessão. Use Conversa do Studio para voltar; seu rascunho é preservado.</p>
+    <p class="dialog-help">O app acompanha os estados e as etapas visíveis no ChatGPT. O uso segue os limites do Web. O login do navegador externo é uma sessão separada.</p>
+  </dialog>
+  <dialog id="pluginDialog" class="dialog plugin-dialog" aria-labelledby="pluginTitle">
+    <div class="dialog-heading"><div><p class="eyebrow">CHATGPT E COMPUTADOR</p><h2 id="pluginTitle">ORDAX Studio</h2></div><button class="icon-button" data-close="pluginDialog" aria-label="Fechar">×</button></div>
+    <p class="dialog-description">Conecte o plugin à mesma conta ChatGPT usada no app. O ChatGPT poderá consultar a tela, trabalhar com projetos e usar as ferramentas autorizadas no seu dispositivo OrdaX.</p>
+    <div class="session-actions"><button id="pluginOpen" class="connect-primary">Preparar cadastro no ChatGPT</button><button id="pluginReturn" class="connect-secondary">Voltar à conversa Web</button><button id="pluginBrowser" class="connect-secondary">Abrir no navegador</button></div>
+    <ol class="plugin-steps"><li>Abra o cadastro no ChatGPT na área da conversa. Em <strong>Plugins → Adicionar → Criar servidor MCP personalizado</strong>, volte ao Studio e use <strong>Preparar cadastro</strong> novamente para preencher nome, descrição e URL. Se o formulário mudou, copie os campos abaixo.</li><li>Escolha <strong>URL do servidor</strong> e autenticação <strong>OAuth</strong>. Abra as configurações avançadas e siga o guia OAuth.</li><li>Leia o aviso do ChatGPT, marque <strong>Entendo e quero continuar</strong> se concordar e use <strong>Criar como plugin</strong>. Instale o plugin e conclua o login OrdaX quando solicitado.</li><li>Use <strong>Voltar à conversa Web</strong> e selecione <strong>@ORDAX Studio</strong> no compositor. Vincule o dispositivo e autorize as capacidades no OrdaX Studio.</li></ol>
+    <label class="field-label" for="pluginName">Nome</label><div class="plugin-endpoint"><input id="pluginName" class="text-input" readonly value="ORDAX Studio"><button data-plugin-copy="pluginName" class="connect-secondary">Copiar</button></div>
+    <label class="field-label" for="pluginDescription">Descrição (opcional)</label><div class="plugin-endpoint"><textarea id="pluginDescription" class="text-input" readonly rows="3">Conecta o ChatGPT aos dispositivos OrdaX para consultar a tela e trabalhar com arquivos, projetos e ferramentas autorizadas.</textarea><button data-plugin-copy="pluginDescription" class="connect-secondary">Copiar</button></div>
+    <p class="dialog-help">Ícone opcional: pode deixar vazio. Se usar um, a tela aceita PNG, até 10 KB, preferencialmente 256 × 256 pixels ou mais.</p>
+    <label class="field-label" for="pluginEndpoint">Endereço do servidor MCP</label><div class="plugin-endpoint"><input id="pluginEndpoint" class="text-input" readonly value="https://ordax-control-plane-v3.ordax-ac1ca1b50d09.workers.dev/mcp"><button id="pluginCopy" class="connect-secondary">Copiar</button></div>
+    <details class="plugin-oauth"><summary>Guia das configurações avançadas de OAuth</summary><p class="dialog-help" id="pluginOAuthGuide">Clique em Verificar serviço para obter as configurações OAuth publicadas. Use registro dinâmico de cliente (DCR) quando confirmado; nesse modo, não preencha ID nem segredo de cliente manualmente.</p><p class="dialog-help">Mantenha a descoberta automática dos endereços. Se a tela solicitar preenchimento manual, copie os valores verificados abaixo. Se ela só oferecer cliente estático, será necessário um cliente OAuth cadastrado pelo administrador OrdaX.</p>
+      <label class="field-label" for="pluginScopes">Escopos padrão</label><div class="plugin-endpoint"><input id="pluginScopes" class="text-input" readonly placeholder="Verifique o serviço"><button data-plugin-copy="pluginScopes" class="connect-secondary">Copiar</button></div>
+      <label class="field-label" for="pluginIssuer">Issuer / autoridade de login</label><div class="plugin-endpoint"><input id="pluginIssuer" class="text-input" readonly placeholder="Verifique o serviço"><button data-plugin-copy="pluginIssuer" class="connect-secondary">Copiar</button></div>
+      <label class="field-label" for="pluginAuthorization">URL de autorização</label><div class="plugin-endpoint"><input id="pluginAuthorization" class="text-input" readonly placeholder="Verifique o serviço"><button data-plugin-copy="pluginAuthorization" class="connect-secondary">Copiar</button></div>
+      <label class="field-label" for="pluginToken">URL de token</label><div class="plugin-endpoint"><input id="pluginToken" class="text-input" readonly placeholder="Verifique o serviço"><button data-plugin-copy="pluginToken" class="connect-secondary">Copiar</button></div>
+      <label class="field-label" for="pluginRegistration">URL de registro de cliente</label><div class="plugin-endpoint"><input id="pluginRegistration" class="text-input" readonly placeholder="Verifique o serviço"><button data-plugin-copy="pluginRegistration" class="connect-secondary">Copiar</button></div>
+      <p class="dialog-help">Use PKCE S256. ID e segredo de cliente são gerados no registro dinâmico; não cole senha, token do Runtime ou chave de API nesses campos. Os escopos de login não concedem acesso ao computador: as permissões são definidas no Studio.</p></details>
+    <p class="dialog-help">A área do ChatGPT usa sua sessão interna. Sua conversa local e seus rascunhos permanecem salvos; volte à conversa Web ao terminar. O navegador externo mantém uma sessão separada.</p>
+    <dl class="session-details"><div><dt>Serviço OrdaX</dt><dd id="pluginService">Ainda não verificado</dd></div><div><dt>Nesta conversa</dt><dd id="pluginConversation">Seleção no ChatGPT não verificada</dd></div></dl>
+    <div class="session-actions"><button id="pluginCheck" class="connect-secondary">Verificar serviço sem login</button><button id="pluginTest" class="connect-secondary">Preparar teste de conexão</button></div>
+    <p id="pluginDetails" class="dialog-help" role="status">Disponibilidade do servidor não confirma login ou permissões do computador.</p>
+    <p class="dialog-help">O teste preenche sua mensagem para revisão; você decide quando enviar. O uso da conversa segue os limites do ChatGPT Web.</p>
+  </dialog>
+
+  <aside class="web-panel" aria-label="ChatGPT Web sincronizado"><header class="web-toolbar"><div><strong>ChatGPT Web</strong><span id="webTag" class="web-tag">MESMA CONVERSA</span></div><nav aria-label="Controles da área Web"><button id="webReturnChat" title="Retomar a conversa Web anterior" hidden>← Conversa Web</button><button id="webClose" title="Voltar à conversa do Studio" hidden>← Voltar à conversa</button><button id="webFocus" title="Ampliar o ChatGPT Web na janela">Ampliar Web</button><button id="webReload" title="Recarregar ChatGPT Web" aria-label="Recarregar ChatGPT Web">↻</button><button id="webBrowser" title="Abrir a conversa no navegador" aria-label="Abrir no navegador">↗</button></nav></header><footer><span class="dot"></span><span id="webStatus">Carregando ChatGPT…</span><small>Cota do Web</small></footer></aside>
+
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>

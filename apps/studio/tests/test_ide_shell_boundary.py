@@ -145,8 +145,13 @@ def test_studio_release_manifest_parity():
     import re
     app = json.loads((ROOT / "app.json").read_text(encoding="utf-8"))
     version = app["version"]
-    assert version == "0.5.10"
     assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version)
     for relative in ("ai/manifest.json", "actions/manifest.json", "actions/providers/manifest.json"):
         manifest = json.loads((ROOT / relative).read_text(encoding="utf-8"))
         assert manifest["appVersion"] == version, relative
+    host_root = ROOT.parents[1] / "tools" / "assistant-host"
+    host = json.loads((host_root / "package.json").read_text(encoding="utf-8"))
+    lock = json.loads((host_root / "package-lock.json").read_text(encoding="utf-8"))
+    assert host["version"] == version
+    assert lock["version"] == version
+    assert lock["packages"][""]["version"] == version

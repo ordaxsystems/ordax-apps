@@ -1,20 +1,24 @@
 # OrdaX Studio + ChatGPT Web + Plugin — três superfícies, uma autoridade
 
-> **Decisão de arquitetura / proposta de produto (2026-10-08).** Documento de coordenação para o issue [ordax-apps#189](https://github.com/ordaxsystems/ordax-apps/issues/189). Não representa implementação concluída, autorização comercial nem liberação de extração automatizada do ChatGPT Web.
+> **Decisão de arquitetura (2026-10-08), atualizada em 2026-10-09.** Documento de coordenação para o issue [ordax-apps#189](https://github.com/ordaxsystems/ordax-apps/issues/189). Não representa implementação concluída, autorização comercial nem liberação de extração automatizada do ChatGPT Web.
+
+## Atualização de implementação local
+
+O usuário definiu o Studio como destino da experiência desktop e o nome público do plugin como **ORDAX Studio**. A fonte de conversa foi consolidada no Studio 0.6.0; recursos avançados existentes foram preservados. Consulte [a matriz de paridade](STUDIO-CONVERSATION-REPLACEMENT.md) antes de interpretar esta proposta como substituição completa ou release publicado.
 
 ## Requisito de experiência
 
 O OrdaX Studio permanece o produto/IDE próprio: projetos, chats nativos, preview, editor, Git, ferramentas, permissões e histórico de trabalho. O usuário quer que sua **conta ChatGPT Web** possa servir como inteligência do chat nativo **sem API key**, por uma integração como a estudada em [miuuyy/codex-chatgpt-web](https://github.com/miuuyy/codex-chatgpt-web), mas **sem executar um Codex obrigatório ou trocar a identidade de produto do Studio**.
 
-**Não descartar nem absorver o plugin externo:** o `ORDAX for ChatGPT` deve continuar disponível no ChatGPT Web/app, inclusive em outro dispositivo compatível, para comandar **somente** recursos OrdaX previamente autorizados. Preservar também um navegador real integrado ao Studio como fallback **visível e manual** e como ferramenta para aplicações web.
+**Não descartar nem absorver o plugin externo:** o `ORDAX Studio (plugin)` deve continuar disponível no ChatGPT Web/app, inclusive em outro dispositivo compatível, para comandar **somente** recursos OrdaX previamente autorizados. Preservar também um navegador real integrado ao Studio como fallback **visível e manual** e como ferramenta para aplicações web.
 
 ## As três superfícies, distintas e complementares
 
 | Superfície | Direção | Finalidade | Owner | Estado/limites |
 | --- | --- | --- | --- | --- |
-| **A. Chat nativo Studio** | Studio → provedor de IA | UX e sessões próprias de trabalho; ChatGPT Web como provedor desejado sem key, além de API/IA local | `ordax-apps/apps/studio` (UI); Runtime/serviço autorizado (adaptação) | Chat nativo parcial. Ponte automática ChatGPT Web **não implementada nem autorizada para produção**. Integração oficial onde disponível é preferível. |
-| **B. Navegador do Studio** | Usuário ↔ sites | Login, uso humano direto do ChatGPT Web e fallback quando chat nativo estiver indisponível; navegação e preview | `ordax-runtime` host Windows / ports OS | Superfície Web e browser gerenciado já têm contratos distintos. `ready` significa página carregada, **não** sessão autenticada. Não simular transparência de mensagens entre A e B. |
-| **C. ORDAX for ChatGPT (plugin/MCP)** | ChatGPT externo → ORDAX | ChatGPT Web/app, em qualquer dispositivo cliente onde conector esteja disponível, envia solicitações ao OrdaX Runtime via Control Plane; projetos, arquivos, Git, apps e browser autorizado | `ordax-platform/plugins/ordax-chatgpt` + Product MCP; Runtime/device handlers existentes | **Fonte já existe**. A funcionalidade real depende de conta/conexão, permissões, disponibilidade do cliente ChatGPT, Runtime online e grants. Não é backend de IA do chat A. |
+| **A. Chat nativo Studio** | Studio → provedor de IA | UX e sessões próprias de trabalho; ChatGPT Web como provedor desejado sem key, além de API/IA local | `ordax-apps/apps/studio` (UI); Runtime/serviço autorizado (adaptação) | Chat nativo parcial. Ponte ChatGPT Web implementada em candidato local de desenvolvimento, com fixtures isoladas; paridade do Runtime e autorização/ativação de produção ainda pendentes. Integração oficial onde disponível é preferível. |
+| **B. Navegador do Studio** | Usuário ↔ sites | Login, uso humano direto do ChatGPT Web e fallback quando chat nativo estiver indisponível; navegação e preview | `ordax-runtime` host Windows / ports OS | Superfície Web e browser gerenciado já têm contratos distintos. `ready` significa página carregada, **não** sessão autenticada. O candidato local sincroniza somente mensagens e etapas públicas observadas; as provas de fixtures não certificam uma conta real. |
+| **C. ORDAX Studio (plugin) (plugin/MCP)** | ChatGPT externo → ORDAX | ChatGPT Web/app, em qualquer dispositivo cliente onde conector esteja disponível, envia solicitações ao OrdaX Runtime via Control Plane; projetos, arquivos, Git, apps e browser autorizado | `ordax-platform/plugins/ordax-chatgpt` + Product MCP; Runtime/device handlers existentes | **Fonte já existe**. A funcionalidade real depende de conta/conexão, permissões, disponibilidade do cliente ChatGPT, Runtime online e grants. Não é backend de IA do chat A. |
 
 O plugin e o navegador são independentes: *usar ChatGPT como IA no Studio* não é o mesmo que *usar o ChatGPT externo para controlar o OrdaX*. Ambos podem coexistir sem compartilhar cookies, tokens ou uma segunda implementação de ações.
 
@@ -46,7 +50,7 @@ O browser gerenciado `browser.*` para tarefas de navegação em projetos **não 
 
 ```text
 ChatGPT Web/app no dispositivo compatível
-  → ORDAX for ChatGPT (plugin/MCP; login/consentimento aplicáveis)
+  → ORDAX Studio (plugin) (plugin/MCP; login/consentimento aplicáveis)
   → Product MCP remoto e Control Plane [ordax-platform]
   → autenticação, grant, alvo, política e auditoria
   → OrdaX Runtime online / ports da plataforma
@@ -63,7 +67,7 @@ O Product MCP atual expõe, entre outros, `ordax_targets`, `projects_list`, `pro
 - **Host/browser/processo:** `ordax-runtime`; browser de login separado de WebView privilegiado. Credenciais/cookies não atravessam bridge de UI.
 - **Conectores ChatGPT:** `ordax-platform/plugins/ordax-chatgpt`; MCP/OAuth/Control Plane são próprios; não transplantar plugin para UI do Studio.
 - **Identity, grants, pairing, approval, Memory e action authority:** owners canônicos da plataforma e Runtime; não conceder por escolha de modelo/provedor ou mudança de dispositivo.
-- **Nomenclatura:** Studio, OrdaX Intelligence, OrdaX Runtime, ORDAX for ChatGPT. `Codex` apenas em referências upstream ou backend **opcional** independente. O `codex-app-server` experimental da PR `ordax-runtime#57` não atende à ponte ChatGPT Web e não deve ser apresentado como conclusão do requisito.
+- **Nomenclatura:** Studio, OrdaX Intelligence, OrdaX Runtime, ORDAX Studio (plugin). `Codex` apenas em referências upstream ou backend **opcional** independente. O `codex-app-server` experimental da PR `ordax-runtime#57` não atende à ponte ChatGPT Web e não deve ser apresentado como conclusão do requisito.
 - **Fonte externa:** a licença MIT do código do `codex-chatgpt-web` não autoriza o uso irrestrito do serviço ChatGPT. Preservar notices, revisar dependências e políticas de distribuição. Não contornar limites, autenticação, antiabuso ou ações de confirmação.
 
 ## Prioridade e gates objetivos
@@ -76,3 +80,7 @@ O Product MCP atual expõe, entre outros, `ordax_targets`, `projects_list`, `pro
 6. **Coordenação:** não editar `ide_shell.js`, `assistant_surface.js`, `host_bridge.js` nem Host WebView2 de outro chat sem reconciliar a `main` e a PR owner.
 
 **Critério de conclusão:** demonstrar as três experiências separadamente; uma indisponibilidade em A **não** desativa B ou C. Sem prova de autorização/segurança, A mantém backend oficial/IA local e B oferece uso humano do ChatGPT Web; C permanece plugin remoto com grants.
+
+## Preferência de conversa no candidato 0.13.0
+
+Ao iniciar/selecionar uma conversa no host local, a sessão ChatGPT Web ocupa a coluna esquerda; Studio · beta oferece a interface sincronizada experimental. O preview permanece à direita. As três superfícies e owners continuam separados. Chat/Work são modos do serviço, não modelos; o app observa controles públicos, seleciona Chat apenas em compositor novo e exige confirmação para qualquer envio experimental. Chat tem limites próprios; quotas não são calculadas pela UI. [Contrato e limites de compatibilidade](STUDIO-CHAT-MODE-SAFETY.md).
