@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import { observeLocalRuntime } from '../native/local-runtime-observer.mjs';
 import { createWebServer } from '../web-server.mjs';
 
@@ -85,9 +86,15 @@ test('loopback observation API requires existing Studio session and cannot mutat
   assert.equal(called, 0);
   const first = await fetch(host.origin);
   const cookie = first.headers.get('set-cookie').split(';')[0];
-  assert.equal((await fetch(host.origin + '/api/runtime/local-observation', {
-    headers: { Cookie: cookie, Host: 'evil.example' },
-  })).status, 403);
+  // The WHATWG fetch implementation controls the Host header itself.
+  // Use node:http to exercise the actual server's Host rejection boundary.
+  const forged = await new Promise((resolve, reject) => {
+    const request = http.get(host.origin + '/api/runtime/local-observation', {
+      headers: { Cookie: cookie, Host: 'evil.example' },
+    }, response => { response.resume(); resolve(response.statusCode); });
+    request.on('error', reject);
+  });
+  assert.equal(forged, 403);
   assert.equal(called, 0);
   const response = await fetch(host.origin + '/api/runtime/local-observation', { headers: { Cookie: cookie } });
   assert.equal(response.status, 200);
