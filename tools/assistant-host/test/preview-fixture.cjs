@@ -106,6 +106,16 @@ app.whenReady().then(async () => {
     await js('document.getElementById("audioCancel").click()');await until('document.getElementById("audioSession").hidden && !document.body.classList.contains("chatgpt-fallback")');
     assert.equal(await chat.webContents.executeJavaScript('document.body.dataset.voiceStarted'),undefined);assert.equal(first.getVisible(),true);assert.equal(bridge.activeId,audioChat);
     console.log('PASS AUDIO: voz usa controles Web na área de conversa; cancelar sai da página de áudio e preserva projeto/preview. Microfone real não é simulado como validado.');
+    const executeAudio=chat.webContents.executeJavaScript.bind(chat.webContents),loadAudio=chat.webContents.loadURL.bind(chat.webContents);let uncertainAudioClicks=0;
+    chat.webContents.executeJavaScript=async(code,...args)=>{const value=await executeAudio(code,...args);if(code.includes('return (function audioControl')){uncertainAudioClicks++;throw new Error('lost audio acknowledgement');}return value;};
+    chat.webContents.loadURL=async()=>{throw new Error('audio exit offline');};
+    await until('!document.getElementById("webVoice").disabled');await js('document.getElementById("webVoice").click()');
+    await until('!document.getElementById("audioSession").hidden && document.getElementById("notice").textContent.includes("encerramento do áudio")');
+    assert.equal(uncertainAudioClicks,1);assert.throws(controls.collapse,/Encerre/);assert.equal(await js('document.getElementById("audioCancel").disabled'),false);
+    chat.webContents.executeJavaScript=executeAudio;chat.webContents.loadURL=loadAudio;
+    await js('document.getElementById("audioCancel").click()');await until('document.getElementById("audioSession").hidden && !document.body.classList.contains("chatgpt-fallback")');
+    assert.equal(uncertainAudioClicks,1);assert.equal(await executeAudio('document.body.dataset.voiceStarted'),undefined);assert.equal(first.getVisible(),true);
+    console.log('PASS AUDIO: ACK perdido após clique mantém Encerrar disponível e bloqueia ocultar captura; navegação falha não libera o lock, encerramento explícito confirma saída sem repetir voz.');
     for(const [preset,width,height]of [['mobile',390,844],['tablet',768,1024],['desktop',1280,800]]){
       await js(`document.getElementById('previewDevice').value='${preset}';document.getElementById('previewDevice').dispatchEvent(new Event('change'))`);
       await until(`document.getElementById('previewDimensions').textContent.includes('${width} × ${height}')`);await pause(120);

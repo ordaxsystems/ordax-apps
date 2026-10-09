@@ -16,6 +16,7 @@ export function createAudioPanel({ host, nativeWeb, snapshot, current, ensureCha
   async function begin(mode) {
     if (locked() || capture || starting) return;
     starting = true;
+    let terminationRequired = false;
     try {
     speech.stop();
     await ensureChat();
@@ -24,9 +25,13 @@ export function createAudioPanel({ host, nativeWeb, snapshot, current, ensureCha
     if (mode === 'voice' && (saved.text.trim() || saved.attachments.length)) throw new Error('Guarde ou envie seu rascunho antes de iniciar uma conversa por voz.');
     if (mode === 'dictation') await host.prepareAudioDraft({ chatId: id, revision: saved.revision });
     capture = { id, mode, revision: saved.revision }; paint(); changed();
-    await nativeWeb.audio(mode);
+    const result = await nativeWeb.audio(mode);
+    if (result?.opened !== true) {
+      terminationRequired = result?.terminationRequired === true;
+      throw new Error(result?.error || 'O ChatGPT não confirmou o início do áudio.');
+    }
     notify(mode === 'dictation' ? 'Conclua o ditado no ChatGPT e use Trazer ditado para revisar o texto no Studio.' : 'Use os controles de voz do ChatGPT. Para finalizar, use Encerrar áudio no Studio.');
-    } catch (error) { capture = null; changed(); throw error; }
+    } catch (error) { if (!terminationRequired) capture = null; changed(); throw error; }
     finally { starting = false; paint(); }
   }
   async function finish() {

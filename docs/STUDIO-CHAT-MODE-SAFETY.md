@@ -20,7 +20,7 @@ O Web oferece os recursos originais da conta. O chat beta continua útil para re
 
 Os botões abrem os seletores públicos reais, na mesma sessão; rótulos refletem o controle observado. Não há catálogo de modelos fabricado, associação de “alto” a modelo interno ou chamada de API para alterar preferências. Um controle ausente/ambíguo permanece indisponível; o usuário pode usar a interface original. Disponibilidade e nomes variam por conta/versão do ChatGPT.
 
-Ditar/Voz ficam acessíveis na área principal e usam a mesma política de Chat, permissão explícita de microfone e término de sessão. Falha ao iniciar libera o estado local; não mantém a conversa presa em áudio. Leitura por voz local permanece independente do modo do provedor.
+Ditar/Voz ficam acessíveis na área principal e usam a mesma política de Chat, permissão explícita de microfone e término de sessão. Falha ao iniciar só libera o estado local após encerramento confirmado da página; ACK perdido com saída falha mantém Encerrar disponível e bloqueia ocultar a sessão. Não repete o início de áudio. Leitura por voz local permanece independente do modo do provedor.
 
 ## Evidência, riscos e aceite
 

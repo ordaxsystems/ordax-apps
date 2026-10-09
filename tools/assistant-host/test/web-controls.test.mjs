@@ -141,3 +141,16 @@ test('reloading or losing the Studio renderer terminates the audio page without 
   await controls.audio('voice');events.get('did-start-navigation')({},'http://localhost/',false,true);await controls.audioEnd();assert.equal(controls.state().expanded,false);assert.equal(revoked>0,true);assert.equal(f.loads.length,1);
   await controls.audio('voice');events.get('render-process-gone')();await controls.audioEnd();assert.equal(f.loads.length,2);assert.equal(controls.state().expanded,false);
 });
+
+test('a lost or invalid audio acknowledgement releases the lock only after verified page termination', async () => {
+  const f=fixture('https://chatgpt.com/c/audio');f.ready(true);
+  f.surface.webContents.executeJavaScript=async()=>{throw new Error('lost acknowledgement');};
+  await assert.rejects(f.controls.audio('voice'),/lost acknowledgement/);
+  assert.deepEqual(f.loads,['https://chatgpt.com/c/audio']);assert.equal(f.controls.state().expanded,false);f.controls.collapse();
+  const load=f.surface.webContents.loadURL;f.surface.webContents.loadURL=async()=>{throw new Error('navigation failed');};
+  const result=await f.controls.audio('voice');assert.equal(result.opened,false);assert.equal(result.terminationRequired,true);
+  assert.throws(f.controls.collapse,/Encerre/);assert.throws(f.controls.reload,/áudio/);
+  f.surface.webContents.loadURL=load;await f.controls.audioEnd();assert.equal(f.controls.state().expanded,false);
+  f.surface.webContents.executeJavaScript=async()=>({});
+  await assert.rejects(f.controls.audio('dictation'),/não confirmou/);assert.equal(f.loads.length,3);f.controls.collapse();
+});

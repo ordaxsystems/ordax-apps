@@ -83,8 +83,20 @@ function createWebControls({ window, surface, plugin, studioSurfaces, resumeURL 
     if (audioMode || pluginSetupActive || isBusy() || !isReady()) throw new Error('Abra uma conversa conectada e aguarde a resposta antes de usar áudio.');
     if (new URL(surface.webContents.getURL()).origin !== 'https://chatgpt.com') throw new Error('Abra a sessão ChatGPT antes de usar áudio.');
     expand(); audioMode = mode; audioPermission?.arm();
-    try { return await surface.webContents.executeJavaScript(scriptFor('audio', mode), true); }
-    catch (error) { audioMode = null; audioPermission?.revoke(); throw error; }
+    try {
+      const result = await surface.webContents.executeJavaScript(scriptFor('audio', mode), true);
+      if (result?.opened !== true) throw new Error('O ChatGPT não confirmou o início do áudio.');
+      return result;
+    }
+    catch (error) {
+      audioPermission?.revoke();
+      // A lost acknowledgement can follow a successful voice click. Terminate
+      // the page before releasing the capture lock; permission revocation alone
+      // cannot prove that an already-open MediaStream has stopped.
+      try { await audioEnd(); }
+      catch { return { opened: false, terminationRequired: true, error: 'Não foi possível confirmar o encerramento do áudio. Use Encerrar áudio para tentar novamente.' }; }
+      throw error;
+    }
   }
   async function audioEnd() {
     if (endingAudio) return endingAudio;
