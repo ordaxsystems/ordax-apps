@@ -481,8 +481,17 @@ app.whenReady().then(async () => {
     // Electron webContents.reload() returns void. Await the real navigation,
     // otherwise the post-reload assertion races the old renderer/disposal.
     const reloaded = new Promise((resolve, reject) => {
-      window.webContents.once('did-finish-load', resolve);
-      window.webContents.once('did-fail-load', (_event, code, description) => reject(new Error(`Studio reload failed: ${code} ${description}`)));
+      const finish = error => {
+        window.webContents.removeListener('did-finish-load', onLoaded);
+        window.webContents.removeListener('did-fail-load', onFailed);
+        if (error) reject(error); else resolve();
+      };
+      const onLoaded = () => finish();
+      const onFailed = (_event, code, description, _url, mainFrame) => {
+        if (mainFrame && code !== -3) finish(new Error(`Studio reload failed: ${code} ${description}`));
+      };
+      window.webContents.on('did-finish-load', onLoaded);
+      window.webContents.on('did-fail-load', onFailed);
     });
     window.webContents.reload();
     await reloaded;
