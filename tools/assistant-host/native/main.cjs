@@ -6,7 +6,7 @@ const { createAudioPermission } = require('./audio-permission.cjs');
 const { isAccountURL } = require('./policy.cjs');
 const { createWebControls, registerWebControls } = require('./web-controls.cjs');
 const { createPluginConnection, isPluginURL } = require('./plugin-connection.cjs');
-const { invokeCanonicalProductSignIn } = require('./canonical-account.cjs');
+const { invokeCanonicalProductSignIn, locateInstalledRuntime } = require('./canonical-account.cjs');
 app.setName('ORDAX Studio');
 if (process.platform === 'win32') app.setAppUserModelId('org.ordax.assistant');
 app.setPath('userData', path.join(process.env.LOCALAPPDATA || (process.platform === 'win32' ? path.join(homedir(), 'AppData', 'Local') : path.join(homedir(), '.local/share')), 'OrdaX', 'Assistant-web'));
