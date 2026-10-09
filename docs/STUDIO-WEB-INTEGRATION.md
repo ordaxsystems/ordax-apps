@@ -26,3 +26,13 @@ Critérios de aceite: um único source/versão; Web abre a interface canônica; 
 ## Correção 0.13.2
 
 Inicialização consulta o estado do host antes dos rascunhos, rejeita sessão incompatível e só libera controles depois da renderização. Respostas HTML/JSON inválido recebem mensagem de conexão; estado não é cacheado. Retry é explícito e serializado. Nenhuma base de memória, autenticação ou automação adicional foi criada. Risco principal: regressão na ordem de abertura; testes de transporte, concorrência e fixture Electron verificam a recuperação do mesmo histórico.
+
+## Correção 0.13.3 — transporte de resposta
+
+MVP-04/Studio, continuidade explicitamente solicitada em 09/10/2026. Owner Apps: parser SSE e cliente HTTP portáteis usados pela UI/host de desenvolvimento. Não altera os contratos públicos de execução, grants, SDK pin ou a responsabilidade de sessão dos hosts. O cliente exige `text/event-stream` em respostas bem-sucedidas e JSON válido em erros; objetos de erro não são tratados como mensagens. Respostas continuam com credenciais same-origin e `cache:no-store`.
+
+O prazo de conexão é 20 segundos. Depois de identificar o protocolo, vale um prazo de inatividade de 60 segundos, renovado por chunks/keepalives; não é limite total para a geração. O host atual emite heartbeat a cada 15 segundos. Evento `done`/`error` encerra a leitura e libera a conexão; EOF ou `[DONE]` sem confirmação da aplicação é estado incerto, não sucesso. JSON/UTF-8 inválidos, eventos sem tipo e frames acima do limite já existente de 2 MiB são rejeitados. Falha/cancelamento libera reader e timers mesmo se o source nunca concluir `cancel()`.
+
+Nenhuma falha repete o POST. Desconectar o viewer não cancela automaticamente a geração no ChatGPT; o acompanhamento da mesma sessão pelo host/journal continua sendo a recuperação existente. O botão Parar conserva sua operação explícita. Risco: diferenças no fechamento do streaming e compatibilidade de MIME; testes usam respostas fragmentadas, host loopback real, sessão simulada e fixture Electron. Aceite: um único POST; erro/timeout visível; sem sucesso falso ou geração duplicada; leitor liberado; heartbeat mantém respostas longas.
+
+Isso prepara o transporte existente; não entrega o pacote completo no OS Web nem resolve seu adapter de sessão. Não foi criada compatibilidade fictícia para aumentar o catálogo: o piso continua com 13 candidatos não assinados, 7 bloqueios e nenhuma instalação pública verificada.

@@ -1,4 +1,14 @@
-# Estado atual — ORDAX Studio 0.13.1
+# Estado atual — ORDAX Studio 0.13.3
+
+146 testes unitários de conversa/host passaram, incluindo 11 novos testes de transporte. O teste loopback usa o cliente HTTP portátil real e confirma envio único; erros HTML/JSON, sessão expirada, espera sem headers, silêncio, cancelamento travado, UTF-8/eventos inválidos e EOF sem confirmação falham fechado. `done`/`error` liberam a conexão, e heartbeat mantém o fluxo vivo sem limite total de geração. Nenhuma falha repete o POST ou cancela implicitamente a geração no ChatGPT.
+
+A fixture Electron de produção terminou com código 0 e 34 provas `PASS`, incluindo UI → HTTP → editor Web real da fixture, mensagem única, resposta parcial/final, envio incerto e recuperação de rascunhos. Conta ChatGPT, plugin e Runtime são simulados; não certifica conta do usuário, OAuth, microfone ou dispositivo real. Log ignorado: `tools/assistant-host/.data/native-0.13.3.log`. Os 11 testes de transporte foram repetidos após validar parâmetros de timeout antes do POST.
+
+27 testes Python Studio (17 unittest + 10 funções de boundary), 25 testes Node de workspace/host bridge e 8 de distribuição passaram. Workspace, manifests AI/actions, version parity e ownership passaram. Owner, risco, critérios de aceite e pendências Web: [STUDIO-WEB-INTEGRATION.md](../../../docs/STUDIO-WEB-INTEGRATION.md). A interface completa ainda não é composta pelo OS Web; catálogo, trust e entrega continuam nos owners canônicos.
+
+Reprodução: `npm.cmd --prefix tools/assistant-host test`, `npm.cmd --prefix tools/assistant-host run test:native`, `node --test apps/studio/tests/*.test.mjs tests/studio_host_bridge_conformance.mjs`, verificadores de workspace/manifests/distribuição/ownership e auditor MVP. Resultados remotos devem ser consultados na [PR 195](https://github.com/ordaxsystems/ordax-apps/pull/195), não inferidos pelos testes locais. Esta versão não afirma nova prova de áudio/preview, paridade OS, promoção na Store ou publicação do plugin.
+
+# Histórico — ORDAX Studio 0.13.1
 
 132 testes unitários, 35 cenários Electron nativos e 25 de preview/áudio/exclusão aprovados. A correção limita início/encerramento a 10 segundos por operação, mantém recuperação após falha/recarregamento e rejeita snapshots antigos. A fixture cobre início sem ACK, encerramento falho, cancelamento durante espera, resposta atrasada, perda de IPC depois do início e consulta do host indisponível. Nenhum caso repete o clique de voz. O ditado recuperado sem sua revisão original não é importado automaticamente.
 

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createWebServer } from '../web-server.mjs';
 import { readSSE } from '../../../apps/studio/conversation/src/stream.mjs';
+import { respond } from '../../../apps/studio/conversation/src/host.mjs';
 
 async function fixture(t) {
   const calls = [], bridge = {
@@ -19,8 +20,8 @@ test('native UI transport returns the Web mode and actual stream without inferen
   const f = await fixture(t);
   assert.equal((await (await f.request('/api/state')).json()).connection.mode, 'chatgpt-web');
   assert.equal((await (await f.request('/api/connect', 'POST', {})).json()).embedded, true);
-  const response = await f.request('/api/respond', 'POST', { chatId: 'aabb', message: { text: 'Olá' } });
-  const events = []; for await (const e of readSSE(response.body)) events.push(e);
+  const events = [];
+  for await (const event of respond({ chatId: 'aabb', message: { text: 'Olá' } }, (url, options) => f.request(url, options.method, JSON.parse(options.body)))) events.push(event);
   assert.deepEqual(events.filter(e => ['start', 'sync', 'done'].includes(e.type)).map(e => e.type), ['start', 'sync', 'done']); assert.equal(f.calls.length, 1);
   assert.equal(events.find(e => e.type === 'message').message.text, 'Resposta Web');
   assert.equal((await f.request('/api/chats/aabb/select', 'POST', {})).status, 200);

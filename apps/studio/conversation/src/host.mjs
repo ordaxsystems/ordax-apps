@@ -1,5 +1,40 @@
 import { readSSE } from './stream.mjs';
 
+export async function* respond(data, fetchImpl = fetch, { headersTimeoutMs = 20000, idleTimeoutMs = 60000 } = {}) {
+  if (!Number.isFinite(headersTimeoutMs) || headersTimeoutMs <= 0 || headersTimeoutMs > 300000) throw new TypeError('Prazo de conexão inválido.');
+  if (!Number.isFinite(idleTimeoutMs) || idleTimeoutMs <= 0 || idleTimeoutMs > 300000) throw new TypeError('Prazo de streaming inválido.');
+  const controller = new AbortController();
+  let response;
+  let timer = setTimeout(() => controller.abort(new Error('O host não confirmou a conexão de resposta a tempo. Confira o envio antes de tentar novamente.')), headersTimeoutMs);
+  try {
+    response = await fetchImpl('/api/respond', {
+      method: 'POST', credentials: 'same-origin', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(data), signal: controller.signal,
+    });
+    const contentType = response.headers.get('content-type') || '';
+    if (!response.ok) {
+      if (!/^application\/json(?:\s*;|$)/i.test(contentType)) throw new Error('Não foi possível conectar ao host da conversa. Confira o envio antes de tentar novamente.');
+      let payload;
+      try { payload = await response.json(); }
+      catch { throw new Error('O host retornou uma resposta inválida.'); }
+      throw new Error(typeof payload?.error === 'string' ? payload.error : 'Não foi possível concluir a operação.');
+    }
+    if (!/^text\/event-stream(?:\s*;|$)/i.test(contentType)) throw new Error('O host não retornou o protocolo de streaming do Studio. Confira o envio antes de tentar novamente.');
+    clearTimeout(timer);
+    timer = null;
+    for await (const event of readSSE(response.body, { signal: controller.signal, idleTimeoutMs })) {
+      yield event;
+      if (event.type === 'done' || event.type === 'error') return;
+    }
+    throw new Error('A conexão terminou sem confirmar a resposta. Confira a mesma conversa antes de enviar novamente.');
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+    if (response?.body && !response.body.locked) void response.body.cancel().catch(() => {});
+  }
+}
+
 export async function request(url, method = 'GET', data, fetchImpl = fetch) {
   const response = await fetchImpl(url, { method, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(20000), headers: data ? { 'Content-Type': 'application/json' } : {}, body: data ? JSON.stringify(data) : undefined });
   // Static previews do not provide this transport; HTML is never app state.
@@ -43,11 +78,7 @@ export function createHttpHost() {
     consumeWebDraft: data => request('/api/audio/consume', 'POST', data),
     reviewDelivery: id => request(`/api/chats/${id}/review`, 'POST', {}),
     stop: chatId => request('/api/stop', 'POST', { chatId }),
-    async *respond(data) {
-      const response = await fetch('/api/respond', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      if (!response.ok) { const payload = await response.json(); throw new Error(payload.error); }
-      yield* readSSE(response.body);
-    },
+    respond: data => respond(data),
   });
 }
 

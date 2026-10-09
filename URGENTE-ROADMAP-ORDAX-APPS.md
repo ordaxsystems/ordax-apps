@@ -1,5 +1,9 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Incremento comprovado — transporte Web do Studio (2026-10-09)
+
+Continuidade explicitamente solicitada, MVP-04/Studio: candidato 0.13.3 valida o protocolo SSE, prazo de conexão/inatividade, confirmação terminal e eventos JSON/UTF-8; libera leitor/timers mesmo após cancelamento travado. Erro, EOF e perda de comunicação não repetem POST nem anunciam conclusão. Keepalive conserva gerações longas; recuperação consulta a mesma sessão. Owner Apps para cliente/parser; Runtime, Platform, SDK/grants e gates de entrega intactos. [Critérios, risco e pendências reais](docs/STUDIO-WEB-INTEGRATION.md), [provas](apps/studio/conversation/VERIFICATION.md). A revisão mobile do painel OS está na PR ordax-os#1532; a interface completa ainda não foi composta no OS Web.
+
 ## Incremento comprovado — disponibilidade Web e recuperação de abertura do Studio (2026-10-09)
 
 Solicitação explícita do usuário, MVP-04/Studio: candidato 0.13.2 rejeita transporte ausente/HTML/JSON inválido, consulta estado antes dos rascunhos e só libera ações após inicialização. Retry explícito é serializado e conserva a sessão existente. O OS recebeu acesso Studio na navegação e apresentação honesta do painel de host. Isso ainda não integra a interface completa no OS Web: entrega canônica, adapter de conversas e preview continuam pendentes, com owners e critérios em [STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md). Não foi criada outra fonte de Studio, Memory ou execução, nem habilitada instalação/produção.
