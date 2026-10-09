@@ -77,6 +77,8 @@ O preflight não valida assinaturas Git nem a identidade do operador; a procedê
 
 O preflight também recusa qualquer árvore prematura `apps/files`, inclusive arquivos sem `app.json` ou diretório vazio, enquanto `source_cutover_allowed=false`. A verificação ocorre antes de uma eventual cópia e impede que uma implementação paralela seja escondida apenas pela ausência do manifesto. A futura permissão exige os pins e a prova Git do Gate A; não é autorização de distribuição.
 
+A leitura do gerenciador ganhou validação adicional de **identidade lógica da resposta**, implementada na plataforma no commit [`ordax-os@4f8dcc17`](https://github.com/ordaxsystems/ordax-os/commit/4f8dcc176003d531a0dd04fe226ee2aa0a3ab0c0). O helper `system/surface/ui/file-space-response-identity.mjs` é **código do aplicativo**, incluído no mesmo inventário obrigatório do Gate A; deve ser transferido com Files, não permanecer duplicado no OS. Listagens e previews que indicam caminho diferente do solicitado são recusados antes de atualizar navegação, seleção ou histórico. A correção não cria permissões nem novo File Space.
+
 ## Sequência de entrega
 
 1. Plataforma/owner confirma repositório final após a migração e captura snapshot **pinado** do source Files antes da remoção, com inventário de arquivos.

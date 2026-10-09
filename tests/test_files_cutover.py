@@ -161,6 +161,16 @@ class FilesCutoverTests(unittest.TestCase):
             self.assertIn("system/apps/files", inspection["remaining_source"])
             self.assertTrue(inspection["remaining_couplings"])
 
+    def test_files_response_identity_helper_is_app_owned_during_cutover(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = make_root(Path(temp))
+            plan = load_plan(root)
+            self.assertIn(
+                "system/surface/ui/file-space-response-identity.mjs",
+                plan["gate_a_platform_removal"]["remove_owned_source"],
+            )
+            self.assertFalse(files.report(root)["source_cutover"]["ready"])
+
     def test_second_canonical_manifest_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
