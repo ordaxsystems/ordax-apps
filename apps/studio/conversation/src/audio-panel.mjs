@@ -1,7 +1,7 @@
 import { createSpeech } from './speech.mjs';
 export function createAudioPanel({ host, nativeWeb, snapshot, current, ensureChat, draft, saveText, notify, locked, changed = () => {} }) {
   const $ = id => document.getElementById(id);
-  let capture = null, starting = false, finishing = false;
+  let capture = null, starting = false, finishing = false, nativeRevision = -1;
   const speech = createSpeech({ changed: paintSpeech });
   function paintSpeech(state = speech.state()) {
     $('speechPlayer').hidden = !['playing','paused','error'].includes(state.status);
@@ -16,26 +16,47 @@ export function createAudioPanel({ host, nativeWeb, snapshot, current, ensureCha
   async function begin(mode) {
     if (locked() || capture || starting) return;
     starting = true;
-    let terminationRequired = false;
+    let terminationRequired = false, audioRequested = false;
     try {
     speech.stop();
     await ensureChat();
     if (snapshot().chatModeRequired === true && snapshot().automatedSendAllowed !== true) throw new Error('Confirme o modo Chat antes de iniciar áudio pelo Studio.');
     const id = current(); const saved = await draft();
+    if (id !== current()) throw new Error('A conversa mudou. Volte ao chat antes de iniciar áudio.');
     if (mode === 'voice' && (saved.text.trim() || saved.attachments.length)) throw new Error('Guarde ou envie seu rascunho antes de iniciar uma conversa por voz.');
     if (mode === 'dictation') await host.prepareAudioDraft({ chatId: id, revision: saved.revision });
-    capture = { id, mode, revision: saved.revision }; paint(); changed();
+    if (id !== current()) throw new Error('A conversa mudou. Volte ao chat antes de iniciar áudio.');
+    capture = { id, mode, revision: saved.revision, status: 'starting' }; paint(); changed();
+    audioRequested = true;
     const result = await nativeWeb.audio(mode);
+    if (result?.cancelled === true) return;
     if (result?.opened !== true) {
       terminationRequired = result?.terminationRequired === true;
       throw new Error(result?.error || 'O ChatGPT não confirmou o início do áudio.');
     }
+    if (!capture) return;
+    capture.status = 'active';
     notify(mode === 'dictation' ? 'Conclua o ditado no ChatGPT e use Trazer ditado para revisar o texto no Studio.' : 'Use os controles de voz do ChatGPT. Para finalizar, use Encerrar áudio no Studio.');
-    } catch (error) { if (!terminationRequired) capture = null; changed(); throw error; }
+    } catch (error) {
+      let stateUnknown = false;
+      if (audioRequested && !terminationRequired) {
+        // IPC can fail after the host clicked voice successfully. Query the
+        // native owner before deciding that capture is no longer active.
+        try {
+          const state = await nativeWeb.getLayout();
+          if (state.audioSession !== undefined) { sync(state.audioSession, state.audioRevision); terminationRequired = Boolean(capture); }
+          else { terminationRequired = true; stateUnknown = true; }
+        } catch { terminationRequired = true; stateUnknown = true; }
+      }
+      if (!terminationRequired) capture = null;
+      else if (!capture) capture = { id: current(), mode, status: 'uncertain', recovered: true };
+      if (stateUnknown) Object.assign(capture, { status: 'uncertain', recovered: true, error: 'Não foi possível confirmar o estado do áudio. Use Encerrar áudio antes de continuar.' });
+      changed(); throw error;
+    }
     finally { starting = false; paint(); }
   }
   async function finish() {
-    if (!capture || finishing) return;
+    if (!capture || finishing || capture.recovered || capture.status !== 'active') return;
     finishing = true; paint(); try {
     if (capture.id !== current()) throw new Error('Volte à conversa em que o áudio foi iniciado.');
     if (capture.mode === 'dictation') {
@@ -62,6 +83,19 @@ export function createAudioPanel({ host, nativeWeb, snapshot, current, ensureCha
   $('audioFinish').addEventListener('click', () => task(finish));
   $('audioCancel').addEventListener('click', () => task(async () => { if (!capture || finishing) return; finishing = true; paint(); try { await nativeWeb.audioEnd(); capture = null; paint(); changed(); notify('Áudio encerrado; o rascunho do Studio foi preservado.'); } finally { finishing = false; paint(); } }));
   $('speechPause').addEventListener('click', () => speech.togglePause()); $('speechStop').addEventListener('click', () => speech.stop());
+  function sync(session, revision) {
+    if (Number.isSafeInteger(revision)) {
+      if (revision < nativeRevision) return;
+      nativeRevision = revision;
+    }
+    if (session && ['dictation', 'voice'].includes(session.mode) && ['starting', 'active', 'ending', 'uncertain'].includes(session.status)) {
+      // A reloaded UI does not know the original draft revision. It can end the
+      // native session, but must not import or clear a dictation speculatively.
+      if (!capture) capture = { id: current(), mode: session.mode, recovered: true };
+      capture.status = session.status; capture.error = session.error || '';
+    } else if (session === null) capture = null;
+    paint(); changed();
+  }
   function paint() {
     const web = snapshot();
     const modeBlocked = web.chatModeRequired === true && web.automatedSendAllowed !== true;
@@ -71,13 +105,15 @@ export function createAudioPanel({ host, nativeWeb, snapshot, current, ensureCha
     $('dictate').title = web.audio?.dictation ? 'Ditar na mesma sessão ChatGPT' : 'Ditado não detectado nesta sessão. Confira o GPT Web.';
     $('voiceChat').title = web.audio?.voice ? 'Conversar por voz na mesma sessão ChatGPT' : 'Modo de voz não detectado nesta sessão. Confira o GPT Web.';
     for (const [primary, source] of [['webDictate','dictate'],['webVoice','voiceChat']]) { $(primary).hidden = $(source).hidden; $(primary).disabled = $(source).disabled; $(primary).title = $(source).title; }
-    $('audioFinish').disabled = finishing; $('audioCancel').disabled = finishing;
-    $('audioCancel').textContent = capture?.mode === 'dictation' ? 'Descartar ditado do Web' : 'Encerrar voz';
+    const recovering = capture?.recovered || capture?.status === 'uncertain';
+    $('audioFinish').hidden = Boolean(recovering) || capture?.status !== 'active';
+    $('audioFinish').disabled = finishing; $('audioCancel').disabled = finishing || capture?.status === 'ending';
+    $('audioCancel').textContent = capture?.mode === 'dictation' ? 'Encerrar sem importar' : recovering ? 'Encerrar áudio' : 'Encerrar voz';
     $('audioSession').hidden = !capture; $('audioFinish').textContent = capture?.mode === 'dictation' ? 'Trazer ditado' : 'Encerrar áudio';
-    $('audioSessionText').textContent = capture?.mode === 'dictation' ? 'Ditado aberto no ChatGPT · revise antes de enviar' : 'Conversa por voz aberta no ChatGPT';
+    $('audioSessionText').textContent = capture?.status === 'ending' ? 'Encerrando áudio…' : capture?.status === 'uncertain' ? capture.error || 'Encerramento do áudio não confirmado. Tente encerrar novamente.' : capture?.status === 'starting' ? 'Aguardando confirmação do áudio · você pode encerrar' : capture?.recovered ? capture.mode === 'dictation' ? 'Confira e copie o ditado no ChatGPT antes de encerrar; o texto do Web será descartado.' : 'Sessão de voz recuperada. Encerre antes de continuar.' : capture?.mode === 'dictation' ? 'Ditado aberto no ChatGPT · revise antes de enviar' : 'Conversa por voz aberta no ChatGPT';
     paintSpeech();
   }
-  return { paint, active: () => Boolean(capture), stopReading: speech.stop,
+  return { paint, sync, active: () => Boolean(capture) || finishing, stopReading: speech.stop,
     listen(message) { if (speech.state().key === message.id) speech.stop(); else speech.play(message.text, message.id, $('speechVoice').value); },
     dispose: speech.dispose };
 }

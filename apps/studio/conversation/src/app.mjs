@@ -593,8 +593,13 @@ async function pollWeb() {
 const previewPanel = createPreviewPanel({ nativePreview: window.ordaxStudioPreviewHost, nativeWeb, project, configure: openProjectOptions, notify });
 const webTimer = setInterval(pollWeb, 900);
 if (nativeWeb) {
+  let layoutAudioRevision = -1;
   nativeWeb.onPrepareClose?.(async () => { if (!projectPanel.canClose()) throw new Error('Edição pendente.'); saveDraft(); await drafts.flush(); });
-  const applyLayout = ({ expanded, mode = 'split', ratio = 0.6, pluginSetup = false, studioPreview = false }) => {
+  const applyLayout = ({ expanded, mode = 'split', ratio = 0.6, pluginSetup = false, studioPreview = false, audioSession, audioRevision }) => {
+    if (Number.isSafeInteger(audioRevision)) {
+      if (audioRevision < layoutAudioRevision) return;
+      layoutAudioRevision = audioRevision;
+    }
     layoutState = { mode, ratio, expanded, studioPreview }; document.body.classList.toggle('web-expanded', expanded); document.body.classList.toggle('conversation-only', mode === 'conversation');
     document.body.style.setProperty('--assistant-width', mode === 'conversation' ? '100vw' : `${ratio * 100}vw`);
     $('webClose').hidden = !expanded; $('webFocus').hidden = expanded;
@@ -607,6 +612,7 @@ if (nativeWeb) {
     $('webToggle').classList.toggle('composer-web-control', studioPreview);
     $('webToggle').title = label; $('webToggle').setAttribute('aria-label', label); $('webToggle').setAttribute('aria-pressed', String(studioPreview ? expanded : mode === 'conversation'));
     previewPanel.layout({ expanded, mode, ratio, pluginSetup, studioPreview });
+    if (audioSession !== undefined) audioPanel?.sync(audioSession, audioRevision);
     renderSession();
     $('splitRatio').value = ratio * 100; $('splitValue').textContent = Math.round(ratio * 100) + '%';
   };

@@ -4,7 +4,7 @@ Decisão do usuário em 2026-10-09: a experiência de conversa desenvolvida nest
 
 ## Identidade e fonte
 
-- Produto: **ORDAX Studio**, candidato local **0.13.0**.
+- Produto: **ORDAX Studio**, candidato local **0.13.1**.
 - UI portátil: `apps/studio`; conversa em `apps/studio/conversation`, workspace avançado existente em `src`/`assets`.
 - O protótipo `prototypes/chatgpt-web-assistant` foi consolidado. Sua identidade e action provider `assistant-native` foram aposentados e preservados no backup externo; não criamos um segundo `apps/assistant`.
 - O Assistant nativo do OrdaX OS permanece sob ownership e gates próprios.
@@ -46,4 +46,4 @@ Entrada e criação/importação de projetos no candidato 0.9.0: [STUDIO-PROJECT
 
 Áudio e ações de conversa no candidato 0.11.0: [STUDIO-VOICE-CONVERSATION-ACTIONS.md](STUDIO-VOICE-CONVERSATION-ACTIONS.md). O incremento não promove paridade de hardware/conta real nem adiciona autoridade ao plugin.
 
-Modo Chat, seletores e quotas no candidato 0.13.0: [STUDIO-CHAT-MODE-SAFETY.md](STUDIO-CHAT-MODE-SAFETY.md).
+Modo Chat, seletores e quotas no candidato 0.13.1: [STUDIO-CHAT-MODE-SAFETY.md](STUDIO-CHAT-MODE-SAFETY.md).

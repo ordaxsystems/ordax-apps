@@ -13,7 +13,7 @@ function fixture(url = 'https://chatgpt.com/') {
 }
 test('Entrar opens the public login in the same Web surface and expands it', async () => {
   const f = fixture(), original = f.surface.webContents;
-  assert.deepEqual(await f.controls.login(), { embedded: true, expanded: true, mode: 'web', ratio: 0.6, pluginSetup: false });
+  assert.deepEqual(await f.controls.login(), { embedded: true, expanded: true, mode: 'web', ratio: 0.6, pluginSetup: false, audioRevision: 0, audioSession: null });
   assert.deepEqual(f.loads, ['https://chatgpt.com/auth/login']); assert.equal(f.surface.webContents, original);
   assert.deepEqual(f.bounds.at(-1), { x: 0, y: 64, width: 1500, height: 804 });
 });
@@ -153,4 +153,47 @@ test('a lost or invalid audio acknowledgement releases the lock only after verif
   f.surface.webContents.loadURL=load;await f.controls.audioEnd();assert.equal(f.controls.state().expanded,false);
   f.surface.webContents.executeJavaScript=async()=>({});
   await assert.rejects(f.controls.audio('dictation'),/não confirmou/);assert.equal(f.loads.length,3);f.controls.collapse();
+});
+
+test('a stalled audio start is bounded, ends the page once and ignores a late acknowledgement', async () => {
+  const f=fixture('https://chatgpt.com/c/audio'); let finish, clicks=0, revoked=0;
+  f.surface.webContents.executeJavaScript=()=>{clicks++;return new Promise(resolve=>{finish=resolve;});};
+  const controls=createWebControls({window:f.window,surface:f.surface,isReady:()=>true,audioDeadlineMs:20,audioPermission:{arm(){},revoke(){revoked++;}}});
+  const start=controls.audio('voice'); assert.equal(controls.state().audioSession.status,'starting');
+  await assert.rejects(start,/não respondeu a tempo/); assert.equal(clicks,1);assert.equal(f.loads.length,1);
+  assert.equal(controls.state().audioSession,null);assert.equal(revoked>0,true);
+  finish({opened:true});await Promise.resolve();assert.equal(controls.state().audioSession,null);
+});
+
+test('failed or stalled termination remains recoverable through the native snapshot, without retrying start', async () => {
+  const f=fixture('https://chatgpt.com/c/audio');let clicks=0, lateExit;
+  f.surface.webContents.executeJavaScript=async()=>{clicks++;return {opened:true};};
+  const controls=createWebControls({window:f.window,surface:f.surface,isReady:()=>true,audioDeadlineMs:20});
+  await controls.audio('dictation'); assert.equal(controls.state().audioSession.status,'active');
+  const load=f.surface.webContents.loadURL;f.surface.webContents.loadURL=()=>new Promise(resolve=>{lateExit=resolve;});
+  await assert.rejects(controls.audioEnd(),/confirmar o encerramento/);
+  assert.equal(controls.state().audioSession.status,'uncertain');assert.match(controls.state().audioSession.error,/Encerrar áudio/);
+  assert.throws(controls.collapse,/Encerre/);await assert.rejects(controls.audio('dictation'),/áudio/);
+  lateExit();await Promise.resolve();assert.equal(controls.state().audioSession.status,'uncertain');
+  f.surface.webContents.loadURL=load;await controls.audioEnd();assert.equal(controls.state().audioSession,null);assert.equal(clicks,1);
+});
+
+test('ending overtakes a pending start; late success cannot reactivate audio after explicit cancellation', async () => {
+  const f=fixture('https://chatgpt.com/c/audio');let finish, clicks=0;
+  f.surface.webContents.executeJavaScript=()=>{clicks++;return new Promise(resolve=>{finish=resolve;});};
+  const controls=createWebControls({window:f.window,surface:f.surface,isReady:()=>true,audioDeadlineMs:100});
+  const start=controls.audio('voice');await Promise.resolve();await controls.audioEnd();finish({opened:true});
+  assert.deepEqual(await start,{opened:false,cancelled:true});assert.equal(controls.state().audioSession,null);assert.equal(clicks,1);
+  await controls.audioEnd();assert.equal(f.loads.length,1);
+});
+
+test('reloading the renderer with a failed audio exit preserves an explicit recovery state', async () => {
+  const f=fixture('https://chatgpt.com/c/audio'),events=new Map();f.window.webContents.on=(name,action)=>events.set(name,action);
+  f.surface.webContents.executeJavaScript=async()=>({opened:true});
+  const controls=createWebControls({window:f.window,surface:f.surface,isReady:()=>true});
+  await controls.audio('voice');const load=f.surface.webContents.loadURL;
+  f.surface.webContents.loadURL=async()=>{throw new Error('offline');};events.get('did-start-navigation')({},'http://localhost/',false,true);
+  await assert.rejects(controls.audioEnd(),/confirmar o encerramento/);assert.equal(controls.state().audioSession.status,'uncertain');
+  assert.equal(f.events.at(-1)[1].audioSession.status,'uncertain');f.surface.webContents.loadURL=load;
+  await controls.audioEnd();assert.equal(controls.state().audioSession,null);
 });

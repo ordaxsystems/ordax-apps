@@ -1,6 +1,6 @@
 # Host local de validação do ORDAX Studio
 
-O diretório mantém seu nome anterior para compatibilidade com comandos existentes. O produto/package é **ORDAX Studio 0.13.0** e usa o source `apps/studio/conversation`. O preview do projeto fica à direita; novas conversas mostram ChatGPT Web à esquerda. Studio · beta abre a interface de conversa experimental. O envio automatizado requer Chat confirmado; Work ou modo desconhecido bloqueiam a automação. Chat tem limites próprios. Não há outro produto Assistant neste host.
+O diretório mantém seu nome anterior para compatibilidade com comandos existentes. O produto/package é **ORDAX Studio 0.13.1** e usa o source `apps/studio/conversation`. O preview do projeto fica à direita; novas conversas mostram ChatGPT Web à esquerda. Studio · beta abre a interface de conversa experimental. O envio automatizado requer Chat confirmado; Work ou modo desconhecido bloqueiam a automação. Chat tem limites próprios. Não há outro produto Assistant neste host.
 
 Na raiz de `ordax-apps`:
 

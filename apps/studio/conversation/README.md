@@ -1,6 +1,6 @@
 # ORDAX Studio
 
-Esta é a experiência de conversa do **ORDAX Studio**, consolidada em `apps/studio/conversation` no owner `ordaxsystems/ordax-apps`. O candidato local 0.13.0 evolui o Studio existente; o Assistant nativo do OrdaX OS permanece independente. Veja [a matriz de substituição e os limites reais](../../../docs/STUDIO-CONVERSATION-REPLACEMENT.md).
+Esta é a experiência de conversa do **ORDAX Studio**, consolidada em `apps/studio/conversation` no owner `ordaxsystems/ordax-apps`. O candidato local 0.13.1 evolui o Studio existente; o Assistant nativo do OrdaX OS permanece independente. Veja [a matriz de substituição e os limites reais](../../../docs/STUDIO-CONVERSATION-REPLACEMENT.md).
 
 A abertura começa em **Início**, sem selecionar conversa ou projeto. Adicionar projeto distingue espaço de conversas de pasta conectada; criação/importação passam por revisão e Runtime autorizado. Cada projeto pode ter notas enviadas opcionalmente no primeiro envio de uma conversa. [Estado e limites dos fluxos de projeto](../../../docs/STUDIO-PROJECT-ONBOARDING.md).
 
@@ -10,7 +10,7 @@ Novos compositores tentam selecionar **Chat** pelo controle público, verificand
 
 ## Abrir no Windows
 
-**Versão portátil 0.13.0:** abra `ORDAX Studio.exe` na pasta gerada em `tools/assistant-host/.data/portable/`. Mantenha a pasta inteira, que contém o runtime. Não precisa de npm, Node.js, Codex ou Work para abrir. É uma compilação local sem assinatura digital; não foi publicada na Store.
+**Versão portátil 0.13.1:** abra `ORDAX Studio.exe` na pasta gerada em `tools/assistant-host/.data/portable/`. Mantenha a pasta inteira, que contém o runtime. Não precisa de npm, Node.js, Codex ou Work para abrir. É uma compilação local sem assinatura digital; não foi publicada na Store.
 
 Para gerar a versão portátil a partir do código, execute na raiz deste repositório:
 
@@ -108,7 +108,7 @@ npm.cmd --prefix tools/assistant-host run test:native
 npm.cmd --prefix tools/assistant-host run test:preview
 ```
 
-89 testes automatizados cobrem a conversa, o armazenamento, os rascunhos e o cliente restrito do Runtime. O teste nativo percorre 27 cenários na UI de produção, com página Web e contrato Product simulados em uma sessão Electron isolada. Uma fixture adicional percorre dez cenários de preview com views Electron reais e servidor local simulado, incluindo cadastro do plugin na área esquerda. Inclui queda de streaming, recuperação de rascunhos, leitura de projeto, anexação de contexto, revisão e gravação com hash, conflito e terminal. Veja [VERIFICATION.md](VERIFICATION.md) e [AUDIT.md](AUDIT.md) para evidências e limites.
+132 testes automatizados cobrem a conversa, o armazenamento, os rascunhos e o cliente restrito do Runtime. O teste nativo percorre 35 cenários na UI de produção, com página Web e contrato Product simulados em uma sessão Electron isolada. Uma fixture adicional cobre preview, áudio, exclusão e cadastro do plugin com views Electron reais e servidor local simulado. Inclui queda de streaming, recuperação de rascunhos/áudio, leitura de projeto, anexação de contexto, revisão e gravação com hash, conflito e terminal. Veja [VERIFICATION.md](VERIFICATION.md) e [AUDIT.md](AUDIT.md) para evidências e limites.
 
 **Não foi validado um envio com a sua conta real.** Login, disponibilidade de modelos, desafios e consumo de limites exigem a sessão autenticada do usuário.
 
@@ -116,11 +116,13 @@ Referências técnicas: [WebContentsView](https://www.electronjs.org/docs/latest
 
 ## Conversas e áudio
 
+Na 0.13.1, um controle de voz que não responde expira sem repetir o início. Encerrar permanece disponível durante a espera e reaparece após recarregar se a saída falhar. O Studio consulta o host quando perde a resposta e bloqueia troca de contexto até confirmar o encerramento. Ditado recuperado exige conferir/copiar o texto no Web antes de encerrar sem importar. [Recuperação e critérios](../../../docs/STUDIO-AUDIO-RECOVERY.md).
+
 Use as reticências da conversa na lateral para renomear no Studio, mover de projeto ou excluir, sem precisar abri-la. Exclusão é local por padrão; excluir também no ChatGPT exige opção e confirmação separadas. Falhas preservam os dados e cliques incertos não são repetidos automaticamente.
 
 **Ouvir** lê respostas concluídas com uma voz local disponível no dispositivo, com pausa e parada. **Ditado** abre o controle da mesma sessão Web; termine no ChatGPT e use **Trazer ditado** para revisar no editor. **Voz** abre o modo de voz disponível nessa sessão. Permissão de microfone é pedida antes de conceder áudio. O preview continua à direita. Voz e ditado dependem dos controles e limites da conta Web; disponibilidade e hardware reais precisam de validação. [Detalhes e recuperação](../../../docs/STUDIO-VOICE-CONVERSATION-ACTIONS.md).
 
-## Atividade e contexto (0.13.0)
+## Atividade e contexto (0.13.1)
 
 Use **Atividade** no topo para acompanhar recibos do Runtime por projeto, conferir pendências ou copiar um recibo sem comandos/resultados. O filtro Todos os projetos amplia somente a visualização do histórico local. O app retoma a consulta de operações conhecidas e não repete seu envio.
 

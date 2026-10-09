@@ -18,20 +18,22 @@ function publicChatURL(value) {
   return 'https://chatgpt.com/';
 }
 
-function createWebControls({ window, surface, plugin, studioSurfaces, resumeURL = () => 'https://chatgpt.com/', isBusy = () => false, isReady = () => false, openExternal, audioPermission, preferences = {}, savePreferences = async () => {} }) {
+function createWebControls({ window, surface, plugin, studioSurfaces, resumeURL = () => 'https://chatgpt.com/', isBusy = () => false, isReady = () => false, openExternal, audioPermission, audioDeadlineMs = 10000, preferences = {}, savePreferences = async () => {} }) {
   preferences = preferences && typeof preferences === 'object' ? preferences : {};
   // Legacy "hide Web" preferences must not hide the new default project preview.
-  let audioMode = null, endingAudio = null;
+  let audioMode = null, audioStatus = 'idle', audioError = '', audioGeneration = 0, audioRevision = 0, endingAudio = null;
   let expanded = false, loginRequest = null, mode = !studioSurfaces && preferences.mode === 'conversation' ? 'conversation' : 'split';
   let previousMode = mode;
   let ratio = Number.isFinite(preferences.ratio) && preferences.ratio >= 0.45 && preferences.ratio <= 0.75 ? preferences.ratio : 0.6;
   let pluginSetupActive = false, pluginRequest = null, pluginFailed = false, returnURL = null, navigation = 0;
-  const state = () => ({ expanded, mode, ratio, pluginSetup: pluginSetupActive, ...(studioSurfaces ? { studioPreview: true } : {}) });
+  const state = () => ({ expanded, mode, ratio, pluginSetup: pluginSetupActive,
+    audioRevision, audioSession: audioMode ? { mode: audioMode, status: audioStatus, error: audioError } : null,
+    ...(studioSurfaces ? { studioPreview: true } : {}) });
   const layout = () => {
     const [width, height] = window.getContentSize();
     if (studioSurfaces) studioSurfaces.layout(state());
     else { surface.setVisible?.(mode !== 'conversation'); surface.setBounds(surfaceBounds(width, height, expanded, ratio)); }
-    window.webContents.send('assistant-web:layout', state());
+    if (!window.webContents.isDestroyed?.()) window.webContents.send('assistant-web:layout', state());
   };
   const focus = () => { window.show(); window.focus(); surface.webContents.focus(); };
   function expand() { if (!expanded) previousMode = mode; expanded = true; mode = 'web'; layout(); focus(); return state(); }
@@ -78,17 +80,31 @@ function createWebControls({ window, surface, plugin, studioSurfaces, resumeURL 
   const effortPicker = () => composerControl('effortPicker');
   const chatMode = () => composerControl('chatMode');
   const attachmentPicker = () => composerControl('attachmentPicker');
+  async function audioOperation(operation) {
+    let timer;
+    try { return await Promise.race([Promise.resolve().then(operation), new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('O controle de áudio não respondeu a tempo.')), audioDeadlineMs);
+    })]); }
+    finally { clearTimeout(timer); }
+  }
   async function audio(mode) {
     if (!['dictation','voice'].includes(mode)) throw new Error('Modo de áudio inválido.');
     if (audioMode || pluginSetupActive || isBusy() || !isReady()) throw new Error('Abra uma conversa conectada e aguarde a resposta antes de usar áudio.');
     if (new URL(surface.webContents.getURL()).origin !== 'https://chatgpt.com') throw new Error('Abra a sessão ChatGPT antes de usar áudio.');
-    expand(); audioMode = mode; audioPermission?.arm();
+    const generation = ++audioGeneration;
+    audioMode = mode; audioStatus = 'starting'; audioError = ''; ++audioRevision;
     try {
-      const result = await surface.webContents.executeJavaScript(scriptFor('audio', mode), true);
+      expand(); audioPermission?.arm();
+      const result = await audioOperation(() => surface.webContents.executeJavaScript(scriptFor('audio', mode), true));
+      // Ending/reloading can overtake a pending start. A late acknowledgement
+      // must never reopen the session or arm microphone permission again.
+      if (generation !== audioGeneration) return { opened: false, cancelled: true };
       if (result?.opened !== true) throw new Error('O ChatGPT não confirmou o início do áudio.');
+      audioStatus = 'active'; ++audioRevision; layout();
       return result;
     }
     catch (error) {
+      if (generation !== audioGeneration) return { opened: false, cancelled: true };
       audioPermission?.revoke();
       // A lost acknowledgement can follow a successful voice click. Terminate
       // the page before releasing the capture lock; permission revocation alone
@@ -100,10 +116,17 @@ function createWebControls({ window, surface, plugin, studioSurfaces, resumeURL 
   }
   async function audioEnd() {
     if (endingAudio) return endingAudio;
+    if (!audioMode) return state();
+    ++audioGeneration; audioStatus = 'ending'; audioError = ''; ++audioRevision; layout();
     audioPermission?.revoke();
     // Leaving the audio page terminates its microphone streams. No user message is sent.
-    endingAudio = Promise.resolve().then(() => surface.webContents.loadURL(publicChatURL(surface.webContents.getURL()))).then(() => {
-      audioMode = null; return collapse();
+    endingAudio = audioOperation(() => surface.webContents.loadURL(publicChatURL(surface.webContents.getURL()))).catch(() => {
+      // A timeout or failed navigation cannot prove that a MediaStream ended.
+      // Keep the lock and expose recovery even if the Studio renderer reloads.
+      audioStatus = 'uncertain'; audioError = 'Não foi possível confirmar o encerramento do áudio. Use Encerrar áudio para tentar novamente.';
+      ++audioRevision; layout(); throw new Error(audioError);
+    }).then(() => {
+      audioMode = null; audioStatus = 'idle'; audioError = ''; ++audioRevision; return collapse();
     }).finally(() => { endingAudio = null; });
     return endingAudio;
   }

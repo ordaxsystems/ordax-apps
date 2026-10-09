@@ -1,4 +1,16 @@
-# Estado atual — ORDAX Studio 0.13.0
+# Estado atual — ORDAX Studio 0.13.1
+
+132 testes unitários, 35 cenários Electron nativos e 25 de preview/áudio/exclusão aprovados. A correção limita início/encerramento a 10 segundos por operação, mantém recuperação após falha/recarregamento e rejeita snapshots antigos. A fixture cobre início sem ACK, encerramento falho, cancelamento durante espera, resposta atrasada, perda de IPC depois do início e consulta do host indisponível. Nenhum caso repete o clique de voz. O ditado recuperado sem sua revisão original não é importado automaticamente.
+
+As views, a UI, o preload e o HTTP são reais; conta ChatGPT/Runtime são simulados. Erros de IPC e timeout aparecem intencionalmente nos logs dos cenários de falha; a execução final terminou com código 0. O teste de cadastro do plugin aguarda navegação e carregamento, além da mudança visual do layout, sem repetir a ação. Conta real, áudio audível, microfone físico, OAuth e execução real de dispositivo não foram certificados.
+
+27 testes Python do Studio, 20 Node do workspace avançado, 5 host bridge e 8 de distribuição passaram. Workspace, distribuição, manifestos AI/actions, conformance SDK/14 módulos e ownership passaram. O pin SDK 1.12.0, grants e contratos públicos permanecem. Piso MVP verificado: 13 candidatos não assinados, 7 bloqueios, 0 instalações públicas verificadas.
+
+Artefato: `tools/assistant-host/.data/portable/ORDAX-Studio-0.13.1-win-x64-a45447bb/ORDAX Studio.exe`. 141 hashes SHA-256 e 65 cópias de fonte conferidos byte a byte. Recibo `.data/studio-0.13.1-delivery-evidence.json`. Candidato local não assinado, sem instalador/Store/produção ou substituição automática da instância aberta.
+
+Reprodução: `npm.cmd --prefix tools/assistant-host test`, `npm.cmd --prefix tools/assistant-host run test:native`, `npm.cmd --prefix tools/assistant-host run test:preview`, `node --test apps/studio/tests/*.test.mjs tests/studio_host_bridge_conformance.mjs`, pytest e verificadores de distribuição/workspace/SDK/ownership/AI/actions/MVP. Logs locais ignorados: `unit-0.13.1-final2.log`, `native-0.13.1-final.log`, `preview-0.13.1-release-final.log`, `advanced-0.13.1.log`. Estado remoto deve ser consultado na [PR 195](https://github.com/ordaxsystems/ordax-apps/pull/195), sem inferir CI pelas provas locais. [Owner, contratos privados, risco e aceite](../../../docs/STUDIO-AUDIO-RECOVERY.md).
+
+# Histórico — ORDAX Studio 0.13.0
 
 128 testes unitários, 35 cenários Electron nativos e 19 de preview/áudio/exclusão aprovados. Modo Work/Codex/desconhecido/ausente bloqueia automação antes de preparar texto; nova conversa usa seleção pública de Chat e verifica o resultado. O teste adicional cobre ACK de áudio perdido após clique, falha ao sair da página, bloqueio de ocultação e encerramento explícito sem repetir voz. A fixture testa Chat→Work entre preparação e clique, conteúdo de resposta que imita seletor, UI com cota/modo, abertura do raciocínio real simulado sem envio, Web como principal à esquerda e preview fixo. Studio · beta preserva rascunhos. Ditar/Voz aparecem na área principal e uma falha de início só libera o estado local após confirmar encerramento da página; falha no encerramento mantém Encerrar disponível.
 

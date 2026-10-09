@@ -1,5 +1,7 @@
 # ORDAX Studio — áudio e ações de conversa
 
+Correção atual 0.13.1: início/encerramento têm prazo finito, a captura é recuperada pelo estado do host após recarregar, respostas antigas não ocultam Encerrar e perda da resposta IPC exige consulta antes de liberar o estado. [Ciclo de vida, riscos e aceite](STUDIO-AUDIO-RECOVERY.md).
+
 Incremento local 0.11.0 de 2026-10-09, vinculado a MVP-04/Studio. O usuário pediu continuidade das melhorias, exclusão de conversas e áudio. Essa solicitação explícita e as correções de preservação de dados justificam a exceção à rodada geral de polimento.
 
 ## Experiência implementada
@@ -32,7 +34,7 @@ O ditado exige mesma conversa, rascunho/revisão corretos e compositor ocioso. A
 
 Somente uma ação explícita Ditado/Voz arma o pedido inicial de microfone, por até 30 segundos. O host pede consentimento nativo antes de conceder áudio. Depois de aceito, a permissão permanece para essa sessão ativa até encerrar, navegar ou perder/recarregar a UI. A autorização aceita apenas mídia de áudio do frame principal da view exata em `https://chatgpt.com`. Preview, navegador separado, popups, subframes, câmera e captura de tela não recebem essa permissão.
 
-Durante o áudio, trocar conversa/projeto, abrir cadastro do plugin ou esconder a sessão pelo controle de apresentação é bloqueado. Encerrar/cancelar navega para a URL pública do chat, terminando os streams da página. Recarregar ou perder o renderer do Studio também encerra a página de áudio. A permissão não vence o controle do sistema operacional: o Windows pode negar acesso ao microfone.
+Durante o áudio, trocar conversa/projeto, abrir cadastro do plugin ou esconder a sessão pelo controle de apresentação é bloqueado. Encerrar/cancelar navega para a URL pública do chat, terminando os streams da página. Recarregar ou perder o renderer do Studio revoga a permissão e tenta encerrar a página de áudio; se a saída falhar, o estado permanece incerto e a UI recupera Encerrar. A permissão não vence o controle do sistema operacional: o Windows pode negar acesso ao microfone.
 
 ## Owners, contratos e aceite
 

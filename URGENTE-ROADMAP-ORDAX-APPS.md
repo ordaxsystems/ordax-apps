@@ -1,5 +1,11 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Incremento comprovado — recuperação de áudio do Studio (2026-10-09)
+
+Solicitação explícita do usuário, exceção à rodada geral de polimento, MVP-04/Studio: candidato 0.13.1 corrige espera indefinida de áudio, perda do controle de encerramento ao recarregar, snapshots atrasados e resposta IPC perdida após início. Host publica estado/revisão, aplica prazo de 10 segundos por início/encerramento e conserva bloqueio quando não consegue provar saída. Cancelar durante início não repete voz nem aceita confirmação atrasada. UI recuperada não importa ditado sem sua revisão original.
+
+Owner Apps para UX/candidato; contratos e autoridade Runtime/Platform/SDK preservados. 132 unitários, 35 cenários nativos, 25 preview/áudio/exclusão, 27 Python, 20 Node avançados, 5 host bridge e 8 distribuição passaram; pacote portátil conferido com 141 hashes/65 cópias de fonte. [Owner, riscos, aceite e recuperação](docs/STUDIO-AUDIO-RECOVERY.md), [evidências e limites de conta/hardware/distribuição](apps/studio/conversation/VERIFICATION.md). Piso MVP verificado: 13 candidatos não assinados, 7 bloqueios e 0 instalações públicas verificadas. Atualização da fonte remota pela PR 195; sem mesclagem, assinatura, publicação ou ativação de produção.
+
 ## Incremento comprovado — conversa Web principal e proteção de modo (2026-10-09)
 
 Solicitação explícita do usuário, exceção à rodada geral de polimento, MVP-04/Studio: candidato local 0.13.0 abre novas conversas na sessão ChatGPT Web à esquerda, com preview fixo à direita; Studio · beta é a alternativa experimental. Compositor novo seleciona Chat apenas por controle público identificado e verifica o resultado. Modo desconhecido/Work/Codex bloqueia envio automatizado e início de áudio pelo Studio, incluindo mudança de modo antes do clique. Cota/modo são visíveis; modelos/raciocínio abrem controles observados da conta, sem catálogo fabricado. Falha ao iniciar áudio só libera o estado local após confirmar o encerramento; se a saída falhar, Encerrar continua disponível sem repetir o início.
