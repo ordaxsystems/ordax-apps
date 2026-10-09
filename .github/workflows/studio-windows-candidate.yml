@@ -1,0 +1,69 @@
+name: Studio Windows Candidate Proof
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/studio-windows-candidate.yml'
+      - 'tools/assistant-host/**'
+      - 'apps/studio/**'
+      - 'docs/STUDIO-WEB-INTEGRATION.md'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/studio-windows-candidate.yml'
+      - 'tools/assistant-host/**'
+      - 'apps/studio/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unsigned-windows-candidate:
+    name: Rebuild and verify Studio Windows candidate
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact revision without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Pin Node.js on Windows
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: tools/assistant-host/package-lock.json
+
+      - name: Install exact Electron dependency lock (no global tooling)
+        shell: pwsh
+        run: npm.cmd --prefix tools/assistant-host ci --no-audit --no-fund
+
+      - name: Confirm canonical manifests and Windows-specific source syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -c "import json; a=json.load(open('apps/studio/app.json',encoding='utf-8')); b=json.load(open('tools/assistant-host/package.json',encoding='utf-8')); assert a['id']=='studio' and a['version']==b['version']; print('STUDIO_VERSION_SSOT=PASS', a['version'])"
+          node --check tools/assistant-host/build-windows.mjs
+          node --check tools/assistant-host/verify-windows-candidate.mjs
+
+      - name: Build candidate using official existing Windows builder
+        shell: pwsh
+        run: npm.cmd --prefix tools/assistant-host run build:windows
+
+      - name: Independently rehash every emitted candidate file
+        shell: pwsh
+        run: node tools/assistant-host/verify-windows-candidate.mjs
+
+      - name: Require this proof to remain unsigned and unpromoted
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pointer = Get-Content 'tools/assistant-host/.data/portable/latest-build.json' -Raw | ConvertFrom-Json
+          $receipt = Join-Path $pointer.directory 'candidate-dependencies.json'
+          $meta = Get-Content $receipt -Raw | ConvertFrom-Json
+          if ($meta.installation.officialWindowsInstallerVerified -ne $false -or $meta.candidate -ne $true -or $meta.projectRuntime.bundled -ne $false) {
+            throw 'A Windows CI candidate cannot self-declare production readiness.'
+          }
+          Write-Output 'STUDIO_WINDOWS_CANDIDATE_PROMOTION=BLOCKED'
