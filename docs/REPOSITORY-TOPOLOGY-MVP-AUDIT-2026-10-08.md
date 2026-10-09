@@ -4,6 +4,17 @@
 **Tipo:** evidência arquitetural e decisão de consolidação do MVP, **não** autorização de migração ou publicação.  
 **Base auditada:** `ordaxsystems/ordax-apps` `main@2c9c3d10497a3a5757819533258b9794967f4291`. Repositórios relacionados examinados nas respectivas `main`: `ordaxsystems/ordax-os`, `ordaxsystems/ordax-runtime` e `ordaxsystems/ordax-platform`. Há mudanças simultâneas: atualizar a evidência ao iniciar uma implementação.
 
+## Atualização pós-snapshot — versões e integração
+
+O inventário numerado abaixo é uma **fotografia imutável do commit auditado**, não uma leitura do estado atual. Na revalidação da `main` de 2026-10-08:
+
+- `ordax-apps/apps/studio/app.json` já declara **Studio 0.5.10** (`component-slot`); não usar a versão 0.5.8 da fotografia como versão mais recente.
+- `ordax-runtime/studio-source.lock.json` já aponta para `ordax-apps@b8e222914ce986a43b22cca58d92f21daf6006c5` e versão **0.5.10**. Release assinada e instalador homologado exigem provas independentes.
+- `ordax-os/system/apps/studio/component.mjs` continua com `releaseMode=git-app` e `STUDIO_VERSION=0.1.0`. Isso justifica uma auditoria do consumidor Native/Store; **não constitui prova de duas instalações em execução**. Não retirar o adapter até verificar sua função e substituir o boundary canônico.
+- Preservar `ordax-apps` como owner portátil e `ordax-runtime` como owner do host/instalador, sem segundo Studio/SDK/updater. O snapshot abaixo continua válido como referência de decisão histórica, mas seus números e versões não devem ser reproduzidos como status atual.
+
+O SSOT de versões continua nos manifests e locks de cada owner, **nunca neste relatório**.
+
 ## Decisão executiva
 
 **Preservar `ordax-apps` como monorepo oficial de aplicativos comuns. NÃO extrair agora o Studio, o Notes nem qualquer outro app como pré-requisito do MVP.** A topologia híbrida já permite separar ownership e pipelines de distribuição: aplicativo portátil em `ordax-apps`, Windows host/instalador em `ordax-runtime`, lifecycle/trust/Store em `ordax-os` e Control Plane/conectores em `ordax-platform`.
