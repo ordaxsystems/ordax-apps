@@ -113,7 +113,8 @@ def fixture(root: Path, *, runtime_source: str = 'import { value } from "./domai
     )
     provider_path = app / "actions" / "providers" / "fixture-native.mjs"
     provider_path.parent.mkdir(parents=True, exist_ok=True)
-    provider_path.write_text(provider_source, encoding="utf-8")
+    # Pin the exact bytes on every host; text-mode writes translate LF on Windows.
+    provider_path.write_bytes(provider_source.encode("utf-8"))
     write_json(
         app / "actions" / "providers" / "manifest.json",
         {
@@ -155,6 +156,20 @@ def fixture(root: Path, *, runtime_source: str = 'import { value } from "./domai
 
 
 class DeterministicAppPackageTests(unittest.TestCase):
+    def test_provider_fixture_writes_exact_manifest_pinned_bytes_on_every_host(self):
+        with tempfile.TemporaryDirectory() as td:
+            app = fixture(Path(td))
+            module = app / "actions" / "providers" / "fixture-native.mjs"
+            manifest = json.loads(
+                (app / "actions" / "providers" / "manifest.json").read_text(encoding="utf-8")
+            )
+            exact_bytes = module.read_bytes()
+            self.assertNotIn(b"\r\n", exact_bytes)
+            self.assertEqual(
+                builder.sha256_bytes(exact_bytes),
+                manifest["providers"][0]["sha256"],
+            )
+
     def test_build_is_byte_for_byte_deterministic_and_platform_compatible(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
