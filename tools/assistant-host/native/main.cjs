@@ -75,15 +75,26 @@ else {
     contain(surface.webContents, url => controls.state().pluginSetup ? isPluginURL(url) : isAccountURL(url));
     bridge = new WebBridge({ surface, storage, openLogin: controls.login, setupActive: () => controls.state().pluginSetup });
     await bridge.init(); host = await createWebServer({ bridge, runtime });
-    ipcMain.handle('studio-product:sign-in', async (event, data) => {
+    const assertStudioAccountCaller = event => {
       if (!host || !window || window.isDestroyed()
           || event.sender !== window.webContents
           || event.senderFrame !== window.webContents.mainFrame
           || event.senderFrame.url !== host.origin + '/src/index.html') {
         throw new Error('Untrusted Studio Product IPC sender');
       }
-      // A single Product token is confined to this privileged main process.
-      // The Python subprocess implements the existing Runtime auth owner.
+    };
+    ipcMain.handle('studio-product:availability', async event => {
+      assertStudioAccountCaller(event);
+      try { await locateInstalledRuntime(); return true; }
+      catch { return false; }
+    });
+    ipcMain.handle('studio-product:sign-in', async (event, data) => {
+      assertStudioAccountCaller(event);
+      if (runtime.configured || runtime.connected || runtime.recoveryRequired) {
+        throw new Error('Sessão Product existente ou recuperação pendente.');
+      }
+      // A Product token is confined to the privileged main process. Password
+      // and bearer data cannot transit HTTP, previews, plugins or renderer IPC.
       const { token } = await invokeCanonicalProductSignIn(data);
       return runtime.acceptAccountToken(token);
     });
