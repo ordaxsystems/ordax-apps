@@ -11,6 +11,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
   let desiredBinding = null;
+  const accountHost = window.ordaxStudioAccountHost;
+  let accountAvailable = false, accountBusy = false;
   const dirty = () => file && $('projectEditor').value !== file.content;
   const continuityDirty = () => Boolean($('studioSummary').value.trim() || $('studioNextAction').value.trim());
   const selected = () => ({ deviceId: $('runtimeDevice').value, project: $('runtimeProject').value });
@@ -69,6 +71,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     $('studioContinuityApply').disabled = blocked || !ready || !continuityProposal;
     $('studioContextAttach').disabled = !contextResult || blocked;
     $('runtimeConnect').disabled = active || state.recoveryRequired || Boolean(dirty()) || continuityDirty() || !state.configured;
+    $('productAccountSection').hidden = !accountAvailable || state.configured || state.connected;
+    $('productSignIn').disabled = accountBusy || blocked || Boolean(dirty()) || continuityDirty();
     $('runtimeConnect').textContent = state.connected ? 'Reconectar Runtime' : 'Conectar Runtime';
     $('runtimeDevice').disabled = blocked || !state.connected || dirty() || continuityDirty(); $('runtimeProject').disabled = blocked || !state.connected || dirty() || continuityDirty();
     $('studioSummary').disabled = blocked; $('studioNextAction').disabled = blocked;
@@ -217,18 +221,43 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('activityScope').addEventListener('change', renderOperations);
   $('activityRefresh').addEventListener('click', () => task(() => refresh({ fresh: true })));
   $('projectClose').addEventListener('click', () => { if (dirty()) { message('Revise ou descarte a edição antes de fechar.'); return; } showWorkspace(false); });
+  async function applyConnectedState(connected) {
+    state = connected; handled = new Set(state.operations.map(op => op.id));
+    file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
+    $('runtimeDevice').replaceChildren(new Option('Selecione um dispositivo', ''));
+    for (const device of state.targets) $('runtimeDevice').append(new Option(deviceLabel(device), device.deviceId));
+    const deviceId = desiredBinding ? state.targets.find(target => target.deviceId === desiredBinding.deviceId)?.deviceId : state.targets.length === 1 ? state.targets[0].deviceId : null;
+    if (deviceId) { $('runtimeDevice').value = deviceId; if (deviceAvailable(state, deviceId)) await submit({ kind: 'projects' }); }
+    message(state.targetIssue || (state.targets.length ? 'Selecione o projeto autorizado para começar.' : 'Nenhum dispositivo autorizado disponível.'));
+  }
   $('runtimeConnect').addEventListener('click', () => task(async () => {
     submitting++; controls();
-    try {
-      state = await host.runtimeConnect(); handled = new Set(state.operations.map(op => op.id));
-      file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
-      $('runtimeDevice').replaceChildren(new Option('Selecione um dispositivo', ''));
-      for (const device of state.targets) $('runtimeDevice').append(new Option(deviceLabel(device), device.deviceId));
-      const deviceId = desiredBinding ? state.targets.find(target => target.deviceId === desiredBinding.deviceId)?.deviceId : state.targets.length === 1 ? state.targets[0].deviceId : null;
-      if (deviceId) { $('runtimeDevice').value = deviceId; if (deviceAvailable(state, deviceId)) await submit({ kind: 'projects' }); }
-      message(state.targetIssue || (state.targets.length ? 'Selecione o projeto autorizado para começar.' : 'Nenhum dispositivo autorizado disponível.'));
-    } finally { submitting--; controls(); }
+    try { await applyConnectedState(await host.runtimeConnect()); }
+    finally { submitting--; controls(); }
   }));
+  $('productSignIn').addEventListener('click', () => task(async () => {
+    if (!accountAvailable || !accountHost?.signIn || accountBusy || state.configured ||
+        submitting || dirty() || continuityDirty()) return;
+    const email = $('productEmail').value.trim();
+    const password = $('productPassword').value;
+    $('productPassword').value = ''; // Never keep the password in the renderer after submission.
+    accountBusy = true; controls();
+    $('productAuthStatus').textContent = 'Confirmando sessão pela autoridade do Runtime instalado…';
+    try {
+      const result = await accountHost.signIn({ email, password });
+      if (result?.connected !== true || result?.configured !== true ||
+          !Array.isArray(result.targets) || !Array.isArray(result.operations)) {
+        throw new Error('A Plataforma não confirmou a sessão e o catálogo autorizado.');
+      }
+      await applyConnectedState(result);
+      $('productAuthStatus').textContent = 'Conta OrdaX autenticada. As ações dependem dos grants do dispositivo e projeto.';
+    } catch (error) {
+      $('productAuthStatus').textContent = String(error?.message || 'Não foi possível autenticar a conta.').slice(0, 300);
+    } finally { accountBusy = false; controls(); }
+  }));
+  if (accountHost?.available) void Promise.resolve().then(() => accountHost.available())
+    .then(available => { accountAvailable = available === true; controls(); })
+    .catch(() => { accountAvailable = false; controls(); });
   $('runtimeDevice').addEventListener('change', () => task(async () => { desiredBinding = null; file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries(); controls(); if (deviceAvailable(state, selected().deviceId)) await submit({ kind: 'projects' }); }));
   $('runtimeProject').addEventListener('change', () => { desiredBinding = currentBinding(); file = null; reviewed = null; entries = []; clearProjectTools(); $('projectReviewArea').hidden = true; $('projectPath').value = '.'; $('projectEditor').value = ''; $('activityScope').value = 'project'; renderEntries(); renderOperations(); controls(); });
   $('projectList').addEventListener('click', () => task(() => submit({ kind: 'directory', path: $('projectPath').value })));

@@ -84,6 +84,15 @@
   <section id="projectDialog" hidden class="studio-workspace" aria-labelledby="projectTitle">
     <div class="dialog-heading"><div><p class="eyebrow">CONTEXTO E OPERAÇÕES</p><h2 id="projectTitle">Espaço de trabalho</h2></div><button id="projectClose" class="icon-button" aria-label="Voltar à conversa">← Conversa</button></div>
     <div class="runtime-connection"><span id="runtimeState">Conferindo conexão…</span><button id="runtimeConnect" class="connect-secondary">Conectar Runtime</button></div>
+    <section id="productAccountSection" class="product-account" aria-label="Conta OrdaX" hidden>
+      <p class="dialog-help">Conectar Conta OrdaX — o login usa o Runtime instalado e a autorização de projetos permanece na Plataforma.</p>
+      <div class="project-selectors">
+        <label>E-mail OrdaX<input id="productEmail" class="text-input" type="email" autocomplete="username" maxlength="320"></label>
+        <label>Senha OrdaX<input id="productPassword" class="text-input" type="password" autocomplete="current-password" maxlength="2048"></label>
+      </div>
+      <button id="productSignIn" type="button" class="connect-primary">Conectar Conta OrdaX</button>
+      <p id="productAuthStatus" class="dialog-help" role="status" aria-live="polite"></p>
+    </section>
     <p id="localRuntimeObservation" class="dialog-help" role="status">Serviço local não verificado. Presença não significa autorização.</p>
     <button id="localRuntimeCheck" class="connect-secondary" type="button">Verificar serviço local (somente leitura)</button>
     <p id="runtimeHelp" class="dialog-help">Arquivos e terminal precisam de uma sessão do OrdaX Runtime fornecida pelo host e de um dispositivo autorizado. O chat continua disponível com sua sessão do ChatGPT Web.</p>

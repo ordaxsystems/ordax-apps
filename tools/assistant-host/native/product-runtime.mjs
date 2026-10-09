@@ -76,6 +76,30 @@ export class ProductRuntime {
     })().finally(() => { this.targetsPending = null; });
     return this.targetsPending;
   }
+  // Installed host-only account handoff. A credential is never part of the
+  // renderer, persisted journal, HTTP diagnostics or project action payload.
+  // Do not switch subjects while any accepted/unconfirmed effect may exist.
+  async acceptAccountToken(token) {
+    if (typeof token !== 'string' || !token || token.length > 16000 || /[\r\n]/.test(token)) throw fail('Sessão ORDAX inválida.', 400);
+    if (this.configured || this.connected || this.connectPending || this.targetsPending) throw fail('Já existe uma sessão Product neste host. Encerre o app para trocar de conta.');
+    if (this.recoveryRequired || this.unpersisted.size || this.tasks.size ||
+      this.operations.some(op => !['succeeded','failed','cancelled','reviewed'].includes(op.status))) {
+      throw fail('Confira ou recupere as operações anteriores antes de entrar em outra conta.');
+    }
+    this.#token = token;
+    this.configured = true;
+    try {
+      return await this.connect();
+    } catch (error) {
+      this.#token = '';
+      this.configured = false;
+      this.connected = false;
+      this.catalogAvailable = false;
+      this.targets = [];
+      this.version++;
+      throw error;
+    }
+  }
   async connect() {
     if (this.recoveryRequired) throw fail(this.issue, 503);
     if (this.connectPending) return this.connectPending;
