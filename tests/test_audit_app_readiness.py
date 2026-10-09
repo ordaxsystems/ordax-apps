@@ -197,6 +197,39 @@ class ReadinessAuditTests(unittest.TestCase):
             with self.assertRaisesRegex(audit.AuditError, "duplicate app source"):
                 audit.audit_workspace(root)
 
+    def test_partial_internet_source_is_forbidden_before_cutover(self):
+        # A directory with copied runtime files but no app.json is still a
+        # second authoritative product tree. The G0 audit must catch it.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            make_workspace(root, ["internet"])
+            write_json(root / "migrations" / "internet.externalization.json", {
+                "app_id": "internet",
+                "source_repository_current": "ordaxsystems/ordax-os",
+                "source_path_current": "system/apps/internet",
+                "target_repository": "ordaxsystems/ordax-apps",
+                "target_path": "apps/internet",
+                "source_of_truth_state": "platform-until-cutover",
+                "source_cutover_allowed": False,
+                "distribution_activation_allowed": False,
+            })
+            row = audit.audit_workspace(root)["apps"][0]
+            self.assertEqual(row["source_state"], "platform-until-cutover")
+            self.assertIn("source-cutover-not-authorized", row["blockers"])
+
+            copied = root / "apps" / "internet"
+            copied.mkdir()
+            (copied / "runtime.mjs").write_text(
+                "export const copied = true;\\n", encoding="utf-8"
+            )
+            with self.assertRaisesRegex(audit.AuditError, "duplicate app source"):
+                audit.audit_workspace(root)
+            (copied / "runtime.mjs").unlink()
+            # Empty scaffolds are equally forbidden: an app gets source only
+            # after the audited remove-first source cutover.
+            with self.assertRaisesRegex(audit.AuditError, "duplicate app source"):
+                audit.audit_workspace(root)
+
     def test_provider_digest_drift_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
