@@ -2,6 +2,22 @@
 
 Atualizado em 2026-10-09.
 
+## Recorte Studio Web — PC online, telefone como cliente
+
+MVP-04: decisão solicitada pelo usuário prioriza trabalhar em um PC autorizado
+e online a partir do Web/telefone. Workspace e execução ficam no Runtime do
+PC; leituras autorizadas podem retornar conteúdo ao GPT. Storage/executor
+cloud e agente Android não são pré-requisitos, nem capacidades já entregues.
+Primeiro fluxo Web deve apresentar projetos/tarefas/resultados e abrir
+explicitamente o ChatGPT com plugin, sem replicar sua sessão. Composição,
+transporte canônico e E2E real continuam pendentes.
+
+OS main consultado `a9ff030` declara Android como arquitetura e
+`ORDAX_ANDROID_APK_IMPLEMENTED=NO`; Mobile runtime permanece desativado.
+Não há APK implementado nos sources consultados. Cliente Web de telefone e
+agente de capacidades Android são entregas diferentes.
+[Owners, riscos e critérios de aceite](docs/STUDIO-WEB-INTEGRATION.md).
+
 ## Web e outros dispositivos — estado de acesso aos arquivos
 
 MVP-04: preview local OS atualizado de `f4361c7` para main `5b31bc0`, sem

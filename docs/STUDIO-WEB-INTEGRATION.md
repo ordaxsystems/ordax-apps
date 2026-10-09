@@ -2,6 +2,63 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+## Recorte de entrega — cliente Web/mobile e PC online
+
+Decisão de escopo solicitada em 2026-10-09: priorizar o Studio Web como cliente
+de um PC autorizado e online. Os arquivos e a execução permanecem no Runtime
+desse PC; User Cloud Storage, executor cloud e agente Android não são
+pré-requisitos desse fluxo. Essas capacidades futuras continuam nos seus
+owners, sem serem anunciadas como entregues nem removidas do roadmap global.
+
+O fluxo pretendido é ChatGPT com plugin MCP → Platform com identidade,
+grants e acompanhamento → Runtime do PC escolhido. Studio apresenta projetos,
+estado das tarefas, contexto e resultados pelas mesmas fontes autorizadas.
+Não cria cadastro, fila, credenciais de dispositivo ou executor próprios.
+Presença ajuda a informar disponibilidade, mas não prova que o canal de
+execução esteja disponível ou que uma operação tenha sido autorizada.
+
+“Sem arquivos na Web” significa não manter uma cópia do workspace no cliente,
+e não impedir o GPT de consultar arquivos necessários: leituras autorizadas
+continuam no Runtime e retornam conteúdo pelo protocolo. Esse conteúdo pode
+entrar no contexto do provedor de IA; não prometer que todos os dados ficam
+exclusivamente no PC. Preview acessado de outro aparelho também precisa de
+um endereço/serviço autorizado e alcançável; `localhost` do PC não é o
+`localhost` do telefone. Não expor uma porta ou criar túnel paralelo no Apps.
+
+Para a primeira entrega Web, priorizar projetos, acompanhamento e resultados,
+com abertura explícita do ChatGPT e uso do plugin. A conversa permanece no
+ChatGPT enquanto não houver adapter público adequado. Não embutir a sessão
+via iframe, compartilhar cookies ou reproduzir APIs privadas. A superfície
+Electron existente não é um adapter Web e não comprova paridade no browser.
+
+Critérios de aceite deste recorte: composição a partir do source portátil
+canônico; cliente Web autenticado usando os contratos públicos dos owners;
+seleção explícita de PC/projeto; verificação de canal e autorização antes de
+envios; offline/falha sem troca silenciosa de alvo ou reenvio de ações aceitas;
+recuperação por consulta da mesma tarefa; resultado/preview autorizado; E2E
+com PC real e browser de telefone. Owner Apps para apresentação; OS/SDK para
+host e composição; Platform para transporte/identidade/grants/audit; Runtime
+para execução. Riscos principais: confundir presença com execução, divulgar
+arquivos além do escopo e duplicar uma tarefa após desconexão. O recorte é
+planejamento de entrega, não nova prova de produto funcional.
+
+### Android — contrato existente, aplicativo ainda não implementado
+
+No OS main consultado em 2026-10-09 (`a9ff030`),
+[CURRENT-STATE](https://github.com/ordaxsystems/ordax-os/blob/a9ff030/docs/CURRENT-STATE.md)
+declara `ORDAX_ANDROID_APK_IMPLEMENTED=NO` e
+`ORDAX_MOBILE_ADAPTER_STATUS=ARCHITECTURE_ONLY`.
+[Mobile Companion](https://github.com/ordaxsystems/ordax-os/blob/a9ff030/docs/contracts/mobile-companion.json)
+mantém `mobile_runtime_enabled=false`. A busca nos repositórios acessíveis da
+organização e no source OS não encontrou projeto Android/Gradle ou APK
+implementado. Há projeto arquitetural, não app Android entregue. Locks de
+pacotes APK do Alpine no OS não são um aplicativo Android.
+
+O telefone pode ser cliente Web do PC sem instalar um agente no telefone,
+quando composição/transporte/E2E acima forem entregues. Oferecer arquivos,
+sensores ou execução do próprio telefone exige outra implementação dos
+contratos Mobile e permissões nativas. Login na conta não ativa essas funções.
+
 ## Origem dos arquivos — Web, nuvem e dispositivos
 
 O lugar onde a interface abre não determina onde os arquivos estão. Hospedar o
