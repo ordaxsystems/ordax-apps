@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('ordaxStudioWebHost', studioWebHost);
 // Electron main process. The returned object contains Product state, no token.
 contextBridge.exposeInMainWorld('ordaxStudioAccountHost', Object.freeze({
   signIn: data => ipcRenderer.invoke('studio-product:sign-in', data),
+  available: () => ipcRenderer.invoke('studio-product:availability'),
 }));
 contextBridge.exposeInMainWorld('ordaxStudioPreviewHost', Object.freeze({
   state: () => ipcRenderer.invoke('studio-preview:state'),
