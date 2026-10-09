@@ -3,13 +3,14 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { observeLocalRuntime } from './native/local-runtime-observer.mjs';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps/studio/conversation');
 const MIME = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascript', '.svg': 'image/svg+xml' };
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 
 // Local UI transport only. Inference is performed by the visible ChatGPT page.
-export async function createWebServer({ bridge, runtime, port = 0 }) {
+export async function createWebServer({ bridge, runtime, observeInstalled = observeLocalRuntime, port = 0 }) {
   const packageInfo = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
   const sessions = new Set(); let origin, active;
   const json = (res, data, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
@@ -61,6 +62,7 @@ export async function createWebServer({ bridge, runtime, port = 0 }) {
         if (req.method === 'PATCH') { const data = await body(req); json(res, await bridge.updateProject(id, data)); return; }
         if (req.method === 'DELETE') { json(res, await bridge.removeProject(id)); return; }
       }
+      if (route === 'GET /api/runtime/local-observation') { json(res, await observeInstalled()); return; }
       if (route === 'GET /api/runtime') { const since = /^\d+$/.test(url.searchParams.get('since') || '') ? Number(url.searchParams.get('since')) : undefined; json(res, runtime?.state({ since }) || { configured: false, connected: false, targets: [], operations: [] }); return; }
       if (route === 'POST /api/runtime/connect') { if (!runtime) throw error('Runtime indisponível neste host.', 503); json(res, await runtime.connect()); return; }
       if (route === 'POST /api/runtime/operations') { if (!runtime) throw error('Runtime indisponível neste host.', 503); json(res, await runtime.submit(await body(req)), 202); return; }
