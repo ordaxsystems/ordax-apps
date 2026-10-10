@@ -127,7 +127,10 @@ class InternetExternalizationTests(unittest.TestCase):
             for i,item in enumerate(snap["files"]):
                 path=checkout/item["path"]
                 path.parent.mkdir(parents=True,exist_ok=True)
-                path.write_text(f"pinned source {i}\n",encoding="utf-8")
+                path.write_text(f"pinned source {i}\\n",encoding="utf-8")
+            sdk=checkout/"sdk/app-sdk-v1/bundle.json"
+            sdk.parent.mkdir(parents=True)
+            sdk.write_text(json.dumps({"contracts":[]}),encoding="utf-8")
             git("add",".")
             git("commit","-qm","immutable source fixture")
             commit=git("rev-parse","HEAD")
@@ -203,6 +206,55 @@ class InternetExternalizationTests(unittest.TestCase):
                     {"path":path,"blob_sha":digest}
                     for path,digest in pinned.items()
                 ])
+
+    def test_portability_import_obligations_are_derived_without_copying_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            app=root/"system/apps/internet"
+            app.mkdir(parents=True)
+            contracts=root/"system/contracts"
+            contracts.mkdir(parents=True)
+            (app/"runtime.mjs").write_text(
+                'import { x } from "../../contracts/browser-session.mjs";\\n'
+                'import "./services/history.mjs";\\n'
+                'const style=new URL("./internet.css", import.meta.url);\\n'
+                'import { y } from "./version.mjs";\\n',
+                encoding="utf-8",
+            )
+            (app/"version.mjs").write_text('export const y="0.3.0";\\n')
+            (app/"internet.css").write_text("body{}\\n")
+            services=app/"services"
+            services.mkdir()
+            (services/"history.mjs").write_text("export const history=true;\\n")
+            mapping={"mappings":[
+                {"source":"system/apps/internet/runtime.mjs",
+                 "target":"apps/internet/src/runtime.mjs",
+                 "operation":"relocate-and-rewire-public-sdk-imports"},
+                {"source":"system/apps/internet/version.mjs",
+                 "target":"apps/internet/app.json",
+                 "operation":"fold-version-into-manifest"},
+                {"source":"system/apps/internet/services/history.mjs",
+                 "target":"apps/internet/src/services/history.mjs",
+                 "operation":"relocate-and-rewire-public-sdk-imports"},
+                {"source":"system/apps/internet/internet.css",
+                 "target":"apps/internet/assets/internet.css",
+                 "operation":"relocate"},
+            ]}
+            valid={"system/contracts/browser-session.mjs"}
+            report=gate.check_portability_rewrites(root,mapping,valid)
+            self.assertEqual(report["source_imports_scanned"],4)
+            self.assertEqual({row["requirement"] for row in report["obligations"]},{
+                "resolve-public-sdk-contract","manifest-replacement",
+                "relocate-app-owned-import",
+            })
+            self.assertIs(report["runtime_package_ready"],False)
+            self.assertFalse((root/"apps/internet").exists())
+            with self.assertRaisesRegex(gate.InternetExternalizationError,"private"):
+                gate.check_portability_rewrites(root,mapping,set())
+            with (app/"runtime.mjs").open("a") as stream:
+                stream.write('import "../../../../system/adapters/native/browser-session.mjs";\\n')
+            with self.assertRaises(gate.InternetExternalizationError):
+                gate.check_portability_rewrites(root,mapping,valid)
 
     def test_actual_source_checkout_requires_exact_pinned_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
