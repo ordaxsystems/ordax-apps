@@ -38,7 +38,9 @@ python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-
 python3 tools/verify_internet_externalization.py --require-cutover-ready
 ```
 
-A Foundation usa um único preflight (`tools/verify_internet_externalization.py`),\nque também valida o mapa canônico do Gate B sem criar arquivos.\nEla utiliza o commit indicado no snapshot, **não** a branch
+A Foundation usa um único preflight (`tools/verify_internet_externalization.py`),
+que também valida o mapa canônico do Gate B sem criar arquivos.
+Ela utiliza o commit indicado no snapshot, **não** a branch
 `main` móvel da plataforma. Rejeita Git sujo, remoto incorreto,
 identidade de blob alterada, arquivo omitido, diretório parcial no destino,
 pin insuficiente e ativação antecipada. A ausência de imports privados
