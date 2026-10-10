@@ -8,7 +8,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from verify_files_cutover import FilesCutoverError  # noqa: E402
-from verify_files_portable_layout import derive_layout  # noqa: E402
+from verify_files_portable_layout import (  # noqa: E402
+    derive_layout,
+    ENTRYPOINT_BYTES,
+    COMPONENT_RUNTIME_SOURCE,
+    PACKAGE_RUNTIME_ENTRYPOINT,
+)
 
 
 def sha(data):
@@ -58,6 +63,12 @@ class PortableFilesLayoutTests(unittest.TestCase):
             self.assertIn("src/system/contracts/file-space.mjs", paths)
             self.assertIn("src/system/surface/ui/files.css", paths)
             self.assertTrue(report["source_graph_self_contained"])
+            self.assertTrue(report["canonical_package_source_graph_verified"])
+            self.assertEqual(report["proposed_entrypoint"], PACKAGE_RUNTIME_ENTRYPOINT)
+            self.assertEqual(report["component_runtime_module"], COMPONENT_RUNTIME_SOURCE)
+            self.assertEqual(report["entrypoint_sha256"], hashlib.sha256(ENTRYPOINT_BYTES).hexdigest())
+            self.assertTrue(report["entrypoint_generated_for_validation_only"])
+            self.assertIn(b"export { componentRuntime }", ENTRYPOINT_BYTES)
             self.assertEqual(report["app_source_count"], 5)
             self.assertEqual(report["component_runtime_module"], "src/system/surface/ui/files-component-runtime.mjs")
             self.assertEqual(report["sdk_contract_count"], 2)
@@ -66,6 +77,31 @@ class PortableFilesLayoutTests(unittest.TestCase):
             self.assertFalse(report["source_cutover_authorized"])
             self.assertEqual(report["distribution_activation"], "blocked")
             self.assertFalse((Path(temp) / "apps/files").exists())
+
+    def test_runtime_entrypoint_stays_virtual_and_not_duplicated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source, sdk, inventory, bundle, audit = fixture(Path(temp))
+            result = derive_layout(source, sdk, inventory, bundle, audit)
+            self.assertNotIn(PACKAGE_RUNTIME_ENTRYPOINT,
+                             [record["package_path"] for record in result["source_modules_and_assets"]])
+            self.assertFalse((source / PACKAGE_RUNTIME_ENTRYPOINT).exists())
+            self.assertFalse((sdk / PACKAGE_RUNTIME_ENTRYPOINT).exists())
+            self.assertFalse((Path(temp) / "apps" / "files").exists())
+            self.assertFalse(result["external_app_manifest_provided"])
+            self.assertFalse(result["runtime_entrypoint_provided"])
+            self.assertFalse(result["package_built"])
+
+    def test_builder_validator_is_called_and_does_not_accept_partial_module_graph(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source, sdk, inventory, bundle, audit = fixture(Path(temp))
+            # The canonical runtime module is mandatory for the proposed re-export
+            # entrypoint, even if an erroneous boundary report claimed portability.
+            inventory["files"] = [
+                record for record in inventory["files"]
+                if record["path"] != "system/surface/ui/files-component-runtime.mjs"
+            ]
+            with self.assertRaisesRegex(FilesCutoverError, "component runtime is absent"):
+                derive_layout(source, sdk, inventory, bundle, audit)
 
     def test_tampered_app_and_sdk_blobs_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -146,6 +146,10 @@ jobs:
           assert result["app_source_count"] == 8
           assert result["component_runtime_module"] == "src/system/surface/ui/files-component-runtime.mjs"
           assert result["sdk_contract_count"] > 0
+          assert result["canonical_package_source_graph_verified"] is True
+          assert result["proposed_entrypoint"] == "src/runtime.mjs"
+          assert result["entrypoint_generated_for_validation_only"] is True
+          assert len(result["entrypoint_sha256"]) == 64
           assert result["runtime_entrypoint_provided"] is False
           assert result["package_built"] is False
           assert result["source_cutover_authorized"] is False

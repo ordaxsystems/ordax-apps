@@ -105,7 +105,13 @@ imports nem introduzir cópias de fonte no repositório. O limite de tamanho
 utiliza diretamente o builder canônico de pacotes, sem outro SSOT.
 
 O verificador exige hashes Git reais, ausência de imports não resolvidos,
-limites por arquivo e de tamanho total. Ele **não fabrica** um
+limites por arquivo e de tamanho total. Agora ele também passa a árvore virtual
+com um entrypoint de reexportação `src/runtime.mjs` pelo **validador do próprio
+empacotador oficial**. Esse entrypoint é produzido somente em memória para a
+verificação; a implementação real continua sendo o módulo canônico
+`system/surface/ui/files-component-runtime.mjs` fixado no Git. O resultado
+inclui SHA-256 da entrada derivada e indica explicitamente que ela **não foi
+publicada como runtime instalável**. Ele **não fabrica** um
 `src/runtime.mjs`, `app.json`, ZIP ou manifesto de inteligência e não
 concede autoridade de instalação. A produção desses artefatos continua
 dependendo da remoção comprovada do código antigo no OrdaX OS e da
