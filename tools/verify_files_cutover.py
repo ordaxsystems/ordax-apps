@@ -9,7 +9,9 @@ source, grants authority or proves production distribution.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import posixpath
 import re
 import subprocess
 import sys
@@ -407,6 +409,134 @@ def verify_pinned_source_snapshot(root: Path, platform_root: Path, plan: dict) -
     }
 
 
+
+# The inventory, not a hand-written file list, defines the app-owned source.
+# The SDK's published bundle, not a guessed contract registry, defines public ports.
+SOURCE_IMPORT_RE = re.compile(
+    r"""(?:\bfrom\s*["']([^"'\\\r\n]+)["']"""
+    r"""|(?:^|\n)\s*import\s*["']([^"'\\\r\n]+)["']"""
+    r"""|\bimport\s*\(\s*["']([^"'\\\r\n]+)["']\s*\))""",
+    re.MULTILINE,
+)
+NON_LITERAL_IMPORT_RE = re.compile(r"\bimport\s*\(\s*(?!['\"])")
+SOURCE_ASSET_RE = re.compile(
+    r"""new\s+URL\(\s*["']([^"'\\\r\n]+)["']\s*,\s*import\.meta\.url\s*\)"""
+)
+
+
+def audit_files_sdk_dependencies(platform_root: Path, inventory: dict, sdk_bundle: dict) -> dict:
+    """Trace app-owned source imports against the published public App SDK.
+
+    Source is read only; no copying, packaging, grants, installation or activation.
+    Every app-owned source file comes from the same pinned Git blob inventory.
+    """
+    if sdk_bundle.get("$schema") != "ordax.app-sdk-bundle/1" or sdk_bundle.get("authority") != "none":
+        raise FilesCutoverError("Files SDK audit requires a public, authority-free bundle")
+    contracts = sdk_bundle.get("contracts")
+    if not isinstance(contracts, list):
+        raise FilesCutoverError("Files SDK contract list is invalid")
+    published = set()
+    for contract in contracts:
+        if not isinstance(contract, dict) or not isinstance(contract.get("source_path"), str):
+            raise FilesCutoverError("Files SDK published contract entry is invalid")
+        if not isinstance(contract.get("schema"), str) or not isinstance(contract.get("major"), int):
+            raise FilesCutoverError("Files SDK published contract metadata is invalid")
+        published.add(safe_path(contract["source_path"]))
+    entries = inventory.get("files")
+    if not isinstance(entries, list) or not entries:
+        raise FilesCutoverError("Files SDK audit requires the pinned source inventory")
+    owned = {safe_path(item["path"]) for item in entries}
+    if len(owned) != len(entries):
+        raise FilesCutoverError("Files SDK inventory contains duplicate paths")
+
+    owned_imports, public, unpublished, private, assets = set(), set(), set(), set(), set()
+    module_count = 0
+    for source_name in sorted(owned):
+        if not source_name.endswith((".mjs", ".js")):
+            continue
+        source = platform_root / source_name
+        if source.is_symlink() or not source.is_file():
+            raise FilesCutoverError(f"Files SDK source missing: {source_name}")
+        module_count += 1
+        try:
+            content = source.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise FilesCutoverError(f"Files SDK source unreadable: {source_name}") from exc
+        if NON_LITERAL_IMPORT_RE.search(content):
+            raise FilesCutoverError(f"Files source has nonliteral dynamic import: {source_name}")
+        specs = [(next(v for v in match.groups() if v is not None), False)
+                 for match in SOURCE_IMPORT_RE.finditer(content)]
+        specs.extend((match.group(1), True) for match in SOURCE_ASSET_RE.finditer(content))
+        for spec, asset in specs:
+            if not spec.startswith(".") or chr(0) in spec or "\\" in spec:
+                raise FilesCutoverError(f"Files SDK nonlocal or unsafe import: {source_name}")
+            destination = posixpath.normpath(posixpath.join(posixpath.dirname(source_name), spec))
+            if not destination.startswith("system/") or destination.startswith("system/../"):
+                raise FilesCutoverError(f"Files SDK import escapes platform source: {source_name}")
+            target = platform_root / destination
+            if target.is_symlink() or not target.is_file():
+                raise FilesCutoverError(f"Files SDK imported source absent: {source_name} -> {destination}")
+            if destination in owned:
+                (assets if asset else owned_imports).add(destination)
+            elif asset:
+                private.add(destination)
+            elif destination.startswith("system/contracts/"):
+                (public if destination in published else unpublished).add(destination)
+            else:
+                private.add(destination)
+    if not module_count:
+        raise FilesCutoverError("Files SDK inventory contains no JavaScript modules")
+    blockers = []
+    if unpublished:
+        blockers.append("unpublished-app-sdk-contracts")
+    if private:
+        blockers.append("private-platform-imports")
+    return {
+        "schema": "ordax.files-sdk-dependency-audit/1",
+        "app_id": "files",
+        "source_commit": inventory["commit"],
+        "sdk_bundle_version": sdk_bundle.get("bundle_version"),
+        "module_count": module_count,
+        "app_owned_dependencies": sorted(owned_imports),
+        "app_owned_assets": sorted(assets),
+        "public_contracts": sorted(public),
+        "unpublished_contracts": sorted(unpublished),
+        "private_platform_imports": sorted(private),
+        "sdk_boundary_clean": not blockers,
+        "blockers": blockers,
+        "source_cutover_authorized": False,
+        "distribution_activation": "blocked",
+    }
+
+
+def audit_pinned_files_sdk(root: Path, source_root: Path, sdk_root: Path, plan: dict) -> dict:
+    """Verify both independent canonical Git pins before reading the SDK boundary."""
+    source_proof = verify_pinned_source_snapshot(root, source_root, plan)
+    sdk_lock = read_json(root / "platform-sdk.lock.json")
+    if sdk_lock.get("repository") != plan["source_repository_current"]:
+        raise FilesCutoverError("Files SDK lock repository does not match canonical platform")
+    sdk_sha = _verify_git_checkout(sdk_root, plan)
+    if sdk_sha != sdk_lock.get("commit"):
+        raise FilesCutoverError("Files SDK checkout HEAD differs from pinned SDK")
+    bundle_file = sdk_root / safe_path(sdk_lock.get("bundle_path"))
+    if bundle_file.is_symlink() or not bundle_file.is_file():
+        raise FilesCutoverError("Files SDK pinned bundle is missing")
+    try:
+        raw = bundle_file.read_bytes()
+    except OSError as exc:
+        raise FilesCutoverError("Files SDK bundle unreadable") from exc
+    if hashlib.sha256(raw).hexdigest() != sdk_lock.get("sha256"):
+        raise FilesCutoverError("Files SDK pinned bundle digest mismatch")
+    sdk_bundle = read_json(bundle_file)
+    if sdk_bundle.get("bundle_version") != sdk_lock.get("bundle_version"):
+        raise FilesCutoverError("Files SDK locked bundle version does not match")
+    snapshot = validate_source_inventory(root, plan)
+    result = audit_files_sdk_dependencies(source_root, snapshot, sdk_bundle)
+    if result["source_commit"] != source_proof["source_commit"]:
+        raise FilesCutoverError("Files SDK audit source does not match Git proof")
+    return result
+
+
 def verify_source_history(platform_root: Path, plan: dict, inventory: dict) -> dict:
     """Prove snapshot and Gate A against real Git commits, not asserted JSON alone."""
     gate_commit = plan["gate_a_platform_commit"]
@@ -567,12 +697,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
     parser.add_argument("--require-cutover-ready", action="store_true")
     parser.add_argument("--verify-pinned-source", action="store_true", help="Prove pre-cutover snapshot against exact clean Git checkout")
+    parser.add_argument("--audit-files-sdk", action="store_true", help="Audit Files imports against independently pinned published App SDK")
+    parser.add_argument("--sdk-platform-root", type=Path, help="Exact canonical checkout at platform-sdk.lock.json commit")
     parser.add_argument(
         "--emit-source-snapshot", action="store_true",
         help="Print a derived, read-only Git blob inventory before Gate A (no writes)",
     )
     args = parser.parse_args(argv)
     try:
+        if args.audit_files_sdk:
+            if (args.platform_root is None or args.sdk_platform_root is None
+                    or args.verify_pinned_source or args.emit_source_snapshot
+                    or args.require_cutover_ready or args.format != "json"):
+                raise FilesCutoverError("Files SDK audit needs exact source and SDK checkouts in JSON-only mode")
+            _, plan, _ = load_plan(args.root.resolve())
+            value = audit_pinned_files_sdk(
+                args.root.resolve(), args.platform_root.resolve(), args.sdk_platform_root.resolve(), plan
+            )
+            print(json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True))
+            return 0
+        if args.sdk_platform_root is not None:
+            raise FilesCutoverError("--sdk-platform-root requires --audit-files-sdk")
         if args.verify_pinned_source:
             if args.emit_source_snapshot or args.require_cutover_ready or args.platform_root is None or args.format != "json":
                 raise FilesCutoverError("pinned source proof requires --platform-root and JSON-only pre-cutover mode")
