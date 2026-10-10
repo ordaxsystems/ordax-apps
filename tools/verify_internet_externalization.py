@@ -125,6 +125,7 @@ def scan_platform_gate_a_consumers(platform_root: Path) -> dict:
              or name == localization_source]
     imports = []
     string_references = []
+    ignored_source_symlinks = []
     import_pattern = re.compile(
         r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)['"]([^'"]+)['"]"""
         r"""|\bnew\s+URL\s*\(\s*['"]([^'"]+)['"]"""
@@ -135,8 +136,13 @@ def scan_platform_gate_a_consumers(platform_root: Path) -> dict:
         if not name.endswith((".mjs", ".js", ".py", ".json")):
             continue
         source = platform_root / name
-        if source.is_symlink() or not source.is_file():
-            reject(f"unsafe tracked Gate A source file: {name}")
+        if source.is_symlink():
+            # Git stores links as link targets, not independent implementation
+            # bytes. Never follow them during this source-ownership inventory.
+            ignored_source_symlinks.append(name)
+            continue
+        if not source.is_file():
+            reject(f"missing tracked Gate A source file: {name}")
         try:
             content = source.read_text(encoding="utf-8")
         except (UnicodeError, OSError) as exc:
@@ -178,6 +184,7 @@ def scan_platform_gate_a_consumers(platform_root: Path) -> dict:
         "owned_source_paths": owned,
         "consumer_imports": sorted(imports, key=lambda row: (row["consumer"], row["specifier"])),
         "literal_source_path_references": sorted(string_references),
+        "ignored_source_symlinks": sorted(ignored_source_symlinks),
         "retained_host_paths": retained_host,
         "host_boundary_intact": host_boundary_intact,
         "absence_preflight_ready": (
