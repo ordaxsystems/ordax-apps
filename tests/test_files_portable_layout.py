@@ -143,11 +143,11 @@ class PortableFilesLayoutTests(unittest.TestCase):
             app = source / "system/apps/files/app.mjs"
             content = app.read_text().replace("./component.mjs", "./missing.mjs")
             app.write_text(content)
-            inventory["files"][0]["git_blob_sha"] = sha(content.encode())
+            next(row for row in inventory["files"] if row["path"] == "system/apps/files/app.mjs")["git_blob_sha"] = sha(content.encode())
             with self.assertRaisesRegex(FilesCutoverError, "import does not resolve"):
                 derive_layout(source, sdk, inventory, bundle, audit)
             app.write_text(content.replace("./missing.mjs", "./component.mjs"))
-            inventory["files"][0]["git_blob_sha"] = sha(app.read_bytes())
+            next(row for row in inventory["files"] if row["path"] == "system/apps/files/app.mjs")["git_blob_sha"] = sha(app.read_bytes())
             inventory["files"].append(dict(inventory["files"][0]))
             with self.assertRaisesRegex(FilesCutoverError, "duplicate paths"):
                 derive_layout(source, sdk, inventory, bundle, audit)
