@@ -153,6 +153,9 @@ jobs:
           assert result["proposed_entrypoint"] == "src/runtime.mjs"
           assert result["entrypoint_generated_for_validation_only"] is True
           assert len(result["entrypoint_sha256"]) == 64
+          assert result["proposed_provider_entrypoint"] == "actions/providers/files-native.mjs"
+          assert result["provider_entrypoint_generated_for_validation_only"] is True
+          assert len(result["provider_entrypoint_sha256"]) == 64
           assert result["runtime_entrypoint_provided"] is False
           assert result["package_built"] is False
           assert result["source_cutover_authorized"] is False

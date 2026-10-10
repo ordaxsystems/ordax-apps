@@ -122,7 +122,10 @@ empacotador oficial**. Esse entrypoint é produzido somente em memória para a
 verificação; a implementação real continua sendo o módulo canônico
 `system/surface/ui/files-component-runtime.mjs` fixado no Git. O resultado
 inclui SHA-256 da entrada derivada e indica explicitamente que ela **não foi
-publicada como runtime instalável**. Ele **não fabrica** um
+publicada como runtime instalável**. A mesma validação oficial agora inclui
+uma ponte de reexportação para `actions/providers/files-native.mjs`, apontando
+para o provedor de listagem cujo código real está no snapshot do OS. Nenhum
+arquivo de ponte é persistido como fonte autoritativa. Ele **não fabrica** um
 `src/runtime.mjs`, `app.json`, ZIP ou manifesto de inteligência e não
 concede autoridade de instalação. A produção desses artefatos continua
 dependendo da remoção comprovada do código antigo no OrdaX OS e da

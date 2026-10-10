@@ -13,6 +13,8 @@ from verify_files_portable_layout import (  # noqa: E402
     ENTRYPOINT_BYTES,
     COMPONENT_RUNTIME_SOURCE,
     PACKAGE_RUNTIME_ENTRYPOINT,
+    PACKAGE_PROVIDER_ENTRYPOINT,
+    PROVIDER_ENTRYPOINT_BYTES,
 )
 
 
@@ -26,6 +28,8 @@ def fixture(root):
         "system/apps/files/app.mjs": 'import "../../contracts/first-party-app.mjs";\nimport "./component.mjs";\n',
         "system/apps/files/component.mjs": "export const component = true;\n",
         "system/surface/ui/file-space-controls.mjs": 'import "../../contracts/file-space.mjs";\n',
+        "system/apps/files/actions/manifest.mjs": 'export const action = "files.browse";\n',
+        "system/apps/files/actions/providers/files-native.mjs": 'export const createFilesApplicationActionProvider = () => ({});\n',
         "system/surface/ui/files-component-runtime.mjs": 'export const style = new URL("./files.css", import.meta.url).href;\n',
         "system/surface/ui/files.css": ".files {display:block;}\n",
     }
@@ -67,9 +71,13 @@ class PortableFilesLayoutTests(unittest.TestCase):
             self.assertEqual(report["proposed_entrypoint"], PACKAGE_RUNTIME_ENTRYPOINT)
             self.assertEqual(report["component_runtime_module"], COMPONENT_RUNTIME_SOURCE)
             self.assertEqual(report["entrypoint_sha256"], hashlib.sha256(ENTRYPOINT_BYTES).hexdigest())
+            self.assertEqual(report["proposed_provider_entrypoint"], PACKAGE_PROVIDER_ENTRYPOINT)
+            self.assertEqual(report["provider_entrypoint_sha256"],
+                             hashlib.sha256(PROVIDER_ENTRYPOINT_BYTES).hexdigest())
+            self.assertTrue(report["provider_entrypoint_generated_for_validation_only"])
             self.assertTrue(report["entrypoint_generated_for_validation_only"])
             self.assertIn(b"export { componentRuntime }", ENTRYPOINT_BYTES)
-            self.assertEqual(report["app_source_count"], 5)
+            self.assertEqual(report["app_source_count"], 7)
             self.assertEqual(report["component_runtime_module"], "src/system/surface/ui/files-component-runtime.mjs")
             self.assertEqual(report["sdk_contract_count"], 2)
             self.assertFalse(report["runtime_entrypoint_provided"])
@@ -84,12 +92,25 @@ class PortableFilesLayoutTests(unittest.TestCase):
             result = derive_layout(source, sdk, inventory, bundle, audit)
             self.assertNotIn(PACKAGE_RUNTIME_ENTRYPOINT,
                              [record["package_path"] for record in result["source_modules_and_assets"]])
+            self.assertNotIn(PACKAGE_PROVIDER_ENTRYPOINT,
+                             [record["package_path"] for record in result["source_modules_and_assets"]])
             self.assertFalse((source / PACKAGE_RUNTIME_ENTRYPOINT).exists())
             self.assertFalse((sdk / PACKAGE_RUNTIME_ENTRYPOINT).exists())
+            self.assertFalse((source / PACKAGE_PROVIDER_ENTRYPOINT).exists())
             self.assertFalse((Path(temp) / "apps" / "files").exists())
             self.assertFalse(result["external_app_manifest_provided"])
             self.assertFalse(result["runtime_entrypoint_provided"])
             self.assertFalse(result["package_built"])
+
+    def test_missing_canonical_action_provider_cannot_be_hidden_by_virtual_wrapper(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source, sdk, inventory, bundle, audit = fixture(Path(temp))
+            inventory["files"] = [
+                record for record in inventory["files"]
+                if record["path"] != "system/apps/files/actions/providers/files-native.mjs"
+            ]
+            with self.assertRaisesRegex(FilesCutoverError, "action provider is absent"):
+                derive_layout(source, sdk, inventory, bundle, audit)
 
     def test_builder_validator_is_called_and_does_not_accept_partial_module_graph(self):
         with tempfile.TemporaryDirectory() as temp:
