@@ -6,6 +6,10 @@ Este documento define como aplicativos oficiais ensinam ao OrdaX Intelligence/Ja
 
 O contrato público autoritativo nasce na plataforma como `ordax.app-intelligence-manifest/1`. Este repositório apenas o consome.
 
+## Integração transversal Intelligence / plugin (decisão 2026-10-10)
+
+Quando a pessoa conversa pelo OrdaX Web ou pelo Studio, os aplicativos first-party continuam oferecendo **uma só semântica canônica** via manifestos e capacidades verificadas. Não criar uma lista manual de ações do Studio para o chat, uma implementação por provedor GPT, ou um catálogo separado para o Lovable. O plugin externo `ordax-chatgpt` (owner Platform) também deve consultar apenas capacidades publicadas/autorizadas, nunca descobrir apps por screenshot como caminho padrão. O OS é owner de `ordax.intelligence/1`; o modelo resolve intenção consultiva e o broker/approval/grants/executor governa efeitos. [Handoff para continuidade](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md).
+
 ## Princípio
 
 Conhecimento treinado no modelo é contexto geral, não contrato operacional.
