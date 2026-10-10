@@ -86,6 +86,36 @@ jobs:
       - name: Verify Files snapshot inventory against actual Git blobs
         run: python3 tools/verify_files_cutover.py --platform-root .ordax-files-source --verify-pinned-source
 
+      - name: Resolve exact published App SDK bundle pin for Files
+        id: files-sdk-lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          from pathlib import Path
+          lock = json.loads(Path("platform-sdk.lock.json").read_text(encoding="utf-8"))
+          assert lock["repository"] == "ordaxsystems/ordax-os"
+          assert re.fullmatch(r"[0-9a-f]{40}", lock["commit"])
+          print("commit=" + lock["commit"])
+          PY
+
+      - name: Checkout exact published Files App SDK revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: ${{ steps.files-sdk-lock.outputs.commit }}
+          path: .ordax-files-sdk
+          persist-credentials: false
+
+      - name: Audit Files dependencies against real published App SDK contracts
+        run: |
+          python3 tools/verify_files_cutover.py \
+            --platform-root .ordax-files-source \
+            --sdk-platform-root .ordax-files-sdk \
+            --audit-files-sdk
+
       - name: Prove independent business domains without unapproved persistence
         run: |
           node --check apps/finance/src/domain/ledger.mjs

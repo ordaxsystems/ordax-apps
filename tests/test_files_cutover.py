@@ -250,6 +250,86 @@ class FilesCutoverTests(unittest.TestCase):
             with self.assertRaisesRegex(files.FilesCutoverError, "distinct snapshot"):
                 files.report(root)
 
+    def test_files_sdk_import_graph_uses_snapshot_and_published_contract_inventory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            platform = Path(temp)
+            sources = {
+                "system/apps/files/app.mjs":
+                    'import "./helper.mjs";\n'
+                    'import { port } from "../../contracts/file-space.mjs";\n'
+                    'import { catalog } from "../app-contract.mjs";\n'
+                    'export { recent } from "../../contracts/recent-files.mjs";\n',
+                "system/apps/files/helper.mjs": "export const helper = 1;\n",
+            }
+            extra = {
+                "system/contracts/file-space.mjs": "export const port = 1;\n",
+                "system/contracts/recent-files.mjs": "export const recent = 1;\n",
+                "system/apps/app-contract.mjs": "export const catalog = 1;\n",
+            }
+            for path, content in {**sources, **extra}.items():
+                file = platform / path
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text(content, encoding="utf-8")
+            inventory = {
+                "commit": SNAPSHOT_SHA,
+                "files": [{"path": path} for path in sorted(sources)],
+            }
+            sdk = {
+                "$schema": "ordax.app-sdk-bundle/1",
+                "authority": "none",
+                "bundle_version": "1.13.0",
+                "contracts": [{
+                    "source_path": "system/contracts/file-space.mjs",
+                    "schema": "ordax.file-space/11",
+                    "major": 11,
+                }],
+            }
+            original = sorted((p.relative_to(platform).as_posix(), p.read_bytes())
+                              for p in platform.rglob("*") if p.is_file())
+            blocked = files.audit_files_sdk_dependencies(platform, inventory, sdk)
+            self.assertEqual(blocked["public_contracts"], ["system/contracts/file-space.mjs"])
+            self.assertEqual(blocked["unpublished_contracts"], ["system/contracts/recent-files.mjs"])
+            self.assertEqual(blocked["private_platform_imports"], ["system/apps/app-contract.mjs"])
+            self.assertEqual(blocked["app_owned_dependencies"], ["system/apps/files/helper.mjs"])
+            self.assertEqual(blocked["blockers"], ["unpublished-app-sdk-contracts", "private-platform-imports"])
+            self.assertFalse(blocked["sdk_boundary_clean"])
+            self.assertEqual(blocked["distribution_activation"], "blocked")
+            self.assertEqual(original, sorted(
+                (p.relative_to(platform).as_posix(), p.read_bytes())
+                for p in platform.rglob("*") if p.is_file()
+            ))
+
+            sdk["contracts"].append({
+                "source_path": "system/contracts/recent-files.mjs",
+                "schema": "ordax.recent-files/1",
+                "major": 1,
+            })
+            still_private = files.audit_files_sdk_dependencies(platform, inventory, sdk)
+            self.assertEqual(still_private["blockers"], ["private-platform-imports"])
+            source = platform / "system/apps/files/app.mjs"
+            source.write_text(source.read_text(encoding="utf-8").replace(
+                'import { catalog } from "../app-contract.mjs";\n', ""
+            ), encoding="utf-8")
+            clean = files.audit_files_sdk_dependencies(platform, inventory, sdk)
+            self.assertTrue(clean["sdk_boundary_clean"])
+            self.assertEqual(clean["blockers"], [])
+
+    def test_files_sdk_import_graph_fails_closed_on_nonliteral_or_missing_imports(self):
+        for literal in ('const module = import(name);\n',
+                        'import "https://example.org/network.mjs";\n',
+                        'import "./not-found.mjs";\n'):
+            with self.subTest(source=literal):
+                with tempfile.TemporaryDirectory() as temp:
+                    platform = Path(temp)
+                    file = platform / "system/apps/files/app.mjs"
+                    file.parent.mkdir(parents=True, exist_ok=True)
+                    file.write_text(literal, encoding="utf-8")
+                    inventory = {"commit": SNAPSHOT_SHA, "files": [{"path": "system/apps/files/app.mjs"}]}
+                    sdk = {"$schema": "ordax.app-sdk-bundle/1", "authority": "none",
+                           "bundle_version": "1.13.0", "contracts": []}
+                    with self.assertRaises(files.FilesCutoverError):
+                        files.audit_files_sdk_dependencies(platform, inventory, sdk)
+
     def test_pinned_source_proof_succeeds_without_authorizing_cutover(self):
         with tempfile.TemporaryDirectory() as temp:
             parent = Path(temp)

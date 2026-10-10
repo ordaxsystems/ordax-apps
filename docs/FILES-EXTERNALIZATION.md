@@ -79,6 +79,19 @@ O preflight também recusa qualquer árvore prematura `apps/files`, inclusive ar
 
 A leitura do gerenciador ganhou validação adicional de **identidade lógica da resposta**, implementada na plataforma no commit [`ordax-os@4f8dcc17`](https://github.com/ordaxsystems/ordax-os/commit/4f8dcc176003d531a0dd04fe226ee2aa0a3ab0c0). O helper `system/surface/ui/file-space-response-identity.mjs` é **código do aplicativo**, incluído no mesmo inventário obrigatório do Gate A; deve ser transferido com Files, não permanecer duplicado no OS. Listagens e previews que indicam caminho diferente do solicitado são recusados antes de atualizar navegação, seleção ou histórico. A correção não cria permissões nem novo File Space.
 
+### Auditoria real da fronteira pública do Files
+
+A Foundation compara **dois checkouts Git independentes e fixados**: o source proprietário do Files indicado em `migrations/files.source-snapshot.json` e o SDK publicado indicado em `platform-sdk.lock.json`. A leitura usa exclusivamente o inventário Git de arquivos do plano e a lista real de contratos `sdk/app-sdk-v1/bundle.json` com SHA-256 conferido. Nenhuma lista de dependências privada é mantida em paralelo.
+
+```sh
+python3 tools/verify_files_cutover.py \
+  --platform-root .ordax-files-source \
+  --sdk-platform-root .ordax-files-sdk \
+  --audit-files-sdk
+```
+
+A saída separa imports internos do app, contratos públicos, contratos ainda não publicados e imports privados da plataforma. A auditoria falha caso o Git não corresponda aos pins, o bundle SDK seja adulterado, o source esteja ausente, haja import dinâmico não literal ou dependência não resolvida. **A auditoria pode terminar com bloqueios de portabilidade devidamente reportados:** isso não libera Gate A, não cria `apps/files`, não equivale a build, nem instala nada. Para produzir o pacote do Files será necessário eliminar os imports privados usando contratos públicos existentes ou evoluídos no owner correto, sem cópias de adapters do OS.
+
 ### Prova automatizada do snapshot pinado
 
 A Foundation do `ordax-apps` agora faz checkout **somente leitura** do `ordax-os` no SHA exato declarado em `source_snapshot.commit` e executa:
