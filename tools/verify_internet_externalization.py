@@ -45,7 +45,64 @@ def version(value: str) -> tuple[int, int, int]:
         reject("SDK version is not canonical semantic version")
     return tuple(map(int, value.split(".")))
 
-def audit(root: Path = ROOT, *, platform_root: Path | None = None) -> dict:
+def current_source_drift(platform_root: Path, pinned_files: list[dict]) -> dict:
+    """Compare source HEAD Git blobs to historical snapshot, without mutation.
+
+    A snapshot is immutable evidence, not an automatic representation of the
+    current product. This comparator reports all changed/added/deleted paths
+    so Gate A can recapture the exact current candidate before cutover.
+    """
+    if platform_root.is_symlink() or not platform_root.is_dir():
+        reject("current platform must be a real checkout")
+    checkout = platform_root.resolve()
+
+    def git(*args: str) -> str:
+        proc = subprocess.run(
+            ["git", "-C", str(checkout), *args],
+            capture_output=True, text=True, encoding="utf-8", check=False,
+        )
+        if proc.returncode:
+            reject("unable to read current platform source Git tree: " + " ".join(args))
+        return proc.stdout.strip()
+
+    if git("rev-parse", "--show-toplevel") != str(checkout):
+        reject("current platform checkout root mismatch")
+    if git("status", "--porcelain", "--untracked-files=normal"):
+        reject("current platform checkout is dirty")
+    origin = git("remote", "get-url", "origin").rstrip("/").removesuffix(".git")
+    if origin not in {
+        "https://github.com/ordaxsystems/ordax-os",
+        "git@github.com:ordaxsystems/ordax-os",
+        "ssh://git@github.com/ordaxsystems/ordax-os",
+    }:
+        reject("current platform checkout does not have canonical Git origin")
+    names = git(
+        "ls-tree", "-r", "--name-only", "HEAD", "--",
+        "system/apps/internet", "system/services/i18n/catalog/internet.mjs",
+    ).splitlines()
+    observed = {}
+    for name in names:
+        if not (name.startswith("system/apps/internet/")
+                or name == "system/services/i18n/catalog/internet.mjs"):
+            reject("unexpected current platform source path")
+        observed[name] = git("rev-parse", "HEAD:" + name)
+        if not SHA1_RE.fullmatch(observed[name]):
+            reject("invalid current Git blob SHA")
+    pinned = {item["path"]: item["blob_sha"] for item in pinned_files}
+    changed = sorted(name for name in observed.keys() & pinned.keys()
+                     if observed[name] != pinned[name])
+    return {
+        "current_platform_commit": git("rev-parse", "HEAD"),
+        "snapshot_current": not changed and observed.keys() == pinned.keys(),
+        "changed": changed,
+        "added": sorted(observed.keys() - pinned.keys()),
+        "deleted": sorted(pinned.keys() - observed.keys()),
+        "current_file_count": len(observed),
+    }
+
+
+def audit(root: Path = ROOT, *, platform_root: Path | None = None,
+          current_platform_root: Path | None = None) -> dict:
     root = root.resolve()
     plan, snapshot, mapping, lock = (load(root, name) for name in (PLAN, SNAPSHOT, MAP, LOCK))
     if plan.get("$schema") != "ordax.app-externalization-plan/1" or plan.get("app_id") != "internet":
@@ -250,12 +307,16 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None) -> dict:
                 reject(f"pinned Internet source Git blob checksum mismatch: {path}")
         confirmed = True
 
+    drift = (current_source_drift(current_platform_root, sources)
+             if current_platform_root is not None else None)
+
     return {
         "schema": SCHEMA, "app_id": "internet", "source_commit": snapshot["commit"],
         "source_file_count": len(source_files),
         "source_bytes": sum(f["size"] for f in source_files.values()),
         "transfer_mapping_count": len(mapped),
         "checked_out_blob_integrity_verified": confirmed,
+        "current_platform_source": drift,
         "source_cutover_allowed": False,
         "distribution_activation_allowed": False,
         "source_snapshot_ready": True,
@@ -271,10 +332,18 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform-root", type=Path, default=None)
+    parser.add_argument("--current-platform-root", type=Path, default=None)
+    parser.add_argument("--require-current-source", action="store_true")
     parser.add_argument("--require-cutover-ready", action="store_true")
     args = parser.parse_args(argv)
     try:
-        report = audit(ROOT, platform_root=args.platform_root)
+        report = audit(ROOT, platform_root=args.platform_root,
+                       current_platform_root=args.current_platform_root)
+        if args.require_current_source and (
+            report["current_platform_source"] is None
+            or not report["current_platform_source"]["snapshot_current"]
+        ):
+            reject("Internet snapshot differs from current platform source")
         if args.require_cutover_ready:
             reject("Gate A source removal and independent install/rollback have not been proven")
     except InternetExternalizationError as exc:
