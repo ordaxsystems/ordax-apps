@@ -13,6 +13,9 @@
     "ordax.app-intelligence-manifest/1",
     "ordax.application-action-capability/1",
     "ordax.application-action-manifest/1",
+    "ordax.application-action-provider-invocation/1",
+    "ordax.application-action-provider-result/1",
+    "ordax.application-action-provider/1",
     "ordax.component-manifest/1",
     "ordax.component-runtime/1",
     "ordax.file-space/11",
@@ -25,7 +28,7 @@
   "target_sdk": {
     "minimum_bundle_version": "1.16.0",
     "lock_file": "platform-sdk.lock.json",
-    "reason": "SDK fixado com first-party-app/1, recent-files/1, File Space/11 e ports públicos existentes; identidade de instalação e autorização continuam na plataforma."
+    "reason": "O SDK 1.16 pinado fornece first-party-app/1, application-action-provider/1, manifestos de ação e File Space/11; toda autorização, instalação e verificação de integridade continuam sob o owner da plataforma."
   },
   "unresolved_capabilities": [
     {
