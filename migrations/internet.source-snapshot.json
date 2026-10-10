@@ -1,14 +1,9 @@
 {
   "$schema": "ordax.internet-source-snapshot/1",
   "repository": "ordaxsystems/ordax-os",
-  "commit": "ae147ab9dad68755e6ee33fb3ec6ae78b8b8ab93",
-  "tree_sha": "e22ff9394056f913d90b40c50b310044eb947137",
-  "source_root": "system/apps/internet",
-  "captured_after_public_sdk_boundary": true,
+  "commit": "9362b61f8b2107ae6c1d8a239922d5483e988299",
   "captured_before_gate_a_removal": true,
-  "platform_source_absence_proven": false,
-  "purpose": "reproducible remove-first Internet Gate A/B transfer; not a second live source",
-  "file_count": 13,
+  "purpose": "single immutable Git blob inventory for remove-first Internet transfer, not a second source",
   "files": [
     {
       "path": "system/apps/internet/ai/manifest.mjs",
@@ -76,5 +71,6 @@
       "size": 21237
     }
   ],
+  "file_count": 13,
   "authority": "none"
 }
