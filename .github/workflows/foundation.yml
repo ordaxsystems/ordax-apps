@@ -143,8 +143,11 @@ jobs:
           result = json.loads(Path("/tmp/ordax-files-layout.json").read_text(encoding="utf-8"))
           assert result["schema"] == "ordax.files-portable-layout/1"
           assert result["source_graph_self_contained"] is True
-          assert result["app_source_count"] == 8
+          assert result["app_source_count"] == 10
           assert result["component_runtime_module"] == "src/system/surface/ui/files-component-runtime.mjs"
+          paths = {entry["source"] for entry in result["source_modules_and_assets"]}
+          assert "system/apps/files/actions/manifest.mjs" in paths
+          assert "system/apps/files/actions/providers/files-native.mjs" in paths
           assert result["sdk_contract_count"] > 0
           assert result["canonical_package_source_graph_verified"] is True
           assert result["proposed_entrypoint"] == "src/runtime.mjs"

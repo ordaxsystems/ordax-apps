@@ -95,10 +95,15 @@ python3 tools/verify_files_cutover.py \
 
 A saída separa imports internos do app, contratos públicos, contratos ainda não publicados e imports privados da plataforma. A verificação percorre também os **imports transitivos dos contratos publicados**, a partir do checkout Git pinado do SDK, e compara os próprios blobs desses contratos com as identidades publicadas no bundle; um contrato aparentemente público não pode depender silenciosamente de código privado ou de versão ausente. A auditoria falha caso o Git não corresponda aos pins, o bundle SDK seja adulterado, o source esteja ausente, haja import dinâmico não literal ou dependência não resolvida. **A auditoria pode terminar com bloqueios de portabilidade devidamente reportados:** isso não libera Gate A, não cria `apps/files`, não equivale a build, nem instala nada. Para produzir o pacote do Files será necessário eliminar os imports privados usando contratos públicos existentes ou evoluídos no owner correto, sem cópias de adapters do OS.
 
+A declaração canônica de ações do Files e o provedor `files-native`
+também permanecem no proprietário OS. O único efeito atualmente preparado é
+`files.browse`, limitado a listagens tipadas por um port autorizado do host;
+`files.delete` e mutações não recebem execução por esta mudança.
+
 ### Layout portátil de arquivos e contratos, sem cópia de source
 
 `tools/verify_files_portable_layout.py` deriva em memória a futura árvore do
-Files a partir dos **8 Git blobs** da plataforma e dos contratos públicos
+Files a partir dos **10 Git blobs** da plataforma e dos contratos públicos
 transitivos do App SDK pinado. Os módulos preservam sua hierarquia relativa
 dentro de `src/system/...` e o estilo permanece em `src/system/surface/ui/files.css`, sem alterar
 imports nem introduzir cópias de fonte no repositório. O limite de tamanho
@@ -135,7 +140,7 @@ O verificador exige origem Git canônica, checkout limpo, HEAD igual ao snapshot
 
 ### Snapshot verificável antes da remoção
 
-O inventário `migrations/files.source-snapshot.json` deriva do commit canônico [`ordax-os@9d0ddd89`](https://github.com/ordaxsystems/ordax-os/commit/9d0ddd897bd6f39fb07583b144fed50508832d8a) e fixa **8 Git blobs** app-owned, incluindo o novo manifesto de componente do Files. O aplicativo continua pré-instalado no OrdaX OS. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
+O inventário `migrations/files.source-snapshot.json` deriva do commit canônico [`ordax-os@9d0ddd89`](https://github.com/ordaxsystems/ordax-os/commit/9d0ddd897bd6f39fb07583b144fed50508832d8a) e fixa **10 Git blobs** app-owned, incluindo o novo manifesto de componente do Files. O aplicativo continua pré-instalado no OrdaX OS. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
 
 A verificação final deverá executar `tools/verify_files_cutover.py --platform-root ... --require-cutover-ready` contra o checkout Git oficial, provar a ancestralidade e a remoção, reconciliar alterações posteriores ao snapshot e **somente então** permitir o cutover. Enquanto isso, o Files continua instalado na imagem Base. A Foundation do OS possui regressão específica em `tests/test_files_bootstrap_continuity.py` para bloquear remoção acidental do bootstrap.
 
