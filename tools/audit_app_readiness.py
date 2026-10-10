@@ -156,11 +156,24 @@ def audit_workspace(root: Path = ROOT) -> dict:
         # A missing app.json is not proof that a second app source is absent.
         # Disallow even unfinished scaffolds before the canonical remove-first
         # gate, so another chat cannot quietly fork a platform-owned product.
+        staged = bool(
+            app_id == "files" and migration
+            and migration.get("prelaunch_package_staging") == {
+                "enabled": True, "mode": "unsigned-package-candidate",
+                "live_source_owner": "ordaxsystems/ordax-os",
+                "activation_allowed": False, "install_authority": False,
+                "requires_complete_metadata": True,
+            }
+            and migration.get("source_cutover_allowed") is False
+            and migration.get("distribution_activation_allowed") is False
+            and migration.get("gate_a_platform_commit") is None
+        )
         if (
             migration
             and migration.get("source_repository_current") == "ordaxsystems/ordax-os"
             and migration.get("source_cutover_allowed") is False
             and ((apps_root / app_id).exists() or (apps_root / app_id).is_symlink())
+            and not staged
         ):
             raise AuditError(
                 f"{app_id}: duplicate app source forbidden before platform cutover"
@@ -168,12 +181,14 @@ def audit_workspace(root: Path = ROOT) -> dict:
         blockers = []
         metadata = None
         if manifest.exists():
-            if migration and migration.get("source_repository_current") not in (None, REPOSITORY):
+            if migration and not staged and migration.get("source_repository_current") not in (None, REPOSITORY):
                 raise AuditError(f"{app_id}: platform owns source; duplicate app source forbidden")
-            if migration and migration.get("source_path_current") not in (None, f"apps/{app_id}"):
+            if migration and not staged and migration.get("source_path_current") not in (None, f"apps/{app_id}"):
                 raise AuditError(f"{app_id}: migration source path contradicts app source")
             metadata = validate_metadata(root, app_id)
-            source_state = "canonical-source"
+            source_state = "prelaunch-package-candidate" if staged else "canonical-source"
+            if staged:
+                blockers.append("source-cutover-not-authorized")
             if not metadata["metadata_verified"]:
                 blockers.append("missing-compatibility-descriptor")
         else:

@@ -143,5 +143,13 @@
     "install_owner": "platform-component-lifecycle",
     "auto_install": false
   },
-  "authority": "none"
+  "authority": "none",
+  "prelaunch_package_staging": {
+    "enabled": true,
+    "mode": "unsigned-package-candidate",
+    "live_source_owner": "ordaxsystems/ordax-os",
+    "activation_allowed": false,
+    "install_authority": false,
+    "requires_complete_metadata": true
+  }
 }

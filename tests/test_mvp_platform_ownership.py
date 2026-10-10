@@ -19,7 +19,7 @@ class PlatformOwnerMvpTests(unittest.TestCase):
                    if row["source_state"] == "platform-until-cutover"]
         # Floor comes from the existing six OS-owned app targets; app identity
         # itself is discovered from the workspace and migration files.
-        self.assertGreaterEqual(len(blocked), 6)
+        self.assertGreaterEqual(len(blocked), 5)
         for row in blocked:
             app_id = row["app_id"]
             plan_path = ROOT / "migrations" / (app_id + ".externalization.json")
@@ -76,10 +76,16 @@ class PlatformOwnerMvpTests(unittest.TestCase):
         report = audit_mvp_minimum(ROOT, minimum_candidates=13)
         blocked = [row for row in report["apps"]
                    if row["source_state"] == "platform-until-cutover"]
-        self.assertGreaterEqual(len(blocked), 6)
+        self.assertGreaterEqual(len(blocked), 5)
         for row in blocked:
             self.assertEqual(row["minimum_entry_status"], "blocked-platform-source-cutover")
             self.assertFalse(row["production_installable"])
+        files = next(row for row in report["apps"] if row["app_id"] == "files")
+        self.assertEqual(files["source_state"], "prelaunch-package-candidate")
+        self.assertEqual(files["minimum_entry_status"], "blocked-platform-source-cutover")
+        self.assertFalse(files["production_installable"])
+        self.assertIn("source-cutover-not-authorized", files["blockers"])
+        self.assertIn("production-activation-not-authorized", files["blockers"])
         self.assertEqual(report["summary"]["verified_public_store_installations"], 0)
 
 

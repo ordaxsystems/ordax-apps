@@ -153,8 +153,27 @@ def load_plan(root: Path) -> tuple[dict, dict, dict]:
     # Before Gate A, even an unmanifested runtime is a duplicate source.
     # A later verified cutover may populate this directory without creating a second owner.
     target_source = root / "apps" / "files"
+    staging = plan.get("prelaunch_package_staging")
+    staged = staging == {
+        "enabled": True, "mode": "unsigned-package-candidate",
+        "live_source_owner": "ordaxsystems/ordax-os",
+        "activation_allowed": False, "install_authority": False,
+        "requires_complete_metadata": True,
+    }
+    if staging is not None and not staged:
+        raise FilesCutoverError("Files staged candidate policy is invalid")
+    if staged and (plan.get("source_cutover_allowed") is not False
+                   or plan.get("distribution_activation_allowed") is not False
+                   or plan.get("gate_a_platform_commit") is not None):
+        raise FilesCutoverError("Files staging cannot grant cutover or install authority")
     if not plan.get("source_cutover_allowed") and (target_source.exists() or target_source.is_symlink()):
-        raise FilesCutoverError("Files already has a second canonical source before Gate A")
+        required = ("app.json", "compatibility.json", "src/runtime.mjs",
+                    "ai/manifest.json", "actions/manifest.json",
+                    "actions/providers/manifest.json", "actions/providers/files-native.mjs")
+        if (not staged or target_source.is_symlink() or not target_source.is_dir()
+            or any(not (target_source / name).is_file() or (target_source / name).is_symlink()
+                   for name in required)):
+            raise FilesCutoverError("Files already has a second canonical source before Gate A")
     cutover = plan.get("source_cutover")
     if (
         not isinstance(cutover, dict)

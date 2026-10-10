@@ -86,6 +86,17 @@ def discover_catalog_apps(apps_root: Path, migrations_root: Path) -> list[dict]:
 
         if manifest.get("releaseMode") != "component-slot":
             continue
+        migration_path = migrations_root / f"{app_id}.externalization.json"
+        if migration_path.is_file() and not migration_path.is_symlink():
+            migration = _read_json(migration_path, f"{app_id} externalization")
+            if migration.get("source_repository_current") != "ordaxsystems/ordax-apps":
+                stage = migration.get("prelaunch_package_staging", {})
+                if (app_id == "files"
+                    and stage.get("mode") == "unsigned-package-candidate"
+                    and stage.get("activation_allowed") is False
+                    and migration.get("distribution_activation_allowed") is False):
+                    continue
+                raise CatalogInventoryError(f"{app_id}: platform-owned source is not a Store candidate")
         try:
             manifest = builder.validate_app_manifest(manifest)
         except builder.AppPackageError as exc:
