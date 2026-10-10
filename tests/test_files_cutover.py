@@ -255,6 +255,7 @@ class FilesCutoverTests(unittest.TestCase):
         inventory = json.loads((ROOT / plan["source_snapshot"]["inventory_file"]).read_text(encoding="utf-8"))
         files = {entry["path"] for entry in inventory["files"]}
         self.assertIn("system/apps/files/component.mjs", files)
+        self.assertIn("system/surface/ui/files-component-runtime.mjs", files)
         self.assertIn("system/apps/files/app.mjs", files)
         self.assertEqual(len(files), inventory["file_count"])
         couplings = {entry["path"]: entry["forbidden_literals"]

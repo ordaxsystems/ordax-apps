@@ -98,9 +98,9 @@ A saída separa imports internos do app, contratos públicos, contratos ainda n�
 ### Layout portátil de arquivos e contratos, sem cópia de source
 
 `tools/verify_files_portable_layout.py` deriva em memória a futura árvore do
-Files a partir dos **7 Git blobs** da plataforma e dos contratos públicos
+Files a partir dos **8 Git blobs** da plataforma e dos contratos públicos
 transitivos do App SDK pinado. Os módulos preservam sua hierarquia relativa
-dentro de `src/system/...` e o estilo fica em `assets/files.css`, sem alterar
+dentro de `src/system/...` e o estilo permanece em `src/system/surface/ui/files.css`, sem alterar
 imports nem introduzir cópias de fonte no repositório. O limite de tamanho
 utiliza diretamente o builder canônico de pacotes, sem outro SSOT.
 
@@ -129,7 +129,7 @@ O verificador exige origem Git canônica, checkout limpo, HEAD igual ao snapshot
 
 ### Snapshot verificável antes da remoção
 
-O inventário `migrations/files.source-snapshot.json` deriva do commit canônico [`ordax-os@6db234bc`](https://github.com/ordaxsystems/ordax-os/commit/6db234bcd401647f551e0a6e8f30cdc314b012ab) e fixa **7 Git blobs** app-owned, incluindo o novo manifesto de componente do Files. O aplicativo continua pré-instalado no OrdaX OS. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
+O inventário `migrations/files.source-snapshot.json` deriva do commit canônico [`ordax-os@9d0ddd89`](https://github.com/ordaxsystems/ordax-os/commit/9d0ddd897bd6f39fb07583b144fed50508832d8a) e fixa **8 Git blobs** app-owned, incluindo o novo manifesto de componente do Files. O aplicativo continua pré-instalado no OrdaX OS. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
 
 A verificação final deverá executar `tools/verify_files_cutover.py --platform-root ... --require-cutover-ready` contra o checkout Git oficial, provar a ancestralidade e a remoção, reconciliar alterações posteriores ao snapshot e **somente então** permitir o cutover. Enquanto isso, o Files continua instalado na imagem Base. A Foundation do OS possui regressão específica em `tests/test_files_bootstrap_continuity.py` para bloquear remoção acidental do bootstrap.
 

@@ -21,6 +21,7 @@ def fixture(root):
         "system/apps/files/app.mjs": 'import "../../contracts/first-party-app.mjs";\nimport "./component.mjs";\n',
         "system/apps/files/component.mjs": "export const component = true;\n",
         "system/surface/ui/file-space-controls.mjs": 'import "../../contracts/file-space.mjs";\n',
+        "system/surface/ui/files-component-runtime.mjs": 'export const style = new URL("./files.css", import.meta.url).href;\n',
         "system/surface/ui/files.css": ".files {display:block;}\n",
     }
     contracts = {
@@ -55,9 +56,10 @@ class PortableFilesLayoutTests(unittest.TestCase):
             self.assertIn("src/system/apps/files/app.mjs", paths)
             self.assertIn("src/system/contracts/first-party-app.mjs", paths)
             self.assertIn("src/system/contracts/file-space.mjs", paths)
-            self.assertIn("assets/files.css", paths)
+            self.assertIn("src/system/surface/ui/files.css", paths)
             self.assertTrue(report["source_graph_self_contained"])
-            self.assertEqual(report["app_source_count"], 4)
+            self.assertEqual(report["app_source_count"], 5)
+            self.assertEqual(report["component_runtime_module"], "src/system/surface/ui/files-component-runtime.mjs")
             self.assertEqual(report["sdk_contract_count"], 2)
             self.assertFalse(report["runtime_entrypoint_provided"])
             self.assertFalse(report["package_built"])

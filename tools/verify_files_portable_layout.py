@@ -79,7 +79,9 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         if path.endswith((".mjs", ".js")):
             target = "src/" + path
         elif path == "system/surface/ui/files.css" and owner == "app":
-            target = "assets/files.css"
+            # new URL("./files.css", import.meta.url) must resolve without
+            # rewriting the canonical component runtime.
+            target = "src/system/surface/ui/files.css"
         else:
             raise cutover.FilesCutoverError(f"Files portable source has no canonical target: {path}")
         if target in virtual:
@@ -132,6 +134,10 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         "portable_bytes": total,
         "source_modules_and_assets": records,
         "source_graph_self_contained": True,
+        "component_runtime_module": (
+            "src/system/surface/ui/files-component-runtime.mjs"
+            if "src/system/surface/ui/files-component-runtime.mjs" in virtual else None
+        ),
         "runtime_entrypoint_provided": False,
         "external_app_manifest_provided": False,
         "package_built": False,
