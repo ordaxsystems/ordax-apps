@@ -250,6 +250,23 @@ class FilesCutoverTests(unittest.TestCase):
             with self.assertRaisesRegex(files.FilesCutoverError, "distinct snapshot"):
                 files.report(root)
 
+    def test_app_owned_files_component_has_no_parallel_platform_definition(self):
+        plan = load_plan(ROOT)
+        inventory = json.loads((ROOT / plan["source_snapshot"]["inventory_file"]).read_text(encoding="utf-8"))
+        files = {entry["path"] for entry in inventory["files"]}
+        self.assertIn("system/apps/files/component.mjs", files)
+        self.assertIn("system/apps/files/app.mjs", files)
+        self.assertEqual(len(files), inventory["file_count"])
+        couplings = {entry["path"]: entry["forbidden_literals"]
+                     for entry in plan["gate_a_platform_removal"]["remove_platform_implementation_couplings"]}
+        self.assertIn("./files/component.mjs", couplings["system/apps/component-catalog.mjs"])
+        self.assertIn("filesComponent", couplings["system/services/components/manifests/apps.mjs"])
+        self.assertIn("system/contracts/first-party-app.mjs",
+                      plan["gate_a_platform_removal"]["retain_platform_owned"])
+        self.assertIn("ordax.first-party-app/1", plan["platform_contracts_required"])
+        self.assertFalse(plan["source_cutover_allowed"])
+        self.assertFalse(plan["distribution_activation_allowed"])
+
     def test_files_sdk_import_graph_uses_snapshot_and_published_contract_inventory(self):
         with tempfile.TemporaryDirectory() as temp:
             platform = Path(temp)
