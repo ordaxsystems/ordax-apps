@@ -243,6 +243,23 @@ class InternetExternalizationTests(unittest.TestCase):
             valid={"system/contracts/browser-session.mjs"}
             report=gate.check_portability_rewrites(root,mapping,valid)
             self.assertEqual(report["source_imports_scanned"],4)
+            obligations={row["specifier"]:row for row in report["obligations"]}
+            self.assertEqual(
+                obligations["./internet.css"]["rewritten_specifier"],
+                "../assets/internet.css",
+            )
+            self.assertEqual(
+                obligations["./internet.css"]["target_dependency"],
+                "apps/internet/assets/internet.css",
+            )
+            self.assertEqual(
+                obligations["./services/history.mjs"]["rewritten_specifier"],
+                "./services/history.mjs",
+            )
+            self.assertIsNone(
+                obligations["../../contracts/browser-session.mjs"]["rewritten_specifier"]
+            )
+            self.assertIsNone(obligations["./version.mjs"]["rewritten_specifier"])
             self.assertEqual({row["requirement"] for row in report["obligations"]},{
                 "resolve-public-sdk-contract","manifest-replacement",
                 "relocate-app-owned-import",
@@ -254,6 +271,9 @@ class InternetExternalizationTests(unittest.TestCase):
             with (app/"runtime.mjs").open("a") as stream:
                 stream.write('import "../../../../system/adapters/native/browser-session.mjs";\n')
             with self.assertRaises(gate.InternetExternalizationError):
+                gate.check_portability_rewrites(root,mapping,valid)
+            (app/"runtime.mjs").write_text("import(untrustedModule);\n",encoding="utf-8")
+            with self.assertRaisesRegex(gate.InternetExternalizationError,"non-literal"):
                 gate.check_portability_rewrites(root,mapping,valid)
 
     def test_actual_source_checkout_requires_exact_pinned_commit(self):

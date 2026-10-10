@@ -32,11 +32,11 @@ python3 tools/verify_internet_externalization.py \
   --platform-root .ordax-internet-source
 
 # Comparar snapshot histórico ao código atual antes de preparar o Gate A:
-python3 tools/verify_internet_externalization.py \\
+python3 tools/verify_internet_externalization.py \
   --current-platform-root .ordax-internet-source
 
 # Bloquear a preparação se houve mudanças desde o snapshot:
-python3 tools/verify_internet_externalization.py \\
+python3 tools/verify_internet_externalization.py \
   --current-platform-root .ordax-internet-source --require-current-source
 
 # SDK 1.16+ com todos os imports diretos e transitivos publicados
@@ -52,7 +52,10 @@ A opção `--current-platform-root` compara diretamente os Git blobs da
 checkout atual com o snapshot original e apresenta `changed`, `added` e
 `deleted`. `--require-current-source` recusa inventários antigos.
 Esta prova é separada da validação imutável do commit capturado. Nenhuma
-das duas opções copia arquivos ou ativa o Internet.
+das duas opções copia arquivos ou ativa o Internet. Na Foundation, a
+comparação com a `main` atual da plataforma agora **falha** quando houver
+drift no produto; os caminhos alterados/adicionados/removidos aparecem no
+erro, e a CI imprime o relatório JSON completo quando aprovado.
 
 Ela utiliza o commit indicado no snapshot, **não** a branch
 `main` móvel da plataforma. Rejeita Git sujo, remoto incorreto,
@@ -71,11 +74,15 @@ O resultado `portability_rewrites`, esquema
 - `resolve-public-sdk-contract`: dependência de contrato publicado e
   tipado, que precisará de resolução pública no pacote externo;
 - `relocate-app-owned-import`: dependência dentro do produto, cujo
-  caminho deve acompanhar o mapa canônico de destino;
+  caminho deve acompanhar o mapa canônico de destino; a auditoria calcula
+  `rewritten_specifier` e `target_dependency` relativos ao arquivo de destino;
 - `manifest-replacement`: referência a `app.mjs` ou `version.mjs`,
   que deverá usar `app.json`, sem copiar definições antigas.
 
-Imports remotos, privados ou ausentes no mapa falham fechados.
+Imports remotos, privados, dinâmicos não literais ou ausentes no mapa
+falham fechados. Os campos de destino para contratos públicos e substituições
+por manifesto permanecem nulos: a auditoria não inventa um caminho de
+importação de SDK nem declara que a aplicação está empacotada.
 `runtime_package_ready=false` e
 `copy_source_without_rewiring_allowed=false` são invariantes deste
 relatório: ele **não** afirma que o pacote já é instalável. Nenhum arquivo

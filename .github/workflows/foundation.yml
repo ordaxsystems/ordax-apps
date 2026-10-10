@@ -209,7 +209,8 @@ jobs:
       - name: Audit immutable Internet snapshot against live platform tree
         run: |
           python3 tools/verify_internet_externalization.py \
-            --current-platform-root .ordax-internet-current > /tmp/ordax-internet-source-drift.json
+            --current-platform-root .ordax-internet-current \
+            --require-current-source > /tmp/ordax-internet-source-drift.json
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -219,13 +220,11 @@ jobs:
           assert report["source_cutover_allowed"] is False
           assert report["distribution_activation_allowed"] is False
           assert report["checked_out_blob_integrity_verified"] is False
-          assert isinstance(drift["snapshot_current"], bool)
-          assert all(isinstance(drift[field], list) for field in ("changed", "added", "deleted"))
-          if not drift["snapshot_current"]:
-              print("Internet snapshot is historical; Gate B must recapture current source before cutover")
-              print(json.dumps(drift, ensure_ascii=False, indent=2, sort_keys=True))
-          else:
-              print("Internet pinned source equals the current platform tree")
+          assert drift["snapshot_current"] is True
+          assert all(drift[field] == [] for field in ("changed", "added", "deleted"))
+          assert drift["current_file_count"] == report["source_file_count"]
+          print("Internet snapshot equals current platform product blobs")
+          print(json.dumps(drift, ensure_ascii=False, indent=2, sort_keys=True))
           PY
 
       - name: Prove Notes externalization preflight

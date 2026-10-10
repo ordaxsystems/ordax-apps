@@ -114,6 +114,7 @@ def check_portability_rewrites(platform_root: Path, mapping: dict,
 
     entries = mapping["mappings"]
     targets = {row["source"]: row["target"] for row in entries}
+    operations = {row["source"]: row["operation"] for row in entries}
     sources = set(targets)
     import_re = re.compile(
         r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)['"]([^'"]+)['"]"""
@@ -123,6 +124,7 @@ def check_portability_rewrites(platform_root: Path, mapping: dict,
     imports_scanned = 0
     for row in entries:
         source = row["source"]
+        destination = targets[source]
         if not source.endswith((".mjs", ".js")):
             continue
         if row["operation"] in {"replace-by-manifest", "fold-version-into-manifest"}:
@@ -131,24 +133,42 @@ def check_portability_rewrites(platform_root: Path, mapping: dict,
         if not src.is_file() or src.is_symlink():
             reject(f"portable source missing/unsafe: {source}")
         code = src.read_text(encoding="utf-8")
+        if re.search(r"""\\bimport\\s*\\(\\s*(?!['"])""", code):
+            reject(f"non-literal dynamic Internet import: {source}")
         for match in import_re.finditer(code):
             specifier = match.group(1) or match.group(2)
             imports_scanned += 1
             if not specifier.startswith("."):
                 reject(f"unsupported non-relative portability import: {source}")
             resolved = posixpath.normpath(posixpath.join(posixpath.dirname(source), specifier))
+            dependency_target = None
+            rewritten_specifier = None
             if resolved in sources:
-                operation = next(e["operation"] for e in entries if e["source"] == resolved)
-                requirement = ("manifest-replacement" if operation in
-                               {"replace-by-manifest", "fold-version-into-manifest"}
-                               else "relocate-app-owned-import")
+                operation = operations[resolved]
+                if operation in {"replace-by-manifest", "fold-version-into-manifest"}:
+                    requirement = "manifest-replacement"
+                else:
+                    requirement = "relocate-app-owned-import"
+                    dependency_target = targets[resolved]
+                    rewritten_specifier = posixpath.relpath(
+                        dependency_target, posixpath.dirname(destination)
+                    )
+                    if not rewritten_specifier.startswith("."):
+                        rewritten_specifier = "./" + rewritten_specifier
+                    if posixpath.normpath(posixpath.join(
+                        posixpath.dirname(destination), rewritten_specifier
+                    )) != dependency_target:
+                        reject(f"unresolvable relocated Internet import: {source} -> {resolved}")
             elif resolved in published_contracts and resolved.startswith("system/contracts/"):
                 requirement = "resolve-public-sdk-contract"
             else:
                 reject(f"unmapped or private Internet import: {source} -> {resolved}")
             obligations.append({
-                "source": source, "specifier": specifier,
-                "resolved": resolved, "requirement": requirement,
+                "source": source, "target": destination,
+                "specifier": specifier, "resolved": resolved,
+                "requirement": requirement,
+                "target_dependency": dependency_target,
+                "rewritten_specifier": rewritten_specifier,
             })
     return {
         "schema": "ordax.internet-portability-rewrites/1",
@@ -413,7 +433,8 @@ def main(argv: list[str] | None = None) -> int:
             report["current_platform_source"] is None
             or not report["current_platform_source"]["snapshot_current"]
         ):
-            reject("Internet snapshot differs from current platform source")
+            reject("Internet snapshot differs from current platform source: " +
+                   json.dumps(report["current_platform_source"], sort_keys=True))
         if args.require_cutover_ready:
             reject("Gate A source removal and independent install/rollback have not been proven")
     except InternetExternalizationError as exc:
