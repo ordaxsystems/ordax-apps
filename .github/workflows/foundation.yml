@@ -175,6 +175,40 @@ jobs:
           node --test apps/inventory/tests/movements.test.mjs
           node --test apps/sales/tests/orders.test.mjs
 
+      - name: Prove Internet remove-first snapshot and no-dual-source gates
+        run: |
+          python3 -m unittest tests.test_internet_externalization -v
+          python3 tools/verify_internet_externalization.py
+
+      - name: Resolve exact Internet product snapshot (read-only)
+        id: internet-source-pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          from pathlib import Path
+          plan=json.loads(Path("migrations/internet.externalization.json").read_text(encoding="utf-8"))
+          snap=json.loads(Path("migrations/internet.source-snapshot.json").read_text(encoding="utf-8"))
+          assert plan["source_cutover_allowed"] is False
+          assert plan["distribution_activation_allowed"] is False
+          assert plan["source_snapshot"]["commit"] == snap["commit"]
+          assert re.fullmatch(r"[0-9a-f]{40}",snap["commit"])
+          print("commit="+snap["commit"])
+          PY
+
+      - name: Checkout exact canonical Internet product snapshot
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: ${{ steps.internet-source-pin.outputs.commit }}
+          path: .ordax-internet-source
+          persist-credentials: false
+
+      - name: Prove Internet transfer map matches all physical Git blobs
+        run: python3 tools/verify_internet_externalization.py --platform-root .ordax-internet-source
+
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
 
