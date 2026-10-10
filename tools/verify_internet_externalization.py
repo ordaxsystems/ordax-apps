@@ -133,7 +133,7 @@ def check_portability_rewrites(platform_root: Path, mapping: dict,
         if not src.is_file() or src.is_symlink():
             reject(f"portable source missing/unsafe: {source}")
         code = src.read_text(encoding="utf-8")
-        if re.search(r"""\\bimport\\s*\\(\\s*(?!['"])""", code):
+        if re.search(r"""\bimport\s*\(\s*(?!['"])""", code):
             reject(f"non-literal dynamic Internet import: {source}")
         for match in import_re.finditer(code):
             specifier = match.group(1) or match.group(2)
