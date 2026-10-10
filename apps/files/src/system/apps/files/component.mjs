@@ -7,12 +7,12 @@ export const filesComponent = defineComponentManifest({
   title: "Arquivos",
   kind: "app",
   version: "0.1.0",
-  releaseMode: "bundled",
+  releaseMode: "component-slot",
   criticality: "optional",
   failureDomain: "app",
-  restartScope: "surface",
-  healthMode: "surface",
-  owner: "system/apps/files",
-  dependencies: ["surface-shell"],
+  restartScope: "component",
+  healthMode: "runtime",
+  owner: "ordaxsystems/ordax-apps",
+  dependencies: [],
 });
 
