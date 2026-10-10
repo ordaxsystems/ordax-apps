@@ -33,11 +33,11 @@ python3 tools/verify_internet_externalization.py \
 
 # Comparar snapshot histórico ao código atual antes de preparar o Gate A:
 python3 tools/verify_internet_externalization.py \
-  --current-platform-root .ordax-internet-source
+  --current-platform-root .ordax-internet-current
 
 # Bloquear a preparação se houve mudanças desde o snapshot:
 python3 tools/verify_internet_externalization.py \
-  --current-platform-root .ordax-internet-source --require-current-source
+  --current-platform-root .ordax-internet-current --require-current-source
 
 # SDK 1.16+ com todos os imports diretos e transitivos publicados
 python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-public
