@@ -131,6 +131,27 @@ jobs:
           print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
           PY
 
+      - name: Prove portable Files source and SDK layout without installation
+        run: |
+          python3 -m unittest tests.test_files_portable_layout -v
+          python3 tools/verify_files_portable_layout.py \
+            --platform-root .ordax-files-source \
+            --sdk-platform-root .ordax-files-sdk > /tmp/ordax-files-layout.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("/tmp/ordax-files-layout.json").read_text(encoding="utf-8"))
+          assert result["schema"] == "ordax.files-portable-layout/1"
+          assert result["source_graph_self_contained"] is True
+          assert result["app_source_count"] == 7
+          assert result["sdk_contract_count"] > 0
+          assert result["runtime_entrypoint_provided"] is False
+          assert result["package_built"] is False
+          assert result["source_cutover_authorized"] is False
+          assert result["distribution_activation"] == "blocked"
+          print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+          PY
+
       - name: Prove independent business domains without unapproved persistence
         run: |
           node --check apps/finance/src/domain/ledger.mjs

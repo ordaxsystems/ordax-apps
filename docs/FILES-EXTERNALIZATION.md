@@ -95,6 +95,28 @@ python3 tools/verify_files_cutover.py \
 
 A saída separa imports internos do app, contratos públicos, contratos ainda não publicados e imports privados da plataforma. A verificação percorre também os **imports transitivos dos contratos publicados**, a partir do checkout Git pinado do SDK, e compara os próprios blobs desses contratos com as identidades publicadas no bundle; um contrato aparentemente público não pode depender silenciosamente de código privado ou de versão ausente. A auditoria falha caso o Git não corresponda aos pins, o bundle SDK seja adulterado, o source esteja ausente, haja import dinâmico não literal ou dependência não resolvida. **A auditoria pode terminar com bloqueios de portabilidade devidamente reportados:** isso não libera Gate A, não cria `apps/files`, não equivale a build, nem instala nada. Para produzir o pacote do Files será necessário eliminar os imports privados usando contratos públicos existentes ou evoluídos no owner correto, sem cópias de adapters do OS.
 
+### Layout portátil de arquivos e contratos, sem cópia de source
+
+`tools/verify_files_portable_layout.py` deriva em memória a futura árvore do
+Files a partir dos **7 Git blobs** da plataforma e dos contratos públicos
+transitivos do App SDK pinado. Os módulos preservam sua hierarquia relativa
+dentro de `src/system/...` e o estilo fica em `assets/files.css`, sem alterar
+imports nem introduzir cópias de fonte no repositório. O limite de tamanho
+utiliza diretamente o builder canônico de pacotes, sem outro SSOT.
+
+O verificador exige hashes Git reais, ausência de imports não resolvidos,
+limites por arquivo e de tamanho total. Ele **não fabrica** um
+`src/runtime.mjs`, `app.json`, ZIP ou manifesto de inteligência e não
+concede autoridade de instalação. A produção desses artefatos continua
+dependendo da remoção comprovada do código antigo no OrdaX OS e da
+integração real com o lifecycle.
+
+```sh
+python3 tools/verify_files_portable_layout.py \
+  --platform-root .ordax-files-source \
+  --sdk-platform-root .ordax-files-sdk
+```
+
 ### Prova automatizada do snapshot pinado
 
 A Foundation do `ordax-apps` agora faz checkout **somente leitura** do `ordax-os` no SHA exato declarado em `source_snapshot.commit` e executa:

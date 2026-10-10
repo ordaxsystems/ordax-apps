@@ -1,0 +1,98 @@
+"""Files portable layout proof: no second source tree or install authority."""
+import hashlib
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+from verify_files_cutover import FilesCutoverError  # noqa: E402
+from verify_files_portable_layout import derive_layout  # noqa: E402
+
+
+def sha(data):
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+
+
+def fixture(root):
+    source, sdk = root / "platform", root / "sdk"
+    files = {
+        "system/apps/files/app.mjs": 'import "../../contracts/first-party-app.mjs";\nimport "./component.mjs";\n',
+        "system/apps/files/component.mjs": "export const component = true;\n",
+        "system/surface/ui/file-space-controls.mjs": 'import "../../contracts/file-space.mjs";\n',
+        "system/surface/ui/files.css": ".files {display:block;}\n",
+    }
+    contracts = {
+        "system/contracts/first-party-app.mjs": 'import "./file-space.mjs";\n',
+        "system/contracts/file-space.mjs": "export const schema = 11;\n",
+    }
+    for base, records in ((source, files), (sdk, contracts)):
+        for name, body in records.items():
+            path = base / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body, encoding="utf-8")
+    inventory = {"commit": "a" * 40, "files": [
+        {"path": name, "git_blob_sha": sha(body.encode())} for name, body in sorted(files.items())
+    ]}
+    bundle = {"bundle_version": "1.16.0", "contracts": [
+        {"source_path": name, "source_git_blob": sha(body.encode())}
+        for name, body in sorted(contracts.items())
+    ]}
+    audit = {"sdk_boundary_clean": True, "source_commit": inventory["commit"],
+             "sdk_bundle_version": "1.16.0",
+             "public_contracts": ["system/contracts/first-party-app.mjs"],
+             "transitive_public_contracts": ["system/contracts/file-space.mjs"]}
+    return source, sdk, inventory, bundle, audit
+
+
+class PortableFilesLayoutTests(unittest.TestCase):
+    def test_pinned_source_and_transitive_sdk_keep_imports_without_rewriting(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source, sdk, inventory, bundle, audit = fixture(Path(temp))
+            report = derive_layout(source, sdk, inventory, bundle, audit)
+            paths = {entry["package_path"] for entry in report["source_modules_and_assets"]}
+            self.assertIn("src/system/apps/files/app.mjs", paths)
+            self.assertIn("src/system/contracts/first-party-app.mjs", paths)
+            self.assertIn("src/system/contracts/file-space.mjs", paths)
+            self.assertIn("assets/files.css", paths)
+            self.assertTrue(report["source_graph_self_contained"])
+            self.assertEqual(report["app_source_count"], 4)
+            self.assertEqual(report["sdk_contract_count"], 2)
+            self.assertFalse(report["runtime_entrypoint_provided"])
+            self.assertFalse(report["package_built"])
+            self.assertFalse(report["source_cutover_authorized"])
+            self.assertEqual(report["distribution_activation"], "blocked")
+            self.assertFalse((Path(temp) / "apps/files").exists())
+
+    def test_tampered_app_and_sdk_blobs_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source, sdk, inventory, bundle, audit = fixture(Path(temp))
+            changed = source / "system/apps/files/component.mjs"
+            changed.write_text("export const component = false;\n")
+            with self.assertRaisesRegex(FilesCutoverError, "identity mismatch"):
+                derive_layout(source, sdk, inventory, bundle, audit)
+            changed.write_text("export const component = true;\n")
+            changed_sdk = sdk / "system/contracts/file-space.mjs"
+            changed_sdk.write_text("export const schema = 12;\n")
+            with self.assertRaisesRegex(FilesCutoverError, "identity mismatch"):
+                derive_layout(source, sdk, inventory, bundle, audit)
+
+    def test_missing_import_and_duplicate_source_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source, sdk, inventory, bundle, audit = fixture(Path(temp))
+            app = source / "system/apps/files/app.mjs"
+            content = app.read_text().replace("./component.mjs", "./missing.mjs")
+            app.write_text(content)
+            inventory["files"][0]["git_blob_sha"] = sha(content.encode())
+            with self.assertRaisesRegex(FilesCutoverError, "import does not resolve"):
+                derive_layout(source, sdk, inventory, bundle, audit)
+            app.write_text(content.replace("./missing.mjs", "./component.mjs"))
+            inventory["files"][0]["git_blob_sha"] = sha(app.read_bytes())
+            inventory["files"].append(dict(inventory["files"][0]))
+            with self.assertRaisesRegex(FilesCutoverError, "duplicate paths"):
+                derive_layout(source, sdk, inventory, bundle, audit)
+
+
+if __name__ == "__main__":
+    unittest.main()
