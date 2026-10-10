@@ -2,7 +2,7 @@ import { changePreview } from './changes.mjs';
 import { workspaceTools, workspaceText, workspaceResultBelongs } from './workspace-results.mjs';
 import { bindingEquals } from './project-organization.mjs';
 import { operationLabels as labels, operationPending as pending, operationBlocking, visibleOperations, operationReceipt } from './runtime-activity.mjs';
-import { deviceAvailable, deviceLabel, deviceStatus } from './runtime-targets.mjs';
+import { deviceAvailable, deviceLabel, deviceStatus, assertOperationBinding } from './runtime-targets.mjs';
 
 const resultData = op => op?.result?.data || op?.result || {};
 
@@ -181,7 +181,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   }
   async function submit(data) {
     submitting++; controls();
-    try { const op = await host.runtimeSubmit({ ...selected(), ...data }); state.operations.push(op); message(`${labels[op.status]} · ${op.label}`); }
+    try { const request = { ...selected(), ...data }; const op = assertOperationBinding(request, await host.runtimeSubmit(request)); state.operations.push(op); message(`${labels[op.status]} · ${op.label}`); }
     catch (error) { await refresh(); throw error; }
     finally { await refresh({ fresh: true }); submitting--; controls(); }
   }
