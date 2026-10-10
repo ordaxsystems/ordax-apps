@@ -31,6 +31,14 @@ python3 tools/verify_internet_externalization.py
 python3 tools/verify_internet_externalization.py \
   --platform-root .ordax-internet-source
 
+# Comparar snapshot histórico ao código atual antes de preparar o Gate A:
+python3 tools/verify_internet_externalization.py \\
+  --current-platform-root .ordax-internet-source
+
+# Bloquear a preparação se houve mudanças desde o snapshot:
+python3 tools/verify_internet_externalization.py \\
+  --current-platform-root .ordax-internet-source --require-current-source
+
 # SDK 1.16+ com todos os imports diretos e transitivos publicados
 python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-public
 
@@ -40,6 +48,12 @@ python3 tools/verify_internet_externalization.py --require-cutover-ready
 
 A Foundation usa um único preflight (`tools/verify_internet_externalization.py`),
 que também valida o mapa canônico do Gate B sem criar arquivos.
+A opção `--current-platform-root` compara diretamente os Git blobs da
+checkout atual com o snapshot original e apresenta `changed`, `added` e
+`deleted`. `--require-current-source` recusa inventários antigos.
+Esta prova é separada da validação imutável do commit capturado. Nenhuma
+das duas opções copia arquivos ou ativa o Internet.
+
 Ela utiliza o commit indicado no snapshot, **não** a branch
 `main` móvel da plataforma. Rejeita Git sujo, remoto incorreto,
 identidade de blob alterada, arquivo omitido, diretório parcial no destino,
