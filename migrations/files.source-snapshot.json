@@ -2,7 +2,7 @@
   "$schema": "ordax.source-snapshot-inventory/1",
   "app_id": "files",
   "repository": "ordaxsystems/ordax-os",
-  "commit": "a8749add2efffabfc5ecdbe3834dc6fd5c86797a",
+  "commit": "6d20b397506f19dab403a9b098e06caaa0440feb",
   "file_count": 6,
   "files": [
     {
@@ -19,7 +19,7 @@
     },
     {
       "path": "system/surface/ui/file-space-controls.mjs",
-      "git_blob_sha": "5306f612ef8771da8904b87b694d67009bf5be60"
+      "git_blob_sha": "6e49a03bc42772f93486fc4bb292df65d317d00c"
     },
     {
       "path": "system/surface/ui/file-space-response-identity.mjs",

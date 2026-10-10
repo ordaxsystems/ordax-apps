@@ -91,9 +91,11 @@ O verificador exige origem Git canônica, checkout limpo, HEAD igual ao snapshot
 
 ### Snapshot verificável antes da remoção
 
-O inventário `migrations/files.source-snapshot.json` foi capturado do commit exato [`ordax-os@a8749add`](https://github.com/ordaxsystems/ordax-os/commit/a8749add2efffabfc5ecdbe3834dc6fd5c86797a), ainda com Files pré-instalado e seu runtime original. São **6 Git blobs** app-owned pinados. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
+O inventário `migrations/files.source-snapshot.json` foi atualizado a partir do commit exato [`ordax-os@6d20b397`](https://github.com/ordaxsystems/ordax-os/commit/6d20b397506f19dab403a9b098e06caaa0440feb), incorporando a correção de concorrência da navegação, ainda com Files pré-instalado e seu runtime original. São **6 Git blobs** app-owned pinados. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
 
 A verificação final deverá executar `tools/verify_files_cutover.py --platform-root ... --require-cutover-ready` contra o checkout Git oficial, provar a ancestralidade e a remoção, reconciliar alterações posteriores ao snapshot e **somente então** permitir o cutover. Enquanto isso, o Files continua instalado na imagem Base. A Foundation do OS possui regressão específica em `tests/test_files_bootstrap_continuity.py` para bloquear remoção acidental do bootstrap.
+
+O Files atualmente mantém o contexto de Recentes e Lixeira quando uma navegação falha, e impede que respostas de navegação antigas alterem o índice do histórico, o destino de um projeto ou o fallback mais recente. A atualização do inventário é feita somente após o commit validado no owner OS; o Gate A continua bloqueado e o File Space permanece sob responsabilidade da plataforma.
 
 ## Sequência de entrega
 
