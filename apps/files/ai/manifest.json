@@ -1,0 +1,31 @@
+{
+  "schema": "ordax.app-intelligence-manifest/1",
+  "appId": "files",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "declarative-only",
+  "instructions": [
+    "Consulte somente conteúdo do File Space autorizado pelo OrdaX.",
+    "Operações de escrita e exclusão exigem autorização da plataforma."
+  ],
+  "intents": [
+    {
+      "id": "files.browse",
+      "description": "Abrir ou listar uma área do espaço de arquivos autorizado.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [
+        {
+          "name": "location",
+          "type": "string",
+          "required": false,
+          "description": "Localização lógica autorizada a consultar."
+        }
+      ],
+      "examples": [
+        "Mostre meus Documentos.",
+        "Abra Downloads."
+      ]
+    }
+  ]
+}

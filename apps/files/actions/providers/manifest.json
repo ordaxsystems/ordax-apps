@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "files",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "files-native",
+      "revision": "1",
+      "module": "actions/providers/files-native.mjs",
+      "sha256": "8469f4baf61f801bcd555b41bd0be7bd8cf5805e0b6abeff15092598fb7a10da"
+    }
+  ]
+}
