@@ -1,0 +1,80 @@
+{
+  "$schema": "ordax.internet-source-snapshot/1",
+  "repository": "ordaxsystems/ordax-os",
+  "commit": "ae147ab9dad68755e6ee33fb3ec6ae78b8b8ab93",
+  "tree_sha": "e22ff9394056f913d90b40c50b310044eb947137",
+  "source_root": "system/apps/internet",
+  "captured_after_public_sdk_boundary": true,
+  "captured_before_gate_a_removal": true,
+  "platform_source_absence_proven": false,
+  "purpose": "reproducible remove-first Internet Gate A/B transfer; not a second live source",
+  "file_count": 13,
+  "files": [
+    {
+      "path": "system/apps/internet/ai/manifest.mjs",
+      "blob_sha": "7143fdabe9fce86642eb6a9a1d862608cb6a5cef",
+      "size": 2115
+    },
+    {
+      "path": "system/apps/internet/app.mjs",
+      "blob_sha": "58d26f1c4804c049ca02038620865dd3b5b5ac2f",
+      "size": 812
+    },
+    {
+      "path": "system/apps/internet/component.mjs",
+      "blob_sha": "4efae09ba2811e7a63d80c7f563761e6fc97e9af",
+      "size": 478
+    },
+    {
+      "path": "system/apps/internet/internet.css",
+      "blob_sha": "cb3be2e8b768d4da272367356cf98a4b850b2b35",
+      "size": 20275
+    },
+    {
+      "path": "system/apps/internet/runtime.mjs",
+      "blob_sha": "17b8eafb7582173121acf24f0126557daa8376d8",
+      "size": 5845
+    },
+    {
+      "path": "system/apps/internet/services/favorites.mjs",
+      "blob_sha": "eb8f9d66c1a3b485ca9ea34d95d27948e024dadb",
+      "size": 5448
+    },
+    {
+      "path": "system/apps/internet/services/history-bridge.mjs",
+      "blob_sha": "4b11c0e18a6f1b78ece0185ecce94e359208c1f9",
+      "size": 1895
+    },
+    {
+      "path": "system/apps/internet/services/history.mjs",
+      "blob_sha": "fd306d6962ec770a94e0a4d384aea0c0e0c8393d",
+      "size": 4539
+    },
+    {
+      "path": "system/apps/internet/services/search-preferences.mjs",
+      "blob_sha": "287cb609129e20b7eeb779a2267aa254383624c2",
+      "size": 2091
+    },
+    {
+      "path": "system/apps/internet/ui/browser-controls.mjs",
+      "blob_sha": "12845756d5fbf6947435cb46183a5969995f9625",
+      "size": 71237
+    },
+    {
+      "path": "system/apps/internet/ui/browser-shortcuts.mjs",
+      "blob_sha": "a768ef486ed4bf09f205b57fb73afd2a7bba9e22",
+      "size": 2451
+    },
+    {
+      "path": "system/apps/internet/version.mjs",
+      "blob_sha": "1c80e178643b95b4981e74179916febf7005f938",
+      "size": 41
+    },
+    {
+      "path": "system/services/i18n/catalog/internet.mjs",
+      "blob_sha": "1cde902b5202b256c04d1b9ab811eeb4d6731c75",
+      "size": 21237
+    }
+  ],
+  "authority": "none"
+}
