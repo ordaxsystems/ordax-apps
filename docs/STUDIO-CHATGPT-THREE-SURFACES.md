@@ -2,6 +2,19 @@
 
 > **Decisão de arquitetura (2026-10-08), atualizada em 2026-10-09.** Documento de coordenação para o issue [ordax-apps#189](https://github.com/ordaxsystems/ordax-apps/issues/189). Não representa implementação concluída, autorização comercial nem liberação de extração automatizada do ChatGPT Web.
 
+## Decisão transversal de produto — 2026-10-10
+
+A experiência de IA discutida para o Studio agora é **OrdaX Intelligence compartilhado por OS, Web, Studio e aplicativos**, não um provedor/roteador possuído pelo Studio. [Handoff raiz OS](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md) e [contrato Intelligence canônico](https://github.com/ordaxsystems/ordax-os/blob/main/docs/INTELLIGENCE.md).
+
+**Preservar três superfícies abaixo, porém com estes limites:**
+- Studio: **consumidor da interface/ports**; não criar outro backend de IA, banco global de chats, modelo, catálogo de ações ou plugin.
+- Chat OrdaX → provedor: modelo local/API autorizada, e possível ChatGPT Web apenas com integração aprovada e E2E. **Instalar plugin MCP no ChatGPT externo não integra automaticamente sua inferência ao Studio/Web**.
+- ChatGPT externo → OrdaX: plugin `ordax-chatgpt` pertence ao Platform; Studio não precisa abrir para a ferramenta alcançar o Runtime/OS com grants e target explícitos.
+- Capacidades nativas first-party precedem screenshots/controle visual; manifests/intents nunca concedem autoridade. Resultados de modelo permanecem consultivos; side effects usam o Action Gateway canônico.
+- PRs #192 (Apps) e #63 (Runtime) seguem experimentais/draft e **não podem ser declaradas funcionais nem mescladas sem reconciliação e teste real**. Studio Web #197 requer transporte, grants e verificação E2E separados.
+
+Nenhuma integração/ativação comercial ou backend de IA novo é criada por esta decisão.
+
 ## Atualização de implementação local
 
 O usuário definiu o Studio como destino da experiência desktop e o nome público do plugin como **ORDAX Studio**. A fonte de conversa foi consolidada no Studio 0.6.0; recursos avançados existentes foram preservados. Consulte [a matriz de paridade](STUDIO-CONVERSATION-REPLACEMENT.md) antes de interpretar esta proposta como substituição completa ou release publicado.
