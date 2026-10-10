@@ -134,37 +134,20 @@ def main() -> None:
             presentation_path = "system/apps/notes/presentation/manifest.json"
             if presentation_path not in names:
                 fail("Notes package must include its app-owned Surface presentation manifest")
-            presentation = json.loads(archive.read(presentation_path))
-            expected_fields = {
-                "schema", "appId", "appVersion", "authority", "sourceLocale",
-                "description", "monogram", "singleton", "translations",
-            }
-            if not isinstance(presentation, dict) or set(presentation) != expected_fields:
-                fail("Notes presentation fields are not canonical")
+            try:
+                presentation = builder.presentation_contract.validate_manifest_bytes(
+                    archive.read(presentation_path),
+                    app_id=component["id"], version=component["version"],
+                )
+            except builder.presentation_contract.PresentationContractError as exc:
+                fail(f"Notes presentation is invalid: {exc}")
             if (
-                presentation["schema"] != "ordax.app-presentation-manifest/1"
-                or presentation["appId"] != component["id"]
-                or presentation["appVersion"] != component["version"]
-                or presentation["authority"] != "none"
-                or presentation["sourceLocale"] != "pt-BR"
+                presentation["sourceLocale"] != "pt-BR"
                 or presentation["monogram"] != "NT"
                 or presentation["singleton"] is not True
-                or not isinstance(presentation["description"], str)
-                or not 0 < len(presentation["description"]) <= 320
+                or set(presentation["translations"]) != {"en-US"}
             ):
-                fail("Notes presentation identity, locale, copy or authority drifted")
-            translations = presentation["translations"]
-            if not isinstance(translations, dict) or set(translations) != {"en-US"}:
-                fail("Notes presentation bundled translations drifted")
-            english = translations["en-US"]
-            if (
-                not isinstance(english, dict)
-                or set(english) != {"title", "description"}
-                or not all(isinstance(v, str) and v.strip() for v in english.values())
-                or len(english["title"]) > 160
-                or len(english["description"]) > 320
-            ):
-                fail("Notes presentation English copy is invalid")
+                fail("Notes presentation product copy or locale drifted")
         if len(names) != len(set(names)):
             fail("Notes package contains duplicate archive paths")
         for name in names:
