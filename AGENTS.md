@@ -7,6 +7,10 @@
 3. Para ações/IA, ler [docs/APP-INTELLIGENCE.md](docs/APP-INTELLIGENCE.md). Para Studio, ler [docs/STUDIO-BOUNDARY.md](docs/STUDIO-BOUNDARY.md). Para utilitários, ler [docs/BASIC-APPS.md](docs/BASIC-APPS.md).
 4. Conferir manifests, locks, migrations, contratos públicos e CI **atuais** antes de propor ou executar mudanças. O roadmap é planejamento, não substitui a fonte de verdade do código nem autoriza produção.
 
+## Intelligence global, ChatGPT e plugin MCP
+
+Antes de alterar chat Studio, catálogo dos apps, provider adapters ou integração Web, consultar [INTELLIGENCE-HANDOFF.md no owner OS](https://github.com/ordaxsystems/ordax-os/blob/main/INTELLIGENCE-HANDOFF.md), [docs/STUDIO-CHATGPT-THREE-SURFACES.md](docs/STUDIO-CHATGPT-THREE-SURFACES.md) e [docs/APP-INTELLIGENCE.md](docs/APP-INTELLIGENCE.md). Intelligence é do OS; Studio é consumidor; conector MCP é do Platform. Não confundir ChatGPT como provedor da UI com ChatGPT externo controlando OrdaX. PRs experimentais não são release.
+
 ## Regras que não podem ser contornadas
 
 - `ordaxsystems/ordax-apps` é owner dos produtos first-party; plataforma, Runtime e Control Plane mantêm seus próprios serviços e autoridade.
