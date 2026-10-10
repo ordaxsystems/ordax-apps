@@ -86,7 +86,7 @@ app.whenReady().then(async () => {
         if (body.action === 'agent.project_briefing') result.data = { summary: 'studio-project-context' };
         if (body.action === 'continuity.get') result.data = { project: 'fixture-project', state: { summary: 'studio-existing-state', completed: ['foundation'], blockers: ['review'], changed_paths: ['src/main.py'] } };
         if (body.action === 'continuity.update') result.data = { project: 'fixture-project', state: { ...body.arguments } };
-        remoteActions.set(request, { request_id: request, action: body.action, project: body.project ?? null, status: 'succeeded', result }); data = { request_id: request };
+        remoteActions.set(request, { request_id: request, device_id: body.device_id, action: body.action, project: body.project ?? null, status: 'succeeded', result }); data = { request_id: request };
       } else data = { action: remoteActions.get(route.split('/').at(-1)) };
       return Response.json({ ok: true, ...data });
     } }); await runtime.init();
