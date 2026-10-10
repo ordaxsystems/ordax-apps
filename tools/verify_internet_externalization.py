@@ -89,7 +89,7 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None) -> dict:
     for item in sources:
         if not isinstance(item, dict) or set(item) != {"path", "blob_sha", "size"}:
             reject("source blob inventory has unexpected fields")
-        path, blob, size = item.values() if False else (item["path"], item["blob_sha"], item["size"])
+        path, blob, size = item["path"], item["blob_sha"], item["size"]
         if not isinstance(path, str) or not (path.startswith("system/apps/internet/") or path == "system/services/i18n/catalog/internet.mjs"):
             reject("Internet source snapshot contains platform-owned host code")
         if ".." in Path(path).parts or "\\" in path or "//" in path:
