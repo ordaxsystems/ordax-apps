@@ -7,6 +7,8 @@
 
 Repositório oficial dos aplicativos first-party do OrdaX.
 
+**Política de portfólio:** [fonte canônica, apps básicos, pré-instalação e nomes](docs/PORTFOLIO-FIRST-PARTY.md). O fato de um app vir instalado no OS não cria uma segunda fonte no repositório da plataforma.
+
 ## Papel deste repositório
 
 `ordax-apps` contém **aplicativos de produto**, não os serviços centrais do sistema operacional.
