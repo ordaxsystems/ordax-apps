@@ -198,6 +198,36 @@ jobs:
           python3 tools/verify_internet_externalization.py --platform-root .ordax-internet-source
           python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-public
 
+      - name: Checkout current platform Internet source for drift proof
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: main
+          path: .ordax-internet-current
+          persist-credentials: false
+
+      - name: Audit immutable Internet snapshot against live platform tree
+        run: |
+          python3 tools/verify_internet_externalization.py \
+            --current-platform-root .ordax-internet-current > /tmp/ordax-internet-source-drift.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/ordax-internet-source-drift.json").read_text(encoding="utf-8"))
+          drift = report["current_platform_source"]
+          assert drift is not None, "current platform proof must run"
+          assert report["source_cutover_allowed"] is False
+          assert report["distribution_activation_allowed"] is False
+          assert report["checked_out_blob_integrity_verified"] is False
+          assert isinstance(drift["snapshot_current"], bool)
+          assert all(isinstance(drift[field], list) for field in ("changed", "added", "deleted"))
+          if not drift["snapshot_current"]:
+              print("Internet snapshot is historical; Gate B must recapture current source before cutover")
+              print(json.dumps(drift, ensure_ascii=False, indent=2, sort_keys=True))
+          else:
+              print("Internet pinned source equals the current platform tree")
+          PY
+
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
 
