@@ -56,6 +56,7 @@ class PlatformOwnerMvpTests(unittest.TestCase):
         self.assertEqual(len(minimum), 3)
         self.assertEqual(len(pinned), 3)
         self.assertLessEqual(minimum, pinned)
+        self.assertGreaterEqual(minimum, (1, 16, 0), "Internet requires public first-party app schema")
         self.assertEqual(lock["repository"], plan["source_repository_current"])
         self.assertEqual(sdk["required_boundary"], "browser-contracts-from-published-bundle")
         self.assertIs(sdk["migration_authorized_by_sdk_pin"], False)

@@ -41,7 +41,7 @@
     "second_web_engine_in_app_allowed": false
   },
   "target_sdk": {
-    "minimum_bundle_version": "1.14.0",
+    "minimum_bundle_version": "1.16.0",
     "lock_file": "platform-sdk.lock.json",
     "required_boundary": "browser-contracts-from-published-bundle",
     "migration_authorized_by_sdk_pin": false
