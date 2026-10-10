@@ -207,6 +207,13 @@
     <div class="session-actions"><button id="pluginCheck" class="connect-secondary">Verificar serviço sem login</button><button id="pluginTest" class="connect-secondary">Preparar teste de conexão</button></div>
     <p id="pluginDetails" class="dialog-help" role="status">Disponibilidade do servidor não confirma login ou permissões do computador.</p>
     <p class="dialog-help">O teste preenche sua mensagem para revisão; você decide quando enviar. O uso da conversa segue os limites do ChatGPT Web.</p>
+    <section aria-labelledby="relayAdminTitle" class="relay-admin-check">
+      <h3 id="relayAdminTitle">Relay · administração experimental</h3>
+      <p class="dialog-help">O Relay ainda não está ativado. Esta consulta mostra somente o estado do Product no Studio central, sem associar PCs entre si, compartilhar credenciais ou declarar inferência remota disponível.</p>
+      <div class="session-actions"><button id="relayCheck" class="connect-secondary" type="button">Verificar estado Product</button></div>
+      <p id="relayStatus" class="dialog-help" role="status" aria-live="polite">Relay ainda não ativado. Verifique a conexão Product para auditar apenas os dispositivos já autorizados neste Studio.</p>
+    </section>
+
   </dialog>
 
   <aside class="web-panel" aria-label="ChatGPT Web sincronizado"><header class="web-toolbar"><div><strong>ChatGPT Web</strong><span id="webTag" class="web-tag">MESMA CONVERSA</span></div><nav aria-label="Controles da área Web"><button id="webReturnChat" title="Retomar a conversa Web anterior" hidden>← Conversa Web</button><button id="webClose" title="Voltar à conversa do Studio" hidden>← Voltar à conversa</button><button id="webFocus" title="Ampliar o ChatGPT Web na janela">Ampliar Web</button><button id="webReload" title="Recarregar ChatGPT Web" aria-label="Recarregar ChatGPT Web">↻</button><button id="webBrowser" title="Abrir a conversa no navegador" aria-label="Abrir no navegador">↗</button></nav></header><footer><span class="dot"></span><span id="webStatus">Carregando ChatGPT…</span><small>Cota do Web</small></footer></aside>
