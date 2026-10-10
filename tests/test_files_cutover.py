@@ -155,7 +155,8 @@ class FilesCutoverTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
             report = files.report(root)
-            self.assertEqual(report["sdk_pin"]["version"], "1.12.0")
+            lock = json.loads((root / "platform-sdk.lock.json").read_text(encoding="utf-8"))
+            self.assertEqual(report["sdk_pin"]["version"], lock["bundle_version"])
             self.assertFalse(report["source_cutover"]["ready"])
             self.assertIn("source-cutover-not-authorized", report["source_cutover"]["blockers"])
             self.assertIn("platform-absence-not-inspected", report["source_cutover"]["blockers"])
