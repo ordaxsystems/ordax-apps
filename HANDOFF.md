@@ -1,6 +1,10 @@
 # OrdaX Apps — canonical handoff
 
-Atualizado em 2026-10-08.
+Atualizado em 2026-10-09.
+
+## Studio Web (MVP-04) — fonte de escopo
+
+O recorte Web/telefone como cliente de um **PC autorizado e online**, seus limites, owners e E2E obrigatórios estão definidos uma única vez em [docs/STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md). Esta entrada não altera as autoridades de Identity, Runtime, grants, modelo, Memory, projetos ou sync. Studio Electron 0.14.1 e Studio Web hospedado são superfícies diferentes; source CI não equivale a ativação, deploy ou teste remoto real.
 
 ## Estado canônico
 
@@ -8,7 +12,7 @@ Este repositório é o source workspace oficial dos apps first-party removíveis
 
 Owners separados:
 
-- plataforma/core e contratos públicos: `ordaxsystems/prototipo-ordax-os`;
+- plataforma/core e contratos públicos: `ordaxsystems/ordax-os`;
 - apps first-party portáteis: `ordaxsystems/ordax-apps`;
 - Runtime/Device Host/Computer Control: `ordaxsystems/ordax-runtime`;
 - Control Plane, Product MCP, grants e conectores de provider: `ordaxsystems/ordax-platform`.

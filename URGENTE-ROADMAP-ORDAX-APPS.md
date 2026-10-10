@@ -1,5 +1,10 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Recorte de produto Studio Web (MVP-04)
+
+Reconciliado em 2026-10-09: a entrega Web/telefone prioriza o controle **autorizado** de um PC online, sem criar um segundo Runtime, banco de arquivos ou serviços de IA no Studio. O escopo atual, a distinção entre cliente Web e agente mobile, as dependências cloud e os critérios de aceitação ficam exclusivamente em [docs/STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md). Os incrementos históricos abaixo documentam fontes e testes anteriores, sem constituir autoridade para ativar produção ou reinterpretar estado atual.
+
+
 ## Incremento — presença canônica do dispositivo para o plugin (2026-10-09)
 
 Continuidade MVP-04/Studio: [Platform PR 114](https://github.com/ordaxsystems/ordax-platform/pull/114), source `0c85bf2`, adiciona a rota HTTP de presença online/offline autenticada pela credencial do dispositivo e delegada aos RPCs PostgreSQL existentes. Preserva coalescência, rejeita metadados de autoridade forjados e falha sem fallback/repetição. Owner Platform; Runtime mantém o heartbeat e a execução. A rota está ligada no source do Worker, mas o Runtime atual ainda usa WebSocket legado e não a chama; presença não comprova canal de execução ou grants. Apps permanece 0.14.1, sem cópia de Identity, grants, fila, presença ou loop. 95 testes Node, 175 Python em arquivo Git com LF canônico e Wrangler dry-run passaram; os três checks remotos da PR passaram no mesmo source. [Contrato, riscos e aceite](docs/STUDIO-WEB-INTEGRATION.md). Runtime PR 65 e Platform PR 113 já mescladas; remotos revistos e OS `1dcf620` preservado. Migração do consumidor, E2E de conta/dispositivo e ativação seguem pendentes; gate Cloudflare continua bloqueado por sete dependências. Piso MVP: 13 candidatos não assinados, 7 bloqueios, 0 instalações públicas verificadas.

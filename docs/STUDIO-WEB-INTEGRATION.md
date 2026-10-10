@@ -2,6 +2,23 @@
 
 Estado verificado em 2026-10-09. Incremento MVP-04 solicitado pelo usuário; candidato de source, sem publicação ou ativação de produção.
 
+
+## MVP-04 — cliente Web autorizado para PC online (escopo canônico)
+
+Este documento é a **autoridade de escopo e critérios de aceite** do Studio Web no repositório Apps. O plano funcional original da [PR #197](https://github.com/ordaxsystems/ordax-apps/pull/197) foi reconciliado com a `main` corrente, sem importar snapshots desatualizados de Runtime, Platform ou OS. Os manifests, grants e contratos publicados continuam sob seus respectivos proprietários.
+
+**Fluxo pretendido:** navegador/telefone (cliente de apresentação) → Conta OrdaX e Control Plane com autenticação, escopo, grants e auditoria → Runtime do PC explicitamente selecionado → arquivos, tarefa e resultado daquele projeto autorizado. Workspace, execução, registros de ações e recebimentos permanecem no Runtime e nos serviços canônicos; o Studio Web não cria um segundo registro de dispositivos, banco de projetos, fila, armazenamento, sincronizador ou autorizador. A instalação Windows do Studio Electron 0.14.1 no Runtime é uma distribuição separada e não comprova a versão Web hospedada.
+
+O primeiro recorte da UI Web deve exibir **projetos autorizados, estado das tarefas e resultados**, e abrir explicitamente o ChatGPT para uso com o conector MCP já existente. Não incorporar a sessão do ChatGPT por iframe, reutilizar cookies, capturar sua UI ou simular resposta de modelo. O dispositivo no qual a conversa abre **não** é automaticamente o executor da tarefa. Presença, login e `device_kind` não concedem capacidade ou autorizam execução; selecionar o PC, Space e projeto não pode fazer retarget silencioso durante falhas.
+
+**Origem dos arquivos:** a leitura autorizada de dados locais requer PC e Runtime disponíveis. Conteúdo lido e enviado ao provedor de IA pode sair do dispositivo, sujeito a consentimento e política de egress; portanto não prometer que todo contexto fica no PC. Um preview remoto precisa de serviço alcançável e autorizado — `localhost` no telefone não aponta para o PC. Projetos na nuvem exigem integração de arquivos própria; build na nuvem exige executor provisionado. Armazenamento cloud e agente Android são capacidades distintas e **não são pré-requisitos** para usar o telefone como cliente Web do PC. Não anunciar acesso aos arquivos, câmera ou sensores do telefone apenas por cadastro/presença.
+
+**Independência do OS:** conexões de IA, grants, revogação e eventual pausa de acesso remoto devem ser administráveis pelo owner OS/Platform sem depender do aplicativo Studio. Pausar novas operações não é sinônimo de desativar sync nem de revogar grants; requer enforcement canônico e regra explícita para tarefas em andamento. Não implementar um interruptor visual que alegue suspensão sem recibo/autorização da autoridade. Remover apenas a UI preservando Runtime também requer lifecycle verificado: o instalador Windows combinado não prova desinstalação separada.
+
+**Aceite de MVP-04:** (1) Web usa apresentação e contratos públicos versionados dos owners; (2) login, seleção de conta/Space/PC/projeto e grants são checados antes de cada solicitação; (3) desconexão, timeout e revogação não promovem presença a execução nem repetem POST de tarefa incerta; (4) histórico/status consultam a **mesma** tarefa aceita, com resultado e preview limitados ao escopo; (5) navegação desktop/telefone, teclado e estados offline são comprovados; (6) teste E2E usa conta, PC e navegador reais com autorização explícita; (7) o projeto demonstra que não possui autoridade duplicada e que o fluxo funciona sem serviços cloud/mobile ainda não lançados.
+
+**Estado:** estes são critérios funcionais, não prova de que a composição Web, o transporte Product, o E2E remoto, o storage cloud, o executor cloud ou o agente Mobile estejam entregues. Evidências de source/CI, release e ativação não são intercambiáveis. As seções históricas abaixo registram o desenvolvimento sem substituir esse recorte canônico.
+
 ## Presença canônica — transporte no owner Platform
 
 [Platform PR 114](https://github.com/ordaxsystems/ordax-platform/pull/114), source
