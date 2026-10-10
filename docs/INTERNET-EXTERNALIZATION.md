@@ -60,6 +60,29 @@ identidade de blob alterada, arquivo omitido, diretório parcial no destino,
 pin insuficiente e ativação antecipada. A ausência de imports privados
 **não** garante que o pacote está funcional fora da árvore da plataforma.
 
+## Inventário executável de imports para o Gate B
+
+O preflight `tools/verify_internet_externalization.py --platform-root
+.ordax-internet-source` agora inspeciona **o conteúdo dos blobs do snapshot
+Git verificado**, além da lista de arquivos e dos destinos do transfer map.
+O resultado `portability_rewrites`, esquema
+`ordax.internet-portability-rewrites/1`, identifica para cada import:
+
+- `resolve-public-sdk-contract`: dependência de contrato publicado e
+  tipado, que precisará de resolução pública no pacote externo;
+- `relocate-app-owned-import`: dependência dentro do produto, cujo
+  caminho deve acompanhar o mapa canônico de destino;
+- `manifest-replacement`: referência a `app.mjs` ou `version.mjs`,
+  que deverá usar `app.json`, sem copiar definições antigas.
+
+Imports remotos, privados ou ausentes no mapa falham fechados.
+`runtime_package_ready=false` e
+`copy_source_without_rewiring_allowed=false` são invariantes deste
+relatório: ele **não** afirma que o pacote já é instalável. Nenhum arquivo
+do Internet é escrito em `apps/internet`, e o host WebKitGTK não é
+transferido. A CI Foundation executa esta análise com o checkout de
+commit exato declarado no snapshot antes de tentar qualquer Gate A/B.
+
 ## Bloqueios de portabilidade restantes
 
 1. O runtime ainda usa imports relativos do monorepo OS para módulos
