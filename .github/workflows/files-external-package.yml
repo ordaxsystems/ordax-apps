@@ -6,6 +6,8 @@ on:
     paths:
       - "apps/files/**"
       - "tools/app-package/**"
+      - "platform-sdk.lock.json"
+      - "migrations/files.externalization.json"
       - ".github/workflows/files-external-package.yml"
   workflow_dispatch:
 
@@ -36,13 +38,75 @@ jobs:
             --package "$RUNNER_TEMP/files.zip" \
             --release "$RUNNER_TEMP/files-release/files.release.json" \
             --compatibility "$RUNNER_TEMP/files-release/files.compatibility.json"
+      - name: Resolve exact published SDK verifier revision
+        id: sdk
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          lock = json.loads(Path("platform-sdk.lock.json").read_text(encoding="utf-8"))
+          assert lock["repository"] == "ordaxsystems/ordax-os"
+          assert lock["authority"] == "none"
+          print(f"revision={lock['commit']}")
+          PY
+
+      - name: Checkout exact public SDK candidate verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: ${{ steps.sdk.outputs.revision }}
+          path: .ordax-public-sdk
+          sparse-checkout: |
+            sdk/app-sdk-v1/verify_unsigned_candidate.py
+            sdk/app-sdk-v1/runtime-component-package-policy.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Produce deterministic unsigned handoff and verify public SDK compatibility
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/files-unsigned"
+          mkdir -p "$out"
+          cp "$RUNNER_TEMP/files.zip" "$out/files.zip"
+          cp "$RUNNER_TEMP/files-release/files.release.json" "$out/files.release.json"
+          cp "$RUNNER_TEMP/files-release/files.compatibility.json" "$out/files.compatibility.json"
+          python3 tools/app-package/render_unsigned_handoff.py \
+            --package "$out/files.zip" \
+            --release "$out/files.release.json" \
+            --compatibility "$out/files.compatibility.json" \
+            --app-id files \
+            --source-commit "$GITHUB_SHA" \
+            --out "$out/files.unsigned-candidate.json"
+          (cd "$out" && sha256sum files.zip files.release.json files.compatibility.json files.unsigned-candidate.json > SHA256SUMS)
+          python3 .ordax-public-sdk/sdk/app-sdk-v1/verify_unsigned_candidate.py \
+            --candidate-dir "$out" \
+            --package-policy .ordax-public-sdk/sdk/app-sdk-v1/runtime-component-package-policy.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          import os
+          handoff = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "files-unsigned" / "files.unsigned-candidate.json").read_text()
+          )
+          assert handoff["status"] == "unsigned-candidate"
+          assert handoff["component"]["id"] == "files"
+          assert handoff["source"]["repository"] == "ordaxsystems/ordax-apps"
+          assert handoff["source"]["commit"] == os.environ["GITHUB_SHA"]
+          assert handoff["authority"] == {
+              "signing": False, "publication": False,
+              "installation": False, "activation": False,
+          }
+          PY
+
       - name: Save unsigned Files candidate, never install it automatically
         uses: actions/upload-artifact@v4
         with:
-          name: files-unsigned-component-candidate
+          name: files-unsigned-component-candidate-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/files.zip
-            ${{ runner.temp }}/files-release/files.release.json
-            ${{ runner.temp }}/files-release/files.compatibility.json
+            ${{ runner.temp }}/files-unsigned/files.zip
+            ${{ runner.temp }}/files-unsigned/files.release.json
+            ${{ runner.temp }}/files-unsigned/files.compatibility.json
+            ${{ runner.temp }}/files-unsigned/files.unsigned-candidate.json
+            ${{ runner.temp }}/files-unsigned/SHA256SUMS
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
