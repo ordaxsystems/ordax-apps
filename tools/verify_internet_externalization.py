@@ -72,6 +72,25 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None) -> dict:
     ss = plan.get("source_snapshot") or {}
     if ss.get("state") != "captured" or ss.get("repository") != "ordaxsystems/ordax-os":
         reject("pre-removal snapshot not captured by plan")
+    if ss.get("transfer_map") != MAP:
+        reject("Internet plan must link to one canonical Gate B transfer map")
+    prelaunch = plan.get("prelaunch_state") or {}
+    if prelaunch != {
+        "production_user_data_present": False,
+        "legacy_user_data_migration_required": False,
+        "developer_seed_data_can_be_reset": True,
+        "host_owned_browser_storage_is_not_app_source": True,
+    }:
+        reject("prelaunch/no-user-data boundary must remain explicit")
+    gates = plan.get("gate_status") or {}
+    if gates != {
+        "platform_absence_proven": False,
+        "source_materialized_in_ordax_apps": False,
+        "component_package_install_verified": False,
+        "rollback_verified": False,
+        "bootstrap_install_verified": False,
+    }:
+        reject("cannot mark Gate A/B or distribution verified without real evidence")
     if ss.get("inventory_file") != SNAPSHOT or ss.get("file_count") != 13:
         reject("pre-removal snapshot inventory pointer/count drifted")
     if snapshot.get("$schema") != "ordax.internet-source-snapshot/1":
