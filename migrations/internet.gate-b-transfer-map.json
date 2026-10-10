@@ -1,7 +1,7 @@
 {
   "$schema": "ordax.internet-gate-b-transfer-map/1",
   "source_snapshot": "migrations/internet.source-snapshot.json",
-  "source_commit": "ae147ab9dad68755e6ee33fb3ec6ae78b8b8ab93",
+  "source_commit": "9362b61f8b2107ae6c1d8a239922d5483e988299",
   "target_root": "apps/internet",
   "source_file_count": 13,
   "target_manifest": "apps/internet/app.json",
