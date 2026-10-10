@@ -29,7 +29,7 @@ O app Files continua **platform-owned** e o Gate A **não** foi executado. Criar
 
 ## Contratos públicos e lacunas
 
-O App SDK global pinado em `platform-sdk.lock.json` é **1.12.0**, commit `8f96e79075d06bd79bd550e5c5593985e11dce38`. O bundle nesse commit inclui:
+O App SDK global usa o SSOT `platform-sdk.lock.json` (atualmente 1.14.0); não replicar commit/digest neste documento. O bundle fixado inclui:
 
 - `ordax.file-space/11` — listagem, leitura textual limitada, previews bounded e operações mediadas pelo port;
 - `ordax.app-activation/1` — abertura de apps por interface pública;
