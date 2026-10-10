@@ -215,17 +215,17 @@ class InternetExternalizationTests(unittest.TestCase):
             contracts=root/"system/contracts"
             contracts.mkdir(parents=True)
             (app/"runtime.mjs").write_text(
-                'import { x } from "../../contracts/browser-session.mjs";\\n'
-                'import "./services/history.mjs";\\n'
-                'const style=new URL("./internet.css", import.meta.url);\\n'
-                'import { y } from "./version.mjs";\\n',
+                'import { x } from "../../contracts/browser-session.mjs";\n'
+                'import "./services/history.mjs";\n'
+                'const style=new URL("./internet.css", import.meta.url);\n'
+                'import { y } from "./version.mjs";\n',
                 encoding="utf-8",
             )
-            (app/"version.mjs").write_text('export const y="0.3.0";\\n')
-            (app/"internet.css").write_text("body{}\\n")
+            (app/"version.mjs").write_text('export const y="0.3.0";\n')
+            (app/"internet.css").write_text("body{}\n")
             services=app/"services"
             services.mkdir()
-            (services/"history.mjs").write_text("export const history=true;\\n")
+            (services/"history.mjs").write_text("export const history=true;\n")
             mapping={"mappings":[
                 {"source":"system/apps/internet/runtime.mjs",
                  "target":"apps/internet/src/runtime.mjs",
@@ -252,7 +252,7 @@ class InternetExternalizationTests(unittest.TestCase):
             with self.assertRaisesRegex(gate.InternetExternalizationError,"private"):
                 gate.check_portability_rewrites(root,mapping,set())
             with (app/"runtime.mjs").open("a") as stream:
-                stream.write('import "../../../../system/adapters/native/browser-session.mjs";\\n')
+                stream.write('import "../../../../system/adapters/native/browser-session.mjs";\n')
             with self.assertRaises(gate.InternetExternalizationError):
                 gate.check_portability_rewrites(root,mapping,valid)
 
