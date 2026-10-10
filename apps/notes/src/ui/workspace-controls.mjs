@@ -55,7 +55,7 @@ import {
 import { assertSurfaceRenderLifecycle } from "../sdk/public-contracts.mjs";
 
 const NOTES_WINDOW_SELECTOR = '[data-window-id="notes"]';
-const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes-workspace"]';
+const NOTES_EXTENSION_SELECTOR = '[data-app-extension="notes"]';
 const EDITOR_FORMAT_ACTIONS = new Set(["bold", "italic", "insert-link", "undo"]);
 const DELETED_NOTE_MUTATIONS = new Set([
   "favorite",
