@@ -114,7 +114,18 @@ jobs:
           python3 tools/verify_files_cutover.py \
             --platform-root .ordax-files-source \
             --sdk-platform-root .ordax-files-sdk \
-            --audit-files-sdk
+            --audit-files-sdk > /tmp/ordax-files-public-boundary.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/ordax-files-public-boundary.json").read_text(encoding="utf-8"))
+          assert report["source_cutover_authorized"] is False
+          assert report["distribution_activation"] == "blocked"
+          assert report["unpublished_contracts"] == [], "Files has unpublished public dependencies"
+          assert "system/contracts/recent-files.mjs" in report["public_contracts"]
+          assert "system/contracts/file-space.mjs" in report["public_contracts"]
+          print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+          PY
 
       - name: Prove independent business domains without unapproved persistence
         run: |

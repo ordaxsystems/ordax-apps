@@ -29,12 +29,15 @@ O app Files continua **platform-owned** e o Gate A **não** foi executado. Criar
 
 ## Contratos públicos e lacunas
 
-O App SDK global usa o SSOT `platform-sdk.lock.json` (atualmente 1.14.0); não replicar commit/digest neste documento. O bundle fixado inclui:
+O App SDK global usa exclusivamente o SSOT `platform-sdk.lock.json` para versão, commit e digest; não duplicar estes valores neste documento. O bundle fixado inclui:
 
 - `ordax.file-space/11` — listagem, leitura textual limitada, previews bounded e operações mediadas pelo port;
+- `ordax.recent-files/1` — snapshots tipados de arquivos recentes e port injetado pelo host, sem acesso direto ao armazenamento;
 - `ordax.app-activation/1` — abertura de apps por interface pública;
 - `ordax.localization/2` e `ordax.surface-render-lifecycle/5` — montagem, locale e render lifecycle;
 - `ordax.component-runtime/1`, manifest e actions/intelligence declarativas.
+
+**Fronteira pública agora verificada:** a publicação de `ordax.recent-files/1` remove o bloqueio de contrato não publicado, sem exportar o runtime ou o store de Recentes. Os imports privados de `system/apps/app-contract.mjs` e `system/services/components/manifests/apps.mjs` continuam bloqueando o empacotamento independente. A refatoração desses registros pertence ao corte coordenado do aplicativo, não a uma cópia das implementações da plataforma.
 
 **Lacuna de segurança:** o bundle pinado não comprova um broker público de grants opacos por recurso e Space para o fluxo de Files. O contrato File Space 11 usa **caminhos lógicos** (`/Documentos` etc.), que não devem ser confundidos com paths físicos nem com resource grants. A UI futura não pode fabricar IDs de grant, aceitar raw host paths ou copiar o adapter Native. Escrita, integração cross-app e operações que dependam de grants continuam bloqueadas até prova de autorização pública.
 

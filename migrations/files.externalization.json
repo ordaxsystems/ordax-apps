@@ -21,9 +21,9 @@
     "prototype-ordax.localization-pack/1"
   ],
   "target_sdk": {
-    "minimum_bundle_version": "1.12.0",
+    "minimum_bundle_version": "1.15.0",
     "lock_file": "platform-sdk.lock.json",
-    "reason": "Pinned SDK exports File Space 11, App Activation 1, Localization 2 and Surface Lifecycle 5; this does not imply opaque-grant UX or production distribution."
+    "reason": "Pinned public SDK 1.15 exports File Space 11, Recent Files 1, App Activation 1, Localization 2, and Surface Lifecycle 5. It does not export private first-party app registration or grant installation authority."
   },
   "unresolved_capabilities": [
     {
