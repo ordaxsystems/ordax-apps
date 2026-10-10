@@ -336,6 +336,34 @@ class InternetExternalizationTests(unittest.TestCase):
             self.assertEqual(after["literal_source_path_references"], [])
             self.assertFalse((checkout / "system/apps/internet/runtime.mjs").exists())
 
+
+    def test_manifest_blueprint_is_exact_builder_compatible_without_materialization(self):
+        from importlib.util import module_from_spec, spec_from_file_location
+        builder_path = ROOT / "tools/app-package/build.py"
+        builder_spec = spec_from_file_location("ordax_package_builder_internet_test", builder_path)
+        builder = module_from_spec(builder_spec)
+        assert builder_spec.loader is not None
+        builder_spec.loader.exec_module(builder)
+        report = gate.audit(ROOT)
+        manifest = report["target_manifest_blueprint"]
+        self.assertEqual(manifest["id"], "internet")
+        self.assertEqual(manifest["version"], "0.3.0")
+        self.assertEqual(manifest["releaseMode"], "component-slot")
+        self.assertEqual(manifest["owner"], "ordaxsystems/ordax-apps")
+        self.assertEqual(manifest["dependencies"], ["surface-shell"])
+        self.assertEqual(builder.validate_app_manifest(manifest), manifest)
+        self.assertFalse(report["target_manifest_write_allowed"])
+        self.assertFalse((ROOT / "apps/internet").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            self.change(root, gate.MAP, lambda doc: doc["manifest_replacement"].update(
+                healthMode="surface"
+            ))
+            with self.assertRaisesRegex(gate.InternetExternalizationError,
+                                        "external manifest metadata"):
+                gate.audit(root)
+
     def test_actual_source_checkout_requires_exact_pinned_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);self.fixture(root)

@@ -22,7 +22,15 @@
     "owner": "ordaxsystems/ordax-apps",
     "version": "0.3.0",
     "version_source": "system/apps/internet/version.mjs@source_snapshot",
-    "release_activation": "blocked-until-platform-lifecycle-proof"
+    "release_activation": "blocked-until-platform-lifecycle-proof",
+    "title": "Internet",
+    "criticality": "optional",
+    "failureDomain": "app",
+    "restartScope": "component",
+    "healthMode": "runtime",
+    "dependencies": [
+      "surface-shell"
+    ]
   },
   "mappings": [
     {

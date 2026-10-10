@@ -381,6 +381,19 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None,
         reject("manifest owner/version differs from pinned Internet app")
     if manifest.get("release_activation") != "blocked-until-platform-lifecycle-proof":
         reject("candidate must remain inactive until install/rollback proof")
+    expected_manifest = {
+        "schema": "ordax.component-manifest/1",
+        "id": "internet", "title": "Internet", "kind": "app",
+        "version": "0.3.0", "releaseMode": "component-slot",
+        "criticality": "optional", "failureDomain": "app",
+        "restartScope": "component", "healthMode": "runtime",
+        "owner": "ordaxsystems/ordax-apps", "dependencies": ["surface-shell"],
+    }
+    target_manifest = {key: manifest.get(key) for key in expected_manifest}
+    if target_manifest != expected_manifest or set(manifest) != (
+        set(expected_manifest) | {"version_source", "release_activation"}
+    ):
+        reject("Internet Gate B external manifest metadata differs from pinned product identity")
     entries = mapping.get("mappings")
     if not isinstance(entries, list) or len(entries) != len(sources):
         reject("every pinned source needs a Gate B mapping")
@@ -503,6 +516,8 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None,
         "current_platform_source": drift,
         "gate_a_platform_consumers": gate_a,
         "portability_rewrites": portability,
+        "target_manifest_blueprint": target_manifest,
+        "target_manifest_write_allowed": False,
         "source_cutover_allowed": False,
         "distribution_activation_allowed": False,
         "source_snapshot_ready": True,

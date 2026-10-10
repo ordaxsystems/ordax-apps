@@ -99,6 +99,17 @@ do Internet é escrito em `apps/internet`, e o host WebKitGTK não é
 transferido. A CI Foundation executa esta análise com o checkout de
 commit exato declarado no snapshot antes de tentar qualquer Gate A/B.
 
+## Blueprint do manifesto externo (sem segundo source)
+
+O transfer map agora inclui todos os campos de identidade e lifecycle
+necessários ao `app.json` final (`Internet`, `0.3.0`,
+`component-slot`, owner `ordaxsystems/ordax-apps`, e dependência de
+`surface-shell`). O preflight devolve `target_manifest_blueprint` e o
+teste unitário o submete a `validate_app_manifest` do empacotador canônico
+de `ordax-apps`, sem criar diretório nem empacotar uma segunda cópia.
+`target_manifest_write_allowed=false` permanece até a ausência de
+source ser comprovada na plataforma e o Gate B ser autorizado.
+
 ## Inventário de dependências do Gate A (automatizado)
 
 A auditoria sobre o checkout `main` atual também gera
