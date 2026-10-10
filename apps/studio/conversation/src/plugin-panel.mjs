@@ -1,7 +1,15 @@
-export function createPluginPanel({ nativeWeb, notify, preparePrompt, snapshot, showConversation = () => {} }) {
+import { relayAdminReadiness, relayReadinessText } from './relay-readiness.mjs';
+
+export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snapshot, showConversation = () => {} }) {
   const $ = id => document.getElementById(id);
   let service = { status: 'unchecked' }, checking = false, detailMessage = '';
+  let relayChecking = false, relaySnapshot = null, relayIssue = '';
   function render() {
+    $('relayCheck').disabled = relayChecking || typeof host?.runtimeState !== 'function';
+    $('relayCheck').textContent = relayChecking ? 'Verificando conexões…' : 'Verificar estado Product';
+    $('relayStatus').textContent = relayIssue ||
+      (relaySnapshot ? relayReadinessText(relaySnapshot) :
+        'Relay ainda não ativado. Verifique a conexão Product para auditar apenas os dispositivos já autorizados neste Studio.');
     $('pluginService').textContent = checking ? 'Verificando…' : service.status === 'available' ? 'Disponível · OAuth pronto' : service.status === 'unavailable' ? 'Verificação falhou' : service.status === 'unsupported' ? 'Indisponível neste host' : 'Ainda não verificado';
     $('pluginConversation').textContent = snapshot()?.ordaxSelected ? 'ORDAX selecionado no compositor Web' : 'Seleção no ChatGPT não verificada';
     $('pluginDetails').textContent = detailMessage || service.error || (service.configurationDrift ? 'O login publicado difere da configuração do repositório. A verificação confirma somente disponibilidade e OAuth, não uma implantação atualizada.' : 'Disponibilidade do servidor não confirma login, instalação do plugin ou permissões do computador.');
@@ -18,6 +26,15 @@ export function createPluginPanel({ nativeWeb, notify, preparePrompt, snapshot, 
   $('openPlugin').addEventListener('click', async () => {
     $('pluginDialog').showModal(); render();
     try { if (nativeWeb?.pluginInfo) service = await nativeWeb.pluginInfo(); render(); } catch (error) { notify(error.message); }
+  });
+  $('relayCheck').addEventListener('click', async () => {
+    if (relayChecking || typeof host?.runtimeState !== 'function') return;
+    relayChecking = true; relaySnapshot = null; relayIssue = ''; render();
+    try {
+      relaySnapshot = relayAdminReadiness(await host.runtimeState());
+    } catch {
+      relayIssue = 'Não foi possível verificar a conexão Product. O Relay não foi declarado ativo.';
+    } finally { relayChecking = false; render(); }
   });
   $('pluginCheck').addEventListener('click', async () => {
     checking = true; detailMessage = ''; render();
