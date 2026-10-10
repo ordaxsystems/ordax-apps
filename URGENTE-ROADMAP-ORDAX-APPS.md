@@ -2,7 +2,7 @@
 
 ## Recorte de produto Studio Web (MVP-04)
 
-Reconciliado em 2026-10-09: a entrega Web/telefone prioriza o controle **autorizado** de um PC online, sem criar um segundo Runtime, banco de arquivos ou serviços de IA no Studio. O escopo atual, a distinção entre cliente Web e agente mobile, as dependências cloud e os critérios de aceitação ficam exclusivamente em [docs/STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md#mvp-04--cliente-web-autorizado-para-pc-online). Os incrementos históricos abaixo documentam fontes e testes anteriores, sem constituir autoridade para ativar produção ou reinterpretar estado atual.
+Reconciliado em 2026-10-09: a entrega Web/telefone prioriza o controle **autorizado** de um PC online, sem criar um segundo Runtime, banco de arquivos ou serviços de IA no Studio. O escopo atual, a distinção entre cliente Web e agente mobile, as dependências cloud e os critérios de aceitação ficam exclusivamente em [docs/STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md). Os incrementos históricos abaixo documentam fontes e testes anteriores, sem constituir autoridade para ativar produção ou reinterpretar estado atual.
 
 
 ## Incremento — presença canônica do dispositivo para o plugin (2026-10-09)
