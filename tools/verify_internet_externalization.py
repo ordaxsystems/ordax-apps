@@ -116,9 +116,8 @@ def check_portability_rewrites(platform_root: Path, mapping: dict,
     targets = {row["source"]: row["target"] for row in entries}
     sources = set(targets)
     import_re = re.compile(
-        r'(?:\\bfrom\\s*|\\bimport\\s*\\(\\s*|\\bimport\\s*)'
-        r'["\\\']([^"\\\']+)["\\\']'
-        r'|\\bnew\\s+URL\\s*\\(\\s*["\\\']([^"\\\']+)["\\\']'
+        r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)['"]([^'"]+)['"]"""
+        r"""|\bnew\s+URL\s*\(\s*['"]([^'"]+)['"]"""
     )
     obligations = []
     imports_scanned = 0
