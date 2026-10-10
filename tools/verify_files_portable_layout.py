@@ -51,7 +51,7 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
                for item in inventory["files"]}
     contracts = set(dependency_audit["public_contracts"]) | set(
         dependency_audit["transitive_public_contracts"])
-    if set(sources) != {item["path"] for item in inventory["files"]}:
+    if len(sources) != len(inventory["files"]):
         raise cutover.FilesCutoverError("Files source inventory has duplicate paths")
     if contracts & set(sources):
         raise cutover.FilesCutoverError("Files app and SDK cannot own the same module")
