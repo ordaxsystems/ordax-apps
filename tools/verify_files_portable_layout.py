@@ -59,7 +59,7 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         if source.is_symlink() or not source.is_file():
             raise cutover.FilesCutoverError(f"Files portable source is missing: {path}")
         content = source.read_bytes()
-        actual = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\\0" + content).hexdigest()
+        actual = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest()
         if actual != blob:
             raise cutover.FilesCutoverError(f"Files portable source identity mismatch: {path}")
         if not 0 < len(content) <= MAX_FILE_BYTES:
@@ -105,7 +105,7 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
                  for match in cutover.SOURCE_IMPORT_RE.finditer(text)]
         specs += [match.group(1) for match in cutover.SOURCE_ASSET_RE.finditer(text)]
         for spec in specs:
-            if not spec.startswith(".") or "\\\\" in spec or chr(0) in spec:
+            if not spec.startswith(".") or "\\" in spec or chr(0) in spec:
                 raise cutover.FilesCutoverError("Files portable module contains unsafe import")
             target = posixpath.normpath(posixpath.join(
                 posixpath.dirname(record["package_path"]), spec))
