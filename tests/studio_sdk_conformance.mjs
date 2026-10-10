@@ -287,7 +287,7 @@ test("Studio runtime requires the public project catalog port", () => {
   };
   assert.throws(
     () => runtime.assertStudioRuntimePort(studioPort({ catalog: invalidCatalog })),
-    /Project-catalog port must implement/,
+    /project-catalog port must implement subscribe\(\)/i,
   );
 });
 
