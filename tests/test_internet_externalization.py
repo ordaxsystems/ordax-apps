@@ -147,6 +147,63 @@ class InternetExternalizationTests(unittest.TestCase):
             with self.assertRaisesRegex(gate.InternetExternalizationError,"canonical Git origin"):
                 gate.audit(root,platform_root=checkout)
 
+    def test_current_platform_diff_reports_changed_added_and_deleted_blobs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            self.fixture(root)
+            checkout=root/"platform"
+            checkout.mkdir()
+            def git(*args):
+                result=subprocess.run(
+                    ["git","-C",str(checkout),*args],
+                    check=True,capture_output=True,text=True,encoding="utf-8",
+                )
+                return result.stdout.strip()
+            git("init","-q")
+            git("config","user.name","OrdaX CI")
+            git("config","user.email","test@example.invalid")
+            git("remote","add","origin","https://github.com/ordaxsystems/ordax-os.git")
+            snap=json.loads((root/gate.SNAPSHOT).read_text(encoding="utf-8"))
+            for index,item in enumerate(snap["files"]):
+                dest=checkout/item["path"]
+                dest.parent.mkdir(parents=True,exist_ok=True)
+                dest.write_text(f"source {index}\\n",encoding="utf-8")
+            git("add",".")
+            git("commit","-qm","initial source")
+            pinned={item["path"]:git("rev-parse","HEAD:"+item["path"])
+                    for item in snap["files"]}
+            stable=gate.current_source_drift(
+                checkout,[{"path":path,"blob_sha":digest}
+                          for path,digest in pinned.items()],
+            )
+            self.assertTrue(stable["snapshot_current"])
+            self.assertEqual(stable["changed"],[])
+            self.assertEqual(stable["added"],[])
+            self.assertEqual(stable["deleted"],[])
+            changed="system/apps/internet/runtime.mjs"
+            removed="system/apps/internet/version.mjs"
+            new="system/apps/internet/ui/new-panel.mjs"
+            (checkout/changed).write_text("new version\\n",encoding="utf-8")
+            (checkout/removed).unlink()
+            (checkout/new).write_text("new source\\n",encoding="utf-8")
+            git("add","-A")
+            git("commit","-qm","change Internet")
+            diff=gate.current_source_drift(
+                checkout,[{"path":path,"blob_sha":digest}
+                          for path,digest in pinned.items()],
+            )
+            self.assertFalse(diff["snapshot_current"])
+            self.assertEqual(diff["changed"],[changed])
+            self.assertEqual(diff["deleted"],[removed])
+            self.assertEqual(diff["added"],[new])
+            self.assertEqual(diff["current_file_count"],len(pinned))
+            (checkout/changed).write_text("dirty\\n",encoding="utf-8")
+            with self.assertRaisesRegex(gate.InternetExternalizationError,"dirty"):
+                gate.current_source_drift(checkout,[
+                    {"path":path,"blob_sha":digest}
+                    for path,digest in pinned.items()
+                ])
+
     def test_actual_source_checkout_requires_exact_pinned_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);self.fixture(root)
