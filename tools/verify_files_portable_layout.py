@@ -35,6 +35,13 @@ PACKAGE_RUNTIME_ENTRYPOINT = "src/runtime.mjs"
 ENTRYPOINT_BYTES = (
     'export { componentRuntime } from "./system/surface/ui/files-component-runtime.mjs";\n'
 ).encode("utf-8")
+ACTION_PROVIDER_SOURCE = "src/system/apps/files/actions/providers/files-native.mjs"
+PACKAGE_PROVIDER_ENTRYPOINT = "actions/providers/files-native.mjs"
+PROVIDER_ENTRYPOINT_BYTES = (
+    'export { createFilesApplicationActionProvider, FILES_NATIVE_ACTIONS, '
+    'applicationActionProviderArtifact } from '
+    '"../../src/system/apps/files/actions/providers/files-native.mjs";\n'
+).encode("utf-8")
 
 
 def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
@@ -140,6 +147,10 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         raise cutover.FilesCutoverError("Files portable component runtime is absent")
     if PACKAGE_RUNTIME_ENTRYPOINT in virtual:
         raise cutover.FilesCutoverError("Files package entrypoint collides with canonical source")
+    if ACTION_PROVIDER_SOURCE not in virtual:
+        raise cutover.FilesCutoverError("Files canonical application action provider is absent")
+    if PACKAGE_PROVIDER_ENTRYPOINT in virtual:
+        raise cutover.FilesCutoverError("Files package provider collides with canonical source")
     staged_sources = {
         PurePosixPath(record["package_path"]): (
             (source_root if record["origin"] == "app" else sdk_root)
@@ -148,6 +159,7 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         for record in records
     }
     staged_sources[PurePosixPath(PACKAGE_RUNTIME_ENTRYPOINT)] = ENTRYPOINT_BYTES
+    staged_sources[PurePosixPath(PACKAGE_PROVIDER_ENTRYPOINT)] = PROVIDER_ENTRYPOINT_BYTES
     try:
         _package_rules.validate_source_graph_from_payloads(
             sorted(staged_sources),
@@ -170,6 +182,9 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         "canonical_package_source_graph_verified": True,
         "proposed_entrypoint": PACKAGE_RUNTIME_ENTRYPOINT,
         "entrypoint_sha256": hashlib.sha256(ENTRYPOINT_BYTES).hexdigest(),
+        "proposed_provider_entrypoint": PACKAGE_PROVIDER_ENTRYPOINT,
+        "provider_entrypoint_sha256": hashlib.sha256(PROVIDER_ENTRYPOINT_BYTES).hexdigest(),
+        "provider_entrypoint_generated_for_validation_only": True,
         "entrypoint_generated_for_validation_only": True,
         "component_runtime_module": (
             "src/system/surface/ui/files-component-runtime.mjs"
