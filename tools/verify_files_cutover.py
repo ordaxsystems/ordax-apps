@@ -424,7 +424,7 @@ SOURCE_ASSET_RE = re.compile(
 )
 
 
-def audit_files_sdk_dependencies(platform_root: Path, inventory: dict, sdk_bundle: dict) -> dict:
+def audit_files_sdk_dependencies(platform_root: Path, inventory: dict, sdk_bundle: dict, *, sdk_root: Path | None = None) -> dict:
     """Trace app-owned source imports against the published public App SDK.
 
     Source is read only; no copying, packaging, grants, installation or activation.
@@ -484,6 +484,67 @@ def audit_files_sdk_dependencies(platform_root: Path, inventory: dict, sdk_bundl
                 (public if destination in published else unpublished).add(destination)
             else:
                 private.add(destination)
+    # A public direct contract can itself import an unpublished or private
+    # module. Inspect the actual published SDK checkout, not the older Files
+    # source checkout. Cycle-safe traversal uses canonical bundle paths.
+    public_root = sdk_root if sdk_root is not None else platform_root
+    public_git_blobs = {}
+    for contract in contracts:
+        name = safe_path(contract["source_path"])
+        if "source_git_blob" in contract:
+            blob = contract["source_git_blob"]
+            if not isinstance(blob, str) or SHA40.fullmatch(blob) is None:
+                raise FilesCutoverError("Files SDK contract Git blob is invalid")
+            if name in public_git_blobs and public_git_blobs[name] != blob:
+                raise FilesCutoverError("Files SDK bundle has contradictory Git blob pins")
+            public_git_blobs[name] = blob
+
+    scanned = set()
+    pending = sorted(public)
+    while pending:
+        current = pending.pop()
+        if current in scanned:
+            continue
+        scanned.add(current)
+        module = public_root / current
+        if module.is_symlink() or not module.is_file():
+            raise FilesCutoverError(f"Published Files contract source missing: {current}")
+        try:
+            bytes_content = module.read_bytes()
+            content = bytes_content.decode("utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise FilesCutoverError(f"Published Files contract unreadable: {current}") from exc
+        if sdk_root is not None:
+            expected_blob = public_git_blobs.get(current)
+            actual_blob = hashlib.sha1(
+                b"blob " + str(len(bytes_content)).encode("ascii") + b"\0" + bytes_content
+            ).hexdigest()
+            if expected_blob != actual_blob:
+                raise FilesCutoverError(f"Published Files SDK source Git blob mismatch: {current}")
+        if NON_LITERAL_IMPORT_RE.search(content):
+            raise FilesCutoverError(f"Published Files SDK contract uses nonliteral import: {current}")
+        references = [
+            next(value for value in match.groups() if value is not None)
+            for match in SOURCE_IMPORT_RE.finditer(content)
+        ]
+        references.extend(match.group(1) for match in SOURCE_ASSET_RE.finditer(content))
+        for spec in references:
+            if not spec.startswith(".") or chr(0) in spec or "\\" in spec:
+                raise FilesCutoverError(f"Published Files contract has unsafe import: {current}")
+            destination = posixpath.normpath(posixpath.join(posixpath.dirname(current), spec))
+            if not destination.startswith("system/"):
+                raise FilesCutoverError(f"Published Files contract escapes platform: {current}")
+            dependency = public_root / destination
+            if dependency.is_symlink() or not dependency.is_file():
+                raise FilesCutoverError(f"Published Files contract dependency missing: {current} -> {destination}")
+            if destination.startswith("system/contracts/"):
+                if destination not in published:
+                    unpublished.add(destination)
+                elif destination not in scanned:
+                    pending.append(destination)
+            else:
+                private.add(destination)
+
     if not module_count:
         raise FilesCutoverError("Files SDK inventory contains no JavaScript modules")
     blockers = []
@@ -500,6 +561,7 @@ def audit_files_sdk_dependencies(platform_root: Path, inventory: dict, sdk_bundl
         "app_owned_dependencies": sorted(owned_imports),
         "app_owned_assets": sorted(assets),
         "public_contracts": sorted(public),
+        "transitive_public_contracts": sorted(scanned - public),
         "unpublished_contracts": sorted(unpublished),
         "private_platform_imports": sorted(private),
         "sdk_boundary_clean": not blockers,
@@ -531,7 +593,7 @@ def audit_pinned_files_sdk(root: Path, source_root: Path, sdk_root: Path, plan: 
     if sdk_bundle.get("bundle_version") != sdk_lock.get("bundle_version"):
         raise FilesCutoverError("Files SDK locked bundle version does not match")
     snapshot = validate_source_inventory(root, plan)
-    result = audit_files_sdk_dependencies(source_root, snapshot, sdk_bundle)
+    result = audit_files_sdk_dependencies(source_root, snapshot, sdk_bundle, sdk_root=sdk_root)
     if result["source_commit"] != source_proof["source_commit"]:
         raise FilesCutoverError("Files SDK audit source does not match Git proof")
     return result

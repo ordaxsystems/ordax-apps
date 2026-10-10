@@ -314,6 +314,81 @@ class FilesCutoverTests(unittest.TestCase):
             self.assertTrue(clean["sdk_boundary_clean"])
             self.assertEqual(clean["blockers"], [])
 
+    def test_files_sdk_audit_rejects_transitive_unpublished_and_private_imports(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            names = {
+                "system/apps/files/app.mjs": 'import "../../contracts/recent-files.mjs";\n',
+                "system/contracts/recent-files.mjs": 'export { file } from "./file-space.mjs";\n',
+                "system/contracts/file-space.mjs": 'export const file = true;\n',
+            }
+            for name, content in names.items():
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
+            inventory = {
+                "commit": SNAPSHOT_SHA,
+                "files": [{"path": "system/apps/files/app.mjs"}],
+            }
+            sdk = {
+                "$schema": "ordax.app-sdk-bundle/1",
+                "authority": "none",
+                "bundle_version": "1.15.0",
+                "contracts": [{
+                    "source_path": "system/contracts/recent-files.mjs",
+                    "schema": "ordax.recent-files/1",
+                    "major": 1,
+                }],
+            }
+            missing = files.audit_files_sdk_dependencies(root, inventory, sdk)
+            self.assertIn("system/contracts/file-space.mjs", missing["unpublished_contracts"])
+            self.assertIn("unpublished-app-sdk-contracts", missing["blockers"])
+            sdk["contracts"].append({
+                "source_path": "system/contracts/file-space.mjs",
+                "schema": "ordax.file-space/11",
+                "major": 11,
+            })
+            ready = files.audit_files_sdk_dependencies(root, inventory, sdk)
+            self.assertEqual(ready["unpublished_contracts"], [])
+            self.assertEqual(ready["transitive_public_contracts"], ["system/contracts/file-space.mjs"])
+            self.assertTrue(ready["sdk_boundary_clean"])
+            private_path = root / "system/services/files/recent-files.mjs"
+            private_path.parent.mkdir(parents=True, exist_ok=True)
+            private_path.write_text("export const service = true;\n", encoding="utf-8")
+            source = root / "system/contracts/recent-files.mjs"
+            source.write_text('export { service } from "../services/files/recent-files.mjs";\n', encoding="utf-8")
+            private = files.audit_files_sdk_dependencies(root, inventory, sdk)
+            self.assertEqual(private["private_platform_imports"], ["system/services/files/recent-files.mjs"])
+            self.assertFalse(private["sdk_boundary_clean"])
+
+    def test_published_sdk_contract_git_blobs_are_verified_when_sdk_root_is_supplied(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            app = root / "system/apps/files/app.mjs"
+            app.parent.mkdir(parents=True, exist_ok=True)
+            app.write_text('import "../../contracts/recent-files.mjs";\n', encoding="utf-8")
+            contract = root / "system/contracts/recent-files.mjs"
+            contract.parent.mkdir(parents=True, exist_ok=True)
+            contract.write_text("export const recent = true;\n", encoding="utf-8")
+            payload = contract.read_bytes()
+            valid_blob = hashlib.sha1(
+                b"blob " + str(len(payload)).encode() + b"\0" + payload
+            ).hexdigest()
+            inventory = {"commit": SNAPSHOT_SHA, "files": [{"path": "system/apps/files/app.mjs"}]}
+            sdk = {"$schema": "ordax.app-sdk-bundle/1", "authority": "none",
+                   "bundle_version": "1.15.0", "contracts": [{
+                       "source_path": "system/contracts/recent-files.mjs",
+                       "schema": "ordax.recent-files/1", "major": 1,
+                       "source_git_blob": valid_blob,
+                   }]}
+            verified = files.audit_files_sdk_dependencies(root, inventory, sdk, sdk_root=root)
+            self.assertEqual(verified["unpublished_contracts"], [])
+            self.assertEqual(verified["transitive_public_contracts"], [])
+            sdk["contracts"][0]["source_git_blob"] = "0" * 40
+            with self.assertRaisesRegex(files.FilesCutoverError, "Git blob mismatch"):
+                files.audit_files_sdk_dependencies(root, inventory, sdk, sdk_root=root)
+
     def test_files_sdk_import_graph_fails_closed_on_nonliteral_or_missing_imports(self):
         for literal in ('const module = import(name);\n',
                         'import "https://example.org/network.mjs";\n',

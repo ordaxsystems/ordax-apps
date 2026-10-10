@@ -93,7 +93,7 @@ python3 tools/verify_files_cutover.py \
   --audit-files-sdk
 ```
 
-A saída separa imports internos do app, contratos públicos, contratos ainda não publicados e imports privados da plataforma. A auditoria falha caso o Git não corresponda aos pins, o bundle SDK seja adulterado, o source esteja ausente, haja import dinâmico não literal ou dependência não resolvida. **A auditoria pode terminar com bloqueios de portabilidade devidamente reportados:** isso não libera Gate A, não cria `apps/files`, não equivale a build, nem instala nada. Para produzir o pacote do Files será necessário eliminar os imports privados usando contratos públicos existentes ou evoluídos no owner correto, sem cópias de adapters do OS.
+A saída separa imports internos do app, contratos públicos, contratos ainda não publicados e imports privados da plataforma. A verificação percorre também os **imports transitivos dos contratos publicados**, a partir do checkout Git pinado do SDK, e compara os próprios blobs desses contratos com as identidades publicadas no bundle; um contrato aparentemente público não pode depender silenciosamente de código privado ou de versão ausente. A auditoria falha caso o Git não corresponda aos pins, o bundle SDK seja adulterado, o source esteja ausente, haja import dinâmico não literal ou dependência não resolvida. **A auditoria pode terminar com bloqueios de portabilidade devidamente reportados:** isso não libera Gate A, não cria `apps/files`, não equivale a build, nem instala nada. Para produzir o pacote do Files será necessário eliminar os imports privados usando contratos públicos existentes ou evoluídos no owner correto, sem cópias de adapters do OS.
 
 ### Prova automatizada do snapshot pinado
 
