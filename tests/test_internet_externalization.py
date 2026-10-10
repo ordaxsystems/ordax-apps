@@ -1,0 +1,116 @@
+"""Protect the single-source Internet remove-first externalization gate."""
+import importlib.util
+import json
+from pathlib import Path
+import shutil
+import tempfile
+import unittest
+
+ROOT=Path(__file__).resolve().parents[1]
+SCRIPT=ROOT/"tools/verify_internet_externalization.py"
+spec=importlib.util.spec_from_file_location("internet_externalization_verifier",SCRIPT)
+gate=importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(gate)
+NAMES=(
+    "migrations/internet.externalization.json",
+    "migrations/internet.source-snapshot.json",
+    "migrations/internet.gate-b-transfer-map.json",
+    "platform-sdk.lock.json",
+)
+
+class InternetExternalizationTests(unittest.TestCase):
+    def fixture(self, root):
+        for name in NAMES:
+            src=ROOT/name
+            dest=root/name
+            dest.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copyfile(src,dest)
+
+    def change(self,root,name,transform):
+        p=root/name
+        doc=json.loads(p.read_text(encoding="utf-8"))
+        transform(doc)
+        p.write_text(json.dumps(doc,indent=2)+"\n",encoding="utf-8")
+
+    def test_actual_plan_preserves_source_and_distribution_blocks(self):
+        report=gate.audit(ROOT)
+        self.assertEqual(report["schema"],gate.SCHEMA)
+        self.assertEqual(report["source_file_count"],13)
+        self.assertEqual(report["transfer_mapping_count"],13)
+        self.assertTrue(report["source_snapshot_ready"])
+        self.assertIs(report["source_cutover_allowed"],False)
+        self.assertIs(report["distribution_activation_allowed"],False)
+        self.assertIs(report["checked_out_blob_integrity_verified"],False)
+        self.assertFalse((ROOT/"apps/internet").exists())
+
+    def test_untouched_external_source_never_materializes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            self.fixture(root)
+            old=sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
+            gate.audit(root)
+            self.assertEqual(old,sorted(p.relative_to(root).as_posix() for p in root.rglob("*")))
+
+    def test_duplicate_product_source_even_without_manifest_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);self.fixture(root)
+            (root/"apps/internet/src").mkdir(parents=True)
+            (root/"apps/internet/src/runtime.mjs").write_text("export default 1;\n")
+            with self.assertRaisesRegex(gate.InternetExternalizationError,"source exists"):
+                gate.audit(root)
+
+    def test_source_or_transfer_digest_drift_fails(self):
+        for path,key in (
+            ("migrations/internet.externalization.json","source_snapshot"),
+            ("migrations/internet.gate-b-transfer-map.json","source_commit"),
+        ):
+            with self.subTest(path=path),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);self.fixture(root)
+                if key=="source_snapshot":
+                    self.change(root,path,lambda d:d[key].update(commit="0"*40))
+                else:
+                    self.change(root,path,lambda d:d.update(source_commit="0"*40))
+                with self.assertRaises(gate.InternetExternalizationError):
+                    gate.audit(root)
+
+    def test_no_missing_or_duplicate_mapped_product_files(self):
+        for mutate in (
+            lambda d:d["mappings"].pop(),
+            lambda d:d["mappings"].__setitem__(0,{**d["mappings"][0],"source":d["mappings"][1]["source"]}),
+            lambda d:d["mappings"].__setitem__(0,{**d["mappings"][0],"target":"apps/internet/../../private"}),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);self.fixture(root)
+                self.change(root,gate.MAP,mutate)
+                with self.assertRaises(gate.InternetExternalizationError):
+                    gate.audit(root)
+
+    def test_cannot_enable_cutover_or_distribution_by_flags(self):
+        for flag in ("source_cutover_allowed","distribution_activation_allowed"):
+            with self.subTest(flag=flag),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);self.fixture(root)
+                self.change(root,gate.PLAN,lambda d:d.update({flag:True}))
+                with self.assertRaises(gate.InternetExternalizationError):
+                    gate.audit(root)
+
+    def test_sdk_lock_floor_and_authority_guards(self):
+        for mutate in (
+            lambda d:d.update(bundle_version="1.13.0"),
+            lambda d:d.update(authority="host"),
+            lambda d:d.update(sha256="0"*12),
+        ):
+            with tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);self.fixture(root)
+                self.change(root,gate.LOCK,mutate)
+                with self.assertRaises(gate.InternetExternalizationError):
+                    gate.audit(root)
+
+    def test_actual_source_checkout_requires_exact_pinned_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);self.fixture(root)
+            with self.assertRaises(gate.InternetExternalizationError):
+                gate.audit(root,platform_root=root)
+
+if __name__=="__main__":
+    unittest.main()
