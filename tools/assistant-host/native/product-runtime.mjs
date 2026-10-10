@@ -244,7 +244,7 @@ export class ProductRuntime {
     try {
       const data = await this.request('/v3/product/actions/' + encodeURIComponent(operation.requestId));
       const remote = data.action;
-      if (!remote || !['queued','running','succeeded','failed','cancelled'].includes(remote.status) || remote.request_id !== operation.requestId || remote.action !== names[operation.kind] || (remote.project ?? null) !== (operation.project ?? null)) throw fail('O resultado do Runtime não corresponde ao registro e ao projeto desta operação.');
+      if (!remote || !['queued','running','succeeded','failed','cancelled'].includes(remote.status) || remote.request_id !== operation.requestId || remote.device_id !== operation.deviceId || remote.action !== names[operation.kind] || (remote.project ?? null) !== (operation.project ?? null)) throw fail('O resultado do Runtime não corresponde ao registro e ao projeto desta operação.');
       if (remote.status === operation.status && ['queued','running'].includes(remote.status) && !this.unpersisted.has(operation.id)) { this.polling.delete(operation.id); this.issue = ''; return; }
       next.status = remote.status; next.error = remote.error_code ? String(remote.error_code).slice(0, 200) : '';
       if (['succeeded','failed','cancelled'].includes(remote.status)) {
