@@ -101,6 +101,65 @@ def current_source_drift(platform_root: Path, pinned_files: list[dict]) -> dict:
     }
 
 
+def check_portability_rewrites(platform_root: Path, mapping: dict,
+                               published_contracts: set[str]) -> dict:
+    """Inspect the verified Git snapshot; never materialize a second app.
+
+    Return source-level relocation obligations rather than claiming that an
+    independently executable package exists. All imports must resolve to an
+    app-owned source blob, a published public SDK contract, or a declared
+    manifest replacement. Native/system service imports are forbidden.
+    """
+    import posixpath
+
+    entries = mapping["mappings"]
+    targets = {row["source"]: row["target"] for row in entries}
+    sources = set(targets)
+    import_re = re.compile(
+        r'(?:\\bfrom\\s*|\\bimport\\s*\\(\\s*|\\bimport\\s*)'
+        r'["\\\']([^"\\\']+)["\\\']'
+        r'|\\bnew\\s+URL\\s*\\(\\s*["\\\']([^"\\\']+)["\\\']'
+    )
+    obligations = []
+    imports_scanned = 0
+    for row in entries:
+        source = row["source"]
+        if not source.endswith((".mjs", ".js")):
+            continue
+        if row["operation"] in {"replace-by-manifest", "fold-version-into-manifest"}:
+            continue
+        src = platform_root / source
+        if not src.is_file() or src.is_symlink():
+            reject(f"portable source missing/unsafe: {source}")
+        code = src.read_text(encoding="utf-8")
+        for match in import_re.finditer(code):
+            specifier = match.group(1) or match.group(2)
+            imports_scanned += 1
+            if not specifier.startswith("."):
+                reject(f"unsupported non-relative portability import: {source}")
+            resolved = posixpath.normpath(posixpath.join(posixpath.dirname(source), specifier))
+            if resolved in sources:
+                operation = next(e["operation"] for e in entries if e["source"] == resolved)
+                requirement = ("manifest-replacement" if operation in
+                               {"replace-by-manifest", "fold-version-into-manifest"}
+                               else "relocate-app-owned-import")
+            elif resolved in published_contracts and resolved.startswith("system/contracts/"):
+                requirement = "resolve-public-sdk-contract"
+            else:
+                reject(f"unmapped or private Internet import: {source} -> {resolved}")
+            obligations.append({
+                "source": source, "specifier": specifier,
+                "resolved": resolved, "requirement": requirement,
+            })
+    return {
+        "schema": "ordax.internet-portability-rewrites/1",
+        "source_imports_scanned": imports_scanned,
+        "obligations": sorted(obligations, key=lambda item: (item["source"], item["specifier"])),
+        "runtime_package_ready": False,
+        "copy_source_without_rewiring_allowed": False,
+    }
+
+
 def audit(root: Path = ROOT, *, platform_root: Path | None = None,
           current_platform_root: Path | None = None) -> dict:
     root = root.resolve()
@@ -307,6 +366,17 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None,
                 reject(f"pinned Internet source Git blob checksum mismatch: {path}")
         confirmed = True
 
+    portability = None
+    if confirmed:
+        # Canonical platform checkout proves exact Git blobs before any
+        # source import is used to plan the external package.
+        bundle_path = platform_root / "sdk/app-sdk-v1/bundle.json"
+        if not bundle_path.is_file() or bundle_path.is_symlink():
+            reject("published SDK inventory unavailable in source checkout")
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        contracts = {entry["source_path"] for entry in bundle.get("contracts", [])}
+        portability = check_portability_rewrites(platform_root, mapping, contracts)
+
     drift = (current_source_drift(current_platform_root, sources)
              if current_platform_root is not None else None)
 
@@ -317,6 +387,7 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None,
         "transfer_mapping_count": len(mapped),
         "checked_out_blob_integrity_verified": confirmed,
         "current_platform_source": drift,
+        "portability_rewrites": portability,
         "source_cutover_allowed": False,
         "distribution_activation_allowed": False,
         "source_snapshot_ready": True,
