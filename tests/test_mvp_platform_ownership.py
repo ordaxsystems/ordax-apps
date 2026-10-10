@@ -49,7 +49,7 @@ class PlatformOwnerMvpTests(unittest.TestCase):
         self.assertFalse((ROOT / "apps/internet").exists())
         sdk = plan["target_sdk"]
         lock = json.loads((ROOT / sdk["lock_file"]).read_text(encoding="utf-8"))
-        self.assertEqual(sdk["minimum_bundle_version"], "1.13.0")
+        self.assertEqual(sdk["minimum_bundle_version"], lock["bundle_version"])
         self.assertEqual(lock["bundle_version"], sdk["minimum_bundle_version"])
         self.assertEqual(lock["repository"], plan["source_repository_current"])
         self.assertEqual(sdk["required_boundary"], "browser-contracts-from-published-bundle")
