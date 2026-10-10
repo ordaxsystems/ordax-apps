@@ -7,12 +7,14 @@ const { isAccountURL } = require('./policy.cjs');
 const { createWebControls, registerWebControls } = require('./web-controls.cjs');
 const { createPluginConnection, isPluginURL } = require('./plugin-connection.cjs');
 const { invokeCanonicalProductSignIn, locateInstalledRuntime } = require('./canonical-account.cjs');
+const { createExclusiveSignIn } = require('./account-sign-in-guard.cjs');
 app.setName('ORDAX Studio');
 if (process.platform === 'win32') app.setAppUserModelId('org.ordax.assistant');
 app.setPath('userData', path.join(process.env.LOCALAPPDATA || (process.platform === 'win32' ? path.join(homedir(), 'AppData', 'Local') : path.join(homedir(), '.local/share')), 'OrdaX', 'Assistant-web'));
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   let window, surface, bridge, host, runtime, studioSurfaces, shuttingDown = false, closing = false, uiReady = false;
+  const accountSignIn = createExclusiveSignIn();
   async function flushComposer() {
     if (!uiReady || !window || window.isDestroyed() || window.webContents.isDestroyed()) return true;
     const id = require('node:crypto').randomUUID();
@@ -90,13 +92,17 @@ else {
     });
     ipcMain.handle('studio-product:sign-in', async (event, data) => {
       assertStudioAccountCaller(event);
-      if (runtime.configured || runtime.connected || runtime.recoveryRequired) {
-        throw new Error('Sessão Product existente ou recuperação pendente.');
-      }
-      // A Product token is confined to the privileged main process. Password
-      // and bearer data cannot transit HTTP, previews, plugins or renderer IPC.
-      const { token } = await invokeCanonicalProductSignIn(data);
-      return runtime.acceptAccountToken(token);
+      return accountSignIn.run(async () => {
+        if (shuttingDown || closing || runtime.configured || runtime.connected
+            || runtime.recoveryRequired || runtime.acceptingAccount) {
+          throw new Error('Sessão Product existente, encerramento ou recuperação pendente.');
+        }
+        // A Product token is confined to the privileged main process. Password
+        // and bearer data cannot transit HTTP, previews, plugins or renderer IPC.
+        const { token } = await invokeCanonicalProductSignIn(data);
+        if (shuttingDown || closing) throw new Error('O Studio está encerrando.');
+        return runtime.acceptAccountToken(token);
+      });
     });
     console.log('ORDAX Studio: transporte local pronto.');
     let loadFailed = false;
