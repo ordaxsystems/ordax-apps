@@ -39,5 +39,11 @@
     "verified_install_update_rollback": "platform",
     "private_platform_source_imports_after_cutover_allowed": false,
     "second_web_engine_in_app_allowed": false
+  },
+  "target_sdk": {
+    "minimum_bundle_version": "1.13.0",
+    "lock_file": "platform-sdk.lock.json",
+    "required_boundary": "browser-contracts-from-published-bundle",
+    "migration_authorized_by_sdk_pin": false
   }
 }
