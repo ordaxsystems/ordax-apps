@@ -24,21 +24,21 @@ para os usuários futuros.
 ## Prova automatizada disponível
 
 ```bash
-python3 -m unittest tests.test_internet_cutover -v
-python3 tools/verify_internet_cutover.py
+python3 -m unittest tests.test_internet_externalization -v
+python3 tools/verify_internet_externalization.py
 
 # Mesmo commit declarado no snapshot: checkout limpo e remoto canônico
-python3 tools/verify_internet_cutover.py \
-  --platform-root .ordax-internet-source --verify-pinned-source
+python3 tools/verify_internet_externalization.py \
+  --platform-root .ordax-internet-source
 
 # SDK 1.16+ com todos os imports diretos e transitivos publicados
 python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-public
 
 # Deve recusar antes do Gate A:
-python3 tools/verify_internet_cutover.py --require-cutover-ready
+python3 tools/verify_internet_externalization.py --require-cutover-ready
 ```
 
-A Foundation utiliza o commit indicado no snapshot, **não** a branch
+A Foundation usa um único preflight (`tools/verify_internet_externalization.py`),\nque também valida o mapa canônico do Gate B sem criar arquivos.\nEla utiliza o commit indicado no snapshot, **não** a branch
 `main` móvel da plataforma. Rejeita Git sujo, remoto incorreto,
 identidade de blob alterada, arquivo omitido, diretório parcial no destino,
 pin insuficiente e ativação antecipada. A ausência de imports privados

@@ -195,7 +195,36 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None) -> dict:
 
     confirmed = False
     if platform_root is not None:
+        if not platform_root.is_dir() or platform_root.is_symlink():
+            reject("platform checkout must be a real directory")
         p = platform_root.resolve()
+
+        def git_read(*args: str) -> str:
+            result = subprocess.run(
+                ["git", "-C", str(p), *args],
+                capture_output=True, text=True, encoding="utf-8", check=False,
+            )
+            if result.returncode != 0:
+                reject("canonical Git checkout proof unavailable: " + " ".join(args))
+            return result.stdout.strip()
+
+        if git_read("rev-parse", "--show-toplevel") != str(p):
+            reject("platform checkout root mismatch")
+        if git_read("status", "--porcelain", "--untracked-files=normal"):
+            reject("platform Git checkout is dirty")
+        origin = git_read("remote", "get-url", "origin").rstrip("/").removesuffix(".git")
+        if origin not in {
+            "https://github.com/ordaxsystems/ordax-os",
+            "git@github.com:ordaxsystems/ordax-os",
+            "ssh://git@github.com/ordaxsystems/ordax-os",
+        }:
+            reject("platform checkout does not have canonical Git origin")
+        tree_paths = git_read(
+            "ls-tree", "-r", "--name-only", "HEAD", "--",
+            "system/apps/internet", "system/services/i18n/catalog/internet.mjs",
+        ).splitlines()
+        if set(tree_paths) != set(source_files) or len(tree_paths) != len(source_files):
+            reject("canonical Git tree has a missing or unexpected Internet source blob")
         git = subprocess.run(["git", "-C", str(p), "rev-parse", "HEAD"],
                              capture_output=True, text=True, check=False)
         if git.returncode != 0 or git.stdout.strip() != snapshot["commit"]:
@@ -242,9 +271,12 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform-root", type=Path, default=None)
+    parser.add_argument("--require-cutover-ready", action="store_true")
     args = parser.parse_args(argv)
     try:
         report = audit(ROOT, platform_root=args.platform_root)
+        if args.require_cutover_ready:
+            reject("Gate A source removal and independent install/rollback have not been proven")
     except InternetExternalizationError as exc:
         print("INTERNET_EXTERNALIZATION=FAIL\n" + str(exc), file=sys.stderr)
         return 1

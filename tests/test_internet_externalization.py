@@ -1,6 +1,7 @@
 """Protect the single-source Internet remove-first externalization gate."""
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 import shutil
 import tempfile
@@ -105,6 +106,46 @@ class InternetExternalizationTests(unittest.TestCase):
                 self.change(root,gate.LOCK,mutate)
                 with self.assertRaises(gate.InternetExternalizationError):
                     gate.audit(root)
+
+    def test_git_checkout_requires_clean_canonical_origin_and_complete_tree(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            self.fixture(root)
+            checkout=root/"platform"
+            checkout.mkdir()
+            def git(*args):
+                result=subprocess.run(
+                    ["git","-C",str(checkout),*args],
+                    check=True,capture_output=True,text=True,encoding="utf-8",
+                )
+                return result.stdout.strip()
+            git("init","-q")
+            git("config","user.name","OrdaX CI")
+            git("config","user.email","test@example.invalid")
+            git("remote","add","origin","https://github.com/ordaxsystems/ordax-os.git")
+            snap=json.loads((root/gate.SNAPSHOT).read_text(encoding="utf-8"))
+            for i,item in enumerate(snap["files"]):
+                path=checkout/item["path"]
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.write_text(f"pinned source {i}\\n",encoding="utf-8")
+            git("add",".")
+            git("commit","-qm","immutable source fixture")
+            commit=git("rev-parse","HEAD")
+            for row in snap["files"]:
+                row["blob_sha"]=git("rev-parse","HEAD:"+row["path"])
+                row["size"]=(checkout/row["path"]).stat().st_size
+            self.change(root,gate.PLAN,lambda d:d["source_snapshot"].update(commit=commit))
+            self.change(root,gate.MAP,lambda d:d.update(source_commit=commit))
+            snap["commit"]=commit
+            (root/gate.SNAPSHOT).write_text(json.dumps(snap,indent=2)+"\\n",encoding="utf-8")
+            self.assertTrue(gate.audit(root,platform_root=checkout)["checked_out_blob_integrity_verified"])
+            (checkout/snap["files"][0]["path"]).write_text("dirty\\n",encoding="utf-8")
+            with self.assertRaisesRegex(gate.InternetExternalizationError,"dirty"):
+                gate.audit(root,platform_root=checkout)
+            git("restore",".")
+            git("remote","set-url","origin","https://github.com/someone/other.git")
+            with self.assertRaisesRegex(gate.InternetExternalizationError,"canonical Git origin"):
+                gate.audit(root,platform_root=checkout)
 
     def test_actual_source_checkout_requires_exact_pinned_commit(self):
         with tempfile.TemporaryDirectory() as tmp:

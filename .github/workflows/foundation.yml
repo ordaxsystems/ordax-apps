@@ -127,45 +127,6 @@ jobs:
           print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
           PY
 
-      - name: Prove Internet source cutover remains single-owner and blocked
-        run: |
-          python3 -m unittest tests.test_internet_cutover -v
-          python3 tools/verify_internet_cutover.py
-
-      - name: Resolve exact canonical Internet source snapshot
-        id: internet-source-lock
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import re
-          from pathlib import Path
-          plan = json.loads(Path("migrations/internet.externalization.json").read_text(encoding="utf-8"))
-          assert plan["source_repository_current"] == "ordaxsystems/ordax-os"
-          assert plan["source_cutover_allowed"] is False
-          assert plan["distribution_activation_allowed"] is False
-          snap = plan["source_snapshot"]
-          assert snap["state"] == "captured"
-          assert snap["repository"] == "ordaxsystems/ordax-os"
-          assert re.fullmatch(r"[0-9a-f]{40}", snap["commit"])
-          print("commit=" + snap["commit"])
-          PY
-
-      - name: Checkout exact canonical Internet source, never its moving main
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: ordaxsystems/ordax-os
-          ref: ${{ steps.internet-source-lock.outputs.commit }}
-          path: .ordax-internet-source
-          persist-credentials: false
-
-      - name: Verify all Internet Git blobs and public transitive SDK dependencies
-        run: |
-          python3 tools/verify_internet_cutover.py \
-            --platform-root .ordax-internet-source --verify-pinned-source
-          python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-public
-
       - name: Prove independent business domains without unapproved persistence
         run: |
           node --check apps/finance/src/domain/ledger.mjs
@@ -206,8 +167,10 @@ jobs:
           path: .ordax-internet-source
           persist-credentials: false
 
-      - name: Prove Internet transfer map matches all physical Git blobs
-        run: python3 tools/verify_internet_externalization.py --platform-root .ordax-internet-source
+      - name: Prove Internet transfer map, clean Git source, and complete public SDK closure
+        run: |
+          python3 tools/verify_internet_externalization.py --platform-root .ordax-internet-source
+          python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-public
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
