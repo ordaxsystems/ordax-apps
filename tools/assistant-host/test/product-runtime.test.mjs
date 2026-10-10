@@ -15,7 +15,7 @@ function fixture() {
       if (behavior === 'lost') throw new Error('Network lost after accepted POST');
       if (behavior === 'denied') return Response.json({ ok: false, error: 'grant_denied' }, { status: 403 });
       result = { request_id: 'fake-request' };
-    } else { const submitted = JSON.parse(calls.findLast(call => call.options.method === 'POST').options.body); result = { action: { request_id: 'fake-request', action: submitted.action, project: submitted.project ?? null, status: ++polls > 1 ? 'succeeded' : 'running', result: { ok: true, data: { stdout: 'Resultado' } } } }; }
+    } else { const submitted = JSON.parse(calls.findLast(call => call.options.method === 'POST').options.body); result = { action: { request_id: 'fake-request', device_id: submitted.device_id, action: submitted.action, project: submitted.project ?? null, status: ++polls > 1 ? 'succeeded' : 'running', result: { ok: true, data: { stdout: 'Resultado' } } } }; }
     return Response.json({ ok: true, ...result });
   };
   const options = { storage, env: { ORDAX_PRODUCT_ACCESS_TOKEN: 'fake-token', ORDAX_PRODUCT_CONTROL_PLANE_URL: 'https://runtime.invalid' }, fetcher, interval: 100000 };
@@ -87,8 +87,8 @@ test('terminal results remain pending while saving, disk failure blocks new acti
 test('wrong request, action, project or missing identity cannot complete a local receipt', async t => {
   const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();
   await runtime.submit(command); await wait(() => runtime.operations[0].status === 'queued'); const fetcher = runtime.fetcher;
-  for (const mismatch of [{ request_id: 'different' }, { action: 'workspace.text_write' }, { project: 'other' }, { request_id: undefined }]) {
-    runtime.fetcher = async () => Response.json({ ok: true, action: { request_id: 'fake-request', action: 'terminal.exec', project: 'demo', status: 'succeeded', result: { ok: true }, ...mismatch } });
+  for (const mismatch of [{ request_id: 'different' }, { action: 'workspace.text_write' }, { project: 'other' }, { device_id: 'other-device' }, { device_id: undefined }, { request_id: undefined }]) {
+    runtime.fetcher = async () => Response.json({ ok: true, action: { request_id: 'fake-request', device_id: 'fake-device', action: 'terminal.exec', project: 'demo', status: 'succeeded', result: { ok: true }, ...mismatch } });
     await runtime.observe(runtime.operations[0]); assert.equal(runtime.operations[0].status, 'queued'); assert.match(runtime.state().issue, /não corresponde/);
   }
   runtime.fetcher = fetcher;
@@ -114,7 +114,7 @@ test('failed ACK persistence is repaired by observation even when remote status 
   f.storage.write = async (key, value) => { if (value.operations[0]?.status === 'queued') throw new Error('Disk full after ACK'); await write(key, value); };
   await runtime.submit(command); await wait(() => runtime.unpersisted.size === 1);
   assert.equal(f.disk['runtime-operations'].operations[0].requestId, null);
-  f.storage.write = write; runtime.fetcher = async () => Response.json({ ok: true, action: { request_id: 'fake-request', action: 'terminal.exec', project: 'demo', status: 'queued' } });
+  f.storage.write = write; runtime.fetcher = async () => Response.json({ ok: true, action: { request_id: 'fake-request', device_id: 'fake-device', action: 'terminal.exec', project: 'demo', status: 'queued' } });
   await runtime.observe(runtime.operations[0]); assert.equal(runtime.unpersisted.size, 0);
   assert.equal(f.disk['runtime-operations'].operations[0].requestId, 'fake-request'); assert.equal(f.calls.filter(c => c.options.method === 'POST').length, 1);
 });
