@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import posixpath
 import sys
@@ -16,8 +17,16 @@ from pathlib import Path
 import verify_files_cutover as cutover
 
 SCHEMA = "ordax.files-portable-layout/1"
-MAX_FILE_BYTES = 2 * 1024 * 1024
-MAX_TOTAL_BYTES = 16 * 1024 * 1024
+# Package bounds are owned exclusively by the canonical external-app builder.
+_package_spec = importlib.util.spec_from_file_location(
+    "ordax_files_portable_package_rules",
+    Path(__file__).resolve().parent / "app-package" / "build.py",
+)
+_package_rules = importlib.util.module_from_spec(_package_spec)
+assert _package_spec.loader is not None
+_package_spec.loader.exec_module(_package_rules)
+MAX_FILE_BYTES = _package_rules.MAX_FILE_BYTES
+MAX_TOTAL_BYTES = _package_rules.MAX_TOTAL_BYTES
 
 
 def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
