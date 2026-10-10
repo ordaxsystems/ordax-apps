@@ -47,6 +47,13 @@ class PlatformOwnerMvpTests(unittest.TestCase):
         self.assertIs(plan["distribution_activation_allowed"], False)
         self.assertEqual(plan["delivery"]["delivery_class"], "bootstrap")
         self.assertFalse((ROOT / "apps/internet").exists())
+        sdk = plan["target_sdk"]
+        lock = json.loads((ROOT / sdk["lock_file"]).read_text(encoding="utf-8"))
+        self.assertEqual(sdk["minimum_bundle_version"], "1.13.0")
+        self.assertEqual(lock["bundle_version"], sdk["minimum_bundle_version"])
+        self.assertEqual(lock["repository"], plan["source_repository_current"])
+        self.assertEqual(sdk["required_boundary"], "browser-contracts-from-published-bundle")
+        self.assertIs(sdk["migration_authorized_by_sdk_pin"], False)
         self.assertEqual(boundary["application_ui_and_app_owned_state"], "application")
         for key in (
             "webkitgtk_engine",
