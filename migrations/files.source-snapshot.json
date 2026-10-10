@@ -2,8 +2,8 @@
   "$schema": "ordax.source-snapshot-inventory/1",
   "app_id": "files",
   "repository": "ordaxsystems/ordax-os",
-  "commit": "6d20b397506f19dab403a9b098e06caaa0440feb",
-  "file_count": 6,
+  "commit": "6db234bcd401647f551e0a6e8f30cdc314b012ab",
+  "file_count": 7,
   "files": [
     {
       "path": "system/apps/files/ai/manifest.mjs",
@@ -11,7 +11,11 @@
     },
     {
       "path": "system/apps/files/app.mjs",
-      "git_blob_sha": "5e67e4a0ba21fd2b9a7f9110702099ad254f4802"
+      "git_blob_sha": "2aa7f23495ae1944b2173d9d4c575f8369c20077"
+    },
+    {
+      "path": "system/apps/files/component.mjs",
+      "git_blob_sha": "1a8de8c67320fbe172bfab77fd08ce1e1362232d"
     },
     {
       "path": "system/services/i18n/catalog/files.mjs",

@@ -16,14 +16,16 @@
     "ordax.component-manifest/1",
     "ordax.component-runtime/1",
     "ordax.file-space/11",
+    "ordax.first-party-app/1",
     "ordax.localization/2",
+    "ordax.recent-files/1",
     "ordax.surface-render-lifecycle/5",
     "prototype-ordax.localization-pack/1"
   ],
   "target_sdk": {
-    "minimum_bundle_version": "1.15.0",
+    "minimum_bundle_version": "1.16.0",
     "lock_file": "platform-sdk.lock.json",
-    "reason": "Pinned public SDK 1.15 exports File Space 11, Recent Files 1, App Activation 1, Localization 2, and Surface Lifecycle 5. It does not export private first-party app registration or grant installation authority."
+    "reason": "SDK fixado com first-party-app/1, recent-files/1, File Space/11 e ports públicos existentes; identidade de instalação e autorização continuam na plataforma."
   },
   "unresolved_capabilities": [
     {
@@ -54,7 +56,7 @@
   "source_snapshot": {
     "state": "captured",
     "repository": "ordaxsystems/ordax-os",
-    "commit": "6d20b397506f19dab403a9b098e06caaa0440feb",
+    "commit": "6db234bcd401647f551e0a6e8f30cdc314b012ab",
     "inventory_file": "migrations/files.source-snapshot.json"
   },
   "gate_a_platform_commit": null,
@@ -83,9 +85,16 @@
         ]
       },
       {
+        "path": "system/apps/component-catalog.mjs",
+        "forbidden_literals": [
+          "./files/component.mjs",
+          "filesComponent"
+        ]
+      },
+      {
         "path": "system/services/components/manifests/apps.mjs",
         "forbidden_literals": [
-          "export const filesComponent"
+          "filesComponent"
         ]
       },
       {
@@ -120,7 +129,8 @@
       "system/contracts/app-activation.mjs",
       "system/contracts/recent-files.mjs",
       "system/contracts/project-catalog.mjs",
-      "system/services/files/recent-files.mjs"
+      "system/services/files/recent-files.mjs",
+      "system/contracts/first-party-app.mjs"
     ]
   },
   "delivery": {
