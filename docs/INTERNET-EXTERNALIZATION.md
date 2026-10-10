@@ -44,6 +44,15 @@ python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-
 
 # Deve recusar antes do Gate A:
 python3 tools/verify_internet_externalization.py --require-cutover-ready
+
+# Auditar dependências reais do OS antes de remover a implementação:
+python3 tools/verify_internet_externalization.py \
+  --current-platform-root .ordax-internet-current
+
+# Após o Gate A, exigir ausência dos módulos e dos acoplamentos
+# sem confundir a preflight com prova de boot:
+python3 tools/verify_internet_externalization.py \
+  --current-platform-root .ordax-internet-current --require-platform-absence
 ```
 
 A Foundation usa um único preflight (`tools/verify_internet_externalization.py`),
@@ -89,6 +98,25 @@ relatório: ele **não** afirma que o pacote já é instalável. Nenhum arquivo
 do Internet é escrito em `apps/internet`, e o host WebKitGTK não é
 transferido. A CI Foundation executa esta análise com o checkout de
 commit exato declarado no snapshot antes de tentar qualquer Gate A/B.
+
+## Inventário de dependências do Gate A (automatizado)
+
+A auditoria sobre o checkout `main` atual também gera
+`gate_a_platform_consumers` (`ordax.internet-gate-a-platform-consumers/1`).
+Ela enumera os arquivos de produto ainda presentes, imports externos ao
+produto que dependem da implementação embutida, referências literais ao
+seu caminho e os limites de host Native/Web que precisam permanecer.
+Isso permite separar a remoção do navegador (UI/runtime/i18n) dos
+serviços de isolamento, sessão e engine que são responsabilidade do OS.
+
+`--require-platform-absence` falha enquanto restar arquivo próprio,
+import estático ou caminho literal da implementação no código do OS,
+ou caso os pontos de host enumerados tenham desaparecido. É uma prova
+estática necessária; não substitui os testes de cold boot, Surface,
+grants ou a instalação/rollback do pacote. A opção não ativa migração
+nem altera o estado do plano. A Foundation ainda exige o snapshot
+histórico enquanto o Gate A não ocorrer; a transição de CI precisará
+ser sincronizada com o commit real de remoção.
 
 ## Bloqueios de portabilidade restantes
 

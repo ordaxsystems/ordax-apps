@@ -276,6 +276,66 @@ class InternetExternalizationTests(unittest.TestCase):
             with self.assertRaisesRegex(gate.InternetExternalizationError,"non-literal"):
                 gate.check_portability_rewrites(root,mapping,valid)
 
+
+    def test_gate_a_inventory_tracks_os_consumers_without_moving_app_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            checkout = Path(tmp)
+            def git(*args):
+                return subprocess.run(
+                    ["git", "-C", str(checkout), *args],
+                    check=True, capture_output=True, text=True,
+                    encoding="utf-8",
+                ).stdout.strip()
+            git("init", "-q")
+            git("config", "user.name", "OrdaX CI")
+            git("config", "user.email", "test@example.invalid")
+            source = checkout / "system/apps/internet/runtime.mjs"
+            source.parent.mkdir(parents=True)
+            source.write_text("export const componentRuntime = {};\n")
+            translations = checkout / "system/services/i18n/catalog/internet.mjs"
+            translations.parent.mkdir(parents=True)
+            translations.write_text("export const messages = {};\n")
+            catalog = checkout / "system/apps/component-catalog.mjs"
+            catalog.write_text('import "./internet/runtime.mjs";\n')
+            surface = checkout / "system/services/i18n/surface.mjs"
+            surface.write_text('import "./catalog/internet.mjs";\n')
+            meta = checkout / "tools/component-package/metadata.mjs"
+            meta.parent.mkdir(parents=True)
+            meta.write_text('const source="system/apps/internet/runtime.mjs";\n')
+            hosts = [
+                "system/surface/runtime/ordax_browser_host.py",
+                "system/adapters/native/browser-session.mjs",
+                "system/adapters/web/browser-session.mjs",
+            ]
+            for name in hosts:
+                target = checkout / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("export const host = true;\n")
+            git("add", ".")
+            git("commit", "-qm", "original platform")
+            report = gate.scan_platform_gate_a_consumers(checkout)
+            self.assertFalse(report["absence_preflight_ready"])
+            self.assertTrue(report["host_boundary_intact"])
+            self.assertEqual(len(report["owned_source_paths"]), 2)
+            self.assertEqual(len(report["consumer_imports"]), 2)
+            self.assertEqual(report["literal_source_path_references"],
+                             ["tools/component-package/metadata.mjs"])
+            self.assertIs(report["platform_boot_verified"], False)
+            self.assertIs(report["external_distribution_verified"], False)
+            source.unlink()
+            translations.unlink()
+            catalog.write_text("export const appManifests = [];\n")
+            surface.write_text("export const messages = {};\n")
+            meta.write_text("export const entries = [];\n")
+            git("add", "-A")
+            git("commit", "-qm", "remove embedded browser without removing host")
+            after = gate.scan_platform_gate_a_consumers(checkout)
+            self.assertTrue(after["absence_preflight_ready"])
+            self.assertEqual(after["owned_source_paths"], [])
+            self.assertEqual(after["consumer_imports"], [])
+            self.assertEqual(after["literal_source_path_references"], [])
+            self.assertFalse((checkout / "system/apps/internet/runtime.mjs").exists())
+
     def test_actual_source_checkout_requires_exact_pinned_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);self.fixture(root)

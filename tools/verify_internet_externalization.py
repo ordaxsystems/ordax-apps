@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import posixpath
 import re
 import subprocess
 import sys
@@ -100,6 +101,91 @@ def current_source_drift(platform_root: Path, pinned_files: list[dict]) -> dict:
         "current_file_count": len(observed),
     }
 
+
+
+def scan_platform_gate_a_consumers(platform_root: Path) -> dict:
+    """Read-only inventory of live OS code that still requires Internet source.
+
+    An absent implementation is necessary for Gate A, not proof of boot,
+    package trust, installation or independent release readiness.
+    """
+    if platform_root.is_symlink() or not platform_root.is_dir():
+        reject("Gate A platform inventory requires a real Git checkout")
+    platform_root = platform_root.resolve()
+    tracked = subprocess.run(
+        ["git", "-C", str(platform_root), "ls-files", "-z", "--", "system", "tools"],
+        capture_output=True, check=False,
+    )
+    if tracked.returncode:
+        reject("cannot list tracked platform source for Gate A")
+    names = sorted(tracked.stdout.decode("utf-8").strip("\0").split("\0"))
+    product_prefix = "system/apps/internet/"
+    localization_source = "system/services/i18n/catalog/internet.mjs"
+    owned = [name for name in names if name.startswith(product_prefix)
+             or name == localization_source]
+    imports = []
+    string_references = []
+    import_pattern = re.compile(
+        r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)['"]([^'"]+)['"]"""
+        r"""|\bnew\s+URL\s*\(\s*['"]([^'"]+)['"]"""
+    )
+    for name in names:
+        if name.startswith(product_prefix) or name == localization_source:
+            continue
+        if not name.endswith((".mjs", ".js", ".py", ".json")):
+            continue
+        source = platform_root / name
+        if source.is_symlink() or not source.is_file():
+            reject(f"unsafe tracked Gate A source file: {name}")
+        try:
+            content = source.read_text(encoding="utf-8")
+        except (UnicodeError, OSError) as exc:
+            raise InternetExternalizationError(
+                f"unreadable tracked Gate A source: {name}"
+            ) from exc
+        if name.endswith((".mjs", ".js")):
+            for match in import_pattern.finditer(content):
+                specifier = match.group(1) or match.group(2)
+                if not specifier.startswith("."):
+                    continue
+                resolved = posixpath.normpath(
+                    posixpath.join(posixpath.dirname(name), specifier)
+                )
+                if resolved.startswith(product_prefix) or resolved == localization_source:
+                    imports.append({
+                        "consumer": name,
+                        "specifier": specifier,
+                        "source_dependency": resolved,
+                    })
+        if product_prefix in content:
+            string_references.append(name)
+    retained_host = [
+        "system/surface/runtime/ordax_browser_host.py",
+        "system/adapters/native/browser-session.mjs",
+        "system/adapters/web/browser-session.mjs",
+    ]
+    host_boundary_intact = all(
+        name in names and (platform_root / name).is_file()
+        and not (platform_root / name).is_symlink()
+        for name in retained_host
+    )
+    return {
+        "schema": "ordax.internet-gate-a-platform-consumers/1",
+        "platform_commit": subprocess.run(
+            ["git", "-C", str(platform_root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True
+        ).stdout.strip(),
+        "owned_source_paths": owned,
+        "consumer_imports": sorted(imports, key=lambda row: (row["consumer"], row["specifier"])),
+        "literal_source_path_references": sorted(string_references),
+        "retained_host_paths": retained_host,
+        "host_boundary_intact": host_boundary_intact,
+        "absence_preflight_ready": (
+            not owned and not imports and not string_references and host_boundary_intact
+        ),
+        "platform_boot_verified": False,
+        "external_distribution_verified": False,
+    }
 
 def check_portability_rewrites(platform_root: Path, mapping: dict,
                                published_contracts: set[str]) -> dict:
@@ -398,6 +484,8 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None,
 
     drift = (current_source_drift(current_platform_root, sources)
              if current_platform_root is not None else None)
+    gate_a = (scan_platform_gate_a_consumers(current_platform_root)
+              if current_platform_root is not None else None)
 
     return {
         "schema": SCHEMA, "app_id": "internet", "source_commit": snapshot["commit"],
@@ -406,6 +494,7 @@ def audit(root: Path = ROOT, *, platform_root: Path | None = None,
         "transfer_mapping_count": len(mapped),
         "checked_out_blob_integrity_verified": confirmed,
         "current_platform_source": drift,
+        "gate_a_platform_consumers": gate_a,
         "portability_rewrites": portability,
         "source_cutover_allowed": False,
         "distribution_activation_allowed": False,
@@ -424,6 +513,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--platform-root", type=Path, default=None)
     parser.add_argument("--current-platform-root", type=Path, default=None)
     parser.add_argument("--require-current-source", action="store_true")
+    parser.add_argument("--require-platform-absence", action="store_true")
     parser.add_argument("--require-cutover-ready", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -435,6 +525,12 @@ def main(argv: list[str] | None = None) -> int:
         ):
             reject("Internet snapshot differs from current platform source: " +
                    json.dumps(report["current_platform_source"], sort_keys=True))
+        if args.require_platform_absence and (
+            report["gate_a_platform_consumers"] is None or
+            not report["gate_a_platform_consumers"]["absence_preflight_ready"]
+        ):
+            reject("Internet Gate A source absence preflight not satisfied: " +
+                   json.dumps(report["gate_a_platform_consumers"], sort_keys=True))
         if args.require_cutover_ready:
             reject("Gate A source removal and independent install/rollback have not been proven")
     except InternetExternalizationError as exc:

@@ -227,7 +227,18 @@ jobs:
           assert drift["snapshot_current"] is True
           assert all(drift[field] == [] for field in ("changed", "added", "deleted"))
           assert drift["current_file_count"] == report["source_file_count"]
+          gate_a = report["gate_a_platform_consumers"]
+          assert gate_a["schema"] == "ordax.internet-gate-a-platform-consumers/1"
+          assert gate_a["platform_commit"] == drift["current_platform_commit"]
+          assert gate_a["host_boundary_intact"] is True
+          assert gate_a["absence_preflight_ready"] is False
+          assert len(gate_a["owned_source_paths"]) == report["source_file_count"]
+          assert len(gate_a["consumer_imports"]) > 0
+          assert gate_a["platform_boot_verified"] is False
+          assert gate_a["external_distribution_verified"] is False
           print("Internet snapshot equals current platform product blobs")
+          print("Internet Gate A dependency inventory (read-only):")
+          print(json.dumps(gate_a, ensure_ascii=False, indent=2, sort_keys=True))
           print(json.dumps(drift, ensure_ascii=False, indent=2, sort_keys=True))
           PY
 
