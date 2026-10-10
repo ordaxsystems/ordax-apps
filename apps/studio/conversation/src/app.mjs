@@ -662,7 +662,7 @@ const projectPanel = createProjectPanel({ host, notify, onProjectConversations: 
   composeTextMessage({ text: $('prompt').value, attachments: [...attachments, attachment] });
   attachments.push(attachment); saveDraft(); await drafts.flush(); renderAttachments();
 } });
-const pluginPanel = createPluginPanel({ nativeWeb, notify, snapshot: () => webSnapshot, showConversation: () => { projectPanel.showConversation(); navigation.go('conversation'); }, preparePrompt: text => {
+const pluginPanel = createPluginPanel({ host, nativeWeb, notify, snapshot: () => webSnapshot, showConversation: () => { projectPanel.showConversation(); navigation.go('conversation'); }, preparePrompt: text => {
   if (locked()) throw new Error('Aguarde a resposta antes de preparar o teste.');
   if ($('prompt').value.trim() || attachments.length) throw new Error('Guarde ou envie seu rascunho antes de preparar o teste de conexão.');
   $('prompt').value = text; saveDraft(); autosize(); updateControls(); $('prompt').focus();
