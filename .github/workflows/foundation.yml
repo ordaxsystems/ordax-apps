@@ -122,6 +122,10 @@ jobs:
           assert report["source_cutover_authorized"] is False
           assert report["distribution_activation"] == "blocked"
           assert report["unpublished_contracts"] == [], "Files has unpublished public dependencies"
+          assert report["private_platform_imports"] == [], "Files still imports private platform source"
+          assert report["sdk_boundary_clean"] is True, "Files import graph is not fully public"
+          assert "system/apps/files/component.mjs" in report["app_owned_dependencies"]
+          assert "system/contracts/first-party-app.mjs" in report["public_contracts"]
           assert "system/contracts/recent-files.mjs" in report["public_contracts"]
           assert "system/contracts/file-space.mjs" in report["public_contracts"]
           print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))

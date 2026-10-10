@@ -29,6 +29,8 @@ REQUIRED_CONTRACTS = frozenset({
     "ordax.component-manifest/1",
     "ordax.component-runtime/1",
     "ordax.file-space/11",
+    "ordax.first-party-app/1",
+    "ordax.recent-files/1",
     "ordax.localization/2",
     "ordax.surface-render-lifecycle/5",
     "prototype-ordax.localization-pack/1",
