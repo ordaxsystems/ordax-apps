@@ -248,7 +248,7 @@ class FilesCutoverTests(unittest.TestCase):
             root = make_root(Path(temp))
             plan = load_plan(root)
             plan.pop("prelaunch_package_staging", None)
-    plan["source_cutover_allowed"] = True
+            plan["source_cutover_allowed"] = True
             write_json(root / "migrations" / "files.externalization.json", plan)
             with self.assertRaisesRegex(files.FilesCutoverError, "distinct snapshot"):
                 files.report(root)
