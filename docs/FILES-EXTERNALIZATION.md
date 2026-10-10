@@ -37,7 +37,7 @@ O App SDK global usa exclusivamente o SSOT `platform-sdk.lock.json` para versão
 - `ordax.localization/2` e `ordax.surface-render-lifecycle/5` — montagem, locale e render lifecycle;
 - `ordax.component-runtime/1`, manifest e actions/intelligence declarativas.
 
-**Fronteira pública agora verificada:** a publicação de `ordax.recent-files/1` remove o bloqueio de contrato não publicado, sem exportar o runtime ou o store de Recentes. Os imports privados de `system/apps/app-contract.mjs` e `system/services/components/manifests/apps.mjs` continuam bloqueando o empacotamento independente. A refatoração desses registros pertence ao corte coordenado do aplicativo, não a uma cópia das implementações da plataforma.
+**Fronteira pública corrigida:** os contratos canônicos `ordax.recent-files/1` e `ordax.first-party-app/1` estão no App SDK pinado. A definição única do componente Files agora pertence ao aplicativo, em `system/apps/files/component.mjs`, consumida diretamente pelo catálogo de componentes. O CI exige **zero imports privados de implementação**, além de verificar a árvore transitiva de contratos públicos. Esta prova não autoriza instalação, grants, acesso a arquivos fora do escopo do host nem cutover de propriedade.
 
 **Lacuna de segurança:** o bundle pinado não comprova um broker público de grants opacos por recurso e Space para o fluxo de Files. O contrato File Space 11 usa **caminhos lógicos** (`/Documentos` etc.), que não devem ser confundidos com paths físicos nem com resource grants. A UI futura não pode fabricar IDs de grant, aceitar raw host paths ou copiar o adapter Native. Escrita, integração cross-app e operações que dependam de grants continuam bloqueadas até prova de autorização pública.
 
@@ -107,7 +107,7 @@ O verificador exige origem Git canônica, checkout limpo, HEAD igual ao snapshot
 
 ### Snapshot verificável antes da remoção
 
-O inventário `migrations/files.source-snapshot.json` foi atualizado a partir do commit exato [`ordax-os@6d20b397`](https://github.com/ordaxsystems/ordax-os/commit/6d20b397506f19dab403a9b098e06caaa0440feb), incorporando a correção de concorrência da navegação, ainda com Files pré-instalado e seu runtime original. São **6 Git blobs** app-owned pinados. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
+O inventário `migrations/files.source-snapshot.json` deriva do commit canônico [`ordax-os@6db234bc`](https://github.com/ordaxsystems/ordax-os/commit/6db234bcd401647f551e0a6e8f30cdc314b012ab) e fixa **7 Git blobs** app-owned, incluindo o novo manifesto de componente do Files. O aplicativo continua pré-instalado no OrdaX OS. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
 
 A verificação final deverá executar `tools/verify_files_cutover.py --platform-root ... --require-cutover-ready` contra o checkout Git oficial, provar a ancestralidade e a remoção, reconciliar alterações posteriores ao snapshot e **somente então** permitir o cutover. Enquanto isso, o Files continua instalado na imagem Base. A Foundation do OS possui regressão específica em `tests/test_files_bootstrap_continuity.py` para bloquear remoção acidental do bootstrap.
 
