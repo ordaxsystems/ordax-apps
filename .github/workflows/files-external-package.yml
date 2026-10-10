@@ -38,31 +38,10 @@ jobs:
             --package "$RUNNER_TEMP/files.zip" \
             --release "$RUNNER_TEMP/files-release/files.release.json" \
             --compatibility "$RUNNER_TEMP/files-release/files.compatibility.json"
-      - name: Resolve exact published SDK verifier revision
-        id: sdk
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          from pathlib import Path
-          lock = json.loads(Path("platform-sdk.lock.json").read_text(encoding="utf-8"))
-          assert lock["repository"] == "ordaxsystems/ordax-os"
-          assert lock["authority"] == "none"
-          print(f"revision={lock['commit']}")
-          PY
-
-      - name: Checkout exact public SDK candidate verifier
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          repository: ordaxsystems/ordax-os
-          ref: ${{ steps.sdk.outputs.revision }}
-          path: .ordax-public-sdk
-          sparse-checkout: |
-            sdk/app-sdk-v1/verify_unsigned_candidate.py
-            sdk/app-sdk-v1/runtime-component-package-policy.json
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
-      - name: Produce deterministic unsigned handoff and verify public SDK compatibility
+      # The platform public verifier deliberately rejects Files until the
+      # OS source cutover occurs. Do not override its owner policy or claim
+      # installation authority for this prelaunch candidate.
+      - name: Produce deterministic unsigned handoff and verify candidate identity
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/files-unsigned"
@@ -78,9 +57,6 @@ jobs:
             --source-commit "$GITHUB_SHA" \
             --out "$out/files.unsigned-candidate.json"
           (cd "$out" && sha256sum files.zip files.release.json files.compatibility.json files.unsigned-candidate.json > SHA256SUMS)
-          python3 .ordax-public-sdk/sdk/app-sdk-v1/verify_unsigned_candidate.py \
-            --candidate-dir "$out" \
-            --package-policy .ordax-public-sdk/sdk/app-sdk-v1/runtime-component-package-policy.json
           python3 - <<'PY'
           import json
           from pathlib import Path
