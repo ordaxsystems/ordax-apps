@@ -70,6 +70,7 @@ def make_platform(parent: Path, plan: dict, *, old_source: bool = False,
 
 def authorize(root: Path) -> dict:
     plan = load_plan(root)
+    plan.pop("prelaunch_package_staging", None)
     plan["source_cutover_allowed"] = True
     plan["gate_a_platform_commit"] = GATE_SHA
     plan["source_snapshot"]["state"] = "captured"
@@ -140,6 +141,7 @@ def make_git_gate(parent: Path, root: Path, *, change_after_snapshot: bool = Fal
     git(platform, "add", "--all")
     git(platform, "commit", "-qm", "Gate A remove Files implementation")
     gate_commit = git(platform, "rev-parse", "HEAD")
+    plan.pop("prelaunch_package_staging", None)
     plan["source_cutover_allowed"] = True
     plan["source_snapshot"]["state"] = "captured"
     plan["source_snapshot"]["commit"] = inventory["commit"]
@@ -245,7 +247,8 @@ class FilesCutoverTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
             plan = load_plan(root)
-            plan["source_cutover_allowed"] = True
+            plan.pop("prelaunch_package_staging", None)
+    plan["source_cutover_allowed"] = True
             write_json(root / "migrations" / "files.externalization.json", plan)
             with self.assertRaisesRegex(files.FilesCutoverError, "distinct snapshot"):
                 files.report(root)
