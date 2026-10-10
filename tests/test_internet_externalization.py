@@ -127,7 +127,7 @@ class InternetExternalizationTests(unittest.TestCase):
             for i,item in enumerate(snap["files"]):
                 path=checkout/item["path"]
                 path.parent.mkdir(parents=True,exist_ok=True)
-                path.write_text(f"pinned source {i}\\n",encoding="utf-8")
+                path.write_text(f"pinned source {i}\n",encoding="utf-8")
             git("add",".")
             git("commit","-qm","immutable source fixture")
             commit=git("rev-parse","HEAD")
@@ -137,9 +137,9 @@ class InternetExternalizationTests(unittest.TestCase):
             self.change(root,gate.PLAN,lambda d:d["source_snapshot"].update(commit=commit))
             self.change(root,gate.MAP,lambda d:d.update(source_commit=commit))
             snap["commit"]=commit
-            (root/gate.SNAPSHOT).write_text(json.dumps(snap,indent=2)+"\\n",encoding="utf-8")
+            (root/gate.SNAPSHOT).write_text(json.dumps(snap,indent=2)+"\n",encoding="utf-8")
             self.assertTrue(gate.audit(root,platform_root=checkout)["checked_out_blob_integrity_verified"])
-            (checkout/snap["files"][0]["path"]).write_text("dirty\\n",encoding="utf-8")
+            (checkout/snap["files"][0]["path"]).write_text("dirty\n",encoding="utf-8")
             with self.assertRaisesRegex(gate.InternetExternalizationError,"dirty"):
                 gate.audit(root,platform_root=checkout)
             git("restore",".")
