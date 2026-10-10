@@ -39,3 +39,23 @@ export function deviceStatus(state, deviceId) {
       : 'A plataforma não informa a presença deste dispositivo. A disponibilidade será consultada novamente antes de enviar uma ação.';
   return presence + (target.lastSeenAt ? ` Última atividade informada: ${new Date(target.lastSeenAt).toLocaleString()}.` : '');
 }
+
+/**
+ * A submission receipt must refer to exactly the device, project and kind
+ * submitted. An LLM, host or delayed response cannot silently retarget work.
+ * This is a Studio presentation boundary; Product/Runtime must still enforce
+ * the canonical device grant BEFORE executing any operation.
+ */
+export function assertOperationBinding(request, receipt) {
+  if (!request || typeof request.deviceId !== 'string' || !request.deviceId ||
+      typeof request.kind !== 'string' || !request.kind ||
+      !receipt || typeof receipt !== 'object' ||
+      receipt.deviceId !== request.deviceId ||
+      receipt.kind !== request.kind ||
+      (request.project
+        ? receipt.project !== request.project
+        : Boolean(receipt.project))) {
+    throw new Error('O Runtime devolveu uma operação associada a outro dispositivo, projeto ou tipo. O resultado foi rejeitado; confira o registro no Runtime antes de novo envio.');
+  }
+  return receipt;
+}
