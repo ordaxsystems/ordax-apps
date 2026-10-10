@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runtimeTargets, deviceAvailable, deviceLabel, deviceStatus } from '../src/runtime-targets.mjs';
+import { runtimeTargets, deviceAvailable, deviceLabel, deviceStatus, assertOperationBinding } from '../src/runtime-targets.mjs';
 
 test('canonical target names and explicit presence survive; legacy timestamps never imply online', () => {
   const targets = runtimeTargets([
@@ -24,4 +24,22 @@ test('canonical target names and explicit presence survive; legacy timestamps ne
 
 test('malformed, duplicate and oversized catalogs fail closed', () => {
   for (const data of [null, {}, [null], [{ device_id: '../outside' }], [{ device_id: 'a' }, { device_id: 'a' }], Array(101).fill({ device_id: 'a' })]) assert.throws(() => runtimeTargets(data), /Catálogo inválido/);
+});
+
+test('Studio rejects a wrong-PC, wrong-project or wrong-action receipt before displaying it', () => {
+  const request = { deviceId: 'pc-1', project: 'pasta-1', kind: 'directory' };
+  const receipt = { deviceId: 'pc-1', project: 'pasta-1', kind: 'directory', status: 'succeeded' };
+  assert.equal(assertOperationBinding(request, receipt), receipt);
+  for (const forged of [
+    { ...receipt, deviceId: 'pc-2' },
+    { ...receipt, project: 'pasta-2' },
+    { ...receipt, kind: 'terminal' },
+    { ...receipt, deviceId: undefined },
+    null,
+  ]) {
+    assert.throws(() => assertOperationBinding(request, forged), /resultado foi rejeitado/);
+  }
+  const deviceRequest = { deviceId: 'pc-1', project: '', kind: 'projects' };
+  assert.equal(assertOperationBinding(deviceRequest, { deviceId: 'pc-1', project: null, kind: 'projects' }).kind, 'projects');
+  assert.throws(() => assertOperationBinding(deviceRequest, { deviceId: 'pc-1', project: 'pasta-2', kind: 'projects' }), /resultado foi rejeitado/);
 });
