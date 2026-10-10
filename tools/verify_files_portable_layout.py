@@ -12,7 +12,7 @@ import importlib.util
 import json
 import posixpath
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import verify_files_cutover as cutover
 
@@ -27,6 +27,14 @@ assert _package_spec.loader is not None
 _package_spec.loader.exec_module(_package_rules)
 MAX_FILE_BYTES = _package_rules.MAX_FILE_BYTES
 MAX_TOTAL_BYTES = _package_rules.MAX_TOTAL_BYTES
+
+# The sole true runtime is in the pinned OS source. This entrypoint is
+# a deterministic package boundary, not a second Files implementation.
+COMPONENT_RUNTIME_SOURCE = "src/system/surface/ui/files-component-runtime.mjs"
+PACKAGE_RUNTIME_ENTRYPOINT = "src/runtime.mjs"
+ENTRYPOINT_BYTES = (
+    'export { componentRuntime } from "./system/surface/ui/files-component-runtime.mjs";\n'
+).encode("utf-8")
 
 
 def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
@@ -124,6 +132,31 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
                 raise cutover.FilesCutoverError(
                     f"Files portable import does not resolve: {record['package_path']} -> {spec}"
                 )
+    # Reuse the exact package builder's source-graph validator. A generated
+    # re-export entrypoint is the only noncanonical byte sequence. It cannot
+    # grant filesystem authority, and the actual Files implementation is
+    # always fetched from its pinned OS Git blob.
+    if COMPONENT_RUNTIME_SOURCE not in virtual:
+        raise cutover.FilesCutoverError("Files portable component runtime is absent")
+    if PACKAGE_RUNTIME_ENTRYPOINT in virtual:
+        raise cutover.FilesCutoverError("Files package entrypoint collides with canonical source")
+    staged_sources = {
+        PurePosixPath(record["package_path"]): (
+            (source_root if record["origin"] == "app" else sdk_root)
+            / record["source"]
+        ).read_bytes()
+        for record in records
+    }
+    staged_sources[PurePosixPath(PACKAGE_RUNTIME_ENTRYPOINT)] = ENTRYPOINT_BYTES
+    try:
+        _package_rules.validate_source_graph_from_payloads(
+            sorted(staged_sources),
+            lambda relative: staged_sources[relative],
+        )
+    except _package_rules.AppPackageError as exc:
+        raise cutover.FilesCutoverError(
+            f"Files portable graph is rejected by official package builder: {exc}"
+        ) from exc
     return {
         "schema": SCHEMA,
         "app_id": "files",
@@ -134,6 +167,10 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         "portable_bytes": total,
         "source_modules_and_assets": records,
         "source_graph_self_contained": True,
+        "canonical_package_source_graph_verified": True,
+        "proposed_entrypoint": PACKAGE_RUNTIME_ENTRYPOINT,
+        "entrypoint_sha256": hashlib.sha256(ENTRYPOINT_BYTES).hexdigest(),
+        "entrypoint_generated_for_validation_only": True,
         "component_runtime_module": (
             "src/system/surface/ui/files-component-runtime.mjs"
             if "src/system/surface/ui/files-component-runtime.mjs" in virtual else None
