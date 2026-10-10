@@ -131,6 +131,23 @@ def main() -> None:
 
         with zipfile.ZipFile(package_a, "r") as archive:
             names = archive.namelist()
+            presentation_path = "system/apps/notes/presentation/manifest.json"
+            if presentation_path not in names:
+                fail("Notes package must include its app-owned Surface presentation manifest")
+            try:
+                presentation = builder.presentation_contract.validate_manifest_bytes(
+                    archive.read(presentation_path),
+                    app_id=component["id"], version=component["version"],
+                )
+            except builder.presentation_contract.PresentationContractError as exc:
+                fail(f"Notes presentation is invalid: {exc}")
+            if (
+                presentation["sourceLocale"] != "pt-BR"
+                or presentation["monogram"] != "NT"
+                or presentation["singleton"] is not True
+                or set(presentation["translations"]) != {"en-US"}
+            ):
+                fail("Notes presentation product copy or locale drifted")
         if len(names) != len(set(names)):
             fail("Notes package contains duplicate archive paths")
         for name in names:

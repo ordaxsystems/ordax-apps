@@ -30,6 +30,14 @@ association_contract = importlib.util.module_from_spec(_association_spec)
 assert _association_spec.loader is not None
 _association_spec.loader.exec_module(association_contract)
 
+_presentation_spec = importlib.util.spec_from_file_location(
+    "ordax_app_package_presentation_contract",
+    Path(__file__).with_name("presentation_contract.py"),
+)
+presentation_contract = importlib.util.module_from_spec(_presentation_spec)
+assert _presentation_spec.loader is not None
+_presentation_spec.loader.exec_module(presentation_contract)
+
 PACKAGE_SCHEMA = "prototype-ordax.runtime-component-package/1"
 RELEASE_SCHEMA_V2 = "prototype-ordax.runtime-component-release/2"
 COMPATIBILITY_SCHEMA = "ordax.component-compatibility/1"
@@ -1065,6 +1073,24 @@ def build_package(app_root: Path, source_commit: str, output: Path) -> tuple[dic
             )
         except (association_contract.AssociationContractError, OSError) as exc:
             raise AppPackageError(f"association manifest is invalid: {exc}") from exc
+    # Presentation is optional but its canonical, authority-free manifest is
+    # mandatory whenever the app-owned presentation directory exists.
+    presentation_dir = app_root / "presentation"
+    presentation_path = presentation_dir / "manifest.json"
+    if presentation_dir.exists() or presentation_dir.is_symlink():
+        if presentation_dir.is_symlink() or not presentation_dir.is_dir():
+            raise AppPackageError("presentation must be a real directory")
+        try:
+            presentation_contract.validate_manifest_bytes(
+                read_regular(
+                    presentation_path,
+                    max_bytes=presentation_contract.MAX_MANIFEST_BYTES,
+                    label="presentation/manifest.json",
+                ),
+                app_id=app["id"], version=app["version"],
+            )
+        except (presentation_contract.PresentationContractError, OSError) as exc:
+            raise AppPackageError(f"presentation manifest is invalid: {exc}") from exc
     files = discover_app_files(app_root)
     # Freeze every source byte once. Validation, manifest hashes and ZIP writing
     # must use the identical snapshot even if the source tree changes while
@@ -1317,6 +1343,18 @@ def verify_package(package: Path) -> tuple[dict, bytes]:
                 )
             except association_contract.AssociationContractError as exc:
                 raise AppPackageError(f"package association manifest is invalid: {exc}") from exc
+        presentation_prefix = f"system/apps/{app_id}/presentation/"
+        presentation_path = presentation_prefix + "manifest.json"
+        if any(path.startswith(presentation_prefix) for path in seen):
+            if presentation_path not in seen:
+                raise AppPackageError("package presentation directory has no manifest")
+            try:
+                presentation_contract.validate_manifest_bytes(
+                    archive.read(presentation_path),
+                    app_id=app_id, version=component.get("version"),
+                )
+            except presentation_contract.PresentationContractError as exc:
+                raise AppPackageError(f"package presentation manifest is invalid: {exc}") from exc
     return manifest, payload
 
 
