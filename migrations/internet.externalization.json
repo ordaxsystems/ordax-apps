@@ -22,7 +22,8 @@
     "repository": "ordaxsystems/ordax-os",
     "commit": "9362b61f8b2107ae6c1d8a239922d5483e988299",
     "inventory_file": "migrations/internet.source-snapshot.json",
-    "file_count": 13
+    "file_count": 13,
+    "transfer_map": "migrations/internet.gate-b-transfer-map.json"
   },
   "delivery": {
     "delivery_class": "bootstrap",
@@ -46,5 +47,18 @@
     "lock_file": "platform-sdk.lock.json",
     "required_boundary": "browser-contracts-from-published-bundle",
     "migration_authorized_by_sdk_pin": false
+  },
+  "prelaunch_state": {
+    "production_user_data_present": false,
+    "legacy_user_data_migration_required": false,
+    "developer_seed_data_can_be_reset": true,
+    "host_owned_browser_storage_is_not_app_source": true
+  },
+  "gate_status": {
+    "platform_absence_proven": false,
+    "source_materialized_in_ordax_apps": false,
+    "component_package_install_verified": false,
+    "rollback_verified": false,
+    "bootstrap_install_verified": false
   }
 }
