@@ -1,0 +1,95 @@
+{
+  "$schema": "ordax.internet-gate-b-transfer-map/1",
+  "source_snapshot": "migrations/internet.source-snapshot.json",
+  "source_commit": "ae147ab9dad68755e6ee33fb3ec6ae78b8b8ab93",
+  "target_root": "apps/internet",
+  "source_file_count": 13,
+  "target_manifest": "apps/internet/app.json",
+  "rules": {
+    "dual_source_allowed": false,
+    "copy_platform_host_implementation": false,
+    "copy_webkitgtk_engine": false,
+    "copy_native_download_or_permission_adapters": false,
+    "public_platform_contracts_consumed_via_sdk_or_injected_ports": true,
+    "preserve_product_owned_modules_and_styles": true,
+    "source_copied_before_gate_a_absence_proof": false
+  },
+  "manifest_replacement": {
+    "schema": "ordax.component-manifest/1",
+    "id": "internet",
+    "kind": "app",
+    "releaseMode": "component-slot",
+    "owner": "ordaxsystems/ordax-apps",
+    "version": "0.3.0",
+    "version_source": "system/apps/internet/version.mjs@source_snapshot",
+    "release_activation": "blocked-until-platform-lifecycle-proof"
+  },
+  "mappings": [
+    {
+      "source": "system/apps/internet/ai/manifest.mjs",
+      "operation": "relocate-and-rewire-manifest-import",
+      "target": "apps/internet/ai/manifest.mjs"
+    },
+    {
+      "source": "system/apps/internet/app.mjs",
+      "operation": "replace-by-manifest",
+      "target": "apps/internet/app.json"
+    },
+    {
+      "source": "system/apps/internet/component.mjs",
+      "operation": "replace-by-manifest",
+      "target": "apps/internet/app.json"
+    },
+    {
+      "source": "system/apps/internet/internet.css",
+      "operation": "relocate",
+      "target": "apps/internet/assets/internet.css"
+    },
+    {
+      "source": "system/apps/internet/runtime.mjs",
+      "operation": "relocate-and-rewire-public-sdk-imports",
+      "target": "apps/internet/src/runtime.mjs"
+    },
+    {
+      "source": "system/apps/internet/services/favorites.mjs",
+      "operation": "relocate-and-rewire-public-sdk-imports",
+      "target": "apps/internet/src/services/favorites.mjs"
+    },
+    {
+      "source": "system/apps/internet/services/history-bridge.mjs",
+      "operation": "relocate-and-rewire-public-sdk-imports",
+      "target": "apps/internet/src/services/history-bridge.mjs"
+    },
+    {
+      "source": "system/apps/internet/services/history.mjs",
+      "operation": "relocate-and-rewire-public-sdk-imports",
+      "target": "apps/internet/src/services/history.mjs"
+    },
+    {
+      "source": "system/apps/internet/services/search-preferences.mjs",
+      "operation": "relocate-and-rewire-public-sdk-imports",
+      "target": "apps/internet/src/services/search-preferences.mjs"
+    },
+    {
+      "source": "system/apps/internet/ui/browser-controls.mjs",
+      "operation": "relocate-and-rewire-public-sdk-imports",
+      "target": "apps/internet/src/ui/browser-controls.mjs"
+    },
+    {
+      "source": "system/apps/internet/ui/browser-shortcuts.mjs",
+      "operation": "relocate-and-rewire-public-sdk-imports",
+      "target": "apps/internet/src/ui/browser-shortcuts.mjs"
+    },
+    {
+      "source": "system/apps/internet/version.mjs",
+      "operation": "fold-version-into-manifest",
+      "target": "apps/internet/app.json"
+    },
+    {
+      "source": "system/services/i18n/catalog/internet.mjs",
+      "operation": "move-app-owned-localization",
+      "target": "apps/internet/src/i18n/messages.mjs"
+    }
+  ],
+  "authority": "none"
+}
