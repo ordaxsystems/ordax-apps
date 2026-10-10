@@ -32,13 +32,11 @@ O repositório histórico `washingtonmsdj/mcp-blender` não é owner canônico d
 
 ## App SDK global do Studio
 
-`platform-sdk.lock.json` fixa o App SDK **1.12.0** na plataforma:
-
-- commit: `8f96e79075d06bd79bd550e5c5593985e11dce38`;
-- bundle: `sdk/app-sdk-v1/bundle.json`;
-- SHA-256: `de6bb777dde45d553035136b63fb685aab9232388c1145705c4303936a5ac85c`;
-- authority: `none`;
-- contratos publicados no bundle: 35.
+`platform-sdk.lock.json` é o **SSOT** da versão, do commit e do
+SHA-256 do App SDK global. O pin atual inclui os contratos Browser,
+identidade e Space publicados aditivamente no SDK 1.14. A CI confere os
+Git blobs exportados, `compatibility_policy=contract-major` e
+`authority=none`. Não manter commits e hashes copiados neste texto.
 
 A conformance externa materializa somente módulos públicos `system/contracts/**` pelo Git blob registrado no bundle e prova Studio Runtime v1/v2/v3 sem copiar serviços privados.
 
