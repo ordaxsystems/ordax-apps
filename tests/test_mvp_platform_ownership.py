@@ -49,8 +49,13 @@ class PlatformOwnerMvpTests(unittest.TestCase):
         self.assertFalse((ROOT / "apps/internet").exists())
         sdk = plan["target_sdk"]
         lock = json.loads((ROOT / sdk["lock_file"]).read_text(encoding="utf-8"))
-        self.assertEqual(sdk["minimum_bundle_version"], lock["bundle_version"])
-        self.assertEqual(lock["bundle_version"], sdk["minimum_bundle_version"])
+        # Minimum compatibility is a floor, not another mutable SDK pin.
+        # The lockfile is the sole source of truth for the deployed SDK version.
+        minimum = tuple(int(part) for part in sdk["minimum_bundle_version"].split("."))
+        pinned = tuple(int(part) for part in lock["bundle_version"].split("."))
+        self.assertEqual(len(minimum), 3)
+        self.assertEqual(len(pinned), 3)
+        self.assertLessEqual(minimum, pinned)
         self.assertEqual(lock["repository"], plan["source_repository_current"])
         self.assertEqual(sdk["required_boundary"], "browser-contracts-from-published-bundle")
         self.assertIs(sdk["migration_authorized_by_sdk_pin"], False)
