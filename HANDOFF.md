@@ -4,7 +4,7 @@ Atualizado em 2026-10-09.
 
 ## Studio Web (MVP-04) — fonte de escopo
 
-O recorte Web/telefone como cliente de um **PC autorizado e online**, seus limites, owners e E2E obrigatórios estão definidos uma única vez em [docs/STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md#mvp-04--cliente-web-autorizado-para-pc-online). Esta entrada não altera as autoridades de Identity, Runtime, grants, modelo, Memory, projetos ou sync. Studio Electron 0.14.1 e Studio Web hospedado são superfícies diferentes; source CI não equivale a ativação, deploy ou teste remoto real.
+O recorte Web/telefone como cliente de um **PC autorizado e online**, seus limites, owners e E2E obrigatórios estão definidos uma única vez em [docs/STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md). Esta entrada não altera as autoridades de Identity, Runtime, grants, modelo, Memory, projetos ou sync. Studio Electron 0.14.1 e Studio Web hospedado são superfícies diferentes; source CI não equivale a ativação, deploy ou teste remoto real.
 
 ## Estado canônico
 
