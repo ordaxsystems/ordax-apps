@@ -69,6 +69,15 @@ test('Central drives actual WebBridge.respond callback, waits for real done, and
   page.url='https://chatgpt.com/c/'+WEB_ID;
   page.conversationId=WEB_ID;
   await bridge.refresh();
+  // Start with the OTHER PC's Web chat selected. The native selectChat()
+  // resets bridge.page to null; the Central must explicitly refresh it.
+  const other=await bridge.createChat();
+  other.webId='webchat9876543210';
+  page.url='https://chatgpt.com/c/'+other.webId;
+  page.conversationId=other.webId;
+  await bridge.refresh();
+  assert.equal(bridge.activeId,other.id);
+  assert.equal(bridge.state().web.ready,true);
   const port=createCentralStudioWebPort({
     host:bridge,
     bindChat:async turn=>({
@@ -88,6 +97,8 @@ test('Central drives actual WebBridge.respond callback, waits for real done, and
   dispatched.catch(()=>{});
   for(let i=0;i<100&&!bridge.run;i++)await delay(5);
   assert.ok(bridge.run,'native WebBridge never started actual delivery');
+  assert.equal(bridge.activeId,chat.id,'Central must select PC-1 conversation');
+  assert.equal(bridge.state().web.url,'https://chatgpt.com/c/'+WEB_ID);
   assert.equal(submits,1);
   await bridge.refresh(); // Native bridge confirms observed user turn.
   assert.equal(chat.delivery?.status,'accepted');
