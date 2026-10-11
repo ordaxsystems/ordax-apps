@@ -123,6 +123,36 @@ app.whenReady().then(async () => {
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("hostAvailability").hidden'), true);
     assert.equal(bridge.chats.length, 1); assert.equal(bridge.chats[0].id, chat.id);
     console.log('PASS BOOT: resposta incompatível bloqueia ações; tentativa explícita recupera o mesmo host sem criar conversa.');
+    // The same Studio candidate must support the ordinary workspace and a
+    // separate, read-only operator Central without making up online clients.
+    await window.webContents.executeJavaScript('document.querySelector(".studio-navigation [data-studio-page=central]").click()');
+    for (let i = 0; i < 40; i++) {
+      const done = await window.webContents.executeJavaScript('!document.getElementById("centralRefresh").disabled');
+      if (done) break;
+      await pause(50);
+    }
+    const centralView = await window.webContents.executeJavaScript(`({
+      page: document.body.dataset.studioPage,
+      centralVisible: !document.getElementById('centralPanel').hidden,
+      normalHidden: document.getElementById('studioDirectory').hidden,
+      centralMetric: document.getElementById('centralTotal').textContent,
+      source: document.getElementById('centralProductStatus').textContent,
+      sessions: document.getElementById('centralConversationsStatus').textContent,
+      columns: getComputedStyle(document.querySelector('.central-columns')).gridTemplateColumns,
+      cssApplied: getComputedStyle(document.getElementById('centralPanel')).display !== 'none'
+    })`);
+    assert.equal(centralView.page, 'central');
+    assert.equal(centralView.centralVisible, true);
+    assert.equal(centralView.normalHidden, true);
+    assert.equal(centralView.cssApplied, true);
+    assert.match(centralView.columns, /px/);
+    assert.match(centralView.sessions, /indisponíveis/);
+    assert.match(centralView.source, /Product/);
+    assert.equal(bridge.chats.length, 1);
+    await window.webContents.executeJavaScript('document.querySelector(".studio-navigation [data-studio-page=conversation]").click()');
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("centralPanel").hidden && document.body.dataset.studioPage === "conversation"'), true);
+    console.log('PASS STUDIO TWO MODES: Central/normal navigation, CSS and honest remote-session states on native Electron.');
+
     for (let i = 0; i < 50 && !bridge.page; i++) { await bridge.refresh(); await pause(100); }
     assert.equal(bridge.page?.ready, false);
     await window.webContents.executeJavaScript('document.getElementById("welcomeBrowser").click()');
