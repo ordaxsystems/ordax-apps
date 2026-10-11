@@ -85,3 +85,20 @@ Apenas quando existir um **transporte de conversa Web autorizado com confirmaç�
 **Projetos ChatGPT** podem ajudar o operador a organizar chats, mas não são o SSOT da identidade de cliente, da conversa local, das permissões ou do destinatário do Relay. Não criar um projeto Web por computador automaticamente sem integração aprovada.
 
 **Evidência:** testes de vínculo imutável, prompt que tenta trocar o PC, IDs e payloads inválidos, recibos cruzados, três clientes simultâneos e fluxo HTTP Windows 3×3. Mesmo após CI verde, isso prova apenas a preparação e a correlação no laboratório, não execução multi-PC Product nem E2E ChatGPT Web/plugin.
+
+
+## Porta da Central para conversa real do Studio — candidato sem ativação (11/10/2026)
+
+O módulo `src/studio-web-port.mjs` implementa uma **porta dependente do host de conversa já existente no Studio** (`state()`, `selectChat()`, `respond()`). Não cria novo transporte de ChatGPT, provedor, cache de cookies, histórico, banco de chats, fila de mensagens ou executor MCP. O host encaminha e observa o turno Web; a Central só verifica identidade e correlação. O código ainda **não está conectado ao painel HTTP de laboratório ou ao produto**, porque não existe prova de autorização Product para a conversa compartilhada.
+
+Para permitir um envio, três fronteiras independentes devem ser satisfeitas:
+
+1. `bindChat(turn)` é uma função confiável de backend que devolve exatamente o computador de origem + requestId + chatId Studio + ID de conversa Web + sujeito OAuth + cliente exato + Space autorizado. A função não pode deduzir autorização do texto do usuário, slug do PC ou campo enviado pelo GPT. O contrato Product de origem ainda precisa disponibilizar esse vínculo **persistido**.
+2. `authorizeTools(binding,turn)` é **outra checagem confiável da Platform**, que confirma, fora da conversa, que as ferramentas MCP dessa sessão somente podem executar no PC autorizado. A indicação visual `@ORDAX` não é autoridade. Se a checagem falhar ou estiver ausente, não se envia nenhuma mensagem.
+3. O host Studio precisa confirmar conversa existente/ID Web correspondente, modo Chat, ponte pronta, ausência de resposta anterior ou envio incerto e seleção observada do plugin. A porta consome `done` real com resposta nova (ID de mensagem diferente da resposta anterior) e delivery `completed`. Qualquer divergência após início do envio é **incerta**, não sucesso, e nunca aciona retry.
+
+Um único WebView do Studio não processa múltiplas conversas simultâneas; a porta rejeita a segunda solicitação concorrente e não cria um scheduler oculto. O design Product precisará definir isolamento/autorização de sessões do navegador por operador/conta/dispositivo antes de oferecer compartilhamento entre usuários.
+
+**Provas automáticas:** uma resposta aceita da porta do Studio, PC-1/PC-2 com chats diferentes, prompt adversarial tentando desviar de destino, vínculo ausente/incorreto, Product scope não confirmado, modo Work ou Web indisponível, recibo incompleto, perda de transporte após tentativa e concorrência. Os testes usam um host tipado controlado e **não representam login real no ChatGPT, invocação MCP real ou E2E multi-PC físico**.
+
+**Bloqueio deliberado:** não ativar envio ao ChatGPT Web pela Central nem mostrar o adaptador como conectado sem implementar e comprovar `bindChat` + `authorizeTools` com as autoridades Product. O módulo é um consumidor reutilizável e independente do provider; o ChatGPT Web ainda depende das limitações de integração aprovadas para o Studio.
