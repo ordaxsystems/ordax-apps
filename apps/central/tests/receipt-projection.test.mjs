@@ -71,3 +71,17 @@ test('ignore uncorrelated events and sanitize bounded previews without leaking i
   assert.equal(projectCentralReceipts(new Array(131).fill(null)).state,'unavailable');
   assert.equal(projectCentralReceipts({}).state,'unavailable');
 });
+
+test('out-of-order IPC notifications do not downgrade an already delivered reply',()=>{
+  const events=[
+    ev('studio-1',ids[0],'completed',{httpStatus:200,ok:true,preview:'resposta'}),
+    ev('studio-1',ids[0],'central_received',{preview:'pedido'}),
+    ev('studio-1',ids[0],'provider_returned',{preview:'resposta'}),
+    ev('studio-1',ids[0],'submitted',{preview:'pedido'}),
+  ];
+  const state=projectCentralReceipts(events);
+  assert.equal(state.receipts.length,1);
+  assert.equal(state.receipts[0].status,'completed');
+  assert.equal(centralReceiptSummary(state).completed,1);
+  assert.equal(state.receipts[0].requestPreview,'pedido');
+});
