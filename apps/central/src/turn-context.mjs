@@ -46,7 +46,8 @@ export function prepareCentralTurn(request, trustedBinding) {
  *
  * IMPORTANT: this is schema validation, NOT Product authorization. The
  * caller must have already authenticated its request and validated this
- * binding through the canonical Product admission verifier. This function
+ * binding through the canonical Product admission verifier. Device-only
+ * grants (Space=NULL, project=NULL) are NOT project permissions. This function
  * intentionally exposes no OAuth subject/client, tokens or grant material
  * in the text delivered to ChatGPT Web.
  *
@@ -62,8 +63,11 @@ export function prepareCanonicalCentralTurn(request,trustedBinding){
     ||!UUID.test(trustedBinding.requestId||'')
     ||trustedBinding.requestId.toLowerCase()!==request.requestId.toLowerCase()
     ||!PRODUCT_UUID.test(trustedBinding.subjectId||'')
-    ||!PRODUCT_UUID.test(trustedBinding.projectId||'')
-    ||!PRODUCT_UUID.test(trustedBinding.spaceId||'')
+    // A canonical device grant carries BOTH null Space and null project.
+    // Project grants require TWO real UUIDs; never accept half-null authority.
+    ||!((trustedBinding.projectId===null&&trustedBinding.spaceId===null)
+      ||(PRODUCT_UUID.test(trustedBinding.projectId||'')
+        &&PRODUCT_UUID.test(trustedBinding.spaceId||'')))
     ||typeof trustedBinding.clientId!=='string'
     ||trustedBinding.clientId.length<8||trustedBinding.clientId.length>160
     ||!OAUTH_CLIENT.test(trustedBinding.clientId)
