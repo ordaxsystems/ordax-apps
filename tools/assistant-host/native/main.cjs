@@ -9,6 +9,8 @@ const { createPluginConnection, isPluginURL } = require('./plugin-connection.cjs
 const { invokeCanonicalProductSignIn, locateInstalledRuntime } = require('./canonical-account.cjs');
 const { createExclusiveSignIn } = require('./account-sign-in-guard.cjs');
 app.setName('ORDAX Studio');
+// One executable, two presentation entrypoints; neither changes permissions.
+const startupWorkspace = process.argv.includes('--ordax-central') ? 'central' : 'conversation';
 if (process.platform === 'win32') app.setAppUserModelId('org.ordax.assistant');
 app.setPath('userData', path.join(process.env.LOCALAPPDATA || (process.platform === 'win32' ? path.join(homedir(), 'AppData', 'Local') : path.join(homedir(), '.local/share')), 'OrdaX', 'Assistant-web'));
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -72,7 +74,7 @@ else {
       if (!previewSessions.has(previewSession)) { previewSessions.add(previewSession); previewSession.on('will-download', event => event.preventDefault()); }
       return new WebContentsView({ webPreferences: { session: previewSession, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, allowRunningInsecureContent: false } });
     } });
-    const controls = createWebControls({ window, surface, plugin, studioSurfaces, audioPermission, resumeURL: () => bridge?.resumeURL() || 'https://chatgpt.com/', isBusy: () => Boolean(bridge?.run || bridge?.sending || bridge?.page?.busy), isReady: () => Boolean(bridge?.page?.ready), openExternal: url => shell.openExternal(url), preferences: preferencesUI, savePreferences: value => storage.write('appearance', value) });
+    const controls = createWebControls({ window, surface, plugin, studioSurfaces, startupWorkspace, audioPermission, resumeURL: () => bridge?.resumeURL() || 'https://chatgpt.com/', isBusy: () => Boolean(bridge?.run || bridge?.sending || bridge?.page?.busy), isReady: () => Boolean(bridge?.page?.ready), openExternal: url => shell.openExternal(url), preferences: preferencesUI, savePreferences: value => storage.write('appearance', value) });
     controls.layout(); window.on('resize', controls.layout);
     contain(surface.webContents, url => controls.state().pluginSetup ? isPluginURL(url) : isAccountURL(url));
     bridge = new WebBridge({ surface, storage, openLogin: controls.login, setupActive: () => controls.state().pluginSetup });
@@ -122,7 +124,11 @@ else {
     console.log('ORDAX Studio: janela pronta.');
     await surface.webContents.loadURL(bridge.resumeURL()).catch(() => status('error', 'Não foi possível carregar o ChatGPT. Use Recarregar.'));
   }).catch(error => { console.error('Falha ao iniciar ORDAX Studio:', error); dialog.showErrorBox('ORDAX Studio — falha ao iniciar', 'Não foi possível iniciar o app. Verifique o espaço livre, as permissões do perfil local e os arquivos do aplicativo.\n\n' + String(error.message).slice(0, 400)); app.quit(); });
-  app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
+  app.on('second-instance', (_event, argv) => {
+    if (!window) return;
+    if (window.isMinimized()) window.restore(); window.show(); window.focus();
+    if (argv?.includes('--ordax-central') && uiReady) window.webContents.send('assistant-web:workspace', 'central');
+  });
   app.on('before-quit', event => {
     if (shuttingDown) return; event.preventDefault(); if (closing) return; closing = true;
     (async () => {
