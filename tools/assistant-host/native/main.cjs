@@ -16,6 +16,7 @@ app.setPath('userData', path.join(process.env.LOCALAPPDATA || (process.platform 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   let window, surface, bridge, host, runtime, studioSurfaces, shuttingDown = false, closing = false, uiReady = false;
+  let pendingCentralNavigation = false;
   const accountSignIn = createExclusiveSignIn();
   async function flushComposer() {
     if (!uiReady || !window || window.isDestroyed() || window.webContents.isDestroyed()) return true;
@@ -119,15 +120,24 @@ else {
     });
     await window.loadURL(host.origin + '/src/index.html');
     uiReady = true;
+    if (pendingCentralNavigation) {
+      pendingCentralNavigation = false;
+      window.webContents.send('assistant-web:workspace', 'central');
+    }
     window.show();
     window.focus();
     console.log('ORDAX Studio: janela pronta.');
     await surface.webContents.loadURL(bridge.resumeURL()).catch(() => status('error', 'Não foi possível carregar o ChatGPT. Use Recarregar.'));
   }).catch(error => { console.error('Falha ao iniciar ORDAX Studio:', error); dialog.showErrorBox('ORDAX Studio — falha ao iniciar', 'Não foi possível iniciar o app. Verifique o espaço livre, as permissões do perfil local e os arquivos do aplicativo.\n\n' + String(error.message).slice(0, 400)); app.quit(); });
   app.on('second-instance', (_event, argv) => {
+    // The installed launcher may request Central before the renderer is ready.
+    // Preserve the presentation request without changing user/Runtime authority.
+    if (argv?.includes('--ordax-central')) {
+      if (uiReady && window && !window.isDestroyed()) window.webContents.send('assistant-web:workspace', 'central');
+      else pendingCentralNavigation = true;
+    }
     if (!window) return;
     if (window.isMinimized()) window.restore(); window.show(); window.focus();
-    if (argv?.includes('--ordax-central') && uiReady) window.webContents.send('assistant-web:workspace', 'central');
   });
   app.on('before-quit', event => {
     if (shuttingDown) return; event.preventDefault(); if (closing) return; closing = true;
