@@ -1,0 +1,162 @@
+/* Shared Studio design tokens are defined in layout.css.
+   Central is an operator workspace, not another application or Product owner. */
+@layer layout {
+  .central-panel[hidden] { display: none !important; }
+  .central-panel {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    width: 100%;
+    padding: clamp(20px, 3vw, 42px);
+    color: var(--studio-text);
+    scrollbar-gutter: stable;
+  }
+  .central-header {
+    display: flex;
+    gap: 22px;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1440px;
+    margin: 0 auto 22px;
+  }
+  .central-header h1 {
+    margin: 6px 0 8px;
+    font-size: clamp(27px, 3vw, 38px);
+    line-height: 1.1;
+    font-weight: 570;
+    letter-spacing: -.8px;
+  }
+  .central-header .eyebrow { color: var(--studio-muted); margin: 0; font-size: 10px; letter-spacing: 1.3px; }
+  .central-header p:last-child { margin: 0; color: var(--studio-muted); font-size: 13px; line-height: 1.5; }
+  .central-header button { flex-shrink: 0; }
+  .central-provenance {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    justify-content: space-between;
+    color: var(--studio-muted);
+    font-size: 12px;
+    max-width: 1440px;
+    margin: 0 auto 14px;
+  }
+  .central-provenance small { font-size: 11px; }
+  .central-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+  .central-metrics > div {
+    display: grid;
+    align-content: center;
+    gap: 8px;
+    min-height: 106px;
+    padding: 18px 20px;
+    border: 1px solid var(--studio-line);
+    background: var(--studio-panel);
+    border-radius: 16px;
+  }
+  .central-metrics > div > span { font-size: clamp(26px, 3vw, 36px); font-variant-numeric: tabular-nums; font-weight: 570; line-height: 1; }
+  .central-metrics small, .central-lab-metrics small { font-size: 12px; color: var(--studio-muted); }
+  .central-advisory {
+    max-width: 1440px;
+    margin: 13px auto 18px;
+    color: var(--studio-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .central-columns {
+    max-width: 1440px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(270px, .95fr) minmax(0, 1.55fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .central-right { display: grid; gap: 16px; min-width: 0; }
+  .central-surface {
+    background: var(--studio-panel);
+    border: 1px solid var(--studio-line);
+    border-radius: 18px;
+    min-width: 0;
+    padding: 20px;
+  }
+  .central-surface-header { display: flex; align-items: center; gap: 12px; justify-content: space-between; flex-wrap: wrap; }
+  .central-surface h2 { font-size: 16px; font-weight: 560; letter-spacing: -.2px; margin: 0; overflow-wrap: anywhere; }
+  .central-source {
+    font-size: 11px;
+    color: var(--studio-muted);
+    padding: 5px 9px;
+    border: 1px solid var(--studio-line);
+    border-radius: 999px;
+  }
+  .central-surface p { font-size: 13px; line-height: 1.65; color: var(--studio-muted); }
+  .central-search {
+    margin-top: 18px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 12px;
+    border: 1px solid var(--studio-line);
+    border-radius: 11px;
+    background: var(--studio-bg);
+    color: var(--studio-muted);
+    min-height: 44px;
+  }
+  .central-search:focus-within { border-color: var(--studio-accent); }
+  .central-search input { border: none; background: transparent; outline: none; min-width: 0; width: 100%; color: var(--studio-text); font-size: 13px; }
+  .central-device-list { display: grid; gap: 6px; margin-top: 13px; max-height: 540px; overflow-y: auto; }
+  .central-device-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 12px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    padding: 13px 10px;
+    background: transparent;
+    color: var(--studio-text);
+    text-align: left;
+    min-height: 62px;
+  }
+  .central-device-row:hover { background: var(--studio-elevated); }
+  .central-device-row[aria-pressed=true] { border-color: #3374b8; background: var(--studio-accent-soft); }
+  .central-device-row:focus-visible { outline: 2px solid var(--studio-accent); outline-offset: 2px; }
+  .central-device-name { display: grid; gap: 4px; flex: 1; min-width: 0; }
+  .central-device-name strong { font-size: 13px; font-weight: 570; overflow-wrap: anywhere; }
+  .central-device-name small { font-size: 11px; color: var(--studio-muted); }
+  .central-presence { width: 9px; height: 9px; border-radius: 50%; background: var(--studio-muted); flex-shrink: 0; }
+  .central-presence[data-presence=true] { background: #4eca98; }
+  .central-presence[data-presence=false] { background: #b26770; }
+  .central-device-count { padding: 5px 8px; font-size: 11px; color: var(--studio-muted); border-radius: 8px; background: var(--studio-elevated); font-variant-numeric: tabular-nums; }
+  .central-empty { padding: 16px 0; }
+  .central-detail { min-height: 132px; }
+  .central-lab-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+  .central-lab-metrics > span { display: grid; gap: 6px; padding: 12px; background: var(--studio-bg); border-radius: 10px; }
+  .central-lab-metrics strong { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 530; }
+  /* The ordinary Studio has a single prominent action. Explanatory text
+     remains in dialogs / safety states instead of filling the home canvas. */
+  .welcome .browser-login-help { display: none; }
+  .welcome .welcome-description { max-width: 380px; }
+  .welcome .suggestions small { line-height: 1.35; }
+  .sidebar-home { display: none; }
+  .composer-note span:last-child { opacity: .7; }
+  @media (max-width: 1100px) {
+    .central-columns { grid-template-columns: 1fr; }
+    .central-right { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .central-right > .central-detail { grid-column: 1 / -1; }
+  }
+  @media (max-width: 700px) {
+    .central-panel { padding: 20px 16px 30px; }
+    .central-header { flex-wrap: wrap; }
+    .central-header button { width: 100%; }
+    .central-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .central-metrics > div { min-height: 94px; padding: 16px; }
+    .central-right { grid-template-columns: 1fr; }
+    .central-right > .central-detail { grid-column: auto; }
+    .central-surface { padding: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .central-device-row { transition: none; } }
+}
