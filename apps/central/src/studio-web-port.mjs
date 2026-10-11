@@ -55,8 +55,10 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools,confirm
       ||(b.mode!==undefined&&!fresh)
       ||!isUuid(b.subjectId)||typeof b.clientId!=='string'
       ||b.clientId.length<8||b.clientId.length>160
-      ||typeof b.spaceId!=='string'||!isUuid(b.spaceId)
-      ||(turn.routing.environment==='product'&&!isUuid(b.projectId)))
+      ||(turn.routing.environment==='product'
+        ? !((b.spaceId===null&&b.projectId===null)
+          ||(isUuid(b.spaceId)&&isUuid(b.projectId)))
+        : !isUuid(b.spaceId)||b.projectId!==undefined))
       throw new CentralWebPortError('central_web_binding_missing');
     return b;
   };
