@@ -63,15 +63,20 @@ function el(tag, className, label) {
   if (label !== undefined) node.textContent = label;
   return node;
 }
-export function createCentralPanel({ host, openRuntime }) {
+export function createCentralPanel({ host, openRuntime, accountHost }) {
   const $ = id => document.getElementById(id);
   let model = centralViewModel(null, null);
   let selected = null, checking = false, issue = '', checkedAt = null;
+  let accountAvailability = 'unknown';
   let filter = '', operationFilter = 'all';
   const metric = (id, value) => { $(id).textContent = value === null ? '—' : String(value); };
   function paint() {
     $('centralConnect').hidden = model.state === 'product-connected';
     $('centralConnect').disabled = checking || typeof openRuntime !== 'function';
+    $('centralConnect').textContent = accountAvailability === 'available' ? 'Entrar na Conta OrdaX' : 'Configurar Runtime';
+    $('centralConnect').title = accountAvailability === 'unavailable'
+      ? 'O candidato portátil não inclui login OrdaX integrado. Abra as opções de conexão do Runtime.'
+      : 'Abrir o fluxo de Conta OrdaX e Runtime existente';
     $('centralRefresh').disabled = checking;
     $('centralRefresh').textContent = checking ? 'Verificando…' : 'Atualizar estado';
     $('centralChecked').textContent = checking ? 'Consultando fontes autorizadas…'
@@ -84,7 +89,10 @@ export function createCentralPanel({ host, openRuntime }) {
     $('centralProductStatus').textContent = model.state === 'product-connected'
       ? 'Catálogo Product conectado · presença informada pela plataforma'
       : 'Product indisponível · nenhum dispositivo foi presumido conectado';
-    $('centralWarning').textContent = issue || 'Dispositivos autorizados não equivalem a clientes Relay conectados.';
+    $('centralWarning').textContent = issue
+      || (model.state !== 'product-connected' && accountAvailability === 'unavailable'
+        ? 'Esta versão portátil não habilita login na Conta OrdaX. O acesso Product exige o Studio integrado ao Runtime oficial.'
+        : 'Dispositivos autorizados não equivalem a clientes Relay conectados.');
     $('centralLabStatus').textContent = model.lab.state === 'laboratory'
       ? 'Laboratório local autenticado (não é produção)'
       : 'Relay não confirmado neste Studio';
@@ -157,7 +165,11 @@ export function createCentralPanel({ host, openRuntime }) {
       const results = await Promise.allSettled([
         typeof host?.runtimeState === 'function' ? host.runtimeState() : Promise.reject(new Error('Product não integrado')),
         typeof host?.relayObservation === 'function' ? host.relayObservation() : Promise.reject(new Error('Relay não integrado')),
+        typeof accountHost?.available === 'function' ? accountHost.available() : Promise.resolve(null),
       ]);
+      accountAvailability = results[2].status === 'fulfilled'
+        ? results[2].value === true ? 'available' : results[2].value === false ? 'unavailable' : 'unknown'
+        : 'unknown';
       const product = results[0].status === 'fulfilled' ? results[0].value : null;
       const relay = results[1].status === 'fulfilled' ? results[1].value : null;
       model = centralViewModel(product, relay);
