@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { centralViewModel, centralAccountCopy } from '../src/central.mjs';
+import { centralViewModel, centralAccountCopy, centralPollDue } from '../src/central.mjs';
 
 const product = () => ({
   connected: true, catalogAvailable: true,
@@ -116,4 +116,14 @@ test('Central truthfully shows missing official Runtime sign-in in portable buil
   assert.ok(!connected.warning.includes('portátil'));
   assert.equal(connected.action, 'Configurar Runtime');
   assert.equal(Object.isFrozen(unavailable), true);
+});
+
+test('Central polling is bounded to the visible page with a previous successful snapshot', () => {
+  const checkedAt = new Date('2026-10-11T01:00:00Z');
+  assert.equal(centralPollDue({ checking: false, checkedAt, visible: true, now: checkedAt.getTime() + 30000 }), true);
+  assert.equal(centralPollDue({ checking: false, checkedAt, visible: true, now: checkedAt.getTime() + 29999 }), false);
+  assert.equal(centralPollDue({ checking: true, checkedAt, visible: true, now: checkedAt.getTime() + 30000 }), false);
+  assert.equal(centralPollDue({ checking: false, checkedAt, visible: false, now: checkedAt.getTime() + 90000 }), false);
+  assert.equal(centralPollDue({ checking: false, checkedAt: null, visible: true, now: Date.now() }), false);
+  assert.equal(centralPollDue({ checking: false, checkedAt: new Date('invalid'), visible: true, now: Date.now() }), false);
 });
