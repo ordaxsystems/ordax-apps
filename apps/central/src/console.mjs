@@ -30,7 +30,7 @@ const browser=[
   'links.forEach(b=>b.addEventListener("click",()=>select(b.dataset.view)));',
   'document.querySelector("#refresh").onclick=()=>refresh();',
   'const out=document.querySelector("#eventRows"),receiptRows=document.querySelector("#receiptRows");',
-  'const stage={submitted:"Enviado",received:"Na Central","response-ready":"Resposta do provedor",completed:"Entregue",failed:"Falhou"};',
+  'const stage={submitted:"Enviado",received:"Na Central","response-ready":"Resposta do provedor",completed:"Entregue",failed:"Falhou",uncertain:"Sem confirmação"};',
   'const label={spoke_online:"Conectado",submitted:"Recebido do cliente",central_received:"Recebido na Central",provider_returned:"Resposta do provedor",provider_failed:"Falha do provedor",completed:"Devolvido ao cliente"};',
   'function value(id,text){document.getElementById(id).textContent=String(text??"—")}',
   'async function refresh(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error();const s=await r.json();',
