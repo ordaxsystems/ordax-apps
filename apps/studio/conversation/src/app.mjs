@@ -295,7 +295,7 @@ async function loadModels() {
 }
 async function loadState() {
   validateHost(host);
-  const state = await host.state();
+  const [state, startupLayout] = await Promise.all([host.state(), nativeWeb?.getLayout?.().catch(() => null) ?? Promise.resolve(null)]);
   if (!Array.isArray(state?.chats) || !Array.isArray(state?.connection?.accounts)) throw new Error('O host não forneceu uma sessão compatível do Studio.');
   await drafts.init();
   chats = state.chats; connection = state.connection; supportsWebDelete = state.capabilities?.deleteOnWeb === true; webDeletionRecovery = state.capabilities?.deletionRecoveryRequired === true;
@@ -305,7 +305,10 @@ async function loadState() {
   if (Object.hasOwn(state, 'activeId')) activeId = state.activeId; else activeId = null;
   externalBusy = Boolean(state.web?.busy); lastVersion = state.version ?? -1;
   projectPanel.setContext(project()?.binding || null); await loadModels();
-  restoreDraft(); navigation.go(!activeId && activeProjectId ? 'project' : 'conversation', { focus: false }); render(); initialized = true; updateControls();
+  restoreDraft(); navigation.go(startupLayout?.startupWorkspace === 'central'
+    ? 'central' : !activeId && activeProjectId ? 'project' : 'conversation', { focus: false });
+  render(); initialized = true; updateControls();
+  if (navigation.current() === 'central') void centralPanel.open();
 }
 async function newChat() {
   return navigate(async () => {
@@ -602,6 +605,14 @@ navigation = createNavigation({
   openChat: id => run(() => openConversation(id)), openProject: id => run(() => selectProjectScope(id)),
   newChat: () => run(newChat), options: showChatOptions,
   changed: () => { showConversationView(); closeSidebar(); previewPanel.geometry(); },
+});
+nativeWeb?.onWorkspace?.(page => {
+  if (page !== 'central') return;
+  if (!initialized || locked()) { notify('Conclua a operação atual antes de abrir a Central.'); return; }
+  try {
+    projectPanel.assertContext(project()?.binding || null);
+    projectPanel.showConversation(); navigation.go('central'); void centralPanel.open();
+  } catch (error) { notify(error.message); }
 });
 for (const button of document.querySelectorAll('button[data-studio-page]')) button.addEventListener('click', () => {
   if (locked() || !initialized) return;
