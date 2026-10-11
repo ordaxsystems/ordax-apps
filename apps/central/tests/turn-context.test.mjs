@@ -102,7 +102,7 @@ test('prepared Web text is JSON-safe, bounded and never claims delivery',()=>{
   assert.doesNotMatch(text,/enviei|foi entregue com sucesso|plugin conectado/i);
 });
 
-const PRODUCT_DEVICE='75d0cda4-95d9-4f3b-9e93-f3645ccc7a19';
+const PRODUCT_DEVICE='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const OTHER_PRODUCT_DEVICE='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const PRODUCT_SUBJECT='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const PRODUCT_SPACE='99999999-9999-4999-8999-999999999999';
