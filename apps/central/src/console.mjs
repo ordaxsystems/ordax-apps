@@ -33,7 +33,7 @@ const browser=[
   'document.querySelector("#refresh").onclick=()=>refresh();',
   'const out=document.querySelector("#eventRows"),receiptRows=document.querySelector("#receiptRows");',
   'const stage={submitted:"Enviado",received:"Na Central","response-ready":"Resposta do provedor",completed:"Entregue",failed:"Falhou",uncertain:"Sem confirmação"};',
-  'const label={spoke_online:"Conectado",submitted:"Recebido do cliente",central_received:"Recebido na Central",provider_returned:"Resposta do provedor",provider_failed:"Falha do provedor",completed:"Devolvido ao cliente"};',
+  'const label={spoke_online:"Conectado",submitted:"Recebido do cliente",central_received:"Recebido na Central",central_prepared:"Contexto estruturado · não enviado ao Web",provider_returned:"Resposta do provedor",provider_failed:"Falha do provedor",completed:"Devolvido ao cliente"};',
   'function value(id,text){document.getElementById(id).textContent=String(text??"—")}',
   'async function refresh(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error();const s=await r.json();',
   'value("counterClients",s.clients);value("counterActive",s.relay.activeRequests);value("counterDone",s.relay.retainedReceipts);value("counterErrors",s.relay.failedReceipts);',

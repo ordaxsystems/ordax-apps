@@ -14,6 +14,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createWebServer} from '../web-server.mjs';
 import {renderCentralConsole} from '../../../apps/central/src/console.mjs';
 import {projectCentralReceipts} from '../../../apps/central/src/receipt-projection.mjs';
+import {prepareCentralTurn,formatCentralWebTurn,validateCentralReply} from '../../../apps/central/src/turn-context.mjs';
 
 const SOURCE=fileURLToPath(import.meta.url);
 const token=()=>randomBytes(32).toString('hex');
@@ -51,6 +52,9 @@ export async function startWorkbench({platformRoot,provider='diagnostic',central
   if(!platformRoot||!['diagnostic','openai-api'].includes(provider)||!Number.isInteger(centralPort)||centralPort<0||centralPort>65535||(centralPort>0&&centralPort<1024))throw Error('invalid_configuration');
   const {startRelayLab}=await import(pathToFileURL(resolve(platformRoot,'control-plane/labs/relay/relay.mjs')).href);
   const clients=Array.from({length:3},(_,i)=>({id:'studio-'+(i+1),secret:token()}));
+  // Lab-only, host-owned route mapping. The client/request cannot choose a
+  // different Web slot; production will use persisted Product grants instead.
+  const routes=new Map(clients.map(c=>[c.id,Object.freeze({deviceId:c.id,conversationSlot:'lab/'+c.id})]));
   const adminToken=token(),cookie=token(),events=[];
   const record=e=>{events.push({time:new Date().toLocaleTimeString('pt-BR'),...e});if(events.length>130)events.shift()};
   let hub=null,studio=null,server=null,root=null,origin='',kids=[],studioCookie='';
@@ -59,10 +63,17 @@ export async function startWorkbench({platformRoot,provider='diagnostic',central
     hub=await startRelayLab({devices:clients,adminToken,inferenceTimeoutMs:30000,
       inference:async request=>{
         record({id:request.deviceId,requestId:request.requestId,event:'central_received',preview:request.prompt.slice(0,140)});
-        try{const answer=await gpt(request,provider);
+        try{
+          const turn=prepareCentralTurn(request,routes.get(request.deviceId));
+          const webMessage=formatCentralWebTurn(turn);
+          // This prepares the real full user prompt for a future authorized
+          // ChatGPT Web adapter. It does NOT submit to a ChatGPT conversation.
+          record({id:request.deviceId,requestId:request.requestId,event:'central_prepared',
+            preview:'Slot '+turn.routing.conversation_slot+' · '+webMessage.length+' caracteres · não enviado ao ChatGPT Web'});
+          const answer=validateCentralReply(turn,await gpt(request,provider));
           record({id:request.deviceId,requestId:request.requestId,event:'provider_returned',preview:answer.result.slice(0,180)});
           return answer;
-        }catch{record({id:request.deviceId,requestId:request.requestId,event:'provider_failed',preview:'provider unavailable; no fabricated GPT reply'});throw Error('adapter_unavailable')}
+        }catch{record({id:request.deviceId,requestId:request.requestId,event:'provider_failed',preview:'provider unavailable or routing denied; no fabricated GPT reply'});throw Error('adapter_unavailable')}
       }});
     process.env.ORDAX_RELAY_LAB_URL=hub.url;
     process.env.ORDAX_RELAY_LAB_ADMIN_TOKEN=adminToken;
@@ -188,6 +199,12 @@ if(args.includes('--self-test')){
     assert.equal(state.relay.retainedReceipts,3);
     assert.equal(state.studio.state,'connected-laboratory');
     assert.equal(state.events.filter(x=>x.event==='central_received').length,3);
+    const prepared=state.events.filter(x=>x.event==='central_prepared');
+    assert.equal(prepared.length,3);
+    for(const c of app.clients){
+      assert.equal(prepared.filter(x=>x.id===c.id&&x.preview.includes('Slot lab/'+c.id)).length,1);
+      assert.ok(!prepared.some(x=>x.id===c.id&&x.preview.includes('Slot lab/'+app.clients.find(other=>other.id!==c.id).id)));
+    }
     assert.equal(state.events.filter(x=>x.event==='provider_returned').length,3);
     assert.equal(state.receipts.state,'laboratory');
     assert.equal(state.receipts.receipts.length,3);
@@ -202,6 +219,7 @@ if(args.includes('--self-test')){
       assert.ok(outs.includes(row.requestId));
     }
     console.log('ORDAX_THREE_PROCESS_RELAY_E2E=PASS');
+    console.log('CENTRAL_TURNS=3 TARGET_BOUND=PASS CHATGPT_WEB_AUTOSEND=NOT_IMPLEMENTED');
     console.log('PROCESS_PIDS='+app.clients.map(c=>c.pid).join(',')+' REQUESTS=3 RECEIPTS=3');
     console.log('STUDIO_OBSERVER=REAL RELAY_HTTP=REAL SHARED_BROWSER_JAR=PASS CROSS_CLIENT_COOKIE=REJECTED');
     console.log('GPT_PROVIDER=DIAGNOSTIC_NOT_GPT CHATGPT_PLUGIN_E2E=NOT_TESTED PHYSICAL_PCS=1');
