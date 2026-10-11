@@ -206,10 +206,10 @@ export class WebBridge {
         const pendingCandidates = this.chats.filter(c => {
           const delivery = c.delivery;
           if (delivery?.status !== 'uncertain' || !delivery.fingerprint) return false;
-          const canRecover = delivery.userId
-            ? true
-            : c.id === this.activeId && !c.webId;
-          if (!canRecover) return false;
+          // Text alone is not a provider turn identifier. A lost click
+          // acknowledgement cannot authorize binding to a different URL,
+          // even while this is the selected local chat.
+          if (!delivery.userId) return false;
           const acceptedUsers = page.turns.filter(t => t.role === 'user'
             && !((delivery.baseline || []).includes(t.id))
             && (!delivery.userId || t.id === delivery.userId)
@@ -218,7 +218,25 @@ export class WebBridge {
         });
         const pending = pendingCandidates.length === 1 ? pendingCandidates[0] : null;
         if (!chat && pending) chat = pending;
-        if (!chat && page.turns.length && !this.ignored.has(page.conversationId)) chat = this.newRecord();
+        if (!chat && page.turns.length && !this.ignored.has(page.conversationId)) {
+          // Do not import a second local record for an unresolved submission.
+          // A matching prompt is an ambiguity signal, NEVER proof that an
+          // unknown provider thread belongs to the pending request.
+          const ambiguous = this.chats.some(c => {
+            const delivery = c.delivery;
+            return delivery?.status === 'uncertain' && !delivery.userId
+              && typeof delivery.fingerprint === 'string'
+              && page.turns.some(t => t.role === 'user'
+                && !((delivery.baseline || []).includes(t.id))
+                && fingerprint(t.text) === delivery.fingerprint);
+          });
+          if (ambiguous) {
+            this.issue = 'Uma resposta Web pode pertencer a um envio sem confirmação. Confira o histórico antes de associar a conversa.';
+            if (this.dirty) await this.persist();
+            return;
+          }
+          chat = this.newRecord();
+        }
         this.activeId = chat?.id || null;
       } else if (chat?.webId || (!chat && page.turns.length)) {
         chat = page.turns.length ? this.newRecord() : null; this.activeId = chat?.id || null;
