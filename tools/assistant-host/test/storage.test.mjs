@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { LocalStorage } from '../storage.mjs';
+import { LocalStorage, ensureWindowsOwnerProfileAcl } from '../storage.mjs';
 import { validHistory } from '../native/history.mjs';
 
 async function fixture(t) {
@@ -64,4 +64,56 @@ test('history validation bounds identifiers, duplicates, messages and delivery r
   const good = { chats: [{ id: 'chat', title: 'Título', messages: [{ id: 'u', role: 'user', text: 'Olá' }] }], ignored: [] };
   assert.equal(validHistory(good), true);
   for (const bad of [null, { chats: {} }, { ...good, ignored: [123] }, { ...good, chats: [...good.chats, ...good.chats] }, { chats: [{ ...good.chats[0], delivery: { status: 'completed' } }] }, { chats: [{ ...good.chats[0], messages: [{ id: 'u', role: 'assistant', text: 'a'.repeat(200001) }] }] }]) assert.equal(validHistory(bad), false);
+});
+
+
+test('Windows profile ACL: valid private directory is verified without needless icacls mutation', async () => {
+  const calls = [];
+  const exec = async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'whoami.exe') return { stdout: '"owner","S-1-5-21-42-1234"\r\n' };
+    if (name === 'powershell.exe') return { stdout: 'ORDAX_PROFILE_ACL_VERIFIED\r\n' };
+    throw new Error('unexpected ACL mutation');
+  };
+  await ensureWindowsOwnerProfileAcl("C:\\Owner's Files\\Studio", exec);
+  assert.deepEqual(calls.map(c => c.name), ['whoami.exe', 'powershell.exe']);
+  assert.match(calls[1].args.at(-1), /Owner''s Files/);
+  assert.match(calls[1].args.at(-1), /AreAccessRulesProtected/);
+  assert.match(calls[1].args.at(-1), /GetAccessRules/);
+});
+
+test('Windows profile ACL: insecure folder is repaired once and then reverified', async () => {
+  const calls = [];
+  let count = 0;
+  const exec = async (name, args, options) => {
+    calls.push({ name, args, options });
+    if (name === 'whoami.exe') return { stdout: '"owner","S-1-5-21-42-1234"' };
+    if (name === 'powershell.exe') {
+      if (++count === 1) throw Object.assign(new Error('not private'), { code: 2 });
+      return { stdout: 'ORDAX_PROFILE_ACL_VERIFIED\n' };
+    }
+    if (name === 'icacls.exe') return { stdout: 'processed 1' };
+    throw new Error('unexpected');
+  };
+  await ensureWindowsOwnerProfileAcl('C:\\Users\\owner\\Local\\Studio', exec);
+  assert.deepEqual(calls.map(c => c.name), ['whoami.exe', 'powershell.exe', 'icacls.exe', 'powershell.exe']);
+  assert.deepEqual(calls[2].args, ['C:\\Users\\owner\\Local\\Studio', '/inheritance:r', '/grant:r', '*S-1-5-21-42-1234:(OI)(CI)F']);
+  assert.equal(calls[2].options.timeout, 45000);
+});
+
+test('Windows profile ACL: unverified repair or a timed-out read never opens the profile', async () => {
+  const read = async name => {
+    if (name === 'whoami.exe') return { stdout: '"owner","S-1-5-21-42-1234"' };
+    if (name === 'powershell.exe') throw Object.assign(new Error('insecure'), { code: 2 });
+    return { stdout: '' };
+  };
+  await assert.rejects(ensureWindowsOwnerProfileAcl('C:\\Unsafe', read), /confirmar as permissões/);
+  let changes = 0;
+  const hung = async name => {
+    if (name === 'whoami.exe') return { stdout: '"owner","S-1-5-21-42-1234"' };
+    if (name === 'icacls.exe') changes++;
+    throw Object.assign(new Error('PowerShell timed out'), { code: 'ETIMEDOUT' });
+  };
+  await assert.rejects(ensureWindowsOwnerProfileAcl('C:\\Unsafe', hung), /timed out/);
+  assert.equal(changes, 0);
 });
