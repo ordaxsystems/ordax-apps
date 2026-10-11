@@ -461,7 +461,19 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.querySelector(".attachment-chip button").click();document.getElementById("prompt").value="";document.getElementById("prompt").dispatchEvent(new Event("input"))');
     await until('!document.querySelector(".attachment-chip") && !document.getElementById("pluginTest").disabled');
     await window.webContents.executeJavaScript('document.getElementById("pluginTest").click()');
-    await until('!document.getElementById("pluginDialog").open');
+    try { await until('!document.getElementById("pluginDialog").open'); }
+    catch (error) {
+      const diagnostic = await window.webContents.executeJavaScript(`({
+        open: document.getElementById('pluginDialog').open,
+        testDisabled: document.getElementById('pluginTest').disabled,
+        promptLength: document.getElementById('prompt').value.length,
+        attachmentCount: document.querySelectorAll('.attachment-chip').length,
+        reason: document.getElementById('pluginDetails').textContent,
+        mode: document.body.dataset.studioPage
+      })`);
+      console.error('STUDIO_PLUGIN_TEST_DIAGNOSTIC:', JSON.stringify(diagnostic));
+      throw error;
+    }
     assert.match(await window.webContents.executeJavaScript('document.getElementById("prompt").value'), /ordax_session e ordax_targets/);
     assert.equal(await surface.webContents.executeJavaScript('document.body.dataset.submits || "0"'),projectSubmitsBefore);
     console.log('PASS: teste do plugin protege rascunhos e prepara a consulta para revisão, sem consumir mensagem ou executar ferramenta.');
