@@ -88,7 +88,7 @@ test('operator receipts project only bound status metadata; unknown devices and 
 test('operator receipt view never materializes user text as action identity', () => {
   const raw = product();
   raw.operations = [
-    {deviceId:'pc-central', status:'uncertain', kind:'\\n'.repeat(40), id:'non-canonical/../../',
+    {deviceId:'pc-central', status:'uncertain', kind:String.fromCharCode(10).repeat(40), id:'non-canonical/../../',
       createdAt:'impossible', finishedAt:'2026-10-11T01:05:00Z', text:'private user prompt'},
   ];
   const model = centralViewModel(raw, null);
