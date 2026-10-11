@@ -5,6 +5,8 @@ on:
     paths:
       - "tools/assistant-host/proofs/relay-desktop-lab.mjs"
       - "tools/assistant-host/proofs/relay-desktop-client.mjs"
+      - "apps/central/src/console.mjs"
+      - "apps/central/README.md"
       - "docs/STUDIO-CENTRAL-THREE-PROCESS-LAB.md"
       - ".github/workflows/studio-central-three-process-relay.yml"
   push:
@@ -12,6 +14,8 @@ on:
     paths:
       - "tools/assistant-host/proofs/relay-desktop-lab.mjs"
       - "tools/assistant-host/proofs/relay-desktop-client.mjs"
+      - "apps/central/src/console.mjs"
+      - "apps/central/README.md"
       - ".github/workflows/studio-central-three-process-relay.yml"
   workflow_dispatch:
 
