@@ -238,10 +238,17 @@ export class WebBridge {
           chat = this.newRecord();
         }
         this.activeId = chat?.id || null;
-      } else if (chat?.webId || (!chat && page.turns.length)) {
-        chat = page.turns.length ? this.newRecord() : null; this.activeId = chat?.id || null;
+      } else if (!page.conversationId && page.turns.length) {
+        // A transient / route may still render turns from a previous thread.
+        // Never create an orphan local chat or import content until the Web
+        // exposes a stable /c/<id> destination.
+        this.issue = 'Aguardando identificação estável da conversa Web para importar mensagens.';
+        if (this.dirty) await this.persist();
+        return;
+      } else if (chat?.webId) {
+        chat = null; this.activeId = null;
       }
-      if (!chat && page.turns.length && !this.ignored.has(page.conversationId)) chat = this.newRecord();
+      if (!chat && page.conversationId && page.turns.length && !this.ignored.has(page.conversationId)) chat = this.newRecord();
       if (previousActiveId !== this.activeId) { if (chat) this.activeProjectId = chat.projectId || null; this.touch(); }
       if (chat) {
         if (page.conversationId && chat.webId !== page.conversationId) { chat.webId = page.conversationId; this.touch(); }
