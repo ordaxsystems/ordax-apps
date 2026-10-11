@@ -1,3 +1,4 @@
+import {chatWorkspaceStyles,chatWorkspaceBrowser,renderChatWorkspace} from './chat-workspace.mjs';
 // OrdaX Central presentation owner. Shared transport and identity remain in Platform.
 // This source does not introduce another Relay, broker, database or OAuth session.
 // All counters and rows are populated by the real laboratory observer; no fake PCs.
@@ -20,9 +21,10 @@ const style=[
   '.stack{display:grid;grid-template-columns:1fr 1fr;gap:14px}.info{padding:20px}.info h3{font-size:15px;margin:0 0 9px}.info p{color:#a1b7d0;margin:0 0 13px}.keyrow{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid #2d4056}.keyrow span{color:#91a6bf}.keyrow b{font-weight:600;text-align:right}',
   '.notice{border-left:3px solid #c8a86b;background:#26261f;padding:14px 17px;color:#e8d9b1;border-radius:4px 9px 9px 4px;font-size:12px}.hidden{display:none!important}',
   'a{color:#9ac9ff}footer{font-size:12px;color:#8096af;margin-top:30px}',
+  '.client .info{padding:17px}.client .info p{font-size:12px;color:#9db5d0}.client .act{width:100%}',
   '@media(max-width:1100px){.layout{grid-template-columns:190px 1fr}.metrics{grid-template-columns:repeat(2,1fr)}.clientgrid{grid-template-columns:1fr}.client iframe{height:265px}}',
   '@media(max-width:700px){.layout{grid-template-columns:1fr}.side{padding:13px;gap:12px}.nav{display:flex;overflow:auto}.nav button{width:auto;white-space:nowrap}.sidefoot{display:none}.main{padding:17px}.topline{display:block}.controls{margin-top:16px}.metrics{grid-template-columns:repeat(2,1fr)}.stack{grid-template-columns:1fr}}',
-].join('');
+].join('')+chatWorkspaceStyles;
 const browser=[
   'const links=[...document.querySelectorAll("[data-view]")];',
   'const sections=[...document.querySelectorAll("[data-section]")];',
@@ -43,6 +45,7 @@ const browser=[
   'const values=[receipt.deviceId,receipt.requestId.slice(0,8),stage[receipt.status]||"Desconhecido",receipt.requestPreview||"—",receipt.resultPreview||"—"];',
   'for(const [i,cell] of values.entries()){const td=document.createElement("td");td.textContent=String(cell);',
   'if(i===0)td.className="origin";if(i===2)td.className=receipt.status==="failed"?"bad":receipt.status==="completed"?"ok":"";tr.append(td)}receiptRows.append(tr)}',
+  'centralUpdateChat(s);',
   'const count={};for(const e of s.events)count[e.id]=(count[e.id]||0)+(e.event==="completed"?1:0);',
   'for(const c of ["studio-1","studio-2","studio-3"])value("count-"+c,(count[c]||0)+" respostas registradas");',
   'out.replaceChildren();for(const e of s.events.slice().reverse()){const tr=document.createElement("tr");',
@@ -51,13 +54,13 @@ const browser=[
   'document.querySelector("#operational").textContent="Relay ativo";document.querySelector("#operational").classList.remove("warning");',
   '}catch{document.querySelector("#operational").textContent="Falha no observador";document.querySelector("#operational").classList.add("warning")}}',
   'select("overview");refresh();setInterval(refresh,1400);',
-].join('\n');
+].join('\n')+'\n'+chatWorkspaceBrowser;
 export function renderCentralConsole({clients,provider,studio},nonce) {
   if(!Array.isArray(clients)||clients.length!==3)throw Error('central_requires_three_clients');
-  const clientHTML=clients.map(c=>'<article class="client"><div class="clientheader"><strong>'+esc(c.id)+'</strong><small>PID '+Number(c.pid)+'</small></div><iframe src="'+esc(c.origin)+'" title="Enviar mensagem: '+esc(c.id)+'"></iframe><div class="clientheader"><small id="count-'+esc(c.id)+'">Nenhuma resposta</small><small>HTTP isolado</small></div></article>').join('');
+  const clientHTML=clients.map(c=>'<article class="client"><div class="clientheader"><strong>'+esc(c.id)+'</strong><small>PID '+Number(c.pid)+'</small></div><div class="info"><p>Canal autenticado do Relay no processo de teste.</p><button type="button" class="act" data-open-client="'+esc(c.id)+'">Abrir conversa</button></div></article>').join('');
   const clientSummary=clients.map(c=>'<article class="panel info"><h3>'+esc(c.id)+'</h3><p>Cliente em processo independente com HTTP local, sem instalações adicionais.</p><div class="keyrow"><span>Identificador</span><b>'+esc(c.id)+'</b></div><div class="keyrow"><span>Processo</span><b>'+Number(c.pid)+'</b></div><div class="keyrow"><span>Transporte</span><b>Relay oficial (lab)</b></div></article>').join('');
   const hasAPI=provider==='openai-api';
-  const nav=[['overview','Visão geral'],['inbox','Solicitações'],['devices','Clientes'],['connections','Integrações']].map(([id,label])=>'<button data-view="'+id+'" aria-current="'+(id==='overview'?'page':'false')+'">'+label+'</button>').join('');
+  const nav=[['overview','Visão geral'],['chats','Conversas'],['inbox','Solicitações'],['devices','Clientes'],['connections','Integrações']].map(([id,label])=>'<button data-view="'+id+'" aria-current="'+(id==='overview'?'page':'false')+'">'+label+'</button>').join('');
   const metric=(label,id,detail)=>'<div class="metric"><span class="label">'+label+'</span><strong id="'+id+'">—</strong><small>'+detail+'</small></div>';
   const inbox='<div class="sectionhead"><h2>Pedidos e respostas</h2><span class="muted" id="receiptCount">Carregando</span></div><div class="panel tablewrap"><table class="events"><thead><tr><th>Cliente</th><th>Pedido</th><th>Estado confirmado</th><th>Mensagem</th><th>Resposta</th></tr></thead><tbody id="receiptRows"></tbody></table></div>'+    '<div class="sectionhead"><h2>Eventos de transporte</h2><span class="muted" id="eventCount">Carregando</span></div><div class="panel tablewrap"><table class="events"><thead><tr><th>Hora</th><th>Cliente</th><th>Etapa</th><th>Mensagem / resultado</th></tr></thead><tbody id="eventRows"></tbody></table></div>';
   const integrations='<div class="stack"><div class="panel info"><h3>Roteamento e execução</h3><p>O laboratório compartilha os módulos oficiais de transporte. Não cria outro gateway nem registra dispositivos de produção.</p><div class="keyrow"><span>OrdaX Platform Relay</span><b id="relayState">Carregando</b></div><div class="keyrow"><span>Studio · observador</span><b id="studioState">Carregando</b></div><div class="keyrow"><span>Provedor de resposta</span><b id="providerState">Carregando</b></div></div><div class="panel info"><h3>Conexões externas</h3><p>Estados explícitos, sem apresentar respostas de laboratório como GPT ou conexão real com ChatGPT.</p><div class="keyrow"><span>ChatGPT · plugin MCP</span><b>Não conectado ao laboratório</b></div><div class="keyrow"><span>Cloudflare Product OAuth</span><b>Fora deste ensaio</b></div><div class="keyrow"><span>GPT</span><b>'+(hasAPI?'API selecionada; validar resposta real':'Diagnóstico, não GPT')+'</b></div></div></div>';
@@ -65,7 +68,8 @@ export function renderCentralConsole({clients,provider,studio},nonce) {
     '<aside class="side" aria-label="Navegação da Central"><div class="brand"><span class="mark">O</span>OrdaX <span style="color:#92bce9">Central</span></div><nav class="nav">'+nav+'</nav><div class="sidefoot"><strong>OrdaX Platform</strong><p>Console operacional de desenvolvimento</p><p>1 computador físico<br>3 processos de cliente</p></div></aside>'+
     '<main class="main"><div class="topline"><div><div class="eyebrow">OrdaX / Operação da Central</div><h1 class="title">Painel de controle</h1><p class="subtitle">Recebimento, roteamento, clientes e diagnósticos em uma interface independente do Studio.</p></div><div class="controls"><span id="operational" class="pill">Conectando...</span><button id="refresh" class="act">Atualizar</button></div></div>'+
     '<section data-section="overview"><div class="metrics">'+metric('Clientes conectados','counterClients','Processos reais em loopback')+metric('Solicitações ativas','counterActive','Fila em andamento')+metric('Recibos confirmados','counterDone','Respostas correlacionadas')+metric('Falhas','counterErrors','Retornos com erro')+'</div>'+
-    '<div class="sectionhead"><h2>Clientes de teste</h2><span class="muted">Três sessões independentes · mesmo Windows</span></div><div class="clientgrid">'+clientHTML+'</div><div class="sectionhead"><h2>Atividade recente</h2><span class="muted">Atualização <span id="lastUpdate">—</span></span></div><div class="notice">Ambiente de desenvolvimento: os retornos diagnósticos NÃO são respostas do ChatGPT. Nenhum dispositivo Product ou grant de acesso total é criado por este painel.</div></section>'+
+    '<div class="sectionhead"><h2>Clientes conectados</h2><span class="muted">Três sessões independentes · mesmo Windows</span></div><div class="clientgrid">'+clientHTML+'</div><div class="sectionhead"><h2>Atividade recente</h2><span class="muted">Atualização <span id="lastUpdate">—</span></span></div><div class="notice">Ambiente de desenvolvimento: os retornos diagnósticos NÃO são respostas do ChatGPT. Nenhum dispositivo Product ou grant de acesso total é criado por este painel.</div></section>'+
+    '<section data-section="chats" class="hidden">'+renderChatWorkspace(clients)+'</section>'+
     '<section data-section="inbox" class="hidden">'+inbox+'</section>'+
     '<section data-section="devices" class="hidden"><div class="sectionhead"><h2>Clientes conectados</h2><span class="muted">Selecionados pelo Relay local</span></div><div class="clientgrid">'+clientSummary+'</div><div class="sectionhead"><h2>Limites do ambiente</h2></div><div class="notice">Esses clientes são processos Node e não são computadores virtuais completos nem instâncias instaladas do Studio. Autorização e dispositivos reais pertencem à OrdaX Platform.</div></section>'+
     '<section data-section="connections" class="hidden"><div class="sectionhead"><h2>Integrações e saúde</h2><span class="muted">Sem estados simulados</span></div>'+integrations+'</section>'+
