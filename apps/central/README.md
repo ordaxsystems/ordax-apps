@@ -68,3 +68,20 @@ Na versão Product, o modelo de conversas deve seguir a autoridade de Inbox/Rece
 **Provas incluídas:** renderização, escape de HTML, CSP/script, distinção entre web manual e Relay; manutenção do teste Windows de três processos HTTP com asserts da nova área. CI Windows e GPT real são gates independentes. O ensaio **não prova** contas web segregadas por PC, três PCs físicos, Model Router Product ou histórico de chat persistente.
 
 A distribuição final deve aplicar os tokens/componentes SSOT do OrdaX OS. O CSS do laboratório é restrito à bancada e não constitui design system de produção.
+
+
+## Contexto estruturado para a conversa Web — validação de alvo (11/10/2026)
+
+A Central não deve inventar um novo Model Router nem substituir a conversa real do Studio por uma resposta diagnóstica. O fluxo desejado é **spoke autenticado → Relay → Central → conversa Web real do ChatGPT com plugin OrdaX → resposta e recibo → spoke original**.
+
+O módulo `src/turn-context.mjs` define o envelope **`ordax.central-turn/1`**, com `request_id`, `routing.device_id`, `routing.conversation_slot` e o **texto completo** do usuário. `prepareCentralTurn(request, trustedBinding)` exige uma associação externa de destino e recusa divergências; o texto não pode selecionar outro computador. `formatCentralWebTurn()` produz a mensagem textual estruturada para um compositor Web futuro **sem enviar nada**. `validateCentralReply()` exige o mesmo computador e UUID antes de entregar o resultado ao Relay.
+
+Na bancada, o vínculo `lab/<id>` é criado no **servidor** a partir dos clientes cadastrados e se baseia na identidade que o Relay já autenticou com credencial independente. Esse slot **não é um ID de conversa do ChatGPT**, nem contém autorização, usuário Product real, Space, credenciais, token ou grant. O evento `central_prepared` indica somente preparação local; não equivale a mensagem enviada, GPT respondendo ou ação executada. As respostas diagnósticas continuam explicitamente identificadas como tal.
+
+Na versão Product, a associação precisa ser feita pela autoridade canônica da Platform: OAuth subject + exact client + device UUID + Space/grants + ID de operação persistida. O plugin MCP precisa receber esse vínculo por canal autenticado **independente do prompt**; campos no texto Web e Projetos do ChatGPT não autorizam ações. A implementação do owner Platform possui `TrustedRelayOperation` e testes de isolamento; o caminho Product público ainda não aplica esse vínculo de forma comprovada em todas as operações.
+
+Apenas quando existir um **transporte de conversa Web autorizado com confirmações de envio/retorno** o formato preparado poderá ser conectado ao adaptador do Studio. Não reproduzir o pedido ao detectar um envio incerto. Não aproveitar o resultado do provider para deduzir computador ou conceder execução. O `ordax.model-router/1` continua um caminho de inferência distinto, não uma substituição disfarçada do ChatGPT Web.
+
+**Projetos ChatGPT** podem ajudar o operador a organizar chats, mas não são o SSOT da identidade de cliente, da conversa local, das permissões ou do destinatário do Relay. Não criar um projeto Web por computador automaticamente sem integração aprovada.
+
+**Evidência:** testes de vínculo imutável, prompt que tenta trocar o PC, IDs e payloads inválidos, recibos cruzados, três clientes simultâneos e fluxo HTTP Windows 3×3. Mesmo após CI verde, isso prova apenas a preparação e a correlação no laboratório, não execução multi-PC Product nem E2E ChatGPT Web/plugin.
