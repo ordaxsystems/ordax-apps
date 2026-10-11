@@ -40,14 +40,14 @@
       </section>
       <section id="centralPanel" class="central-panel" aria-labelledby="centralTitle" hidden>
         <header class="central-header">
-          <div><p class="eyebrow">ORDAX STUDIO · OPERAÇÃO</p><h1 id="centralTitle" tabindex="-1">Central</h1><p>Dispositivos, operações e Relay, em um só lugar.</p></div>
+          <div><p class="eyebrow">ORDAX STUDIO / CENTRAL</p><h1 id="centralTitle" tabindex="-1">Central</h1><p>Dispositivos e atividade em uma única visão.</p></div>
           <button id="centralRefresh" type="button" class="directory-primary">Atualizar estado</button>
         </header>
         <div class="central-provenance" role="status"><span id="centralProductStatus">Product não verificado</span><small id="centralChecked">Sem consulta nesta sessão</small></div>
         <div class="central-metrics" aria-label="Resumo do Product">
-          <div><span id="centralTotal">—</span><small>Autorizados</small></div>
-          <div><span id="centralOnline">—</span><small>Informados online</small></div>
-          <div><span id="centralActive">—</span><small>Pendentes</small></div>
+          <div><span id="centralTotal">—</span><small>Dispositivos</small></div>
+          <div><span id="centralOnline">—</span><small>Online (informado)</small></div>
+          <div><span id="centralActive">—</span><small>Em andamento</small></div>
           <div><span id="centralUncertain">—</span><small>Incertas</small></div>
         </div>
         <p id="centralWarning" class="central-advisory" role="status">Os dispositivos Product não confirmam clientes Relay.</p>
@@ -62,12 +62,25 @@
               <div class="central-surface-header"><h2 id="centralSelectedTitle">Selecione um dispositivo</h2><span id="centralSelectedState" class="central-source">Sem seleção</span></div>
               <p id="centralSelectedDetail">As permissões permanecem no Runtime.</p>
             </section>
+            <section class="central-surface central-operations" aria-label="Operações do Runtime">
+              <div class="central-surface-header"><h2>Operações <span id="centralOperationCount" class="central-section-count">—</span></h2><span class="central-source">Product / Runtime</span></div>
+              <label class="central-operation-select">Situação
+                <select id="centralOperationFilter" aria-label="Filtrar operações por situação">
+                  <option value="all">Todas</option><option value="active">Em andamento</option>
+                  <option value="uncertain">Sem confirmação</option><option value="failed">Falhas</option>
+                  <option value="finished">Encerradas</option>
+                </select>
+              </label>
+              <ol id="centralOperationList" class="central-operation-list" aria-label="Recibos de operações"></ol>
+              <p id="centralOperationEmpty" class="central-empty">Nenhuma operação consultada.</p>
+              <p id="centralOperationLimit" class="central-list-limit" hidden>Mostrando as 80 operações mais recentes deste filtro.</p>
+            </section>
             <section class="central-surface" aria-label="Conversas por cliente">
               <div class="central-surface-header"><h2>Conversas por cliente</h2><span class="central-source">Relay</span></div>
-              <p id="centralConversationsStatus">Aguardando contratos de sessões verificáveis do Relay.</p>
+              <p id="centralConversationsStatus">Conversas por computador disponíveis quando o Relay fornecer sessões verificáveis.</p>
             </section>
             <section class="central-surface" aria-label="Observação Relay">
-              <div class="central-surface-header"><h2>Relay local</h2><span class="central-source">Somente leitura</span></div>
+              <div class="central-surface-header"><h2>Relay local</h2><span class="central-source">Laboratório · leitura</span></div>
               <p id="centralLabStatus">Relay ainda não verificado.</p>
               <div class="central-lab-metrics"><span><strong id="centralLabClients">—</strong><small>Clientes do laboratório</small></span><span><strong id="centralLabRequests">—</strong><small>Solicitações ativas</small></span></div>
             </section>
@@ -80,18 +93,18 @@
       <section class="conversation" id="conversation" aria-label="Área da conversa">
         <div class="welcome" id="welcome">
           <div class="welcome-mark"><img src="../assets/mark.svg" alt="" width="44" height="44"></div>
-          <p class="eyebrow">SEU ESPAÇO</p>
+          <p class="eyebrow">ORDAX STUDIO</p>
           <h1>O que vamos criar?</h1>
-          <p class="welcome-description">Converse, desenvolva e continue projetos.</p>
+          <p class="welcome-description">Converse. Crie. Continue.</p>
           <button class="connect-primary" id="welcomeConnect">Entrar no ChatGPT Web <span aria-hidden="true">↗</span></button>
           <button class="connect-secondary" id="welcomeBrowser">Entrar pelo navegador <span aria-hidden="true">↗</span></button>
           <p class="browser-login-help">A sessão do navegador é independente.</p>
-          <p class="welcome-note" id="welcomeNote">Conecte sua conta para começar a conversar.</p>
+          <p class="welcome-note" id="welcomeNote">Conecte sua conta para conversar.</p>
           <div class="home-actions"><button id="homeNewProject" class="connect-primary">Criar projeto</button><button id="homeWorkspace" class="connect-secondary">Abrir projeto</button></div>
           <div class="suggestions">
-            <button data-prompt="Ajude-me a planejar um aplicativo. Primeiro vamos definir objetivo, usuários e uma primeira versão verificável."><span class="suggestion-icon violet">✧</span><strong>Criar</strong><small>Comece um projeto</small><span class="suggestion-arrow">↗</span></button>
-            <button data-prompt="Quero revisar um projeto existente. Vamos definir o escopo e quais arquivos ou ferramentas autorizadas precisamos consultar."><span class="suggestion-icon blue">◎</span><strong>Explorar</strong><small>Desenvolva uma ideia</small><span class="suggestion-arrow">↗</span></button>
-            <button data-prompt="Ajude-me a organizar a próxima etapa deste projeto, usando o contexto disponível e identificando o que ainda precisa ser confirmado."><span class="suggestion-icon green">⌁</span><strong>Definir a próxima etapa</strong><small>Contexto, decisões e prioridades</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Ajude-me a planejar um aplicativo. Primeiro vamos definir objetivo, usuários e uma primeira versão verificável."><span class="suggestion-icon violet">✧</span><strong>Criar</strong><small>Novo projeto</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Quero revisar um projeto existente. Vamos definir o escopo e quais arquivos ou ferramentas autorizadas precisamos consultar."><span class="suggestion-icon blue">◎</span><strong>Revisar</strong><small>Projeto existente</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Ajude-me a organizar a próxima etapa deste projeto, usando o contexto disponível e identificando o que ainda precisa ser confirmado."><span class="suggestion-icon green">⌁</span><strong>Continuar</strong><small>Próximos passos</small><span class="suggestion-arrow">↗</span></button>
           </div>
         </div>
         <div id="messages" class="messages" role="log" aria-label="Mensagens" aria-live="off"></div>
