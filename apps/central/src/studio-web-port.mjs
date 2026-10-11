@@ -121,7 +121,7 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
         // must never be attached to this Central request.
         const users=completion.messages.filter(m=>m.role==='user'
           &&!oldUserIds.has(m.id));
-        const normalize=text=>text.replace(/\\s+/g,' ').trim();
+        const normalize=text=>text.replace(/\s+/g,' ').trim();
         if(users.length!==1||users[0].id!==completion.delivery.userId
           ||typeof users[0].text!=='string'
           ||normalize(users[0].text)!==normalize(prompt))
