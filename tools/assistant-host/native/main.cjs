@@ -8,6 +8,7 @@ const { createWebControls, registerWebControls } = require('./web-controls.cjs')
 const { createPluginConnection, isPluginURL } = require('./plugin-connection.cjs');
 const { invokeCanonicalProductSignIn, locateInstalledRuntime } = require('./canonical-account.cjs');
 const { createExclusiveSignIn } = require('./account-sign-in-guard.cjs');
+const { createCentralActivation } = require('./central-activation.cjs');
 app.setName('ORDAX Studio');
 // One executable, two presentation entrypoints; neither changes permissions.
 const startupWorkspace = process.argv.includes('--ordax-central') ? 'central' : 'conversation';
@@ -16,7 +17,9 @@ app.setPath('userData', path.join(process.env.LOCALAPPDATA || (process.platform 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   let window, surface, bridge, host, runtime, studioSurfaces, shuttingDown = false, closing = false, uiReady = false;
-  let pendingCentralNavigation = false;
+  const centralActivation = createCentralActivation(() => {
+    if (window && !window.isDestroyed()) window.webContents.send('assistant-web:workspace', 'central');
+  });
   const accountSignIn = createExclusiveSignIn();
   async function flushComposer() {
     if (!uiReady || !window || window.isDestroyed() || window.webContents.isDestroyed()) return true;
@@ -120,10 +123,7 @@ else {
     });
     await window.loadURL(host.origin + '/src/index.html');
     uiReady = true;
-    if (pendingCentralNavigation) {
-      pendingCentralNavigation = false;
-      window.webContents.send('assistant-web:workspace', 'central');
-    }
+    centralActivation.markReady();
     window.show();
     window.focus();
     console.log('ORDAX Studio: janela pronta.');
@@ -132,10 +132,7 @@ else {
   app.on('second-instance', (_event, argv) => {
     // The installed launcher may request Central before the renderer is ready.
     // Preserve the presentation request without changing user/Runtime authority.
-    if (argv?.includes('--ordax-central')) {
-      if (uiReady && window && !window.isDestroyed()) window.webContents.send('assistant-web:workspace', 'central');
-      else pendingCentralNavigation = true;
-    }
+    if (argv?.includes('--ordax-central')) centralActivation.request();
     if (!window) return;
     if (window.isMinimized()) window.restore(); window.show(); window.focus();
   });
