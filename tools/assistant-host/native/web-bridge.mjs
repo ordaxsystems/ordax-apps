@@ -198,8 +198,26 @@ export class WebBridge {
         chat = this.findChat(run.chatId);
       } else if (page.conversationId) {
         chat = this.chats.find(c => c.webId === page.conversationId);
-        const pending = this.chats.find(c => c.id === this.activeId && !c.webId && c.delivery?.status === 'uncertain');
-        if (!chat && pending && page.turns.filter(t => t.role === 'user' && !pending.delivery.baseline.includes(t.id) && fingerprint(t.text) === pending.delivery.fingerprint).length === 1) chat = pending;
+        // After a genuine ChatGPT URL transition, an accepted user turn can
+        // remain on the new URL although the old Web ID was already saved.
+        // Recover the single matching uncertain receipt by the provider turn
+        // ID, not by guessed URLs or prompt similarity alone. An unaccepted
+        // send may only reconcile against the still-selected new draft.
+        const pendingCandidates = this.chats.filter(c => {
+          const delivery = c.delivery;
+          if (delivery?.status !== 'uncertain' || !delivery.fingerprint) return false;
+          const canRecover = delivery.userId
+            ? true
+            : c.id === this.activeId && !c.webId;
+          if (!canRecover) return false;
+          const acceptedUsers = page.turns.filter(t => t.role === 'user'
+            && !((delivery.baseline || []).includes(t.id))
+            && (!delivery.userId || t.id === delivery.userId)
+            && fingerprint(t.text) === delivery.fingerprint);
+          return acceptedUsers.length === 1;
+        });
+        const pending = pendingCandidates.length === 1 ? pendingCandidates[0] : null;
+        if (!chat && pending) chat = pending;
         if (!chat && page.turns.length && !this.ignored.has(page.conversationId)) chat = this.newRecord();
         this.activeId = chat?.id || null;
       } else if (chat?.webId || (!chat && page.turns.length)) {
