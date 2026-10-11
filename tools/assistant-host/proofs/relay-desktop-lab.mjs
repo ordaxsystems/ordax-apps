@@ -39,7 +39,7 @@ export async function startWorkbench({platformRoot,provider='diagnostic'}){
   const clients=Array.from({length:3},(_,i)=>({id:'studio-'+(i+1),secret:token()}));
   const adminToken=token(),cookie=token(),events=[];
   const record=e=>{events.push({time:new Date().toLocaleTimeString('pt-BR'),...e});if(events.length>130)events.shift()};
-  let hub=null,studio=null,server=null,root=null,origin='',kids=[];
+  let hub=null,studio=null,server=null,root=null,origin='',kids=[],studioCookie='';
   const saved={url:process.env.ORDAX_RELAY_LAB_URL,token:process.env.ORDAX_RELAY_LAB_ADMIN_TOKEN};
   try{
     hub=await startRelayLab({devices:clients,adminToken,inferenceTimeoutMs:30000,
@@ -53,6 +53,12 @@ export async function startWorkbench({platformRoot,provider='diagnostic'}){
     process.env.ORDAX_RELAY_LAB_URL=hub.url;
     process.env.ORDAX_RELAY_LAB_ADMIN_TOKEN=adminToken;
     studio=await createWebServer({bridge:{},runtime:null});
+    // Reuse one real Studio operator session instead of creating a fresh
+    // session on every Central poll. The Studio observer remains the SSOT.
+    const studioEntry=await fetch(studio.origin+'/src/index.html');
+    studioCookie=studioEntry.headers.get('set-cookie')?.split(';')[0]||'';
+    if(!studioEntry.ok||!studioCookie.startsWith('ordax_assistant_web='))
+      throw Error('studio_operator_session_unavailable');
     server=createServer(async(req,res)=>{
       try{
         if(req.headers.host!==new URL(origin).host)return send(res,403,{ok:false,error:'invalid_host'});
@@ -64,12 +70,14 @@ export async function startWorkbench({platformRoot,provider='diagnostic'}){
         }
         if(req.method!=='GET'||req.url!=='/api/state')return send(res,404,{ok:false,error:'not_found'});
         if(!String(req.headers.cookie||'').split(';').some(x=>x.trim()==='ordax_lab_operator='+cookie))return send(res,401,{ok:false,error:'operator_session_required'});
-        const status=await fetch(hub.url+'/v1/admin/status',{headers:{authorization:'Bearer '+adminToken}});
-        const projection=status.ok?await status.json():{activeRequests:0,retainedReceipts:0};
-        const p=await fetch(studio.origin+'/src/index.html');
-        const session=p.headers.get('set-cookie')?.split(';')[0]||'';
-        const obs=await fetch(studio.origin+'/api/relay',{headers:{cookie:session}});
-        const studioStatus=obs.ok?await obs.json():{state:'unavailable'};
+        // Exactly one authority for operational projection: the existing Studio
+        // Relay observer. Never duplicate admin polling or invent zero counters.
+        const obs=await fetch(studio.origin+'/api/relay',{headers:{cookie:studioCookie}});
+        if(!obs.ok)return send(res,503,{ok:false,error:'studio_observer_unavailable'});
+        const studioStatus=await obs.json();
+        if(studioStatus.state!=='connected-laboratory')return send(res,503,{ok:false,error:'relay_unavailable'});
+        const projection={activeRequests:studioStatus.active,
+          retainedReceipts:studioStatus.retained,failedReceipts:studioStatus.failures};
         return send(res,200,{status:'connected-laboratory',clients:kids.filter(k=>k.exitCode===null).length,
           provider,relay:projection,studio:studioStatus,events});
       }catch{return send(res,503,{ok:false,error:'observer_unavailable'})}
