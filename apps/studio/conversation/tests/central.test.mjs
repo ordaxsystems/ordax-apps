@@ -26,10 +26,11 @@ test('Central organizes authorized Product devices separately from local Relay l
   assert.equal(result.state, 'product-connected');
   assert.equal(result.total, 3);
   assert.equal(result.reportedOnline, 1);
-  assert.equal(result.pending, 2);
+  assert.equal(result.pending, 1);
   assert.equal(result.uncertain, 1);
   assert.deepEqual(result.devices.map(x => x.id), ['pc-central','pc-unknown','pc-off']);
   assert.equal(result.devices[0].active, 1);
+  assert.equal(result.devices[2].active, 0);
   assert.equal(result.devices[0].failed, 1);
   assert.equal(result.devices[2].uncertain, 1);
   assert.deepEqual(result.lab, {state:'laboratory',clients:2,active:1,retained:5,failures:1});
@@ -58,4 +59,45 @@ test('long or suspicious device labels cannot inject markup or other private fie
   assert.equal(result.devices.find(x=>x.id==='pc-off').name.length, 128);
   assert.ok(!JSON.stringify(result).includes('C:/private'));
   // DOM renderer uses textContent, never innerHTML for labels or receipts.
+});
+
+test('operator receipts project only bound status metadata; unknown devices and private fields stay hidden', () => {
+  const raw = product();
+  raw.operations.push({
+    deviceId: 'pc-central', kind: 'project.preview_status', id: 'a9be2304-40ee-4ff1-8ae4-a85ce1d75201',
+    status: 'queued', createdAt: '2026-10-11T01:05:00Z',
+    payload: { secret: 'PRIVATE_PROMPT_SHOULD_NOT_BE_VISIBLE' },
+    result: 'PRIVATE_RESULT_SHOULD_NOT_BE_VISIBLE',
+  });
+  raw.operations.push({deviceId:'not-authorized', status:'failed', kind:'computer.screenshot',
+    payload:'NEVER_SHOW_UNAUTHORIZED_DEVICE'});
+  const model = centralViewModel(raw, null);
+  assert.equal(model.total, 3);
+  assert.equal(model.pending, 2);
+  assert.equal(model.uncertain, 1);
+  assert.equal(model.operations.length, 5);
+  assert.equal(model.operations[0].kind, 'project.preview_status');
+  assert.equal(model.operations[0].id, 'a9be2304-40ee-4ff1-8ae4-a85ce1d75201');
+  assert.equal(model.operations[0].createdAt, '2026-10-11T01:05:00.000Z');
+  assert.deepEqual(Object.keys(model.operations[0]).sort(), ['createdAt','deviceId','finishedAt','id','kind','status']);
+  assert.ok(!JSON.stringify(model).includes('PRIVATE_PROMPT'));
+  assert.ok(!JSON.stringify(model).includes('PRIVATE_RESULT'));
+  assert.ok(!JSON.stringify(model).includes('NEVER_SHOW_UNAUTHORIZED_DEVICE'));
+});
+
+test('operator receipt view never materializes user text as action identity', () => {
+  const raw = product();
+  raw.operations = [
+    {deviceId:'pc-central', status:'uncertain', kind:'\\n'.repeat(40), id:'non-canonical/../../',
+      createdAt:'impossible', finishedAt:'2026-10-11T01:05:00Z', text:'private user prompt'},
+  ];
+  const model = centralViewModel(raw, null);
+  assert.equal(model.pending, 0);
+  assert.equal(model.uncertain, 1);
+  assert.equal(model.operations.length, 1);
+  assert.equal(model.operations[0].kind, 'Operação');
+  assert.equal(model.operations[0].id, null);
+  assert.equal(model.operations[0].createdAt, null);
+  assert.equal(model.operations[0].finishedAt, '2026-10-11T01:05:00.000Z');
+  assert.ok(!JSON.stringify(model).includes('private user prompt'));
 });
