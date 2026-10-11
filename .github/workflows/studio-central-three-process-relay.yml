@@ -53,4 +53,6 @@ jobs:
         run: |
           node --version
           node --test apps/central/tests/receipt-projection.test.mjs apps/central/tests/chat-workspace.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Central unit tests failed ($LASTEXITCODE)" }
           node tools/assistant-host/proofs/relay-desktop-lab.mjs --self-test --platform-root ../platform
+          if ($LASTEXITCODE -ne 0) { throw "Central HTTP workbench failed ($LASTEXITCODE)" }
