@@ -210,7 +210,8 @@
     <section aria-labelledby="relayAdminTitle" class="relay-admin-check">
       <h3 id="relayAdminTitle">Relay · administração experimental</h3>
       <p class="dialog-help">O Relay ainda não está ativado. Esta consulta mostra somente o estado do Product no Studio central, sem associar PCs entre si, compartilhar credenciais ou declarar inferência remota disponível.</p>
-      <div class="session-actions"><button id="relayCheck" class="connect-secondary" type="button">Verificar estado Product</button></div>
+      <div class="session-actions"><button id="relayCheck" class="connect-secondary" type="button">Verificar estado Product</button><button id="relayLabCheck" class="connect-secondary" type="button">Verificar Relay local</button></div>
+      <p id="relayLabStatus" class="dialog-help" role="status" aria-live="polite">Relay local não verificado. Sem configuração explícita, nenhuma sessão será iniciada.</p>
       <p id="relayStatus" class="dialog-help" role="status" aria-live="polite">Relay ainda não ativado. Verifique a conexão Product para auditar apenas os dispositivos já autorizados neste Studio.</p>
     </section>
 
