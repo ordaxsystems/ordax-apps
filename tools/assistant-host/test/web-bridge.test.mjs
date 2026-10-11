@@ -165,6 +165,49 @@ test('unknown URL without a matching user turn cannot bind an active run', async
   assert.equal(f.submits, 1);
 });
 
+test('an accepted GPT reply after a canonical URL switch reconciles to one original local chat', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  const { promise } = await start(f);
+  const acceptedId = f.bridge.run.userId;
+  f.page.url = 'https://chatgpt.com/c/canonical-after-switch';
+  f.page.conversationId = 'canonical-after-switch';
+  await f.bridge.refresh();
+  await assert.rejects(promise, /conversa Web mudou/);
+  assert.equal(f.chat.delivery.status, 'uncertain');
+  f.page.busy = false;
+  f.page.turns.at(-1).text = 'Resposta concluída na URL canônica';
+  f.page.turns.at(-1).completedControl = true;
+  await f.bridge.refresh(); f.tick(2000); await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 1);
+  assert.equal(f.bridge.activeId, f.chat.id);
+  assert.equal(f.chat.webId, 'canonical-after-switch');
+  assert.equal(f.chat.delivery.status, 'completed');
+  assert.equal(f.chat.delivery.userId, acceptedId);
+  assert.equal(f.chat.messages.filter(m => m.role === 'user').length, 1);
+  assert.equal(f.chat.messages.filter(m => m.role === 'assistant').length, 1);
+  assert.equal(f.submits, 1);
+});
+
+test('a foreign Web user turn cannot claim an uncertain accepted GPT response', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  const { promise } = await start(f);
+  f.page.url = 'https://chatgpt.com/c/unrelated-result';
+  f.page.conversationId = 'unrelated-result';
+  f.page.turns = [
+    { id: 'foreign-user', role: 'user', text: 'Olá' },
+    { id: 'foreign-reply', role: 'assistant', text: 'Não pertence ao pedido', completedControl: true },
+  ];
+  f.page.busy = false;
+  f.page.baseline = ['foreign-user','foreign-reply'];
+  await f.bridge.refresh();
+  await assert.rejects(promise, /conversa Web mudou/);
+  await f.bridge.refresh();
+  assert.equal(f.chat.delivery.status, 'uncertain');
+  assert.equal(f.chat.webId, 'new-chat');
+  assert.equal(f.chat.messages.some(m => m.id === 'foreign-reply'), false);
+  assert.equal(f.submits, 1);
+});
+
 test('messages written on the right are imported; virtualized old turns stay in local history', async t => {
   const f = await fixture(); t.after(() => f.bridge.close());
   f.page.conversationId = 'right-chat'; f.page.url = 'https://chatgpt.com/c/right-chat';
