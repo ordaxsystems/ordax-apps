@@ -150,8 +150,23 @@ export class WebBridge {
       let chat = this.chats.find(c => c.id === this.activeId);
       if (this.run && !this.run.finished) {
         const run = this.run;
-        if ((run.webId && page.conversationId !== run.webId) || (!run.webId && page.conversationId && this.chats.some(c => c.webId === page.conversationId && c.id !== run.chatId))) {
-          this.failRun('A conversa Web mudou durante a resposta. O app não reenviou a mensagem.'); return;
+        if (run.webId !== page.conversationId) {
+          // A new ChatGPT thread can receive an initial URL and later a
+          // canonical URL. Only the freshly created thread may follow that
+          // transition, and only after the *same observed user turn* proves
+          // the destination. Existing threads can never change identity here.
+          const other = page.conversationId && this.chats.some(c => c.webId === page.conversationId && c.id !== run.chatId);
+          const newUsers = page.turns.filter(t => t.role === 'user' && !run.baseline.includes(t.id));
+          const matched = newUsers.length === 1
+            && normalize(newUsers[0].text) === normalize(run.text)
+            && (!run.userId || newUsers[0].id === run.userId);
+          if (!run.startedWithoutWebId || other || (page.conversationId && newUsers.length && !matched)) {
+            this.failRun('A conversa Web mudou durante a resposta. O app não reenviou a mensagem.'); return;
+          }
+          // An unconfirmed redirect is not authorization to bind a foreign
+          // conversation, import its turns or emit its result.
+          if (!page.conversationId || !matched) return;
+          run.webId = page.conversationId;
         }
         chat = this.findChat(run.chatId);
       } else if (page.conversationId) {
@@ -500,7 +515,7 @@ export class WebBridge {
     emit({ type: 'activity', chatId: chat.id, activity: structuredClone(chat.activity) });
     // Once clicked, NEVER click again or replay history to repair an uncertain result.
     const finished = new Promise((resolve, reject) => {
-      this.run = { chatId: chat.id, webId: chat.webId, baseline: page.baseline, text, attachments, startedAt: this.now(), accepted: false, finished: false, emit, resolve, reject };
+      this.run = { chatId: chat.id, webId: chat.webId, startedWithoutWebId: !chat.webId, baseline: page.baseline, text, attachments, startedAt: this.now(), accepted: false, finished: false, emit, resolve, reject };
     });
     const abort = () => this.stop(chat.id).catch(() => this.failRun('Acompanhamento interrompido. Confira o Web.'));
     signal.addEventListener('abort', abort, { once: true });
