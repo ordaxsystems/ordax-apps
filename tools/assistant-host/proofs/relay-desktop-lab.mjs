@@ -141,12 +141,25 @@ if(args.includes('--self-test')){
     const p=await fetch(app.origin);assert.equal(p.status,200);
     const op=p.headers.get('set-cookie')?.split(';')[0];
     assert.equal((await fetch(app.origin+'/api/state')).status,401);
+    // Emulate ONE real browser cookie jar shared by all 127.0.0.1 ports.
+    // Previously the third iframe overwrote the first two sessions, causing 403.
+    const jar=new Map();
+    for(const c of app.clients){
+      const home=await fetch(c.origin);assert.equal(home.status,200);
+      const setCookie=home.headers.get('set-cookie')?.split(';')[0];
+      assert.ok(setCookie?.startsWith('ordax_lab_spoke_'+c.id+'='));
+      const separator=setCookie.indexOf('=');
+      jar.set(setCookie.slice(0,separator),setCookie.slice(separator+1));
+    }
+    assert.equal(jar.size,3,'Browser cookie names must remain unique across ports');
+    const cookie=[...jar].map(([key,value])=>key+'='+value).join('; ');
     const outs=await Promise.all(app.clients.map(async(c,i)=>{
-      const home=await fetch(c.origin);const cookie=home.headers.get('set-cookie')?.split(';')[0];
-      assert.equal(home.status,200);
       const prompt='Mensagem E2E '+(i+1)+' de '+c.id;
       const noCookie=await fetch(c.origin+'/api/send',{method:'POST',headers:{origin:c.origin,'content-type':'application/json'},body:JSON.stringify({prompt})});
       assert.equal(noCookie.status,403);
+      const otherCookie=[...jar].filter(([name])=>name!=='ordax_lab_spoke_'+c.id).map(([name,value])=>name+'='+value).join('; ');
+      const wrongClient=await fetch(c.origin+'/api/send',{method:'POST',headers:{origin:c.origin,cookie:otherCookie,'content-type':'application/json'},body:JSON.stringify({prompt})});
+      assert.equal(wrongClient.status,403);
       const r=await fetch(c.origin+'/api/send',{method:'POST',headers:{origin:c.origin,cookie,'content-type':'application/json'},body:JSON.stringify({prompt})});
       assert.equal(r.status,200);const body=await r.json();assert.equal(body.ok,true);
       assert.equal(body.result,'[DIAGNÓSTICO — NÃO É GPT] '+c.id+' recebeu: '+prompt);
@@ -162,7 +175,7 @@ if(args.includes('--self-test')){
     assert.equal(state.events.filter(x=>x.event==='provider_returned').length,3);
     console.log('ORDAX_THREE_PROCESS_RELAY_E2E=PASS');
     console.log('PROCESS_PIDS='+app.clients.map(c=>c.pid).join(',')+' REQUESTS=3 RECEIPTS=3');
-    console.log('STUDIO_OBSERVER=REAL RELAY_HTTP=REAL CROSS_CLIENT_COOKIE=REJECTED');
+    console.log('STUDIO_OBSERVER=REAL RELAY_HTTP=REAL SHARED_BROWSER_JAR=PASS CROSS_CLIENT_COOKIE=REJECTED');
     console.log('GPT_PROVIDER=DIAGNOSTIC_NOT_GPT CHATGPT_PLUGIN_E2E=NOT_TESTED PHYSICAL_PCS=1');
   }finally{await app.close()}
 }else if(import.meta.url===pathToFileURL(process.argv[1]||'').href){
