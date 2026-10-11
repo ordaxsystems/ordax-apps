@@ -36,6 +36,17 @@ O catálogo deriva os apps elegíveis de `tools/app-package/catalog_inventory.py
 - dual source autoritativo é proibido, inclusive durante migração;
 - Store/Settings/Account/System não pertencem a este diretório porque são estruturais.
 
+## Grafo único de módulos e recursos estáticos
+
+O empacotador oficial `tools/app-package/build.py` verifica **o mesmo grafo de arquivos na geração e na verificação do ZIP recebido**. Além dos imports ES, valida agora referências literais `new URL("../assets/arquivo.css", import.meta.url)` encontradas pelo lexer JavaScript já existente:
+
+- o recurso precisa estar efetivamente presente nos bytes do pacote sob `system/apps/<app-id>/`;
+- caminho remoto, consulta/fragments, escapes e travessia para fora do app falham antes de publicar um artifact;
+- referências em comentários ou literais de texto não criam dependências falsas;
+- referências dinâmicas com construção de URL não são atestadas pelo verificador estático e não devem ser apresentadas como prova de host.
+
+A regra é **portátil e vale para todos os candidatos**, não uma lista especial para a Calculadora. Os testes de builder e verificador validam autossuficiência de CSS sem duplicar o pipeline. Isso não substitui execução na Surface real nem assinatura e promoção pela plataforma.
+
 ## Source cutover != distribution activation
 
 A mudança de ownership do source e a ativação de distribuição são gates separados.
