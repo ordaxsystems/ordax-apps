@@ -215,7 +215,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
   paint();
   return Object.freeze({ open: refresh, refresh, paint,
     poll: () => {
-      if (centralPollDue({ checking, checkedAt, visible: !document.hidden })) void refresh();
+      if (centralPollDue({ checking, checkedAt, visible: !document.hidden && !$('centralPanel').hidden && $('projectDialog').hidden && !document.querySelector('dialog[open]') })) void refresh();
     },
   });
 }
