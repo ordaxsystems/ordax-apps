@@ -63,13 +63,15 @@ function el(tag, className, label) {
   if (label !== undefined) node.textContent = label;
   return node;
 }
-export function createCentralPanel({ host }) {
+export function createCentralPanel({ host, openRuntime }) {
   const $ = id => document.getElementById(id);
   let model = centralViewModel(null, null);
   let selected = null, checking = false, issue = '', checkedAt = null;
   let filter = '', operationFilter = 'all';
   const metric = (id, value) => { $(id).textContent = value === null ? '—' : String(value); };
   function paint() {
+    $('centralConnect').hidden = model.state === 'product-connected';
+    $('centralConnect').disabled = checking || typeof openRuntime !== 'function';
     $('centralRefresh').disabled = checking;
     $('centralRefresh').textContent = checking ? 'Verificando…' : 'Atualizar estado';
     $('centralChecked').textContent = checking ? 'Consultando fontes autorizadas…'
@@ -163,6 +165,12 @@ export function createCentralPanel({ host }) {
       checkedAt = new Date();
     } finally { checking = false; paint(); }
   }
+  $('centralConnect').addEventListener('click', () => {
+    if (checking || typeof openRuntime !== 'function') return;
+    Promise.resolve().then(openRuntime).catch(error => {
+      issue = error?.message || 'Não foi possível abrir a conexão OrdaX.'; paint();
+    });
+  });
   $('centralRefresh').addEventListener('click', refresh);
   $('centralOperationFilter').addEventListener('change', event => {
     operationFilter = ['all','active','uncertain','failed','finished'].includes(event.target.value) ? event.target.value : 'all'; paint();
