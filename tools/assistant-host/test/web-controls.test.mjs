@@ -13,7 +13,7 @@ function fixture(url = 'https://chatgpt.com/') {
 }
 test('Entrar opens the public login in the same Web surface and expands it', async () => {
   const f = fixture(), original = f.surface.webContents;
-  assert.deepEqual(await f.controls.login(), { embedded: true, expanded: true, mode: 'web', ratio: 0.6, pluginSetup: false, audioRevision: 0, audioSession: null });
+  assert.deepEqual(await f.controls.login(), { embedded: true, expanded: true, mode: 'web', ratio: 0.6, startupWorkspace: 'conversation', pluginSetup: false, audioRevision: 0, audioSession: null });
   assert.deepEqual(f.loads, ['https://chatgpt.com/auth/login']); assert.equal(f.surface.webContents, original);
   assert.deepEqual(f.bounds.at(-1), { x: 0, y: 64, width: 1500, height: 804 });
 });
@@ -196,4 +196,16 @@ test('reloading the renderer with a failed audio exit preserves an explicit reco
   await assert.rejects(controls.audioEnd(),/confirmar o encerramento/);assert.equal(controls.state().audioSession.status,'uncertain');
   assert.equal(f.events.at(-1)[1].audioSession.status,'uncertain');f.surface.webContents.loadURL=load;
   await controls.audioEnd();assert.equal(controls.state().audioSession,null);
+});
+
+test('one Electron host exposes two presentation-only launch workspaces', () => {
+  const f = fixture();
+  assert.equal(f.controls.state().startupWorkspace, 'conversation');
+  const central = createWebControls({ window: f.window, surface: f.surface, startupWorkspace: 'central' });
+  assert.equal(central.state().startupWorkspace, 'central');
+  assert.equal(central.state().mode, 'split');
+  assert.equal(central.state().ratio, 0.6);
+  assert.equal(f.loads.length, 0, 'starting Central must never navigate or send to ChatGPT');
+  const invalid = createWebControls({ window: f.window, surface: f.surface, startupWorkspace: 'unknown' });
+  assert.equal(invalid.state().startupWorkspace, 'conversation');
 });
