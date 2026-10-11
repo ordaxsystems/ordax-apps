@@ -42,6 +42,11 @@ const studioWebHost = Object.freeze({
     ipcRenderer.on('assistant-web:status', listener);
     return () => ipcRenderer.removeListener('assistant-web:status', listener);
   },
+  onWorkspace(callback) {
+    const listener = (_event, value) => { if (value === 'central') callback(value); };
+    ipcRenderer.on('assistant-web:workspace', listener);
+    return () => ipcRenderer.removeListener('assistant-web:workspace', listener);
+  },
 });
 contextBridge.exposeInMainWorld('ordaxStudioWebHost', studioWebHost);
 // Credentials travel only through the trusted Studio main-frame IPC to the
