@@ -1,8 +1,10 @@
 import { relayAdminReadiness } from './relay-readiness.mjs';
+import { operationLabels } from './runtime-activity.mjs';
 
 // Presentation only: Product and the existing Relay observer remain the owners.
 // No inference, credentials, client pairing, new broker or remote chat history.
-const OPEN = new Set(['prepared', 'submitting', 'queued', 'running', 'uncertain']);
+const IN_FLIGHT = new Set(['prepared', 'submitting', 'queued', 'running']);
+const OPEN = new Set([...IN_FLIGHT, 'uncertain']);
 const VALID = new Set([...OPEN, 'succeeded', 'failed', 'cancelled', 'not-sent', 'reviewed']);
 const idValid = value => typeof value === 'string' && /^[A-Za-z0-9:_-]{1,128}$/.test(value);
 const textSafe = value => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 128) : '';
@@ -21,19 +23,28 @@ export function centralViewModel(raw, observation) {
       retained: observation.retained, failures: observation.failures }
     : { state: 'unavailable' };
   if (safe.state !== 'product-connected') {
-    return { state: 'unavailable', devices: [], total: null, reportedOnline: null,
+    return { state: 'unavailable', devices: [], operations: [], total: null, reportedOnline: null,
       pending: null, uncertain: null, lab };
   }
   const receipts = raw.operations;
   if (receipts.some(op => !VALID.has(op.status) || !idValid(op.deviceId))) {
-    return { state: 'unavailable', devices: [], total: null, reportedOnline: null,
+    return { state: 'unavailable', devices: [], operations: [], total: null, reportedOnline: null,
       pending: null, uncertain: null, lab };
   }
+  const operations = receipts.filter(op => raw.targets.some(target => target.deviceId === op.deviceId)).map(op => ({
+    // Whitelist published receipt metadata; never project prompts, paths,
+    // private results or credentials into the operator workspace.
+    deviceId: op.deviceId, status: op.status,
+    id: idValid(op.requestId) ? op.requestId : idValid(op.id) ? op.id : null,
+    kind: textSafe(op.kind) || 'Operação',
+    createdAt: whenValid(op.createdAt),
+    finishedAt: whenValid(op.finishedAt),
+  })).sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
   const devices = raw.targets.map(target => {
     const operations = receipts.filter(op => op.deviceId === target.deviceId);
     return { id: target.deviceId, name: textSafe(target.name) || target.deviceId,
       reportedOnline: target.online, lastSeenAt: whenValid(target.lastSeenAt),
-      operations: operations.length, active: operations.filter(op => OPEN.has(op.status)).length,
+      operations: operations.length, active: operations.filter(op => IN_FLIGHT.has(op.status)).length,
       uncertain: operations.filter(op => op.status === 'uncertain').length,
       failed: operations.filter(op => op.status === 'failed').length };
   });
@@ -41,8 +52,9 @@ export function centralViewModel(raw, observation) {
     (b.reportedOnline === true ? 2 : b.reportedOnline === null ? 1 : 0)
     - (a.reportedOnline === true ? 2 : a.reportedOnline === null ? 1 : 0)
     || a.name.localeCompare(b.name, 'pt-BR'));
-  return { state: 'product-connected', devices,
-    total: safe.deviceCount, reportedOnline: safe.reportedOnline, pending: safe.uncertain,
+  return { state: 'product-connected', devices, operations,
+    total: safe.deviceCount, reportedOnline: safe.reportedOnline,
+    pending: receipts.filter(op => IN_FLIGHT.has(op.status)).length,
     uncertain: receipts.filter(op => op.status === 'uncertain').length, lab };
 }
 function el(tag, className, label) {
@@ -55,7 +67,7 @@ export function createCentralPanel({ host }) {
   const $ = id => document.getElementById(id);
   let model = centralViewModel(null, null);
   let selected = null, checking = false, issue = '', checkedAt = null;
-  let filter = '';
+  let filter = '', operationFilter = 'all';
   const metric = (id, value) => { $(id).textContent = value === null ? '—' : String(value); };
   function paint() {
     $('centralRefresh').disabled = checking;
@@ -107,8 +119,33 @@ export function createCentralPanel({ host }) {
       device.reportedOnline === false ? 'Presença informada offline' : 'Presença não informada'
     ) : 'Sem seleção';
     $('centralSelectedDetail').textContent = device
-      ? `${device.active} pendentes · ${device.uncertain} incertas · ${device.failed} falhas. Última atividade: ${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString('pt-BR') : 'não informada'}.`
-      : 'Os resultados e as permissões permanecem na autoridade Product/Runtime.';
+      ? `${device.active} em andamento · ${device.uncertain} incertas · ${device.failed} falhas. Último registro de presença: ${device.lastSeenAt ? new Date(device.lastSeenAt).toLocaleString('pt-BR') : 'não informado'}.`
+      : 'Selecione um computador para conferir sua atividade. A execução continua no Runtime.';
+    const visibleOperations = (model.operations || []).filter(op => (!selected || op.deviceId === selected) && (
+      operationFilter === 'all'
+      || operationFilter === 'active' && IN_FLIGHT.has(op.status)
+      || operationFilter === 'uncertain' && op.status === 'uncertain'
+      || operationFilter === 'failed' && op.status === 'failed'
+      || operationFilter === 'finished' && ['succeeded', 'cancelled', 'reviewed', 'not-sent'].includes(op.status)
+    ));
+    $('centralOperationCount').textContent = model.state === 'product-connected' ? String(visibleOperations.length) : '—';
+    $('centralOperationList').replaceChildren();
+    $('centralOperationEmpty').hidden = visibleOperations.length > 0;
+    $('centralOperationEmpty').textContent = model.state !== 'product-connected'
+      ? 'Conecte o Product para consultar recibos.'
+      : operationFilter !== 'all' ? 'Nenhuma operação com esse status.' : 'Nenhuma operação registrada neste escopo.';
+    for (const op of visibleOperations.slice(0, 80)) {
+      const item = el('li', 'central-operation-row');
+      const info = el('div', 'central-operation-info');
+      info.append(el('strong', '', op.kind), el('small', '', (model.devices.find(d => d.id === op.deviceId)?.name || op.deviceId)
+        + ' · ' + (op.createdAt ? new Date(op.createdAt).toLocaleString('pt-BR') : 'Horário não informado')));
+      const state = el('span', 'central-operation-status', operationLabels[op.status] || op.status);
+      state.dataset.state = op.status;
+      if (op.id) state.title = 'Recibo ' + op.id;
+      item.append(info, state);
+      $('centralOperationList').append(item);
+    }
+    $('centralOperationLimit').hidden = visibleOperations.length <= 80;
     $('centralConversationsStatus').textContent = 'Conversas por PC indisponíveis: a autoridade Relay ainda não fornece sessões de IA por cliente com recibos verificáveis. O Studio não usa seu histórico pessoal como se fosse o de outros computadores.';
   }
   async function refresh() {
@@ -127,6 +164,9 @@ export function createCentralPanel({ host }) {
     } finally { checking = false; paint(); }
   }
   $('centralRefresh').addEventListener('click', refresh);
+  $('centralOperationFilter').addEventListener('change', event => {
+    operationFilter = ['all','active','uncertain','failed','finished'].includes(event.target.value) ? event.target.value : 'all'; paint();
+  });
   $('centralFilter').addEventListener('input', event => {
     filter = event.target.value.trim().toLocaleLowerCase('pt-BR').slice(0, 128); paint();
   });
