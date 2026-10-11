@@ -366,13 +366,57 @@ test('a stop for another chat leaves the actual generation running', async t => 
   await f.bridge.stop(f.chat.id); await assert.rejects(promise); assert.equal(f.submits, 1);
 });
 
-test('an ambiguous click is reconciled to its original local chat when the Web confirms completion', async t => {
-  const f = await fixture(); t.after(() => f.bridge.close()); const original=f.contents.executeJavaScript;
-  f.contents.executeJavaScript=async code=>{const result=await original(code);if(code.includes('return (function submitMessage'))throw new Error('lost click result');return result;};
-  await assert.rejects(f.bridge.respond(input(f.chat.id),()=>{},new AbortController().signal));
-  f.page.busy=false;f.page.turns.at(-1).text='Resposta confirmada';f.page.turns.at(-1).completedControl=true;
-  await f.bridge.refresh();f.tick(2000);await f.bridge.refresh();
-  assert.equal(f.bridge.chats.length,1);assert.equal(f.bridge.activeId,f.chat.id);assert.equal(f.chat.delivery.status,'completed');assert.equal(f.chat.messages.at(-1).status,'completed');assert.equal(f.chat.activity.current.kind,'completed');assert.equal(f.submits,1);
+test('ambiguous click with no accepted provider turn is quarantined rather than guessed from prompt', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  const original = f.contents.executeJavaScript;
+  f.contents.executeJavaScript = async code => {
+    const result = await original(code);
+    if (code.includes('return (function submitMessage')) throw new Error('lost click result');
+    return result;
+  };
+  await assert.rejects(f.bridge.respond(input(f.chat.id), () => {}, new AbortController().signal), /lost click result/);
+  assert.equal(f.chat.delivery.userId, undefined);
+  assert.equal(f.chat.delivery.status, 'uncertain');
+  f.page.busy = false;
+  f.page.turns.at(-1).text = 'Resposta não atribuível';
+  f.page.turns.at(-1).completedControl = true;
+  await f.bridge.refresh(); f.tick(2000); await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 1);
+  assert.equal(f.bridge.activeId, f.chat.id);
+  assert.equal(f.chat.webId, null);
+  assert.equal(f.chat.delivery.status, 'uncertain');
+  assert.equal(f.chat.messages.some(m => m.role === 'assistant'), false);
+  assert.match(f.bridge.state().web.issue, /sem confirmação/);
+  assert.equal(f.submits, 1);
+});
+
+test('ambiguous same-text Web reply must not create a duplicate, but an unrelated thread can still be imported', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  f.chat.delivery = { status: 'uncertain', fingerprint: 'unused', baseline: [], startedAt: 10000 };
+  // The stored digest is filled by an actual one-click ambiguous submission.
+  const original = f.contents.executeJavaScript;
+  f.contents.executeJavaScript = async code => {
+    const result = await original(code);
+    if (code.includes('return (function submitMessage')) throw new Error('lost receipt');
+    return result;
+  };
+  f.chat.delivery = undefined;
+  await assert.rejects(f.bridge.respond(input(f.chat.id),()=>{},new AbortController().signal), /lost receipt/);
+  f.page.busy = false;
+  f.page.url = 'https://chatgpt.com/c/foreign-same-text';
+  f.page.conversationId = 'foreign-same-text';
+  await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 1);
+  assert.equal(f.chat.webId, null);
+  f.page.turns = [{ id: 'foreign-turn', role: 'user', text: 'Outra conversa, sem relação' }];
+  f.page.baseline = ['foreign-turn'];
+  f.page.url = 'https://chatgpt.com/c/foreign-distinct-text';
+  f.page.conversationId = 'foreign-distinct-text';
+  await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 2);
+  assert.equal(f.chat.delivery.status, 'uncertain');
+  assert.equal(f.chat.webId, null);
+  assert.equal(f.submits, 1);
 });
 test('switching existing chats on the Web persists the active conversation without reserializing unchanged turns', async t => {
   const f=await fixture();t.after(()=>f.bridge.close());
