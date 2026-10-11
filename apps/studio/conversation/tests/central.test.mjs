@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { centralViewModel, centralAccountCopy, centralPollDue } from '../src/central.mjs';
+import { centralViewModel, centralAccountCopy, centralPollDue, centralReadSources } from '../src/central.mjs';
 
 const product = () => ({
   connected: true, catalogAvailable: true,
@@ -126,4 +126,38 @@ test('Central polling is bounded to the visible page with a previous successful 
   assert.equal(centralPollDue({ checking: false, checkedAt, visible: false, now: checkedAt.getTime() + 90000 }), false);
   assert.equal(centralPollDue({ checking: false, checkedAt: null, visible: true, now: Date.now() }), false);
   assert.equal(centralPollDue({ checking: false, checkedAt: new Date('invalid'), visible: true, now: Date.now() }), false);
+});
+
+
+test('Central read timeout releases controls without inferring presence or replaying actions', async () => {
+  let completeProduct;
+  const stalledProduct = new Promise(resolve => { completeProduct = resolve; });
+  let productReads = 0, relayReads = 0, accountReads = 0;
+  const observations = await centralReadSources({
+    runtimeState: () => { productReads++; return stalledProduct; },
+    relayObservation: () => { relayReads++; return lab; },
+  }, { available: () => { accountReads++; return false; } }, 20);
+  assert.equal(observations[0].status, 'rejected');
+  assert.match(observations[0].reason.message, /central-read-timeout/);
+  assert.equal(observations[1].status, 'fulfilled');
+  assert.equal(observations[1].value, lab);
+  assert.equal(observations[2].status, 'fulfilled');
+  assert.equal(observations[2].value, false);
+  assert.deepEqual([productReads, relayReads, accountReads], [1, 1, 1]);
+  assert.equal(centralViewModel(null, observations[1].value).state, 'unavailable');
+  completeProduct(product());
+  await Promise.resolve();
+  assert.equal(observations[0].status, 'rejected'); // late results cannot override the timeout
+});
+
+test('Central read errors and unavailable hosts settle independently without retry', async () => {
+  let attempts = 0;
+  const observations = await centralReadSources({
+    runtimeState: () => { attempts++; throw new Error('Product offline'); },
+    relayObservation: () => null,
+  }, { available: () => Promise.reject(new Error('Account offline')) }, 20);
+  assert.deepEqual(observations.map(x => x.status), ['rejected', 'fulfilled', 'rejected']);
+  assert.equal(attempts, 1);
+  assert.equal(observations[1].value, null);
+  assert.equal((await centralReadSources(null, null, 20))[0].status, 'rejected');
 });
