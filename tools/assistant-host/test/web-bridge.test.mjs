@@ -195,6 +195,41 @@ test('an uncertain or mismatched accepted message fails without resubmission', a
   await assert.rejects(promise, /confirmar/); assert.equal(events.at(-1).type, 'error'); assert.equal(f.submits, 1);
 });
 
+test('temporary first-party page hydration does not mark an accepted GPT reply as failed', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  const { promise, events } = await start(f);
+  f.page.ready = false;
+  await f.bridge.refresh();
+  assert.equal(f.bridge.run.finished, false);
+  assert.equal(f.chat.delivery.status, 'accepted');
+  assert.equal(f.submits, 1);
+  f.page.ready = true;
+  f.page.busy = false;
+  f.page.turns.at(-1).text = 'Resposta depois da hidratação';
+  f.page.turns.at(-1).completedControl = true;
+  await f.bridge.refresh(); f.tick(2000); await f.bridge.refresh();
+  await promise;
+  assert.equal(events.at(-1).type, 'done');
+  assert.equal(f.chat.delivery.status, 'completed');
+  assert.equal(f.submits, 1);
+});
+
+test('hydration grace expires and never covers login, another chat or foreign sites', async t => {
+  for (const scenario of ['timeout', 'login', 'other-chat', 'external']) {
+    const f = await fixture(); t.after(() => f.bridge.close());
+    const { promise } = await start(f);
+    f.page.ready = false;
+    if (scenario === 'timeout') f.tick(15001);
+    if (scenario === 'login') f.page.loginRequired = true;
+    if (scenario === 'other-chat') { f.page.url = 'https://chatgpt.com/c/other'; f.page.conversationId = 'other'; }
+    if (scenario === 'external') f.page.url = 'https://example.com/not-our-chat';
+    await f.bridge.refresh();
+    await assert.rejects(promise, /sessão do ChatGPT Web foi interrompida/);
+    assert.equal(f.submits, 1);
+    assert.equal(f.chat.delivery.status, 'uncertain');
+  }
+});
+
 test('stop cancels the Web generation, preserves partial output and does not duplicate the user', async t => {
   const f = await fixture(); t.after(() => f.bridge.close()); const { promise } = await start(f);
   await f.bridge.stop(f.chat.id); await assert.rejects(promise, /interrompida/);
