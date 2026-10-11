@@ -56,3 +56,14 @@ Nunca registrar a chave no repositório, URL, UI, logs ou arquivos de prova. Sem
 Os testes de três usuários/PCs físicos, Cloudflare Product, OAuth e inferência real pelo plugin são marcos diferentes e **não** devem ser reportados como aprovados por este laboratório.
 
 Ownership: **OrdaX Studio (`ordax-apps`) para bancada visual e clientes; OrdaX Platform (`ordax-platform`) para Relay e autorização**. Não copiar o Relay nem cadastrar clientes laboratoriais no banco Product oficial.
+
+
+## Matriz de compatibilidade Central ↔ Platform em CI (11/10/2026)
+
+A workflow Windows `Studio Central Three-Process Relay` anteriormente usava checkout fixo do Platform `f0a2c4a`, de antes das PRs Platform #127 e #128. Por isso, as provas já aprovadas do laboratório HTTP **não certificavam** que o código Central era compatível com o contrato Product atual.
+
+Agora, a workflow obtém a **`main` canônica de `ordaxsystems/ordax-platform`** no momento da execução, registra o SHA completo no log e no resumo do job, confirma que os owners Product MCP/admissão canônicos existem, instala somente a dependência `postgres` declarada por esse owner, e executa os testes de OAuth assinado, recibos, autorização por conversa, escopo MCP e Relay Product. Depois executa os testes Central + a prova HTTP de três processos contra **o mesmo checkout**.
+
+Essa matriz é deliberadamente dinâmica: o log do workflow identifica exatamente o commit Platform certificado em cada execução. Não implica que commits futuros já tenham sido testados; nova publicação Platform exige nova execução. Uma falha de regressão ou indisponibilidade do repositório não pode ser confundida com sucesso. O teste de Product injeta dados de bancos/sessões, não efetua OAuth real com ChatGPT nem cria grants de produção, enquanto a prova HTTP continua sendo laboratório diagnóstico.
+
+**Estado operacional:** ainda não há autorização verificável de uma conversa ChatGPT Web para o mesmo cliente OAuth do plugin; o adaptador WebBridge não está ligado ao Relay de produção. Não promover resultado de laboratório como GPT real ou acesso aos PCs.
