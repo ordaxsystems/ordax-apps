@@ -108,6 +108,57 @@ test('left submission uses the visible Web session once; streams actual turns an
   assert.equal(f.submits, 1); assert.equal(f.disk['web-chats'].chats[0].webId, 'new-chat');
 });
 
+test('a fresh GPT conversation may switch to its canonical URL only with the same observed user turn', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  const { promise, events } = await start(f);
+  assert.equal(f.chat.webId, 'new-chat');
+  assert.equal(f.bridge.run.startedWithoutWebId, true);
+  const originalUserId = f.bridge.run.userId;
+  f.page.url = 'https://chatgpt.com/c/canonical-new-chat';
+  f.page.conversationId = 'canonical-new-chat';
+  await f.bridge.refresh();
+  assert.equal(f.chat.webId, 'canonical-new-chat');
+  assert.equal(f.bridge.run.userId, originalUserId);
+  assert.equal(f.submits, 1);
+  f.page.turns.at(-1).text = 'Resposta canônica';
+  f.page.turns.at(-1).completedControl = true;
+  f.page.busy = false;
+  await f.bridge.refresh(); f.tick(2000); await f.bridge.refresh();
+  await promise;
+  assert.equal(events.at(-1).type, 'done');
+  assert.equal(f.chat.delivery.status, 'completed');
+  assert.equal(f.chat.messages.at(-1).text, 'Resposta canônica');
+  assert.equal(f.submits, 1);
+});
+
+test('a different Web conversation cannot borrow a freshly submitted run even with identical prompt', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  const { promise } = await start(f);
+  f.bridge.chats.push({ id: 'peer', webId: 'peer-conversation', title: 'Outra', messages: [] });
+  f.page.conversationId = 'peer-conversation';
+  f.page.url = 'https://chatgpt.com/c/peer-conversation';
+  await f.bridge.refresh();
+  await assert.rejects(promise, /conversa Web mudou/);
+  assert.equal(f.chat.webId, 'new-chat');
+  assert.equal(f.submits, 1);
+});
+
+test('unknown URL without a matching user turn cannot bind an active run', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  const response = f.bridge.respond(input(f.chat.id), () => {}, new AbortController().signal);
+  response.catch(() => {});
+  for (let i = 0; i < 100 && !f.bridge.run; i++) await delay(5);
+  assert.ok(f.bridge.run);
+  f.page.turns = [{ id: 'user-foreign', role: 'user', text: 'Não pertence a este envio' }];
+  f.page.baseline = ['user-foreign'];
+  f.page.conversationId = 'unrelated';
+  f.page.url = 'https://chatgpt.com/c/unrelated';
+  await f.bridge.refresh();
+  await assert.rejects(response, /conversa Web mudou/);
+  assert.equal(f.chat.webId, null);
+  assert.equal(f.submits, 1);
+});
+
 test('messages written on the right are imported; virtualized old turns stay in local history', async t => {
   const f = await fixture(); t.after(() => f.bridge.close());
   f.page.conversationId = 'right-chat'; f.page.url = 'https://chatgpt.com/c/right-chat';
