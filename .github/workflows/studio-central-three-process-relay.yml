@@ -72,8 +72,9 @@ jobs:
           Write-Host "ORDAX_PLATFORM_MAIN_SHA=$sha"
       - name: Install canonical PostgreSQL client for Product contract tests only
         shell: pwsh
+        working-directory: platform/control-plane/cloudflare
         run: |
-          npm install --prefix platform/control-plane/cloudflare --ignore-scripts --no-audit --no-fund --package-lock=false
+          npm install --ignore-scripts --no-audit --no-fund --package-lock=false
           if ($LASTEXITCODE -ne 0) { throw 'Platform PostgreSQL dependency install failed' }
       - name: Validate Product OAuth admission, grants and MCP receipts against current Platform
         shell: pwsh
