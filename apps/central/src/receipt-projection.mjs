@@ -19,33 +19,37 @@ export function projectCentralReceipts(events) {
     let row=receipts.get(key);
     if(!row){
       row={deviceId:event.id,requestId:event.requestId,status:'submitted',
-        requestPreview:'',resultPreview:'',received:false,providerReturned:false,delivered:false,
+        requestPreview:'',resultPreview:'',received:false,providerReturned:false,providerFailed:false,delivered:false,deliveredOk:false,
         updatedAt:'',httpStatus:null};
       receipts.set(key,row);
     }
     row.updatedAt=maxText(event.time,32);
     if(event.event==='submitted'){
-      row.status='submitted';
-      row.requestPreview=maxText(event.preview);
+      if(!row.requestPreview)row.requestPreview=maxText(event.preview);
     }else if(event.event==='central_received'){
       row.received=true;
-      row.status='received';
       if(!row.requestPreview)row.requestPreview=maxText(event.preview);
     }else if(event.event==='provider_returned'){
       row.providerReturned=true;
-      row.status='response-ready';
       row.resultPreview=maxText(event.preview);
     }else if(event.event==='provider_failed'){
-      row.status='failed';
+      row.providerFailed=true;
       row.resultPreview=maxText(event.preview);
     }else if(event.event==='completed'){
       row.delivered=true;
+      row.deliveredOk=event.ok===true;
       row.httpStatus=Number.isInteger(event.httpStatus)&&event.httpStatus>=100&&event.httpStatus<=599?event.httpStatus:null;
-      row.status=event.ok===true&&row.httpStatus===200
-        ? row.received&&row.providerReturned?'completed':'uncertain'
-        : 'failed';
       if(!row.resultPreview)row.resultPreview=maxText(event.preview);
     }
+    // IPC events from different processes may reach the console out of order.
+    // Derive state from actual evidence, not the latest event arrival.
+    row.status=row.delivered
+      ? row.deliveredOk&&row.httpStatus===200
+        ? row.received&&row.providerReturned?'completed':'uncertain'
+        : 'failed'
+      : row.providerFailed?'failed'
+        : row.providerReturned?'response-ready'
+          : row.received?'received':'submitted';
   }
   const result=[...receipts.values()].reverse().slice(0,100).map(row=>Object.freeze(row));
   return Object.freeze({schema:CENTRAL_RECEIPT_PROJECTION_SCHEMA,state:'laboratory',receipts:result});
@@ -55,6 +59,6 @@ export function centralReceiptSummary(value) {
   return Object.freeze({
     completed:x.filter(r=>r.status==='completed'&&r.delivered).length,
     failed:x.filter(r=>r.status==='failed').length,
-    pending:x.filter(r=>!r.delivered&&r.status!=='failed').length,
+    pending:x.filter(r=>r.status!=='completed'&&r.status!=='failed').length,
   });
 }
