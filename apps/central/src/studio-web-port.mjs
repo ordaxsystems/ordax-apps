@@ -10,7 +10,6 @@
 // delivery state. No queue, replays or silent provider/API substitution.
 import {formatCentralWebTurn,CENTRAL_TURN_SCHEMA} from './turn-context.mjs';
 
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 // Schema validation is deliberately separate from Product authorization.
 const isUuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 const validDevice=v=>typeof v==='string'&&/^[a-z][a-z0-9-]{1,62}$/.test(v);
@@ -24,8 +23,8 @@ export class CentralWebPortError extends Error {
 
 /**
  * @param {object} input
- * @param {object} input.host existing Studio conversation host with state(),
- *                          selectChat() and respond() AsyncIterable
+ * @param {object} input.host native Studio WebBridge with state(),
+ *                          selectChat(), refresh() and respond(data, emit, signal)
  * @param {(turn:object)=>Promise<object>} input.bindChat trusted Platform
  *             resolver; must NOT use request/prompt/UI IDs as authorization.
  * @param {(binding:object,turn:object)=>Promise<boolean>} input.authorizeTools
@@ -33,7 +32,7 @@ export class CentralWebPortError extends Error {
  */
 export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
   if(typeof host?.state!=='function'||typeof host?.selectChat!=='function'
-    ||typeof host?.respond!=='function'||typeof bindChat!=='function'
+    ||typeof host?.refresh!=='function'||typeof host?.respond!=='function'||typeof bindChat!=='function'
     ||typeof authorizeTools!=='function')
     throw new TypeError('central_web_port_dependencies_missing');
   let busy=false;
@@ -83,29 +82,55 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
           throw new CentralWebPortError('central_web_port_busy');
         if(current?.activeId!==binding.chatId){
           await host.selectChat(binding.chatId);
+          // Native WebBridge.selectChat clears its page observation after
+          // navigation. Read the new page before checking chat readiness;
+          // never trust the previous conversation's cached composer state.
+          await host.refresh();
           current=await host.state();
         }
         const previous=checkState(current,binding);
         const oldAssistantIds=new Set((previous.messages||[])
           .filter(m=>m.role==='assistant').map(m=>m.id));
+        const oldUserIds=new Set((previous.messages||[])
+          .filter(m=>m.role==='user').map(m=>m.id));
         sending=true;
-        let completion=null;
-        for await(const event of host.respond({
+        let completion=null, invalidEvent=false;
+        // WebBridge.respond(data, emit, AbortSignal) returns a Promise.
+        // It does NOT return an AsyncIterable. Consume the real native
+        // callback directly; no shadow event queue or second chat transport.
+        await host.respond({
           chatId:binding.chatId,model:'chatgpt-web',
           retry:false,message:{text:prompt,attachments:[]}
-        })){
-          if(event?.type==='error')
-            throw new CentralWebPortError('central_web_delivery_uncertain');
+        },event=>{
+          if(event?.type==='error') invalidEvent=true;
           if(event?.type==='done'){
             if(completion||event.chat?.id!==binding.chatId
               ||event.chat?.webId!==binding.webId
-              ||event.chat?.delivery?.status!=='completed')
-              throw new CentralWebPortError('central_web_delivery_uncertain');
-            completion=event.chat;
+              ||event.chat?.delivery?.status!=='completed'){
+              invalidEvent=true;return;
+            }
+            // Capture the observation at done, not a mutable live chat ref.
+            completion={
+              delivery:{...event.chat.delivery},
+              messages:(event.chat.messages||[]).map(m=>({
+                id:m.id,role:m.role,status:m.status,text:m.text,
+              })),
+            };
           }
-        }
-        if(!completion)throw new CentralWebPortError('central_web_delivery_uncertain');
-        const answers=(completion.messages||[]).filter(m=>
+        },new AbortController().signal);
+        if(invalidEvent||!completion)
+          throw new CentralWebPortError('central_web_delivery_uncertain');
+        // Native WebBridge already checks the exact user turn before done.
+        // Recheck here: a prior response or a foreign chat's observed reply
+        // must never be attached to this Central request.
+        const users=completion.messages.filter(m=>m.role==='user'
+          &&!oldUserIds.has(m.id));
+        const normalize=text=>text.replace(/\s+/g,' ').trim();
+        if(users.length!==1||users[0].id!==completion.delivery.userId
+          ||typeof users[0].text!=='string'
+          ||normalize(users[0].text)!==normalize(prompt))
+          throw new CentralWebPortError('central_web_delivery_uncertain');
+        const answers=completion.messages.filter(m=>
           m.role==='assistant'&&!oldAssistantIds.has(m.id)
           &&m.status==='completed'&&typeof m.text==='string'
           &&m.text.trim());
