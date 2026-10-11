@@ -233,6 +233,10 @@ app.whenReady().then(async () => {
     const left = await window.webContents.executeJavaScript('document.getElementById("messages").innerText');
     assert.match(left, /Teste de sincronização/); assert.match(left, /Resposta completa sincronizada/);
     assert.match(left, /Pensando|Concluído/);
+    for (let i = 0; i < 60; i++) {
+      if (await window.webContents.executeJavaScript('document.getElementById("stop").hidden')) break;
+      await pause(100);
+    }
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("stop").hidden'), true);
     console.log('PASS: a conexão da interface cai durante a geração; o Web continua e a UI recupera a resposta pela mesma conversa, com exatamente um envio.');
     assert.equal(await window.webContents.executeJavaScript('document.querySelectorAll(".message-content table").length'), 1);
