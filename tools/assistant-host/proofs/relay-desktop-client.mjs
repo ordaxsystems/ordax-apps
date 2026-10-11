@@ -5,7 +5,10 @@ import {createServer} from 'node:http';
 const id=process.env.ORDAX_LAB_ID,secret=process.env.ORDAX_LAB_SECRET;
 const hub=process.env.ORDAX_LAB_URL,central=process.env.ORDAX_LAB_CENTRAL_ORIGIN;
 if(!id||!secret||!hub?.startsWith('http://127.0.0.1:')||!central?.startsWith('http://127.0.0.1:')||!process.send)process.exit(2);
+// Cookie host scope ignores TCP ports: each embedded client MUST have its own
+// cookie name or opening another client overwrites an already logged-in pane.
 const cookie=randomBytes(32).toString('hex');
+const cookieName='ordax_lab_spoke_'+id;
 const json=(res,status,data)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(data))};
 const html=(nonce)=>'<html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
 '<style nonce="'+nonce+'">:root{color-scheme:dark;font:14px system-ui;color:#e4f0ff;background:#142238}body{padding:18px;margin:0}'+
@@ -28,14 +31,14 @@ const server=createServer(async(req,res)=>{
     if(req.method==='GET'&&req.url==='/'){
       const nonce=randomBytes(16).toString('hex');
       res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store',
-        'set-cookie':'ordax_lab_spoke='+cookie+'; HttpOnly; SameSite=Strict; Path=/',
+        'set-cookie':cookieName+'='+cookie+'; HttpOnly; SameSite=Strict; Path=/',
         'content-security-policy':"default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'nonce-"+nonce+
         "'; connect-src 'self'; frame-ancestors "+central+"; base-uri 'none'; form-action 'none'",
         'x-content-type-options':'nosniff'});
       res.end(html(nonce));return;
     }
     if(req.method!=='POST'||req.url!=='/api/send')return json(res,404,{ok:false,error:'not_found'});
-    if(req.headers.origin!==origin||!String(req.headers.cookie||'').split(';').some(p=>p.trim()==='ordax_lab_spoke='+cookie))return json(res,403,{ok:false,error:'spoke_session_required'});
+    if(req.headers.origin!==origin||!String(req.headers.cookie||'').split(';').some(p=>p.trim()===cookieName+'='+cookie))return json(res,403,{ok:false,error:'spoke_session_required'});
     if(!/^application\/json(?:\s*;|$)/i.test(req.headers['content-type']||''))return json(res,415,{ok:false,error:'content_type'});
     const bytes=[];let count=0;for await(const chunk of req){count+=chunk.length;if(count>4096)return json(res,413,{ok:false,error:'too_large'});bytes.push(chunk)}
     let payload;try{payload=JSON.parse(Buffer.concat(bytes).toString('utf8'))}catch{return json(res,400,{ok:false,error:'bad_json'})}
