@@ -82,6 +82,13 @@ function el(tag, className, label) {
   if (label !== undefined) node.textContent = label;
   return node;
 }
+// Refresh only while the operator page is visible, using the same Product
+// read method as manual refresh. No background monitoring or new state owner.
+export function centralPollDue({ checking, checkedAt, visible, now = Date.now() }) {
+  return visible === true && checking !== true && checkedAt instanceof Date
+    && Number.isFinite(checkedAt.getTime()) && Number.isFinite(now)
+    && now - checkedAt.getTime() >= 30000;
+}
 export function createCentralPanel({ host, openRuntime, accountHost }) {
   const $ = id => document.getElementById(id);
   let model = centralViewModel(null, null);
@@ -206,5 +213,9 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
     filter = event.target.value.trim().toLocaleLowerCase('pt-BR').slice(0, 128); paint();
   });
   paint();
-  return Object.freeze({ open: refresh, refresh, paint });
+  return Object.freeze({ open: refresh, refresh, paint,
+    poll: () => {
+      if (centralPollDue({ checking, checkedAt, visible: !document.hidden })) void refresh();
+    },
+  });
 }
