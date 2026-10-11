@@ -902,6 +902,35 @@ def literal_module_specifiers(source: str) -> list[str]:
     return specifiers
 
 
+
+def literal_module_relative_asset_urls(source: str) -> list[str]:
+    """Read static new URL("asset", import.meta.url) dependencies using the
+    existing JavaScript lexer. Comments, regexes and string contents are never
+    evaluated as code, and no parallel dependency parser is introduced.
+    """
+    tokens = list(_javascript_tokens(source))
+    signature = (
+        ("identifier", "new"), ("identifier", "URL"), ("punct", "("),
+        None, ("punct", ","), ("identifier", "import"), ("punct", "."),
+        ("identifier", "meta"), ("punct", "."), ("identifier", "url"),
+        ("punct", ")"),
+    )
+    assets = []
+    for offset in range(len(tokens) - len(signature) + 1):
+        window = tokens[offset:offset + len(signature)]
+        if not all(
+            expected is None or (token[0], token[1]) == expected
+            for token, expected in zip(window, signature)
+        ):
+            continue
+        if window[3][0] != "string":
+            raise AppPackageError(
+                "dynamic import.meta.url asset reference cannot prove package self-containment"
+            )
+        assets.append(window[3][1])
+    return assets
+
+
 def validate_source_graph_from_payloads(
     files: list[PurePosixPath],
     load_payload: Callable[[PurePosixPath], bytes],
@@ -944,6 +973,28 @@ def validate_source_graph_from_payloads(
             if not any(candidate.as_posix() in available for candidate in candidates):
                 raise AppPackageError(
                     f"portable app package is not self-contained: {relative} -> {specifier}"
+                )
+        for specifier in literal_module_relative_asset_urls(source):
+            if (
+                not specifier.startswith(".")
+                or "\\\\" in specifier
+                or "?" in specifier
+                or "#" in specifier
+                or "\\x00" in specifier
+            ):
+                raise AppPackageError(
+                    f"remote or non-canonical relative asset URL is forbidden: {relative} -> {specifier}"
+                )
+            normalized = PurePosixPath(
+                os.path.normpath(PurePosixPath(relative.parent, specifier).as_posix())
+            )
+            if normalized.is_absolute() or ".." in normalized.parts:
+                raise AppPackageError(
+                    f"relative asset URL escapes app ownership: {relative} -> {specifier}"
+                )
+            if normalized.as_posix() not in available:
+                raise AppPackageError(
+                    f"portable app package is missing a referenced asset: {relative} -> {specifier}"
                 )
 
 
