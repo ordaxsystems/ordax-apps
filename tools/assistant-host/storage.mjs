@@ -6,18 +6,46 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
+// Windows profile ACLs are checked before mutation. Re-applying icacls on every
+// launch can hang against an already-secure Chromium profile. Verification is
+// fail-closed: the directory must have inheritance disabled and an explicit,
+// inheritable FullControl ACE for the exact logged-in user.
+const psLiteral = value => "'" + value.replaceAll("'", "''") + "'";
+export async function ensureWindowsOwnerProfileAcl(directory, execute = run) {
+  const { stdout } = await execute('whoami.exe', ['/user', '/fo', 'csv', '/nh'], { windowsHide: true, timeout: 10000 });
+  const sid = /S-1-[0-9-]+/.exec(stdout)?.[0];
+  if (!sid) throw new Error('Não foi possível identificar o usuário do host Windows.');
+  const probe = [
+    "$ErrorActionPreference='Stop'",
+    "$a=Get-Acl -LiteralPath " + psLiteral(directory),
+    "$s=" + psLiteral(sid),
+    '$rules=@($a.GetAccessRules($true,$true,[System.Security.Principal.SecurityIdentifier]))',
+    "$owner=@($rules | Where-Object { $_.IdentityReference.Value -eq $s -and $_.AccessControlType -eq 'Allow' -and -not $_.IsInherited -and $_.FileSystemRights.ToString().Contains('FullControl') -and $_.InheritanceFlags.ToString().Contains('ContainerInherit') -and $_.InheritanceFlags.ToString().Contains('ObjectInherit') })",
+    "$foreign=@($rules | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -notin @($s,'S-1-5-18','S-1-5-32-544') })",
+    "if($a.AreAccessRulesProtected -and $owner.Count -ge 1 -and $foreign.Count -eq 0) { Write-Output 'ORDAX_PROFILE_ACL_VERIFIED'; exit 0 }",
+    'exit 2',
+  ].join('; ');
+  const check = async () => {
+    try {
+      const result = await execute('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', probe], { windowsHide: true, timeout: 20000 });
+      return result.stdout.trim() === 'ORDAX_PROFILE_ACL_VERIFIED';
+    } catch (error) {
+      if (error.code === 2) return false;
+      throw error;
+    }
+  };
+  if (await check()) return;
+  await execute('icacls.exe', [directory, '/inheritance:r', '/grant:r', '*' + sid + ':(OI)(CI)F'], { windowsHide: true, timeout: 45000 });
+  if (!await check()) throw new Error('Não foi possível confirmar as permissões privadas do perfil ORDAX.');
+}
+
 // Development host storage. A production adapter supplies the platform vault/App Data.
 export class LocalStorage {
   constructor(directory) { this.directory = directory; this.queue = Promise.resolve(); this.warnings = []; this.validators = new Map(); this.blocked = new Set(); this.critical = new Set(); }
   target(name) { if (!/^[a-z][a-z0-9-]{0,40}$/.test(name)) throw new Error('Nome de registro inválido.'); return path.join(this.directory, `${name}.json`); }
   async init() {
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
-    if (process.platform === 'win32') {
-      const { stdout } = await run('whoami.exe', ['/user', '/fo', 'csv', '/nh'], { windowsHide: true, timeout: 10000 });
-      const sid = /S-1-[0-9-]+/.exec(stdout)?.[0];
-      if (!sid) throw new Error('Não foi possível identificar o usuário do host Windows.');
-      await run('icacls.exe', [this.directory, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`], { windowsHide: true, timeout: 10000 });
-    }
+    if (process.platform === 'win32') await ensureWindowsOwnerProfileAcl(this.directory);
   }
   async read(name, fallback, { validate = () => true, requireRecovery = false } = {}) {
     if (requireRecovery) this.critical.add(name);
