@@ -39,3 +39,15 @@ CI e aceite: `node tools/assistant-host/proofs/relay-desktop-lab.mjs --self-test
 
 Definir contrato único de Inbox/Receipt na Platform; conectar Device/Grant reais; integrar Model Router com provedores autorizados; validar com mensagens reais da conta ChatGPT **entrando pelo MCP** e, separadamente, mensagens enviadas à inferência pelo Central (saída). Somente então empacotar `OrdaX Central` como app específico da organização — mantendo um único Runtime, uma Conta OrdaX e um Product MCP Cloudflare.
 
+
+## Correlação de mensagens e recibos no laboratório
+
+A aba **Solicitações** projeta a mesma sequência de eventos efêmeros do Relay, sem criar histórico paralelo:
+`submitted → central_received → provider_returned|provider_failed → completed`.
+
+- Cada evento contém o identificador imutável `requestId` gerado pelo cliente e transmitido pelo Relay. A chave de agrupamento é `deviceId + requestId`, nunca somente o horário ou texto.
+- Um pedido só aparece **Entregue** após três evidências: aceitação na Central, resposta do provedor e recibo final HTTP 200 para o cliente.
+- Resposta HTTP 200 sem todas as evidências é **Sem confirmação**, não sucesso. Erro de provedor, timeout e resposta HTTP negativa permanecem visíveis como falhas.
+- Eventos IPC podem chegar fora de ordem: o estado é derivado de flags de evidência, sem regressão ou conclusão fictícia.
+- `apps/central/src/receipt-projection.mjs` é um **seletor de apresentação puro e limitado**, não grava no disco e não cria fila, sessão ou autoridade. Quando o log limitado descarta eventos antigos, o painel pode mostrar um estado parcial; a futura Central Product consumirá recibos reais PostgreSQL via contrato Platform.
+- Testes: `node --test apps/central/tests/receipt-projection.test.mjs` e a prova HTTP em três processos Windows executada na CI. Não confundir esse laboratório com ChatGPT MCP + provedor GPT real.

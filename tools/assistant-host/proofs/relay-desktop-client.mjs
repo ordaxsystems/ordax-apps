@@ -26,6 +26,7 @@ const html=(nonce)=>'<html lang="pt-BR"><meta charset="utf-8"><meta name="viewpo
 '}catch{document.querySelector("#result").textContent="Falha de transporte."}finally{b.disabled=false}}</script></html>';
 let origin='';
 const server=createServer(async(req,res)=>{
+  let requestId=null;
   try{
     if(req.headers.host!==new URL(origin).host)return json(res,403,{ok:false,error:'invalid_host'});
     if(req.method==='GET'&&req.url==='/'){
@@ -43,17 +44,19 @@ const server=createServer(async(req,res)=>{
     const bytes=[];let count=0;for await(const chunk of req){count+=chunk.length;if(count>4096)return json(res,413,{ok:false,error:'too_large'});bytes.push(chunk)}
     let payload;try{payload=JSON.parse(Buffer.concat(bytes).toString('utf8'))}catch{return json(res,400,{ok:false,error:'bad_json'})}
     if(!payload||typeof payload!=='object'||Array.isArray(payload)||Object.keys(payload).join(',')!=='prompt'||typeof payload.prompt!=='string'||!payload.prompt.trim()||payload.prompt.length>2048)return json(res,400,{ok:false,error:'invalid_prompt'});
-    const requestId=randomUUID();
-    process.send({event:'submitted',id,preview:payload.prompt.slice(0,130)});
+    requestId=randomUUID();
+    process.send({event:'submitted',id,requestId,preview:payload.prompt.slice(0,130)});
     const reply=await fetch(hub+'/v1/infer',{method:'POST',headers:{'content-type':'application/json',
       authorization:'Bearer '+secret,'x-ordax-lab-device-id':id},
       body:JSON.stringify({request_id:requestId,prompt:payload.prompt}),signal:AbortSignal.timeout(35000)});
     const data=await reply.json();
-    process.send({event:'completed',id,preview:(data.result||data.error||'').slice(0,170)});
+    process.send({event:'completed',id,requestId,httpStatus:reply.status,ok:data.ok===true,
+      preview:(data.result||data.error||'').slice(0,170)});
     json(res,reply.status,{ok:data.ok===true,request_id:requestId,
       result:typeof data.result==='string'?data.result:undefined,
       error:typeof data.error==='string'?data.error:undefined});
-  }catch{process.send?.({event:'completed',id,preview:'transport_unavailable'});
+  }catch{if(requestId)process.send?.({event:'completed',id,requestId,httpStatus:503,ok:false,
+      preview:'transport_unavailable'});
     if(!res.writableEnded)json(res,503,{ok:false,error:'transport_unavailable'})}
 });
 await new Promise((done,fail)=>{server.once('error',fail);server.listen(0,'127.0.0.1',done)});

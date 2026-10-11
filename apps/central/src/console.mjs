@@ -29,13 +29,20 @@ const browser=[
   'function select(name){for(const l of links)l.setAttribute("aria-current",l.dataset.view===name?"page":"false");for(const s of sections)s.classList.toggle("hidden",s.dataset.section!==name);}',
   'links.forEach(b=>b.addEventListener("click",()=>select(b.dataset.view)));',
   'document.querySelector("#refresh").onclick=()=>refresh();',
-  'const out=document.querySelector("#eventRows");',
+  'const out=document.querySelector("#eventRows"),receiptRows=document.querySelector("#receiptRows");',
+  'const stage={submitted:"Enviado",received:"Na Central","response-ready":"Resposta do provedor",completed:"Entregue",failed:"Falhou",uncertain:"Sem confirmação"};',
   'const label={spoke_online:"Conectado",submitted:"Recebido do cliente",central_received:"Recebido na Central",provider_returned:"Resposta do provedor",provider_failed:"Falha do provedor",completed:"Devolvido ao cliente"};',
   'function value(id,text){document.getElementById(id).textContent=String(text??"—")}',
   'async function refresh(){try{const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw Error();const s=await r.json();',
   'value("counterClients",s.clients);value("counterActive",s.relay.activeRequests);value("counterDone",s.relay.retainedReceipts);value("counterErrors",s.relay.failedReceipts);',
   'value("relayState",s.status);value("studioState",s.studio.state);value("providerState",s.provider==="diagnostic"?"Diagnóstico local — não GPT":"OpenAI API — não plugin ChatGPT");',
   'value("lastUpdate",new Date().toLocaleTimeString("pt-BR"));value("eventCount",s.events.length+" eventos");',
+  'if(s.receipts?.state!=="laboratory"||!Array.isArray(s.receipts.receipts))throw Error("invalid_receipts");',
+  'value("receiptCount",s.receipts.receipts.length+" pedidos rastreados");',
+  'receiptRows.replaceChildren();for(const receipt of s.receipts.receipts){const tr=document.createElement("tr");',
+  'const values=[receipt.deviceId,receipt.requestId.slice(0,8),stage[receipt.status]||"Desconhecido",receipt.requestPreview||"—",receipt.resultPreview||"—"];',
+  'for(const [i,cell] of values.entries()){const td=document.createElement("td");td.textContent=String(cell);',
+  'if(i===0)td.className="origin";if(i===2)td.className=receipt.status==="failed"?"bad":receipt.status==="completed"?"ok":"";tr.append(td)}receiptRows.append(tr)}',
   'const count={};for(const e of s.events)count[e.id]=(count[e.id]||0)+(e.event==="completed"?1:0);',
   'for(const c of ["studio-1","studio-2","studio-3"])value("count-"+c,(count[c]||0)+" respostas registradas");',
   'out.replaceChildren();for(const e of s.events.slice().reverse()){const tr=document.createElement("tr");',
@@ -52,7 +59,7 @@ export function renderCentralConsole({clients,provider,studio},nonce) {
   const hasAPI=provider==='openai-api';
   const nav=[['overview','Visão geral'],['inbox','Solicitações'],['devices','Clientes'],['connections','Integrações']].map(([id,label])=>'<button data-view="'+id+'" aria-current="'+(id==='overview'?'page':'false')+'">'+label+'</button>').join('');
   const metric=(label,id,detail)=>'<div class="metric"><span class="label">'+label+'</span><strong id="'+id+'">—</strong><small>'+detail+'</small></div>';
-  const inbox='<div class="sectionhead"><h2>Rastreamento por solicitação</h2><span class="muted" id="eventCount">Carregando</span></div><div class="panel tablewrap"><table class="events"><thead><tr><th>Hora</th><th>Cliente</th><th>Etapa</th><th>Mensagem / resultado</th></tr></thead><tbody id="eventRows"></tbody></table></div>';
+  const inbox='<div class="sectionhead"><h2>Pedidos e respostas</h2><span class="muted" id="receiptCount">Carregando</span></div><div class="panel tablewrap"><table class="events"><thead><tr><th>Cliente</th><th>Pedido</th><th>Estado confirmado</th><th>Mensagem</th><th>Resposta</th></tr></thead><tbody id="receiptRows"></tbody></table></div>'+    '<div class="sectionhead"><h2>Eventos de transporte</h2><span class="muted" id="eventCount">Carregando</span></div><div class="panel tablewrap"><table class="events"><thead><tr><th>Hora</th><th>Cliente</th><th>Etapa</th><th>Mensagem / resultado</th></tr></thead><tbody id="eventRows"></tbody></table></div>';
   const integrations='<div class="stack"><div class="panel info"><h3>Roteamento e execução</h3><p>O laboratório compartilha os módulos oficiais de transporte. Não cria outro gateway nem registra dispositivos de produção.</p><div class="keyrow"><span>OrdaX Platform Relay</span><b id="relayState">Carregando</b></div><div class="keyrow"><span>Studio · observador</span><b id="studioState">Carregando</b></div><div class="keyrow"><span>Provedor de resposta</span><b id="providerState">Carregando</b></div></div><div class="panel info"><h3>Conexões externas</h3><p>Estados explícitos, sem apresentar respostas de laboratório como GPT ou conexão real com ChatGPT.</p><div class="keyrow"><span>ChatGPT · plugin MCP</span><b>Não conectado ao laboratório</b></div><div class="keyrow"><span>Cloudflare Product OAuth</span><b>Fora deste ensaio</b></div><div class="keyrow"><span>GPT</span><b>'+(hasAPI?'API selecionada; validar resposta real':'Diagnóstico, não GPT')+'</b></div></div></div>';
   return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OrdaX Central | Console</title><style nonce="'+nonce+'">'+style+'</style></head><body><div class="layout">'+
     '<aside class="side" aria-label="Navegação da Central"><div class="brand"><span class="mark">O</span>OrdaX <span style="color:#92bce9">Central</span></div><nav class="nav">'+nav+'</nav><div class="sidefoot"><strong>OrdaX Platform</strong><p>Console operacional de desenvolvimento</p><p>1 computador físico<br>3 processos de cliente</p></div></aside>'+

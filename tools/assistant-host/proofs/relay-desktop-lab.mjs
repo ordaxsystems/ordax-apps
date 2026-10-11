@@ -3,6 +3,7 @@
 // Studio's actual local web-host reads the same Relay operator projection.
 // Diagnostic replies are marked NOT GPT. Provider calls require an explicit key.
 import assert from 'node:assert/strict';
+import {Script} from 'node:vm';
 import {fork} from 'node:child_process';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {createServer} from 'node:http';
@@ -12,12 +13,25 @@ import {resolve,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createWebServer} from '../web-server.mjs';
 import {renderCentralConsole} from '../../../apps/central/src/console.mjs';
+import {projectCentralReceipts} from '../../../apps/central/src/receipt-projection.mjs';
 
 const SOURCE=fileURLToPath(import.meta.url);
 const token=()=>randomBytes(32).toString('hex');
 const send=(res,status,body)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(body))};
 const esc=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function listen(server,port=0){await new Promise((yes,no)=>{server.once('error',no);server.listen(port,'127.0.0.1',yes)});return 'http://127.0.0.1:'+server.address().port}
+async function closeClients(children){
+  // Windows holds each child's cwd open until the PROCESS ACTUALLY exits.
+  // A kill() request is not an exit receipt; never remove the profiles early.
+  await Promise.all(children.map(child=>new Promise((done,fail)=>{
+    if(child.exitCode!==null||child.signalCode!==null){done();return;}
+    const force=setTimeout(()=>child.kill('SIGKILL'),2500);
+    const deadline=setTimeout(()=>fail(Error('client_exit_timeout')),9000);
+    child.once('exit',()=>{clearTimeout(force);clearTimeout(deadline);done()});
+    child.kill();
+  })));
+}
+
 async function gpt(request,provider){
   if(provider==='diagnostic')return {deviceId:request.deviceId,requestId:request.requestId,
     result:'[DIAGNÓSTICO — NÃO É GPT] '+request.deviceId+' recebeu: '+request.prompt};
@@ -44,11 +58,11 @@ export async function startWorkbench({platformRoot,provider='diagnostic',central
   try{
     hub=await startRelayLab({devices:clients,adminToken,inferenceTimeoutMs:30000,
       inference:async request=>{
-        record({id:request.deviceId,event:'central_received',preview:request.prompt.slice(0,140)});
+        record({id:request.deviceId,requestId:request.requestId,event:'central_received',preview:request.prompt.slice(0,140)});
         try{const answer=await gpt(request,provider);
-          record({id:request.deviceId,event:'provider_returned',preview:answer.result.slice(0,180)});
+          record({id:request.deviceId,requestId:request.requestId,event:'provider_returned',preview:answer.result.slice(0,180)});
           return answer;
-        }catch{record({id:request.deviceId,event:'provider_failed',preview:'provider unavailable; no fabricated GPT reply'});throw Error('adapter_unavailable')}
+        }catch{record({id:request.deviceId,requestId:request.requestId,event:'provider_failed',preview:'provider unavailable; no fabricated GPT reply'});throw Error('adapter_unavailable')}
       }});
     process.env.ORDAX_RELAY_LAB_URL=hub.url;
     process.env.ORDAX_RELAY_LAB_ADMIN_TOKEN=adminToken;
@@ -79,7 +93,7 @@ export async function startWorkbench({platformRoot,provider='diagnostic',central
         const projection={activeRequests:studioStatus.active,
           retainedReceipts:studioStatus.retained,failedReceipts:studioStatus.failures};
         return send(res,200,{status:'connected-laboratory',clients:kids.filter(k=>k.exitCode===null).length,
-          provider,relay:projection,studio:studioStatus,events});
+          provider,relay:projection,studio:studioStatus,events,receipts:projectCentralReceipts(events)});
       }catch{return send(res,503,{ok:false,error:'observer_unavailable'})}
     });
     origin=await listen(server,centralPort);
@@ -101,14 +115,15 @@ export async function startWorkbench({platformRoot,provider='diagnostic',central
       record({id:c.id,event:'spoke_online',preview:'Process PID '+c.pid});
       child.on('message',m=>{
         if(m?.id===c.id&&['submitted','completed'].includes(m.event))
-          record({id:c.id,event:m.event,preview:String(m.preview||'').slice(0,180)});
+          record({id:c.id,requestId:m.requestId,event:m.event,
+            httpStatus:m.httpStatus,ok:m.ok===true,preview:String(m.preview||'').slice(0,180)});
       });
     }
     return {origin,studioOrigin:studio.origin,provider,
       clients:clients.map(c=>({id:c.id,origin:c.origin,pid:c.pid})),events,
       close:async()=>{
-        kids.forEach(k=>k.kill());
-        await Promise.allSettled([new Promise(ok=>server.close(ok)),studio.close(),hub.close()]);
+        await closeClients(kids);
+        await Promise.all([new Promise(ok=>server.close(ok)),studio.close(),hub.close()]);
         await rm(root,{force:true,recursive:true});
         if(saved.url===undefined)delete process.env.ORDAX_RELAY_LAB_URL;
         else process.env.ORDAX_RELAY_LAB_URL=saved.url;
@@ -116,9 +131,10 @@ export async function startWorkbench({platformRoot,provider='diagnostic',central
         else process.env.ORDAX_RELAY_LAB_ADMIN_TOKEN=saved.token;
       }};
   }catch(e){
-    kids.forEach(k=>k.kill());
-    await Promise.allSettled([server?new Promise(ok=>server.close(ok)):Promise.resolve(),
-      studio?.close(),hub?.close(),root?rm(root,{force:true,recursive:true}):Promise.resolve()]);
+    await closeClients(kids);
+    await Promise.all([server?new Promise(ok=>server.close(ok)):Promise.resolve(),
+      studio?.close(),hub?.close()]);
+    if(root)await rm(root,{force:true,recursive:true});
     throw e;
   }
 }
@@ -132,6 +148,10 @@ if(args.includes('--self-test')){
     assert.match(page, /OrdaX Central/);
     assert.match(page, /data-view="connections"/);
     assert.match(page, /data-view="inbox"/);
+    assert.match(page, /id="receiptRows"/);
+    const inlineScript=page.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+    assert.ok(inlineScript,"Central operator browser script missing");
+    new Script(inlineScript,{filename:"ordax-central-console.js"});
     assert.equal((page.match(/<iframe /g)||[]).length,3,'One embedded console per client; no duplicate frames');
     const op=p.headers.get('set-cookie')?.split(';')[0];
     assert.equal((await fetch(app.origin+'/api/state')).status,401);
@@ -167,6 +187,18 @@ if(args.includes('--self-test')){
     assert.equal(state.studio.state,'connected-laboratory');
     assert.equal(state.events.filter(x=>x.event==='central_received').length,3);
     assert.equal(state.events.filter(x=>x.event==='provider_returned').length,3);
+    assert.equal(state.receipts.state,'laboratory');
+    assert.equal(state.receipts.receipts.length,3);
+    for(const c of app.clients){
+      const row=state.receipts.receipts.find(x=>x.deviceId===c.id);
+      assert.ok(row,'missing receipt for '+c.id);
+      assert.equal(row.status,'completed');
+      assert.equal(row.delivered,true);
+      assert.equal(row.received,true);
+      assert.equal(row.providerReturned,true);
+      assert.equal(row.httpStatus,200);
+      assert.ok(outs.includes(row.requestId));
+    }
     console.log('ORDAX_THREE_PROCESS_RELAY_E2E=PASS');
     console.log('PROCESS_PIDS='+app.clients.map(c=>c.pid).join(',')+' REQUESTS=3 RECEIPTS=3');
     console.log('STUDIO_OBSERVER=REAL RELAY_HTTP=REAL SHARED_BROWSER_JAR=PASS CROSS_CLIENT_COOKIE=REJECTED');
