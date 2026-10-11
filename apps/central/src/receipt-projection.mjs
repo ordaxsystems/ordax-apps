@@ -4,7 +4,7 @@
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CLIENT=/^[a-z][a-z0-9-]{1,62}$/;
 const STAGES=new Set(['submitted','central_received','provider_returned','provider_failed','completed']);
-const VALID_STATUS=new Set(['submitted','received','response-ready','failed','completed']);
+// No new receipt state authority. Unknown or missing lifecycle evidence stays uncertain.
 const maxText=(value,length=180)=>typeof value==='string'?value.replace(/[\x00-\x1f\x7f]/g,'').slice(0,length):'';
 export const CENTRAL_RECEIPT_PROJECTION_SCHEMA='ordax.central-receipt-projection/1';
 
@@ -41,7 +41,9 @@ export function projectCentralReceipts(events) {
     }else if(event.event==='completed'){
       row.delivered=true;
       row.httpStatus=Number.isInteger(event.httpStatus)&&event.httpStatus>=100&&event.httpStatus<=599?event.httpStatus:null;
-      row.status=event.ok===true&&row.httpStatus===200?'completed':'failed';
+      row.status=event.ok===true&&row.httpStatus===200
+        ? row.received&&row.providerReturned?'completed':'uncertain'
+        : 'failed';
       if(!row.resultPreview)row.resultPreview=maxText(event.preview);
     }
   }
