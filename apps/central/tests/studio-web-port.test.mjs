@@ -167,7 +167,7 @@ test('prompt asks for another PC but does not change selected chat',async()=>{
 });
 
 test('the real Product UUID shape passes a verified Studio Web port without a lab slug',async()=>{
-  const dev='75d0cda4-95d9-4f3b-9e93-f3645ccc7a19';
+  const dev='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
   const p='33333333-3333-4333-8333-333333333333';
   const raw={requestId:REQUEST1,prompt:'Leia um arquivo do computador autorizado'};
   const turn=prepareCanonicalCentralTurn(raw,{
@@ -209,7 +209,7 @@ test('the real Product UUID shape passes a verified Studio Web port without a la
   assert.equal(authorized,1);
 });
 test('Product UUID turn without a canonical project binding is blocked before Web send',async()=>{
-  const dev='75d0cda4-95d9-4f3b-9e93-f3645ccc7a19';
+  const dev='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
   const turn=prepareCanonicalCentralTurn({requestId:REQUEST1,prompt:'Comando'},{
     deviceId:dev,requestId:REQUEST1,subjectId:SUBJECT,
     clientId:client,projectId:'33333333-3333-4333-8333-333333333333',spaceId:SPACE,
