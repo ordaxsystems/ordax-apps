@@ -35,3 +35,13 @@ Foram adicionados testes unitários para ACL já segura, correção e reverifica
 A abertura e o transporte HTTP local foram comprovados pelos logs e janela real; isso não comprova que a sessão do ChatGPT Web esteja autenticada, nem que o GPT responda por três clientes em paralelo ou entregue imagens. Esses cenários requerem integração e testes separados com a autoridade Relay/Intelligence e provedores autorizados.
 
 Não criar novas filas, brokers ou instâncias independentes do Runtime para superar o problema visual. O Studio deve manter o papel de interface/gestão, e o Relay deve manter isolamento de conta, cliente, dispositivo e conversa.
+
+## Teste real com ChatGPT Web após abrir o Studio
+
+A sessão real do host local do Studio retornou `HTTP 200` em `/src/index.html` e `/api/diagnostics`, `version=0.14.1`, `connection.ready=true`, `transport=ready` e `runtimeJournal=false`. A projeção `/api/state` confirmou `web.conversationMode=chat`, `web.automatedSendAllowed=true`, `web.busy=false` e identidade local conectada, sem consultar mensagens existentes.
+
+Uma nova conversa exclusiva de teste foi criada pela rota oficial `POST /api/chats`, com `chatId=caf22250-005c-47fb-82d4-df368aa944bc`, em **5.823 ms**. A solicitação com marcador não sensível foi enviada **uma única vez** por `POST /api/respond` usando SSE e a sessão/cookie recém-obtidos pelo host local.
+
+O envio **NÃO passou no E2E**: o HTTP terminou com status 200 após **9.339 ms**, porém **sem evento terminal `done` e sem mensagem do assistente confirmada**. O marcador presente no stream não é prova de resposta porque já existia no texto do usuário. A consulta posterior ao estado retornou uma mensagem `role=user`, `delivery.status=uncertain`, atividade em `error`, `web.busy=false`, `activeId` diferente do registro criado, `web.conversationMode=unknown` e causa explícita **“A conversa Web mudou durante a resposta. O app não reenviou a mensagem.”**
+
+O fluxo **não repetiu o POST**, evitando possível geração duplicada. Não apresentar essa execução como resposta GPT concluída, nem marcar o cliente Relay como funcional. Para corrigir sem paliativos, analisar no owner `WebBridge` a transição legítima `/ → /c/<id>` versus mudança real de conversa, manter identidade imutável no recibo e adicionar prova E2E baseada no site real; em cenários multiusuário a inferência não deve depender desse único WebView. Um request com entrega incerta precisa ser reconciliado antes de qualquer nova tentativa.
