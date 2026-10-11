@@ -30,3 +30,16 @@ A Central apresenta informações autorizadas do Product em colunas de dispositi
 - A versão de teste permanece uma pasta portátil local, preservando a instalação anterior. Para operar com dispositivos reais, conectar a Conta OrdaX pelo fluxo oficial e implantar a fronteira canônica de Space no Control Plane antes de homologar o Relay multiusuário.
 
 A distinção de telas não é segregação de identidade: qualquer status multiusuário precisa vir do contrato autenticado `owner/client/device/conversation/request` no owner Intelligence/Relay.
+
+## Correção do fluxo de conexão na Central
+
+O teste real da Central portátil no DESKTOP-COHT67R demonstrou `Product connected=false`, catálogo indisponível, nenhum dispositivo/recibo e `Relay.state=not-configured`. O botão original **Conectar OrdaX** abria corretamente o painel já existente de `Espaço de trabalho` e a opção `Conectar Runtime`, mas o candidato não exibia autenticação porque o contrato oficial `native/canonical-account.cjs` permite `studio-product:sign-in` somente para a distribuição integrada `presentation/ORDAX Studio.exe` com `product-manifest.json` validado e `runtime/python.exe` da instalação oficial. **Não é erro a ser corrigido copiando tokens do plugin ou afrouxando a checagem.**
+
+O painel Central agora consulta a **disponibilidade**, não credenciais, via `ordaxStudioAccountHost.available()` e apresenta:
+- `Entrar na Conta OrdaX` somente quando o host oficial permite esse fluxo.
+- `Configurar Runtime` quando o candidato portátil não inclui o mecanismo de login, com aviso explícito; o botão reutiliza o painel Product existente.
+- Dados de presença e recibos continuam indisponíveis até a conexão real.
+
+A Central pode atualizar as projeções Product/Relay em intervalos mínimos de 30 segundos **somente quando a página está visível, sem sobreposição/modal e sem consulta em curso**; isso reutiliza o temporizador já existente do Studio, sem outro serviço, outro broker ou tarefa em segundo plano. Nenhuma leitura inicia comandos nos PCs remotos.
+
+Evidência: regressões dedicadas no Windows real em checkout isolado, **31/31 testes**, `CENTRAL_ACCOUNT_UI_TESTS=PASS` antes da extensão de polling. Novas verificações cobrem copy do login disponível/indisponível e a condição de atualização periódica/ocultação. Todos os relatórios de renderização são do Studio real, mas **nenhum PC Relay foi declarado online sem fonte Product**.
