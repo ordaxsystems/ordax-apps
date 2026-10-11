@@ -52,13 +52,36 @@ jobs:
         with:
           path: apps
           persist-credentials: false
-      - name: Checkout canonical OrdaX Platform Relay pinned
+      - name: Checkout current OrdaX Platform main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ordaxsystems/ordax-platform
-          ref: f0a2c4a41ea8f3d3b64bd3e4287b4dac1ce6894c
+          ref: main
           path: platform
           persist-credentials: false
+      - name: Record exact Platform commit and require canonical Product owners
+        shell: pwsh
+        run: |
+          $sha = (git -C platform rev-parse HEAD).Trim()
+          if ($sha -notmatch '^[a-f0-9]{40}$') { throw 'Invalid Platform checkout commit' }
+          if (!(Test-Path 'platform/control-plane/cloudflare/src/product_central_admission.ts')) { throw 'Platform Central admission owner missing' }
+          if (!(Test-Path 'platform/control-plane/cloudflare/src/product_mcp_scoped.ts')) { throw 'Platform Product MCP scope owner missing' }
+          "ORDAX_PLATFORM_MAIN_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "### Central / Platform checked version" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "Platform main commit: $sha" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Write-Host "ORDAX_PLATFORM_MAIN_SHA=$sha"
+      - name: Install canonical PostgreSQL client for Product contract tests only
+        shell: pwsh
+        working-directory: platform/control-plane/cloudflare
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund --package-lock=false
+          if ($LASTEXITCODE -ne 0) { throw 'Platform PostgreSQL dependency install failed' }
+      - name: Validate Product OAuth admission, grants and MCP receipts against current Platform
+        shell: pwsh
+        working-directory: platform
+        run: |
+          node --test control-plane/tests/product_central_admission.test.mts control-plane/tests/product_central_mcp.test.mts control-plane/tests/product_relay_canonical_mcp.test.mts control-plane/tests/product_relay_submit.test.mts control-plane/tests/product_relay_receipt.test.mts control-plane/labs/relay/scoped-mcp.test.mts
+          if ($LASTEXITCODE -ne 0) { throw 'Current Product authorization contract failed' }
       - name: Run real Windows process and localhost HTTP acceptance proof
         shell: pwsh
         working-directory: apps
