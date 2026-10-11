@@ -673,7 +673,10 @@ if (nativeWeb) {
   $('webBrowser').addEventListener('click', () => run(() => openBrowser()));
 }
 audioPanel = createAudioPanel({ host, nativeWeb, snapshot: () => webSnapshot, current: () => activeId, ensureChat: async () => { if (!chat()) await newChat(); }, draft: async () => { saveDraft(); await drafts.flush(); return drafts.get(draftKey()); }, saveText: async text => { $('prompt').value = text; autosize(); saveDraft(); await drafts.flush(); updateControls(); return drafts.get(draftKey()); }, notify, locked, changed: () => { updateControls(); renderSidebar(); } });
-const activityTimer = setInterval(() => { tickActivityClocks(); renderRunStatus(); }, 1000);
+const activityTimer = setInterval(() => {
+  tickActivityClocks(); renderRunStatus();
+  if (navigation?.current() === 'central') centralPanel.poll();
+}, 1000);
 const projectPanel = createProjectPanel({ host, notify, onProjectConversations: openWorkspaceConversations, attach: async attachment => {
   if (locked()) throw new Error('Aguarde a resposta antes de adicionar contexto.');
   composeTextMessage({ text: $('prompt').value, attachments: [...attachments, attachment] });
