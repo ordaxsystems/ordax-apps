@@ -57,6 +57,25 @@ export function centralViewModel(raw, observation) {
     pending: operations.filter(op => IN_FLIGHT.has(op.status)).length,
     uncertain: operations.filter(op => op.status === 'uncertain').length, lab };
 }
+// Presentation of the already-authorized account capability; this never
+// tries to mint credentials or infer grants from the ChatGPT Web login.
+export function centralAccountCopy(connected, available) {
+  if (connected) return Object.freeze({
+    action: 'Configurar Runtime',
+    hint: 'Abrir a configuração Product existente.',
+    warning: 'Dispositivos autorizados não equivalem a clientes Relay conectados.',
+  });
+  if (available === 'unavailable') return Object.freeze({
+    action: 'Configurar Runtime',
+    hint: 'Este candidato não tem login OrdaX integrado; consulte o Runtime oficial.',
+    warning: 'Esta versão portátil não habilita login na Conta OrdaX. O acesso Product exige o Studio integrado ao Runtime oficial.',
+  });
+  return Object.freeze({
+    action: available === 'available' ? 'Entrar na Conta OrdaX' : 'Configurar Runtime',
+    hint: 'Abrir o fluxo de Conta OrdaX e Runtime existente.',
+    warning: 'Dispositivos autorizados não equivalem a clientes Relay conectados.',
+  });
+}
 function el(tag, className, label) {
   const node = document.createElement(tag);
   node.className = className;
@@ -73,10 +92,9 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
   function paint() {
     $('centralConnect').hidden = model.state === 'product-connected';
     $('centralConnect').disabled = checking || typeof openRuntime !== 'function';
-    $('centralConnect').textContent = accountAvailability === 'available' ? 'Entrar na Conta OrdaX' : 'Configurar Runtime';
-    $('centralConnect').title = accountAvailability === 'unavailable'
-      ? 'O candidato portátil não inclui login OrdaX integrado. Abra as opções de conexão do Runtime.'
-      : 'Abrir o fluxo de Conta OrdaX e Runtime existente';
+    const connection = centralAccountCopy(model.state === 'product-connected', accountAvailability);
+    $('centralConnect').textContent = connection.action;
+    $('centralConnect').title = connection.hint;
     $('centralRefresh').disabled = checking;
     $('centralRefresh').textContent = checking ? 'Verificando…' : 'Atualizar estado';
     $('centralChecked').textContent = checking ? 'Consultando fontes autorizadas…'
@@ -89,10 +107,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
     $('centralProductStatus').textContent = model.state === 'product-connected'
       ? 'Catálogo Product conectado · presença informada pela plataforma'
       : 'Product indisponível · nenhum dispositivo foi presumido conectado';
-    $('centralWarning').textContent = issue
-      || (model.state !== 'product-connected' && accountAvailability === 'unavailable'
-        ? 'Esta versão portátil não habilita login na Conta OrdaX. O acesso Product exige o Studio integrado ao Runtime oficial.'
-        : 'Dispositivos autorizados não equivalem a clientes Relay conectados.');
+    $('centralWarning').textContent = issue || connection.warning;
     $('centralLabStatus').textContent = model.lab.state === 'laboratory'
       ? 'Laboratório local autenticado (não é produção)'
       : 'Relay não confirmado neste Studio';
