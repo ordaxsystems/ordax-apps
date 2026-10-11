@@ -141,7 +141,27 @@ export class WebBridge {
         Object.assign(page, this.page);
       }
       if (page.identityError) { this.issue = page.identityError; this.failRun(page.identityError); return; }
-      if (!page.ready) { if (this.run) this.failRun('A sessão do ChatGPT Web foi interrompida. Confira a área à direita.'); return; }
+      if (!page.ready) {
+        // On the initial / -> /c/<id> transition the ChatGPT shell may load
+        // before its composer is hydrated. Do not mistake that brief state
+        // for a failed generation: retain the already-submitted receipt.
+        // This grace is bounded and only covers the same first-party page,
+        // never login, foreign origins or a different bound conversation.
+        const run = this.run;
+        let firstParty = false;
+        if (run && !page.loginRequired && typeof page.url === 'string') {
+          try {
+            const url = new URL(page.url);
+            firstParty = url.origin === 'https://chatgpt.com' &&
+              (run.webId
+                ? url.pathname === '/c/' + encodeURIComponent(run.webId)
+                : url.pathname === '/' || /^\\/c\\/[^/]{1,256}$/.test(url.pathname));
+          } catch { /* Unknown destination is not a valid transition. */ }
+        }
+        const loadingOwnConversation = run && firstParty && this.now() - run.startedAt < 15000;
+        if (run && !loadingOwnConversation) this.failRun('A sessão do ChatGPT Web foi interrompida. Confira a área à direita.');
+        return;
+      }
       // Read connection status, but never adopt a Web conversation while the user
       // is on Home or a project overview. Entering a conversation is explicit.
       if (this.selectionIdle) { if (this.dirty) await this.persist(); return; }
