@@ -1,0 +1,43 @@
+name: Studio Central Three-Process Relay
+
+on:
+  pull_request:
+    paths:
+      - "tools/assistant-host/proofs/relay-desktop-lab.mjs"
+      - "tools/assistant-host/proofs/relay-desktop-client.mjs"
+      - "docs/STUDIO-CENTRAL-THREE-PROCESS-LAB.md"
+      - ".github/workflows/studio-central-three-process-relay.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/assistant-host/proofs/relay-desktop-lab.mjs"
+      - "tools/assistant-host/proofs/relay-desktop-client.mjs"
+      - ".github/workflows/studio-central-three-process-relay.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  independent-windows-clients:
+    name: Windows 3-process HTTP and Studio observation
+    runs-on: windows-2025
+    steps:
+      - name: Checkout OrdaX Apps
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: apps
+          persist-credentials: false
+      - name: Checkout canonical OrdaX Platform Relay pinned
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ordaxsystems/ordax-platform
+          ref: f0a2c4a41ea8f3d3b64bd3e4287b4dac1ce6894c
+          path: platform
+          persist-credentials: false
+      - name: Run real Windows process and localhost HTTP acceptance proof
+        shell: pwsh
+        working-directory: apps
+        run: |
+          node --version
+          node tools/assistant-host/proofs/relay-desktop-lab.mjs --self-test --platform-root ../platform
