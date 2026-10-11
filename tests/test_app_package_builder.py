@@ -309,6 +309,64 @@ class DeterministicAppPackageTests(unittest.TestCase):
             with self.assertRaisesRegex(builder.AppPackageError, "not self-contained"):
                 builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
 
+    def test_static_import_meta_url_css_is_present_in_source_and_verified_zip(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root, runtime_source=(
+                'const CSS = new URL("../assets/fixture.css", import.meta.url).href;\\n'
+                'export const componentRuntime = { CSS };\\n'
+            ))
+            package = root / "fixture.zip"
+            builder.build_package(app, SOURCE_COMMIT, package)
+            manifest, _ = builder.verify_package(package)
+            self.assertIn(
+                "system/apps/fixture/assets/fixture.css",
+                [record["path"] for record in manifest["files"]],
+            )
+
+    def test_static_import_meta_url_rejects_missing_css_before_creating_artifact(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root, runtime_source=(
+                'const CSS = new URL("../assets/missing.css", import.meta.url).href;\\n'
+                'export const componentRuntime = { CSS };\\n'
+            ))
+            package = root / "fixture.zip"
+            with self.assertRaisesRegex(builder.AppPackageError, "missing a referenced asset"):
+                builder.build_package(app, SOURCE_COMMIT, package)
+            self.assertFalse(package.exists())
+
+    def test_static_import_meta_url_rejects_remote_or_escaped_assets(self):
+        for relative, expected in (
+            ("../../outside.css", "escapes app ownership"),
+            ("https://example.test/style.css", "relative asset URL is forbidden"),
+            ("../assets/fixture.css?version=1", "relative asset URL is forbidden"),
+            ("../assets/fixture.css#fragment", "relative asset URL is forbidden"),
+        ):
+            with self.subTest(relative=relative):
+                with tempfile.TemporaryDirectory() as td:
+                    root = Path(td)
+                    app = fixture(root, runtime_source=(
+                        f'const CSS = new URL({json.dumps(relative)}, import.meta.url).href;\\n'
+                        'export const componentRuntime = { CSS };\\n'
+                    ))
+                    package = root / "fixture.zip"
+                    with self.assertRaisesRegex(builder.AppPackageError, expected):
+                        builder.build_package(app, SOURCE_COMMIT, package)
+                    self.assertFalse(package.exists())
+
+    def test_asset_looking_text_inside_comments_or_strings_is_not_a_dependency(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            app = fixture(root, runtime_source=(
+                '// new URL("../assets/not-real.css", import.meta.url)\\n'
+                'const label = \'new URL("../assets/not-real.css", import.meta.url)\';\\n'
+                'const CSS = new URL("../assets/fixture.css", import.meta.url).href;\\n'
+                'export const componentRuntime = { label, CSS };\\n'
+            ))
+            manifest, _ = builder.build_package(app, SOURCE_COMMIT, root / "fixture.zip")
+            self.assertEqual(manifest["component"]["id"], "fixture")
+
     def test_manifest_must_be_external_component_slot_owned_by_ordax_apps(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
