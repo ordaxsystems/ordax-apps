@@ -168,3 +168,35 @@ test('reject malformed Product slots and wrong environment before formatting',()
     {...t.routing,environment:'loopback-laboratory'},
   ])assert.throws(()=>formatCentralWebTurn({...t,routing}),/central_turn_invalid/);
 });
+
+
+test('Product device-only reads have NULL Space and project and one independent slot per request',()=>{
+  const first=randomUUID(),second=randomUUID();
+  const dev=id=>({...productBinding(id),spaceId:null,projectId:null});
+  const a=prepareCanonicalCentralTurn({requestId:first,prompt:'Status da tela'},dev(first));
+  const b=prepareCanonicalCentralTurn({requestId:second,prompt:'Janelas abertas'},dev(second));
+  assert.equal(a.routing.environment,'product');
+  assert.equal(a.routing.device_id,PRODUCT_DEVICE);
+  assert.equal(a.routing.conversation_slot,'product/'+first);
+  assert.notEqual(a.routing.conversation_slot,b.routing.conversation_slot);
+  assert.equal(validateCentralReply(a,{deviceId:PRODUCT_DEVICE,requestId:first,result:'Recibo canônico'}).result,'Recibo canônico');
+  const text=formatCentralWebTurn(a);
+  assert.match(text,/NÃO é uma autorização de ferramenta/);
+  assert.ok(!text.includes(PRODUCT_SUBJECT));
+  assert.ok(!text.includes('oauth-client-exact-central'));
+});
+test('Product rejects half-null grants and refuses a client-selected foreign PC',()=>{
+  const requestId=randomUUID(),request={requestId,prompt:'Examine informações do PC'};
+  const binding={...productBinding(requestId),spaceId:null,projectId:null};
+  for(const bad of [
+    {...binding,spaceId:PRODUCT_SPACE},
+    {...binding,projectId:PRODUCT_PROJECT},
+    {...binding,spaceId:undefined},
+    {...binding,projectId:undefined},
+    {...binding,deviceId:'studio-1'},
+  ])assert.throws(()=>prepareCanonicalCentralTurn(request,bad),/central_product_binding_invalid/);
+  assert.throws(()=>prepareCanonicalCentralTurn({...request,deviceId:OTHER_PRODUCT_DEVICE},binding),/central_product_binding_invalid/);
+  const good=prepareCanonicalCentralTurn(request,binding);
+  assert.equal(good.routing.device_id,PRODUCT_DEVICE);
+  assert.throws(()=>validateCentralReply(good,{deviceId:OTHER_PRODUCT_DEVICE,requestId,result:'Troca de PC'}),/central_reply_scope_mismatch/);
+});

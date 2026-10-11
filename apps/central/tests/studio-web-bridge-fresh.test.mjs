@@ -14,11 +14,11 @@ const SUBJECT='22222222-2222-4222-8222-222222222222';
 const PROJECT='33333333-3333-4333-8333-333333333333';
 const SPACE='44444444-4444-4444-8444-444444444444';
 const CLIENT='oauth-central-test-client';
-const product=(requestId,prompt)=>prepareCanonicalCentralTurn({requestId,prompt},{
+const product=(requestId,prompt,deviceOnly=false)=>prepareCanonicalCentralTurn({requestId,prompt},{
   deviceId:DEVICE,requestId,subjectId:SUBJECT,clientId:CLIENT,
-  spaceId:SPACE,projectId:PROJECT,
+  spaceId:deviceOnly?null:SPACE,projectId:deviceOnly?null:PROJECT,
 });
-async function fixture({authorize=true,confirm=true,includeConfirm=true}={}) {
+async function fixture({authorize=true,confirm=true,includeConfirm=true,deviceOnly=false,badPair=false}={}) {
   const disk={},observations=[],pages=[];
   let now=10000,submits=0;
   const page={url:'https://chatgpt.com/',conversationId:null,
@@ -71,7 +71,8 @@ async function fixture({authorize=true,confirm=true,includeConfirm=true}={}) {
     bindChat:async turn=>{
       bindings.push(turn.request_id);
       return {mode:'fresh',deviceId:DEVICE,requestId:turn.request_id,
-        subjectId:SUBJECT,clientId:CLIENT,spaceId:SPACE,projectId:PROJECT};
+        subjectId:SUBJECT,clientId:CLIENT,spaceId:deviceOnly||badPair?null:SPACE,
+        projectId:deviceOnly?null:PROJECT};
     },
     authorizeTools:async b=>{
       observations.push('authorize');
@@ -86,8 +87,8 @@ async function fixture({authorize=true,confirm=true,includeConfirm=true}={}) {
   return {bridge,port:createCentralStudioWebPort(options),page,pages,confirmed,bindings,observations,
     get submits(){return submits},get now(){return now},tick(n){now+=n},close:()=>bridge.close()};
 }
-async function complete(f,requestId,prompt) {
-  const started=f.port.dispatch(product(requestId,prompt));
+async function complete(f,requestId,prompt,deviceOnly=false) {
+  const started=f.port.dispatch(product(requestId,prompt,deviceOnly));
   started.catch(()=>{});
   for(let i=0;i<100&&!f.bridge.run;i++)await delay(5);
   assert.ok(f.bridge.run,'native WebBridge did not send a fresh message');
@@ -152,4 +153,27 @@ test('failure to persist ChatGPT conversation after a single accepted send remai
   assert.equal(f.submits,1);
   assert.equal(f.confirmed.length,1);
   assert.equal(f.confirmed[0].record.requestId,requestId);
+});
+
+test('device-only Product grant opens one fresh Studio Web conversation with both scopes null',async t=>{
+  const f=await fixture({deviceOnly:true});t.after(f.close);
+  const requestId=randomUUID();
+  const result=await complete(f,requestId,'Consultar janelas do PC',true);
+  assert.equal(result.deviceId,DEVICE);
+  assert.equal(result.requestId,requestId);
+  assert.equal(f.submits,1);
+  assert.equal(f.confirmed.length,1);
+  assert.equal(f.confirmed[0].binding.spaceId,null);
+  assert.equal(f.confirmed[0].binding.projectId,null);
+  assert.equal(f.confirmed[0].record.webId,'new-web-conversation-1');
+  assert.deepEqual(f.observations,['authorize','confirm']);
+});
+test('half-null binding fails before authorization, browser navigation or sending',async t=>{
+  const f=await fixture({badPair:true});t.after(f.close);
+  await assert.rejects(f.port.dispatch(product(randomUUID(),'Consultar PC')),
+    e=>e instanceof CentralWebPortError&&e.code==='central_web_binding_missing');
+  assert.deepEqual(f.observations,[]);
+  assert.deepEqual(f.pages,[]);
+  assert.equal(f.submits,0);
+  assert.equal(f.bridge.chats.length,0);
 });
