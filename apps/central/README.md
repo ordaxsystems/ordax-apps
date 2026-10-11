@@ -113,3 +113,16 @@ Ao alternar do PC-2 para a conversa do PC-1, o `WebBridge.selectChat()` nativo l
 Mesmo após um evento `done`, a Central exige que a mensagem de usuário **observada pelo WebBridge** tenha ID igual a `chat.delivery.userId` e texto exatamente equivalente ao prompt emitido (normalização de espaços idêntica à do Studio). Também requer uma única resposta nova `completed`, da mesma conversa Web, e nunca reenvia quando há incerteza. O callback tem snapshot de mensagens, não uma referência mutável ao chat da interface.
 
 A prova `apps/central/tests/studio-web-bridge-native.test.mjs` exercita a **classe real do WebBridge**, seus métodos `state`, `selectChat` e `respond`, preparo DOM, envio único, confirmação do turno e conclusão, com DOM simulado para que seja determinística. **Não** executa login real no ChatGPT, não concede permissão a PCs, não confirma plugin MCP real. A guarda Product continua obrigatória e o adaptador segue **não conectado à UI de laboratório ou a um endpoint público**.
+
+
+## Produto: UUID real do dispositivo e conversa lógica por solicitação
+
+A ligação via MCP real do OrdaX com o Windows confirmou que `device_id` do Product é um **UUID canônico**, diferente do rótulo `studio-1` usado na bancada com três processos. A porta Web da Central validava somente rótulos de laboratório, impedindo qualquer uso com o dispositivo Product mesmo quando autenticado.
+
+`prepareCentralTurn` continua **exclusiva do laboratório**. O novo `prepareCanonicalCentralTurn(request, trustedBinding)` recebe o dispositivo/usuário/cliente/Space/projeto canônicos de um vínculo **já validado pela Platform**, exige UUIDs, compara a identidade da solicitação e produz um slot lógico exclusivo `product/<request_id>`. Isso atende à regra de **uma conversa lógica para cada solicitação recebida**; o slot NÃO cria uma conversa ChatGPT Web real e NÃO autoriza um grant. As credenciais, o sujeito OAuth e o cliente OAuth não aparecem no prompt. O texto permanece informativo, sem poder delegar permissões à IA.
+
+`createCentralStudioWebPort` aceita UUID real **somente quando** o turno declara `environment: product`, e nesse caso exige `projectId` UUID no vínculo fornecido pelo host; `authorizeTools` continua obrigatório e deve verificar o owner Product. Rótulos de laboratório ainda são aceitos apenas no modo `loopback-laboratory`. Recibos nunca podem mudar de `device_id` ou `request_id`.
+
+**Prova real não simulada em 11/10/2026:** nesta conversa, a integração OrdaX MCP executou `computer.screen_info`, `computer.windows`, `computer.processes`, `computer.access_status`, `git.status` e `project.text_read` no Windows cadastrado, com `request_id` e `status: succeeded`; a busca de dispositivo inexistente e projeto sem grant falharam fechadas. Nenhum token, nome de janela particular ou identificador pessoal é armazenado neste relatório. Essa prova valida o sentido **ChatGPT → plugin → Runtime → PC**; não prova `Central → nova conversa ChatGPT → plugin`.
+
+O acesso via Remote Desktop Commander continua separado do plugin OrdaX e não é requisito para o caminho de controle MCP. A integração que insere a mensagem na conversa Web continua bloqueada enquanto não houver atestação de vínculo por conversa na Platform, conforme `product_central_admission.ts`.

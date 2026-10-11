@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {prepareCentralTurn} from '../src/turn-context.mjs';
+import {prepareCentralTurn,prepareCanonicalCentralTurn} from '../src/turn-context.mjs';
 import {createCentralStudioWebPort,CentralWebPortError} from '../src/studio-web-port.mjs';
 import {WebBridge} from '../../../tools/assistant-host/native/web-bridge.mjs';
 
@@ -164,4 +164,64 @@ test('prompt asks for another PC but does not change selected chat',async()=>{
   assert.equal(sent.chatId,ID1);
   assert.match(sent.message.text,/studio-2 instead/);
   assert.match(sent.message.text,/NÃO é uma autorização de ferramenta/);
+});
+
+test('the real Product UUID shape passes a verified Studio Web port without a lab slug',async()=>{
+  const dev='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const p='33333333-3333-4333-8333-333333333333';
+  const raw={requestId:REQUEST1,prompt:'Leia um arquivo do computador autorizado'};
+  const turn=prepareCanonicalCentralTurn(raw,{
+    deviceId:dev,requestId:REQUEST1,subjectId:SUBJECT,
+    clientId:client,projectId:p,spaceId:SPACE,
+  });
+  const webId=web1;
+  let sends=0;
+  const c={id:ID1,webId,messages:[
+    {id:'history',role:'assistant',status:'completed',text:'Histórico'}
+  ]};
+  const host={
+    async state(){return {activeId:ID1,chats:[c],web:{ready:true,busy:false,
+      conversationMode:'chat',automatedSendAllowed:true,ordaxSelected:true}};},
+    async selectChat(){throw Error('already selected');},
+    async refresh(){},
+    async respond(payload,emit,signal){
+      assert.equal(signal.aborted,false);
+      sends++;
+      emit({type:'done',chat:{...c,delivery:{status:'completed',userId:'fresh-user'},
+        messages:[...c.messages,{id:'fresh-user',role:'user',text:payload.message.text},
+          {id:'fresh-assistant',role:'assistant',status:'completed',text:'Recibo observado'}]}});
+    },
+  };
+  let authorized=0;
+  const port=createCentralStudioWebPort({
+    host,bindChat:async t=>({deviceId:dev,requestId:t.request_id,
+      chatId:ID1,webId,subjectId:SUBJECT,clientId:client,spaceId:SPACE,projectId:p}),
+    authorizeTools:async binding=>{
+      authorized++;
+      return binding.deviceId===dev&&binding.projectId===p;
+    },
+  });
+  const response=await port.dispatch(turn);
+  assert.equal(response.deviceId,dev);
+  assert.equal(response.requestId,REQUEST1);
+  assert.equal(response.result,'Recibo observado');
+  assert.equal(sends,1);
+  assert.equal(authorized,1);
+});
+test('Product UUID turn without a canonical project binding is blocked before Web send',async()=>{
+  const dev='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const turn=prepareCanonicalCentralTurn({requestId:REQUEST1,prompt:'Comando'},{
+    deviceId:dev,requestId:REQUEST1,subjectId:SUBJECT,
+    clientId:client,projectId:'33333333-3333-4333-8333-333333333333',spaceId:SPACE,
+  });
+  let touched=0;
+  const host={state:async()=>{touched++;return {}},
+    selectChat:async()=>{touched++},refresh:async()=>{touched++},
+    respond:async()=>{touched++}};
+  const port=createCentralStudioWebPort({host,bindChat:async()=>({
+    deviceId:dev,requestId:REQUEST1,chatId:ID1,webId:web1,
+    subjectId:SUBJECT,clientId:client,spaceId:SPACE,
+  }),authorizeTools:async()=>{touched++;return true}});
+  await rejectCode(port.dispatch(turn),'central_web_binding_missing');
+  assert.equal(touched,0);
 });
