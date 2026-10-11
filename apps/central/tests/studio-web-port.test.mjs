@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {prepareCentralTurn} from '../src/turn-context.mjs';
 import {createCentralStudioWebPort,CentralWebPortError} from '../src/studio-web-port.mjs';
+import {WebBridge} from '../../../tools/assistant-host/native/web-bridge.mjs';
 
 const ID1='11111111-1111-4111-8111-111111111111';
 const ID2='22222222-2222-4222-8222-222222222222';
@@ -37,19 +38,26 @@ function fixture(options={}){
       activeId,chats,web:{ready,busy:false,conversationMode:mode,
       automatedSendAllowed:ready&&mode==='chat',ordaxSelected:selected}};},
     async selectChat(id){logs.push(['select',id]);activeId=id;},
-    async *respond(payload){
+    async respond(payload,emit,signal){
       logs.push(['send',payload]);
+      assert.equal(typeof emit,'function','native callback argument');
+      assert.equal(typeof signal?.aborted,'boolean','native AbortSignal argument');
       if(options.rejectAfterSubmit)throw new Error('lost after submit');
       if(options.onSend)await options.onSend();
       const c=chats.find(x=>x.id===payload.chatId);
       if(!c)throw Error('unknown');
+      const user={id:'user-'+payload.chatId,role:'user',
+        text:options.wrongUser?'Outro pedido':payload.message.text};
       const answer={id:'answer-'+payload.chatId,role:'assistant',
         status:'completed',text:options.result||'Resposta real observada'};
-      const reply={...c,delivery:{status},messages:[...c.messages,answer]};
-      yield {type:'start',chat:c};
+      const reply={...c,delivery:{status,userId:user.id},
+        messages:[...c.messages,...(options.noUser?[]:[user]),answer]};
+      emit({type:'start',chat:c});
       if(options.noDone)return;
-      yield {type:'done',chat:options.swapResultChat?
-        {...reply,id:ID1===c.id?ID2:ID1}:reply};
+      const observed=options.swapResultChat
+        ?{...reply,id:ID1===c.id?ID2:ID1}:reply;
+      emit({type:'done',chat:observed});
+      if(options.duplicateDone)emit({type:'done',chat:observed});
     }
   };
   let boundCalls=0,authCalls=0;
@@ -72,6 +80,9 @@ function fixture(options={}){
 async function rejectCode(promise,code){
   await assert.rejects(promise,error=>error instanceof CentralWebPortError&&error.code===code);
 }
+test('native Studio WebBridge uses callback respond(data, emit, signal), not an AsyncIterable',()=>{
+  assert.equal(WebBridge.prototype.respond.length,3);
+});
 test('Studio port accepts a genuine done event and keeps the original target',async()=>{
   const f=fixture();
   const reply=await f.port.dispatch(t1());
@@ -122,7 +133,8 @@ test('unready, Work, missing @ORDAX indication never send',async()=>{
   }
 });
 test('missing done, mismatched chat and incomplete receipt are uncertain, no replay',async()=>{
-  for(const opt of [{noDone:true},{swapResultChat:true},{status:'submitted'},{rejectAfterSubmit:true}]){
+  for(const opt of [{noDone:true},{swapResultChat:true},{status:'submitted'},
+    {rejectAfterSubmit:true},{duplicateDone:true},{wrongUser:true},{noUser:true}]){
     const f=fixture(opt);
     await rejectCode(f.port.dispatch(t1()),'central_web_delivery_uncertain');
     assert.equal(f.logs.filter(x=>x[0]==='send').length,1);
