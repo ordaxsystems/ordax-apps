@@ -11,6 +11,7 @@ import {tmpdir} from 'node:os';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createWebServer} from '../web-server.mjs';
+import {renderCentralConsole} from '../../../apps/central/src/console.mjs';
 
 const SOURCE=fileURLToPath(import.meta.url);
 const token=()=>randomBytes(32).toString('hex');
@@ -31,26 +32,6 @@ async function gpt(request,provider){
   const answer=(data.output||[]).flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('\n').trim();
   if(!answer||answer.length>4096)throw Error('invalid_provider_response');
   return {deviceId:request.deviceId,requestId:request.requestId,result:answer};
-}
-function html(clients,provider,studio,nonce){
-  const frames=clients.map(c=>'<section><header>'+esc(c.id)+' · PID '+c.pid+'</header><iframe src="'+esc(c.origin)+'" title="'+esc(c.id)+'"></iframe></section>').join('');
-  return '<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
-  '<title>OrdaX Central · Laboratório</title><style nonce="'+nonce+'">'+
-  ':root{color-scheme:dark;font:14px system-ui;color:#e5efff;background:#0a101a}body{margin:0}main{max-width:1500px;margin:auto;padding:24px}'+
-  'p{line-height:1.5;color:#a9c2e4}#state{padding:12px;border:1px solid #385471;border-radius:10px;background:#152336;white-space:pre-wrap}'+
-  '.clients{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0}section{min-width:0;border:1px solid #36506d;border-radius:12px;overflow:hidden}'+
-  'header{padding:12px;background:#213854}iframe{border:0;width:100%;height:320px}table{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1px solid #314963;padding:9px;overflow-wrap:anywhere}td{font-size:12px}'+
-  '@media(max-width:900px){.clients{grid-template-columns:1fr}}</style><main>'+
-  '<h1>OrdaX Central — Três clientes de teste</h1><p><strong>Três processos Node reais no mesmo Windows.</strong> Os clientes não são VMs nem três instalações do Studio. Cada painel envia mensagens HTTP pelo Relay da Platform. O Studio fornece a observação da Central.</p>'+
-  '<p><strong>Provedor: '+(provider==='diagnostic'?'DIAGNÓSTICO LOCAL (NÃO GPT)':'OpenAI API (NÃO plugin ChatGPT)')+'</strong></p>'+
-  '<div id="state" aria-live="polite">Conectando observação...</div><div class="clients">'+frames+'</div>'+
-  '<h2>Recebimento e encaminhamento na Central</h2><table><thead><tr><th>Hora</th><th>Cliente</th><th>Evento</th><th>Mensagem/recibo</th></tr></thead><tbody id="events"></tbody></table>'+
-  '<p>Observador Studio: '+esc(studio)+' . O envio automático ao ChatGPT pelo plugin Product depende de conexão real da Central, ainda não integrada neste laboratório.</p>'+
-  '<script nonce="'+nonce+'">'+
-  'async function refresh(){try{const r=await fetch("/api/state");if(!r.ok)throw Error();const s=await r.json();document.querySelector("#state").textContent='+
-  '"Central: "+s.status+" | Clientes: "+s.clients+" | Ativos: "+s.relay.activeRequests+" | Recibos: "+s.relay.retainedReceipts+" | Studio: "+s.studio.state;'+
-  'const body=document.querySelector("#events");body.replaceChildren();for(const e of s.events.slice().reverse()){const tr=document.createElement("tr");for(const v of [e.time,e.id,e.event,e.preview]){const td=document.createElement("td");td.textContent=v||"";tr.append(td)}body.append(tr)}}catch{document.querySelector("#state").textContent="Falha de observação."}}'+
-  'refresh();setInterval(refresh,1200)</script></main></html>';
 }
 export async function startWorkbench({platformRoot,provider='diagnostic'}){
   if(!platformRoot||!['diagnostic','openai-api'].includes(provider))throw Error('invalid_configuration');
@@ -79,7 +60,7 @@ export async function startWorkbench({platformRoot,provider='diagnostic'}){
           const nonce=token();res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store',
             'set-cookie':'ordax_lab_operator='+cookie+'; HttpOnly; SameSite=Strict; Path=/',
             'content-security-policy':"default-src 'none'; style-src 'nonce-"+nonce+"'; script-src 'nonce-"+nonce+"'; connect-src 'self'; frame-src "+clients.map(c=>c.origin).filter(Boolean).join(' ')+"; frame-ancestors 'none'; base-uri 'none'"});
-          res.end(html(clients,provider,studio.origin,nonce));return;
+          res.end(renderCentralConsole({clients,provider,studio:studio.origin},nonce));return;
         }
         if(req.method!=='GET'||req.url!=='/api/state')return send(res,404,{ok:false,error:'not_found'});
         if(!String(req.headers.cookie||'').split(';').some(x=>x.trim()==='ordax_lab_operator='+cookie))return send(res,401,{ok:false,error:'operator_session_required'});
@@ -139,6 +120,11 @@ if(args.includes('--self-test')){
   const app=await startWorkbench({platformRoot:root});
   try{
     const p=await fetch(app.origin);assert.equal(p.status,200);
+    const page=await p.text();
+    assert.match(page, /OrdaX Central/);
+    assert.match(page, /data-view="connections"/);
+    assert.match(page, /data-view="inbox"/);
+    assert.equal((page.match(/<iframe /g)||[]).length,3,'One embedded console per client; no duplicate frames');
     const op=p.headers.get('set-cookie')?.split(';')[0];
     assert.equal((await fetch(app.origin+'/api/state')).status,401);
     // Emulate ONE real browser cookie jar shared by all 127.0.0.1 ports.
