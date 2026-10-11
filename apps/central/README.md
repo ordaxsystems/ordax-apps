@@ -137,3 +137,30 @@ O Studio WebBridge já oferece o método nativo `createChat({projectId:null})`, 
 **Limite operacional obrigatório:** os callbacks `bindChat`, `authorizeTools` e `confirmChat` ainda NÃO estão conectados ao owner durável Product em produção. A confirmação após a resposta **não autoriza ferramentas que a IA pudesse chamar antes do fim** da resposta. Nesse primeiro envio, o gateway Product precisa permanecer fechado até uma associação autenticada real via `_meta["openai/session"]`; um código no prompt ou Web URL não dá autoridade. Esta implementação resolve a criação/observação de conversas, **não habilita** o serviço Central → plugin → PC em produção por conta própria.
 
 A prova `studio-web-bridge-fresh.test.mjs` usa a classe `WebBridge` real, navegação DOM controlada e duas solicitações Product: confere dois `chatId`/URLs diferentes, duas confirmações distintas, nenhuma criação sem autorização e nenhuma repetição quando a confirmação durável falha. Continua sendo **simulação da página** (sem login ChatGPT real); ações Runtime reais são verificadas separadamente pelo plugin já autenticado.
+
+## Contrato Product: autorização de PC sem Space/projeto
+
+O catálogo Postgres `ordax_list_product_targets_v1` tem dois tipos distintos de
+concessão: dispositivo (`space_id=null`, `project_id=null`) e projeto (dois
+UUIDs concretos). Não existe `scope_kind` na resposta do RPC. A Platform
+[PR #134](https://github.com/ordaxsystems/ordax-platform/pull/134) integrou
+a seleção de grants de dispositivo, com leitura restrita a metadados de PC
+e sem fallback para arquivos/projetos.
+
+`prepareCanonicalCentralTurn` e `createCentralStudioWebPort` agora
+reconhecem os dois formatos **somente sob identidade Product** verificada:
+`(null,null)` ou `(UUID,UUID)`. Rejeitam combinações
+`(null,UUID)`, `(UUID,null)`, valores ausentes e rótulos de laboratório como
+UUID do Product. A solicitação continua gerando **novo slot e conversa Web por
+turno**, sem escolher PC pelo prompt; `authorizeTools` deve consultar o owner
+da Platform *antes* de abrir o navegador. Uma confirmação observada após a
+resposta não autoriza um plugin que atuaria durante o primeiro turno.
+
+Prova `studio-web-bridge-fresh.test.mjs`: a instância real da classe
+Studio `WebBridge`, com DOM controlado no teste, recebe um binding Product
+`spaceId=null,projectId=null`, cria uma conversa nova e registra o resultado
+para o mesmo request/PC, e recusa vínculos meio nulos antes da navegação.
+
+**Não confundir** o DOM controlado com ChatGPT real. Ainda faltam o
+pareamento Product canônico e a atestação durável da sessão OAuth do plugin.
+Nenhum Relay, gateway OAuth, banco ou executor adicional foi criado.
