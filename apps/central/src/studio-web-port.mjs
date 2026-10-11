@@ -127,7 +127,7 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools,confirm
         // It does NOT return an AsyncIterable. Consume the real native
         // callback directly; no shadow event queue or second chat transport.
         await host.respond({
-          chatId:binding.chatId,model:'chatgpt-web',
+          chatId:selected.chatId,model:'chatgpt-web',
           retry:false,message:{text:prompt,attachments:[]}
         },event=>{
           if(event?.type==='error') invalidEvent=true;
