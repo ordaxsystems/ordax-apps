@@ -3,6 +3,7 @@
 // Studio's actual local web-host reads the same Relay operator projection.
 // Diagnostic replies are marked NOT GPT. Provider calls require an explicit key.
 import assert from 'node:assert/strict';
+import {Script} from 'node:vm';
 import {fork} from 'node:child_process';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {createServer} from 'node:http';
@@ -147,6 +148,10 @@ if(args.includes('--self-test')){
     assert.match(page, /OrdaX Central/);
     assert.match(page, /data-view="connections"/);
     assert.match(page, /data-view="inbox"/);
+    assert.match(page, /id="receiptRows"/);
+    const inlineScript=page.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
+    assert.ok(inlineScript,"Central operator browser script missing");
+    new Script(inlineScript,{filename:"ordax-central-console.js"});
     assert.equal((page.match(/<iframe /g)||[]).length,3,'One embedded console per client; no duplicate frames');
     const op=p.headers.get('set-cookie')?.split(';')[0];
     assert.equal((await fetch(app.origin+'/api/state')).status,401);
