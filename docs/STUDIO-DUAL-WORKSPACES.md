@@ -43,3 +43,10 @@ O painel Central agora consulta a **disponibilidade**, não credenciais, via `or
 A Central pode atualizar as projeções Product/Relay em intervalos mínimos de 30 segundos **somente quando a página está visível, sem sobreposição/modal e sem consulta em curso**; isso reutiliza o temporizador já existente do Studio, sem outro serviço, outro broker ou tarefa em segundo plano. Nenhuma leitura inicia comandos nos PCs remotos.
 
 Evidência: regressões dedicadas no Windows real em checkout isolado, **31/31 testes**, `CENTRAL_ACCOUNT_UI_TESTS=PASS` antes da extensão de polling. Novas verificações cobrem copy do login disponível/indisponível e a condição de atualização periódica/ocultação. Todos os relatórios de renderização são do Studio real, mas **nenhum PC Relay foi declarado online sem fonte Product**.
+
+
+## Recuperação de consultas do painel Central — 2026-10-11
+
+As três leituras **somente observacionais** (estado Product, observação Relay de laboratório e disponibilidade do login oficial) agora têm prazo máximo independente de **12 segundos**. Um host que nunca responda não deixa os controles do operador travados em “Verificando…”: a UI recupera o estado de leitura, mantém o Product indisponível quando essa fonte falha e permite uma nova tentativa manual. Um Relay sem resposta não transforma o catálogo Product em falso, nem comprova clientes Relay. Resultado que chegue após o prazo é ignorado para a consulta já encerrada.
+
+O prazo limita **a espera do renderer**, não cancela chamadas que o host já aceitou, não reenvia comandos e não altera grants, conta, sessões ou recibos. O refresh periódico continua restrito à Central visível, sem overlays e sem outra consulta em curso. A suíte direcionada no Windows real confirmou 11/11 casos (central.test.mjs e relay-readiness.test.mjs), inclusive host silencioso, retorno tardio e falha independente das três fontes. Esses testes não provam geração GPT multiusuário nem entrega a outros PCs.

@@ -89,6 +89,33 @@ export function centralPollDue({ checking, checkedAt, visible, now = Date.now() 
     && Number.isFinite(checkedAt.getTime()) && Number.isFinite(now)
     && now - checkedAt.getTime() >= 30000;
 }
+// Bounded, read-only observations: an unresponsive host must not lock the
+// operator controls forever. This does not cancel/reissue device operations.
+const CENTRAL_READ_TIMEOUT_MS = 12000;
+export function centralReadSources(host, accountHost, timeoutMs = CENTRAL_READ_TIMEOUT_MS) {
+  const deadline = Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= CENTRAL_READ_TIMEOUT_MS
+    ? timeoutMs : CENTRAL_READ_TIMEOUT_MS;
+  const settle = read => new Promise(resolve => {
+    let complete = false;
+    const finish = result => {
+      if (complete) return;
+      complete = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => finish({ status: 'rejected', reason: new Error('central-read-timeout') }), deadline);
+    Promise.resolve().then(read).then(
+      value => finish({ status: 'fulfilled', value }),
+      reason => finish({ status: 'rejected', reason }),
+    );
+  });
+  return Promise.all([
+    settle(() => typeof host?.runtimeState === 'function' ? host.runtimeState() : Promise.reject(new Error('Product não integrado'))),
+    settle(() => typeof host?.relayObservation === 'function' ? host.relayObservation() : Promise.reject(new Error('Relay não integrado'))),
+    settle(() => typeof accountHost?.available === 'function' ? accountHost.available() : null),
+  ]);
+}
+
 export function createCentralPanel({ host, openRuntime, accountHost }) {
   const $ = id => document.getElementById(id);
   let model = centralViewModel(null, null);
@@ -184,11 +211,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
     if (checking) return;
     checking = true; issue = ''; paint();
     try {
-      const results = await Promise.allSettled([
-        typeof host?.runtimeState === 'function' ? host.runtimeState() : Promise.reject(new Error('Product não integrado')),
-        typeof host?.relayObservation === 'function' ? host.relayObservation() : Promise.reject(new Error('Relay não integrado')),
-        typeof accountHost?.available === 'function' ? accountHost.available() : Promise.resolve(null),
-      ]);
+      const results = await centralReadSources(host, accountHost);
       accountAvailability = results[2].status === 'fulfilled'
         ? results[2].value === true ? 'available' : results[2].value === false ? 'unavailable' : 'unknown'
         : 'unknown';
