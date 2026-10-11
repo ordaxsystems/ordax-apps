@@ -4,8 +4,24 @@ export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snap
   const $ = id => document.getElementById(id);
   let service = { status: 'unchecked' }, checking = false, detailMessage = '';
   let relayChecking = false, relaySnapshot = null, relayIssue = '';
+  let labChecking = false, labSnapshot = null;
   function render() {
     $('relayCheck').disabled = relayChecking || typeof host?.runtimeState !== 'function';
+    $('relayLabCheck').disabled = labChecking || typeof host?.relayObservation !== 'function';
+    $('relayLabCheck').textContent = labChecking ? 'Verificando Relay…' : 'Verificar Relay local';
+    const observed = labSnapshot?.schema === 'ordax.studio-relay-observation/1' ? labSnapshot : null;
+    $('relayLabStatus').textContent =
+      observed?.state === 'connected-laboratory'
+        && [observed.clients, observed.active, observed.retained, observed.failures, observed.cancelled, observed.timedOut]
+          .every(value => Number.isSafeInteger(value) && value >= 0)
+        ? `Laboratório local autenticado · ${observed.clients} clientes cadastrados · ${observed.active} solicitações ativas · ${observed.retained} recibos · ${observed.failures} falhas (${observed.cancelled} cancelamentos, ${observed.timedOut} timeouts). Não indica ChatGPT compartilhado nem rede isolada.`
+        : observed?.state === 'not-configured'
+          ? 'Relay não configurado neste Studio. Nenhuma conexão externa foi estabelecida.'
+          : observed?.state === 'invalid-configuration'
+            ? 'Configuração do Relay inválida ou incompleta no host central.'
+            : observed?.state === 'unavailable'
+              ? 'Relay local indisponível ou autenticação recusada. Nenhuma sessão foi presumida.'
+              : 'Relay local não verificado. Sem configuração explícita, nenhuma sessão será iniciada.';
     $('relayCheck').textContent = relayChecking ? 'Verificando conexões…' : 'Verificar estado Product';
     $('relayStatus').textContent = relayIssue ||
       (relaySnapshot ? relayReadinessText(relaySnapshot) :
@@ -35,6 +51,13 @@ export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snap
     } catch {
       relayIssue = 'Não foi possível verificar a conexão Product. O Relay não foi declarado ativo.';
     } finally { relayChecking = false; render(); }
+  });
+  $('relayLabCheck').addEventListener('click', async () => {
+    if (labChecking || typeof host?.relayObservation !== 'function') return;
+    labChecking = true; labSnapshot = null; render();
+    try { labSnapshot = await host.relayObservation(); }
+    catch { labSnapshot = { schema: 'ordax.studio-relay-observation/1', state: 'unavailable' }; }
+    finally { labChecking = false; render(); }
   });
   $('pluginCheck').addEventListener('click', async () => {
     checking = true; detailMessage = ''; render();
