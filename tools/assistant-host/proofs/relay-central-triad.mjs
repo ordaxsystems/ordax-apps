@@ -3,7 +3,7 @@
 // The Platform owner is imported at the explicitly supplied checkout revision.
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { resolve, join } from 'node:path';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createWebServer } from '../web-server.mjs';
 
