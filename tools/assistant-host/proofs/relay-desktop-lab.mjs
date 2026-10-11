@@ -19,6 +19,18 @@ const token=()=>randomBytes(32).toString('hex');
 const send=(res,status,body)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(body))};
 const esc=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function listen(server,port=0){await new Promise((yes,no)=>{server.once('error',no);server.listen(port,'127.0.0.1',yes)});return 'http://127.0.0.1:'+server.address().port}
+async function closeClients(children){
+  // Windows holds each child's cwd open until the PROCESS ACTUALLY exits.
+  // A kill() request is not an exit receipt; never remove the profiles early.
+  await Promise.all(children.map(child=>new Promise((done,fail)=>{
+    if(child.exitCode!==null||child.signalCode!==null){done();return;}
+    const force=setTimeout(()=>child.kill('SIGKILL'),2500);
+    const deadline=setTimeout(()=>fail(Error('client_exit_timeout')),9000);
+    child.once('exit',()=>{clearTimeout(force);clearTimeout(deadline);done()});
+    child.kill();
+  })));
+}
+
 async function gpt(request,provider){
   if(provider==='diagnostic')return {deviceId:request.deviceId,requestId:request.requestId,
     result:'[DIAGNÓSTICO — NÃO É GPT] '+request.deviceId+' recebeu: '+request.prompt};
@@ -109,8 +121,8 @@ export async function startWorkbench({platformRoot,provider='diagnostic',central
     return {origin,studioOrigin:studio.origin,provider,
       clients:clients.map(c=>({id:c.id,origin:c.origin,pid:c.pid})),events,
       close:async()=>{
-        kids.forEach(k=>k.kill());
-        await Promise.allSettled([new Promise(ok=>server.close(ok)),studio.close(),hub.close()]);
+        await closeClients(kids);
+        await Promise.all([new Promise(ok=>server.close(ok)),studio.close(),hub.close()]);
         await rm(root,{force:true,recursive:true});
         if(saved.url===undefined)delete process.env.ORDAX_RELAY_LAB_URL;
         else process.env.ORDAX_RELAY_LAB_URL=saved.url;
@@ -118,9 +130,10 @@ export async function startWorkbench({platformRoot,provider='diagnostic',central
         else process.env.ORDAX_RELAY_LAB_ADMIN_TOKEN=saved.token;
       }};
   }catch(e){
-    kids.forEach(k=>k.kill());
-    await Promise.allSettled([server?new Promise(ok=>server.close(ok)):Promise.resolve(),
-      studio?.close(),hub?.close(),root?rm(root,{force:true,recursive:true}):Promise.resolve()]);
+    await closeClients(kids);
+    await Promise.all([server?new Promise(ok=>server.close(ok)):Promise.resolve(),
+      studio?.close(),hub?.close()]);
+    if(root)await rm(root,{force:true,recursive:true});
     throw e;
   }
 }
