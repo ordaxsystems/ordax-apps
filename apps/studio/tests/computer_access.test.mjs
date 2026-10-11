@@ -90,14 +90,13 @@ test('portable UI text decodes strictly and carries no known encoding corruption
   assert.doesNotMatch(node('mcpCanvas').innerHTML,/\\u00/);
 });
 
-test('Full Access UI never claims credential privacy until Runtime confirms it',()=>{
+test('owner Full Access UI explains account/device isolation and honest local authority',()=>{
   const h=harness();
   h.run('renderComputerAccessCanvas()');
-  assert.match(h.node('computerCanvas').innerHTML,/proteção de credenciais não foi confirmada/);
-  assert.match(h.node('computerCanvas').innerHTML,/Capturas de tela e clipboard não são mascarados/);
-  assert.match(h.node('computerCanvas').innerHTML,/Conta OrdaX e grant remoto/);
-  h.state.computerAccess.credential_filesystem_protection=true;
-  h.run('renderComputerAccessCanvas()');
-  assert.match(h.node('computerCanvas').innerHTML,/proteção dos cofres de credenciais/);
-  assert.doesNotMatch(h.node('computerCanvas').innerHTML,/não foi confirmada na versão/);
+  const html=h.node('computerCanvas').innerHTML;
+  assert.match(html,/A Conta OrdaX e o grant do dispositivo autorizam o cliente/);
+  assert.match(html,/dados privados legíveis no computador/);
+  assert.match(html,/limites do Windows\/UAC/);
+  assert.doesNotMatch(html,/proteção dos cofres de credenciais/);
+  assert.doesNotMatch(html,/proteção de credenciais não foi confirmada/);
 });
