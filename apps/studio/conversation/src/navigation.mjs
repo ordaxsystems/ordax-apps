@@ -1,5 +1,5 @@
 // Presentation state only. Selection, drafts and persistence remain with the host.
-export const navigationPages = ['conversation', 'recent', 'projects', 'project'];
+export const navigationPages = ['conversation', 'recent', 'projects', 'project', 'central'];
 export function recentConversations(chats, { projectId, query = '' } = {}) {
   const needle = query.trim().toLocaleLowerCase('pt-BR');
   return chats.filter(chat => (projectId === undefined || (chat.projectId || null) === projectId)
@@ -19,6 +19,7 @@ const paths = {
   conversation: 'M20 11.5a8 8 0 0 1-8 8H4l1.6-4A8 8 0 1 1 20 11.5Z',
   recent: 'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z',
   projects: 'M3 7V5h6l2 2h10v13H3V7Zm0 3h18',
+  central: 'M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z',
 };
 export function navigationIcon(kind) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -37,14 +38,15 @@ export function createNavigation({ state, openChat, openProject, newChat, option
     const previous = page; page = next;
     if (previous !== next) $('search').value = '';
     paint(); changed?.();
-    if (focus && previous !== next) (page === 'conversation' ? $('conversationTitle') : page === 'project' ? $('projectScopeName') : $('directoryTitle')).focus({ preventScroll: true });
+    if (focus && previous !== next) (page === 'conversation' ? $('conversationTitle') : page === 'central' ? $('centralTitle') : page === 'project' ? $('projectScopeName') : $('directoryTitle')).focus({ preventScroll: true });
   }
   function paint() {
     const { chats, projects, activeId, projectId, disabled, previewAvailable } = state();
     const selected = projects.find(value => value.id === projectId);
     document.body.dataset.studioPage = page;
-    const collection = page !== 'conversation';
+    const collection = page !== 'conversation' && page !== 'central';
     $('studioDirectory').hidden = !collection;
+    $('centralPanel').hidden = page !== 'central';
     $('contextSelect').textContent = selected?.name || 'Sem projeto'; $('contextSelect').disabled = disabled;
     $('conversationProjectOptions').disabled = disabled;
     $('projectScopeName').textContent = selected?.name || 'Sem projeto';
