@@ -31,7 +31,7 @@ test('Central provides isolated per-client conversations with only three real cl
   assert.ok(script);
   new Script(script,{filename:'central-workspace-browser.js'});
   assert.match(script,/centralUpdateChat\(s\)/);
-  assert.match(script,/item\.deviceId===centralActiveClient/);
+  assert.match(script,/r\.deviceId===centralActiveClient/);
   assert.match(script,/textContent=item\.requestPreview/);
   assert.match(script,/textContent=item\.resultPreview/);
   assert.match(script,/replaceChildren\(\)/);
