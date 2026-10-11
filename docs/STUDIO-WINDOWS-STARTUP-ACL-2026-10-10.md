@@ -45,3 +45,35 @@ Uma nova conversa exclusiva de teste foi criada pela rota oficial `POST /api/cha
 O envio **NÃO passou no E2E**: o HTTP terminou com status 200 após **9.339 ms**, porém **sem evento terminal `done` e sem mensagem do assistente confirmada**. O marcador presente no stream não é prova de resposta porque já existia no texto do usuário. A consulta posterior ao estado retornou uma mensagem `role=user`, `delivery.status=uncertain`, atividade em `error`, `web.busy=false`, `activeId` diferente do registro criado, `web.conversationMode=unknown` e causa explícita **“A conversa Web mudou durante a resposta. O app não reenviou a mensagem.”**
 
 O fluxo **não repetiu o POST**, evitando possível geração duplicada. Não apresentar essa execução como resposta GPT concluída, nem marcar o cliente Relay como funcional. Para corrigir sem paliativos, analisar no owner `WebBridge` a transição legítima `/ → /c/<id>` versus mudança real de conversa, manter identidade imutável no recibo e adicionar prova E2E baseada no site real; em cenários multiusuário a inferência não deve depender desse único WebView. Um request com entrega incerta precisa ser reconciliado antes de qualquer nova tentativa.
+
+## Continuação: provas reais GPT, recibos e limites de reconciliação
+
+**Revisão da conclusão inicial:** foi comprovada pelo menos uma resposta real do ChatGPT concluída pelo Studio após corrigir a inicialização. A primeira falha não representa indisponibilidade absoluta do modelo, mas o fluxo Web ainda não é confiável para o papel de Relay multiusuário.
+
+Correções implementadas diretamente na `main` do `ordax-apps`:
+
+- `469c6741` / `4a7d0a86`: associar a primeira URL da conversa nova apenas depois de observar a mensagem correta; uma URL já vinculada não pode ser substituída só porque a DOM ainda exibe a mensagem antiga.
+- `d8b2c183` / `2e354f99` / `dc0f0993`: tolerância de hidratação limitada a 15 s na própria página do ChatGPT, sem passar por login, origem externa ou outro destino.
+- `9624ad2a` / `11da0a46`: reconciliar um recibo `uncertain` após uma mudança de URL quando houver identificador da mensagem aceita pelo Web, sem criar uma nova conversa local; proibir adoção de turnos estrangeiros.
+
+**34/34 testes locais do WebBridge passaram**, incluindo início de conversa, transição de URL, mudança de destino com DOM obsoleta, entrega incerta, mesmo identificador de usuário, recusa de mensagem estrangeira, logout, timeout, recuperação e proibição de reenvio. A suíte Foundation e o candidato Windows da `main` do commit `11da0a46` foram aprovados. O build local final, `ORDAX-Studio-0.14.1-win-x64-0d6ff2bd`, passou no verificador independente: **146 arquivos**, não assinado/não promovido; não sobrescreveu a instalação Windows original 0.5.7. Studio final aberto no PC real, processo principal **PID 14920**.
+
+### Envio real — medições
+
+| Marcador/rodada | Criar conversa | SSE GPT | Resultado imediatamente observado | Reconciliação posterior |
+| --- | ---: | ---: | --- | --- |
+| `ORDAX_E2E_9173` | 6.680 ms | 18.371 ms | **PASS**: HTTP 200, `done`, nenhum `error`, uma mensagem de cada papel e resposta exata | Recibo `completed` |
+| `ORDAX_E2E_7821` | 2.880 ms | 4.262 ms | **FAIL SSE**: `error`, sem `done`, recibo inicial `uncertain` | **PASS RECOVERY**: `completed`, 1 usuário, 1 assistente, **1 registro local**, resposta exata |
+| `ORDAX_A_9101` | 5.882 ms | 7.530 ms | **FAIL SSE** | Resposta real presente em outro registro; **2 registros locais** para um único envio, original `uncertain` com `delivery.userId` — falha identificada que motivou correção do `WebBridge` |
+| `ORDAX_E2E_6720` | 3.175 ms | 4.430 ms | **FAIL SSE**, erro observado: “A conversa Web mudou durante a resposta. O app não reenviou a mensagem.” | No último snapshot, o registro original ainda estava `uncertain`, sem `delivery.userId`; duplicação em outros registros foi observada |
+| `ORDAX_E2E_7291` (teste anterior) | 5.823 ms | 9.339 ms | **FAIL SSE**, sem `done` | Não certificado como E2E concluído |
+
+Um HTTP 200 com frame `type:error` **não é sucesso**. Os tempos são observações pontuais do host real; não representam P50/P95, multiusuário, inferência pura, artefatos de imagem ou latência na Internet.
+
+### Falha ainda aberta: URL Web sem identidade de turno confirmada
+
+No último ensaio adversarial, o `WebBridge` recusou corretamente reatribuir um recibo a outra URL sem prova do turno original. A resposta pôde existir no ChatGPT Web, mas o local mostrou `delivery.status=uncertain` e `delivery.userId` vazio; portanto, **não havia evidência suficiente para promover o resultado ao chat original**. A migração de URL da interface Web é um evento assíncrono e não fornece ao OrdaX um identificador de requisição autenticado do provedor.
+
+Não contornar o problema pela mera igualdade de texto, por tempo de espera ilimitado, por consulta privada ao site ou permitindo qualquer navegação. Não afirmar isolamento de clientes por meio de um único WebView: o host Electron aceita somente um envio em andamento. A próxima capacidade de produção deve ser a inferência oficial via `ordax.intelligence/1` / Model Router com `request_id`, `conversation_id`, `owner_id`, `oauth_client_id`, `device_id`, recibos e artefatos com escopo verificável. O Studio continua sendo a interface/observador; não criar fila, executor ou SSOT paralelo para mascarar a falta do transporte.
+
+**Estado final desta execução:** Studio com janela real operante e conta ChatGPT Web conectada; **uma conversa real GPT com streaming completo comprovada**; reconciliação bem-sucedida pelo menos uma vez; streaming repetido ainda instável; teste sequencial de duas conversas **não aprovado**; testes simultâneos em três PCs físicos e entrega de imagens **não executados**. Preservar os registros de falha como evidências até que sejam reconciliados sem duplicações.
