@@ -7,6 +7,7 @@ import { createProjectPanel } from './project-panel.mjs';
 import { createPluginPanel } from './plugin-panel.mjs';
 import { projectDraftKey, bindingEquals } from './project-organization.mjs';
 import { createNavigation } from './navigation.mjs';
+import { createCentralPanel } from './central.mjs';
 import { createPreviewPanel } from './preview-panel.mjs';
 import { projectMessage } from './project-context.mjs';
 import { createAudioPanel } from './audio-panel.mjs';
@@ -595,6 +596,7 @@ async function pollWeb() {
   } catch (error) { notify(error.message); } finally { pollRunning = false; }
 }
 const previewPanel = createPreviewPanel({ nativePreview: window.ordaxStudioPreviewHost, nativeWeb, project, configure: openProjectOptions, openProjects: () => navigation.go('projects'), notify });
+const centralPanel = createCentralPanel({ host });
 navigation = createNavigation({
   state: () => ({ chats, projects, activeId, projectId: activeProjectId, disabled: locked() || !initialized, previewAvailable: Boolean(window.ordaxStudioPreviewHost) }),
   openChat: id => run(() => openConversation(id)), openProject: id => run(() => selectProjectScope(id)),
@@ -603,8 +605,12 @@ navigation = createNavigation({
 });
 for (const button of document.querySelectorAll('button[data-studio-page]')) button.addEventListener('click', () => {
   if (locked() || !initialized) return;
-  try { projectPanel.assertContext(project()?.binding || null); projectPanel.showConversation(); navigation.go(button.dataset.studioPage); }
-  catch (error) { notify(error.message); }
+  try {
+    projectPanel.assertContext(project()?.binding || null);
+    projectPanel.showConversation();
+    navigation.go(button.dataset.studioPage);
+    if (button.dataset.studioPage === 'central') void centralPanel.open();
+  } catch (error) { notify(error.message); }
 });
 $('contextSelect').addEventListener('click', () => navigation.go('projects'));
 $('projectsBack').addEventListener('click', () => navigation.go('projects'));
