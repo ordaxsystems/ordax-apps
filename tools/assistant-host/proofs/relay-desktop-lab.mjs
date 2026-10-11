@@ -17,7 +17,7 @@ const SOURCE=fileURLToPath(import.meta.url);
 const token=()=>randomBytes(32).toString('hex');
 const send=(res,status,body)=>{res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'});res.end(JSON.stringify(body))};
 const esc=x=>String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function listen(server){await new Promise((yes,no)=>{server.once('error',no);server.listen(0,'127.0.0.1',yes)});return 'http://127.0.0.1:'+server.address().port}
+async function listen(server,port=0){await new Promise((yes,no)=>{server.once('error',no);server.listen(port,'127.0.0.1',yes)});return 'http://127.0.0.1:'+server.address().port}
 async function gpt(request,provider){
   if(provider==='diagnostic')return {deviceId:request.deviceId,requestId:request.requestId,
     result:'[DIAGNÓSTICO — NÃO É GPT] '+request.deviceId+' recebeu: '+request.prompt};
@@ -33,8 +33,8 @@ async function gpt(request,provider){
   if(!answer||answer.length>4096)throw Error('invalid_provider_response');
   return {deviceId:request.deviceId,requestId:request.requestId,result:answer};
 }
-export async function startWorkbench({platformRoot,provider='diagnostic'}){
-  if(!platformRoot||!['diagnostic','openai-api'].includes(provider))throw Error('invalid_configuration');
+export async function startWorkbench({platformRoot,provider='diagnostic',centralPort=0}){
+  if(!platformRoot||!['diagnostic','openai-api'].includes(provider)||!Number.isInteger(centralPort)||centralPort<0||centralPort>65535||(centralPort>0&&centralPort<1024))throw Error('invalid_configuration');
   const {startRelayLab}=await import(pathToFileURL(resolve(platformRoot,'control-plane/labs/relay/relay.mjs')).href);
   const clients=Array.from({length:3},(_,i)=>({id:'studio-'+(i+1),secret:token()}));
   const adminToken=token(),cookie=token(),events=[];
@@ -82,7 +82,7 @@ export async function startWorkbench({platformRoot,provider='diagnostic'}){
           provider,relay:projection,studio:studioStatus,events});
       }catch{return send(res,503,{ok:false,error:'observer_unavailable'})}
     });
-    origin=await listen(server);
+    origin=await listen(server,centralPort);
     root=await mkdtemp(resolve(tmpdir(),'ordax-relay-workbench-'));
     for(const c of clients){
       const profile=resolve(root,c.id);await mkdir(profile,{recursive:true});
@@ -175,7 +175,9 @@ if(args.includes('--self-test')){
 }else if(import.meta.url===pathToFileURL(process.argv[1]||'').href){
   const root=args[args.indexOf('--platform-root')+1];
   const provider=args.includes('--openai-api')?'openai-api':'diagnostic';
-  const app=await startWorkbench({platformRoot:root,provider});
+  const ix=args.indexOf('--central-port');
+  const centralPort=ix>=0?Number(args[ix+1]):0;
+  const app=await startWorkbench({platformRoot:root,provider,centralPort});
   console.log('ORDAX_WORKBENCH_READY '+JSON.stringify({central:app.origin,studio:app.studioOrigin,
     clients:app.clients,provider,physicalMachines:1}));
   process.on('SIGINT',()=>app.close().then(()=>process.exit(0)));
