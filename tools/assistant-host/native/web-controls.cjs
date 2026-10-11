@@ -18,7 +18,7 @@ function publicChatURL(value) {
   return 'https://chatgpt.com/';
 }
 
-function createWebControls({ window, surface, plugin, studioSurfaces, resumeURL = () => 'https://chatgpt.com/', isBusy = () => false, isReady = () => false, openExternal, audioPermission, audioDeadlineMs = 10000, preferences = {}, savePreferences = async () => {} }) {
+function createWebControls({ window, surface, plugin, studioSurfaces, startupWorkspace = 'conversation', resumeURL = () => 'https://chatgpt.com/', isBusy = () => false, isReady = () => false, openExternal, audioPermission, audioDeadlineMs = 10000, preferences = {}, savePreferences = async () => {} }) {
   preferences = preferences && typeof preferences === 'object' ? preferences : {};
   // Legacy "hide Web" preferences must not hide the new default project preview.
   let audioMode = null, audioStatus = 'idle', audioError = '', audioGeneration = 0, audioRevision = 0, endingAudio = null;
@@ -26,7 +26,7 @@ function createWebControls({ window, surface, plugin, studioSurfaces, resumeURL 
   let previousMode = mode;
   let ratio = Number.isFinite(preferences.ratio) && preferences.ratio >= 0.45 && preferences.ratio <= 0.75 ? preferences.ratio : 0.6;
   let pluginSetupActive = false, pluginRequest = null, pluginFailed = false, returnURL = null, navigation = 0;
-  const state = () => ({ expanded, mode, ratio, pluginSetup: pluginSetupActive,
+  const state = () => ({ expanded, mode, ratio, startupWorkspace: startupWorkspace === 'central' ? 'central' : 'conversation', pluginSetup: pluginSetupActive,
     audioRevision, audioSession: audioMode ? { mode: audioMode, status: audioStatus, error: audioError } : null,
     ...(studioSurfaces ? { studioPreview: true } : {}) });
   const layout = () => {
