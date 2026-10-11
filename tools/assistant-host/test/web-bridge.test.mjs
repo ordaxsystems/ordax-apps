@@ -208,6 +208,51 @@ test('a foreign Web user turn cannot claim an uncertain accepted GPT response', 
   assert.equal(f.submits, 1);
 });
 
+test('temporary ChatGPT homepage with stale turns cannot create an orphan local thread', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  f.chat.webId = 'known-thread';
+  f.page.conversationId = 'known-thread';
+  f.page.url = 'https://chatgpt.com/c/known-thread';
+  f.page.turns = [{ id: 'prior-user', role: 'user', text: 'Mensagem antiga' }];
+  await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 1);
+  f.page.url = 'https://chatgpt.com/';
+  f.page.conversationId = null;
+  f.page.turns = [
+    { id: 'foreign-user', role: 'user', text: 'Turno do Web não identificado' },
+    { id: 'foreign-assistant', role: 'assistant', text: 'Não atribuir sem URL', completedControl: true },
+  ];
+  await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 1);
+  assert.equal(f.bridge.activeId, f.chat.id);
+  assert.equal(f.chat.messages.some(m => m.id === 'foreign-user'), false);
+  assert.match(f.bridge.state().web.issue, /identificação estável/);
+  f.page.url = 'https://chatgpt.com/c/verified-foreign-thread';
+  f.page.conversationId = 'verified-foreign-thread';
+  await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 2);
+  assert.equal(f.bridge.activeId, f.bridge.chats[0].id);
+  assert.equal(f.bridge.chats[0].webId, 'verified-foreign-thread');
+  assert.equal(f.chat.webId, 'known-thread');
+});
+
+test('unbound draft never adopts Web turns until a /c/ identity appears', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  f.page.url = 'https://chatgpt.com/';
+  f.page.conversationId = null;
+  f.page.turns = [{ id: 'transient-user', role: 'user', text: 'Compositor ainda sem URL' }];
+  await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 1);
+  assert.equal(f.chat.webId, null);
+  assert.equal(f.chat.messages.length, 0);
+  f.page.url = 'https://chatgpt.com/c/final-thread';
+  f.page.conversationId = 'final-thread';
+  await f.bridge.refresh();
+  assert.equal(f.bridge.chats.length, 2);
+  assert.equal(f.bridge.chats[0].webId, 'final-thread');
+  assert.equal(f.chat.webId, null);
+});
+
 test('messages written on the right are imported; virtualized old turns stay in local history', async t => {
   const f = await fixture(); t.after(() => f.bridge.close());
   f.page.conversationId = 'right-chat'; f.page.url = 'https://chatgpt.com/c/right-chat';
