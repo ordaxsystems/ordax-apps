@@ -23,8 +23,8 @@ export class CentralWebPortError extends Error {
 
 /**
  * @param {object} input
- * @param {object} input.host existing Studio conversation host with state(),
- *                          selectChat() and respond() AsyncIterable
+ * @param {object} input.host native Studio WebBridge with state(),
+ *                          selectChat(), refresh() and respond(data, emit, signal)
  * @param {(turn:object)=>Promise<object>} input.bindChat trusted Platform
  *             resolver; must NOT use request/prompt/UI IDs as authorization.
  * @param {(binding:object,turn:object)=>Promise<boolean>} input.authorizeTools
@@ -32,7 +32,7 @@ export class CentralWebPortError extends Error {
  */
 export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
   if(typeof host?.state!=='function'||typeof host?.selectChat!=='function'
-    ||typeof host?.respond!=='function'||typeof bindChat!=='function'
+    ||typeof host?.refresh!=='function'||typeof host?.respond!=='function'||typeof bindChat!=='function'
     ||typeof authorizeTools!=='function')
     throw new TypeError('central_web_port_dependencies_missing');
   let busy=false;
@@ -82,6 +82,10 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
           throw new CentralWebPortError('central_web_port_busy');
         if(current?.activeId!==binding.chatId){
           await host.selectChat(binding.chatId);
+          // Native WebBridge.selectChat clears its page observation after
+          // navigation. Read the new page before checking chat readiness;
+          // never trust the previous conversation's cached composer state.
+          await host.refresh();
           current=await host.state();
         }
         const previous=checkState(current,binding);
