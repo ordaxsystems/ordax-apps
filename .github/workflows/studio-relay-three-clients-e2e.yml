@@ -1,0 +1,37 @@
+name: Studio Relay Three Clients E2E
+
+on:
+  pull_request:
+    paths:
+      - "tools/assistant-host/proofs/relay-central-triad.mjs"
+      - ".github/workflows/studio-relay-three-clients-e2e.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/assistant-host/proofs/relay-central-triad.mjs"
+      - ".github/workflows/studio-relay-three-clients-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-triad-loopback:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout canonical Studio owner
+        uses: actions/checkout@v4
+      - name: Checkout immutable canonical Platform Relay source
+        uses: actions/checkout@v4
+        with:
+          repository: ordaxsystems/ordax-platform
+          ref: b0a9955894f9ca44b721822b39c37a4a01d0446c
+          path: .ordax/relay-platform
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - name: Test three independent Relay lab clients through the real Studio API
+        shell: pwsh
+        run: node tools/assistant-host/proofs/relay-central-triad.mjs .ordax/relay-platform
