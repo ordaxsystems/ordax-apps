@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Script} from 'node:vm';
 import {renderCentralConsole} from '../src/console.mjs';
-import {renderChatWorkspace} from '../src/chat-workspace.mjs';
+import {renderChatWorkspace,chatWorkspaceBrowser} from '../src/chat-workspace.mjs';
 
 const clients=[
   {id:'studio-1',pid:101,origin:'http://127.0.0.1:59101'},
@@ -53,5 +53,5 @@ test('external model websites stay independent from Relay and client sessions',(
   assert.equal((html.match(/<iframe /g)||[]).length,3);
   assert.match(html,/target="_blank" rel="noopener noreferrer"/);
   assert.match(html,/https:\/\/chatgpt.com\//);
-  assert.match(html,/https:\/\/grok.com\//, 'Grok link exists in script (not rendering)'); 
+  assert.match(chatWorkspaceBrowser,/https:\/\/grok.com\//); 
 });
