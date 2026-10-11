@@ -136,6 +136,35 @@
   .central-lab-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-top: 16px; }
   .central-lab-metrics > span { display: grid; gap: 6px; padding: 12px; background: var(--studio-bg); border-radius: 10px; }
   .central-lab-metrics strong { font-size: 22px; font-variant-numeric: tabular-nums; font-weight: 530; }
+  .central-operations { min-height: 205px; }
+  .central-section-count { font-size: 12px; font-weight: 500; color: var(--studio-muted); padding: 4px 8px; border: 1px solid var(--studio-line); border-radius: 8px; vertical-align: middle; font-variant-numeric: tabular-nums; }
+  .central-operation-select { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--studio-muted); font-size: 12px; margin: 15px 0 10px; }
+  .central-operation-select select { min-width: 155px; max-width: 220px; border: 1px solid var(--studio-line); border-radius: 9px; padding: 8px 11px; color: var(--studio-text); background: var(--studio-bg); }
+  .central-operation-list { list-style: none; padding: 0; margin: 0; max-height: 340px; overflow-y: auto; }
+  .central-operation-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--studio-line); }
+  .central-operation-row:last-child { border-bottom: 0; }
+  .central-operation-info { display: grid; gap: 5px; min-width: 0; }
+  .central-operation-info strong { font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+  .central-operation-info small { font-size: 11px; color: var(--studio-muted); }
+  .central-operation-status { flex-shrink: 0; font-size: 11px; border: 1px solid var(--studio-line); color: var(--studio-muted); border-radius: 8px; padding: 6px 8px; }
+  .central-operation-status[data-state=running], .central-operation-status[data-state=queued] { color: #7bbbf5; border-color: #316080; }
+  .central-operation-status[data-state=uncertain], .central-operation-status[data-state=failed] { color: #edb09e; border-color: #885343; }
+  .central-operation-status[data-state=succeeded] { color: #71c6a0; border-color: #356453; }
+  .central-list-limit { font-size: 11px; color: var(--studio-muted); margin-bottom: 0; }
+  /* The regular Studio remains focused on creating, not explaining every integration. */
+  body[data-studio-page=conversation] .welcome { max-width: 680px; padding-top: clamp(42px, 8vh, 105px); }
+  body[data-studio-page=conversation] .welcome h1 { font-size: clamp(30px, 3vw, 42px); margin: 14px 0 8px; }
+  body[data-studio-page=conversation] .welcome-description { margin: 0 auto 20px; }
+  body[data-studio-page=conversation] .suggestions { gap: 10px; margin-top: 20px; }
+  body[data-studio-page=conversation] .suggestions button { padding: 14px; min-height: 98px; }
+  body[data-studio-page=conversation] .suggestions .suggestion-icon { margin-bottom: 8px; }
+  body[data-studio-page=conversation] .welcome .home-actions { margin: 15px 0; }
+  @media (max-width: 700px) {
+    .central-operation-row { flex-wrap: wrap; }
+    .central-operation-select select { min-width: 135px; }
+    body[data-studio-page=conversation] .suggestions button { min-height: 58px; padding: 12px 12px 12px 55px; }
+    body[data-studio-page=conversation] .suggestions .suggestion-icon { position: absolute; margin: 0; left: 13px; top: 12px; }
+  }
   /* The ordinary Studio has a single prominent action. Explanatory text
      remains in dialogs / safety states instead of filling the home canvas. */
   .welcome .browser-login-help { display: none; }
