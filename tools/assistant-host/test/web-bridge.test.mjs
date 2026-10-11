@@ -108,26 +108,32 @@ test('left submission uses the visible Web session once; streams actual turns an
   assert.equal(f.submits, 1); assert.equal(f.disk['web-chats'].chats[0].webId, 'new-chat');
 });
 
-test('a fresh GPT conversation may switch to its canonical URL only with the same observed user turn', async t => {
+test('a fresh GPT conversation binds its first Web URL to the matching user turn exactly once', async t => {
   const f = await fixture(); t.after(() => f.bridge.close());
   const { promise, events } = await start(f);
   assert.equal(f.chat.webId, 'new-chat');
-  assert.equal(f.bridge.run.startedWithoutWebId, true);
-  const originalUserId = f.bridge.run.userId;
-  f.page.url = 'https://chatgpt.com/c/canonical-new-chat';
-  f.page.conversationId = 'canonical-new-chat';
-  await f.bridge.refresh();
-  assert.equal(f.chat.webId, 'canonical-new-chat');
-  assert.equal(f.bridge.run.userId, originalUserId);
+  assert.equal(f.bridge.run.userId, 'user-new');
   assert.equal(f.submits, 1);
-  f.page.turns.at(-1).text = 'Resposta canônica';
+  f.page.turns.at(-1).text = 'Resposta confirmada';
   f.page.turns.at(-1).completedControl = true;
   f.page.busy = false;
   await f.bridge.refresh(); f.tick(2000); await f.bridge.refresh();
   await promise;
   assert.equal(events.at(-1).type, 'done');
   assert.equal(f.chat.delivery.status, 'completed');
-  assert.equal(f.chat.messages.at(-1).text, 'Resposta canônica');
+  assert.equal(f.chat.messages.at(-1).text, 'Resposta confirmada');
+  assert.equal(f.submits, 1);
+});
+
+test('changing a bound Web URL is rejected even while the stale DOM still displays the matching user turn', async t => {
+  const f = await fixture(); t.after(() => f.bridge.close());
+  const { promise } = await start(f);
+  f.page.url = 'https://chatgpt.com/c/other-stale-dom';
+  f.page.conversationId = 'other-stale-dom';
+  await f.bridge.refresh();
+  await assert.rejects(promise, /conversa Web mudou/);
+  assert.equal(f.chat.webId, 'new-chat');
+  assert.equal(f.chat.delivery.status, 'uncertain');
   assert.equal(f.submits, 1);
 });
 
@@ -154,7 +160,7 @@ test('unknown URL without a matching user turn cannot bind an active run', async
   f.page.conversationId = 'unrelated';
   f.page.url = 'https://chatgpt.com/c/unrelated';
   await f.bridge.refresh();
-  await assert.rejects(response, /conversa Web mudou/);
+  await assert.rejects(response, /confirmar/);
   assert.equal(f.chat.webId, null);
   assert.equal(f.submits, 1);
 });
