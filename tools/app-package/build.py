@@ -14,6 +14,7 @@ import importlib.util
 import io
 import json
 import os
+import posixpath
 import re
 import stat
 import sys
@@ -986,7 +987,7 @@ def validate_source_graph_from_payloads(
                     f"remote or non-canonical relative asset URL is forbidden: {relative} -> {specifier}"
                 )
             normalized = PurePosixPath(
-                os.path.normpath(PurePosixPath(relative.parent, specifier).as_posix())
+                posixpath.normpath(PurePosixPath(relative.parent, specifier).as_posix())
             )
             if normalized.is_absolute() or ".." in normalized.parts:
                 raise AppPackageError(
