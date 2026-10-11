@@ -155,7 +155,7 @@ export class WebBridge {
             firstParty = url.origin === 'https://chatgpt.com' &&
               (run.webId
                 ? url.pathname === '/c/' + encodeURIComponent(run.webId)
-                : url.pathname === '/' || /^\\/c\\/[^/]{1,256}$/.test(url.pathname));
+                : url.pathname === '/' || (url.pathname.startsWith('/c/') && url.pathname.length > 3 && url.pathname.length <= 259 && !url.pathname.slice(3).includes('/')));
           } catch { /* Unknown destination is not a valid transition. */ }
         }
         const loadingOwnConversation = run && firstParty && this.now() - run.startedAt < 15000;
