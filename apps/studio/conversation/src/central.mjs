@@ -54,8 +54,8 @@ export function centralViewModel(raw, observation) {
     || a.name.localeCompare(b.name, 'pt-BR'));
   return { state: 'product-connected', devices, operations,
     total: safe.deviceCount, reportedOnline: safe.reportedOnline,
-    pending: receipts.filter(op => IN_FLIGHT.has(op.status)).length,
-    uncertain: receipts.filter(op => op.status === 'uncertain').length, lab };
+    pending: operations.filter(op => IN_FLIGHT.has(op.status)).length,
+    uncertain: operations.filter(op => op.status === 'uncertain').length, lab };
 }
 function el(tag, className, label) {
   const node = document.createElement(tag);
