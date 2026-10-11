@@ -1,7 +1,8 @@
 // Experimental Central -> existing Studio ChatGPT Web host port.
 //
 // This does NOT establish Product/OAuth authorization, select MCP targets,
-// create web conversations, manage browser cookies or expose a public endpoint.
+// manage browser cookies or expose a public endpoint. Product-fresh mode can
+// create one native Web chat but cannot mint plugin session authorization.
 // The trusted Platform host must supply both independent assertions:
 // (1) bindChat resolves a previously authorized PC + durable conversation.
 // (2) authorizeTools confirms that the linked connector is server-restricted to
@@ -30,19 +31,28 @@ export class CentralWebPortError extends Error {
  *             resolver; must NOT use request/prompt/UI IDs as authorization.
  * @param {(binding:object,turn:object)=>Promise<boolean>} input.authorizeTools
  *             trusted Product proof of per-PC MCP scope. No implicit fallback.
+ * @param {(binding:object,observation:object)=>Promise<boolean>} input.confirmChat
+ *             trusted Product persistence check for a NEW conversation URL;
+ *             never called before delivery is observed and never used as a grant.
  */
-export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
+export function createCentralStudioWebPort({host,bindChat,authorizeTools,confirmChat}={}) {
   if(typeof host?.state!=='function'||typeof host?.selectChat!=='function'
     ||typeof host?.refresh!=='function'||typeof host?.respond!=='function'||typeof bindChat!=='function'
     ||typeof authorizeTools!=='function')
     throw new TypeError('central_web_port_dependencies_missing');
   let busy=false;
   const requireBinding=(turn,b)=>{
+    const fresh=b?.mode==='fresh';
     if(!b||typeof b!=='object'||Array.isArray(b)
       ||b.deviceId!==turn.routing.device_id
       ||b.requestId!==turn.request_id
       ||!validDevice(b.deviceId,turn.routing.environment)||!isUuid(b.requestId)
-      ||!validChat(b.chatId)||!validWeb(b.webId)
+      ||(fresh
+        ? turn.routing.environment!=='product'||b.chatId!==undefined
+          ||b.webId!==undefined||typeof host.createChat!=='function'
+          ||typeof confirmChat!=='function'
+        : !validChat(b.chatId)||!validWeb(b.webId))
+      ||(b.mode!==undefined&&!fresh)
       ||!isUuid(b.subjectId)||typeof b.clientId!=='string'
       ||b.clientId.length<8||b.clientId.length>160
       ||typeof b.spaceId!=='string'||!isUuid(b.spaceId)
@@ -82,15 +92,31 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
         let current=await host.state();
         if(current?.web?.busy===true)
           throw new CentralWebPortError('central_web_port_busy');
-        if(current?.activeId!==binding.chatId){
+        const fresh=binding.mode==='fresh';
+        const priorChats=new Set((current?.chats||[]).map(c=>c.id));
+        const priorWebIds=new Set((current?.chats||[]).map(c=>c.webId).filter(Boolean));
+        let selected=binding;
+        if(fresh){
+          // Authorize first, then create exactly ONE native Studio conversation.
+          // A previously used Web URL cannot be recycled for a new request.
+          const chat=await host.createChat({projectId:null});
+          if(!validChat(chat?.id)||priorChats.has(chat.id)
+            ||chat.webId!==null||!Array.isArray(chat.messages)
+            ||chat.messages.length!==0)
+            throw new CentralWebPortError('central_web_not_ready');
+          selected={...binding,chatId:chat.id,webId:null};
+          await host.refresh();
+          current=await host.state();
+          if(current?.web?.url!=='https://chatgpt.com/')
+            throw new CentralWebPortError('central_web_not_ready');
+        }else if(current?.activeId!==binding.chatId){
           await host.selectChat(binding.chatId);
           // Native WebBridge.selectChat clears its page observation after
-          // navigation. Read the new page before checking chat readiness;
-          // never trust the previous conversation's cached composer state.
+          // navigation. Read the new page before checking chat readiness.
           await host.refresh();
           current=await host.state();
         }
-        const previous=checkState(current,binding);
+        const previous=checkState(current,selected);
         const oldAssistantIds=new Set((previous.messages||[])
           .filter(m=>m.role==='assistant').map(m=>m.id));
         const oldUserIds=new Set((previous.messages||[])
@@ -101,18 +127,22 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
         // It does NOT return an AsyncIterable. Consume the real native
         // callback directly; no shadow event queue or second chat transport.
         await host.respond({
-          chatId:binding.chatId,model:'chatgpt-web',
+          chatId:selected.chatId,model:'chatgpt-web',
           retry:false,message:{text:prompt,attachments:[]}
         },event=>{
           if(event?.type==='error') invalidEvent=true;
           if(event?.type==='done'){
-            if(completion||event.chat?.id!==binding.chatId
-              ||event.chat?.webId!==binding.webId
+            if(completion||event.chat?.id!==selected.chatId
+              ||(fresh
+                ? !validWeb(event.chat?.webId)
+                  ||priorWebIds.has(event.chat.webId)
+                : event.chat?.webId!==selected.webId)
               ||event.chat?.delivery?.status!=='completed'){
               invalidEvent=true;return;
             }
             // Capture the observation at done, not a mutable live chat ref.
             completion={
+              webId:event.chat.webId,
               delivery:{...event.chat.delivery},
               messages:(event.chat.messages||[]).map(m=>({
                 id:m.id,role:m.role,status:m.status,text:m.text,
@@ -138,6 +168,16 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
           &&m.text.trim());
         if(answers.length!==1||answers[0].text.length>4096)
           throw new CentralWebPortError('central_web_delivery_uncertain');
+        if(fresh){
+          // Only observed completed delivery can identify a newly created
+          // Web URL. This callback MUST check/persist the original Product
+          // request and scope; its boolean is not tool authorization.
+          if((await confirmChat(binding,Object.freeze({
+            deviceId:binding.deviceId,requestId:binding.requestId,
+            chatId:selected.chatId,webId:completion.webId,
+          })))!==true)
+            throw new CentralWebPortError('central_web_delivery_uncertain');
+        }
         return Object.freeze({
           deviceId:binding.deviceId,
           requestId:binding.requestId,
