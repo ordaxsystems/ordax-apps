@@ -148,6 +148,8 @@ if(args.includes('--self-test')){
     assert.match(page, /OrdaX Central/);
     assert.match(page, /data-view="connections"/);
     assert.match(page, /data-view="inbox"/);
+    assert.match(page, /data-view="chats"/);
+    assert.match(page, /id="chatMessages"/);
     assert.match(page, /id="receiptRows"/);
     const inlineScript=page.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/)?.[1];
     assert.ok(inlineScript,"Central operator browser script missing");

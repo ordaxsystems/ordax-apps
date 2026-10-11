@@ -51,3 +51,20 @@ A aba **Solicitações** projeta a mesma sequência de eventos efêmeros do Rela
 - Eventos IPC podem chegar fora de ordem: o estado é derivado de flags de evidência, sem regressão ou conclusão fictícia.
 - `apps/central/src/receipt-projection.mjs` é um **seletor de apresentação puro e limitado**, não grava no disco e não cria fila, sessão ou autoridade. Quando o log limitado descarta eventos antigos, o painel pode mostrar um estado parcial; a futura Central Product consumirá recibos reais PostgreSQL via contrato Platform.
 - Testes: `node --test apps/central/tests/receipt-projection.test.mjs` e a prova HTTP em três processos Windows executada na CI. Não confundir esse laboratório com ChatGPT MCP + provedor GPT real.
+
+
+## Conversas por computador/usuário — incremento de interface (11/10/2026)
+
+A navegação agora inclui **Conversas** e a bancada renderiza uma estação de atendimento em três regiões:
+
+- **Clientes:** seleção de uma identidade concreta (deviceId) da mesma bancada; PID é informação diagnóstica, nunca identidade de usuário/organização.
+- **Mensagens:** visualização somente de leitura dos pedidos e respostas derivados de projectCentralReceipts(); a associação usa deviceId + requestId e preserva estados de falha/incerteza.
+- **Contexto:** provedor realmente ativo informado pelo servidor e atalho manual para abrir ChatGPT Web ou Grok Web. Escolher um site não altera o provedor de inferência nem envia mensagens pelo Relay.
+
+O campo de escrita da Central é o **formulário autenticado do cliente** no iframe correspondente: utiliza a sessão distinta de cada spoke e o Relay existente. Não há endpoint de envio paralelo na Central nem transferência de cookie de provedor Web. Cada cliente conserva a preferência visual de site externo apenas enquanto a página estiver aberta; isso não configura o modelo na Platform, autentica contas nem sincroniza conversas externas.
+
+Na versão Product, o modelo de conversas deve seguir a autoridade de Inbox/Receipt na Platform e o contrato oficial de Intelligence/Model Router, incluindo **tenant/Space, usuário, dispositivo, conversa e request ID**. Isolamento entre tenants e grants é validado na Platform, nunca somente no frontend. Acesso a provedores Web requer integração oficial aprovada; não extrair cookies, automatizar sites de forma não autorizada ou emular uma API pelo MCP.
+
+**Provas incluídas:** renderização, escape de HTML, CSP/script, distinção entre web manual e Relay; manutenção do teste Windows de três processos HTTP com asserts da nova área. CI Windows e GPT real são gates independentes. O ensaio **não prova** contas web segregadas por PC, três PCs físicos, Model Router Product ou histórico de chat persistente.
+
+A distribuição final deve aplicar os tokens/componentes SSOT do OrdaX OS. O CSS do laboratório é restrito à bancada e não constitui design system de produção.
