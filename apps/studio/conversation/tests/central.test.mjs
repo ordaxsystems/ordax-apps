@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { centralViewModel } from '../src/central.mjs';
+import { centralViewModel, centralAccountCopy } from '../src/central.mjs';
 
 const product = () => ({
   connected: true, catalogAvailable: true,
@@ -100,4 +100,20 @@ test('operator receipt view never materializes user text as action identity', ()
   assert.equal(model.operations[0].createdAt, null);
   assert.equal(model.operations[0].finishedAt, '2026-10-11T01:05:00.000Z');
   assert.ok(!JSON.stringify(model).includes('private user prompt'));
+});
+
+test('Central truthfully shows missing official Runtime sign-in in portable builds', () => {
+  const unavailable = centralAccountCopy(false, 'unavailable');
+  assert.equal(unavailable.action, 'Configurar Runtime');
+  assert.match(unavailable.warning, /portátil não habilita login/);
+  assert.ok(!unavailable.hint.includes('Entrar na Conta OrdaX'));
+  const integrated = centralAccountCopy(false, 'available');
+  assert.equal(integrated.action, 'Entrar na Conta OrdaX');
+  assert.ok(!integrated.warning.includes('portátil'));
+  const unknown = centralAccountCopy(false, 'unknown');
+  assert.equal(unknown.action, 'Configurar Runtime');
+  const connected = centralAccountCopy(true, 'unavailable');
+  assert.ok(!connected.warning.includes('portátil'));
+  assert.equal(connected.action, 'Configurar Runtime');
+  assert.equal(Object.isFrozen(unavailable), true);
 });
