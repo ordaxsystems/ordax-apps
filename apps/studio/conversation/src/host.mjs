@@ -57,6 +57,7 @@ export function createHttpHost() {
     saveDraft: (key, entry) => request('/api/drafts', 'PUT', { key, entry }),
     runtimeState: since => request('/api/runtime' + (Number.isFinite(since) ? '?since=' + since : '')),
     localRuntimeObservation: () => request('/api/runtime/local-observation'),
+    relayObservation: () => request('/api/relay'),
     runtimeConnect: () => request('/api/runtime/connect', 'POST', {}),
     runtimeSubmit: data => request('/api/runtime/operations', 'POST', data),
     runtimeReview: id => request('/api/runtime/review', 'POST', { id }),
