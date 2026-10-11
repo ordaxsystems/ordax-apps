@@ -38,6 +38,7 @@ function fixture(options={}){
       activeId,chats,web:{ready,busy:false,conversationMode:mode,
       automatedSendAllowed:ready&&mode==='chat',ordaxSelected:selected}};},
     async selectChat(id){logs.push(['select',id]);activeId=id;},
+    async refresh(){logs.push(['refresh']);},
     async respond(payload,emit,signal){
       logs.push(['send',payload]);
       assert.equal(typeof emit,'function','native callback argument');
@@ -107,6 +108,7 @@ test('second PC uses a distinct ChatGPT conversation, not the first',async()=>{
   const msgs=f.logs.filter(x=>x[0]==='send').map(x=>x[1]);
   assert.deepEqual(msgs.map(x=>x.chatId),[ID1,ID2]);
   assert.deepEqual(f.logs.filter(x=>x[0]==='select'),[['select',ID2]]);
+  assert.deepEqual(f.logs.filter(x=>x[0]==='refresh'),[['refresh']]);
 });
 test('missing trusted binding blocks before any Studio host read or write',async()=>{
   const f=fixture({noBinding:true});
