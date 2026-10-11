@@ -151,22 +151,29 @@ export class WebBridge {
       if (this.run && !this.run.finished) {
         const run = this.run;
         if (run.webId !== page.conversationId) {
-          // A new ChatGPT thread can receive an initial URL and later a
-          // canonical URL. Only the freshly created thread may follow that
-          // transition, and only after the *same observed user turn* proves
-          // the destination. Existing threads can never change identity here.
+          // Bind the first ChatGPT URL of a freshly submitted thread only
+          // after observing its exact user turn. Once bound, any subsequent
+          // URL change is ambiguous, even if a stale DOM still shows that
+          // same turn: it may be navigating to another conversation.
           const other = page.conversationId && this.chats.some(c => c.webId === page.conversationId && c.id !== run.chatId);
-          const newUsers = page.turns.filter(t => t.role === 'user' && !run.baseline.includes(t.id));
-          const matched = newUsers.length === 1
-            && normalize(newUsers[0].text) === normalize(run.text)
-            && (!run.userId || newUsers[0].id === run.userId);
-          if (!run.startedWithoutWebId || other || (page.conversationId && newUsers.length && !matched)) {
+          if (run.webId || other) {
             this.failRun('A conversa Web mudou durante a resposta. O app não reenviou a mensagem.'); return;
           }
-          // An unconfirmed redirect is not authorization to bind a foreign
-          // conversation, import its turns or emit its result.
+          const newUsers = page.turns.filter(t => t.role === 'user' && !run.baseline.includes(t.id));
+          const matched = newUsers.length === 1 && normalize(newUsers[0].text) === normalize(run.text);
+          if (page.conversationId && newUsers.length && !matched) {
+            this.failRun('Não foi possível confirmar qual mensagem foi aceita. Confira o Web; o app não repetirá o envio.'); return;
+          }
+          // No matching user turn: do not import or bind unknown content.
           if (!page.conversationId || !matched) return;
           run.webId = page.conversationId;
+        }
+        if (run.accepted) {
+          const observed = page.turns.filter(t => t.role === 'user' && !run.baseline.includes(t.id));
+          if (observed.length && (observed.length !== 1 || observed[0].id !== run.userId
+              || normalize(observed[0].text) !== normalize(run.text))) {
+            this.failRun('A mensagem aceita mudou no Web; a resposta não foi entregue.'); return;
+          }
         }
         chat = this.findChat(run.chatId);
       } else if (page.conversationId) {
@@ -515,7 +522,7 @@ export class WebBridge {
     emit({ type: 'activity', chatId: chat.id, activity: structuredClone(chat.activity) });
     // Once clicked, NEVER click again or replay history to repair an uncertain result.
     const finished = new Promise((resolve, reject) => {
-      this.run = { chatId: chat.id, webId: chat.webId, startedWithoutWebId: !chat.webId, baseline: page.baseline, text, attachments, startedAt: this.now(), accepted: false, finished: false, emit, resolve, reject };
+      this.run = { chatId: chat.id, webId: chat.webId, baseline: page.baseline, text, attachments, startedAt: this.now(), accepted: false, finished: false, emit, resolve, reject };
     });
     const abort = () => this.stop(chat.id).catch(() => this.failRun('Acompanhamento interrompido. Confira o Web.'));
     signal.addEventListener('abort', abort, { once: true });
