@@ -12,7 +12,8 @@ import {formatCentralWebTurn,CENTRAL_TURN_SCHEMA} from './turn-context.mjs';
 
 // Schema validation is deliberately separate from Product authorization.
 const isUuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
-const validDevice=v=>typeof v==='string'&&/^[a-z][a-z0-9-]{1,62}$/.test(v);
+const validDevice=(v,environment)=>typeof v==='string'&&(environment==='product'
+  ?isUuid(v):environment==='loopback-laboratory'&&/^[a-z][a-z0-9-]{1,62}$/.test(v));
 const validChat=v=>typeof v==='string'&&isUuid(v);
 const validWeb=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{8,128}$/.test(v);
 export const CENTRAL_STUDIO_WEB_PORT='ordax.central-studio-web-port/1';
@@ -40,11 +41,12 @@ export function createCentralStudioWebPort({host,bindChat,authorizeTools}={}) {
     if(!b||typeof b!=='object'||Array.isArray(b)
       ||b.deviceId!==turn.routing.device_id
       ||b.requestId!==turn.request_id
-      ||!validDevice(b.deviceId)||!isUuid(b.requestId)
+      ||!validDevice(b.deviceId,turn.routing.environment)||!isUuid(b.requestId)
       ||!validChat(b.chatId)||!validWeb(b.webId)
       ||!isUuid(b.subjectId)||typeof b.clientId!=='string'
       ||b.clientId.length<8||b.clientId.length>160
-      ||typeof b.spaceId!=='string'||!isUuid(b.spaceId))
+      ||typeof b.spaceId!=='string'||!isUuid(b.spaceId)
+      ||(turn.routing.environment==='product'&&!isUuid(b.projectId)))
       throw new CentralWebPortError('central_web_binding_missing');
     return b;
   };
