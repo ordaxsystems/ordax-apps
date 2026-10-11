@@ -9,13 +9,14 @@
   <link rel="icon" type="image/svg+xml" href="../assets/mark.svg">
   <link rel="stylesheet" href="../assets/app.css">
   <link rel="stylesheet" href="../assets/layout.css">
+  <link rel="stylesheet" href="../assets/central.css">
 </head>
 <body class="studio-home" data-studio-page="conversation">
   <div class="app">
     <aside class="sidebar" id="sidebar" aria-label="Conversas e conta">
       <a class="brand" href="/" aria-label="ORDAX Studio, início"><img src="../assets/mark.svg" alt="" width="34" height="34"><span>ORDAX <strong>Studio</strong></span></a>
       <button class="new-chat" id="newChat"><span aria-hidden="true">＋</span> Nova conversa <kbd>Ctrl K</kbd></button>
-      <nav class="studio-navigation" aria-label="Áreas do Studio"><button data-studio-page="conversation">Conversa</button><button data-studio-page="recent">Continuar</button><button data-studio-page="projects">Projetos</button></nav>
+      <nav class="studio-navigation" aria-label="Áreas do Studio"><button data-studio-page="conversation">Conversa</button><button data-studio-page="recent">Continuar</button><button data-studio-page="projects">Projetos</button><button data-studio-page="central" title="Operação e diagnóstico do Relay">Central</button></nav>
       <button class="sidebar-home" id="openHome">Voltar ao início</button>
       <div class="sidebar-bottom">
         <div class="local-note"><span class="dot"></span> Histórico neste dispositivo</div>
@@ -37,23 +38,59 @@
         <nav id="conversationProjects" class="directory-projects" aria-label="Seus projetos" hidden></nav>
         <nav id="chatList" class="directory-chats" aria-label="Conversas"></nav>
       </section>
+      <section id="centralPanel" class="central-panel" aria-labelledby="centralTitle" hidden>
+        <header class="central-header">
+          <div><p class="eyebrow">ORDAX STUDIO · OPERAÇÃO</p><h1 id="centralTitle" tabindex="-1">Central</h1><p>Dispositivos, operações e Relay, em um só lugar.</p></div>
+          <button id="centralRefresh" type="button" class="directory-primary">Atualizar estado</button>
+        </header>
+        <div class="central-provenance" role="status"><span id="centralProductStatus">Product não verificado</span><small id="centralChecked">Sem consulta nesta sessão</small></div>
+        <div class="central-metrics" aria-label="Resumo do Product">
+          <div><span id="centralTotal">—</span><small>Autorizados</small></div>
+          <div><span id="centralOnline">—</span><small>Informados online</small></div>
+          <div><span id="centralActive">—</span><small>Pendentes</small></div>
+          <div><span id="centralUncertain">—</span><small>Incertas</small></div>
+        </div>
+        <p id="centralWarning" class="central-advisory" role="status">Os dispositivos Product não confirmam clientes Relay.</p>
+        <div class="central-columns">
+          <section class="central-surface" aria-label="Computadores autorizados">
+            <div class="central-surface-header"><h2>Dispositivos</h2><span class="central-source">Product</span></div>
+            <label class="central-search"><span aria-hidden="true">⌕</span><input id="centralFilter" type="search" placeholder="Buscar dispositivo" aria-label="Filtrar dispositivos" maxlength="128"></label>
+            <div id="centralDeviceList" class="central-device-list"></div><p id="centralDeviceEmpty" class="central-empty">Conecte o Runtime.</p>
+          </section>
+          <div class="central-right">
+            <section class="central-surface central-detail" aria-label="Detalhes do dispositivo">
+              <div class="central-surface-header"><h2 id="centralSelectedTitle">Selecione um dispositivo</h2><span id="centralSelectedState" class="central-source">Sem seleção</span></div>
+              <p id="centralSelectedDetail">As permissões permanecem no Runtime.</p>
+            </section>
+            <section class="central-surface" aria-label="Conversas por cliente">
+              <div class="central-surface-header"><h2>Conversas por cliente</h2><span class="central-source">Relay</span></div>
+              <p id="centralConversationsStatus">Aguardando contratos de sessões verificáveis do Relay.</p>
+            </section>
+            <section class="central-surface" aria-label="Observação Relay">
+              <div class="central-surface-header"><h2>Relay local</h2><span class="central-source">Somente leitura</span></div>
+              <p id="centralLabStatus">Relay ainda não verificado.</p>
+              <div class="central-lab-metrics"><span><strong id="centralLabClients">—</strong><small>Clientes do laboratório</small></span><span><strong id="centralLabRequests">—</strong><small>Solicitações ativas</small></span></div>
+            </section>
+          </div>
+        </div>
+      </section>
       <section id="chatSafety" class="session-safety" hidden aria-label="Modo e limites da sessão"><div><strong id="chatModeStatus">Modo não identificado</strong><nav><button id="useChatMode">Selecionar Chat</button><button id="webModelPicker">Modelo</button><button id="webEffortPicker" hidden>Raciocínio</button><button id="webDictate" hidden>Ditar</button><button id="webVoice" hidden>Voz</button></nav></div><small id="quotaPolicy">Chat tem limites próprios. Work e Codex compartilham uma cota diferente. Confira o modo antes de enviar no Web.</small><p id="webNotice" role="status" hidden></p></section>
       <section id="chatgptFallback" class="chatgpt-fallback-pane" hidden aria-label="ChatGPT Web, conversa principal"><header class="fallback-toolbar"><span id="fallbackStatus">ChatGPT Web · mesma sessão</span><nav><button id="fallbackPluginReturn" hidden>Voltar ao chat</button><button id="fallbackReturn">Studio · beta</button><button id="fallbackReload" aria-label="Recarregar ChatGPT Web">↻</button><button id="fallbackBrowser" aria-label="Abrir ChatGPT no navegador">↗</button></nav></header><div id="audioSession" class="audio-session" hidden><span id="audioSessionText"></span><button id="audioFinish">Trazer ditado</button><button id="audioCancel">Encerrar sem importar</button></div><div id="fallbackCanvas" class="fallback-canvas"></div></section>
       <section id="hostAvailability" class="host-availability" role="status" aria-live="polite" hidden><div><strong id="hostAvailabilityTitle"></strong><p id="hostAvailabilityMessage"></p></div><button id="hostRetry" type="button" class="connect-secondary" disabled>Tentar conectar novamente</button></section>
       <section class="conversation" id="conversation" aria-label="Área da conversa">
         <div class="welcome" id="welcome">
           <div class="welcome-mark"><img src="../assets/mark.svg" alt="" width="44" height="44"></div>
-          <p class="eyebrow">PENSE, CRIE, CONTINUE.</p>
-          <h1>O que vamos criar hoje?</h1>
-          <p class="welcome-description">Comece uma conversa ou retome uma ideia.</p>
+          <p class="eyebrow">SEU ESPAÇO</p>
+          <h1>O que vamos criar?</h1>
+          <p class="welcome-description">Converse, desenvolva e continue projetos.</p>
           <button class="connect-primary" id="welcomeConnect">Entrar no ChatGPT Web <span aria-hidden="true">↗</span></button>
           <button class="connect-secondary" id="welcomeBrowser">Entrar pelo navegador <span aria-hidden="true">↗</span></button>
-          <p class="browser-login-help">Já está logado? Abra sua sessão no navegador padrão.</p>
+          <p class="browser-login-help">A sessão do navegador é independente.</p>
           <p class="welcome-note" id="welcomeNote">Conecte sua conta para começar a conversar.</p>
           <div class="home-actions"><button id="homeNewProject" class="connect-primary">Criar projeto</button><button id="homeWorkspace" class="connect-secondary">Abrir projeto</button></div>
           <div class="suggestions">
-            <button data-prompt="Ajude-me a planejar um aplicativo. Primeiro vamos definir objetivo, usuários e uma primeira versão verificável."><span class="suggestion-icon violet">✧</span><strong>Criar algo novo</strong><small>Transforme uma ideia em algo real</small><span class="suggestion-arrow">↗</span></button>
-            <button data-prompt="Quero revisar um projeto existente. Vamos definir o escopo e quais arquivos ou ferramentas autorizadas precisamos consultar."><span class="suggestion-icon blue">◎</span><strong>Explorar uma ideia</strong><small>Aprofunde um conceito ou descubra possibilidades</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Ajude-me a planejar um aplicativo. Primeiro vamos definir objetivo, usuários e uma primeira versão verificável."><span class="suggestion-icon violet">✧</span><strong>Criar</strong><small>Comece um projeto</small><span class="suggestion-arrow">↗</span></button>
+            <button data-prompt="Quero revisar um projeto existente. Vamos definir o escopo e quais arquivos ou ferramentas autorizadas precisamos consultar."><span class="suggestion-icon blue">◎</span><strong>Explorar</strong><small>Desenvolva uma ideia</small><span class="suggestion-arrow">↗</span></button>
             <button data-prompt="Ajude-me a organizar a próxima etapa deste projeto, usando o contexto disponível e identificando o que ainda precisa ser confirmado."><span class="suggestion-icon green">⌁</span><strong>Definir a próxima etapa</strong><small>Contexto, decisões e prioridades</small><span class="suggestion-arrow">↗</span></button>
           </div>
         </div>
@@ -78,7 +115,7 @@
         </form>
         <div id="speechPlayer" class="speech-player" hidden><span id="speechStatus" role="status"></span><label class="sr-only" for="speechVoice">Voz de leitura</label><select id="speechVoice"><option value="">Voz do dispositivo</option></select><button id="speechPause">Pausar</button><button id="speechStop">Parar</button></div>
         <p id="messageBudget" class="message-budget" hidden></p>
-        <p class="composer-note"><span id="draftState">Rascunhos neste dispositivo</span><span>Conversa Studio · experimental · Enter envia</span></p>
+        <p class="composer-note"><span id="draftState">Rascunho local</span><span>Enter para enviar</span></p>
         <input type="file" id="fileInput" multiple accept=".txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.xml,.yaml,.yml,.log" hidden>
       </div>
   <section id="projectDialog" hidden class="studio-workspace" aria-labelledby="projectTitle">
