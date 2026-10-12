@@ -256,6 +256,34 @@ jobs:
           python3 -m unittest tests/test_projects_externalization.py
           python3 tools/verify_projects_externalization.py
 
+      - name: Resolve pinned OS source for the pending Assistant and Activity cutovers
+        id: pending-app-source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          commits = {
+            json.loads(Path(f'migrations/{app}.source-snapshot.json').read_text(encoding='utf-8'))['commit']
+            for app in ('assistant', 'activity')
+          }
+          assert len(commits) == 1, 'Pending app snapshots cannot drift across OS commits'
+          print('commit=' + commits.pop())
+          PY
+
+      - name: Checkout exact Assistant and Activity source revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: ${{ steps.pending-app-source.outputs.commit }}
+          path: .ordax-pending-source
+          persist-credentials: false
+
+      - name: Verify pending source blobs and remove-first ownership
+        env:
+          ORDAX_PLATFORM_SNAPSHOT_ROOT: .ordax-pending-source
+        run: python3 -m unittest -v tests.test_pending_source_snapshots
       - name: Prove Notes-specific App SDK 1.6 pin
         run: python3 tools/verify_notes_platform_sdk.py
 

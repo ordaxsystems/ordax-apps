@@ -1,0 +1,66 @@
+{
+  "$schema": "ordax.assistant-source-snapshot/1",
+  "repository": "ordaxsystems/ordax-os",
+  "commit": "31c973c041d04b8c01ac97b97fa4af1c0926f89a",
+  "captured_before_gate_a_removal": true,
+  "purpose": "Immutable Git blob inventory of assistant UI/logic and owned localization; no duplicate executable source and no distribution authority",
+  "file_count": 11,
+  "files": [
+    {
+      "path": "system/apps/assistant/ai/manifest.mjs",
+      "blob_sha": "6cee5cc82c9937c116475507b909447ad4218fec",
+      "size": 1009
+    },
+    {
+      "path": "system/apps/assistant/app.mjs",
+      "blob_sha": "11a66e3edb7b47d2b26d6e9838379a35d60cd553",
+      "size": 789
+    },
+    {
+      "path": "system/apps/assistant/assistant.css",
+      "blob_sha": "30ca01eae20347763394707490fde02bc3800b04",
+      "size": 14747
+    },
+    {
+      "path": "system/apps/assistant/component.mjs",
+      "blob_sha": "8ad04cf862a79aa5c1371a3b73351dcc0eaf6784",
+      "size": 507
+    },
+    {
+      "path": "system/apps/assistant/conversation.mjs",
+      "blob_sha": "cffcbe841f22f6c6ef8bb1befeaed47bda0f3b05",
+      "size": 15034
+    },
+    {
+      "path": "system/apps/assistant/runtime.mjs",
+      "blob_sha": "085200de6d1acaac8053f0394fb8bdd3b319cf27",
+      "size": 2898
+    },
+    {
+      "path": "system/apps/assistant/ui/conversation-controls.mjs",
+      "blob_sha": "b3f431b605ef95b82609d9a6b50edea0fd3954c5",
+      "size": 30430
+    },
+    {
+      "path": "system/apps/assistant/ui/result-view-model.mjs",
+      "blob_sha": "701ff9b8761a6197b08c213f02d05660a5af04a4",
+      "size": 3517
+    },
+    {
+      "path": "system/apps/assistant/ui/work-strip.mjs",
+      "blob_sha": "ee980db4f4ebc8dc02e9064f229cb1b7e0b20b92",
+      "size": 6017
+    },
+    {
+      "path": "system/apps/assistant/version.mjs",
+      "blob_sha": "06b0678bfc42a5f7677ab1884a6da46b79e2404a",
+      "size": 42
+    },
+    {
+      "path": "system/services/i18n/catalog/assistant.mjs",
+      "blob_sha": "16ea4ea9b8958add491ee73d197835b39de64fe9",
+      "size": 11456
+    }
+  ],
+  "authority": "none"
+}

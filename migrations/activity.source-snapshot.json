@@ -1,0 +1,56 @@
+{
+  "$schema": "ordax.activity-source-snapshot/1",
+  "repository": "ordaxsystems/ordax-os",
+  "commit": "31c973c041d04b8c01ac97b97fa4af1c0926f89a",
+  "captured_before_gate_a_removal": true,
+  "purpose": "Immutable Git blob inventory of activity UI/logic and owned localization; no duplicate executable source and no distribution authority",
+  "file_count": 9,
+  "files": [
+    {
+      "path": "system/apps/activity/activity.css",
+      "blob_sha": "74656aa75e91241cb402c87aa9852cf0d2ec21a5",
+      "size": 5162
+    },
+    {
+      "path": "system/apps/activity/ai/manifest.mjs",
+      "blob_sha": "64b428214b833c0516ac8407c3b5a7aef5e513db",
+      "size": 1364
+    },
+    {
+      "path": "system/apps/activity/app.mjs",
+      "blob_sha": "c6ea97da3dda7ebe756e0f551f498f889355678d",
+      "size": 775
+    },
+    {
+      "path": "system/apps/activity/component.mjs",
+      "blob_sha": "bf7e270b35b84fb060692dd5b5b84af47492247d",
+      "size": 479
+    },
+    {
+      "path": "system/apps/activity/runtime.mjs",
+      "blob_sha": "9e50cb00dcc8527e607345002236cacbbd5ff836",
+      "size": 3086
+    },
+    {
+      "path": "system/apps/activity/ui/workspace-controls.mjs",
+      "blob_sha": "e79bcca0293e355239a410af4ba1271fa8962350",
+      "size": 43817
+    },
+    {
+      "path": "system/apps/activity/version.mjs",
+      "blob_sha": "46aa340cb9f08ca424c05b29289fd7f43975d3cd",
+      "size": 41
+    },
+    {
+      "path": "system/apps/activity/view-model.mjs",
+      "blob_sha": "93135f20072642c04b0102852edeaa85ba59b32c",
+      "size": 2627
+    },
+    {
+      "path": "system/services/i18n/catalog/activity.mjs",
+      "blob_sha": "6f97ddba8c932b575b4d974670a2a0214dd41941",
+      "size": 12340
+    }
+  ],
+  "authority": "none"
+}
