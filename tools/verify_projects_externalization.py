@@ -109,14 +109,16 @@ def main() -> None:
     snapshot = plan.get("source_snapshot") or {}
     if snapshot.get("state") != "pinned":
         fail("Projects source snapshot must be pinned after SDK merge")
-    if snapshot.get("repository") != "ordaxsystems/prototipo-ordax-os":
-        fail("Projects pinned historical source snapshot repository drifted")
-    if snapshot.get("commit") != sdk["platform_merge_commit"]:
-        fail("Projects source snapshot must pin the reviewed SDK merge commit")
+    if snapshot.get("repository") != plan["source_repository_current"]:
+        fail("Projects source snapshot must use canonical platform owner")
+    if not isinstance(snapshot.get("commit"), str) or not re.fullmatch(r"[0-9a-f]{40}", snapshot["commit"]):
+        fail("Projects snapshot commit must be an exact lowercase Git SHA")
+    if snapshot.get("captured_before_gate_a_removal") is not True:
+        fail("Projects source snapshot must precede Gate A platform removal")
     if snapshot.get("inventory_file") != "migrations/projects.source-snapshot.json":
         fail("Projects source inventory location drifted")
-    if snapshot.get("file_count") != 9:
-        fail("Projects pinned source inventory count drifted")
+    if snapshot.get("file_count") != 10:
+        fail("Projects pinned source inventory must include all ten owned blobs")
     inventory_path = ROOT / snapshot["inventory_file"]
     if inventory_path.is_symlink() or not inventory_path.is_file():
         fail("Projects source inventory must be a regular non-symlink file")
@@ -134,11 +136,11 @@ def main() -> None:
         fail("Projects source inventory provenance drifted")
     if inventory["authority"] != "none" or inventory["captured_after_public_sdk_boundary"] is not True:
         fail("Projects source inventory cannot grant authority or precede SDK merge")
-    if inventory["purpose"] != "reproducible Projects Gate A/B remove-first source transfer":
+    if inventory["purpose"] != "Snapshot verified on canonical OS main before Projects remove-first cutover; Git blobs are pinned, not duplicated in apps":
         fail("Projects source inventory purpose drifted")
     files = inventory.get("files")
     if not isinstance(files, list) or len(files) != snapshot["file_count"] or inventory["file_count"] != len(files):
-        fail("Projects source inventory must contain exactly nine blobs")
+        fail("Projects source inventory must contain all pinned source blobs")
     paths = []
     for entry in files:
         if not isinstance(entry, dict) or set(entry) != {"path", "blob_sha", "size"}:
@@ -156,6 +158,20 @@ def main() -> None:
         paths.append(name)
     if paths != sorted(set(paths)) or len(paths) != snapshot["file_count"]:
         fail("Projects source inventory paths must be sorted and unique")
+    required = {
+        "system/apps/projects/app.mjs",
+        "system/apps/projects/component.mjs",
+        "system/apps/projects/ai/manifest.mjs",
+        "system/apps/projects/runtime.mjs",
+        "system/apps/projects/version.mjs",
+        "system/apps/projects/ui/workspace-controls.mjs",
+        "system/apps/projects/ui/device-agent-status.mjs",
+        "system/apps/projects/device-agent-status.mjs",
+        "system/apps/projects/projects.css",
+        "system/services/i18n/catalog/projects.mjs",
+    }
+    if set(paths) != required:
+        fail("Projects source inventory missing or inventing owned files")
 
 
     print("PROJECTS_EXTERNALIZATION=PASS")
