@@ -1,5 +1,5 @@
 import {
-  assertProjectCatalogPort,
+  assertProjectCatalogReader,
   validateProjectCatalogSnapshot,
 } from "../sdk/contracts/project-catalog.mjs";
 import {
@@ -8,6 +8,7 @@ import {
 } from "../sdk/contracts/project-cloud-links-reader.mjs";
 import { assertAppActivationPort } from "../sdk/contracts/app-activation.mjs";
 import { assertSurfaceRenderLifecycle } from "../sdk/contracts/surface-render-lifecycle.mjs";
+import { translateProjectsMessage } from "../i18n/messages.mjs";
 
 const PROJECTS_WINDOW_SELECTOR = '[data-window-id="projects"]';
 const PROJECTS_EXTENSION_SELECTOR = '[data-app-extension="projects-workspace"]';
@@ -102,7 +103,8 @@ function buildShell(documentObject, t) {
 }
 
 function projectCard(documentObject, item, localization) {
-  const t = localization.translate;
+  const t = (messageId, params = {}) =>
+    translateProjectsMessage(localization.getLocale(), messageId, params);
   const card = node(documentObject, "article", "ordax-project-card");
   card.dataset.projectId = item.id;
 
@@ -155,14 +157,23 @@ export function mountProjectsWorkspaceControls(
   if (!root || typeof root.querySelector !== "function" || !root.ownerDocument) {
     throw new TypeError("Projects workspace requires a Surface root");
   }
-  const projectPort = projects === null ? null : assertProjectCatalogPort(projects);
+  const projectPort = projects === null ? null : assertProjectCatalogReader(projects);
+  // A package must never receive project creation/rename/delete authority.
+  // The OS binds a read-only projection of its canonical project catalog.
+  for (const method of ["create", "rename", "recordOpened", "recordFileOpened",
+    "clearLastFile", "relocateLastFilePath", "remove"]) {
+    if (projectPort && method in projectPort) {
+      throw new TypeError("Projects app accepts a read-only project-catalog reader");
+    }
+  }
   const cloudPort = projectCloudLinks === null
     ? null
     : assertProjectCloudLinksReaderPort(projectCloudLinks);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
   const activation = appActivation === null ? null : assertAppActivationPort(appActivation);
   const localization = lifecycle.localization;
-  const t = localization.translate;
+  const t = (messageId, params = {}) =>
+    translateProjectsMessage(localization.getLocale(), messageId, params);
   const documentObject = root.ownerDocument;
 
   let projectSnapshot = projectPort?.getSnapshot() ?? null;
