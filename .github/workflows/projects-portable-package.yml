@@ -72,6 +72,33 @@ jobs:
           print("PROJECTS_REMOVE_FIRST_SSOT=PASS")
           PY
 
+      - name: Prove each embedded SDK contract came from the pinned public bundle
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          root = Path(".ordax-os-removal")
+          bundle = json.loads((root / "sdk/app-sdk-v1/bundle.json").read_text())
+          lock = json.loads(Path("platform-sdk.lock.json").read_text())
+          assert bundle["bundle_version"] == lock["bundle_version"] == "1.17.0"
+          sources = {item["source_path"]: item["source_git_blob"]
+                     for item in bundle["contracts"]}
+          names = (
+              "file-space", "project-catalog", "project-cloud-links-data",
+              "project-cloud-links-reader", "app-activation", "device-capabilities",
+              "surface-render-lifecycle", "localization", "locale-profile",
+              "component-runtime",
+          )
+          for name in names:
+              source = f"system/contracts/{name}.mjs"
+              payload = Path(f"apps/projects/src/sdk/{name}.mjs").read_bytes()
+              digest = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\\0" + payload).hexdigest()
+              assert sources[source] == digest, f"published SDK blob drifted: {source}"
+          print("PROJECTS_PUBLIC_SDK_BLOBS=PASS")
+          PY
+
       - name: Build and verify deterministic unsigned component
         run: |
           set -euo pipefail
