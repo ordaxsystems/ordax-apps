@@ -6,6 +6,7 @@ import { probeProjectsDeviceAgent } from "../src/device-agent-status.mjs";
 import { assertDeviceAgentCapabilityReaderPort } from "../src/sdk/contracts/device-capabilities.mjs";
 import { translateProjectsMessage } from "../src/i18n/messages.mjs";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createLocaleProfile } from "../src/sdk/contracts/locale-profile.mjs";
 
 const cloudId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -131,4 +132,31 @@ test("external Projects receives a read-only platform projection and unsubscribe
   mounted.destroy();
   assert.equal(handlers, 0);
   assert.deepEqual(unsubscribed.sort(), ["locale", "projects", "render"]);
+});
+
+test("all vendored project and host contracts match their published App SDK 1.17 git blobs", () => {
+  // Immutable proof copied from the SDK bundle pinned in platform-sdk.lock.json;
+  // this is validation metadata, not another contract implementation.
+  const sdkBlobs = {
+    "app-activation": "1de6af71e6f20b14f3d7892d4d4758d23a0d1e90",
+    "component-runtime": "32dcacae6962b48e17b0abac0d64355aca1cecd5",
+    "device-capabilities": "e6317d3826102f5283a840139b48d11d95564752",
+    "file-space": "e775c22080e40dc3fb8ab8d2e2f00ccf312825d0",
+    "locale-profile": "2edd61c44e76d87e7fd1873ff833d48009b9a95c",
+    "localization": "df3fb7fc65f27d35cffc984c748b0e199b499bb4",
+    "project-catalog": "a598f300ae53b30283e90ea0834e70799b56c609",
+    "project-cloud-links-data": "1fa9a6a93c675db9771c9167dad59abe112c7193",
+    "project-cloud-links-reader": "f62016f3e2b09cbad6b4ed0f1dceafc453f19948",
+    "surface-render-lifecycle": "4808fd208be87926bc62fe192a841ad521e13783",
+  };
+  const names = Object.keys(sdkBlobs).sort();
+  assert.equal(names.length, 10);
+  for (const name of names) {
+    const bytes = readFileSync(new URL("../src/sdk/contracts/" + name + ".mjs", import.meta.url));
+    const hash = createHash("sha1")
+      .update(Buffer.from("blob " + bytes.length + String.fromCharCode(0)))
+      .update(bytes)
+      .digest("hex");
+    assert.equal(hash, sdkBlobs[name], name);
+  }
 });
