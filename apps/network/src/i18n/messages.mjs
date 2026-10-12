@@ -62,7 +62,7 @@ export function translateNetworkMessage(locale, messageId, params = {}) {
   if (!Object.hasOwn(messages, messageId)) {
     throw new TypeError("Unknown Network app localization key: " + messageId);
   }
-  return messages[messageId].replace(/\\{([a-z][a-zA-Z]*)\\}/g, (_, key) => {
+  return messages[messageId].replace(/\{([a-z][a-zA-Z]*)\}/g, (_, key) => {
     if (!Object.hasOwn(params, key) || typeof params[key] !== "string") {
       throw new TypeError("Missing Network localization value: " + key);
     }
