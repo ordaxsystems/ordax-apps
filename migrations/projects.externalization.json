@@ -85,10 +85,11 @@
   },
   "source_snapshot": {
     "state": "pinned",
-    "repository": "ordaxsystems/prototipo-ordax-os",
-    "commit": "d2abf5a6012c744ba66568d4ff27661913c81489",
+    "repository": "ordaxsystems/ordax-os",
+    "commit": "12f12927048b735cbf595ac52648c121fc4aac09",
     "inventory_file": "migrations/projects.source-snapshot.json",
-    "file_count": 9
+    "file_count": 10,
+    "captured_before_gate_a_removal": true
   },
   "gate_a_platform_removal": {
     "remove_owned_source": [

@@ -1,15 +1,20 @@
 {
   "$schema": "ordax.projects-source-snapshot/1",
-  "repository": "ordaxsystems/prototipo-ordax-os",
-  "commit": "d2abf5a6012c744ba66568d4ff27661913c81489",
+  "repository": "ordaxsystems/ordax-os",
+  "commit": "12f12927048b735cbf595ac52648c121fc4aac09",
   "captured_after_public_sdk_boundary": true,
-  "purpose": "reproducible Projects Gate A/B remove-first source transfer",
-  "file_count": 9,
+  "purpose": "Snapshot verified on canonical OS main before Projects remove-first cutover; Git blobs are pinned, not duplicated in apps",
+  "file_count": 10,
   "files": [
     {
+      "path": "system/apps/projects/ai/manifest.mjs",
+      "blob_sha": "07499119ce487251348a25df68416b42fd069a9f",
+      "size": 1704
+    },
+    {
       "path": "system/apps/projects/app.mjs",
-      "blob_sha": "7b5f3af37c98109d80f6eb2108856b171f4fe369",
-      "size": 749
+      "blob_sha": "7857302921fe3d4cb678d873f96a4b35adbef9d3",
+      "size": 765
     },
     {
       "path": "system/apps/projects/component.mjs",
