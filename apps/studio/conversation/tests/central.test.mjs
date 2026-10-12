@@ -161,3 +161,17 @@ test('Central read errors and unavailable hosts settle independently without ret
   assert.equal(observations[1].value, null);
   assert.equal((await centralReadSources(null, null, 20))[0].status, 'rejected');
 });
+
+test('Account is verified independently of devices and cannot project fake Central clients', () => {
+  const raw = { accountConnected: true, configured: true, connected: false,
+    catalogAvailable: false, targets: [], operations: [] };
+  const model = centralViewModel(raw, null);
+  assert.equal(model.state, 'account-connected');
+  assert.equal(model.total, null);
+  assert.equal(model.reportedOnline, null);
+  assert.deepEqual(model.devices, []);
+  assert.deepEqual(model.operations, []);
+  const copy = centralAccountCopy(false, 'available', true);
+  assert.equal(copy.action, 'Configurar acesso remoto');
+  assert.match(copy.warning, /não autorizado/);
+});

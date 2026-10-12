@@ -77,7 +77,7 @@ test('malformed, oversized, failed or ambiguous native replies cannot create Pro
   }
 });
 
-test('session adopts a Product token once and only after confirming canonical session and device catalog', async t => {
+test('Product account login verifies owner and preserves journal without impersonating MCP client', async t => {
   const calls=[];
   const storage = { read:async(k, fallback)=>fallback, write:async()=>{} };
   const fetcher=async(url, opts)=>{
@@ -91,13 +91,24 @@ test('session adopts a Product token once and only after confirming canonical se
   await runtime.init(); t.after(()=>runtime.close());
   assert.equal(runtime.state().configured,false);
   const result=await runtime.acceptAccountToken('confidential-jwt');
-  assert.equal(result.connected,true);
+  assert.equal(result.accountConnected,true);
+  assert.equal(result.connected,false);
   assert.equal(result.configured,true);
-  assert.equal(result.targets.length,1);
-  assert.equal(calls.length,2);
+  assert.equal(result.targets.length,0);
+  assert.equal(result.catalogAvailable,false);
+  assert.match(result.targetIssue,/OAuth/);
+  assert.equal(calls.length,1);
   assert.equal(calls[0].opts.headers.Authorization,'Bearer confidential-jwt');
   assert.ok(!JSON.stringify(result).includes('confidential-jwt'));
   await assert.rejects(runtime.acceptAccountToken('another-account'), /Já existe/);
+  assert.equal(calls.length,1);
+  await assert.rejects(runtime.refreshTargets(), /OAuth/);
+  assert.equal(calls.length,1);
+  await assert.rejects(runtime.submit({kind:'terminal',deviceId:'device-1',project:'demo',argv:['dir'],cwd:'.'}), /OAuth/);
+  assert.equal(calls.length,1);
+  const repeated=await runtime.connect();
+  assert.equal(repeated.accountConnected,true);
+  assert.equal(repeated.connected,false);
   assert.equal(calls.length,2);
 });
 
