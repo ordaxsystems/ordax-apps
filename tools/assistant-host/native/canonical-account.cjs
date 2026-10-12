@@ -6,6 +6,7 @@ const { readFile, realpath } = require('node:fs/promises');
 const path = require('node:path');
 
 const SCHEMA = 'ordax.studio-product-account-session/1';
+const SUBJECT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_STDOUT = 20000;
 const DEADLINE_MS = 45000;
 
@@ -91,11 +92,12 @@ async function invokeCanonicalProductSignIn(data, {
         if (!value || value.schema !== SCHEMA || value.ok !== true
             || typeof value.access_token !== 'string' || !value.access_token
             || value.access_token.length > 16000 || /[\r\n]/.test(value.access_token)
+            || typeof value.subject_id !== 'string' || !SUBJECT_UUID.test(value.subject_id)
             || typeof value.email !== 'string' || value.email.length > 320
-            || Object.keys(value).some(k => !['schema','ok','access_token','email'].includes(k))) {
+            || Object.keys(value).some(k => !['schema','ok','access_token','email','subject_id'].includes(k))) {
           throw new Error('bad-payload');
         }
-        finish(null, { token: value.access_token, email: value.email });
+        finish(null, { token: value.access_token, email: value.email, subjectId: value.subject_id });
       } catch { finish(fail('Não foi possível confirmar sua sessão ORDAX.')); }
     });
     child.stdin.on('error', () => { /* child exit is the only authority to finalize */ });

@@ -23,7 +23,8 @@ export function centralViewModel(raw, observation) {
       retained: observation.retained, failures: observation.failures }
     : { state: 'unavailable' };
   if (safe.state !== 'product-connected') {
-    return { state: 'unavailable', devices: [], operations: [], total: null, reportedOnline: null,
+    return { state: raw?.accountConnected === true ? 'account-connected' : 'unavailable',
+      devices: [], operations: [], total: null, reportedOnline: null,
       pending: null, uncertain: null, lab };
   }
   const receipts = raw.operations;
@@ -59,11 +60,16 @@ export function centralViewModel(raw, observation) {
 }
 // Presentation of the already-authorized account capability; this never
 // tries to mint credentials or infer grants from the ChatGPT Web login.
-export function centralAccountCopy(connected, available) {
+export function centralAccountCopy(connected, available, accountVerified = false) {
   if (connected) return Object.freeze({
     action: 'Configurar Runtime',
     hint: 'Abrir a configuração Product existente.',
     warning: 'Dispositivos autorizados não equivalem a clientes Relay conectados.',
+  });
+  if (accountVerified) return Object.freeze({
+    action: 'Configurar acesso remoto',
+    hint: 'Conta autenticada. Dispositivos exigem um cliente OAuth e o Relay autorizado.',
+    warning: 'Conta OrdaX autenticada; acesso remoto ainda não autorizado. Nenhum computador foi presumido conectado.',
   });
   if (available === 'unavailable') return Object.freeze({
     action: 'Configurar Runtime',
@@ -126,7 +132,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
   function paint() {
     $('centralConnect').hidden = model.state === 'product-connected';
     $('centralConnect').disabled = checking || typeof openRuntime !== 'function';
-    const connection = centralAccountCopy(model.state === 'product-connected', accountAvailability);
+    const connection = centralAccountCopy(model.state === 'product-connected', accountAvailability, model.state === 'account-connected');
     $('centralConnect').textContent = connection.action;
     $('centralConnect').title = connection.hint;
     $('centralRefresh').disabled = checking;
@@ -140,6 +146,8 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
     metric('centralUncertain', model.uncertain);
     $('centralProductStatus').textContent = model.state === 'product-connected'
       ? 'Catálogo Product conectado · presença informada pela plataforma'
+      : model.state === 'account-connected'
+      ? 'Conta OrdaX autenticada · acesso remoto não autorizado'
       : 'Product indisponível · nenhum dispositivo foi presumido conectado';
     $('centralWarning').textContent = issue || connection.warning;
     $('centralLabStatus').textContent = model.lab.state === 'laboratory'
@@ -153,7 +161,9 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
       || device.id.toLocaleLowerCase('pt-BR').includes(filter));
     $('centralDeviceEmpty').hidden = entries.length > 0;
     $('centralDeviceEmpty').textContent = model.state !== 'product-connected'
-      ? 'Conecte a Conta OrdaX ao Runtime para consultar os dispositivos.'
+      ? model.state === 'account-connected'
+        ? 'Conta autenticada. Autorize o Relay e os dispositivos antes de consultar.'
+        : 'Conecte a Conta OrdaX ao Runtime para consultar os dispositivos.'
       : filter ? 'Nenhum dispositivo encontrado.' : 'Nenhum dispositivo autorizado foi informado.';
     if (!model.devices.some(d => d.id === selected)) selected = null;
     for (const device of entries) {

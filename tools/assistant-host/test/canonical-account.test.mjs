@@ -9,9 +9,10 @@ const require = createRequire(import.meta.url);
 const { invokeCanonicalProductSignIn, locateInstalledRuntime, validCredentials } =
   require('../native/canonical-account.cjs');
 const schema = 'ordax.studio-product-account-session/1';
+const fixtureSubject = '00000000-0000-4000-8000-00000000000a';
 const input = { email: 'user@example.com', password: 'private-password' };
 
-function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access_token: 'secret.jwt', email: input.email }) + '\n' } = {}) {
+function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access_token: 'secret.jwt', email: input.email, subject_id: fixtureSubject }) + '\n' } = {}) {
   const calls = [];
   const spawnProcess = (python, argv, options) => {
     calls.push({ python, argv, options });
@@ -34,7 +35,7 @@ function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access
 test('canonical subprocess is only stdio and the JWT never reaches argv/environment or a log', async () => {
   const f = fixture();
   const result = await invokeCanonicalProductSignIn(input, f);
-  assert.deepEqual(result, { token: 'secret.jwt', email: input.email });
+  assert.deepEqual(result, { token: 'secret.jwt', email: input.email, subjectId: fixtureSubject });
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls[0].argv, ['-I','-u','-m','ordax_studio.electron_account_session']);
   assert.equal(f.calls[0].options.shell, false);
@@ -67,6 +68,7 @@ test('malformed, oversized, failed or ambiguous native replies cannot create Pro
     {payload: JSON.stringify({ schema, ok:true, access_token:'', email:input.email })+'\n'},
     {payload: JSON.stringify({ schema, ok:true, access_token:'secret.jwt', email:input.email, canExecute:true })+'\n'},
     {payload: '{}\n'},
+    {payload: JSON.stringify({ schema, ok: true, access_token: 'jwt', email: input.email, subject_id: 'forged-user' })+'\n'},
     {payload: 'not JSON\n'},
     {payload: JSON.stringify({ schema, ok:true, access_token:'a'.repeat(16001), email:input.email })+'\n'},
     {payload: JSON.stringify({ schema, ok:true, access_token:'jwt', email:input.email })+'\n\n'},
@@ -77,47 +79,42 @@ test('malformed, oversized, failed or ambiguous native replies cannot create Pro
   }
 });
 
-test('session adopts a Product token once and only after confirming canonical session and device catalog', async t => {
-  const calls=[];
-  const storage = { read:async(k, fallback)=>fallback, write:async()=>{} };
-  const fetcher=async(url, opts)=>{
-    calls.push({url,opts});
-    return Response.json(url.endsWith('/session')
-      ? {ok:true,session:{subject_id:'00000000-0000-4000-8000-00000000000a'}}
-      : {ok:true,targets:[{device_id:'device-1',online:true}]});
-  };
-  const runtime=new ProductRuntime({ storage, env:{ORDAX_PRODUCT_CONTROL_PLANE_URL:'https://control.example.test'},
-    fetcher,interval:100000});
-  await runtime.init(); t.after(()=>runtime.close());
-  assert.equal(runtime.state().configured,false);
-  const result=await runtime.acceptAccountToken('confidential-jwt');
-  assert.equal(result.connected,true);
-  assert.equal(result.configured,true);
-  assert.equal(result.targets.length,1);
-  assert.equal(calls.length,2);
-  assert.equal(calls[0].opts.headers.Authorization,'Bearer confidential-jwt');
+test('one installed-Runtime subject assertion adopts account without duplicate Product HTTP session lookup', async t => {
+  const calls = [], storage = { read: async (_, fallback) => fallback, write: async () => {} };
+  const runtime = new ProductRuntime({ storage,
+    env: {}, fetcher: async (...args) => { calls.push(args); throw new Error('no Product endpoint configured'); },
+    interval: 100000 });
+  await runtime.init(); t.after(() => runtime.close());
+  const result = await runtime.acceptAccountToken('confidential-jwt', fixtureSubject);
+  assert.equal(result.accountConnected, true);
+  assert.equal(result.connected, false);
+  assert.equal(result.catalogAvailable, false);
+  assert.deepEqual(result.targets, []);
+  assert.equal(calls.length, 0);
   assert.ok(!JSON.stringify(result).includes('confidential-jwt'));
-  await assert.rejects(runtime.acceptAccountToken('another-account'), /Já existe/);
-  assert.equal(calls.length,2);
+  await assert.rejects(runtime.refreshTargets(), /OAuth/);
+  await assert.rejects(runtime.submit({ kind: 'terminal', deviceId: 'fake-device', project: 'demo' }), /OAuth/);
+  assert.equal(calls.length, 0);
+  assert.equal((await runtime.connect()).accountConnected, true);
+  assert.equal(calls.length, 0);
+  await assert.rejects(runtime.acceptAccountToken('another-jwt', fixtureSubject), /Já existe/);
 });
-
-test('network denial clears unconfirmed credentials, leaving Product disconnected', async t => {
-  let calls=0;
-  const runtime=new ProductRuntime({
-    storage:{read:async(_,v)=>v,write:async()=>{}},
-    env:{ORDAX_PRODUCT_CONTROL_PLANE_URL:'https://control.example.test'},
-    fetcher:async()=>{calls++;return Response.json({ok:false,error:'invalid_grant'},{status:403});},
-    interval:100000,
+test('unverified subject or malformed UUID cannot unlock account or reach network', async t => {
+  let calls = 0;
+  const runtime = new ProductRuntime({
+    storage: { read: async (_, value) => value, write: async () => {} },
+    env: {},
+    fetcher: async () => { calls++; throw new Error('must not call network'); },
+    interval: 100000,
   });
-  await runtime.init();t.after(()=>runtime.close());
-  await assert.rejects(runtime.acceptAccountToken('rejected-secret'));
-  assert.equal(runtime.state().configured,false);
-  assert.equal(runtime.state().connected,false);
-  assert.equal(runtime.state().targets.length,0);
-  assert.ok(!JSON.stringify(runtime.state()).includes('rejected-secret'));
-  assert.equal(calls,1);
+  await runtime.init(); t.after(() => runtime.close());
+  for (const subject of [undefined, null, 'forged-subject', '../other', fixtureSubject.toUpperCase()]) {
+    await assert.rejects(runtime.acceptAccountToken('secret', subject), /Product inválida/);
+  }
+  assert.equal(runtime.state().configured, false);
+  assert.equal(runtime.state().accountConnected, false);
+  assert.equal(calls, 0);
 });
-
 test('a prior uncertain action journal fails closed before installing a new account', async t => {
   const storage={read:async(_,v)=>v,write:async()=>{}};
   const runtime=new ProductRuntime({
@@ -128,6 +125,6 @@ test('a prior uncertain action journal fails closed before installing a new acco
   });
   await runtime.init(); t.after(()=>runtime.close());
   runtime.operations.push({ status:'uncertain',id:'prior',deviceId:'device',kind:'terminal' });
-  await assert.rejects(runtime.acceptAccountToken('new-session'),/Confira ou recupere/);
+  await assert.rejects(runtime.acceptAccountToken('new-session', fixtureSubject),/Confira ou recupere/);
   assert.equal(runtime.state().configured,false);
 });

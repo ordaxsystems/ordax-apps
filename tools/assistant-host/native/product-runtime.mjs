@@ -29,7 +29,7 @@ export class ProductRuntime {
   #token;
   constructor({ storage, env = process.env, fetcher = fetch, interval = 1000 }) {
     this.storage = storage; this.fetcher = fetcher; this.interval = interval; this.operations = []; this.tasks = new Set(); this.observations = new Set(); this.unpersisted = new Set(); this.polling = new Map(); this.targets = []; this.version = 0;
-    this.journalKey = 'runtime-operations'; this.journalSubject = null; this.acceptingAccount = false;
+    this.journalKey = 'runtime-operations'; this.journalSubject = null; this.acceptingAccount = false; this.accountConnected = false;
     this.#token = env.ORDAX_PRODUCT_ACCESS_TOKEN?.trim() || '';
     this.spaceId = env.ORDAX_PRODUCT_SPACE_ID?.trim() || null;
     // Explicit first-party origin only. Never send account bearer tokens to a
@@ -53,10 +53,10 @@ export class ProductRuntime {
     }
     this.timer = setInterval(() => {
       if (this.connected && Date.now() >= this.nextTargetsAt) this.track(() => this.refreshTargets());
-      for (const op of this.operations) if (this.configured && op.requestId && ['queued','running'].includes(op.status)) this.track(() => this.observe(op, { background: true }));
+      for (const op of this.operations) if (this.configured && !this.accountConnected && op.requestId && ['queued','running'].includes(op.status)) this.track(() => this.observe(op, { background: true }));
     }, this.interval);
   }
-  state({ since } = {}) { return { version: this.version, configured: this.configured, connected: this.connected || false, catalogAvailable: this.catalogAvailable, targetsCheckedAt: this.targetsCheckedAt, targetIssue: this.targetIssue, recoveryRequired: Boolean(this.recoveryRequired), issue: this.issue || '', targets: structuredClone(this.targets), ...(since === this.version ? {} : { operations: structuredClone(this.operations) }) }; }
+  state({ since } = {}) { return { version: this.version, configured: this.configured, accountConnected: this.accountConnected, connected: this.connected || false, catalogAvailable: this.catalogAvailable, targetsCheckedAt: this.targetsCheckedAt, targetIssue: this.targetIssue, recoveryRequired: Boolean(this.recoveryRequired), issue: this.issue || '', targets: structuredClone(this.targets), ...(since === this.version ? {} : { operations: structuredClone(this.operations) }) }; }
   async persist(operations = this.operations) {
     if (this.recoveryRequired) throw fail(this.issue, 503);
     const payload = this.journalSubject
@@ -85,6 +85,9 @@ export class ProductRuntime {
     return result;
   }
   async refreshTargets() {
+    // A signed user login is not an OAuth client grant. No account bearer
+    // may be reused to enumerate computers or infer a trusted Relay binding.
+    if (this.accountConnected) throw fail('Acesso remoto exige cliente OAuth e vínculo canônico no Relay.', 403);
     if (this.targetsPending) return this.targetsPending;
     this.targetsPending = (async () => {
       try {
@@ -103,8 +106,12 @@ export class ProductRuntime {
   // Product account handoff. Legacy operation receipts are preserved
   // untouched under their anonymous key; only a verified subject may access
   // a versioned subject-bound journal. No silent ownership inference.
-  async acceptAccountToken(token) {
+  // Subject is attested by the installed Runtime through private stdio after
+  // verifying the owner session at the canonical Product authority. Renderer
+  // requests and raw JWT claims cannot supply this second argument.
+  async acceptAccountToken(token, verifiedSubjectId) {
     if (typeof token !== 'string' || !token || token.length > 16000 || /[\r\n]/.test(token)) throw fail('Sessão ORDAX inválida.', 400);
+    productSubjectJournalKey(verifiedSubjectId); // strict canonical UUID before acquiring account authority
     if (this.configured || this.connected || this.connectPending || this.targetsPending || this.acceptingAccount) throw fail('Já existe uma sessão Product neste host. Encerre o app para trocar de conta.');
     if (this.recoveryRequired || this.unpersisted.size || this.tasks.size ||
       this.operations.some(op => !['succeeded','failed','cancelled','reviewed'].includes(op.status))) {
@@ -115,10 +122,9 @@ export class ProductRuntime {
     this.#token = token;
     this.configured = true;
     try {
-      // Identity is derived ONLY from the Platform's authenticated session,
-      // never from the login form, JWT claims parsed locally or a device name.
-      const account = await this.request('/v3/product/session');
-      const subject = account.session?.subject_id;
+      // The installed Runtime already verified this owner with the Platform.
+      // Do not duplicate a Product login HTTP request inside Electron.
+      const subject = verifiedSubjectId;
       const journalKey = productSubjectJournalKey(subject);
       const fallback = { schemaVersion: 2, subjectId: subject, operations: [] };
       const record = await this.storage.read(journalKey, fallback, {
@@ -130,13 +136,19 @@ export class ProductRuntime {
       this.operations = record.operations;
       for (const op of this.operations) if (['prepared','submitting'].includes(op.status)) op.status = 'uncertain';
       this.version++;
-      await this.refreshTargets();
-      this.connected = true;
+      // Account sign-in must not be gated on a *different* client credential.
+      // No target discovery and no legacy Product REST action dispatch here.
+      this.accountConnected = true;
+      this.connected = false;
+      this.catalogAvailable = false;
+      this.targets = [];
+      this.targetIssue = 'Acesso a dispositivos exige autorização OAuth do cliente e Relay canônico.';
       this.issue = '';
       return this.state();
     } catch (error) {
       this.#token = '';
       this.configured = false;
+      this.accountConnected = false;
       this.connected = false;
       this.catalogAvailable = false;
       this.targets = [];
@@ -150,6 +162,14 @@ export class ProductRuntime {
     } finally { this.acceptingAccount = false; }
   }
   async connect() {
+    if (this.accountConnected) {
+      // This reports the previously verified account for the current in-memory
+      // session only; it never refreshes grants or asserts Runtime connectivity.
+      this.connected = false;
+      this.catalogAvailable = false;
+      this.targets = [];
+      return this.state();
+    }
     if (this.acceptingAccount) throw fail('Aguarde a confirmação da identidade Product antes de reconectar.', 409);
     if (this.recoveryRequired) throw fail(this.issue, 503);
     if (this.connectPending) return this.connectPending;
@@ -209,6 +229,9 @@ export class ProductRuntime {
     return { device_id: data.deviceId, action: operationProfile.action, arguments: arguments_, ...(data.project ? { project: data.project } : {}), ...(this.spaceId ? { space_id: this.spaceId } : {}), label };
   }
   async submit(data) {
+    if (this.accountConnected) {
+      throw fail('Envio indisponível: a Conta OrdaX não é uma sessão OAuth do Relay.', 503);
+    }
     if (this.recoveryRequired) throw fail(this.issue, 503);
     if (!this.connected) throw fail('Conecte o OrdaX Runtime para consultar o projeto.');
     if (this.submitting || this.operations.some(o => ['prepared','submitting','queued','running','uncertain'].includes(o.status))) throw fail('Confira ou aguarde a operação em andamento antes de iniciar outra.');
@@ -238,6 +261,8 @@ export class ProductRuntime {
     catch { operation.requestId = next.requestId; operation.status = next.requestId ? 'queued' : 'uncertain'; this.unpersisted.add(operation.id); this.issue = 'Não foi possível salvar a confirmação do Runtime. O envio não será repetido; confira o registro antes de continuar.'; }
   }
   async observe(operation, { background = false } = {}) {
+    // Historical receipts survive but cannot be queried with an owner-only JWT.
+    if (this.accountConnected) return;
     if (background && Date.now() < (this.polling.get(operation.id)?.nextAt || 0)) return;
     if (this.observations.has(operation.id) || !operation.requestId) return;
     this.observations.add(operation.id);
