@@ -88,7 +88,28 @@ try {
   assert.equal(repeated.status,200);
   assert.equal((await repeated.json()).replayed,true);
   assert.equal(adapterCalls,9);
-  assert.equal((await post(clients[0],randomUUID(),'spoofed',clients[1].secret)).status,401);
+  // Full 3x3 identity-confusion matrix: each emulated client may only use
+  // the credential issued to its OWN device ID (6 forbidden combinations).
+  for(const target of clients){
+    for(const foreign of clients.filter(c=>c.id!==target.id)){
+      const crossed=await post(target,randomUUID(),'cross-client-token-probe',foreign.secret);
+      assert.equal(crossed.status,401,target.id+' must reject '+foreign.id+' credential');
+      const denied=await crossed.json();
+      assert.equal(denied.ok,false);
+      assert.ok(!JSON.stringify(denied).includes(foreign.marker));
+      assert.ok(!JSON.stringify(denied).includes(target.marker));
+    }
+  }
+  assert.equal(adapterCalls,9,'spoofed requests must never invoke the provider');
+  // Same client's request ID cannot be reused for a DIFFERENT input. The
+  // legitimate completed receipt must remain unchanged after the conflict.
+  const conflicting=await post(old.client,old.requestId,'different prompt same request');
+  assert.equal(conflicting.status,409);
+  assert.equal((await conflicting.json()).error,'request_conflict');
+  const unchanged=await post(old.client,old.requestId,old.prompt);
+  assert.equal(unchanged.status,200);
+  assert.equal((await unchanged.json()).replayed,true);
+  assert.equal(adapterCalls,9);
   assert.equal((await fetch(lab.url+'/v1/devices')).status,404);
   const before=await snapshot();
   assert.deepEqual([before.clients,before.active,before.retained,before.failures],[3,0,9,0]);
@@ -109,9 +130,9 @@ try {
   }
   console.log('STUDIO_RELAY_LOOPBACK_E2E=PASS');
   console.log('TRIAD_CLIENTS=3 INDEPENDENT_TURNS=9 POST_REVOCATION_TURNS=1');
-  console.log('EXACT_RECIPIENT=PASS CROSS_TOKEN_DENIED=PASS REPLAY_NO_REEXECUTION=PASS');
+  console.log('EXACT_RECIPIENT=PASS CROSS_TOKEN_MATRIX=6/6 REPLAY_CONFLICT=DENIED REPLAY_NO_REEXECUTION=PASS');
   console.log('STUDIO_COOKIE_REQUIRED=PASS ADMIN_PROJECTION_PRIVATE=PASS REVOKE=PASS');
-  console.log('MODEL_ADAPTER=FIXTURE PHYSICAL_CLIENTS=NOT_TESTED');
+  console.log('MODEL_ADAPTER=FIXTURE EMULATED_CLIENT_IDENTITIES=3 PHYSICAL_CLIENTS=NOT_TESTED PRODUCT_OAUTH=NOT_TESTED');
 } finally {
   await host?.close();
   await lab.close();
