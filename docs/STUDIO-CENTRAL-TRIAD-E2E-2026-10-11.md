@@ -28,7 +28,7 @@ Com Node >= 22, clonar `ordax-apps` e `ordax-platform` em diretórios separados.
 node tools/assistant-host/proofs/relay-central-triad.mjs ../ordax-platform
 ```
 
-O comando só abre serviços efêmeros em `127.0.0.1` e não usa chave, conta, Runtime Product ou servidor público. Tokens são aleatórios em memória, inclusive o token administrativo. A CI `Studio Relay Three Clients E2E` executa o mesmo script no Windows, com revisão imutável de Platform `b0a9955894f9ca44b721822b39c37a4a01d0446c`. Para testar revisão nova do protocolo, modificar explicitamente esse `ref` após conferir os contratos; **não** introduzir fallback D1 ou SSOT concorrente.
+O comando só abre serviços efêmeros em `127.0.0.1` e não usa chave, conta, Runtime Product ou servidor público. Tokens são aleatórios em memória, inclusive o token administrativo. A CI `Studio Relay Three Clients E2E` obtém agora a **`main` canônica da Platform** e registra o SHA de cada execução. Assim a prova não fica presa a uma revisão anterior ao MCP/PostgreSQL atual; o SHA nos logs identifica exatamente o código verificado, sem alegar validação de commits futuros. **Não** introduzir fallback D1 ou SSOT concorrente.
 
 ## Limites e bloqueios separados
 
@@ -38,3 +38,14 @@ O comando só abre serviços efêmeros em `127.0.0.1` e não usa chave, conta, R
 - Uma homologação real deverá usar três PCs/VMs distintos com contas de teste autenticadas, isolamento de rede e destinatário exato, revogação em trânsito, respostas e arquivos por recibo, além de medir latência por estágio. O dispositivo único atualmente conectado não permite essa prova.
 
 **Decisão:** preservar Studio como apresentação/observabilidade, Relay/identidade/ações na Platform, Runtime como executor por dispositivo, e Intelligence/Model Router no owner OS. Os testes não adicionaram outro broker, executor, conversas ou autorização.
+
+## Matriz oficial de emulação (atualização)
+
+O termo **"três PCs emulados"** neste trabalho designa **três identidades de cliente com credenciais independentes**, não três PCs físicos. Há dois ambientes reais de ensaio:
+
+- **Windows:** `relay-desktop-lab.mjs` cria **três processos Node distintos**, cada um com pasta de perfil temporária e porta HTTP `127.0.0.1` diferente, além do processo host/Central. Testa cookie próprio, origem HTTP, três pedidos reais pela pilha loopback e recibos por destinatário, sem VM nem sistema operacional completo por cliente.
+- **Contêineres Linux:** o owner **Platform**, em `control-plane/labs/relay/network/compose.yml`, executa **três spokes em três redes `internal: true` diferentes**, cada qual com um sentinel próprio. O teste impede acesso lateral por IP/DNS e troca de identidade, sem porta publicada no host. Esses são contêineres emulados, não três computadores físicos nem instalações OrdaX OS.
+
+O E2E `relay-central-triad.mjs` testa ainda **três identidades lógicas**, três turnos por identidade, o mesmo UUID usado entre clientes sem contaminação, **seis combinações de token cruzado rejeitadas**, conflito de replay e revogação. A execução Windows separada usa três processos; não confundir a prova lógica de uma instância com três processos.
+
+**Critério de aceitação de produto não alterado:** o emulador valida o protocolo do Relay e as fronteiras locais. Autenticação OAuth real do ChatGPT, inscrição Product PostgreSQL real, atestação de conversa, entrega a três instalações e inferência GPT real continuam não comprovadas e não devem ser liberadas usando a fixture.

@@ -179,11 +179,17 @@ if(args.includes('--self-test')){
       jar.set(setCookie.slice(0,separator),setCookie.slice(separator+1));
     }
     assert.equal(jar.size,3,'Browser cookie names must remain unique across ports');
+    assert.equal(new Set(app.clients.map(c=>c.id)).size,3,'Emulated PC identities must be unique');
+    assert.equal(new Set(app.clients.map(c=>c.origin)).size,3,'Emulated PCs must listen on distinct HTTP ports');
     const cookie=[...jar].map(([key,value])=>key+'='+value).join('; ');
     const outs=await Promise.all(app.clients.map(async(c,i)=>{
       const prompt='Mensagem E2E '+(i+1)+' de '+c.id;
       const noCookie=await fetch(c.origin+'/api/send',{method:'POST',headers:{origin:c.origin,'content-type':'application/json'},body:JSON.stringify({prompt})});
       assert.equal(noCookie.status,403);
+      const forgedOrigin=await fetch(c.origin+'/api/send',{method:'POST',
+        headers:{origin:app.clients[(i+1)%3].origin,cookie,'content-type':'application/json'},
+        body:JSON.stringify({prompt})});
+      assert.equal(forgedOrigin.status,403,'Foreign client Origin is not authorization');
       const otherCookie=[...jar].filter(([name])=>name!=='ordax_lab_spoke_'+c.id).map(([name,value])=>name+'='+value).join('; ');
       const wrongClient=await fetch(c.origin+'/api/send',{method:'POST',headers:{origin:c.origin,cookie:otherCookie,'content-type':'application/json'},body:JSON.stringify({prompt})});
       assert.equal(wrongClient.status,403);
@@ -220,8 +226,9 @@ if(args.includes('--self-test')){
     }
     console.log('ORDAX_THREE_PROCESS_RELAY_E2E=PASS');
     console.log('CENTRAL_TURNS=3 TARGET_BOUND=PASS CHATGPT_WEB_AUTOSEND=NOT_IMPLEMENTED');
+    console.log('EMULATED_PC_CLIENTS=3 DISTINCT_PROCESSES=3 DISTINCT_HTTP_PORTS=3 PHYSICAL_HOSTS=1 VIRTUAL_MACHINES=0');
     console.log('PROCESS_PIDS='+app.clients.map(c=>c.pid).join(',')+' REQUESTS=3 RECEIPTS=3');
-    console.log('STUDIO_OBSERVER=REAL RELAY_HTTP=REAL SHARED_BROWSER_JAR=PASS CROSS_CLIENT_COOKIE=REJECTED');
+    console.log('STUDIO_OBSERVER=REAL RELAY_HTTP=REAL SHARED_BROWSER_JAR=PASS CROSS_CLIENT_COOKIE=REJECTED CROSS_ORIGIN=REJECTED');
     console.log('GPT_PROVIDER=DIAGNOSTIC_NOT_GPT CHATGPT_PLUGIN_E2E=NOT_TESTED PHYSICAL_PCS=1');
   }finally{await app.close()}
 }else if(import.meta.url===pathToFileURL(process.argv[1]||'').href){
@@ -231,7 +238,7 @@ if(args.includes('--self-test')){
   const centralPort=ix>=0?Number(args[ix+1]):0;
   const app=await startWorkbench({platformRoot:root,provider,centralPort});
   console.log('ORDAX_WORKBENCH_READY '+JSON.stringify({central:app.origin,studio:app.studioOrigin,
-    clients:app.clients,provider,physicalMachines:1}));
+    clients:app.clients,provider,physicalMachines:1,emulatedClients:3,virtualMachines:0}));
   process.on('SIGINT',()=>app.close().then(()=>process.exit(0)));
   process.on('SIGTERM',()=>app.close().then(()=>process.exit(0)));
 }
