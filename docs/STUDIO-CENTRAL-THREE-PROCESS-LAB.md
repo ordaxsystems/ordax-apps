@@ -42,6 +42,12 @@ node tools\assistant-host\proofs\relay-desktop-lab.mjs --platform-root C:\caminh
 
 Nunca registrar a chave no repositório, URL, UI, logs ou arquivos de prova. Sem chave, a operação falha fechada. Este ensaio é **API GPT**, não o caminho ChatGPT Web → MCP oficial.
 
+## Classificação dos clientes emulados
+
+A configuração atual representa **três PCs emulados por processos** e **um único host físico**. Cada processo tem um PID, pasta temporária e servidor HTTP independentes, mas compartilha o kernel e os privilégios do host. A prova inclui agora seis combinações de credenciais cruzadas no laboratório lógico, portas distintas e tentativas de Origin/cookie estrangeiros nos três processos. Não chamar essas instâncias de VMs nem máquinas instaladas.
+
+O laboratório adicional de isolamento por contêineres pertence à Platform, com três redes privadas separadas e três processos de cliente Docker. Ambos reutilizam o mesmo owner do Relay, sem copiar brokers, grants, filas ou persistência para o Apps.
+
 ## Prova de aceitação
 
 `--self-test` testa, sem mock de rede:
