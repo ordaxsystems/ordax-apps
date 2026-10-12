@@ -1,0 +1,8 @@
+{
+  "schema": "ordax.app-compatibility/1",
+  "appId": "projects",
+  "appVersion": "0.1.0",
+  "sdkBundleVersion": "1.17.0",
+  "authority": "none",
+  "distributionActivationAllowed": false
+}
