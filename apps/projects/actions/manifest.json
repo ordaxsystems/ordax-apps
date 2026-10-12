@@ -21,7 +21,14 @@
       "binding": {
         "payloadSha256": null
       },
-      "parameters": [],
+      "parameters": [
+        {
+          "id": "project",
+          "type": "string",
+          "required": true,
+          "maxLength": 160
+        }
+      ],
       "riskClass": "read-only",
       "confirmation": "none",
       "executionAuthorized": false,
