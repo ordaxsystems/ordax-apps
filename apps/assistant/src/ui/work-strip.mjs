@@ -1,9 +1,9 @@
-import { validateIdentitySessionSnapshot } from "../../../contracts/identity-session.mjs";
-import { validateSpaceSelectionSnapshot } from "../../../contracts/space-selection.mjs";
+import { validateIdentitySessionSnapshot } from "../sdk/contracts/identity-session.mjs";
+import { validateSpaceSelectionSnapshot } from "../sdk/contracts/space-selection.mjs";
 import {
   PERSONAL_ORDAX_RUNTIME_SCHEMA,
   validatePersonalOrdaxRuntimeSnapshot,
-} from "../../../contracts/personal-ordax-store.mjs";
+} from "../sdk/contracts/personal-ordax-store.mjs";
 
 // Pure read-only projection of the *existing* Personal OrdaX owner. It never
 // converts a conversational prompt into a task, step, approval or action.
