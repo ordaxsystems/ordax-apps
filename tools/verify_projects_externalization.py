@@ -21,22 +21,29 @@ def main() -> None:
         fail("wrong app id")
     if plan.get("authority") != "none":
         fail("externalization metadata must not carry authority")
-    if plan.get("source_repository_current") != "ordaxsystems/ordax-os":
-        fail("Projects source must remain in the platform before Gate A")
-    if plan.get("source_path_current") != "system/apps/projects":
+    if plan.get("source_repository_current") != "ordaxsystems/ordax-apps":
+        fail("Projects source must be owned by canonical Apps after Gate B")
+    if plan.get("source_path_current") != "apps/projects":
         fail("Projects source path drifted")
     if plan.get("target_repository") != "ordaxsystems/ordax-apps":
         fail("Projects target repository drifted")
     if plan.get("target_path") != "apps/projects":
         fail("Projects target path drifted")
-    if plan.get("source_of_truth_state") != "platform-until-cutover":
+    if plan.get("source_of_truth_state") != "ordax-apps-canonical":
         fail("Projects must have exactly one source of truth before cutover")
-    if plan.get("source_cutover_allowed") is not False:
-        fail("Projects source cutover must remain blocked before platform absence proof")
+    if plan.get("source_cutover_allowed") is not True:
+        fail("Projects cutover requires proven platform absence")
     if plan.get("distribution_activation_allowed") is not False:
         fail("Projects distribution must remain blocked before source cutover")
-    if TARGET.exists():
-        fail("apps/projects must not exist before remove-first Gate A; dual source is forbidden")
+    if not TARGET.is_dir() or not (TARGET / "src/runtime.mjs").is_file():
+        fail("canonical portable Projects runtime is missing after Gate B")
+    gate_b = plan.get("gate_b") or {}
+    if gate_b.get("state") != "source-materialized-unsigned" or gate_b.get("platform_absence_proven") is not True:
+        fail("Projects Gate B must record proven platform absence")
+    if any(gate_b.get(name) is not False for name in (
+        "signed_distribution_verified", "native_install_verified", "rollback_verified"
+    )):
+        fail("Projects distribution verification must not be fabricated")
 
     sdk = plan.get("target_sdk") or {}
     if sdk.get("minimum_bundle_version") != "1.9.0":
@@ -109,8 +116,8 @@ def main() -> None:
     snapshot = plan.get("source_snapshot") or {}
     if snapshot.get("state") != "pinned":
         fail("Projects source snapshot must be pinned after SDK merge")
-    if snapshot.get("repository") != plan["source_repository_current"]:
-        fail("Projects source snapshot must use canonical platform owner")
+    if snapshot.get("repository") != "ordaxsystems/ordax-os":
+        fail("Projects original source must retain canonical OS provenance")
     if not isinstance(snapshot.get("commit"), str) or not re.fullmatch(r"[0-9a-f]{40}", snapshot["commit"]):
         fail("Projects snapshot commit must be an exact lowercase Git SHA")
     if snapshot.get("captured_before_gate_a_removal") is not True:
@@ -175,7 +182,7 @@ def main() -> None:
 
 
     print("PROJECTS_EXTERNALIZATION=PASS")
-    print("SOURCE=PLATFORM")
+    print("SOURCE=ORDAX_APPS")
     print("TARGET=ORDAX_APPS")
     print("SDK_TARGET=1.9.0")
     print("SDK_GATE=MERGED_D2ABF5A")
