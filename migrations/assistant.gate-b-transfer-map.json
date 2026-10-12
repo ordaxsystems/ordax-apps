@@ -1,0 +1,95 @@
+{
+  "$schema": "ordax.assistant-gate-b-transfer-map/1",
+  "source_snapshot": "migrations/assistant.source-snapshot.json",
+  "source_commit": "31c973c041d04b8c01ac97b97fa4af1c0926f89a",
+  "target_root": "apps/assistant",
+  "target_manifest": "apps/assistant/app.json",
+  "source_file_count": 11,
+  "requires_official_sdk": "1.18.0",
+  "manifest_replacement": {
+    "schema": "ordax.component-manifest/1",
+    "id": "assistant",
+    "kind": "app",
+    "releaseMode": "component-slot",
+    "owner": "ordaxsystems/ordax-apps",
+    "version": "0.1.1",
+    "criticality": "optional",
+    "failureDomain": "app",
+    "restartScope": "component",
+    "healthMode": "runtime",
+    "dependencies": [
+      "surface-shell",
+      "ordax-intelligence"
+    ],
+    "release_activation": "blocked-until-platform-lifecycle-proof"
+  },
+  "rules": {
+    "dual_source_allowed": false,
+    "copy_platform_services": false,
+    "copy_host_memory_service": false,
+    "copy_identity_credentials": false,
+    "copy_native_intelligence_adapter": false,
+    "copy_before_platform_gate_a_main_proof": false,
+    "inline_private_contracts": false,
+    "use_one_canonical_app_manifest": true,
+    "app_owned_i18n_injected_via_public_localization": true
+  },
+  "mappings": [
+    {
+      "source": "system/apps/assistant/ai/manifest.mjs",
+      "target": "apps/assistant/ai/manifest.mjs",
+      "operation": "derive-declarative-manifest"
+    },
+    {
+      "source": "system/apps/assistant/app.mjs",
+      "target": "apps/assistant/app.json",
+      "operation": "replace-by-manifest"
+    },
+    {
+      "source": "system/apps/assistant/assistant.css",
+      "target": "apps/assistant/assets/assistant.css",
+      "operation": "relocate-style"
+    },
+    {
+      "source": "system/apps/assistant/component.mjs",
+      "target": "apps/assistant/app.json",
+      "operation": "replace-by-manifest"
+    },
+    {
+      "source": "system/apps/assistant/conversation.mjs",
+      "target": "apps/assistant/src/conversation.mjs",
+      "operation": "relocate-and-rewire-sdk"
+    },
+    {
+      "source": "system/apps/assistant/runtime.mjs",
+      "target": "apps/assistant/src/runtime.mjs",
+      "operation": "relocate-and-rewire-sdk"
+    },
+    {
+      "source": "system/apps/assistant/ui/conversation-controls.mjs",
+      "target": "apps/assistant/src/ui/conversation-controls.mjs",
+      "operation": "relocate-and-rewire-sdk"
+    },
+    {
+      "source": "system/apps/assistant/ui/result-view-model.mjs",
+      "target": "apps/assistant/src/ui/result-view-model.mjs",
+      "operation": "relocate-and-rewire-sdk"
+    },
+    {
+      "source": "system/apps/assistant/ui/work-strip.mjs",
+      "target": "apps/assistant/src/ui/work-strip.mjs",
+      "operation": "relocate-and-rewire-sdk"
+    },
+    {
+      "source": "system/apps/assistant/version.mjs",
+      "target": "apps/assistant/app.json",
+      "operation": "fold-version-into-manifest"
+    },
+    {
+      "source": "system/services/i18n/catalog/assistant.mjs",
+      "target": "apps/assistant/src/i18n/messages.mjs",
+      "operation": "move-app-owned-localization"
+    }
+  ],
+  "authority": "none"
+}
