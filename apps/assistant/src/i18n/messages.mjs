@@ -165,3 +165,24 @@ export const ASSISTANT_ENGLISH_MESSAGES = Object.freeze({
   "assistant.action.sending": "Sending…",
   "assistant.footnote": "This history is temporary. Persistent Memory remains governed by OrdaX rules and is not created by this app in this version.",
 });
+
+/**
+ * App-owned messages stay in the external Assistant package. The OS chooses
+ * the locale; it does not become a second owner of these message catalogs.
+ */
+export function translateAssistantMessage(locale, messageId, params = {}) {
+  const messages = typeof locale === "string" && locale.toLowerCase().startsWith("pt")
+    ? ASSISTANT_SOURCE_MESSAGES : ASSISTANT_ENGLISH_MESSAGES;
+  if (!Object.hasOwn(messages, messageId)) {
+    throw new TypeError("Unknown Assistant localization key: " + messageId);
+  }
+  return messages[messageId].replace(/\{([a-z][a-zA-Z]*)\}/g, (_, key) => {
+    const value = params[key];
+    if (!Object.hasOwn(params, key) || (
+      typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value))
+    )) {
+      throw new TypeError("Missing Assistant localization value: " + key);
+    }
+    return String(value);
+  });
+}
