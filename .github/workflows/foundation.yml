@@ -284,13 +284,22 @@ jobs:
         env:
           ORDAX_PLATFORM_SNAPSHOT_ROOT: .ordax-pending-source
         run: python3 -m unittest -v tests.test_pending_source_snapshots
+      - name: Checkout observed canonical OS main for Assistant source absence proof
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: main
+          path: .ordax-assistant-os-main
+          persist-credentials: false
+
       - name: Audit Assistant Gate B exact portable boundaries without copying source
         run: |
           set -euo pipefail
           python3 -m unittest tests.test_assistant_gate_b -v
           python3 tools/verify_assistant_gate_b.py \
             --source-root .ordax-pending-source \
-            --sdk-root .ordax-files-sdk > /tmp/ordax-assistant-gate-b.json
+            --sdk-root .ordax-files-sdk \
+            --current-platform-root .ordax-assistant-os-main > /tmp/ordax-assistant-gate-b.json
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -308,6 +317,11 @@ jobs:
           if proof['sdk_version_sufficient']:
               assert proof['sdk_graph_verified'] is True
               assert proof['unpublished_contract_sources']==[]
+          assert proof['platform_main_observation'] is not None
+          assert len(proof['platform_main_observation']['observed_main_commit'])==40
+          assert proof['platform_gate_a_main_proven'] is (not proof['platform_main_observation']['tracked_assistant_source']
+              and not proof['platform_main_observation']['live_assistant_source_imports']
+              and proof['platform_main_observation']['pending_policy_fail_closed'])
           assert proof['gate_b_allowed_now'] is False
           assert proof['signed_install_verified'] is False
           assert not Path('apps/assistant').exists()

@@ -91,6 +91,74 @@ class AssistantGateBTests(unittest.TestCase):
             with self.assertRaises(gate.AssistantGateError):
                 gate.audit(root)
 
+    def test_real_main_absence_requires_canonical_origin_policy_and_no_runtime_imports(self):
+        import subprocess
+        def run_git(root, *args):
+            return subprocess.run(["git", "-C", str(root), *args],
+                                  capture_output=True, text=True, check=True).stdout.strip()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            run_git(root, "init", "-q", "-b", "main")
+            run_git(root, "config", "user.name", "OrdaX Test")
+            run_git(root, "config", "user.email", "test@example.invalid")
+            run_git(root, "remote", "add", "origin",
+                    "https://github.com/ordaxsystems/ordax-os.git")
+            policy = root / "docs/contracts/runtime-component-package.json"
+            policy.parent.mkdir(parents=True)
+            marker = {
+                "state": "platform-source-removed-app-source-pending",
+                "expected_repository": "ordaxsystems/ordax-apps",
+                "platform_source_absence_required": True,
+                "distribution_activation_allowed": False,
+            }
+            policy.write_text(json.dumps({"prelaunch_remove_first_pending":
+                                          {"assistant": marker}}), encoding="utf-8")
+            app = root / "system/apps/catalog.mjs"
+            app.parent.mkdir(parents=True)
+            app.write_text('export const apps = [];\n', encoding="utf-8")
+            run_git(root, "add", ".")
+            run_git(root, "commit", "-qm", "first canonical OS base")
+            run_git(root, "update-ref", "refs/remotes/origin/main",
+                    run_git(root, "rev-parse", "HEAD"))
+            baseline = gate.probe_platform_gate_a(root)
+            self.assertTrue(baseline["platform_gate_a_main_proven"])
+            self.assertEqual(baseline["tracked_assistant_source"], [])
+            # A source import is enough to block Gate A, even when the file
+            # itself has been removed. Do not accept broken Native consumers.
+            app.write_text('import "./assistant/runtime.mjs";\n', encoding="utf-8")
+            run_git(root, "add", ".")
+            run_git(root, "commit", "-qm", "orphaned app import")
+            run_git(root, "update-ref", "refs/remotes/origin/main",
+                    run_git(root, "rev-parse", "HEAD"))
+            report = gate.probe_platform_gate_a(root)
+            self.assertFalse(report["platform_gate_a_main_proven"])
+            self.assertEqual(len(report["live_assistant_source_imports"]), 1)
+            # A still-tracked Assistant source cannot be reported as cutover.
+            app.write_text('export const apps = [];\n', encoding="utf-8")
+            old = root / "system/apps/assistant/runtime.mjs"
+            old.parent.mkdir(parents=True, exist_ok=True)
+            old.write_text("export const runtime = {};\n", encoding="utf-8")
+            run_git(root, "add", ".")
+            run_git(root, "commit", "-qm", "old source returned")
+            run_git(root, "update-ref", "refs/remotes/origin/main",
+                    run_git(root, "rev-parse", "HEAD"))
+            report = gate.probe_platform_gate_a(root)
+            self.assertFalse(report["platform_gate_a_main_proven"])
+            self.assertIn("system/apps/assistant/runtime.mjs",
+                          report["tracked_assistant_source"])
+            # Changing a policy flag cannot substitute for source removal.
+            old.unlink()
+            marker["distribution_activation_allowed"] = True
+            policy.write_text(json.dumps({"prelaunch_remove_first_pending":
+                                          {"assistant": marker}}), encoding="utf-8")
+            run_git(root, "add", "-A")
+            run_git(root, "commit", "-qm", "bad pending policy")
+            run_git(root, "update-ref", "refs/remotes/origin/main",
+                    run_git(root, "rev-parse", "HEAD"))
+            report = gate.probe_platform_gate_a(root)
+            self.assertFalse(report["platform_gate_a_main_proven"])
+            self.assertFalse(report["pending_policy_fail_closed"])
+
     def test_security_rules_and_published_contract_floor_are_required(self):
         for key in ("copy_host_memory_service", "inline_private_contracts"):
             with tempfile.TemporaryDirectory() as tmp:
