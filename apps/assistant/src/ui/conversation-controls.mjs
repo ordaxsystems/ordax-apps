@@ -1,9 +1,9 @@
-import { INTELLIGENCE_MAX_PROMPT_CHARS } from "../../../contracts/intelligence.mjs";
-import { assertAppActivationPort } from "../../../contracts/app-activation.mjs";
-import { assertSurfaceRenderLifecycle } from "../../../contracts/surface-render-lifecycle.mjs";
+import { INTELLIGENCE_MAX_PROMPT_CHARS } from "../sdk/contracts/intelligence.mjs";
+import { assertAppActivationPort } from "../sdk/contracts/app-activation.mjs";
+import { assertSurfaceRenderLifecycle } from "../sdk/contracts/surface-render-lifecycle.mjs";
 import { ASSISTANT_CONVERSATION_SCHEMA } from "../conversation.mjs";
-import { PERSONAL_ORDAX_MAX_GOAL_CHARS } from "../../../contracts/personal-ordax.mjs";
-import { PERSONAL_ORDAX_RUNTIME_SCHEMA } from "../../../contracts/personal-ordax-store.mjs";
+import { PERSONAL_ORDAX_MAX_GOAL_CHARS } from "../sdk/contracts/personal-ordax.mjs";
+import { PERSONAL_ORDAX_RUNTIME_SCHEMA } from "../sdk/contracts/personal-ordax-store.mjs";
 import { projectAssistantResultCanvas } from "./result-view-model.mjs";
 import { projectAssistantWorkStrip, resolveAssistantWorkScope } from "./work-strip.mjs";
 
