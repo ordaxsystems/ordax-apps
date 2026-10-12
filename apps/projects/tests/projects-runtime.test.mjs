@@ -183,3 +183,12 @@ test("migration preserves exact original version and stylesheet bytes from OS sn
     assert.equal(hash, reference.blob_sha, oldPath);
   }
 });
+
+test("Projects external extension uses the verified host target id, not bundled legacy id", () => {
+  const sources = ["../src/ui/workspace-controls.mjs", "../src/ui/device-agent-status.mjs"];
+  for (const file of sources) {
+    const contents = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(contents, /data-app-extension="projects"/);
+    assert.doesNotMatch(contents, /data-app-extension="projects-workspace"/);
+  }
+});
