@@ -140,6 +140,14 @@ def audit(root=ROOT, source_root=None, sdk_root=None):
          "Assistant missing protected public SDK boundary")
     sdk_sufficient = semver(lock.get("bundle_version")) >= (1, 18, 0)
     required, obligations, blob_proof = set(REQUIRED_SDK), [], False
+    resolved_relocations = []
+    manual_manifest_rewrites = []
+    # App bytes are immutable; map imports virtually rather than copying or
+    # silently rewriting files in the production repository.
+    deploy_paths = set(nonmanifest + ["apps/assistant/app.json"])
+    sdk_package_prefix = "apps/assistant/src/sdk/contracts/"
+    sdk_required_by_app = set()
+
     if source_root is not None:
         base = checkout(source_root.resolve(), snap["commit"])
         for src, record in sorted(pinned.items()):
@@ -166,8 +174,45 @@ def audit(root=ROOT, source_root=None, sdk_root=None):
                     else:
                         raise AssistantGateError("private platform dependency " + src + " -> " + dep)
                     obligations.append({"from": src, "dependency": dep, "kind": category})
+                    app_path = mapped[src]["target"]
+                    if category == "manifest-rewire":
+                        # This is a deliberate source change, not a silent
+                        # substitution of a JS module with a JSON import.
+                        need(mapped[dep]["target"] == "apps/assistant/app.json",
+                             "manifest import target changed")
+                        manual_manifest_rewrites.append({
+                            "importer": app_path, "source": src,
+                            "dependency": dep,
+                            "required_resolution": "app-manifest-metadata",
+                        })
+                        continue
+                    if category == "app-owned":
+                        deploy_target = mapped[dep]["target"]
+                    else:
+                        sdk_required_by_app.add(dep)
+                        deploy_target = sdk_package_prefix + posixpath.basename(dep)
+                    rewritten = posixpath.relpath(
+                        deploy_target, posixpath.dirname(app_path))
+                    if not rewritten.startswith("."):
+                        rewritten = "./" + rewritten
+                    need(posixpath.normpath(posixpath.join(
+                        posixpath.dirname(app_path), rewritten)) == deploy_target,
+                        "invalid virtual import rewrite")
+                    if category == "app-owned":
+                        need(deploy_target in deploy_paths,
+                             "relocated app import has no target")
+                    else:
+                        need(deploy_target.startswith(sdk_package_prefix),
+                             "SDK module escaped published public boundary")
+                    resolved_relocations.append({
+                        "importer": app_path, "specifier_before": spec,
+                        "specifier_after": rewritten, "dependency": dep,
+                        "target": deploy_target, "owner": category,
+                    })
         blob_proof = True
     published, sdk_proof = set(), False
+    transitive_sdk_sources = set()
+    sdk_graph_verified = False
     if sdk_root is not None:
         base = checkout(sdk_root.resolve(), lock["commit"])
         content = (base / safe_path(lock["bundle_path"])).read_bytes()
@@ -176,8 +221,59 @@ def audit(root=ROOT, source_root=None, sdk_root=None):
         bundle = json.loads(content.decode("utf-8"))
         need(bundle.get("bundle_version") == lock["bundle_version"]
              and bundle.get("authority") == "none", "SDK lock content drift")
-        published = {safe_path(x["source_path"]) for x in bundle["contracts"]}
+        entries = bundle.get("contracts")
+        need(isinstance(entries, list) and entries, "invalid SDK contracts")
+        # Multiple schema ids may deliberately share one canonical Git blob.
+        # The same source path must never point to two distinct payloads.
+        by_path = {}
+        for entry in entries:
+            path = safe_path(entry["source_path"])
+            digest = entry.get("source_git_blob")
+            need(path.startswith("system/contracts/") and
+                 SHA1.fullmatch(str(digest)), "private/invalid SDK bundle entry")
+            if path in by_path:
+                need(by_path[path] == digest, "conflicting SDK source blob")
+            by_path[path] = digest
+        published = set(by_path)
         sdk_proof = True
+        # Close the actual JS dependency graph, not merely the direct list
+        # from app source. A missing public contract is a real Gate B blocker.
+        pending = list(required)
+        visited = set()
+        missing_paths = set()
+        while pending:
+            path = pending.pop()
+            if path in visited:
+                continue
+            visited.add(path)
+            if path not in by_path:
+                missing_paths.add(path)
+                continue
+            module = base / path
+            need(module.is_file() and not module.is_symlink(),
+                 "missing published SDK owner module: " + path)
+            payload = module.read_bytes()
+            digest = hashlib.sha1(b"blob " + str(len(payload)).encode()
+                                  + b"\0" + payload).hexdigest()
+            need(digest == by_path[path], "SDK canonical Git blob mismatch: " + path)
+            code = payload.decode("utf-8")
+            need(not DYNAMIC.search(code), "nonliteral published SDK import")
+            for match in IMPORTS.finditer(code):
+                spec = match.group(1) or match.group(2)
+                need(spec.startswith(".") and "\\" not in spec,
+                     "published SDK imports private/external module")
+                dep = posixpath.normpath(posixpath.join(
+                    posixpath.dirname(path), spec))
+                need(dep.startswith("system/contracts/"),
+                     "SDK dependency escapes canonical contract owner")
+                pending.append(dep)
+        transitive_sdk_sources = visited - missing_paths
+        sdk_graph_verified = (not missing_paths and sdk_sufficient)
+        # Check relocatable virtual target for every transitively imported
+        # public SDK module. There is no copied source, install or grant.
+        for module in transitive_sdk_sources:
+            target = sdk_package_prefix + posixpath.basename(module)
+            need(target not in deploy_paths, "SDK/app target path collides")
     return {
         "schema": "ordax.assistant-gate-b-preflight/1",
         "source_file_count": len(pinned),
@@ -188,8 +284,15 @@ def audit(root=ROOT, source_root=None, sdk_root=None):
         "required_sdk_version": "1.18.0",
         "sdk_version_sufficient": sdk_sufficient,
         "required_public_sdk_sources": sorted(required),
-        "unpublished_contract_sources": sorted(required - published) if sdk_proof else [],
+        "sdk_transitive_source_count": len(transitive_sdk_sources),
+        "sdk_graph_verified": sdk_graph_verified,
+        "unpublished_contract_sources": sorted((required | transitive_sdk_sources) - published) if sdk_proof else [],
         "import_obligations": obligations,
+        "direct_import_count": len(obligations),
+        "virtual_relocations": sorted(resolved_relocations, key=lambda x: (x["importer"], x["specifier_before"])),
+        "manifest_rewrites_required": manual_manifest_rewrites,
+        "virtual_imports_resolved": blob_proof and
+            len(resolved_relocations) + len(manual_manifest_rewrites) == len(obligations),
         "platform_gate_a_main_proven": False,
         "app_source_materialized": False,
         "signed_install_verified": False,

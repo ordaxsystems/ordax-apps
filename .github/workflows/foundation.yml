@@ -299,7 +299,15 @@ jobs:
           assert proof['pinned_source_blobs_verified'] is True
           assert proof['pinned_sdk_verified'] is True
           assert proof['required_sdk_version']=='1.18.0'
-          assert proof['sdk_version_sufficient'] is False
+          major=tuple(map(int,proof['sdk_version'].split('.')))
+          assert proof['sdk_version_sufficient'] is (major >= (1,18,0))
+          assert proof['direct_import_count']==24
+          assert proof['virtual_imports_resolved'] is True
+          assert len(proof['manifest_rewrites_required'])==2
+          assert proof['sdk_transitive_source_count'] >= 10
+          if proof['sdk_version_sufficient']:
+              assert proof['sdk_graph_verified'] is True
+              assert proof['unpublished_contract_sources']==[]
           assert proof['gate_b_allowed_now'] is False
           assert proof['signed_install_verified'] is False
           assert not Path('apps/assistant').exists()
