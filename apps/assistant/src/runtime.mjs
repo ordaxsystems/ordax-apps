@@ -1,5 +1,6 @@
-import { COMPONENT_RUNTIME_SCHEMA } from "../../contracts/component-runtime.mjs";
-import { ASSISTANT_VERSION } from "./version.mjs";
+import { COMPONENT_RUNTIME_SCHEMA } from "./sdk/contracts/component-runtime.mjs";
+import appManifest from "../app.json" with { type: "json" };
+const ASSISTANT_VERSION = appManifest.version;
 import { createAssistantConversationRuntime } from "./conversation.mjs";
 import { mountAssistantConversationControls } from "./ui/conversation-controls.mjs";
 
