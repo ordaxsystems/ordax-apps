@@ -20,18 +20,29 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout canonical Studio owner
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Checkout immutable canonical Platform Relay source
         uses: actions/checkout@v4
         with:
           repository: ordaxsystems/ordax-platform
-          ref: b0a9955894f9ca44b721822b39c37a4a01d0446c
+          ref: main
           path: .ordax/relay-platform
           persist-credentials: false
       - name: Set up Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "24"
+      - name: Record exact Platform main used for emulated-PC evidence
+        shell: pwsh
+        run: |
+          $sha=(git -C .ordax/relay-platform rev-parse HEAD).Trim()
+          if ($sha -notmatch '^[0-9a-f]{40}
+        shell: pwsh
+        run: node tools/assistant-host/proofs/relay-central-triad.mjs .ordax/relay-platform
+) { throw 'Invalid Platform checkout SHA' }
+          Write-Host "ORDAX_PLATFORM_MAIN_SHA=$sha"
+          "Platform main SHA: $sha" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "Emulated clients: three logical identities on one Windows CI host; not physical PCs or VMs." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - name: Test three independent Relay lab clients through the real Studio API
         shell: pwsh
         run: node tools/assistant-host/proofs/relay-central-triad.mjs .ordax/relay-platform
