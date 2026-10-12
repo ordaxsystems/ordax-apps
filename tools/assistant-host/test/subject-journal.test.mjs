@@ -60,8 +60,9 @@ test('strict canonical subject derives bounded non-reversible storage names', ()
 test('Alice and Bob never see each other journal receipts on sign-in or restart', async () => {
   const f = fixture();
   const alice = f.runtime(); await alice.init();
-  const connectedA = await alice.acceptAccountToken('alice-token');
-  assert.equal(connectedA.connected, true);
+  const connectedA = await alice.acceptAccountToken('alice-token', A);
+  assert.equal(connectedA.accountConnected, true);
+  assert.equal(connectedA.connected, false);
   assert.deepEqual(connectedA.operations, []);
   alice.operations.push(f.op(A));
   await alice.persist();
@@ -71,7 +72,7 @@ test('Alice and Bob never see each other journal receipts on sign-in or restart'
   assert.equal(f.disk.get(keyA).schemaVersion, 2);
 
   const bob = f.runtime(); await bob.init();
-  const connectedB = await bob.acceptAccountToken('bob-token');
+  const connectedB = await bob.acceptAccountToken('bob-token', B);
   assert.deepEqual(connectedB.operations, []);
   bob.operations.push(f.op(B));
   await bob.persist();
@@ -80,7 +81,7 @@ test('Alice and Bob never see each other journal receipts on sign-in or restart'
   assert.ok(!JSON.stringify(f.disk.get(keyA)).includes('bob-secret'));
 
   const aliceAgain = f.runtime(); await aliceAgain.init();
-  const reconnected = await aliceAgain.acceptAccountToken('alice-token');
+  const reconnected = await aliceAgain.acceptAccountToken('alice-token', A);
   assert.equal(reconnected.operations.length, 1);
   assert.equal(reconnected.operations[0].result.data.private, 'alice-secret');
   assert.ok(!JSON.stringify(reconnected).includes('bob-secret'));
@@ -94,9 +95,10 @@ test('legacy anonymous journal is not silently attributed to an authenticated su
   f.disk.set('runtime-operations', structuredClone(legacy));
   const runtime = f.runtime(); await runtime.init();
   assert.equal(runtime.state().operations.length, 1);
-  const state = await runtime.acceptAccountToken('bob-token');
+  const state = await runtime.acceptAccountToken('bob-token', B);
   assert.equal(state.operations.length, 0);
-  assert.equal(state.connected, true);
+  assert.equal(state.accountConnected, true);
+  assert.equal(state.connected, false);
   assert.deepEqual(f.disk.get('runtime-operations'), legacy);
   await runtime.close();
   assert.deepEqual(f.disk.get('runtime-operations'), legacy);
@@ -128,19 +130,18 @@ test('tampered subject journal cannot be re-owned, overwritten or bypassed on th
   assert.equal(f.getActions(), 0);
 });
 
-test('malformed or mismatched Product subjects never unlock the runtime or create files', async () => {
+test('invalid private IPC subject cannot unlock or select another subject journal', async () => {
   const f = fixture();
   const runtime = f.runtime(); await runtime.init();
-  f.setSubject('not-a-uuid');
-  await assert.rejects(runtime.acceptAccountToken('alice-token'), /Product inválida/);
+  await assert.rejects(runtime.acceptAccountToken('alice-token', 'not-a-uuid'), /Product inválida/);
   assert.equal(runtime.state().configured, false);
   assert.deepEqual([...f.disk.keys()], []);
-  f.setSubject(null);
-  await runtime.acceptAccountToken('alice-token');
-  f.setSubject(B);
-  await assert.rejects(runtime.connect(), /identidade Product mudou/);
+  await runtime.acceptAccountToken('alice-token', A);
+  await assert.rejects(runtime.acceptAccountToken('bob-token', B), /Já existe/);
+  assert.equal(runtime.state().accountConnected, true);
   assert.equal(runtime.state().connected, false);
   await runtime.close();
+  assert.equal(f.getActions(), 0);
 });
 
 test('subject journal validator requires strict schema, subject, and valid operation records', () => {

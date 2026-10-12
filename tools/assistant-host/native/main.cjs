@@ -105,9 +105,9 @@ else {
         }
         // A Product token is confined to the privileged main process. Password
         // and bearer data cannot transit HTTP, previews, plugins or renderer IPC.
-        const { token } = await invokeCanonicalProductSignIn(data);
+        const { token, subjectId } = await invokeCanonicalProductSignIn(data);
         if (shuttingDown || closing) throw new Error('O Studio está encerrando.');
-        return runtime.acceptAccountToken(token);
+        return runtime.acceptAccountToken(token, subjectId);
       });
     });
     console.log('ORDAX Studio: transporte local pronto.');

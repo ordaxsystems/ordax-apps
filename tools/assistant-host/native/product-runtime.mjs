@@ -106,8 +106,12 @@ export class ProductRuntime {
   // Product account handoff. Legacy operation receipts are preserved
   // untouched under their anonymous key; only a verified subject may access
   // a versioned subject-bound journal. No silent ownership inference.
-  async acceptAccountToken(token) {
+  // Subject is attested by the installed Runtime through private stdio after
+  // verifying the owner session at the canonical Product authority. Renderer
+  // requests and raw JWT claims cannot supply this second argument.
+  async acceptAccountToken(token, verifiedSubjectId) {
     if (typeof token !== 'string' || !token || token.length > 16000 || /[\r\n]/.test(token)) throw fail('Sessão ORDAX inválida.', 400);
+    productSubjectJournalKey(verifiedSubjectId); // strict canonical UUID before acquiring account authority
     if (this.configured || this.connected || this.connectPending || this.targetsPending || this.acceptingAccount) throw fail('Já existe uma sessão Product neste host. Encerre o app para trocar de conta.');
     if (this.recoveryRequired || this.unpersisted.size || this.tasks.size ||
       this.operations.some(op => !['succeeded','failed','cancelled','reviewed'].includes(op.status))) {
@@ -118,10 +122,9 @@ export class ProductRuntime {
     this.#token = token;
     this.configured = true;
     try {
-      // Identity is derived ONLY from the Platform's authenticated session,
-      // never from the login form, JWT claims parsed locally or a device name.
-      const account = await this.request('/v3/product/session');
-      const subject = account.session?.subject_id;
+      // The installed Runtime already verified this owner with the Platform.
+      // Do not duplicate a Product login HTTP request inside Electron.
+      const subject = verifiedSubjectId;
       const journalKey = productSubjectJournalKey(subject);
       const fallback = { schemaVersion: 2, subjectId: subject, operations: [] };
       const record = await this.storage.read(journalKey, fallback, {
@@ -160,24 +163,12 @@ export class ProductRuntime {
   }
   async connect() {
     if (this.accountConnected) {
-      try {
-        const verified = await this.request('/v3/product/session');
-        if (verified.session?.subject_id !== this.journalSubject) {
-          throw fail('A identidade da Conta OrdaX mudou.', 403);
-        }
-        // Owner login has no authority to discover or submit remote actions.
-        this.connected = false;
-        this.catalogAvailable = false;
-        this.targets = [];
-        return this.state();
-      } catch (error) {
-        this.accountConnected = false;
-        this.connected = false;
-        this.catalogAvailable = false;
-        this.targets = [];
-        this.issue = error.message;
-        throw error;
-      }
+      // This reports the previously verified account for the current in-memory
+      // session only; it never refreshes grants or asserts Runtime connectivity.
+      this.connected = false;
+      this.catalogAvailable = false;
+      this.targets = [];
+      return this.state();
     }
     if (this.acceptingAccount) throw fail('Aguarde a confirmação da identidade Product antes de reconectar.', 409);
     if (this.recoveryRequired) throw fail(this.issue, 503);
