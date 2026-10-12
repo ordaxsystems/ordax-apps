@@ -13,17 +13,29 @@ from verify_mvp_app_minimum import audit_mvp_minimum  # noqa: E402
 
 
 class PlatformOwnerMvpTests(unittest.TestCase):
+    @staticmethod
+    def _platform_owners_from_workspace():
+        """Only current migration SSOT decides which targets still belong to OS."""
+        workspace = json.loads((ROOT / "ordax-apps.workspace.json").read_text(encoding="utf-8"))
+        expected = {}
+        for app_id in workspace["first_party_app_targets"]:
+            plan_path = ROOT / "migrations" / f"{app_id}.externalization.json"
+            if not plan_path.is_file():
+                continue
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            if plan.get("source_of_truth_state") == "platform-until-cutover":
+                expected[app_id] = plan
+        return expected
+
     def test_platform_owned_apps_have_explicit_fail_closed_source_provenance(self):
         report = audit_workspace(ROOT)
         blocked = [row for row in report["apps"]
                    if row["source_state"] == "platform-until-cutover"]
-        # Floor comes from the existing six OS-owned app targets; app identity
-        # itself is discovered from the workspace and migration files.
-        self.assertGreaterEqual(len(blocked), 6)
+        expected = self._platform_owners_from_workspace()
+        self.assertEqual({row["app_id"] for row in blocked}, set(expected))
         for row in blocked:
             app_id = row["app_id"]
-            plan_path = ROOT / "migrations" / (app_id + ".externalization.json")
-            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan = expected[app_id]
             self.assertEqual(plan["$schema"], "ordax.app-externalization-plan/1")
             self.assertEqual(plan["app_id"], app_id)
             self.assertEqual(plan["source_repository_current"], "ordaxsystems/ordax-os")
@@ -42,11 +54,22 @@ class PlatformOwnerMvpTests(unittest.TestCase):
             encoding="utf-8"
         ))
         boundary = plan["runtime_boundary"]
-        self.assertEqual(plan["source_of_truth_state"], "platform-until-cutover")
-        self.assertIs(plan["source_cutover_allowed"], False)
+        # The source can move independently of signed Native delivery; never
+        # freeze this test to the pre-migration state.
+        self.assertIn(
+            plan["source_of_truth_state"],
+            {"platform-until-cutover", "ordax-apps-canonical"},
+        )
         self.assertIs(plan["distribution_activation_allowed"], False)
         self.assertEqual(plan["delivery"]["delivery_class"], "bootstrap")
-        self.assertFalse((ROOT / "apps/internet").exists())
+        if plan["source_of_truth_state"] == "platform-until-cutover":
+            self.assertEqual(plan["source_repository_current"], "ordaxsystems/ordax-os")
+            self.assertIs(plan["source_cutover_allowed"], False)
+            self.assertFalse((ROOT / "apps/internet").exists())
+        else:
+            self.assertEqual(plan["source_repository_current"], "ordaxsystems/ordax-apps")
+            self.assertEqual(plan["source_path_current"], "apps/internet")
+            self.assertTrue((ROOT / "apps/internet/app.json").is_file())
         sdk = plan["target_sdk"]
         lock = json.loads((ROOT / sdk["lock_file"]).read_text(encoding="utf-8"))
         # Minimum compatibility is a floor, not another mutable SDK pin.
@@ -57,7 +80,8 @@ class PlatformOwnerMvpTests(unittest.TestCase):
         self.assertEqual(len(pinned), 3)
         self.assertLessEqual(minimum, pinned)
         self.assertGreaterEqual(minimum, (1, 16, 0), "Internet requires public first-party app schema")
-        self.assertEqual(lock["repository"], plan["source_repository_current"])
+        workspace = json.loads((ROOT / "ordax-apps.workspace.json").read_text(encoding="utf-8"))
+        self.assertEqual(lock["repository"], workspace["platform_repository"])
         self.assertEqual(sdk["required_boundary"], "browser-contracts-from-published-bundle")
         self.assertIs(sdk["migration_authorized_by_sdk_pin"], False)
         self.assertEqual(boundary["application_ui_and_app_owned_state"], "application")
@@ -76,16 +100,19 @@ class PlatformOwnerMvpTests(unittest.TestCase):
         report = audit_mvp_minimum(ROOT, minimum_candidates=13)
         blocked = [row for row in report["apps"]
                    if row["source_state"] == "platform-until-cutover"]
-        self.assertGreaterEqual(len(blocked), 6)
+        expected = self._platform_owners_from_workspace()
+        self.assertEqual({row["app_id"] for row in blocked}, set(expected))
+        workspace = json.loads((ROOT / "ordax-apps.workspace.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            {row["app_id"] for row in report["apps"]},
+            set(workspace["first_party_app_targets"]),
+            "No planned first-party app may disappear from the migration audit",
+        )
         for row in blocked:
             self.assertEqual(row["minimum_entry_status"], "blocked-platform-source-cutover")
             self.assertFalse(row["production_installable"])
-        files = next(row for row in report["apps"] if row["app_id"] == "files")
-        self.assertEqual(files["source_state"], "platform-until-cutover")
-        self.assertEqual(files["minimum_entry_status"], "blocked-platform-source-cutover")
-        self.assertFalse(files["production_installable"])
-        self.assertIn("source-cutover-not-authorized", files["blockers"])
-        self.assertIn("production-activation-not-authorized", files["blockers"])
+            self.assertIn("source-cutover-not-authorized", row["blockers"])
+            self.assertIn("production-activation-not-authorized", row["blockers"])
         self.assertEqual(report["summary"]["verified_public_store_installations"], 0)
 
 
