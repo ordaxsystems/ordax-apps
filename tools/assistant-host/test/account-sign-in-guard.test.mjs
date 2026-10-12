@@ -63,6 +63,6 @@ test('main-process sign-in handler uses the guard before awaiting canonical chil
   assert.match(body, /accountSignIn\.run\(async/);
   assert.match(body, /shuttingDown \|\| closing/);
   assert.ok(body.indexOf('accountSignIn.run(') < body.indexOf('invokeCanonicalProductSignIn(data)'));
-  assert.ok(body.indexOf('invokeCanonicalProductSignIn(data)') < body.indexOf('runtime.acceptAccountToken(token)'));
+  assert.ok(body.indexOf('invokeCanonicalProductSignIn(data)') < body.indexOf('runtime.acceptAccountToken(token, subjectId)'));
   assert.doesNotMatch(body, /process\.env\.ORDAX_PRODUCT_ACCESS_TOKEN\s*=/);
 });

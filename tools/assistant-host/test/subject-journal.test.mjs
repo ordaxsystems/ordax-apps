@@ -109,7 +109,7 @@ test('an anonymous uncertain journal blocks account adoption without hitting net
   const f = fixture();
   f.disk.set('runtime-operations', { schemaVersion: 1, operations: [f.op(A, 'uncertain')] });
   const runtime = f.runtime(); await runtime.init();
-  await assert.rejects(runtime.acceptAccountToken('bob-token'), /Confira ou recupere/);
+  await assert.rejects(runtime.acceptAccountToken('bob-token', B), /Confira ou recupere/);
   assert.equal(f.sessionReads(), 0);
   assert.equal(runtime.state().configured, false);
   await runtime.close();
@@ -121,7 +121,7 @@ test('tampered subject journal cannot be re-owned, overwritten or bypassed on th
   const key = productSubjectJournalKey(A);
   f.disk.set(key, { schemaVersion: 2, subjectId: B, operations: [f.op(B)] });
   const runtime = f.runtime(); await runtime.init();
-  await assert.rejects(runtime.acceptAccountToken('alice-token'), /recuperação/);
+  await assert.rejects(runtime.acceptAccountToken('alice-token', A), /recuperação/);
   assert.equal(runtime.state().configured, false);
   assert.equal(runtime.state().connected, false);
   assert.equal(runtime.state().recoveryRequired, true);
