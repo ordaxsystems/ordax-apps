@@ -62,3 +62,16 @@ test('diagnostics omit transcripts and login data; malformed JSON objects are re
   assert.equal((await f.request('/api/chats/aabb', 'PATCH', 'scalar')).status, 400);
   assert.equal((await fetch(f.origin + '/api/respond', { method: 'POST', headers: { Cookie: f.cookie, Origin: f.origin }, body: '{}' })).status, 415);
 });
+
+test('loopback Studio exposes only its exact shared Product contract without duplicate copies', async t => {
+  const f = await fixture(t);
+  const contract = await f.request('/contracts/product-runtime.mjs');
+  assert.equal(contract.status, 200);
+  assert.match(contract.headers.get('content-type'), /text\/javascript/);
+  const source = await contract.text();
+  assert.match(source, /export const PRODUCT_RUNTIME_OPERATIONS/);
+  assert.match(source, /export function runtimeTargets/);
+  assert.equal((await f.request('/contracts/../native/main.cjs')).status, 404);
+  assert.equal((await f.request('/contracts/secret.mjs')).status, 404);
+  assert.equal((await f.request('/contracts/product-runtime.mjs?other=true')).status, 404);
+});

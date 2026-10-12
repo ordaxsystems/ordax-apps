@@ -7,6 +7,8 @@ import { observeLocalRuntime } from './native/local-runtime-observer.mjs';
 import { observeRelayLab } from './native/relay-observer.mjs';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps/studio/conversation');
+// Only this public, immutable client contract is exposed outside /src and /assets.
+const productContract = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../contracts/product-runtime.mjs');
 const MIME = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascript', '.svg': 'image/svg+xml' };
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 
@@ -132,6 +134,13 @@ export async function createWebServer({ bridge, runtime, observeInstalled = obse
         return;
       }
       if (route === 'POST /api/stop') { const data = await body(req); if (!data || typeof data.chatId !== 'string') throw error('Conversa inválida.'); const result = await bridge.stop(data.chatId); active?.abort(); json(res, result); return; }
+      // Browser modules cannot import repository filesystem paths. This one
+      // literal route serves the same SSOT used by the native host, read-only.
+      if (route === 'GET /contracts/product-runtime.mjs' && !url.search) {
+        const content = await readFile(productContract);
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        res.end(content); return;
+      }
       if (req.method === 'GET' && (document || /^\/(src|assets)\/[a-z0-9_.-]+$/.test(url.pathname))) {
         const file = document ? path.join(appRoot, 'src/index.html') : path.join(appRoot, url.pathname.slice(1));
         const content = await readFile(file); res.writeHead(200, { 'Content-Type': `${MIME[path.extname(file)] || 'application/octet-stream'}; charset=utf-8` }); res.end(content); return;
