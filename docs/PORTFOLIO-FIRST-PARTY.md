@@ -12,7 +12,7 @@ O SSOT **da política de seleção inicial** pertence ao OS e foi implementado e
 
 ## Apps em migração (ainda com fonte canônica no OS)
 
-Arquivos, Internet, Assistente, Projetos, Atividade e Rede **não devem ganhar uma segunda cópia autoritativa**. Os respectivos `migrations/<id>.externalization.json` são os gates de transferência: primeiro provar ausência e remover o owner antigo do OS, depois ativar o código deste repositório, por pacote verificável. O protótipo de empacotamento do Arquivos não altera sua fonte atual.
+Arquivos, Internet, Assistente, Projetos, Atividade e Rede **não devem ganhar uma segunda cópia autoritativa**. Os respectivos `migrations/<id>.externalization.json` são os gates de transferência: primeiro provar ausência e remover o owner antigo do OS, depois ativar o código deste repositório, por pacote verificável. Não manter snapshot executável ou pacote paralelo de Arquivos em `ordax-apps` antes do cutover remove-first: o código de produto continua apenas no OS até a remoção comprovada do owner antigo.
 
 ## Como os apps básicos chegam ao usuário
 
