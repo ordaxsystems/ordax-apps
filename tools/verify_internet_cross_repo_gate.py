@@ -28,7 +28,7 @@ class InternetCrossRepoGateError(ValueError):
 
 
 def verify(report: dict, policy: dict, pinned_source_paths: set[str]) -> str:
-    if report.get("schema") != "ordax.internet-externalization/1":
+    if report.get("schema") != "ordax.internet-externalization-preflight/1":
         raise InternetCrossRepoGateError("source audit schema mismatch")
     if (report.get("source_cutover_allowed") is not False or
             report.get("distribution_activation_allowed") is not False):
