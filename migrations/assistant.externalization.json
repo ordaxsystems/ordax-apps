@@ -18,10 +18,12 @@
     "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
   },
   "source_snapshot": {
-    "state": "not-captured",
+    "state": "pinned",
     "repository": "ordaxsystems/ordax-os",
-    "commit": null,
-    "inventory_file": null
+    "commit": "31c973c041d04b8c01ac97b97fa4af1c0926f89a",
+    "inventory_file": "migrations/assistant.source-snapshot.json",
+    "file_count": 11,
+    "captured_before_gate_a_removal": true
   },
   "delivery": {
     "delivery_class": "on-demand",
