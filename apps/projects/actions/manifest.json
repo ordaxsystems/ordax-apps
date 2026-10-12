@@ -4,5 +4,36 @@
   "appVersion": "0.1.0",
   "authority": "none",
   "execution": "proposal-only",
-  "capabilities": []
+  "capabilities": [
+    {
+      "schema": "ordax.application-action-capability/1",
+      "appId": "projects",
+      "actionId": "projects.open",
+      "title": "Abrir projeto",
+      "description": "Solicitar abertura de um projeto conhecido por identidade estável.",
+      "sourceClass": "first-party",
+      "platform": "ordax",
+      "provider": {
+        "kind": "first-party-native",
+        "adapterId": "projects-native",
+        "revision": "1"
+      },
+      "binding": {
+        "payloadSha256": null
+      },
+      "parameters": [
+        {
+          "name": "project",
+          "type": "string",
+          "required": true,
+          "description": "Nome ou ID do projeto."
+        }
+      ],
+      "riskClass": "read-only",
+      "confirmation": "none",
+      "executionAuthorized": false,
+      "modelDirectExecutionAuthorized": false,
+      "provenance": "ordax-apps:apps/projects/actions/manifest.json"
+    }
+  ]
 }
