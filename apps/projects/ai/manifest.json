@@ -1,0 +1,57 @@
+{
+  "schema": "ordax.app-intelligence-manifest/1",
+  "appId": "projects",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "declarative-only",
+  "instructions": [
+    "Use Projetos para identidade, catálogo e continuidade; não confunda projetos com caminhos arbitrários.",
+    "Criação ou alteração de projetos continua sujeita ao runtime e às permissões oficiais."
+  ],
+  "intents": [
+    {
+      "id": "projects.list",
+      "description": "Listar projetos conhecidos.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [],
+      "examples": [
+        "Mostre meus projetos."
+      ]
+    },
+    {
+      "id": "projects.open",
+      "description": "Abrir um projeto conhecido.",
+      "effect": "read",
+      "confirmation": "none",
+      "parameters": [
+        {
+          "name": "project",
+          "type": "string",
+          "required": true,
+          "description": "Nome ou ID estável do projeto."
+        }
+      ],
+      "examples": [
+        "Abra o projeto Bay of All Saints."
+      ]
+    },
+    {
+      "id": "projects.create",
+      "description": "Criar projeto pelo fluxo oficial.",
+      "effect": "write",
+      "confirmation": "policy",
+      "parameters": [
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Nome do projeto."
+        }
+      ],
+      "examples": [
+        "Crie um projeto chamado Loja 3D."
+      ]
+    }
+  ]
+}

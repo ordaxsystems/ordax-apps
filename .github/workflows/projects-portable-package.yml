@@ -1,0 +1,122 @@
+name: Projects Portable Package
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/projects/**'
+      - 'migrations/projects.*'
+      - 'tools/verify_projects_externalization.py'
+      - 'tests/test_projects_externalization.py'
+      - '.github/workflows/projects-portable-package.yml'
+      - 'tools/app-package/**'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/projects/**'
+      - 'migrations/projects.*'
+      - '.github/workflows/projects-portable-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  projects-portable-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact Apps source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify app, provenance and workspace
+        run: |
+          set -euo pipefail
+          node --test apps/projects/tests/projects-runtime.test.mjs
+          python3 -m unittest tests/test_projects_externalization.py
+          python3 tools/verify_projects_externalization.py
+          python3 tools/verify_workspace.py
+
+      - name: Checkout exact OS Gate A source-removal proof
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: 93ec5bbefeb9d2c2f00c9ab8a4525590c8a25454
+          path: .ordax-os-removal
+          persist-credentials: false
+
+      - name: Prove remove-first and retain OS project domain
+        run: |
+          set -euo pipefail
+          test ! -e .ordax-os-removal/system/apps/projects
+          test ! -e .ordax-os-removal/system/services/i18n/catalog/projects.mjs
+          test -f .ordax-os-removal/system/services/files/projects.mjs
+          test -f .ordax-os-removal/system/services/projects/cloud-links-reader.mjs
+          test -f .ordax-os-removal/system/contracts/project-catalog.mjs
+          test -f .ordax-os-removal/system/contracts/project-cloud-links-reader.mjs
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          plan = json.loads(Path("migrations/projects.externalization.json").read_text())
+          snap = json.loads(Path("migrations/projects.source-snapshot.json").read_text())
+          policy = json.loads(Path(".ordax-os-removal/docs/contracts/runtime-component-package.json").read_text())
+          assert plan["gate_a_platform_commit"] == "93ec5bbefeb9d2c2f00c9ab8a4525590c8a25454"
+          assert plan["source_of_truth_state"] == "ordax-apps-canonical"
+          assert plan["distribution_activation_allowed"] is False
+          assert snap["repository"] == "ordaxsystems/ordax-os"
+          assert snap["file_count"] == len(snap["files"]) == 10
+          assert "system/apps/projects/ai/manifest.mjs" in {f["path"] for f in snap["files"]}
+          assert "projects" not in policy["native_loopback_broker_supported_components"]
+          print("PROJECTS_REMOVE_FIRST_SSOT=PASS")
+          PY
+
+      - name: Prove each embedded SDK contract came from the pinned public bundle
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          root = Path(".ordax-os-removal")
+          bundle = json.loads((root / "sdk/app-sdk-v1/bundle.json").read_text())
+          lock = json.loads(Path("platform-sdk.lock.json").read_text())
+          assert bundle["bundle_version"] == lock["bundle_version"] == "1.17.0"
+          sources = {item["source_path"]: item["source_git_blob"]
+                     for item in bundle["contracts"]}
+          names = (
+              "file-space", "project-catalog", "project-cloud-links-data",
+              "project-cloud-links-reader", "app-activation", "device-capabilities",
+              "surface-render-lifecycle", "localization", "locale-profile",
+              "component-runtime",
+          )
+          for name in names:
+              source = f"system/contracts/{name}.mjs"
+              payload = Path(f"apps/projects/src/sdk/contracts/{name}.mjs").read_bytes()
+              digest = hashlib.sha1(b"blob " + str(len(payload)).encode() + bytes([0]) + payload).hexdigest()
+              assert sources[source] == digest, f"published SDK blob drifted: {source}"
+          print("PROJECTS_PUBLIC_SDK_BLOBS=PASS")
+          PY
+
+      - name: Build and verify deterministic unsigned component
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/projects-proof/one" "$RUNNER_TEMP/projects-proof/two"
+          for slot in one two; do
+            python3 tools/app-package/build.py build \
+              --app-root apps/projects \
+              --source-commit "$GITHUB_SHA" \
+              --compatibility apps/projects/compatibility.json \
+              --package-out "$RUNNER_TEMP/projects-proof/$slot/projects.zip" \
+              --release-dir "$RUNNER_TEMP/projects-proof/$slot"
+            python3 tools/app-package/build.py verify \
+              --package "$RUNNER_TEMP/projects-proof/$slot/projects.zip" \
+              --release "$RUNNER_TEMP/projects-proof/$slot/projects.release.json" \
+              --compatibility "$RUNNER_TEMP/projects-proof/$slot/projects.compatibility.json"
+          done
+          cmp "$RUNNER_TEMP/projects-proof/one/projects.zip" "$RUNNER_TEMP/projects-proof/two/projects.zip"
+          cmp "$RUNNER_TEMP/projects-proof/one/projects.release.json" "$RUNNER_TEMP/projects-proof/two/projects.release.json"
+          echo 'PROJECTS_PACKAGE_DETERMINISTIC=PASS'
+          echo 'SIGNING_AUTHORITY=NO'
+          echo 'INSTALL_AUTHORITY=NO'

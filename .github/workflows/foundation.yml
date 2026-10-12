@@ -351,10 +351,13 @@ jobs:
           set -euo pipefail
           out="/tmp/ordax-notes-lifecycle"
           rm -rf "$out"
-          mkdir -p "$out/current/release" "$out/failed/release" "$out/healthy/release"
+          mkdir -p "$out/current/release"
+          # Ephemeral, monotonic update candidates, never rewriting canonical Notes.
+          python3 tests/prepare_notes_lifecycle_fixtures.py --out "$out"
+          mkdir -p "$out/failed/release" "$out/healthy/release"
           source_commit="$(git rev-parse HEAD)"
-          failed_source_commit="1111111111111111111111111111111111111111"
-          healthy_source_commit="2222222222222222222222222222222222222222"
+          failed_source_commit="$(cat "$out/failed/source_commit")"
+          healthy_source_commit="$(cat "$out/healthy/source_commit")"
 
           python3 tools/app-package/build.py build \
             --app-root apps/notes \
@@ -368,9 +371,9 @@ jobs:
             --compatibility "$out/current/release/notes.compatibility.json"
 
           python3 tools/app-package/build.py build \
-            --app-root apps/notes \
+            --app-root "$out/failed/source" \
             --source-commit "$failed_source_commit" \
-            --compatibility migrations/notes.compatibility.json \
+            --compatibility "$out/failed/compatibility.json" \
             --package-out "$out/failed/notes.zip" \
             --release-dir "$out/failed/release"
           python3 tools/app-package/build.py verify \
@@ -379,9 +382,9 @@ jobs:
             --compatibility "$out/failed/release/notes.compatibility.json"
 
           python3 tools/app-package/build.py build \
-            --app-root apps/notes \
+            --app-root "$out/healthy/source" \
             --source-commit "$healthy_source_commit" \
-            --compatibility migrations/notes.compatibility.json \
+            --compatibility "$out/healthy/compatibility.json" \
             --package-out "$out/healthy/notes.zip" \
             --release-dir "$out/healthy/release"
           python3 tools/app-package/build.py verify \
