@@ -94,7 +94,7 @@ jobs:
           for name in names:
               source = f"system/contracts/{name}.mjs"
               payload = Path(f"apps/projects/src/sdk/{name}.mjs").read_bytes()
-              digest = hashlib.sha1(b"blob " + str(len(payload)).encode() + b"\\0" + payload).hexdigest()
+              digest = hashlib.sha1(b"blob " + str(len(payload)).encode() + bytes([0]) + payload).hexdigest()
               assert sources[source] == digest, f"published SDK blob drifted: {source}"
           print("PROJECTS_PUBLIC_SDK_BLOBS=PASS")
           PY
