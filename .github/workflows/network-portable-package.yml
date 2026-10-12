@@ -1,0 +1,91 @@
+name: Network Portable Package
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/network/**'
+      - 'migrations/network.*'
+      - '.github/workflows/network-portable-package.yml'
+      - 'platform-sdk.lock.json'
+      - 'tools/app-package/**'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/network/**'
+      - 'migrations/network.*'
+      - '.github/workflows/network-portable-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  network-portable-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Checkout exact canonical apps source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify Network runtime and Space-boundary regressions
+        run: |
+          set -euo pipefail
+          node --test apps/network/tests/network-runtime.test.mjs
+          python3 -m json.tool migrations/network.externalization.json >/dev/null
+          python3 -m json.tool migrations/network.source-snapshot.json >/dev/null
+          python3 tools/verify_workspace.py
+
+      - name: Verify source cutover on exact OS removal commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: b0bad62374c88a18b00cf14744651686317afd53
+          path: .ordax-os-removal
+          persist-credentials: false
+
+      - name: Prove one source owner, without removing Wi-Fi services
+        run: |
+          set -euo pipefail
+          test ! -e .ordax-os-removal/system/apps/network
+          test ! -e .ordax-os-removal/system/services/i18n/catalog/network-app.mjs
+          test -f .ordax-os-removal/system/services/professional-network/draft.mjs
+          test -f .ordax-os-removal/system/surface/ui/network-quick-panel.mjs
+          test -f .ordax-os-removal/system/contracts/network-draft.mjs
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path(".ordax-os-removal")
+          policy = json.loads((root/"docs/contracts/runtime-component-package.json").read_text())
+          assert policy["canonical_package_source_repository_by_component"]["network"] == "ordaxsystems/ordax-apps"
+          assert "network" not in policy["native_loopback_broker_supported_components"]
+          assert "network" not in policy["runtime_health_bridge_supported_components"]
+          source = json.loads(Path("migrations/network.source-snapshot.json").read_text())
+          assert source["source_removed_at"] == "b0bad62374c88a18b00cf14744651686317afd53"
+          assert source["source_file_count"] == 8
+          print("NETWORK_REMOVE_FIRST_SSOT=PASS")
+          PY
+
+      - name: Build and verify deterministic unsigned Network component
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/network-proof/one" "$RUNNER_TEMP/network-proof/two"
+          for slot in one two; do
+            python3 tools/app-package/build.py build \
+              --app-root apps/network \
+              --source-commit "$GITHUB_SHA" \
+              --compatibility apps/network/compatibility.json \
+              --package-out "$RUNNER_TEMP/network-proof/$slot/network.zip" \
+              --release-dir "$RUNNER_TEMP/network-proof/$slot"
+            python3 tools/app-package/build.py verify \
+              --package "$RUNNER_TEMP/network-proof/$slot/network.zip" \
+              --release "$RUNNER_TEMP/network-proof/$slot/network.release.json" \
+              --compatibility "$RUNNER_TEMP/network-proof/$slot/network.compatibility.json"
+          done
+          cmp "$RUNNER_TEMP/network-proof/one/network.zip" "$RUNNER_TEMP/network-proof/two/network.zip"
+          cmp "$RUNNER_TEMP/network-proof/one/network.release.json" "$RUNNER_TEMP/network-proof/two/network.release.json"
+          echo 'NETWORK_PACKAGE_DETERMINISTIC=PASS'
+          echo 'SIGNING_AUTHORITY=NO'
+          echo 'INSTALL_AUTHORITY=NO'
