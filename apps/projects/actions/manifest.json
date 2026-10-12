@@ -21,14 +21,7 @@
       "binding": {
         "payloadSha256": null
       },
-      "parameters": [
-        {
-          "name": "project",
-          "type": "string",
-          "required": true,
-          "description": "Nome ou ID do projeto."
-        }
-      ],
+      "parameters": [],
       "riskClass": "read-only",
       "confirmation": "none",
       "executionAuthorized": false,
