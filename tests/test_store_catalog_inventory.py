@@ -69,6 +69,26 @@ class CatalogInventoryTests(unittest.TestCase):
             self.assertTrue(entries[0]["compatibility"].endswith("apps/alpha/compatibility.json"))
             self.assertTrue(entries[1]["compatibility"].endswith("migrations/beta.compatibility.json"))
 
+    def test_rejects_platform_owned_staging_even_when_marked_unsigned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            apps, migrations = root / "apps", root / "migrations"
+            migrations.mkdir()
+            write_json(apps / "files" / "app.json", manifest("files"))
+            write_json(apps / "files" / "compatibility.json", compatibility("files"))
+            write_json(migrations / "files.externalization.json", {
+                "source_repository_current": "ordaxsystems/ordax-os",
+                "source_cutover_allowed": False,
+                "distribution_activation_allowed": False,
+                "prelaunch_package_staging": {
+                    "enabled": True,
+                    "mode": "unsigned-package-candidate",
+                    "activation_allowed": False,
+                },
+            })
+            with self.assertRaisesRegex(catalog_inventory.CatalogInventoryError, "platform-owned source"):
+                catalog_inventory.discover_catalog_apps(apps, migrations)
+
     def test_rejects_ambiguous_compatibility_ssot(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
