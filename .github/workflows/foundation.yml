@@ -216,37 +216,14 @@ jobs:
           path: .ordax-internet-current
           persist-credentials: false
 
-      - name: Audit immutable Internet snapshot against live platform tree
+      - name: Audit immutable Internet snapshot against current OS and prove exclusive source state
         run: |
+          python3 -m unittest -v tests.test_internet_cross_repo_gate
           python3 tools/verify_internet_externalization.py \
-            --current-platform-root .ordax-internet-current \
-            --require-current-source > /tmp/ordax-internet-source-drift.json
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          report = json.loads(Path("/tmp/ordax-internet-source-drift.json").read_text(encoding="utf-8"))
-          drift = report["current_platform_source"]
-          assert drift is not None, "current platform proof must run"
-          assert report["source_cutover_allowed"] is False
-          assert report["distribution_activation_allowed"] is False
-          assert report["checked_out_blob_integrity_verified"] is False
-          assert drift["snapshot_current"] is True
-          assert all(drift[field] == [] for field in ("changed", "added", "deleted"))
-          assert drift["current_file_count"] == report["source_file_count"]
-          gate_a = report["gate_a_platform_consumers"]
-          assert gate_a["schema"] == "ordax.internet-gate-a-platform-consumers/1"
-          assert gate_a["platform_commit"] == drift["current_platform_commit"]
-          assert gate_a["host_boundary_intact"] is True
-          assert gate_a["absence_preflight_ready"] is False
-          assert len(gate_a["owned_source_paths"]) == report["source_file_count"]
-          assert len(gate_a["consumer_imports"]) > 0
-          assert gate_a["platform_boot_verified"] is False
-          assert gate_a["external_distribution_verified"] is False
-          print("Internet snapshot equals current platform product blobs")
-          print("Internet Gate A dependency inventory (read-only):")
-          print(json.dumps(gate_a, ensure_ascii=False, indent=2, sort_keys=True))
-          print(json.dumps(drift, ensure_ascii=False, indent=2, sort_keys=True))
-          PY
+            --current-platform-root .ordax-internet-current > /tmp/ordax-internet-source-drift.json
+          python3 tools/verify_internet_cross_repo_gate.py \
+            --report /tmp/ordax-internet-source-drift.json \
+            --platform-root .ordax-internet-current
 
       - name: Prove Notes externalization preflight
         run: python3 tools/verify_notes_externalization.py
