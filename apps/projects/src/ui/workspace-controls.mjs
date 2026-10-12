@@ -11,7 +11,7 @@ import { assertSurfaceRenderLifecycle } from "../sdk/contracts/surface-render-li
 import { translateProjectsMessage } from "../i18n/messages.mjs";
 
 const PROJECTS_WINDOW_SELECTOR = '[data-window-id="projects"]';
-const PROJECTS_EXTENSION_SELECTOR = '[data-app-extension="projects-workspace"]';
+const PROJECTS_EXTENSION_SELECTOR = '[data-app-extension="projects"]';
 
 function node(documentObject, tag, className = "", text = undefined) {
   const element = documentObject.createElement(tag);
