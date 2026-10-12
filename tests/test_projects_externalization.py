@@ -29,6 +29,8 @@ class ProjectsExternalizationTests(unittest.TestCase):
         self.snapshot = json.loads(
             (ROOT / "migrations" / "projects.source-snapshot.json").read_text(encoding="utf-8")
         )
+        (self.root / "apps/projects/src").mkdir(parents=True)
+        (self.root / "apps/projects/src/runtime.mjs").write_text("export const componentRuntime = {};", encoding="utf-8")
         self._write()
 
     def _write(self):
@@ -52,7 +54,7 @@ class ProjectsExternalizationTests(unittest.TestCase):
 
     def test_pinned_sdk_and_snapshot_are_structurally_valid_without_cutover(self):
         self.verify()
-        self.assertFalse(self.plan["source_cutover_allowed"])
+        self.assertTrue(self.plan["source_cutover_allowed"])
         self.assertFalse(self.plan["distribution_activation_allowed"])
 
     def test_sdk_merged_pr_is_required_and_cannot_revert_to_pending(self):
@@ -62,14 +64,14 @@ class ProjectsExternalizationTests(unittest.TestCase):
             self.verify()
 
     def test_platform_source_removal_cannot_be_silently_bypassed(self):
-        self.plan["source_cutover_allowed"] = True
-        self._write()
-        with self.assertRaisesRegex(SystemExit, "cutover must remain blocked"):
-            self.verify()
         self.plan["source_cutover_allowed"] = False
-        (self.root / "apps" / "projects").mkdir()
         self._write()
-        with self.assertRaisesRegex(SystemExit, "dual source"):
+        with self.assertRaisesRegex(SystemExit, "cutover requires proven"):
+            self.verify()
+        self.plan["source_cutover_allowed"] = True
+        (self.root / "apps" / "projects" / "src" / "runtime.mjs").unlink()
+        self._write()
+        with self.assertRaisesRegex(SystemExit, "portable Projects runtime is missing"):
             self.verify()
 
     def test_snapshot_rejects_unreviewed_paths_and_duplicate_entries(self):
