@@ -35,7 +35,7 @@ test("read-only cloud-links projection never invents or mutates platform project
       localProjectId: "project-1", cloudProjectId: cloudId,
       spaceId, linkedAt: 30,
     }, {
-      localProjectId: "orphan", cloudProjectId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      localProjectId: "project-99", cloudProjectId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       spaceId, linkedAt: 40,
     }] },
   });
