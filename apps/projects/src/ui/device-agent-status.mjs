@@ -1,5 +1,6 @@
 import { assertSurfaceRenderLifecycle } from "../sdk/contracts/surface-render-lifecycle.mjs";
 import { validateProjectsDeviceAgentStatus } from "../device-agent-status.mjs";
+import { translateProjectsMessage } from "../i18n/messages.mjs";
 
 const PROJECTS_WINDOW_SELECTOR = '[data-window-id="projects"]';
 const PROJECTS_EXTENSION_SELECTOR = '[data-app-extension="projects-workspace"]';
@@ -42,7 +43,7 @@ export function mountProjectsDeviceAgentStatus(
       summary.append(badge);
     }
     badge.dataset.state = status.state;
-    badge.textContent = localization.translate(projectsDeviceAgentMessageId(status), {
+    badge.textContent = translateProjectsMessage(localization.getLocale(), projectsDeviceAgentMessageId(status), {
       count: status.capabilityCount,
     });
   };
