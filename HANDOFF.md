@@ -162,7 +162,7 @@ A publicação pública entrou no App SDK 1.8 por `prototipo-ordax-os#1144`. O c
 
 ## Estado dos candidatos ao MVP (2026-10-08)
 
-O conjunto de 20 alvos, incluindo 13 candidatos com fonte e handoff público não assinado, o Studio com distribuição própria e os apps cujo source ainda pertence à plataforma, é derivado de `ordax-apps.workspace.json` e das migrations pelo verificador `tools/verify_mvp_app_minimum.py`. Não manter uma segunda lista de inventário neste handoff: consultar `docs/MVP-MINIMO-TODOS-APPS.md` para os gates e executar o verificador no commit desejado. O workflow de Store exporta os 13 ZIPs e sidecars verificados como artefatos **não assinados**; CI bem-sucedida não concede publicação, instalação nem ativação.
+O conjunto de 20 alvos — 13 candidatos iniciais, mais Rede e Projetos com fonte transferida e entrega ainda bloqueada, Studio com distribuição própria e quatro alvos ainda pertencentes à plataforma — é derivado de `ordax-apps.workspace.json` e das migrations por `tools/verify_mvp_app_minimum.py`. Não manter uma segunda lista de inventário neste handoff: consultar `docs/MVP-MINIMO-TODOS-APPS.md` para os gates e executar o verificador no commit desejado. O workflow de Store exporta os ZIPs e sidecars do inventário efetivamente elegível (13 era o piso, não um total fixo) como artefatos **não assinados**; CI bem-sucedida não concede publicação, instalação nem ativação.
 
 ## Próxima ordem de trabalho
 
