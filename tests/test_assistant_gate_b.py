@@ -37,7 +37,10 @@ class AssistantGateBTests(unittest.TestCase):
         self.assertEqual(report["source_file_count"], 11)
         self.assertEqual(report["mapped_source_count"], 11)
         self.assertEqual(report["required_sdk_version"], "1.18.0")
-        self.assertFalse(report["sdk_version_sufficient"])
+        lock = json.loads((ROOT / "platform-sdk.lock.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["sdk_version_sufficient"],
+                         gate.semver(lock["bundle_version"]) >= (1, 18, 0))
+        self.assertFalse(report["sdk_graph_verified"])  # No SDK checkout was passed
         self.assertFalse(report["gate_b_allowed_now"])
         self.assertFalse(report["platform_gate_a_main_proven"])
 
@@ -69,6 +72,23 @@ class AssistantGateBTests(unittest.TestCase):
             root = self.fixture(tmp)
             (root / "apps/assistant/src").mkdir(parents=True)
             with self.assertRaisesRegex(gate.AssistantGateError, "second Assistant"):
+                gate.audit(root)
+
+    def test_real_source_manifest_version_is_immutable_and_single_owned(self):
+        mapping = json.loads((ROOT / FILES[2]).read_text(encoding="utf-8"))
+        self.assertEqual(mapping["manifest_replacement"]["version"], "0.1.1")
+        self.assertEqual({row["source"] for row in mapping["mappings"] if
+                          row["operation"] in gate.MANIFEST_OPS},
+                         {"system/apps/assistant/app.mjs",
+                          "system/apps/assistant/component.mjs",
+                          "system/apps/assistant/version.mjs"})
+
+    def test_virtual_paths_cannot_be_replaced_by_second_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.fixture(tmp)
+            self.mutation(root, FILES[2], lambda d:
+                          d["mappings"][-1].update(target="apps/assistant/app.json"))
+            with self.assertRaises(gate.AssistantGateError):
                 gate.audit(root)
 
     def test_security_rules_and_published_contract_floor_are_required(self):
