@@ -33,14 +33,16 @@ export class ProductRuntime {
     this.journalKey = 'runtime-operations'; this.journalSubject = null; this.acceptingAccount = false;
     this.#token = env.ORDAX_PRODUCT_ACCESS_TOKEN?.trim() || '';
     this.spaceId = env.ORDAX_PRODUCT_SPACE_ID?.trim() || null;
-    this.base = env.ORDAX_PRODUCT_CONTROL_PLANE_URL?.trim() || 'https://ordax-control-plane-v3.ordax-ac1ca1b50d09.workers.dev';
+    // Explicit first-party origin only. Never send account bearer tokens to a
+    // retired Worker inferred from a build-time default.
+    this.base = env.ORDAX_PRODUCT_CONTROL_PLANE_URL?.trim() || '';
     this.configured = false;
     this.catalogAvailable = false; this.targetsCheckedAt = null; this.targetIssue = ''; this.targetsPending = null; this.connectPending = null; this.nextTargetsAt = 0;
     try {
       const url = new URL(this.base);
       if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error();
       this.base = url.origin; this.configured = Boolean(this.#token) && this.#token.length <= 16000 && !/[\r\n]/.test(this.#token) && (!this.spaceId || identifier(this.spaceId));
-    } catch { this.issue = 'A conexão do Runtime requer a origem HTTPS do ControlPlane.'; }
+    } catch { this.issue = 'A conexão Product exige a origem HTTPS canônica configurada pelo host; nenhum servidor antigo será escolhido automaticamente.'; }
   }
   async init() {
     let saved;

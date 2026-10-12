@@ -21,6 +21,18 @@ function fixture() {
   const options = { storage, env: { ORDAX_PRODUCT_ACCESS_TOKEN: 'fake-token', ORDAX_PRODUCT_CONTROL_PLANE_URL: 'https://runtime.invalid' }, fetcher, interval: 100000 };
   return { disk, calls, storage, fetcher, options, setBehavior: value => { behavior = value; } };
 }
+test('Product host never falls back to retired Cloudflare Worker when origin is unconfigured', async t => {
+  const f = fixture();
+  delete f.options.env.ORDAX_PRODUCT_CONTROL_PLANE_URL;
+  const runtime = new ProductRuntime(f.options);
+  await runtime.init();
+  t.after(() => runtime.close());
+  assert.equal(runtime.state().configured, false);
+  assert.match(runtime.state().issue, /origem HTTPS canônica/);
+  await assert.rejects(runtime.connect(), /sessão autorizada/);
+  assert.equal(f.calls.length, 0, 'must never leak bearer token to inferred endpoint');
+});
+
 const command = { kind: 'terminal', deviceId: 'fake-device', project: 'demo', cwd: '.', argv: ['git', 'status', '--short'] };
 test('desktop goes offline after connection: a fresh authorized read prevents every action POST', async t => {
   const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();
