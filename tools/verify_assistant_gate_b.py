@@ -58,7 +58,74 @@ def checkout(root, wanted):
          "wrong pinned OS source/SDK checkout")
     return root
 
-def audit(root=ROOT, source_root=None, sdk_root=None):
+
+def probe_platform_gate_a(main_checkout: Path) -> dict:
+    """Prove absence at one observed main ref; never treat it as install proof."""
+    main_checkout = main_checkout.resolve()
+    need(main_checkout.is_dir() and (main_checkout / ".git").exists(),
+         "canonical platform Git checkout missing")
+    def git(*args):
+        result = subprocess.run(["git", "-C", str(main_checkout), *args],
+                                capture_output=True, text=True, check=False)
+        need(result.returncode == 0, "cannot read canonical OS Git state")
+        return result.stdout.strip()
+    origin = git("remote", "get-url", "origin").removesuffix(".git").rstrip("/")
+    need(origin in {"https://github.com/ordaxsystems/ordax-os",
+                    "git@github.com:ordaxsystems/ordax-os",
+                    "ssh://git@github.com/ordaxsystems/ordax-os"},
+         "OS source origin is not the canonical repository")
+    need(git("status", "--porcelain", "--untracked-files=normal") == "",
+         "canonical OS main checkout is dirty")
+    commit = git("rev-parse", "HEAD")
+    need(SHA1.fullmatch(commit), "OS main checkout has invalid commit")
+    need(git("symbolic-ref", "--short", "HEAD") == "main"
+         and git("rev-parse", "refs/remotes/origin/main") == commit,
+         "OS Gate A checkout is not verified tracking main")
+    tracked = git("ls-files", "-z", "--", "system")
+    # git outputs NUL-separated paths; subprocess text preserves NUL.
+    tracked_paths = set(filter(None, tracked.split("\0")))
+    owned_paths = sorted(p for p in tracked_paths if
+                         p.startswith("system/apps/assistant/")
+                         or p == "system/services/i18n/catalog/assistant.mjs")
+    unresolved_consumers = []
+    for name in sorted(tracked_paths):
+        if name in owned_paths or not name.endswith((".mjs", ".js", ".ts", ".tsx")):
+            continue
+        path = main_checkout / name
+        need(path.is_file() and not path.is_symlink(),
+             "linked/missing platform runtime module")
+        code = path.read_text(encoding="utf-8")
+        for match in IMPORTS.finditer(code):
+            spec = match.group(1) or match.group(2)
+            if not spec.startswith("."):
+                continue
+            resolved = posixpath.normpath(posixpath.join(
+                posixpath.dirname(name), spec))
+            if (resolved.startswith("system/apps/assistant/")
+                    or resolved == "system/services/i18n/catalog/assistant.mjs"):
+                unresolved_consumers.append({"module": name, "dependency": resolved})
+    package_policy = main_checkout / "docs/contracts/runtime-component-package.json"
+    need(package_policy.is_file() and not package_policy.is_symlink(),
+         "OS runtime-component package policy is absent")
+    policy = json.loads(package_policy.read_text(encoding="utf-8"))
+    marker = policy.get("prelaunch_remove_first_pending", {}).get("assistant")
+    policy_correct = isinstance(marker, dict) and all((
+        marker.get("state") == "platform-source-removed-app-source-pending",
+        marker.get("expected_repository") == "ordaxsystems/ordax-apps",
+        marker.get("platform_source_absence_required") is True,
+        marker.get("distribution_activation_allowed") is False,
+    ))
+    return {
+        "observed_main_commit": commit,
+        "tracked_assistant_source": owned_paths,
+        "live_assistant_source_imports": unresolved_consumers,
+        "pending_policy_fail_closed": policy_correct,
+        "platform_gate_a_main_proven": not owned_paths and
+            not unresolved_consumers and policy_correct,
+    }
+
+def audit(root=ROOT, source_root=None, sdk_root=None,
+          current_platform_root=None):
     plan = read(root, "migrations/assistant.externalization.json")
     snap = read(root, "migrations/assistant.source-snapshot.json")
     mapping = read(root, "migrations/assistant.gate-b-transfer-map.json")
@@ -274,6 +341,8 @@ def audit(root=ROOT, source_root=None, sdk_root=None):
         for module in transitive_sdk_sources:
             target = sdk_package_prefix + posixpath.basename(module)
             need(target not in deploy_paths, "SDK/app target path collides")
+    platform = (probe_platform_gate_a(current_platform_root)
+                if current_platform_root is not None else None)
     return {
         "schema": "ordax.assistant-gate-b-preflight/1",
         "source_file_count": len(pinned),
@@ -293,7 +362,9 @@ def audit(root=ROOT, source_root=None, sdk_root=None):
         "manifest_rewrites_required": manual_manifest_rewrites,
         "virtual_imports_resolved": blob_proof and
             len(resolved_relocations) + len(manual_manifest_rewrites) == len(obligations),
-        "platform_gate_a_main_proven": False,
+        "platform_gate_a_main_proven":
+            platform["platform_gate_a_main_proven"] if platform else False,
+        "platform_main_observation": platform,
         "app_source_materialized": False,
         "signed_install_verified": False,
         "rollback_verified": False,
@@ -305,8 +376,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", type=Path)
     parser.add_argument("--sdk-root", type=Path)
+    parser.add_argument("--current-platform-root", type=Path)
     args = parser.parse_args()
-    print(json.dumps(audit(source_root=args.source_root, sdk_root=args.sdk_root),
+    print(json.dumps(audit(source_root=args.source_root,
+                          sdk_root=args.sdk_root,
+                          current_platform_root=args.current_platform_root),
                      ensure_ascii=False, sort_keys=True, indent=2))
 
 if __name__ == "__main__":
