@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { componentRuntime } from "../src/runtime.mjs";
-import { createProjectsPresentation } from "../src/ui/workspace-controls.mjs";
+import { createProjectsPresentation, mountProjectsWorkspaceControls } from "../src/ui/workspace-controls.mjs";
 import { probeProjectsDeviceAgent } from "../src/device-agent-status.mjs";
 import { assertDeviceAgentCapabilityReaderPort } from "../src/sdk/contracts/device-capabilities.mjs";
 import { translateProjectsMessage } from "../src/i18n/messages.mjs";
 import { readFileSync } from "node:fs";
+import { createLocaleProfile } from "../src/sdk/contracts/locale-profile.mjs";
 
 const cloudId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const spaceId = "11111111-1111-4111-8111-111111111111";
@@ -78,4 +79,56 @@ test("project UI consumes only the read-only published reader, not mutable catal
   assert.match(source, /assertProjectCatalogReader\(projects\)/);
   assert.doesNotMatch(source, /assertProjectCatalogPort\(projects\)/);
   assert.match(source, /Projects app accepts a read-only project-catalog reader/);
+});
+
+test("external Projects receives a read-only platform projection and unsubscribes cleanly", () => {
+  const snapshot = { persistence: "device", projects: [project] };
+  const unsubscribed = [];
+  const reader = {
+    schema: "ordax.project-catalog/1",
+    getSnapshot() { return snapshot; },
+    subscribe(callback) {
+      callback(snapshot);
+      return () => unsubscribed.push("projects");
+    },
+  };
+  const lifecycle = {
+    schema: "ordax.surface-render-lifecycle/5",
+    localization: {
+      schema: "ordax.localization/2",
+      getLocale: () => "pt-BR",
+      getProfile: () => createLocaleProfile("pt-BR"),
+      translate: (id) => id, // Host cannot supply package-owned translations
+      subscribe(callback) {
+        callback("pt-BR");
+        return () => unsubscribed.push("locale");
+      },
+    },
+    getAppTarget: () => null,
+    setAppTarget: () => null,
+    subscribeRender: () => () => unsubscribed.push("render"),
+  };
+  let handlers = 0;
+  const root = {
+    ownerDocument: {},
+    querySelector: () => null,
+    addEventListener() { handlers += 1; },
+    removeEventListener() { handlers -= 1; },
+  };
+
+  // Privileged catalog must be narrowed by OS before injection into app.
+  assert.throws(() => mountProjectsWorkspaceControls(root, {
+    projects: { ...reader, remove() {} },
+    surfaceLifecycle: lifecycle,
+  }), /read-only project-catalog reader/);
+
+  const mounted = mountProjectsWorkspaceControls(root, {
+    projects: reader,
+    surfaceLifecycle: lifecycle,
+  });
+  assert.equal(handlers, 1);
+  mounted.destroy();
+  mounted.destroy();
+  assert.equal(handlers, 0);
+  assert.deepEqual(unsubscribed.sort(), ["locale", "projects", "render"]);
 });
