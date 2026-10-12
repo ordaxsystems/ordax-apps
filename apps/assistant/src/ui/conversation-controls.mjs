@@ -5,6 +5,7 @@ import { ASSISTANT_CONVERSATION_SCHEMA } from "../conversation.mjs";
 import { PERSONAL_ORDAX_MAX_GOAL_CHARS } from "../sdk/contracts/personal-ordax.mjs";
 import { PERSONAL_ORDAX_RUNTIME_SCHEMA } from "../sdk/contracts/personal-ordax-store.mjs";
 import { projectAssistantResultCanvas } from "./result-view-model.mjs";
+import { ASSISTANT_SOURCE_MESSAGES, ASSISTANT_ENGLISH_MESSAGES, translateAssistantMessage } from "../i18n/messages.mjs";
 import { projectAssistantWorkStrip, resolveAssistantWorkScope } from "./work-strip.mjs";
 
 const EXTENSION_SELECTOR = '[data-app-extension="assistant-conversation"]';
@@ -130,7 +131,11 @@ export function mountAssistantConversationControls(
   const conversation = requireConversation(conversationValue);
   const activityNavigation = appActivation === null ? null : assertAppActivationPort(appActivation);
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
-  const t = lifecycle.localization.translate;
+  const t = (messageId, params = {}) => (
+    Object.hasOwn(ASSISTANT_SOURCE_MESSAGES, messageId) ||
+    Object.hasOwn(ASSISTANT_ENGLISH_MESSAGES, messageId)
+  ) ? translateAssistantMessage(lifecycle.localization.getLocale(), messageId, params)
+    : lifecycle.localization.translate(messageId, params);
   const documentObject = root.ownerDocument;
   let destroyed = false;
   let draft = "";
