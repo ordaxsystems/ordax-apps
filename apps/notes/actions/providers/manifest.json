@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "notes",
+  "appVersion": "0.4.3",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "notes-native",
+      "revision": "2",
+      "module": "actions/providers/notes-native.mjs",
+      "sha256": "91ac52eef8cc06fe17dfe294d10d45bb5befafc700d9dec60e072e87c5a71e0d"
+    }
+  ]
+}

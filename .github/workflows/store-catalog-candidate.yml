@@ -1,0 +1,422 @@
+name: Store Catalog Candidate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'tests/test_mvp_platform_ownership.py'
+      - 'migrations/**'
+      - 'migrations/notes.platform-lifecycle.lock.json'
+      - 'ordax-apps.workspace.json'
+      - 'tools/audit_app_readiness.py'
+      - 'tools/verify_mvp_app_minimum.py'
+      - 'tests/test_mvp_app_minimum.py'
+      - 'tests/test_platform_lifecycle_lock.py'
+      - 'tools/app-package/**'
+      - 'tests/test_store_catalog_candidate.py'
+      - 'tests/test_store_catalog_inventory.py'
+      - 'tests/test_store_catalog_publication.py'
+      - 'tests/test_store_catalog_publication_v2.py'
+      - 'tests/test_store_artifact_bundle.py'
+      - 'tests/test_unsigned_store_handoff.py'
+      - 'tests/test_package_receipt_source_semantics.py'
+      - 'tests/test_app_package_atomic_snapshot.py'
+      - 'tests/test_package_zip_structure.py'
+      - '.github/workflows/store-catalog-candidate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'tests/test_mvp_platform_ownership.py'
+      - 'migrations/**'
+      - 'migrations/notes.platform-lifecycle.lock.json'
+      - 'ordax-apps.workspace.json'
+      - 'tools/audit_app_readiness.py'
+      - 'tools/verify_mvp_app_minimum.py'
+      - 'tests/test_mvp_app_minimum.py'
+      - 'tests/test_platform_lifecycle_lock.py'
+      - 'tools/app-package/**'
+      - 'tests/test_store_catalog_candidate.py'
+      - 'tests/test_store_catalog_inventory.py'
+      - 'tests/test_store_catalog_publication.py'
+      - 'tests/test_store_catalog_publication_v2.py'
+      - 'tests/test_store_artifact_bundle.py'
+      - 'tests/test_unsigned_store_handoff.py'
+      - '.github/workflows/store-catalog-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  catalog-candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact app source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Resolve pinned platform lifecycle owner
+        id: lifecycle-lock
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import re
+          from pathlib import Path
+
+          lock = json.loads(Path("migrations/notes.platform-lifecycle.lock.json").read_text(encoding="utf-8"))
+          repository = lock.get("repository")
+          commit = lock.get("commit")
+          workspace = json.loads(Path("ordax-apps.workspace.json").read_text(encoding="utf-8"))
+          canonical_repository = workspace["platform_repository"]
+          assert repository == canonical_repository == "ordaxsystems/ordax-os"
+          assert isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit)
+          assert lock.get("tool_path") == "tools/runtime-component-channel"
+          assert lock.get("authority") == "none"
+          print(f"repository={canonical_repository}")
+          print(f"commit={commit}")
+          PY
+
+      - name: Checkout pinned platform lifecycle verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ steps.lifecycle-lock.outputs.repository }}
+          ref: ${{ steps.lifecycle-lock.outputs.commit }}
+          path: .ordax-platform-lifecycle
+          persist-credentials: false
+
+      - name: Verify pinned platform lifecycle identity
+        run: |
+          set -euo pipefail
+          expected="$(python3 -c 'import json; print(json.load(open("migrations/notes.platform-lifecycle.lock.json", encoding="utf-8"))["commit"])')"
+          actual="$(git -C .ordax-platform-lifecycle rev-parse HEAD)"
+          test "$actual" = "$expected"
+          test "$(python3 -c 'import json; print(json.load(open("migrations/notes.platform-lifecycle.lock.json", encoding="utf-8"))["tool_path"])')" = "tools/runtime-component-channel"
+
+      - name: Set up Go for canonical platform verifier
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: .ordax-platform-lifecycle/tools/runtime-component-channel/go.mod
+          cache: false
+
+      - name: Prove deterministic catalog boundaries
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            tools/app-package/catalog_inventory.py \
+            tools/app-package/render_store_catalog_candidate.py \
+            tools/app-package/render_store_catalog_publication.py \
+            tools/app-package/render_store_catalog_publication_v2.py \
+            tools/app-package/materialize_store_artifact_bundle.py \
+            tools/app-package/materialize_unsigned_store_handoff.py \
+            tools/app-package/verify_store_unsigned_export.py
+          python3 -m unittest \
+            tests/test_store_catalog_inventory.py \
+            tests/test_store_catalog_candidate.py \
+            tests/test_store_catalog_publication.py \
+            tests/test_store_catalog_publication_v2.py \
+            tests/test_store_artifact_bundle.py \
+            tests/test_unsigned_store_handoff.py \
+            tests/test_package_receipt_source_semantics.py \
+            tests/test_app_package_atomic_snapshot.py \
+            tests/test_package_zip_structure.py
+
+      - name: Guard minimum entry for every planned app and current Store candidate set
+        run: |
+          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py tests/test_platform_lifecycle_lock.py
+          python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
+
+      - name: Build canonical platform verifier
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-platform-verifier"
+          mkdir -p "$out"
+          (
+            cd .ordax-platform-lifecycle/tools/runtime-component-channel
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+              go build -trimpath -buildvcs=false -ldflags='-s -w' \
+              -o "$out/ordax-runtime-component-channel" .
+          )
+          test -x "$out/ordax-runtime-component-channel"
+
+      - name: Build exact first-party catalog input
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          rm -rf "$out"
+          mkdir -p "$out/artifacts"
+
+          mapfile -t inventory < <(
+            python3 tools/app-package/catalog_inventory.py --format tsv
+          )
+          test "${#inventory[@]}" -gt 0
+
+          handoff_args=()
+          for row in "${inventory[@]}"; do
+            IFS=$'\t' read -r app app_root compatibility <<<"$row"
+            app_out="$out/artifacts/$app"
+            mkdir -p "$app_out/release"
+
+            python3 tools/app-package/build.py build \
+              --app-root "$app_root" \
+              --source-commit "$GITHUB_SHA" \
+              --compatibility "$compatibility" \
+              --package-out "$app_out/$app.zip" \
+              --release-dir "$app_out/release"
+
+            python3 tools/app-package/build.py verify \
+              --package "$app_out/$app.zip" \
+              --release "$app_out/release/$app.release.json" \
+              --compatibility "$app_out/release/$app.compatibility.json"
+
+            python3 tools/app-package/render_unsigned_handoff.py \
+              --package "$app_out/$app.zip" \
+              --release "$app_out/release/$app.release.json" \
+              --compatibility "$app_out/release/$app.compatibility.json" \
+              --app-id "$app" \
+              --source-commit "$GITHUB_SHA" \
+              --out "$out/$app.unsigned-candidate.json"
+
+            cp "$app_out/release/$app.release.json" "$app_out/$app.release.json"
+            cp "$app_out/release/$app.compatibility.json" "$app_out/$app.compatibility.json"
+            handoff_args+=(--handoff "$out/$app.unsigned-candidate.json")
+          done
+
+          python3 tools/app-package/render_store_catalog_candidate.py \
+            "${handoff_args[@]}" \
+            --apps-root apps \
+            --source-commit "$GITHUB_SHA" \
+            --out "$out/store.catalog-candidate.json"
+
+          python3 tools/app-package/render_store_catalog_publication.py \
+            --candidate "$out/store.catalog-candidate.json" \
+            --sequence 1 \
+            --out "$out/store.catalog-publication-v1.json"
+
+      - name: Prove signed component envelope requirement for catalog v2
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          verifier="$RUNNER_TEMP/ordax-platform-verifier/ordax-runtime-component-channel"
+          secrets_dir="$RUNNER_TEMP/ordax-store-catalog-secrets"
+          rm -rf "$secrets_dir"
+          mkdir -p "$secrets_dir"
+          chmod 0700 "$secrets_dir"
+
+          "$verifier" generate-key \
+            --private-key "$secrets_dir/runtime-components-private.pem" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --key-id ordax-runtime-components-v1
+
+          python3 tools/app-package/catalog_inventory.py --format tsv |
+          while IFS=$'\t' read -r app _app_root _compatibility; do
+            app_out="$out/artifacts/$app"
+            "$verifier" sign-v2 \
+              --release "$app_out/$app.release.json" \
+              --compatibility "$app_out/$app.compatibility.json" \
+              --private-key "$secrets_dir/runtime-components-private.pem" \
+              --trust "$out/runtime-components-ci-trust.json" \
+              --key-id ordax-runtime-components-v1 \
+              --out "$app_out/$app.runtime-component-envelope.json"
+
+            "$verifier" verify-envelope-v2 \
+              --envelope "$app_out/$app.runtime-component-envelope.json" \
+              --trust "$out/runtime-components-ci-trust.json" \
+              --compatibility "$app_out/$app.compatibility.json"
+          done
+
+          python3 tools/app-package/render_store_catalog_publication_v2.py \
+            --candidate "$out/store.catalog-candidate.json" \
+            --artifacts-root "$out/artifacts" \
+            --verifier "$verifier" \
+            --trust "$out/runtime-components-ci-trust.json" \
+            --sequence 1 \
+            --out "$out/store.catalog-publication-v2.protocol-proof.json"
+
+          python3 tools/app-package/materialize_store_artifact_bundle.py \
+            --publication "$out/store.catalog-publication-v2.protocol-proof.json" \
+            --artifacts-root "$out/artifacts" \
+            --out-root "$out/store-artifact-bundle.protocol-proof"
+
+          rm -f "$secrets_dir/runtime-components-private.pem"
+          test ! -e "$secrets_dir/runtime-components-private.pem"
+          test -z "$(find "$secrets_dir" -type f -print -quit)"
+          rmdir "$secrets_dir"
+
+      - name: Assert catalog boundaries remain authority-free
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          test -z "$(find "$out" -type f \( -iname '*.pem' -o -iname '*.key' -o -iname '*.p12' -o -iname '*.pfx' \) -print -quit)"
+          python3 - <<'PY'
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'ordax-store-catalog-proof'
+          repo = Path.cwd()
+          candidate_path = root / 'store.catalog-candidate.json'
+          v1_path = root / 'store.catalog-publication-v1.json'
+          v2_path = root / 'store.catalog-publication-v2.protocol-proof.json'
+
+          spec = importlib.util.spec_from_file_location(
+              'catalog_inventory',
+              repo / 'tools' / 'app-package' / 'catalog_inventory.py',
+          )
+          inventory_module = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(inventory_module)
+          expected_ids = [
+              entry['appId']
+              for entry in inventory_module.discover_catalog_apps(
+                  repo / 'apps',
+                  repo / 'migrations',
+              )
+          ]
+
+          candidate_bytes = candidate_path.read_bytes()
+          candidate = json.loads(candidate_bytes.decode('utf-8'))
+          v1 = json.loads(v1_path.read_text(encoding='utf-8'))
+          v2 = json.loads(v2_path.read_text(encoding='utf-8'))
+
+          assert candidate['$schema'] == 'ordax-apps.store-catalog-candidate/1'
+          assert candidate['status'] == 'unsigned-catalog-candidate'
+          assert candidate['source'] == {
+              'repository': 'ordaxsystems/ordax-apps',
+              'commit': os.environ['GITHUB_SHA'],
+          }
+          assert [entry['appId'] for entry in candidate['entries']] == expected_ids
+          assert len(expected_ids) > 1
+          assert candidate['authority'] == {
+              'signing': False,
+              'publication': False,
+              'installation': False,
+              'activation': False,
+              'rollback': False,
+          }
+
+          assert v1['$schema'] == 'ordax-apps.store-catalog-publication/1'
+          assert v1['entries'] == candidate['entries']
+          assert v1['authority'] == candidate['authority']
+
+          assert v2['$schema'] == 'ordax-apps.store-catalog-publication/2'
+          assert v2['status'] == 'unsigned-publication-payload'
+          assert v2['sequence'] == 1
+          assert v2['source'] == candidate['source']
+          assert v2['trust'] == {
+              'domain': 'runtime-components',
+              'requiredKeyId': 'ordax-runtime-components-v1',
+          }
+          assert v2['provenance'] == {
+              'candidateSchema': 'ordax-apps.store-catalog-candidate/1',
+              'candidateSha256': hashlib.sha256(candidate_bytes).hexdigest(),
+          }
+          assert v2['authority'] == candidate['authority']
+          assert v2['safety'] == {
+              'requiresExternalSignature': True,
+              'canonicalPublicAnchorRequired': True,
+              'componentEnvelopesRequired': True,
+              'componentEnvelopesVerifiedBeforeCatalogAssembly': True,
+              'componentEnvelopesReverifiedByPlatformLifecycle': True,
+              'platformLifecycleRequired': True,
+              'payloadGrantsAuthority': False,
+          }
+
+          assert [entry['appId'] for entry in v2['entries']] == expected_ids
+          layout_root = root / 'store-artifact-bundle.protocol-proof'
+          layout = json.loads(
+              (layout_root / 'store-artifact-layout.json').read_text(encoding='utf-8')
+          )
+          assert layout['$schema'] == 'ordax-apps.store-artifact-layout/1'
+          assert layout['status'] == 'materialized-candidate'
+          assert layout['sourcePublication'] == {
+              'schema': 'ordax-apps.store-catalog-publication/2',
+              'sha256': hashlib.sha256(v2_path.read_bytes()).hexdigest(),
+          }
+          assert layout['addressing'] == {
+              'algorithm': 'sha256',
+              'pathTemplate': 'sha256/{prefix2}/{sha256}',
+          }
+          assert layout['blobCount'] == len(expected_ids) * 4
+          assert layout['authority'] == {
+              'publication': False,
+              'installation': False,
+              'activation': False,
+          }
+
+          for entry in v2['entries']:
+              app_id = entry['appId']
+              envelope_path = root / 'artifacts' / app_id / f'{app_id}.runtime-component-envelope.json'
+              envelope_bytes = envelope_path.read_bytes()
+              assert entry['artifacts']['componentEnvelope'] == {
+                  'name': f'{app_id}.runtime-component-envelope.json',
+                  'sha256': hashlib.sha256(envelope_bytes).hexdigest(),
+                  'size': len(envelope_bytes),
+              }
+              assert set(entry['artifacts']) == {
+                  'package', 'release', 'compatibility', 'componentEnvelope'
+              }
+              for artifact in entry['artifacts'].values():
+                  blob = layout_root / 'sha256' / artifact['sha256'][:2] / artifact['sha256']
+                  payload = blob.read_bytes()
+                  assert len(payload) == artifact['size']
+                  assert hashlib.sha256(payload).hexdigest() == artifact['sha256']
+
+          assert 'http' not in json.dumps(layout).lower()
+          print('ORDAX_STORE_CATALOG_INVENTORY_SSOT=PASS')
+          print(f'CATALOG_APP_COUNT={len(expected_ids)}')
+          print('ORDAX_STORE_CATALOG_V2_STAGEABLE_IDENTITY=PASS')
+          print('CANONICAL_RUNTIME_COMPONENT_TRUST=NO')
+          print('PRODUCTION_COMPONENT_PUBLICATION=NO')
+          print('PRODUCTION_COMPONENT_ACTIVATION=NO')
+          PY
+
+      - name: Remove ephemeral signed protocol proof
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          rm -f "$out/runtime-components-ci-trust.json"
+          find "$out/artifacts" -type f -name '*.runtime-component-envelope.json' -delete
+          rm -f "$out/store.catalog-publication-v2.protocol-proof.json"
+          rm -rf "$out/store-artifact-bundle.protocol-proof"
+          test ! -e "$out/runtime-components-ci-trust.json"
+          test -z "$(find "$out/artifacts" -type f -name '*.runtime-component-envelope.json' -print -quit)"
+          test ! -e "$out/store.catalog-publication-v2.protocol-proof.json"
+          test ! -e "$out/store-artifact-bundle.protocol-proof"
+
+      - name: Materialize complete public-only unsigned component handoff
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          python3 tools/app-package/materialize_unsigned_store_handoff.py \
+            --candidate "$out/store.catalog-candidate.json" \
+            --publication "$out/store.catalog-publication-v1.json" \
+            --artifacts-root "$out/artifacts" \
+            --handoffs-dir "$out" \
+            --apps-root apps \
+            --out-root "$out/store-prepublication-handoff"
+          test -z "$(find "$out/store-prepublication-handoff" -type f \
+            \( -name '*.pem' -o -name '*.key' -o -name '*.runtime-component-envelope.json' -o -iname '*trust*' \) -print -quit)"
+          test ! -e "$out/runtime-components-ci-trust.json"
+          test ! -e "$out/store.catalog-publication-v2.protocol-proof.json"
+          test ! -e "$out/store-artifact-bundle.protocol-proof"
+
+      - name: Verify complete exported handoff as an untrusted receiver
+        run: |
+          set -euo pipefail
+          python3 tools/app-package/verify_store_unsigned_export.py \
+            --root "$RUNNER_TEMP/ordax-store-catalog-proof/store-prepublication-handoff"
+
+      - name: Upload public-only pre-publication artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-store-catalog-prepublication-${{ github.sha }}
+          path: ${{ runner.temp }}/ordax-store-catalog-proof/store-prepublication-handoff/
+          if-no-files-found: error
+          retention-days: 14

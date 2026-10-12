@@ -1,0 +1,56 @@
+{
+  "$schema": "ordax.projects-source-snapshot/1",
+  "repository": "ordaxsystems/prototipo-ordax-os",
+  "commit": "d2abf5a6012c744ba66568d4ff27661913c81489",
+  "captured_after_public_sdk_boundary": true,
+  "purpose": "reproducible Projects Gate A/B remove-first source transfer",
+  "file_count": 9,
+  "files": [
+    {
+      "path": "system/apps/projects/app.mjs",
+      "blob_sha": "7b5f3af37c98109d80f6eb2108856b171f4fe369",
+      "size": 749
+    },
+    {
+      "path": "system/apps/projects/component.mjs",
+      "blob_sha": "664607c289942c8c6cf4ac7e0cd394cd76b4d225",
+      "size": 478
+    },
+    {
+      "path": "system/apps/projects/device-agent-status.mjs",
+      "blob_sha": "2cf37e44bf681fc97ed3fcddea05ba0364aba9fe",
+      "size": 3172
+    },
+    {
+      "path": "system/apps/projects/projects.css",
+      "blob_sha": "1e26317b2e607c08bf6af8844e6b52c6a77c480c",
+      "size": 3752
+    },
+    {
+      "path": "system/apps/projects/runtime.mjs",
+      "blob_sha": "353602cf8ef1ac1ab059364e75c5bef8e71877c1",
+      "size": 2904
+    },
+    {
+      "path": "system/apps/projects/ui/device-agent-status.mjs",
+      "blob_sha": "cb66c289e2003e43e93a58cdace09b9ce4c0fff7",
+      "size": 2309
+    },
+    {
+      "path": "system/apps/projects/ui/workspace-controls.mjs",
+      "blob_sha": "7d1bb46ac9a4bed35cbfa737e64a26b1afcf6d5b",
+      "size": 9860
+    },
+    {
+      "path": "system/apps/projects/version.mjs",
+      "blob_sha": "821bdb003c85d4ecf9cc491e9730e6e52f7416fd",
+      "size": 41
+    },
+    {
+      "path": "system/services/i18n/catalog/projects.mjs",
+      "blob_sha": "64100a4394743e7979f828772e5c639928f4597f",
+      "size": 2787
+    }
+  ],
+  "authority": "none"
+}

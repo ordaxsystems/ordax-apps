@@ -1,0 +1,71 @@
+{
+  "$schema": "ordax.apps-workspace/1",
+  "role": "first-party-app-source",
+  "platform_repository": "ordaxsystems/ordax-os",
+  "authority": "none",
+  "source_of_truth_policy": "single-repository-per-app",
+  "structural_surfaces_owned_by_platform": [
+    "store",
+    "settings",
+    "account",
+    "system"
+  ],
+  "first_party_app_targets": [
+    "files",
+    "internet",
+    "assistant",
+    "studio",
+    "projects",
+    "activity",
+    "notes",
+    "network",
+    "calculator",
+    "clock",
+    "converter",
+    "text-viewer",
+    "image-viewer",
+    "calendar",
+    "colors",
+    "character-map",
+    "paint",
+    "media-player",
+    "pdf-viewer",
+    "toolbox"
+  ],
+  "initial_extraction_candidate": "notes",
+  "contracts": {
+    "component_manifest": "ordax.component-manifest/1",
+    "delivery_policy": "ordax.first-party-app-delivery-policy/1",
+    "intelligence": "ordax.intelligence/1",
+    "memory": "ordax.memory/1",
+    "localization_pack": "prototype-ordax.localization-pack/1",
+    "runtime_release": "prototype-ordax.runtime-component-release/2"
+  },
+  "planned_contracts": {},
+  "invariants": {
+    "store_is_structural_and_non_removable": true,
+    "store_ui_has_install_authority": false,
+    "app_package_may_mint_authority": false,
+    "uninstall_implies_user_data_delete": false,
+    "localization_policy": "component-scoped",
+    "platform_services_may_be_copied_here": false,
+    "third_party_apps_use_public_contracts": true
+  },
+  "repository_migration": {
+    "status": "cutover-complete",
+    "previous_repository": "washingtonmsdj/ordax-apps",
+    "canonical_repository": "ordaxsystems/ordax-apps",
+    "current_platform_repository": "ordaxsystems/ordax-os",
+    "target_platform_repository": "ordaxsystems/ordax-os",
+    "current_runtime_repository": "ordaxsystems/ordax-runtime",
+    "target_runtime_repository": "ordaxsystems/ordax-runtime",
+    "current_control_plane_repository": "ordaxsystems/ordax-platform",
+    "target_control_plane_repository": "ordaxsystems/ordax-platform",
+    "redirect_dependency_allowed": false,
+    "mirror_repository_allowed": false,
+    "dual_authority_allowed": false,
+    "rename_during_transfer_allowed": false,
+    "provenance_rewrite_allowed": false,
+    "transfer_first_then_repoint": true
+  }
+}

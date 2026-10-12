@@ -1,0 +1,4 @@
+# Generated Python bytecode is not canonical app source or package evidence.
+__pycache__/
+*.py[cod]
+.pytest_cache/

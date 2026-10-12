@@ -1,0 +1,196 @@
+{
+  "$schema": "ordax.app-externalization-plan/1",
+  "app_id": "notes",
+  "source_repository_current": "ordaxsystems/ordax-apps",
+  "source_path_current": "apps/notes",
+  "target_repository": "ordaxsystems/ordax-apps",
+  "target_path": "apps/notes",
+  "source_of_truth_state": "ordax-apps-canonical",
+  "platform_contracts_required": [
+    "ordax.app-activation/1",
+    "ordax.app-data/1",
+    "ordax.component-manifest/1",
+    "ordax.component-runtime/1",
+    "ordax.file-space/11",
+    "ordax.intelligence/1",
+    "ordax.localization/2",
+    "prototype-ordax.localization-pack/1",
+    "ordax.surface-render-lifecycle/5"
+  ],
+  "target_sdk": {
+    "minimum_bundle_version": "1.6.0",
+    "reason": "ordax.app-data/1 plus Localization 2 and Surface Render Lifecycle 5 are required for external Notes distribution",
+    "lock_file": "migrations/notes.platform-sdk.lock.json"
+  },
+  "app_owned_contracts": [
+    "notes-store",
+    "notes-file-importer"
+  ],
+  "resolved_dependencies": [
+    {
+      "source": "system/apps/notes/ui/workspace-controls.mjs",
+      "former_dependency": "system/services/intelligence/client-actions.mjs",
+      "replacement": "system/apps/notes/platform/intelligence-summary.mjs over injected ordax.intelligence/1 port",
+      "verified_platform_commit": "4229f9e381203a09036bff7955bd87ea971cf231"
+    }
+  ],
+  "private_dependencies_to_remove": [],
+  "source_couplings_to_remove": [
+    {
+      "source": "system/apps/catalog.mjs",
+      "dependency": "system/apps/notes/app.mjs",
+      "replacement": "product catalog metadata independent from implementation source"
+    },
+    {
+      "source": "system/apps/component-catalog.mjs",
+      "dependency": "system/apps/notes/component.mjs",
+      "replacement": "verified package/inventory component manifest"
+    }
+  ],
+  "storage_migration": {
+    "current_runtime_injection": "appData",
+    "target_contract": "ordax.app-data/1",
+    "state": "ready-app-data-runtime",
+    "data_owner": "notes",
+    "cutover_mode": "clean-prelaunch",
+    "production_user_data_present": false,
+    "legacy_seed_required": false,
+    "legacy_payload_may_be_discarded_at_cutover": true,
+    "uninstall_data_separation_required": true,
+    "layout": "ordax.notes-app-data-layout/1",
+    "transition_journal": "ordax.notes-app-data-transition-journal/1",
+    "crash_safe_commit": true
+  },
+  "proofs_required": [
+    "sdk-contracts-pinned",
+    "no-core-private-imports",
+    "external-deterministic-package",
+    "platform-package-verification",
+    "install-stage-health-promote",
+    "rollback-last-known-good",
+    "platform-operates-without-app",
+    "offline-reinstall-from-local-artifact",
+    "uninstall-preserves-user-data",
+    "old-platform-source-removed"
+  ],
+  "authority": "none",
+  "delivery": {
+    "delivery_class": "on-demand",
+    "discovery": "store-only",
+    "store_is_install_authority": false,
+    "install_owner": "platform-component-lifecycle",
+    "pre_store_delivery": "official-signed-stable-release",
+    "auto_install": false
+  },
+  "source_cutover": {
+    "mode": "remove-platform-first",
+    "prelaunch_only": true,
+    "temporary_app_absence_allowed": true,
+    "dual_source_allowed": false,
+    "platform_absence_proof_required_before_copy": true,
+    "package_lifecycle_proof_runs_after_source_cutover": true,
+    "production_rule_after_first_user_data": "staged-handoff-no-data-loss",
+    "source_gate": "platform-absence-before-copy",
+    "distribution_gate": "sdk-app-data-package-lifecycle-after-copy"
+  },
+  "gate_a_platform_removal": {
+    "remove_owned_source": [
+      "system/apps/notes/**",
+      "system/contracts/notes-store.mjs",
+      "system/contracts/notes-file-importer.mjs"
+    ],
+    "remove_legacy_adapters": [
+      "system/adapters/native/notes.mjs",
+      "system/adapters/web/notes.mjs"
+    ],
+    "remove_platform_implementation_couplings": [
+      "system/apps/catalog.mjs -> ./notes/app.mjs",
+      "system/apps/component-catalog.mjs -> ./notes/component.mjs",
+      "system/composition/native/main.mjs -> ../../apps/notes/runtime.mjs",
+      "system/composition/web/main.mjs -> ../../apps/notes/runtime.mjs"
+    ],
+    "remove_legacy_native_state": [
+      "/__ordax/native/notes",
+      "/var/lib/ordax/notes.json"
+    ],
+    "remove_fixed_launch_paths": [
+      "desktop rail Notes shortcut",
+      "Surface/browser smoke assumptions that Notes payload is present"
+    ],
+    "retain_platform_owned": [
+      "first-party delivery policy for notes",
+      "signed catalog/store discovery metadata",
+      "ordax.app-data/1 owner and verified install binding",
+      "owner-managed Notes App Data quota policy",
+      "generic component lifecycle/trust/probation infrastructure"
+    ],
+    "required_proofs": [
+      "notes-not-in-installed-app-catalog",
+      "notes-not-in-installed-component-catalog",
+      "no-local-notes-runtime-import",
+      "no-legacy-notes-endpoint",
+      "no-fixed-notes-launcher",
+      "platform-boots-with-notes-absent",
+      "notes-remains-on-demand-store-only-product"
+    ]
+  },
+  "source_snapshot": {
+    "repository": "washingtonmsdj/prototipo-ordax-os",
+    "commit": "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6",
+    "captured_before_gate_a_removal": true,
+    "app_source_path": "system/apps/notes",
+    "app_owned_support_paths": [
+      "system/contracts/notes-store.mjs",
+      "system/contracts/notes-file-importer.mjs",
+      "system/services/i18n/catalog/notes.mjs"
+    ],
+    "purpose": "reproducible Gate B source transfer after platform absence proof",
+    "inventory_file": "migrations/notes.source-snapshot.json",
+    "file_count": 19,
+    "transfer_map": "migrations/notes.gate-b-transfer-map.json"
+  },
+  "source_cutover_allowed": true,
+  "distribution_activation_allowed": false,
+  "host_boundary": "migrations/notes.host-boundary.json",
+  "distribution_contract": "migrations/notes.distribution.json",
+  "compatibility_descriptor": "migrations/notes.compatibility.json",
+  "cutover_evidence": {
+    "gate_a_platform_commit": "a8e736ab27b03da6da981959d9c115c4d7de8136",
+    "gate_b_source_snapshot": "f2d3a0d003b07b1f4b4b5514ba9100cdd73a37f6",
+    "distribution_activation": "blocked-production-trust-ceremony",
+    "storage_gate": "app-data-v2-ready"
+  },
+  "distribution_evidence": {
+    "lifecycle_owner_commit": "2560e3d8302a88a424cfa3b49e560a8367d97eab",
+    "deterministic_package": "proven-ci",
+    "platform_package_verification": "proven-ci",
+    "install_stage_health_promote": "proven-ci",
+    "failed_update_retains_last_known_good": "proven-ci",
+    "rollback_last_known_good": "proven-ci",
+    "offline_reinstall_from_verified_local_cache": "proven-ci",
+    "uninstall_preserves_app_data_boundary": "proven-ci",
+    "production_activation": "blocked",
+    "production_blockers": [
+      "canonical-runtime-component-trust-anchor-not-pinned",
+      "component-publication-not-authorized",
+      "production-component-slot-activation-not-authorized"
+    ],
+    "platform_trust_policy": {
+      "repository": "washingtonmsdj/prototipo-ordax-os",
+      "commit": "ef319ba940fa36c81699b73ba4195a178891e70f",
+      "path": "docs/contracts/runtime-component-trust-policy.json",
+      "status": "operator-ceremony-pending",
+      "lock_file": "migrations/notes.platform-trust.lock.json"
+    },
+    "unsigned_candidate_handoff": {
+      "source_commit": "8efdfa90ff43eb464b1b25fca385a805be42b643",
+      "platform_commit": "499d370eaf8da424618da5e50207aec0f39f1b98",
+      "interop_lock": "migrations/notes.platform-unsigned-interop.lock.json",
+      "status": "verified-read-only-interop",
+      "signing_authorized": false,
+      "publication_authorized": false,
+      "activation_authorized": false
+    }
+  },
+  "production_trust_lock": "migrations/notes.platform-trust.lock.json"
+}

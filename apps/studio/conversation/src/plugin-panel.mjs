@@ -1,0 +1,85 @@
+import { relayAdminReadiness, relayReadinessText } from './relay-readiness.mjs';
+
+export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snapshot, showConversation = () => {} }) {
+  const $ = id => document.getElementById(id);
+  let service = { status: 'unchecked' }, checking = false, detailMessage = '';
+  let relayChecking = false, relaySnapshot = null, relayIssue = '';
+  let labChecking = false, labSnapshot = null;
+  function render() {
+    $('relayCheck').disabled = relayChecking || typeof host?.runtimeState !== 'function';
+    $('relayLabCheck').disabled = labChecking || typeof host?.relayObservation !== 'function';
+    $('relayLabCheck').textContent = labChecking ? 'Verificando Relay…' : 'Verificar Relay local';
+    const observed = labSnapshot?.schema === 'ordax.studio-relay-observation/1' ? labSnapshot : null;
+    $('relayLabStatus').textContent =
+      observed?.state === 'connected-laboratory'
+        && [observed.clients, observed.active, observed.retained, observed.failures, observed.cancelled, observed.timedOut]
+          .every(value => Number.isSafeInteger(value) && value >= 0)
+        ? `Laboratório local autenticado · ${observed.clients} clientes cadastrados · ${observed.active} solicitações ativas · ${observed.retained} recibos · ${observed.failures} falhas (${observed.cancelled} cancelamentos, ${observed.timedOut} timeouts). Não indica ChatGPT compartilhado nem rede isolada.`
+        : observed?.state === 'not-configured'
+          ? 'Relay não configurado neste Studio. Nenhuma conexão externa foi estabelecida.'
+          : observed?.state === 'invalid-configuration'
+            ? 'Configuração do Relay inválida ou incompleta no host central.'
+            : observed?.state === 'unavailable'
+              ? 'Relay local indisponível ou autenticação recusada. Nenhuma sessão foi presumida.'
+              : 'Relay local não verificado. Sem configuração explícita, nenhuma sessão será iniciada.';
+    $('relayCheck').textContent = relayChecking ? 'Verificando conexões…' : 'Verificar estado Product';
+    $('relayStatus').textContent = relayIssue ||
+      (relaySnapshot ? relayReadinessText(relaySnapshot) :
+        'Relay ainda não ativado. Verifique a conexão Product para auditar apenas os dispositivos já autorizados neste Studio.');
+    $('pluginService').textContent = checking ? 'Verificando…' : service.status === 'available' ? 'Disponível · OAuth pronto' : service.status === 'unavailable' ? 'Verificação falhou' : service.status === 'unsupported' ? 'Indisponível neste host' : 'Ainda não verificado';
+    $('pluginConversation').textContent = snapshot()?.ordaxSelected ? 'ORDAX selecionado no compositor Web' : 'Seleção no ChatGPT não verificada';
+    $('pluginDetails').textContent = detailMessage || service.error || (service.configurationDrift ? 'O login publicado difere da configuração do repositório. A verificação confirma somente disponibilidade e OAuth, não uma implantação atualizada.' : 'Disponibilidade do servidor não confirma login, instalação do plugin ou permissões do computador.');
+    $('pluginCheck').disabled = checking || !nativeWeb?.pluginCheck;
+    $('pluginOpen').disabled = !nativeWeb?.pluginSetup;
+    $('pluginBrowser').disabled = !nativeWeb?.pluginBrowser;
+    $('pluginReturn').disabled = !nativeWeb?.pluginReturn;
+    $('pluginTest').disabled = !snapshot()?.ready || snapshot()?.busy;
+    if (service.mcpURL) $('pluginEndpoint').value = service.mcpURL;
+    const oauth = service.status === 'available' ? service.oauthSettings : null;
+    for (const [id, key] of [['pluginScopes', 'scopes'], ['pluginIssuer', 'issuer'], ['pluginAuthorization', 'authorizationEndpoint'], ['pluginToken', 'tokenEndpoint'], ['pluginRegistration', 'registrationEndpoint']]) $(id).value = oauth?.[key] || '';
+    $('pluginOAuthGuide').textContent = oauth ? oauth.clientRegistration === 'DCR' ? 'Método confirmado: registro dinâmico de cliente (DCR). Selecione essa opção e deixe ID e segredo manuais vazios. Use os escopos abaixo e PKCE S256.' : 'Método confirmado: documento de metadados do cliente (CIMD). Selecione essa opção, sem ID ou segredo estáticos; mantenha a descoberta automática e PKCE S256.' : 'Clique em Verificar serviço para obter as configurações OAuth publicadas. Escolha o método confirmado pelo diagnóstico antes de concluir o cadastro.';
+  }
+  $('openPlugin').addEventListener('click', async () => {
+    $('pluginDialog').showModal(); render();
+    try { if (nativeWeb?.pluginInfo) service = await nativeWeb.pluginInfo(); render(); } catch (error) { notify(error.message); }
+  });
+  $('relayCheck').addEventListener('click', async () => {
+    if (relayChecking || typeof host?.runtimeState !== 'function') return;
+    relayChecking = true; relaySnapshot = null; relayIssue = ''; render();
+    try {
+      relaySnapshot = relayAdminReadiness(await host.runtimeState());
+    } catch {
+      relayIssue = 'Não foi possível verificar a conexão Product. O Relay não foi declarado ativo.';
+    } finally { relayChecking = false; render(); }
+  });
+  $('relayLabCheck').addEventListener('click', async () => {
+    if (labChecking || typeof host?.relayObservation !== 'function') return;
+    labChecking = true; labSnapshot = null; render();
+    try { labSnapshot = await host.relayObservation(); }
+    catch { labSnapshot = { schema: 'ordax.studio-relay-observation/1', state: 'unavailable' }; }
+    finally { labChecking = false; render(); }
+  });
+  $('pluginCheck').addEventListener('click', async () => {
+    checking = true; detailMessage = ''; render();
+    try { service = await nativeWeb.pluginCheck(); } catch (error) { notify(error.message); }
+    finally { checking = false; render(); }
+  });
+  $('pluginCopy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('pluginEndpoint').value); detailMessage = 'Endereço copiado. No ChatGPT, adicione o servidor MCP com autenticação OAuth.'; render(); } catch { $('pluginEndpoint').select(); }
+  });
+  for (const button of document.querySelectorAll('[data-plugin-copy]')) button.addEventListener('click', async () => {
+    const input = $(button.dataset.pluginCopy);
+    if (!input.value) { detailMessage = 'Verifique o serviço para obter este campo.'; render(); return; }
+    try { await navigator.clipboard.writeText(input.value); detailMessage = 'Campo copiado. Cole no cadastro do ChatGPT.'; render(); } catch { input.select(); }
+  });
+  for (const [id, method] of [['pluginOpen', 'pluginSetup'], ['pluginReturn', 'pluginReturn'], ['pluginBrowser', 'pluginBrowser']]) $(id).addEventListener('click', async () => {
+    try { if (id !== 'pluginBrowser') showConversation(); if (id === 'pluginOpen') $('pluginDialog').close(); const value = await nativeWeb[id === 'pluginOpen' && nativeWeb.pluginPrepare ? 'pluginPrepare' : method](); if (value?.message) { detailMessage = value.message; render(); notify(value.message); } } catch (error) { notify(error.message); }
+  });
+  $('pluginTest').addEventListener('click', () => {
+    try {
+      preparePrompt('Use o plugin ORDAX Studio para verificar a conexão. Consulte ordax_session e ordax_targets e informe os dispositivos e as permissões disponíveis. Faça somente verificações de leitura.');
+      $('pluginDialog').close(); notify('Teste preparado. Selecione ORDAX Studio no compositor Web e envie quando estiver pronto.');
+    } catch (error) { detailMessage = error.message; render(); }
+  });
+  return Object.freeze({ render });
+}
