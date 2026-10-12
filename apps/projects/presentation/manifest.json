@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.app-presentation-manifest/1",
+  "appId": "projects",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "sourceLocale": "pt-BR",
+  "description": "Organize projetos locais, conexões e continuidade entre dispositivos.",
+  "monogram": "PR",
+  "singleton": true,
+  "translations": {
+    "en-US": {
+      "title": "Projects",
+      "description": "Organize local projects, connections, and continuity across devices."
+    }
+  }
+}
