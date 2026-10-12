@@ -54,11 +54,22 @@ class PlatformOwnerMvpTests(unittest.TestCase):
             encoding="utf-8"
         ))
         boundary = plan["runtime_boundary"]
-        self.assertEqual(plan["source_of_truth_state"], "platform-until-cutover")
-        self.assertIs(plan["source_cutover_allowed"], False)
+        # The source can move independently of signed Native delivery; never
+        # freeze this test to the pre-migration state.
+        self.assertIn(
+            plan["source_of_truth_state"],
+            {"platform-until-cutover", "ordax-apps-canonical"},
+        )
         self.assertIs(plan["distribution_activation_allowed"], False)
         self.assertEqual(plan["delivery"]["delivery_class"], "bootstrap")
-        self.assertFalse((ROOT / "apps/internet").exists())
+        if plan["source_of_truth_state"] == "platform-until-cutover":
+            self.assertEqual(plan["source_repository_current"], "ordaxsystems/ordax-os")
+            self.assertIs(plan["source_cutover_allowed"], False)
+            self.assertFalse((ROOT / "apps/internet").exists())
+        else:
+            self.assertEqual(plan["source_repository_current"], "ordaxsystems/ordax-apps")
+            self.assertEqual(plan["source_path_current"], "apps/internet")
+            self.assertTrue((ROOT / "apps/internet/app.json").is_file())
         sdk = plan["target_sdk"]
         lock = json.loads((ROOT / sdk["lock_file"]).read_text(encoding="utf-8"))
         # Minimum compatibility is a floor, not another mutable SDK pin.
@@ -69,7 +80,8 @@ class PlatformOwnerMvpTests(unittest.TestCase):
         self.assertEqual(len(pinned), 3)
         self.assertLessEqual(minimum, pinned)
         self.assertGreaterEqual(minimum, (1, 16, 0), "Internet requires public first-party app schema")
-        self.assertEqual(lock["repository"], plan["source_repository_current"])
+        workspace = json.loads((ROOT / "ordax-apps.workspace.json").read_text(encoding="utf-8"))
+        self.assertEqual(lock["repository"], workspace["platform_repository"])
         self.assertEqual(sdk["required_boundary"], "browser-contracts-from-published-bundle")
         self.assertIs(sdk["migration_authorized_by_sdk_pin"], False)
         self.assertEqual(boundary["application_ui_and_app_owned_state"], "application")
