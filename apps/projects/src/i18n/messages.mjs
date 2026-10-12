@@ -43,3 +43,25 @@ export const PROJECTS_ENGLISH_MESSAGES = Object.freeze({
   "projects.deviceAgent.ready": "Device Agent available · {count} typed capabilities",
   "projects.deviceAgent.degraded": "Device Agent unavailable; Projects remains local",
 });
+
+/**
+ * App-owned localizations belong to the verified Projects package.
+ * Platform locale controls language selection, not translation ownership.
+ * All outputs are plain text, never executable markup.
+ */
+export function translateProjectsMessage(locale, messageId, params = {}) {
+  const messages = typeof locale === "string" && locale.toLowerCase().startsWith("pt")
+    ? PROJECTS_SOURCE_MESSAGES : PROJECTS_ENGLISH_MESSAGES;
+  if (!Object.hasOwn(messages, messageId)) {
+    throw new TypeError("Unknown Projects localization key: " + messageId);
+  }
+  return messages[messageId].replace(/\{([a-z][a-zA-Z]*)\}/g, (_, key) => {
+    const value = params[key];
+    if (!Object.hasOwn(params, key) || (
+      typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value))
+    )) {
+      throw new TypeError("Missing Projects localization value: " + key);
+    }
+    return String(value);
+  });
+}
