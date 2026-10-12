@@ -25,6 +25,9 @@ for (const folder of ['src', 'assets']) {
 }
 for (const file of ['app.json', 'README.md']) await cp(path.join(repository, 'apps/studio', file), path.join(appRoot, 'apps/studio', file));
 for (const folder of ['ai', 'actions']) await cp(path.join(repository, 'apps/studio', folder), path.join(appRoot, 'apps/studio', folder), { recursive: true });
+// Package exactly the first-party contracts used by both native host and UI.
+// The packaged Studio must not invent a second Product operation registry.
+await cp(path.join(repository, 'contracts'), path.join(appRoot, 'contracts'), { recursive: true });
 await cp(path.join(host, 'native'), path.join(appRoot, 'tools/assistant-host/native'), { recursive: true });
 for (const file of ['storage.mjs', 'web-server.mjs', 'package.json']) await cp(path.join(host, file), path.join(appRoot, 'tools/assistant-host', file));
 await writeFile(path.join(appRoot, 'package.json'), JSON.stringify({ name: 'ordax-studio', productName: 'ORDAX Studio', version: info.version, private: true, main: 'tools/assistant-host/native/main.cjs' }, null, 2));

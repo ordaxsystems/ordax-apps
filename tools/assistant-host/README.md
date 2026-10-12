@@ -23,3 +23,8 @@ Não assina, publica, copia perfis nem ativa o Runtime. E2E com sessão real do
 ChatGPT, microfone e computador autorizado permanece uma etapa separada.
 
 Consulte [a matriz de substituição](../../docs/STUDIO-CONVERSATION-REPLACEMENT.md). O builder inclui as UIs de conversa e workspace avançado da mesma fonte, licenças do Electron e hashes. Não inclui perfis, credenciais, testes ou dependências do Codex. A build é local e não assinada; não representa promoção pela Store.
+
+
+## SSOT de contratos Product
+
+`contracts/product-runtime.mjs` é a fonte versionada única para a projeção de dispositivos autorizados e os perfis de operações do cliente Studio. O host nativo e a interface importam esse contrato sem manter mapeamentos separados. A distribuição Windows deve incluir exatamente esse arquivo, com SHA-256 verificado contra a fonte pelo `verify-windows-candidate.mjs`. Esses perfis validam propostas da UI; não concedem permissões remotas. A autorização de execução e os recibos duráveis pertencem ao PostgreSQL/Relay Product da Platform. O antigo POST `/v3/product/actions` permanece aposentado e não deve receber um substituto implícito.

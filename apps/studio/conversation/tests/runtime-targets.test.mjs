@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { runtimeTargets as canonicalTargets, PRODUCT_RUNTIME_OPERATIONS } from '../../../../contracts/product-runtime.mjs';
 import { runtimeTargets, deviceAvailable, deviceLabel, deviceStatus, assertOperationBinding } from '../src/runtime-targets.mjs';
 
 test('canonical target names and explicit presence survive; legacy timestamps never imply online', () => {
@@ -42,4 +43,18 @@ test('Studio rejects a wrong-PC, wrong-project or wrong-action receipt before di
   const deviceRequest = { deviceId: 'pc-1', project: '', kind: 'projects' };
   assert.equal(assertOperationBinding(deviceRequest, { deviceId: 'pc-1', project: null, kind: 'projects' }).kind, 'projects');
   assert.throws(() => assertOperationBinding(deviceRequest, { deviceId: 'pc-1', project: 'pasta-2', kind: 'projects' }), /resultado foi rejeitado/);
+});
+
+test('Studio and native Product host share one immutable operation and target contract', () => {
+  assert.strictEqual(runtimeTargets, canonicalTargets);
+  assert.ok(Object.isFrozen(PRODUCT_RUNTIME_OPERATIONS));
+  assert.equal(PRODUCT_RUNTIME_OPERATIONS.terminal.action, 'terminal.exec');
+  assert.deepEqual(PRODUCT_RUNTIME_OPERATIONS.terminal.fields, ['argv', 'cwd']);
+  assert.equal(PRODUCT_RUNTIME_OPERATIONS.terminal.scope, 'project');
+  assert.equal(PRODUCT_RUNTIME_OPERATIONS.projects.scope, 'device');
+  assert.equal(PRODUCT_RUNTIME_OPERATIONS.projectCreate.scope, 'new-project');
+  for (const entry of Object.values(PRODUCT_RUNTIME_OPERATIONS)) {
+    assert.equal(Object.isFrozen(entry), true);
+    assert.equal(Object.isFrozen(entry.fields), true);
+  }
 });
