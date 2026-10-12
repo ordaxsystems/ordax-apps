@@ -82,7 +82,7 @@
     "platform_absence_proof_required_before_copy": true,
     "sdk_public_boundary_required_before_snapshot": true,
     "production_rule_after_first_user_data": "staged-handoff-no-data-loss",
-    "platform_absence_proven_at": "31f14ee45b8a8f5de1a031137efa05e6a8f9444a"
+    "platform_absence_proven_at": "93ec5bbefeb9d2c2f00c9ab8a4525590c8a25454"
   },
   "source_snapshot": {
     "state": "pinned",
@@ -112,7 +112,7 @@
     ]
   },
   "authority": "none",
-  "gate_a_platform_commit": "31f14ee45b8a8f5de1a031137efa05e6a8f9444a",
+  "gate_a_platform_commit": "93ec5bbefeb9d2c2f00c9ab8a4525590c8a25454",
   "gate_b": {
     "state": "source-materialized-unsigned",
     "sdk_bundle_version": "1.17.0",
