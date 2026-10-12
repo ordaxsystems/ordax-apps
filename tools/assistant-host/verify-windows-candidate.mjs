@@ -89,9 +89,15 @@ for (const required of [
   'resources/app/apps/studio/app.json',
   'resources/app/apps/studio/conversation/src/index.html',
   'resources/app/tools/assistant-host/native/main.cjs',
+  'resources/app/contracts/product-runtime.mjs',
 ]) {
   if (!seen.has(required)) fail('required-file-absent:' + required);
 }
+// Compare the packaged shared contract against the exact checked-out SSOT.
+const contractSource = await readFile(path.join(repo, 'contracts/product-runtime.mjs'));
+const contractDigest = createHash('sha256').update(contractSource).digest('hex');
+if (map.get('resources/app/contracts/product-runtime.mjs') !== contractDigest)
+  fail('product-contract-ssot-drift');
 const packagedApp = await load(path.join(root, 'resources/app/apps/studio/app.json'));
 const packagedHost = await load(path.join(root, 'resources/app/tools/assistant-host/package.json'));
 if (packagedApp.version !== version || packagedHost.version !== version) fail('packaged-version-drift');

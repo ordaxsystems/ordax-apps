@@ -33,6 +33,15 @@ test('Product host never falls back to retired Cloudflare Worker when origin is 
   assert.equal(f.calls.length, 0, 'must never leak bearer token to inferred endpoint');
 });
 
+test('Product operation binding reads one shared first-party profile registry', () => {
+  const f = fixture(), runtime = new ProductRuntime(f.options);
+  runtime.targets = [{ deviceId: 'fake-device', online: true }];
+  runtime.catalogAvailable = true;
+  assert.equal(runtime.input({ kind: 'projects', deviceId: 'fake-device' }).action, 'projects.list');
+  assert.equal(runtime.input({ kind: 'gitStatus', deviceId: 'fake-device', project: 'demo' }).action, 'git.status');
+  assert.throws(() => runtime.input({ kind: 'gitStatus', deviceId: 'fake-device' }), /projeto/);
+  assert.throws(() => runtime.input({ kind: '__proto__', deviceId: 'fake-device', project: 'demo' }), /dispositivo/);
+});
 const command = { kind: 'terminal', deviceId: 'fake-device', project: 'demo', cwd: '.', argv: ['git', 'status', '--short'] };
 test('desktop goes offline after connection: a fresh authorized read prevents every action POST', async t => {
   const f = fixture(), runtime = new ProductRuntime(f.options); await runtime.init(); t.after(() => runtime.close()); await runtime.connect();
