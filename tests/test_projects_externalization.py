@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import shutil
 import importlib.util
 import io
 import json
@@ -23,6 +24,8 @@ class ProjectsExternalizationTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / "migrations").mkdir()
         (self.root / "apps").mkdir()
+        if (ROOT / "apps/projects").is_dir():
+            shutil.copytree(ROOT / "apps/projects", self.root / "apps/projects")
         self.plan = json.loads(
             (ROOT / "migrations" / "projects.externalization.json").read_text(encoding="utf-8")
         )
@@ -52,7 +55,8 @@ class ProjectsExternalizationTests(unittest.TestCase):
 
     def test_pinned_sdk_and_snapshot_are_structurally_valid_without_cutover(self):
         self.verify()
-        self.assertFalse(self.plan["source_cutover_allowed"])
+        self.assertEqual(self.plan["source_of_truth_state"], "ordax-apps-canonical")
+        self.assertIs(self.plan["source_cutover_allowed"], True)
         self.assertFalse(self.plan["distribution_activation_allowed"])
 
     def test_sdk_merged_pr_is_required_and_cannot_revert_to_pending(self):
@@ -62,14 +66,20 @@ class ProjectsExternalizationTests(unittest.TestCase):
             self.verify()
 
     def test_platform_source_removal_cannot_be_silently_bypassed(self):
-        self.plan["source_cutover_allowed"] = True
-        self._write()
-        with self.assertRaisesRegex(SystemExit, "cutover must remain blocked"):
-            self.verify()
         self.plan["source_cutover_allowed"] = False
-        (self.root / "apps" / "projects").mkdir()
         self._write()
-        with self.assertRaisesRegex(SystemExit, "dual source"):
+        with self.assertRaisesRegex(SystemExit, "cutover authorization"):
+            self.verify()
+        self.plan["source_cutover_allowed"] = True
+        shutil.rmtree(self.root / "apps" / "projects")
+        self._write()
+        with self.assertRaisesRegex(SystemExit, "portable source requires"):
+            self.verify()
+
+    def test_gate_a_absence_identity_is_immutable(self):
+        self.plan["gate_a_platform_commit"] = "0" * 40
+        self._write()
+        with self.assertRaisesRegex(SystemExit, "removal provenance"):
             self.verify()
 
     def test_snapshot_rejects_unreviewed_paths_and_duplicate_entries(self):

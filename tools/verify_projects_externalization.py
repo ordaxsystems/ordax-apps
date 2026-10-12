@@ -21,21 +21,54 @@ def main() -> None:
         fail("wrong app id")
     if plan.get("authority") != "none":
         fail("externalization metadata must not carry authority")
-    if plan.get("source_repository_current") != "ordaxsystems/ordax-os":
-        fail("Projects source must remain in the platform before Gate A")
-    if plan.get("source_path_current") != "system/apps/projects":
-        fail("Projects source path drifted")
+    canonical = plan.get("source_of_truth_state") == "ordax-apps-canonical"
+    if plan.get("source_of_truth_state") not in {"platform-until-cutover", "ordax-apps-canonical"}:
+        fail("Projects source-of-truth transition state is invalid")
+    expected_repo = "ordaxsystems/ordax-apps" if canonical else "ordaxsystems/ordax-os"
+    expected_path = "apps/projects" if canonical else "system/apps/projects"
+    if plan.get("source_repository_current") != expected_repo:
+        fail("Projects source repository contradicts the active owner")
+    if plan.get("source_path_current") != expected_path:
+        fail("Projects source path contradicts the active owner")
     if plan.get("target_repository") != "ordaxsystems/ordax-apps":
         fail("Projects target repository drifted")
     if plan.get("target_path") != "apps/projects":
         fail("Projects target path drifted")
-    if plan.get("source_of_truth_state") != "platform-until-cutover":
-        fail("Projects must have exactly one source of truth before cutover")
-    if plan.get("source_cutover_allowed") is not False:
-        fail("Projects source cutover must remain blocked before platform absence proof")
+    if plan.get("source_cutover_allowed") is not canonical:
+        fail("Projects cutover authorization must match the canonical source owner")
     if plan.get("distribution_activation_allowed") is not False:
-        fail("Projects distribution must remain blocked before source cutover")
-    if TARGET.exists():
+        fail("Projects distribution remains blocked until signed production proofs")
+    if canonical:
+        gate = plan.get("gate_a_platform_commit")
+        cutover = plan.get("source_cutover") or {}
+        if not isinstance(gate, str) or re.fullmatch(r"[0-9a-f]{40}", gate) is None:
+            fail("Projects Gate A platform absence commit must be pinned")
+        if cutover.get("platform_absence_proven_at") != gate:
+            fail("Projects Gate A removal provenance is not canonical")
+        if not TARGET.is_dir() or TARGET.is_symlink():
+            fail("Projects portable source requires a real canonical app directory")
+        for relative in (
+            "app.json", "compatibility.json", "presentation/manifest.json",
+            "ai/manifest.json", "actions/manifest.json",
+            "actions/providers/manifest.json", "src/runtime.mjs",
+            "src/ui/workspace-controls.mjs", "src/ui/device-agent-status.mjs",
+            "src/i18n/messages.mjs", "assets/projects.css",
+        ):
+            target = TARGET / relative
+            if not target.is_file() or target.is_symlink():
+                fail("Projects portable source is incomplete or symlinked: " + relative)
+        for source in TARGET.joinpath("src").rglob("*.mjs"):
+            if source.is_symlink() or any(part in {"..", ""} for part in source.parts):
+                fail("Projects source contains a symlink or unsafe path")
+            content = source.read_text(encoding="utf-8")
+            for forbidden in (
+                "../../../contracts/", "../../../services/",
+                "system/adapters/", "system/services/", "node:child_process",
+                "localStorage", "projects-workspace",
+            ):
+                if forbidden in content:
+                    fail("Projects portable source contains a private or obsolete dependency")
+    elif TARGET.exists() or TARGET.is_symlink():
         fail("apps/projects must not exist before remove-first Gate A; dual source is forbidden")
 
     sdk = plan.get("target_sdk") or {}
@@ -109,8 +142,8 @@ def main() -> None:
     snapshot = plan.get("source_snapshot") or {}
     if snapshot.get("state") != "pinned":
         fail("Projects source snapshot must be pinned after SDK merge")
-    if snapshot.get("repository") != plan["source_repository_current"]:
-        fail("Projects source snapshot must use canonical platform owner")
+    if snapshot.get("repository") != "ordaxsystems/ordax-os":
+        fail("Projects source snapshot must preserve the original platform provenance")
     if not isinstance(snapshot.get("commit"), str) or not re.fullmatch(r"[0-9a-f]{40}", snapshot["commit"]):
         fail("Projects snapshot commit must be an exact lowercase Git SHA")
     if snapshot.get("captured_before_gate_a_removal") is not True:
