@@ -5,12 +5,12 @@ import {
   assertIntelligencePort,
   validateIntelligenceResponse,
   validateIntelligenceSnapshot,
-} from "../../contracts/intelligence.mjs";
+} from "./sdk/contracts/intelligence.mjs";
 
-import { projectIntelligenceConversationCapabilities } from "../../contracts/intelligence-conversation-capabilities.mjs";
-import { assertIdentitySessionPort, validateIdentitySessionSnapshot } from "../../contracts/identity-session.mjs";
-import { assertSpaceSelectionPort, validateSpaceSelectionSnapshot } from "../../contracts/space-selection.mjs";
-import { assertProfileActivationStatePort, validateProfileActivationState } from "../../contracts/profile-activation-state.mjs";
+import { projectIntelligenceConversationCapabilities } from "./sdk/contracts/intelligence-conversation-capabilities.mjs";
+import { assertIdentitySessionPort, validateIdentitySessionSnapshot } from "./sdk/contracts/identity-session.mjs";
+import { assertSpaceSelectionPort, validateSpaceSelectionSnapshot } from "./sdk/contracts/space-selection.mjs";
+import { assertProfileActivationStatePort, validateProfileActivationState } from "./sdk/contracts/profile-activation-state.mjs";
 
 export const ASSISTANT_CONVERSATION_SCHEMA = "ordax.assistant-conversation/1";
 const MAX_MESSAGES = 24;
