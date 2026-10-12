@@ -4,6 +4,8 @@ import { componentRuntime } from "../src/runtime.mjs";
 import { createProjectsPresentation } from "../src/ui/workspace-controls.mjs";
 import { probeProjectsDeviceAgent } from "../src/device-agent-status.mjs";
 import { assertDeviceAgentCapabilityReaderPort } from "../src/sdk/contracts/device-capabilities.mjs";
+import { translateProjectsMessage } from "../src/i18n/messages.mjs";
+import { readFileSync } from "node:fs";
 
 const cloudId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const spaceId = "11111111-1111-4111-8111-111111111111";
@@ -54,4 +56,26 @@ test("Device Agent stays optional and cannot be represented by a full mutable po
   assert.throws(() => assertDeviceAgentCapabilityReaderPort({
     schema: "ordax.device-agent-capability-reader/1", execute() {},
   }), TypeError);
+});
+
+test("component-localized Projects labels are independent of OS translations", () => {
+  assert.equal(translateProjectsMessage("pt-BR", "projects.title"), "Projetos");
+  assert.equal(translateProjectsMessage("en-US", "projects.title"), "Projects");
+  assert.equal(translateProjectsMessage("pt-PT", "projects.count.many", { count: 3 }), "3 projetos");
+  assert.equal(translateProjectsMessage("en-US", "projects.count.many", { count: 4 }), "4 projects");
+  assert.throws(() => translateProjectsMessage("en-US", "projects.unknown"), /Unknown Projects localization key/);
+  assert.throws(() => translateProjectsMessage("en-US", "projects.activity"), /Missing Projects localization value/);
+  const source = readFileSync(new URL("../src/ui/workspace-controls.mjs", import.meta.url), "utf8");
+  const badge = readFileSync(new URL("../src/ui/device-agent-status.mjs", import.meta.url), "utf8");
+  assert.match(source, /translateProjectsMessage\(localization\.getLocale\(\), messageId, params\)/);
+  assert.match(badge, /translateProjectsMessage\(localization\.getLocale\(\)/);
+  assert.doesNotMatch(source, /localization\.translate/);
+  assert.doesNotMatch(badge, /localization\.translate/);
+});
+
+test("project UI consumes only the read-only published reader, not mutable catalog methods", () => {
+  const source = readFileSync(new URL("../src/ui/workspace-controls.mjs", import.meta.url), "utf8");
+  assert.match(source, /assertProjectCatalogReader\(projects\)/);
+  assert.doesNotMatch(source, /assertProjectCatalogPort\(projects\)/);
+  assert.match(source, /Projects app accepts a read-only project-catalog reader/);
 });
