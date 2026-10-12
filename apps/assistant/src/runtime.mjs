@@ -3,7 +3,7 @@ import { ASSISTANT_VERSION } from "./version.mjs";
 import { createAssistantConversationRuntime } from "./conversation.mjs";
 import { mountAssistantConversationControls } from "./ui/conversation-controls.mjs";
 
-const ASSISTANT_STYLESHEET_URL = new URL("./assistant.css", import.meta.url).href;
+const ASSISTANT_STYLESHEET_URL = new URL("../assets/assistant.css", import.meta.url).href;
 const ASSISTANT_STYLE_SELECTOR = 'link[data-ordax-component-style="assistant"]';
 
 async function mountAssistantStyles(root) {
