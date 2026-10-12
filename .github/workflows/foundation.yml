@@ -284,6 +284,29 @@ jobs:
         env:
           ORDAX_PLATFORM_SNAPSHOT_ROOT: .ordax-pending-source
         run: python3 -m unittest -v tests.test_pending_source_snapshots
+      - name: Audit Assistant Gate B exact portable boundaries without copying source
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_assistant_gate_b -v
+          python3 tools/verify_assistant_gate_b.py \
+            --source-root .ordax-pending-source \
+            --sdk-root .ordax-files-sdk > /tmp/ordax-assistant-gate-b.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          proof=json.loads(Path('/tmp/ordax-assistant-gate-b.json').read_text())
+          assert proof['source_file_count']==11
+          assert proof['pinned_source_blobs_verified'] is True
+          assert proof['pinned_sdk_verified'] is True
+          assert proof['required_sdk_version']=='1.18.0'
+          assert proof['sdk_version_sufficient'] is False
+          assert proof['gate_b_allowed_now'] is False
+          assert proof['signed_install_verified'] is False
+          assert not Path('apps/assistant').exists()
+          print('ASSISTANT_GATE_B_PREFLIGHT=BLOCKED_SAFE')
+          print('ASSISTANT_GATE_B_UNPUBLISHED_CONTRACTS='+','.join(proof['unpublished_contract_sources']))
+          PY
+
       - name: Prove Notes-specific App SDK 1.6 pin
         run: python3 tools/verify_notes_platform_sdk.py
 
