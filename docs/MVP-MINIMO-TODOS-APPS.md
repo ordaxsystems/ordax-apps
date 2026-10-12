@@ -47,7 +47,7 @@ A verificação de **13** é um piso de regressão, não uma contagem manual de 
 
 **Nota de ownership do Internet:** a migração é governada exclusivamente por `migrations/internet.externalization.json`; o produto futuro é `apps/internet`, mas o motor WebKitGTK e os adaptadores nativos permanecem no owner do OS. Criar uma pasta provisória `apps/internet` antes do Gate A também é duplicação proibida. O auditor G0 recusa inclusive skeletons vazios ou runtimes sem `app.json`.
 
-**Prova de ownership:** os estados atuais de `migrations/{internet,assistant,activity,network}.externalization.json` são verificados individualmente contra o owner do source. Após o corte da Rede, somente os demais mantêm `platform-until-cutover`; `network` tem source canônico em Apps e distribuição ainda bloqueada. `tools/verify_mvp_app_minimum.py` já deriva os estados dessas migrations (sem copiar serviços). `tests/test_mvp_platform_ownership.py` impede que seis fontes platform-owned sejam tratadas como candidatos ou apps publicados. O OS está preparando a extensão separada de política de Loja para os 12 utilitários pela PR `ordaxsystems/prototipo-ordax-os#1372`; registro de policy **não** autoriza instalação.
+**Prova de ownership:** os estados atuais de `migrations/{internet,assistant,activity,network}.externalization.json` são verificados individualmente contra o owner do source. Após o corte da Rede, somente os demais mantêm `platform-until-cutover`; `network` tem source canônico em Apps e distribuição ainda bloqueada. `tools/verify_mvp_app_minimum.py` já deriva os estados dessas migrations (sem copiar serviços). `tests/test_mvp_platform_ownership.py` impede que fontes ainda platform-owned sejam tratadas como candidatos ou apps publicados. O OS está preparando a extensão separada de política de Loja para os 12 utilitários pela PR `ordaxsystems/prototipo-ordax-os#1372`; registro de policy **não** autoriza instalação.
 
 ## Sequência acelerada de implementação
 
@@ -63,7 +63,7 @@ O workflow \`Store Catalog Candidate\` agora materializa uma **única pasta de h
 
 O material de prova com chaves efêmeras, trust de CI, envelopes temporários de assinatura e publicação v2 de protocolo continua removido **antes** dessa cópia. O exportador copia somente uma allowlist positiva de arquivos e falha em qualquer identidade ou digest divergente; não faz glob de todos os arquivos de build. Nenhum artefato de CI concede confiança canônica, autoridade de Store, instalação, promoção ou rollback.
 
-**Uso:** reproduzir e conferir os artefatos mínimos dos 13 candidatos no mesmo commit; a cadeia oficial de assinatura, verificação de catálogo v2 e lifecycle de produção pertence à plataforma e permanece um gate separado. A existência de ZIP ou handoff público não coloca automaticamente o app na Loja e não altera o status do Studio ou dos seis alvos com source platform-owned.
+**Uso:** reproduzir e conferir no mesmo commit todos os candidatos descobertos pelo catálogo (13 é o piso de regressão, não o total permanente); a cadeia oficial de assinatura, verificação de catálogo v2 e lifecycle de produção pertence à plataforma e permanece um gate separado. A existência de ZIP ou handoff público não coloca automaticamente o app na Loja e não altera o status do Studio ou dos alvos com source ainda pertencente à plataforma.
 
 \`\`\`sh
 python3 -m unittest tests/test_unsigned_store_handoff.py
