@@ -1,7 +1,7 @@
 {
   "$schema": "ordax.notes-platform-lifecycle-lock/1",
   "repository": "ordaxsystems/ordax-os",
-  "commit": "b0bad62374c88a18b00cf14744651686317afd53",
+  "commit": "d904a3811139bcb82c6f2b80eebf7af38dba57ed",
   "tool_path": "tools/runtime-component-channel",
   "release_schema": "prototype-ordax.runtime-component-release/2",
   "package_schema": "prototype-ordax.runtime-component-package/1",
