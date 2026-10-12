@@ -44,6 +44,7 @@ EXPECTED_CONTRACTS = {
     "prototype-ordax.localization-pack/1",
     "prototype-ordax.localization-pack-release/1",
     "ordax.memory/1",
+    "ordax.network-draft/1",
     "ordax.project-catalog/1",
     "ordax.project-cloud-links/1",
     "ordax.project-cloud-links-reader/1",

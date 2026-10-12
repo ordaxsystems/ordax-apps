@@ -29,5 +29,34 @@
     "install_owner": "platform-component-lifecycle",
     "auto_install": false
   },
-  "authority": "none"
+  "authority": "none",
+  "platform_contracts_required": [
+    "ordax.component-manifest/1",
+    "ordax.component-runtime/1",
+    "ordax.surface-render-lifecycle/5",
+    "ordax.localization/2",
+    "ordax.network-draft/1",
+    "ordax.app-intelligence-manifest/1",
+    "ordax.application-action-manifest/1"
+  ],
+  "target_sdk": {
+    "minimum_bundle_version": "1.17.0",
+    "lock_file": "platform-sdk.lock.json",
+    "reason": "Rede consome Network Draft 1 publicado pelo OS; drafts and Space sender state remain OS-owned. No private service is packaged.",
+    "platform_pr": 1686,
+    "platform_merge_commit": "d03cc84298350923d6d9d7a4f83bb3f5d550563f",
+    "state": "merged"
+  },
+  "unresolved_capabilities": [
+    {
+      "id": "network-draft-signed-component-context",
+      "state": "native-binding-not-proven",
+      "impact": "Network draft service must be host-scoped to a verified installed component; never import it or pass private mutable owner through DOM."
+    },
+    {
+      "id": "native-signed-module-read-network",
+      "state": "not-enabled",
+      "impact": "Candidate packaging is not install authority; require exact signed slot health, Native App Data context and rollback before declaring installed."
+    }
+  ]
 }
