@@ -160,3 +160,26 @@ test("all vendored project and host contracts match their published App SDK 1.17
     assert.equal(hash, sdkBlobs[name], name);
   }
 });
+
+test("migration preserves exact original version and stylesheet bytes from OS snapshot", () => {
+  const manifest = JSON.parse(readFileSync(
+    new URL("../../../migrations/projects.source-snapshot.json", import.meta.url), "utf8",
+  ));
+  assert.equal(manifest.repository, "ordaxsystems/ordax-os");
+  assert.equal(manifest.file_count, 10);
+  const pins = new Map(manifest.files.map(entry => [entry.path, entry]));
+  for (const [oldPath, newPath] of [
+    ["system/apps/projects/version.mjs", "../src/version.mjs"],
+    ["system/apps/projects/projects.css", "../assets/projects.css"],
+  ]) {
+    const reference = pins.get(oldPath);
+    assert.ok(reference, "Missing original OS snapshot: " + oldPath);
+    const bytes = readFileSync(new URL(newPath, import.meta.url));
+    const hash = createHash("sha1")
+      .update(Buffer.from("blob " + bytes.length + String.fromCharCode(0)))
+      .update(bytes)
+      .digest("hex");
+    assert.equal(bytes.length, reference.size, oldPath);
+    assert.equal(hash, reference.blob_sha, oldPath);
+  }
+});
