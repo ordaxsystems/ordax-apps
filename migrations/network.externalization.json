@@ -1,12 +1,12 @@
 {
   "$schema": "ordax.app-externalization-plan/1",
   "app_id": "network",
-  "source_repository_current": "ordaxsystems/ordax-os",
-  "source_path_current": "system/apps/network",
+  "source_repository_current": "ordaxsystems/ordax-apps",
+  "source_path_current": "apps/network",
   "target_repository": "ordaxsystems/ordax-apps",
   "target_path": "apps/network",
-  "source_of_truth_state": "platform-until-cutover",
-  "source_cutover_allowed": false,
+  "source_of_truth_state": "ordax-apps-canonical",
+  "source_cutover_allowed": true,
   "distribution_activation_allowed": false,
   "source_cutover": {
     "mode": "remove-platform-first",
@@ -15,13 +15,17 @@
     "dual_source_allowed": false,
     "platform_absence_proof_required_before_copy": true,
     "sdk_public_boundary_required_before_snapshot": true,
-    "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
+    "production_rule_after_first_user_data": "staged-handoff-no-data-loss",
+    "platform_absence_proven_at": "b0bad62374c88a18b00cf14744651686317afd53",
+    "package_lifecycle_proof_runs_after_source_cutover": true
   },
   "source_snapshot": {
-    "state": "not-captured",
+    "state": "pinned",
     "repository": "ordaxsystems/ordax-os",
-    "commit": null,
-    "inventory_file": null
+    "commit": "43d13f98abaeb21351d390ce6bc0ac1ec8ac1afb",
+    "inventory_file": "migrations/network.source-snapshot.json",
+    "file_count": 8,
+    "captured_before_gate_a_removal": true
   },
   "delivery": {
     "delivery_class": "on-demand",
@@ -58,5 +62,6 @@
       "state": "not-enabled",
       "impact": "Candidate packaging is not install authority; require exact signed slot health, Native App Data context and rollback before declaring installed."
     }
-  ]
+  ],
+  "gate_a_platform_commit": "b0bad62374c88a18b00cf14744651686317afd53"
 }

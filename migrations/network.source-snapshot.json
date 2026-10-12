@@ -1,0 +1,53 @@
+{
+  "$schema": "ordax.network-source-snapshot/1",
+  "app_id": "network",
+  "platform_repository": "ordaxsystems/ordax-os",
+  "source_commit": "43d13f98abaeb21351d390ce6bc0ac1ec8ac1afb",
+  "source_removed_at": "b0bad62374c88a18b00cf14744651686317afd53",
+  "source_files": [
+    {
+      "path": "system/apps/network/ai/manifest.mjs",
+      "git_blob": "0f4e72a08437fd8ba5281901bf108e237b96e118",
+      "bytes": 1296
+    },
+    {
+      "path": "system/apps/network/app.mjs",
+      "git_blob": "7752ee1c80d4b6fd7c64ff6658956ce4984d5cfc",
+      "bytes": 764
+    },
+    {
+      "path": "system/apps/network/component.mjs",
+      "git_blob": "d008177215326d013a8b16f539a9b2b86d49b280",
+      "bytes": 477
+    },
+    {
+      "path": "system/apps/network/network.css",
+      "git_blob": "5148522880575ed2448bfde91a93b7432aa1c2c6",
+      "bytes": 1328
+    },
+    {
+      "path": "system/apps/network/runtime.mjs",
+      "git_blob": "4b4f80c3e368a331c0f36e233de5e971623db3fc",
+      "bytes": 2376
+    },
+    {
+      "path": "system/apps/network/ui/workspace-controls.mjs",
+      "git_blob": "e5112e6a531b0dee3b11cdf16d108bbb60e1535b",
+      "bytes": 11000
+    },
+    {
+      "path": "system/apps/network/version.mjs",
+      "git_blob": "85dd514bcee1411013d8d2ce361398e32c9b8020",
+      "bytes": 44
+    },
+    {
+      "path": "system/services/i18n/catalog/network-app.mjs",
+      "git_blob": "85716055c786454bff52c446b0e5e171a96274be",
+      "bytes": 3803
+    }
+  ],
+  "source_file_count": 8,
+  "external_source_owner": "ordaxsystems/ordax-apps",
+  "install_authority": "none",
+  "purpose": "Reproducible pre-removal provenance for Gate B; original byte source is not packaged from this manifest."
+}

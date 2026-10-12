@@ -97,6 +97,40 @@ jobs:
           test "$actual" = "$expected"
           test "$(python3 -c 'import json; print(json.load(open("migrations/notes.platform-lifecycle.lock.json", encoding="utf-8"))["tool_path"])')" = "tools/runtime-component-channel"
 
+      - name: Verify pinned platform recognizes each catalog candidate source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          root = Path.cwd()
+          workspace = json.loads((root / "ordax-apps.workspace.json").read_text(encoding="utf-8"))
+          canonical_source = workspace["repository_migration"]["canonical_repository"]
+          policy = json.loads((
+              root / ".ordax-platform-lifecycle/docs/contracts/runtime-component-package.json"
+          ).read_text(encoding="utf-8"))
+          mapping = policy["canonical_package_source_repository_by_component"]
+          generated = (
+              root / ".ordax-platform-lifecycle/tools/runtime-component-channel/external_sources_generated.go"
+          ).read_text(encoding="utf-8")
+          sys.path.insert(0, str(root / "tools/app-package"))
+          from catalog_inventory import discover_catalog_apps
+
+          candidates = discover_catalog_apps(root / "apps", root / "migrations")
+          mismatch = sorted(
+              entry["appId"] for entry in candidates
+              if mapping.get(entry["appId"]) != canonical_source
+              or f'"{entry["appId"]}": appsSourceRepository,' not in generated
+          )
+          if mismatch:
+              raise SystemExit(
+                  f"pinned OS lifecycle verifier lacks canonical external source for: {mismatch}"
+              )
+          print(f"CANONICAL_COMPONENT_SOURCES=PASS; CANDIDATES={len(candidates)}")
+          PY
+
       - name: Set up Go for canonical platform verifier
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
