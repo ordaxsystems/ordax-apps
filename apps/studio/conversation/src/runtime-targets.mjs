@@ -1,23 +1,5 @@
-// Authorized catalog presentation. Presence is an observation, never a grant.
-const identifier = value => typeof value === 'string' && /^[a-zA-Z0-9:_-]{1,128}$/.test(value);
-const timestamp = value => typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
-
-export function runtimeTargets(value) {
-  if (!Array.isArray(value) || value.length > 100) throw new TypeError('Catálogo inválido do OrdaX Runtime.');
-  const seen = new Set();
-  return value.map(target => {
-    if (!target || !identifier(target.device_id) || seen.has(target.device_id)) throw new TypeError('Catálogo inválido do OrdaX Runtime.');
-    seen.add(target.device_id);
-    const name = target.device_name || target.name || target.device_id;
-    return {
-      deviceId: target.device_id,
-      name: typeof name === 'string' ? name.replace(/[\x00-\x1f]/g, '').slice(0, 128) : target.device_id,
-      online: typeof target.online === 'boolean' ? target.online : null,
-      lastSeenAt: timestamp(target.last_seen_at),
-    };
-  });
-}
-
+import { runtimeTargets } from '../../../../contracts/product-runtime.mjs';
+export { runtimeTargets };
 export function deviceAvailable(state, deviceId) {
   const target = state.targets?.find(item => item.deviceId === deviceId);
   return Boolean(state.connected && state.catalogAvailable !== false && target && target.online !== false);

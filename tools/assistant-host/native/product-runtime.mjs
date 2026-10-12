@@ -1,13 +1,12 @@
 import { randomUUID, createHash } from 'node:crypto';
-import { runtimeTargets } from '../../../apps/studio/conversation/src/runtime-targets.mjs';
+import { runtimeTargets, PRODUCT_RUNTIME_OPERATIONS } from '../../../contracts/product-runtime.mjs';
 
 const fail = (message, status = 409) => Object.assign(new Error(message), { status });
 const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 128 && /^[a-zA-Z0-9:_-]+$/.test(value);
 const relative = value => typeof value === 'string' && value.length > 0 && value.length <= 1024 && !/[\x00-\x1f:*?"<>|]/.test(value) && !/^[\\/]/.test(value) && !value.replaceAll('\\', '/').split('/').includes('..');
 const sha = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
-const names = { projects: 'projects.list', projectCreate: 'workspace.project_create', projectImport: 'workspace.bind_project', directory: 'workspace.directory_list', read: 'workspace.text_read', write: 'workspace.text_write', terminal: 'terminal.exec', gitStatus: 'git.status', gitDiff: 'git.diff', search: 'project.search_text', briefing: 'agent.project_briefing', preview: 'project.preview_status', continuity: 'continuity.get', continuitySave: 'continuity.update' };
 const statuses = ['prepared','submitting','queued','running','succeeded','failed','cancelled','uncertain','not-sent','reviewed'];
-export const validOperations = data => data?.schemaVersion === 1 && Array.isArray(data.operations) && data.operations.length <= 40 && new Set(data.operations.map(o => o?.id)).size === data.operations.length && data.operations.every(o => o && identifier(o.id) && Object.hasOwn(names, o.kind) && statuses.includes(o.status) && identifier(o.deviceId) && (o.project == null || identifier(o.project)) && (o.path == null || relative(o.path)) && (o.requestId == null || identifier(o.requestId)) && typeof o.createdAt === 'string' && typeof o.label === 'string' && o.label.length <= 1200) && JSON.stringify(data).length <= 8000000;
+export const validOperations = data => data?.schemaVersion === 1 && Array.isArray(data.operations) && data.operations.length <= 40 && new Set(data.operations.map(o => o?.id)).size === data.operations.length && data.operations.every(o => o && identifier(o.id) && Object.hasOwn(PRODUCT_RUNTIME_OPERATIONS, o.kind) && statuses.includes(o.status) && identifier(o.deviceId) && (o.project == null || identifier(o.project)) && (o.path == null || relative(o.path)) && (o.requestId == null || identifier(o.requestId)) && typeof o.createdAt === 'string' && typeof o.label === 'string' && o.label.length <= 1200) && JSON.stringify(data).length <= 8000000;
 
 // An account's operation receipts are never stored under the old anonymous
 // key. The full verified Product subject is bound inside the critical journal;
@@ -165,13 +164,13 @@ export class ProductRuntime {
     return this.connectPending;
   }
   input(data) {
-    if (!data || !Object.hasOwn(names, data.kind) || !identifier(data.deviceId) || !this.targets.some(t => t.deviceId === data.deviceId)) throw fail('Selecione um dispositivo autorizado.', 400);
+    if (!data || !Object.hasOwn(PRODUCT_RUNTIME_OPERATIONS, data.kind) || !identifier(data.deviceId) || !this.targets.some(t => t.deviceId === data.deviceId)) throw fail('Selecione um dispositivo autorizado.', 400);
     if (!this.catalogAvailable) throw fail('Atualize a disponibilidade dos dispositivos antes de executar.', 503);
     if (this.targets.find(t => t.deviceId === data.deviceId).online === false) throw fail('O dispositivo foi informado offline. Ligue-o ou selecione outro dispositivo autorizado. Nada foi enviado.', 409);
-    const fields = { projects: [], projectCreate: ['slug','name'], projectImport: ['slug','relativePath'], directory: ['path'], read: ['path'], write: ['path','content','expectedSha256'], terminal: ['argv','cwd'], gitStatus: [], gitDiff: [], search: ['query'], briefing: ['query'], preview: [], continuity: [], continuitySave: ['summary','nextAction','completed','blockers','changedPaths'] };
-    if (Object.keys(data).some(key => !['kind','deviceId','project',...fields[data.kind]].includes(key))) throw fail('Campo não suportado pela operação.', 400);
-    const globalProjectAction = ['projectCreate','projectImport'].includes(data.kind);
-    if (!['projects','projectCreate','projectImport'].includes(data.kind) && !identifier(data.project)) throw fail('Selecione um projeto.', 400);
+    const operationProfile = PRODUCT_RUNTIME_OPERATIONS[data.kind];
+    if (Object.keys(data).some(key => !['kind','deviceId','project',...operationProfile.fields].includes(key))) throw fail('Campo não suportado pela operação.', 400);
+    const globalProjectAction = operationProfile.scope === 'new-project';
+    if (operationProfile.scope === 'project' && !identifier(data.project)) throw fail('Selecione um projeto.', 400);
     if (globalProjectAction && data.project != null && data.project !== '') throw fail('Criação e importação não aceitam um projeto ativo.', 400);
     if (data.project !== undefined && data.project !== '' && !identifier(data.project)) throw fail('Projeto inválido.', 400);
     const arguments_ = {}; let label = data.kind;
@@ -207,7 +206,7 @@ export class ProductRuntime {
       if (!Array.isArray(data.argv) || data.argv.length < 1 || data.argv.length > 128 || data.argv.some(a => typeof a !== 'string' || !a || a.length > 8192 || a.includes('\0')) || !relative(data.cwd)) throw fail('Comando inválido. Informe um vetor de argumentos JSON e um diretório relativo.', 400);
       Object.assign(arguments_, { argv: data.argv, shell: false, cwd: data.cwd, timeout_seconds: 120 }); label = data.argv.join(' ').slice(0, 1200);
     }
-    return { device_id: data.deviceId, action: names[data.kind], arguments: arguments_, ...(data.project ? { project: data.project } : {}), ...(this.spaceId ? { space_id: this.spaceId } : {}), label };
+    return { device_id: data.deviceId, action: operationProfile.action, arguments: arguments_, ...(data.project ? { project: data.project } : {}), ...(this.spaceId ? { space_id: this.spaceId } : {}), label };
   }
   async submit(data) {
     if (this.recoveryRequired) throw fail(this.issue, 503);
@@ -246,7 +245,7 @@ export class ProductRuntime {
     try {
       const data = await this.request('/v3/product/actions/' + encodeURIComponent(operation.requestId));
       const remote = data.action;
-      if (!remote || !['queued','running','succeeded','failed','cancelled'].includes(remote.status) || remote.request_id !== operation.requestId || remote.device_id !== operation.deviceId || remote.action !== names[operation.kind] || (remote.project ?? null) !== (operation.project ?? null)) throw fail('O resultado do Runtime não corresponde ao registro e ao projeto desta operação.');
+      if (!remote || !['queued','running','succeeded','failed','cancelled'].includes(remote.status) || remote.request_id !== operation.requestId || remote.device_id !== operation.deviceId || remote.action !== PRODUCT_RUNTIME_OPERATIONS[operation.kind]?.action || (remote.project ?? null) !== (operation.project ?? null)) throw fail('O resultado do Runtime não corresponde ao registro e ao projeto desta operação.');
       if (remote.status === operation.status && ['queued','running'].includes(remote.status) && !this.unpersisted.has(operation.id)) { this.polling.delete(operation.id); this.issue = ''; return; }
       next.status = remote.status; next.error = remote.error_code ? String(remote.error_code).slice(0, 200) : '';
       if (['succeeded','failed','cancelled'].includes(remote.status)) {
