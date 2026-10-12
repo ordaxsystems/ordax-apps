@@ -4,5 +4,13 @@
   "appVersion": "0.1.0",
   "authority": "none",
   "execution": "unavailable",
-  "providers": []
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "projects-native",
+      "revision": "1",
+      "module": "actions/providers/projects-native.mjs",
+      "sha256": "bb6b3fdf14faeba101b404916c6d7853e6e212b2ac2083821186af3f50866734"
+    }
+  ]
 }
