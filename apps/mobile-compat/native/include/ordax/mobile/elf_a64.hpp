@@ -22,9 +22,9 @@ struct LoadedGuestElf {
 // Executable guest entry and all PT_LOAD/RELA bounds are checked before mapping.
 [[nodiscard]] LoadedGuestElf loadStaticElfA64(CpuA64& cpu, std::span<const std::uint8_t> elf);
 
-// ET_DYN with DT_RELA + R_AARCH64_RELATIVE only, at a host-chosen guest bias.
-// PT_INTERP, PT_TLS, needed libraries, symbol resolution and other relocations
-// fail closed until the Android dynamic linker and Bionic are implemented.
+// ET_DYN with bounded relative RELA/RELR/APS2, at a host-chosen guest bias.
+// PT_INTERP, PT_TLS, unresolved needed libraries, constructors and unknown
+// relocation types fail closed; the full Android/Bionic linker is absent.
 [[nodiscard]] LoadedGuestElf loadRelocatableElfA64(
     CpuA64& cpu, std::span<const std::uint8_t> elf, std::uint64_t load_bias);
 
@@ -40,7 +40,8 @@ struct GuestDynamicExport {
     const std::string& library);
 
 // Only a small ET_DYN subset: explicit DT_NEEDED provider, global defined
-// function via DT_HASH/dynsym, and R_AARCH64_JUMP_SLOT or GLOB_DAT.
+// function via DT_HASH or bounded DT_GNU_HASH with the same dynsym parser,
+// and R_AARCH64_JUMP_SLOT or GLOB_DAT.
 // No libc/Bionic, versioned symbols, constructors, weak, TLS or lazy binding.
 // All provider libraries must have been loaded into the SAME guest CPU.
 [[nodiscard]] LoadedGuestElf loadLinkedElfA64(
