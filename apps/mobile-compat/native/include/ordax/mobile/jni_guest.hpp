@@ -24,6 +24,7 @@ public:
     // The actual JNI JNINativeInterface index numbers (8-byte slots).
     static constexpr unsigned kGetVersionIndex = 4;
     static constexpr unsigned kGetArrayLengthIndex = 171;
+    static constexpr unsigned kNewIntArrayIndex = 179;
     static constexpr unsigned kGetIntArrayRegionIndex = 203;
     static constexpr unsigned kSetIntArrayRegionIndex = 211;
     static constexpr unsigned kExceptionCheckIndex = 228;
