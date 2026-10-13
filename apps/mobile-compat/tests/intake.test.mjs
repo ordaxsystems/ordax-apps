@@ -143,7 +143,7 @@ function classIndexDex(classNames) {
   });
   const total = dataOff + encoded.reduce((a, b) => a + b.length, 0);
   const b = Buffer.alloc(total);
-  b.write('dex\\n039\\0', 0, 'binary');
+  b.write('dex\n039\0', 0, 'binary');
   b.writeUInt32LE(total, 32); b.writeUInt32LE(112, 36); b.writeUInt32LE(0x12345678, 40);
   b.writeUInt32LE(n, 56); b.writeUInt32LE(stringOff, 60);
   b.writeUInt32LE(n, 64); b.writeUInt32LE(typesOff, 68);
