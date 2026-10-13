@@ -12,7 +12,8 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - identificação e validação de DEX e ABI ELF64;
 - ferramenta de inspeção que falha fechada quando se solicita execução do app;
 - testes sintéticos sem download de aplicativo proprietário.
-- executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes. Não roda um APK.
+- executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
+- carregador real de ELF64 ARM64 estático com PT_LOAD, validação de limites, sobreposição e entrada executável. Linker dinâmico/Bionic/ART ainda não existem; não roda um APK.
 
 Rodar testes com Node.js 20+:
 
