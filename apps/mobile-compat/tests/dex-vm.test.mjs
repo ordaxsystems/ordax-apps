@@ -257,8 +257,8 @@ function objectDexFixture() {
   b.writeUInt32LE(b.length - 0xf8, 104);
   b.writeUInt32LE(13, 56); b.writeUInt32LE(0x400, 60); // string ids
   b.writeUInt32LE(5, 72); b.writeUInt32LE(0x3c0, 76); // prototypes
-  b.writeUInt32LE(1, 80); b.writeUInt32LE(0x380, 84); // instance field
-  b.writeUInt32LE(7, 88); b.writeUInt32LE(0x3a0, 92); // methods
+  b.writeUInt32LE(1, 80); b.writeUInt32LE(0x360, 84); // instance field
+  b.writeUInt32LE(7, 88); b.writeUInt32LE(0x380, 92); // methods
   b.writeUInt32LE(0x600, 0xd8 + 24); // class data
   const strings = ['I', 'II', 'III', 'Ltest/Arithmetic;', 'V',
     'nativeStub', 'sum', 'twice', '<init>', 'makeObject', 'makeValue',
@@ -283,14 +283,14 @@ function objectDexFixture() {
     b.writeUInt32LE(params, at + 8);
   });
   // instance int field "value", owned by class index 1.
-  b.writeUInt16LE(1, 0x380);
-  b.writeUInt16LE(0, 0x382);
-  b.writeUInt32LE(12, 0x384);
+  b.writeUInt16LE(1, 0x360);
+  b.writeUInt16LE(0, 0x362);
+  b.writeUInt32LE(12, 0x364);
   for (const [i, proto, name] of [
     [0, 0, 5], [1, 2, 6], [2, 1, 7], [3, 3, 8],
     [4, 4, 9], [5, 1, 10], [6, 0, 11],
   ]) {
-    const at = 0x3a0 + i * 8;
+    const at = 0x380 + i * 8;
     b.writeUInt16LE(1, at); b.writeUInt16LE(proto, at + 2);
     b.writeUInt32LE(name, at + 4);
   }
