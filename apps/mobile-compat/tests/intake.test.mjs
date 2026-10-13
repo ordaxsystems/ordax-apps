@@ -132,6 +132,39 @@ test('verifies DEX signature/checksum, rejects malformed ELF', () => {
   assert.throws(() => inspectDex(dex), { code: 'DEX' });
   assert.throws(() => inspectElf(Buffer.alloc(64)), { code: 'ELF' });
 });
+function classIndexDex(classNames) {
+  const descriptors = classNames.map(x => 'L' + x.replaceAll('.', '/') + ';');
+  const n = descriptors.length, stringOff = 112, typesOff = stringOff + n * 4;
+  const classesOff = typesOff + n * 4, dataOff = classesOff + n * 32;
+  const encoded = descriptors.map(s => {
+    const bytes = Buffer.from(s);
+    assert.ok(bytes.length > 0 && bytes.length < 128);
+    return Buffer.concat([Buffer.from([bytes.length]), bytes, Buffer.from([0])]);
+  });
+  const total = dataOff + encoded.reduce((a, b) => a + b.length, 0);
+  const b = Buffer.alloc(total);
+  b.write('dex\\n039\\0', 0, 'binary');
+  b.writeUInt32LE(total, 32); b.writeUInt32LE(112, 36); b.writeUInt32LE(0x12345678, 40);
+  b.writeUInt32LE(n, 56); b.writeUInt32LE(stringOff, 60);
+  b.writeUInt32LE(n, 64); b.writeUInt32LE(typesOff, 68);
+  b.writeUInt32LE(n, 96); b.writeUInt32LE(classesOff, 100);
+  let at = dataOff;
+  for (let i = 0; i < n; i++) {
+    b.writeUInt32LE(at, stringOff + i * 4);
+    b.writeUInt32LE(i, typesOff + i * 4);
+    b.writeUInt32LE(i, classesOff + i * 32);
+    b.writeUInt32LE(1, classesOff + i * 32 + 4);
+    b.writeUInt32LE(0xffffffff, classesOff + i * 32 + 8);
+    encoded[i].copy(b, at); at += encoded[i].length;
+  }
+  createHash('sha1').update(b.subarray(32)).digest().copy(b, 12);
+  let s1 = 1, s2 = 0;
+  for (let i = 12; i < b.length; i++) {
+    s1 = (s1 + b[i]) % 65521; s2 = (s2 + s1) % 65521;
+  }
+  b.writeUInt32LE(((s2 << 16) | s1) >>> 0, 8);
+  return b;
+}
 function binaryLaunchManifest({ disableSecond = false } = {}) {
   const ss = ['manifest', 'package', 'application', 'name', 'activity', 'activity-alias',
     'targetActivity', 'enabled', 'exported', 'intent-filter', 'action', 'category',
@@ -212,13 +245,17 @@ test('real Android binary manifest resolves enabled alias to declared Activity',
     code: 'EXECUTION_UNAVAILABLE',
     message: /RealActivity/,
   });
-  const base = zip([{ name: 'classes.dex', bytes: syntheticDex() },
+  const base = zip([{ name: 'classes.dex', bytes: classIndexDex(['com.instagram.android.RealActivity']) },
+    { name: 'classes2.dex', bytes: syntheticDex() },
+    { name: 'classes3.dex', bytes: classIndexDex(['com.instagram.android.AppShell']) },
     { name: 'AndroidManifest.xml', bytes: manifest }]);
   const dir = await mkdtemp(join(tmpdir(), 'ordax-mobile-actual-launch-'));
   try {
     const path = join(dir, 'manifested.xapk');
     await writeFile(path, zip([{ name: 'com.instagram.android.apk', bytes: base }]));
-    assert.deepEqual(await resolveLaunchFromPackage(path), plan);
+    assert.deepEqual(await resolveLaunchFromPackage(path), {
+      ...plan, applicationDex: 'classes3.dex', activityDex: 'classes.dex',
+    });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 test('binary launch manifest rejects disabled launchers and tampered headers', () => {
