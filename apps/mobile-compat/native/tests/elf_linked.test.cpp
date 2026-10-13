@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
         const auto exports = inspectGuestDynamicExports(provider, 0x10000, "libprovider.so");
         const auto linked = loadLinkedElfA64(cpu, b, 0x30000, exports);
         assert(linked.relative_relocations == 2);
-        assert(cpu.read64(0x33010) == linked.entry);
+        assert(cpu.guest_read_i32(0x33010) == linked.entry);
         cpu.set_register(0, 40);
         assert(cpu.run(linked.entry, 30) == 42);
         auto collision = b;
