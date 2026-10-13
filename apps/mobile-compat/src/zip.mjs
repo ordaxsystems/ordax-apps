@@ -5,7 +5,7 @@ import { inflateRawSync } from 'node:zlib';
 
 const MAX_ARCHIVE = 512 * 1024 * 1024;
 const MAX_ENTRY = 256 * 1024 * 1024;
-const MAX_ENTRIES = 10000;
+const MAX_ENTRIES = 16384;
 const MAX_TOTAL = 1024 * 1024 * 1024;
 const utf8 = new TextDecoder('utf-8', { fatal: true });
 
@@ -51,7 +51,8 @@ function directory(buffer, archiveSize) {
   const bytes = u32(buffer, eocd + 12);
   const offset = u32(buffer, eocd + 16);
   need(count !== 0xffff && bytes !== 0xffffffff && offset !== 0xffffffff, 'ZIP64', 'ZIP64 requires a separate validated implementation');
-  need(bytes <= 16 * 1024 * 1024 && count <= MAX_ENTRIES && offset + bytes <= archiveSize && offset + bytes <= archiveSize - (buffer.length - eocd), 'BOUNDS', 'Directory outside archive');
+  need(count <= MAX_ENTRIES, 'LIMIT', 'ZIP entry count exceeds limit');
+  need(bytes <= 16 * 1024 * 1024 && offset + bytes <= archiveSize && offset + bytes <= archiveSize - (buffer.length - eocd), 'BOUNDS', 'Directory outside archive');
   return { count, offset, bytes };
 }
 async function readExact(fh, position, length) {
