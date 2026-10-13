@@ -4,7 +4,8 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { inspectPackage, requireExecutionSupport } from '../src/inspect.mjs';
+import { inspectPackage, resolveLaunchFromPackage, requireExecutionSupport } from '../src/inspect.mjs';
+import { resolveAndroidLaunchManifest } from '../src/manifest-axml.mjs';
 import { packageFromBuffer } from '../src/zip.mjs';
 import { inspectDex, inspectElf } from '../src/formats.mjs';
 
@@ -130,6 +131,105 @@ test('verifies DEX signature/checksum, rejects malformed ELF', () => {
   dex[60] = 11;
   assert.throws(() => inspectDex(dex), { code: 'DEX' });
   assert.throws(() => inspectElf(Buffer.alloc(64)), { code: 'ELF' });
+});
+function binaryLaunchManifest({ disableSecond = false } = {}) {
+  const ss = ['manifest', 'package', 'application', 'name', 'activity', 'activity-alias',
+    'targetActivity', 'enabled', 'exported', 'intent-filter', 'action', 'category',
+    'android.intent.action.MAIN', 'android.intent.category.LAUNCHER',
+    'com.instagram.android', '.AppShell', '.RealActivity', '.InternalLauncher', '.MainTabActivity'];
+  const index = s => { const i = ss.indexOf(s); assert.notEqual(i, -1); return i; };
+  const poolData = [], offsets = [];
+  let next = 0;
+  for (const s of ss) {
+    const value = Buffer.from(s);
+    assert.ok(value.length < 128);
+    const encoded = Buffer.concat([Buffer.from([value.length, value.length]), value, Buffer.from([0])]);
+    offsets.push(next);
+    poolData.push(encoded);
+    next += encoded.length;
+  }
+  const pool = Buffer.alloc(28 + ss.length * 4);
+  pool.writeUInt16LE(1, 0); pool.writeUInt16LE(28, 2);
+  pool.writeUInt32LE(pool.length + next, 4);
+  pool.writeUInt32LE(ss.length, 8);
+  pool.writeUInt32LE(0x100, 16);
+  pool.writeUInt32LE(pool.length, 20);
+  offsets.forEach((v, i) => pool.writeUInt32LE(v, 28 + i * 4));
+  const start = (name, attributes = {}) => {
+    const entries = Object.entries(attributes);
+    const b = Buffer.alloc(36 + entries.length * 20);
+    b.writeUInt16LE(0x0102, 0); b.writeUInt16LE(16, 2);
+    b.writeUInt32LE(b.length, 4);
+    b.writeUInt32LE(0xffffffff, 16);
+    b.writeUInt32LE(index(name), 20);
+    b.writeUInt16LE(20, 24); b.writeUInt16LE(20, 26);
+    b.writeUInt16LE(entries.length, 28);
+    for (let i = 0; i < entries.length; i++) {
+      const [key, value] = entries[i], at = 36 + i * 20;
+      b.writeUInt32LE(0xffffffff, at);
+      b.writeUInt32LE(index(key), at + 4);
+      b.writeUInt32LE(0xffffffff, at + 8);
+      b.writeUInt16LE(8, at + 12);
+      b[at + 15] = typeof value === 'boolean' ? 18 : 3;
+      b.writeUInt32LE(typeof value === 'boolean' ? Number(value) : index(value), at + 16);
+    }
+    return b;
+  };
+  const end = name => {
+    const b = Buffer.alloc(24);
+    b.writeUInt16LE(0x0103, 0); b.writeUInt16LE(16, 2);
+    b.writeUInt32LE(24, 4); b.writeUInt32LE(0xffffffff, 16);
+    b.writeUInt32LE(index(name), 20); return b;
+  };
+  const alias = (name, enabled) => [
+    start('activity-alias', { name, targetActivity: '.RealActivity', enabled, exported: true }),
+    start('intent-filter'), start('action', { name: 'android.intent.action.MAIN' }), end('action'),
+    start('category', { name: 'android.intent.category.LAUNCHER' }), end('category'),
+    end('intent-filter'), end('activity-alias')];
+  const content = Buffer.concat([pool, ...poolData,
+    start('manifest', { package: 'com.instagram.android' }),
+    start('application', { name: '.AppShell' }),
+    start('activity', { name: '.RealActivity', enabled: true }), end('activity'),
+    ...alias('.InternalLauncher', false),
+    ...alias('.MainTabActivity', !disableSecond),
+    end('application'), end('manifest')]);
+  const b = Buffer.alloc(8);
+  b.writeUInt16LE(3, 0); b.writeUInt16LE(8, 2);
+  b.writeUInt32LE(content.length + b.length, 4);
+  return Buffer.concat([b, content]);
+}
+test('real Android binary manifest resolves enabled alias to declared Activity', async () => {
+  const manifest = binaryLaunchManifest();
+  const plan = resolveAndroidLaunchManifest(manifest);
+  assert.deepEqual(plan, {
+    packageName: 'com.instagram.android',
+    applicationClass: 'com.instagram.android.AppShell',
+    launcherComponent: 'com.instagram.android.MainTabActivity',
+    activityClass: 'com.instagram.android.RealActivity',
+    launcherIsAlias: true,
+  });
+  assert.throws(() => requireExecutionSupport(plan), {
+    code: 'EXECUTION_UNAVAILABLE',
+    message: /RealActivity/,
+  });
+  const base = zip([{ name: 'classes.dex', bytes: syntheticDex() },
+    { name: 'AndroidManifest.xml', bytes: manifest }]);
+  const dir = await mkdtemp(join(tmpdir(), 'ordax-mobile-actual-launch-'));
+  try {
+    const path = join(dir, 'manifested.xapk');
+    await writeFile(path, zip([{ name: 'com.instagram.android.apk', bytes: base }]));
+    assert.deepEqual(await resolveLaunchFromPackage(path), plan);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test('binary launch manifest rejects disabled launchers and tampered headers', () => {
+  const good = binaryLaunchManifest();
+  assert.throws(() => resolveAndroidLaunchManifest(binaryLaunchManifest({ disableSecond: true })),
+    { code: 'NO_LAUNCHER' });
+  assert.throws(() => resolveAndroidLaunchManifest(good.subarray(0, good.length - 1)),
+    { code: 'MANIFEST' });
+  const corrupt = Buffer.from(good);
+  corrupt.writeUInt32LE(0xffffffff, 4);
+  assert.throws(() => resolveAndroidLaunchManifest(corrupt), { code: 'MANIFEST' });
 });
 test('execution is denied until a real guest runtime exists', () => {
   assert.throws(requireExecutionSupport, { code: 'EXECUTION_UNAVAILABLE' });
