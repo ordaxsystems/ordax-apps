@@ -326,6 +326,12 @@ template<class F> void reject(F&& f) {
 } // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 3 && std::string(argv[1]) == "--emit-jni-register-fixture") {
+        const auto bytes = onLoadRegisterElf();
+        std::ofstream out(argv[2], std::ios::binary | std::ios::trunc);
+        return out.write(reinterpret_cast<const char*>(bytes.data()),
+                         static_cast<std::streamsize>(bytes.size())).good() ? 0 : 3;
+    }
     if (argc == 3 && std::string(argv[1]) == "--emit-jni-onload-fixture") {
         const auto bytes = onLoadElf();
         std::ofstream out(argv[2], std::ios::binary | std::ios::trunc);
