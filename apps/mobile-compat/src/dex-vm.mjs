@@ -285,7 +285,7 @@ export class DexSubset {
       [0x12, 1], [0x13, 2], [0x14, 3], [0x21, 1], [0x22, 2], [0x23, 2],
       [0x44, 2], [0x4b, 2], [0x52, 2], [0x59, 2],
       [0x28, 1], [0x29, 2], [0x38, 2],
-      [0x6e, 3], [0x70, 3], [0x71, 3], [0x90, 2], [0x91, 2], [0x92, 2], [0xd8, 2],
+      [0x6e, 3], [0x6f, 3], [0x70, 3], [0x71, 3], [0x90, 2], [0x91, 2], [0x92, 2], [0xd8, 2],
     ]);
     const starts = new Set(), targets = [];
     let previous = -1;
@@ -296,7 +296,8 @@ export class DexSubset {
       if (p + size > insnsCount) fail('DEX_CODE', 'Instruction extends beyond code item');
       starts.add(p);
       if ((opcode === 0x0a || opcode === 0x0c) &&
-          previous !== 0x71 && previous !== 0x70 && previous !== 0x6e) {
+          previous !== 0x71 && previous !== 0x70 &&
+          previous !== 0x6f && previous !== 0x6e) {
         fail('DEX_RESULT', 'move-result must directly follow invoke');
       }
       if (opcode === 0x28) targets.push(p + sign8(w >>> 8));
@@ -467,7 +468,7 @@ export class DexSubset {
           if (getInt(a) === 0) pc = oldPc + delta;
           break;
         }
-        case 0x6e: case 0x70: case 0x71: { // virtual/direct/static, format 35c
+        case 0x6e: case 0x6f: case 0x70: case 0x71: { // virtual/super/direct/static (35c)
           const count = a >>> 4, g = a & 15;
           const target = word(pc++), packed = word(pc++);
           if (count > 5 || count > item.outs) fail('DEX_INVOKE', 'Invalid invoke register count/outs');
@@ -481,9 +482,26 @@ export class DexSubset {
               (callee.name !== '<init>' || !this.directMethodIds.has(target))) {
             fail('DEX_INVOKE', 'Only local direct constructors supported');
           }
-          if (op === 0x6e &&
+          if ((op === 0x6e || op === 0x6f) &&
               (callee.name === '<init>' || !this.virtualMethodIds.has(target))) {
             fail('DEX_INVOKE', 'Virtual target must be declared as virtual');
+          }
+          // invoke-super has authority only inside an instance method on
+          // its own receiver; the referenced declaration must be an ancestor
+          // of the current method's class. It never performs host dispatch.
+          let superLineage = null;
+          if (op === 0x6f) {
+            const ownerIdx = this.classIndicesByName.get(item.info.owner);
+            const parentIdx = this.classSuperclasses.get(ownerIdx);
+            const targetOwner = this.classIndicesByName.get(callee.owner);
+            if (item.isStatic || parentIdx === undefined || parentIdx === 0xffffffff ||
+                targetOwner === undefined) {
+              fail('DEX_INVOKE', 'invoke-super requires local instance superclass');
+            }
+            superLineage = this.classLineage(parentIdx);
+            if (!superLineage.includes(targetOwner)) {
+              fail('DEX_INVOKE', 'invoke-super target is not in caller superclass chain');
+            }
           }
           const indices = [packed & 15, (packed >>> 4) & 15,
             (packed >>> 8) & 15, (packed >>> 12) & 15, g];
@@ -492,7 +510,10 @@ export class DexSubset {
           const values = indices.slice(0, count).map((r, i) =>
             types[i] === 'I' ? getInt(r) : getRef(r));
           let destination = target;
-          if (op === 0x6e) {
+          if (op === 0x6e || op === 0x6f) {
+            if (op === 0x6f && values[0] !== args[0]) {
+              fail('DEX_INVOKE', 'invoke-super must use current instance receiver');
+            }
             heap.requireInitialized(values[0], callee.owner);
             const receiver = heap.lookup(values[0], callee.owner);
             const receiverIdx = this.classIndicesByName.get(receiver.type);
@@ -500,11 +521,26 @@ export class DexSubset {
             if (receiverIdx === undefined || ownerIdx === undefined) {
               fail('DEX_CLASS', 'Virtual receiver not declared locally');
             }
-            // Resolve from the real receiver class through its local parents.
-            for (const cls of this.classLineage(receiverIdx)) {
-              const override = this.classVirtualMethods.get(cls).get(virtualKey(callee));
-              if (override !== undefined) { destination = override; break; }
-              if (cls === ownerIdx) break;
+            if (op === 0x6f) {
+              // Unlike invoke-virtual, do not redispatch to the most-derived
+              // receiver: start at the CALLER's immediate superclass and
+              // execute the first matching implementation in that chain.
+              heap.lookup(values[0], item.info.owner);
+              destination = null;
+              for (const cls of superLineage) {
+                const inherited = this.classVirtualMethods.get(cls).get(virtualKey(callee));
+                if (inherited !== undefined) { destination = inherited; break; }
+              }
+              if (destination === null) {
+                fail('DEX_METHOD', 'No local superclass implementation for invoke-super');
+              }
+            } else {
+              // Resolve from the real receiver class through its local parents.
+              for (const cls of this.classLineage(receiverIdx)) {
+                const override = this.classVirtualMethods.get(cls).get(virtualKey(callee));
+                if (override !== undefined) { destination = override; break; }
+                if (cls === ownerIdx) break;
+              }
             }
           }
           if (op === 0x70) {

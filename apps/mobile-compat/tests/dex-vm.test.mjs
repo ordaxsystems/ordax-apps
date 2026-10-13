@@ -451,6 +451,56 @@ test('inherited guest fields, chained constructors and virtual overriding execut
     { code: 'DEX_REFERENCE' });
 });
 
+// Exercise the DEX invoke-super opcode, not a direct host callback. The
+// parent getter and child override both execute on the same guest object.
+function invokeSuperObjectDexFixture() {
+  const b = inheritedObjectDexFixture();
+  b.writeUInt16LE(1, 0x7b0 + 4); // one outgoing receiver word
+  const code = [
+    0x106f, 6, 0x0002, // invoke-super {v2}, Arithmetic.readValue()I
+    0x000a,            // move-result v0
+    0x2152, 1,         // iget v1, v2, Derived.value
+    0x0090, 0x0100,   // add-int v0, v0, v1
+    0x000f,
+  ];
+  b.writeUInt32LE(code.length, 0x7b0 + 12);
+  code.forEach((word, i) => b.writeUInt16LE(word, 0x7b0 + 16 + i * 2));
+  return sealDex(b);
+}
+
+test('invoke-super executes inherited DEX method without redispatching into child override', () => {
+  const vm = new DexSubset(invokeSuperObjectDexFixture());
+  for (const input of [42, -11, 0]) {
+    const result = vm.execute('Ltest/Arithmetic;', 'makeValue', [input]);
+    assert.equal(result.value, input * 2);
+    assert.equal(result.allocatedObjects, 1);
+  }
+});
+
+test('invoke-super denies unrelated target, forged receiver and static caller', () => {
+  const wrongTarget = invokeSuperObjectDexFixture();
+  wrongTarget.writeUInt16LE(8, 0x7b0 + 18); // Derived method is not a superclass
+  assert.throws(() => new DexSubset(sealDex(wrongTarget))
+    .execute('Ltest/Arithmetic;', 'makeValue', [6]), { code: 'DEX_INVOKE' });
+
+  const wrongReceiver = invokeSuperObjectDexFixture();
+  wrongReceiver.writeUInt16LE(0x0001, 0x7b0 + 20);
+  assert.throws(() => new DexSubset(sealDex(wrongReceiver))
+    .execute('Ltest/Arithmetic;', 'makeValue', [6]), { code: 'DEX_INVOKE' });
+
+  const staticCaller = invokeSuperObjectDexFixture();
+  staticCaller.writeUInt16LE(0x106f, 0x6c0 + 16);
+  staticCaller.writeUInt16LE(6, 0x6c0 + 18);
+  assert.throws(() => new DexSubset(sealDex(staticCaller))
+    .execute('Ltest/Arithmetic;', 'makeValue', [6]), { code: 'DEX_INVOKE' });
+
+  const noMoveResult = invokeSuperObjectDexFixture();
+  // A move-result opcode cannot be reached without preceding invoke.
+  noMoveResult.writeUInt16LE(0x000e, 0x7b0 + 16);
+  assert.throws(() => new DexSubset(sealDex(noMoveResult))
+    .execute('Ltest/Arithmetic;', 'makeValue', [6]), { code: 'DEX_RESULT' });
+});
+
 test('local classes reject cyclic, missing and incomplete superclass initialization', () => {
   const cyclic = inheritedObjectDexFixture();
   cyclic.writeUInt32LE(3, 0x4c8);
