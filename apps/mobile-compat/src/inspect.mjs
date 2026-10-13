@@ -2,6 +2,7 @@
 import { openPackage, packageFromBuffer, PackageError } from './zip.mjs';
 import { inspectDex, inspectElf } from './formats.mjs';
 import { DexSubset } from './dex-vm.mjs';
+import { resolveAndroidLaunchManifest } from './manifest-axml.mjs';
 
 const MAX_APK = 256 * 1024 * 1024;
 function apkName(name) { return name.toLowerCase().endsWith('.apk'); }
@@ -52,8 +53,43 @@ export async function inspectPackage(path, { verifyPayloads = true } = {}) {
     await zip.close();
   }
 }
-export function requireExecutionSupport() {
-  throw new PackageError('EXECUTION_UNAVAILABLE', 'Android guest execution is not implemented. APK inspection is not app execution.');
+export function requireExecutionSupport(launch = null) {
+  const target = launch ? ` Validated target: ${launch.applicationClass} -> ${launch.activityClass}.` : '';
+  throw new PackageError('EXECUTION_UNAVAILABLE',
+    'Android Activity lifecycle, ART framework and guest graphics are not implemented.' + target);
+}
+
+// Read and validate the *real* Android application and launcher declaration.
+// The returned plan is metadata only; no Dalvik, JNI or Activity is executed.
+export async function resolveLaunchFromPackage(path) {
+  const outer = await openPackage(path);
+  try {
+    if (outer.entries.some(e => e.name === 'classes.dex')) {
+      if (!outer.entries.some(e => e.name === 'AndroidManifest.xml')) {
+        throw new PackageError('MANIFEST', 'Base APK missing AndroidManifest.xml');
+      }
+      inspectDex(await outer.read('classes.dex', 64 * 1024 * 1024));
+      return resolveAndroidLaunchManifest(await outer.read('AndroidManifest.xml', 16 * 1024 * 1024));
+    }
+    const apks = outer.entries.filter(e => apkName(e.name));
+    if (!apks.length || apks.length > 32) throw new PackageError('LIMIT', 'Invalid XAPK split count');
+    let launch = null;
+    for (const e of apks) {
+      if (e.size > MAX_APK) throw new PackageError('LIMIT', 'APK exceeds limit');
+      const inner = await packageFromBuffer(await outer.read(e.name, MAX_APK));
+      try {
+        if (!inner.entries.some(x => x.name === 'classes.dex')) continue;
+        if (launch) throw new PackageError('AMBIGUOUS_APK', 'Multiple executable base APKs');
+        inspectDex(await inner.read('classes.dex', 64 * 1024 * 1024));
+        if (!inner.entries.some(x => x.name === 'AndroidManifest.xml')) {
+          throw new PackageError('MANIFEST', 'Base APK missing AndroidManifest.xml');
+        }
+        launch = resolveAndroidLaunchManifest(await inner.read('AndroidManifest.xml', 16 * 1024 * 1024));
+      } finally { await inner.close(); }
+    }
+    if (!launch) throw new PackageError('NO_DEX', 'No verified base APK with classes.dex');
+    return launch;
+  } finally { await outer.close(); }
 }
 
 
