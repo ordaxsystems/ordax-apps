@@ -15,8 +15,8 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - interpretador Dalvik limitado, com tabelas reais DEX (`class_data`, `code_item`), chamadas estáticas, construtores e chamadas virtuais de classe local; objetos em heap isolado, campos `int32`, `new-instance`, `invoke-direct`, `invoke-virtual`, `iget`, `iput`, `move-object`, `return-object` e `move-result-object`;
 - arrays de inteiros Dalvik com `new-array`, `array-length`, `aget` e `aput` e alocação tipada em memória do convidado (até 65.536 posições por array e até 262.144 posições no conjunto, além do limite de 4.096 objetos/arrays); acesso inválido, tipo não suportado e retorno de referência guest ao host são recusados;
 - fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; agora há **um subconjunto inicial da ABI JNI** com `JNIEnv*`, tabela indexada, `JavaVM*` e `GetEnv`; possui uma prova explícita de `JNI_OnLoad` ARM64, mas ainda sem classes Android, JNI completo, carregamento automático de bibliotecas ou autoridade da plataforma;
-- executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
-- carregador ELF64 ARM64 `ET_EXEC` e `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE`; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
+- executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, ORR e alias MOV entre registradores, ADR/ADRP, LDR/STR, B, BLR, RET e NOP; falha fechada com PC/opcode quando encontra uma instrução ausente;
+- carregador ELF64 ARM64 `ET_EXEC` e `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE`; o interpretador suporta `ADR`/`ADRP` inclusive os encodings que o LLVM/LLD produz após relaxamento. `DT_FLAGS` e `DT_FLAGS_1` são aceitos apenas com os bits documentados de vinculação imediata `DF_BIND_NOW`/`DF_1_NOW`; outras semânticas desconhecidas são recusadas;
 - **RELR compactado em ELF ARM64**: o mesmo carregador interpreta `DT_RELR`/`DT_RELRSZ`/`DT_RELRENT` e as variantes anteriores `DT_ANDROID_RELR`/`DT_ANDROID_RELRSZ`/`DT_ANDROID_RELRENT`, inclusive `DT_ANDROID_RELRCOUNT` (dica opcional ignorada pelo Bionic). O decoder trata entradas diretas e bitmaps de 63 posições, lê os addends implícitos da imagem original, valida segmentos graváveis, pointers remapeados, duplicatas com `RELA`, limite de 8.192 patches e impede overflow. O fluxo cobre provedores independentes e consumidores `DT_NEEDED` com `JUMP_SLOT` + `RELR` no mesmo ELF, sem duplicar a arquitetura. **Não** implementa Bionic completo nem todas as relocations Android; o suporte a `APS2` é restrito a registros `R_AARCH64_RELATIVE` com símbolo zero, descrito a seguir;
 - **Android Packed Relocations `APS2`**: decoder clean-room do formato `APS2` com grupos SLEB128 (deslocamentos, `r_info` e addends acumulados), limitado a 8.192 relocations / 64 KiB de entrada. O mesmo carregador ELF interpreta `DT_ANDROID_RELA` (`0x60000011`) e `DT_ANDROID_RELASZ` (`0x60000012`), permite coexistência com `DT_RELA` e `DT_RELR`, aplica exclusivamente relocations relativas ARM64 para segmentos graváveis e recusa sobreposição, overflow, símbolo externo, flags inválidas e tabela truncada. Essa implementação **não** equivale ao linker Android, não resolve símbolos APS2 externos e não carrega automaticamente o Instagram. Formato verificado contra fontes públicas do Bionic: https://android.googlesource.com/platform/bionic/+/refs/heads/aml_con_341810060/linker/linker_reloc_iterators.h e https://android.googlesource.com/platform/bionic/+/a00ed8a89519e91766a72a124ae2e9bfcf8feb32/libc/include/elf.h; sem copiar código desses arquivos;
 - **SSOT das relocations — `RelocationPlan`**: existe um único planejador no carregador `native/src/elf_a64.cpp` que autoriza as gravações de `RELA`, `RELR` e `APS2`: **limite global de 8.192 patches**, destinos alinhados e graváveis, colisões dentro do mesmo formato ou entre formatos, e aplicação somente depois de concluir toda a validação. Cada decoder interpreta exclusivamente sua representação binária; nenhum decoder autoriza writes, nem há carregador alternativo. A regressão inclui `RELA+APS2`, `RELR+APS2` e `JUMP_SLOT+APS2`, falhas por duplicidade e nova tentativa válida na mesma CPU após uma recusa;
@@ -152,6 +152,25 @@ confundida com nova demonstração interativa de aplicativo Android.
 O workflow `.github/workflows/mobile-compat-cleanroom.yml` continua
 configurado apenas para verificar a branch isolada. Nenhuma aprovação do CI
 substitui o gate de abrir o Instagram original com interface interativa.
+
+## Prova com toolchain Android real
+
+Além dos fixtures ELF binários gerados pelos próprios testes, o laboratório
+contém `native/tests/llvm-jni-register.S`, código AArch64 independente
+compilado pelo **Android NDK Clang e LLD oficiais** no CI. O artefato
+`libprovider.so` resultante não é um APK do Instagram nem contém código
+proprietário do Android. O arquivo possui `DT_GNU_HASH`, `DT_SONAME`,
+`DT_FLAGS`/`DT_FLAGS_1`, `R_AARCH64_RELATIVE`, `PT_DYNAMIC` e
+a função real `JNI_OnLoad` que registra um método com `FindClass` e
+`RegisterNatives`.
+
+O **mesmo arquivo .so compilado uma vez** é transferido pelo GitHub Actions
+para o job Windows com ações fixadas por hash. Os dois ambientes usam o
+executor e a ponte DEX/JNI existentes para chamar `nativeAdd(I)I`,
+com testes negativos de classe não autorizada. Essa é uma prova de
+compatibilidade com o ELF e o ABI da ferramenta real, não um Android
+executável, nem uma demonstração de ART/Bionic/serviços, login ou renderização
+do Instagram. A biblioteca gerada no CI não é distribuída na Loja OrdaX.
 
 ## Implementação necessária para o MVP de execução
 
