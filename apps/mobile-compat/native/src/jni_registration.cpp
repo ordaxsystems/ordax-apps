@@ -73,7 +73,8 @@ void JniGuestEnvironment::declareNativeClass(
 
 std::uint64_t JniGuestEnvironment::dispatchRegistration(
     std::uint64_t target, const std::array<std::uint64_t, 8>& args) {
-    if (!cpu_ || !registering_image_ || declared_owner_.empty()) {
+    if (!cpu_ || !registering_image_ || !registration_getenv_succeeded_ ||
+        declared_owner_.empty()) {
         throw GuestFault("JNI class operations require authorized JNI_OnLoad");
     }
     if (target == (CpuA64::kHostCallPrefix | kFindClassIndex)) {
