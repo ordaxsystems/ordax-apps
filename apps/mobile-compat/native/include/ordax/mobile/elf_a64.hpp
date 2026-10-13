@@ -41,7 +41,9 @@ struct GuestDynamicExport {
 
 // Only a small ET_DYN subset: explicit DT_NEEDED provider, global defined
 // function via DT_HASH or bounded DT_GNU_HASH with the same dynsym parser,
-// and R_AARCH64_JUMP_SLOT or GLOB_DAT.
+// and R_AARCH64_JUMP_SLOT or GLOB_DAT. A standard DT_JMPREL table
+// with DT_PLTREL=DT_RELA shares the exact same resolver (eager binding).
+// Incomplete, overlapping or unsupported PLT tables fail closed.
 // No libc/Bionic, versioned symbols, constructors, weak, TLS or lazy binding.
 // All provider libraries must have been loaded into the SAME guest CPU.
 [[nodiscard]] LoadedGuestElf loadLinkedElfA64(
