@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <fstream>
+#include <string>
 #include <vector>
 
 using ordax::mobile::CpuA64;
@@ -67,7 +69,15 @@ template <typename F> void mustReject(F&& fn) {
 }
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 3 && std::string(argv[1]) == "--emit-fixture") {
+        const auto bytes = makePieImage();
+        std::ofstream out(argv[2], std::ios::binary | std::ios::trunc);
+        if (!out.write(reinterpret_cast<const char*>(bytes.data()),
+                       static_cast<std::streamsize>(bytes.size()))) return 3;
+        return 0;
+    }
+    if (argc != 1) return 2;
     auto elf = makePieImage();
     {
         CpuA64 cpu(0x10000);
