@@ -12,7 +12,8 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - identificação e validação de DEX e ABI ELF64;
 - ferramenta de inspeção que falha fechada quando se solicita execução do app;
 - testes sintéticos sem download de aplicativo proprietário;
-- interpretador Dalvik limitado, com tabelas reais DEX (`class_data`, `code_item`), chamadas estáticas, construtores e chamadas virtuais de classe local; suporte a objetos alojados em heap convidado isolado, campos `int32`, `new-instance`, `invoke-direct`, `invoke-virtual`, `iget`, `iput`, `move-object`, `return-object` e `move-result-object`;
+- interpretador Dalvik limitado, com tabelas reais DEX (`class_data`, `code_item`), chamadas estáticas, construtores e chamadas virtuais de classe local; objetos em heap isolado, campos `int32`, `new-instance`, `invoke-direct`, `invoke-virtual`, `iget`, `iput`, `move-object`, `return-object` e `move-result-object`;
+- arrays de inteiros Dalvik com `new-array`, `array-length`, `aget` e `aput` e alocação tipada em memória do convidado (até 65.536 posições por array e até 262.144 posições no conjunto, além do limite de 4.096 objetos/arrays); acesso inválido, tipo não suportado e retorno de referência guest ao host são recusados;
 - fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; sem JNIEnv, ponteiros guest, carregamento automático de bibliotecas ou autoridade da plataforma;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
 - carregador ELF64 ARM64 `ET_EXEC` e subconjunto relocável `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE` sem símbolos externos; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
@@ -35,10 +36,10 @@ O comando acima executa somente um método estático com argumentos `int32`,
 com heap de objetos privado por execução. Esse método pode criar objetos de
 classes locais sem superclass, chamar construtores e métodos virtuais locais,
 e acessar campos inteiros; porém **não pode expor referências guest ao host**.
-Não há herança, GC, objetos host, classes Android, arrays, JNI ABI, reflexão,
+Não há herança, GC, objetos host, classes Android, arrays de referências ou outros tipos, JNI ABI, reflexão,
 chamadas de rede nem instruções não implementadas. A execução tem limites
 de memória (máximo de 4096 objetos, 128 campos por objeto e 65536 campos
-no total), instruções, pilha e registradores, e exige inicialização antes
+no total, inclusive arrays), instruções, pilha e registradores, e exige inicialização antes
 de invocar métodos virtuais.
 O adaptador nativo de teste exige registro explícito pelo host e não pode
 ser selecionado pelo CLI. Isso não é ART nem JNI completo.
