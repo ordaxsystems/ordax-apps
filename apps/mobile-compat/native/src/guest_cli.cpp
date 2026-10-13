@@ -3,6 +3,7 @@
 #include "ordax/mobile/jni_guest.hpp"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <charconv>
 #include <cstdint>
@@ -16,6 +17,8 @@
 #include <vector>
 
 int main(int argc, char** argv) {
+    const bool jni_registered_mode = argc == 7 &&
+        std::string(argv[1]) == "invoke-jni-registered-i32-elf";
     const bool jni_onload_mode = argc == 3 &&
                                   std::string(argv[1]) == "invoke-jni-onload-elf";
     const bool linked_mode = argc == 5 &&
@@ -31,14 +34,15 @@ int main(int argc, char** argv) {
                                     std::string(argv[1]) == "invoke-jni-new-int-array-elf";
     if (!old_mode && !call_mode && !jni_mode &&
         !jni_array_mode && !jni_new_array_mode && !linked_mode &&
-        !jni_onload_mode) {
+        !jni_onload_mode && !jni_registered_mode) {
         std::cerr << "usage: ordax-mobile-guest run-elf <elf>\n"
                   << "   or: ordax-mobile-guest link-two-elf <provider.so> <client.so> <int32 x0>\n"
                   << "   or: ordax-mobile-guest invoke-i32-elf <elf> [int32 x0..x4]\n"
                   << "   or: ordax-mobile-guest invoke-jni-i32-elf <elf> [int32 x2..x6]\n"
                   << "   or: ordax-mobile-guest invoke-jni-int-array-elf <elf> <array-snapshot>\n"
                   << "   or: ordax-mobile-guest invoke-jni-new-int-array-elf <elf>\n"
-                  << "   or: ordax-mobile-guest invoke-jni-onload-elf <library.so>\n";
+                  << "   or: ordax-mobile-guest invoke-jni-onload-elf <library.so>\n"
+                  << "   or: ordax-mobile-guest invoke-jni-registered-i32-elf <library.so> <class> <method> <signature> <int32>\n";
         return 2;
     }
     std::vector<std::int32_t> arguments;
@@ -124,6 +128,38 @@ int main(int argc, char** argv) {
         // The host passes either bounded jint values or a validated int[]
         // snapshot; JNIEnv and JavaVM handles exist only in guest memory.
         ordax::mobile::JniGuestEnvironment jni;
+        if (jni_registered_mode) {
+            if (kind != 3) throw ordax::mobile::GuestFault(
+                "Registered JNI requires a verified guest shared object");
+            std::int32_t value = 0;
+            const std::string arg(argv[6]);
+            const auto parsed = std::from_chars(arg.data(), arg.data()+arg.size(), value);
+            if (parsed.ec != std::errc{} || parsed.ptr != arg.data()+arg.size()) {
+                throw ordax::mobile::GuestFault("Invalid native JNI jint argument");
+            }
+            // Caller supplies exactly the DEX-declared name and signature.
+            // The native ELF can only register that method, never a new one.
+            const std::string owner(argv[3]), name(argv[4]), signature(argv[5]);
+            const std::array<ordax::mobile::JniDeclaredMethod, 1> declared = {
+                ordax::mobile::JniDeclaredMethod{name, signature}};
+            jni.declareNativeClass(owner, declared);
+            jni.install(cpu);
+            ordax::mobile::runGuestInitializers(cpu, image, 100000);
+            (void)jni.runOnLoad(cpu, image, bytes, file.filename().string(), 100000);
+            const auto& bindings = jni.registeredMethods();
+            if (bindings.size()!=1 || bindings[0].owner!=owner ||
+                bindings[0].name!=name || bindings[0].signature!=signature) {
+                throw ordax::mobile::GuestFault("JNI registration did not bind the declared DEX method");
+            }
+            cpu.set_register(0, ordax::mobile::JniGuestEnvironment::kEnvAddress);
+            cpu.set_register(1, ordax::mobile::JniGuestEnvironment::kClassHandle);
+            cpu.set_register(2, static_cast<std::uint64_t>(static_cast<std::int64_t>(value)));
+            const auto result = cpu.run(bindings[0].guest_address, 100000);
+            std::cout << "{\"schema\":\"ordax.mobile-compat.jni-registered-i32-call/1\","
+                      << "\"value\":" << std::bit_cast<std::int32_t>(
+                          static_cast<std::uint32_t>(result)) << "}\n";
+            return 0;
+        }
         if (jni_onload_mode) {
             if (kind != 3) throw ordax::mobile::GuestFault(
                 "JNI_OnLoad requires a dynamically linked ELF shared library");
