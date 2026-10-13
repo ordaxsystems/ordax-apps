@@ -89,86 +89,47 @@ console.log(JSON.stringify({
 
 
 
-def _signed_stage_proof(channel_bin: Path, staging: Path, package: Path,
-                        release: Path, compatibility: Path, source_commit: str) -> dict:
-    """Exercise the canonical Go signer/slot verifier, never the live OS state."""
+def _canonical_source_owner_gate_proof(channel_bin: Path, staging: Path,
+                                       release: Path, compatibility: Path) -> dict:
+    """Prove the real Go signer rejects Files before the OS->Apps ownership cutover.
+
+    This is an explicit negative proof, not a signed component staging proof.
+    No release descriptor or authority is modified to defeat the gate.
+    """
     if not channel_bin.is_file() or channel_bin.is_symlink():
-        raise FilesProofError("canonical component channel binary is unavailable")
+        raise FilesProofError("canonical Native component channel is unavailable")
     private_key = staging / "ephemeral-component-private.pem"
     trust = staging / "ephemeral-component-public-trust.json"
     envelope = staging / "files.runtime-component-envelope.json"
-    slot_root = staging / "component-slots"
-    key_id = "files-disposable-proof-1"
-
-    def run(*args: str, expected: str) -> str:
-        result = subprocess.run(
-            [str(channel_bin), *args],
-            capture_output=True, text=True, timeout=35,
-        )
-        if result.returncode != 0:
-            # Go prints a bounded diagnostic on stderr, never the private key.
-            # Preserve the root error rather than reducing it to CalledProcessError.
-            diagnosis = result.stderr.strip()
-            if len(diagnosis) > 1024:
-                diagnosis = diagnosis[:1024] + " [truncated]"
-            raise FilesProofError(f"canonical component channel {args[0]} failed: {diagnosis}")
-        if expected not in result.stdout:
-            raise FilesProofError(f"canonical component channel did not confirm: {expected}")
-        return result.stdout
-
-    run("generate-key", "--private-key", str(private_key),
-        "--trust", str(trust), "--key-id", key_id,
-        expected="RUNTIME_COMPONENT_KEY_GENERATED=YES")
+    command = [str(channel_bin), "generate-key", "--private-key", str(private_key),
+               "--trust", str(trust), "--key-id", "files-disposable-proof-1"]
+    generated = subprocess.run(command, capture_output=True, text=True, timeout=35)
+    if generated.returncode != 0 or "RUNTIME_COMPONENT_KEY_GENERATED=YES" not in generated.stdout:
+        raise FilesProofError("canonical ephemeral Ed25519 setup failed")
     if private_key.stat().st_mode & 0o077:
-        raise FilesProofError("disposable private key was exposed to other users")
-    run("sign-v2", "--release", str(release), "--compatibility", str(compatibility),
-        "--private-key", str(private_key), "--trust", str(trust),
-        "--out", str(envelope), "--key-id", key_id,
-        expected="RUNTIME_COMPONENT_RELEASE_V2_SIGNED=YES")
-    verified = run("verify-envelope-v2", "--envelope", str(envelope),
-                   "--trust", str(trust), "--compatibility", str(compatibility),
-                   expected="RUNTIME_COMPONENT_RELEASE_V2_VERIFIED=YES")
-    if "DIRECT_ACTIVATION_ALLOWED=NO" not in verified:
-        raise FilesProofError("external Files unexpectedly authorizes direct activation")
-    staged = run("stage-v2", "--envelope", str(envelope), "--trust", str(trust),
-                 "--package", str(package), "--compatibility", str(compatibility),
-                 "--root", str(slot_root), expected="RUNTIME_COMPONENT_RELEASE_V2_STAGED=YES")
-    if "ACTIVATED=NO" not in staged:
-        raise FilesProofError("Files stage unexpectedly activated candidate")
-    descriptor = json.loads(release.read_text("utf-8"))
-    slot = (slot_root / "files" / "versions" / descriptor["component"]["version"]
-            / descriptor["source_commit"])
-    if not slot.is_dir() or descriptor["source_commit"] != source_commit:
-        raise FilesProofError("staged slot identity differs from unsigned Files package")
-    slot_status = run("verify-slot-v2", "--slot", str(slot), "--trust", str(trust),
-                      expected="RUNTIME_COMPONENT_RELEASE_V2_SLOT_VERIFIED=YES")
-    if "DIRECT_ACTIVATION_ALLOWED=NO" not in slot_status:
-        raise FilesProofError("verified Files slot authorized direct activation")
-    if any(slot_root.rglob("activation-state.json")):
-        raise FilesProofError("Files staging mutated canonical activation state")
+        raise FilesProofError("disposable private key permissions are not restrictive")
 
-    # Cryptographic negative case. A canonical sidecar with one changed field
-    # must not be accepted by the signature-bound release verifier.
-    altered = staging / "tampered-files.compatibility.json"
-    tampered = json.loads(compatibility.read_text("utf-8"))
-    tampered["componentVersion"] = "9.9.9"
-    altered.write_bytes(builder.canonical_json_bytes(tampered))
-    forged = subprocess.run(
-        [str(channel_bin), "verify-envelope-v2", "--envelope", str(envelope),
-         "--trust", str(trust), "--compatibility", str(altered)],
+    attempted = subprocess.run(
+        [str(channel_bin), "sign-v2", "--release", str(release),
+         "--compatibility", str(compatibility), "--private-key", str(private_key),
+         "--trust", str(trust), "--out", str(envelope),
+         "--key-id", "files-disposable-proof-1"],
         capture_output=True, text=True, timeout=35,
     )
-    if forged.returncode == 0:
-        raise FilesProofError("altered Files compatibility accepted by signed verifier")
-    if any(slot_root.rglob("activation-state.json")):
-        raise FilesProofError("negative case unexpectedly activated a component")
+    if attempted.returncode == 0 or envelope.exists():
+        raise FilesProofError("Files signing bypassed the canonical source ownership restriction")
+    if "runtime component source repository is not canonical for component" not in attempted.stderr:
+        raise FilesProofError("Files signing did not fail for the required canonical ownership gate")
+    if list(staging.rglob("activation-state.json")):
+        raise FilesProofError("negative Files ownership proof mutated an activation state")
     return {
-        "ephemeral_ed25519_signature_verified": True,
-        "immutable_signed_slot_verified": True,
-        "tampered_compatibility_rejected": True,
-        "activation_state_untouched": True,
+        "canonical_go_signer_checked": True,
+        "precutover_source_owner_rejected": True,
+        "signed_slot_created": False,
+        "live_install_authorized": False,
         "production_trust_used": False,
     }
+
 
 def prove(root: Path, platform_root: Path, sdk_root: Path,
           channel_bin: Path | None = None) -> dict:
@@ -307,13 +268,11 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
             packages.append((hashlib.sha256(output.read_bytes()).hexdigest(), release["package"]["sha256"]))
         if packages[0] != packages[1] or packages[0][0] != packages[0][1]:
             raise FilesProofError("unsigned Files candidate was not deterministic")
-        signed_stage = (
-            _signed_stage_proof(
+        owner_gate = (
+            _canonical_source_owner_gate_proof(
                 channel_bin, staging,
-                staging / "candidate-0" / "files.zip",
                 staging / "candidate-0" / "release" / "files.release.json",
                 staging / "candidate-0" / "release" / "files.compatibility.json",
-                source_commit,
             ) if channel_bin is not None else None
         )
         result = {
@@ -328,8 +287,8 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
             "release_v2_candidate_verified": True,
             "source_of_truth_repository": "ordaxsystems/ordax-os",
             "second_permanent_files_source_created": False,
-            "signed_stage_ephemeral_verified": signed_stage is not None,
-            "signed_stage_proof": signed_stage,
+            "canonical_owner_gate_verified": owner_gate is not None,
+            "canonical_owner_gate_proof": owner_gate,
             "signed_install_verified": False,
             "bootstrap_delivery_verified": False,
             "distribution_activation_allowed": False,

@@ -435,7 +435,7 @@ jobs:
           go-version-file: .ordax-platform-lifecycle/tools/runtime-component-channel/go.mod
           cache: false
 
-      - name: Verify ephemeral Ed25519 Files slot through the official Native channel
+      - name: Prove canonical Files owner blocks premature Native signing
         shell: bash
         run: |
           set -euo pipefail
@@ -455,18 +455,18 @@ jobs:
           proof = json.loads(
               (Path(os.environ["RUNNER_TEMP"]) / "ordax-files-signed-stage.json").read_text(encoding="utf-8")
           )
-          assert proof["signed_stage_ephemeral_verified"] is True
-          stage = proof["signed_stage_proof"]
-          assert stage["ephemeral_ed25519_signature_verified"] is True
-          assert stage["immutable_signed_slot_verified"] is True
-          assert stage["tampered_compatibility_rejected"] is True
-          assert stage["activation_state_untouched"] is True
-          assert stage["production_trust_used"] is False
+          assert proof["canonical_owner_gate_verified"] is True
+          gate = proof["canonical_owner_gate_proof"]
+          assert gate["canonical_go_signer_checked"] is True
+          assert gate["precutover_source_owner_rejected"] is True
+          assert gate["signed_slot_created"] is False
+          assert gate["live_install_authorized"] is False
+          assert gate["production_trust_used"] is False
           assert proof["signed_install_verified"] is False
           assert proof["bootstrap_delivery_verified"] is False
           assert proof["distribution_activation_allowed"] is False
           assert not Path("apps/files").exists()
-          print("FILES_EPHEMERAL_SIGNED_STAGE=PASS")
+          print("FILES_CANONICAL_OWNER_GATE=PASS")
           PY
 
       - name: Build real Notes component candidates
