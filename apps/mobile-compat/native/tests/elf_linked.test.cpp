@@ -651,7 +651,7 @@ int main(int argc, char** argv) {
         if (kind==1) source[0x5c0]='X'; // method not declared native
         if (kind==2) source[0x5d0]='X'; // wrong signature
         if (kind==3) u64(source,0x4b0,0x3000); // fnPtr points to guest RW
-        if (kind==4) u64(source,0x4b0,0x200000); // outside image
+        if (kind==4) u64(source,0x4b0,0x10b1); // unaligned RX function
         if (kind==5) u32(source,0x220+22*4,0xd2800043); // nMethods 2; table contains invalid entry
         // kind 6: trusted DEX owner has a different native signature.
         CpuA64 cpu(0x800000);
