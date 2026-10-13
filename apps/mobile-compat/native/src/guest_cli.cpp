@@ -78,8 +78,8 @@ int main(int argc, char** argv) {
             std::cerr << "Shared library has no guest entrypoint; JNI/Android linking not available\n";
             return 4;
         }
-        // Only typed integers cross the boundary: no guest object references,
-        // JNI environment, raw pointers or untrusted callback addresses.
+        // The host passes either bounded jint values or a validated int[]
+        // snapshot; JNIEnv and array handles exist only in guest address space.
         ordax::mobile::JniGuestEnvironment jni;
         if (jni_mode || jni_array_mode) {
             jni.install(cpu);
