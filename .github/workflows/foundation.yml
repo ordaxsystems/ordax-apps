@@ -166,6 +166,32 @@ jobs:
           print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
           PY
 
+      - name: Build and verify ephemeral Files release-v2 candidate from pinned source and SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/prove_files_ephemeral_candidate.py \
+            --platform-root .ordax-files-source \
+            --sdk-platform-root .ordax-files-sdk > /tmp/ordax-files-ephemeral-proof.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          proof = json.loads(Path("/tmp/ordax-files-ephemeral-proof.json").read_text(encoding="utf-8"))
+          assert proof["schema"] == "ordax.files-ephemeral-candidate-proof/1"
+          assert proof["original_app_blobs_verified"] == 10
+          assert proof["canonical_source_graph_verified"] is True
+          assert proof["release_v2_candidate_verified"] is True
+          assert len(proof["deterministic_package_sha256"]) == 64
+          assert proof["source_of_truth_repository"] == "ordaxsystems/ordax-os"
+          assert proof["second_permanent_files_source_created"] is False
+          assert proof["signed_install_verified"] is False
+          assert proof["bootstrap_delivery_verified"] is False
+          assert proof["distribution_activation_allowed"] is False
+          assert not Path("apps/files").exists()
+          print(json.dumps(proof, ensure_ascii=False, sort_keys=True))
+          print("FILES_EPHEMERAL_CANDIDATE=PASS")
+          PY
+
       - name: Prove independent business domains without unapproved persistence
         run: |
           node --check apps/finance/src/domain/ledger.mjs
