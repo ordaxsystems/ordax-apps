@@ -60,6 +60,7 @@ export class DexSubset {
     this.fieldInfos = new Map();
     this.classInstanceFields = new Map();
     this.classSuperclasses = new Map();
+    this.classAccessFlags = new Map();
     this.classIndicesByName = new Map();
     this.classLineages = new Map();
     this.classVirtualMethods = new Map();
@@ -70,7 +71,16 @@ export class DexSubset {
       const classIdx = u32(bytes, classOffset);
       if (classIdx >= this.types.count) fail('DEX_INDEX', 'Invalid class definition type');
       if (this.classInstanceFields.has(classIdx)) fail('DEX_CLASS', 'Duplicate class definition');
+      const flags = u32(bytes, classOffset + 4);
+      // Android interfaces, enum/annotation class models and implements lists
+      // cannot be silently treated as ordinary local Java class layouts.
+      if ((flags & (0x200 | 0x2000 | 0x4000)) ||
+          ((flags & 0x10) && (flags & 0x400)) ||
+          u32(bytes, classOffset + 12) !== 0) {
+        fail('DEX_CLASS', 'Unsupported class kind or external interface list');
+      }
       this.classInstanceFields.set(classIdx, new Set());
+      this.classAccessFlags.set(classIdx, flags);
       this.classSuperclasses.set(classIdx, u32(bytes, classOffset + 8));
       const name = this.type(classIdx);
       if (this.classIndicesByName.has(name)) fail('DEX_CLASS', 'Duplicate class descriptor');
@@ -82,6 +92,21 @@ export class DexSubset {
     // Inspect the local class graph once, before interpreting any guest code.
     // Unresolved external/Android classes remain unsupported, never stubbed.
     for (const index of this.classInstanceFields.keys()) this.classLineage(index);
+    // A final virtual method cannot be overridden by a subclass; otherwise
+    // the receiver-based dispatch below would violate the DEX class contract.
+    for (const [index, implementations] of this.classVirtualMethods) {
+      const parents = this.classLineage(index).slice(1);
+      for (const key of implementations.keys()) {
+        for (const ancestor of parents) {
+          const parentMethod = this.classVirtualMethods.get(ancestor).get(key);
+          if (parentMethod === undefined) continue;
+          if (this.methodsById.get(parentMethod).access & 0x10) {
+            fail('DEX_CLASS', 'Overriding a final superclass method is unsupported');
+          }
+          break;
+        }
+      }
+    }
   }
   classLineage(index, visiting = new Set()) {
     if (this.classLineages.has(index)) return this.classLineages.get(index);
@@ -93,6 +118,9 @@ export class DexSubset {
     const parent = this.classSuperclasses.get(index);
     const lineage = parent === 0xffffffff
       ? [index] : [index, ...this.classLineage(parent, visiting)];
+    if (parent !== 0xffffffff && (this.classAccessFlags.get(parent) & 0x10)) {
+      fail('DEX_CLASS', 'Cannot extend a final local class');
+    }
     visiting.delete(index);
     if (lineage.length > MAX_CLASS_DEPTH) fail('DEX_CLASS', 'Class depth exceeded');
     this.classLineages.set(index, lineage);
@@ -194,7 +222,9 @@ export class DexSubset {
         }
         this.methodsById.set(method, { access, codeOff });
         if (group === 1) {
-          if (access & 0x8) fail('DEX_CLASS', 'Virtual method declared static');
+          if ((access & (0x8 | 0x2)) || this.methodInfo(method).name === '<init>') {
+            fail('DEX_CLASS', 'Invalid virtual method access or constructor');
+          }
           const key = virtualKey(this.methodInfo(method));
           if (this.classVirtualMethods.get(classIdx).has(key)) {
             fail('DEX_CLASS', 'Duplicate class virtual method signature');
@@ -410,6 +440,9 @@ export class DexSubset {
         case 0x22: { // new-instance vAA, type@BBBB (21c)
           const typeIdx = word(pc++);
           const lineage = this.classLineage(typeIdx);
+          if (this.classAccessFlags.get(typeIdx) & 0x400) {
+            fail('DEX_CLASS', 'Cannot instantiate an abstract local class');
+          }
           const fields = lineage.flatMap(index => [...this.classInstanceFields.get(index)]);
           const ancestors = lineage.slice(1).map(index => this.type(index));
           putRef(a, heap.allocate(this.type(typeIdx), fields, ancestors));

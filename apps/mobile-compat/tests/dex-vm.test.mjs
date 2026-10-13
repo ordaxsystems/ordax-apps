@@ -471,6 +471,33 @@ test('local classes reject cyclic, missing and incomplete superclass initializat
     { code: 'DEX_INIT' });
 });
 
+test('DEX virtual ownership enforces final classes, final methods and unsupported class kinds', () => {
+  const finalClass = inheritedObjectDexFixture();
+  finalClass.writeUInt32LE(0x11, 0x4a4); // Arithmetic is final
+  assert.throws(() => new DexSubset(sealDex(finalClass)), { code: 'DEX_CLASS' });
+
+  const finalMethod = inheritedObjectDexFixture();
+  finalMethod[0x61f] = 0x11; // Arithmetic.readValue() is final
+  assert.throws(() => new DexSubset(sealDex(finalMethod)), { code: 'DEX_CLASS' });
+
+  const badVirtual = inheritedObjectDexFixture();
+  badVirtual[0x74b] = 0x03; // Derived.readValue() cannot be private virtual
+  assert.throws(() => new DexSubset(sealDex(badVirtual)), { code: 'DEX_CLASS' });
+
+  const interfaceClass = inheritedObjectDexFixture();
+  interfaceClass.writeUInt32LE(0x201, 0x4c4);
+  assert.throws(() => new DexSubset(sealDex(interfaceClass)), { code: 'DEX_CLASS' });
+
+  const unresolvedInterfaces = inheritedObjectDexFixture();
+  unresolvedInterfaces.writeUInt32LE(0x100, 0x4cc);
+  assert.throws(() => new DexSubset(sealDex(unresolvedInterfaces)), { code: 'DEX_CLASS' });
+
+  const abstractChild = inheritedObjectDexFixture();
+  abstractChild.writeUInt32LE(0x401, 0x4c4);
+  assert.throws(() => new DexSubset(sealDex(abstractChild))
+    .execute('Ltest/Arithmetic;', 'makeValue', [5]), { code: 'DEX_CLASS' });
+});
+
 test('guest object quotas, initialization and field ownership are enforced', () => {
   const heap = new GuestHeap({ maxObjects: 1 });
   assert.throws(() => heap.allocate('Ltest/Box;', Array.from({length: 129}, (_, i) => i)),
