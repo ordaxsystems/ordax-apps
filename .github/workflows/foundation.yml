@@ -172,30 +172,23 @@ jobs:
           node --test apps/inventory/tests/movements.test.mjs
           node --test apps/sales/tests/orders.test.mjs
 
-      - name: Prove Internet remove-first snapshot and no-dual-source gates
-        run: |
-          python3 -m unittest tests.test_internet_externalization -v
-          python3 tools/verify_internet_externalization.py
-
-      - name: Resolve exact Internet product snapshot (read-only)
+      - name: Resolve exact historical Internet source pin
         id: internet-source-pin
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
-          import re
           from pathlib import Path
-          plan=json.loads(Path("migrations/internet.externalization.json").read_text(encoding="utf-8"))
-          snap=json.loads(Path("migrations/internet.source-snapshot.json").read_text(encoding="utf-8"))
-          assert plan["source_cutover_allowed"] is False
-          assert plan["distribution_activation_allowed"] is False
-          assert plan["source_snapshot"]["commit"] == snap["commit"]
-          assert re.fullmatch(r"[0-9a-f]{40}",snap["commit"])
-          print("commit="+snap["commit"])
+          migration=json.loads(Path("migrations/internet.externalization.json").read_text())
+          snapshot=json.loads(Path("migrations/internet.source-snapshot.json").read_text())
+          assert migration["source_of_truth_state"]=="ordax-apps-canonical"
+          assert migration["source_snapshot"]["commit"]==snapshot["commit"]
+          assert migration["distribution_activation_allowed"] is False
+          print("commit="+snapshot["commit"])
           PY
 
-      - name: Checkout exact canonical Internet product snapshot
+      - name: Checkout original pinned Internet source for Git blob provenance
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ordaxsystems/ordax-os
@@ -203,12 +196,7 @@ jobs:
           path: .ordax-internet-source
           persist-credentials: false
 
-      - name: Prove Internet transfer map, clean Git source, and complete public SDK closure
-        run: |
-          python3 tools/verify_internet_externalization.py --platform-root .ordax-internet-source
-          python3 .ordax-internet-source/tools/verify/internet_sdk_readiness.py --require-public
-
-      - name: Checkout current platform Internet source for drift proof
+      - name: Checkout canonical OS main after Internet Gate A
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ordaxsystems/ordax-os
@@ -216,36 +204,32 @@ jobs:
           path: .ordax-internet-current
           persist-credentials: false
 
-      - name: Audit immutable Internet snapshot against live platform tree
+      - name: Verify Internet Gate B source, SDK 1.18 and actual OS absence
         run: |
-          python3 tools/verify_internet_externalization.py \
-            --current-platform-root .ordax-internet-current \
-            --require-current-source > /tmp/ordax-internet-source-drift.json
+          set -euo pipefail
+          python3 -m unittest tests.test_internet_gate_b -v
           python3 - <<'PY'
-          import json
+          import json, subprocess
           from pathlib import Path
-          report = json.loads(Path("/tmp/ordax-internet-source-drift.json").read_text(encoding="utf-8"))
-          drift = report["current_platform_source"]
-          assert drift is not None, "current platform proof must run"
-          assert report["source_cutover_allowed"] is False
-          assert report["distribution_activation_allowed"] is False
-          assert report["checked_out_blob_integrity_verified"] is False
-          assert drift["snapshot_current"] is True
-          assert all(drift[field] == [] for field in ("changed", "added", "deleted"))
-          assert drift["current_file_count"] == report["source_file_count"]
-          gate_a = report["gate_a_platform_consumers"]
-          assert gate_a["schema"] == "ordax.internet-gate-a-platform-consumers/1"
-          assert gate_a["platform_commit"] == drift["current_platform_commit"]
-          assert gate_a["host_boundary_intact"] is True
-          assert gate_a["absence_preflight_ready"] is False
-          assert len(gate_a["owned_source_paths"]) == report["source_file_count"]
-          assert len(gate_a["consumer_imports"]) > 0
-          assert gate_a["platform_boot_verified"] is False
-          assert gate_a["external_distribution_verified"] is False
-          print("Internet snapshot equals current platform product blobs")
-          print("Internet Gate A dependency inventory (read-only):")
-          print(json.dumps(gate_a, ensure_ascii=False, indent=2, sort_keys=True))
-          print(json.dumps(drift, ensure_ascii=False, indent=2, sort_keys=True))
+          root=Path(".").resolve()
+          snap=json.loads((root/"migrations/internet.source-snapshot.json").read_text())
+          os_pin=root/".ordax-internet-source"
+          os_main=root/".ordax-internet-current"
+          def git(base,*args):
+              return subprocess.check_output(["git","-C",str(base),*args],text=True).strip()
+          assert git(os_pin,"rev-parse","HEAD")==snap["commit"]
+          for row in snap["files"]:
+              assert git(os_pin,"rev-parse","HEAD:"+row["path"])==row["blob_sha"],row["path"]
+              assert (os_pin/row["path"]).stat().st_size==row["size"]
+          tracked=git(os_main,"ls-tree","-r","--name-only","HEAD","--","system/apps/internet","system/services/i18n/catalog/internet.mjs")
+          assert tracked=="", "Bundled Internet source reappeared in OS main"
+          for path in ("system/surface/runtime/ordax_browser_host.py",
+                       "system/adapters/native/browser-session.mjs",
+                       "system/adapters/web/browser-session.mjs"):
+              assert (os_main/path).is_file(),path
+          print("INTERNET_SOURCE_TRANSFER=PASS")
+          print("INTERNET_OS_MAIN_ABSENCE=PASS")
+          print("INTERNET_SIGNED_ACTIVATION=NOT_AUTHORIZED")
           PY
 
       - name: Prove Notes externalization preflight
@@ -331,9 +315,6 @@ jobs:
           print('ASSISTANT_GATE_B_SOURCE=CANONICAL_UNSIGNED')
           print('ASSISTANT_GATE_B_UNPUBLISHED_CONTRACTS='+','.join(proof['unpublished_contract_sources']))
           PY
-
-      - name: Verify Internet Gate B transferred product and exact SDK 1.18 contract closure
-        run: python3 -m unittest tests.test_internet_gate_b -v
 
       - name: Prove Notes-specific App SDK 1.6 pin
         run: python3 tools/verify_notes_platform_sdk.py
