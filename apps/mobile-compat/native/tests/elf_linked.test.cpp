@@ -1,6 +1,8 @@
 #include "ordax/mobile/elf_a64.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <utility>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
