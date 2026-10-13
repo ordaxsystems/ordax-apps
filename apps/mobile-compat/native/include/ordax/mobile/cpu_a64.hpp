@@ -35,6 +35,8 @@ public:
     void load(std::uint64_t address, std::span<const std::uint8_t> bytes);
     // Trusted image loader installs protections after all bytes and relocations
     // have been validated and mapped. Guest instructions cannot bypass them.
+    // Preflight preserves all existing mappings and performs no mutation.
+    void verify_new_guest_regions(std::span<const GuestRegion> regions) const;
     void set_guest_regions(std::span<const GuestRegion> regions);
     void install_host_readonly(std::uint64_t address, std::span<const std::uint8_t> bytes);
     void set_host_call(HostCall call);
