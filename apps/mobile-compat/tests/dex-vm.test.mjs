@@ -501,6 +501,96 @@ test('invoke-super denies unrelated target, forged receiver and static caller', 
     .execute('Ltest/Arithmetic;', 'makeValue', [6]), { code: 'DEX_RESULT' });
 });
 
+// Validate object typing and reference branches using real DEX code_item
+// instructions on the existing two-class fixture. No guest handles leak.
+function localTypeDexFixture({
+  action = 'instance-of', type = 1, allocateParent = false, nullRef = false,
+  branch = null,
+} = {}) {
+  const b = inheritedObjectDexFixture();
+  if (allocateParent) {
+    b.writeUInt16LE(1, 0x680 + 18); // new-instance Arithmetic
+    b.writeUInt16LE(3, 0x680 + 16 + 3 * 2); // parent constructor
+  }
+  let opcodes;
+  if (branch) {
+    opcodes = [
+      0x1071, 4, 0x0002, // invoke-static makeObject(int)
+      0x000c,            // move-result-object v0
+      ...(nullRef ? [0x0012] : []), // const/4 v0, 0 -> null
+      (branch === 'eqz' ? 0x0038 : 0x0039), 4,
+      0x1112, 0x010f, // const/4 v1, 1 ; return v1
+      0x0112, 0x010f, // const/4 v1, 0 ; return v1
+    ];
+  } else if (action === 'instance-of') {
+    opcodes = [
+      0x1071, 4, 0x0002,
+      0x000c, // receive derived object
+      ...(nullRef ? [0x0012] : []),
+      0x0120, type, 0x010f, // instance-of v1, v0; return v1
+    ];
+  } else {
+    opcodes = [
+      0x1071, 4, 0x0002,
+      0x000c,
+      ...(nullRef ? [0x0012] : []),
+      0x001f, type, // check-cast v0
+      0x106e, 6, 0x0000, // virtual getter on resulting receiver
+      0x010a, 0x010f,
+    ];
+  }
+  b.writeUInt32LE(opcodes.length, 0x6c0 + 12);
+  opcodes.forEach((word, i) => b.writeUInt16LE(word, 0x6c0 + 16 + i * 2));
+  return sealDex(b);
+}
+
+test('instance-of and check-cast use the actual local class hierarchy', () => {
+  for (const target of [1, 3]) {
+    assert.equal(new DexSubset(localTypeDexFixture({ type: target }))
+      .execute('Ltest/Arithmetic;', 'makeValue', [42]).value, 1);
+    assert.equal(new DexSubset(localTypeDexFixture({ action: 'check-cast', type: target }))
+      .execute('Ltest/Arithmetic;', 'makeValue', [42]).value, 84);
+  }
+  assert.equal(new DexSubset(localTypeDexFixture({ type: 3, allocateParent: true }))
+    .execute('Ltest/Arithmetic;', 'makeValue', [42]).value, 0);
+  assert.throws(() => new DexSubset(localTypeDexFixture({
+    action: 'check-cast', type: 3, allocateParent: true,
+  })).execute('Ltest/Arithmetic;', 'makeValue', [42]), { code: 'DEX_CAST' });
+});
+
+test('null reference has no instance type; reference zero-tests branch correctly', () => {
+  assert.equal(new DexSubset(localTypeDexFixture({ nullRef: true }))
+    .execute('Ltest/Arithmetic;', 'makeValue', [7]).value, 0);
+  for (const [branch, nullRef, expected] of [
+    ['eqz', true, 0], ['eqz', false, 1],
+    ['nez', true, 1], ['nez', false, 0],
+  ]) {
+    assert.equal(new DexSubset(localTypeDexFixture({ branch, nullRef }))
+      .execute('Ltest/Arithmetic;', 'makeValue', [7]).value, expected);
+  }
+  // Java check-cast on null is valid; subsequent virtual call is not.
+  assert.throws(() => new DexSubset(localTypeDexFixture({
+    action: 'check-cast', nullRef: true,
+  })).execute('Ltest/Arithmetic;', 'makeValue', [7]), { code: 'DEX_NULL' });
+});
+
+test('type tests fail closed on primitive/external class indices and forged handles', () => {
+  assert.throws(() => new DexSubset(localTypeDexFixture({ type: 0 }))
+    .execute('Ltest/Arithmetic;', 'makeValue', [1]), { code: 'DEX_TYPE' });
+  assert.throws(() => new DexSubset(localTypeDexFixture({ type: 65535 }))
+    .execute('Ltest/Arithmetic;', 'makeValue', [1]), { code: 'DEX_INDEX' });
+  const mutated = localTypeDexFixture();
+  mutated.writeUInt16LE(0x1220, 0x6c0 + 16 + 4 * 2); // v2 is raw int, not ref
+  assert.throws(() => new DexSubset(sealDex(mutated))
+    .execute('Ltest/Arithmetic;', 'makeValue', [42]), { code: 'DEX_TYPE' });
+  const heap = new GuestHeap();
+  const child = heap.allocate('Ltest/Derived;', [], ['Ltest/Arithmetic;']);
+  assert.equal(heap.isInstance(child, 'Ltest/Arithmetic;'), true);
+  assert.equal(heap.isInstance(child, 'Ltest/Other;'), false);
+  assert.equal(heap.isInstance(0, 'Ltest/Arithmetic;'), false);
+  assert.throws(() => heap.isInstance(123456, 'Ltest/Arithmetic;'), { code: 'DEX_REFERENCE' });
+});
+
 test('local classes reject cyclic, missing and incomplete superclass initialization', () => {
   const cyclic = inheritedObjectDexFixture();
   cyclic.writeUInt32LE(3, 0x4c8);

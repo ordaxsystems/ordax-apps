@@ -282,9 +282,9 @@ export class DexSubset {
     const sizeByOpcode = new Map([
       [0x01, 1], [0x07, 1], [0x0a, 1], [0x0c, 1],
       [0x0e, 1], [0x0f, 1], [0x11, 1],
-      [0x12, 1], [0x13, 2], [0x14, 3], [0x21, 1], [0x22, 2], [0x23, 2],
+      [0x12, 1], [0x13, 2], [0x14, 3], [0x1f, 2], [0x20, 2], [0x21, 1], [0x22, 2], [0x23, 2],
       [0x44, 2], [0x4b, 2], [0x52, 2], [0x59, 2],
-      [0x28, 1], [0x29, 2], [0x38, 2],
+      [0x28, 1], [0x29, 2], [0x38, 2], [0x39, 2],
       [0x6e, 3], [0x6f, 3], [0x70, 3], [0x71, 3], [0x90, 2], [0x91, 2], [0x92, 2], [0xd8, 2],
     ]);
     const starts = new Set(), targets = [];
@@ -301,7 +301,7 @@ export class DexSubset {
         fail('DEX_RESULT', 'move-result must directly follow invoke');
       }
       if (opcode === 0x28) targets.push(p + sign8(w >>> 8));
-      if (opcode === 0x29 || opcode === 0x38) targets.push(p + sign16(item.word(p + 1)));
+      if (opcode === 0x29 || opcode === 0x38 || opcode === 0x39) targets.push(p + sign16(item.word(p + 1)));
       previous = opcode;
       p += size;
     }
@@ -363,6 +363,14 @@ export class DexSubset {
       if (registers[index] === 0) return 0; // const/4 0 is null
       fail('DEX_TYPE', 'Integer is not a guest object reference');
     };
+    // eqz/nez compare the raw 32-bit register to zero for *both* Dalvik
+    // integers and opaque references. No guest pointer is dereferenced.
+    const isZero = index => { check(index); return registers[index] === 0; };
+    const requireLocalReferenceType = index => {
+      const descriptor = this.type(index);
+      if (descriptor === '[I' || this.classIndicesByName.has(descriptor)) return descriptor;
+      fail('DEX_TYPE', 'Type test requires an existing local class or supported int[]');
+    };
     const putInt = (index, value) => {
       check(index); registers[index] = value | 0; refTags[index] = 0;
     };
@@ -423,6 +431,20 @@ export class DexSubset {
           const lower = word(pc++), upper = word(pc++);
           putInt(a, (lower | upper << 16) | 0); break;
         }
+        case 0x1f: { // check-cast vAA, type@BBBB (21c)
+          const target = requireLocalReferenceType(word(pc++));
+          const ref = getRef(a);
+          if (ref && !heap.isInstance(ref, target)) {
+            fail('DEX_CAST', 'Guest reference is incompatible with requested local type');
+          }
+          break;
+        }
+        case 0x20: { // instance-of vA, vB, type@CCCC (22c)
+          const target = requireLocalReferenceType(word(pc++));
+          const ref = getRef(a >>> 4);
+          putInt(a & 15, heap.isInstance(ref, target) ? 1 : 0);
+          break;
+        }
         case 0x21: // array-length vA, vB (12x)
           putInt(a & 15, heap.arrayLength(getRef(a >>> 4))); break;
         case 0x23: { // new-array vA, vB, type@CCCC (22c)
@@ -463,9 +485,9 @@ export class DexSubset {
         }
         case 0x28: pc = oldPc + sign8(a); break; // goto (10t)
         case 0x29: pc = oldPc + sign16(word(pc)); break; // goto/16 (20t)
-        case 0x38: { // if-eqz vAA, +BBBB
+        case 0x38: case 0x39: { // if-eqz/if-nez vAA, +BBBB
           const delta = sign16(word(pc++));
-          if (getInt(a) === 0) pc = oldPc + delta;
+          if (isZero(a) === (op === 0x38)) pc = oldPc + delta;
           break;
         }
         case 0x6e: case 0x6f: case 0x70: case 0x71: { // virtual/super/direct/static (35c)

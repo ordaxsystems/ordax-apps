@@ -141,6 +141,13 @@ export class GuestHeap {
     }
     return value;
   }
+  // Typed identity only: no host references, no synthetic class inheritance.
+  // A null reference is never an instance, even for an otherwise valid type.
+  isInstance(handle, expectedType) {
+    if (handle === 0) return false;
+    const object = this.lookup(handle);
+    return object.type === expectedType || !!object.ancestors?.includes(expectedType);
+  }
   readField(handle, expectedType, fieldId) {
     const object = this.lookup(handle, expectedType);
     if (!object.fields || !object.fields.has(fieldId)) {

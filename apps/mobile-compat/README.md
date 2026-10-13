@@ -12,7 +12,7 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - identificação e validação de DEX e ABI ELF64;
 - ferramenta de inspeção que falha fechada quando se solicita execução do app;
 - testes sintéticos sem download de aplicativo proprietário;
-- interpretador Dalvik limitado, com tabelas reais DEX (`class_data`, `code_item`), chamadas estáticas, construtores e chamadas virtuais de classe local; objetos em heap isolado, campos `int32`, `new-instance`, `invoke-direct`, `invoke-virtual`, `invoke-super`, `iget`, `iput`, `move-object`, `return-object` e `move-result-object`;
+- interpretador Dalvik limitado, com tabelas reais DEX (`class_data`, `code_item`), chamadas estáticas, construtores e chamadas virtuais de classe local; objetos em heap isolado, campos `int32`, `new-instance`, `invoke-direct`, `invoke-virtual`, `invoke-super`, `instance-of`, `check-cast`, `if-eqz`/`if-nez` com referências, `iget`, `iput`, `move-object`, `return-object` e `move-result-object`;
 - arrays de inteiros Dalvik com `new-array`, `array-length`, `aget` e `aput` e alocação tipada em memória do convidado (até 65.536 posições por array e até 262.144 posições no conjunto, além do limite de 4.096 objetos/arrays); acesso inválido, tipo não suportado e retorno de referência guest ao host são recusados;
 - fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; agora há **um subconjunto inicial da ABI JNI** com `JNIEnv*`, tabela indexada, `JavaVM*` e `GetEnv`; possui uma prova explícita de `JNI_OnLoad` ARM64, mas ainda sem classes Android, JNI completo, carregamento automático de bibliotecas ou autoridade da plataforma;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, ORR e alias MOV entre registradores, ADR/ADRP, LDR/STR, B, BLR, RET e NOP; falha fechada com PC/opcode quando encontra uma instrução ausente;
@@ -51,7 +51,7 @@ O comando acima executa somente um método estático com argumentos `int32`,
 com heap de objetos privado por execução. Esse método pode criar objetos de
 classes locais sem superclass, chamar construtores e métodos virtuais locais,
 e acessar campos inteiros; porém **não pode expor referências guest ao host**.
-Há somente herança entre classes presentes no mesmo DEX (até 16 níveis), com campos herdados, despacho virtual, chamadas `invoke-super` locais e cadeia de construtores verificada. Não há herança externa, GC, objetos host, classes Android, arrays de referências ou outros tipos, ABI JNI completa, reflexão,
+Há somente herança entre classes presentes no mesmo DEX (até 16 níveis), com campos herdados, despacho virtual, chamadas `invoke-super` locais, checagens de tipo locais (`instance-of`/`check-cast`) e cadeia de construtores verificada. Não há herança externa, GC, objetos host, classes Android, arrays de referências ou outros tipos, ABI JNI completa, reflexão,
 chamadas de rede nem instruções não implementadas. A execução tem limites
 de memória (máximo de 4096 objetos, 128 campos por objeto e 65536 campos
 no total para campos, 262.144 posições para arrays), instruções, pilha e registradores, e exige inicialização antes
