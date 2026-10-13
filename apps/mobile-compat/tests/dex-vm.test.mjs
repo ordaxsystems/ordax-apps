@@ -202,6 +202,14 @@ test('unimplemented opcode, bytecode loops and malicious register references fai
   const loop = fixtureDex();
   loop.writeUInt16LE(0x0028, 0x180 + 16); // goto +0, bounded
   assert.throws(() => new DexSubset(sealDex(loop)).execute('Ltest/Arithmetic;', 'sum', [1, 2], { instructionLimit: 20 }), { code: 'DEX_BUDGET' });
+  const branchIntoOperand = fixtureDex();
+  branchIntoOperand.writeUInt16LE(0x0228, 0x180 + 16); // goto +2, into const/16 operand
+  branchIntoOperand.writeUInt16LE(0x0013, 0x180 + 18);
+  branchIntoOperand.writeUInt16LE(0x002a, 0x180 + 20);
+  assert.throws(
+    () => new DexSubset(sealDex(branchIntoOperand)).execute('Ltest/Arithmetic;', 'sum', [1, 2]),
+    { code: 'DEX_BRANCH' }
+  );
   const invalidReg = fixtureDex();
   invalidReg.writeUInt16LE(0xff90, 0x180 + 16); // v255 destination
   assert.throws(() => new DexSubset(sealDex(invalidReg)).execute('Ltest/Arithmetic;', 'sum', [1, 2]), { code: 'DEX_REGISTER' });
