@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
-      - run: node --test apps/mobile-compat/tests/intake.test.mjs
+      - run: node --test apps/mobile-compat/tests/*.test.mjs
       - run: node --check apps/mobile-compat/bin/mobile-compat.mjs
       - name: Configure native clean-room executor
         run: cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
-      - run: node --test apps/mobile-compat/tests/intake.test.mjs
+      - run: node --test apps/mobile-compat/tests/*.test.mjs
       - run: node --check apps/mobile-compat/bin/mobile-compat.mjs
       - name: Configure native clean-room executor
         run: cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
