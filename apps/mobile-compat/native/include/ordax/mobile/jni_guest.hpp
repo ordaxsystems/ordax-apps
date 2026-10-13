@@ -14,7 +14,7 @@ namespace ordax::mobile {
 struct LoadedGuestElf;
 
 // First JNI ABI-compatible *table and invocation* boundary for AArch64.
-// Only the five implemented function slots exist; all other entries are NULL and
+// Only explicitly supported JNIEnv and JavaVM slots exist; all other entries are NULL and
 // must fail closed. Local references are opaque guest handles, not host ptrs.
 // No actual JNI class loader, GC, threads, Java exception or Bionic linker.
 class JniGuestEnvironment final {
