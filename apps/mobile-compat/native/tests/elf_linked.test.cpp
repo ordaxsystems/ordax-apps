@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <fstream>
 #include <span>
 #include <string>
 #include <vector>
@@ -106,7 +107,18 @@ template<class F> void reject(F&& f) {
 }
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc == 4 && std::string(argv[1]) == "--emit-linked-fixtures") {
+        const auto provider = providerElf(), consumer = consumerElf();
+        std::ofstream outProvider(argv[2], std::ios::binary | std::ios::trunc);
+        std::ofstream outConsumer(argv[3], std::ios::binary | std::ios::trunc);
+        if (!outProvider.write(reinterpret_cast<const char*>(provider.data()),
+                               static_cast<std::streamsize>(provider.size())) ||
+            !outConsumer.write(reinterpret_cast<const char*>(consumer.data()),
+                               static_cast<std::streamsize>(consumer.size()))) return 3;
+        return 0;
+    }
+    if (argc != 1) return 2;
     const auto provider = providerElf();
     const auto client = consumerElf();
     {
