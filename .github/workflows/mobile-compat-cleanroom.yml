@@ -44,6 +44,8 @@ jobs:
             -o apps/mobile-compat/native/build/llvm-guest/libprovider.so \
             apps/mobile-compat/native/tests/llvm-jni-register.S
           readelf -h -d -r apps/mobile-compat/native/build/llvm-guest/libprovider.so
+          "${ndk_bin}/llvm-objdump" --disassemble --no-show-raw-insn \
+            apps/mobile-compat/native/build/llvm-guest/libprovider.so
       - name: Configure native clean-room executor
         run: cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
       - name: Build native clean-room executor
