@@ -88,7 +88,51 @@ console.log(JSON.stringify({
     return data
 
 
-def prove(root: Path, platform_root: Path, sdk_root: Path) -> dict:
+
+def _canonical_source_owner_gate_proof(channel_bin: Path, staging: Path,
+                                       release: Path, compatibility: Path) -> dict:
+    """Prove the real Go signer rejects Files before the OS->Apps ownership cutover.
+
+    This is an explicit negative proof, not a signed component staging proof.
+    No release descriptor or authority is modified to defeat the gate.
+    """
+    if not channel_bin.is_file() or channel_bin.is_symlink():
+        raise FilesProofError("canonical Native component channel is unavailable")
+    private_key = staging / "ephemeral-component-private.pem"
+    trust = staging / "ephemeral-component-public-trust.json"
+    envelope = staging / "files.runtime-component-envelope.json"
+    command = [str(channel_bin), "generate-key", "--private-key", str(private_key),
+               "--trust", str(trust), "--key-id", "files-disposable-proof-1"]
+    generated = subprocess.run(command, capture_output=True, text=True, timeout=35)
+    if generated.returncode != 0 or "RUNTIME_COMPONENT_KEY_GENERATED=YES" not in generated.stdout:
+        raise FilesProofError("canonical ephemeral Ed25519 setup failed")
+    if private_key.stat().st_mode & 0o077:
+        raise FilesProofError("disposable private key permissions are not restrictive")
+
+    attempted = subprocess.run(
+        [str(channel_bin), "sign-v2", "--release", str(release),
+         "--compatibility", str(compatibility), "--private-key", str(private_key),
+         "--trust", str(trust), "--out", str(envelope),
+         "--key-id", "files-disposable-proof-1"],
+        capture_output=True, text=True, timeout=35,
+    )
+    if attempted.returncode == 0 or envelope.exists():
+        raise FilesProofError("Files signing bypassed the canonical source ownership restriction")
+    if "runtime component source repository is not canonical for component" not in attempted.stderr:
+        raise FilesProofError("Files signing did not fail for the required canonical ownership gate")
+    if list(staging.rglob("activation-state.json")):
+        raise FilesProofError("negative Files ownership proof mutated an activation state")
+    return {
+        "canonical_go_signer_checked": True,
+        "precutover_source_owner_rejected": True,
+        "signed_slot_created": False,
+        "live_install_authorized": False,
+        "production_trust_used": False,
+    }
+
+
+def prove(root: Path, platform_root: Path, sdk_root: Path,
+          channel_bin: Path | None = None) -> dict:
     root, platform_root, sdk_root = root.resolve(), platform_root.resolve(), sdk_root.resolve()
     _, plan, sdk_pin = cutover.load_plan(root)
     if (
@@ -224,6 +268,13 @@ def prove(root: Path, platform_root: Path, sdk_root: Path) -> dict:
             packages.append((hashlib.sha256(output.read_bytes()).hexdigest(), release["package"]["sha256"]))
         if packages[0] != packages[1] or packages[0][0] != packages[0][1]:
             raise FilesProofError("unsigned Files candidate was not deterministic")
+        owner_gate = (
+            _canonical_source_owner_gate_proof(
+                channel_bin, staging,
+                staging / "candidate-0" / "release" / "files.release.json",
+                staging / "candidate-0" / "release" / "files.compatibility.json",
+            ) if channel_bin is not None else None
+        )
         result = {
             "schema": "ordax.files-ephemeral-candidate-proof/1",
             "app_id": "files",
@@ -236,6 +287,8 @@ def prove(root: Path, platform_root: Path, sdk_root: Path) -> dict:
             "release_v2_candidate_verified": True,
             "source_of_truth_repository": "ordaxsystems/ordax-os",
             "second_permanent_files_source_created": False,
+            "canonical_owner_gate_verified": owner_gate is not None,
+            "canonical_owner_gate_proof": owner_gate,
             "signed_install_verified": False,
             "bootstrap_delivery_verified": False,
             "distribution_activation_allowed": False,
@@ -250,10 +303,12 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--platform-root", type=Path, required=True)
     parser.add_argument("--sdk-platform-root", type=Path, required=True)
+    parser.add_argument("--channel-bin", type=Path)
     options = parser.parse_args()
     try:
         print(json.dumps(
-            prove(options.root, options.platform_root, options.sdk_platform_root),
+            prove(options.root, options.platform_root, options.sdk_platform_root,
+                  options.channel_bin.resolve() if options.channel_bin is not None else None),
             indent=2, sort_keys=True, ensure_ascii=False,
         ))
         return 0
