@@ -41,6 +41,7 @@ public:
     void install_host_readonly(std::uint64_t address, std::span<const std::uint8_t> bytes);
     void set_host_call(HostCall call);
     void require_guest_access(std::uint64_t address, std::size_t count, std::uint8_t permission) const;
+    [[nodiscard]] std::uint8_t guest_read_u8(std::uint64_t address) const;
     [[nodiscard]] std::int32_t guest_read_i32(std::uint64_t address) const;
     [[nodiscard]] std::uint64_t guest_read_u64(std::uint64_t address) const;
     void guest_write_u64(std::uint64_t address, std::uint64_t value);
