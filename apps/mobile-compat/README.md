@@ -16,7 +16,8 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - arrays de inteiros Dalvik com `new-array`, `array-length`, `aget` e `aput` e alocação tipada em memória do convidado (até 65.536 posições por array e até 262.144 posições no conjunto, além do limite de 4.096 objetos/arrays); acesso inválido, tipo não suportado e retorno de referência guest ao host são recusados;
 - fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; agora há **um subconjunto inicial da ABI JNI** com `JNIEnv*` e tabela indexada, mas ainda sem classes Android, JNI completo, JNI_OnLoad, carregamento automático de bibliotecas ou autoridade da plataforma;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
-- carregador ELF64 ARM64 `ET_EXEC` e subconjunto relocável `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE` sem símbolos externos; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
+- carregador ELF64 ARM64 `ET_EXEC` e `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE`; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
+- **linker experimental entre dois ELF convidados**: um provedor `ET_DYN` independente exporta funções `GLOBAL FUNC` de `DT_SYMTAB`/`DT_STRTAB` com contagem limitada de `DT_HASH`. Um consumidor `ET_DYN` com `DT_NEEDED` explícito pode resolver `R_AARCH64_JUMP_SLOT` e `R_AARCH64_GLOB_DAT` somente contra essas exportações previamente carregadas. A função importada é executada por `BLR` dentro da CPU convidada; nenhum símbolo ou endereço nativo do Windows é importado. Colisões de segmentos, símbolos inexistentes/ambíguos, tipos não suportados, TLS e dependências implícitas são recusados;
 - executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória e permissões ELF de leitura, escrita e execução (nega escrita em RX e execução em dados NX);
 - **ponte experimental Dalvik → ARM64 para métodos `int32`**: `invoke-static` de um método DEX opt-in chama `NativeMethodBoundary`, que pode usar `registerArm64IntegerMethod` para executar um ELF de desenvolvimento no motor ARM64 nativo. O arquivo é conferido por SHA-256 e executado a partir de uma cópia privada validada, com subprocesso limitado por tempo e saída. Só `(I{0,5})I`, sem objetos exportados, ponteiros host, símbolos dinâmicos ou autorização escolhida pelo APK;
 - o comando de desenvolvimento `ordax-mobile-guest invoke-i32-elf arquivo.elf [int32 ...]` aceita até cinco argumentos em `x0` a `x4`. A variante `invoke-jni-i32-elf` fornece `JNIEnv*` em `x0`, um identificador `jclass` opaco em `x1`, e até cinco `jint` em `x2`–`x6`, com resultado `jint` em `x0`;
@@ -60,6 +61,22 @@ Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
     ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
 
 O host nativo de desenvolvimento é compilado no diretório `native/build`.
+
+Prova de ligação entre **dois arquivos ELF ARM64 de teste**:
+
+    ordax-mobile-guest link-two-elf CAMINHO/libprovider.so CAMINHO/libconsumer.so 40
+
+Os arquivos podem ser gerados pelo teste nativo
+`ordax_mobile_linked_elf_tests --emit-linked-fixtures`, recebendo os
+caminhos de saída do provedor e do consumidor. Esse comando retorna o
+resultado convidado `42` após uma relocação `JUMP_SLOT` e uma chamada
+real `BLR`. A rotina do carregador usa bases virtuais fixas para esta
+prova e bloqueia bibliotecas concorrentes ou endereços externos. **Não
+é `dlopen`, não contém Bionic, não suporta dependências transitivas,
+relocações Android compactadas, `JNI_OnLoad`, versionamento de símbolos
+nem o ABI/linker completo para aplicativos reais.**
+
+O host nativo de desenvolvimento é compilado no diretório `native/build`.
 As opções suportadas são `run-elf`, `invoke-i32-elf`, `invoke-jni-i32-elf`,
 `invoke-jni-new-int-array-elf` e `invoke-jni-int-array-elf` (esta última requer um snapshot binário produzido
 pela ponte confiável)
@@ -71,6 +88,11 @@ ELF AArch64 que soma dois ao parâmetro recebido em `x0`, carrega um
 `classes.dex` contendo método nativo tipado, chama-o por `invoke-static`,
 verifica resultados positivos, negativos e overflow `int32`, testa o mesmo
 caminho via APK e XAPK e confirma que a execução falha sem registro host.
+O CTest inclui `mobile-a64-cross-elf-jump-slot-proof` e
+`mobile-linked-elf-files-run`, executados em Linux e Windows e
+acompanhados de negativas explícitas para símbolos não resolvidos,
+sobreposição de páginas e tipos de relocação desconhecidos.
+
 Há também `mobile-jni-table-abi-proof`, `mobile-dex-to-jni-aarch64-bridge`
 e `mobile-dex-jni-array-roundtrip` / `mobile-dex-jni-new-array-roundtrip`,
 que usam os índices reais de `JNIEnv` com chamadas indiretas do CPU ARM64 e
