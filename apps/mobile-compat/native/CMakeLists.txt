@@ -149,3 +149,19 @@ add_executable(ordax_mobile_initializer_tests tests/elf_initializers.test.cpp)
 target_link_libraries(ordax_mobile_initializer_tests PRIVATE ordax_mobile_guest)
 add_test(NAME mobile-a64-elf-initializer-order-and-security
          COMMAND ordax_mobile_initializer_tests)
+
+# Genuine JNI_OnLoad(JavaVM*,void*) obtained by DT_SONAME + dynsym from
+# an actual ELF file; caller uses the same verified guest CPU/JNI lifecycle.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/jni-onload")
+set(ORDAX_ONLOAD_ELF "${CMAKE_CURRENT_BINARY_DIR}/jni-onload/libprovider.so")
+add_test(NAME mobile-jni-onload-elf-fixture
+         COMMAND ordax_mobile_linked_elf_tests --emit-jni-onload-fixture
+                 "${ORDAX_ONLOAD_ELF}")
+set_tests_properties(mobile-jni-onload-elf-fixture PROPERTIES
+    FIXTURES_SETUP mobile-jni-onload-fixture)
+add_test(NAME mobile-jni-onload-elf-file-proof
+         COMMAND ordax-mobile-guest invoke-jni-onload-elf
+                 "${ORDAX_ONLOAD_ELF}")
+set_tests_properties(mobile-jni-onload-elf-file-proof PROPERTIES
+    FIXTURES_REQUIRED mobile-jni-onload-fixture
+    PASS_REGULAR_EXPRESSION "version.*65542")
