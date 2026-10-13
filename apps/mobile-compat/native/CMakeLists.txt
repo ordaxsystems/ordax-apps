@@ -112,3 +112,9 @@ add_test(NAME mobile-dex-jni-new-array-roundtrip
                  "${ORDAX_JNI_RETURN_ARRAY_FIXTURE}" jni-new-array)
 set_tests_properties(mobile-dex-jni-new-array-roundtrip PROPERTIES
     FIXTURES_REQUIRED mobile-jni-return-array-fixture)
+
+# Linked guest ELF: dynamic DT_NEEDED and R_AARCH64_JUMP_SLOT between two
+# explicitly mapped AArch64 ET_DYN images without host symbol loading.
+add_executable(ordax_mobile_linked_elf_tests tests/elf_linked.test.cpp)
+target_link_libraries(ordax_mobile_linked_elf_tests PRIVATE ordax_mobile_guest)
+add_test(NAME mobile-a64-cross-elf-jump-slot-proof COMMAND ordax_mobile_linked_elf_tests)
