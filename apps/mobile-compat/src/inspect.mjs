@@ -12,9 +12,8 @@ async function inspectApkBytes(name, buffer, inspectPayloads) {
   try {
     const dex = apk.entries.filter(entry => dexName(entry.name));
     const native = apk.entries.filter(entry => nativeName(entry.name));
-    if (!dex.length) throw new PackageError('NO_DEX', 'Package has no DEX bytecode');
     const result = { name, dexFiles: dex.length, arm64Libraries: native.filter(entry => entry.name.startsWith('lib/arm64-v8a/')).length, x86Libraries: native.filter(entry => entry.name.startsWith('lib/x86_64/')).length };
-    if (inspectPayloads) {
+    if (inspectPayloads && dex.length) {
       const head = dex.find(entry => entry.name === 'classes.dex') || dex[0];
       result.dex = inspectDex(await apk.read(head.name, 128 * 1024 * 1024));
       const guest = native.find(entry => entry.name.startsWith('lib/arm64-v8a/') && entry.size < 64 * 1024 * 1024);
@@ -46,6 +45,7 @@ export async function inspectPackage(path, { verifyPayloads = true } = {}) {
       const bytes = await zip.read(entry.name, MAX_APK);
       result.apks.push(await inspectApkBytes(entry.name, bytes, verifyPayloads));
     }
+    if (!result.apks.some(apk => apk.dexFiles > 0)) throw new PackageError('NO_DEX', 'No base APK contains executable bytecode');
     return result;
   } finally {
     await zip.close();
