@@ -188,3 +188,20 @@ add_test(NAME mobile-dex-to-jni-registered-arm64
                  "${ORDAX_REGISTERED_JNI_ELF}" jni-registered)
 set_tests_properties(mobile-dex-to-jni-registered-arm64 PROPERTIES
     FIXTURES_REQUIRED mobile-jni-registered-fixture)
+
+
+# Real LLVM/LLD-linked AArch64 ELF produced by CI, from checked-in assembly.
+# Not a copied Android binary and not an independent execution engine.
+set(ORDAX_LLVM_GUEST_ELF "${CMAKE_CURRENT_BINARY_DIR}/llvm-guest/libprovider.so")
+if(EXISTS "${ORDAX_LLVM_GUEST_ELF}")
+  add_test(NAME mobile-real-llvm-linked-elf-jni-register
+           COMMAND ordax-mobile-guest invoke-jni-registered-i32-elf
+                   "${ORDAX_LLVM_GUEST_ELF}" test/Bridge nativeAdd "(I)I" 40)
+  set_tests_properties(mobile-real-llvm-linked-elf-jni-register PROPERTIES
+      PASS_REGULAR_EXPRESSION "\\"value\\":42")
+  add_test(NAME mobile-real-llvm-linked-elf-reject-wrong-class
+           COMMAND ordax-mobile-guest invoke-jni-registered-i32-elf
+                   "${ORDAX_LLVM_GUEST_ELF}" unauthorized/Class nativeAdd "(I)I" 40)
+  set_tests_properties(mobile-real-llvm-linked-elf-reject-wrong-class PROPERTIES
+      WILL_FAIL TRUE)
+endif()
