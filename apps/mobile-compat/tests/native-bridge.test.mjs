@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DexSubset } from '../src/dex-vm.mjs';
 import { NativeMethodBoundary } from '../src/native-boundary.mjs';
-import { registerArm64IntegerMethod, registerArm64JniIntegerMethod, registerArm64JniIntArrayMethod, registerArm64JniReturnIntArrayMethod } from '../src/arm64-method-bridge.mjs';
+import { registerArm64IntegerMethod, registerArm64JniIntegerMethod, registerArm64JniIntArrayMethod, registerArm64JniReturnIntArrayMethod, registerArm64JniRegisteredIntegerMethod } from '../src/arm64-method-bridge.mjs';
 import { GuestHeap } from '../src/guest-heap.mjs';
 import { runDexMethodFromPackage } from '../src/inspect.mjs';
 
@@ -19,10 +19,12 @@ const owner = 'Ltest/Bridge;';
 const isJni = process.argv[4] === 'jni';
 const isJniArray = process.argv[4] === 'jni-array';
 const isJniReturnArray = process.argv[4] === 'jni-new-array';
+const isJniRegistered = process.argv[4] === 'jni-registered';
 const mode = isJni ? 'invoke-jni-i32-elf' : 'invoke-i32-elf';
 const expectedSchema = isJni ? 'ordax.mobile-compat.jni-static-i32-call/1' : 'ordax.mobile-compat.i32-guest-call/1';
 const expected = value => (value + (isJni ? 0x10006 : 2)) | 0;
-const nativeTest = executablePath && imagePath && !isJniArray && !isJniReturnArray ? test : test.skip;
+const nativeTest = executablePath && imagePath && !isJniArray && !isJniReturnArray && !isJniRegistered ? test : test.skip;
+const registeredTest = executablePath && imagePath && isJniRegistered ? test : test.skip;
 const arrayTest = executablePath && imagePath && isJniArray ? test : test.skip;
 const returnArrayTest = executablePath && imagePath && isJniReturnArray ? test : test.skip;
 const hash = imagePath ? createHash('sha256').update(readFileSync(imagePath)).digest('hex') : null;
@@ -458,4 +460,73 @@ returnArrayTest('JNI array returns reject invalid host results before allocating
       nativeBoundary: createNewArrayBoundary(hash, file),
     }).execute(owner, 'callNative', [5]), { code: 'NATIVE_FAULT' });
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+function createRegisteredBoundary(pinned = hash, file = imagePath) {
+  const boundary = new NativeMethodBoundary();
+  registerArm64JniRegisteredIntegerMethod(boundary, {
+    owner, name: 'nativeAdd', signature: '(I)I',
+    executablePath, imagePath: file, sha256: pinned,
+  });
+  return boundary;
+}
+registeredTest('real ELF JNI_OnLoad RegisterNatives function returns jint42', () => {
+  for (const input of [40, -2, 0, 2147483647]) {
+    const msg = JSON.parse(execFileSync(executablePath,
+      ['invoke-jni-registered-i32-elf', imagePath, 'test/Bridge',
+       'nativeAdd', '(I)I', String(input)], { encoding: 'utf8', timeout: 3000 }));
+    assert.equal(msg.schema, 'ordax.mobile-compat.jni-registered-i32-call/1');
+    assert.equal(msg.value, (input + 2) | 0);
+  }
+});
+registeredTest('verified DEX invokes ARM64 function registered dynamically by JNI_OnLoad', () => {
+  const vm = new DexSubset(makeDex(), { nativeBoundary: createRegisteredBoundary() });
+  for (const input of [40, -11, 2147483647]) {
+    const result = vm.execute(owner, 'callNative', [input]);
+    assert.equal(result.value, (input + 2) | 0);
+    assert.equal(result.consumedInstructions, 3);
+  }
+  assert.throws(() => new DexSubset(makeDex()).execute(owner,'callNative',[40]),
+    { code: 'NATIVE_UNAVAILABLE' });
+});
+registeredTest('APK/XAPK invoke only the host-pinned, DEX-declared JNI method', async () => {
+  const apk = zip([['AndroidManifest.xml', Buffer.from([1])],['classes.dex',makeDex()]]);
+  const xapk = zip([['base.apk',apk],['config.arm64.apk',
+    zip([['resources.arsc', Buffer.from([1,2])]])]]);
+  const dir = mkdtempSync(join(tmpdir(),'ordax-register-dex-'));
+  try {
+    const paths=[join(dir,'registered.apk'),join(dir,'registered.xapk')];
+    writeFileSync(paths[0],apk);writeFileSync(paths[1],xapk);
+    for(const p of paths){
+      const result=await runDexMethodFromPackage(p,owner,'callNative',[40],
+        {nativeBoundary:createRegisteredBoundary()});
+      assert.equal(result.value,42);
+      await assert.rejects(runDexMethodFromPackage(p,owner,'callNative',[40]),
+        {code:'NATIVE_UNAVAILABLE'});
+    }
+  } finally {rmSync(dir,{recursive:true,force:true});}
+});
+registeredTest('JNI registration rejects wrong DEX method, ELF hash and modified binary', () => {
+  const dir=mkdtempSync(join(tmpdir(),'ordax-register-negative-'));
+  try {
+    const bad=join(dir,'libprovider.so');
+    const image=Buffer.from(readFileSync(imagePath));
+    image[image.length-1] ^= 1;
+    writeFileSync(bad,image);
+    assert.throws(()=>new DexSubset(makeDex(),{
+      nativeBoundary:createRegisteredBoundary(hash,bad)
+    }).execute(owner,'callNative',[40]),{code:'NATIVE_FAULT'});
+    assert.throws(()=>new DexSubset(makeDex()).execute(owner,'notDeclared',[40]),
+      {code:'DEX_METHOD'});
+    assert.throws(()=>execFileSync(executablePath,
+      ['invoke-jni-registered-i32-elf',imagePath,'not/ThisClass',
+       'nativeAdd','(I)I','40'],{timeout:3000}));
+    assert.throws(()=>execFileSync(executablePath,
+      ['invoke-jni-registered-i32-elf',imagePath,'test/Bridge',
+       'otherNative','(I)I','40'],{timeout:3000}));
+    assert.throws(()=>execFileSync(executablePath,
+      ['invoke-jni-registered-i32-elf',imagePath,'test/Bridge',
+       'nativeAdd','()I','40'],{timeout:3000}));
+  } finally {rmSync(dir,{recursive:true,force:true});}
 });
