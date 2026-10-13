@@ -186,7 +186,7 @@ test('corrupt DEX metadata is rejected before method execution', () => {
   assert.throws(() => new DexSubset(raw), { code: 'DEX' });
   const invalid = fixtureDex();
   invalid.writeUInt32LE(0xffffff00, 0x140 + 0); // corrupted class_data encoded
-  assert.throws(() => new DexSubset(sealDex(invalid)), { code: 'DEX_INDEX' });
+  assert.throws(() => new DexSubset(sealDex(invalid)), { code: 'DEX_LIMIT' });
 });
 test('APK and nested XAPK actually execute bounded static Dalvik bytecode', async () => {
   const dex = fixtureDex();
