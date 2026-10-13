@@ -179,14 +179,23 @@ std::uint32_t JniGuestEnvironment::runOnLoad(
     // The guest call can have side effects. Failure leaves lifecycle terminal;
     // retrying a partially executed JNI_OnLoad is never safe.
     image.jni_onload_started = true;
-    for (unsigned i = 0; i < 8; ++i) cpu.set_register(i, 0);
-    cpu.set_register(0, kVmAddress);
-    cpu.set_register(1, 0); // reserved must be NULL
-    const auto raw_version = cpu.run(onload, instruction_budget);
-    if (raw_version != kVersion) {
-        throw GuestFault("JNI_OnLoad returned unsupported JNI version");
+    const auto previous = registered_methods_;
+    registering_image_ = &image;
+    try {
+        for (unsigned i = 0; i < 8; ++i) cpu.set_register(i, 0);
+        cpu.set_register(0, kVmAddress);
+        cpu.set_register(1, 0); // reserved must be NULL
+        const auto raw_version = cpu.run(onload, instruction_budget);
+        if (raw_version != kVersion) {
+            throw GuestFault("JNI_OnLoad returned unsupported JNI version");
+        }
+        registering_image_ = nullptr;
+        return static_cast<std::uint32_t>(raw_version);
+    } catch (...) {
+        registering_image_ = nullptr;
+        registered_methods_ = previous;
+        throw;
     }
-    return static_cast<std::uint32_t>(raw_version);
 }
 
 } // namespace ordax::mobile
