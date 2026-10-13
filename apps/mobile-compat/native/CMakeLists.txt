@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.20)
+project(ordax_mobile_guest VERSION 0.1.0 LANGUAGES CXX)
+
+add_library(ordax_mobile_guest STATIC src/cpu_a64.cpp)
+target_include_directories(ordax_mobile_guest PUBLIC include)
+target_compile_features(ordax_mobile_guest PUBLIC cxx_std_20)
+if(MSVC)
+  target_compile_options(ordax_mobile_guest PRIVATE /W4 /permissive-)
+else()
+  target_compile_options(ordax_mobile_guest PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+enable_testing()
+add_executable(ordax_mobile_guest_tests tests/cpu_a64.test.cpp)
+target_link_libraries(ordax_mobile_guest_tests PRIVATE ordax_mobile_guest)
+add_test(NAME mobile-a64-instruction-proof COMMAND ordax_mobile_guest_tests)
