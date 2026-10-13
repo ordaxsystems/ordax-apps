@@ -194,5 +194,12 @@ int main(int argc, char** argv) {
         JniGuestEnvironment env;
         (void)env.createIntArray(65537);
     });
+    {
+        JniGuestEnvironment env;
+        for (unsigned n = 0; n < 4; ++n) {
+            (void)env.createIntArray(65536);
+        }
+        reject([&env] { (void)env.createIntArray(1); });
+    }
     std::cout << "JNI table GetVersion/GetArrayLength/ExceptionCheck ABI proof passed\n";
 }
