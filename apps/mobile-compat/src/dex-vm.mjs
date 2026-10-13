@@ -269,7 +269,6 @@ export class DexSubset {
       return this.nativeBoundary.call(info, args);
     }
     const item = this.codeItem(id);
-    if (args.length !== item.info.proto.params.length) fail('DEX_ARGS', 'Wrong number of method arguments');
     const params = item.isStatic
       ? item.info.proto.params
       : [item.info.owner, ...item.info.proto.params];
