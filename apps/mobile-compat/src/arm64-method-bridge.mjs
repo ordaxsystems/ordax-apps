@@ -6,12 +6,13 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { basename, isAbsolute, join } from 'node:path';
 import { PackageError } from './zip.mjs';
 
 const imageHash = /^[0-9a-f]{64}$/;
 const methodSig = /^\(I{0,5}\)I$/;
 const arrayMethodSig = /^\(\[I\)I$/;
+const registeredMethodSig = /^\(I\)I$/;
 const returnArrayMethodSig = /^\(\)\[I$/;
 const isInt32 = v => Number.isInteger(v) && v >= -2147483648 && v <= 2147483647;
 const maxImageSize = 16 * 1024 * 1024;
@@ -25,11 +26,13 @@ export function registerArm64IntegerMethod(nativeBoundary, {
   if (!nativeBoundary || typeof nativeBoundary.register !== 'function' ||
       !isAbsolute(executablePath ?? '') || !isAbsolute(imagePath ?? '') ||
       typeof sha256 !== 'string' || !imageHash.test(sha256) ||
-      !(guestAbi === 'jni-return-int-array'
-        ? returnArrayMethodSig.test(signature ?? '')
+      !(guestAbi === 'jni-registered-i32'
+        ? registeredMethodSig.test(signature ?? '')
+        : guestAbi === 'jni-return-int-array'
+          ? returnArrayMethodSig.test(signature ?? '')
         : guestAbi === 'jni-int-array'
           ? arrayMethodSig.test(signature ?? '') : methodSig.test(signature ?? '')) ||
-      !['plain-i32', 'jni-static-i32', 'jni-int-array', 'jni-return-int-array'].includes(guestAbi) ||
+      !['plain-i32', 'jni-static-i32', 'jni-int-array', 'jni-return-int-array', 'jni-registered-i32'].includes(guestAbi) ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000) {
     failure('NATIVE_REGISTRATION', 'Invalid trusted ELF image/call configuration');
   }
@@ -54,6 +57,12 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       // attacker-mutable input after hash validation would create a TOCTOU
       // gap. A private per-call snapshot also prevents parallel call races.
       let stdout, privateDir;
+      if (guestAbi === 'jni-registered-i32' && (
+          args.length !== 1 || !isInt32(args[0]) ||
+          !/^L[A-Za-z0-9_/$]+;$/.test(owner ?? '') ||
+          !/^lib[A-Za-z0-9_.-]+\.so$/.test(basename(imagePath)))) {
+        failure('NATIVE_ARGS', 'Registered JNI requires a pinned .so and a verified Dalvik jint method');
+      }
       if (guestAbi === 'jni-int-array' && (
           args.length !== 1 || !Array.isArray(args[0]) ||
           args[0].length > 1024 || !args[0].every(isInt32))) {
@@ -61,10 +70,14 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       }
       try {
         privateDir = mkdtempSync(join(tmpdir(), 'ordax-mobile-guest-'));
-        const verifiedPath = join(privateDir, 'pinned.elf');
+        const verifiedPath = join(privateDir, guestAbi === 'jni-registered-i32'
+          ? basename(imagePath) : 'pinned.elf');
         writeFileSync(verifiedPath, image, { flag: 'wx', mode: 0o600 });
         let commandArgs;
-        if (guestAbi === 'jni-return-int-array') {
+        if (guestAbi === 'jni-registered-i32') {
+          commandArgs = ['invoke-jni-registered-i32-elf', verifiedPath,
+            owner.slice(1, -1), name, signature, String(args[0])];
+        } else if (guestAbi === 'jni-return-int-array') {
           commandArgs = ['invoke-jni-new-int-array-elf', verifiedPath];
         } else if (guestAbi === 'jni-int-array') {
           const array = args[0];
@@ -97,7 +110,9 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       let message;
       try { message = JSON.parse(stdout); }
       catch { failure('NATIVE_PROTOCOL', 'Native guest returned invalid JSON'); }
-      const expectedSchema = guestAbi === 'jni-return-int-array'
+      const expectedSchema = guestAbi === 'jni-registered-i32'
+        ? 'ordax.mobile-compat.jni-registered-i32-call/1'
+        : guestAbi === 'jni-return-int-array'
         ? 'ordax.mobile-compat.jni-return-int-array/1'
         : guestAbi === 'jni-int-array'
           ? 'ordax.mobile-compat.jni-int-array-call/1'
@@ -152,5 +167,14 @@ export function registerArm64JniIntArrayMethod(nativeBoundary, options) {
 export function registerArm64JniReturnIntArrayMethod(nativeBoundary, options) {
   return registerArm64IntegerMethod(nativeBoundary, {
     ...options, guestAbi: 'jni-return-int-array',
+  });
+}
+
+// Runs the REAL JNI_OnLoad -> FindClass -> RegisterNatives path inside the
+// SHA-pinned guest ELF. Method identity comes from the existing trusted
+// NativeMethodBoundary and the verified DexSubset caller, not JNI strings.
+export function registerArm64JniRegisteredIntegerMethod(nativeBoundary, options) {
+  return registerArm64IntegerMethod(nativeBoundary, {
+    ...options, guestAbi: 'jni-registered-i32',
   });
 }
