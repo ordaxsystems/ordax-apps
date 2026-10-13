@@ -182,6 +182,7 @@ std::uint32_t JniGuestEnvironment::runOnLoad(
     image.jni_onload_started = true;
     const auto previous = registered_methods_;
     registering_image_ = &image;
+    registration_getenv_succeeded_ = false;
     try {
         for (unsigned i = 0; i < 8; ++i) cpu.set_register(i, 0);
         cpu.set_register(0, kVmAddress);
