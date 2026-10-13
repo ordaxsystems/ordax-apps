@@ -96,6 +96,10 @@ void CpuA64::guest_write_u64(std::uint64_t address, std::uint64_t value) {
     if (address % 8) throw GuestFault("Unaligned JNI pointer output");
     write64(address, value); // checks PF_W on the whole slot
 }
+std::uint8_t CpuA64::guest_read_u8(std::uint64_t address) const {
+    require_guest_access(address, 1, 4); // PF_R
+    return memory_[static_cast<std::size_t>(address)];
+}
 std::int32_t CpuA64::guest_read_i32(std::uint64_t address) const {
     require_guest_access(address, 4, 4); // PF_R
     const auto index = static_cast<std::size_t>(address);
