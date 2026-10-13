@@ -82,7 +82,8 @@ int main() {
         stream({1, 0, 1, 4}),
         stream({1, 0, 1, 16}),
         stream({1, 0, 1, 15, -8, 1027, 0x1000}),
-        stream({2, 0x7fffffffffffffffLL, 2, 15, 8, 1027, 0x1000})
+        stream({2, 0x7fffffffffffffffLL, 2, 15,
+                0x7fffffffffffffffLL, 1027, 0x1000})
     }) {
         bool rejected = false;
         try { (void)decodeAndroidAps2Rela(invalid); }
