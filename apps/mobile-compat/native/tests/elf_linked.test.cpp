@@ -679,5 +679,30 @@ int main(int argc, char** argv) {
         });
         (void)previous;
     }
+    // Official NDK and LLVM/LLD output uses DF_BIND_NOW and DF_1_NOW.
+    // These two flags are safe for the eagerly resolved symbol path; other
+    // loader promises must still fail closed. Both formats share validation.
+    {
+        auto flags = providerElf();
+        std::copy(flags.begin()+0x390, flags.begin()+0x390+26,
+                  flags.begin()+0x510);
+        program(flags,2,2,6,0x320,0x3020,144);
+        dyn(flags,1,5,0x3210); // relocated dynstr avoids expanded dynamic
+        dyn(flags,6,30,8); // DT_FLAGS: DF_BIND_NOW only
+        dyn(flags,7,0x6ffffffb,1); // DT_FLAGS_1: DF_1_NOW only
+        dyn(flags,8,0,0);
+        CpuA64 cpu(0x100000);
+        (void)loadRelocatableElfA64(cpu,flags,0x10000);
+        assert(inspectGuestDynamicExports(flags,0x10000,"libprovider.so").size()==1);
+        for(unsigned kind=0;kind<3;++kind){
+            auto bad=flags;
+            if(kind==0) dyn(bad,6,30,4); // DF_TEXTREL, unsupported
+            if(kind==1) dyn(bad,7,0x6ffffffb,2); // DF_1_GLOBAL, unsupported
+            if(kind==2) dyn(bad,7,30,8); // duplicate DT_FLAGS
+            CpuA64 isolated(0x100000);
+            reject([&] {(void)loadRelocatableElfA64(isolated,bad,0x10000);});
+            (void)loadRelocatableElfA64(isolated,flags,0x10000);
+        }
+    }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
