@@ -46,7 +46,7 @@ constexpr std::array<std::uint32_t, 8> kGetVersionPlusArg = {
     0xf9400009, // ldr x9,[x0]: JNI function table pointer
     0xf9401129, // ldr x9,[x9,#32]: slot 4 GetVersion
     0xd63f0120, // blr x9: native guest -> JNI host gateway
-    0x91000280, // add x0,x0,x20: JNI_VERSION_1_6 + jint arg
+    0x8b140000, // add x0,x0,x20: JNI_VERSION_1_6 + jint arg
     0x9100027e, // add x30,x19,#0: restore original LR
     0xd65f03c0, // ret x30
 };
