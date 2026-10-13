@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(ordax_mobile_guest VERSION 0.1.0 LANGUAGES CXX)
 
-add_library(ordax_mobile_guest STATIC src/cpu_a64.cpp src/elf_a64.cpp src/jni_guest.cpp)
+add_library(ordax_mobile_guest STATIC src/cpu_a64.cpp src/elf_a64.cpp src/android_aps2.cpp src/jni_guest.cpp)
 target_include_directories(ordax_mobile_guest PUBLIC include)
 target_compile_features(ordax_mobile_guest PUBLIC cxx_std_20)
 if(MSVC)
@@ -134,3 +134,11 @@ add_test(NAME mobile-linked-elf-files-run
 set_tests_properties(mobile-linked-elf-files-run PROPERTIES
     FIXTURES_REQUIRED mobile-linked-elf-files
     PASS_REGULAR_EXPRESSION "guestReturn.*42")
+
+
+# Packed Android APS2 decoding is a pure parser; only the original ELF loader
+# is permitted to apply these relocations to guest memory.
+add_executable(ordax_mobile_aps2_decoder_tests tests/android_aps2.test.cpp)
+target_link_libraries(ordax_mobile_aps2_decoder_tests PRIVATE ordax_mobile_guest)
+add_test(NAME mobile-a64-aps2-format-and-bounds-proof
+         COMMAND ordax_mobile_aps2_decoder_tests)
