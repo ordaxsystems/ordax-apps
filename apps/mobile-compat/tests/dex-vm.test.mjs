@@ -401,3 +401,33 @@ test('guest object quotas, initialization and field ownership are enforced', () 
   assert.throws(() => heap.lookup(0), { code: 'DEX_NULL' });
   assert.throws(() => heap.lookup(12345), { code: 'DEX_REFERENCE' });
 });
+
+
+test('object bytecode also runs from APK and XAPK through the real package intake', async () => {
+  const apk = zip([['AndroidManifest.xml', Buffer.from([1, 2, 3])],
+    ['classes.dex', objectDexFixture()]]);
+  const xapk = zip([['base.apk', apk],
+    ['config.arm64.apk', zip([['resources.arsc', Buffer.from([1])]])]]);
+  const dir = await mkdtemp(join(tmpdir(), 'ordax-dalvik-objects-'));
+  try {
+    const apkPath = join(dir, 'objects.apk'), xapkPath = join(dir, 'objects.xapk');
+    await writeFile(apkPath, apk);
+    await writeFile(xapkPath, xapk);
+    for (const path of [apkPath, xapkPath]) {
+      const outcome = await runDexMethodFromPackage(path, 'Ltest/Arithmetic;', 'makeValue', [42]);
+      assert.equal(outcome.value, 42);
+      assert.equal(outcome.allocatedObjects, 1);
+      assert.equal(outcome.format, 'dalvik-object-subset');
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('branches cannot jump directly into move-result-object', () => {
+  const raw = objectDexFixture();
+  // Replace invoke-static with goto +3 to the move-result-object.
+  raw.writeUInt16LE(0x0328, 0x6c0 + 16);
+  raw.writeUInt16LE(0x0012, 0x6c0 + 18);
+  raw.writeUInt16LE(0, 0x6c0 + 20);
+  assert.throws(() => new DexSubset(sealDex(raw)).execute('Ltest/Arithmetic;', 'makeValue', [1]),
+    { code: 'DEX_RESULT' });
+});
