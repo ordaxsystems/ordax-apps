@@ -16,6 +16,12 @@ struct LoadedGuestElf {
     std::uint64_t load_bias = 0;
     std::size_t relative_relocations = 0;
     bool has_entry = false;
+    // Constructor metadata is validated at load time but invoked only
+    // after the trusted host has linked all guest dependencies.
+    std::vector<std::uint64_t> initializers;
+    std::vector<std::uint64_t> initializer_slots;
+    std::vector<GuestRegion> executable_regions;
+    bool initializers_started = false;
 };
 
 // The same validated loader handles ET_EXEC and the supported ET_DYN subset.
@@ -27,6 +33,12 @@ struct LoadedGuestElf {
 // relocation types fail closed; the full Android/Bionic linker is absent.
 [[nodiscard]] LoadedGuestElf loadRelocatableElfA64(
     CpuA64& cpu, std::span<const std::uint8_t> elf, std::uint64_t load_bias);
+
+// Run DT_INIT then DT_INIT_ARRAY in link-order selected by trusted host.
+// Each callback uses the same bounded ARM64 interpreter, never host dlopen.
+// A partly executed initializer sequence cannot be retried after failure.
+void runGuestInitializers(CpuA64& cpu, LoadedGuestElf& image,
+                          std::uint64_t instruction_budget_per_callback);
 
 // Symbol information comes exclusively from a verified provider ELF's own
 // bounded DT_SYMTAB/DT_STRTAB, never user-supplied host function pointers.
