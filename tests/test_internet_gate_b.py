@@ -12,11 +12,11 @@ MIGRATION = ROOT / "migrations/internet.externalization.json"
 TRANSFER = ROOT / "migrations/internet.gate-b-transfer-map.json"
 SNAPSHOT = ROOT / "migrations/internet.source-snapshot.json"
 PROVENANCE = APP / "sdk-provenance.json"
-IMPORTS = re.compile(r'(?:\\bfrom\\s*|\\bimport\\s*\\(\\s*|\\bimport\\s*)["\\\']([^"\\\']+)["\\\']|\\bnew\\s+URL\\s*\\(\\s*["\\\']([^"\\\']+)["\\\']')
+IMPORTS = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)['"]([^'"]+)['"]|\bnew\s+URL\s*\(\s*['"]([^'"]+)['"]""")
 
 
 def blob_hash(data):
-    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\\0" + data).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
 
 
 def audit(root=ROOT):
@@ -55,7 +55,7 @@ def audit(root=ROOT):
     assert len(modules) >= 32  # app source, Intelligence manifest and SDK contract closure
     for module in modules:
         contents = module.read_text("utf-8")
-        assert "system/apps/internet/" not in contents or "/system/apps/internet/" not in contents
+        assert not re.search(r"""(?:from|import)\s*["\'][^"\']*system/apps/internet/""", contents), module
         for match in IMPORTS.finditer(contents):
             value = match.group(1) or match.group(2)
             if not value.startswith("."):
