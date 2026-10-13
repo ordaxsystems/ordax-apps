@@ -145,12 +145,15 @@ export class DexSubset {
     }
   }
   findStatic(owner, name, signature) {
+    let selected = null;
     for (const [index] of this.methodsById) {
       const info = this.methodInfo(index);
       if (info.owner !== owner || info.name !== name) continue;
       if (signature && '(' + info.proto.params.join('') + ')' + info.proto.result !== signature) continue;
-      return index;
+      if (selected !== null) fail('DEX_AMBIGUOUS', 'Overloaded method requires exact prototype');
+      selected = index;
     }
+    if (selected !== null) return selected;
     fail('DEX_METHOD', 'Requested method not defined in DEX');
   }
   codeItem(index) {
