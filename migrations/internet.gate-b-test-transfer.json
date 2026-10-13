@@ -1,0 +1,74 @@
+{
+  "$schema": "ordax.internet-test-handoff/1",
+  "source_repository": "ordaxsystems/ordax-os",
+  "source_commit": "74d414ccca45400036594cf60d928bbbd33e2796",
+  "gate_a_pr": 1706,
+  "target_repository": "ordaxsystems/ordax-apps",
+  "target_app": "apps/internet",
+  "copy_executable_product_source_before_os_main_absence_allowed": false,
+  "host_owned_security_tests_remain_in_os": true,
+  "transferred_tests_must_execute_after_gate_b": true,
+  "archival_git_blob_integrity_required": true,
+  "tests": [
+    {
+      "source": "tests/test_browser_favorites.mjs",
+      "source_blob_sha": "59bd9f7c4db905e8dbcf4682f4c66ad27bf478bc",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_browser_favorites.mjs"
+    },
+    {
+      "source": "tests/test_browser_history.mjs",
+      "source_blob_sha": "a679a3037721adfa780a4dafc0dca77760af6936",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_browser_history.mjs"
+    },
+    {
+      "source": "tests/test_browser_search_preferences.mjs",
+      "source_blob_sha": "16b41957db8b5f4bb8312a0b06ce2ff35dc0c9f2",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_browser_search_preferences.mjs"
+    },
+    {
+      "source": "tests/test_internet_accessibility_contract.py",
+      "source_blob_sha": "bada56382851e725f543c77a147d1cc9c4f4368c",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_internet_accessibility_contract.py"
+    },
+    {
+      "source": "tests/test_internet_browser_contract.py",
+      "source_blob_sha": "b407d315af1209de77406456943677111e2a8c18",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_internet_browser_contract.py"
+    },
+    {
+      "source": "tests/test_internet_deep_localization.py",
+      "source_blob_sha": "fc54c93781f2ac1ad848277820cfcf9c152778d5",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_internet_deep_localization.py"
+    },
+    {
+      "source": "tests/test_internet_favorites_contract.py",
+      "source_blob_sha": "19d83ad40a62387a30d7cee154edaa00d7381d7c",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_internet_favorites_contract.py"
+    },
+    {
+      "source": "tests/test_internet_history_contract.py",
+      "source_blob_sha": "ba224108a495e935758409e823ad74083533c76b",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_internet_history_contract.py"
+    },
+    {
+      "source": "tests/test_internet_project_context_contract.py",
+      "source_blob_sha": "a95ecc5ee1e8559a485db2ca844a0b44ed2a462b",
+      "owner_after_gate_b": "app-contract-and-split-host-tests",
+      "destination": "apps/internet/tests/test_internet_project_context_contract.py"
+    },
+    {
+      "source": "tests/test_internet_native_page_find.py",
+      "source_blob_sha": "899b89a94d426d357033678b4ff6dacaa6b6bc9a",
+      "owner_after_gate_b": "split-host-and-app",
+      "destination": "apps/internet/tests/test_internet_native_page_find.py"
+    }
+  ]
+}
