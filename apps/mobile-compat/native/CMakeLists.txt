@@ -58,3 +58,26 @@ add_test(NAME mobile-dex-to-arm64-bridge
                  "${ORDAX_NATIVE_ADD_FIXTURE}")
 set_tests_properties(mobile-dex-to-arm64-bridge PROPERTIES
     FIXTURES_REQUIRED mobile-native-add-fixture)
+
+# ABI-shaped JNIEnv test: actual indexes and AArch64 indirect BLR.
+add_executable(ordax_mobile_jni_guest_tests tests/jni_guest.test.cpp)
+target_link_libraries(ordax_mobile_jni_guest_tests PRIVATE ordax_mobile_guest)
+add_test(NAME mobile-jni-table-abi-proof COMMAND ordax_mobile_jni_guest_tests)
+set(ORDAX_JNI_FIXTURE "${CMAKE_CURRENT_BINARY_DIR}/mobile-jni-static-i32.elf")
+add_test(NAME mobile-jni-elf-fixture
+         COMMAND ordax_mobile_jni_guest_tests --emit-jni-fixture
+                 "${ORDAX_JNI_FIXTURE}")
+set_tests_properties(mobile-jni-elf-fixture PROPERTIES FIXTURES_SETUP mobile-jni-fixture)
+add_test(NAME mobile-jni-elf-cli-call
+         COMMAND ordax-mobile-guest invoke-jni-i32-elf
+                 "${ORDAX_JNI_FIXTURE}" 40)
+set_tests_properties(mobile-jni-elf-cli-call PROPERTIES
+    FIXTURES_REQUIRED mobile-jni-fixture
+    PASS_REGULAR_EXPRESSION "\"value\":65582")
+add_test(NAME mobile-dex-to-jni-aarch64-bridge
+         COMMAND "${ORDAX_NODE_EXECUTABLE}"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/../tests/native-bridge.test.mjs"
+                 "$<TARGET_FILE:ordax-mobile-guest>"
+                 "${ORDAX_JNI_FIXTURE}" jni)
+set_tests_properties(mobile-dex-to-jni-aarch64-bridge PROPERTIES
+    FIXTURES_REQUIRED mobile-jni-fixture)
