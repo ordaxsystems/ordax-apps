@@ -89,6 +89,9 @@ void CpuA64::require_guest_access(std::uint64_t address, std::size_t count,
     assert_range(address, count);
     require_permission(address, count, permission);
 }
+std::uint64_t CpuA64::guest_read_u64(std::uint64_t address) const {
+    return read64(address); // checks PF_R on the whole slot
+}
 std::int32_t CpuA64::guest_read_i32(std::uint64_t address) const {
     require_guest_access(address, 4, 4); // PF_R
     const auto index = static_cast<std::size_t>(address);
