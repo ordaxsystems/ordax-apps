@@ -139,6 +139,10 @@ struct DynamicSymbols {
     std::size_t relasz = 0;
     std::size_t relacount = 0;
     bool has_rela = false;
+    std::uint64_t jmprel = 0;
+    std::size_t pltrelsz = 0;
+    std::uint64_t pltrel = 0;
+    bool has_jmprel = false, has_pltrelsz = false, has_pltrel = false;
 };
 std::string getBoundedString(std::span<const std::uint8_t> elf,
                              const DynamicSymbols& m, std::uint32_t index) {
@@ -229,6 +233,7 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
             continue;
         }
         switch (tag) {
+            case 2: case 20: case 23:
             case 4: case 5: case 6: case 7: case 8: case 9:
             case 10: case 11: case 0x6ffffff9: case 0x6ffffef5:
             case 35: case 36: case 37:
@@ -239,6 +244,13 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         }
         if (!seen.insert(tag).second) throw GuestFault("Duplicate linked ELF dynamic tag");
         switch (tag) {
+            case 2:
+                if (value > 8192 * kRelaBytes) throw GuestFault("Unbounded PLT relocations");
+                m.pltrelsz = static_cast<std::size_t>(value);
+                m.has_pltrelsz = true;
+                break;
+            case 20: m.pltrel = value; m.has_pltrel = true; break;
+            case 23: m.jmprel = value; m.has_jmprel = true; break;
             case 4: hash = value; break;
             case 0x6ffffef5: gnu_hash = value; break;
             case 5: strtab = value; break;
@@ -262,7 +274,11 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         (saw_relaent && relaent != kRelaBytes) ||
         (saw_relacount && (!m.has_rela ||
           m.relacount > m.relasz / kRelaBytes)) ||
-        m.relasz % kRelaBytes != 0) {
+        m.relasz % kRelaBytes != 0 ||
+        m.has_jmprel != m.has_pltrelsz ||
+        m.has_jmprel != m.has_pltrel ||
+        (m.has_jmprel && (!m.jmprel || m.pltrel != 7 ||
+                          !m.pltrelsz || m.pltrelsz % kRelaBytes))) {
         throw GuestFault("Malformed linked ELF dynamic symbol/relocation metadata");
     }
     m.strings_size = static_cast<std::size_t>(strsz);
@@ -307,54 +323,69 @@ std::vector<Relocation> parseLinkedRelocations(
             throw GuestFault("DT_NEEDED library was not explicitly loaded into guest");
         }
     }
-    std::vector<Relocation> patches;
-    if (!meta.relasz) return patches; // APS2-only DT_NEEDED consumers are valid.
-    const auto source = mappedFileOffset(meta.rela, meta.relasz, segments);
-    const auto count = meta.relasz / kRelaBytes;
-    if (count > 8192) throw GuestFault("Excessive linked ELF relocations");
-    for (std::size_t i = 0; i < count; ++i) {
-        const auto off = source + i * kRelaBytes;
-        const auto address = get64(elf, off);
-        const auto info = get64(elf, off + 8);
-        const auto addend = get64(elf, off + 16);
-        const auto type = static_cast<std::uint32_t>(info);
-        const auto sym = static_cast<std::uint32_t>(info >> 32);
-        const auto destination = checkedAddress(address, bias, 8, memory_bytes);
-        // The RelocationPlan alone enforces writable, aligned and unique
-        // patch destinations across every format after all records decode.
-        std::uint64_t value = 0;
-        if (type == kAarch64Relative && sym == 0) {
-            value = bias + addend;
-            if (!inMapped(segments, value, 1)) {
-                throw GuestFault("Linked ELF relative pointer escapes image");
-            }
-        } else if ((type == 1025 || type == 1026) && sym != 0 && sym < meta.symbol_count &&
-                   addend == 0) { // AArch64 GLOB_DAT / JUMP_SLOT
-            const auto at = meta.symbol_file_offset + sym * 24;
-            const auto symbol_name = getBoundedString(elf, meta, get32(elf, at));
-            const auto shndx = get16(elf, at + 6);
-            const auto binding = elf[at + 4] >> 4;
-            const auto type_info = elf[at + 4] & 15;
-            if (shndx != 0 || binding != 1 || type_info != 2) {
-                throw GuestFault("Unsupported or defined import in ELF relocation");
-            }
-            std::size_t matches = 0;
-            for (const auto& provider : providers) {
-                if (provider.symbol == symbol_name &&
-                    std::find(meta.needed.begin(), meta.needed.end(),
-                              provider.library) != meta.needed.end()) {
-                    value = provider.address;
-                    ++matches;
-                }
-            }
-            if (matches != 1 || !value || value >= memory_bytes) {
-                throw GuestFault("Guest symbol unresolved or ambiguously exported");
-            }
-        } else {
-            throw GuestFault("Unsupported AArch64 symbol relocation type");
-        }
-        patches.push_back({destination, value});
+    const auto rela_count = meta.relasz / kRelaBytes;
+    const auto plt_count = meta.pltrelsz / kRelaBytes;
+    if (rela_count > 8192 || plt_count > 8192 - rela_count) {
+        throw GuestFault("Combined ELF RELA and PLT relocation budget exceeded");
     }
+    const auto rela_start = meta.relasz
+        ? mappedFileOffset(meta.rela, meta.relasz, segments) : 0;
+    const auto plt_start = meta.pltrelsz
+        ? mappedFileOffset(meta.jmprel, meta.pltrelsz, segments) : 0;
+    if (meta.relasz && meta.pltrelsz &&
+        rela_start < plt_start + meta.pltrelsz &&
+        plt_start < rela_start + meta.relasz) {
+        throw GuestFault("ELF DT_RELA and DT_JMPREL overlap");
+    }
+    std::vector<Relocation> patches;
+    patches.reserve(rela_count + plt_count);
+    // The SAME resolver handles regular RELA and PLT imports. The unified
+    // RelocationPlan validates all destinations across these and APS2/RELR.
+    const auto appendTable = [&](std::size_t source, std::size_t count, bool plt) {
+        for (std::size_t i = 0; i < count; ++i) {
+            const auto off = source + i * kRelaBytes;
+            const auto address = get64(elf, off);
+            const auto info = get64(elf, off + 8);
+            const auto addend = get64(elf, off + 16);
+            const auto type = static_cast<std::uint32_t>(info);
+            const auto sym = static_cast<std::uint32_t>(info >> 32);
+            const auto destination = checkedAddress(address, bias, 8, memory_bytes);
+            std::uint64_t value = 0;
+            if (!plt && type == kAarch64Relative && sym == 0) {
+                value = bias + addend;
+                if (!inMapped(segments, value, 1)) {
+                    throw GuestFault("Linked ELF relative pointer escapes image");
+                }
+            } else if ((plt ? type == 1026 : (type == 1025 || type == 1026)) &&
+                       sym != 0 && sym < meta.symbol_count && addend == 0) {
+                const auto at = meta.symbol_file_offset + sym * 24;
+                const auto symbol_name = getBoundedString(elf, meta, get32(elf, at));
+                const auto shndx = get16(elf, at + 6);
+                const auto binding = elf[at + 4] >> 4;
+                const auto type_info = elf[at + 4] & 15;
+                if (shndx != 0 || binding != 1 || type_info != 2) {
+                    throw GuestFault("Unsupported or defined import in ELF relocation");
+                }
+                std::size_t matches = 0;
+                for (const auto& provider : providers) {
+                    if (provider.symbol == symbol_name &&
+                        std::find(meta.needed.begin(), meta.needed.end(),
+                                  provider.library) != meta.needed.end()) {
+                        value = provider.address;
+                        ++matches;
+                    }
+                }
+                if (matches != 1 || !value || value >= memory_bytes) {
+                    throw GuestFault("Guest symbol unresolved or ambiguously exported");
+                }
+            } else {
+                throw GuestFault("Unsupported AArch64 guest symbol or PLT relocation");
+            }
+            patches.push_back({destination, value});
+        }
+    };
+    appendTable(rela_start, rela_count, false);
+    appendTable(plt_start, plt_count, true);
     return patches;
 }
 
