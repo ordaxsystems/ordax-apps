@@ -199,6 +199,11 @@ if(EXISTS "${ORDAX_LLVM_GUEST_ELF}")
                    "${ORDAX_LLVM_GUEST_ELF}" test/Bridge nativeAdd "(I)I" 40)
   set_tests_properties(mobile-real-llvm-linked-elf-jni-register PROPERTIES
       PASS_REGULAR_EXPRESSION "value.*42")
+  add_test(NAME mobile-real-llvm-dex-to-jni-registered
+           COMMAND "${ORDAX_NODE_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/../tests/native-bridge.test.mjs"
+                   "$<TARGET_FILE:ordax-mobile-guest>"
+                   "${ORDAX_LLVM_GUEST_ELF}" jni-registered)
   add_test(NAME mobile-real-llvm-linked-elf-reject-wrong-class
            COMMAND ordax-mobile-guest invoke-jni-registered-i32-elf
                    "${ORDAX_LLVM_GUEST_ELF}" unauthorized/Class nativeAdd "(I)I" 40)
