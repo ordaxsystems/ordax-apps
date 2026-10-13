@@ -58,7 +58,8 @@ struct GuestDynamicExport {
 // and R_AARCH64_JUMP_SLOT or GLOB_DAT. A standard DT_JMPREL table
 // with DT_PLTREL=DT_RELA shares the exact same resolver (eager binding).
 // Incomplete, overlapping or unsupported PLT tables fail closed.
-// No libc/Bionic, versioned symbols, constructors, weak, TLS or lazy binding.
+// No libc/Bionic, versioned symbols, weak, TLS or lazy binding.
+// Supported constructors are explicitly invoked after linking.
 // All provider libraries must have been loaded into the SAME guest CPU.
 [[nodiscard]] LoadedGuestElf loadLinkedElfA64(
     CpuA64& cpu, std::span<const std::uint8_t> elf,
