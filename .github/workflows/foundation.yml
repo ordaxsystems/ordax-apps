@@ -332,6 +332,9 @@ jobs:
           print('ASSISTANT_GATE_B_UNPUBLISHED_CONTRACTS='+','.join(proof['unpublished_contract_sources']))
           PY
 
+      - name: Verify Internet Gate B transferred product and exact SDK 1.18 contract closure
+        run: python3 -m unittest tests.test_internet_gate_b -v
+
       - name: Prove Notes-specific App SDK 1.6 pin
         run: python3 tools/verify_notes_platform_sdk.py
 
