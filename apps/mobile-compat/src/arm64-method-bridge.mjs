@@ -16,12 +16,13 @@ const failure = (code, message) => { throw new PackageError(code, message); };
 
 export function registerArm64IntegerMethod(nativeBoundary, {
   owner, name, signature, executablePath, imagePath, sha256,
-  timeoutMs = 2000,
+  timeoutMs = 2000, guestAbi = 'plain-i32',
 }) {
   if (!nativeBoundary || typeof nativeBoundary.register !== 'function' ||
       !isAbsolute(executablePath ?? '') || !isAbsolute(imagePath ?? '') ||
       typeof sha256 !== 'string' || !imageHash.test(sha256) ||
       !methodSig.test(signature ?? '') ||
+      !['plain-i32', 'jni-static-i32'].includes(guestAbi) ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000) {
     failure('NATIVE_REGISTRATION', 'Invalid trusted ELF image/call configuration');
   }
@@ -51,7 +52,8 @@ export function registerArm64IntegerMethod(nativeBoundary, {
         const verifiedPath = join(privateDir, 'pinned.elf');
         writeFileSync(verifiedPath, image, { flag: 'wx', mode: 0o600 });
         stdout = execFileSync(executablePath,
-          ['invoke-i32-elf', verifiedPath, ...args.map(String)], {
+          [guestAbi === 'jni-static-i32' ? 'invoke-jni-i32-elf' : 'invoke-i32-elf',
+            verifiedPath, ...args.map(String)], {
             encoding: 'utf8',
             timeout: timeoutMs,
             maxBuffer: maxProcessOutput,
@@ -67,7 +69,10 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       let message;
       try { message = JSON.parse(stdout); }
       catch { failure('NATIVE_PROTOCOL', 'Native guest returned invalid JSON'); }
-      if (message?.schema !== 'ordax.mobile-compat.i32-guest-call/1' ||
+      const expectedSchema = guestAbi === 'jni-static-i32'
+        ? 'ordax.mobile-compat.jni-static-i32-call/1'
+        : 'ordax.mobile-compat.i32-guest-call/1';
+      if (message?.schema !== expectedSchema ||
           !Number.isInteger(message.value) ||
           message.value < -2147483648 || message.value > 2147483647 ||
           Object.keys(message).sort().join(',') !== 'schema,value') {
@@ -76,4 +81,11 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       return message.value;
     },
   });
+}
+
+// Uses the SAME immutable image validation, process limits and trusted
+// registration as the non-JNI AArch64 method. Only the calling convention
+// changes: x0=JNIEnv*, x1=jclass, x2..x6=jint arguments.
+export function registerArm64JniIntegerMethod(nativeBoundary, options) {
+  return registerArm64IntegerMethod(nativeBoundary, { ...options, guestAbi: 'jni-static-i32' });
 }
