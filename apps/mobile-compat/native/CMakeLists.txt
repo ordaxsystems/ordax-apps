@@ -35,3 +35,26 @@ add_test(NAME mobile-native-entry-file-proof
 set_tests_properties(mobile-native-entry-file-proof PROPERTIES
     FIXTURES_REQUIRED mobile-guest-fixture
     PASS_REGULAR_EXPRESSION "guestReturn.*4198400")
+
+# Integration: verified DEX invoke-static -> typed boundary -> process ->
+# guest AArch64 registers and instructions, no JNIEnv claim.
+find_program(ORDAX_NODE_EXECUTABLE NAMES node node.exe REQUIRED)
+set(ORDAX_NATIVE_ADD_FIXTURE "${CMAKE_CURRENT_BINARY_DIR}/mobile-add-i32.elf")
+add_test(NAME mobile-native-add-fixture
+         COMMAND ordax_mobile_guest_tests --emit-i32-fixture
+                 "${ORDAX_NATIVE_ADD_FIXTURE}")
+set_tests_properties(mobile-native-add-fixture PROPERTIES
+    FIXTURES_SETUP mobile-native-add-fixture)
+add_test(NAME mobile-native-i32-arg-result
+         COMMAND ordax-mobile-guest invoke-i32-elf
+                 "${ORDAX_NATIVE_ADD_FIXTURE}" 40)
+set_tests_properties(mobile-native-i32-arg-result PROPERTIES
+    FIXTURES_REQUIRED mobile-native-add-fixture
+    PASS_REGULAR_EXPRESSION "\"value\":42")
+add_test(NAME mobile-dex-to-arm64-bridge
+         COMMAND "${ORDAX_NODE_EXECUTABLE}"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/../tests/native-bridge.test.mjs"
+                 "$<TARGET_FILE:ordax-mobile-guest>"
+                 "${ORDAX_NATIVE_ADD_FIXTURE}")
+set_tests_properties(mobile-dex-to-arm64-bridge PROPERTIES
+    FIXTURES_REQUIRED mobile-native-add-fixture)
