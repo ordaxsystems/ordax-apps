@@ -141,6 +141,12 @@ std::uint64_t CpuA64::run(std::uint64_t entry, std::uint64_t max_instructions) {
                 ? std::int64_t(imm) - (1ll << 21) : std::int64_t(imm);
             const auto page = pc & ~std::uint64_t(4095);
             store_register(rd, page + static_cast<std::uint64_t>(pages * 4096));
+        } else if ((opcode & 0xff200000u) == 0x8b000000u) { // ADD Xd,Xn,Xm (unshifted)
+            if ((opcode & (3u << 22)) != 0 || ((opcode >> 10) & 63u) != 0) {
+                throw GuestFault("Unsupported shifted-register ADD");
+            }
+            const unsigned rm = (opcode >> 16) & 31u;
+            store_register(rd, reg(rn) + reg(rm));
         } else if ((opcode & 0xff000000u) == 0x91000000u ||
                    (opcode & 0xff000000u) == 0xd1000000u) { // ADD/SUB immediate
             if (rn == 31 || (opcode & 0x00800000u)) throw GuestFault("Unsupported stack/shift mode");
