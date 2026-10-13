@@ -11,7 +11,7 @@
 namespace ordax::mobile {
 
 // First JNI ABI-compatible *table and invocation* boundary for AArch64.
-// Only three documented function slots exist; all other entries are NULL and
+// Only the five implemented function slots exist; all other entries are NULL and
 // must fail closed. Local references are opaque guest handles, not host ptrs.
 // No actual JNI class loader, GC, threads, Java exception or Bionic linker.
 class JniGuestEnvironment final {
