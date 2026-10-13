@@ -83,7 +83,8 @@ export function registerArm64IntegerMethod(nativeBoundary, {
         stdout = execFileSync(executablePath, commandArgs, {
           encoding: 'utf8',
           timeout: timeoutMs,
-          maxBuffer: guestAbi === 'jni-int-array' ? 65536 : maxProcessOutput,
+          maxBuffer: (guestAbi === 'jni-int-array' || guestAbi === 'jni-return-int-array')
+            ? 65536 : maxProcessOutput,
           windowsHide: true,
           shell: false,
           stdio: ['ignore', 'pipe', 'pipe'],
