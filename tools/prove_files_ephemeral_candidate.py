@@ -124,8 +124,20 @@ def prove(root: Path, platform_root: Path, sdk_root: Path) -> dict:
     actions = dict(manifests["actions"])
     if len(actions["capabilities"]) != 1 or actions["capabilities"][0]["actionId"] != "files.browse":
         raise FilesProofError("original Files actions exceed authorized read-only scope")
+    capability = actions["capabilities"][0]
+    original_params = capability["parameters"]
+    if len(original_params) != 1 or original_params[0]["id"] != "location" or original_params[0]["type"] != "string":
+        raise FilesProofError("Files historical browse input shape drifted")
+    # OS validator expands absent cross-type fields to null. The canonical
+    # external builder accepts only the explicit, type-compatible parameters.
+    parameter = original_params[0]
+    if any(parameter.get(name) is not None for name in ("minimum", "maximum", "values", "schemes")):
+        raise FilesProofError("historical Files browse parameter changed its constraints")
     actions["capabilities"] = [{
-        **actions["capabilities"][0],
+        **capability,
+        "parameters": [{
+            key: parameter[key] for key in ("id", "type", "required", "maxLength")
+        }],
         "provenance": "ordax-apps:ephemeral-files-candidate/actions/manifest.json",
     }]
     provider = manifests["provider"]
