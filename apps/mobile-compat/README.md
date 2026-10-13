@@ -13,9 +13,9 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - ferramenta de inspeção que falha fechada quando se solicita execução do app;
 - testes sintéticos sem download de aplicativo proprietário;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
-- carregador ELF64 ARM64 `ET_EXEC` e subconjunto relocável `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE` sem símbolos externos;
-- executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória;
-- testes fim a fim desse executável com um ELF ARM64 relocável gerado pelos testes. Dependências de bibliotecas, Bionic, ART e execução de APK continuam indisponíveis.
+- carregador ELF64 ARM64 `ET_EXEC` e subconjunto relocável `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE` sem símbolos externos; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
+- executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória e permissões ELF de leitura, escrita e execução (nega escrita em RX e execução em dados NX);
+- testes fim a fim desse executável com um ELF ARM64 relocável gerado pelos testes, repetindo-o sob diferentes bases virtuais e verificando acessos proibidos. Dependências de bibliotecas, Bionic, ART e execução de APK continuam indisponíveis.
 
 Rodar testes com Node.js 20+:
 
