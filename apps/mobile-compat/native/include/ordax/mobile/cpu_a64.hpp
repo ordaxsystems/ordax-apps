@@ -43,6 +43,7 @@ public:
     void require_guest_access(std::uint64_t address, std::size_t count, std::uint8_t permission) const;
     [[nodiscard]] std::int32_t guest_read_i32(std::uint64_t address) const;
     [[nodiscard]] std::uint64_t guest_read_u64(std::uint64_t address) const;
+    void guest_write_u64(std::uint64_t address, std::uint64_t value);
     void guest_write_i32(std::uint64_t address, std::int32_t value);
     void set_register(unsigned index, std::uint64_t value);
     [[nodiscard]] std::uint64_t reg(unsigned index) const;
