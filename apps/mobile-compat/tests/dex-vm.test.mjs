@@ -496,7 +496,7 @@ test('invoke-super denies unrelated target, forged receiver and static caller', 
 
   const noMoveResult = invokeSuperObjectDexFixture();
   // A move-result opcode cannot be reached without preceding invoke.
-  noMoveResult.writeUInt16LE(0x000e, 0x7b0 + 16);
+  noMoveResult.writeUInt16LE(0x0014, 0x7b0 + 16); // const/31i, then illegal move-result
   assert.throws(() => new DexSubset(sealDex(noMoveResult))
     .execute('Ltest/Arithmetic;', 'makeValue', [6]), { code: 'DEX_RESULT' });
 });
