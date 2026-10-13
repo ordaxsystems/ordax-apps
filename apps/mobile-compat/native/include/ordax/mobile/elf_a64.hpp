@@ -29,8 +29,9 @@ struct LoadedGuestElf {
 [[nodiscard]] LoadedGuestElf loadStaticElfA64(CpuA64& cpu, std::span<const std::uint8_t> elf);
 
 // ET_DYN with bounded relative RELA/RELR/APS2, at a host-chosen guest bias.
-// PT_INTERP, PT_TLS, unresolved needed libraries, constructors and unknown
-// relocation types fail closed; the full Android/Bionic linker is absent.
+// PT_INTERP, PT_TLS, unresolved needed libraries and unknown relocations
+// fail closed. Constructor metadata is staged but never invoked on load;
+// the full Android/Bionic linker and lifecycle are absent.
 [[nodiscard]] LoadedGuestElf loadRelocatableElfA64(
     CpuA64& cpu, std::span<const std::uint8_t> elf, std::uint64_t load_bias);
 
