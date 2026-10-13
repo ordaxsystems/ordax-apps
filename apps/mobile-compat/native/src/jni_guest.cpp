@@ -32,6 +32,7 @@ void JniGuestEnvironment::install(CpuA64& cpu) {
     std::array<std::uint8_t, kTableBytes> table{};
     store64(table, kGetVersionIndex * 8, trap(kGetVersionIndex));
     store64(table, kGetArrayLengthIndex * 8, trap(kGetArrayLengthIndex));
+    store64(table, kNewIntArrayIndex * 8, trap(kNewIntArrayIndex));
     store64(table, kGetIntArrayRegionIndex * 8, trap(kGetIntArrayRegionIndex));
     store64(table, kSetIntArrayRegionIndex * 8, trap(kSetIntArrayRegionIndex));
     store64(table, kExceptionCheckIndex * 8, trap(kExceptionCheckIndex));
@@ -74,6 +75,10 @@ std::uint64_t JniGuestEnvironment::dispatch(
     }
     if (target == trap(kGetVersionIndex)) return kVersion;
     if (target == trap(kExceptionCheckIndex)) return 0;
+    if (target == trap(kNewIntArrayIndex)) {
+        if (args[1] > 65536) throw GuestFault("JNI NewIntArray length outside bounded subset");
+        return createIntArray(static_cast<std::int32_t>(args[1]));
+    }
     if (target == trap(kGetArrayLengthIndex)) {
         return static_cast<std::uint32_t>(exportIntArray(args[1]).size());
     }
