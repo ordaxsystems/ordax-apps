@@ -107,7 +107,8 @@ export async function resolveLaunchFromPackage(path) {
   const outer = await openPackage(path);
   try {
     if (outer.entries.some(e => e.name === 'classes.dex')) {
-      return verifiedLaunchPlan(outer);
+      // Finish all asynchronous ZIP reads before the finally block closes the handle.
+      return await verifiedLaunchPlan(outer);
     }
     const apks = outer.entries.filter(e => apkName(e.name));
     if (!apks.length || apks.length > 32) throw new PackageError('LIMIT', 'Invalid XAPK split count');
