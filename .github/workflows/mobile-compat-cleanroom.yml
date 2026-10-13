@@ -28,6 +28,12 @@ jobs:
           node-version: '24'
       - run: node --test apps/mobile-compat/tests/intake.test.mjs
       - run: node --check apps/mobile-compat/bin/mobile-compat.mjs
+      - name: Configure native clean-room executor
+        run: cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build native clean-room executor
+        run: cmake --build apps/mobile-compat/native/build --config Debug
+      - name: Test native guest instruction semantics
+        run: ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
   windows-package-intake:
     runs-on: windows-latest
     steps:
@@ -39,3 +45,9 @@ jobs:
           node-version: '24'
       - run: node --test apps/mobile-compat/tests/intake.test.mjs
       - run: node --check apps/mobile-compat/bin/mobile-compat.mjs
+      - name: Configure native clean-room executor
+        run: cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
+      - name: Build native clean-room executor
+        run: cmake --build apps/mobile-compat/native/build --config Debug
+      - name: Test native guest instruction semantics
+        run: ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
