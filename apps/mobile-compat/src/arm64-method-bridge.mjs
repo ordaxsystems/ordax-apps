@@ -3,8 +3,9 @@
 // No JNIEnv, jobject, pointers, dynamic symbol loading or Android services.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
-import { isAbsolute } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import { PackageError } from './zip.mjs';
 
 const imageHash = /^[0-9a-f]{64}$/;
@@ -37,13 +38,20 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       } catch {
         failure('NATIVE_IMAGE', 'Cannot access pinned native image');
       }
-      if (createHash('sha256').update(image).digest('hex') !== sha256) {
+      if (image.length > maxImageSize ||
+          createHash('sha256').update(image).digest('hex') !== sha256) {
         failure('NATIVE_IMAGE', 'Guest image hash differs from pinned trusted manifest');
       }
-      let stdout;
+      // Run the *verified bytes*, not the original path. Re-opening an
+      // attacker-mutable input after hash validation would create a TOCTOU
+      // gap. A private per-call snapshot also prevents parallel call races.
+      let stdout, privateDir;
       try {
+        privateDir = mkdtempSync(join(tmpdir(), 'ordax-mobile-guest-'));
+        const verifiedPath = join(privateDir, 'pinned.elf');
+        writeFileSync(verifiedPath, image, { flag: 'wx', mode: 0o600 });
         stdout = execFileSync(executablePath,
-          ['invoke-i32-elf', imagePath, ...args.map(String)], {
+          ['invoke-i32-elf', verifiedPath, ...args.map(String)], {
             encoding: 'utf8',
             timeout: timeoutMs,
             maxBuffer: maxProcessOutput,
@@ -53,6 +61,8 @@ export function registerArm64IntegerMethod(nativeBoundary, {
           });
       } catch {
         failure('NATIVE_EXECUTION', 'Guest subprocess failed or timed out');
+      } finally {
+        if (privateDir) rmSync(privateDir, { recursive: true, force: true });
       }
       let message;
       try { message = JSON.parse(stdout); }
