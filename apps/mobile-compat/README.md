@@ -20,7 +20,8 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória e permissões ELF de leitura, escrita e execução (nega escrita em RX e execução em dados NX);
 - **ponte experimental Dalvik → ARM64 para métodos `int32`**: `invoke-static` de um método DEX opt-in chama `NativeMethodBoundary`, que pode usar `registerArm64IntegerMethod` para executar um ELF de desenvolvimento no motor ARM64 nativo. O arquivo é conferido por SHA-256 e executado a partir de uma cópia privada validada, com subprocesso limitado por tempo e saída. Só `(I{0,5})I`, sem objetos exportados, ponteiros host, símbolos dinâmicos ou autorização escolhida pelo APK;
 - o comando de desenvolvimento `ordax-mobile-guest invoke-i32-elf arquivo.elf [int32 ...]` aceita até cinco argumentos em `x0` a `x4`. A variante `invoke-jni-i32-elf` fornece `JNIEnv*` em `x0`, um identificador `jclass` opaco em `x1`, e até cinco `jint` em `x2`–`x6`, com resultado `jint` em `x0`;
-- **JNI experimental verificável**: memória protegida para a representação `JNIEnv*` e a `JNINativeInterface` de 64 bits, com entradas oficiais `GetVersion` (índice 4, `JNI_VERSION_1_6`), `GetArrayLength` (índice 171, referências de arrays locais de prova) e `ExceptionCheck` (índice 228, sem exceção pendente). As demais entradas são nulas e não simulam implementações. Chamadas `BLR` entram somente em uma porta autorizada; referências inválidas, ponteiros `JNIEnv` incorretos e mapeamentos sobrepostos são recusados;
+- **JNI experimental verificável**: memória protegida para a representação `JNIEnv*` e a `JNINativeInterface` de 64 bits, com entradas oficiais `GetVersion` (índice 4), `GetArrayLength` (171), `GetIntArrayRegion` (203), `SetIntArrayRegion` (211) e `ExceptionCheck` (228). As demais entradas são nulas e não simulam implementações. Chamadas `BLR` entram somente em uma porta autorizada; referências inválidas, ponteiros `JNIEnv` incorretos e mapeamentos sobrepostos são recusados;
+- **JNI `int[]` de ida e volta**: uma chamada nativa estática `([I)I` recebe um array criado pelo Dalvik, transfere um snapshot binário validado ao processo ARM64, lê o elemento com `GetIntArrayRegion`, modifica-o com `SetIntArrayRegion` e devolve um array validado para escrita atômica no heap Dalvik. As cópias não compartilham endereços nem memória entre processos. O transporte é privado, limitado a 1.024 inteiros por chamada e protegido pelas mesmas regras de hash, tempo e ausência de shell da ponte existente;
 - testes fim a fim desse executável com um ELF ARM64 relocável gerado pelos testes, repetindo-o sob diferentes bases virtuais e verificando acessos proibidos. Dependências de bibliotecas, Bionic, ART e execução de APK continuam indisponíveis.
 
 Rodar testes com Node.js 20+:
@@ -39,17 +40,17 @@ O comando acima executa somente um método estático com argumentos `int32`,
 com heap de objetos privado por execução. Esse método pode criar objetos de
 classes locais sem superclass, chamar construtores e métodos virtuais locais,
 e acessar campos inteiros; porém **não pode expor referências guest ao host**.
-Não há herança, GC, objetos host, classes Android, arrays de referências ou outros tipos, JNI ABI, reflexão,
+Não há herança, GC, objetos host, classes Android, arrays de referências ou outros tipos, ABI JNI completa, reflexão,
 chamadas de rede nem instruções não implementadas. A execução tem limites
 de memória (máximo de 4096 objetos, 128 campos por objeto e 65536 campos
-no total, inclusive arrays), instruções, pilha e registradores, e exige inicialização antes
+no total para campos, 262.144 posições para arrays), instruções, pilha e registradores, e exige inicialização antes
 de invocar métodos virtuais.
 O adaptador nativo de teste exige registro explícito pelo host e não pode
 ser selecionado pelo CLI. A existência do `JNIEnv` mínimo não representa
-ART, Dalvik completo ou integração com os objetos/arrays do runtime JS.
-Um `jobject` criado no Dalvik ainda não é transportado para o processo
-ARM64; a tabela atual é uma prova isolada de chamadas `jint`, não uma
-camada de objetos JNI pronta para aplicativos reais.
+ART ou Dalvik completo. Somente arrays primitivos `int[]` são transportados
+entre o heap Dalvik e o ambiente JNI por snapshots tipados e cópia de volta.
+Objetos comuns, `jclass` reais, objetos de referência, strings, ponteiros do
+host, threads, exceções e bibliotecas Android continuam sem integração.
 
 Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
 
@@ -58,7 +59,9 @@ Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
     ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
 
 O host nativo de desenvolvimento é compilado no diretório `native/build`.
-As opções suportadas são `run-elf`, `invoke-i32-elf` e `invoke-jni-i32-elf`
+As opções suportadas são `run-elf`, `invoke-i32-elf`, `invoke-jni-i32-elf`
+e `invoke-jni-int-array-elf` (esta última requer um snapshot binário produzido
+pela ponte confiável)
 para o subconjunto ARM64; bibliotecas com símbolos externos são recusadas,
 sem executar instruções diretamente no processador do host.
 
@@ -67,10 +70,13 @@ ELF AArch64 que soma dois ao parâmetro recebido em `x0`, carrega um
 `classes.dex` contendo método nativo tipado, chama-o por `invoke-static`,
 verifica resultados positivos, negativos e overflow `int32`, testa o mesmo
 caminho via APK e XAPK e confirma que a execução falha sem registro host.
-Há também `mobile-jni-table-abi-proof` e `mobile-dex-to-jni-aarch64-bridge`,
+Há também `mobile-jni-table-abi-proof`, `mobile-dex-to-jni-aarch64-bridge`
+e `mobile-dex-jni-array-roundtrip`,
 que usam os índices reais de `JNIEnv` com chamadas indiretas do CPU ARM64 e
-reutilizam o mesmo contrato DEX/APK/XAPK com a ABI de `jint` de uma função
-estática JNI. A tabela é baseada na especificação pública:
+reutilizam o mesmo contrato DEX/APK/XAPK com a ABI de `jint` e `jintArray`
+de funções estáticas JNI. A prova de arrays confirma atualização via `aput`
+Dalvik, `Get/SetIntArrayRegion` ARM64, `aget` Dalvik e bloqueio de alterações
+parciais se a função nativa falhar. A tabela é baseada na especificação pública:
 https://docs.oracle.com/en/java/javase/24/docs/specs/jni/functions.html
 
 Todos os testes são feitos sobre código de prova; **nenhuma biblioteca
