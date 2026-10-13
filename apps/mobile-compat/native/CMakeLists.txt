@@ -165,3 +165,26 @@ add_test(NAME mobile-jni-onload-elf-file-proof
 set_tests_properties(mobile-jni-onload-elf-file-proof PROPERTIES
     FIXTURES_REQUIRED mobile-jni-onload-fixture
     PASS_REGULAR_EXPRESSION "version.*65542")
+
+# Genuine DEX -> NativeMethodBoundary -> pinned ELF JNI_OnLoad ->
+# FindClass -> RegisterNatives -> guest AArch64 jint method -> Dalvik.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/jni-registered")
+set(ORDAX_REGISTERED_JNI_ELF "${CMAKE_CURRENT_BINARY_DIR}/jni-registered/libprovider.so")
+add_test(NAME mobile-jni-registered-fixture
+         COMMAND ordax_mobile_linked_elf_tests --emit-jni-register-fixture
+                 "${ORDAX_REGISTERED_JNI_ELF}")
+set_tests_properties(mobile-jni-registered-fixture PROPERTIES
+    FIXTURES_SETUP mobile-jni-registered-fixture)
+add_test(NAME mobile-jni-registered-elf-file-proof
+         COMMAND ordax-mobile-guest invoke-jni-registered-i32-elf
+                 "${ORDAX_REGISTERED_JNI_ELF}" test/Bridge nativeAdd "(I)I" 40)
+set_tests_properties(mobile-jni-registered-elf-file-proof PROPERTIES
+    FIXTURES_REQUIRED mobile-jni-registered-fixture
+    PASS_REGULAR_EXPRESSION "\"value\":42")
+add_test(NAME mobile-dex-to-jni-registered-arm64
+         COMMAND "${ORDAX_NODE_EXECUTABLE}"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/../tests/native-bridge.test.mjs"
+                 "$<TARGET_FILE:ordax-mobile-guest>"
+                 "${ORDAX_REGISTERED_JNI_ELF}" jni-registered)
+set_tests_properties(mobile-dex-to-jni-registered-arm64 PROPERTIES
+    FIXTURES_REQUIRED mobile-jni-registered-fixture)
