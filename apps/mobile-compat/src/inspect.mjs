@@ -1,6 +1,7 @@
 // Only the verified package intake boundary. No Android API emulation is claimed.
 import { openPackage, packageFromBuffer, PackageError } from './zip.mjs';
 import { inspectDex, inspectElf } from './formats.mjs';
+import { DexSubset } from './dex-vm.mjs';
 
 const MAX_APK = 256 * 1024 * 1024;
 function apkName(name) { return name.toLowerCase().endsWith('.apk'); }
@@ -53,4 +54,49 @@ export async function inspectPackage(path, { verifyPayloads = true } = {}) {
 }
 export function requireExecutionSupport() {
   throw new PackageError('EXECUTION_UNAVAILABLE', 'Android guest execution is not implemented. APK inspection is not app execution.');
+}
+
+
+// Deliberately separate from Android "run": this executes only a bounded,
+// static integer Dalvik method from a verified DEX payload. No class loading,
+// JNI callbacks, network, filesystem, app lifecycle or Activity launch.
+export async function runDexMethodFromPackage(path, owner, method, args, options = {}) {
+  if (typeof owner !== 'string' || !/^L[A-Za-z0-9_/$]+;$/.test(owner) ||
+      typeof method !== 'string' || !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(method)) {
+    throw new PackageError('DEX_METHOD', 'Invalid class or method identifier');
+  }
+  const archive = await openPackage(path);
+  let dex = null;
+  try {
+    if (archive.entries.some(entry => entry.name === 'classes.dex')) {
+      dex = await archive.read('classes.dex', 64 * 1024 * 1024);
+    } else {
+      const apkNames = archive.entries.filter(entry => apkName(entry.name));
+      if (!apkNames.length || apkNames.length > 32) {
+        throw new PackageError('NO_DEX', 'No unambiguous Android package found');
+      }
+      // Prefer base.apk, otherwise find exactly one APK with executable DEX.
+      const selected = apkNames.slice().sort((a, b) =>
+        Number(b.name.endsWith('/base.apk') || b.name === 'base.apk') -
+        Number(a.name.endsWith('/base.apk') || a.name === 'base.apk'));
+      let located = 0;
+      for (const entry of selected) {
+        const nestedBytes = await archive.read(entry.name, MAX_APK);
+        const nested = await packageFromBuffer(nestedBytes);
+        try {
+          if (nested.entries.some(item => item.name === 'classes.dex')) {
+            located++;
+            if (located > 1) throw new PackageError('AMBIGUOUS_DEX', 'Multiple APK roots declare classes.dex');
+            dex = await nested.read('classes.dex', 64 * 1024 * 1024);
+          }
+        } finally {
+          await nested.close();
+        }
+      }
+    }
+  } finally {
+    await archive.close();
+  }
+  if (!dex) throw new PackageError('NO_DEX', 'classes.dex is not available in package');
+  return new DexSubset(dex).execute(owner, method, args, options);
 }
