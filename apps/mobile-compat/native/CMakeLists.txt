@@ -118,3 +118,19 @@ set_tests_properties(mobile-dex-jni-new-array-roundtrip PROPERTIES
 add_executable(ordax_mobile_linked_elf_tests tests/elf_linked.test.cpp)
 target_link_libraries(ordax_mobile_linked_elf_tests PRIVATE ordax_mobile_guest)
 add_test(NAME mobile-a64-cross-elf-jump-slot-proof COMMAND ordax_mobile_linked_elf_tests)
+
+# Execute two actual ELF files through the bounded Windows/Linux host CLI.
+# This is a guest-to-guest dependency proof, not the Android Bionic loader.
+set(ORDAX_LINK_PROVIDER "${CMAKE_CURRENT_BINARY_DIR}/libprovider.so")
+set(ORDAX_LINK_CONSUMER "${CMAKE_CURRENT_BINARY_DIR}/libconsumer.so")
+add_test(NAME mobile-linked-elf-files-fixture
+         COMMAND ordax_mobile_linked_elf_tests --emit-linked-fixtures
+                 "${ORDAX_LINK_PROVIDER}" "${ORDAX_LINK_CONSUMER}")
+set_tests_properties(mobile-linked-elf-files-fixture PROPERTIES
+    FIXTURES_SETUP mobile-linked-elf-files)
+add_test(NAME mobile-linked-elf-files-run
+         COMMAND ordax-mobile-guest link-two-elf
+                 "${ORDAX_LINK_PROVIDER}" "${ORDAX_LINK_CONSUMER}" 40)
+set_tests_properties(mobile-linked-elf-files-run PROPERTIES
+    FIXTURES_REQUIRED mobile-linked-elf-files
+    PASS_REGULAR_EXPRESSION "guestReturn.*42")
