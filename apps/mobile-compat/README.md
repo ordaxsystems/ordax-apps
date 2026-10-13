@@ -14,12 +14,13 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - testes sintéticos sem download de aplicativo proprietário;
 - interpretador Dalvik limitado, com tabelas reais DEX (`class_data`, `code_item`), chamadas estáticas, construtores e chamadas virtuais de classe local; objetos em heap isolado, campos `int32`, `new-instance`, `invoke-direct`, `invoke-virtual`, `iget`, `iput`, `move-object`, `return-object` e `move-result-object`;
 - arrays de inteiros Dalvik com `new-array`, `array-length`, `aget` e `aput` e alocação tipada em memória do convidado (até 65.536 posições por array e até 262.144 posições no conjunto, além do limite de 4.096 objetos/arrays); acesso inválido, tipo não suportado e retorno de referência guest ao host são recusados;
-- fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; sem JNIEnv, ponteiros guest, carregamento automático de bibliotecas ou autoridade da plataforma;
+- fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; agora há **um subconjunto inicial da ABI JNI** com `JNIEnv*` e tabela indexada, mas ainda sem classes Android, JNI completo, JNI_OnLoad, carregamento automático de bibliotecas ou autoridade da plataforma;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
 - carregador ELF64 ARM64 `ET_EXEC` e subconjunto relocável `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE` sem símbolos externos; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
 - executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória e permissões ELF de leitura, escrita e execução (nega escrita em RX e execução em dados NX);
-- **ponte experimental Dalvik → ARM64 para métodos `int32`**: `invoke-static` de um método DEX opt-in chama `NativeMethodBoundary`, que pode usar `registerArm64IntegerMethod` para executar um ELF de desenvolvimento no motor ARM64 nativo. O arquivo é conferido por SHA-256 e executado a partir de uma cópia privada validada, com subprocesso limitado por tempo e saída. Só `(I{0,5})I`, sem objetos, ponteiros, JNI ABI, símbolos dinâmicos ou autorização escolhida pelo APK;
-- o comando de desenvolvimento `ordax-mobile-guest invoke-i32-elf arquivo.elf [int32 ...]` aceita até cinco argumentos em `x0` a `x4` e devolve exclusivamente o `int32` em `x0`. Isso é uma interface de prova própria, **não** a ABI JNI Android;
+- **ponte experimental Dalvik → ARM64 para métodos `int32`**: `invoke-static` de um método DEX opt-in chama `NativeMethodBoundary`, que pode usar `registerArm64IntegerMethod` para executar um ELF de desenvolvimento no motor ARM64 nativo. O arquivo é conferido por SHA-256 e executado a partir de uma cópia privada validada, com subprocesso limitado por tempo e saída. Só `(I{0,5})I`, sem objetos exportados, ponteiros host, símbolos dinâmicos ou autorização escolhida pelo APK;
+- o comando de desenvolvimento `ordax-mobile-guest invoke-i32-elf arquivo.elf [int32 ...]` aceita até cinco argumentos em `x0` a `x4`. A variante `invoke-jni-i32-elf` fornece `JNIEnv*` em `x0`, um identificador `jclass` opaco em `x1`, e até cinco `jint` em `x2`–`x6`, com resultado `jint` em `x0`;
+- **JNI experimental verificável**: memória protegida para a representação `JNIEnv*` e a `JNINativeInterface` de 64 bits, com entradas oficiais `GetVersion` (índice 4, `JNI_VERSION_1_6`), `GetArrayLength` (índice 171, referências de arrays locais de prova) e `ExceptionCheck` (índice 228, sem exceção pendente). As demais entradas são nulas e não simulam implementações. Chamadas `BLR` entram somente em uma porta autorizada; referências inválidas, ponteiros `JNIEnv` incorretos e mapeamentos sobrepostos são recusados;
 - testes fim a fim desse executável com um ELF ARM64 relocável gerado pelos testes, repetindo-o sob diferentes bases virtuais e verificando acessos proibidos. Dependências de bibliotecas, Bionic, ART e execução de APK continuam indisponíveis.
 
 Rodar testes com Node.js 20+:
@@ -44,7 +45,11 @@ de memória (máximo de 4096 objetos, 128 campos por objeto e 65536 campos
 no total, inclusive arrays), instruções, pilha e registradores, e exige inicialização antes
 de invocar métodos virtuais.
 O adaptador nativo de teste exige registro explícito pelo host e não pode
-ser selecionado pelo CLI. Isso não é ART nem JNI completo.
+ser selecionado pelo CLI. A existência do `JNIEnv` mínimo não representa
+ART, Dalvik completo ou integração com os objetos/arrays do runtime JS.
+Um `jobject` criado no Dalvik ainda não é transportado para o processo
+ARM64; a tabela atual é uma prova isolada de chamadas `jint`, não uma
+camada de objetos JNI pronta para aplicativos reais.
 
 Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
 
@@ -53,7 +58,7 @@ Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
     ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
 
 O host nativo de desenvolvimento é compilado no diretório `native/build`.
-Sua única execução suportada é `ordax-mobile-guest run-elf arquivo.elf`
+As opções suportadas são `run-elf`, `invoke-i32-elf` e `invoke-jni-i32-elf`
 para o subconjunto ARM64; bibliotecas com símbolos externos são recusadas,
 sem executar instruções diretamente no processador do host.
 
@@ -62,6 +67,12 @@ ELF AArch64 que soma dois ao parâmetro recebido em `x0`, carrega um
 `classes.dex` contendo método nativo tipado, chama-o por `invoke-static`,
 verifica resultados positivos, negativos e overflow `int32`, testa o mesmo
 caminho via APK e XAPK e confirma que a execução falha sem registro host.
+Há também `mobile-jni-table-abi-proof` e `mobile-dex-to-jni-aarch64-bridge`,
+que usam os índices reais de `JNIEnv` com chamadas indiretas do CPU ARM64 e
+reutilizam o mesmo contrato DEX/APK/XAPK com a ABI de `jint` de uma função
+estática JNI. A tabela é baseada na especificação pública:
+https://docs.oracle.com/en/java/javase/24/docs/specs/jni/functions.html
+
 Todos os testes são feitos sobre código de prova; **nenhuma biblioteca
 nativa do Instagram foi executada por essa ponte**.
 
