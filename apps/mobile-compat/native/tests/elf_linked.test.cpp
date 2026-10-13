@@ -15,6 +15,7 @@
 #include <vector>
 
 using ordax::mobile::CpuA64;
+using ordax::mobile::JniGuestEnvironment;
 using ordax::mobile::GuestFault;
 using ordax::mobile::GuestDynamicExport;
 using ordax::mobile::inspectGuestDynamicExports;
