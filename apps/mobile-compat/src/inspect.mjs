@@ -5,7 +5,7 @@ import { DexSubset } from './dex-vm.mjs';
 
 const MAX_APK = 256 * 1024 * 1024;
 function apkName(name) { return name.toLowerCase().endsWith('.apk'); }
-function dexName(name) { return /^classes(?:[2-9][0-9]*)?\.dex$/u.test(name); }
+function dexName(name) { return /^classes(?:[2-9]|[1-9][0-9]+)?\.dex$/u.test(name); }
 function nativeName(name) { return /^lib\/(arm64-v8a|x86_64)\/[^/]+\.so$/u.test(name); }
 
 async function inspectApkBytes(name, buffer, inspectPayloads) {
