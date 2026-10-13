@@ -56,11 +56,14 @@ export class DexSubset {
     this.stringCache = new Map();
     this.fieldInfos = new Map();
     this.classInstanceFields = new Map();
+    this.classSuperclasses = new Map();
     for (let i = 0; i < this.classes.count; i++) {
       const classOffset = this.classes.off + i * 32;
       const classIdx = u32(bytes, classOffset);
       if (classIdx >= this.types.count) fail('DEX_INDEX', 'Invalid class definition type');
+      if (this.classInstanceFields.has(classIdx)) fail('DEX_CLASS', 'Duplicate class definition');
       this.classInstanceFields.set(classIdx, new Set());
+      this.classSuperclasses.set(classIdx, u32(bytes, classOffset + 8));
       const classDataOffset = u32(bytes, classOffset + 24);
       if (classDataOffset) this.readClassData(classIdx, classDataOffset);
     }
@@ -346,6 +349,11 @@ export class DexSubset {
           const typeIdx = word(pc++);
           const instanceFields = this.classInstanceFields.get(typeIdx);
           if (!instanceFields) fail('DEX_CLASS', 'Class not declared in local DEX');
+          // Until a real class hierarchy/vtable exists, do not silently drop
+          // inherited fields, constructors or methods from a superclass.
+          if (this.classSuperclasses.get(typeIdx) !== 0xffffffff) {
+            fail('DEX_CLASS', 'Superclass layout and initialization unsupported');
+          }
           putRef(a, heap.allocate(this.type(typeIdx), [...instanceFields]));
           break;
         }
@@ -390,7 +398,9 @@ export class DexSubset {
           if (types.length !== count) fail('DEX_INVOKE', 'Wrong Dalvik invoke arity');
           const values = indices.slice(0, count).map((r, i) =>
             types[i] === 'I' ? getInt(r) : getRef(r));
+          if (op === 0x6e) heap.requireInitialized(values[0], callee.owner);
           const result = this.invoke(target, values, budget, depth + 1, heap);
+          if (op === 0x70) heap.markInitialized(values[0], callee.owner);
           if (callee.proto.result !== 'V') {
             pending = result;
             pendingType = callee.proto.result;
