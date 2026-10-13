@@ -81,3 +81,18 @@ add_test(NAME mobile-dex-to-jni-aarch64-bridge
                  "${ORDAX_JNI_FIXTURE}" jni)
 set_tests_properties(mobile-dex-to-jni-aarch64-bridge PROPERTIES
     FIXTURES_REQUIRED mobile-jni-fixture)
+
+# Full array roundtrip: Dalvik new-array/aput → JNI Get/SetIntArrayRegion → aget.
+set(ORDAX_JNI_ARRAY_FIXTURE "${CMAKE_CURRENT_BINARY_DIR}/mobile-jni-int-array.elf")
+add_test(NAME mobile-jni-array-elf-fixture
+         COMMAND ordax_mobile_jni_guest_tests --emit-jni-array-fixture
+                 "${ORDAX_JNI_ARRAY_FIXTURE}")
+set_tests_properties(mobile-jni-array-elf-fixture PROPERTIES
+    FIXTURES_SETUP mobile-jni-array-fixture)
+add_test(NAME mobile-dex-jni-array-roundtrip
+         COMMAND "${ORDAX_NODE_EXECUTABLE}"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/../tests/native-bridge.test.mjs"
+                 "$<TARGET_FILE:ordax-mobile-guest>"
+                 "${ORDAX_JNI_ARRAY_FIXTURE}" jni-array)
+set_tests_properties(mobile-dex-jni-array-roundtrip PROPERTIES
+    FIXTURES_REQUIRED mobile-jni-array-fixture)
