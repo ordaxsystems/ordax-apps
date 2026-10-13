@@ -331,7 +331,9 @@ int main(int argc, char** argv) {
         }
         {
             auto bad = elf;
-            put64(bad, 0x320, 0); // missing DT_ANDROID_RELA tag
+            put64(bad, 0x320, 0x60000012); // only SIZE, no pointer
+            put64(bad, 0x328, packedAps2().size());
+            put64(bad, 0x330, 0); // terminate instead of pointer tag
             rejectPacked(bad);
         }
         {
