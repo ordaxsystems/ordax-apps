@@ -110,6 +110,7 @@ std::vector<std::uint8_t> consumerWithRelr(bool android) {
     dyn(b, 9, android ? 0x6fffe000 : 36, 0x31a0);
     dyn(b, 10, android ? 0x6fffe001 : 35, 8);
     dyn(b, 11, android ? 0x6fffe003 : 37, 8);
+    dyn(b, 12, 0, 0); // clear the old dynstr bytes at the new DT_NULL slot
     // DT_NULL at index 12; RELR table is separate from RELA/dynsym/hash.
     u64(b, 0x4a0, 0x3010);
     u64(b, 0x310, 0x1000); // implicit addend -> client entrypoint
