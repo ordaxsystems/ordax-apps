@@ -116,6 +116,38 @@ std::vector<std::uint8_t> consumerWithRelr(bool android) {
     u64(b, 0x310, 0x1000); // implicit addend -> client entrypoint
     return b;
 }
+void pushAps2Signed(std::vector<std::uint8_t>& bytes, std::int64_t value) {
+    bool more = true;
+    while (more) {
+        auto byte = static_cast<std::uint8_t>(value & 0x7f);
+        value >>= 7;
+        more = !((value == 0 && !(byte & 0x40)) ||
+                 (value == -1 && (byte & 0x40)));
+        if (more) byte |= 0x80;
+        bytes.push_back(byte);
+    }
+}
+std::vector<std::uint8_t> consumerWithAps2(std::uint64_t packed_target = 0x3010,
+                                           std::int64_t relocation_info = 1027) {
+    auto b = consumerElf();
+    // Keep DT_NEEDED and its ordinary JUMP_SLOT import, with an additional
+    // local packed relative pointer in the same guest library.
+    std::copy(b.begin() + 0x3d0, b.begin() + 0x3d0 + 26,
+              b.begin() + 0x510);
+    program(b, 2, 2, 6, 0x320, 0x3020, 192);
+    dyn(b, 1, 5, 0x3210); // dynstr moved outside expanded PT_DYNAMIC
+    std::vector<std::uint8_t> packed = {'A','P','S','2'};
+    for (const std::int64_t v : {1, static_cast<std::int64_t>(packed_target - 8),
+                                 1, 15, 8, relocation_info, 0x1000}) {
+        pushAps2Signed(packed, v);
+    }
+    if (packed.size() > 32) throw GuestFault("Linked APS2 fixture too large");
+    std::copy(packed.begin(), packed.end(), b.begin() + 0x4a0);
+    dyn(b, 9, 0x60000011, 0x31a0); // DT_ANDROID_RELA
+    dyn(b, 10, 0x60000012, packed.size()); // DT_ANDROID_RELASZ
+    dyn(b, 11, 0, 0);
+    return b;
+}
 template<class F> void reject(F&& f) {
     bool failed=false;
     try { f(); } catch (const GuestFault&) { failed=true; }
@@ -192,6 +224,28 @@ int main(int argc, char** argv) {
         CpuA64 another(0x100000);
         (void)loadRelocatableElfA64(another, provider, 0x10000);
         reject([&] { (void)loadLinkedElfA64(another, collision, 0x30000, exports); });
+    }
+    // A cross-library AArch64 JUMP_SLOT and a packed Android APS2 relocation
+    // share the original guest linker and protection/duplicate budget.
+    {
+        const auto b = consumerWithAps2();
+        CpuA64 cpu(0x100000);
+        (void)loadRelocatableElfA64(cpu, provider, 0x10000);
+        const auto exports = inspectGuestDynamicExports(provider, 0x10000, "libprovider.so");
+        const auto client_image = loadLinkedElfA64(cpu, b, 0x30000, exports);
+        assert(client_image.relative_relocations == 2);
+        assert(cpu.guest_read_i32(0x33010) == client_image.entry);
+        cpu.set_register(0, 40);
+        assert(cpu.run(client_image.entry, 30) == 42);
+        for (const auto& corrupt : {
+            consumerWithAps2(0x3000), // overlaps JUMP_SLOT GOT
+            consumerWithAps2(0x3010, 1026), // unsupported symbol/type
+            consumerWithAps2(0x1000), // RX relocation
+        }) {
+            CpuA64 isolated(0x100000);
+            (void)loadRelocatableElfA64(isolated, provider, 0x10000);
+            reject([&] { (void)loadLinkedElfA64(isolated, corrupt, 0x30000, exports); });
+        }
     }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
