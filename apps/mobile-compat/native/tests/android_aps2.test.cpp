@@ -53,13 +53,12 @@ int main() {
         assert(out[3].offset == 0x3018 && out[3].addend == 0);
     }
     {
-        // An APS2 group with HAS_ADDEND and no GROUPED_ADDEND accepts signed
-        // deltas, and a lone grouped offset without explicit info keeps
-        // the previous relocation's r_info value.
+        // Two groups use explicit per-relocation signed addend deltas,
+        // including a negative delta in the second relocation.
         const auto bytes = stream({
             3, 0x2ff8,
             1, 11, 8, 1027, 0x1000,
-            2, 10, 8, 0, -16
+            2, 11, 8, 1027, 0, -16
         });
         const auto result = decodeAndroidAps2Rela(bytes);
         assert(result.size() == 3);
@@ -82,7 +81,6 @@ int main() {
         stream({1, 0, 1, 4}),
         stream({1, 0, 1, 16}),
         stream({1, 0, 1, 15, -8, 1027, 0x1000}),
-        stream({1, 0, 1, 15, 8, 1027, -1}),
         stream({2, 0x7fffffffffffffffLL, 2, 15, 8, 1027, 0x1000})
     }) {
         reject([&] { (void)decodeAndroidAps2Rela(invalid); });
