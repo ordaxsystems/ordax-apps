@@ -1,6 +1,8 @@
 #include "ordax/mobile/elf_a64.hpp"
+#include "ordax/mobile/jni_guest.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <utility>
 #include <cstddef>
@@ -174,6 +176,32 @@ std::vector<std::uint8_t> consumerWithPltAndRela(bool overlap) {
     u64(b, 0x4e0, 0x3010);
     u64(b, 0x4e8, 1027);
     u64(b, 0x4f0, 0x1000);
+    return b;
+}
+// A genuine AArch64 JNI_OnLoad(JavaVM*, void*) export. It looks up the
+// official JavaVM GetEnv slot 6, requests JNI_VERSION_1_6 and returns that
+// version. Reuses providerElf() and the existing ELF dynsym/SONAME path.
+std::vector<std::uint8_t> onLoadElf() {
+    auto b = providerElf();
+    const std::string strings("\0JNI_OnLoad\0libprovider.so\0", 27);
+    std::copy(strings.begin(), strings.end(), b.begin() + 0x390);
+    dyn(b, 2, 10, strings.size()); // DT_STRSZ
+    dyn(b, 5, 14, 12); // DT_SONAME new dynstr offset
+    u64(b, 0x3e0, 0x1020); // same global exported function at 0x1020
+    const std::array<std::uint32_t, 11> code = {
+        0x910003d3, // add x19,x30,#0 - preserve original return
+        0xf9400009, // ldr x9,[x0] - JavaVM invocation table
+        0xf9401929, // ldr x9,[x9,#48] - GetEnv slot 6
+        0xd0000001, // adrp x1,guest RW page +2
+        0xd28000c2, // movz x2,#6
+        0xf2a00022, // movk x2,#1,lsl#16 -> JNI_VERSION_1_6
+        0xd63f0120, // blr x9 - JavaVM.GetEnv(JavaVM*,void**,jint)
+        0xd28000c0, // movz x0,#6
+        0xf2a00020, // movk x0,#1,lsl#16
+        0x9100027e, // add x30,x19,#0
+        0xd65f03c0, // ret
+    };
+    for (std::size_t i=0; i<code.size(); ++i) u32(b, 0x220 + i*4, code[i]);
     return b;
 }
 std::vector<std::uint8_t> consumerWithRelr(bool android) {
@@ -448,6 +476,71 @@ int main(int argc, char** argv) {
             dyn(duplicated, 6, 14, 11); // duplicate DT_SONAME
             verify(duplicated, "libprovider.so");
         }
+    }
+    {
+        using ordax::mobile::JniGuestEnvironment;
+        const auto source = onLoadElf();
+        CpuA64 cpu(0x800000);
+        auto image = loadRelocatableElfA64(cpu, source, 0x10000);
+        auto exports = inspectGuestDynamicExports(source, 0x10000, "libprovider.so");
+        assert(exports.size() == 1 && exports[0].symbol == "JNI_OnLoad");
+        JniGuestEnvironment env;
+        env.install(cpu);
+        // Installation of a JavaVM table does not invoke arbitrary callbacks.
+        assert(cpu.guest_read_u64(0x13000) == 0);
+        reject([&] { (void)env.runOnLoad(cpu, image, source, "libprovider.so", 64); });
+        ordax::mobile::runGuestInitializers(cpu, image, 64);
+        const auto version = env.runOnLoad(cpu, image, source, "libprovider.so", 64);
+        assert(version == JniGuestEnvironment::kVersion);
+        assert(cpu.guest_read_u64(0x13000) == JniGuestEnvironment::kEnvAddress);
+        assert(cpu.guest_read_u64(JniGuestEnvironment::kVmTableAddress + 5 * 8) == 0);
+        reject([&] { (void)env.runOnLoad(cpu, image, source, "libprovider.so", 64); });
+    }
+    // Errors must not fake a successful JNI_OnLoad and may not be retried
+    // after guest execution has started.
+    for (unsigned kind = 0; kind < 5; ++kind) {
+        auto source = onLoadElf();
+        if (kind == 0) {
+            u32(source, 0x220 + 3*4, 0x90000001); // GetEnv output into code RX
+        } else if (kind == 1) {
+            u32(source, 0x220 + 4*4, 0xd2800042); // unsupported JNI version
+            u32(source, 0x220 + 7*4, 0xd503201f); // return GetEnv error
+            u32(source, 0x220 + 8*4, 0xd503201f);
+        } else if (kind == 2) {
+            u32(source, 0x220 + 7*4, 0xd2800000); // invalid JNI_OnLoad version
+            u32(source, 0x220 + 8*4, 0xd503201f);
+        } else if (kind == 3) {
+            dyn(source, 5, 14, 11); // incorrect SONAME
+        } else {
+            // Replace the exported symbol name with one that isn't JNI_OnLoad.
+            source[0x391] = 'X';
+        }
+        CpuA64 cpu(0x800000);
+        auto image = loadRelocatableElfA64(cpu, source, 0x10000);
+        JniGuestEnvironment env;
+        env.install(cpu);
+        ordax::mobile::runGuestInitializers(cpu, image, 64);
+        reject([&] {
+            (void)env.runOnLoad(cpu, image, source, "libprovider.so", 64);
+        });
+        if (kind < 3) {
+            assert(image.jni_onload_started);
+            reject([&] {
+                (void)env.runOnLoad(cpu, image, source, "libprovider.so", 64);
+            });
+        } else {
+            assert(!image.jni_onload_started);
+        }
+    }
+    {
+        auto source = onLoadElf();
+        CpuA64 cpu(0x800000);
+        auto image = loadRelocatableElfA64(cpu, source, 0x10000);
+        JniGuestEnvironment env;
+        env.install(cpu);
+        ordax::mobile::runGuestInitializers(cpu, image, 64);
+        reject([&] { (void)env.runOnLoad(cpu, image, source, "libprovider.so", 1); });
+        assert(image.jni_onload_started);
     }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
