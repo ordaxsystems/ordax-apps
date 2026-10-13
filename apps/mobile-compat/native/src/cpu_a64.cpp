@@ -1,6 +1,7 @@
 #include "ordax/mobile/cpu_a64.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <limits>
 
 namespace ordax::mobile {
@@ -72,6 +73,28 @@ void CpuA64::require_permission(std::uint64_t address, std::size_t count,
             (region.permissions & flag) == flag) return;
     }
     throw GuestFault("Guest page permission violation");
+}
+void CpuA64::require_guest_access(std::uint64_t address, std::size_t count,
+                                   std::uint8_t permission) const {
+    assert_range(address, count);
+    require_permission(address, count, permission);
+}
+std::int32_t CpuA64::guest_read_i32(std::uint64_t address) const {
+    require_guest_access(address, 4, 4); // PF_R
+    const auto index = static_cast<std::size_t>(address);
+    std::uint32_t word = 0;
+    for (unsigned i = 0; i < 4; ++i) {
+        word |= std::uint32_t(memory_[index + i]) << (8 * i);
+    }
+    return std::bit_cast<std::int32_t>(word);
+}
+void CpuA64::guest_write_i32(std::uint64_t address, std::int32_t value) {
+    require_guest_access(address, 4, 2); // PF_W
+    const auto index = static_cast<std::size_t>(address);
+    const auto word = std::bit_cast<std::uint32_t>(value);
+    for (unsigned i = 0; i < 4; ++i) {
+        memory_[index + i] = static_cast<std::uint8_t>(word >> (8 * i));
+    }
 }
 void CpuA64::load(std::uint64_t address, std::span<const std::uint8_t> bytes) {
     assert_range(address, bytes.size());
