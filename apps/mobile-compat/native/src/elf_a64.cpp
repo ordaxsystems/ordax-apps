@@ -77,6 +77,43 @@ std::uint64_t checkedAddress(std::uint64_t vaddr, std::uint64_t bias,
     }
     return vaddr + bias;
 }
+// SSOT: every relocation format emits candidate patches, but only this
+// plan may authorize patch destinations. It owns global quota, W^X/write
+// permissions and collision detection across RELA, RELR and Android APS2.
+// The guest image is not mutated until the entire plan is accepted.
+class RelocationPlan final {
+public:
+    RelocationPlan(const std::vector<Segment>& segments, std::size_t memory_bytes)
+        : segments_(segments), memory_bytes_(memory_bytes) {}
+
+    void append(std::span<const Relocation> candidates) {
+        constexpr std::size_t kMaxRelocations = 8192;
+        if (candidates.size() > kMaxRelocations - patches_.size()) {
+            throw GuestFault("Combined guest relocation budget exceeded");
+        }
+        for (const auto& candidate : candidates) {
+            if (candidate.destination % 8 != 0 ||
+                candidate.destination > memory_bytes_ ||
+                8 > memory_bytes_ - candidate.destination ||
+                !inMapped(segments_, candidate.destination, 8, kWritable)) {
+                throw GuestFault("Relocation destination is not mapped guest-writable memory");
+            }
+            if (!destinations_.insert(candidate.destination).second) {
+                throw GuestFault("Duplicate relocation across guest ELF formats");
+            }
+            patches_.push_back(candidate);
+        }
+    }
+
+    [[nodiscard]] const std::vector<Relocation>& patches() const { return patches_; }
+
+private:
+    const std::vector<Segment>& segments_;
+    std::size_t memory_bytes_;
+    std::unordered_set<std::uint64_t> destinations_;
+    std::vector<Relocation> patches_;
+};
+
 std::size_t mappedFileOffset(std::uint64_t virtual_address, std::size_t bytes,
                              const std::vector<Segment>& segments) {
     for (const auto& segment : segments) {
@@ -261,9 +298,6 @@ std::vector<Relocation> parseLinkedRelocations(
         } else {
             throw GuestFault("Unsupported AArch64 symbol relocation type");
         }
-        if (std::any_of(patches.begin(), patches.end(), [&](const auto& patch) {
-                return patch.destination == destination;
-            })) throw GuestFault("Duplicate linked relocation target");
         patches.push_back({destination, value});
     }
     return patches;
@@ -275,7 +309,7 @@ std::vector<Relocation> parseLinkedRelocations(
 std::vector<Relocation> parseRelrRelocations(
     std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
     const std::vector<Segment>& segments, std::uint64_t bias,
-    std::size_t memory_bytes, std::span<const Relocation> other_patches) {
+    std::size_t memory_bytes) {
     constexpr std::uint64_t kRelr = 36, kRelrSz = 35, kRelrEnt = 37;
     constexpr std::uint64_t kAndroidRelr = 0x6fffe000;
     constexpr std::uint64_t kAndroidRelrSz = 0x6fffe001;
@@ -317,13 +351,6 @@ std::vector<Relocation> parseRelrRelocations(
     const auto input = mappedFileOffset(pointer, static_cast<std::size_t>(size), segments);
     std::vector<Relocation> result;
     result.reserve(static_cast<std::size_t>(size / 8));
-    // O(1) duplicate detection avoids quadratic work when an attacker
-    // supplies thousands of validly encoded bitmap relocation targets.
-    std::unordered_set<std::uint64_t> destinations;
-    destinations.reserve(other_patches.size() + 8192);
-    for (const auto& patch : other_patches) {
-        destinations.insert(patch.destination);
-    }
     std::uint64_t next = 0;
     bool have_base = false;
     const auto append = [&](std::uint64_t virtual_address) {
@@ -331,9 +358,6 @@ std::vector<Relocation> parseRelrRelocations(
         const auto destination = checkedAddress(virtual_address, bias, 8, memory_bytes);
         if (!inMapped(segments, destination, 8, kWritable)) {
             throw GuestFault("RELR target is not a writable guest segment");
-        }
-        if (!destinations.insert(destination).second) {
-            throw GuestFault("Duplicate RELR or RELA relocation destination");
         }
         // The addend is the *original* 64-bit word in the image, not a value
         // from a previously patched guest mapping. A zero-filled BSS target
@@ -390,7 +414,7 @@ std::vector<Relocation> parseRelrRelocations(
 std::vector<Relocation> parseAndroidAps2Relocations(
     std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
     const std::vector<Segment>& segments, std::uint64_t bias,
-    std::size_t memory_bytes, std::span<const Relocation> other_patches) {
+    std::size_t memory_bytes) {
     constexpr std::uint64_t kPackedRela = 0x60000011;
     constexpr std::uint64_t kPackedRelaSz = 0x60000012;
     bool found_pointer = false, found_size = false;
@@ -416,12 +440,6 @@ std::vector<Relocation> parseAndroidAps2Relocations(
     const auto pos = mappedFileOffset(pointer, static_cast<std::size_t>(size), segments);
     const auto records = decodeAndroidAps2Rela(
         elf.subspan(pos, static_cast<std::size_t>(size)));
-    if (records.size() + other_patches.size() > 8192) {
-        throw GuestFault("Combined Android packed RELA budget exceeded");
-    }
-    std::unordered_set<std::uint64_t> destinations;
-    destinations.reserve(records.size() + other_patches.size());
-    for (const auto& patch : other_patches) destinations.insert(patch.destination);
     std::vector<Relocation> patches;
     patches.reserve(records.size());
     for (const auto& record : records) {
@@ -434,9 +452,8 @@ std::vector<Relocation> parseAndroidAps2Relocations(
         }
         const auto destination = checkedAddress(
             record.offset, bias, 8, memory_bytes);
-        if (destination % 8 || !inMapped(segments, destination, 8, kWritable) ||
-            !destinations.insert(destination).second) {
-            throw GuestFault("APS2 relocation is not writable, aligned or unique");
+        if (destination % 8 || !inMapped(segments, destination, 8, kWritable)) {
+            throw GuestFault("APS2 relocation is not writable or aligned");
         }
         const auto value = bias + static_cast<std::uint64_t>(record.addend);
         if (!inMapped(segments, value, 1)) {
@@ -526,11 +543,6 @@ std::vector<Relocation> parseRelativeRelocations(
         if (!inMapped(segments, value, 1)) {
             throw GuestFault("Relative relocation value escapes the mapped image");
         }
-        if (std::any_of(patches.begin(), patches.end(), [&](const auto& p) {
-                return p.destination == destination;
-            })) {
-            throw GuestFault("Duplicate ELF relocation destination");
-        }
         patches.push_back({destination, value});
     }
     return patches;
@@ -604,7 +616,7 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
         throw GuestFault("ELF entry is outside an executable guest segment");
     }
 
-    std::vector<Relocation> patches;
+    RelocationPlan relocation_plan(segments, cpu.memory_size());
     if (!dynamic_sections.empty()) {
         const auto& dynamic = dynamic_sections.front();
         if (mappedFileOffset(dynamic.vaddr, dynamic.file_bytes, segments) != dynamic.file_offset ||
@@ -612,23 +624,19 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
                       dynamic.file_bytes)) {
             throw GuestFault("PT_DYNAMIC is not backed by the mapped guest image");
         }
-        patches = providers.empty()
-            ? parseRelativeRelocations(elf, dynamic, segments, bias, cpu.memory_size())
-            : parseLinkedRelocations(elf, dynamic, segments, bias,
-                                     cpu.memory_size(), providers);
-        const auto aps2 = parseAndroidAps2Relocations(
-            elf, dynamic, segments, bias, cpu.memory_size(), patches);
-        if (aps2.size() > 8192 - patches.size()) {
-            throw GuestFault("Combined ELF APS2 relocations exceed budget");
+        if (providers.empty()) {
+            relocation_plan.append(parseRelativeRelocations(
+                elf, dynamic, segments, bias, cpu.memory_size()));
+        } else {
+            relocation_plan.append(parseLinkedRelocations(
+                elf, dynamic, segments, bias, cpu.memory_size(), providers));
         }
-        patches.insert(patches.end(), aps2.begin(), aps2.end());
-        const auto relr = parseRelrRelocations(
-            elf, dynamic, segments, bias, cpu.memory_size(), patches);
-        if (relr.size() > 8192 - patches.size()) {
-            throw GuestFault("Combined ELF relocations exceed budget");
-        }
-        patches.insert(patches.end(), relr.begin(), relr.end());
+        relocation_plan.append(parseAndroidAps2Relocations(
+            elf, dynamic, segments, bias, cpu.memory_size()));
+        relocation_plan.append(parseRelrRelocations(
+            elf, dynamic, segments, bias, cpu.memory_size()));
     }
+    const auto& patches = relocation_plan.patches();
 
     // Validate *all* mappings against previously loaded ELF objects BEFORE
     // modifying guest memory. A second library may not overwrite a provider.
