@@ -292,7 +292,7 @@ jobs:
           path: .ordax-assistant-os-main
           persist-credentials: false
 
-      - name: Audit Assistant Gate B exact portable boundaries without copying source
+      - name: Audit transferred Assistant source, public SDK and remove-first ownership
         run: |
           set -euo pipefail
           python3 -m unittest tests.test_assistant_gate_b -v
@@ -324,8 +324,11 @@ jobs:
               and proof['platform_main_observation']['pending_policy_fail_closed'])
           assert proof['gate_b_allowed_now'] is False
           assert proof['signed_install_verified'] is False
-          assert not Path('apps/assistant').exists()
-          print('ASSISTANT_GATE_B_PREFLIGHT=BLOCKED_SAFE')
+          assert proof['app_source_materialized'] is True
+          assert (Path('apps/assistant') / 'app.json').is_file()
+          assert proof['platform_gate_a_main_proven'] is True
+          assert proof['rollback_verified'] is False
+          print('ASSISTANT_GATE_B_SOURCE=CANONICAL_UNSIGNED')
           print('ASSISTANT_GATE_B_UNPUBLISHED_CONTRACTS='+','.join(proof['unpublished_contract_sources']))
           PY
 

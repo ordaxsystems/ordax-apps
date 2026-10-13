@@ -24,6 +24,7 @@ class AssistantGateBTests(unittest.TestCase):
             path = root / item
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / item, path)
+        shutil.copytree(ROOT / "apps/assistant", root / "apps/assistant")
         return root
 
     def mutation(self, root, path, transform):
@@ -36,6 +37,7 @@ class AssistantGateBTests(unittest.TestCase):
         report = gate.audit()
         self.assertEqual(report["source_file_count"], 11)
         self.assertEqual(report["mapped_source_count"], 11)
+        self.assertTrue(report["app_source_materialized"])
         self.assertEqual(report["required_sdk_version"], "1.18.0")
         lock = json.loads((ROOT / "platform-sdk.lock.json").read_text(encoding="utf-8"))
         self.assertEqual(report["sdk_version_sufficient"],
@@ -60,17 +62,25 @@ class AssistantGateBTests(unittest.TestCase):
                     gate.audit(root)
 
     def test_activation_flags_are_not_transfer_authorization(self):
-        for key in ("source_cutover_allowed", "distribution_activation_allowed"):
+        for key, bad_value in (("source_cutover_allowed", False),
+                               ("distribution_activation_allowed", True)):
             with tempfile.TemporaryDirectory() as tmp:
                 root = self.fixture(tmp)
-                self.mutation(root, FILES[0], lambda p: p.update({key: True}))
+                self.mutation(root, FILES[0], lambda p: p.update({key: bad_value}))
                 with self.assertRaises(gate.AssistantGateError):
                     gate.audit(root)
 
     def test_no_duplicate_source_even_if_manifest_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = self.fixture(tmp)
-            (root / "apps/assistant/src").mkdir(parents=True)
+            # Regress the owner metadata without deleting staged source; even
+            # a missing manifest must not disguise a duplicate implementation.
+            self.mutation(root, FILES[0], lambda p: p.update({
+                "source_repository_current": "ordaxsystems/ordax-os",
+                "source_of_truth_state": "platform-until-cutover",
+                "source_cutover_allowed": False,
+            }))
+            (root / "apps/assistant/app.json").unlink()
             with self.assertRaisesRegex(gate.AssistantGateError, "second Assistant"):
                 gate.audit(root)
 

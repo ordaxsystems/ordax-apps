@@ -11,7 +11,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = re.compile(r"^[a-f0-9]{40}$")
-PENDING = ("assistant", "activity")
+SOURCE_ARCHIVES = ("assistant", "activity")
 CANONICAL_OS = "ordaxsystems/ordax-os"
 CANONICAL_APPS = "ordaxsystems/ordax-apps"
 
@@ -19,17 +19,30 @@ CANONICAL_APPS = "ordaxsystems/ordax-apps"
 class PendingSourceSnapshotTests(unittest.TestCase):
     def test_snapshot_is_source_provenance_only(self):
         commits = set()
-        for app in PENDING:
+        for app in SOURCE_ARCHIVES:
             with self.subTest(app=app):
                 plan = json.loads((ROOT / "migrations" / f"{app}.externalization.json").read_text(encoding="utf-8"))
                 snapshot = json.loads((ROOT / "migrations" / f"{app}.source-snapshot.json").read_text(encoding="utf-8"))
                 self.assertEqual(plan["app_id"], app)
-                self.assertFalse(plan["source_cutover_allowed"])
                 self.assertFalse(plan["distribution_activation_allowed"])
-                self.assertEqual(plan["source_repository_current"], CANONICAL_OS)
                 self.assertEqual(plan["target_repository"], CANONICAL_APPS)
-                self.assertEqual(plan["source_of_truth_state"], "platform-until-cutover")
-                self.assertFalse((ROOT / "apps" / app).exists(), "parallel app source before Gate A is forbidden")
+                state = plan["source_of_truth_state"]
+                if state == "platform-until-cutover":
+                    self.assertFalse(plan["source_cutover_allowed"])
+                    self.assertEqual(plan["source_repository_current"], CANONICAL_OS)
+                    self.assertFalse((ROOT / "apps" / app).exists(),
+                                     "parallel app source before Gate A is forbidden")
+                else:
+                    self.assertEqual(state, "ordax-apps-canonical")
+                    self.assertTrue(plan["source_cutover_allowed"])
+                    self.assertEqual(plan["source_repository_current"], CANONICAL_APPS)
+                    self.assertEqual(plan["source_path_current"], f"apps/{app}")
+                    self.assertTrue((ROOT / "apps" / app / "app.json").is_file())
+                    gate_a = plan["gate_a_platform_commit"]
+                    self.assertTrue(SHA.fullmatch(gate_a))
+                    self.assertEqual(plan["source_cutover"]["platform_absence_proven_at"], gate_a)
+                    self.assertTrue(plan["gate_b"]["platform_absence_proven"])
+                    self.assertFalse(plan["gate_b"]["signed_distribution_verified"])
                 self.assertEqual(snapshot["$schema"], f"ordax.{app}-source-snapshot/1")
                 self.assertEqual(snapshot["repository"], CANONICAL_OS)
                 self.assertEqual(snapshot["authority"], "none")
