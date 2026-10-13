@@ -22,7 +22,7 @@ def obj(path):
 
 
 def blob(body):
-    return hashlib.sha1(b"blob " + str(len(body)).encode() + b"\\0" + body).hexdigest()
+    return hashlib.sha1(b"blob " + str(len(body)).encode() + bytes([0]) + body).hexdigest()
 
 
 class ActivityGateBTests(unittest.TestCase):
