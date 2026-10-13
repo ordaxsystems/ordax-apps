@@ -585,8 +585,10 @@ std::vector<Relocation> parseRelativeRelocations(
                 break; // RELR parsed by one shared bounded decoder
             case 0x60000011: case 0x60000012:
                 break; // Android APS2 stream checked by the shared ELF linker
+            case 12: case 25: case 27:
+                break; // Constructors are independent of dynsym/DT_HASH.
             case 4: case 5: case 6: case 10: case 11: case 14:
-            case 12: case 25: case 27: case 0x6ffffef5:
+            case 0x6ffffef5:
                 // Self-contained ET_DYN providers may publish dynamic symbols,
                 // but must never load or resolve dependencies implicitly.
                 has_symbol_metadata = true; break;
