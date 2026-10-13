@@ -7,6 +7,7 @@
 #include <string_view>
 #include <unordered_set>
 #include <vector>
+#include <utility>
 
 namespace ordax::mobile {
 namespace {
@@ -244,7 +245,7 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
             continue;
         }
         switch (tag) {
-            case 2: case 20: case 23:
+            case 2: case 12: case 20: case 23: case 25: case 27:
             case 4: case 5: case 6: case 7: case 8: case 9:
             case 10: case 11: case 14: case 0x6ffffff9: case 0x6ffffef5:
             case 35: case 36: case 37:
@@ -585,7 +586,7 @@ std::vector<Relocation> parseRelativeRelocations(
             case 0x60000011: case 0x60000012:
                 break; // Android APS2 stream checked by the shared ELF linker
             case 4: case 5: case 6: case 10: case 11: case 14:
-            case 0x6ffffef5:
+            case 12: case 25: case 27: case 0x6ffffef5:
                 // Self-contained ET_DYN providers may publish dynamic symbols,
                 // but must never load or resolve dependencies implicitly.
                 has_symbol_metadata = true; break;
@@ -641,6 +642,59 @@ std::vector<Relocation> parseRelativeRelocations(
     }
     return patches;
 }
+struct GuestInitializerMetadata {
+    std::vector<std::uint64_t> direct;
+    std::vector<std::uint64_t> slots;
+};
+
+GuestInitializerMetadata parseGuestInitializers(
+    std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
+    const std::vector<Segment>& segments, std::uint64_t bias,
+    std::size_t memory_bytes) {
+    bool init_seen = false, array_seen = false, size_seen = false, terminated = false;
+    std::uint64_t init = 0, array = 0, bytes = 0;
+    for (std::size_t i = 0; i < dynamic.file_bytes; i += 16) {
+        const auto tag = get64(elf, dynamic.file_offset + i);
+        const auto val = get64(elf, dynamic.file_offset + i + 8);
+        if (!tag) { terminated = true; break; }
+        if (tag == 12) { // DT_INIT
+            if (init_seen) throw GuestFault("Duplicate ELF DT_INIT");
+            init_seen = true; init = val;
+        } else if (tag == 25) { // DT_INIT_ARRAY
+            if (array_seen) throw GuestFault("Duplicate ELF DT_INIT_ARRAY");
+            array_seen = true; array = val;
+        } else if (tag == 27) { // DT_INIT_ARRAYSZ
+            if (size_seen) throw GuestFault("Duplicate ELF DT_INIT_ARRAYSZ");
+            size_seen = true; bytes = val;
+        }
+    }
+    if (!terminated || (array_seen != size_seen) || bytes % 8 ||
+        bytes > 64 * 8 || (init_seen && !init) ||
+        (array_seen && (!array || !bytes))) {
+        throw GuestFault("Invalid or unbounded ELF initializers");
+    }
+    GuestInitializerMetadata metadata;
+    if (init_seen) {
+        const auto address = checkedAddress(init, bias, 4, memory_bytes);
+        if (address % 4 || !inMapped(segments, address, 4, kExecutable)) {
+            throw GuestFault("ELF DT_INIT is not in executable guest memory");
+        }
+        metadata.direct.push_back(address);
+    }
+    if (array_seen) {
+        const auto array_address = checkedAddress(
+            array, bias, static_cast<std::size_t>(bytes), memory_bytes);
+        if (array_address % 8 ||
+            !inMapped(segments, array_address, bytes, 4)) { // PF_R
+            throw GuestFault("ELF constructor array not mapped readable");
+        }
+        for (std::uint64_t i = 0; i < bytes; i += 8) {
+            metadata.slots.push_back(array_address + i);
+        }
+    }
+    return metadata;
+}
+
 LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
                        std::uint64_t bias, std::uint16_t expected_type,
                        std::span<const GuestDynamicExport> providers = {}) {
@@ -711,6 +765,7 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
     }
 
     RelocationPlan relocation_plan(segments, cpu.memory_size());
+    GuestInitializerMetadata initializers;
     if (!dynamic_sections.empty()) {
         const auto& dynamic = dynamic_sections.front();
         if (mappedFileOffset(dynamic.vaddr, dynamic.file_bytes, segments) != dynamic.file_offset ||
@@ -718,6 +773,8 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
                       dynamic.file_bytes)) {
             throw GuestFault("PT_DYNAMIC is not backed by the mapped guest image");
         }
+        initializers = parseGuestInitializers(
+            elf, dynamic, segments, bias, cpu.memory_size());
         if (providers.empty()) {
             relocation_plan.append(parseRelativeRelocations(
                 elf, dynamic, segments, bias, cpu.memory_size()));
@@ -759,9 +816,48 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
         cpu.load(patch.destination, bytes);
     }
     cpu.set_guest_regions(protections);
-    return {entry, segments.size(), bias, patches.size(), has_entry};
+    LoadedGuestElf loaded{entry, segments.size(), bias, patches.size(), has_entry};
+    loaded.initializers = std::move(initializers.direct);
+    loaded.initializer_slots = std::move(initializers.slots);
+    for (const auto& region : protections) {
+        if (region.permissions & kExecutable) loaded.executable_regions.push_back(region);
+    }
+    return loaded;
 }
 } // namespace
+
+void runGuestInitializers(CpuA64& cpu, LoadedGuestElf& image,
+                          std::uint64_t instruction_budget_per_callback) {
+    if (image.initializers_started ||
+        instruction_budget_per_callback == 0 ||
+        instruction_budget_per_callback > 1000000 ||
+        image.initializers.size() + image.initializer_slots.size() > 65) {
+        throw GuestFault("Invalid or repeated ELF constructor invocation");
+    }
+    // Never permit retry after partial execution of a constructor. This is
+    // an irreversible guest side effect, not a transactional ELF relocation.
+    image.initializers_started = true;
+    const auto invoke = [&](std::uint64_t target) {
+        if (target % 4 || target == 0 ||
+            std::none_of(image.executable_regions.begin(),
+                         image.executable_regions.end(), [&](const auto& region) {
+                return (region.permissions & kExecutable) &&
+                       target >= region.address &&
+                       target - region.address <= region.length &&
+                       4 <= region.length - (target - region.address);
+            })) {
+            throw GuestFault("ELF constructor target outside its own guest executable segments");
+        }
+        cpu.require_guest_access(target, 4, 1);
+        // Constructors have no parameters in the supported guest ABI.
+        for (unsigned i = 0; i < 8; ++i) cpu.set_register(i, 0);
+        (void)cpu.run(target, instruction_budget_per_callback);
+    };
+    for (const auto target : image.initializers) invoke(target); // DT_INIT first
+    for (const auto slot : image.initializer_slots) {
+        invoke(cpu.guest_read_u64(slot)); // relocated pointer, guest PF_R
+    }
+}
 
 LoadedGuestElf loadStaticElfA64(CpuA64& cpu, std::span<const std::uint8_t> elf) {
     return loadElf(cpu, elf, 0, kElfExecutable);
