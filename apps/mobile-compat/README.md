@@ -17,7 +17,8 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; agora há **um subconjunto inicial da ABI JNI** com `JNIEnv*` e tabela indexada, mas ainda sem classes Android, JNI completo, JNI_OnLoad, carregamento automático de bibliotecas ou autoridade da plataforma;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
 - carregador ELF64 ARM64 `ET_EXEC` e `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE`; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
-- **RELR compactado em ELF ARM64**: o mesmo carregador interpreta `DT_RELR`/`DT_RELRSZ`/`DT_RELRENT` e as variantes anteriores `DT_ANDROID_RELR`/`DT_ANDROID_RELRSZ`/`DT_ANDROID_RELRENT`, inclusive `DT_ANDROID_RELRCOUNT` (dica opcional ignorada pelo Bionic). O decoder trata entradas diretas e bitmaps de 63 posições, lê os addends implícitos da imagem original, valida segmentos graváveis, pointers remapeados, duplicatas com `RELA`, limite de 8.192 patches e impede overflow. O fluxo cobre provedores independentes e consumidores `DT_NEEDED` com `JUMP_SLOT` + `RELR` no mesmo ELF, sem duplicar a arquitetura. **Não** implementa Android Packed Relocations `APS2`, GNU hash, Bionic completo nem todas as relocations Android; essas tecnologias são distintas de RELR;
+- **RELR compactado em ELF ARM64**: o mesmo carregador interpreta `DT_RELR`/`DT_RELRSZ`/`DT_RELRENT` e as variantes anteriores `DT_ANDROID_RELR`/`DT_ANDROID_RELRSZ`/`DT_ANDROID_RELRENT`, inclusive `DT_ANDROID_RELRCOUNT` (dica opcional ignorada pelo Bionic). O decoder trata entradas diretas e bitmaps de 63 posições, lê os addends implícitos da imagem original, valida segmentos graváveis, pointers remapeados, duplicatas com `RELA`, limite de 8.192 patches e impede overflow. O fluxo cobre provedores independentes e consumidores `DT_NEEDED` com `JUMP_SLOT` + `RELR` no mesmo ELF, sem duplicar a arquitetura. **Não** implementa GNU hash, Bionic completo nem todas as relocations Android; o suporte a `APS2` é restrito a registros `R_AARCH64_RELATIVE` com símbolo zero, descrito a seguir;
+- **Android Packed Relocations `APS2`**: decoder clean-room do formato `APS2` com grupos SLEB128 (deslocamentos, `r_info` e addends acumulados), limitado a 8.192 relocations / 64 KiB de entrada. O mesmo carregador ELF interpreta `DT_ANDROID_RELA` (`0x60000011`) e `DT_ANDROID_RELASZ` (`0x60000012`), permite coexistência com `DT_RELA` e `DT_RELR`, aplica exclusivamente relocations relativas ARM64 para segmentos graváveis e recusa sobreposição, overflow, símbolo externo, flags inválidas e tabela truncada. Essa implementação **não** equivale ao linker Android, não resolve símbolos APS2 externos e não carrega automaticamente o Instagram. Formato verificado contra fontes públicas do Bionic: https://android.googlesource.com/platform/bionic/+/refs/heads/aml_con_341810060/linker/linker_reloc_iterators.h e https://android.googlesource.com/platform/bionic/+/a00ed8a89519e91766a72a124ae2e9bfcf8feb32/libc/include/elf.h; sem copiar código desses arquivos;
 - **linker experimental entre dois ELF convidados**: um provedor `ET_DYN` independente exporta funções `GLOBAL FUNC` de `DT_SYMTAB`/`DT_STRTAB` com contagem limitada de `DT_HASH`. Um consumidor `ET_DYN` com `DT_NEEDED` explícito pode resolver `R_AARCH64_JUMP_SLOT` e `R_AARCH64_GLOB_DAT` somente contra essas exportações previamente carregadas. A função importada é executada por `BLR` dentro da CPU convidada; nenhum símbolo ou endereço nativo do Windows é importado. Colisões de segmentos, símbolos inexistentes/ambíguos, tipos não suportados, TLS e dependências implícitas são recusados;
 - executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória e permissões ELF de leitura, escrita e execução (nega escrita em RX e execução em dados NX);
 - **ponte experimental Dalvik → ARM64 para métodos `int32`**: `invoke-static` de um método DEX opt-in chama `NativeMethodBoundary`, que pode usar `registerArm64IntegerMethod` para executar um ELF de desenvolvimento no motor ARM64 nativo. O arquivo é conferido por SHA-256 e executado a partir de uma cópia privada validada, com subprocesso limitado por tempo e saída. Só `(I{0,5})I`, sem objetos exportados, ponteiros host, símbolos dinâmicos ou autorização escolhida pelo APK;
@@ -74,7 +75,7 @@ resultado convidado `42` após uma relocação `JUMP_SLOT` e uma chamada
 real `BLR`. A rotina do carregador usa bases virtuais fixas para esta
 prova e bloqueia bibliotecas concorrentes ou endereços externos. **Não
 é `dlopen`, não contém Bionic, não suporta dependências transitivas,
-relocações Android compactadas, `JNI_OnLoad`, versionamento de símbolos
+vinculação dinâmica Android completa, `JNI_OnLoad`, versionamento de símbolos
 nem o ABI/linker completo para aplicativos reais.**
 
 O host nativo de desenvolvimento é compilado no diretório `native/build`.
@@ -117,14 +118,18 @@ um laboratório, não o MVP do Instagram. A branch
 `feature/mobile-compat-cleanroom-foundation-20261012` conserva o histórico.
 **Não reabrir nem anunciar release** sem o gate interativo do APK original.
 
-Antes da adição de RELR, o commit `ba0c3e5` passou pelas suítes Linux/Windows
-com **19/19 testes CTest por plataforma** e três verificações no GitHub.
-A alteração RELR tem novos testes unitários e foi enviada à mesma branch,
-mas **o resultado dos jobs disparados por push ainda não foi recuperado**
-nesta sessão; o conector disponível consulta apenas runs de pull request
-para um commit. Não atribuir status aprovado à nova alteração até obter
-a prova específica. O workflow `.github/workflows/mobile-compat-cleanroom.yml`
-continua configurado para `push` na branch do laboratório.
+O workflow de `push` da branch está acessível pela API oficial
+`/repos/ordaxsystems/ordax-apps/actions/runs?branch=...`, mesmo após o
+fechamento da PR. O [run #38366172006](https://github.com/ordaxsystems/ordax-apps/actions/runs/38366172006)
+validou o commit de código `06a3e141`: **Linux e Windows aprovados, 20/20
+testes CTest em cada sistema**, além da suíte JavaScript de inspeção/DEX.
+Isso inclui `RELR`, `APS2`, carga dinâmica de dois ELFs, JNI e testes de
+negação de entradas malformadas. A documentação posterior não deve ser
+confundida com nova demonstração interativa de aplicativo Android.
+
+O workflow `.github/workflows/mobile-compat-cleanroom.yml` continua
+configurado apenas para verificar a branch isolada. Nenhuma aprovação do CI
+substitui o gate de abrir o Instagram original com interface interativa.
 
 ## Implementação necessária para o MVP de execução
 
