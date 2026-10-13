@@ -11,9 +11,11 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - Leitor APK/XAPK limitado, com validação de CRC, offsets, nomes, travessia, duplicatas, criptografia e tamanho expandido;
 - identificação e validação de DEX e ABI ELF64;
 - ferramenta de inspeção que falha fechada quando se solicita execução do app;
-- testes sintéticos sem download de aplicativo proprietário.
+- testes sintéticos sem download de aplicativo proprietário;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
-- carregador real de ELF64 ARM64 estático com PT_LOAD, validação de limites, sobreposição e entrada executável. Linker dinâmico/Bionic/ART ainda não existem; não roda um APK.
+- carregador ELF64 ARM64 `ET_EXEC` e subconjunto relocável `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE` sem símbolos externos;
+- executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória;
+- testes fim a fim desse executável com um ELF ARM64 relocável gerado pelos testes. Dependências de bibliotecas, Bionic, ART e execução de APK continuam indisponíveis.
 
 Rodar testes com Node.js 20+:
 
@@ -29,7 +31,12 @@ Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
     cmake --build apps/mobile-compat/native/build --config Debug
     ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
 
-O comando run falha explicitamente com EXECUTION_UNAVAILABLE. Inspecionar APK não comprova compatibilidade nem abre Instagram.
+O host nativo de desenvolvimento é compilado no diretório `native/build`.
+Sua única execução suportada é `ordax-mobile-guest run-elf arquivo.elf`
+para o subconjunto ARM64; bibliotecas com símbolos externos são recusadas,
+sem executar instruções diretamente no processador do host.
+
+O comando `run` da ferramenta de APK falha explicitamente com `EXECUTION_UNAVAILABLE`. Inspecionar APK não comprova compatibilidade nem abre Instagram.
 
 ## Implementação necessária para o MVP de execução
 
