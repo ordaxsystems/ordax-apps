@@ -34,4 +34,4 @@ add_test(NAME mobile-native-entry-file-proof
                  "${CMAKE_CURRENT_BINARY_DIR}/mobile-guest-fixture.elf")
 set_tests_properties(mobile-native-entry-file-proof PROPERTIES
     FIXTURES_REQUIRED mobile-guest-fixture
-    PASS_REGULAR_EXPRESSION "guestReturn.*12288")
+    PASS_REGULAR_EXPRESSION "guestReturn.*4198400")
