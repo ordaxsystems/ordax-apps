@@ -187,6 +187,17 @@ int main(int argc, char** argv) {
             assert(cpu.run(image.entry, 10) == bias + 0x1000);
             assert(cpu.read64(bias + 0x3010) == bias + 0x1000);
         }
+        if (android) {
+            auto legacy = relr;
+            // Bionic permits a count hint, which its linker ignores.
+            put64(legacy, 208, 80); put64(legacy, 216, 80);
+            put64(legacy, 0x350, 0x6fffe005); // DT_ANDROID_RELRCOUNT
+            put64(legacy, 0x358, 2);
+            CpuA64 cpu(0x10000);
+            const auto image = loadRelocatableElfA64(cpu, legacy, 0x2000);
+            assert(image.relative_relocations == 2);
+            assert(cpu.read64(0x5010) == 0x3000);
+        }
         // Corrupted RELR metadata/bitmaps must never be silently ignored.
         {
             auto bad = relr;
