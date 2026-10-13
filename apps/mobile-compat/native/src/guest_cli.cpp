@@ -1,7 +1,11 @@
 // Developer host for the bounded guest CPU, not an Android app launcher.
 #include "ordax/mobile/elf_a64.hpp"
 
+#include <bit>
+#include <charconv>
 #include <cstdint>
+#include <string>
+#include <system_error>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -10,9 +14,27 @@
 #include <vector>
 
 int main(int argc, char** argv) {
-    if (argc != 3 || std::string(argv[1]) != "run-elf") {
-        std::cerr << "usage: ordax-mobile-guest run-elf <static-aarch64-elf|relative-only-et-dyn>\n";
+    const bool old_mode = argc == 3 && std::string(argv[1]) == "run-elf";
+    const bool call_mode = argc >= 3 && argc <= 8 &&
+                           std::string(argv[1]) == "invoke-i32-elf";
+    if (!old_mode && !call_mode) {
+        std::cerr << "usage: ordax-mobile-guest run-elf <elf>\n"
+                  << "   or: ordax-mobile-guest invoke-i32-elf <elf> [int32 x0..x4]\n";
         return 2;
+    }
+    std::vector<std::int32_t> arguments;
+    if (call_mode) {
+        for (int i = 3; i < argc; ++i) {
+            const std::string arg(argv[i]);
+            std::int32_t value = 0;
+            if (arg.empty()) return 2;
+            const auto parsed = std::from_chars(arg.data(), arg.data() + arg.size(), value);
+            if (parsed.ec != std::errc{} || parsed.ptr != arg.data() + arg.size()) {
+                std::cerr << "Invalid int32 argument\n";
+                return 2;
+            }
+            arguments.push_back(value);
+        }
     }
     try {
         const std::filesystem::path file(argv[2]);
@@ -48,9 +70,22 @@ int main(int argc, char** argv) {
             std::cerr << "Shared library has no guest entrypoint; JNI/Android linking not available\n";
             return 4;
         }
+        // Only typed integers cross the boundary: no guest object references,
+        // JNI environment, raw pointers or untrusted callback addresses.
+        for (std::size_t i = 0; i < arguments.size(); ++i) {
+            cpu.set_register(static_cast<unsigned>(i),
+                             static_cast<std::uint64_t>(static_cast<std::int64_t>(arguments[i])));
+        }
         // Instruction and memory budgets are mandatory and cannot be removed
         // through command-line arguments.
         const auto result = cpu.run(image.entry, 100000);
+        if (call_mode) {
+            const auto value = std::bit_cast<std::int32_t>(
+                static_cast<std::uint32_t>(result));
+            std::cout << "{\"schema\":\"ordax.mobile-compat.i32-guest-call/1\","
+                      << "\"value\":" << value << "}\n";
+            return 0;
+        }
         std::cout << "{\n"
                   << "  \"schema\": \"ordax.mobile-compat.native-guest-result/1\",\n"
                   << "  \"execution\": \"bounded-instruction-subset\",\n"
