@@ -137,8 +137,9 @@ std::vector<std::uint8_t> consumerWithAps2(std::uint64_t packed_target = 0x3010,
     program(b, 2, 2, 6, 0x320, 0x3020, 192);
     dyn(b, 1, 5, 0x3210); // dynstr moved outside expanded PT_DYNAMIC
     std::vector<std::uint8_t> packed = {'A','P','S','2'};
-    for (const std::int64_t v : {1, static_cast<std::int64_t>(packed_target - 8),
-                                 1, 15, 8, relocation_info, 0x1000}) {
+    for (const std::int64_t v : std::vector<std::int64_t>{
+            1, static_cast<std::int64_t>(packed_target - 8),
+            1, 15, 8, relocation_info, 0x1000}) {
         pushAps2Signed(packed, v);
     }
     if (packed.size() > 32) throw GuestFault("Linked APS2 fixture too large");
