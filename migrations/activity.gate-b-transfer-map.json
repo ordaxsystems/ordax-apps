@@ -1,0 +1,67 @@
+{
+  "$schema": "ordax.activity-gate-b-transfer-map/1",
+  "source_snapshot": "migrations/activity.source-snapshot.json",
+  "source_commit": "31c973c041d04b8c01ac97b97fa4af1c0926f89a",
+  "source_file_count": 9,
+  "target_root": "apps/activity",
+  "target_manifest": "apps/activity/app.json",
+  "requires_official_sdk": "1.19.0",
+  "authority": "none",
+  "rules": {
+    "dual_source_allowed": false,
+    "copy_platform_services": false,
+    "copy_host_approval_runtime": false,
+    "copy_native_adapters": false,
+    "copy_platform_persistence": false,
+    "copy_identity_credentials": false,
+    "public_sdk_contracts_only": true,
+    "platform_absence_proven_at": "d7ffe657afe349fa847b40f19ab071bbd9608417"
+  },
+  "mappings": [
+    {
+      "source": "system/apps/activity/activity.css",
+      "target": "apps/activity/assets/activity.css",
+      "operation": "relocate-style"
+    },
+    {
+      "source": "system/apps/activity/ai/manifest.mjs",
+      "target": "apps/activity/ai/manifest.json",
+      "operation": "derive-declarative-manifest"
+    },
+    {
+      "source": "system/apps/activity/app.mjs",
+      "target": "apps/activity/app.json",
+      "operation": "replace-by-manifest"
+    },
+    {
+      "source": "system/apps/activity/component.mjs",
+      "target": "apps/activity/app.json",
+      "operation": "replace-by-manifest"
+    },
+    {
+      "source": "system/apps/activity/runtime.mjs",
+      "target": "apps/activity/src/runtime.mjs",
+      "operation": "relocate-and-rewire-sdk"
+    },
+    {
+      "source": "system/apps/activity/ui/workspace-controls.mjs",
+      "target": "apps/activity/src/ui/workspace-controls.mjs",
+      "operation": "relocate-and-rewire-sdk"
+    },
+    {
+      "source": "system/apps/activity/version.mjs",
+      "target": "apps/activity/app.json",
+      "operation": "fold-version-into-manifest"
+    },
+    {
+      "source": "system/apps/activity/view-model.mjs",
+      "target": "apps/activity/src/view-model.mjs",
+      "operation": "relocate-and-rewire-sdk"
+    },
+    {
+      "source": "system/services/i18n/catalog/activity.mjs",
+      "target": "apps/activity/src/i18n/messages.mjs",
+      "operation": "move-app-owned-localization"
+    }
+  ]
+}

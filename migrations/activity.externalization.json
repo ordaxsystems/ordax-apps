@@ -1,12 +1,12 @@
 {
   "$schema": "ordax.app-externalization-plan/1",
   "app_id": "activity",
-  "source_repository_current": "ordaxsystems/ordax-os",
-  "source_path_current": "system/apps/activity",
+  "source_repository_current": "ordaxsystems/ordax-apps",
+  "source_path_current": "apps/activity",
   "target_repository": "ordaxsystems/ordax-apps",
   "target_path": "apps/activity",
-  "source_of_truth_state": "platform-until-cutover",
-  "source_cutover_allowed": false,
+  "source_of_truth_state": "ordax-apps-canonical",
+  "source_cutover_allowed": true,
   "distribution_activation_allowed": false,
   "source_cutover": {
     "mode": "remove-platform-first",
@@ -15,7 +15,8 @@
     "dual_source_allowed": false,
     "platform_absence_proof_required_before_copy": true,
     "sdk_public_boundary_required_before_snapshot": true,
-    "production_rule_after_first_user_data": "staged-handoff-no-data-loss"
+    "production_rule_after_first_user_data": "staged-handoff-no-data-loss",
+    "platform_absence_proven_at": "d7ffe657afe349fa847b40f19ab071bbd9608417"
   },
   "source_snapshot": {
     "state": "pinned",
@@ -23,7 +24,8 @@
     "commit": "31c973c041d04b8c01ac97b97fa4af1c0926f89a",
     "inventory_file": "migrations/activity.source-snapshot.json",
     "file_count": 9,
-    "captured_before_gate_a_removal": true
+    "captured_before_gate_a_removal": true,
+    "transfer_map": "migrations/activity.gate-b-transfer-map.json"
   },
   "delivery": {
     "delivery_class": "on-demand",
@@ -31,5 +33,33 @@
     "install_owner": "platform-component-lifecycle",
     "auto_install": false
   },
-  "authority": "none"
+  "authority": "none",
+  "gate_a_platform_commit": "d7ffe657afe349fa847b40f19ab071bbd9608417",
+  "target_sdk": {
+    "minimum_bundle_version": "1.19.0",
+    "lock_file": "platform-sdk.lock.json",
+    "published_bundle_commit": "97627b7e2c4d359e0943d8866e047dd337d08bec",
+    "sdk_contract_source_paths": [
+      "system/contracts/component-runtime.mjs",
+      "system/contracts/app-intelligence-manifest.mjs",
+      "system/contracts/component-manifest.mjs",
+      "system/contracts/personal-approval-consent.mjs",
+      "system/contracts/personal-activity-export.mjs",
+      "system/contracts/personal-ordax-store.mjs",
+      "system/contracts/personal-ordax.mjs",
+      "system/contracts/surface-render-lifecycle.mjs",
+      "system/contracts/localization.mjs",
+      "system/contracts/locale-profile.mjs"
+    ],
+    "migration_authorized_by_sdk_pin": false
+  },
+  "gate_b": {
+    "state": "source-materialized-unsigned",
+    "sdk_bundle_version": "1.19.0",
+    "platform_absence_proven": true,
+    "app_source_authority": "ordaxsystems/ordax-apps",
+    "signed_distribution_verified": false,
+    "native_install_verified": false,
+    "rollback_verified": false
+  }
 }

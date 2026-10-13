@@ -49,6 +49,9 @@ jobs:
           python3 -m unittest tests/test_audit_app_readiness.py
           python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 
+      - name: Prove Activity transfer source/SDK integrity and unsigned package
+        run: python3 -m unittest tests.test_activity_gate_b -v
+
       - name: Prove Files cutover stays blocked until platform source removal
         run: |
           python3 -m unittest tests/test_files_cutover.py
@@ -471,7 +474,7 @@ jobs:
           trap 'rm -f "$target"' EXIT
           (
             cd .ordax-platform-lifecycle/tools/runtime-component-channel
-            go test -run '^TestExternalNotesPackageCompletesCanonicalLifecycle$' -count=1
+            go test -run '^(TestExternalNotesPackageRespectsStatefulRecoveryFence|TestReleaseV2FailedProbationRejectsWithoutReplacingCurrent|TestReleaseV2RollbackRestoresPreviousVerifiedSlot|TestReleaseV2UninstallMakesComponentAbsentAndKeepsVerifiedSlotCache|TestReleaseV2OfflineReinstallAfterUninstallReusesVerifiedIdentity|TestStatefulReleaseV2UpgradeCannotBecomeOneWayWithoutRecovery)$' -count=1
           )
 
       - name: Prove pinned public App SDK and all canonical app required contract majors

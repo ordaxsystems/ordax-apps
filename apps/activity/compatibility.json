@@ -1,0 +1,45 @@
+{
+  "schema": "ordax.component-compatibility/1",
+  "componentId": "activity",
+  "componentVersion": "0.1.0",
+  "provides": [
+    {
+      "id": "ordax.component-runtime",
+      "major": 1
+    }
+  ],
+  "requires": [
+    {
+      "id": "ordax.localization",
+      "minMajor": 2,
+      "maxMajor": 2,
+      "optional": false
+    },
+    {
+      "id": "ordax.surface-render-lifecycle",
+      "minMajor": 5,
+      "maxMajor": 5,
+      "optional": false
+    },
+    {
+      "id": "ordax.personal-runtime",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    },
+    {
+      "id": "ordax.personal-approval-consent",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    },
+    {
+      "id": "ordax.personal-activity-export-port",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    }
+  ],
+  "state": null,
+  "authority": "none"
+}
