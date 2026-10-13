@@ -46,6 +46,13 @@ jobs:
           readelf -h -d -r apps/mobile-compat/native/build/llvm-guest/libprovider.so
           "${ndk_bin}/llvm-objdump" --disassemble --no-show-raw-insn \
             apps/mobile-compat/native/build/llvm-guest/libprovider.so
+      - name: Preserve the single NDK-linked ARM64 ELF for Windows verification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ordax-mobile-ndk-arm64-elf
+          path: apps/mobile-compat/native/build/llvm-guest/libprovider.so
+          if-no-files-found: error
+          retention-days: 1
       - name: Configure native clean-room executor
         run: cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
       - name: Build native clean-room executor
@@ -53,6 +60,7 @@ jobs:
       - name: Test native guest instruction semantics
         run: ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
   windows-package-intake:
+    needs: linux-package-intake
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
@@ -63,6 +71,11 @@ jobs:
           node-version: '24'
       - run: node --test apps/mobile-compat/tests/*.test.mjs
       - run: node --check apps/mobile-compat/bin/mobile-compat.mjs
+      - name: Reuse the exact NDK-built guest ELF from Linux
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ordax-mobile-ndk-arm64-elf
+          path: apps/mobile-compat/native/build/llvm-guest
       - name: Configure native clean-room executor
         run: cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
       - name: Build native clean-room executor
