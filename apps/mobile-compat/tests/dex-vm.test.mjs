@@ -458,10 +458,15 @@ function arrayDexFixture() {
     0x0144, 0x0400,   // aget v1,v0,v4
     0x010f,           // return v1
   ];
-  b.writeUInt16LE(5, 0x180);
-  b.writeUInt16LE(2, 0x182);
-  b.writeUInt32LE(insns.length, 0x180 + 12);
-  for (let i = 0; i < insns.length; i++) b.writeUInt16LE(insns[i], 0x180 + 16 + i * 2);
+  // Keep the expanded code_item separate from the neighboring method:
+  // a 9-word code_item needs 34 bytes, which would overlap the 0x1a0 item.
+  const codeOff = 0x740;
+  b[0x600 + 10] = 0xc0; // class_data sum method code_off ULEB128 = 0x740
+  b[0x600 + 11] = 0x0e;
+  b.writeUInt16LE(5, codeOff);
+  b.writeUInt16LE(2, codeOff + 2);
+  b.writeUInt32LE(insns.length, codeOff + 12);
+  for (let i = 0; i < insns.length; i++) b.writeUInt16LE(insns[i], codeOff + 16 + i * 2);
   return sealDex(b);
 }
 test('actual Dalvik new-array/aput/aget returns int32 and allocates one guest array', () => {
@@ -487,14 +492,14 @@ test('Dalvik guest array rejects negative size, oversized size and out-of-range 
 });
 test('Dalvik array opcodes fail closed for unsupported reference array classes and forged receivers', () => {
   const wrongArrayType = arrayDexFixture();
-  wrongArrayType.writeUInt16LE(1, 0x180 + 18); // Ltest/Arithmetic; instead of [I
+  wrongArrayType.writeUInt16LE(1, 0x740 + 18); // Ltest/Arithmetic; instead of [I
   assert.throws(
     () => new DexSubset(sealDex(wrongArrayType)).execute('Ltest/Arithmetic;', 'sum', [5, 2]),
     { code: 'DEX_ARRAY_TYPE' }
   );
   const forged = arrayDexFixture();
   // aput uses register v3 (length int), not array handle register v0.
-  forged.writeUInt16LE(0x0403, 0x180 + 16 + 5 * 2);
+  forged.writeUInt16LE(0x0403, 0x740 + 16 + 5 * 2);
   assert.throws(
     () => new DexSubset(sealDex(forged)).execute('Ltest/Arithmetic;', 'sum', [5, 2]),
     { code: 'DEX_TYPE' }
