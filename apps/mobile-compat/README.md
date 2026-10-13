@@ -29,7 +29,7 @@ Inspecionar um pacote fornecido localmente:
 
 Prova de método Dalvik, usando **um APK próprio de teste**, sem executar Android:
 
-    node apps/mobile-compat/bin/mobile-compat.mjs dex-method CAMINHO_DO_APK Ltest/Arithmetic; sum 19 23
+    node apps/mobile-compat/bin/mobile-compat.mjs dex-method CAMINHO_DO_APK 'Ltest/Arithmetic;' sum 19 23
 
 O comando acima executa somente um método estático com argumentos `int32`,
 com heap de objetos privado por execução. Esse método pode criar objetos de
