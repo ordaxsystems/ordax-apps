@@ -380,7 +380,7 @@ int main(int argc, char** argv) {
             if (kind == 0) dyn(bad, 8, 20, 17); // unsupported DT_PLTREL
             if (kind == 1) dyn(bad, 7, 2, 25);  // nonmultiple of Elf64_Rela
             if (kind == 2) dyn(bad, 6, 23, 0xffffffffffull); // unmapped
-            if (kind == 3) dyn(bad, 6, 0, 0);   // missing DT_JMPREL
+            if (kind == 3) dyn(bad, 6, 0x6fffe005, 0); // no JMPREL, other PLT tags remain
             if (kind == 4) u64(bad, 0x488, (std::uint64_t(1)<<32)|1025); // GLOB_DAT in PLT
             if (kind == 5) u64(bad, 0x480, 0x1000); // guest RX page
             CpuA64 rejected(0x100000);
