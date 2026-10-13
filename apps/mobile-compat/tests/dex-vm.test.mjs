@@ -461,8 +461,8 @@ function arrayDexFixture() {
   // Keep the expanded code_item separate from the neighboring method:
   // a 9-word code_item needs 34 bytes, which would overlap the 0x1a0 item.
   const codeOff = 0x740;
-  b[0x600 + 10] = 0xc0; // class_data sum method code_off ULEB128 = 0x740
-  b[0x600 + 11] = 0x0e;
+  b[0x600 + 12] = 0xc0; // sum method code_off ULEB128 = 0x740
+  b[0x600 + 13] = 0x0e;
   b.writeUInt16LE(5, codeOff);
   b.writeUInt16LE(2, codeOff + 2);
   b.writeUInt32LE(insns.length, codeOff + 12);
