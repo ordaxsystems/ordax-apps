@@ -6,6 +6,7 @@
 #include <functional>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace ordax::mobile {
@@ -13,6 +14,7 @@ namespace ordax::mobile {
 class GuestFault final : public std::runtime_error {
 public:
     explicit GuestFault(const char* message) : std::runtime_error(message) {}
+    explicit GuestFault(const std::string& message) : std::runtime_error(message) {}
 };
 
 // Segment permissions use ELF PF_X=1, PF_W=2, PF_R=4.
