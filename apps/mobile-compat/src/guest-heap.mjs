@@ -12,7 +12,12 @@ export class GuestHeap {
     }
     this.maxObjects = maxObjects;
   }
-  allocate(type, declaredFields) {
+  allocate(type, declaredFields, ancestors = []) {
+    if (!Array.isArray(ancestors) || ancestors.length > 15 ||
+        !ancestors.every(name => typeof name === 'string' && name !== type) ||
+        new Set(ancestors).size !== ancestors.length) {
+      throw new PackageError('DEX_CLASS', 'Invalid guest class ancestry');
+    }
     if (this.#items.size >= this.maxObjects || !Array.isArray(declaredFields) ||
         declaredFields.length > 128 || this.#fieldSlots + declaredFields.length > 65536) {
       throw new PackageError('HEAP_LIMIT', 'Guest object or field slot quota exceeded');
@@ -24,8 +29,41 @@ export class GuestHeap {
     const handle = this.#next++;
     const fields = new Map(declaredFields.map(id => [id, 0]));
     this.#fieldSlots += fields.size;
-    this.#items.set(handle, { type, fields, initialized: false });
+    this.#items.set(handle, { type, ancestors, fields,
+      initialized: false, constructors: [] });
     return handle;
+  }
+  // Verify the entire local superclass constructor chain before exposing
+  // an initialized object. This stack is private to each opaque guest handle.
+  enterConstructor(handle, owner, superclass) {
+    const object = this.lookup(handle, owner);
+    if (object.initialized || object.constructors.length >= 16) {
+      throw new PackageError('DEX_INIT', 'Constructor repeated or nesting limit exceeded');
+    }
+    const stack = object.constructors;
+    if (stack.length === 0) {
+      if (object.type !== owner) {
+        throw new PackageError('DEX_INIT', 'First constructor must match allocated class');
+      }
+    } else {
+      const caller = stack[stack.length - 1];
+      if (caller.superclass !== owner || caller.superCalled) {
+        throw new PackageError('DEX_INIT', 'Unexpected or duplicate superclass constructor');
+      }
+      caller.superCalled = true;
+    }
+    stack.push({ owner, superclass, superCalled: false });
+  }
+  leaveConstructor(handle, owner) {
+    const object = this.lookup(handle, owner);
+    const stack = object.constructors;
+    const current = stack[stack.length - 1];
+    if (!current || current.owner !== owner ||
+        (current.superclass !== null && !current.superCalled)) {
+      throw new PackageError('DEX_INIT', 'Constructor did not complete superclass initialization');
+    }
+    stack.pop();
+    if (stack.length === 0) object.initialized = true;
   }
   markInitialized(handle, expectedType) {
     this.lookup(handle, expectedType).initialized = true;
@@ -97,7 +135,8 @@ export class GuestHeap {
       throw new PackageError('DEX_REFERENCE', 'Invalid guest object handle');
     }
     const value = this.#items.get(handle);
-    if (expectedType !== undefined && value.type !== expectedType) {
+    if (expectedType !== undefined && value.type !== expectedType &&
+        !value.ancestors?.includes(expectedType)) {
       throw new PackageError('DEX_REFERENCE', 'Guest object class mismatch');
     }
     return value;

@@ -36,6 +36,9 @@ function sign16(v) { return (v << 16) >> 16; }
 const MAX_INSNS = 32768;
 const MAX_METHODS = 8192;
 const MAX_CLASSES = 2048;
+const MAX_CLASS_DEPTH = 16;
+const virtualKey = info =>
+  info.name + '\u0000' + info.proto.params.join('') + '\u0000' + info.proto.result;
 
 export class DexSubset {
   constructor(bytes, { nativeBoundary = null } = {}) {
@@ -57,6 +60,11 @@ export class DexSubset {
     this.fieldInfos = new Map();
     this.classInstanceFields = new Map();
     this.classSuperclasses = new Map();
+    this.classIndicesByName = new Map();
+    this.classLineages = new Map();
+    this.classVirtualMethods = new Map();
+    this.virtualMethodIds = new Set();
+    this.directMethodIds = new Set();
     for (let i = 0; i < this.classes.count; i++) {
       const classOffset = this.classes.off + i * 32;
       const classIdx = u32(bytes, classOffset);
@@ -64,9 +72,31 @@ export class DexSubset {
       if (this.classInstanceFields.has(classIdx)) fail('DEX_CLASS', 'Duplicate class definition');
       this.classInstanceFields.set(classIdx, new Set());
       this.classSuperclasses.set(classIdx, u32(bytes, classOffset + 8));
+      const name = this.type(classIdx);
+      if (this.classIndicesByName.has(name)) fail('DEX_CLASS', 'Duplicate class descriptor');
+      this.classIndicesByName.set(name, classIdx);
+      this.classVirtualMethods.set(classIdx, new Map());
       const classDataOffset = u32(bytes, classOffset + 24);
       if (classDataOffset) this.readClassData(classIdx, classDataOffset);
     }
+    // Inspect the local class graph once, before interpreting any guest code.
+    // Unresolved external/Android classes remain unsupported, never stubbed.
+    for (const index of this.classInstanceFields.keys()) this.classLineage(index);
+  }
+  classLineage(index, visiting = new Set()) {
+    if (this.classLineages.has(index)) return this.classLineages.get(index);
+    if (!this.classInstanceFields.has(index) || visiting.has(index) ||
+        visiting.size >= MAX_CLASS_DEPTH) {
+      fail('DEX_CLASS', 'Missing, cyclic or over-deep superclass chain');
+    }
+    visiting.add(index);
+    const parent = this.classSuperclasses.get(index);
+    const lineage = parent === 0xffffffff
+      ? [index] : [index, ...this.classLineage(parent, visiting)];
+    visiting.delete(index);
+    if (lineage.length > MAX_CLASS_DEPTH) fail('DEX_CLASS', 'Class depth exceeded');
+    this.classLineages.set(index, lineage);
+    return lineage;
   }
   getString(index) {
     if (index >= this.strings.count) fail('DEX_INDEX', 'Invalid string index');
@@ -150,7 +180,7 @@ export class DexSubset {
       }
     }
     let method = 0;
-    for (const count of methods) {
+    for (const [group, count] of methods.entries()) {
       method = 0;
       for (let i = 0; i < count; i++) {
         const [delta, next] = leb(this.bytes, p); p = next; method += delta;
@@ -163,6 +193,17 @@ export class DexSubset {
           fail('DEX_INDEX', 'Method ownership differs from class_data');
         }
         this.methodsById.set(method, { access, codeOff });
+        if (group === 1) {
+          if (access & 0x8) fail('DEX_CLASS', 'Virtual method declared static');
+          const key = virtualKey(this.methodInfo(method));
+          if (this.classVirtualMethods.get(classIdx).has(key)) {
+            fail('DEX_CLASS', 'Duplicate class virtual method signature');
+          }
+          this.classVirtualMethods.get(classIdx).set(key, method);
+          this.virtualMethodIds.add(method);
+        } else {
+          this.directMethodIds.add(method);
+        }
       }
     }
   }
@@ -368,14 +409,10 @@ export class DexSubset {
         }
         case 0x22: { // new-instance vAA, type@BBBB (21c)
           const typeIdx = word(pc++);
-          const instanceFields = this.classInstanceFields.get(typeIdx);
-          if (!instanceFields) fail('DEX_CLASS', 'Class not declared in local DEX');
-          // Until a real class hierarchy/vtable exists, do not silently drop
-          // inherited fields, constructors or methods from a superclass.
-          if (this.classSuperclasses.get(typeIdx) !== 0xffffffff) {
-            fail('DEX_CLASS', 'Superclass layout and initialization unsupported');
-          }
-          putRef(a, heap.allocate(this.type(typeIdx), [...instanceFields]));
+          const lineage = this.classLineage(typeIdx);
+          const fields = lineage.flatMap(index => [...this.classInstanceFields.get(index)]);
+          const ancestors = lineage.slice(1).map(index => this.type(index));
+          putRef(a, heap.allocate(this.type(typeIdx), fields, ancestors));
           break;
         }
         case 0x52: { // iget vA,vB, field@CCCC (22c)
@@ -407,11 +444,13 @@ export class DexSubset {
           if (op === 0x71 ? !(definition.access & 8) : (definition.access & 8)) {
             fail('DEX_INVOKE', 'Static versus instance invoke mismatch');
           }
-          if (op === 0x70 && callee.name !== '<init>') {
-            fail('DEX_INVOKE', 'Only constructors supported by invoke-direct');
+          if (op === 0x70 &&
+              (callee.name !== '<init>' || !this.directMethodIds.has(target))) {
+            fail('DEX_INVOKE', 'Only local direct constructors supported');
           }
-          if (op === 0x6e && callee.name === '<init>') {
-            fail('DEX_INVOKE', 'Constructors require invoke-direct');
+          if (op === 0x6e &&
+              (callee.name === '<init>' || !this.virtualMethodIds.has(target))) {
+            fail('DEX_INVOKE', 'Virtual target must be declared as virtual');
           }
           const indices = [packed & 15, (packed >>> 4) & 15,
             (packed >>> 8) & 15, (packed >>> 12) & 15, g];
@@ -419,9 +458,42 @@ export class DexSubset {
           if (types.length !== count) fail('DEX_INVOKE', 'Wrong Dalvik invoke arity');
           const values = indices.slice(0, count).map((r, i) =>
             types[i] === 'I' ? getInt(r) : getRef(r));
-          if (op === 0x6e) heap.requireInitialized(values[0], callee.owner);
-          const result = this.invoke(target, values, budget, depth + 1, heap);
-          if (op === 0x70) heap.markInitialized(values[0], callee.owner);
+          let destination = target;
+          if (op === 0x6e) {
+            heap.requireInitialized(values[0], callee.owner);
+            const receiver = heap.lookup(values[0], callee.owner);
+            const receiverIdx = this.classIndicesByName.get(receiver.type);
+            const ownerIdx = this.classIndicesByName.get(callee.owner);
+            if (receiverIdx === undefined || ownerIdx === undefined) {
+              fail('DEX_CLASS', 'Virtual receiver not declared locally');
+            }
+            // Resolve from the real receiver class through its local parents.
+            for (const cls of this.classLineage(receiverIdx)) {
+              const override = this.classVirtualMethods.get(cls).get(virtualKey(callee));
+              if (override !== undefined) { destination = override; break; }
+              if (cls === ownerIdx) break;
+            }
+          }
+          if (op === 0x70) {
+            const receiver = heap.lookup(values[0], callee.owner);
+            if (receiver.type !== callee.owner) {
+              const current = this.classIndicesByName.get(item.info.owner);
+              const parent = this.classIndicesByName.get(callee.owner);
+              // Only a child's constructor may invoke its direct parent
+              // constructor on its own receiver.
+              if (item.info.name !== '<init>' || item.isStatic ||
+                  values[0] !== args[0] ||
+                  this.classSuperclasses.get(current) !== parent) {
+                fail('DEX_INIT', 'Superclass constructor requires direct child initializer');
+              }
+            }
+            const index = this.classIndicesByName.get(callee.owner);
+            const superIdx = this.classSuperclasses.get(index);
+            heap.enterConstructor(values[0], callee.owner,
+              superIdx === 0xffffffff ? null : this.type(superIdx));
+          }
+          const result = this.invoke(destination, values, budget, depth + 1, heap);
+          if (op === 0x70) heap.leaveConstructor(values[0], callee.owner);
           if (callee.proto.result !== 'V') {
             pending = result;
             pendingType = callee.proto.result;

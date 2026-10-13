@@ -51,7 +51,7 @@ O comando acima executa somente um método estático com argumentos `int32`,
 com heap de objetos privado por execução. Esse método pode criar objetos de
 classes locais sem superclass, chamar construtores e métodos virtuais locais,
 e acessar campos inteiros; porém **não pode expor referências guest ao host**.
-Não há herança, GC, objetos host, classes Android, arrays de referências ou outros tipos, ABI JNI completa, reflexão,
+Há somente herança entre classes presentes no mesmo DEX (até 16 níveis), com campos herdados, despacho virtual e cadeia de construtores verificada. Não há herança externa, GC, objetos host, classes Android, arrays de referências ou outros tipos, ABI JNI completa, reflexão,
 chamadas de rede nem instruções não implementadas. A execução tem limites
 de memória (máximo de 4096 objetos, 128 campos por objeto e 65536 campos
 no total para campos, 262.144 posições para arrays), instruções, pilha e registradores, e exige inicialização antes

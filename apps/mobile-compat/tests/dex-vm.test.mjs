@@ -384,6 +384,93 @@ test('guest constructors must complete before virtual calls, inheritance stays f
   assert.throws(() => new DexSubset(sealDex(inherited))
     .execute('Ltest/Arithmetic;', 'makeValue', [5]), { code: 'DEX_CLASS' });
 });
+// Two fully local DEX classes: Derived extends Arithmetic. Both instance
+// fields share a single guest allocation; the parent virtual callsite must
+// dispatch the Derived override only after super() has completed.
+function inheritedObjectDexFixture() {
+  const b = objectDexFixture();
+  b.writeUInt32LE(14, 56);
+  b.writeUInt32LE(0x5c0, 0x400 + 13 * 4);
+  b[0x5c0] = 14;
+  b.write('Ltest/Derived;', 0x5c1, 'ascii');
+  b[0x5cf] = 0;
+  b.writeUInt32LE(4, 64);
+  b.writeUInt32LE(13, 0x9c);
+  b.writeUInt32LE(2, 80);
+  b.writeUInt16LE(3, 0x368); b.writeUInt16LE(0, 0x36a);
+  b.writeUInt32LE(12, 0x36c);
+  // Move sections to nonoverlapping free space in this fixture.
+  b.copy(b, 0x440, 0x380, 0x380 + 7 * 8);
+  b.writeUInt32LE(9, 88); b.writeUInt32LE(0x440, 92);
+  for (const [i, proto, name] of [[7, 3, 8], [8, 0, 11]]) {
+    const at = 0x440 + i * 8;
+    b.writeUInt16LE(3, at); b.writeUInt16LE(proto, at + 2);
+    b.writeUInt32LE(name, at + 4);
+  }
+  b.copy(b, 0x4a0, 0xd8, 0xf8);
+  b.writeUInt32LE(2, 96); b.writeUInt32LE(0x4a0, 100);
+  b.writeUInt32LE(3, 0x4c0);
+  b.writeUInt32LE(1, 0x4c4);
+  b.writeUInt32LE(1, 0x4c8);
+  b.writeUInt32LE(0x740, 0x4c0 + 24);
+  Buffer.from([
+    0, 1, 1, 1,
+    1, 1,
+    7, 1, 0x80, 0x0f,
+    8, 1, 0xb0, 0x0f,
+  ]).copy(b, 0x740);
+  function code(at, regs, ins, outs, words) {
+    b.writeUInt16LE(regs, at); b.writeUInt16LE(ins, at + 2);
+    b.writeUInt16LE(outs, at + 4); b.writeUInt16LE(0, at + 6);
+    b.writeUInt32LE(0, at + 8); b.writeUInt32LE(words.length, at + 12);
+    words.forEach((w, i) => b.writeUInt16LE(w, at + 16 + i * 2));
+  }
+  code(0x780, 2, 2, 2, [
+    0x2070, 3, 0x0010, // Derived.<init> calls Arithmetic.<init>
+    0x0159, 1,         // iput own field after super()
+    0x000e,
+  ]);
+  code(0x7b0, 3, 1, 0, [
+    0x2052, 0,         // read inherited Arithmetic field
+    0x2152, 1,         // read Derived field
+    0x0090, 0x0100,   // add two int32 fields
+    0x000f,
+  ]);
+  b.writeUInt16LE(3, 0x680 + 18); // factory new-instance Derived
+  b.writeUInt16LE(7, 0x680 + 16 + 3 * 2); // invoke Derived.<init>
+  return sealDex(b);
+}
+
+test('inherited guest fields, chained constructors and virtual overriding execute from DEX', () => {
+  const vm = new DexSubset(inheritedObjectDexFixture());
+  const one = vm.execute('Ltest/Arithmetic;', 'makeValue', [42]);
+  assert.equal(one.value, 84);
+  assert.equal(one.allocatedObjects, 1);
+  assert.equal(vm.execute('Ltest/Arithmetic;', 'makeValue', [-9]).value, -18);
+  assert.throws(() => vm.execute('Ltest/Arithmetic;', 'makeObject', [7]),
+    { code: 'DEX_REFERENCE' });
+});
+
+test('local classes reject cyclic, missing and incomplete superclass initialization', () => {
+  const cyclic = inheritedObjectDexFixture();
+  cyclic.writeUInt32LE(3, 0x4c8);
+  assert.throws(() => new DexSubset(sealDex(cyclic)), { code: 'DEX_CLASS' });
+  const missing = inheritedObjectDexFixture();
+  missing.writeUInt32LE(2, 0x4c8);
+  assert.throws(() => new DexSubset(sealDex(missing)), { code: 'DEX_CLASS' });
+  const skipSuper = inheritedObjectDexFixture();
+  [0x0112, 0x0112, 0x0112].forEach((word, i) =>
+    skipSuper.writeUInt16LE(word, 0x780 + 16 + i * 2));
+  assert.throws(() => new DexSubset(sealDex(skipSuper))
+    .execute('Ltest/Arithmetic;', 'makeValue', [5]), { code: 'DEX_INIT' });
+  const heap = new GuestHeap();
+  const ref = heap.allocate('Ltest/Derived;', [0, 1], ['Ltest/Arithmetic;']);
+  assert.equal(heap.lookup(ref, 'Ltest/Arithmetic;').type, 'Ltest/Derived;');
+  assert.throws(() => heap.lookup(ref, 'Ltest/Other;'), { code: 'DEX_REFERENCE' });
+  assert.throws(() => heap.enterConstructor(ref, 'Ltest/Arithmetic;', null),
+    { code: 'DEX_INIT' });
+});
+
 test('guest object quotas, initialization and field ownership are enforced', () => {
   const heap = new GuestHeap({ maxObjects: 1 });
   assert.throws(() => heap.allocate('Ltest/Box;', Array.from({length: 129}, (_, i) => i)),
