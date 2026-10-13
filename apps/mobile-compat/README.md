@@ -12,6 +12,7 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - identificação e validação de DEX e ABI ELF64;
 - ferramenta de inspeção que falha fechada quando se solicita execução do app;
 - testes sintéticos sem download de aplicativo proprietário.
+- executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes. Não roda um APK.
 
 Rodar testes com Node.js 20+:
 
@@ -20,6 +21,12 @@ Rodar testes com Node.js 20+:
 Inspecionar um pacote fornecido localmente:
 
     node apps/mobile-compat/bin/mobile-compat.mjs inspect CAMINHO_DO_APK_OU_XAPK
+
+Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
+
+    cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
+    cmake --build apps/mobile-compat/native/build --config Debug
+    ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
 
 O comando run falha explicitamente com EXECUTION_UNAVAILABLE. Inspecionar APK não comprova compatibilidade nem abre Instagram.
 
