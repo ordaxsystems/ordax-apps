@@ -131,14 +131,34 @@ def audit(root=ROOT, source_root=None, sdk_root=None,
     mapping = read(root, "migrations/assistant.gate-b-transfer-map.json")
     lock = read(root, "platform-sdk.lock.json")
     need(plan.get("app_id") == "assistant"
-         and plan.get("source_repository_current") == "ordaxsystems/ordax-os"
          and plan.get("target_repository") == "ordaxsystems/ordax-apps"
-         and plan.get("source_of_truth_state") == "platform-until-cutover"
-         and plan.get("source_cutover_allowed") is False
          and plan.get("distribution_activation_allowed") is False,
-         "premature Assistant owner cutover/activation")
-    need(not (root / "apps/assistant").exists() and not
-         (root / "apps/assistant").is_symlink(), "second Assistant source forbidden")
+         "Assistant owner identity or release authority is invalid")
+    source_state = plan.get("source_of_truth_state")
+    if source_state == "platform-until-cutover":
+        need(plan.get("source_repository_current") == "ordaxsystems/ordax-os"
+             and plan.get("source_cutover_allowed") is False,
+             "premature Assistant owner cutover/activation")
+        need(not (root / "apps/assistant").exists() and not
+             (root / "apps/assistant").is_symlink(), "second Assistant source forbidden")
+    else:
+        need(source_state == "ordax-apps-canonical"
+             and plan.get("source_repository_current") == "ordaxsystems/ordax-apps"
+             and plan.get("source_path_current") == "apps/assistant"
+             and plan.get("source_cutover_allowed") is True,
+             "inconsistent canonical Assistant source owner")
+        gate_a = plan.get("gate_a_platform_commit")
+        handoff = plan.get("source_cutover", {})
+        gate_b = plan.get("gate_b", {})
+        need(isinstance(gate_a, str) and SHA1.fullmatch(gate_a)
+             and handoff.get("platform_absence_proven_at") == gate_a
+             and handoff.get("dual_source_allowed") is False
+             and gate_b.get("platform_absence_proven") is True
+             and gate_b.get("app_source_authority") == "ordaxsystems/ordax-apps"
+             and gate_b.get("signed_distribution_verified") is False
+             and gate_b.get("native_install_verified") is False
+             and gate_b.get("rollback_verified") is False,
+             "Assistant Gate A proof or unsigned delivery safety is missing")
     need(snap.get("authority") == "none" and SHA1.fullmatch(str(snap.get("commit")))
          and snap.get("repository") == "ordaxsystems/ordax-os"
          and plan.get("source_snapshot", {}).get("commit") == snap["commit"],
@@ -195,6 +215,14 @@ def audit(root=ROOT, source_root=None, sdk_root=None,
         "system/apps/assistant/version.mjs"}, "app manifest inputs changed")
     nonmanifest = [x["target"] for x in rows if x["operation"] not in MANIFEST_OPS]
     need(len(nonmanifest) == len(set(nonmanifest)), "two owners for one target")
+    materialized = source_state == "ordax-apps-canonical"
+    if materialized:
+        for target in nonmanifest + ["apps/assistant/app.json"]:
+            file = root / safe_path(target)
+            need(file.is_file() and not file.is_symlink(),
+                 "missing canonical Assistant source: " + target)
+        need(not (root / "apps/assistant/ai/manifest.mjs").exists(),
+             "second Assistant AI manifest owner forbidden")
     target_sdk = plan.get("target_sdk", {})
     need(target_sdk.get("minimum_bundle_version") == "1.18.0"
          and target_sdk.get("lock_file") == "platform-sdk.lock.json"
@@ -365,7 +393,7 @@ def audit(root=ROOT, source_root=None, sdk_root=None,
         "platform_gate_a_main_proven":
             platform["platform_gate_a_main_proven"] if platform else False,
         "platform_main_observation": platform,
-        "app_source_materialized": False,
+        "app_source_materialized": materialized,
         "signed_install_verified": False,
         "rollback_verified": False,
         "gate_b_allowed_now": False,
