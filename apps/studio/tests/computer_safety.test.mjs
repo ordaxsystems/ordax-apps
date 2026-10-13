@@ -52,7 +52,6 @@ function harness({managed=false,saveOk=true,revokeOk=true,activityHost=false,act
     },
     document:{readyState:'loading',visibilityState:'visible',addEventListener:()=>{},getElementById:()=>null,querySelector:()=>null},
     window:windowObject,
-    setStatus:value=>statuses.push(value),
     setTimeout:()=>{},
   });
   vm.runInContext(source,context);
