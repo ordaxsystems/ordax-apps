@@ -184,7 +184,7 @@ export class DexSubset {
     const info = this.methodInfo(index);
     if (encoded.access & 0x100) fail('NATIVE_UNAVAILABLE', 'JNI native method has no authorized implementation');
     if ((encoded.access & 0x400) || !encoded.codeOff) fail('DEX_METHOD', 'Abstract or missing code item');
-    const supported = type => type === 'I' || /^L[A-Za-z0-9_/$]+;$/.test(type);
+    const supported = type => type === 'I' || type === '[I' || /^L[A-Za-z0-9_/$]+;$/.test(type);
     if (!info.proto.params.every(supported) ||
         !(['I', 'V'].includes(info.proto.result) || supported(info.proto.result))) {
       fail('DEX_TYPE', 'Only int32, references and void method signatures are supported');
@@ -211,7 +211,8 @@ export class DexSubset {
     const sizeByOpcode = new Map([
       [0x01, 1], [0x07, 1], [0x0a, 1], [0x0c, 1],
       [0x0e, 1], [0x0f, 1], [0x11, 1],
-      [0x12, 1], [0x13, 2], [0x14, 3], [0x22, 2], [0x52, 2], [0x59, 2],
+      [0x12, 1], [0x13, 2], [0x14, 3], [0x21, 1], [0x22, 2], [0x23, 2],
+      [0x44, 2], [0x4b, 2], [0x52, 2], [0x59, 2],
       [0x28, 1], [0x29, 2], [0x38, 2],
       [0x6e, 3], [0x70, 3], [0x71, 3], [0x90, 2], [0x91, 2], [0x92, 2], [0xd8, 2],
     ]);
@@ -255,7 +256,8 @@ export class DexSubset {
     const heap = new GuestHeap({ maxObjects });
     const budget = { remaining: instructionLimit };
     const value = this.invoke(entry, args, budget, 0, heap);
-    if (this.methodInfo(entry).proto.result.startsWith('L')) {
+    if (this.methodInfo(entry).proto.result !== 'I' &&
+        this.methodInfo(entry).proto.result !== 'V') {
       fail('DEX_REFERENCE', 'Guest references cannot escape the method-only host boundary');
     }
     return Object.freeze({ format: 'dalvik-object-subset', value,
@@ -323,7 +325,9 @@ export class DexSubset {
           if (pendingType !== 'I') fail('DEX_RESULT', 'int result unavailable');
           putInt(a, pending); pendingType = null; pending = null; break;
         case 0x0c: // move-result-object vAA
-          if (!pendingType?.startsWith('L')) fail('DEX_RESULT', 'object result unavailable');
+          if (!pendingType || !(pendingType.startsWith('L') || pendingType === '[I')) {
+            fail('DEX_RESULT', 'object result unavailable');
+          }
           putRef(a, pending); pendingType = null; pending = null; break;
         case 0x0e: // return-void
           if (item.info.proto.result !== 'V' || a !== 0) fail('DEX_TYPE', 'Invalid void return');
@@ -332,7 +336,9 @@ export class DexSubset {
           if (item.info.proto.result !== 'I') fail('DEX_TYPE', 'Return type mismatch');
           return getInt(a);
         case 0x11: // return-object vAA
-          if (!item.info.proto.result.startsWith('L')) fail('DEX_TYPE', 'Object return type mismatch');
+          if (!item.info.proto.result.startsWith('L') && item.info.proto.result !== '[I') {
+            fail('DEX_TYPE', 'Object return type mismatch');
+          }
           heap.lookup(getRef(a), item.info.proto.result);
           return getRef(a);
         case 0x12: { // const/4 (11n)
@@ -344,6 +350,21 @@ export class DexSubset {
         case 0x14: { // const (31i)
           const lower = word(pc++), upper = word(pc++);
           putInt(a, (lower | upper << 16) | 0); break;
+        }
+        case 0x21: // array-length vA, vB (12x)
+          putInt(a & 15, heap.arrayLength(getRef(a >>> 4))); break;
+        case 0x23: { // new-array vA, vB, type@CCCC (22c)
+          const type = this.type(word(pc++));
+          if (type !== '[I') fail('DEX_ARRAY_TYPE', 'Only int[] allocation implemented');
+          putRef(a & 15, heap.allocateIntArray(getInt(a >>> 4)));
+          break;
+        }
+        case 0x44: case 0x4b: { // aget/aput vAA, vBB, vCC (23x)
+          const operands = word(pc++);
+          const array = getRef(operands & 255), index = getInt(operands >>> 8);
+          if (op === 0x44) putInt(a, heap.getIntArray(array, index));
+          else heap.setIntArray(array, index, getInt(a));
+          break;
         }
         case 0x22: { // new-instance vAA, type@BBBB (21c)
           const typeIdx = word(pc++);
