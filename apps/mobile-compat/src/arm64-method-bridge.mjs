@@ -1,6 +1,7 @@
 // Trusted-host, fail-closed bridge from bounded Dalvik int32 calls to
 // separately bounded native AArch64 *instructions*. This is NOT JNI.
-// No JNIEnv, jobject, pointers, dynamic symbol loading or Android services.
+// JNIEnv is instantiated in the isolated AArch64 guest process for opted-in
+// JNI calls; no host pointers, general jobject model, dynamic symbols or Android services.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
