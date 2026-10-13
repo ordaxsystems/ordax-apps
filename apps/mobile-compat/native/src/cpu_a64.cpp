@@ -41,6 +41,27 @@ void CpuA64::set_guest_regions(std::span<const GuestRegion> regions) {
     guest_regions_.assign(regions.begin(), regions.end());
     protected_guest_ = true;
 }
+void CpuA64::install_host_readonly(std::uint64_t address,
+                                   std::span<const std::uint8_t> bytes) {
+    if (!protected_guest_ || bytes.empty() || address % 8 != 0 ||
+        bytes.size() > 4096 || guest_regions_.size() >= 64) {
+        throw GuestFault("Invalid trusted host memory mapping");
+    }
+    assert_range(address, bytes.size());
+    for (const auto& region : guest_regions_) {
+        if (address < region.address + region.length &&
+            region.address < address + bytes.size()) {
+            throw GuestFault("Host JNI data overlaps guest memory mapping");
+        }
+    }
+    // Trusted-only image staging: not an exposed guest memory write.
+    load(address, bytes);
+    guest_regions_.push_back({address, bytes.size(), 4});
+}
+void CpuA64::set_host_call(HostCall call) {
+    if (!protected_guest_ || !call) throw GuestFault("Host callback requires protected guest");
+    host_call_ = std::move(call);
+}
 void CpuA64::require_permission(std::uint64_t address, std::size_t count,
                                  std::uint8_t flag) const {
     if (!protected_guest_) return; // bare instruction tests without an ELF
@@ -139,6 +160,18 @@ std::uint64_t CpuA64::run(std::uint64_t entry, std::uint64_t max_instructions) {
             const std::int32_t field = static_cast<std::int32_t>(opcode & 0x03ffffffu);
             const std::int64_t signed_offset = (field & (1 << 25)) ? std::int64_t(field) - (1 << 26) : field;
             next = pc + static_cast<std::uint64_t>(signed_offset * 4);
+        } else if ((opcode & 0xfffffc1fu) == 0xd63f0000u) { // BLR Xn
+            if (rn == 31) throw GuestFault("BLR XZR invalid");
+            const auto target = reg(rn);
+            store_register(30, pc + 4);
+            if ((target & 0xffff000000000000ull) == kHostCallPrefix) {
+                if (!host_call_) throw GuestFault("Unregistered JNI host call target");
+                std::array<std::uint64_t, 8> args{};
+                for (unsigned i = 0; i < args.size(); ++i) args[i] = reg(i);
+                store_register(0, host_call_(target, args));
+            } else {
+                next = target; // regular guest function call
+            }
         } else if ((opcode & 0xfffffc1fu) == 0xd65f0000u) { // RET Xn
             if (rn == 31) throw GuestFault("RET XZR invalid");
             next = reg(rn);
