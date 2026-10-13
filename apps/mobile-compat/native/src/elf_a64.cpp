@@ -254,6 +254,13 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
         }
         cpu.load(patch.destination, bytes);
     }
+    std::vector<GuestRegion> protections;
+    protections.reserve(segments.size());
+    for (const auto& segment : segments) {
+        protections.push_back({segment.address, segment.mem_bytes,
+                               static_cast<std::uint8_t>(segment.flags & 7u)});
+    }
+    cpu.set_guest_regions(protections);
     return {entry, segments.size(), bias, patches.size(), has_entry};
 }
 } // namespace
