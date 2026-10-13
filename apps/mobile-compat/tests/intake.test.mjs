@@ -259,6 +259,12 @@ test('real Android binary manifest resolves enabled alias to declared Activity',
     const direct = join(dir, 'manifested.apk');
     await writeFile(direct, base);
     assert.deepEqual(await resolveLaunchFromPackage(direct), expected);
+    const absent = join(dir, 'missing-application.apk');
+    await writeFile(absent, zip([
+      { name: 'classes.dex', bytes: classIndexDex(['com.instagram.android.RealActivity']) },
+      { name: 'AndroidManifest.xml', bytes: manifest },
+    ]));
+    await assert.rejects(resolveLaunchFromPackage(absent), { code: 'DEX_ENTRY_MISSING' });
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 test('binary launch manifest rejects disabled launchers and tampered headers', () => {
