@@ -9,6 +9,7 @@
 #include <fstream>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using ordax::mobile::CpuA64;
@@ -98,6 +99,46 @@ std::vector<std::uint8_t> consumerElf() {
     u64(b,0x480,0x3000); // GOT[0] relocation destination
     u64(b,0x488,(std::uint64_t(1)<<32)|1026); // R_AARCH64_JUMP_SLOT
     u64(b,0x490,0); // no addend for jump slot
+    return b;
+}
+std::uint32_t gnuHash(std::string_view name) {
+    std::uint32_t h = 5381;
+    for (unsigned char c : name) h = (h << 5) + h + c;
+    return h;
+}
+// Same provider/consumer and same ELF symbol resolution SSOT, but replace
+// the obsolete SysV DT_HASH with modern GNU DT_GNU_HASH metadata.
+std::vector<std::uint8_t> providerWithGnuHash(bool both_formats = false) {
+    auto b = providerElf();
+    const auto h = gnuHash("increment");
+    if (both_formats) {
+        program(b, 2, 2, 6, 0x320, 0x3020, 112);
+        dyn(b, 5, 0x6ffffef5, 0x3250);
+        dyn(b, 6, 0, 0);
+    } else {
+        dyn(b, 0, 0x6ffffef5, 0x3250);
+    }
+    u32(b, 0x550, 1); // nbuckets
+    u32(b, 0x554, 1); // symoffset
+    u32(b, 0x558, 1); // bloom_size
+    u32(b, 0x55c, 5); // bloom_shift
+    u64(b, 0x560, (std::uint64_t(1) << (h % 64)) |
+                   (std::uint64_t(1) << ((h >> 5) % 64)));
+    u32(b, 0x568, 1); // first global FUNC: symbol index 1
+    u32(b, 0x56c, h | 1u); // terminated GNU hash chain
+    return b;
+}
+std::vector<std::uint8_t> consumerWithGnuHash() {
+    auto b = consumerElf();
+    // Both symbols of this consumer are before symoffset=2 (undefined
+    // imported FUNCTION is not entered into GNU hash lookup).
+    dyn(b, 5, 0x6ffffef5, 0x31b0);
+    u32(b, 0x4b0, 1);
+    u32(b, 0x4b4, 2);
+    u32(b, 0x4b8, 1);
+    u32(b, 0x4bc, 5);
+    u64(b, 0x4c0, 0);
+    u32(b, 0x4c8, 0); // no defined hashes, nsyms=symoffset=2
     return b;
 }
 std::vector<std::uint8_t> consumerWithRelr(bool android) {
@@ -247,6 +288,49 @@ int main(int argc, char** argv) {
             (void)loadRelocatableElfA64(isolated, provider, 0x10000);
             reject([&] { (void)loadLinkedElfA64(isolated, corrupt, 0x30000, exports); });
         }
+    }
+    // Modern Android/ELF shared objects may have only GNU hash instead of
+    // DT_HASH. The same parsed dynsym and linked resolver must work with
+    // GNU-only provider and consumer, or with both matching hash formats.
+    for (bool both_formats : {false, true}) {
+        const auto provider_image = providerWithGnuHash(both_formats);
+        const auto client_image = consumerWithGnuHash();
+        CpuA64 cpu(0x100000);
+        (void)loadRelocatableElfA64(cpu, provider_image, 0x10000);
+        const auto exports = inspectGuestDynamicExports(
+            provider_image, 0x10000, "libprovider.so");
+        assert(exports.size() == 1 && exports[0].symbol == "increment");
+        assert(exports[0].address == 0x11000);
+        const auto linked = loadLinkedElfA64(cpu, client_image, 0x30000, exports);
+        assert(linked.relative_relocations == 1);
+        cpu.set_register(0, 40);
+        assert(cpu.run(linked.entry, 40) == 42);
+    }
+    {
+        // Untrusted or inconsistent GNU hash cannot infer arbitrary symtab
+        // bounds, and may not poison the guest CPU on failed loading.
+        const auto correct = providerWithGnuHash();
+        for (unsigned kind = 0; kind < 7; ++kind) {
+            auto bad = correct;
+            switch (kind) {
+                case 0: u32(bad, 0x550, 0); break;      // no buckets
+                case 1: u32(bad, 0x554, 0); break;      // no symbol offset
+                case 2: u32(bad, 0x558, 3); break;      // non-power-of-two bloom
+                case 3: u32(bad, 0x55c, 64); break;     // bad bloom shift
+                case 4: u32(bad, 0x568, 4096); break;  // unbounded bucket
+                case 5: u32(bad, 0x56c, 0); break;      // unterminated chain
+                case 6: u32(bad, 0x568, 0xffffffffu); break;
+            }
+            CpuA64 cpu(0x100000);
+            reject([&] {
+                (void)loadRelocatableElfA64(cpu, bad, 0x10000);
+            });
+            (void)loadRelocatableElfA64(cpu, correct, 0x10000);
+        }
+        auto inconsistent = providerWithGnuHash(true);
+        u32(inconsistent, 0x424, 3); // SysV nchain disagrees with GNU hash
+        CpuA64 cpu(0x100000);
+        reject([&] { (void)loadRelocatableElfA64(cpu, inconsistent, 0x10000); });
     }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
