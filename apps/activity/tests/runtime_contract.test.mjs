@@ -5,6 +5,7 @@ import { projectPersonalActivitySnapshot } from "../src/view-model.mjs";
 import { validateComponentRuntime } from "../src/sdk/contracts/component-runtime.mjs";
 import { assertPersonalApprovalConsent } from "../src/sdk/contracts/personal-approval-consent.mjs";
 import { assertPersonalActivityExportPort } from "../src/sdk/contracts/personal-activity-export.mjs";
+import { translateActivityMessage } from "../src/i18n/messages.mjs";
 
 function snapshot(ownerKind = "device", ownerId = null) {
   return {
@@ -96,4 +97,10 @@ test("Activity approval and export actions require injected typed host ports", (
   assert.throws(() => assertPersonalActivityExportPort({
     schema: "ordax.personal-activity-export-port/1",
   }), /export port/);
+});
+
+test("Activity UI owns localized copy, while the host chooses the current locale", () => {
+  assert.equal(translateActivityMessage("pt-BR", "activity.title"), "Trabalho e resultados");
+  assert.equal(translateActivityMessage("en-US", "activity.title"), "Work and results");
+  assert.throws(() => translateActivityMessage("en-US", "activity.unknown-key"), /Unknown Activity localization key/);
 });

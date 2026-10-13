@@ -3,6 +3,7 @@ import { assertPersonalActivityExportPort } from "../sdk/contracts/personal-acti
 import { PERSONAL_ORDAX_RUNTIME_SCHEMA } from "../sdk/contracts/personal-ordax-store.mjs";
 import { assertSurfaceRenderLifecycle } from "../sdk/contracts/surface-render-lifecycle.mjs";
 import { projectPersonalActivitySnapshot } from "../view-model.mjs";
+import { translateActivityMessage } from "../i18n/messages.mjs";
 
 const EXTENSION_SELECTOR = '[data-app-extension="personal-activity"]';
 const TERMINAL_STATES = new Set(["completed", "failed", "cancelled"]);
@@ -76,7 +77,9 @@ export function mountPersonalActivityControls(
     throw new TypeError("Activity export requires a host-owned document serializer");
   }
   const lifecycle = assertSurfaceRenderLifecycle(surfaceLifecycle);
-  const t = lifecycle.localization.translate;
+  const t = (key, params = {}) => key.startsWith("activity.")
+    ? translateActivityMessage(lifecycle.localization.getLocale(), key, params)
+    : lifecycle.localization.translate(key, params);
   const documentObject = root.ownerDocument;
   let destroyed = false;
   let draft = "";

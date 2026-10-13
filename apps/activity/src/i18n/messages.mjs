@@ -185,3 +185,23 @@ export const ACTIVITY_ENGLISH_MESSAGES = Object.freeze({
   "activity.state.failed": "Failed",
   "activity.state.cancelled": "Cancelled",
 });
+
+/** App-scoped localization: host selects locale; Activity owns its own strings. */
+export function translateActivityMessage(locale, key, params = {}) {
+  const messages = typeof locale === "string" && locale.toLowerCase().startsWith("pt")
+    ? ACTIVITY_SOURCE_MESSAGES
+    : ACTIVITY_ENGLISH_MESSAGES;
+  if (!Object.hasOwn(messages, key)) {
+    throw new TypeError("Unknown Activity localization key: " + key);
+  }
+  const template = messages[key];
+  if (typeof template !== "string") {
+    throw new TypeError("Activity localization message must be text");
+  }
+  return template.replace(/\\{([a-z][a-zA-Z0-9]*)\\}/g, (_, name) => {
+    if (!Object.hasOwn(params, name) || !["string", "number"].includes(typeof params[name])) {
+      throw new TypeError("Missing Activity localization value: " + name);
+    }
+    return String(params[name]);
+  });
+}
