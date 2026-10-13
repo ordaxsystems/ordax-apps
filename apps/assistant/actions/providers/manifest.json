@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "assistant",
+  "appVersion": "0.1.1",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "assistant-native",
+      "revision": "1",
+      "module": "actions/providers/assistant-native.mjs",
+      "sha256": "0677b5c59b8ae397dc19de7116eeeb98651845a22f583d441c4469c474b5bcc6"
+    }
+  ]
+}
