@@ -1,0 +1,41 @@
+name: Mobile Compat Cleanroom Foundation
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mobile-compat/**'
+      - '.github/workflows/mobile-compat-cleanroom.yml'
+  push:
+    branches:
+      - 'feature/mobile-compat-cleanroom-foundation-*'
+    paths:
+      - 'apps/mobile-compat/**'
+      - '.github/workflows/mobile-compat-cleanroom.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-package-intake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: node --test apps/mobile-compat/tests/intake.test.mjs
+      - run: node --check apps/mobile-compat/bin/mobile-compat.mjs
+  windows-package-intake:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - run: node --test apps/mobile-compat/tests/intake.test.mjs
+      - run: node --check apps/mobile-compat/bin/mobile-compat.mjs
