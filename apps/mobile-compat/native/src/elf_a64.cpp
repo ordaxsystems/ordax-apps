@@ -932,9 +932,12 @@ std::vector<GuestDynamicExport> inspectGuestDynamicExports(
         throw GuestFault("Unmapped guest symbol dynamic section");
     }
     const auto meta = readDynamicSymbols(elf, dynamic[0], segments);
-    if (!meta.needed.empty() || meta.has_rela) {
-        throw GuestFault("Guest provider must be self-contained for this linker subset");
+    if (!meta.needed.empty()) {
+        throw GuestFault("Guest provider must have no implicit DT_NEEDED dependencies");
     }
+    // A self-contained provider may use validated relative RELA/RELR/APS2
+    // for its own pointers. The same ELF loader authorizes all patches.
+    // Export inspection is not a separate relocation implementation.
     // Android API 23+ identifies shared libraries by DT_SONAME, not by a
     // host-chosen filename. Mismatches cannot become trusted DT_NEEDED links.
     if (meta.soname.empty() || meta.soname != library) {
