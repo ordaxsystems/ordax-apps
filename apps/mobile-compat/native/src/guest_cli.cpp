@@ -16,6 +16,8 @@
 #include <vector>
 
 int main(int argc, char** argv) {
+    const bool jni_onload_mode = argc == 3 &&
+                                  std::string(argv[1]) == "invoke-jni-onload-elf";
     const bool linked_mode = argc == 5 &&
                              std::string(argv[1]) == "link-two-elf";
     const bool old_mode = argc == 3 && std::string(argv[1]) == "run-elf";
@@ -28,13 +30,15 @@ int main(int argc, char** argv) {
     const bool jni_new_array_mode = argc == 3 &&
                                     std::string(argv[1]) == "invoke-jni-new-int-array-elf";
     if (!old_mode && !call_mode && !jni_mode &&
-        !jni_array_mode && !jni_new_array_mode && !linked_mode) {
+        !jni_array_mode && !jni_new_array_mode && !linked_mode &&
+        !jni_onload_mode) {
         std::cerr << "usage: ordax-mobile-guest run-elf <elf>\n"
                   << "   or: ordax-mobile-guest link-two-elf <provider.so> <client.so> <int32 x0>\n"
                   << "   or: ordax-mobile-guest invoke-i32-elf <elf> [int32 x0..x4]\n"
                   << "   or: ordax-mobile-guest invoke-jni-i32-elf <elf> [int32 x2..x6]\n"
                   << "   or: ordax-mobile-guest invoke-jni-int-array-elf <elf> <array-snapshot>\n"
-                  << "   or: ordax-mobile-guest invoke-jni-new-int-array-elf <elf>\n";
+                  << "   or: ordax-mobile-guest invoke-jni-new-int-array-elf <elf>\n"
+                  << "   or: ordax-mobile-guest invoke-jni-onload-elf <library.so>\n";
         return 2;
     }
     std::vector<std::int32_t> arguments;
@@ -117,13 +121,26 @@ int main(int argc, char** argv) {
             std::cerr << "Unsupported ELF kind\n";
             return 3;
         }
+        // The host passes either bounded jint values or a validated int[]
+        // snapshot; JNIEnv and JavaVM handles exist only in guest memory.
+        ordax::mobile::JniGuestEnvironment jni;
+        if (jni_onload_mode) {
+            if (kind != 3) throw ordax::mobile::GuestFault(
+                "JNI_OnLoad requires a dynamically linked ELF shared library");
+            jni.install(cpu);
+            // DT_INIT/DT_INIT_ARRAY must precede JNI_OnLoad and are driven
+            // explicitly by the trusted owner of this guest CPU instance.
+            ordax::mobile::runGuestInitializers(cpu, image, 100000);
+            const auto version = jni.runOnLoad(
+                cpu, image, bytes, file.filename().string(), 100000);
+            std::cout << "{\"schema\":\"ordax.mobile-compat.jni-onload/1\","
+                      << "\"version\":" << version << "}\n";
+            return 0;
+        }
         if (!image.has_entry) {
             std::cerr << "Shared library has no guest entrypoint; JNI/Android linking not available\n";
             return 4;
         }
-        // The host passes either bounded jint values or a validated int[]
-        // snapshot; JNIEnv and array handles exist only in guest address space.
-        ordax::mobile::JniGuestEnvironment jni;
         if (jni_mode || jni_array_mode || jni_new_array_mode) {
             jni.install(cpu);
             cpu.set_register(0, ordax::mobile::JniGuestEnvironment::kEnvAddress);
