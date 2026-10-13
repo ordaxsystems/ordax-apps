@@ -1,4 +1,5 @@
 #include "ordax/mobile/elf_a64.hpp"
+#include "ordax/mobile/android_aps2.hpp"
 
 #include <algorithm>
 #include <array>
@@ -148,7 +149,8 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
             case 10: case 11: case 0x6ffffff9:
             case 35: case 36: case 37:
             case 0x6fffe000: case 0x6fffe001: case 0x6fffe003:
-            case 0x6fffe005: break;
+            case 0x6fffe005:
+            case 0x60000011: case 0x60000012: break;
             default: throw GuestFault("Unsupported linked ELF dynamic tag");
         }
         if (!seen.insert(tag).second) throw GuestFault("Duplicate linked ELF dynamic tag");
@@ -202,8 +204,8 @@ std::vector<Relocation> parseLinkedRelocations(
     const std::vector<Segment>& segments, std::uint64_t bias,
     std::size_t memory_bytes, std::span<const GuestDynamicExport> providers) {
     const auto meta = readDynamicSymbols(elf, dynamic, segments);
-    if (meta.needed.empty() || !meta.has_rela || !meta.relasz) {
-        throw GuestFault("Linked ELF requires bounded explicit DT_NEEDED and RELA");
+    if (meta.needed.empty()) {
+        throw GuestFault("Linked ELF requires explicit DT_NEEDED dependencies");
     }
     for (const auto& needed : meta.needed) {
         if (std::none_of(providers.begin(), providers.end(), [&](const auto& p) {
@@ -212,8 +214,9 @@ std::vector<Relocation> parseLinkedRelocations(
             throw GuestFault("DT_NEEDED library was not explicitly loaded into guest");
         }
     }
-    const auto source = mappedFileOffset(meta.rela, meta.relasz, segments);
     std::vector<Relocation> patches;
+    if (!meta.relasz) return patches; // APS2-only DT_NEEDED consumers are valid.
+    const auto source = mappedFileOffset(meta.rela, meta.relasz, segments);
     const auto count = meta.relasz / kRelaBytes;
     if (count > 8192) throw GuestFault("Excessive linked ELF relocations");
     for (std::size_t i = 0; i < count; ++i) {
@@ -382,6 +385,67 @@ std::vector<Relocation> parseRelrRelocations(
     }
     return result;
 }
+// APS2 is not RELR. It encodes full RELA records using signed LEB128.
+// The decoder is pure; relocation permissions and symbol policy stay here.
+std::vector<Relocation> parseAndroidAps2Relocations(
+    std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
+    const std::vector<Segment>& segments, std::uint64_t bias,
+    std::size_t memory_bytes, std::span<const Relocation> other_patches) {
+    constexpr std::uint64_t kPackedRela = 0x60000011;
+    constexpr std::uint64_t kPackedRelaSz = 0x60000012;
+    bool found_pointer = false, found_size = false;
+    std::uint64_t pointer = 0, size = 0;
+    bool terminated = false;
+    for (std::size_t i = 0; i < dynamic.file_bytes; i += 16) {
+        const auto tag = get64(elf, dynamic.file_offset + i);
+        const auto value = get64(elf, dynamic.file_offset + i + 8);
+        if (!tag) { terminated = true; break; }
+        if (tag == kPackedRela) {
+            if (found_pointer) throw GuestFault("Duplicate DT_ANDROID_RELA");
+            found_pointer = true; pointer = value;
+        } else if (tag == kPackedRelaSz) {
+            if (found_size) throw GuestFault("Duplicate DT_ANDROID_RELASZ");
+            found_size = true; size = value;
+        }
+    }
+    if (!terminated) throw GuestFault("Unterminated APS2 dynamic table");
+    if (!found_pointer && !found_size) return {};
+    if (!found_pointer || !found_size || size < 6 || size > 65536) {
+        throw GuestFault("Invalid Android packed RELA metadata");
+    }
+    const auto pos = mappedFileOffset(pointer, static_cast<std::size_t>(size), segments);
+    const auto records = decodeAndroidAps2Rela(
+        elf.subspan(pos, static_cast<std::size_t>(size)));
+    if (records.size() + other_patches.size() > 8192) {
+        throw GuestFault("Combined Android packed RELA budget exceeded");
+    }
+    std::unordered_set<std::uint64_t> destinations;
+    destinations.reserve(records.size() + other_patches.size());
+    for (const auto& patch : other_patches) destinations.insert(patch.destination);
+    std::vector<Relocation> patches;
+    patches.reserve(records.size());
+    for (const auto& record : records) {
+        const auto sym = static_cast<std::uint32_t>(record.info >> 32);
+        const auto type = static_cast<std::uint32_t>(record.info);
+        // No silent host symbol resolution or JNI addresses. Additional
+        // packed external-symbol relocation types need a real Bionic ABI.
+        if (sym || type != kAarch64Relative) {
+            throw GuestFault("Unresolved or unsupported APS2 AArch64 relocation");
+        }
+        const auto destination = checkedAddress(
+            record.offset, bias, 8, memory_bytes);
+        if (destination % 8 || !inMapped(segments, destination, 8, kWritable) ||
+            !destinations.insert(destination).second) {
+            throw GuestFault("APS2 relocation is not writable, aligned or unique");
+        }
+        const auto value = bias + static_cast<std::uint64_t>(record.addend);
+        if (!inMapped(segments, value, 1)) {
+            throw GuestFault("APS2 relative addend points outside guest image");
+        }
+        patches.push_back({destination, value});
+    }
+    return patches;
+}
 std::vector<Relocation> parseRelativeRelocations(
     std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
     const std::vector<Segment>& segments, std::uint64_t bias,
@@ -405,6 +469,8 @@ std::vector<Relocation> parseRelativeRelocations(
             case 0x6fffe000: case 0x6fffe001: case 0x6fffe003:
             case 0x6fffe005:
                 break; // RELR parsed by one shared bounded decoder
+            case 0x60000011: case 0x60000012:
+                break; // Android APS2 stream checked by the shared ELF linker
             case 4: case 5: case 6: case 10: case 11:
                 // Self-contained ET_DYN providers may publish dynamic symbols,
                 // but must never load or resolve dependencies implicitly.
@@ -550,9 +616,15 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
             ? parseRelativeRelocations(elf, dynamic, segments, bias, cpu.memory_size())
             : parseLinkedRelocations(elf, dynamic, segments, bias,
                                      cpu.memory_size(), providers);
+        const auto aps2 = parseAndroidAps2Relocations(
+            elf, dynamic, segments, bias, cpu.memory_size(), patches);
+        if (aps2.size() > 8192 - patches.size()) {
+            throw GuestFault("Combined ELF APS2 relocations exceed budget");
+        }
+        patches.insert(patches.end(), aps2.begin(), aps2.end());
         const auto relr = parseRelrRelocations(
             elf, dynamic, segments, bias, cpu.memory_size(), patches);
-        if (patches.size() > 8192 - relr.size()) {
+        if (relr.size() > 8192 - patches.size()) {
             throw GuestFault("Combined ELF relocations exceed budget");
         }
         patches.insert(patches.end(), relr.begin(), relr.end());
