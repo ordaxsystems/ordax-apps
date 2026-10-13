@@ -94,6 +94,12 @@ O CTest inclui `mobile-a64-cross-elf-jump-slot-proof` e
 `mobile-linked-elf-files-run`, executados em Linux e Windows e
 acompanhados de negativas explícitas para símbolos não resolvidos,
 sobreposição de páginas e tipos de relocação desconhecidos.
+A prova `mobile-a64-cross-elf-jump-slot-proof` também exercita o
+cenário combinado **DT_NEEDED + JUMP_SLOT externo + APS2 relativo**
+na biblioteca consumidora, com testes negativos de colisão de relocation,
+tipo de símbolo não suportado e escrita em segmento RX.
+O teste `mobile-a64-aps2-format-and-bounds-proof` cobre o formato
+SLEB128, grupos, bitmaps, limites e entrada malformada.
 
 Há também `mobile-jni-table-abi-proof`, `mobile-dex-to-jni-aarch64-bridge`
 e `mobile-dex-jni-array-roundtrip` / `mobile-dex-jni-new-array-roundtrip`,
