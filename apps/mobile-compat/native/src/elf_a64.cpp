@@ -47,6 +47,7 @@ struct Segment {
 struct DynamicSection {
     std::size_t file_offset;
     std::size_t file_bytes;
+    std::uint64_t vaddr;
 };
 struct Relocation {
     std::uint64_t destination;
@@ -140,7 +141,7 @@ std::vector<Relocation> parseRelativeRelocations(
             throw GuestFault("Relocation requires unresolved Android symbol or type");
         }
         const auto destination = checkedAddress(target, bias, 8, memory_bytes);
-        if (!inMapped(segments, destination, 8, kWritable)) {
+        if (destination % 8 != 0 || !inMapped(segments, destination, 8, kWritable)) {
             throw GuestFault("Relocation destination is not a writable PT_LOAD");
         }
         // ELF64 r_addend is signed. Two's complement arithmetic here is
@@ -196,7 +197,7 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
                 filesz > 8192 || dynamic_sections.size() != 0) {
                 throw GuestFault("Invalid or repeated PT_DYNAMIC");
             }
-            dynamic_sections.push_back({static_cast<std::size_t>(off), static_cast<std::size_t>(filesz)});
+            dynamic_sections.push_back({static_cast<std::size_t>(off), static_cast<std::size_t>(filesz), vaddr});
             continue;
         }
         if (type != kLoad) continue;
@@ -228,7 +229,13 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
 
     std::vector<Relocation> patches;
     if (!dynamic_sections.empty()) {
-        patches = parseRelativeRelocations(elf, dynamic_sections.front(), segments, bias, cpu.memory_size());
+        const auto& dynamic = dynamic_sections.front();
+        if (mappedFileOffset(dynamic.vaddr, dynamic.file_bytes, segments) != dynamic.file_offset ||
+            !inMapped(segments, checkedAddress(dynamic.vaddr, bias, dynamic.file_bytes, cpu.memory_size()),
+                      dynamic.file_bytes)) {
+            throw GuestFault("PT_DYNAMIC is not backed by the mapped guest image");
+        }
+        patches = parseRelativeRelocations(elf, dynamic, segments, bias, cpu.memory_size());
     }
 
     // No guest mutation until every header, segment, relocation and entry is
