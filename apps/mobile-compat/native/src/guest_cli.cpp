@@ -1,5 +1,6 @@
 // Developer host for the bounded guest CPU, not an Android app launcher.
 #include "ordax/mobile/elf_a64.hpp"
+#include "ordax/mobile/jni_guest.hpp"
 
 #include <bit>
 #include <charconv>
@@ -17,13 +18,16 @@ int main(int argc, char** argv) {
     const bool old_mode = argc == 3 && std::string(argv[1]) == "run-elf";
     const bool call_mode = argc >= 3 && argc <= 8 &&
                            std::string(argv[1]) == "invoke-i32-elf";
-    if (!old_mode && !call_mode) {
+    const bool jni_mode = argc >= 3 && argc <= 8 &&
+                           std::string(argv[1]) == "invoke-jni-i32-elf";
+    if (!old_mode && !call_mode && !jni_mode) {
         std::cerr << "usage: ordax-mobile-guest run-elf <elf>\n"
-                  << "   or: ordax-mobile-guest invoke-i32-elf <elf> [int32 x0..x4]\n";
+                  << "   or: ordax-mobile-guest invoke-i32-elf <elf> [int32 x0..x4]\n"
+                  << "   or: ordax-mobile-guest invoke-jni-i32-elf <elf> [int32 x2..x6]\n";
         return 2;
     }
     std::vector<std::int32_t> arguments;
-    if (call_mode) {
+    if (call_mode || jni_mode) {
         for (int i = 3; i < argc; ++i) {
             const std::string arg(argv[i]);
             std::int32_t value = 0;
@@ -72,18 +76,26 @@ int main(int argc, char** argv) {
         }
         // Only typed integers cross the boundary: no guest object references,
         // JNI environment, raw pointers or untrusted callback addresses.
+        ordax::mobile::JniGuestEnvironment jni;
+        if (jni_mode) {
+            jni.install(cpu);
+            cpu.set_register(0, ordax::mobile::JniGuestEnvironment::kEnvAddress);
+            cpu.set_register(1, ordax::mobile::JniGuestEnvironment::kClassHandle);
+        }
         for (std::size_t i = 0; i < arguments.size(); ++i) {
-            cpu.set_register(static_cast<unsigned>(i),
+            cpu.set_register(static_cast<unsigned>(i + (jni_mode ? 2 : 0)),
                              static_cast<std::uint64_t>(static_cast<std::int64_t>(arguments[i])));
         }
         // Instruction and memory budgets are mandatory and cannot be removed
         // through command-line arguments.
         const auto result = cpu.run(image.entry, 100000);
-        if (call_mode) {
+        if (call_mode || jni_mode) {
             const auto value = std::bit_cast<std::int32_t>(
                 static_cast<std::uint32_t>(result));
-            std::cout << "{\"schema\":\"ordax.mobile-compat.i32-guest-call/1\","
-                      << "\"value\":" << value << "}\n";
+            std::cout << "{\"schema\":\""
+                      << (jni_mode ? "ordax.mobile-compat.jni-static-i32-call/1"
+                                   : "ordax.mobile-compat.i32-guest-call/1")
+                      << "\",\"value\":" << value << "}\n";
             return 0;
         }
         std::cout << "{\n"
