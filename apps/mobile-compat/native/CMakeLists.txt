@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 project(ordax_mobile_guest VERSION 0.1.0 LANGUAGES CXX)
 
-add_library(ordax_mobile_guest STATIC src/cpu_a64.cpp)
+add_library(ordax_mobile_guest STATIC src/cpu_a64.cpp src/elf_a64.cpp)
 target_include_directories(ordax_mobile_guest PUBLIC include)
 target_compile_features(ordax_mobile_guest PUBLIC cxx_std_20)
 if(MSVC)
