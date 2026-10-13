@@ -96,3 +96,19 @@ add_test(NAME mobile-dex-jni-array-roundtrip
                  "${ORDAX_JNI_ARRAY_FIXTURE}" jni-array)
 set_tests_properties(mobile-dex-jni-array-roundtrip PROPERTIES
     FIXTURES_REQUIRED mobile-jni-array-fixture)
+
+# JNI-created jintArray return: native NewIntArray + SetIntArrayRegion →
+# opaque reference, validated snapshot and guest-owned Dalvik aget.
+set(ORDAX_JNI_RETURN_ARRAY_FIXTURE "${CMAKE_CURRENT_BINARY_DIR}/mobile-jni-return-int-array.elf")
+add_test(NAME mobile-jni-return-array-elf-fixture
+         COMMAND ordax_mobile_jni_guest_tests --emit-jni-new-array-fixture
+                 "${ORDAX_JNI_RETURN_ARRAY_FIXTURE}")
+set_tests_properties(mobile-jni-return-array-elf-fixture PROPERTIES
+    FIXTURES_SETUP mobile-jni-return-array-fixture)
+add_test(NAME mobile-dex-jni-new-array-roundtrip
+         COMMAND "${ORDAX_NODE_EXECUTABLE}"
+                 "${CMAKE_CURRENT_SOURCE_DIR}/../tests/native-bridge.test.mjs"
+                 "$<TARGET_FILE:ordax-mobile-guest>"
+                 "${ORDAX_JNI_RETURN_ARRAY_FIXTURE}" jni-new-array)
+set_tests_properties(mobile-dex-jni-new-array-roundtrip PROPERTIES
+    FIXTURES_REQUIRED mobile-jni-return-array-fixture)
