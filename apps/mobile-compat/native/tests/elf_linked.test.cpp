@@ -205,6 +205,70 @@ std::vector<std::uint8_t> onLoadElf() {
     for (std::size_t i=0; i<code.size(); ++i) u32(b, 0x220 + i*4, code[i]);
     return b;
 }
+// Execute a real JNINativeMethod[] registration from AArch64 guest code.
+// Host declarations are the existing DEX authority; guest function pointers
+// can only refer to the currently loaded ELF RX region.
+std::vector<std::uint8_t> onLoadRegisterElf() {
+    auto b = onLoadElf();
+    program(b, 2, 2, 6, 0x320, 0x3020, 160); // 10 DT_ entries
+    const std::string export_strings("\0JNI_OnLoad\0libprovider.so\0", 27);
+    std::copy(export_strings.begin(), export_strings.end(), b.begin()+0x500);
+    dyn(b, 1, 5, 0x3200); // move only dynstr, same ELF loader
+    dyn(b, 6, 7, 0x3170); // DT_RELA
+    dyn(b, 7, 8, 72);     // 3 R_AARCH64_RELATIVE records
+    dyn(b, 8, 9, 24);
+    dyn(b, 9, 0, 0);
+    // Three pointers inside JNINativeMethod at virtual 0x3260.
+    for (const auto [i,addend] : std::vector<std::pair<std::size_t,std::uint64_t>>{
+        {0,0x32c0}, {1,0x32d0}, {2,0x10b0}}) {
+        const auto p=0x470 + i*24;
+        u64(b,p,0x3260 + i*8);
+        u64(b,p+8,1027);
+        u64(b,p+16,addend);
+    }
+    const std::string clazz("com/ordax/Native");
+    const std::string method("nativeAdd");
+    const std::string signature("(I)I");
+    std::copy(clazz.begin(),clazz.end(),b.begin()+0x5a0);
+    std::copy(method.begin(),method.end(),b.begin()+0x5c0);
+    std::copy(signature.begin(),signature.end(),b.begin()+0x5d0);
+    // JNI_OnLoad: JavaVM->GetEnv then JNIEnv->FindClass and
+    // JNIEnv->RegisterNatives with the relocated JNINativeMethod table.
+    const std::array<std::uint32_t, 28> code = {
+        0x910003d3, // 0: preserve LR
+        0x91000014, // 1: preserve JavaVM
+        0xf9400009, // 2: ldr x9,[x0] VM table
+        0xf9401929, // 3: ldr x9,[x9,#48] GetEnv
+        0xd0000001, // 4: adrp x1,RW at 0x3000
+        0xd28000c2, // 5: movz x2,#6
+        0xf2a00022, // 6: movk x2,#1,lsl#16
+        0xd63f0120, // 7: blr GetEnv
+        0xd0000015, // 8: adrp x21,RW at 0x3000
+        0xf94002b5, // 9: ldr x21,[x21] JNIEnv*
+        0x910002a0, // 10: add x0,x21,#0
+        0xf9400009, // 11: ldr x9,[x0] JNI table
+        0xf9401929, // 12: ldr x9,[x9,#48] FindClass slot 6
+        0xd0000001, // 13: adrp x1,RW at 0x3000
+        0x910a8021, // 14: add x1,x1,#0x2a0 class string
+        0xd63f0120, // 15: blr FindClass
+        0x91000001, // 16: add x1,x0,#0 (jclass)
+        0x910002a0, // 17: add x0,x21,#0 (JNIEnv)
+        0xf9400009, // 18: ldr x9,[x0] JNI table
+        0xf9435d29, // 19: ldr x9,[x9,#1720] RegisterNatives slot 215
+        0xd0000002, // 20: adrp x2,RW at 0x3000
+        0x91098042, // 21: add x2,x2,#0x260 methods
+        0xd2800023, // 22: movz x3,#1
+        0xd63f0120, // 23: blr RegisterNatives
+        0xd28000c0, // 24: movz x0,#6
+        0xf2a00020, // 25: movk x0,#1,lsl#16
+        0x9100027e, // 26: restore LR
+        0xd65f03c0, // 27: ret
+    };
+    for (std::size_t i=0;i<code.size();++i) u32(b,0x220+4*i,code[i]);
+    u32(b,0x2b0,0x91000840); // add x0,x2,#2
+    u32(b,0x2b4,0xd65f03c0);
+    return b;
+}
 std::vector<std::uint8_t> consumerWithRelr(bool android) {
     auto b = consumerElf();
     // The extra three dynamic tags need 208 bytes. Move dynstr to unused
@@ -550,6 +614,64 @@ int main(int argc, char** argv) {
         ordax::mobile::runGuestInitializers(cpu, image, 64);
         reject([&] { (void)env.runOnLoad(cpu, image, source, "libprovider.so", 1); });
         assert(image.jni_onload_started);
+    }
+    // Real AArch64 JNI_OnLoad executes FindClass and RegisterNatives using
+    // an ELF-owned, RELA-relocated JNINativeMethod table. The declaration
+    // allowlist is supplied by the trusted DEX owner, not guest JNI strings.
+    {
+        const auto source = onLoadRegisterElf();
+        CpuA64 cpu(0x800000);
+        auto image = loadRelocatableElfA64(cpu,source,0x10000);
+        JniGuestEnvironment env;
+        const std::array<ordax::mobile::JniDeclaredMethod,1> declared = {
+            ordax::mobile::JniDeclaredMethod{"nativeAdd","(I)I"}};
+        env.declareNativeClass("com/ordax/Native",declared);
+        env.install(cpu);
+        ordax::mobile::runGuestInitializers(cpu,image,64);
+        assert(env.runOnLoad(cpu,image,source,"libprovider.so",128) ==
+               JniGuestEnvironment::kVersion);
+        const auto& bindings=env.registeredMethods();
+        assert(bindings.size()==1);
+        assert(bindings[0].owner=="com/ordax/Native" &&
+               bindings[0].name=="nativeAdd" &&
+               bindings[0].signature=="(I)I" &&
+               bindings[0].guest_address==0x110b0);
+        cpu.set_register(0,JniGuestEnvironment::kEnvAddress);
+        cpu.set_register(1,JniGuestEnvironment::kClassHandle);
+        cpu.set_register(2,40);
+        assert(cpu.run(bindings[0].guest_address,32)==42);
+        reject([&] { (void)env.runOnLoad(cpu,image,source,"libprovider.so",128); });
+    }
+    // Reject mismatched host declarations, invalid ELF pointers and
+    // strings before committing any part of a JNI method registration.
+    for (unsigned kind=0;kind<7;++kind) {
+        auto source=onLoadRegisterElf();
+        const auto previous=source;
+        if (kind==0) source[0x5a0]='X'; // FindClass not present in DEX
+        if (kind==1) source[0x5c0]='X'; // method not declared native
+        if (kind==2) source[0x5d0]='X'; // wrong signature
+        if (kind==3) u64(source,0x4b0,0x3000); // fnPtr points to guest RW
+        if (kind==4) u64(source,0x4b0,0x200000); // outside image
+        if (kind==5) u32(source,0x220+22*4,0xd2800043); // nMethods 2; table contains invalid entry
+        // kind 6: trusted DEX owner has a different native signature.
+        CpuA64 cpu(0x800000);
+        auto image=loadRelocatableElfA64(cpu,source,0x10000);
+        JniGuestEnvironment env;
+        const std::array<ordax::mobile::JniDeclaredMethod,1> declared={
+            ordax::mobile::JniDeclaredMethod{
+                "nativeAdd",kind==6?"()I":"(I)I"}};
+        env.declareNativeClass("com/ordax/Native",declared);
+        env.install(cpu);
+        ordax::mobile::runGuestInitializers(cpu,image,64);
+        reject([&] {
+            (void)env.runOnLoad(cpu,image,source,"libprovider.so",128);
+        });
+        assert(image.jni_onload_started);
+        assert(env.registeredMethods().empty());
+        reject([&] {
+            (void)env.runOnLoad(cpu,image,source,"libprovider.so",128);
+        });
+        (void)previous;
     }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
