@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DexSubset } from '../src/dex-vm.mjs';
+import { GuestHeap } from '../src/guest-heap.mjs';
 import { NativeMethodBoundary } from '../src/native-boundary.mjs';
 import { runDexMethodFromPackage, requireExecutionSupport } from '../src/inspect.mjs';
 
@@ -365,4 +366,38 @@ test('object bytecode cannot forge object references, mutate unrelated fields or
   assert.throws(
     () => new DexSubset(sealDex(nullAccess)).execute('Ltest/Arithmetic;', 'makeValue', [2]),
     { code: 'DEX_NULL' });
+});
+
+
+test('guest constructors must complete before virtual calls, inheritance stays fail-closed', () => {
+  const earlyVirtual = objectDexFixture();
+  // Turn invoke-direct constructor call into invoke-virtual getter on an
+  // uninitialized receiver: method#6, one argument, register v0.
+  earlyVirtual.writeUInt16LE(0x106e, 0x680 + 16 + 2 * 2);
+  earlyVirtual.writeUInt16LE(6, 0x680 + 16 + 3 * 2);
+  earlyVirtual.writeUInt16LE(0, 0x680 + 16 + 4 * 2);
+  assert.throws(() => new DexSubset(sealDex(earlyVirtual))
+    .execute('Ltest/Arithmetic;', 'makeValue', [5]), { code: 'DEX_INIT' });
+
+  const inherited = objectDexFixture();
+  inherited.writeUInt32LE(1, 0xd8 + 8); // unsupported self/superclass layout
+  assert.throws(() => new DexSubset(sealDex(inherited))
+    .execute('Ltest/Arithmetic;', 'makeValue', [5]), { code: 'DEX_CLASS' });
+});
+test('guest object quotas, initialization and field ownership are enforced', () => {
+  const heap = new GuestHeap({ maxObjects: 1 });
+  assert.throws(() => heap.allocate('Ltest/Box;', Array.from({length: 129}, (_, i) => i)),
+    { code: 'HEAP_LIMIT' });
+  const handle = heap.allocate('Ltest/Box;', [1]);
+  assert.equal(heap.readField(handle, 'Ltest/Box;', 1), 0);
+  assert.throws(() => heap.requireInitialized(handle, 'Ltest/Box;'), { code: 'DEX_INIT' });
+  heap.writeField(handle, 'Ltest/Box;', 1, -42);
+  heap.markInitialized(handle, 'Ltest/Box;');
+  heap.requireInitialized(handle, 'Ltest/Box;');
+  assert.equal(heap.readField(handle, 'Ltest/Box;', 1), -42);
+  assert.throws(() => heap.readField(handle, 'Ltest/Other;', 1), { code: 'DEX_REFERENCE' });
+  assert.throws(() => heap.readField(handle, 'Ltest/Box;', 3), { code: 'DEX_FIELD' });
+  assert.throws(() => heap.allocate('Ltest/Box;', []), { code: 'HEAP_LIMIT' });
+  assert.throws(() => heap.lookup(0), { code: 'DEX_NULL' });
+  assert.throws(() => heap.lookup(12345), { code: 'DEX_REFERENCE' });
 });
