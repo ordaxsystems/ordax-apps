@@ -315,7 +315,7 @@ function objectDexFixture() {
     b.writeUInt32LE(opcodes.length, at + 12);
     opcodes.forEach((op, i) => b.writeUInt16LE(op, at + 16 + i * 2));
   }
-  code(0x640, 2, 2, 0, [0x1059, 0, 0x000e]);
+  code(0x640, 2, 2, 0, [0x0159, 0, 0x000e]); // iput v1,v0, field@0
   code(0x680, 2, 1, 2, [
     0x0022, 1,            // new-instance v0, Ltest/Arithmetic;
     0x2070, 3, 0x0010,   // invoke-direct {v0, v1}, <init>(I)V
