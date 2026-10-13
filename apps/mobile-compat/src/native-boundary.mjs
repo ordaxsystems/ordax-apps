@@ -7,7 +7,7 @@ import { PackageError } from './zip.mjs';
 
 const ownerPattern = /^L[A-Za-z0-9_/$]+;$/;
 const namePattern = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-const signaturePattern = /^\((?:I|\[I){0,5}\)(?:I|V)$/;
+const signaturePattern = /^\((?:I|\[I){0,5}\)(?:I|V|\[I)$/;
 const isInt32 = value => Number.isInteger(value) &&
   value >= -2147483648 && value <= 2147483647;
 function signatureOf(proto) {
@@ -66,6 +66,15 @@ export class NativeMethodBoundary {
     }
     if (result instanceof Promise) {
       throw new PackageError('NATIVE_RESULT', 'Asynchronous native calls are unsupported');
+    }
+    if (proto.result === '[I') {
+      if (!heap || args.length !== 0 || !Array.isArray(result) ||
+          result.length > 1024 || !result.every(isInt32)) {
+        throw new PackageError('NATIVE_RESULT', 'JNI returned invalid or unsupported int[]');
+      }
+      const reference = heap.allocateIntArray(result.length);
+      heap.commitIntArray(reference, result);
+      return reference;
     }
     if (proto.result === 'V') {
       if (result !== undefined && result !== null) {
