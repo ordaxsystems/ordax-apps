@@ -179,13 +179,19 @@ std::uint64_t CpuA64::run(std::uint64_t entry, std::uint64_t max_instructions) {
             const unsigned shift = ((opcode >> 21) & 3u) * 16u;
             const std::uint64_t mask = std::uint64_t(0xffffu) << shift;
             store_register(rd, (reg(rd) & ~mask) | (std::uint64_t((opcode >> 5) & 0xffffu) << shift));
-        } else if ((opcode & 0x9f000000u) == 0x90000000u) { // ADRP Xd, PC-relative page
+        } else if ((opcode & 0x9f000000u) == 0x90000000u ||
+                   (opcode & 0x9f000000u) == 0x10000000u) { // ADRP or ADR
+            // Both formats share the same signed 21-bit immediate. ADR
+            // offsets from PC in bytes; ADRP offsets from PC's page in 4K
+            // pages. LLVM/LLD may relax ADRP+ADD to a single ADR.
             const std::uint32_t imm = ((opcode >> 29) & 3u) |
                                       (((opcode >> 5) & 0x7ffffu) << 2);
-            const std::int64_t pages = (imm & (1u << 20))
+            const std::int64_t signed_imm = (imm & (1u << 20))
                 ? std::int64_t(imm) - (1ll << 21) : std::int64_t(imm);
-            const auto page = pc & ~std::uint64_t(4095);
-            store_register(rd, page + static_cast<std::uint64_t>(pages * 4096));
+            const bool page_relative = (opcode & 0x80000000u) != 0;
+            const auto base = page_relative ? (pc & ~std::uint64_t(4095)) : pc;
+            const auto delta = page_relative ? signed_imm * 4096 : signed_imm;
+            store_register(rd, base + static_cast<std::uint64_t>(delta));
         } else if ((opcode & 0xff200000u) == 0xaa000000u) { // ORR Xd,Xn,Xm,LSL #imm
             // MOV Xd,Xm is the architectural alias ORR Xd,XZR,Xm.
             // Respect XZR on both inputs and destination; no host pointer
