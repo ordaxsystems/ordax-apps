@@ -72,6 +72,7 @@ int main() {
         padded.push_back(0);
         assert(decodeAndroidAps2Rela(padded).size() == 1);
     }
+    std::size_t corpus_case = 0;
     for (const auto& invalid : {
         stream({0, 0}),
         stream({8193, 0}),
@@ -83,7 +84,15 @@ int main() {
         stream({1, 0, 1, 15, -8, 1027, 0x1000}),
         stream({2, 0x7fffffffffffffffLL, 2, 15, 8, 1027, 0x1000})
     }) {
-        reject([&] { (void)decodeAndroidAps2Rela(invalid); });
+        bool rejected = false;
+        try { (void)decodeAndroidAps2Rela(invalid); }
+        catch (const GuestFault&) { rejected = true; }
+        if (!rejected) {
+            std::cerr << "APS2 malformed corpus unexpectedly accepted case #"
+                      << corpus_case << '\n';
+        }
+        assert(rejected);
+        ++corpus_case;
     }
     {
         auto bad = stream({1, 0, 1, 15, 8, 1027, 0x1000});
