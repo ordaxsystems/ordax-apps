@@ -141,6 +141,36 @@ std::vector<std::uint8_t> consumerWithGnuHash() {
     u32(b, 0x4c8, 0); // no defined hashes, nsyms=symoffset=2
     return b;
 }
+std::vector<std::uint8_t> consumerWithPlt(bool gnu_hash = false) {
+    auto b = gnu_hash ? consumerWithGnuHash() : consumerElf();
+    // Real-world ELF places JUMP_SLOT entries in DT_JMPREL rather than
+    // mixing PLT records into the general DT_RELA relocation section.
+    dyn(b, 6, 23, 0x3180); // DT_JMPREL
+    dyn(b, 7, 2, 24);      // DT_PLTRELSZ: one Elf64_Rela
+    dyn(b, 8, 20, 7);      // DT_PLTREL = DT_RELA
+    return b;
+}
+std::vector<std::uint8_t> consumerWithPltAndRela(bool overlap) {
+    auto b = consumerWithPlt();
+    // General relative RELA and imported PLT JUMP_SLOT are separate tables
+    // validated by the same resolver and one RelocationPlan. The dynamic
+    // section expands and the string table is relocated without overlap.
+    std::copy(b.begin() + 0x3d0, b.begin() + 0x3d0 + 26,
+              b.begin() + 0x510);
+    program(b, 2, 2, 6, 0x320, 0x3020, 208);
+    dyn(b, 1, 5, 0x3210);
+    dyn(b, 6, 7, 0x31e0);       // DT_RELA at 0x4e0
+    dyn(b, 7, 8, 24);           // DT_RELASZ
+    dyn(b, 8, 9, 24);           // DT_RELAENT
+    dyn(b, 9, 23, overlap ? 0x31e0 : 0x3180);
+    dyn(b, 10, 2, 24);          // DT_PLTRELSZ
+    dyn(b, 11, 20, 7);          // DT_PLTREL
+    dyn(b, 12, 0, 0);
+    u64(b, 0x4e0, 0x3010);
+    u64(b, 0x4e8, 1027);
+    u64(b, 0x4f0, 0x1000);
+    return b;
+}
 std::vector<std::uint8_t> consumerWithRelr(bool android) {
     auto b = consumerElf();
     // The extra three dynamic tags need 208 bytes. Move dynstr to unused
@@ -331,6 +361,51 @@ int main(int argc, char** argv) {
         u32(inconsistent, 0x424, 3); // SysV nchain disagrees with GNU hash
         CpuA64 cpu(0x100000);
         reject([&] { (void)loadRelocatableElfA64(cpu, inconsistent, 0x10000); });
+    }
+    // Standard DT_JMPREL PLT records are resolved through the existing
+    // symbol/linking SSOT for either hash-table format.
+    for (bool gnu : {false, true}) {
+        const auto library = gnu ? providerWithGnuHash() : providerElf();
+        const auto client_image = consumerWithPlt(gnu);
+        CpuA64 cpu(0x100000);
+        (void)loadRelocatableElfA64(cpu, library, 0x10000);
+        const auto exports = inspectGuestDynamicExports(library, 0x10000, "libprovider.so");
+        const auto linked = loadLinkedElfA64(cpu, client_image, 0x30000, exports);
+        assert(linked.relative_relocations == 1);
+        cpu.set_register(0, 40);
+        assert(cpu.run(linked.entry, 40) == 42);
+
+        for (unsigned kind = 0; kind < 6; ++kind) {
+            auto bad = client_image;
+            if (kind == 0) dyn(bad, 8, 20, 17); // unsupported DT_PLTREL
+            if (kind == 1) dyn(bad, 7, 2, 25);  // nonmultiple of Elf64_Rela
+            if (kind == 2) dyn(bad, 6, 23, 0xffffffffffull); // unmapped
+            if (kind == 3) dyn(bad, 6, 0, 0);   // missing DT_JMPREL
+            if (kind == 4) u64(bad, 0x488, (std::uint64_t(1)<<32)|1025); // GLOB_DAT in PLT
+            if (kind == 5) u64(bad, 0x480, 0x1000); // guest RX page
+            CpuA64 rejected(0x100000);
+            (void)loadRelocatableElfA64(rejected, library, 0x10000);
+            reject([&] { (void)loadLinkedElfA64(rejected, bad, 0x30000, exports); });
+            const auto retry = loadLinkedElfA64(rejected, client_image, 0x30000, exports);
+            rejected.set_register(0, 40);
+            assert(rejected.run(retry.entry, 40) == 42);
+        }
+    }
+    {
+        const auto library = providerWithGnuHash();
+        CpuA64 cpu(0x100000);
+        (void)loadRelocatableElfA64(cpu, library, 0x10000);
+        const auto exports = inspectGuestDynamicExports(library, 0x10000, "libprovider.so");
+        const auto linked = loadLinkedElfA64(cpu, consumerWithPltAndRela(false),
+                                               0x30000, exports);
+        assert(linked.relative_relocations == 2);
+        assert(cpu.guest_read_i32(0x33010) == linked.entry);
+        cpu.set_register(0, 40);
+        assert(cpu.run(linked.entry, 40) == 42);
+        CpuA64 rejected(0x100000);
+        (void)loadRelocatableElfA64(rejected, library, 0x10000);
+        reject([&] { (void)loadLinkedElfA64(
+            rejected, consumerWithPltAndRela(true), 0x30000, exports); });
     }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
