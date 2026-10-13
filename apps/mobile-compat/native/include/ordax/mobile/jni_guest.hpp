@@ -78,6 +78,7 @@ private:
     std::vector<JniDeclaredMethod> declared_methods_;
     std::vector<JniRegisteredMethod> registered_methods_;
     LoadedGuestElf* registering_image_ = nullptr;
+    bool registration_getenv_succeeded_ = false;
     [[nodiscard]] std::uint64_t dispatchRegistration(
         std::uint64_t target, const std::array<std::uint64_t, 8>& args);
     [[nodiscard]] std::uint64_t dispatch(
