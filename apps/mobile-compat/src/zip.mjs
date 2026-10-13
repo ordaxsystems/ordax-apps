@@ -25,7 +25,8 @@ function checkName(name) {
   need(name.length > 0 && name.length <= 512, 'PATH', 'Invalid entry name length');
   need(!/[\u0000-\u001f\\]/u.test(name), 'PATH', 'Entry contains control or backslash');
   need(!name.startsWith('/') && !/^[A-Za-z]:/u.test(name), 'PATH', 'Entry uses absolute path');
-  need(!name.split('/').some(part => part === '..' || part === '.' || part === '' && name !== name.replace(/\/$/, '')), 'PATH', 'Entry contains traversal or empty component');
+  const parts = name.split('/');
+  need(!parts.some((part, i) => part === '..' || part === '.' || (part === '' && (i !== parts.length - 1 || !name.endsWith('/')))), 'PATH', 'Entry contains traversal or empty component');
 }
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -50,7 +51,7 @@ function directory(buffer, archiveSize) {
   const bytes = u32(buffer, eocd + 12);
   const offset = u32(buffer, eocd + 16);
   need(count !== 0xffff && bytes !== 0xffffffff && offset !== 0xffffffff, 'ZIP64', 'ZIP64 requires a separate validated implementation');
-  need(count <= MAX_ENTRIES && offset + bytes <= archiveSize && offset + bytes <= archiveSize - (buffer.length - eocd), 'BOUNDS', 'Directory outside archive');
+  need(bytes <= 16 * 1024 * 1024 && count <= MAX_ENTRIES && offset + bytes <= archiveSize && offset + bytes <= archiveSize - (buffer.length - eocd), 'BOUNDS', 'Directory outside archive');
   return { count, offset, bytes };
 }
 async function readExact(fh, position, length) {
