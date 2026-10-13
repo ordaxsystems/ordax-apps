@@ -147,7 +147,8 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
             case 4: case 5: case 6: case 7: case 8: case 9:
             case 10: case 11: case 0x6ffffff9:
             case 35: case 36: case 37:
-            case 0x6fffe000: case 0x6fffe001: case 0x6fffe003: break;
+            case 0x6fffe000: case 0x6fffe001: case 0x6fffe003:
+            case 0x6fffe005: break;
             default: throw GuestFault("Unsupported linked ELF dynamic tag");
         }
         if (!seen.insert(tag).second) throw GuestFault("Duplicate linked ELF dynamic tag");
@@ -276,6 +277,7 @@ std::vector<Relocation> parseRelrRelocations(
     constexpr std::uint64_t kAndroidRelr = 0x6fffe000;
     constexpr std::uint64_t kAndroidRelrSz = 0x6fffe001;
     constexpr std::uint64_t kAndroidRelrEnt = 0x6fffe003;
+    constexpr std::uint64_t kAndroidRelrCount = 0x6fffe005;
     bool generic = false, android = false, terminated = false;
     bool has_pointer = false, has_size = false, has_entry = false;
     std::uint64_t pointer = 0, size = 0, entry_size = 0;
@@ -286,6 +288,9 @@ std::vector<Relocation> parseRelrRelocations(
         const bool g = tag == kRelr || tag == kRelrSz || tag == kRelrEnt;
         const bool a = tag == kAndroidRelr ||
                        tag == kAndroidRelrSz || tag == kAndroidRelrEnt;
+        // Bionic ignores DT_ANDROID_RELRCOUNT; it is only an optional hint.
+        // Accept it without interpreting it as another relocation stream.
+        if (tag == kAndroidRelrCount) continue;
         if (!g && !a) continue;
         generic |= g; android |= a;
         if (generic && android) throw GuestFault("Mixed generic and Android RELR tags");
@@ -394,6 +399,7 @@ std::vector<Relocation> parseRelativeRelocations(
         switch (tag) {
             case 35: case 36: case 37:
             case 0x6fffe000: case 0x6fffe001: case 0x6fffe003:
+            case 0x6fffe005:
                 break; // RELR parsed by one shared bounded decoder
             case 4: case 5: case 6: case 10: case 11:
                 // Self-contained ET_DYN providers may publish dynamic symbols,
