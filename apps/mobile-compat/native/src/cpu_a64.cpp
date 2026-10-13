@@ -9,10 +9,11 @@ constexpr std::uint64_t kReturnToHost = std::numeric_limits<std::uint64_t>::max(
 constexpr std::size_t kMaximumMemory = 64u * 1024u * 1024u;
 }
 
-CpuA64::CpuA64(std::size_t memory_bytes) : memory_(memory_bytes) {
+CpuA64::CpuA64(std::size_t memory_bytes) {
     if (memory_bytes < 4096 || memory_bytes > kMaximumMemory) {
         throw GuestFault("Invalid guest memory allocation");
     }
+    memory_.resize(memory_bytes);
 }
 void CpuA64::assert_range(std::uint64_t address, std::size_t count) const {
     if (address > memory_.size() || count > memory_.size() - static_cast<std::size_t>(address)) {
@@ -93,9 +94,9 @@ std::uint64_t CpuA64::run(std::uint64_t entry, std::uint64_t max_instructions) {
             if ((opcode & 0x00400000u) != 0) store_register(rd, read64(address));
             else write64(address, reg(rd));
         } else if ((opcode & 0xfc000000u) == 0x14000000u) { // B immediate
-            const auto shifted = static_cast<std::int32_t>((opcode & 0x03ffffffu) << 6);
-            const auto signed_offset = shifted >> 6;
-            next = pc + static_cast<std::uint64_t>(std::int64_t(signed_offset) * 4);
+            const std::int32_t field = static_cast<std::int32_t>(opcode & 0x03ffffffu);
+            const std::int64_t signed_offset = (field & (1 << 25)) ? std::int64_t(field) - (1 << 26) : field;
+            next = pc + static_cast<std::uint64_t>(signed_offset * 4);
         } else if ((opcode & 0xfffffc1fu) == 0xd65f0000u) { // RET Xn
             if (rn == 31) throw GuestFault("RET XZR invalid");
             next = reg(rn);
