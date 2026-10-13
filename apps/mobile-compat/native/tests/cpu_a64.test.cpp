@@ -87,6 +87,20 @@ int main(int argc, char** argv) {
         cpu.load(0, code);
         assert(cpu.run(0, 20) == 120);
     }
+    // Real NDK/LLD relaxation turns ADRP+ADD into ADR when within +/-1 MiB.
+    // Positive and negative byte offsets must obey architectural PC-relative
+    // semantics rather than treating both encodings as page-relative ADRP.
+    {
+        CpuA64 cpu(4096);
+        std::array<std::uint8_t, 32> code{};
+        encode(code, 0, 0x10000040u); // adr x0,PC+8 -> address 8
+        encode(code, 1, 0xd65f03c0u);
+        encode(code, 2, 0x10ffffc0u); // adr x0,PC-8 -> address 0
+        encode(code, 3, 0xd65f03c0u);
+        cpu.load(0, code);
+        assert(cpu.run(0, 10) == 8);
+        assert(cpu.run(8, 10) == 0);
+    }
     // Branch loop MUST stop on instruction budget (no hang).
     {
         CpuA64 cpu(4096);
