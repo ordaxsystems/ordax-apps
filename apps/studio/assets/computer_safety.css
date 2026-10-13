@@ -1,6 +1,7 @@
 .computerSafetyControl{border-color:var(--border2)}
 .computerSafetyControl.armed{border-color:rgba(222,92,92,.38);box-shadow:inset 3px 0 0 rgba(222,92,92,.72)}
 .computerSafetyControl.paused{border-color:rgba(127,185,255,.28);box-shadow:inset 3px 0 0 rgba(127,185,255,.5)}
+.computerSafetyControl.unknown{border-color:rgba(224,166,71,.38);box-shadow:inset 3px 0 0 rgba(224,166,71,.62)}
 .computerSafetyHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .computerSafetyHeader h4{margin:4px 0 0}
 .computerSafetyMeta{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
@@ -12,6 +13,7 @@
 .takeBackControlButton:hover:not(:disabled){background:rgba(222,92,92,.2)!important}
 .takeBackControlButton:disabled{opacity:.55;cursor:not-allowed}
 .computerControlIndicator{appearance:none;font:inherit;cursor:pointer}
-.computerControlIndicator:not(.paused){border-color:rgba(222,92,92,.42);color:#f0b8b8}
+.computerControlIndicator:not(.paused):not(.unknown){border-color:rgba(222,92,92,.42);color:#f0b8b8}
 .computerControlIndicator.paused{border-color:rgba(127,185,255,.3);color:var(--soft)}
+.computerControlIndicator.unknown{border-color:rgba(224,166,71,.42);color:var(--warn)}
 @media(max-width:760px){.computerSafetyHeader,.computerSafetyActions{align-items:stretch;flex-direction:column}.takeBackControlButton{width:100%}}
