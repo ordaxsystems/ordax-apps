@@ -78,6 +78,13 @@ std::uint64_t CpuA64::run(std::uint64_t entry, std::uint64_t max_instructions) {
             const unsigned shift = ((opcode >> 21) & 3u) * 16u;
             const std::uint64_t mask = std::uint64_t(0xffffu) << shift;
             store_register(rd, (reg(rd) & ~mask) | (std::uint64_t((opcode >> 5) & 0xffffu) << shift));
+        } else if ((opcode & 0x9f000000u) == 0x90000000u) { // ADRP Xd, PC-relative page
+            const std::uint32_t imm = ((opcode >> 29) & 3u) |
+                                      (((opcode >> 5) & 0x7ffffu) << 2);
+            const std::int64_t pages = (imm & (1u << 20))
+                ? std::int64_t(imm) - (1ll << 21) : std::int64_t(imm);
+            const auto page = pc & ~std::uint64_t(4095);
+            store_register(rd, page + static_cast<std::uint64_t>(pages * 4096));
         } else if ((opcode & 0xff000000u) == 0x91000000u ||
                    (opcode & 0xff000000u) == 0xd1000000u) { // ADD/SUB immediate
             if (rn == 31 || (opcode & 0x00800000u)) throw GuestFault("Unsupported stack/shift mode");
