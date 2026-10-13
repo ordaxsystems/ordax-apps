@@ -37,7 +37,7 @@
   "mappings": [
     {
       "source": "system/apps/assistant/ai/manifest.mjs",
-      "target": "apps/assistant/ai/manifest.mjs",
+      "target": "apps/assistant/ai/manifest.json",
       "operation": "derive-declarative-manifest"
     },
     {
