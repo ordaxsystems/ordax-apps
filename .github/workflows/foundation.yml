@@ -474,7 +474,134 @@ jobs:
           trap 'rm -f "$target"' EXIT
           (
             cd .ordax-platform-lifecycle/tools/runtime-component-channel
-            go test -run '^TestExternalNotesPackageCompletesCanonicalLifecycle$' -count=1
+            go test -run '^(TestExternalNotesPackageRespectsStatefulRecoveryFence|TestReleaseV2FailedProbationRejectsWithoutReplacingCurrent|TestReleaseV2RollbackRestoresPreviousVerifiedSlot|TestReleaseV2UninstallMakesComponentAbsentAndKeepsVerifiedSlotCache|TestReleaseV2OfflineReinstallAfterUninstallReusesVerifiedIdentity|TestStatefulReleaseV2UpgradeCannotBecomeOneWayWithoutRecovery)
+          )
+
+      - name: Prove pinned public App SDK and all canonical app required contract majors
+        run: |
+          python3 -m unittest tests/test_app_sdk_compatibility.py
+          python3 tools/verify_platform_sdk.py
+
+      - name: Prove app intelligence against pinned public SDK
+        run: python3 tools/verify_app_intelligence_sdk_conformance.py
+
+      - name: Prove Application Actions against pinned public SDK
+        run: python3 tools/verify_app_actions_sdk_conformance.py
+
+      - name: Prove Studio public SDK conformance
+        run: python3 tools/verify_studio_sdk_conformance.py
+
+      - name: Prove Studio typed host bridge boundary
+        run: node --test tests/studio_host_bridge_conformance.mjs
+
+      - name: Prove Studio legacy method ownership boundary
+        run: python3 tools/verify_studio_legacy_method_ownership.py
+
+      - name: Prove portable Studio source boundary
+        run: python3 apps/studio/tests/test_portable_boundary.py
+
+      - name: Prove Studio grant selection and UTF-8 UI behavior
+        run: |
+          node --test apps/studio/tests/*.test.mjs
+          python3 -m pip install --disable-pip-version-check pytest==9.1.1
+          python3 -m pytest apps/studio/tests -q
+
+      - name: Prove Studio conversation transport and durable operation recovery
+        run: node --test apps/studio/conversation/tests/*.test.mjs tools/assistant-host/test/*.test.mjs
+
+      - name: Prove Studio remote Computer grant boundary
+        run: python3 apps/studio/tests/test_remote_computer_grants_boundary.py
+
+      - name: Prove Studio OrdaX OS and Windows distribution invariants
+        run: |
+          python3 tools/verify_studio_distribution.py
+          python3 tests/studio_distribution_contract_test.py
+  mvp-app-functional-minimum:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - name: Checkout exact app source for functional MVP proof
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Guard minimum MVP entry for all canonical app targets
+        run: |
+          python3 -m unittest tests/test_mvp_app_minimum.py tests/test_mvp_platform_ownership.py tests/test_platform_lifecycle_lock.py
+          # Quality floor is a count (not an app-id inventory). Raise as apps
+          # enter the catalog; never reduce it to mask missing candidates.
+          python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown
+
+      - name: Prove minimum behavior and package for every canonical Store candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          # SSOT: exactly the same eligible component-slot entries consumed by
+          # Store catalog generation. No second hand-maintained utility list.
+          inventory="$(python3 tools/app-package/catalog_inventory.py --format tsv)"
+          if [[ -z "$inventory" ]]; then
+            echo "No canonical Store candidates were returned" >&2
+            exit 1
+          fi
+          source_commit="$(git rev-parse HEAD)"
+          while IFS=$'\t' read -r app app_root compatibility; do
+            [[ -n "$app" && -n "$app_root" && -n "$compatibility" ]]
+            [[ "$app_root" == "apps/$app" ]] || {
+              echo "Noncanonical candidate root: $app_root" >&2
+              exit 1
+            }
+
+            # A valid manifest/ZIP is not a functional app. Every candidate
+            # must have behavior tests, including newly catalogued utilities.
+            behavior_tests=("$app_root"/tests/*.test.mjs)
+            if (( ${#behavior_tests[@]} == 0 )); then
+              echo "$app: no executable behavior tests for the MVP" >&2
+              exit 1
+            fi
+            node --check "$app_root/src/runtime.mjs"
+            node --test "${behavior_tests[@]}"
+
+            out="$RUNNER_TEMP/ordax-mvp-$app"
+            mkdir -p "$out/release"
+            python3 tools/app-package/build.py build \
+              --app-root "$app_root" \
+              --source-commit "$source_commit" \
+              --compatibility "$compatibility" \
+              --package-out "$out/$app.zip" \
+              --release-dir "$out/release"
+            python3 tools/app-package/build.py verify \
+              --package "$out/$app.zip" \
+              --release "$out/release/$app.release.json" \
+              --compatibility "$out/release/$app.compatibility.json"
+          done <<< "$inventory"
+
+
+      - name: Prove real candidate-package runtime imports and missing-host-port denial
+        run: |
+          python3 -m unittest tests/test_packaged_runtime_smoke.py
+          python3 tools/verify_packaged_runtimes.py --format markdown
+
+      - name: Prove first-party app intelligence manifests
+        run: python3 tools/verify_app_intelligence.py
+
+      - name: Prove canonical file association ownership and package receipt
+        run: |
+          python3 -m unittest tests/test_file_associations.py
+          python3 tools/verify_file_associations.py
+
+      - name: Prove app-owned presentation manifests
+        run: python3 tools/verify_app_presentation.py
+
+      - name: Prove first-party Application Action manifests and provider artifacts
+        run: |
+          python3 -m unittest tests/test_provider_syntax_ssot.py
+          python3 tools/verify_app_actions.py --check-provider-syntax
+
+ -count=1
           )
 
       - name: Prove pinned public App SDK and all canonical app required contract majors
