@@ -37,7 +37,8 @@ const MAX_METHODS = 8192;
 const MAX_CLASSES = 2048;
 
 export class DexSubset {
-  constructor(bytes) {
+  constructor(bytes, { nativeBoundary = null } = {}) {
+    this.nativeBoundary = nativeBoundary;
     inspectDex(bytes); // SHA-1 and Adler32 are validated before parsing.
     if (!['035', '037', '038', '039'].includes(bytes.toString('ascii', 4, 7))) {
       fail('DEX_VERSION', 'Unsupported DEX subset format');
@@ -193,6 +194,14 @@ export class DexSubset {
   }
   invoke(id, args, budget, depth) {
     if (depth >= 16) fail('DEX_DEPTH', 'DEX stack depth exceeded');
+    const encoded = this.methodsById.get(id);
+    if (!encoded) fail('DEX_METHOD', 'Unresolved DEX method');
+    if (encoded.access & 0x100) {
+      if (!(encoded.access & 0x8)) fail('DEX_INSTANCE', 'Only static native methods are supported');
+      const info = this.methodInfo(id);
+      if (!this.nativeBoundary) fail('NATIVE_UNAVAILABLE', 'No native provider registered for guest');
+      return this.nativeBoundary.call(info, args);
+    }
     const item = this.codeItem(id);
     if (args.length !== item.info.proto.params.length) fail('DEX_ARGS', 'Wrong number of method arguments');
     const registers = new Int32Array(item.regs);
