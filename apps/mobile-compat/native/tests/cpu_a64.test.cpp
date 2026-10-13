@@ -5,6 +5,8 @@
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <fstream>
+#include <string>
 #include <vector>
 
 using ordax::mobile::CpuA64;
@@ -18,7 +20,37 @@ template <typename F> static void must_fault(F&& fn) {
     try { fn(); } catch (const GuestFault&) { thrown = true; }
     assert(thrown);
 }
-int main() {
+static bool emit_i32_fixture(const char* path) {
+    // Executable AArch64 ELF64: ADD X0,X0,#2 ; RET X30.
+    // The return value MUST depend on an argument supplied by the host.
+    std::vector<std::uint8_t> elf(0x108, 0);
+    const auto put16 = [&elf](std::size_t p, std::uint16_t v) {
+        for (unsigned i = 0; i < 2; ++i) elf[p + i] = static_cast<std::uint8_t>(v >> (8 * i));
+    };
+    const auto put32 = [&elf](std::size_t p, std::uint32_t v) {
+        for (unsigned i = 0; i < 4; ++i) elf[p + i] = static_cast<std::uint8_t>(v >> (8 * i));
+    };
+    const auto put64 = [&elf](std::size_t p, std::uint64_t v) {
+        for (unsigned i = 0; i < 8; ++i) elf[p + i] = static_cast<std::uint8_t>(v >> (8 * i));
+    };
+    elf[0] = 0x7f; elf[1] = 'E'; elf[2] = 'L'; elf[3] = 'F';
+    elf[4] = 2; elf[5] = 1; elf[6] = 1;
+    put16(16, 2); put16(18, 183); put32(20, 1); put64(24, 0x1000);
+    put64(32, 64); put16(52, 64); put16(54, 56); put16(56, 1);
+    put32(64, 1); put32(68, 5); put64(72, 0x100); put64(80, 0x1000);
+    put64(88, 0x1000); put64(96, 8); put64(104, 8); put64(112, 0x1000);
+    put32(0x100, 0x91000800); // ADD X0,X0,#2
+    put32(0x104, 0xd65f03c0); // RET X30
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    return out.write(reinterpret_cast<const char*>(elf.data()),
+                     static_cast<std::streamsize>(elf.size())).good();
+}
+
+int main(int argc, char** argv) {
+    if (argc == 3 && std::string(argv[1]) == "--emit-i32-fixture") {
+        return emit_i32_fixture(argv[2]) ? 0 : 3;
+    }
+    if (argc != 1) return 2;
     // Return 42 from actual decoded MOVZ/ADD/RET instructions.
     {
         CpuA64 cpu(4096);
