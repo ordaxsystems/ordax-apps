@@ -704,5 +704,26 @@ int main(int argc, char** argv) {
             (void)loadRelocatableElfA64(isolated,flags,0x10000);
         }
     }
+
+    // A native library must not forge the public JNIEnv address and call
+    // FindClass/RegisterNatives without successfully completing JavaVM.GetEnv
+    // in this exact JNI_OnLoad. No registration may survive this rejection.
+    {
+        auto forged = onLoadRegisterElf();
+        u32(forged, 0x220 + 7*4, 0xd503201f);  // nop instead of BLR GetEnv
+        u32(forged, 0x220 + 9*4, 0xd2a007f5); // movz x21,#0x3f,lsl #16
+        CpuA64 cpu(0x800000);
+        auto image = loadRelocatableElfA64(cpu, forged, 0x10000);
+        JniGuestEnvironment env;
+        const std::array<ordax::mobile::JniDeclaredMethod,1> declared = {
+            ordax::mobile::JniDeclaredMethod{"nativeAdd","(I)I"}};
+        env.declareNativeClass("test/Bridge", declared);
+        env.install(cpu);
+        ordax::mobile::runGuestInitializers(cpu, image, 1000);
+        reject([&] { (void)env.runOnLoad(cpu, image, forged, "libprovider.so", 1000); });
+        assert(image.jni_onload_started);
+        assert(env.registeredMethods().empty());
+        reject([&] { (void)env.runOnLoad(cpu, image, forged, "libprovider.so", 1000); });
+    }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
