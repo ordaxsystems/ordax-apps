@@ -38,6 +38,9 @@ public:
     void set_guest_regions(std::span<const GuestRegion> regions);
     void install_host_readonly(std::uint64_t address, std::span<const std::uint8_t> bytes);
     void set_host_call(HostCall call);
+    void require_guest_access(std::uint64_t address, std::size_t count, std::uint8_t permission) const;
+    [[nodiscard]] std::int32_t guest_read_i32(std::uint64_t address) const;
+    void guest_write_i32(std::uint64_t address, std::int32_t value);
     void set_register(unsigned index, std::uint64_t value);
     [[nodiscard]] std::uint64_t reg(unsigned index) const;
     [[nodiscard]] std::size_t memory_size() const noexcept { return memory_.size(); }
