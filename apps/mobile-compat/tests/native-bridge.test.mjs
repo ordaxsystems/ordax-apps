@@ -15,7 +15,8 @@ import { runDexMethodFromPackage } from '../src/inspect.mjs';
 const executablePath = process.argv[2];
 const imagePath = process.argv[3];
 const owner = 'Ltest/Bridge;';
-const hash = createHash('sha256').update(readFileSync(imagePath)).digest('hex');
+const nativeTest = executablePath && imagePath ? test : test.skip;
+const hash = imagePath ? createHash('sha256').update(readFileSync(imagePath)).digest('hex') : null;
 
 function leb(value) {
   const out = [];
@@ -156,7 +157,7 @@ function createTrustedBoundary(image = imagePath, pinnedHash = hash) {
   return nativeBoundary;
 }
 
-test('real ARM64 ELF receives x0 and returns signed int32 result', () => {
+nativeTest('real ARM64 ELF receives x0 and returns signed int32 result', () => {
   for (const [input, expected] of [[40, 42], [-5, -3], [2147483647, -2147483647]]) {
     const data = JSON.parse(execFileSync(executablePath,
       ['invoke-i32-elf', imagePath, String(input)], { encoding: 'utf8', timeout: 3000 }));
@@ -164,7 +165,7 @@ test('real ARM64 ELF receives x0 and returns signed int32 result', () => {
     assert.equal(data.value, expected);
   }
 });
-test('real DEX invokes registered native AArch64 ELF, no simulated arithmetic', () => {
+nativeTest('real DEX invokes registered native AArch64 ELF, no simulated arithmetic', () => {
   const vm = new DexSubset(makeDex(), { nativeBoundary: createTrustedBoundary() });
   for (const [input, expected] of [[40, 42], [-9, -7], [2147483647, -2147483647]]) {
     const result = vm.execute(owner, 'callNative', [input]);
@@ -174,7 +175,7 @@ test('real DEX invokes registered native AArch64 ELF, no simulated arithmetic', 
   assert.throws(() => new DexSubset(makeDex()).execute(owner, 'callNative', [40]),
     { code: 'NATIVE_UNAVAILABLE' });
 });
-test('verified APK and XAPK can call the same native ELF only when host opted in', async () => {
+nativeTest('verified APK and XAPK can call the same native ELF only when host opted in', async () => {
   const apk = zip([['AndroidManifest.xml', Buffer.from([0])], ['classes.dex', makeDex()]]);
   const xapk = zip([['base.apk', apk], ['config.arm64.apk',
     zip([['resources.arsc', Buffer.from([1])]])]]);
@@ -192,7 +193,7 @@ test('verified APK and XAPK can call the same native ELF only when host opted in
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
-test('pinning rejects changed or missing native ELF before host executes it', () => {
+nativeTest('pinning rejects changed or missing native ELF before host executes it', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ordax-bridge-tamper-'));
   try {
     const mutated = join(dir, 'tampered.elf');
@@ -206,7 +207,7 @@ test('pinning rejects changed or missing native ELF before host executes it', ()
       { code: 'NATIVE_FAULT' });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
-test('guest cannot specify arbitrary executable arguments, signature or native pointers', () => {
+nativeTest('guest cannot specify arbitrary executable arguments, signature or native pointers', () => {
   assert.throws(() => registerArm64IntegerMethod(new NativeMethodBoundary(), {
     owner, name: 'nativeAdd', signature: '(Ljava/lang/Object;)I',
     executablePath, imagePath, sha256: hash,
