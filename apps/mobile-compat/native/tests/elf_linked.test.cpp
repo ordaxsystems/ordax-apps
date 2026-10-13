@@ -340,7 +340,7 @@ int main(int argc, char** argv) {
         // Untrusted or inconsistent GNU hash cannot infer arbitrary symtab
         // bounds, and may not poison the guest CPU on failed loading.
         const auto correct = providerWithGnuHash();
-        for (unsigned kind = 0; kind < 7; ++kind) {
+        for (unsigned kind = 0; kind < 8; ++kind) {
             auto bad = correct;
             switch (kind) {
                 case 0: u32(bad, 0x550, 0); break;      // no buckets
@@ -350,6 +350,12 @@ int main(int argc, char** argv) {
                 case 4: u32(bad, 0x568, 4096); break;  // unbounded bucket
                 case 5: u32(bad, 0x56c, 0); break;      // unterminated chain
                 case 6: u32(bad, 0x568, 0xffffffffu); break;
+                case 7:
+                    u32(bad, 0x550, 2); // two buckets both reuse one chain
+                    u32(bad, 0x568, 1);
+                    u32(bad, 0x56c, 1);
+                    u32(bad, 0x570, gnuHash("increment") | 1u);
+                    break;
             }
             CpuA64 cpu(0x100000);
             reject([&] {
