@@ -183,6 +183,8 @@ std::size_t countGnuHashSymbols(
     const std::size_t header_bytes = bucket_offset + 4u * buckets;
     const auto array_offset = mappedFileOffset(address, header_bytes, segments);
     std::size_t count = symbol_offset;
+    std::unordered_set<std::uint64_t> visited_symbols;
+    visited_symbols.reserve(4096);
     // Each bucket starts a chain of 32-bit words, terminated by bit 0.
     // Cap both the number of steps and the largest referenced symtab entry.
     for (std::size_t i = 0; i < buckets; ++i) {
@@ -195,6 +197,12 @@ std::size_t countGnuHashSymbols(
         while (true) {
             if (symbol >= 4096 || symbol < symbol_offset) {
                 throw GuestFault("Unterminated or overflowing GNU hash chain");
+            }
+            // Symbols cannot belong to two buckets. This is both an ELF
+            // structural rule and a global traversal budget: malformed
+            // tables cannot force repeated quadratic chain scans.
+            if (!visited_symbols.insert(symbol).second) {
+                throw GuestFault("Overlapping or repeated ELF GNU hash chain");
             }
             const auto chain_delta = header_bytes + 4 * (symbol - symbol_offset);
             if (address > UINT64_MAX - chain_delta) {
