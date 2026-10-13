@@ -53,16 +53,17 @@ void dyn(std::vector<std::uint8_t>& b, std::size_t i,
 }
 std::vector<std::uint8_t> providerElf() {
     auto b = imageHeader();
-    program(b,2,2,6,0x320,0x3020,96);
+    program(b,2,2,6,0x320,0x3020,112);
     // Real guest AArch64 function: add x0,x0,#2 ; ret x30.
     u32(b,0x200,0x91000800); u32(b,0x204,0xd65f03c0);
     dyn(b,0,4,0x3120); // DT_HASH (SysV)
     dyn(b,1,5,0x3090); // DT_STRTAB
-    dyn(b,2,10,11);    // DT_STRSZ
+    dyn(b,2,10,26);    // DT_STRSZ: exported name plus DT_SONAME
     dyn(b,3,6,0x30c0); // DT_SYMTAB
     dyn(b,4,11,24);    // DT_SYMENT
-    // DT_NULL at index 5
-    const std::string str("\0increment\0",11);
+    dyn(b,5,14,11);    // DT_SONAME points inside the same verified dynstr
+    dyn(b,6,0,0);      // DT_NULL
+    const std::string str("\0increment\0libprovider.so\0",26);
     std::copy(str.begin(),str.end(),b.begin()+0x390);
     // ELF symbol #1: GLOBAL FUNC named "increment", defined in text.
     u32(b,0x3d8,1); b[0x3dc]=0x12; u16(b,0x3de,1);
@@ -112,9 +113,13 @@ std::vector<std::uint8_t> providerWithGnuHash(bool both_formats = false) {
     auto b = providerElf();
     const auto h = gnuHash("increment");
     if (both_formats) {
-        program(b, 2, 2, 6, 0x320, 0x3020, 112);
-        dyn(b, 5, 0x6ffffef5, 0x3250);
-        dyn(b, 6, 0, 0);
+        // The 8th dynamic entry overlaps the old dynstr at 0x390.
+        // Relocate dynstr within the *same* verified writable PT_LOAD.
+        std::copy(b.begin()+0x390,b.begin()+0x390+26,b.begin()+0x510);
+        dyn(b,1,5,0x3210);
+        program(b, 2, 2, 6, 0x320, 0x3020, 128);
+        dyn(b, 6, 0x6ffffef5, 0x3250);
+        dyn(b, 7, 0, 0);
     } else {
         dyn(b, 0, 0x6ffffef5, 0x3250);
     }
@@ -412,6 +417,37 @@ int main(int argc, char** argv) {
         (void)loadRelocatableElfA64(rejected, library, 0x10000);
         reject([&] { (void)loadLinkedElfA64(
             rejected, consumerWithPltAndRela(true), 0x30000, exports); });
+    }
+    // Android library identity must originate from the provider ELF's
+    // DT_SONAME, not the host-selected filename or guessed DT_NEEDED string.
+    {
+        const auto real = providerElf();
+        const auto verify = [&](const auto& malformed, const std::string& expected) {
+            reject([&] {
+                (void)inspectGuestDynamicExports(malformed, 0x10000, expected);
+            });
+        };
+        verify(real, "libspoof.so"); // host name must not overwrite DT_SONAME
+        {
+            auto missing = real;
+            dyn(missing, 5, 0, 0); // early DT_NULL, SONAME missing
+            verify(missing, "libprovider.so");
+        }
+        {
+            auto invalid = real;
+            dyn(invalid, 5, 14, 200); // outside bounded DT_STRTAB
+            verify(invalid, "libprovider.so");
+        }
+        {
+            auto invalid = real;
+            u32(invalid, 0x390 + 11, '/'); // illegal library path
+            verify(invalid, "libprovider.so");
+        }
+        {
+            auto duplicated = real;
+            dyn(duplicated, 6, 14, 11); // duplicate DT_SONAME
+            verify(duplicated, "libprovider.so");
+        }
     }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
