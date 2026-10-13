@@ -244,3 +244,125 @@ test('APK and nested XAPK actually execute bounded static Dalvik bytecode', asyn
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+// Synthetic but structurally valid DEX built from class_defs, field_ids,
+// method_ids and code_items. This exercises real object bytecode, not host
+// stubs; the guest object must never be serialized to the host.
+function objectDexFixture() {
+  const original = fixtureDex();
+  const b = Buffer.alloc(0x800);
+  original.copy(b);
+  b.writeUInt32LE(b.length, 32);
+  b.writeUInt32LE(b.length - 0xf8, 104);
+  b.writeUInt32LE(13, 56); b.writeUInt32LE(0x400, 60); // string ids
+  b.writeUInt32LE(5, 72); b.writeUInt32LE(0x3c0, 76); // prototypes
+  b.writeUInt32LE(1, 80); b.writeUInt32LE(0x380, 84); // instance field
+  b.writeUInt32LE(7, 88); b.writeUInt32LE(0x3a0, 92); // methods
+  b.writeUInt32LE(0x600, 0xd8 + 24); // class data
+  const strings = ['I', 'II', 'III', 'Ltest/Arithmetic;', 'V',
+    'nativeStub', 'sum', 'twice', '<init>', 'makeObject', 'makeValue',
+    'readValue', 'value'];
+  let cursor = 0x500;
+  strings.forEach((str, i) => {
+    const raw = Buffer.from(str, 'ascii'), prefix = leb(raw.length);
+    b.writeUInt32LE(cursor, 0x400 + i * 4);
+    prefix.copy(b, cursor); cursor += prefix.length;
+    raw.copy(b, cursor); cursor += raw.length;
+    b[cursor++] = 0;
+  });
+  // type_ids retained: 0=int, 1=class, 2=void
+  const protos = [
+    [0, 0, 0], [1, 0, 0x110], [2, 0, 0x100],
+    [0, 2, 0x110], [0, 1, 0x110],
+  ];
+  protos.forEach(([shorty, result, params], i) => {
+    const at = 0x3c0 + i * 12;
+    b.writeUInt32LE(shorty, at);
+    b.writeUInt32LE(result, at + 4);
+    b.writeUInt32LE(params, at + 8);
+  });
+  // instance int field "value", owned by class index 1.
+  b.writeUInt16LE(1, 0x380);
+  b.writeUInt16LE(0, 0x382);
+  b.writeUInt32LE(12, 0x384);
+  for (const [i, proto, name] of [
+    [0, 0, 5], [1, 2, 6], [2, 1, 7], [3, 3, 8],
+    [4, 4, 9], [5, 1, 10], [6, 0, 11],
+  ]) {
+    const at = 0x3a0 + i * 8;
+    b.writeUInt16LE(1, at); b.writeUInt16LE(proto, at + 2);
+    b.writeUInt32LE(name, at + 4);
+  }
+  const classData = Buffer.from([
+    0, 1, 6, 1,          // fields: one instance; six direct + one virtual method
+    0, 1,                // field delta 0, public instance field
+    0, 0x89, 0x02, 0,   // nativeStub ()I
+    1, 9, 0x80, 0x03,   // sum at 0x180
+    1, 9, 0xa0, 0x03,   // twice at 0x1a0
+    1, 1, 0xc0, 0x0c,   // <init>(I)V at 0x640
+    1, 9, 0x80, 0x0d,   // makeObject(I)Ltest/Arithmetic; at 0x680
+    1, 9, 0xc0, 0x0d,   // makeValue(I)I at 0x6c0
+    6, 1, 0x80, 0x0e,   // readValue()I at 0x700, instance virtual method
+  ]);
+  classData.copy(b, 0x600);
+  function code(at, regs, ins, outs, opcodes) {
+    b.writeUInt16LE(regs, at);
+    b.writeUInt16LE(ins, at + 2);
+    b.writeUInt16LE(outs, at + 4);
+    b.writeUInt16LE(0, at + 6); // no try blocks
+    b.writeUInt32LE(0, at + 8);
+    b.writeUInt32LE(opcodes.length, at + 12);
+    opcodes.forEach((op, i) => b.writeUInt16LE(op, at + 16 + i * 2));
+  }
+  code(0x640, 2, 2, 0, [0x1059, 0, 0x000e]);
+  code(0x680, 2, 1, 2, [
+    0x0022, 1,            // new-instance v0, Ltest/Arithmetic;
+    0x2070, 3, 0x0010,   // invoke-direct {v0, v1}, <init>(I)V
+    0x0011,              // return-object v0
+  ]);
+  code(0x6c0, 3, 1, 2, [
+    0x1071, 4, 0x0002,  // invoke-static {v2}, makeObject(I)ref
+    0x000c,             // move-result-object v0
+    0x106e, 6, 0x0000,  // invoke-virtual {v0}, readValue()I
+    0x010a,             // move-result v1
+    0x010f,             // return v1
+  ]);
+  code(0x700, 2, 1, 0, [0x1052, 0, 0x000f]); // iget v0,v1; return v0
+  return sealDex(b);
+}
+
+test('real Dalvik object allocation + ctor + instance field + virtual dispatch stay in guest', () => {
+  const vm = new DexSubset(objectDexFixture());
+  assert.deepEqual(vm.execute('Ltest/Arithmetic;', 'makeValue', [42]),
+    { format: 'dalvik-object-subset', value: 42, allocatedObjects: 1,
+      consumedInstructions: 11 });
+  assert.equal(vm.execute('Ltest/Arithmetic;', 'makeValue', [-153]).value, -153);
+  // An object handle is NOT an integer result or a host pointer.
+  assert.throws(() => vm.execute('Ltest/Arithmetic;', 'makeObject', [5]),
+    { code: 'DEX_REFERENCE' });
+  assert.throws(() => vm.execute('Ltest/Arithmetic;', 'makeValue', [1], { maxObjects: 0 }),
+    { code: 'HEAP_LIMIT' });
+});
+
+test('object bytecode cannot forge object references, mutate unrelated fields or call wrong receiver', () => {
+  const wrongField = objectDexFixture();
+  // ReadValue's iget refers to invalid field#7.
+  wrongField.writeUInt16LE(7, 0x700 + 18);
+  assert.throws(
+    () => new DexSubset(sealDex(wrongField)).execute('Ltest/Arithmetic;', 'makeValue', [42]),
+    { code: 'DEX_INDEX' });
+  const wrongReceiver = objectDexFixture();
+  // makeValue substitutes integer v2 for object receiver v0.
+  wrongReceiver.writeUInt16LE(0x0002, 0x6c0 + 16 + 6 * 2);
+  assert.throws(
+    () => new DexSubset(sealDex(wrongReceiver)).execute('Ltest/Arithmetic;', 'makeValue', [42]),
+    { code: 'DEX_TYPE' });
+  const nullAccess = objectDexFixture();
+  // makeObject() sets its receiver to null before constructor.
+  nullAccess.writeUInt16LE(0x0012, 0x680 + 16);
+  nullAccess.writeUInt16LE(0x0000, 0x680 + 18);
+  assert.throws(
+    () => new DexSubset(sealDex(nullAccess)).execute('Ltest/Arithmetic;', 'makeValue', [2]),
+    { code: 'DEX_NULL' });
+});
