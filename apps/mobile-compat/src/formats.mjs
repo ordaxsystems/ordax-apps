@@ -88,7 +88,9 @@ export function locateDexClassDefinitions(buffer, descriptors) {
       if (!(octet & 0x80)) { terminated = true; break; }
     }
     if (!terminated) throw new PackageError('DEX_INDEX', 'Invalid class string length');
-    const end = buffer.indexOf(0, p);
+    // An unrelated malformed descriptor must not trigger an unbounded scan.
+    const terminator = buffer.subarray(p, Math.min(buffer.length, p + 513)).indexOf(0);
+    const end = terminator < 0 ? -1 : p + terminator;
     if (end < 0 || end - p > 512) {
       throw new PackageError('DEX_INDEX', 'Missing or oversized class descriptor');
     }
