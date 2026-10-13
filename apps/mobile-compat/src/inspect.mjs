@@ -98,5 +98,5 @@ export async function runDexMethodFromPackage(path, owner, method, args, options
     await archive.close();
   }
   if (!dex) throw new PackageError('NO_DEX', 'classes.dex is not available in package');
-  return new DexSubset(dex).execute(owner, method, args, options);
+  return new DexSubset(dex, { nativeBoundary: options.nativeBoundary ?? null }).execute(owner, method, args, options);
 }
