@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
             const auto image = loadRelocatableElfA64(cpu, relr, bias);
             assert(image.relative_relocations == 2);
             assert(cpu.run(image.entry, 10) == bias + 0x1000);
-            assert(cpu.read64(bias + 0x3010) == bias + 0x1000);
+            assert(cpu.guest_read_i32(bias + 0x3010) == bias + 0x1000);
         }
         if (android) {
             auto legacy = relr;
@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
             CpuA64 cpu(0x10000);
             const auto image = loadRelocatableElfA64(cpu, legacy, 0x2000);
             assert(image.relative_relocations == 2);
-            assert(cpu.read64(0x5010) == 0x3000);
+            assert(cpu.guest_read_i32(0x5010) == 0x3000);
         }
         // Corrupted RELR metadata/bitmaps must never be silently ignored.
         {
@@ -253,8 +253,8 @@ int main(int argc, char** argv) {
         CpuA64 cpu(0x10000);
         const auto image = loadRelocatableElfA64(cpu, elf, 0x2000);
         assert(image.relative_relocations == 2);
-        assert(cpu.read64(0x5000) == 0x3000);
-        assert(cpu.read64(0x5010) == 0x3000);
+        assert(cpu.guest_read_i32(0x5000) == 0x3000);
+        assert(cpu.guest_read_i32(0x5010) == 0x3000);
     }
     {
         auto elf = relaPlusRelrFixture();
