@@ -5,6 +5,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { DexSubset } from '../src/dex-vm.mjs';
 import { NativeMethodBoundary } from '../src/native-boundary.mjs';
 import { runDexMethodFromPackage, requireExecutionSupport } from '../src/inspect.mjs';
@@ -225,10 +226,10 @@ test('APK and nested XAPK actually execute bounded static Dalvik bytecode', asyn
     assert.equal((await runDexMethodFromPackage(apkPath, 'Ltest/Arithmetic;', 'sum', [10, 32])).value, 42);
     assert.equal((await runDexMethodFromPackage(xapkPath, 'Ltest/Arithmetic;', 'twice', [21])).value, 42);
     const cli = new URL('../bin/mobile-compat.mjs', import.meta.url);
-    const result = spawnSync(process.execPath, [cli.pathname, 'dex-method', apkPath, 'Ltest/Arithmetic;', 'sum', '19', '23'], { encoding: 'utf8', timeout: 10000 });
+    const result = spawnSync(process.execPath, [fileURLToPath(cli), 'dex-method', apkPath, 'Ltest/Arithmetic;', 'sum', '19', '23'], { encoding: 'utf8', timeout: 10000 });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).value, 42);
-    const denied = spawnSync(process.execPath, [cli.pathname, 'run', apkPath], { encoding: 'utf8', timeout: 10000 });
+    const denied = spawnSync(process.execPath, [fileURLToPath(cli), 'run', apkPath], { encoding: 'utf8', timeout: 10000 });
     assert.equal(denied.status, 3);
     assert.equal(JSON.parse(denied.stderr).code, 'EXECUTION_UNAVAILABLE');
   } finally {
