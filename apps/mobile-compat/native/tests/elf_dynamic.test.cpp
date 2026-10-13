@@ -99,6 +99,45 @@ std::vector<std::uint8_t> relaPlusRelrFixture() {
     put64(elf, 0x310, 0x1000);
     return elf;
 }
+
+// The packed stream is generated from APS2 SLEB128 group records. The fixture
+// is a genuine ET_DYN with PT_LOAD/PT_DYNAMIC; the real ELF loader applies it.
+void putSleb(std::vector<std::uint8_t>& bytes, std::int64_t n) {
+    bool more = true;
+    while (more) {
+        auto byte = static_cast<std::uint8_t>(n & 0x7f);
+        n >>= 7;
+        more = !((n == 0 && !(byte & 0x40)) || (n == -1 && (byte & 0x40)));
+        if (more) byte |= 0x80;
+        bytes.push_back(byte);
+    }
+}
+std::vector<std::uint8_t> packedAps2() {
+    std::vector<std::uint8_t> packed = {'A','P','S','2'};
+    for (const std::int64_t n : {2, 0x2ff8, 2, 15, 8, 1027, 0x1000}) {
+        putSleb(packed, n);
+    }
+    return packed;
+}
+std::vector<std::uint8_t> aps2Fixture(bool combine_relr) {
+    auto elf = makePieImage();
+    const auto packed = packedAps2();
+    if (packed.size() > 32) throw GuestFault("Test APS2 fixture exceeds reserved file segment");
+    std::copy(packed.begin(), packed.end(), elf.begin() + 0x3a0);
+    put64(elf, 0x320, 0x60000011); put64(elf, 0x328, 0x30a0);
+    put64(elf, 0x330, 0x60000012); put64(elf, 0x338, packed.size());
+    put64(elf, 0x340, 0); put64(elf, 0x348, 0);
+    if (combine_relr) {
+        put64(elf, 208, 96); put64(elf, 216, 96);
+        put64(elf, 0x340, 36); put64(elf, 0x348, 0x30c0);
+        put64(elf, 0x350, 35); put64(elf, 0x358, 8);
+        put64(elf, 0x360, 37); put64(elf, 0x368, 8);
+        put64(elf, 0x370, 0); put64(elf, 0x378, 0);
+        put64(elf, 0x3c0, 0x3010);
+        put64(elf, 0x310, 0x1000);
+    }
+    return elf;
+}
 template <typename F> void mustReject(F&& fn) {
     bool rejected = false;
     try { fn(); } catch (const GuestFault&) { rejected = true; }
@@ -261,6 +300,66 @@ int main(int argc, char** argv) {
         put64(elf, 0x3d0, 0x3000); // RELR collides with RELA patch
         CpuA64 cpu(0x10000);
         mustReject([&] { (void)loadRelocatableElfA64(cpu, elf, 0x2000); });
+    }
+    // APS2 is the Android packed RELA format, not RELR. Apply both normal
+    // relative relocation records and optional RELR in one ELF image.
+    for (bool combine_relr : {false, true}) {
+        const auto elf = aps2Fixture(combine_relr);
+        for (auto bias : {std::uint64_t(0x2000), std::uint64_t(0x400000)}) {
+            CpuA64 cpu(0x800000);
+            const auto loaded = loadRelocatableElfA64(cpu, elf, bias);
+            assert(loaded.relative_relocations == (combine_relr ? 3u : 2u));
+            assert(cpu.run(loaded.entry, 15) == bias + 0x1000);
+            assert(cpu.guest_read_i32(bias + 0x3008) == bias + 0x1000);
+            if (combine_relr) {
+                assert(cpu.guest_read_i32(bias + 0x3010) == bias + 0x1000);
+            }
+        }
+        auto rejectPacked = [&](const auto& bad) {
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        };
+        {
+            auto bad = elf;
+            bad[0x3a0] = 'X'; // magic must be APS2
+            rejectPacked(bad);
+        }
+        {
+            auto bad = elf;
+            put64(bad, 0x338, 65537); // packed input exceeds size limit
+            rejectPacked(bad);
+        }
+        {
+            auto bad = elf;
+            put64(bad, 0x320, 0); // missing DT_ANDROID_RELA tag
+            rejectPacked(bad);
+        }
+        {
+            auto bad = elf;
+            // Single grouped APS2 relocation pointing into executable RX.
+            auto payload = packedAps2();
+            payload[5] = 0; // initial offset 0; group entries retain 8-byte stride
+            std::copy(payload.begin(), payload.end(), bad.begin() + 0x3a0);
+            rejectPacked(bad);
+        }
+        {
+            auto bad = elf;
+            // Use a non-relative symbol relocation: the clean-room loader
+            // cannot silently import a host pointer for a guessed symbol.
+            auto payload = packedAps2();
+            // Replace APS2 r_info=1027 with unsupported 1026 in-place.
+            auto found = false;
+            for (std::size_t i = 4; i + 1 < payload.size(); ++i) {
+                if (payload[i] == 0x83 && payload[i + 1] == 0x08) {
+                    payload[i] = 0x82;
+                    found = true;
+                    break;
+                }
+            }
+            assert(found);
+            std::copy(payload.begin(), payload.end(), bad.begin() + 0x3a0);
+            rejectPacked(bad);
+        }
     }
     std::cout << "ET_DYN AArch64 RELATIVE-only guest execution passed\n";
 }
