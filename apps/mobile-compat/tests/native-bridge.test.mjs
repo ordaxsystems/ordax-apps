@@ -9,17 +9,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DexSubset } from '../src/dex-vm.mjs';
 import { NativeMethodBoundary } from '../src/native-boundary.mjs';
-import { registerArm64IntegerMethod, registerArm64JniIntegerMethod } from '../src/arm64-method-bridge.mjs';
+import { registerArm64IntegerMethod, registerArm64JniIntegerMethod, registerArm64JniIntArrayMethod } from '../src/arm64-method-bridge.mjs';
+import { GuestHeap } from '../src/guest-heap.mjs';
 import { runDexMethodFromPackage } from '../src/inspect.mjs';
 
 const executablePath = process.argv[2];
 const imagePath = process.argv[3];
 const owner = 'Ltest/Bridge;';
 const isJni = process.argv[4] === 'jni';
+const isJniArray = process.argv[4] === 'jni-array';
 const mode = isJni ? 'invoke-jni-i32-elf' : 'invoke-i32-elf';
 const expectedSchema = isJni ? 'ordax.mobile-compat.jni-static-i32-call/1' : 'ordax.mobile-compat.i32-guest-call/1';
 const expected = value => (value + (isJni ? 0x10006 : 2)) | 0;
-const nativeTest = executablePath && imagePath ? test : test.skip;
+const nativeTest = executablePath && imagePath && !isJniArray ? test : test.skip;
+const arrayTest = executablePath && imagePath && isJniArray ? test : test.skip;
 const hash = imagePath ? createHash('sha256').update(readFileSync(imagePath)).digest('hex') : null;
 
 function leb(value) {
@@ -223,4 +226,119 @@ nativeTest('guest cannot specify arbitrary executable arguments, signature or na
   assert.throws(() => execFileSync(executablePath,
     [mode, imagePath, '1', '2', '3', '4', '5', '6'],
     { encoding: 'utf8', timeout: 3000 }));
+});
+
+
+function makeArrayDex() {
+  const b = makeDex();
+  // Extend the *same* test DEX to contain the array type [I.
+  b.writeUInt32LE(6, 56);
+  b.writeUInt32LE(0x300, 0x70 + 5 * 4);
+  b[0x300] = 2;
+  b.write('[I', 0x301, 'ascii');
+  b[0x303] = 0;
+  b.writeUInt32LE(3, 64);
+  b.writeUInt32LE(5, 0x98);
+  b.writeUInt16LE(2, 0x114); // method param = [I instead of I
+  b.writeUInt16LE(5, 0x180); // v0..v4
+  b.writeUInt16LE(1, 0x182);
+  b.writeUInt16LE(1, 0x184);
+  // Static callNative(int length): build guest int[], insert 41,
+  // invoke native ([I)I, then read the modified array back with aget.
+  const instructions = [
+    0x4023, 2,       // new-array v0,v4,[I
+    0x0213, 41,     // const/16 v2,41
+    0x0312,         // const/4 v3,0
+    0x024b, 0x0300, // aput v2,v0,v3
+    0x1071, 0, 0,   // invoke-static {v0}, nativeAdd([I)I
+    0x010a,         // move-result v1
+    0x0244, 0x0300, // aget v2,v0,v3
+    0x0190, 0x0201, // add-int v1,v1,v2
+    0x010f,         // return v1
+  ];
+  b.writeUInt32LE(instructions.length, 0x18c);
+  instructions.forEach((opcode, index) => b.writeUInt16LE(opcode, 0x190 + 2 * index));
+  return sealDex(b);
+}
+function createArrayBoundary(pinnedHash = hash, file = imagePath) {
+  const nativeBoundary = new NativeMethodBoundary();
+  registerArm64JniIntArrayMethod(nativeBoundary, {
+    owner, name: 'nativeAdd', signature: '([I)I',
+    executablePath, imagePath: file, sha256: pinnedHash,
+  });
+  return nativeBoundary;
+}
+arrayTest('actual Dalvik int[] roundtrip through JNI ARM64 Get/SetIntArrayRegion', () => {
+  const vm = new DexSubset(makeArrayDex(), { nativeBoundary: createArrayBoundary() });
+  // native ELF: read first jint=41, increment to 42, write back via JNI,
+  // return 42; Dalvik aget then observes 42 and computes 84.
+  for (const length of [1, 2, 10]) {
+    const result = vm.execute(owner, 'callNative', [length]);
+    assert.equal(result.value, 84);
+    assert.equal(result.allocatedObjects, 1);
+  }
+  assert.throws(() => new DexSubset(makeArrayDex()).execute(owner, 'callNative', [1]),
+    { code: 'NATIVE_UNAVAILABLE' });
+});
+arrayTest('APK and XAPK call the exact native JNI array implementation', async () => {
+  const apk = zip([['AndroidManifest.xml', Buffer.from([1])], ['classes.dex', makeArrayDex()]]);
+  const xapk = zip([['base.apk', apk], ['config.arm64.apk',
+    zip([['resources.arsc', Buffer.from([1, 2])]])]]);
+  const dir = mkdtempSync(join(tmpdir(), 'ordax-array-jni-e2e-'));
+  try {
+    const paths = [join(dir, 'array.apk'), join(dir, 'array.xapk')];
+    writeFileSync(paths[0], apk);
+    writeFileSync(paths[1], xapk);
+    for (const path of paths) {
+      const result = await runDexMethodFromPackage(path, owner, 'callNative', [2],
+        { nativeBoundary: createArrayBoundary() });
+      assert.equal(result.value, 84);
+      await assert.rejects(runDexMethodFromPackage(path, owner, 'callNative', [2]),
+        { code: 'NATIVE_UNAVAILABLE' });
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+arrayTest('native JNI failures never commit partial changes to Dalvik arrays', () => {
+  const heap = new GuestHeap();
+  const ref = heap.allocateIntArray(2);
+  heap.setIntArray(ref, 0, 41);
+  const failed = new NativeMethodBoundary();
+  failed.register({
+    owner, name: 'nativeAdd', signature: '([I)I',
+    invoke: arr => { arr[0] = 77; throw new Error('native failed'); },
+  });
+  const info = { owner, name: 'nativeAdd', proto: { params: ['[I'], result: 'I' } };
+  assert.throws(() => failed.call(info, [ref], heap), { code: 'NATIVE_FAULT' });
+  assert.equal(heap.getIntArray(ref, 0), 41);
+  const badReturn = new NativeMethodBoundary();
+  badReturn.register({
+    owner, name: 'nativeAdd', signature: '([I)I',
+    invoke: arr => { arr[0] = 77; return 'bad'; },
+  });
+  assert.throws(() => badReturn.call(info, [ref], heap), { code: 'NATIVE_RESULT' });
+  assert.equal(heap.getIntArray(ref, 0), 41);
+  const success = new NativeMethodBoundary();
+  success.register({
+    owner, name: 'nativeAdd', signature: '([I)I',
+    invoke: arr => { arr[0] = 43; return arr[0]; },
+  });
+  assert.equal(success.call(info, [ref], heap), 43);
+  assert.equal(heap.getIntArray(ref, 0), 43);
+});
+arrayTest('JNI array snapshots reject tampered ELF and invalid binary payloads', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ordax-array-tamper-'));
+  try {
+    const corrupted = join(dir, 'corrupted.elf');
+    const image = Buffer.from(readFileSync(imagePath));
+    image[image.length - 1] ^= 1;
+    writeFileSync(corrupted, image);
+    assert.throws(() => new DexSubset(makeArrayDex(),
+      { nativeBoundary: createArrayBoundary(hash, corrupted) })
+      .execute(owner, 'callNative', [1]), { code: 'NATIVE_FAULT' });
+    const broken = join(dir, 'bad-snapshot.bin');
+    writeFileSync(broken, Buffer.from('not-a-valid-array'));
+    assert.throws(() => execFileSync(executablePath,
+      ['invoke-jni-int-array-elf', imagePath, broken],
+      { timeout: 3000, encoding: 'utf8' }));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
