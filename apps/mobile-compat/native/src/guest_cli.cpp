@@ -23,11 +23,15 @@ int main(int argc, char** argv) {
                            std::string(argv[1]) == "invoke-jni-i32-elf";
     const bool jni_array_mode = argc == 4 &&
                                 std::string(argv[1]) == "invoke-jni-int-array-elf";
-    if (!old_mode && !call_mode && !jni_mode && !jni_array_mode) {
+    const bool jni_new_array_mode = argc == 3 &&
+                                    std::string(argv[1]) == "invoke-jni-new-int-array-elf";
+    if (!old_mode && !call_mode && !jni_mode &&
+        !jni_array_mode && !jni_new_array_mode) {
         std::cerr << "usage: ordax-mobile-guest run-elf <elf>\n"
                   << "   or: ordax-mobile-guest invoke-i32-elf <elf> [int32 x0..x4]\n"
                   << "   or: ordax-mobile-guest invoke-jni-i32-elf <elf> [int32 x2..x6]\n"
-                  << "   or: ordax-mobile-guest invoke-jni-int-array-elf <elf> <array-snapshot>\n";
+                  << "   or: ordax-mobile-guest invoke-jni-int-array-elf <elf> <array-snapshot>\n"
+                  << "   or: ordax-mobile-guest invoke-jni-new-int-array-elf <elf>\n";
         return 2;
     }
     std::vector<std::int32_t> arguments;
@@ -81,7 +85,7 @@ int main(int argc, char** argv) {
         // The host passes either bounded jint values or a validated int[]
         // snapshot; JNIEnv and array handles exist only in guest address space.
         ordax::mobile::JniGuestEnvironment jni;
-        if (jni_mode || jni_array_mode) {
+        if (jni_mode || jni_array_mode || jni_new_array_mode) {
             jni.install(cpu);
             cpu.set_register(0, ordax::mobile::JniGuestEnvironment::kEnvAddress);
             cpu.set_register(1, ordax::mobile::JniGuestEnvironment::kClassHandle);
@@ -126,6 +130,20 @@ int main(int argc, char** argv) {
         // Instruction and memory budgets are mandatory and cannot be removed
         // through command-line arguments.
         const auto result = cpu.run(image.entry, 100000);
+        if (jni_new_array_mode) {
+            const auto& items = jni.exportIntArray(result);
+            if (items.size() > 1024) {
+                throw ordax::mobile::GuestFault("JNI returned array exceeds transport limit");
+            }
+            std::cout << "{\"schema\":\"ordax.mobile-compat.jni-return-int-array/1\","
+                      << "\"array\":[";
+            for (std::size_t i = 0; i < items.size(); ++i) {
+                if (i) std::cout << ',';
+                std::cout << items[i];
+            }
+            std::cout << "]}\n";
+            return 0;
+        }
         if (jni_array_mode) {
             const auto value = std::bit_cast<std::int32_t>(
                 static_cast<std::uint32_t>(result));
