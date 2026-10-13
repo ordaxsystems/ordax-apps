@@ -2,6 +2,9 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
+#include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace ordax::mobile {
@@ -85,6 +88,180 @@ std::size_t mappedFileOffset(std::uint64_t virtual_address, std::size_t bytes,
     throw GuestFault("ELF relocation table is not within file-backed PT_LOAD");
 }
 
+
+// This parser admits only the small symbol-bearing dynamic-linking subset
+// required for two *guest* ELFs. It never resolves a symbol to a host pointer.
+struct DynamicSymbols {
+    std::vector<std::string> needed;
+    std::size_t symbol_file_offset = 0;
+    std::size_t symbol_count = 0;
+    std::size_t strings_file_offset = 0;
+    std::size_t strings_size = 0;
+    std::uint64_t rela = 0;
+    std::size_t relasz = 0;
+    std::size_t relacount = 0;
+    bool has_rela = false;
+};
+std::string getBoundedString(std::span<const std::uint8_t> elf,
+                             const DynamicSymbols& m, std::uint32_t index) {
+    if (index >= m.strings_size) throw GuestFault("ELF dynamic string index out of range");
+    const auto at = m.strings_file_offset + index;
+    const auto remaining = m.strings_size - index;
+    auto len = std::size_t(0);
+    while (len < remaining && len <= 128 && elf[at + len] != 0) {
+        const auto ch = elf[at + len];
+        if (ch < 33 || ch > 126 || ch == '/' || ch == '\\') {
+            throw GuestFault("Unsupported or unsafe guest symbol/library name");
+        }
+        ++len;
+    }
+    if (!len || len > 128 || len == remaining) {
+        throw GuestFault("Unterminated or oversized guest symbol name");
+    }
+    return std::string(reinterpret_cast<const char*>(elf.data() + at), len);
+}
+DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
+                                   const DynamicSection& dynamic,
+                                   const std::vector<Segment>& segments) {
+    if (!dynamic.file_bytes || dynamic.file_bytes % 16 ||
+        dynamic.file_bytes / 16 > 512) {
+        throw GuestFault("Invalid dynamic section for linked ELF");
+    }
+    DynamicSymbols m;
+    std::vector<std::uint64_t> needed_names;
+    bool terminated = false;
+    std::unordered_set<std::uint64_t> seen;
+    std::uint64_t strtab = 0, strsz = 0, symtab = 0, syment = 0, hash = 0;
+    std::uint64_t relaent = 0;
+    bool saw_relasz = false, saw_relaent = false, saw_relacount = false;
+    for (std::size_t i = 0; i < dynamic.file_bytes; i += 16) {
+        const auto tag = get64(elf, dynamic.file_offset + i);
+        const auto value = get64(elf, dynamic.file_offset + i + 8);
+        if (tag == 0) { terminated = true; break; }
+        if (tag == 1) {
+            if (needed_names.size() >= 16) throw GuestFault("Too many guest DT_NEEDED libraries");
+            needed_names.push_back(value);
+            continue;
+        }
+        switch (tag) {
+            case 4: case 5: case 6: case 7: case 8: case 9:
+            case 10: case 11: case 0x6ffffff9: break;
+            default: throw GuestFault("Unsupported linked ELF dynamic tag");
+        }
+        if (!seen.insert(tag).second) throw GuestFault("Duplicate linked ELF dynamic tag");
+        switch (tag) {
+            case 4: hash = value; break;
+            case 5: strtab = value; break;
+            case 6: symtab = value; break;
+            case 7: m.rela = value; m.has_rela = true; break;
+            case 8:
+                if (value > 8192 * kRelaBytes) throw GuestFault("Unbounded ELF RELA");
+                m.relasz = static_cast<std::size_t>(value); saw_relasz = true; break;
+            case 9: relaent = value; saw_relaent = true; break;
+            case 10: strsz = value; break;
+            case 11: syment = value; break;
+            case 0x6ffffff9:
+                if (value > 8192) throw GuestFault("Unbounded DT_RELACOUNT");
+                m.relacount = static_cast<std::size_t>(value);
+                saw_relacount = true; break;
+        }
+    }
+    if (!terminated || !strtab || !strsz || strsz > 65536 ||
+        !symtab || syment != 24 || !hash ||
+        (m.has_rela != saw_relasz) || (m.has_rela != saw_relaent) ||
+        (saw_relaent && relaent != kRelaBytes) ||
+        (saw_relacount && (!m.has_rela ||
+          m.relacount > m.relasz / kRelaBytes)) ||
+        m.relasz % kRelaBytes != 0) {
+        throw GuestFault("Malformed linked ELF dynamic symbol/relocation metadata");
+    }
+    m.strings_size = static_cast<std::size_t>(strsz);
+    m.strings_file_offset = mappedFileOffset(strtab, m.strings_size, segments);
+    const auto hash_offset = mappedFileOffset(hash, 8, segments);
+    const auto symbols_count = get32(elf, hash_offset + 4); // SysV nchain
+    if (symbols_count == 0 || symbols_count > 4096) {
+        throw GuestFault("Guest dynamic symbol count is invalid");
+    }
+    m.symbol_count = symbols_count;
+    m.symbol_file_offset = mappedFileOffset(symtab, m.symbol_count * 24, segments);
+    for (const auto off : needed_names) {
+        if (off > 0xffffffffu) throw GuestFault("DT_NEEDED string index overflow");
+        const auto name = getBoundedString(elf, m, static_cast<std::uint32_t>(off));
+        if (std::find(m.needed.begin(), m.needed.end(), name) != m.needed.end()) {
+            throw GuestFault("Duplicate DT_NEEDED dependency");
+        }
+        m.needed.push_back(name);
+    }
+    return m;
+}
+std::vector<Relocation> parseLinkedRelocations(
+    std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
+    const std::vector<Segment>& segments, std::uint64_t bias,
+    std::size_t memory_bytes, std::span<const GuestDynamicExport> providers) {
+    const auto meta = readDynamicSymbols(elf, dynamic, segments);
+    if (meta.needed.empty() || !meta.has_rela || !meta.relasz) {
+        throw GuestFault("Linked ELF requires bounded explicit DT_NEEDED and RELA");
+    }
+    for (const auto& needed : meta.needed) {
+        if (std::none_of(providers.begin(), providers.end(), [&](const auto& p) {
+                return p.library == needed;
+            })) {
+            throw GuestFault("DT_NEEDED library was not explicitly loaded into guest");
+        }
+    }
+    const auto source = mappedFileOffset(meta.rela, meta.relasz, segments);
+    std::vector<Relocation> patches;
+    const auto count = meta.relasz / kRelaBytes;
+    if (count > 8192) throw GuestFault("Excessive linked ELF relocations");
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto off = source + i * kRelaBytes;
+        const auto address = get64(elf, off);
+        const auto info = get64(elf, off + 8);
+        const auto addend = get64(elf, off + 16);
+        const auto type = static_cast<std::uint32_t>(info);
+        const auto sym = static_cast<std::uint32_t>(info >> 32);
+        const auto destination = checkedAddress(address, bias, 8, memory_bytes);
+        if (destination % 8 || !inMapped(segments, destination, 8, kWritable)) {
+            throw GuestFault("Linked relocation target not writable");
+        }
+        std::uint64_t value = 0;
+        if (type == kAarch64Relative && sym == 0) {
+            value = bias + addend;
+            if (!inMapped(segments, value, 1)) {
+                throw GuestFault("Linked ELF relative pointer escapes image");
+            }
+        } else if ((type == 1025 || type == 1026) && sym != 0 && sym < meta.symbol_count &&
+                   addend == 0) { // AArch64 GLOB_DAT / JUMP_SLOT
+            const auto at = meta.symbol_file_offset + sym * 24;
+            const auto symbol_name = getBoundedString(elf, meta, get32(elf, at));
+            const auto shndx = get16(elf, at + 6);
+            const auto binding = elf[at + 4] >> 4;
+            const auto type_info = elf[at + 4] & 15;
+            if (shndx != 0 || binding != 1 || type_info != 2) {
+                throw GuestFault("Unsupported or defined import in ELF relocation");
+            }
+            std::size_t matches = 0;
+            for (const auto& provider : providers) {
+                if (provider.symbol == symbol_name &&
+                    std::find(meta.needed.begin(), meta.needed.end(),
+                              provider.library) != meta.needed.end()) {
+                    value = provider.address;
+                    ++matches;
+                }
+            }
+            if (matches != 1 || !value || value >= memory_bytes) {
+                throw GuestFault("Guest symbol unresolved or ambiguously exported");
+            }
+        } else {
+            throw GuestFault("Unsupported AArch64 symbol relocation type");
+        }
+        if (std::any_of(patches.begin(), patches.end(), [&](const auto& patch) {
+                return patch.destination == destination;
+            })) throw GuestFault("Duplicate linked relocation target");
+        patches.push_back({destination, value});
+    }
+    return patches;
+}
 std::vector<Relocation> parseRelativeRelocations(
     std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
     const std::vector<Segment>& segments, std::uint64_t bias,
