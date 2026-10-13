@@ -45,3 +45,57 @@ export function inspectElf(buffer) {
   }
   return Object.freeze({ format: 'elf64', abi: machine === 183 ? 'arm64-v8a' : 'x86_64', bytes: buffer.length, programHeaders: programCount, sectionTablePresent: sectionOffset !== 0n });
 }
+
+/**
+ * Locate declared class definitions inside a checksum-verified DEX image.
+ * Metadata-only: does not initialize classes, interpret methods or replace DexSubset.
+ */
+export function locateDexClassDefinitions(buffer, descriptors) {
+  inspectDex(buffer);
+  if (!Array.isArray(descriptors) || descriptors.length > 16 ||
+      !descriptors.every(x => typeof x === 'string' &&
+        /^L[A-Za-z0-9_/$]+;$/.test(x) && x.length <= 512)) {
+    throw new PackageError('DEX_TYPE', 'Invalid bounded class descriptor request');
+  }
+  const u32 = at => {
+    if (at < 0 || at > buffer.length - 4) {
+      throw new PackageError('DEX_INDEX', 'DEX index outside verified image');
+    }
+    return buffer.readUInt32LE(at);
+  };
+  const stringsCount = u32(56), stringsOff = u32(60);
+  const typesCount = u32(64), typesOff = u32(68);
+  const classesCount = u32(96), classesOff = u32(100);
+  if (stringsCount > 1000000 || typesCount > 65535 || classesCount > 65535 ||
+      stringsOff > buffer.length || stringsCount * 4 > buffer.length - stringsOff ||
+      typesOff > buffer.length || typesCount * 4 > buffer.length - typesOff ||
+      classesOff > buffer.length || classesCount * 32 > buffer.length - classesOff) {
+    throw new PackageError('DEX_INDEX', 'DEX class index table exceeds image bounds');
+  }
+  const wanted = new Set(descriptors);
+  const found = new Set();
+  for (let i = 0; i < classesCount && found.size < wanted.size; i++) {
+    const typeIndex = u32(classesOff + i * 32);
+    if (typeIndex >= typesCount) throw new PackageError('DEX_INDEX', 'Invalid class type index');
+    const stringIndex = u32(typesOff + typeIndex * 4);
+    if (stringIndex >= stringsCount) throw new PackageError('DEX_INDEX', 'Invalid class string index');
+    let p = u32(stringsOff + stringIndex * 4);
+    // Skip bounded ULEB128 MUTF-8 UTF-16 length prefix.
+    let terminated = false;
+    for (let j = 0; j < 5; j++) {
+      if (p >= buffer.length) throw new PackageError('DEX_INDEX', 'Truncated class descriptor');
+      const octet = buffer[p++];
+      if (!(octet & 0x80)) { terminated = true; break; }
+    }
+    if (!terminated) throw new PackageError('DEX_INDEX', 'Invalid class string length');
+    // An unrelated malformed descriptor must not trigger an unbounded scan.
+    const terminator = buffer.subarray(p, Math.min(buffer.length, p + 513)).indexOf(0);
+    const end = terminator < 0 ? -1 : p + terminator;
+    if (end < 0 || end - p > 512) {
+      throw new PackageError('DEX_INDEX', 'Missing or oversized class descriptor');
+    }
+    const name = buffer.toString('utf8', p, end);
+    if (wanted.has(name)) found.add(name);
+  }
+  return found;
+}

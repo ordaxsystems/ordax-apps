@@ -1,11 +1,12 @@
 // Only the verified package intake boundary. No Android API emulation is claimed.
 import { openPackage, packageFromBuffer, PackageError } from './zip.mjs';
-import { inspectDex, inspectElf } from './formats.mjs';
+import { inspectDex, inspectElf, locateDexClassDefinitions } from './formats.mjs';
 import { DexSubset } from './dex-vm.mjs';
+import { resolveAndroidLaunchManifest } from './manifest-axml.mjs';
 
 const MAX_APK = 256 * 1024 * 1024;
 function apkName(name) { return name.toLowerCase().endsWith('.apk'); }
-function dexName(name) { return /^classes(?:[2-9][0-9]*)?\.dex$/u.test(name); }
+function dexName(name) { return /^classes(?:[2-9]|[1-9][0-9]+)?\.dex$/u.test(name); }
 function nativeName(name) { return /^lib\/(arm64-v8a|x86_64)\/[^/]+\.so$/u.test(name); }
 
 async function inspectApkBytes(name, buffer, inspectPayloads) {
@@ -52,8 +53,78 @@ export async function inspectPackage(path, { verifyPayloads = true } = {}) {
     await zip.close();
   }
 }
-export function requireExecutionSupport() {
-  throw new PackageError('EXECUTION_UNAVAILABLE', 'Android guest execution is not implemented. APK inspection is not app execution.');
+export function requireExecutionSupport(launch = null) {
+  const target = launch ? ` Validated target: ${launch.applicationClass} -> ${launch.activityClass}.` : '';
+  throw new PackageError('EXECUTION_UNAVAILABLE',
+    'Android Activity lifecycle, ART framework and guest graphics are not implemented.' + target);
+}
+
+// Read and validate the *real* Android application and launcher declaration.
+// The returned plan is metadata only; no Dalvik, JNI or Activity is executed.
+async function verifiedLaunchPlan(apk) {
+  const has = name => apk.entries.some(e => e.name === name);
+  if (!has('classes.dex')) throw new PackageError('NO_DEX', 'Base classes.dex missing');
+  if (!has('AndroidManifest.xml')) {
+    throw new PackageError('MANIFEST', 'Base APK missing AndroidManifest.xml');
+  }
+  const launch = resolveAndroidLaunchManifest(
+    await apk.read('AndroidManifest.xml', 16 * 1024 * 1024));
+  const classNames = [launch.applicationClass, launch.activityClass]
+    .filter(name => name !== 'android.app.Application');
+  const expected = [...new Set(classNames.map(name => 'L' + name.replaceAll('.', '/') + ';'))];
+  const located = new Map();
+  const dex = apk.entries.filter(e => dexName(e.name)).sort((a, b) => {
+    const ordinal = name => name === 'classes.dex' ? 1 :
+      Number(name.slice('classes'.length, -'.dex'.length));
+    return ordinal(a.name) - ordinal(b.name);
+  });
+  for (const entry of dex) {
+    if (located.size === expected.length) break;
+    const data = await apk.read(entry.name, 64 * 1024 * 1024);
+    for (const descriptor of locateDexClassDefinitions(data, expected)) {
+      if (located.has(descriptor)) {
+        throw new PackageError('DEX_DUPLICATE', 'Launch class defined in multiple DEX files');
+      }
+      located.set(descriptor, entry.name);
+    }
+  }
+  for (const descriptor of expected) {
+    if (!located.has(descriptor)) {
+      throw new PackageError('DEX_ENTRY_MISSING',
+        'Manifest launch class not defined in base multidex: ' + descriptor);
+    }
+  }
+  const location = name => name === 'android.app.Application' ? 'android-framework' :
+    located.get('L' + name.replaceAll('.', '/') + ';');
+  return Object.freeze({
+    ...launch,
+    applicationDex: location(launch.applicationClass),
+    activityDex: location(launch.activityClass),
+  });
+}
+
+export async function resolveLaunchFromPackage(path) {
+  const outer = await openPackage(path);
+  try {
+    if (outer.entries.some(e => e.name === 'classes.dex')) {
+      // Finish all asynchronous ZIP reads before the finally block closes the handle.
+      return await verifiedLaunchPlan(outer);
+    }
+    const apks = outer.entries.filter(e => apkName(e.name));
+    if (!apks.length || apks.length > 32) throw new PackageError('LIMIT', 'Invalid XAPK split count');
+    let launch = null;
+    for (const e of apks) {
+      if (e.size > MAX_APK) throw new PackageError('LIMIT', 'APK exceeds limit');
+      const inner = await packageFromBuffer(await outer.read(e.name, MAX_APK));
+      try {
+        if (!inner.entries.some(x => x.name === 'classes.dex')) continue;
+        if (launch) throw new PackageError('AMBIGUOUS_APK', 'Multiple executable base APKs');
+        launch = await verifiedLaunchPlan(inner);
+      } finally { await inner.close(); }
+    }
+    if (!launch) throw new PackageError('NO_DEX', 'No verified base APK with classes.dex');
+    return launch;
+  } finally { await outer.close(); }
 }
 
 

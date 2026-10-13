@@ -239,8 +239,8 @@ test('APK and nested XAPK actually execute bounded static Dalvik bytecode', asyn
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).value, 42);
     const denied = spawnSync(process.execPath, [fileURLToPath(cli), 'run', apkPath], { encoding: 'utf8', timeout: 10000 });
-    assert.equal(denied.status, 3);
-    assert.equal(JSON.parse(denied.stderr).code, 'EXECUTION_UNAVAILABLE');
+    assert.equal(denied.status, 3, denied.stderr);
+    assert.equal(JSON.parse(denied.stderr).code, 'MANIFEST');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

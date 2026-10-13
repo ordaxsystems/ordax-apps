@@ -11,6 +11,7 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - Leitor APK/XAPK limitado, com validação de CRC, offsets, nomes, travessia, duplicatas, criptografia e tamanho expandido;
 - identificação e validação de DEX e ABI ELF64;
 - ferramenta de inspeção que falha fechada quando se solicita execução do app;
+- leitura completa dos nomes `classes.dex` a `classes23.dex` do pacote Instagram de referência (antes `classes10`–`classes19` ficavam invisíveis); resolução validada e somente informativa do `AndroidManifest.xml` binário, distinguindo aliases de Activities reais, componentes desativados e `MAIN/LAUNCHER`, sem iniciar o aplicativo;
 - testes sintéticos sem download de aplicativo proprietário;
 - interpretador Dalvik limitado, com tabelas reais DEX (`class_data`, `code_item`), chamadas estáticas, construtores e chamadas virtuais de classe local; objetos em heap isolado, campos `int32`, `new-instance`, `invoke-direct`, `invoke-virtual`, `invoke-super`, `instance-of`, `check-cast`, `if-eqz`/`if-nez` com referências, `iget`, `iput`, `move-object`, `return-object` e `move-result-object`;
 - arrays de inteiros Dalvik com `new-array`, `array-length`, `aget` e `aput` e alocação tipada em memória do convidado (até 65.536 posições por array e até 262.144 posições no conjunto, além do limite de 4.096 objetos/arrays); acesso inválido, tipo não suportado e retorno de referência guest ao host são recusados;
@@ -42,6 +43,16 @@ Rodar testes com Node.js 20+:
 Inspecionar um pacote fornecido localmente:
 
     node apps/mobile-compat/bin/mobile-compat.mjs inspect CAMINHO_DO_APK_OU_XAPK
+
+Identificar a Application, o alias habilitado e a Activity real em um APK/XAPK:
+
+    node apps/mobile-compat/bin/mobile-compat.mjs launch-plan CAMINHO_DO_APK_OU_XAPK
+
+O teste local com Instagram 450.0.0.50.77 identificou `InstagramAppShell`, alias
+`MainTabActivity` e Activity `InstagramMainActivity`. `InternalLauncher` está
+desabilitado no manifesto. **O comando `run` verifica esse destino, mas retorna
+`EXECUTION_UNAVAILABLE`**: nenhum contrato de ART/Android Activity/EGL, frame,
+janela do convidado, login ou interação é disponibilizado por essa prova.
 
 Prova de método Dalvik, usando **um APK próprio de teste**, sem executar Android:
 
