@@ -89,6 +89,21 @@ test('take back control pauses canonical local policy before revoking every curr
   assert.equal(h.state.computerAccess.enabled,false);
 });
 
+test('unavailable local policy is reported as unknown while remote grants are still revoked',async()=>{
+  const h=harness();
+  h.state.computerAccess=null;
+  assert.equal(h.run('computerSafetySnapshot().state'),'unknown');
+  const result=await h.run('takeBackComputerControl()');
+  assert.equal(result.ok,false);
+  assert.equal(result.local_paused,false);
+  assert.equal(result.failures[0].code,'local_policy_unavailable');
+  assert.deepEqual([...result.revoked_grant_ids],['grant-a','grant-b']);
+  assert.deepEqual(h.calls.map(call=>call[0]),[
+    'revoke_remote_computer_grant',
+    'revoke_remote_computer_grant',
+  ]);
+});
+
 test('remote revocation still runs when the local pause loses its revision race',async()=>{
   const h=harness({saveOk:false});
   const result=await h.run('takeBackComputerControl()');
