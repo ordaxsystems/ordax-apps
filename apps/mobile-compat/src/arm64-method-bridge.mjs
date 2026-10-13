@@ -12,6 +12,7 @@ import { PackageError } from './zip.mjs';
 const imageHash = /^[0-9a-f]{64}$/;
 const methodSig = /^\(I{0,5}\)I$/;
 const arrayMethodSig = /^\(\[I\)I$/;
+const returnArrayMethodSig = /^\(\)\[I$/;
 const isInt32 = v => Number.isInteger(v) && v >= -2147483648 && v <= 2147483647;
 const maxImageSize = 16 * 1024 * 1024;
 const maxProcessOutput = 4096;
@@ -24,9 +25,11 @@ export function registerArm64IntegerMethod(nativeBoundary, {
   if (!nativeBoundary || typeof nativeBoundary.register !== 'function' ||
       !isAbsolute(executablePath ?? '') || !isAbsolute(imagePath ?? '') ||
       typeof sha256 !== 'string' || !imageHash.test(sha256) ||
-      !(guestAbi === 'jni-int-array'
-        ? arrayMethodSig.test(signature ?? '') : methodSig.test(signature ?? '')) ||
-      !['plain-i32', 'jni-static-i32', 'jni-int-array'].includes(guestAbi) ||
+      !(guestAbi === 'jni-return-int-array'
+        ? returnArrayMethodSig.test(signature ?? '')
+        : guestAbi === 'jni-int-array'
+          ? arrayMethodSig.test(signature ?? '') : methodSig.test(signature ?? '')) ||
+      !['plain-i32', 'jni-static-i32', 'jni-int-array', 'jni-return-int-array'].includes(guestAbi) ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000) {
     failure('NATIVE_REGISTRATION', 'Invalid trusted ELF image/call configuration');
   }
@@ -61,7 +64,9 @@ export function registerArm64IntegerMethod(nativeBoundary, {
         const verifiedPath = join(privateDir, 'pinned.elf');
         writeFileSync(verifiedPath, image, { flag: 'wx', mode: 0o600 });
         let commandArgs;
-        if (guestAbi === 'jni-int-array') {
+        if (guestAbi === 'jni-return-int-array') {
+          commandArgs = ['invoke-jni-new-int-array-elf', verifiedPath];
+        } else if (guestAbi === 'jni-int-array') {
           const array = args[0];
           const bytes = Buffer.alloc(12 + array.length * 4);
           bytes.write('ODXA64I1', 0, 'ascii');
@@ -91,17 +96,27 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       let message;
       try { message = JSON.parse(stdout); }
       catch { failure('NATIVE_PROTOCOL', 'Native guest returned invalid JSON'); }
-      const expectedSchema = guestAbi === 'jni-int-array'
-        ? 'ordax.mobile-compat.jni-int-array-call/1'
+      const expectedSchema = guestAbi === 'jni-return-int-array'
+        ? 'ordax.mobile-compat.jni-return-int-array/1'
+        : guestAbi === 'jni-int-array'
+          ? 'ordax.mobile-compat.jni-int-array-call/1'
         : guestAbi === 'jni-static-i32'
           ? 'ordax.mobile-compat.jni-static-i32-call/1'
           : 'ordax.mobile-compat.i32-guest-call/1';
+      const isReturnArray = guestAbi === 'jni-return-int-array';
       if (message?.schema !== expectedSchema ||
-          !Number.isInteger(message.value) ||
-          message.value < -2147483648 || message.value > 2147483647 ||
+          (!isReturnArray && !isInt32(message.value)) ||
           Object.keys(message).sort().join(',') !==
-            (guestAbi === 'jni-int-array' ? 'array,schema,value' : 'schema,value')) {
+            (isReturnArray ? 'array' + ',schema'
+              : guestAbi === 'jni-int-array' ? 'array,schema,value' : 'schema,value')) {
         failure('NATIVE_PROTOCOL', 'Native guest returned unsupported response');
+      }
+      if (guestAbi === 'jni-return-int-array') {
+        if (!Array.isArray(message.array) || message.array.length > 1024 ||
+            !message.array.every(isInt32)) {
+          failure('NATIVE_PROTOCOL', 'Native JNI returned a malformed jintArray');
+        }
+        return message.array;
       }
       if (guestAbi === 'jni-int-array') {
         if (!Array.isArray(message.array) ||
@@ -129,4 +144,12 @@ export function registerArm64JniIntegerMethod(nativeBoundary, options) {
 // It reuses the only trusted subprocess/pinning boundary in this package.
 export function registerArm64JniIntArrayMethod(nativeBoundary, options) {
   return registerArm64IntegerMethod(nativeBoundary, { ...options, guestAbi: 'jni-int-array' });
+}
+
+// JNI jintArray returned by a static native ()[I method: the host returns
+// values only; Dalvik owns the newly allocated guest reference after validation.
+export function registerArm64JniReturnIntArrayMethod(nativeBoundary, options) {
+  return registerArm64IntegerMethod(nativeBoundary, {
+    ...options, guestAbi: 'jni-return-int-array',
+  });
 }
