@@ -21,8 +21,9 @@ void CpuA64::assert_range(std::uint64_t address, std::size_t count) const {
         throw GuestFault("Guest memory access outside allocation");
     }
 }
-void CpuA64::set_guest_regions(std::span<const GuestRegion> regions) {
-    if (regions.empty() || regions.size() > 64) {
+void CpuA64::verify_new_guest_regions(std::span<const GuestRegion> regions) const {
+    if (regions.empty() || regions.size() > 64 ||
+        guest_regions_.size() > 64 - regions.size()) {
         throw GuestFault("Invalid guest protection table size");
     }
     for (std::size_t i = 0; i < regions.size(); ++i) {
@@ -38,8 +39,17 @@ void CpuA64::set_guest_regions(std::span<const GuestRegion> regions) {
                 throw GuestFault("Overlapping guest protection regions");
             }
         }
+        for (const auto& existing : guest_regions_) {
+            if (current.address < existing.address + existing.length &&
+                existing.address < current.address + current.length) {
+                throw GuestFault("Guest ELF collides with previously mapped guest library");
+            }
+        }
     }
-    guest_regions_.assign(regions.begin(), regions.end());
+}
+void CpuA64::set_guest_regions(std::span<const GuestRegion> regions) {
+    verify_new_guest_regions(regions);
+    guest_regions_.insert(guest_regions_.end(), regions.begin(), regions.end());
     protected_guest_ = true;
 }
 void CpuA64::install_host_readonly(std::uint64_t address,
