@@ -131,6 +131,7 @@ std::size_t mappedFileOffset(std::uint64_t virtual_address, std::size_t bytes,
 // required for two *guest* ELFs. It never resolves a symbol to a host pointer.
 struct DynamicSymbols {
     std::vector<std::string> needed;
+    std::string soname;
     std::size_t symbol_file_offset = 0;
     std::size_t symbol_count = 0;
     std::size_t strings_file_offset = 0;
@@ -229,6 +230,8 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
     bool terminated = false;
     std::unordered_set<std::uint64_t> seen;
     std::uint64_t strtab = 0, strsz = 0, symtab = 0, syment = 0, hash = 0, gnu_hash = 0;
+    std::uint64_t soname_offset = 0;
+    bool saw_soname = false;
     std::uint64_t relaent = 0;
     bool saw_relasz = false, saw_relaent = false, saw_relacount = false;
     for (std::size_t i = 0; i < dynamic.file_bytes; i += 16) {
@@ -243,7 +246,7 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         switch (tag) {
             case 2: case 20: case 23:
             case 4: case 5: case 6: case 7: case 8: case 9:
-            case 10: case 11: case 0x6ffffff9: case 0x6ffffef5:
+            case 10: case 11: case 14: case 0x6ffffff9: case 0x6ffffef5:
             case 35: case 36: case 37:
             case 0x6fffe000: case 0x6fffe001: case 0x6fffe003:
             case 0x6fffe005:
@@ -270,6 +273,7 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
             case 9: relaent = value; saw_relaent = true; break;
             case 10: strsz = value; break;
             case 11: syment = value; break;
+            case 14: soname_offset = value; saw_soname = true; break;
             case 0x6ffffff9:
                 if (value > 8192) throw GuestFault("Unbounded DT_RELACOUNT");
                 m.relacount = static_cast<std::size_t>(value);
@@ -305,6 +309,10 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         throw GuestFault("ELF dynamic symbol count is invalid or ambiguous");
     }
     m.symbol_count = hash ? sysv_count : gnu_count;
+    if (saw_soname) {
+        if (soname_offset > UINT32_MAX) throw GuestFault("ELF DT_SONAME index overflows");
+        m.soname = getBoundedString(elf, m, static_cast<std::uint32_t>(soname_offset));
+    }
     m.symbol_file_offset = mappedFileOffset(symtab, m.symbol_count * 24, segments);
     for (const auto off : needed_names) {
         if (off > 0xffffffffu) throw GuestFault("DT_NEEDED string index overflow");
@@ -576,7 +584,7 @@ std::vector<Relocation> parseRelativeRelocations(
                 break; // RELR parsed by one shared bounded decoder
             case 0x60000011: case 0x60000012:
                 break; // Android APS2 stream checked by the shared ELF linker
-            case 4: case 5: case 6: case 10: case 11:
+            case 4: case 5: case 6: case 10: case 11: case 14:
             case 0x6ffffef5:
                 // Self-contained ET_DYN providers may publish dynamic symbols,
                 // but must never load or resolve dependencies implicitly.
@@ -828,6 +836,11 @@ std::vector<GuestDynamicExport> inspectGuestDynamicExports(
     const auto meta = readDynamicSymbols(elf, dynamic[0], segments);
     if (!meta.needed.empty() || meta.has_rela) {
         throw GuestFault("Guest provider must be self-contained for this linker subset");
+    }
+    // Android API 23+ identifies shared libraries by DT_SONAME, not by a
+    // host-chosen filename. Mismatches cannot become trusted DT_NEEDED links.
+    if (meta.soname.empty() || meta.soname != library) {
+        throw GuestFault("Provider DT_SONAME missing or not equal to expected library");
     }
     std::vector<GuestDynamicExport> exports;
     for (std::size_t i = 1; i < meta.symbol_count; ++i) {
