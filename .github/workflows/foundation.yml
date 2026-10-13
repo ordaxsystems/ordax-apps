@@ -49,6 +49,9 @@ jobs:
           python3 -m unittest tests/test_audit_app_readiness.py
           python3 tools/audit_app_readiness.py --format markdown --prove-package-candidates
 
+      - name: Prove Activity transfer source/SDK integrity and unsigned package
+        run: python3 -m unittest tests.test_activity_gate_b -v
+
       - name: Prove Files cutover stays blocked until platform source removal
         run: |
           python3 -m unittest tests/test_files_cutover.py
