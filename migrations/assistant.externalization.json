@@ -41,8 +41,9 @@
       "system/contracts/personal-ordax-store.mjs"
     ],
     "contract_publication_pr": 1711,
-    "publication_pending_until_merged": true,
-    "migration_authorized_by_sdk_pin": false
+    "publication_pending_until_merged": false,
+    "migration_authorized_by_sdk_pin": false,
+    "publication_merge_commit": "d4061166b86c6601dbf75f47ba2c5981d0586804"
   },
   "gate_b_transfer_map": "migrations/assistant.gate-b-transfer-map.json"
 }
