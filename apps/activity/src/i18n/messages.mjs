@@ -198,7 +198,7 @@ export function translateActivityMessage(locale, key, params = {}) {
   if (typeof template !== "string") {
     throw new TypeError("Activity localization message must be text");
   }
-  return template.replace(/\\{([a-z][a-zA-Z0-9]*)\\}/g, (_, name) => {
+  return template.replace(/\{([a-z][a-zA-Z0-9]*)\}/g, (_, name) => {
     if (!Object.hasOwn(params, name) || !["string", "number"].includes(typeof params[name])) {
       throw new TypeError("Missing Activity localization value: " + name);
     }
