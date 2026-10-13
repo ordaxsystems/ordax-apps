@@ -332,6 +332,14 @@ arrayTest('native JNI failures never commit partial changes to Dalvik arrays', (
   });
   assert.equal(success.call(info, [ref], heap), 43);
   assert.equal(heap.getIntArray(ref, 0), 43);
+  const voidCall = new NativeMethodBoundary();
+  voidCall.register({
+    owner, name: 'change', signature: '([I)V',
+    invoke: arr => { arr[0] = 44; },
+  });
+  const voidInfo = { owner, name: 'change', proto: { params: ['[I'], result: 'V' } };
+  voidCall.call(voidInfo, [ref], heap);
+  assert.equal(heap.getIntArray(ref, 0), 44);
 });
 arrayTest('JNI array snapshots reject tampered ELF and invalid binary payloads', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ordax-array-tamper-'));
