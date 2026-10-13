@@ -424,10 +424,12 @@ test('object bytecode also runs from APK and XAPK through the real package intak
 
 test('branches cannot jump directly into move-result-object', () => {
   const raw = objectDexFixture();
-  // Replace invoke-static with goto +3 to the move-result-object.
-  raw.writeUInt16LE(0x0328, 0x6c0 + 16);
-  raw.writeUInt16LE(0x0012, 0x6c0 + 18);
-  raw.writeUInt16LE(0, 0x6c0 + 20);
+  // A well-formed invoke/move-result pair stays at words 0..3.
+  // A later goto -1 must not jump back into that move-result-object.
+  raw.writeUInt16LE(0xff28, 0x6c0 + 16 + 4 * 2);
+  raw.writeUInt16LE(0x0012, 0x6c0 + 16 + 5 * 2);
+  raw.writeUInt16LE(0x0012, 0x6c0 + 16 + 6 * 2);
+  raw.writeUInt16LE(0x0012, 0x6c0 + 16 + 7 * 2);
   assert.throws(() => new DexSubset(sealDex(raw)).execute('Ltest/Arithmetic;', 'makeValue', [1]),
     { code: 'DEX_RESULT' });
 });
