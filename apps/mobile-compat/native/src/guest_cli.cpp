@@ -16,6 +16,8 @@
 #include <vector>
 
 int main(int argc, char** argv) {
+    const bool linked_mode = argc == 5 &&
+                             std::string(argv[1]) == "link-two-elf";
     const bool old_mode = argc == 3 && std::string(argv[1]) == "run-elf";
     const bool call_mode = argc >= 3 && argc <= 8 &&
                            std::string(argv[1]) == "invoke-i32-elf";
@@ -26,8 +28,9 @@ int main(int argc, char** argv) {
     const bool jni_new_array_mode = argc == 3 &&
                                     std::string(argv[1]) == "invoke-jni-new-int-array-elf";
     if (!old_mode && !call_mode && !jni_mode &&
-        !jni_array_mode && !jni_new_array_mode) {
+        !jni_array_mode && !jni_new_array_mode && !linked_mode) {
         std::cerr << "usage: ordax-mobile-guest run-elf <elf>\n"
+                  << "   or: ordax-mobile-guest link-two-elf <provider.so> <client.so> <int32 x0>\n"
                   << "   or: ordax-mobile-guest invoke-i32-elf <elf> [int32 x0..x4]\n"
                   << "   or: ordax-mobile-guest invoke-jni-i32-elf <elf> [int32 x2..x6]\n"
                   << "   or: ordax-mobile-guest invoke-jni-int-array-elf <elf> <array-snapshot>\n"
@@ -70,6 +73,42 @@ int main(int argc, char** argv) {
         const std::uint16_t kind = std::uint16_t(bytes[16]) |
                                   (std::uint16_t(bytes[17]) << 8);
         ordax::mobile::LoadedGuestElf image;
+        if (linked_mode) {
+            std::int32_t input_value = 0;
+            const std::string arg(argv[4]);
+            if (arg.empty()) throw ordax::mobile::GuestFault("Empty linked call argument");
+            const auto parsed = std::from_chars(arg.data(), arg.data() + arg.size(), input_value);
+            if (parsed.ec != std::errc{} || parsed.ptr != arg.data() + arg.size()) {
+                throw ordax::mobile::GuestFault("Invalid linked call int32");
+            }
+            const auto libraryName = file.filename().string();
+            (void)ordax::mobile::loadRelocatableElfA64(cpu, bytes, 0x10000);
+            const auto exports = ordax::mobile::inspectGuestDynamicExports(
+                bytes, 0x10000, libraryName);
+            const std::filesystem::path clientFile(argv[3]);
+            const auto clientSize = std::filesystem::file_size(clientFile);
+            if (clientSize < 64 || clientSize > max_input) {
+                throw ordax::mobile::GuestFault("Client ELF exceeds input size limit");
+            }
+            std::ifstream clientStream(clientFile, std::ios::binary);
+            std::vector<std::uint8_t> client(static_cast<std::size_t>(clientSize));
+            if (!clientStream.read(reinterpret_cast<char*>(client.data()),
+                                   static_cast<std::streamsize>(client.size()))) {
+                throw ordax::mobile::GuestFault("Incomplete dependent ELF input");
+            }
+            const auto linked = ordax::mobile::loadLinkedElfA64(
+                cpu, client, 0x30000, exports);
+            if (!linked.has_entry) throw ordax::mobile::GuestFault("Dependent ELF has no entry");
+            cpu.set_register(0, static_cast<std::uint64_t>(
+                static_cast<std::int64_t>(input_value)));
+            const auto result = cpu.run(linked.entry, 100000);
+            std::cout << "{\"schema\":\"ordax.mobile-compat.linked-guest-elf-result/1\","
+                      << "\"guestReturn\":" << std::bit_cast<std::int32_t>(
+                          static_cast<std::uint32_t>(result))
+                      << ",\"resolvedRelocations\":" << linked.relative_relocations
+                      << ",\"providerExports\":" << exports.size() << "}\n";
+            return 0;
+        }
         if (kind == 2) {
             image = ordax::mobile::loadStaticElfA64(cpu, bytes);
         } else if (kind == 3) {
