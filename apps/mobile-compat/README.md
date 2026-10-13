@@ -12,6 +12,8 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - identificação e validação de DEX e ABI ELF64;
 - ferramenta de inspeção que falha fechada quando se solicita execução do app;
 - testes sintéticos sem download de aplicativo proprietário;
+- interpretador Dalvik **limitado a métodos estáticos inteiros** com leitura de tabelas reais DEX, class_data, code_item, chamadas invoke-static, verificação prévia de instruções e orçamento compartilhado de execução;
+- fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; sem JNIEnv, ponteiros guest, carregamento automático de bibliotecas ou autoridade da plataforma;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
 - carregador ELF64 ARM64 `ET_EXEC` e subconjunto relocável `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE` sem símbolos externos; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
 - executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória e permissões ELF de leitura, escrita e execução (nega escrita em RX e execução em dados NX);
@@ -24,6 +26,16 @@ Rodar testes com Node.js 20+:
 Inspecionar um pacote fornecido localmente:
 
     node apps/mobile-compat/bin/mobile-compat.mjs inspect CAMINHO_DO_APK_OU_XAPK
+
+Prova de método Dalvik, usando **um APK próprio de teste**, sem executar Android:
+
+    node apps/mobile-compat/bin/mobile-compat.mjs dex-method CAMINHO_DO_APK Ltest/Arithmetic; sum 19 23
+
+O comando acima executa somente o corpo de um método estático com parâmetros
+`int32`, sob limites de tamanho, instruções, pilha e registos. Rejeita
+objetos, arrays, classes, reflexão, chamadas externas e opcodes ausentes.
+O adaptador nativo de teste exige registro explícito pelo host e não pode
+ser selecionado pelo CLI. Isso não é ART nem JNI completo.
 
 Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
 
