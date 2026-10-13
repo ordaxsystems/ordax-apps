@@ -239,7 +239,15 @@ function makeArrayDex() {
   b[0x303] = 0;
   b.writeUInt32LE(3, 64);
   b.writeUInt32LE(5, 0x98);
-  b.writeUInt16LE(2, 0x114); // method param = [I instead of I
+  // Keep the public test entrypoint callNative(I)I intact; give only the
+  // native method its own ([I)I prototype.
+  b.writeUInt32LE(2, 72); // two proto_ids
+  b.writeUInt32LE(1, 0xa8); // shorty index (diagnostic only here)
+  b.writeUInt32LE(0, 0xac); // return type I
+  b.writeUInt32LE(0x118, 0xb0); // array parameter type_list
+  b.writeUInt32LE(1, 0x118);
+  b.writeUInt16LE(2, 0x11c);
+  b.writeUInt16LE(1, 0xc2); // nativeAdd([I)I; callNative(I)I remains unchanged
   b.writeUInt16LE(5, 0x180); // v0..v4
   b.writeUInt16LE(1, 0x182);
   b.writeUInt16LE(1, 0x184);
