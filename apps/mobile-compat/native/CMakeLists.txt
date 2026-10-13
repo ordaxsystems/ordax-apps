@@ -23,3 +23,15 @@ add_executable(ordax-mobile-guest src/guest_cli.cpp)
 target_link_libraries(ordax-mobile-guest PRIVATE ordax_mobile_guest)
 add_test(NAME mobile-guest-cli-help COMMAND ordax-mobile-guest)
 set_tests_properties(mobile-guest-cli-help PROPERTIES WILL_FAIL TRUE)
+
+# Exercise the actual .elf file path through the native host, not just memory.
+add_test(NAME mobile-native-fixture
+         COMMAND ordax_mobile_dynamic_elf_tests --emit-fixture
+                 "${CMAKE_CURRENT_BINARY_DIR}/mobile-guest-fixture.elf")
+set_tests_properties(mobile-native-fixture PROPERTIES FIXTURES_SETUP mobile-guest-fixture)
+add_test(NAME mobile-native-entry-file-proof
+         COMMAND ordax-mobile-guest run-elf
+                 "${CMAKE_CURRENT_BINARY_DIR}/mobile-guest-fixture.elf")
+set_tests_properties(mobile-native-entry-file-proof PROPERTIES
+    FIXTURES_REQUIRED mobile-guest-fixture
+    PASS_REGULAR_EXPRESSION "guestReturn.*12288")
