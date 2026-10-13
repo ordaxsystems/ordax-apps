@@ -36,6 +36,8 @@ void JniGuestEnvironment::install(CpuA64& cpu) {
     store64(env, 0, kTableAddress);
     std::array<std::uint8_t, kTableBytes> table{};
     store64(table, kGetVersionIndex * 8, trap(kGetVersionIndex));
+    store64(table, kFindClassIndex * 8, trap(kFindClassIndex));
+    store64(table, kRegisterNativesIndex * 8, trap(kRegisterNativesIndex));
     store64(table, kGetArrayLengthIndex * 8, trap(kGetArrayLengthIndex));
     store64(table, kNewIntArrayIndex * 8, trap(kNewIntArrayIndex));
     store64(table, kGetIntArrayRegionIndex * 8, trap(kGetIntArrayRegionIndex));
@@ -95,6 +97,9 @@ std::uint64_t JniGuestEnvironment::dispatch(
     }
     if (args[0] != kEnvAddress) {
         throw GuestFault("JNI call has incorrect JNIEnv pointer");
+    }
+    if (target == trap(kFindClassIndex) || target == trap(kRegisterNativesIndex)) {
+        return dispatchRegistration(target, args);
     }
     if (target == trap(kGetVersionIndex)) return kVersion;
     if (target == trap(kExceptionCheckIndex)) return 0;
