@@ -10,6 +10,8 @@ import { PackageError } from './zip.mjs';
 
 const imageHash = /^[0-9a-f]{64}$/;
 const methodSig = /^\(I{0,5}\)I$/;
+const arrayMethodSig = /^\(\[I\)I$/;
+const isInt32 = v => Number.isInteger(v) && v >= -2147483648 && v <= 2147483647;
 const maxImageSize = 16 * 1024 * 1024;
 const maxProcessOutput = 4096;
 const failure = (code, message) => { throw new PackageError(code, message); };
@@ -21,8 +23,9 @@ export function registerArm64IntegerMethod(nativeBoundary, {
   if (!nativeBoundary || typeof nativeBoundary.register !== 'function' ||
       !isAbsolute(executablePath ?? '') || !isAbsolute(imagePath ?? '') ||
       typeof sha256 !== 'string' || !imageHash.test(sha256) ||
-      !methodSig.test(signature ?? '') ||
-      !['plain-i32', 'jni-static-i32'].includes(guestAbi) ||
+      !(guestAbi === 'jni-int-array'
+        ? arrayMethodSig.test(signature ?? '') : methodSig.test(signature ?? '')) ||
+      !['plain-i32', 'jni-static-i32', 'jni-int-array'].includes(guestAbi) ||
       !Number.isSafeInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 10000) {
     failure('NATIVE_REGISTRATION', 'Invalid trusted ELF image/call configuration');
   }
@@ -47,20 +50,38 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       // attacker-mutable input after hash validation would create a TOCTOU
       // gap. A private per-call snapshot also prevents parallel call races.
       let stdout, privateDir;
+      if (guestAbi === 'jni-int-array' && (
+          args.length !== 1 || !Array.isArray(args[0]) ||
+          args[0].length > 1024 || !args[0].every(isInt32))) {
+        failure('NATIVE_ARGS', 'Only bounded int[] snapshots are supported');
+      }
       try {
         privateDir = mkdtempSync(join(tmpdir(), 'ordax-mobile-guest-'));
         const verifiedPath = join(privateDir, 'pinned.elf');
         writeFileSync(verifiedPath, image, { flag: 'wx', mode: 0o600 });
-        stdout = execFileSync(executablePath,
-          [guestAbi === 'jni-static-i32' ? 'invoke-jni-i32-elf' : 'invoke-i32-elf',
-            verifiedPath, ...args.map(String)], {
-            encoding: 'utf8',
-            timeout: timeoutMs,
-            maxBuffer: maxProcessOutput,
-            windowsHide: true,
-            shell: false,
-            stdio: ['ignore', 'pipe', 'pipe'],
-          });
+        let commandArgs;
+        if (guestAbi === 'jni-int-array') {
+          const array = args[0];
+          const bytes = Buffer.alloc(12 + array.length * 4);
+          bytes.write('ODXA64I1', 0, 'ascii');
+          bytes.writeUInt32LE(array.length, 8);
+          array.forEach((value, index) => bytes.writeInt32LE(value, 12 + index * 4));
+          const arrayPath = join(privateDir, 'guest-int-array.bin');
+          writeFileSync(arrayPath, bytes, { flag: 'wx', mode: 0o600 });
+          commandArgs = ['invoke-jni-int-array-elf', verifiedPath, arrayPath];
+        } else {
+          commandArgs = [guestAbi === 'jni-static-i32'
+            ? 'invoke-jni-i32-elf' : 'invoke-i32-elf',
+            verifiedPath, ...args.map(String)];
+        }
+        stdout = execFileSync(executablePath, commandArgs, {
+          encoding: 'utf8',
+          timeout: timeoutMs,
+          maxBuffer: guestAbi === 'jni-int-array' ? 65536 : maxProcessOutput,
+          windowsHide: true,
+          shell: false,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
       } catch {
         failure('NATIVE_EXECUTION', 'Guest subprocess failed or timed out');
       } finally {
@@ -69,14 +90,27 @@ export function registerArm64IntegerMethod(nativeBoundary, {
       let message;
       try { message = JSON.parse(stdout); }
       catch { failure('NATIVE_PROTOCOL', 'Native guest returned invalid JSON'); }
-      const expectedSchema = guestAbi === 'jni-static-i32'
-        ? 'ordax.mobile-compat.jni-static-i32-call/1'
-        : 'ordax.mobile-compat.i32-guest-call/1';
+      const expectedSchema = guestAbi === 'jni-int-array'
+        ? 'ordax.mobile-compat.jni-int-array-call/1'
+        : guestAbi === 'jni-static-i32'
+          ? 'ordax.mobile-compat.jni-static-i32-call/1'
+          : 'ordax.mobile-compat.i32-guest-call/1';
       if (message?.schema !== expectedSchema ||
           !Number.isInteger(message.value) ||
           message.value < -2147483648 || message.value > 2147483647 ||
-          Object.keys(message).sort().join(',') !== 'schema,value') {
+          Object.keys(message).sort().join(',') !==
+            (guestAbi === 'jni-int-array' ? 'array,schema,value' : 'schema,value')) {
         failure('NATIVE_PROTOCOL', 'Native guest returned unsupported response');
+      }
+      if (guestAbi === 'jni-int-array') {
+        if (!Array.isArray(message.array) ||
+            message.array.length !== args[0].length ||
+            !message.array.every(isInt32)) {
+          failure('NATIVE_PROTOCOL', 'Native JNI array response was invalid');
+        }
+        // This is a private copy. The caller validates the whole result before
+        // a single update reaches the Dalvik-owned GuestHeap.
+        args[0].splice(0, args[0].length, ...message.array);
       }
       return message.value;
     },
@@ -88,4 +122,10 @@ export function registerArm64IntegerMethod(nativeBoundary, {
 // changes: x0=JNIEnv*, x1=jclass, x2..x6=jint arguments.
 export function registerArm64JniIntegerMethod(nativeBoundary, options) {
   return registerArm64IntegerMethod(nativeBoundary, { ...options, guestAbi: 'jni-static-i32' });
+}
+
+// Opaque jintArray transport for host-registered static ([I)I native methods.
+// It reuses the only trusted subprocess/pinning boundary in this package.
+export function registerArm64JniIntArrayMethod(nativeBoundary, options) {
+  return registerArm64IntegerMethod(nativeBoundary, { ...options, guestAbi: 'jni-int-array' });
 }
