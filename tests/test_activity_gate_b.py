@@ -51,7 +51,7 @@ class ActivityGateBTests(unittest.TestCase):
         self.assertEqual(sdk["source_commit"], lock["commit"])
         self.assertEqual(sdk["sdk_bundle_version"], lock["bundle_version"])
         self.assertEqual(sdk["authority"], "none")
-        self.assertEqual(len(sdk["contracts"]), 9)
+        self.assertEqual(len(sdk["contracts"]), 10)
         for record in sdk["contracts"]:
             self.assertTrue(record["source_path"].startswith("system/contracts/"))
             target = ROOT / record["target"]

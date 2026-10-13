@@ -48,7 +48,8 @@
       "system/contracts/personal-ordax-store.mjs",
       "system/contracts/personal-ordax.mjs",
       "system/contracts/surface-render-lifecycle.mjs",
-      "system/contracts/localization.mjs"
+      "system/contracts/localization.mjs",
+      "system/contracts/locale-profile.mjs"
     ],
     "migration_authorized_by_sdk_pin": false
   },

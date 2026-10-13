@@ -58,6 +58,12 @@
       "source_path": "system/contracts/localization.mjs",
       "git_blob_sha": "df3fb7fc65f27d35cffc984c748b0e199b499bb4",
       "target": "apps/activity/src/sdk/contracts/localization.mjs"
+    },
+    {
+      "name": "locale-profile",
+      "source_path": "system/contracts/locale-profile.mjs",
+      "git_blob_sha": "2edd61c44e76d87e7fd1873ff833d48009b9a95c",
+      "target": "apps/activity/src/sdk/contracts/locale-profile.mjs"
     }
   ],
   "authority": "none",
