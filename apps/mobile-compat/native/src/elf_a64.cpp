@@ -264,9 +264,8 @@ std::vector<Relocation> parseLinkedRelocations(
         const auto type = static_cast<std::uint32_t>(info);
         const auto sym = static_cast<std::uint32_t>(info >> 32);
         const auto destination = checkedAddress(address, bias, 8, memory_bytes);
-        if (destination % 8 || !inMapped(segments, destination, 8, kWritable)) {
-            throw GuestFault("Linked relocation target not writable");
-        }
+        // The RelocationPlan alone enforces writable, aligned and unique
+        // patch destinations across every format after all records decode.
         std::uint64_t value = 0;
         if (type == kAarch64Relative && sym == 0) {
             value = bias + addend;
@@ -356,9 +355,6 @@ std::vector<Relocation> parseRelrRelocations(
     const auto append = [&](std::uint64_t virtual_address) {
         if (virtual_address % 8) throw GuestFault("Unaligned RELR target");
         const auto destination = checkedAddress(virtual_address, bias, 8, memory_bytes);
-        if (!inMapped(segments, destination, 8, kWritable)) {
-            throw GuestFault("RELR target is not a writable guest segment");
-        }
         // The addend is the *original* 64-bit word in the image, not a value
         // from a previously patched guest mapping. A zero-filled BSS target
         // has zero addend; partially file-backed words are refused.
@@ -452,9 +448,6 @@ std::vector<Relocation> parseAndroidAps2Relocations(
         }
         const auto destination = checkedAddress(
             record.offset, bias, 8, memory_bytes);
-        if (destination % 8 || !inMapped(segments, destination, 8, kWritable)) {
-            throw GuestFault("APS2 relocation is not writable or aligned");
-        }
         const auto value = bias + static_cast<std::uint64_t>(record.addend);
         if (!inMapped(segments, value, 1)) {
             throw GuestFault("APS2 relative addend points outside guest image");
@@ -534,9 +527,6 @@ std::vector<Relocation> parseRelativeRelocations(
             throw GuestFault("Relocation requires unresolved Android symbol or type");
         }
         const auto destination = checkedAddress(target, bias, 8, memory_bytes);
-        if (destination % 8 != 0 || !inMapped(segments, destination, 8, kWritable)) {
-            throw GuestFault("Relocation destination is not a writable PT_LOAD");
-        }
         // ELF64 r_addend is signed. Two's complement arithmetic here is
         // intentional; validate the resulting guest pointer before using it.
         const auto value = bias + addend;
