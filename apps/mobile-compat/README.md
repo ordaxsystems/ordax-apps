@@ -21,6 +21,7 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - **ponte experimental Dalvik → ARM64 para métodos `int32`**: `invoke-static` de um método DEX opt-in chama `NativeMethodBoundary`, que pode usar `registerArm64IntegerMethod` para executar um ELF de desenvolvimento no motor ARM64 nativo. O arquivo é conferido por SHA-256 e executado a partir de uma cópia privada validada, com subprocesso limitado por tempo e saída. Só `(I{0,5})I`, sem objetos exportados, ponteiros host, símbolos dinâmicos ou autorização escolhida pelo APK;
 - o comando de desenvolvimento `ordax-mobile-guest invoke-i32-elf arquivo.elf [int32 ...]` aceita até cinco argumentos em `x0` a `x4`. A variante `invoke-jni-i32-elf` fornece `JNIEnv*` em `x0`, um identificador `jclass` opaco em `x1`, e até cinco `jint` em `x2`–`x6`, com resultado `jint` em `x0`;
 - **JNI experimental verificável**: memória protegida para a representação `JNIEnv*` e a `JNINativeInterface` de 64 bits, com entradas oficiais `GetVersion` (índice 4), `GetArrayLength` (171), `GetIntArrayRegion` (203), `SetIntArrayRegion` (211) e `ExceptionCheck` (228). As demais entradas são nulas e não simulam implementações. Chamadas `BLR` entram somente em uma porta autorizada; referências inválidas, ponteiros `JNIEnv` incorretos e mapeamentos sobrepostos são recusados;
+- **JNI `int[]` criado pelo ARM64**: `NewIntArray` no índice JNI oficial 179 cria um `jintArray` local; um ELF ARM64 pode preenchê-lo com `SetIntArrayRegion` e retorná-lo por `jintArray` em `x0`. A mesma fronteira confiável valida o conteúdo (até 1.024 inteiros) e cria uma **nova referência Dalvik**, privada por execução. Esse retorno nativo `()[I` permite usar `move-result-object` e `aget` em código DEX sem transferir handles ou ponteiros JNI para o host. As chamadas com arrays e os retornos de arrays são comprovados em APK/XAPK de teste, não no Instagram;
 - **JNI `int[]` de ida e volta**: uma chamada nativa estática `([I)I` recebe um array criado pelo Dalvik, transfere um snapshot binário validado ao processo ARM64, lê o elemento com `GetIntArrayRegion`, modifica-o com `SetIntArrayRegion` e devolve um array validado para escrita atômica no heap Dalvik. As cópias não compartilham endereços nem memória entre processos. O transporte é privado, limitado a 1.024 inteiros por chamada e protegido pelas mesmas regras de hash, tempo e ausência de shell da ponte existente;
 - testes fim a fim desse executável com um ELF ARM64 relocável gerado pelos testes, repetindo-o sob diferentes bases virtuais e verificando acessos proibidos. Dependências de bibliotecas, Bionic, ART e execução de APK continuam indisponíveis.
 
@@ -59,8 +60,8 @@ Testar a prova nativa do executor (Linux ou Visual Studio no Windows):
     ctest --test-dir apps/mobile-compat/native/build -C Debug --output-on-failure
 
 O host nativo de desenvolvimento é compilado no diretório `native/build`.
-As opções suportadas são `run-elf`, `invoke-i32-elf`, `invoke-jni-i32-elf`
-e `invoke-jni-int-array-elf` (esta última requer um snapshot binário produzido
+As opções suportadas são `run-elf`, `invoke-i32-elf`, `invoke-jni-i32-elf`,
+`invoke-jni-new-int-array-elf` e `invoke-jni-int-array-elf` (esta última requer um snapshot binário produzido
 pela ponte confiável)
 para o subconjunto ARM64; bibliotecas com símbolos externos são recusadas,
 sem executar instruções diretamente no processador do host.
@@ -71,12 +72,13 @@ ELF AArch64 que soma dois ao parâmetro recebido em `x0`, carrega um
 verifica resultados positivos, negativos e overflow `int32`, testa o mesmo
 caminho via APK e XAPK e confirma que a execução falha sem registro host.
 Há também `mobile-jni-table-abi-proof`, `mobile-dex-to-jni-aarch64-bridge`
-e `mobile-dex-jni-array-roundtrip`,
+e `mobile-dex-jni-array-roundtrip` / `mobile-dex-jni-new-array-roundtrip`,
 que usam os índices reais de `JNIEnv` com chamadas indiretas do CPU ARM64 e
 reutilizam o mesmo contrato DEX/APK/XAPK com a ABI de `jint` e `jintArray`
 de funções estáticas JNI. A prova de arrays confirma atualização via `aput`
 Dalvik, `Get/SetIntArrayRegion` ARM64, `aget` Dalvik e bloqueio de alterações
-parciais se a função nativa falhar. A tabela é baseada na especificação pública:
+parciais se a função nativa falhar. A prova inversa cria `jintArray` no lado
+ARM64 por `NewIntArray`, o preenche e o devolve como nova referência Dalvik. A tabela é baseada na especificação pública:
 https://docs.oracle.com/en/java/javase/24/docs/specs/jni/functions.html
 
 Todos os testes são feitos sobre código de prova; **nenhuma biblioteca
