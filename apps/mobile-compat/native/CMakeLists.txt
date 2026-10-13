@@ -14,3 +14,7 @@ enable_testing()
 add_executable(ordax_mobile_guest_tests tests/cpu_a64.test.cpp)
 target_link_libraries(ordax_mobile_guest_tests PRIVATE ordax_mobile_guest)
 add_test(NAME mobile-a64-instruction-proof COMMAND ordax_mobile_guest_tests)
+
+add_executable(ordax_mobile_dynamic_elf_tests tests/elf_dynamic.test.cpp)
+target_link_libraries(ordax_mobile_dynamic_elf_tests PRIVATE ordax_mobile_guest)
+add_test(NAME mobile-a64-dynamic-elf-relocation-proof COMMAND ordax_mobile_dynamic_elf_tests)
