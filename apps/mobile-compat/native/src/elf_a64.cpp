@@ -271,6 +271,7 @@ std::vector<Relocation> parseRelativeRelocations(
         throw GuestFault("Invalid or unbounded ELF dynamic section");
     }
     bool terminated = false;
+    bool has_symbol_metadata = false;
     bool has_rela = false, has_relasz = false, has_relaent = false;
     bool has_relacount = false;
     std::uint64_t rela = 0, relasz = 0, relaent = 0, relacount = 0;
@@ -280,6 +281,10 @@ std::vector<Relocation> parseRelativeRelocations(
         const auto value = get64(elf, offset + 8);
         if (tag == 0) { terminated = true; break; }
         switch (tag) {
+            case 4: case 5: case 6: case 10: case 11:
+                // Self-contained ET_DYN providers may publish dynamic symbols,
+                // but must never load or resolve dependencies implicitly.
+                has_symbol_metadata = true; break;
             case 7: // DT_RELA
                 if (has_rela) throw GuestFault("Repeated DT_RELA");
                 has_rela = true; rela = value; break;
@@ -299,6 +304,10 @@ std::vector<Relocation> parseRelativeRelocations(
         }
     }
     if (!terminated) throw GuestFault("Unterminated ELF dynamic section");
+    if (has_symbol_metadata) {
+        const auto info = readDynamicSymbols(elf, dynamic, segments);
+        if (!info.needed.empty()) throw GuestFault("Provider ELF has unsupported DT_NEEDED");
+    }
     if (!has_rela && !has_relasz && !has_relaent && !has_relacount) return {};
     if (!(has_rela && has_relasz && has_relaent) || relaent != kRelaBytes ||
         relasz % kRelaBytes != 0 || relasz / kRelaBytes > 8192 ||
