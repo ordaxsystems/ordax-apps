@@ -37,6 +37,7 @@ private:
     std::unordered_map<std::uint64_t, std::vector<std::int32_t>> arrays_;
     CpuA64* cpu_ = nullptr;
     std::uint64_t next_handle_ = 0x30000001;
+    std::size_t array_cells_ = 0;
     [[nodiscard]] std::uint64_t dispatch(
         std::uint64_t target, const std::array<std::uint64_t, 8>& args);
 };
