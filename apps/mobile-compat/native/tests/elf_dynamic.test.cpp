@@ -44,8 +44,9 @@ std::vector<std::uint8_t> makePieImage() {
     put64(elf, 184, 0x320); put64(elf, 192, 0x3020);
     put64(elf, 208, 64); put64(elf, 216, 64);
 
-    // MOVZ X1,#0x5000; LDR X0,[X1]; RET X30.
-    put32(elf, 0x200, 0xd2800001u | (0x5000u << 5));
+    // ADRP X1, PC+2 pages; LDR X0,[X1]; RET X30.
+    // Position independent: vaddr 0x1000 -> vaddr 0x3000 at any guest bias.
+    put32(elf, 0x200, 0xd0000001u);
     put32(elf, 0x204, 0xf9400020);
     put32(elf, 0x208, 0xd65f03c0);
 
@@ -88,6 +89,14 @@ int main(int argc, char** argv) {
         assert(loaded.load_segments == 2);
         assert(loaded.has_entry);
         assert(cpu.run(loaded.entry, 10) == 0x3000);
+    }
+    {
+        // The SAME instruction bytes and relocation table must work under
+        // a different guest load bias, without patching the source image.
+        CpuA64 cpu(0x800000);
+        const auto loaded = loadRelocatableElfA64(cpu, elf, 0x400000);
+        assert(loaded.entry == 0x401000);
+        assert(cpu.run(loaded.entry, 10) == 0x401000);
     }
     {
         CpuA64 cpu(0x10000);
