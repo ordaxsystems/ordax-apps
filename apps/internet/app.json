@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.component-manifest/1",
+  "id": "internet",
+  "title": "Internet",
+  "kind": "app",
+  "version": "0.3.0",
+  "releaseMode": "component-slot",
+  "criticality": "optional",
+  "failureDomain": "app",
+  "restartScope": "component",
+  "healthMode": "runtime",
+  "owner": "ordaxsystems/ordax-apps",
+  "dependencies": [
+    "surface-shell"
+  ]
+}

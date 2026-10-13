@@ -1,0 +1,154 @@
+{
+  "$schema": "ordax.internet-sdk-contract-provenance/1",
+  "sdk_bundle_version": "1.18.0",
+  "source_repository": "ordaxsystems/ordax-os",
+  "source_commit": "d4061166b86c6601dbf75f47ba2c5981d0586804",
+  "source_bundle": "sdk/app-sdk-v1/bundle.json",
+  "contracts": [
+    {
+      "name": "app-intelligence-manifest",
+      "source_path": "system/contracts/app-intelligence-manifest.mjs",
+      "git_blob_sha": "7cb63755687c3066633c3c2140315c7e01d527d8",
+      "target": "apps/internet/src/sdk/contracts/app-intelligence-manifest.mjs"
+    },
+    {
+      "name": "component-manifest",
+      "source_path": "system/contracts/component-manifest.mjs",
+      "git_blob_sha": "af8dcfe56414e9725f118279785d850b699aa0a9",
+      "target": "apps/internet/src/sdk/contracts/component-manifest.mjs"
+    },
+    {
+      "name": "component-runtime",
+      "source_path": "system/contracts/component-runtime.mjs",
+      "git_blob_sha": "32dcacae6962b48e17b0abac0d64355aca1cecd5",
+      "target": "apps/internet/src/sdk/contracts/component-runtime.mjs"
+    },
+    {
+      "name": "browser-favorites",
+      "source_path": "system/contracts/browser-favorites.mjs",
+      "git_blob_sha": "7b6a4fa737b4d02a491481a9fbb65144e9b03426",
+      "target": "apps/internet/src/sdk/contracts/browser-favorites.mjs"
+    },
+    {
+      "name": "browser-favorites-store",
+      "source_path": "system/contracts/browser-favorites-store.mjs",
+      "git_blob_sha": "5d5e0c2cc618f68d1f8ab4bd5be15075a6531aa1",
+      "target": "apps/internet/src/sdk/contracts/browser-favorites-store.mjs"
+    },
+    {
+      "name": "browser-history",
+      "source_path": "system/contracts/browser-history.mjs",
+      "git_blob_sha": "dbddb05320643aad1ca8624e01964076a4054a71",
+      "target": "apps/internet/src/sdk/contracts/browser-history.mjs"
+    },
+    {
+      "name": "browser-session",
+      "source_path": "system/contracts/browser-session.mjs",
+      "git_blob_sha": "172f547cbd7214940609d683e84f351c59a419f6",
+      "target": "apps/internet/src/sdk/contracts/browser-session.mjs"
+    },
+    {
+      "name": "browser-history-store",
+      "source_path": "system/contracts/browser-history-store.mjs",
+      "git_blob_sha": "37e284e891b42f35a3fdf30b093dc5fc42c301a0",
+      "target": "apps/internet/src/sdk/contracts/browser-history-store.mjs"
+    },
+    {
+      "name": "browser-search-preferences",
+      "source_path": "system/contracts/browser-search-preferences.mjs",
+      "git_blob_sha": "b501154b0b87f780028324d380e8781178fe5a0e",
+      "target": "apps/internet/src/sdk/contracts/browser-search-preferences.mjs"
+    },
+    {
+      "name": "browser-page-find",
+      "source_path": "system/contracts/browser-page-find.mjs",
+      "git_blob_sha": "35f3aee251bfffeb09f95b7a6835017510a2a6b9",
+      "target": "apps/internet/src/sdk/contracts/browser-page-find.mjs"
+    },
+    {
+      "name": "browser-download",
+      "source_path": "system/contracts/browser-download.mjs",
+      "git_blob_sha": "e0a35cf13683195ff946abc56146bd5085456f5d",
+      "target": "apps/internet/src/sdk/contracts/browser-download.mjs"
+    },
+    {
+      "name": "browser-navigation",
+      "source_path": "system/contracts/browser-navigation.mjs",
+      "git_blob_sha": "434b88f6453d59907572c06fa5e47c874db90af8",
+      "target": "apps/internet/src/sdk/contracts/browser-navigation.mjs"
+    },
+    {
+      "name": "browser-page-selection",
+      "source_path": "system/contracts/browser-page-selection.mjs",
+      "git_blob_sha": "b58bebc49d1f1294f441eb3e2bd2419a8de43518",
+      "target": "apps/internet/src/sdk/contracts/browser-page-selection.mjs"
+    },
+    {
+      "name": "intelligence",
+      "source_path": "system/contracts/intelligence.mjs",
+      "git_blob_sha": "3ffeac788caed4867880baaefa0f3769eac7c277",
+      "target": "apps/internet/src/sdk/contracts/intelligence.mjs"
+    },
+    {
+      "name": "identity-session",
+      "source_path": "system/contracts/identity-session.mjs",
+      "git_blob_sha": "42de971e341fa746e2e2383120b3132b6f8e913b",
+      "target": "apps/internet/src/sdk/contracts/identity-session.mjs"
+    },
+    {
+      "name": "space-selection",
+      "source_path": "system/contracts/space-selection.mjs",
+      "git_blob_sha": "047106b36d733452c27a88d145c3aa7e465112d0",
+      "target": "apps/internet/src/sdk/contracts/space-selection.mjs"
+    },
+    {
+      "name": "spaces",
+      "source_path": "system/contracts/spaces.mjs",
+      "git_blob_sha": "ab7a97c613f62d8d70065a669d52fb7c983ed76f",
+      "target": "apps/internet/src/sdk/contracts/spaces.mjs"
+    },
+    {
+      "name": "profile-activation-state",
+      "source_path": "system/contracts/profile-activation-state.mjs",
+      "git_blob_sha": "3c45856a70c1e3e3b6ddaee4ad58d0cc66306ff1",
+      "target": "apps/internet/src/sdk/contracts/profile-activation-state.mjs"
+    },
+    {
+      "name": "project-catalog",
+      "source_path": "system/contracts/project-catalog.mjs",
+      "git_blob_sha": "a598f300ae53b30283e90ea0834e70799b56c609",
+      "target": "apps/internet/src/sdk/contracts/project-catalog.mjs"
+    },
+    {
+      "name": "file-space",
+      "source_path": "system/contracts/file-space.mjs",
+      "git_blob_sha": "e775c22080e40dc3fb8ab8d2e2f00ccf312825d0",
+      "target": "apps/internet/src/sdk/contracts/file-space.mjs"
+    },
+    {
+      "name": "project-web-references",
+      "source_path": "system/contracts/project-web-references.mjs",
+      "git_blob_sha": "496f47fc06b1ffc44a3964927425922bbf36bfc1",
+      "target": "apps/internet/src/sdk/contracts/project-web-references.mjs"
+    },
+    {
+      "name": "surface-render-lifecycle",
+      "source_path": "system/contracts/surface-render-lifecycle.mjs",
+      "git_blob_sha": "4808fd208be87926bc62fe192a841ad521e13783",
+      "target": "apps/internet/src/sdk/contracts/surface-render-lifecycle.mjs"
+    },
+    {
+      "name": "localization",
+      "source_path": "system/contracts/localization.mjs",
+      "git_blob_sha": "df3fb7fc65f27d35cffc984c748b0e199b499bb4",
+      "target": "apps/internet/src/sdk/contracts/localization.mjs"
+    },
+    {
+      "name": "locale-profile",
+      "source_path": "system/contracts/locale-profile.mjs",
+      "git_blob_sha": "2edd61c44e76d87e7fd1873ff833d48009b9a95c",
+      "target": "apps/internet/src/sdk/contracts/locale-profile.mjs"
+    }
+  ],
+  "authority": "none"
+}
