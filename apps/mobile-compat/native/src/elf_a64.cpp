@@ -158,6 +158,53 @@ std::string getBoundedString(std::span<const std::uint8_t> elf,
     }
     return std::string(reinterpret_cast<const char*>(elf.data() + at), len);
 }
+// GNU hash tables omit the old SysV nchain field. Derive the number of
+// dynamic symbols from bounded bucket/chain traversal. No host symbols or
+// host ELF loader are ever involved. This runs in the SAME symbol metadata
+// parser used by both ELF providers and consumers.
+std::size_t countGnuHashSymbols(
+    std::span<const std::uint8_t> elf, std::uint64_t address,
+    const std::vector<Segment>& segments) {
+    const auto head = mappedFileOffset(address, 16, segments);
+    const auto buckets = get32(elf, head);
+    const auto symbol_offset = get32(elf, head + 4);
+    const auto bloom_words = get32(elf, head + 8);
+    const auto bloom_shift = get32(elf, head + 12);
+    if (!buckets || buckets > 4096 || symbol_offset == 0 ||
+        symbol_offset > 4096 || bloom_words == 0 || bloom_words > 64 ||
+        (bloom_words & (bloom_words - 1)) != 0 || bloom_shift >= 64) {
+        throw GuestFault("Malformed or oversized ELF GNU hash header");
+    }
+    const std::size_t bucket_offset = 16 + 8u * bloom_words;
+    const std::size_t header_bytes = bucket_offset + 4u * buckets;
+    const auto array_offset = mappedFileOffset(address, header_bytes, segments);
+    std::size_t count = symbol_offset;
+    // Each bucket starts a chain of 32-bit words, terminated by bit 0.
+    // Cap both the number of steps and the largest referenced symtab entry.
+    for (std::size_t i = 0; i < buckets; ++i) {
+        const auto first = get32(elf, array_offset + bucket_offset + 4 * i);
+        if (!first) continue;
+        if (first < symbol_offset || first >= 4096) {
+            throw GuestFault("GNU hash bucket references invalid symbol");
+        }
+        std::uint64_t symbol = first;
+        while (true) {
+            if (symbol >= 4096 || symbol < symbol_offset) {
+                throw GuestFault("Unterminated or overflowing GNU hash chain");
+            }
+            const auto chain_delta = header_bytes + 4 * (symbol - symbol_offset);
+            if (address > UINT64_MAX - chain_delta) {
+                throw GuestFault("GNU hash chain address overflow");
+            }
+            const auto chain = mappedFileOffset(address + chain_delta, 4, segments);
+            const auto word = get32(elf, chain);
+            count = std::max(count, static_cast<std::size_t>(symbol) + 1);
+            if (word & 1u) break;
+            ++symbol;
+        }
+    }
+    return count;
+}
 DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
                                    const DynamicSection& dynamic,
                                    const std::vector<Segment>& segments) {
@@ -169,7 +216,7 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
     std::vector<std::uint64_t> needed_names;
     bool terminated = false;
     std::unordered_set<std::uint64_t> seen;
-    std::uint64_t strtab = 0, strsz = 0, symtab = 0, syment = 0, hash = 0;
+    std::uint64_t strtab = 0, strsz = 0, symtab = 0, syment = 0, hash = 0, gnu_hash = 0;
     std::uint64_t relaent = 0;
     bool saw_relasz = false, saw_relaent = false, saw_relacount = false;
     for (std::size_t i = 0; i < dynamic.file_bytes; i += 16) {
@@ -183,7 +230,7 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         }
         switch (tag) {
             case 4: case 5: case 6: case 7: case 8: case 9:
-            case 10: case 11: case 0x6ffffff9:
+            case 10: case 11: case 0x6ffffff9: case 0x6ffffef5:
             case 35: case 36: case 37:
             case 0x6fffe000: case 0x6fffe001: case 0x6fffe003:
             case 0x6fffe005:
@@ -193,6 +240,7 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         if (!seen.insert(tag).second) throw GuestFault("Duplicate linked ELF dynamic tag");
         switch (tag) {
             case 4: hash = value; break;
+            case 0x6ffffef5: gnu_hash = value; break;
             case 5: strtab = value; break;
             case 6: symtab = value; break;
             case 7: m.rela = value; m.has_rela = true; break;
@@ -209,7 +257,7 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         }
     }
     if (!terminated || !strtab || !strsz || strsz > 65536 ||
-        !symtab || syment != 24 || !hash ||
+        !symtab || syment != 24 || (!hash && !gnu_hash) ||
         (m.has_rela != saw_relasz) || (m.has_rela != saw_relaent) ||
         (saw_relaent && relaent != kRelaBytes) ||
         (saw_relacount && (!m.has_rela ||
@@ -219,12 +267,20 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
     }
     m.strings_size = static_cast<std::size_t>(strsz);
     m.strings_file_offset = mappedFileOffset(strtab, m.strings_size, segments);
-    const auto hash_offset = mappedFileOffset(hash, 8, segments);
-    const auto symbols_count = get32(elf, hash_offset + 4); // SysV nchain
-    if (symbols_count == 0 || symbols_count > 4096) {
-        throw GuestFault("Guest dynamic symbol count is invalid");
+    std::size_t sysv_count = 0, gnu_count = 0;
+    if (hash) {
+        const auto hash_offset = mappedFileOffset(hash, 8, segments);
+        sysv_count = get32(elf, hash_offset + 4); // SysV nchain
     }
-    m.symbol_count = symbols_count;
+    if (gnu_hash) {
+        gnu_count = countGnuHashSymbols(elf, gnu_hash, segments);
+    }
+    if ((hash && (!sysv_count || sysv_count > 4096)) ||
+        (gnu_hash && (!gnu_count || gnu_count > 4096)) ||
+        (hash && gnu_hash && sysv_count != gnu_count)) {
+        throw GuestFault("ELF dynamic symbol count is invalid or ambiguous");
+    }
+    m.symbol_count = hash ? sysv_count : gnu_count;
     m.symbol_file_offset = mappedFileOffset(symtab, m.symbol_count * 24, segments);
     for (const auto off : needed_names) {
         if (off > 0xffffffffu) throw GuestFault("DT_NEEDED string index overflow");
@@ -482,6 +538,7 @@ std::vector<Relocation> parseRelativeRelocations(
             case 0x60000011: case 0x60000012:
                 break; // Android APS2 stream checked by the shared ELF linker
             case 4: case 5: case 6: case 10: case 11:
+            case 0x6ffffef5:
                 // Self-contained ET_DYN providers may publish dynamic symbols,
                 // but must never load or resolve dependencies implicitly.
                 has_symbol_metadata = true; break;
