@@ -336,7 +336,7 @@ test('real Dalvik object allocation + ctor + instance field + virtual dispatch s
   const vm = new DexSubset(objectDexFixture());
   assert.deepEqual(vm.execute('Ltest/Arithmetic;', 'makeValue', [42]),
     { format: 'dalvik-object-subset', value: 42, allocatedObjects: 1,
-      consumedInstructions: 11 });
+      consumedInstructions: 12 });
   assert.equal(vm.execute('Ltest/Arithmetic;', 'makeValue', [-153]).value, -153);
   // An object handle is NOT an integer result or a host pointer.
   assert.throws(() => vm.execute('Ltest/Arithmetic;', 'makeObject', [5]),
@@ -360,7 +360,7 @@ test('object bytecode cannot forge object references, mutate unrelated fields or
     { code: 'DEX_TYPE' });
   const nullAccess = objectDexFixture();
   // makeObject() sets its receiver to null before constructor.
-  nullAccess.writeUInt16LE(0x0012, 0x680 + 16);
+  nullAccess.writeUInt16LE(0x0013, 0x680 + 16);
   nullAccess.writeUInt16LE(0x0000, 0x680 + 18);
   assert.throws(
     () => new DexSubset(sealDex(nullAccess)).execute('Ltest/Arithmetic;', 'makeValue', [2]),
