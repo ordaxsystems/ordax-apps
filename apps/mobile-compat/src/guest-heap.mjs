@@ -5,6 +5,7 @@ import { PackageError } from './zip.mjs';
 export class GuestHeap {
   #items = new Map();
   #next = 1;
+  #fieldSlots = 0;
   constructor({ maxObjects = 4096 } = {}) {
     if (!Number.isSafeInteger(maxObjects) || maxObjects < 1 || maxObjects > 4096) {
       throw new PackageError('HEAP_LIMIT', 'Invalid guest object limit');
@@ -12,14 +13,28 @@ export class GuestHeap {
     this.maxObjects = maxObjects;
   }
   allocate(type, declaredFields) {
-    if (this.#items.size >= this.maxObjects) {
-      throw new PackageError('HEAP_LIMIT', 'Guest object count exhausted');
+    if (this.#items.size >= this.maxObjects || !Array.isArray(declaredFields) ||
+        declaredFields.length > 128 || this.#fieldSlots + declaredFields.length > 65536) {
+      throw new PackageError('HEAP_LIMIT', 'Guest object or field slot quota exceeded');
+    }
+    if (!declaredFields.every(id => Number.isInteger(id) && id >= 0) ||
+        new Set(declaredFields).size !== declaredFields.length) {
+      throw new PackageError('DEX_FIELD', 'Invalid field declarations');
     }
     const handle = this.#next++;
-    // Each instance gets independent field storage, no prototype inheritance.
     const fields = new Map(declaredFields.map(id => [id, 0]));
-    this.#items.set(handle, { type, fields });
+    this.#fieldSlots += fields.size;
+    this.#items.set(handle, { type, fields, initialized: false });
     return handle;
+  }
+  markInitialized(handle, expectedType) {
+    this.lookup(handle, expectedType).initialized = true;
+  }
+  requireInitialized(handle, expectedType) {
+    const object = this.lookup(handle, expectedType);
+    if (!object.initialized) {
+      throw new PackageError('DEX_INIT', 'Guest receiver constructor has not completed');
+    }
   }
   lookup(handle, expectedType) {
     if (handle === 0) throw new PackageError('DEX_NULL', 'Null guest reference');
