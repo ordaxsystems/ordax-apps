@@ -253,9 +253,12 @@ test('real Android binary manifest resolves enabled alias to declared Activity',
   try {
     const path = join(dir, 'manifested.xapk');
     await writeFile(path, zip([{ name: 'com.instagram.android.apk', bytes: base }]));
-    assert.deepEqual(await resolveLaunchFromPackage(path), {
-      ...plan, applicationDex: 'classes3.dex', activityDex: 'classes.dex',
-    });
+    const expected = { ...plan, applicationDex: 'classes3.dex', activityDex: 'classes.dex' };
+    assert.deepEqual(await resolveLaunchFromPackage(path), expected);
+    // Direct APK must finish async reads before its file descriptor closes.
+    const direct = join(dir, 'manifested.apk');
+    await writeFile(direct, base);
+    assert.deepEqual(await resolveLaunchFromPackage(direct), expected);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 test('binary launch manifest rejects disabled launchers and tampered headers', () => {
