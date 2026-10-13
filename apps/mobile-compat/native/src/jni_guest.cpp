@@ -196,6 +196,7 @@ std::uint32_t JniGuestEnvironment::runOnLoad(
         return static_cast<std::uint32_t>(raw_version);
     } catch (...) {
         registering_image_ = nullptr;
+        registration_getenv_succeeded_ = false;
         registered_methods_ = previous;
         throw;
     }
