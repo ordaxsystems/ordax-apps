@@ -18,3 +18,8 @@ add_test(NAME mobile-a64-instruction-proof COMMAND ordax_mobile_guest_tests)
 add_executable(ordax_mobile_dynamic_elf_tests tests/elf_dynamic.test.cpp)
 target_link_libraries(ordax_mobile_dynamic_elf_tests PRIVATE ordax_mobile_guest)
 add_test(NAME mobile-a64-dynamic-elf-relocation-proof COMMAND ordax_mobile_dynamic_elf_tests)
+
+add_executable(ordax-mobile-guest src/guest_cli.cpp)
+target_link_libraries(ordax-mobile-guest PRIVATE ordax_mobile_guest)
+add_test(NAME mobile-guest-cli-help COMMAND ordax-mobile-guest)
+set_tests_properties(mobile-guest-cli-help PROPERTIES WILL_FAIL TRUE)
