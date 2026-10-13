@@ -435,6 +435,40 @@ jobs:
           go-version-file: .ordax-platform-lifecycle/tools/runtime-component-channel/go.mod
           cache: false
 
+      - name: Verify ephemeral Ed25519 Files slot through the official Native channel
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel_bin="$RUNNER_TEMP/ordax-files-ephemeral-component-channel"
+          (
+            cd .ordax-platform-lifecycle/tools/runtime-component-channel
+            go build -o "$channel_bin" .
+          )
+          python3 tools/prove_files_ephemeral_candidate.py \
+            --platform-root .ordax-files-source \
+            --sdk-platform-root .ordax-files-sdk \
+            --channel-bin "$channel_bin" > "$RUNNER_TEMP/ordax-files-signed-stage.json"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          proof = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "ordax-files-signed-stage.json").read_text(encoding="utf-8")
+          )
+          assert proof["signed_stage_ephemeral_verified"] is True
+          stage = proof["signed_stage_proof"]
+          assert stage["ephemeral_ed25519_signature_verified"] is True
+          assert stage["immutable_signed_slot_verified"] is True
+          assert stage["tampered_compatibility_rejected"] is True
+          assert stage["activation_state_untouched"] is True
+          assert stage["production_trust_used"] is False
+          assert proof["signed_install_verified"] is False
+          assert proof["bootstrap_delivery_verified"] is False
+          assert proof["distribution_activation_allowed"] is False
+          assert not Path("apps/files").exists()
+          print("FILES_EPHEMERAL_SIGNED_STAGE=PASS")
+          PY
+
       - name: Build real Notes component candidates
         run: |
           set -euo pipefail
