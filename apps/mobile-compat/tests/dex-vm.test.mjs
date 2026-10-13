@@ -580,7 +580,7 @@ test('type tests fail closed on primitive/external class indices and forged hand
   assert.throws(() => new DexSubset(localTypeDexFixture({ type: 65535 }))
     .execute('Ltest/Arithmetic;', 'makeValue', [1]), { code: 'DEX_INDEX' });
   const mutated = localTypeDexFixture();
-  mutated.writeUInt16LE(0x1220, 0x6c0 + 16 + 4 * 2); // v2 is raw int, not ref
+  mutated.writeUInt16LE(0x2020, 0x6c0 + 16 + 4 * 2); // v2 is raw int, not ref
   assert.throws(() => new DexSubset(sealDex(mutated))
     .execute('Ltest/Arithmetic;', 'makeValue', [42]), { code: 'DEX_TYPE' });
   const heap = new GuestHeap();
