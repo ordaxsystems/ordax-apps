@@ -102,9 +102,16 @@ def _signed_stage_proof(channel_bin: Path, staging: Path, package: Path,
 
     def run(*args: str, expected: str) -> str:
         result = subprocess.run(
-            [str(channel_bin), *args], check=True,
+            [str(channel_bin), *args],
             capture_output=True, text=True, timeout=35,
         )
+        if result.returncode != 0:
+            # Go prints a bounded diagnostic on stderr, never the private key.
+            # Preserve the root error rather than reducing it to CalledProcessError.
+            diagnosis = result.stderr.strip()
+            if len(diagnosis) > 1024:
+                diagnosis = diagnosis[:1024] + " [truncated]"
+            raise FilesProofError(f"canonical component channel {args[0]} failed: {diagnosis}")
         if expected not in result.stdout:
             raise FilesProofError(f"canonical component channel did not confirm: {expected}")
         return result.stdout
