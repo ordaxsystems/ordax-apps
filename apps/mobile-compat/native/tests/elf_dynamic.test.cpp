@@ -63,6 +63,42 @@ std::vector<std::uint8_t> makePieImage() {
     put64(elf, 0x390, 0x1000);
     return elf;
 }
+
+std::vector<std::uint8_t> relrFixture(bool android) {
+    auto elf = makePieImage();
+    // Two implicit-addend relocations: direct 0x3000 and bitmap bit#2 0x3010.
+    // Both point to code virtual address 0x1000 before bias is applied.
+    put64(elf, 0x300, 0x1000);
+    put64(elf, 0x310, 0x1000);
+    put64(elf, 0x320, android ? 0x6fffe000 : 36);
+    put64(elf, 0x328, 0x30a0);
+    put64(elf, 0x330, android ? 0x6fffe001 : 35);
+    put64(elf, 0x338, 16);
+    put64(elf, 0x340, android ? 0x6fffe003 : 37);
+    put64(elf, 0x348, 8);
+    put64(elf, 0x350, 0); put64(elf, 0x358, 0);
+    put64(elf, 0x3a0, 0x3000);
+    put64(elf, 0x3a8, 5); // bit[2] relocates 0x3010 (base + 8)
+    return elf;
+}
+std::vector<std::uint8_t> relaPlusRelrFixture() {
+    auto elf = makePieImage();
+    put64(elf, 208, 112); put64(elf, 216, 112);
+    // RELA at 0x30b0, RELR at 0x30d0, dynamic tags fit 0x320..0x38f.
+    put64(elf, 0x328, 0x30b0); // DT_RELA
+    put64(elf, 0x338, 24); // DT_RELASZ
+    put64(elf, 0x348, 24); // DT_RELAENT
+    put64(elf, 0x350, 36); put64(elf, 0x358, 0x30d0);
+    put64(elf, 0x360, 35); put64(elf, 0x368, 8);
+    put64(elf, 0x370, 37); put64(elf, 0x378, 8);
+    put64(elf, 0x380, 0); put64(elf, 0x388, 0); // DT_NULL
+    put64(elf, 0x3b0, 0x3000); // R_AARCH64_RELATIVE (explicit addend)
+    put64(elf, 0x3b8, 1027);
+    put64(elf, 0x3c0, 0x1000);
+    put64(elf, 0x3d0, 0x3010); // RELR direct, implicit addend
+    put64(elf, 0x310, 0x1000);
+    return elf;
+}
 template <typename F> void mustReject(F&& fn) {
     bool rejected = false;
     try { fn(); } catch (const GuestFault&) { rejected = true; }
@@ -137,6 +173,83 @@ int main(int argc, char** argv) {
         CpuA64 cpu(0x10000);
         const auto image = loadRelocatableElfA64(cpu, guest, 0x2000);
         mustReject([&] { (void)cpu.run(image.entry, 10); });
+    }
+
+    // Both standardized ELF RELR and Android legacy tags encode the same
+    // absolute + 63-bit bitmap instruction stream. Relocations are applied
+    // only after validating every target, addend and writable mapping.
+    for (const bool android : {false, true}) {
+        const auto relr = relrFixture(android);
+        for (const auto bias : {std::uint64_t(0x2000), std::uint64_t(0x400000)}) {
+            CpuA64 cpu(0x800000);
+            const auto image = loadRelocatableElfA64(cpu, relr, bias);
+            assert(image.relative_relocations == 2);
+            assert(cpu.run(image.entry, 10) == bias + 0x1000);
+            assert(cpu.read64(bias + 0x3010) == bias + 0x1000);
+        }
+        // Corrupted RELR metadata/bitmaps must never be silently ignored.
+        {
+            auto bad = relr;
+            put64(bad, 0x3a0, 1); // bitmap cannot precede anchor
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        }
+        {
+            auto bad = relr;
+            put64(bad, 0x3a8, 0x3000); // duplicate direct relocation
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        }
+        {
+            auto bad = relr;
+            put64(bad, 0x3a0, 0x1000); // RX mapping, cannot relocate
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        }
+        {
+            auto bad = relr;
+            put64(bad, 0x338, 0xffffffffull); // unbounded table
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        }
+        {
+            auto bad = relr;
+            put64(bad, 0x348, 4); // bad RELRENT
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        }
+        {
+            auto bad = relr;
+            put64(bad, 0x310, 0x9000); // implicit pointer escapes image
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        }
+        {
+            auto bad = relr;
+            put64(bad, 0x330, android ? 35 : 0x6fffe001); // mixed tag families
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        }
+        {
+            auto bad = relr;
+            put64(bad, 0x330, 0); // no size metadata -> malformed
+            CpuA64 cpu(0x10000);
+            mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
+        }
+    }
+    {
+        const auto elf = relaPlusRelrFixture();
+        CpuA64 cpu(0x10000);
+        const auto image = loadRelocatableElfA64(cpu, elf, 0x2000);
+        assert(image.relative_relocations == 2);
+        assert(cpu.read64(0x5000) == 0x3000);
+        assert(cpu.read64(0x5010) == 0x3000);
+    }
+    {
+        auto elf = relaPlusRelrFixture();
+        put64(elf, 0x3d0, 0x3000); // RELR collides with RELA patch
+        CpuA64 cpu(0x10000);
+        mustReject([&] { (void)loadRelocatableElfA64(cpu, elf, 0x2000); });
     }
     std::cout << "ET_DYN AArch64 RELATIVE-only guest execution passed\n";
 }
