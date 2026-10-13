@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "activity",
+  "appVersion": "0.1.0",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "activity-native",
+      "revision": "1",
+      "module": "actions/providers/activity-native.mjs",
+      "sha256": "1e2c5bb8600bfcf861a94907a8bda4e770231a71c03819e6b0996766ed8161c1"
+    }
+  ]
+}
