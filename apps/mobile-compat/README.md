@@ -18,6 +18,8 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
 - carregador ELF64 ARM64 `ET_EXEC` e subconjunto relocável `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE` sem símbolos externos; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
 - executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória e permissões ELF de leitura, escrita e execução (nega escrita em RX e execução em dados NX);
+- **ponte experimental Dalvik → ARM64 para métodos `int32`**: `invoke-static` de um método DEX opt-in chama `NativeMethodBoundary`, que pode usar `registerArm64IntegerMethod` para executar um ELF de desenvolvimento no motor ARM64 nativo. O arquivo é conferido por SHA-256 e executado a partir de uma cópia privada validada, com subprocesso limitado por tempo e saída. Só `(I{0,5})I`, sem objetos, ponteiros, JNI ABI, símbolos dinâmicos ou autorização escolhida pelo APK;
+- o comando de desenvolvimento `ordax-mobile-guest invoke-i32-elf arquivo.elf [int32 ...]` aceita até cinco argumentos em `x0` a `x4` e devolve exclusivamente o `int32` em `x0`. Isso é uma interface de prova própria, **não** a ABI JNI Android;
 - testes fim a fim desse executável com um ELF ARM64 relocável gerado pelos testes, repetindo-o sob diferentes bases virtuais e verificando acessos proibidos. Dependências de bibliotecas, Bionic, ART e execução de APK continuam indisponíveis.
 
 Rodar testes com Node.js 20+:
@@ -54,6 +56,14 @@ O host nativo de desenvolvimento é compilado no diretório `native/build`.
 Sua única execução suportada é `ordax-mobile-guest run-elf arquivo.elf`
 para o subconjunto ARM64; bibliotecas com símbolos externos são recusadas,
 sem executar instruções diretamente no processador do host.
+
+O CI executa também `mobile-dex-to-arm64-bridge`: o teste gera um
+ELF AArch64 que soma dois ao parâmetro recebido em `x0`, carrega um
+`classes.dex` contendo método nativo tipado, chama-o por `invoke-static`,
+verifica resultados positivos, negativos e overflow `int32`, testa o mesmo
+caminho via APK e XAPK e confirma que a execução falha sem registro host.
+Todos os testes são feitos sobre código de prova; **nenhuma biblioteca
+nativa do Instagram foi executada por essa ponte**.
 
 O comando `run` da ferramenta de APK falha explicitamente com `EXECUTION_UNAVAILABLE`. Inspecionar APK não comprova compatibilidade nem abre Instagram.
 
