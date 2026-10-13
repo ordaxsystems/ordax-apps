@@ -14,6 +14,13 @@ public:
     explicit GuestFault(const char* message) : std::runtime_error(message) {}
 };
 
+// Segment permissions use ELF PF_X=1, PF_W=2, PF_R=4.
+struct GuestRegion {
+    std::uint64_t address;
+    std::size_t length;
+    std::uint8_t permissions;
+};
+
 // First instruction-level proof, not a complete ARM64 processor.
 // Guest addresses are offsets into a bounded owned allocation, never host pointers.
 class CpuA64 final {
@@ -21,6 +28,9 @@ public:
     explicit CpuA64(std::size_t memory_bytes);
 
     void load(std::uint64_t address, std::span<const std::uint8_t> bytes);
+    // Trusted image loader installs protections after all bytes and relocations
+    // have been validated and mapped. Guest instructions cannot bypass them.
+    void set_guest_regions(std::span<const GuestRegion> regions);
     void set_register(unsigned index, std::uint64_t value);
     [[nodiscard]] std::uint64_t reg(unsigned index) const;
     [[nodiscard]] std::size_t memory_size() const noexcept { return memory_.size(); }
@@ -32,8 +42,11 @@ private:
     void write64(std::uint64_t address, std::uint64_t value);
     void store_register(unsigned index, std::uint64_t value);
     void assert_range(std::uint64_t address, std::size_t count) const;
+    void require_permission(std::uint64_t address, std::size_t count, std::uint8_t flag) const;
 
     std::vector<std::uint8_t> memory_;
     std::array<std::uint64_t, 31> registers_{};
+    std::vector<GuestRegion> guest_regions_;
+    bool protected_guest_ = false;
 };
 } // namespace ordax::mobile
