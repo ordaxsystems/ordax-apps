@@ -121,5 +121,22 @@ int main(int argc, char** argv) {
         put64(elf, 0x328, 0xffffffffffffffffull);
         mustReject([&] { (void)loadRelocatableElfA64(cpu, elf, 0x2000); });
     }
+    // Guest STR cannot mutate the executable RX mapping.
+    {
+        auto guest = makePieImage();
+        put32(guest, 0x200, 0x90000001u); // ADRP X1, current executable page
+        put32(guest, 0x204, 0xf9000020u); // STR X0, [X1]
+        CpuA64 cpu(0x10000);
+        const auto image = loadRelocatableElfA64(cpu, guest, 0x2000);
+        mustReject([&] { (void)cpu.run(image.entry, 10); });
+    }
+    // Branch into non-executable RW data must fail before fetching instructions.
+    {
+        auto guest = makePieImage();
+        put32(guest, 0x200, 0x14000800u); // B from code page to data page
+        CpuA64 cpu(0x10000);
+        const auto image = loadRelocatableElfA64(cpu, guest, 0x2000);
+        mustReject([&] { (void)cpu.run(image.entry, 10); });
+    }
     std::cout << "ET_DYN AArch64 RELATIVE-only guest execution passed\n";
 }
