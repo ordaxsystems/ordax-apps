@@ -93,6 +93,7 @@ std::uint64_t JniGuestEnvironment::dispatch(
             throw GuestFault("JavaVM GetEnv output pointer invalid");
         }
         cpu_->guest_write_u64(args[1], kEnvAddress);
+        if (registering_image_) registration_getenv_succeeded_ = true;
         return 0; // JNI_OK
     }
     if (args[0] != kEnvAddress) {
