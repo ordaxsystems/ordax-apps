@@ -433,3 +433,105 @@ test('branches cannot jump directly into move-result-object', () => {
   assert.throws(() => new DexSubset(sealDex(raw)).execute('Ltest/Arithmetic;', 'makeValue', [1]),
     { code: 'DEX_RESULT' });
 });
+
+
+// The same structured DEX fixture used for objects, extended with the type
+// descriptor [I and real Dalvik array opcodes in an existing static method.
+// No shell, emulator, Android OS, or host-side method imitation.
+function arrayDexFixture() {
+  const b = objectDexFixture();
+  b.writeUInt32LE(14, 56); // 14 string ids, add descriptor '[I'
+  const last = b.readUInt32LE(0x400 + 12 * 4);
+  const next = last + 1 + 'value'.length + 1;
+  b.writeUInt32LE(next, 0x400 + 13 * 4);
+  b[next] = 2;
+  b.write('[I', next + 1, 'ascii');
+  b[next + 3] = 0;
+  b.writeUInt32LE(4, 64); // four type ids
+  b.writeUInt32LE(0x450, 68);
+  for (let i = 0; i < 3; i++) b.writeUInt32LE(b.readUInt32LE(0x90 + i * 4), 0x450 + i * 4);
+  b.writeUInt32LE(13, 0x45c); // type idx 3 => [I
+  const insns = [
+    0x3023, 3,        // new-array v0,v3,type@3: int[size]
+    0x0213, 42,       // const/16 v2,#42
+    0x024b, 0x0400,   // aput v2,v0,v4
+    0x0144, 0x0400,   // aget v1,v0,v4
+    0x010f,           // return v1
+  ];
+  b.writeUInt16LE(5, 0x180);
+  b.writeUInt16LE(2, 0x182);
+  b.writeUInt32LE(insns.length, 0x180 + 12);
+  for (let i = 0; i < insns.length; i++) b.writeUInt16LE(insns[i], 0x180 + 16 + i * 2);
+  return sealDex(b);
+}
+test('actual Dalvik new-array/aput/aget returns int32 and allocates one guest array', () => {
+  const vm = new DexSubset(arrayDexFixture());
+  const out = vm.execute('Ltest/Arithmetic;', 'sum', [5, 2]);
+  assert.equal(out.value, 42);
+  assert.equal(out.allocatedObjects, 1);
+  assert.equal(vm.execute('Ltest/Arithmetic;', 'sum', [5, 4]).value, 42);
+  // An independent entrypoint invocation creates its own private heap.
+  assert.equal(vm.execute('Ltest/Arithmetic;', 'sum', [3, 0]).allocatedObjects, 1);
+});
+test('Dalvik guest array rejects negative size, oversized size and out-of-range indexes', () => {
+  const vm = new DexSubset(arrayDexFixture());
+  for (const [length, index, code] of [
+    [-1, 0, 'DEX_ARRAY_SIZE'],
+    [0, 0, 'DEX_ARRAY_BOUNDS'],
+    [2, 2, 'DEX_ARRAY_BOUNDS'],
+    [2, -1, 'DEX_ARRAY_BOUNDS'],
+    [65537, 0, 'HEAP_LIMIT'],
+  ]) {
+    assert.throws(() => vm.execute('Ltest/Arithmetic;', 'sum', [length, index]), { code });
+  }
+});
+test('Dalvik array opcodes fail closed for unsupported reference array classes and forged receivers', () => {
+  const wrongArrayType = arrayDexFixture();
+  wrongArrayType.writeUInt16LE(1, 0x180 + 18); // Ltest/Arithmetic; instead of [I
+  assert.throws(
+    () => new DexSubset(sealDex(wrongArrayType)).execute('Ltest/Arithmetic;', 'sum', [5, 2]),
+    { code: 'DEX_ARRAY_TYPE' }
+  );
+  const forged = arrayDexFixture();
+  // aput uses register v3 (length int), not array handle register v0.
+  forged.writeUInt16LE(0x0403, 0x180 + 16 + 5 * 2);
+  assert.throws(
+    () => new DexSubset(sealDex(forged)).execute('Ltest/Arithmetic;', 'sum', [5, 2]),
+    { code: 'DEX_TYPE' }
+  );
+});
+test('opaque heap arrays enforce cell quotas, isolation and typed access', () => {
+  const heap = new GuestHeap({ maxObjects: 4 });
+  const array = heap.allocateIntArray(2);
+  assert.equal(heap.arrayLength(array), 2);
+  assert.equal(heap.getIntArray(array, 0), 0);
+  heap.setIntArray(array, 1, -42);
+  assert.equal(heap.getIntArray(array, 1), -42);
+  assert.throws(() => heap.getIntArray(array, 2), { code: 'DEX_ARRAY_BOUNDS' });
+  assert.throws(() => heap.setIntArray(array, 0, 1.5), { code: 'DEX_ARRAY_TYPE' });
+  assert.throws(() => heap.getIntArray(0, 0), { code: 'DEX_NULL' });
+  assert.throws(() => heap.readField(array, '[I', 0), { code: 'DEX_FIELD' });
+  const object = heap.allocate('Ltest/Box;', []);
+  assert.throws(() => heap.arrayLength(object), { code: 'DEX_REFERENCE' });
+  assert.throws(() => heap.allocateIntArray(65537), { code: 'HEAP_LIMIT' });
+  assert.throws(() => heap.allocateIntArray(-2), { code: 'DEX_ARRAY_SIZE' });
+  const separate = new GuestHeap();
+  assert.throws(() => separate.getIntArray(array, 0), { code: 'DEX_REFERENCE' });
+});
+test('APK and XAPK boundaries execute actual Dalvik int[] code without exporting guest pointers', async () => {
+  const apk = zip([['AndroidManifest.xml', Buffer.from([1, 2, 3])],
+    ['classes.dex', arrayDexFixture()]]);
+  const xapk = zip([['base.apk', apk], ['config.arm64.apk',
+    zip([['resources.arsc', Buffer.from([9, 8])]])]]);
+  const dir = await mkdtemp(join(tmpdir(), 'ordax-dalvik-arrays-'));
+  try {
+    const files = [join(dir, 'arrays.apk'), join(dir, 'arrays.xapk')];
+    await writeFile(files[0], apk);
+    await writeFile(files[1], xapk);
+    for (const file of files) {
+      const result = await runDexMethodFromPackage(file, 'Ltest/Arithmetic;', 'sum', [3, 1]);
+      assert.equal(result.value, 42);
+      assert.equal(result.allocatedObjects, 1);
+    }
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
