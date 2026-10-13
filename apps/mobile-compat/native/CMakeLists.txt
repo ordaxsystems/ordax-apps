@@ -142,3 +142,10 @@ add_executable(ordax_mobile_aps2_decoder_tests tests/android_aps2.test.cpp)
 target_link_libraries(ordax_mobile_aps2_decoder_tests PRIVATE ordax_mobile_guest)
 add_test(NAME mobile-a64-aps2-format-and-bounds-proof
          COMMAND ordax_mobile_aps2_decoder_tests)
+
+# Host-driven ELF constructors: DT_INIT then relocated DT_INIT_ARRAY.
+# They never run during parsing or while resolving dependencies.
+add_executable(ordax_mobile_initializer_tests tests/elf_initializers.test.cpp)
+target_link_libraries(ordax_mobile_initializer_tests PRIVATE ordax_mobile_guest)
+add_test(NAME mobile-a64-elf-initializer-order-and-security
+         COMMAND ordax_mobile_initializer_tests)
