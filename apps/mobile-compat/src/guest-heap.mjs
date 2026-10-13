@@ -70,6 +70,18 @@ export class GuestHeap {
     }
     return array;
   }
+  snapshotIntArray(handle) {
+    return Array.from(this.#getIntArray(handle));
+  }
+  commitIntArray(handle, values) {
+    const array = this.#getIntArray(handle);
+    if (!Array.isArray(values) || values.length !== array.length ||
+        !values.every(value => Number.isInteger(value) &&
+          value >= -2147483648 && value <= 2147483647)) {
+      throw new PackageError('DEX_ARRAY_TYPE', 'Invalid JNI array write-back');
+    }
+    array.set(values);
+  }
   getIntArray(handle, index) {
     return this.#index(handle, index)[index];
   }
