@@ -1,0 +1,65 @@
+{
+  "$schema": "ordax.activity-sdk-contract-provenance/1",
+  "sdk_bundle_version": "1.19.0",
+  "source_repository": "ordaxsystems/ordax-os",
+  "source_commit": "97627b7e2c4d359e0943d8866e047dd337d08bec",
+  "source_bundle": "sdk/app-sdk-v1/bundle.json",
+  "contracts": [
+    {
+      "name": "component-runtime",
+      "source_path": "system/contracts/component-runtime.mjs",
+      "git_blob_sha": "32dcacae6962b48e17b0abac0d64355aca1cecd5",
+      "target": "apps/activity/src/sdk/contracts/component-runtime.mjs"
+    },
+    {
+      "name": "app-intelligence-manifest",
+      "source_path": "system/contracts/app-intelligence-manifest.mjs",
+      "git_blob_sha": "7cb63755687c3066633c3c2140315c7e01d527d8",
+      "target": "apps/activity/src/sdk/contracts/app-intelligence-manifest.mjs"
+    },
+    {
+      "name": "component-manifest",
+      "source_path": "system/contracts/component-manifest.mjs",
+      "git_blob_sha": "af8dcfe56414e9725f118279785d850b699aa0a9",
+      "target": "apps/activity/src/sdk/contracts/component-manifest.mjs"
+    },
+    {
+      "name": "personal-approval-consent",
+      "source_path": "system/contracts/personal-approval-consent.mjs",
+      "git_blob_sha": "7ba1a63057a8d66f36d4b9aa0164c70bfb33e923",
+      "target": "apps/activity/src/sdk/contracts/personal-approval-consent.mjs"
+    },
+    {
+      "name": "personal-activity-export",
+      "source_path": "system/contracts/personal-activity-export.mjs",
+      "git_blob_sha": "b0ae00321eff37c32713b198b4b127c74db7f9c5",
+      "target": "apps/activity/src/sdk/contracts/personal-activity-export.mjs"
+    },
+    {
+      "name": "personal-work-store",
+      "source_path": "system/contracts/personal-ordax-store.mjs",
+      "git_blob_sha": "f7ed8595c75f677653785c1b64554676b47653cf",
+      "target": "apps/activity/src/sdk/contracts/personal-ordax-store.mjs"
+    },
+    {
+      "name": "personal-work-item",
+      "source_path": "system/contracts/personal-ordax.mjs",
+      "git_blob_sha": "82443c141e89aec1c9750fbcb84aa9e990e27409",
+      "target": "apps/activity/src/sdk/contracts/personal-ordax.mjs"
+    },
+    {
+      "name": "surface-render-lifecycle",
+      "source_path": "system/contracts/surface-render-lifecycle.mjs",
+      "git_blob_sha": "4808fd208be87926bc62fe192a841ad521e13783",
+      "target": "apps/activity/src/sdk/contracts/surface-render-lifecycle.mjs"
+    },
+    {
+      "name": "localization",
+      "source_path": "system/contracts/localization.mjs",
+      "git_blob_sha": "df3fb7fc65f27d35cffc984c748b0e199b499bb4",
+      "target": "apps/activity/src/sdk/contracts/localization.mjs"
+    }
+  ],
+  "authority": "none",
+  "distribution_activation_allowed": false
+}
