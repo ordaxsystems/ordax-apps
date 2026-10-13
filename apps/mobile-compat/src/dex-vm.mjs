@@ -179,8 +179,37 @@ export class DexSubset {
       fail('DEX_CODE', 'Unsupported or invalid code_item bounds');
     }
     requireRange(this.bytes, offset + 16, insnsCount * 2, 'Truncated DEX instructions');
-    return { info, regs, outs, insnsCount,
+    const item = { info, regs, outs, insnsCount,
       word: p => u16(this.bytes, offset + 16 + p * 2) };
+    // Verify the complete instruction stream before interpreting even one
+    // code unit. Branches may only land on actual opcode boundaries, never
+    // inside a const/invoke payload or in the middle of an instruction.
+    const sizeByOpcode = new Map([
+      [0x01, 1], [0x0a, 1], [0x0e, 1], [0x0f, 1],
+      [0x12, 1], [0x13, 2], [0x14, 3],
+      [0x28, 1], [0x29, 2], [0x38, 2],
+      [0x71, 3], [0x90, 2], [0x91, 2], [0x92, 2], [0xd8, 2],
+    ]);
+    const starts = new Set(), targets = [];
+    let previous = -1;
+    for (let p = 0; p < insnsCount;) {
+      const w = item.word(p), opcode = w & 255;
+      const size = sizeByOpcode.get(opcode);
+      if (!size) fail('DEX_OPCODE', 'Instruction unsupported in verified method');
+      if (p + size > insnsCount) fail('DEX_CODE', 'Instruction extends beyond code item');
+      starts.add(p);
+      if (opcode === 0x0a && previous !== 0x71) {
+        fail('DEX_RESULT', 'move-result must directly follow invoke-static');
+      }
+      if (opcode === 0x28) targets.push(p + sign8(w >>> 8));
+      if (opcode === 0x29 || opcode === 0x38) targets.push(p + sign16(item.word(p + 1)));
+      previous = opcode;
+      p += size;
+    }
+    for (const destination of targets) {
+      if (!starts.has(destination)) fail('DEX_BRANCH', 'Branch into non-instruction or outside code');
+    }
+    return item;
   }
   execute(owner, name, args, { instructionLimit = 10000, signature } = {}) {
     if (!Array.isArray(args) || args.length > 16 ||
