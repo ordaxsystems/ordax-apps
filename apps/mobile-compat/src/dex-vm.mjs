@@ -1,7 +1,8 @@
 // Strictly bounded Dalvik *instruction subset* for independently verifiable
-// static integer methods. Not ART, class initialization, JNI, or Android UI.
+// static/int-instance methods. Not ART, reflection, JNI ABI or Android UI.
 import { inspectDex } from './formats.mjs';
 import { PackageError } from './zip.mjs';
+import { GuestHeap } from './guest-heap.mjs';
 
 function fail(code, reason) { throw new PackageError(code, reason); }
 function requireRange(b, off, len, why) {
@@ -47,15 +48,19 @@ export class DexSubset {
     this.strings = section(bytes, 56, 60, 4, 1000000);
     this.types = section(bytes, 64, 68, 4, 65535);
     this.protos = section(bytes, 72, 76, 12, 65535);
+    this.fields = section(bytes, 80, 84, 8, 65535);
     this.methods = section(bytes, 88, 92, 8, 65535);
     this.classes = section(bytes, 96, 100, 32, MAX_CLASSES);
     this.methodsById = new Map();
     this.methodInfos = new Map();
     this.stringCache = new Map();
+    this.fieldInfos = new Map();
+    this.classInstanceFields = new Map();
     for (let i = 0; i < this.classes.count; i++) {
       const classOffset = this.classes.off + i * 32;
       const classIdx = u32(bytes, classOffset);
       if (classIdx >= this.types.count) fail('DEX_INDEX', 'Invalid class definition type');
+      this.classInstanceFields.set(classIdx, new Set());
       const classDataOffset = u32(bytes, classOffset + 24);
       if (classDataOffset) this.readClassData(classIdx, classDataOffset);
     }
@@ -111,6 +116,17 @@ export class DexSubset {
     this.methodInfos.set(index, info);
     return info;
   }
+  fieldInfo(index) {
+    if (index >= this.fields.count) fail('DEX_INDEX', 'Invalid field index');
+    if (this.fieldInfos.has(index)) return this.fieldInfos.get(index);
+    const at = this.fields.off + index * 8;
+    const ownerIdx = u16(this.bytes, at);
+    const type = this.type(u16(this.bytes, at + 2));
+    const name = this.getString(u32(this.bytes, at + 4));
+    const info = { index, ownerIdx, owner: this.type(ownerIdx), type, name };
+    this.fieldInfos.set(index, info);
+    return info;
+  }
   readClassData(classIdx, offset) {
     let p = offset;
     const fields = [], methods = [];
@@ -123,8 +139,11 @@ export class DexSubset {
       let field = 0;
       for (let i = 0; i < count; i++) {
         const [delta, next] = leb(this.bytes, p); p = next; field += delta;
-        const [, pos] = leb(this.bytes, p); p = pos;
-        if (field > 65535) fail('DEX_INDEX', 'Invalid field index');
+        const [access, pos] = leb(this.bytes, p); p = pos;
+        if (field >= this.fields.count || this.fieldInfo(field).ownerIdx !== classIdx) {
+          fail('DEX_INDEX', 'Invalid encoded field ownership/index');
+        }
+        if (!(access & 0x8)) this.classInstanceFields.get(classIdx).add(field);
       }
     }
     let method = 0;
@@ -160,11 +179,12 @@ export class DexSubset {
     const encoded = this.methodsById.get(index);
     if (!encoded) fail('DEX_METHOD', 'Unresolved DEX method');
     const info = this.methodInfo(index);
-    if (!(encoded.access & 0x8)) fail('DEX_INSTANCE', 'Only static methods are supported');
     if (encoded.access & 0x100) fail('NATIVE_UNAVAILABLE', 'JNI native method has no authorized implementation');
     if ((encoded.access & 0x400) || !encoded.codeOff) fail('DEX_METHOD', 'Abstract or missing code item');
-    if (!info.proto.params.every(x => x === 'I') || !['I', 'V'].includes(info.proto.result)) {
-      fail('DEX_TYPE', 'Only int/void method signatures are supported');
+    const supported = type => type === 'I' || /^L[A-Za-z0-9_/$]+;$/.test(type);
+    if (!info.proto.params.every(supported) ||
+        !(['I', 'V'].includes(info.proto.result) || supported(info.proto.result))) {
+      fail('DEX_TYPE', 'Only int32, references and void method signatures are supported');
     }
     const offset = encoded.codeOff;
     if (offset % 4 !== 0) fail('DEX_SECTION', 'Unaligned DEX code item');
@@ -174,21 +194,23 @@ export class DexSubset {
     const outs = u16(this.bytes, offset + 4);
     const tries = u16(this.bytes, offset + 6);
     const insnsCount = u32(this.bytes, offset + 12);
-    if (regs > 256 || ins !== info.proto.params.length || regs < ins ||
-        outs > 16 || tries || insnsCount === 0 || insnsCount > MAX_INSNS) {
+    const isStatic = !!(encoded.access & 0x8);
+    if (regs > 256 || ins !== info.proto.params.length + (isStatic ? 0 : 1) ||
+        regs < ins || outs > 16 || tries || insnsCount === 0 || insnsCount > MAX_INSNS) {
       fail('DEX_CODE', 'Unsupported or invalid code_item bounds');
     }
     requireRange(this.bytes, offset + 16, insnsCount * 2, 'Truncated DEX instructions');
-    const item = { info, regs, outs, insnsCount,
+    const item = { info, regs, outs, insnsCount, isStatic,
       word: p => u16(this.bytes, offset + 16 + p * 2) };
     // Verify the complete instruction stream before interpreting even one
     // code unit. Branches may only land on actual opcode boundaries, never
     // inside a const/invoke payload or in the middle of an instruction.
     const sizeByOpcode = new Map([
-      [0x01, 1], [0x0a, 1], [0x0e, 1], [0x0f, 1],
-      [0x12, 1], [0x13, 2], [0x14, 3],
+      [0x01, 1], [0x07, 1], [0x0a, 1], [0x0c, 1],
+      [0x0e, 1], [0x0f, 1], [0x11, 1],
+      [0x12, 1], [0x13, 2], [0x14, 3], [0x22, 2], [0x52, 2], [0x59, 2],
       [0x28, 1], [0x29, 2], [0x38, 2],
-      [0x71, 3], [0x90, 2], [0x91, 2], [0x92, 2], [0xd8, 2],
+      [0x6e, 3], [0x70, 3], [0x71, 3], [0x90, 2], [0x91, 2], [0x92, 2], [0xd8, 2],
     ]);
     const starts = new Set(), targets = [];
     let previous = -1;
@@ -198,8 +220,9 @@ export class DexSubset {
       if (!size) fail('DEX_OPCODE', 'Instruction unsupported in verified method');
       if (p + size > insnsCount) fail('DEX_CODE', 'Instruction extends beyond code item');
       starts.add(p);
-      if (opcode === 0x0a && previous !== 0x71) {
-        fail('DEX_RESULT', 'move-result must directly follow invoke-static');
+      if ((opcode === 0x0a || opcode === 0x0c) &&
+          previous !== 0x71 && previous !== 0x70 && previous !== 0x6e) {
+        fail('DEX_RESULT', 'move-result must directly follow invoke');
       }
       if (opcode === 0x28) targets.push(p + sign8(w >>> 8));
       if (opcode === 0x29 || opcode === 0x38) targets.push(p + sign16(item.word(p + 1)));
@@ -208,10 +231,13 @@ export class DexSubset {
     }
     for (const destination of targets) {
       if (!starts.has(destination)) fail('DEX_BRANCH', 'Branch into non-instruction or outside code');
+      if ([0x0a, 0x0c].includes(item.word(destination) & 255)) {
+        fail('DEX_RESULT', 'Cannot branch into invoke result retrieval');
+      }
     }
     return item;
   }
-  execute(owner, name, args, { instructionLimit = 10000, signature } = {}) {
+  execute(owner, name, args, { instructionLimit = 10000, signature, maxObjects = 4096 } = {}) {
     if (!Array.isArray(args) || args.length > 16 ||
         !args.every(x => Number.isInteger(x) && x >= -2147483648 && x <= 2147483647)) {
       fail('DEX_ARGS', 'Expected bounded signed 32-bit integer arguments');
@@ -220,11 +246,19 @@ export class DexSubset {
       fail('DEX_LIMIT', 'Invalid shared instruction budget');
     }
     const entry = this.findStatic(owner, name, signature);
+    if (!(this.methodsById.get(entry).access & 0x8)) {
+      fail('DEX_INSTANCE', 'Only static methods are executable from the public entrypoint');
+    }
+    const heap = new GuestHeap({ maxObjects });
     const budget = { remaining: instructionLimit };
-    const value = this.invoke(entry, args, budget, 0);
-    return Object.freeze({ format: 'dalvik-integer-subset', value, consumedInstructions: instructionLimit - budget.remaining });
+    const value = this.invoke(entry, args, budget, 0, heap);
+    if (this.methodInfo(entry).proto.result.startsWith('L')) {
+      fail('DEX_REFERENCE', 'Guest references cannot escape the method-only host boundary');
+    }
+    return Object.freeze({ format: 'dalvik-object-subset', value,
+      allocatedObjects: heap.size, consumedInstructions: instructionLimit - budget.remaining });
   }
-  invoke(id, args, budget, depth) {
+  invoke(id, args, budget, depth, heap) {
     if (depth >= 16) fail('DEX_DEPTH', 'DEX stack depth exceeded');
     const encoded = this.methodsById.get(id);
     if (!encoded) fail('DEX_METHOD', 'Unresolved DEX method');
@@ -236,71 +270,143 @@ export class DexSubset {
     }
     const item = this.codeItem(id);
     if (args.length !== item.info.proto.params.length) fail('DEX_ARGS', 'Wrong number of method arguments');
-    const registers = new Int32Array(item.regs);
-    registers.set(args, item.regs - args.length);
-    let pc = 0, pending = null, hasPending = false;
+    const params = item.isStatic
+      ? item.info.proto.params
+      : [item.info.owner, ...item.info.proto.params];
+    if (args.length !== params.length) fail('DEX_ARGS', 'Method argument count mismatch');
+    const registers = new Int32Array(item.regs), refTags = new Uint8Array(item.regs);
+    const check = index => { if (index >= registers.length) fail('DEX_REGISTER', 'Register outside frame'); };
+    const getInt = index => {
+      check(index);
+      if (refTags[index]) fail('DEX_TYPE', 'Cannot use an object reference as int32');
+      return registers[index];
+    };
+    const getRef = index => {
+      check(index);
+      if (refTags[index]) return registers[index];
+      if (registers[index] === 0) return 0; // const/4 0 is null
+      fail('DEX_TYPE', 'Integer is not a guest object reference');
+    };
+    const putInt = (index, value) => {
+      check(index); registers[index] = value | 0; refTags[index] = 0;
+    };
+    const putRef = (index, value) => {
+      check(index); registers[index] = value; refTags[index] = 1;
+    };
+    for (let index = 0; index < params.length; index++) {
+      const dest = item.regs - params.length + index;
+      const value = args[index];
+      if (params[index] === 'I') putInt(dest, value);
+      else {
+        heap.lookup(value, params[index]);
+        putRef(dest, value);
+      }
+    }
+    let pc = 0, pending = null, pendingType = null;
     const word = p => {
       if (!Number.isInteger(p) || p < 0 || p >= item.insnsCount) fail('DEX_BRANCH', 'Instruction pointer outside code_item');
       return item.word(p);
     };
-    const get = i => { if (i >= registers.length) fail('DEX_REGISTER', 'Register read outside frame'); return registers[i]; };
-    const put = (i, value) => { if (i >= registers.length) fail('DEX_REGISTER', 'Register write outside frame'); registers[i] = value | 0; };
     while (true) {
       if (--budget.remaining < 0) fail('DEX_BUDGET', 'Instruction budget exhausted');
       const opWord = word(pc), op = opWord & 0xff, a = opWord >>> 8;
       const oldPc = pc++;
-      if (op !== 0x0a) { hasPending = false; pending = null; }
+      if (op !== 0x0a && op !== 0x0c) { pendingType = null; pending = null; }
       switch (op) {
         case 0x01: // move vA, vB (12x)
-          put(a & 15, get(a >>> 4)); break;
+          putInt(a & 15, getInt(a >>> 4)); break;
+        case 0x07: // move-object vA,vB (12x)
+          putRef(a & 15, getRef(a >>> 4)); break;
         case 0x0a: // move-result vAA
-          if (!hasPending) fail('DEX_RESULT', 'move-result without immediately preceding invoke');
-          put(a, pending); hasPending = false; pending = null; break;
+          if (pendingType !== 'I') fail('DEX_RESULT', 'int result unavailable');
+          putInt(a, pending); pendingType = null; pending = null; break;
+        case 0x0c: // move-result-object vAA
+          if (!pendingType?.startsWith('L')) fail('DEX_RESULT', 'object result unavailable');
+          putRef(a, pending); pendingType = null; pending = null; break;
         case 0x0e: // return-void
           if (item.info.proto.result !== 'V' || a !== 0) fail('DEX_TYPE', 'Invalid void return');
           return null;
         case 0x0f: // return vAA
           if (item.info.proto.result !== 'I') fail('DEX_TYPE', 'Return type mismatch');
-          return get(a);
+          return getInt(a);
+        case 0x11: // return-object vAA
+          if (!item.info.proto.result.startsWith('L')) fail('DEX_TYPE', 'Object return type mismatch');
+          heap.lookup(getRef(a), item.info.proto.result);
+          return getRef(a);
         case 0x12: { // const/4 (11n)
           const encoded = a >>> 4;
-          put(a & 15, encoded & 8 ? encoded - 16 : encoded); break;
+          putInt(a & 15, encoded & 8 ? encoded - 16 : encoded); break;
         }
         case 0x13: // const/16 (21s)
-          put(a, sign16(word(pc++))); break;
+          putInt(a, sign16(word(pc++))); break;
         case 0x14: { // const (31i)
           const lower = word(pc++), upper = word(pc++);
-          put(a, (lower | upper << 16) | 0); break;
+          putInt(a, (lower | upper << 16) | 0); break;
+        }
+        case 0x22: { // new-instance vAA, type@BBBB (21c)
+          const typeIdx = word(pc++);
+          const instanceFields = this.classInstanceFields.get(typeIdx);
+          if (!instanceFields) fail('DEX_CLASS', 'Class not declared in local DEX');
+          putRef(a, heap.allocate(this.type(typeIdx), [...instanceFields]));
+          break;
+        }
+        case 0x52: { // iget vA,vB, field@CCCC (22c)
+          const field = this.fieldInfo(word(pc++));
+          if (field.type !== 'I') fail('DEX_FIELD', 'Only int32 instance fields supported');
+          putInt(a & 15, heap.readField(getRef(a >>> 4), field.owner, field.index));
+          break;
+        }
+        case 0x59: { // iput vA,vB, field@CCCC (22c)
+          const field = this.fieldInfo(word(pc++));
+          if (field.type !== 'I') fail('DEX_FIELD', 'Only int32 instance fields supported');
+          heap.writeField(getRef(a >>> 4), field.owner, field.index, getInt(a & 15));
+          break;
         }
         case 0x28: pc = oldPc + sign8(a); break; // goto (10t)
         case 0x29: pc = oldPc + sign16(word(pc)); break; // goto/16 (20t)
         case 0x38: { // if-eqz vAA, +BBBB
           const delta = sign16(word(pc++));
-          if (get(a) === 0) pc = oldPc + delta;
+          if (getInt(a) === 0) pc = oldPc + delta;
           break;
         }
-        case 0x71: { // invoke-static {registers}, method@BBBB (35c)
+        case 0x6e: case 0x70: case 0x71: { // virtual/direct/static, format 35c
           const count = a >>> 4, g = a & 15;
           const target = word(pc++), packed = word(pc++);
-          if (count > 5 || count > item.outs) fail('DEX_INVOKE', 'Invalid invoke-static registers/outs');
+          if (count > 5 || count > item.outs) fail('DEX_INVOKE', 'Invalid invoke register count/outs');
+          const callee = this.methodInfo(target);
+          const definition = this.methodsById.get(target);
+          if (!definition) fail('DEX_METHOD', 'Unresolved target method');
+          if (op === 0x71 ? !(definition.access & 8) : (definition.access & 8)) {
+            fail('DEX_INVOKE', 'Static versus instance invoke mismatch');
+          }
+          if (op === 0x70 && callee.name !== '<init>') {
+            fail('DEX_INVOKE', 'Only constructors supported by invoke-direct');
+          }
+          if (op === 0x6e && callee.name === '<init>') {
+            fail('DEX_INVOKE', 'Constructors require invoke-direct');
+          }
           const indices = [packed & 15, (packed >>> 4) & 15,
             (packed >>> 8) & 15, (packed >>> 12) & 15, g];
-          const values = indices.slice(0, count).map(get);
-          const result = this.invoke(target, values, budget, depth + 1);
-          if (this.methodInfo(target).proto.result === 'I') {
-            pending = result; hasPending = true;
+          const types = op === 0x71 ? callee.proto.params : [callee.owner, ...callee.proto.params];
+          if (types.length !== count) fail('DEX_INVOKE', 'Wrong Dalvik invoke arity');
+          const values = indices.slice(0, count).map((r, i) =>
+            types[i] === 'I' ? getInt(r) : getRef(r));
+          const result = this.invoke(target, values, budget, depth + 1, heap);
+          if (callee.proto.result !== 'V') {
+            pending = result;
+            pendingType = callee.proto.result;
           }
           break;
         }
         case 0x90: case 0x91: case 0x92: { // add/sub/mul-int vAA, vBB, vCC (23x)
           const other = word(pc++);
-          const left = get(other & 255), right = get(other >>> 8);
-          put(a, op === 0x90 ? left + right : op === 0x91 ? left - right : Math.imul(left, right));
+          const left = getInt(other & 255), right = getInt(other >>> 8);
+          putInt(a, op === 0x90 ? left + right : op === 0x91 ? left - right : Math.imul(left, right));
           break;
         }
         case 0xd8: { // add-int/lit8 vAA, vBB, #+CC (22b)
           const bc = word(pc++);
-          put(a, get(bc & 255) + sign8(bc >>> 8)); break;
+          putInt(a, getInt(bc & 255) + sign8(bc >>> 8)); break;
         }
         default:
           fail('DEX_OPCODE', 'Unimplemented Dalvik opcode 0x' + op.toString(16).padStart(2, '0'));
