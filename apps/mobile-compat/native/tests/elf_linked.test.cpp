@@ -226,7 +226,7 @@ std::vector<std::uint8_t> onLoadRegisterElf() {
         u64(b,p+8,1027);
         u64(b,p+16,addend);
     }
-    const std::string clazz("com/ordax/Native");
+    const std::string clazz("test/Bridge");
     const std::string method("nativeAdd");
     const std::string signature("(I)I");
     std::copy(clazz.begin(),clazz.end(),b.begin()+0x5a0);
@@ -625,14 +625,14 @@ int main(int argc, char** argv) {
         JniGuestEnvironment env;
         const std::array<ordax::mobile::JniDeclaredMethod,1> declared = {
             ordax::mobile::JniDeclaredMethod{"nativeAdd","(I)I"}};
-        env.declareNativeClass("com/ordax/Native",declared);
+        env.declareNativeClass("test/Bridge",declared);
         env.install(cpu);
         ordax::mobile::runGuestInitializers(cpu,image,64);
         assert(env.runOnLoad(cpu,image,source,"libprovider.so",128) ==
                JniGuestEnvironment::kVersion);
         const auto& bindings=env.registeredMethods();
         assert(bindings.size()==1);
-        assert(bindings[0].owner=="com/ordax/Native" &&
+        assert(bindings[0].owner=="test/Bridge" &&
                bindings[0].name=="nativeAdd" &&
                bindings[0].signature=="(I)I" &&
                bindings[0].guest_address==0x110b0);
@@ -660,7 +660,7 @@ int main(int argc, char** argv) {
         const std::array<ordax::mobile::JniDeclaredMethod,1> declared={
             ordax::mobile::JniDeclaredMethod{
                 "nativeAdd",kind==6?"()I":"(I)I"}};
-        env.declareNativeClass("com/ordax/Native",declared);
+        env.declareNativeClass("test/Bridge",declared);
         env.install(cpu);
         ordax::mobile::runGuestInitializers(cpu,image,64);
         reject([&] {
