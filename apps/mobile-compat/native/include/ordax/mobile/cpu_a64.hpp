@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <stdexcept>
 #include <vector>
@@ -25,12 +26,18 @@ struct GuestRegion {
 // Guest addresses are offsets into a bounded owned allocation, never host pointers.
 class CpuA64 final {
 public:
+    using HostCall = std::function<std::uint64_t(std::uint64_t, const std::array<std::uint64_t, 8>&)>;
+    // Addresses are opaque guest-space traps, never host function pointers.
+    static constexpr std::uint64_t kHostCallPrefix = 0xffff000000000000ull;
+
     explicit CpuA64(std::size_t memory_bytes);
 
     void load(std::uint64_t address, std::span<const std::uint8_t> bytes);
     // Trusted image loader installs protections after all bytes and relocations
     // have been validated and mapped. Guest instructions cannot bypass them.
     void set_guest_regions(std::span<const GuestRegion> regions);
+    void install_host_readonly(std::uint64_t address, std::span<const std::uint8_t> bytes);
+    void set_host_call(HostCall call);
     void set_register(unsigned index, std::uint64_t value);
     [[nodiscard]] std::uint64_t reg(unsigned index) const;
     [[nodiscard]] std::size_t memory_size() const noexcept { return memory_.size(); }
@@ -48,5 +55,6 @@ private:
     std::array<std::uint64_t, 31> registers_{};
     std::vector<GuestRegion> guest_regions_;
     bool protected_guest_ = false;
+    HostCall host_call_{};
 };
 } // namespace ordax::mobile
