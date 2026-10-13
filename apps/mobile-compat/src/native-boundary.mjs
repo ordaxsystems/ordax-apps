@@ -1,5 +1,7 @@
 // Deliberately narrow, opt-in host native-method boundary for tests.
-// NOT the JNI ABI: no JNIEnv, no object handles, no guest pointers, no
+// Typed Dalvik-side native boundary; the separate ARM64 host implements a
+// bounded subset of JNI, never direct access to Dalvik objects or host pointers.
+// No arbitrary native symbol lookup, no guest pointers, no
 // dynamic native library lookup, no platform grants or Android services.
 import { PackageError } from './zip.mjs';
 
@@ -69,9 +71,7 @@ export class NativeMethodBoundary {
       if (result !== undefined && result !== null) {
         throw new PackageError('NATIVE_RESULT', 'Void native returned a result');
       }
-      return null;
-    }
-    if (proto.result !== 'I' || !isInt32(result)) {
+    } else if (proto.result !== 'I' || !isInt32(result)) {
       throw new PackageError('NATIVE_RESULT', 'Native returned an invalid int32');
     }
     // Atomicity: validate *all* reference snapshots and native return values
