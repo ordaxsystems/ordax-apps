@@ -17,6 +17,7 @@ O código atual é uma fundação técnica, NÃO é o Instagram funcionando:
 - fronteira opcional de métodos nativos tipados, vinculada exclusivamente por código host confiável; agora há **um subconjunto inicial da ABI JNI** com `JNIEnv*` e tabela indexada, mas ainda sem classes Android, JNI completo, JNI_OnLoad, carregamento automático de bibliotecas ou autoridade da plataforma;
 - executor **AArch64 C++20 de prova** com memória convidada limitada, MOVZ/MOVK, ADD/SUB, LDR/STR, B, RET e NOP; falha em instruções ausentes;
 - carregador ELF64 ARM64 `ET_EXEC` e `ET_DYN`, com `PT_LOAD`, mapa guest isolado, `DT_RELA` e relocação `R_AARCH64_RELATIVE`; o interpretador suporta `ADRP` para endereçamento independente da base de carregamento;
+- **RELR compactado em ELF ARM64**: o mesmo carregador interpreta `DT_RELR`/`DT_RELRSZ`/`DT_RELRENT` e as variantes anteriores `DT_ANDROID_RELR`/`DT_ANDROID_RELRSZ`/`DT_ANDROID_RELRENT`, inclusive `DT_ANDROID_RELRCOUNT` (dica opcional ignorada pelo Bionic). O decoder trata entradas diretas e bitmaps de 63 posições, lê os addends implícitos da imagem original, valida segmentos graváveis, pointers remapeados, duplicatas com `RELA`, limite de 8.192 patches e impede overflow. O fluxo cobre provedores independentes e consumidores `DT_NEEDED` com `JUMP_SLOT` + `RELR` no mesmo ELF, sem duplicar a arquitetura. **Não** implementa Android Packed Relocations `APS2`, GNU hash, Bionic completo nem todas as relocations Android; essas tecnologias são distintas de RELR;
 - **linker experimental entre dois ELF convidados**: um provedor `ET_DYN` independente exporta funções `GLOBAL FUNC` de `DT_SYMTAB`/`DT_STRTAB` com contagem limitada de `DT_HASH`. Um consumidor `ET_DYN` com `DT_NEEDED` explícito pode resolver `R_AARCH64_JUMP_SLOT` e `R_AARCH64_GLOB_DAT` somente contra essas exportações previamente carregadas. A função importada é executada por `BLR` dentro da CPU convidada; nenhum símbolo ou endereço nativo do Windows é importado. Colisões de segmentos, símbolos inexistentes/ambíguos, tipos não suportados, TLS e dependências implícitas são recusados;
 - executável nativo de desenvolvimento `ordax-mobile-guest`, que carrega um ELF existente em disco e executa até 100.000 instruções guest, sempre com limite de memória e permissões ELF de leitura, escrita e execução (nega escrita em RX e execução em dados NX);
 - **ponte experimental Dalvik → ARM64 para métodos `int32`**: `invoke-static` de um método DEX opt-in chama `NativeMethodBoundary`, que pode usar `registerArm64IntegerMethod` para executar um ELF de desenvolvimento no motor ARM64 nativo. O arquivo é conferido por SHA-256 e executado a partir de uma cópia privada validada, com subprocesso limitado por tempo e saída. Só `(I{0,5})I`, sem objetos exportados, ponteiros host, símbolos dinâmicos ou autorização escolhida pelo APK;
@@ -108,6 +109,23 @@ nativa do Instagram foi executada por essa ponte**.
 
 O comando `run` da ferramenta de APK falha explicitamente com `EXECUTION_UNAVAILABLE`. Inspecionar APK não comprova compatibilidade nem abre Instagram.
 
+## Estado da validação e isolamento
+
+A [PR #240](https://github.com/ordaxsystems/ordax-apps/pull/240) foi fechada
+sem merge em 13/10/2026, por decisão registrada no GitHub: o código permanece
+um laboratório, não o MVP do Instagram. A branch
+`feature/mobile-compat-cleanroom-foundation-20261012` conserva o histórico.
+**Não reabrir nem anunciar release** sem o gate interativo do APK original.
+
+Antes da adição de RELR, o commit `ba0c3e5` passou pelas suítes Linux/Windows
+com **19/19 testes CTest por plataforma** e três verificações no GitHub.
+A alteração RELR tem novos testes unitários e foi enviada à mesma branch,
+mas **o resultado dos jobs disparados por push ainda não foi recuperado**
+nesta sessão; o conector disponível consulta apenas runs de pull request
+para um commit. Não atribuir status aprovado à nova alteração até obter
+a prova específica. O workflow `.github/workflows/mobile-compat-cleanroom.yml`
+continua configurado para `push` na branch do laboratório.
+
 ## Implementação necessária para o MVP de execução
 
 1. Container e assinatura APK v2/v3, base/splits, DEX e bibliotecas ELF, extração isolada verificada.
@@ -126,6 +144,6 @@ A viabilidade ainda não está demonstrada. Desenvolver essa camada é comparáv
 - Sem app.json, inscrição na Store ou metadados que anunciem o app instalável enquanto o runtime guest e o host Windows não funcionarem.
 - Nenhum código de Lunaria ou NativeDexLab é copiado. Registros de falhas anteriores servem só como evidência.
 - Não cadastrar versões falsas de Android, não capturar credenciais, não contornar proteções de autenticação, não publicar APK proprietário.
-- Branch e PR separados para não interferir nas migrações existentes dos demais apps.
+- Branch do laboratório preservada; PR #240 fechada sem merge. Não interferir nas migrações existentes dos demais apps.
 
 **Gate de MVP:** demonstração real no Windows, com Instagram original renderizando e respondendo a entrada, além de testes de integridade, permissão, segurança, recuperação e reinicialização. Só depois preparar manifesto, pacote e Store.
