@@ -1,0 +1,16 @@
+{
+  "schema": "ordax.application-action-provider-manifest/1",
+  "appId": "internet",
+  "appVersion": "0.3.0",
+  "authority": "none",
+  "execution": "unavailable",
+  "providers": [
+    {
+      "kind": "first-party-native",
+      "adapterId": "internet-native",
+      "revision": "1",
+      "module": "actions/providers/internet-native.mjs",
+      "sha256": "c4e5c50ab8f47c5e8e8bd5539295dc2d6b5c78b3755fa05fd648ea8abc6cdead"
+    }
+  ]
+}
