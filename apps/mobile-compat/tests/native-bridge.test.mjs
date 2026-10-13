@@ -9,12 +9,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DexSubset } from '../src/dex-vm.mjs';
 import { NativeMethodBoundary } from '../src/native-boundary.mjs';
-import { registerArm64IntegerMethod } from '../src/arm64-method-bridge.mjs';
+import { registerArm64IntegerMethod, registerArm64JniIntegerMethod } from '../src/arm64-method-bridge.mjs';
 import { runDexMethodFromPackage } from '../src/inspect.mjs';
 
 const executablePath = process.argv[2];
 const imagePath = process.argv[3];
 const owner = 'Ltest/Bridge;';
+const isJni = process.argv[4] === 'jni';
+const mode = isJni ? 'invoke-jni-i32-elf' : 'invoke-i32-elf';
+const expectedSchema = isJni ? 'ordax.mobile-compat.jni-static-i32-call/1' : 'ordax.mobile-compat.i32-guest-call/1';
+const expected = value => (value + (isJni ? 0x10006 : 2)) | 0;
 const nativeTest = executablePath && imagePath ? test : test.skip;
 const hash = imagePath ? createHash('sha256').update(readFileSync(imagePath)).digest('hex') : null;
 
@@ -150,7 +154,7 @@ function zip(items) {
 
 function createTrustedBoundary(image = imagePath, pinnedHash = hash) {
   const nativeBoundary = new NativeMethodBoundary();
-  registerArm64IntegerMethod(nativeBoundary, {
+  (isJni ? registerArm64JniIntegerMethod : registerArm64IntegerMethod)(nativeBoundary, {
     owner, name: 'nativeAdd', signature: '(I)I',
     executablePath, imagePath: image, sha256: pinnedHash,
   });
@@ -158,18 +162,18 @@ function createTrustedBoundary(image = imagePath, pinnedHash = hash) {
 }
 
 nativeTest('real ARM64 ELF receives x0 and returns signed int32 result', () => {
-  for (const [input, expected] of [[40, 42], [-5, -3], [2147483647, -2147483647]]) {
+  for (const input of [40, -5, 2147483647]) {
     const data = JSON.parse(execFileSync(executablePath,
-      ['invoke-i32-elf', imagePath, String(input)], { encoding: 'utf8', timeout: 3000 }));
-    assert.equal(data.schema, 'ordax.mobile-compat.i32-guest-call/1');
-    assert.equal(data.value, expected);
+      [mode, imagePath, String(input)], { encoding: 'utf8', timeout: 3000 }));
+    assert.equal(data.schema, expectedSchema);
+    assert.equal(data.value, expected(input));
   }
 });
 nativeTest('real DEX invokes registered native AArch64 ELF, no simulated arithmetic', () => {
   const vm = new DexSubset(makeDex(), { nativeBoundary: createTrustedBoundary() });
-  for (const [input, expected] of [[40, 42], [-9, -7], [2147483647, -2147483647]]) {
+  for (const input of [40, -9, 2147483647]) {
     const result = vm.execute(owner, 'callNative', [input]);
-    assert.equal(result.value, expected);
+    assert.equal(result.value, expected(input));
     assert.equal(result.consumedInstructions, 3);
   }
   assert.throws(() => new DexSubset(makeDex()).execute(owner, 'callNative', [40]),
@@ -186,7 +190,7 @@ nativeTest('verified APK and XAPK can call the same native ELF only when host op
     for (const path of paths) {
       const result = await runDexMethodFromPackage(path, owner, 'callNative', [40],
         { nativeBoundary: createTrustedBoundary() });
-      assert.equal(result.value, 42);
+      assert.equal(result.value, expected(40));
       await assert.rejects(
         runDexMethodFromPackage(path, owner, 'callNative', [40]),
         { code: 'NATIVE_UNAVAILABLE' });
@@ -208,15 +212,15 @@ nativeTest('pinning rejects changed or missing native ELF before host executes i
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 nativeTest('guest cannot specify arbitrary executable arguments, signature or native pointers', () => {
-  assert.throws(() => registerArm64IntegerMethod(new NativeMethodBoundary(), {
+  assert.throws(() => (isJni ? registerArm64JniIntegerMethod : registerArm64IntegerMethod)(new NativeMethodBoundary(), {
     owner, name: 'nativeAdd', signature: '(Ljava/lang/Object;)I',
     executablePath, imagePath, sha256: hash,
   }), { code: 'NATIVE_REGISTRATION' });
   assert.throws(() => execFileSync(executablePath,
-    ['invoke-i32-elf', imagePath, 'not-an-int'], { encoding: 'utf8', timeout: 3000 }));
+    [mode, imagePath, 'not-an-int'], { encoding: 'utf8', timeout: 3000 }));
   assert.throws(() => execFileSync(executablePath,
-    ['invoke-i32-elf', imagePath, '2147483648'], { encoding: 'utf8', timeout: 3000 }));
+    [mode, imagePath, '2147483648'], { encoding: 'utf8', timeout: 3000 }));
   assert.throws(() => execFileSync(executablePath,
-    ['invoke-i32-elf', imagePath, '1', '2', '3', '4', '5', '6'],
+    [mode, imagePath, '1', '2', '3', '4', '5', '6'],
     { encoding: 'utf8', timeout: 3000 }));
 });
