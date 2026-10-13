@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
+#include <vector>
 
 namespace ordax::mobile {
 
@@ -25,5 +27,24 @@ struct LoadedGuestElf {
 // fail closed until the Android dynamic linker and Bionic are implemented.
 [[nodiscard]] LoadedGuestElf loadRelocatableElfA64(
     CpuA64& cpu, std::span<const std::uint8_t> elf, std::uint64_t load_bias);
+
+// Symbol information comes exclusively from a verified provider ELF's own
+// bounded DT_SYMTAB/DT_STRTAB, never user-supplied host function pointers.
+struct GuestDynamicExport {
+    std::string library;
+    std::string symbol;
+    std::uint64_t address = 0;
+};
+[[nodiscard]] std::vector<GuestDynamicExport> inspectGuestDynamicExports(
+    std::span<const std::uint8_t> elf, std::uint64_t load_bias,
+    const std::string& library);
+
+// Only a small ET_DYN subset: explicit DT_NEEDED provider, global defined
+// function via DT_HASH/dynsym, and R_AARCH64_JUMP_SLOT or GLOB_DAT.
+// No libc/Bionic, versioned symbols, constructors, weak, TLS or lazy binding.
+// All provider libraries must have been loaded into the SAME guest CPU.
+[[nodiscard]] LoadedGuestElf loadLinkedElfA64(
+    CpuA64& cpu, std::span<const std::uint8_t> elf,
+    std::uint64_t load_bias, std::span<const GuestDynamicExport> providers);
 
 } // namespace ordax::mobile
