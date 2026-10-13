@@ -145,7 +145,9 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         }
         switch (tag) {
             case 4: case 5: case 6: case 7: case 8: case 9:
-            case 10: case 11: case 0x6ffffff9: break;
+            case 10: case 11: case 0x6ffffff9:
+            case 35: case 36: case 37:
+            case 0x6fffe000: case 0x6fffe001: case 0x6fffe003: break;
             default: throw GuestFault("Unsupported linked ELF dynamic tag");
         }
         if (!seen.insert(tag).second) throw GuestFault("Duplicate linked ELF dynamic tag");
@@ -262,6 +264,115 @@ std::vector<Relocation> parseLinkedRelocations(
     }
     return patches;
 }
+
+// RELR is a list of implicit-addend R_AARCH64_RELATIVE patches encoded as
+// direct addresses and 63-address bitmaps. Both generic ELF and Android's
+// older tag numbers use the same format; reject mixed tag families.
+std::vector<Relocation> parseRelrRelocations(
+    std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
+    const std::vector<Segment>& segments, std::uint64_t bias,
+    std::size_t memory_bytes, std::span<const Relocation> other_patches) {
+    constexpr std::uint64_t kRelr = 36, kRelrSz = 35, kRelrEnt = 37;
+    constexpr std::uint64_t kAndroidRelr = 0x6fffe000;
+    constexpr std::uint64_t kAndroidRelrSz = 0x6fffe001;
+    constexpr std::uint64_t kAndroidRelrEnt = 0x6fffe003;
+    bool generic = false, android = false, terminated = false;
+    bool has_pointer = false, has_size = false, has_entry = false;
+    std::uint64_t pointer = 0, size = 0, entry_size = 0;
+    for (std::size_t i = 0; i < dynamic.file_bytes; i += 16) {
+        const auto tag = get64(elf, dynamic.file_offset + i);
+        const auto val = get64(elf, dynamic.file_offset + i + 8);
+        if (tag == 0) { terminated = true; break; }
+        const bool g = tag == kRelr || tag == kRelrSz || tag == kRelrEnt;
+        const bool a = tag == kAndroidRelr ||
+                       tag == kAndroidRelrSz || tag == kAndroidRelrEnt;
+        if (!g && !a) continue;
+        generic |= g; android |= a;
+        if (generic && android) throw GuestFault("Mixed generic and Android RELR tags");
+        if (tag == kRelr || tag == kAndroidRelr) {
+            if (has_pointer) throw GuestFault("Repeated DT_RELR");
+            has_pointer = true; pointer = val;
+        } else if (tag == kRelrSz || tag == kAndroidRelrSz) {
+            if (has_size) throw GuestFault("Repeated DT_RELRSZ");
+            has_size = true; size = val;
+        } else {
+            if (has_entry) throw GuestFault("Repeated DT_RELRENT");
+            has_entry = true; entry_size = val;
+        }
+    }
+    if (!terminated) throw GuestFault("Unterminated RELR dynamic section");
+    if (!has_pointer && !has_size && !has_entry) return {};
+    if (!has_pointer || !has_size || !has_entry || entry_size != 8 ||
+        !size || size % 8 || size > 16384) {
+        throw GuestFault("Malformed or oversized RELR metadata");
+    }
+    const auto input = mappedFileOffset(pointer, static_cast<std::size_t>(size), segments);
+    std::vector<Relocation> result;
+    result.reserve(static_cast<std::size_t>(size / 8));
+    std::uint64_t next = 0;
+    bool have_base = false;
+    const auto append = [&](std::uint64_t virtual_address) {
+        if (virtual_address % 8) throw GuestFault("Unaligned RELR target");
+        const auto destination = checkedAddress(virtual_address, bias, 8, memory_bytes);
+        if (!inMapped(segments, destination, 8, kWritable)) {
+            throw GuestFault("RELR target is not a writable guest segment");
+        }
+        if (std::any_of(other_patches.begin(), other_patches.end(),
+                        [&](const auto& patch) { return patch.destination == destination; }) ||
+            std::any_of(result.begin(), result.end(),
+                        [&](const auto& patch) { return patch.destination == destination; })) {
+            throw GuestFault("Duplicate RELR or RELA relocation destination");
+        }
+        // The addend is the *original* 64-bit word in the image, not a value
+        // from a previously patched guest mapping. A zero-filled BSS target
+        // has zero addend; partially file-backed words are refused.
+        std::uint64_t addend = 0;
+        bool found = false;
+        for (const auto& segment : segments) {
+            if (virtual_address < segment.vaddr ||
+                virtual_address - segment.vaddr > segment.mem_bytes ||
+                8 > segment.mem_bytes - (virtual_address - segment.vaddr)) continue;
+            const auto relative = virtual_address - segment.vaddr;
+            if (relative <= segment.file_bytes && 8 <= segment.file_bytes - relative) {
+                addend = get64(elf, segment.file_offset + static_cast<std::size_t>(relative));
+            } else if (relative < segment.file_bytes) {
+                throw GuestFault("RELR addend overlaps file data and BSS");
+            }
+            found = true;
+            break;
+        }
+        if (!found || addend > UINT64_MAX - bias) {
+            throw GuestFault("Invalid RELR implicit addend");
+        }
+        const auto value = addend + bias;
+        if (!inMapped(segments, value, 1)) {
+            throw GuestFault("RELR implicit pointer escapes guest image");
+        }
+        if (result.size() >= 8192) throw GuestFault("Excessive decoded RELR patches");
+        result.push_back({destination, value});
+    };
+    for (std::size_t i = 0; i < size / 8; ++i) {
+        const auto word = get64(elf, input + i * 8);
+        if ((word & 1) == 0) {
+            if (have_base && word < next) {
+                throw GuestFault("RELR absolute entries are not monotonic");
+            }
+            append(word);
+            if (word > UINT64_MAX - 8) throw GuestFault("RELR address overflow");
+            next = word + 8;
+            have_base = true;
+        } else {
+            if (!have_base || next > UINT64_MAX - 63 * 8) {
+                throw GuestFault("RELR bitmap without valid address anchor");
+            }
+            for (unsigned bit = 1; bit < 64; ++bit) {
+                if ((word >> bit) & 1) append(next + (bit - 1) * 8);
+            }
+            next += 63 * 8;
+        }
+    }
+    return result;
+}
 std::vector<Relocation> parseRelativeRelocations(
     std::span<const std::uint8_t> elf, const DynamicSection& dynamic,
     const std::vector<Segment>& segments, std::uint64_t bias,
@@ -281,6 +392,9 @@ std::vector<Relocation> parseRelativeRelocations(
         const auto value = get64(elf, offset + 8);
         if (tag == 0) { terminated = true; break; }
         switch (tag) {
+            case 35: case 36: case 37:
+            case 0x6fffe000: case 0x6fffe001: case 0x6fffe003:
+                break; // RELR parsed by one shared bounded decoder
             case 4: case 5: case 6: case 10: case 11:
                 // Self-contained ET_DYN providers may publish dynamic symbols,
                 // but must never load or resolve dependencies implicitly.
@@ -426,6 +540,12 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
             ? parseRelativeRelocations(elf, dynamic, segments, bias, cpu.memory_size())
             : parseLinkedRelocations(elf, dynamic, segments, bias,
                                      cpu.memory_size(), providers);
+        const auto relr = parseRelrRelocations(
+            elf, dynamic, segments, bias, cpu.memory_size(), patches);
+        if (patches.size() > 8192 - relr.size()) {
+            throw GuestFault("Combined ELF relocations exceed budget");
+        }
+        patches.insert(patches.end(), relr.begin(), relr.end());
     }
 
     // Validate *all* mappings against previously loaded ELF objects BEFORE
