@@ -45,11 +45,13 @@ void JniGuestEnvironment::install(CpuA64& cpu) {
     });
 }
 std::uint64_t JniGuestEnvironment::createIntArray(std::int32_t length) {
-    if (length < 0 || length > 65536 || arrays_.size() >= 4096) {
+    if (length < 0 || length > 65536 || arrays_.size() >= 4096 ||
+        static_cast<std::size_t>(length) > 262144 - array_cells_) {
         throw GuestFault("JNI array allocation exceeds quota");
     }
     const auto handle = next_handle_++;
     arrays_.emplace(handle, std::vector<std::int32_t>(static_cast<std::size_t>(length), 0));
+    array_cells_ += static_cast<std::size_t>(length);
     return handle;
 }
 std::uint64_t JniGuestEnvironment::importIntArray(std::span<const std::int32_t> values) {
