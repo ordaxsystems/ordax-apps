@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <limits>
+#include <sstream>
 
 namespace ordax::mobile {
 namespace {
@@ -236,7 +237,10 @@ std::uint64_t CpuA64::run(std::uint64_t entry, std::uint64_t max_instructions) {
         } else if (opcode == 0xd503201fu) { // NOP
             // This is an actual architectural NOP.
         } else {
-            throw GuestFault("Unsupported AArch64 instruction");
+            std::ostringstream reason;
+            reason << "Unsupported AArch64 instruction pc=0x" << std::hex << pc
+                   << " opcode=0x" << opcode;
+            throw GuestFault(reason.str());
         }
         pc = next;
     }
