@@ -74,6 +74,22 @@ test('nested XAPK identifies primary DEX and retains resource-only split APK', a
     assert.equal(result.apks[1].dexFiles, 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+test('full 23-DEX Android package preserves classes10 to classes19', async () => {
+  const dex = syntheticDex();
+  const names = ['classes.dex', ...Array.from({ length: 22 }, (_, i) => `classes${i + 2}.dex`)];
+  const apk = zip([...names.map(name => ({ name, bytes: dex })),
+    { name: 'classes1.dex', bytes: Buffer.from('not a valid multidex name') },
+    { name: 'classes01.dex', bytes: Buffer.from('not a valid multidex name') }]);
+  const dir = await mkdtemp(join(tmpdir(), 'ordax-mobile-multidex-'));
+  try {
+    const filename = join(dir, 'instagram-scale-multidex.xapk');
+    await writeFile(filename, zip([{ name: 'com.instagram.android.apk', bytes: apk }]));
+    const result = await inspectPackage(filename);
+    assert.equal(result.kind, 'xapk');
+    assert.equal(result.apks[0].dexFiles, 23);
+    assert.equal(result.apks[0].dex.version, '039');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 test('Instagram-scale APK central directory stays bounded and distinguishes count limit', async () => {
   const entries = [{ name: 'classes.dex', bytes: syntheticDex() },
     ...Array.from({ length: 10481 }, (_, i) => ({ name: `assets/entry-${i}.bin`, bytes: Buffer.alloc(0) }))];
