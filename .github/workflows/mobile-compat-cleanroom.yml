@@ -28,6 +28,19 @@ jobs:
           node-version: '24'
       - run: node --test apps/mobile-compat/tests/*.test.mjs
       - run: node --check apps/mobile-compat/bin/mobile-compat.mjs
+      - name: Cross-link genuine ARM64 ELF with LLVM (no Android runtime)
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang --version
+          ld.lld --version
+          mkdir -p apps/mobile-compat/native/build/llvm-guest
+          clang --target=aarch64-linux-gnu -fPIC -nostdlib -fuse-ld=lld -shared \
+            -Wl,-soname,libprovider.so -Wl,--hash-style=gnu \
+            -Wl,-z,relro -Wl,--no-undefined \
+            -o apps/mobile-compat/native/build/llvm-guest/libprovider.so \
+            apps/mobile-compat/native/tests/llvm-jni-register.S
+          readelf -h -d -r apps/mobile-compat/native/build/llvm-guest/libprovider.so
       - name: Configure native clean-room executor
         run: cmake -S apps/mobile-compat/native -B apps/mobile-compat/native/build -DCMAKE_BUILD_TYPE=Debug
       - name: Build native clean-room executor
