@@ -271,7 +271,7 @@ export class DexSubset {
       if (!(encoded.access & 0x8)) fail('DEX_INSTANCE', 'Only static native methods are supported');
       const info = this.methodInfo(id);
       if (!this.nativeBoundary) fail('NATIVE_UNAVAILABLE', 'No native provider registered for guest');
-      return this.nativeBoundary.call(info, args);
+      return this.nativeBoundary.call(info, args, heap);
     }
     const item = this.codeItem(id);
     const params = item.isStatic
