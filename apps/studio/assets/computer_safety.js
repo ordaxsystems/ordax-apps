@@ -1,12 +1,16 @@
-function computerDeviceIds(){
-  return new Set((state.remoteComputerGrants?.links||[])
-    .map(link=>typeof link?.device_id==='string'?link.device_id:'')
-    .filter(Boolean));
+function currentComputerDeviceId(){
+  const explicit=String(state.remoteComputerGrants?.device_id||'').trim();
+  if(explicit)return explicit;
+  const ids=[...new Set((state.remoteComputerGrants?.links||[])
+    .map(link=>typeof link?.device_id==='string'?link.device_id.trim():'')
+    .filter(Boolean))];
+  return ids.length===1?ids[0]:'';
 }
 function activeDeviceComputerGrants(){
-  const deviceIds=computerDeviceIds();
+  const deviceId=currentComputerDeviceId();
+  if(!deviceId)return [];
   return (state.remoteComputerGrants?.grants||[]).filter(grant=>
-    remoteGrantIsActive(grant)&&typeof grant?.device_id==='string'&&deviceIds.has(grant.device_id));
+    remoteGrantIsActive(grant)&&grant?.device_id===deviceId);
 }
 function computerSafetySnapshot(){
   const access=state.computerAccess||null;
