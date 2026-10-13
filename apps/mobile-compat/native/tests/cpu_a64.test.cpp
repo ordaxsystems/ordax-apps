@@ -1,9 +1,11 @@
 #include "ordax/mobile/cpu_a64.hpp"
+#include "ordax/mobile/elf_a64.hpp"
 
 #include <array>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <vector>
 
 using ordax::mobile::CpuA64;
 using ordax::mobile::GuestFault;
@@ -55,6 +57,38 @@ int main() {
         must_fault([&] { (void)cpu.run(0, 8); });
         must_fault([&] { cpu.load(4094, code); });
         must_fault([&] { (void)cpu.run(4096, 8); });
+    }
+
+    // Parse and execute a REAL static AArch64 ELF64, not an invented instruction buffer.
+    {
+        std::vector<std::uint8_t> elf(0x100 + 12, 0);
+        auto put16 = [&elf](std::size_t p, std::uint16_t value) {
+            for (unsigned i = 0; i < 2; i++) elf[p + i] = static_cast<std::uint8_t>(value >> (8 * i));
+        };
+        auto put32 = [&elf](std::size_t p, std::uint32_t value) {
+            for (unsigned i = 0; i < 4; i++) elf[p + i] = static_cast<std::uint8_t>(value >> (8 * i));
+        };
+        auto put64 = [&elf](std::size_t p, std::uint64_t value) {
+            for (unsigned i = 0; i < 8; i++) elf[p + i] = static_cast<std::uint8_t>(value >> (8 * i));
+        };
+        elf[0] = 0x7f; elf[1] = 'E'; elf[2] = 'L'; elf[3] = 'F';
+        elf[4] = 2; elf[5] = 1; elf[6] = 1;
+        put16(16, 2); put16(18, 183); put32(20, 1); put64(24, 0x1000);
+        put64(32, 64); put16(52, 64); put16(54, 56); put16(56, 1);
+        put32(64, 1); put32(68, 5); put64(72, 0x100);
+        put64(80, 0x1000); put64(88, 0x1000); put64(96, 12);
+        put64(104, 16); put64(112, 0x1000);
+        put32(0x100, 0xd2800000u | (42u << 5));
+        put32(0x104, 0xd65f03c0u);
+        CpuA64 cpu(8192);
+        auto image = ordax::mobile::loadStaticElfA64(cpu, elf);
+        assert(image.entry == 0x1000 && image.load_segments == 1);
+        assert(cpu.run(image.entry, 20) == 42);
+        put64(24, 0x2000); // entry outside executable mapped segment
+        must_fault([&] { (void)ordax::mobile::loadStaticElfA64(cpu, elf); });
+        put64(24, 0x1000);
+        put32(64, 2); // PT_DYNAMIC: must not silently ignore linkage
+        must_fault([&] { (void)ordax::mobile::loadStaticElfA64(cpu, elf); });
     }
     std::cout << "AArch64 bounded instruction proof passed\n";
 }
