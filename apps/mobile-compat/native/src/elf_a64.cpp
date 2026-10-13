@@ -314,6 +314,13 @@ std::vector<Relocation> parseRelrRelocations(
     const auto input = mappedFileOffset(pointer, static_cast<std::size_t>(size), segments);
     std::vector<Relocation> result;
     result.reserve(static_cast<std::size_t>(size / 8));
+    // O(1) duplicate detection avoids quadratic work when an attacker
+    // supplies thousands of validly encoded bitmap relocation targets.
+    std::unordered_set<std::uint64_t> destinations;
+    destinations.reserve(other_patches.size() + 8192);
+    for (const auto& patch : other_patches) {
+        destinations.insert(patch.destination);
+    }
     std::uint64_t next = 0;
     bool have_base = false;
     const auto append = [&](std::uint64_t virtual_address) {
@@ -322,10 +329,7 @@ std::vector<Relocation> parseRelrRelocations(
         if (!inMapped(segments, destination, 8, kWritable)) {
             throw GuestFault("RELR target is not a writable guest segment");
         }
-        if (std::any_of(other_patches.begin(), other_patches.end(),
-                        [&](const auto& patch) { return patch.destination == destination; }) ||
-            std::any_of(result.begin(), result.end(),
-                        [&](const auto& patch) { return patch.destination == destination; })) {
+        if (!destinations.insert(destination).second) {
             throw GuestFault("Duplicate RELR or RELA relocation destination");
         }
         // The addend is the *original* 64-bit word in the image, not a value
