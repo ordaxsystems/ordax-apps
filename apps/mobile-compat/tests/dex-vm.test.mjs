@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { DexSubset } from '../src/dex-vm.mjs';
+import { NativeMethodBoundary } from '../src/native-boundary.mjs';
 import { runDexMethodFromPackage, requireExecutionSupport } from '../src/inspect.mjs';
 
 function adler32(b) {
@@ -168,6 +169,30 @@ test('native JNI is never assumed to be present', () => {
   const vm = new DexSubset(fixtureDex());
   assert.throws(() => vm.execute('Ltest/Arithmetic;', 'nativeStub', []), { code: 'NATIVE_UNAVAILABLE' });
   assert.throws(requireExecutionSupport, { code: 'EXECUTION_UNAVAILABLE' });
+});
+test('host-only native method dispatch is typed, opt-in and never implicit JNI', () => {
+  const boundary = new NativeMethodBoundary();
+  const owner = 'Ltest/Arithmetic;';
+  boundary.register({ owner, name: 'nativeStub', signature: '()I', invoke: () => 42 });
+  assert.equal(new DexSubset(fixtureDex(), { nativeBoundary: boundary }).execute(owner, 'nativeStub', []).value, 42);
+  assert.throws(
+    () => boundary.register({ owner, name: 'nativeStub', signature: '()I', invoke: () => 0 }),
+    { code: 'NATIVE_REGISTRATION' }
+  );
+  const callsNative = fixtureDex();
+  // Replace the invoke-static of sum(int,int) with nativeStub()I. The
+  // following move-result is a real Dalvik instruction, not synthetic output.
+  callsNative.writeUInt16LE(0x0071, 0x1a0 + 16);
+  callsNative.writeUInt16LE(0, 0x1a0 + 18);
+  callsNative.writeUInt16LE(0, 0x1a0 + 20);
+  const vm = new DexSubset(sealDex(callsNative), { nativeBoundary: boundary });
+  assert.equal(vm.execute(owner, 'twice', [99]).value, 42);
+  const bad = new NativeMethodBoundary();
+  bad.register({ owner, name: 'nativeStub', signature: '()I', invoke: () => '42' });
+  assert.throws(() => new DexSubset(fixtureDex(), { nativeBoundary: bad }).execute(owner, 'nativeStub', []), { code: 'NATIVE_RESULT' });
+  const asyncBoundary = new NativeMethodBoundary();
+  asyncBoundary.register({ owner, name: 'nativeStub', signature: '()I', invoke: async () => 42 });
+  assert.throws(() => new DexSubset(fixtureDex(), { nativeBoundary: asyncBoundary }).execute(owner, 'nativeStub', []), { code: 'NATIVE_RESULT' });
 });
 test('unimplemented opcode, bytecode loops and malicious register references fail closed', () => {
   const unimplemented = fixtureDex();
