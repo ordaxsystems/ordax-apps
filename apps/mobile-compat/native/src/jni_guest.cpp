@@ -192,6 +192,7 @@ std::uint32_t JniGuestEnvironment::runOnLoad(
             throw GuestFault("JNI_OnLoad returned unsupported JNI version");
         }
         registering_image_ = nullptr;
+        registration_getenv_succeeded_ = false;
         return static_cast<std::uint32_t>(raw_version);
     } catch (...) {
         registering_image_ = nullptr;
