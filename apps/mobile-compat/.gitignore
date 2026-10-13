@@ -1,0 +1,13 @@
+*.apk
+*.xapk
+*.aab
+*.keystore
+*.jks
+*.key
+*.pem
+*.p12
+*.log
+data/
+runtime-data/
+out/
+dist/
