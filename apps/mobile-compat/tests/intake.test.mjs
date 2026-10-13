@@ -74,6 +74,27 @@ test('nested XAPK identifies primary DEX and retains resource-only split APK', a
     assert.equal(result.apks[1].dexFiles, 0);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+test('Instagram-scale APK central directory stays bounded and distinguishes count limit', async () => {
+  const entries = [{ name: 'classes.dex', bytes: syntheticDex() },
+    ...Array.from({ length: 10481 }, (_, i) => ({ name: `assets/entry-${i}.bin`, bytes: Buffer.alloc(0) }))];
+  const base = zip(entries);
+  const dir = await mkdtemp(join(tmpdir(), 'ordax-mobile-instagram-scale-'));
+  try {
+    const filename = join(dir, 'instagram-scale.xapk');
+    await writeFile(filename, zip([{ name: 'com.instagram.android.apk', bytes: base }]));
+    const result = await inspectPackage(filename);
+    assert.equal(result.apks[0].dexFiles, 1);
+    assert.equal(result.apks[0].dex.version, '039');
+    assert.equal(result.apks[0].name, 'com.instagram.android.apk');
+  } finally { await rm(dir, { recursive: true, force: true }); }
+
+  const excessive = zip(Array.from({ length: 16385 }, (_, i) => ({
+    name: `resources/r-${i}`, bytes: Buffer.alloc(0),
+  })));
+  await assert.rejects(packageFromBuffer(excessive), {
+    code: 'LIMIT', message: 'ZIP entry count exceeds limit',
+  });
+});
 test('rejects traversal and duplicate names before extraction', async () => {
   await assert.rejects(packageFromBuffer(zip([{ name: '../evil.apk', bytes: Buffer.from('no') }])), { code: 'PATH' });
   await assert.rejects(packageFromBuffer(zip([
