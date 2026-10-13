@@ -92,6 +92,39 @@ std::vector<std::uint8_t> makeArrayElf() {
     }
     return b;
 }
+// JNI native method ()[I. Calls standard NewIntArray (slot 179), fills
+// two values using SetIntArrayRegion (slot 211), returns opaque jintArray.
+constexpr std::array<std::uint32_t, 18> kCreateGuestIntArray = {
+    0x910003d3, // add x19,x30,#0: preserve return address
+    0x91000015, // add x21,x0,#0: preserve JNIEnv*
+    0xf9400009, // ldr x9,[x0]: JNINativeInterface*
+    0xf942cd29, // ldr x9,[x9,#1432]: NewIntArray slot 179
+    0xd2800041, // movz x1,#2
+    0xd63f0120, // blr x9: returns JNI jintArray handle in x0
+    0x91000014, // add x20,x0,#0: preserve jintArray
+    0x910002a0, // add x0,x21,#0: restore JNIEnv*
+    0x91000281, // add x1,x20,#0: jintArray
+    0xd2800002, // movz x2,#0: start
+    0xd2800043, // movz x3,#2: count
+    0xb0000004, // adrp x4,0x2000: RW guest array source
+    0xf94002a9, // ldr x9,[x21]: JNINativeInterface*
+    0xf9434d29, // ldr x9,[x9,#1688]: SetIntArrayRegion slot 211
+    0xd63f0120, // blr x9
+    0x91000280, // add x0,x20,#0: return JNI array handle
+    0x9100027e, // add x30,x19,#0: restore return address
+    0xd65f03c0, // ret x30
+};
+std::vector<std::uint8_t> makeNewArrayElf() {
+    auto b = makeArrayElf(); // exact same ELF/RX/RW segment layout and SSOT
+    put64(b, 96, kCreateGuestIntArray.size() * 4);
+    put64(b, 104, kCreateGuestIntArray.size() * 4);
+    for (std::size_t i = 0; i < kCreateGuestIntArray.size(); ++i) {
+        put32(b, 0x200 + 4 * i, kCreateGuestIntArray[i]);
+    }
+    put32(b, 0x400, 41);
+    put32(b, 0x404, static_cast<std::uint32_t>(-9));
+    return b;
+}
 template <class Fn> void reject(Fn&& run) {
     bool failed = false;
     try { run(); } catch (const GuestFault&) { failed = true; }
@@ -111,6 +144,12 @@ std::uint64_t runFixture(std::span<const std::uint32_t> code,
 }
 }
 int main(int argc, char** argv) {
+    if (argc == 3 && std::string(argv[1]) == "--emit-jni-new-array-fixture") {
+        const auto bytes = makeNewArrayElf();
+        std::ofstream out(argv[2], std::ios::binary | std::ios::trunc);
+        return out.write(reinterpret_cast<const char*>(bytes.data()),
+                         static_cast<std::streamsize>(bytes.size())).good() ? 0 : 3;
+    }
     if (argc == 3 && std::string(argv[1]) == "--emit-jni-array-fixture") {
         const auto bytes = makeArrayElf();
         std::ofstream out(argv[2], std::ios::binary | std::ios::trunc);
@@ -155,6 +194,18 @@ int main(int argc, char** argv) {
         assert(cpu.run(loaded.entry, 100) == 42);
         assert(env.exportIntArray(array)[0] == 42);
         assert(env.exportIntArray(array)[1] == -9);
+    }
+    {
+        CpuA64 cpu(0x800000);
+        const auto bytes = makeNewArrayElf();
+        const auto loaded = ordax::mobile::loadStaticElfA64(cpu, bytes);
+        JniGuestEnvironment env;
+        env.install(cpu);
+        cpu.set_register(0, JniGuestEnvironment::kEnvAddress);
+        cpu.set_register(1, JniGuestEnvironment::kClassHandle);
+        const auto resultHandle = cpu.run(loaded.entry, 100);
+        const auto& array = env.exportIntArray(resultHandle);
+        assert(array.size() == 2 && array[0] == 41 && array[1] == -9);
     }
     reject([] { (void)runFixture(kGetArrayLength, 0, 0x30001234); });
     reject([] {
