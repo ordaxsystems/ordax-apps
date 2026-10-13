@@ -32,10 +32,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          clang --version
-          ld.lld --version
+          ndk_bin="${ANDROID_NDK_HOME:?}/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          test -x "${ndk_bin}/aarch64-linux-android24-clang"
+          test -x "${ndk_bin}/ld.lld"
+          "${ndk_bin}/aarch64-linux-android24-clang" --version
+          "${ndk_bin}/ld.lld" --version
           mkdir -p apps/mobile-compat/native/build/llvm-guest
-          clang --target=aarch64-linux-gnu -fPIC -nostdlib -fuse-ld=lld -shared \
+          "${ndk_bin}/aarch64-linux-android24-clang" -fPIC -nostdlib -fuse-ld=lld -shared \
             -Wl,-soname,libprovider.so -Wl,--hash-style=gnu \
             -Wl,-z,relro -Wl,--no-undefined \
             -o apps/mobile-compat/native/build/llvm-guest/libprovider.so \
