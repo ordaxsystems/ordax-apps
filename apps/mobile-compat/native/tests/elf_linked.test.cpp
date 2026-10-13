@@ -100,6 +100,21 @@ std::vector<std::uint8_t> consumerElf() {
     u64(b,0x490,0); // no addend for jump slot
     return b;
 }
+std::vector<std::uint8_t> consumerWithRelr(bool android) {
+    auto b = consumerElf();
+    // The extra three dynamic tags need 208 bytes. Move dynstr to unused
+    // writable file-backed PT_LOAD space, not inside the larger PT_DYNAMIC.
+    std::copy(b.begin() + 0x3d0, b.begin() + 0x3d0 + 26, b.begin() + 0x510);
+    program(b, 2, 2, 6, 0x320, 0x3020, 208);
+    dyn(b, 1, 5, 0x3210); // DT_STRTAB now at file offset 0x510
+    dyn(b, 9, android ? 0x6fffe000 : 36, 0x31a0);
+    dyn(b, 10, android ? 0x6fffe001 : 35, 8);
+    dyn(b, 11, android ? 0x6fffe003 : 37, 8);
+    // DT_NULL at index 12; RELR table is separate from RELA/dynsym/hash.
+    u64(b, 0x4a0, 0x3010);
+    u64(b, 0x310, 0x1000); // implicit addend -> client entrypoint
+    return b;
+}
 template<class F> void reject(F&& f) {
     bool failed=false;
     try { f(); } catch (const GuestFault&) { failed=true; }
@@ -158,6 +173,24 @@ int main(int argc, char** argv) {
         cpu.set_register(0,40);
         const auto recovered=loadLinkedElfA64(cpu,client,0x30000,exports);
         assert(cpu.run(recovered.entry,30)==42);
+    }
+    // The linked client may contain both external JUMP_SLOT and RELR
+    // relative patches; neither parser silently erases the other's work.
+    for (bool android : {false, true}) {
+        const auto b = consumerWithRelr(android);
+        CpuA64 cpu(0x100000);
+        (void)loadRelocatableElfA64(cpu, provider, 0x10000);
+        const auto exports = inspectGuestDynamicExports(provider, 0x10000, "libprovider.so");
+        const auto linked = loadLinkedElfA64(cpu, b, 0x30000, exports);
+        assert(linked.relative_relocations == 2);
+        assert(cpu.read64(0x33010) == linked.entry);
+        cpu.set_register(0, 40);
+        assert(cpu.run(linked.entry, 30) == 42);
+        auto collision = b;
+        u64(collision, 0x4a0, 0x3000); // same GOT slot as JUMP_SLOT
+        CpuA64 another(0x100000);
+        (void)loadRelocatableElfA64(another, provider, 0x10000);
+        reject([&] { (void)loadLinkedElfA64(another, collision, 0x30000, exports); });
     }
     std::cout<<"Bounded AArch64 cross-ELF JUMP_SLOT linking passed\n";
 }
