@@ -20,12 +20,45 @@ void CpuA64::assert_range(std::uint64_t address, std::size_t count) const {
         throw GuestFault("Guest memory access outside allocation");
     }
 }
+void CpuA64::set_guest_regions(std::span<const GuestRegion> regions) {
+    if (regions.empty() || regions.size() > 64) {
+        throw GuestFault("Invalid guest protection table size");
+    }
+    for (std::size_t i = 0; i < regions.size(); ++i) {
+        const auto& current = regions[i];
+        assert_range(current.address, current.length);
+        if (!current.length || (current.permissions & ~std::uint8_t(7)) != 0) {
+            throw GuestFault("Invalid guest segment protection");
+        }
+        for (std::size_t j = 0; j < i; ++j) {
+            const auto& other = regions[j];
+            if (current.address < other.address + other.length &&
+                other.address < current.address + current.length) {
+                throw GuestFault("Overlapping guest protection regions");
+            }
+        }
+    }
+    guest_regions_.assign(regions.begin(), regions.end());
+    protected_guest_ = true;
+}
+void CpuA64::require_permission(std::uint64_t address, std::size_t count,
+                                 std::uint8_t flag) const {
+    if (!protected_guest_) return; // bare instruction tests without an ELF
+    for (const auto& region : guest_regions_) {
+        if (address >= region.address &&
+            address - region.address <= region.length &&
+            count <= region.length - (address - region.address) &&
+            (region.permissions & flag) == flag) return;
+    }
+    throw GuestFault("Guest page permission violation");
+}
 void CpuA64::load(std::uint64_t address, std::span<const std::uint8_t> bytes) {
     assert_range(address, bytes.size());
     std::copy(bytes.begin(), bytes.end(), memory_.begin() + static_cast<std::ptrdiff_t>(address));
 }
 std::uint32_t CpuA64::read32(std::uint64_t address) const {
     assert_range(address, 4);
+    require_permission(address, 4, 1); // PF_X, instruction fetch only
     std::uint32_t value = 0;
     for (int shift = 0; shift < 32; shift += 8) {
         value |= std::uint32_t(memory_[static_cast<std::size_t>(address) + shift / 8]) << shift;
@@ -34,6 +67,7 @@ std::uint32_t CpuA64::read32(std::uint64_t address) const {
 }
 std::uint64_t CpuA64::read64(std::uint64_t address) const {
     assert_range(address, 8);
+    require_permission(address, 8, 4); // PF_R
     std::uint64_t value = 0;
     for (int shift = 0; shift < 64; shift += 8) {
         value |= std::uint64_t(memory_[static_cast<std::size_t>(address) + shift / 8]) << shift;
@@ -42,6 +76,7 @@ std::uint64_t CpuA64::read64(std::uint64_t address) const {
 }
 void CpuA64::write64(std::uint64_t address, std::uint64_t value) {
     assert_range(address, 8);
+    require_permission(address, 8, 2); // PF_W
     for (int shift = 0; shift < 64; shift += 8) {
         memory_[static_cast<std::size_t>(address) + shift / 8] = static_cast<std::uint8_t>(value >> shift);
     }
