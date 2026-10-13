@@ -138,6 +138,20 @@ std::vector<std::uint8_t> aps2Fixture(bool combine_relr) {
     }
     return elf;
 }
+// Combine conventional RELA records and Android APS2 in the same ELF.
+// The relocation plan is the ONLY authority for global collision checking.
+std::vector<std::uint8_t> relaPlusAps2Fixture(std::uint64_t rela_target) {
+    auto elf = aps2Fixture(false);
+    put64(elf, 208, 96); put64(elf, 216, 96);
+    put64(elf, 0x340, 7); put64(elf, 0x348, 0x30d0); // DT_RELA
+    put64(elf, 0x350, 8); put64(elf, 0x358, 24);     // DT_RELASZ
+    put64(elf, 0x360, 9); put64(elf, 0x368, 24);     // DT_RELAENT
+    put64(elf, 0x370, 0); put64(elf, 0x378, 0);      // DT_NULL
+    put64(elf, 0x3d0, rela_target);
+    put64(elf, 0x3d8, 1027);
+    put64(elf, 0x3e0, 0x1000);
+    return elf;
+}
 template <typename F> void mustReject(F&& fn) {
     bool rejected = false;
     try { fn(); } catch (const GuestFault&) { rejected = true; }
@@ -362,6 +376,35 @@ int main(int argc, char** argv) {
             std::copy(payload.begin(), payload.end(), bad.begin() + 0x3a0);
             rejectPacked(bad);
         }
+    }
+    // SSOT regression: RELA, APS2 and RELR cannot apply two patches to
+    // the same guest destination, regardless of their original encoding.
+    {
+        CpuA64 cpu(0x10000);
+        const auto image = loadRelocatableElfA64(
+            cpu, relaPlusAps2Fixture(0x3010), 0x2000);
+        assert(image.relative_relocations == 3);
+        assert(cpu.guest_read_i32(0x5000) == 0x3000);
+        assert(cpu.guest_read_i32(0x5008) == 0x3000);
+        assert(cpu.guest_read_i32(0x5010) == 0x3000);
+    }
+    for (const auto duplicate : {std::uint64_t(0x3000), std::uint64_t(0x3008)}) {
+        CpuA64 cpu(0x10000);
+        mustReject([&] {
+            (void)loadRelocatableElfA64(
+                cpu, relaPlusAps2Fixture(duplicate), 0x2000);
+        });
+        // No partial PT_LOAD or relocation was accepted on failure:
+        // the same isolated CPU remains usable for a valid image.
+        const auto image = loadRelocatableElfA64(
+            cpu, relaPlusAps2Fixture(0x3010), 0x2000);
+        assert(image.relative_relocations == 3);
+    }
+    {
+        auto bad = aps2Fixture(true);
+        put64(bad, 0x3c0, 0x3008); // RELR collides with APS2 patch
+        CpuA64 cpu(0x10000);
+        mustReject([&] { (void)loadRelocatableElfA64(cpu, bad, 0x2000); });
     }
     std::cout << "ET_DYN AArch64 RELATIVE-only guest execution passed\n";
 }
