@@ -22,6 +22,7 @@ struct LoadedGuestElf {
     std::vector<std::uint64_t> initializer_slots;
     std::vector<GuestRegion> executable_regions;
     bool initializers_started = false;
+    bool jni_onload_started = false;
 };
 
 // The same validated loader handles ET_EXEC and the supported ET_DYN subset.
