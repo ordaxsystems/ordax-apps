@@ -219,6 +219,18 @@ std::size_t countGnuHashSymbols(
     }
     return count;
 }
+// GNU and Android linkers mark eager binding through DT_FLAGS and
+// DT_FLAGS_1. Only DF_BIND_NOW (0x8) and DF_1_NOW (0x1) are implemented.
+// DF_TEXTREL, DF_SYMBOLIC, INITFIRST, NODELETE etc must never be silently
+// treated as if their contracts were implemented.
+void validateDynamicBindingFlags(std::uint64_t tag, std::uint64_t value) {
+    constexpr std::uint64_t kDtFlags = 30;
+    constexpr std::uint64_t kDtFlags1 = 0x6ffffffb;
+    if ((tag == kDtFlags && (value & ~std::uint64_t(0x8)) != 0) ||
+        (tag == kDtFlags1 && (value & ~std::uint64_t(0x1)) != 0)) {
+        throw GuestFault("Unsupported ELF dynamic linker behavior flags");
+    }
+}
 DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
                                    const DynamicSection& dynamic,
                                    const std::vector<Segment>& segments) {
@@ -247,13 +259,15 @@ DynamicSymbols readDynamicSymbols(std::span<const std::uint8_t> elf,
         switch (tag) {
             case 2: case 12: case 20: case 23: case 25: case 27:
             case 4: case 5: case 6: case 7: case 8: case 9:
-            case 10: case 11: case 14: case 0x6ffffff9: case 0x6ffffef5:
+            case 10: case 11: case 14: case 30:
+            case 0x6ffffff9: case 0x6ffffffb: case 0x6ffffef5:
             case 35: case 36: case 37:
             case 0x6fffe000: case 0x6fffe001: case 0x6fffe003:
             case 0x6fffe005:
             case 0x60000011: case 0x60000012: break;
             default: throw GuestFault("Unsupported linked ELF dynamic tag");
         }
+        validateDynamicBindingFlags(tag, value);
         if (!seen.insert(tag).second) throw GuestFault("Duplicate linked ELF dynamic tag");
         switch (tag) {
             case 2:
@@ -587,6 +601,9 @@ std::vector<Relocation> parseRelativeRelocations(
                 break; // Android APS2 stream checked by the shared ELF linker
             case 12: case 25: case 27:
                 break; // Constructors are independent of dynsym/DT_HASH.
+            case 30: case 0x6ffffffb:
+                validateDynamicBindingFlags(tag, value);
+                break; // Eager-binding-only flags, no implicit linker behavior.
             case 4: case 5: case 6: case 10: case 11: case 14:
             case 0x6ffffef5:
                 // Self-contained ET_DYN providers may publish dynamic symbols,
