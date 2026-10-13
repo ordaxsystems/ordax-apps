@@ -510,7 +510,9 @@ int main(int argc, char** argv) {
             u32(source, 0x220 + 7*4, 0xd2800000); // invalid JNI_OnLoad version
             u32(source, 0x220 + 8*4, 0xd503201f);
         } else if (kind == 3) {
-            dyn(source, 5, 14, 11); // incorrect SONAME
+            const std::string false_name = "libotherxyz.so"; // equal length
+            std::copy(false_name.begin(), false_name.end(),
+                      source.begin() + 0x390 + 12); // valid but mismatching SONAME
         } else {
             // Replace the exported symbol name with one that isn't JNI_OnLoad.
             source[0x391] = 'X';
