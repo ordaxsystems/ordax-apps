@@ -23,6 +23,7 @@ public:
     void load(std::uint64_t address, std::span<const std::uint8_t> bytes);
     void set_register(unsigned index, std::uint64_t value);
     [[nodiscard]] std::uint64_t reg(unsigned index) const;
+    [[nodiscard]] std::size_t memory_size() const noexcept { return memory_.size(); }
     [[nodiscard]] std::uint64_t run(std::uint64_t entry, std::uint64_t max_instructions);
 
 private:
