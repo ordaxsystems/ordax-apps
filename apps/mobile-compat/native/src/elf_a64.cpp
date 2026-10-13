@@ -337,7 +337,8 @@ std::vector<Relocation> parseRelativeRelocations(
     return patches;
 }
 LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
-                       std::uint64_t bias, std::uint16_t expected_type) {
+                       std::uint64_t bias, std::uint16_t expected_type,
+                       std::span<const GuestDynamicExport> providers = {}) {
     range(0, kHeaderBytes, elf.size());
     if (elf[0] != 0x7f || elf[1] != 'E' || elf[2] != 'L' || elf[3] != 'F' ||
         elf[4] != 2 || elf[5] != 1 || elf[6] != 1 ||
@@ -412,11 +413,24 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
                       dynamic.file_bytes)) {
             throw GuestFault("PT_DYNAMIC is not backed by the mapped guest image");
         }
-        patches = parseRelativeRelocations(elf, dynamic, segments, bias, cpu.memory_size());
+        patches = providers.empty()
+            ? parseRelativeRelocations(elf, dynamic, segments, bias, cpu.memory_size())
+            : parseLinkedRelocations(elf, dynamic, segments, bias,
+                                     cpu.memory_size(), providers);
     }
 
-    // No guest mutation until every header, segment, relocation and entry is
-    // validated. No host code is executed by the loader.
+    // Validate *all* mappings against previously loaded ELF objects BEFORE
+    // modifying guest memory. A second library may not overwrite a provider.
+    std::vector<GuestRegion> protections;
+    protections.reserve(segments.size());
+    for (const auto& segment : segments) {
+        protections.push_back({segment.address, segment.mem_bytes,
+                               static_cast<std::uint8_t>(segment.flags & 7u)});
+    }
+    cpu.verify_new_guest_regions(protections);
+
+    // No guest mutation until every header, dependency, relocation and entry
+    // is validated. Host addresses are never used as guest symbols.
     for (const auto& segment : segments) {
         std::vector<std::uint8_t> bytes(segment.mem_bytes, 0);
         std::copy(elf.begin() + static_cast<std::ptrdiff_t>(segment.file_offset),
@@ -431,12 +445,6 @@ LoadedGuestElf loadElf(CpuA64& cpu, std::span<const std::uint8_t> elf,
         }
         cpu.load(patch.destination, bytes);
     }
-    std::vector<GuestRegion> protections;
-    protections.reserve(segments.size());
-    for (const auto& segment : segments) {
-        protections.push_back({segment.address, segment.mem_bytes,
-                               static_cast<std::uint8_t>(segment.flags & 7u)});
-    }
     cpu.set_guest_regions(protections);
     return {entry, segments.size(), bias, patches.size(), has_entry};
 }
@@ -450,4 +458,106 @@ LoadedGuestElf loadRelocatableElfA64(CpuA64& cpu,
                                     std::uint64_t load_bias) {
     return loadElf(cpu, elf, load_bias, kElfShared);
 }
+
+std::vector<GuestDynamicExport> inspectGuestDynamicExports(
+    std::span<const std::uint8_t> elf, std::uint64_t bias,
+    const std::string& library) {
+    if (library.empty() || library.size() > 128 ||
+        library.find_first_of("/\\") != std::string::npos ||
+        elf.size() < kHeaderBytes || elf[0] != 0x7f || elf[1] != 'E' ||
+        elf[2] != 'L' || elf[3] != 'F' || elf[4] != 2 || elf[5] != 1 ||
+        get16(elf, 16) != kElfShared || get16(elf, 18) != kArm64Machine ||
+        get16(elf, 54) != kProgramBytes || bias % 4096) {
+        throw GuestFault("Invalid ELF image or library name for guest exports");
+    }
+    const auto phoff = get64(elf, 32);
+    const auto phnum = static_cast<std::size_t>(get16(elf, 56));
+    if (!phnum || phnum > 128 || phoff > elf.size() ||
+        phnum * kProgramBytes > elf.size() - phoff) {
+        throw GuestFault("Guest export program headers are invalid");
+    }
+    std::vector<Segment> segments;
+    std::vector<DynamicSection> dynamic;
+    for (std::size_t i = 0; i < phnum; ++i) {
+        const auto p = static_cast<std::size_t>(phoff) + i * kProgramBytes;
+        const auto tag = get32(elf, p);
+        const auto flags = get32(elf, p + 4);
+        const auto off = get64(elf, p + 8);
+        const auto vaddr = get64(elf, p + 16);
+        const auto filesz = get64(elf, p + 32);
+        const auto memsz = get64(elf, p + 40);
+        if (tag != kLoad && tag != kDynamic) continue;
+        if (off > elf.size() || filesz > elf.size() - off) {
+            throw GuestFault("Guest symbol file segment outside ELF");
+        }
+        if (tag == kDynamic) {
+            if (dynamic.size() || !filesz || filesz > 8192) {
+                throw GuestFault("Missing or repeated guest symbol dynamic section");
+            }
+            dynamic.push_back({static_cast<std::size_t>(off),
+                               static_cast<std::size_t>(filesz), vaddr});
+        } else {
+            if (segments.size() >= 64 || !memsz || memsz < filesz ||
+                memsz > 64u * 1024u * 1024u ||
+                (flags & (kWritable | kExecutable)) == (kWritable | kExecutable) ||
+                vaddr > UINT64_MAX - bias) {
+                throw GuestFault("Invalid guest symbol PT_LOAD");
+            }
+            const auto address = vaddr + bias;
+            for (const auto& other : segments) {
+                if (address < other.address + other.mem_bytes &&
+                    other.address < address + memsz) {
+                    throw GuestFault("Overlapping guest export segments");
+                }
+            }
+            segments.push_back({address, vaddr, static_cast<std::size_t>(memsz),
+                                static_cast<std::size_t>(filesz),
+                                static_cast<std::size_t>(off), flags});
+        }
+    }
+    if (dynamic.size() != 1 ||
+        mappedFileOffset(dynamic[0].vaddr, dynamic[0].file_bytes, segments) !=
+            dynamic[0].file_offset) {
+        throw GuestFault("Unmapped guest symbol dynamic section");
+    }
+    const auto meta = readDynamicSymbols(elf, dynamic[0], segments);
+    if (!meta.needed.empty() || meta.has_rela) {
+        throw GuestFault("Guest provider must be self-contained for this linker subset");
+    }
+    std::vector<GuestDynamicExport> exports;
+    for (std::size_t i = 1; i < meta.symbol_count; ++i) {
+        const auto at = meta.symbol_file_offset + i * 24;
+        const auto symbol_type = elf[at + 4] & 15;
+        const auto binding = elf[at + 4] >> 4;
+        if (get16(elf, at + 6) == 0 || binding != 1 || symbol_type != 2) continue;
+        const auto name = getBoundedString(elf, meta, get32(elf, at));
+        const auto symaddr = get64(elf, at + 8);
+        if (symaddr > UINT64_MAX - bias ||
+            !inMapped(segments, symaddr + bias, 4, kExecutable)) {
+            throw GuestFault("Exported guest function outside executable segment");
+        }
+        if (std::any_of(exports.begin(), exports.end(), [&](const auto& x) {
+                return x.symbol == name;
+            })) throw GuestFault("Duplicate ELF export name");
+        exports.push_back({library, name, symaddr + bias});
+    }
+    if (exports.empty()) throw GuestFault("No supported global guest function exports");
+    return exports;
+}
+LoadedGuestElf loadLinkedElfA64(
+    CpuA64& cpu, std::span<const std::uint8_t> elf,
+    std::uint64_t bias, std::span<const GuestDynamicExport> providers) {
+    if (providers.empty()) throw GuestFault("No verified guest providers supplied");
+    // A dependency's code page must already be mapped and executable. This
+    // prevents importing fabricated numeric pointers passed by host code.
+    for (const auto& provider : providers) {
+        if (provider.library.empty() || provider.symbol.empty() ||
+            provider.address % 4) {
+            throw GuestFault("Invalid guest provider export");
+        }
+        cpu.require_guest_access(provider.address, 4, 1);
+    }
+    return loadElf(cpu, elf, bias, kElfShared, providers);
+}
+
 } // namespace ordax::mobile
