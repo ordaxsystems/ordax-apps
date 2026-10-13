@@ -22,11 +22,13 @@ function harness({managed=false,saveOk=true,revokeOk=true}={}){
     },
     computerAccessDraft:{enabled:true,allowed_roots:['C:/unsaved']},
     remoteComputerGrants:{
+      device_id:'device',
       links:[
         {link_id:'link-a',device_id:'device',space_id:'space-a'},
         {link_id:'link-b',device_id:'device',space_id:'space-b'},
+        {link_id:'foreign-link',device_id:'other-device',space_id:'foreign-space'},
       ],
-      grants:[grant('grant-a','space-a'),grant('grant-b','space-b'),grant('other','space-a',{device_id:'other-device'})],
+      grants:[grant('grant-a','space-a'),grant('grant-b','space-b'),grant('other','foreign-space',{device_id:'other-device'})],
     },
   };
   const context=vm.createContext({
@@ -52,15 +54,23 @@ function harness({managed=false,saveOk=true,revokeOk=true}={}){
   return {state,calls,statuses,run:code=>vm.runInContext(code,context)};
 }
 
-test('safety snapshot covers every Space bound to the current device only',()=>{
+test('safety snapshot uses canonical current device id and covers every Space for that device only',()=>{
   const h=harness();
   h.state.remoteComputerGrants.grants.push(grant('revoked','space-a',{revoked_at:'2026-01-01T00:00:00Z'}));
   h.state.remoteComputerGrants.grants.push(grant('expired','space-b',{expires_at:'2000-01-01T00:00:00Z'}));
+  assert.equal(h.run('currentComputerDeviceId()'),'device');
   assert.equal(h.run('computerSafetySnapshot().state'),'armed');
   assert.deepEqual([...h.run('computerSafetySnapshot().active_grants.map(item=>item.id)')],['grant-a','grant-b']);
 });
 
-test('take back control pauses canonical local policy before revoking every device grant',async()=>{
+test('device id fallback is fail-closed when link data is ambiguous',()=>{
+  const h=harness();
+  delete h.state.remoteComputerGrants.device_id;
+  assert.equal(h.run('currentComputerDeviceId()'),'');
+  assert.equal(h.run('activeDeviceComputerGrants().length'),0);
+});
+
+test('take back control pauses canonical local policy before revoking every current-device grant',async()=>{
   const h=harness();
   const result=await h.run('takeBackComputerControl()');
   assert.equal(result.ok,true);
