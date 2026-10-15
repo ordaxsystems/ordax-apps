@@ -90,7 +90,7 @@ app.whenReady().then(async () => {
       } else data = { action: remoteActions.get(route.split('/').at(-1)) };
       return Response.json({ ok: true, ...data });
     } }); await runtime.init();
-    const pluginIssuer = 'https://eobcxuyvhkvdmkbaihwh.supabase.co/auth/v1';
+    const pluginIssuer = 'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1';
     const plugin = createPluginConnection({ openExternal: async url => browserOpened.push(url), fetcher: async url => {
       if(String(url).endsWith('oauth-protected-resource')) return Response.json({ resource: MCP_URL, authorization_servers: [pluginIssuer], scopes_supported: ['openid', 'email', 'offline_access'] });
       if(String(url).endsWith('oauth-authorization-server')) return Response.json({ issuer: pluginIssuer, authorization_endpoint: pluginIssuer+'/oauth/authorize', token_endpoint: pluginIssuer+'/oauth/token', registration_endpoint: pluginIssuer+'/oauth/clients/register', code_challenge_methods_supported: ['S256'] });
@@ -288,7 +288,7 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.getElementById("reviewOpen").click()'); await pause(100); assert.equal(controls.state().expanded,true);
     await window.webContents.executeJavaScript('document.getElementById("webClose").click()'); await pause(100);
     await window.webContents.executeJavaScript('document.getElementById("reviewConfirm").click()');
-    for(let i=0;i<30 && chat.delivery.status!=='reviewed';i++) await pause(50);
+    for(let i=0;i<30 && chat.delivery.status!=='reviewed';i++)await pause(50);
     assert.equal(chat.delivery.status,'reviewed'); assert.equal(await surface.webContents.executeJavaScript('document.body.dataset.submits'), '1');
     console.log('PASS: envio incerto bloqueia a UI, abre a conversa para conferência e só libera após revisão explícita, sem repetir envio.');
 
@@ -497,7 +497,7 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.getElementById("prompt").value="Rascunho da loja";document.getElementById("prompt").dispatchEvent(new Event("input"))');
     await pause(500); await bridge.selectConversationProject((await bridge.createProject({name:"Jogo"})).id);
     await until('document.getElementById("projectScopeName").textContent==="Jogo" && !document.getElementById("prompt").disabled');
-    const projectB = bridge.projects.find(p=>p.name==='Jogo').id;
+    const projectB = bridge.projects.find(p=>p.id===bridge.activeProjectId).id;
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("prompt").value'),'');
     await window.webContents.executeJavaScript('document.getElementById("prompt").value="Rascunho do jogo";document.getElementById("prompt").dispatchEvent(new Event("input"))');
     await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectA}"]').click()`);
