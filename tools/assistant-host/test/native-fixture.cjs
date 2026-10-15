@@ -288,7 +288,7 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.getElementById("reviewOpen").click()'); await pause(100); assert.equal(controls.state().expanded,true);
     await window.webContents.executeJavaScript('document.getElementById("webClose").click()'); await pause(100);
     await window.webContents.executeJavaScript('document.getElementById("reviewConfirm").click()');
-    for(let i=0;i<30 && chat.delivery.status!=='reviewed';i++)await pause(50);
+    for(let i=0;i<30 && chat.delivery.status!=='reviewed';i++) await pause(50);
     assert.equal(chat.delivery.status,'reviewed'); assert.equal(await surface.webContents.executeJavaScript('document.body.dataset.submits'), '1');
     console.log('PASS: envio incerto bloqueia a UI, abre a conversa para conferência e só libera após revisão explícita, sem repetir envio.');
 
@@ -497,7 +497,7 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.getElementById("prompt").value="Rascunho da loja";document.getElementById("prompt").dispatchEvent(new Event("input"))');
     await pause(500); await bridge.selectConversationProject((await bridge.createProject({name:"Jogo"})).id);
     await until('document.getElementById("projectScopeName").textContent==="Jogo" && !document.getElementById("prompt").disabled');
-    const projectB = bridge.projects.find(p=>p.id===bridge.activeProjectId).id;
+    const projectB = bridge.projects.find(p=>p.name==='Jogo').id;
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("prompt").value'),'');
     await window.webContents.executeJavaScript('document.getElementById("prompt").value="Rascunho do jogo";document.getElementById("prompt").dispatchEvent(new Event("input"))');
     await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectA}"]').click()`);
