@@ -214,7 +214,20 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('localRuntimeCheck').disabled = typeof host.localRuntimeObservation !== 'function';
   if ($('localRuntimeCheck').disabled) $('localRuntimeObservation').textContent = 'Observação do serviço local não disponível neste host. Nenhuma autorização foi inferida.';
   $('localRuntimeCheck').addEventListener('click', () => { void refreshLocalObservation(); });
-  async function open() { showWorkspace(true); await refresh(); void refreshLocalObservation(); }
+  async function open({ focusAccount = false } = {}) {
+    showWorkspace(true);
+    if (focusAccount && accountHost?.available) {
+      try { accountAvailable = await accountHost.available() === true; }
+      catch { accountAvailable = false; }
+    }
+    await refresh();
+    void refreshLocalObservation();
+    controls();
+    if (focusAccount && !$('productAccountSection').hidden) requestAnimationFrame(() => {
+      $('productAccountSection').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      $('productEmail').focus();
+    });
+  }
   $('openProject').addEventListener('click', () => task(open));
   $('openActivity').addEventListener('click', () => task(async () => { await open(); tab('studioActivity'); $('studioTabActivity').focus(); }));
   $('openContext').addEventListener('click', () => task(async () => { await open(); tab('studioContinuity'); $('studioTabContinuity').focus(); }));
