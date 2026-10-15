@@ -1,6 +1,6 @@
 # ORDAX Studio
 
-Candidato 0.15.1: consolida a fundação **Agentic Apps** e adota o layout **Agentic Studio** na apresentação canônica: navegação mais compacta, conversa/editor/preview com maior área útil, workspace mais denso e breakpoints revisados sem alterar IDs semânticos. [Plano e critérios](../../../docs/AGENTIC-APP-TESTING.md).
+Candidato 0.15.2: mantém o layout **Agentic Studio** do 0.15.1 e simplifica o onboarding Product: a Central expõe um estado claro do computador, o CTA abre diretamente a Conta OrdaX e a sessão só é aceita quando o Runtime confirma também a identidade do dispositivo, sem criar grants automaticamente. [Plano e critérios](../../../docs/AGENTIC-APP-TESTING.md).
 
 O 0.15.0 introduziu semântica de UI empacotada, observer local read-only, cenários orientados a objetivo e Goal Runner observacional.
 
@@ -8,7 +8,7 @@ O candidato 0.14.2 introduziu [navegação responsiva com Conversa, Continuar e 
 
 A versão Web do OS ainda depende da composição do host e da entrega da interface canônica. [Estado real e critérios de integração Web](../../../docs/STUDIO-WEB-INTEGRATION.md). Candidato 0.14.1 corrige falhas de inicialização e oferece tentativa explícita sem recriar a sessão.
 
-Esta é a experiência de conversa do **ORDAX Studio**, consolidada em `apps/studio/conversation` no owner `ordaxsystems/ordax-apps`. O candidato local 0.15.1 evolui o Studio existente; o Assistant nativo do OrdaX OS permanece independente. Veja [a matriz de substituição e os limites reais](../../../docs/STUDIO-CONVERSATION-REPLACEMENT.md).
+Esta é a experiência de conversa do **ORDAX Studio**, consolidada em `apps/studio/conversation` no owner `ordaxsystems/ordax-apps`. O candidato local 0.15.2 evolui o Studio existente; o Assistant nativo do OrdaX OS permanece independente. Veja [a matriz de substituição e os limites reais](../../../docs/STUDIO-CONVERSATION-REPLACEMENT.md).
 
 A abertura começa em **Início**, sem selecionar conversa ou projeto. Adicionar projeto distingue espaço de conversas de pasta conectada; criação/importação passam por revisão e Runtime autorizado. Cada projeto pode ter notas enviadas opcionalmente no primeiro envio de uma conversa. [Estado e limites dos fluxos de projeto](../../../docs/STUDIO-PROJECT-ONBOARDING.md).
 
@@ -18,7 +18,7 @@ Novos compositores tentam selecionar **Chat** pelo controle público, verificand
 
 ## Abrir no Windows
 
-**Versão portátil 0.15.1:** abra `ORDAX Studio.exe` na pasta gerada em `tools/assistant-host/.data/portable/`. Mantenha a pasta inteira, que contém o runtime. Não precisa de npm, Node.js, Codex ou Work para abrir. É uma compilação local sem assinatura digital; não foi publicada na Store.
+**Versão portátil 0.15.2:** abra `ORDAX Studio.exe` na pasta gerada em `tools/assistant-host/.data/portable/`. Mantenha a pasta inteira, que contém o runtime. Não precisa de npm, Node.js, Codex ou Work para abrir. É uma compilação local sem assinatura digital; não foi publicada na Store.
 
 Para gerar a versão portátil a partir do código, execute na raiz deste repositório:
 

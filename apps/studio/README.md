@@ -1,6 +1,6 @@
 # ORDAX Studio
 
-Candidato 0.15.1: consolida a fundação **Agentic Apps** e atualiza a apresentação canônica com o layout Agentic Studio: hierarquia única, maior área útil para conversa/editor/preview, workspace mais denso e responsividade revisada, preservando todos os IDs semânticos e boundaries do Runtime. [Plano e critérios](../../docs/AGENTIC-APP-TESTING.md).
+Candidato 0.15.2: mantém a fundação **Agentic Apps** do 0.15.1 e corrige o onboarding Product no Windows: a Central apresenta um único fluxo claro de Conta OrdaX/computador, o login exige identidade de dispositivo confirmada pelo Runtime e continua sem inferir grants ou habilitar remote actions. [Plano e critérios](../../docs/AGENTIC-APP-TESTING.md).
 
 O 0.15.0 iniciou a fundação com semântica de UI empacotada, observer local read-only, cenários orientados a objetivo e Goal Runner observacional, sem conceder autoridade nem substituir Runtime/grants.
 
