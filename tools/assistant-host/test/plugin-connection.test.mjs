@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-const { createPluginConnection, isPluginURL, MCP_URL, PLUGINS_URL } = createRequire(import.meta.url)('../native/plugin-connection.cjs');
+const { createPluginConnection, isPluginURL, MCP_URL, PLUGINS_URL, STUDIO_VERSION } = createRequire(import.meta.url)('../native/plugin-connection.cjs');
 const issuer = 'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1';
 const resource = { resource: MCP_URL, authorization_servers: [issuer], scopes_supported: ['openid', 'email', 'offline_access'] };
 const auth = { issuer, authorization_endpoint: issuer + '/oauth/authorize', token_endpoint: issuer + '/oauth/token', registration_endpoint: issuer + '/oauth/clients/register', code_challenge_methods_supported: ['S256'] };
@@ -19,13 +19,16 @@ test('public check verifies only canonical Product OAuth without claiming instal
   const f = fixture(); const [a, b] = await Promise.all([f.plugin.check(), f.plugin.check()]);
   assert.deepEqual(a, b); assert.equal(a.status, 'available'); assert.equal(a.configurationDrift, false); assert.equal(a.checkedAt, 100);
   assert.equal(MCP_URL, 'https://mcp.ordax.com.br/mcp');
+  assert.equal(STUDIO_VERSION, '0.14.2'); assert.equal(a.version, STUDIO_VERSION);
   assert.equal('connected' in a, false); assert.equal(f.requests.length, 3);
   assert.equal(a.oauthSettings.issuer, issuer);
   assert.equal(a.oauthSettings.clientRegistration, 'DCR'); assert.equal(a.oauthSettings.scopes, 'openid email offline_access');
   assert.equal(a.oauthSettings.authorizationEndpoint, auth.authorization_endpoint); assert.equal(a.oauthSettings.pkce, 'S256');
   assert.equal('clientSecret' in a.oauthSettings, false); assert.equal('clientId' in a.oauthSettings, false);
   for (const { options } of f.requests) { assert.equal(options.redirect, 'error'); assert.equal(options.credentials, 'omit'); assert.equal(options.headers.Authorization, undefined); }
-  assert.equal(JSON.parse(f.requests[2].options.body).method, 'initialize');
+  const initialize = JSON.parse(f.requests[2].options.body);
+  assert.equal(initialize.method, 'initialize');
+  assert.deepEqual(initialize.params.clientInfo, { name: 'ordax-studio-connection-check', version: STUDIO_VERSION });
 });
 test('retired and unknown issuers plus cross-origin metadata are rejected before any unauthenticated probe', async () => {
   const retired = 'https://eobcxuyvhkvdmkbaihwh.supabase.co/auth/v1';
