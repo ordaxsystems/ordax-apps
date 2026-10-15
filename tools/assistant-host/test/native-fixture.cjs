@@ -90,7 +90,7 @@ app.whenReady().then(async () => {
       } else data = { action: remoteActions.get(route.split('/').at(-1)) };
       return Response.json({ ok: true, ...data });
     } }); await runtime.init();
-    const pluginIssuer = 'https://eobcxuyvhkvdmkbaihwh.supabase.co/auth/v1';
+    const pluginIssuer = 'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1';
     const plugin = createPluginConnection({ openExternal: async url => browserOpened.push(url), fetcher: async url => {
       if(String(url).endsWith('oauth-protected-resource')) return Response.json({ resource: MCP_URL, authorization_servers: [pluginIssuer], scopes_supported: ['openid', 'email', 'offline_access'] });
       if(String(url).endsWith('oauth-authorization-server')) return Response.json({ issuer: pluginIssuer, authorization_endpoint: pluginIssuer+'/oauth/authorize', token_endpoint: pluginIssuer+'/oauth/token', registration_endpoint: pluginIssuer+'/oauth/clients/register', code_challenge_methods_supported: ['S256'] });
