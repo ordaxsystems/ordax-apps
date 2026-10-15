@@ -3,17 +3,17 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { readFile } from 'node:fs/promises';
 import { ProductRuntime } from '../native/product-runtime.mjs';
 
 const require = createRequire(import.meta.url);
-const { invokeCanonicalProductSignIn, locateInstalledRuntime, validCredentials } =
+const { invokeCanonicalProductSignIn, locateInstalledRuntime, validBrowserRequest } =
   require('../native/canonical-account.cjs');
 const schema = 'ordax.studio-product-account-session/1';
 const fixtureSubject = '00000000-0000-4000-8000-00000000000a';
 const fixtureDevice = '00000000-0000-4000-8000-00000000000b';
-const input = { email: 'user@example.com', password: 'private-password' };
 
-function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access_token: 'secret.jwt', email: input.email, subject_id: fixtureSubject, device_id: fixtureDevice, enrolled_now: true }) + '\n' } = {}) {
+function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access_token: 'secret.jwt', email: 'user@example.com', subject_id: fixtureSubject, device_id: fixtureDevice, enrolled_now: true }) + '\n' } = {}) {
   const calls = [];
   const spawnProcess = (python, argv, options) => {
     calls.push({ python, argv, options });
@@ -33,11 +33,11 @@ function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access
   return { calls, spawnProcess, locate: async () => ({ python: 'C:/ORDAX/runtime/python.exe', root: 'C:/ORDAX' }) };
 }
 
-test('canonical subprocess is only stdio and the JWT never reaches argv/environment or a log', async () => {
+test('canonical subprocess owns browser OAuth and no credentials cross Electron IPC', async () => {
   const f = fixture();
-  const result = await invokeCanonicalProductSignIn(input, f);
+  const result = await invokeCanonicalProductSignIn(undefined, f);
   assert.deepEqual(result, {
-    token: 'secret.jwt', email: input.email, subjectId: fixtureSubject,
+    token: 'secret.jwt', email: 'user@example.com', subjectId: fixtureSubject,
     deviceId: fixtureDevice, enrolledNow: true,
   });
   assert.equal(f.calls.length, 1);
@@ -45,9 +45,31 @@ test('canonical subprocess is only stdio and the JWT never reaches argv/environm
   assert.equal(f.calls[0].options.shell, false);
   assert.deepEqual(f.calls[0].options.stdio, ['pipe','pipe','ignore']);
   assert.equal(f.calls[0].options.env.PYTHONPATH, '');
-  assert.equal(JSON.parse(f.calls[0].stdin).password, input.password);
-  assert.ok(!JSON.stringify({argv:f.calls[0].argv, env:f.calls[0].options.env}).includes('private-password'));
+  assert.deepEqual(JSON.parse(f.calls[0].stdin), { schema, operation: 'browser-sign-in' });
+  assert.ok(!f.calls[0].stdin.toLowerCase().includes('password'));
   assert.ok(!JSON.stringify({argv:f.calls[0].argv, env:f.calls[0].options.env}).includes('secret.jwt'));
+});
+
+test('renderer cannot submit email, password or arbitrary data to the account bridge', async () => {
+  const f = fixture();
+  assert.equal(validBrowserRequest(undefined), true);
+  for (const candidate of [null, {}, { email:'user@example.com' }, { password:'secret' }, { action:'exec' }]) {
+    assert.equal(validBrowserRequest(candidate), false);
+    await assert.rejects(invokeCanonicalProductSignIn(candidate, f), /navegador/);
+  }
+  assert.equal(f.calls.length, 0);
+});
+
+test('Studio account UI contains no ORDAX credential fields', async () => {
+  const html = await readFile(new URL('../../../apps/studio/conversation/src/index.html', import.meta.url), 'utf8');
+  const panel = await readFile(new URL('../../../apps/studio/conversation/src/project-panel.mjs', import.meta.url), 'utf8');
+  assert.ok(html.includes('Continuar no navegador'));
+  assert.ok(html.includes('Sua senha nunca é digitada nem enviada ao Studio'));
+  assert.ok(!html.includes('id="productEmail"'));
+  assert.ok(!html.includes('id="productPassword"'));
+  assert.ok(!panel.includes('productEmail'));
+  assert.ok(!panel.includes('productPassword'));
+  assert.ok(panel.includes('accountHost.signIn()'));
 });
 
 test('no arbitrary source/portable Python path can enable the account bridge', async () => {
@@ -56,30 +78,19 @@ test('no arbitrary source/portable Python path can enable the account bridge', a
   await assert.rejects(locateInstalledRuntime('C:/tmp/ORDAX Studio.exe', 'win32'), /instalador oficial/);
 });
 
-test('credentials are validated before launching any subprocess', async () => {
-  const f=fixture();
-  for (const candidate of [null, {}, { ...input, extra: 'exec' },
-    { ...input, password: '' }, { ...input, email: 'x\r\n' },
-    { ...input, password: 'a'.repeat(2049) }]) {
-    assert.equal(validCredentials(candidate), false);
-    await assert.rejects(invokeCanonicalProductSignIn(candidate, f));
-  }
-  assert.equal(f.calls.length, 0);
-});
-
 test('malformed, oversized, failed or ambiguous native replies cannot create Product sessions', async () => {
   for (const item of [
-    {payload: JSON.stringify({ schema, ok:true, access_token:'', email:input.email })+'\n'},
-    {payload: JSON.stringify({ schema, ok:true, access_token:'secret.jwt', email:input.email, canExecute:true })+'\n'},
+    {payload: JSON.stringify({ schema, ok:true, access_token:'', email:'user@example.com' })+'\n'},
+    {payload: JSON.stringify({ schema, ok:true, access_token:'secret.jwt', email:'user@example.com', canExecute:true })+'\n'},
     {payload: '{}\n'},
-    {payload: JSON.stringify({ schema, ok: true, access_token: 'jwt', email: input.email, subject_id: 'forged-user' })+'\n'},
+    {payload: JSON.stringify({ schema, ok: true, access_token: 'jwt', email:'user@example.com', subject_id: 'forged-user' })+'\n'},
     {payload: 'not JSON\n'},
-    {payload: JSON.stringify({ schema, ok:true, access_token:'a'.repeat(16001), email:input.email })+'\n'},
-    {payload: JSON.stringify({ schema, ok:true, access_token:'jwt', email:input.email })+'\n\n'},
-    {payload: JSON.stringify({ schema, ok:true, access_token:'jwt', email:input.email })+'\n', exit:1},
+    {payload: JSON.stringify({ schema, ok:true, access_token:'a'.repeat(16001), email:'user@example.com' })+'\n'},
+    {payload: JSON.stringify({ schema, ok:true, access_token:'jwt', email:'user@example.com' })+'\n\n'},
+    {payload: JSON.stringify({ schema, ok:true, access_token:'jwt', email:'user@example.com' })+'\n', exit:1},
   ]) {
     const f=fixture(item);
-    await assert.rejects(invokeCanonicalProductSignIn(input,f), /confirmar|limite/);
+    await assert.rejects(invokeCanonicalProductSignIn(undefined,f), /confirmar|limite/);
   }
 });
 
@@ -103,6 +114,7 @@ test('one installed-Runtime subject assertion adopts account without duplicate P
   assert.equal(calls.length, 0);
   await assert.rejects(runtime.acceptAccountToken('another-jwt', fixtureSubject), /Já existe/);
 });
+
 test('unverified subject or malformed UUID cannot unlock account or reach network', async t => {
   let calls = 0;
   const runtime = new ProductRuntime({
@@ -119,6 +131,7 @@ test('unverified subject or malformed UUID cannot unlock account or reach networ
   assert.equal(runtime.state().accountConnected, false);
   assert.equal(calls, 0);
 });
+
 test('a prior uncertain action journal fails closed before installing a new account', async t => {
   const storage={read:async(_,v)=>v,write:async()=>{}};
   const runtime=new ProductRuntime({

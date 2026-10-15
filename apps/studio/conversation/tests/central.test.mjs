@@ -130,7 +130,10 @@ test('Central exposes one plain-language computer connection card', async () => 
   assert.match(html, /id="centralConnectionDescription"/);
   assert.match(html, /id="centralConnect"[^>]*>Conectar este computador<\/button>/);
   assert.match(html, /id="productAccountTitle">Conectar este computador<\/h3>/);
-  assert.match(html, /Entrar e conectar este computador/);
+  assert.match(html, /Continuar no navegador/);
+  assert.doesNotMatch(html, /id=\"productEmail\"/);
+  assert.doesNotMatch(html, /id=\"productPassword\"/);
+  assert.match(html, /Sua senha nunca é digitada nem enviada ao Studio/);
 });
 
 test('Central polling is bounded to the visible page with a previous successful snapshot', () => {

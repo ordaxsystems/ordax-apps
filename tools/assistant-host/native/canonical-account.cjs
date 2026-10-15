@@ -8,7 +8,7 @@ const path = require('node:path');
 const SCHEMA = 'ordax.studio-product-account-session/1';
 const SUBJECT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_STDOUT = 20000;
-const DEADLINE_MS = 45000;
+const DEADLINE_MS = 315000;
 
 function fail(message) { return Object.assign(new Error(message), { status: 503 }); }
 
@@ -39,23 +39,15 @@ async function locateInstalledRuntime(executable = process.execPath, platform = 
   return { python, root };
 }
 
-function validCredentials(data) {
-  return Boolean(data && typeof data === 'object' && !Array.isArray(data)
-    && Object.keys(data).length === 2 && Object.hasOwn(data, 'email')
-    && Object.hasOwn(data, 'password') && typeof data.email === 'string'
-    && data.email.length > 2 && data.email.length <= 320 && data.email.includes('@')
-    && typeof data.password === 'string' && data.password.length > 0
-    && data.password.length <= 2048
-    && !/[\x00-\x1f]/.test(data.email) && !/[\x00]/.test(data.password));
-}
+function validBrowserRequest(data) { return data === undefined; }
 
 async function invokeCanonicalProductSignIn(data, {
   locate = locateInstalledRuntime, spawnProcess = spawn, timeout = DEADLINE_MS,
 } = {}) {
-  if (!validCredentials(data)) throw Object.assign(new Error('Informe e-mail e senha ORDAX válidos.'), { status: 400 });
+  if (!validBrowserRequest(data)) throw Object.assign(new Error('O login ORDAX é iniciado somente pelo navegador.'), { status: 400 });
   const { python, root } = await locate();
-  const payload = JSON.stringify({ schema: SCHEMA, operation: 'sign-in', ...data });
-  if (Buffer.byteLength(payload) > 3000) throw Object.assign(new Error('Dados de acesso muito extensos.'), { status: 400 });
+  const payload = JSON.stringify({ schema: SCHEMA, operation: 'browser-sign-in' });
+  if (Buffer.byteLength(payload) > 1000) throw Object.assign(new Error('Pedido de autenticação inválido.'), { status: 400 });
   return new Promise((resolve, reject) => {
     let complete = false, bytes = 0, chunks = [], deadline;
     const finish = (error, value) => {
@@ -110,4 +102,4 @@ async function invokeCanonicalProductSignIn(data, {
   });
 }
 
-module.exports = { locateInstalledRuntime, invokeCanonicalProductSignIn, validCredentials };
+module.exports = { locateInstalledRuntime, invokeCanonicalProductSignIn, validBrowserRequest };

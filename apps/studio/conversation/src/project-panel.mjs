@@ -225,7 +225,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     controls();
     if (focusAccount && !$('productAccountSection').hidden) requestAnimationFrame(() => {
       $('productAccountSection').scrollIntoView({ block: 'start', behavior: 'smooth' });
-      $('productEmail').focus();
+      $('productSignIn').focus();
     });
   }
   $('openProject').addEventListener('click', () => task(open));
@@ -251,13 +251,10 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('productSignIn').addEventListener('click', () => task(async () => {
     if (!accountAvailable || !accountHost?.signIn || accountBusy || state.configured ||
         submitting || dirty() || continuityDirty()) return;
-    const email = $('productEmail').value.trim();
-    const password = $('productPassword').value;
-    $('productPassword').value = ''; // Never keep the password in the renderer after submission.
     accountBusy = true; controls();
-    $('productAuthStatus').textContent = 'Confirmando sessão pela autoridade do Runtime instalado…';
+    $('productAuthStatus').textContent = 'Abrindo o navegador para confirmar sua Conta OrdaX…';
     try {
-      const result = await accountHost.signIn({ email, password });
+      const result = await accountHost.signIn();
       const enrollment = result?.deviceEnrollment;
       if (result?.accountConnected !== true || result?.configured !== true ||
           !Array.isArray(result.targets) || !Array.isArray(result.operations) ||
@@ -269,10 +266,10 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
       }
       await applyConnectedState(result);
       $('productAuthStatus').textContent = enrollment.runtimeRestartRequired
-        ? 'Conta autenticada e computador registrado. Reinicie o Runtime para concluir a conexão deste PC.'
-        : 'Conta autenticada e computador vinculado. O acesso remoto continua limitado às permissões autorizadas.';
+        ? 'Conta confirmada e computador registrado. Reinicie o Runtime para concluir a conexão deste PC.'
+        : 'Conta confirmada e computador vinculado. O acesso remoto continua limitado às permissões autorizadas.';
     } catch (error) {
-      $('productAuthStatus').textContent = String(error?.message || 'Não foi possível autenticar a conta.').slice(0, 300);
+      $('productAuthStatus').textContent = String(error?.message || 'Não foi possível confirmar a Conta OrdaX no navegador.').slice(0, 300);
     } finally { accountBusy = false; controls(); }
   }));
   if (accountHost?.available) void Promise.resolve().then(() => accountHost.available())
