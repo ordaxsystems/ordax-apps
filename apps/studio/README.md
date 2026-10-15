@@ -1,6 +1,6 @@
 # ORDAX Studio
 
-Candidato 0.15.2: mantém a fundação **Agentic Apps** do 0.15.1 e corrige o onboarding Product no Windows: a Central apresenta um único fluxo claro de Conta OrdaX/computador, o login exige identidade de dispositivo confirmada pelo Runtime e continua sem inferir grants ou habilitar remote actions. [Plano e critérios](../../docs/AGENTIC-APP-TESTING.md).
+Candidato 0.15.3: mantém a fundação **Agentic Apps** e substitui o login Product embutido por **OAuth no navegador padrão com PKCE**: o Studio nunca coleta senha OrdaX, reaproveita a sessão já aberta no navegador quando disponível e só conclui após o Runtime confirmar conta e identidade do dispositivo, sem inferir grants ou habilitar remote actions. [Plano e critérios](../../docs/AGENTIC-APP-TESTING.md).
 
 O 0.15.0 iniciou a fundação com semântica de UI empacotada, observer local read-only, cenários orientados a objetivo e Goal Runner observacional, sem conceder autoridade nem substituir Runtime/grants.
 

@@ -1,6 +1,6 @@
 # ORDAX Studio
 
-Candidato 0.15.2: mantém o layout **Agentic Studio** do 0.15.1 e simplifica o onboarding Product: a Central expõe um estado claro do computador, o CTA abre diretamente a Conta OrdaX e a sessão só é aceita quando o Runtime confirma também a identidade do dispositivo, sem criar grants automaticamente. [Plano e critérios](../../../docs/AGENTIC-APP-TESTING.md).
+Candidato 0.15.3: mantém o layout **Agentic Studio** e conclui o onboarding Product pelo **navegador padrão**: o CTA abre OAuth da Conta OrdaX com PKCE, uma sessão já autenticada pode apenas confirmar o vínculo, nenhuma senha atravessa o Studio/Electron e a sessão só é aceita quando o Runtime confirma também a identidade do dispositivo, sem criar grants automaticamente. [Plano e critérios](../../../docs/AGENTIC-APP-TESTING.md).
 
 O 0.15.0 introduziu semântica de UI empacotada, observer local read-only, cenários orientados a objetivo e Goal Runner observacional.
 
@@ -8,7 +8,7 @@ O candidato 0.14.2 introduziu [navegação responsiva com Conversa, Continuar e 
 
 A versão Web do OS ainda depende da composição do host e da entrega da interface canônica. [Estado real e critérios de integração Web](../../../docs/STUDIO-WEB-INTEGRATION.md). Candidato 0.14.1 corrige falhas de inicialização e oferece tentativa explícita sem recriar a sessão.
 
-Esta é a experiência de conversa do **ORDAX Studio**, consolidada em `apps/studio/conversation` no owner `ordaxsystems/ordax-apps`. O candidato local 0.15.2 evolui o Studio existente; o Assistant nativo do OrdaX OS permanece independente. Veja [a matriz de substituição e os limites reais](../../../docs/STUDIO-CONVERSATION-REPLACEMENT.md).
+Esta é a experiência de conversa do **ORDAX Studio**, consolidada em `apps/studio/conversation` no owner `ordaxsystems/ordax-apps`. O candidato local 0.15.3 evolui o Studio existente; o Assistant nativo do OrdaX OS permanece independente. Veja [a matriz de substituição e os limites reais](../../../docs/STUDIO-CONVERSATION-REPLACEMENT.md).
 
 A abertura começa em **Início**, sem selecionar conversa ou projeto. Adicionar projeto distingue espaço de conversas de pasta conectada; criação/importação passam por revisão e Runtime autorizado. Cada projeto pode ter notas enviadas opcionalmente no primeiro envio de uma conversa. [Estado e limites dos fluxos de projeto](../../../docs/STUDIO-PROJECT-ONBOARDING.md).
 
@@ -18,7 +18,7 @@ Novos compositores tentam selecionar **Chat** pelo controle público, verificand
 
 ## Abrir no Windows
 
-**Versão portátil 0.15.2:** abra `ORDAX Studio.exe` na pasta gerada em `tools/assistant-host/.data/portable/`. Mantenha a pasta inteira, que contém o runtime. Não precisa de npm, Node.js, Codex ou Work para abrir. É uma compilação local sem assinatura digital; não foi publicada na Store.
+**Versão portátil 0.15.3:** abra `ORDAX Studio.exe` na pasta gerada em `tools/assistant-host/.data/portable/`. Mantenha a pasta inteira, que contém o runtime. Não precisa de npm, Node.js, Codex ou Work para abrir. É uma compilação local sem assinatura digital; não foi publicada na Store.
 
 Para gerar a versão portátil a partir do código, execute na raiz deste repositório:
 
@@ -102,7 +102,7 @@ No seletor **Preview / Navegador**, abra sites HTTPS ou HTTP loopback com porta 
 
 `native/product-runtime.mjs` é um cliente restrito do contrato público Product v3 já implementado pelo ControlPlane. Consome `/v3/product/session`, `/v3/product/targets` e `/v3/product/actions`; sua lista fixa inclui `projects.list`, operações `workspace.*`, `terminal.exec`, `git.status/diff`, `project.search_text`, `agent.project_briefing`, `project.preview_status` e `continuity.get/update`. Identidade, escopo, grants e auditoria continuam nos owners canônicos. O app não concede acesso ao terminal, não cria grants e não executa subprocessos de projeto diretamente. As credenciais ficam no processo do host, nunca na UI ou nos recibos.
 
-O host precisa receber `ORDAX_PRODUCT_ACCESS_TOKEN` de uma sessão Product válida. `ORDAX_PRODUCT_CONTROL_PLANE_URL` substitui a origem HTTPS canônica, e `ORDAX_PRODUCT_SPACE_ID` mantém o Space fornecido pelo host quando necessário. Não cole tokens no prompt. Sem essa configuração, o painel explica a indisponibilidade e o chat Web continua funcionando. Nesta máquina, essa conexão ainda não está configurada. O app não implementa login Product, renovação de token nem pareamento de dispositivo.
+No Windows instalado, **Conectar este computador** inicia o OAuth Product no navegador padrão por meio do Runtime privado. O fluxo usa Authorization Code + PKCE S256, callback loopback exato em `127.0.0.1`, cliente público sem segredo e depois enrollment/pairing canônicos do dispositivo. A senha permanece exclusivamente na página web da Conta OrdaX e nunca atravessa renderer, IPC ou armazenamento do Studio. `ORDAX_PRODUCT_CONTROL_PLANE_URL` continua sendo apenas override de origem para ambientes autorizados; grants remotos não são criados pelo login.
 
 O contrato Product limita o envelope a 64 KiB. O cliente restringe operações a 56 mil bytes antes da autenticação contextual; grandes alterações precisam ser reduzidas. Resultados maiores que 120 mil caracteres não são apresentados inline. O editor só habilita gravação de texto completo; não cria arquivos novos e não aplica trechos parciais sobre um arquivo inteiro. Comandos podem acessar recursos permitidos ao usuário do dispositivo; a autorização explícita `terminal.exec` é exigida pelo Runtime.
 
