@@ -94,6 +94,31 @@ test('malformed, oversized, failed or ambiguous native replies cannot create Pro
   }
 });
 
+test('bounded native failure code reaches Studio without accepting failure secrets', async () => {
+  const reported = fixture({
+    exit: 1,
+    payload: JSON.stringify({ schema, ok:false, error:'product_token_claims_invalid' }) + '\n',
+  });
+  await assert.rejects(
+    invokeCanonicalProductSignIn(undefined, reported),
+    error => error?.code === 'product_token_claims_invalid'
+      && /product_token_claims_invalid/.test(error.message),
+  );
+
+  for (const payload of [
+    { schema, ok:false, error:'product_token_claims_invalid', access_token:'must-not-surface' },
+    { schema, ok:false, error:'../../unsafe' },
+    { schema, ok:false, error:'x'.repeat(129) },
+  ]) {
+    const f = fixture({ exit:1, payload: JSON.stringify(payload) + '\n' });
+    await assert.rejects(
+      invokeCanonicalProductSignIn(undefined, f),
+      error => /Não foi possível confirmar sua sessão ORDAX\.$/.test(error.message)
+        && !error.message.includes('must-not-surface'),
+    );
+  }
+});
+
 test('one installed-Runtime subject assertion adopts account without duplicate Product HTTP session lookup', async t => {
   const calls = [], storage = { read: async (_, fallback) => fallback, write: async () => {} };
   const runtime = new ProductRuntime({ storage,
@@ -123,7 +148,7 @@ test('unverified subject or malformed UUID cannot unlock account or reach networ
     fetcher: async () => { calls++; throw new Error('must not call network'); },
     interval: 100000,
   });
-  await runtime.init(); t.after(() => runtime.close());
+  await runtime.init(); t.after(()=>runtime.close());
   for (const subject of [undefined, null, 'forged-subject', '../other', fixtureSubject.toUpperCase()]) {
     await assert.rejects(runtime.acceptAccountToken('secret', subject), /Product inválida/);
   }

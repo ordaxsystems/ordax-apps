@@ -7,10 +7,20 @@ const path = require('node:path');
 
 const SCHEMA = 'ordax.studio-product-account-session/1';
 const SUBJECT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const NATIVE_ERROR_CODE = /^[A-Za-z][A-Za-z0-9_]{0,127}$/;
 const MAX_STDOUT = 20000;
 const DEADLINE_MS = 315000;
 
 function fail(message) { return Object.assign(new Error(message), { status: 503 }); }
+
+function nativeFailure(value, exitCode) {
+  if (exitCode === 0 || !value || value.schema !== SCHEMA || value.ok !== false
+      || typeof value.error !== 'string' || !NATIVE_ERROR_CODE.test(value.error)
+      || Object.keys(value).some(k => !['schema','ok','error'].includes(k))) return null;
+  const error = fail(`Não foi possível confirmar sua sessão ORDAX. Código: ${value.error}`);
+  error.code = value.error;
+  return error;
+}
 
 async function locateInstalledRuntime(executable = process.execPath, platform = process.platform) {
   // No source-tree Python, PATH lookup, browser HTTP, arbitrary shell or env-
@@ -77,11 +87,13 @@ async function invokeCanonicalProductSignIn(data, {
     child.once('close', code => {
       if (complete) return;
       try {
-        if (code !== 0 || bytes < 2) throw new Error('failed');
+        if (bytes < 2) throw new Error('failed');
         const raw = Buffer.concat(chunks).toString('utf8');
         if (!raw.endsWith('\n') || raw.indexOf('\n') !== raw.length - 1) throw new Error('framing');
         const value = JSON.parse(raw);
-        if (!value || value.schema !== SCHEMA || value.ok !== true
+        const reportedFailure = nativeFailure(value, code);
+        if (reportedFailure) return finish(reportedFailure);
+        if (code !== 0 || !value || value.schema !== SCHEMA || value.ok !== true
             || typeof value.access_token !== 'string' || !value.access_token
             || value.access_token.length > 16000 || /[\r\n]/.test(value.access_token)
             || typeof value.subject_id !== 'string' || !SUBJECT_UUID.test(value.subject_id)
