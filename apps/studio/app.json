@@ -1,14 +1,15 @@
 {
-  "schema": "ordax.component-manifest/1",
   "id": "studio",
   "title": "ORDAX Studio",
   "kind": "app",
-  "version": "0.15.3",
+  "version": "0.15.4",
   "releaseMode": "component-slot",
   "criticality": "optional",
   "failureDomain": "app",
-  "restartScope": "component",
-  "healthMode": "runtime",
-  "owner": "ordaxsystems/ordax-apps",
-  "dependencies": []
+  "channel": "stable",
+  "runtime": {
+    "entrypoint": "conversation/index.html",
+    "renderer": "ordax-web-runtime",
+    "nativeHost": "tools/assistant-host/native/main.cjs"
+  }
 }
