@@ -48,6 +48,7 @@ app.whenReady().then(async () => {
     const { WebBridge } = await import('../native/web-bridge.mjs');
     const { createWebServer } = await import('../web-server.mjs');
     const { ProductRuntime } = await import('../native/product-runtime.mjs');
+    const { createStudioMcpObserver } = await import('../native/mcp-observer.mjs');
     let authenticated = false; const browserOpened = [];
     const isolated = session.fromPartition('ordax-assistant-test-' + randomUUID());
     await isolated.protocol.handle('https', req => {
@@ -103,12 +104,14 @@ app.whenReady().then(async () => {
     let failInitialState = true;
     bridge.state = (...args) => { if (failInitialState) { failInitialState = false; return null; } return realState(...args); };
     let localProbeCount = 0;
-    host = await createWebServer({ bridge, runtime, observeInstalled: async () => {
+    const observeInstalled = async () => {
       localProbeCount++;
       return { schema: 'ordax.studio-local-runtime-observation/1',
         observed: true, authorization: 'not-established', canExecute: false,
-        reason: 'loopback-response', version: '0.4.5', state: 'local-ready' };
-    } }); registerWebControls(ipcMain, { window, origin: host.origin, controls });
+        reason: 'loopback-response', version: '0.4.6', state: 'local-ready' };
+    };
+    const mcpObserver = createStudioMcpObserver({ plugin, runtime, observeInstalled });
+    host = await createWebServer({ bridge, runtime, observeInstalled, mcpObserver }); registerWebControls(ipcMain, { window, origin: host.origin, controls });
     ipcMain.handle('studio-product:availability', event => {
       if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame
           || event.senderFrame.url !== host.origin + '/src/index.html') throw new Error('Untrusted Studio account fixture frame');
@@ -273,8 +276,6 @@ app.whenReady().then(async () => {
     for (let i = 0; i < 30 && browserOpened.length < 2; i++) await pause(50);
     assert.deepEqual(browserOpened, ['https://chatgpt.com/c/fixture', 'https://chatgpt.com/']);
     assert.equal(surface.webContents.getURL(), 'https://chatgpt.com/c/fixture');
-    // The native browser call may be observed before its IPC promise resolves.
-    // Wait for the actual UI transition, not a fixed delay or a weaker assert.
     for (let attempt = 0; attempt < 100
       && await window.webContents.executeJavaScript('document.getElementById("accountDialog").open'); attempt++) {
       await pause(50);
@@ -419,7 +420,7 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.getElementById("projectClose").click();document.getElementById("openPlugin").click();document.getElementById("pluginCheck").click()');
     await until('document.getElementById("pluginService").textContent.includes("Disponível")');
     await until('document.getElementById("pluginDialog").open && !!document.getElementById("projectDialog").hidden');
-    assert.match(await window.webContents.executeJavaScript('document.getElementById("pluginConversation").textContent'), /não verificada/);
+    assert.match(await window.webContents.executeJavaScript('document.getElementById("pluginConversation").textContent'), /MCP direto.*UI\/DOM n\u00e3o s\u00e3o requisito.*Runtime observado/);
     assert.equal(await window.webContents.executeJavaScript('(()=>{const r=document.getElementById("pluginDialog").getBoundingClientRect();return document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest("dialog")?.id})()'), 'pluginDialog');
     await pause(400);
     await fs.writeFile(path.join(__dirname,'../.data/plugin-preview.png'), (await window.webContents.capturePage()).toPNG());
@@ -434,21 +435,10 @@ app.whenReady().then(async () => {
     await bridge.refresh();assert.equal(bridge.activeId,originalChat);assert.equal(bridge.page.ready,false);
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("prompt").value'),'Rascunho original');
     await until('!document.getElementById("webReturnChat").hidden');
-    assert.equal(await surface.webContents.executeJavaScript('document.getElementById("name").value'),'ORDAX Studio');
-    assert.equal(await surface.webContents.executeJavaScript('document.getElementById("url").value'),MCP_URL);
-    assert.equal(await surface.webContents.executeJavaScript('document.getElementById("consent").checked'),false);
-    assert.equal((await controls.pluginPrepare()).requiresUserConsent,true);
-    await surface.webContents.executeJavaScript('document.getElementById("name").value="Minha integração";document.getElementById("url").value="https://example.com/mcp"');
-    assert.equal((await controls.pluginPrepare()).status,'manual');
-    assert.equal(await surface.webContents.executeJavaScript('document.getElementById("url").value'),'https://example.com/mcp');
-    await surface.webContents.executeJavaScript('document.getElementById("name").value="";document.getElementById("url").value="";document.querySelector("label[for=description]").textContent="Campo alterado"');
-    assert.equal((await controls.pluginPrepare()).status,'manual');
     assert.equal(await surface.webContents.executeJavaScript('document.getElementById("name").value'),'');
-    await surface.webContents.executeJavaScript('document.querySelector("label[for=description]").textContent="Description"');
-    assert.equal((await controls.pluginPrepare()).status,'prepared');
-    assert.equal(await surface.webContents.executeJavaScript('document.querySelector("select").value'),'OAuth');
+    assert.equal(await surface.webContents.executeJavaScript('document.getElementById("url").value'),'');
     assert.equal(await surface.webContents.executeJavaScript('document.getElementById("consent").checked'),false);
-    console.log('PASS: cadastro do plugin preserva campos do usuário; formulário alterado falha sem preencher parcialmente, OAuth e consentimento ficam intactos.');
+    console.log('PASS: cadastro MCP abre a pagina sem ler, preencher ou consentir pelo DOM; metadados ficam no guia do Studio.');
 
     await window.webContents.executeJavaScript('document.getElementById("openPlugin").click();document.querySelector(".plugin-oauth").open=true;document.getElementById("pluginDialog").scrollTop=400');
     await pause(400);await fs.writeFile(path.join(__dirname,'../.data/plugin-setup-preview.png'),(await window.webContents.capturePage()).toPNG());
@@ -457,7 +447,7 @@ app.whenReady().then(async () => {
     for(let i=0;i<50;i++){if(surface.webContents.getURL()===chatURL && !surface.webContents.isLoading())break;await pause(50);}
     assert.equal(surface.webContents.getURL(),chatURL);await bridge.refresh();assert.equal(bridge.page.ready,true);assert.equal(bridge.activeId,originalChat);
     await until('document.getElementById("webReturnChat").hidden && !document.getElementById("pluginTest").disabled');
-    console.log('PASS: cadastro prepara nome/descrição/URL sem consentir ou instalar, na mesma sessão; guia OAuth verificado, rascunho e conversa preservados, sem janela adicional.');
+    console.log('PASS: cadastro MCP navega manualmente sem automacao DOM; guia OAuth verificado, rascunho e conversa preservados.');
     await window.webContents.executeJavaScript('document.getElementById("pluginTest").click()');
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("prompt").value'),'Rascunho original');
     assert.match(await window.webContents.executeJavaScript('document.getElementById("pluginDetails").textContent'), /rascunho/);
@@ -490,7 +480,6 @@ app.whenReady().then(async () => {
     await surface.webContents.executeJavaScript('document.querySelector("[data-testid=\\"stop-button\\"]").hidden=true');
     await bridge.refresh();
     await until('!document.getElementById("createConversationProject").disabled');
-    // Legacy unbound groups remain readable; new user creation is tested below via Product.
     await bridge.selectConversationProject((await bridge.createProject({name:'Site da loja'})).id);
     await until('!document.getElementById("conversationProjectDialog").open && document.getElementById("projectScopeName").textContent==="Site da loja" && !document.getElementById("prompt").disabled');
     const projectA = bridge.projects.find(p=>p.name==='Site da loja').id;
@@ -524,8 +513,6 @@ app.whenReady().then(async () => {
     assert.ok(bridge.chats.some(c=>c.id===organizedChat));assert.equal(bridge.drafts.state()[organizedChat].text,'Rascunho da loja');
     await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectB}"]').click()`);
     await until('document.getElementById("prompt").value==="Rascunho do jogo" && !document.getElementById("newChat").disabled');
-    // Electron webContents.reload() returns void. Await the real navigation,
-    // otherwise the post-reload assertion races the old renderer/disposal.
     const reloaded = new Promise((resolve, reject) => {
       const finish = error => {
         window.webContents.removeListener('did-finish-load', onLoaded);
