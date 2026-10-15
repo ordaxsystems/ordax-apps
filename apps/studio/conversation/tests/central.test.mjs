@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { centralViewModel, centralAccountCopy, centralPollDue, centralReadSources } from '../src/central.mjs';
 
 const product = () => ({
@@ -104,18 +105,32 @@ test('operator receipt view never materializes user text as action identity', ()
 
 test('Central truthfully shows missing official Runtime sign-in in portable builds', () => {
   const unavailable = centralAccountCopy(false, 'unavailable');
-  assert.equal(unavailable.action, 'Configurar Runtime');
+  assert.equal(unavailable.action, 'Verificar Runtime');
+  assert.equal(unavailable.label, 'Runtime indisponível');
   assert.match(unavailable.warning, /portátil não habilita login/);
   assert.ok(!unavailable.hint.includes('Entrar na Conta OrdaX'));
   const integrated = centralAccountCopy(false, 'available');
-  assert.equal(integrated.action, 'Entrar na Conta OrdaX');
+  assert.equal(integrated.action, 'Conectar este computador');
+  assert.equal(integrated.title, 'Conectar este computador');
+  assert.equal(integrated.state, 'disconnected');
   assert.ok(!integrated.warning.includes('portátil'));
   const unknown = centralAccountCopy(false, 'unknown');
-  assert.equal(unknown.action, 'Configurar Runtime');
+  assert.equal(unknown.action, 'Verificar Runtime');
   const connected = centralAccountCopy(true, 'unavailable');
   assert.ok(!connected.warning.includes('portátil'));
-  assert.equal(connected.action, 'Configurar Runtime');
+  assert.equal(connected.action, 'Abrir configuração');
+  assert.equal(connected.state, 'connected');
   assert.equal(Object.isFrozen(unavailable), true);
+});
+
+test('Central exposes one plain-language computer connection card', async () => {
+  const html = await readFile(new URL('../src/index.html', import.meta.url), 'utf8');
+  assert.match(html, /id="centralConnectionCard"/);
+  assert.match(html, /id="centralConnectionState"/);
+  assert.match(html, /id="centralConnectionDescription"/);
+  assert.match(html, /id="centralConnect"[^>]*>Conectar este computador<\/button>/);
+  assert.match(html, /id="productAccountTitle">Conectar este computador<\/h3>/);
+  assert.match(html, /Entrar e conectar este computador/);
 });
 
 test('Central polling is bounded to the visible page with a previous successful snapshot', () => {
@@ -172,6 +187,7 @@ test('Account is verified independently of devices and cannot project fake Centr
   assert.deepEqual(model.devices, []);
   assert.deepEqual(model.operations, []);
   const copy = centralAccountCopy(false, 'available', true);
-  assert.equal(copy.action, 'Configurar acesso remoto');
+  assert.equal(copy.action, 'Concluir conexão');
+  assert.equal(copy.state, 'account');
   assert.match(copy.warning, /não autorizado/);
 });

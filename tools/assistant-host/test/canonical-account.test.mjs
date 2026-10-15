@@ -10,9 +10,10 @@ const { invokeCanonicalProductSignIn, locateInstalledRuntime, validCredentials }
   require('../native/canonical-account.cjs');
 const schema = 'ordax.studio-product-account-session/1';
 const fixtureSubject = '00000000-0000-4000-8000-00000000000a';
+const fixtureDevice = '00000000-0000-4000-8000-00000000000b';
 const input = { email: 'user@example.com', password: 'private-password' };
 
-function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access_token: 'secret.jwt', email: input.email, subject_id: fixtureSubject }) + '\n' } = {}) {
+function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access_token: 'secret.jwt', email: input.email, subject_id: fixtureSubject, device_id: fixtureDevice, enrolled_now: true }) + '\n' } = {}) {
   const calls = [];
   const spawnProcess = (python, argv, options) => {
     calls.push({ python, argv, options });
@@ -35,7 +36,10 @@ function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access
 test('canonical subprocess is only stdio and the JWT never reaches argv/environment or a log', async () => {
   const f = fixture();
   const result = await invokeCanonicalProductSignIn(input, f);
-  assert.deepEqual(result, { token: 'secret.jwt', email: input.email, subjectId: fixtureSubject });
+  assert.deepEqual(result, {
+    token: 'secret.jwt', email: input.email, subjectId: fixtureSubject,
+    deviceId: fixtureDevice, enrolledNow: true,
+  });
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls[0].argv, ['-I','-u','-m','ordax_studio.electron_account_session']);
   assert.equal(f.calls[0].options.shell, false);

@@ -33,6 +33,53 @@
   .central-header-actions { display: flex; align-items: center; gap: 9px; }
   .central-header-actions .connect-secondary { margin: 0; }
   @media (max-width: 700px) { .central-header-actions { width: 100%; flex-wrap: wrap; } .central-header-actions button { flex: 1; } }
+  .central-connection-card {
+    max-width: 1440px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 22px 24px;
+    border: 1px solid #315276;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #122033 0%, var(--studio-panel) 72%);
+  }
+  .central-connection-copy { min-width: 0; max-width: 820px; }
+  .central-connection-state {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 4px 9px;
+    margin-bottom: 10px;
+    border: 1px solid #35587a;
+    border-radius: 999px;
+    color: #9ecbff;
+    background: #0d1c2c;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .central-connection-card h2 { margin: 0 0 7px; font-size: 19px; font-weight: 590; letter-spacing: -.3px; }
+  .central-connection-card p { margin: 0; color: var(--studio-muted); font-size: 13px; line-height: 1.55; }
+  .central-connection-card > button { flex: 0 0 auto; min-width: 190px; }
+  .central-connection-card[data-state=connected] { border-color: #356453; background: linear-gradient(135deg, #10251d 0%, var(--studio-panel) 72%); }
+  .central-connection-card[data-state=connected] .central-connection-state { border-color: #356453; color: #92ddb9; background: #10231d; }
+  .central-connection-card[data-state=account] { border-color: #625b37; background: linear-gradient(135deg, #27230f 0%, var(--studio-panel) 72%); }
+  .central-connection-card[data-state=account] .central-connection-state { border-color: #746b3c; color: #e6d889; background: #26220f; }
+  .central-connection-card[data-state=unavailable] { border-color: #68404a; background: linear-gradient(135deg, #2b151c 0%, var(--studio-panel) 72%); }
+  .central-connection-card[data-state=unavailable] .central-connection-state { border-color: #784653; color: #efb7c3; background: #2c151d; }
+  .product-account {
+    margin: 14px 0 18px;
+    padding: 18px;
+    border: 1px solid #315276;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #101d2c 0%, #0c131c 100%);
+  }
+  .product-account-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+  .product-account-heading h3 { margin: 5px 0 6px; font-size: 18px; font-weight: 580; }
+  .product-account-heading p { margin: 0; max-width: 720px; color: var(--studio-muted); font-size: 12px; line-height: 1.55; }
+  .product-account-state { flex: 0 0 auto; padding: 5px 9px; border: 1px solid #5a4e36; border-radius: 999px; color: #dfc98d; font-size: 10px; }
+  .product-account .connect-primary { margin-top: 14px; }
   .central-provenance {
     display: flex;
     flex-wrap: wrap;
@@ -184,6 +231,10 @@
     .central-panel { padding: 20px 16px 30px; }
     .central-header { flex-wrap: wrap; }
     .central-header button { width: 100%; }
+    .central-connection-card { flex-direction: column; align-items: stretch; gap: 18px; padding: 18px; }
+    .central-connection-card > button { width: 100%; min-width: 0; }
+    .product-account-heading { flex-direction: column; gap: 10px; }
+    .product-account-state { align-self: flex-start; }
     .central-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .central-metrics > div { min-height: 94px; padding: 16px; }
     .central-right { grid-template-columns: 1fr; }

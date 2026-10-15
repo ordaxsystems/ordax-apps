@@ -214,7 +214,20 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('localRuntimeCheck').disabled = typeof host.localRuntimeObservation !== 'function';
   if ($('localRuntimeCheck').disabled) $('localRuntimeObservation').textContent = 'Observação do serviço local não disponível neste host. Nenhuma autorização foi inferida.';
   $('localRuntimeCheck').addEventListener('click', () => { void refreshLocalObservation(); });
-  async function open() { showWorkspace(true); await refresh(); void refreshLocalObservation(); }
+  async function open({ focusAccount = false } = {}) {
+    showWorkspace(true);
+    if (focusAccount && accountHost?.available) {
+      try { accountAvailable = await accountHost.available() === true; }
+      catch { accountAvailable = false; }
+    }
+    await refresh();
+    void refreshLocalObservation();
+    controls();
+    if (focusAccount && !$('productAccountSection').hidden) requestAnimationFrame(() => {
+      $('productAccountSection').scrollIntoView({ block: 'start', behavior: 'smooth' });
+      $('productEmail').focus();
+    });
+  }
   $('openProject').addEventListener('click', () => task(open));
   $('openActivity').addEventListener('click', () => task(async () => { await open(); tab('studioActivity'); $('studioTabActivity').focus(); }));
   $('openContext').addEventListener('click', () => task(async () => { await open(); tab('studioContinuity'); $('studioTabContinuity').focus(); }));
@@ -245,12 +258,19 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     $('productAuthStatus').textContent = 'Confirmando sessão pela autoridade do Runtime instalado…';
     try {
       const result = await accountHost.signIn({ email, password });
-      if (result?.connected !== true || result?.configured !== true ||
-          !Array.isArray(result.targets) || !Array.isArray(result.operations)) {
-        throw new Error('A Plataforma não confirmou a sessão e o catálogo autorizado.');
+      const enrollment = result?.deviceEnrollment;
+      if (result?.accountConnected !== true || result?.configured !== true ||
+          !Array.isArray(result.targets) || !Array.isArray(result.operations) ||
+          !enrollment || typeof enrollment.deviceId !== 'string' ||
+          !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(enrollment.deviceId) ||
+          typeof enrollment.enrolledNow !== 'boolean' ||
+          typeof enrollment.runtimeRestartRequired !== 'boolean') {
+        throw new Error('O Runtime não confirmou a conta e a identidade deste computador.');
       }
       await applyConnectedState(result);
-      $('productAuthStatus').textContent = 'Conta OrdaX autenticada. As ações dependem dos grants do dispositivo e projeto.';
+      $('productAuthStatus').textContent = enrollment.runtimeRestartRequired
+        ? 'Conta autenticada e computador registrado. Reinicie o Runtime para concluir a conexão deste PC.'
+        : 'Conta autenticada e computador vinculado. O acesso remoto continua limitado às permissões autorizadas.';
     } catch (error) {
       $('productAuthStatus').textContent = String(error?.message || 'Não foi possível autenticar a conta.').slice(0, 300);
     } finally { accountBusy = false; controls(); }

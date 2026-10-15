@@ -599,7 +599,7 @@ async function pollWeb() {
   } catch (error) { notify(error.message); } finally { pollRunning = false; }
 }
 const previewPanel = createPreviewPanel({ nativePreview: window.ordaxStudioPreviewHost, nativeWeb, project, configure: openProjectOptions, openProjects: () => navigation.go('projects'), notify });
-const centralPanel = createCentralPanel({ host, openRuntime: () => projectPanel.open(), accountHost: window.ordaxStudioAccountHost });
+const centralPanel = createCentralPanel({ host, openRuntime: () => projectPanel.open({ focusAccount: true }), accountHost: window.ordaxStudioAccountHost });
 navigation = createNavigation({
   state: () => ({ chats, projects, activeId, projectId: activeProjectId, disabled: locked() || !initialized, previewAvailable: Boolean(window.ordaxStudioPreviewHost) }),
   openChat: id => run(() => openConversation(id)), openProject: id => run(() => selectProjectScope(id)),

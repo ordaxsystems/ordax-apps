@@ -41,9 +41,17 @@
       </section>
       <section id="centralPanel" class="central-panel" aria-labelledby="centralTitle" hidden>
         <header class="central-header">
-          <div><p class="eyebrow">ORDAX STUDIO / CENTRAL</p><h1 id="centralTitle" tabindex="-1">Central</h1><p>Dispositivos e atividade em uma única visão.</p></div>
-          <div class="central-header-actions"><button id="centralConnect" type="button" class="connect-secondary" hidden>Conectar OrdaX</button><button id="centralRefresh" type="button" class="directory-primary">Atualizar estado</button></div>
+          <div><p class="eyebrow">ORDAX STUDIO / CENTRAL</p><h1 id="centralTitle" tabindex="-1">Central</h1><p>Conecte este computador e acompanhe os dispositivos autorizados.</p></div>
+          <div class="central-header-actions"><button id="centralRefresh" type="button" class="connect-secondary">Atualizar</button></div>
         </header>
+        <section id="centralConnectionCard" class="central-connection-card" data-state="unknown" aria-labelledby="centralConnectionTitle">
+          <div class="central-connection-copy">
+            <span id="centralConnectionState" class="central-connection-state">Verificando…</span>
+            <h2 id="centralConnectionTitle">Conectar este computador</h2>
+            <p id="centralConnectionDescription">Entre na sua Conta OrdaX para vincular este PC ao Runtime e torná-lo disponível aos clientes autorizados.</p>
+          </div>
+          <button id="centralConnect" type="button" class="directory-primary">Conectar este computador</button>
+        </section>
         <div class="central-provenance" role="status"><span id="centralProductStatus">Product não verificado</span><small id="centralChecked">Sem consulta nesta sessão</small></div>
         <div class="central-metrics" aria-label="Resumo do Product">
           <div><span id="centralTotal">—</span><small>Dispositivos</small></div>
@@ -135,13 +143,20 @@
   <section id="projectDialog" hidden class="studio-workspace" aria-labelledby="projectTitle">
     <div class="dialog-heading"><div><p class="eyebrow">CONTEXTO E OPERAÇÕES</p><h2 id="projectTitle">Espaço de trabalho</h2></div><button id="projectClose" class="icon-button" aria-label="Voltar à conversa">← Conversa</button></div>
     <div class="runtime-connection"><span id="runtimeState">Conferindo conexão…</span><button id="runtimeConnect" class="connect-secondary">Conectar Runtime</button></div>
-    <section id="productAccountSection" class="product-account" aria-label="Conta OrdaX" hidden>
-      <p class="dialog-help">Conectar Conta OrdaX — o login usa o Runtime instalado e a autorização de projetos permanece na Plataforma.</p>
-      <div class="project-selectors">
-        <label>E-mail OrdaX<input id="productEmail" class="text-input" type="email" autocomplete="username" maxlength="320"></label>
-        <label>Senha OrdaX<input id="productPassword" class="text-input" type="password" autocomplete="current-password" maxlength="2048"></label>
+    <section id="productAccountSection" class="product-account" aria-labelledby="productAccountTitle" hidden>
+      <div class="product-account-heading">
+        <div>
+          <span class="eyebrow">CONTA ORDAX</span>
+          <h3 id="productAccountTitle">Conectar este computador</h3>
+          <p>Entre na sua Conta OrdaX. O Studio registra este PC pelo Runtime oficial; a senha não é armazenada pelo Studio.</p>
+        </div>
+        <span class="product-account-state">Não conectado</span>
       </div>
-      <button id="productSignIn" type="button" class="connect-primary">Conectar Conta OrdaX</button>
+      <div class="project-selectors">
+        <label>E-mail<input id="productEmail" class="text-input" type="email" autocomplete="username" maxlength="320"></label>
+        <label>Senha<input id="productPassword" class="text-input" type="password" autocomplete="current-password" maxlength="2048"></label>
+      </div>
+      <button id="productSignIn" type="button" class="connect-primary">Entrar e conectar este computador</button>
       <p id="productAuthStatus" class="dialog-help" role="status" aria-live="polite"></p>
     </section>
     <p id="localRuntimeObservation" class="dialog-help" role="status">Serviço local não verificado. Presença não significa autorização.</p>

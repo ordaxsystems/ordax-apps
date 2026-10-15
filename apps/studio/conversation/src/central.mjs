@@ -62,24 +62,49 @@ export function centralViewModel(raw, observation) {
 // tries to mint credentials or infer grants from the ChatGPT Web login.
 export function centralAccountCopy(connected, available, accountVerified = false) {
   if (connected) return Object.freeze({
-    action: 'Configurar Runtime',
-    hint: 'Abrir a configuração Product existente.',
+    state: 'connected',
+    label: 'Conectado',
+    title: 'Computador disponível',
+    description: 'Este computador está autorizado no OrdaX. As ações continuam limitadas pelas permissões concedidas.',
+    action: 'Abrir configuração',
+    hint: 'Abrir a configuração deste computador e das permissões do Runtime.',
     warning: 'Dispositivos autorizados não equivalem a clientes Relay conectados.',
   });
   if (accountVerified) return Object.freeze({
-    action: 'Configurar acesso remoto',
-    hint: 'Conta autenticada. Dispositivos exigem um cliente OAuth e o Relay autorizado.',
+    state: 'account',
+    label: 'Conta conectada',
+    title: 'Concluir conexão deste computador',
+    description: 'Sua Conta OrdaX está autenticada, mas este computador ainda não foi autorizado como dispositivo remoto.',
+    action: 'Concluir conexão',
+    hint: 'Abrir a configuração do Runtime para concluir o vínculo deste computador.',
     warning: 'Conta OrdaX autenticada; acesso remoto ainda não autorizado. Nenhum computador foi presumido conectado.',
   });
   if (available === 'unavailable') return Object.freeze({
-    action: 'Configurar Runtime',
-    hint: 'Este candidato não tem login OrdaX integrado; consulte o Runtime oficial.',
+    state: 'unavailable',
+    label: 'Runtime indisponível',
+    title: 'Verificar instalação',
+    description: 'Esta edição não expõe o login OrdaX integrado. Use o Studio instalado junto do Runtime oficial.',
+    action: 'Verificar Runtime',
+    hint: 'Abrir a configuração e o diagnóstico do Runtime instalado.',
     warning: 'Esta versão portátil não habilita login na Conta OrdaX. O acesso Product exige o Studio integrado ao Runtime oficial.',
   });
+  if (available === 'available') return Object.freeze({
+    state: 'disconnected',
+    label: 'Não conectado',
+    title: 'Conectar este computador',
+    description: 'Entre na sua Conta OrdaX para registrar este PC pelo Runtime oficial e torná-lo disponível aos clientes autorizados.',
+    action: 'Conectar este computador',
+    hint: 'Abrir o login da Conta OrdaX e conectar este computador.',
+    warning: 'Nenhum computador foi autorizado ainda.',
+  });
   return Object.freeze({
-    action: available === 'available' ? 'Entrar na Conta OrdaX' : 'Configurar Runtime',
-    hint: 'Abrir o fluxo de Conta OrdaX e Runtime existente.',
-    warning: 'Dispositivos autorizados não equivalem a clientes Relay conectados.',
+    state: 'unknown',
+    label: 'Verificando…',
+    title: 'Conectar este computador',
+    description: 'O Studio está verificando se o Runtime oficial oferece o login da Conta OrdaX.',
+    action: 'Verificar Runtime',
+    hint: 'Abrir a configuração do Runtime enquanto a disponibilidade da conta é verificada.',
+    warning: 'A disponibilidade do Runtime ainda não foi confirmada.',
   });
 }
 function el(tag, className, label) {
@@ -130,9 +155,12 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
   let filter = '', operationFilter = 'all';
   const metric = (id, value) => { $(id).textContent = value === null ? '—' : String(value); };
   function paint() {
-    $('centralConnect').hidden = model.state === 'product-connected';
-    $('centralConnect').disabled = checking || typeof openRuntime !== 'function';
     const connection = centralAccountCopy(model.state === 'product-connected', accountAvailability, model.state === 'account-connected');
+    $('centralConnectionCard').dataset.state = connection.state;
+    $('centralConnectionState').textContent = connection.label;
+    $('centralConnectionTitle').textContent = connection.title;
+    $('centralConnectionDescription').textContent = connection.description;
+    $('centralConnect').disabled = checking || typeof openRuntime !== 'function';
     $('centralConnect').textContent = connection.action;
     $('centralConnect').title = connection.hint;
     $('centralRefresh').disabled = checking;
