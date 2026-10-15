@@ -75,3 +75,36 @@ test('loopback Studio exposes only its exact shared Product contract without dup
   assert.equal((await f.request('/contracts/secret.mjs')).status, 404);
   assert.equal((await f.request('/contracts/product-runtime.mjs?other=true')).status, 404);
 });
+
+test('loopback Studio serves the canonical semantic observer with executable MIME and no path fallback', async t => {
+  const f = await fixture(t);
+  const response = await f.request('/assets/semantic_ui.js');
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /text\/javascript/);
+  const source = await response.text();
+  assert.match(source, /ordax\.studio-semantic-ui-snapshot\/1/);
+  assert.match(source, /Object\.freeze/);
+  assert.equal((await f.request('/assets/../assets/semantic_ui.js?other=true')).status, 404);
+  assert.equal((await f.request('/assets/semantic_ui.js?other=true')).status, 404);
+});
+
+test('MCP status route is session-bound and independent from Web conversation state', async t => {
+  const bridge = { state: () => ({ chats: [] }), models: () => [] };
+  const mcpObserver = { status: async ({ refresh }) => ({
+    schema: 'ordax.studio-mcp-observation/1', authority: 'none', uiRequired: false, domRequired: false,
+    service: { reachable: Boolean(refresh), status: refresh ? 'available' : 'unchecked' },
+    runtime: { observed: true, authorization: 'not-established' }, execution: { ready: null },
+  }) };
+  const host = await createWebServer({ bridge, mcpObserver }); t.after(() => host.close());
+  assert.equal((await fetch(host.origin + '/api/mcp/status')).status, 401);
+  const initial = await fetch(host.origin); const cookie = initial.headers.get('set-cookie').split(';')[0];
+  const response = await fetch(host.origin + '/api/mcp/status?refresh=1', { headers: { Cookie: cookie } });
+  assert.equal(response.status, 200);
+  const value = await response.json();
+  assert.equal(value.uiRequired, false);
+  assert.equal(value.domRequired, false);
+  assert.equal(value.authority, 'none');
+  assert.equal(value.service.reachable, true);
+  assert.equal(value.runtime.authorization, 'not-established');
+  assert.equal(value.execution.ready, null);
+});

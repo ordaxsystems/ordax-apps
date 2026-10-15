@@ -3,6 +3,7 @@ import { relayAdminReadiness, relayReadinessText } from './relay-readiness.mjs';
 export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snapshot, showConversation = () => {} }) {
   const $ = id => document.getElementById(id);
   let service = { status: 'unchecked' }, checking = false, detailMessage = '';
+  let mcpSnapshot = null;
   let relayChecking = false, relaySnapshot = null, relayIssue = '';
   let labChecking = false, labSnapshot = null;
   function render() {
@@ -27,7 +28,9 @@ export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snap
       (relaySnapshot ? relayReadinessText(relaySnapshot) :
         'Relay ainda não ativado. Verifique a conexão Product para auditar apenas os dispositivos já autorizados neste Studio.');
     $('pluginService').textContent = checking ? 'Verificando…' : service.status === 'available' ? 'Disponível · OAuth pronto' : service.status === 'unavailable' ? 'Verificação falhou' : service.status === 'unsupported' ? 'Indisponível neste host' : 'Ainda não verificado';
-    $('pluginConversation').textContent = snapshot()?.ordaxSelected ? 'ORDAX selecionado no compositor Web' : 'Seleção no ChatGPT não verificada';
+    $('pluginConversation').textContent = mcpSnapshot?.schema === 'ordax.studio-mcp-observation/1'
+      ? `MCP direto · UI/DOM não são requisito${mcpSnapshot.runtime?.observed ? ' · Runtime observado' : ' · Runtime não observado'}`
+      : 'MCP direto · UI/DOM não são requisito';
     $('pluginDetails').textContent = detailMessage || service.error || (service.configurationDrift ? 'O login publicado difere da configuração do repositório. A verificação confirma somente disponibilidade e OAuth, não uma implantação atualizada.' : 'Disponibilidade do servidor não confirma login, instalação do plugin ou permissões do computador.');
     $('pluginCheck').disabled = checking || !nativeWeb?.pluginCheck;
     $('pluginOpen').disabled = !nativeWeb?.pluginSetup;
@@ -41,16 +44,18 @@ export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snap
   }
   $('openPlugin').addEventListener('click', async () => {
     $('pluginDialog').showModal(); render();
-    try { if (nativeWeb?.pluginInfo) service = await nativeWeb.pluginInfo(); render(); } catch (error) { notify(error.message); }
+    try {
+      if (nativeWeb?.pluginInfo) service = await nativeWeb.pluginInfo();
+      if (typeof host?.mcpStatus === 'function') mcpSnapshot = await host.mcpStatus(false);
+      render();
+    } catch (error) { notify(error.message); }
   });
   $('relayCheck').addEventListener('click', async () => {
     if (relayChecking || typeof host?.runtimeState !== 'function') return;
     relayChecking = true; relaySnapshot = null; relayIssue = ''; render();
-    try {
-      relaySnapshot = relayAdminReadiness(await host.runtimeState());
-    } catch {
-      relayIssue = 'Não foi possível verificar a conexão Product. O Relay não foi declarado ativo.';
-    } finally { relayChecking = false; render(); }
+    try { relaySnapshot = relayAdminReadiness(await host.runtimeState()); }
+    catch { relayIssue = 'Não foi possível verificar a conexão Product. O Relay não foi declarado ativo.'; }
+    finally { relayChecking = false; render(); }
   });
   $('relayLabCheck').addEventListener('click', async () => {
     if (labChecking || typeof host?.relayObservation !== 'function') return;
@@ -61,7 +66,15 @@ export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snap
   });
   $('pluginCheck').addEventListener('click', async () => {
     checking = true; detailMessage = ''; render();
-    try { service = await nativeWeb.pluginCheck(); } catch (error) { notify(error.message); }
+    try {
+      if (typeof host?.mcpStatus === 'function') {
+        mcpSnapshot = await host.mcpStatus(true);
+        service = { status: mcpSnapshot.service?.status || 'unavailable', mcpURL: mcpSnapshot.service?.endpoint || '', oauthSettings: mcpSnapshot.service?.oauthSettings || null, configurationDrift: mcpSnapshot.service?.configurationDrift === true };
+        detailMessage = mcpSnapshot.service?.reachable
+          ? (mcpSnapshot.runtime?.observed ? 'MCP disponível e Runtime local observado. Autoridade continua em grants/Control Plane.' : 'MCP disponível. Runtime local ainda não foi observado neste computador.')
+          : 'O endpoint MCP não pôde ser confirmado. Nenhuma conexão foi presumida.';
+      } else service = await nativeWeb.pluginCheck();
+    } catch (error) { notify(error.message); }
     finally { checking = false; render(); }
   });
   $('pluginCopy').addEventListener('click', async () => {
@@ -73,12 +86,12 @@ export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snap
     try { await navigator.clipboard.writeText(input.value); detailMessage = 'Campo copiado. Cole no cadastro do ChatGPT.'; render(); } catch { input.select(); }
   });
   for (const [id, method] of [['pluginOpen', 'pluginSetup'], ['pluginReturn', 'pluginReturn'], ['pluginBrowser', 'pluginBrowser']]) $(id).addEventListener('click', async () => {
-    try { if (id !== 'pluginBrowser') showConversation(); if (id === 'pluginOpen') $('pluginDialog').close(); const value = await nativeWeb[id === 'pluginOpen' && nativeWeb.pluginPrepare ? 'pluginPrepare' : method](); if (value?.message) { detailMessage = value.message; render(); notify(value.message); } } catch (error) { notify(error.message); }
+    try { if (id !== 'pluginBrowser') showConversation(); if (id === 'pluginOpen') $('pluginDialog').close(); const value = await nativeWeb[method](); if (value?.message) { detailMessage = value.message; render(); notify(value.message); } } catch (error) { notify(error.message); }
   });
   $('pluginTest').addEventListener('click', () => {
     try {
-      preparePrompt('Use o plugin ORDAX Studio para verificar a conexão. Consulte ordax_session e ordax_targets e informe os dispositivos e as permissões disponíveis. Faça somente verificações de leitura.');
-      $('pluginDialog').close(); notify('Teste preparado. Selecione ORDAX Studio no compositor Web e envie quando estiver pronto.');
+      preparePrompt('Use o MCP ORDAX Studio já conectado ao ChatGPT. Consulte ordax_session e ordax_targets e informe os dispositivos e as permissões disponíveis. Faça somente verificações de leitura. Não use automação visual, DOM ou controle da tela para descobrir a conexão.');
+      $('pluginDialog').close(); notify('Teste MCP preparado. Envie pelo cliente de IA com o conector ORDAX habilitado.');
     } catch (error) { detailMessage = error.message; render(); }
   });
   return Object.freeze({ render });

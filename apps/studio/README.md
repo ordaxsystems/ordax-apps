@@ -1,6 +1,10 @@
 # ORDAX Studio
 
-Candidato 0.14.1: [navegação responsiva com Conversa, Continuar e Projetos](../../docs/STUDIO-RESPONSIVE-NAVIGATION.md), na mesma fonte portátil; preview em tela inteira no mobile e lado a lado no desktop.
+Candidato 0.15.1: consolida a fundação **Agentic Apps** e atualiza a apresentação canônica com o layout Agentic Studio: hierarquia única, maior área útil para conversa/editor/preview, workspace mais denso e responsividade revisada, preservando todos os IDs semânticos e boundaries do Runtime. [Plano e critérios](../../docs/AGENTIC-APP-TESTING.md).
+
+O 0.15.0 iniciou a fundação com semântica de UI empacotada, observer local read-only, cenários orientados a objetivo e Goal Runner observacional, sem conceder autoridade nem substituir Runtime/grants.
+
+O candidato 0.14.2 introduziu [navegação responsiva com Conversa, Continuar e Projetos](../../docs/STUDIO-RESPONSIVE-NAVIGATION.md), na mesma fonte portátil; preview em tela inteira no mobile e lado a lado no desktop.
 
 A versão Web do OS ainda depende da composição do host e da entrega da interface canônica. [Estado real e critérios de integração Web](../../docs/STUDIO-WEB-INTEGRATION.md). Candidato 0.14.1 corrige falhas de inicialização e oferece tentativa explícita sem recriar a sessão.
 

@@ -37,7 +37,6 @@ export async function* respond(data, fetchImpl = fetch, { headersTimeoutMs = 200
 
 export async function request(url, method = 'GET', data, fetchImpl = fetch) {
   const response = await fetchImpl(url, { method, credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(20000), headers: data ? { 'Content-Type': 'application/json' } : {}, body: data ? JSON.stringify(data) : undefined });
-  // Static previews do not provide this transport; HTML is never app state.
   if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') || '')) {
     throw new Error('O host do Studio não está disponível neste endereço. Abra o app pelo host configurado; uma página estática não conecta o Runtime nem o ChatGPT.');
   }
@@ -48,7 +47,6 @@ export async function request(url, method = 'GET', data, fetchImpl = fetch) {
   return payload;
 }
 
-// Provider-neutral port. Production environments inject a platform/runtime adapter.
 export function createHttpHost() {
   return Object.freeze({
     state: since => request('/api/state' + (Number.isFinite(since) ? '?since=' + since : '')),
@@ -57,6 +55,7 @@ export function createHttpHost() {
     saveDraft: (key, entry) => request('/api/drafts', 'PUT', { key, entry }),
     runtimeState: since => request('/api/runtime' + (Number.isFinite(since) ? '?since=' + since : '')),
     localRuntimeObservation: () => request('/api/runtime/local-observation'),
+    mcpStatus: (refresh = false) => request('/api/mcp/status' + (refresh ? '?refresh=1' : '')),
     relayObservation: () => request('/api/relay'),
     runtimeConnect: () => request('/api/runtime/connect', 'POST', {}),
     runtimeSubmit: data => request('/api/runtime/operations', 'POST', data),

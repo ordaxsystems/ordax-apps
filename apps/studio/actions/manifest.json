@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-manifest/1",
   "appId": "studio",
-  "appVersion": "0.14.1",
+  "appVersion": "0.15.1",
   "authority": "none",
   "execution": "proposal-only",
   "capabilities": [
@@ -13,14 +13,8 @@
       "description": "Consultar os projetos disponíveis no ORDAX Studio.",
       "sourceClass": "first-party",
       "platform": "ordax",
-      "provider": {
-        "kind": "first-party-native",
-        "adapterId": "studio-native",
-        "revision": "2"
-      },
-      "binding": {
-        "payloadSha256": null
-      },
+      "provider": {"kind": "first-party-native", "adapterId": "studio-native", "revision": "2"},
+      "binding": {"payloadSha256": null},
       "parameters": [],
       "riskClass": "read-only",
       "confirmation": "none",
@@ -36,22 +30,9 @@
       "description": "Selecionar um projeto existente como contexto ativo.",
       "sourceClass": "first-party",
       "platform": "ordax",
-      "provider": {
-        "kind": "first-party-native",
-        "adapterId": "studio-native",
-        "revision": "2"
-      },
-      "binding": {
-        "payloadSha256": null
-      },
-      "parameters": [
-        {
-          "id": "project",
-          "type": "string",
-          "required": true,
-          "maxLength": 240
-        }
-      ],
+      "provider": {"kind": "first-party-native", "adapterId": "studio-native", "revision": "2"},
+      "binding": {"payloadSha256": null},
+      "parameters": [{"id": "project", "type": "string", "required": true, "maxLength": 240}],
       "riskClass": "local-change",
       "confirmation": "none",
       "executionAuthorized": false,
@@ -66,22 +47,9 @@
       "description": "Consultar inventário, busca, diff ou briefing do projeto selecionado.",
       "sourceClass": "first-party",
       "platform": "ordax",
-      "provider": {
-        "kind": "first-party-native",
-        "adapterId": "studio-native",
-        "revision": "2"
-      },
-      "binding": {
-        "payloadSha256": null
-      },
-      "parameters": [
-        {
-          "id": "query",
-          "type": "string",
-          "required": false,
-          "maxLength": 1024
-        }
-      ],
+      "provider": {"kind": "first-party-native", "adapterId": "studio-native", "revision": "2"},
+      "binding": {"payloadSha256": null},
+      "parameters": [{"id": "query", "type": "string", "required": false, "maxLength": 1024}],
       "riskClass": "read-only",
       "confirmation": "none",
       "executionAuthorized": false,
@@ -96,28 +64,9 @@
       "description": "Consultar ou controlar o preview supervisionado do projeto.",
       "sourceClass": "first-party",
       "platform": "ordax",
-      "provider": {
-        "kind": "first-party-native",
-        "adapterId": "studio-native",
-        "revision": "2"
-      },
-      "binding": {
-        "payloadSha256": null
-      },
-      "parameters": [
-        {
-          "id": "operation",
-          "type": "enum",
-          "required": true,
-          "values": [
-            "status",
-            "start",
-            "stop",
-            "capture",
-            "logs"
-          ]
-        }
-      ],
+      "provider": {"kind": "first-party-native", "adapterId": "studio-native", "revision": "2"},
+      "binding": {"payloadSha256": null},
+      "parameters": [{"id": "operation", "type": "enum", "required": true, "values": ["status", "start", "stop", "capture", "logs"]}],
       "riskClass": "local-change",
       "confirmation": "policy-gated",
       "executionAuthorized": false,
@@ -132,14 +81,8 @@
       "description": "Consultar saúde, runtime e estado do produto para o projeto atual.",
       "sourceClass": "first-party",
       "platform": "ordax",
-      "provider": {
-        "kind": "first-party-native",
-        "adapterId": "studio-native",
-        "revision": "2"
-      },
-      "binding": {
-        "payloadSha256": null
-      },
+      "provider": {"kind": "first-party-native", "adapterId": "studio-native", "revision": "2"},
+      "binding": {"payloadSha256": null},
       "parameters": [],
       "riskClass": "read-only",
       "confirmation": "none",
@@ -155,26 +98,9 @@
       "description": "Abrir uma URL HTTP ou HTTPS no navegador gerenciado pelo Runtime.",
       "sourceClass": "first-party",
       "platform": "ordax",
-      "provider": {
-        "kind": "first-party-native",
-        "adapterId": "studio-native",
-        "revision": "2"
-      },
-      "binding": {
-        "payloadSha256": null
-      },
-      "parameters": [
-        {
-          "id": "url",
-          "type": "uri",
-          "required": true,
-          "maxLength": 2048,
-          "schemes": [
-            "http",
-            "https"
-          ]
-        }
-      ],
+      "provider": {"kind": "first-party-native", "adapterId": "studio-native", "revision": "2"},
+      "binding": {"payloadSha256": null},
+      "parameters": [{"id": "url", "type": "uri", "required": true, "maxLength": 2048, "schemes": ["http", "https"]}],
       "riskClass": "external-effect",
       "confirmation": "policy-gated",
       "executionAuthorized": false,
@@ -189,27 +115,9 @@
       "description": "Preparar ou consultar a integração autorizada do Blender.",
       "sourceClass": "first-party",
       "platform": "ordax",
-      "provider": {
-        "kind": "first-party-native",
-        "adapterId": "studio-native",
-        "revision": "2"
-      },
-      "binding": {
-        "payloadSha256": null
-      },
-      "parameters": [
-        {
-          "id": "operation",
-          "type": "enum",
-          "required": true,
-          "values": [
-            "prepare",
-            "install-bridge",
-            "list",
-            "start"
-          ]
-        }
-      ],
+      "provider": {"kind": "first-party-native", "adapterId": "studio-native", "revision": "2"},
+      "binding": {"payloadSha256": null},
+      "parameters": [{"id": "operation", "type": "enum", "required": true, "values": ["prepare", "install-bridge", "list", "start"]}],
       "riskClass": "local-change",
       "confirmation": "policy-gated",
       "executionAuthorized": false,

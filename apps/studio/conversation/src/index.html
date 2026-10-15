@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="../assets/app.css">
   <link rel="stylesheet" href="../assets/layout.css">
   <link rel="stylesheet" href="../assets/central.css">
+  <link rel="stylesheet" href="../assets/agentic-layout.css">
 </head>
 <body class="studio-home" data-studio-page="conversation">
   <div class="app">
@@ -238,11 +239,11 @@
   </dialog>
   <dialog id="pluginDialog" class="dialog plugin-dialog" aria-labelledby="pluginTitle">
     <div class="dialog-heading"><div><p class="eyebrow">CHATGPT E COMPUTADOR</p><h2 id="pluginTitle">ORDAX Studio</h2></div><button class="icon-button" data-close="pluginDialog" aria-label="Fechar">×</button></div>
-    <p class="dialog-description">Conecte o plugin à mesma conta ChatGPT usada no app. O ChatGPT poderá consultar a tela, trabalhar com projetos e usar as ferramentas autorizadas no seu dispositivo OrdaX.</p>
-    <div class="session-actions"><button id="pluginOpen" class="connect-primary">Preparar cadastro no ChatGPT</button><button id="pluginReturn" class="connect-secondary">Voltar à conversa Web</button><button id="pluginBrowser" class="connect-secondary">Abrir no navegador</button></div>
-    <ol class="plugin-steps"><li>Abra o cadastro no ChatGPT na área da conversa. Em <strong>Plugins → Adicionar → Criar servidor MCP personalizado</strong>, volte ao Studio e use <strong>Preparar cadastro</strong> novamente para preencher nome, descrição e URL. Se o formulário mudou, copie os campos abaixo.</li><li>Escolha <strong>URL do servidor</strong> e autenticação <strong>OAuth</strong>. Abra as configurações avançadas e siga o guia OAuth.</li><li>Leia o aviso do ChatGPT, marque <strong>Entendo e quero continuar</strong> se concordar e use <strong>Criar como plugin</strong>. Instale o plugin e conclua o login OrdaX quando solicitado.</li><li>Use <strong>Voltar à conversa Web</strong> e selecione <strong>@ORDAX Studio</strong> no compositor. Vincule o dispositivo e autorize as capacidades no OrdaX Studio.</li></ol>
+    <p class="dialog-description">O ORDAX Studio usa o MCP autenticado como caminho operacional. ChatGPT Web &eacute; apenas uma superf&iacute;cie opcional: arquivos, projetos, terminal e demais capacidades autorizadas passam por Control Plane, grants e ORDAX Runtime, sem automa&ccedil;&atilde;o visual ou leitura da tela.</p>
+    <div class="session-actions"><button id="pluginOpen" class="connect-primary">Abrir cadastro no ChatGPT</button><button id="pluginReturn" class="connect-secondary">Voltar à conversa Web</button><button id="pluginBrowser" class="connect-secondary">Abrir no navegador</button></div>
+    <ol class="plugin-steps"><li>Cadastre uma vez o servidor MCP abaixo no cliente de IA e conclua o OAuth da Conta OrdaX.</li><li>O Control Plane valida identidade e grants; o ORDAX Runtime no computador executa somente a&ccedil;&otilde;es tipadas permitidas.</li><li>A janela do Studio e a p&aacute;gina do ChatGPT n&atilde;o s&atilde;o requisitos para executar a&ccedil;&otilde;es MCP. Elas servem apenas para configura&ccedil;&atilde;o, observa&ccedil;&atilde;o e trabalho interativo.</li><li>Use <strong>Verificar MCP</strong> para diagnosticar servi&ccedil;o, OAuth p&uacute;blico e Runtime sem depender do DOM do provider.</li></ol>
     <label class="field-label" for="pluginName">Nome</label><div class="plugin-endpoint"><input id="pluginName" class="text-input" readonly value="ORDAX Studio"><button data-plugin-copy="pluginName" class="connect-secondary">Copiar</button></div>
-    <label class="field-label" for="pluginDescription">Descrição (opcional)</label><div class="plugin-endpoint"><textarea id="pluginDescription" class="text-input" readonly rows="3">Conecta o ChatGPT aos dispositivos OrdaX para consultar a tela e trabalhar com arquivos, projetos e ferramentas autorizadas.</textarea><button data-plugin-copy="pluginDescription" class="connect-secondary">Copiar</button></div>
+    <label class="field-label" for="pluginDescription">Descrição (opcional)</label><div class="plugin-endpoint"><textarea id="pluginDescription" class="text-input" readonly rows="3">Conecta clientes de IA ao MCP OrdaX para usar projetos, arquivos, terminal e ferramentas autorizadas pelo Control Plane e pelo Runtime.</textarea><button data-plugin-copy="pluginDescription" class="connect-secondary">Copiar</button></div>
     <p class="dialog-help">Ícone opcional: pode deixar vazio. Se usar um, a tela aceita PNG, até 10 KB, preferencialmente 256 × 256 pixels ou mais.</p>
     <label class="field-label" for="pluginEndpoint">Endereço do servidor MCP</label><div class="plugin-endpoint"><input id="pluginEndpoint" class="text-input" readonly value="https://ordax-control-plane-v3.ordax-ac1ca1b50d09.workers.dev/mcp"><button id="pluginCopy" class="connect-secondary">Copiar</button></div>
     <details class="plugin-oauth"><summary>Guia das configurações avançadas de OAuth</summary><p class="dialog-help" id="pluginOAuthGuide">Clique em Verificar serviço para obter as configurações OAuth publicadas. Use registro dinâmico de cliente (DCR) quando confirmado; nesse modo, não preencha ID nem segredo de cliente manualmente.</p><p class="dialog-help">Mantenha a descoberta automática dos endereços. Se a tela solicitar preenchimento manual, copie os valores verificados abaixo. Se ela só oferecer cliente estático, será necessário um cliente OAuth cadastrado pelo administrador OrdaX.</p>
@@ -253,8 +254,8 @@
       <label class="field-label" for="pluginRegistration">URL de registro de cliente</label><div class="plugin-endpoint"><input id="pluginRegistration" class="text-input" readonly placeholder="Verifique o serviço"><button data-plugin-copy="pluginRegistration" class="connect-secondary">Copiar</button></div>
       <p class="dialog-help">Use PKCE S256. ID e segredo de cliente são gerados no registro dinâmico; não cole senha, token do Runtime ou chave de API nesses campos. Os escopos de login não concedem acesso ao computador: as permissões são definidas no Studio.</p></details>
     <p class="dialog-help">A área do ChatGPT usa sua sessão interna. Sua conversa local e seus rascunhos permanecem salvos; volte à conversa Web ao terminar. O navegador externo mantém uma sessão separada.</p>
-    <dl class="session-details"><div><dt>Serviço OrdaX</dt><dd id="pluginService">Ainda não verificado</dd></div><div><dt>Nesta conversa</dt><dd id="pluginConversation">Seleção no ChatGPT não verificada</dd></div></dl>
-    <div class="session-actions"><button id="pluginCheck" class="connect-secondary">Verificar serviço sem login</button><button id="pluginTest" class="connect-secondary">Preparar teste de conexão</button></div>
+    <dl class="session-details"><div><dt>MCP OrdaX</dt><dd id="pluginService">Ainda n&atilde;o verificado</dd></div><div><dt>Caminho operacional</dt><dd id="pluginConversation">MCP direto &middot; UI/DOM n&atilde;o s&atilde;o requisito</dd></div></dl>
+    <div class="session-actions"><button id="pluginCheck" class="connect-secondary">Verificar MCP</button><button id="pluginTest" class="connect-secondary">Preparar teste no cliente</button></div>
     <p id="pluginDetails" class="dialog-help" role="status">Disponibilidade do servidor não confirma login ou permissões do computador.</p>
     <p class="dialog-help">O teste preenche sua mensagem para revisão; você decide quando enviar. O uso da conversa segue os limites do ChatGPT Web.</p>
     <section aria-labelledby="relayAdminTitle" class="relay-admin-check">
@@ -269,6 +270,7 @@
 
   <aside class="web-panel" aria-label="ChatGPT Web sincronizado"><header class="web-toolbar"><div><strong>ChatGPT Web</strong><span id="webTag" class="web-tag">MESMA CONVERSA</span></div><nav aria-label="Controles da área Web"><button id="webReturnChat" title="Retomar a conversa Web anterior" hidden>← Conversa Web</button><button id="webClose" title="Voltar à conversa do Studio" hidden>← Voltar à conversa</button><button id="webFocus" title="Ampliar o ChatGPT Web na janela">Ampliar Web</button><button id="webReload" title="Recarregar ChatGPT Web" aria-label="Recarregar ChatGPT Web">↻</button><button id="webBrowser" title="Abrir a conversa no navegador" aria-label="Abrir no navegador">↗</button></nav></header><footer><span class="dot"></span><span id="webStatus">Carregando ChatGPT…</span><small>Cota do Web</small></footer></aside>
 
+  <script src="../../assets/semantic_ui.js"></script>
   <script type="module" src="./app.mjs"></script>
 </body>
 </html>
