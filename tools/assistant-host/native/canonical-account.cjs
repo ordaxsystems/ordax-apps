@@ -93,11 +93,16 @@ async function invokeCanonicalProductSignIn(data, {
             || typeof value.access_token !== 'string' || !value.access_token
             || value.access_token.length > 16000 || /[\r\n]/.test(value.access_token)
             || typeof value.subject_id !== 'string' || !SUBJECT_UUID.test(value.subject_id)
+            || typeof value.device_id !== 'string' || !SUBJECT_UUID.test(value.device_id)
+            || typeof value.enrolled_now !== 'boolean'
             || typeof value.email !== 'string' || value.email.length > 320
-            || Object.keys(value).some(k => !['schema','ok','access_token','email','subject_id'].includes(k))) {
+            || Object.keys(value).some(k => !['schema','ok','access_token','email','subject_id','device_id','enrolled_now'].includes(k))) {
           throw new Error('bad-payload');
         }
-        finish(null, { token: value.access_token, email: value.email, subjectId: value.subject_id });
+        finish(null, {
+          token: value.access_token, email: value.email, subjectId: value.subject_id,
+          deviceId: value.device_id, enrolledNow: value.enrolled_now,
+        });
       } catch { finish(fail('Não foi possível confirmar sua sessão ORDAX.')); }
     });
     child.stdin.on('error', () => { /* child exit is the only authority to finalize */ });
