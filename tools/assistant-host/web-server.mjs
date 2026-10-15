@@ -7,13 +7,16 @@ import { observeLocalRuntime } from './native/local-runtime-observer.mjs';
 import { observeRelayLab } from './native/relay-observer.mjs';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps/studio/conversation');
-// Only this public, immutable client contract is exposed outside /src and /assets.
+// The semantic observer is owned by apps/studio and shared by every presentation.
+// Expose this one immutable file explicitly instead of copying it into conversation/assets.
+const semanticObserver = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps/studio/assets/semantic_ui.js');
+// Only these public, immutable client contracts are exposed outside /src and /assets.
 const productContract = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../contracts/product-runtime.mjs');
-const MIME = { '.html': 'text/html', '.css': 'text/css', '.mjs': 'text/javascript', '.svg': 'image/svg+xml' };
+const MIME = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript', '.svg': 'image/svg+xml' };
 const error = (message, status = 400) => Object.assign(new Error(message), { status });
 
 // Local UI transport only. Inference is performed by the visible ChatGPT page.
-export async function createWebServer({ bridge, runtime, observeInstalled = observeLocalRuntime, observeRelay = observeRelayLab, port = 0 }) {
+export async function createWebServer({ bridge, runtime, observeInstalled = observeLocalRuntime, observeRelay = observeRelayLab, mcpObserver = null, port = 0 }) {
   const packageInfo = JSON.parse(await readFile(new URL('./package.json', import.meta.url), 'utf8'));
   const sessions = new Set(); let origin, active;
   const json = (res, data, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(data)); };
@@ -66,6 +69,7 @@ export async function createWebServer({ bridge, runtime, observeInstalled = obse
         if (req.method === 'DELETE') { json(res, await bridge.removeProject(id)); return; }
       }
       if (route === 'GET /api/runtime/local-observation') { json(res, await observeInstalled()); return; }
+      if (route === 'GET /api/mcp/status') { if (!mcpObserver) throw error('Observação MCP indisponível neste host.', 503); json(res, await mcpObserver.status({ refresh: url.searchParams.get('refresh') === '1' })); return; }
       if (route === 'GET /api/relay') { json(res, await observeRelay()); return; }
       if (route === 'GET /api/runtime') { const since = /^\d+$/.test(url.searchParams.get('since') || '') ? Number(url.searchParams.get('since')) : undefined; json(res, runtime?.state({ since }) || { configured: false, connected: false, targets: [], operations: [] }); return; }
       if (route === 'POST /api/runtime/connect') { if (!runtime) throw error('Runtime indisponível neste host.', 503); json(res, await runtime.connect()); return; }
@@ -105,7 +109,6 @@ export async function createWebServer({ bridge, runtime, observeInstalled = obse
         const data = await body(req), controller = new AbortController(); active = controller;
         const timeout = setTimeout(() => controller.abort(), 11 * 60 * 1000);
         const heartbeat = setInterval(() => { if (res.headersSent && !res.destroyed) res.write(': keepalive\n\n'); }, 15000);
-        // Closing a UI stream detaches the viewer; the paid Web generation keeps running.
         const revisions = new Map(); let terminal = false;
         const frame = event => {
           if (res.destroyed) return;
@@ -118,7 +121,6 @@ export async function createWebServer({ bridge, runtime, observeInstalled = obse
           if (!event.chat) { frame(event); return; }
           const { messages = [], ...metadata } = event.chat;
           frame({ type: 'chat-meta', chat: metadata });
-          // Bound each SSE frame; long histories never become a giant response frame.
           for (const message of messages) {
             const revision = [message.text, message.status, message.error, message.model, message.attachments, message.activity?.turnId, message.activity?.current?.at, message.activity?.current?.kind, message.activity?.current?.label, message.activity?.endedAt];
             const previous = revisions.get(message.id);
@@ -134,10 +136,15 @@ export async function createWebServer({ bridge, runtime, observeInstalled = obse
         return;
       }
       if (route === 'POST /api/stop') { const data = await body(req); if (!data || typeof data.chatId !== 'string') throw error('Conversa inválida.'); const result = await bridge.stop(data.chatId); active?.abort(); json(res, result); return; }
-      // Browser modules cannot import repository filesystem paths. This one
-      // literal route serves the same SSOT used by the native host, read-only.
+      // Browser modules cannot import repository filesystem paths. These two
+      // literal routes serve the exact shared SSOT files read-only.
       if (route === 'GET /contracts/product-runtime.mjs' && !url.search) {
         const content = await readFile(productContract);
+        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
+        res.end(content); return;
+      }
+      if (route === 'GET /assets/semantic_ui.js' && !url.search) {
+        const content = await readFile(semanticObserver);
         res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8' });
         res.end(content); return;
       }

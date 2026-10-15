@@ -162,7 +162,9 @@ app.whenReady().then(async () => {
       await js(`document.getElementById('previewDevice').value='${preset}';document.getElementById('previewDevice').dispatchEvent(new Event('change'))`);
       await until(`document.getElementById('previewDimensions').textContent.includes('${width} × ${height}')`);await pause(120);
       const size=await first.webContents.executeJavaScript('({width:innerWidth,height:innerHeight})');assert.deepEqual(size,{width,height});
-      const bounds=first.getBounds();assert.ok(bounds.x>=Math.floor(window.getContentSize()[0]*0.6)&&bounds.y>=116);
+      const bounds=first.getBounds();
+      const slot=await js('(()=>{const r=document.getElementById("previewCanvas").getBoundingClientRect();return {x:Math.ceil(r.x),y:Math.ceil(r.y),right:Math.floor(r.right),bottom:Math.floor(r.bottom)}})()');
+      assert.ok(bounds.x>=slot.x&&bounds.y>=slot.y&&bounds.x+bounds.width<=slot.right&&bounds.y+bounds.height<=slot.bottom);
     }
     await js('document.getElementById("previewDevice").value="mobile";document.getElementById("previewDevice").dispatchEvent(new Event("change"))');await until('document.getElementById("previewDimensions").textContent.includes("390 × 844")');
     await js('document.getElementById("previewRotate").click()');await until('document.getElementById("previewDimensions").textContent.includes("844 × 390")');await pause(120);
@@ -245,7 +247,6 @@ app.whenReady().then(async () => {
     await until('!document.getElementById("optionsDialog").open && document.getElementById("conversationTitle").textContent==="Loja Aurora"');
     assert.equal(await chat.webContents.executeJavaScript('document.body.dataset.deletes'),'1');assert.ok(!bridge.chats.some(c=>c.id===deleteId));assert.equal(disk['chat-deletions'].find(item=>item.webId===deleteWeb).status,'confirmed');assert.equal(bridge.activeProjectId,projectA);assert.equal(bridge.activeId,null);
     console.log('PASS DELETE: exclusão Web exige confirmação explícita e confirmação visível; clique único, diário durável e histórico local atualizado sem remover o projeto.');
-    // Exercise real portable UI and native surfaces at phone, tablet and desktop sizes.
     await bridge.updateProject(projectA, { previewUrl: siteURL }); await bridge.selectConversationProject(projectA);
     await until('document.getElementById("projectScopeName").textContent==="Loja Aurora" && !document.getElementById("newChat").disabled');
     await js('document.getElementById("newChat").click()');

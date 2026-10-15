@@ -4,7 +4,7 @@
 
 1. Ler primeiro [URGENTE-ROADMAP-ORDAX-APPS.md](URGENTE-ROADMAP-ORDAX-APPS.md) para prioridades, ordem de implementação, escopo e riscos.
 2. Ler [README.md](README.md), [HANDOFF.md](HANDOFF.md) e [apps/README.md](apps/README.md) para ownership, estado real e regras de distribuição.
-3. Para ações/IA, ler [docs/APP-INTELLIGENCE.md](docs/APP-INTELLIGENCE.md). Para Studio, ler [docs/STUDIO-BOUNDARY.md](docs/STUDIO-BOUNDARY.md). Para utilitários, ler [docs/BASIC-APPS.md](docs/BASIC-APPS.md).
+3. Para ações/IA, ler [docs/APP-INTELLIGENCE.md](docs/APP-INTELLIGENCE.md). Para Studio, ler [docs/STUDIO-BOUNDARY.md](docs/STUDIO-BOUNDARY.md). Para automação/testes agentic e semântica de UI, ler [docs/AGENTIC-APP-TESTING.md](docs/AGENTIC-APP-TESTING.md). Para utilitários, ler [docs/BASIC-APPS.md](docs/BASIC-APPS.md).
 4. Conferir manifests, locks, migrations, contratos públicos e CI **atuais** antes de propor ou executar mudanças. O roadmap é planejamento, não substitui a fonte de verdade do código nem autoriza produção.
 
 ## Intelligence global, ChatGPT e plugin MCP

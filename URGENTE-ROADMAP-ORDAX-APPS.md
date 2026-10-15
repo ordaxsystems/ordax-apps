@@ -1,5 +1,13 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Frente P0 — Agentic Apps / Semantic UI / Test Runtime (2026-10-15)
+
+Decisão transversal: todo app OrdaX first-party deve convergir para operação por **capabilities tipadas** e testes por **UI semântica**, mantendo mouse/teclado/screenshot como camadas de fallback ou validação da interação humana. IA local, GPT, Claude e futuros clientes devem usar a mesma semântica/capability; não criar forks por provedor nem exigir screenshot para descobrir controles de apps que o próprio OrdaX possui.
+
+Piloto atual: ORDAX Studio 0.15.1 consolida mapa semântico, snapshot read-only/bounded, Goal Runner observacional e o layout Agentic Studio, sem autoridade, sem valores digitados e sem executor local paralelo. O Runtime já possui `browser.snapshot/click/type/screenshot` e `computer.screenshot/windows/focus_window/click/mouse_move/drag/scroll/type/hotkey/launch_app`; o próximo contrato pertence ao owner Runtime e deve expor snapshot semântico vivo do app por canal autenticado antes de ações semânticas. Ações semânticas, receipts de mutação, evidência visual atestada e promoção do padrão ao App SDK ficam condicionados a essas provas.
+
+Plano, benchmark Codex, ownership, fases e critérios de paridade: [docs/AGENTIC-APP-TESTING.md](docs/AGENTIC-APP-TESTING.md). Não declarar “igual ao Codex” até os gates objetivos desse documento passarem no mesmo build.
+
 ## Recorte de produto Studio Web (MVP-04)
 
 Reconciliado em 2026-10-09: a entrega Web/telefone prioriza o controle **autorizado** de um PC online, sem criar um segundo Runtime, banco de arquivos ou serviços de IA no Studio. O escopo atual, a distinção entre cliente Web e agente mobile, as dependências cloud e os critérios de aceitação ficam exclusivamente em [docs/STUDIO-WEB-INTEGRATION.md](docs/STUDIO-WEB-INTEGRATION.md). Os incrementos históricos abaixo documentam fontes e testes anteriores, sem constituir autoridade para ativar produção ou reinterpretar estado atual.

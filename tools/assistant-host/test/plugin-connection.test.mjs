@@ -15,9 +15,9 @@ function fixture(modify = data => data) {
   } });
   return { plugin, requests, opened };
 }
-test('public check verifies production OAuth and reports drift without claiming installation or accessing tools', async () => {
+test('public check verifies production OAuth and matches canonical discovery without claiming installation or accessing tools', async () => {
   const f = fixture(); const [a, b] = await Promise.all([f.plugin.check(), f.plugin.check()]);
-  assert.deepEqual(a, b); assert.equal(a.status, 'available'); assert.equal(a.configurationDrift, true); assert.equal(a.checkedAt, 100);
+  assert.deepEqual(a, b); assert.equal(a.status, 'available'); assert.equal(a.configurationDrift, false); assert.equal(a.checkedAt, 100);
   assert.equal('connected' in a, false); assert.equal(f.requests.length, 3);
   assert.equal(a.oauthSettings.clientRegistration, 'DCR'); assert.equal(a.oauthSettings.scopes, 'openid email offline_access');
   assert.equal(a.oauthSettings.authorizationEndpoint, auth.authorization_endpoint); assert.equal(a.oauthSettings.pkce, 'S256');

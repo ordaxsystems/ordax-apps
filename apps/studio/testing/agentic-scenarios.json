@@ -1,0 +1,13 @@
+{
+  "schema": "ordax-apps.agentic-test-scenarios/1",
+  "appId": "studio",
+  "appVersion": "0.15.1",
+  "authority": "none",
+  "execution": "plan-only",
+  "defaults": {"maxSteps": 24,"maxReadRetries": 2,"repeatUncertainEffects": false,"coordinateFallback": false},
+  "scenarios": [
+    {"id":"studio.project-discovery","goal":"Confirmar que projetos podem ser encontrados sem visão ou coordenadas.","allowedCapabilities":["projects.list"],"probeCapabilities":["projects.list"],"semanticElements":["project.search","project.list"],"success":[{"kind":"element-visible","element":"project.search"},{"kind":"element-present","element":"project.list"}],"evidence":["semantic-snapshot"]},
+    {"id":"studio.preview-validation","goal":"Confirmar o estado do preview e validar a superfície web do projeto sem capturar a janela errada.","allowedCapabilities":["project.preview_status","browser.snapshot","browser.screenshot"],"probeCapabilities":["project.preview_status"],"semanticElements":["preview.surface","preview.status"],"success":[{"kind":"element-present","element":"preview.surface"},{"kind":"element-present","element":"preview.status"},{"kind":"target-surface-evidence","surface":"managed-browser"}],"evidence":["semantic-snapshot","browser-snapshot","target-surface-screenshot"]},
+    {"id":"studio.editor-structure","goal":"Confirmar que o editor expõe conteúdo, revisão e aplicação por identidade semântica estável.","allowedCapabilities":["workspace.text_read"],"probeCapabilities":[],"semanticElements":["editor.content","editor.review","editor.apply"],"success":[{"kind":"element-present","element":"editor.content"},{"kind":"element-present","element":"editor.review"},{"kind":"element-present","element":"editor.apply"}],"evidence":["semantic-snapshot"]}
+  ]
+}
