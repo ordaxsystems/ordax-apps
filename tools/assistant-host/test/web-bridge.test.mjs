@@ -480,7 +480,7 @@ test('plugin registration and OAuth pages never become conversations or login er
   f.page.url='https://chatgpt.com/plugins';f.page.turns=[{id:'fake',role:'user',text:'Plugin settings'}];
   await f.bridge.refresh();assert.equal(f.bridge.page.ready,false);assert.equal(f.bridge.page.loginRequired,false);
   assert.equal(f.bridge.activeId,id);assert.equal(f.bridge.chats.length,count);assert.equal(f.chat.messages.length,0);
-  f.page.url='https://eobcxuyvhkvdmkbaihwh.supabase.co/auth/v1/oauth/authorize';f.bridge.setupActive=()=>true;
+  f.page.url='https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1/oauth/authorize';f.bridge.setupActive=()=>true;
   await f.bridge.refresh();assert.equal(f.bridge.page.loginRequired,false);assert.equal(f.bridge.activeId,id);
 });
 

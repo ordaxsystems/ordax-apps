@@ -109,7 +109,7 @@ test('concurrent plugin requests share a load and a network failure allows a new
 
 test('plugin OAuth redirects are preserved and returning cancels a queued setup navigation', async () => {
   const f=fixture('https://chatgpt.com/c/existing');let count=0;
-  f.surface.webContents.getURL=()=> 'https://eobcxuyvhkvdmkbaihwh.supabase.co/auth/v1/oauth/authorize';
+  f.surface.webContents.getURL=()=> 'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1/oauth/authorize';
   f.surface.webContents.loadURL=async()=>{count++;throw Object.assign(new Error('redirect'),{code:'ERR_ABORTED'});};
   await f.controls.pluginSetup();await f.controls.pluginSetup();assert.equal(count,1);
   const g=fixture('https://chatgpt.com/c/existing');const open=g.controls.pluginSetup();await g.controls.pluginReturn();await open;
