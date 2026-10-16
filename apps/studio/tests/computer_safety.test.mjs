@@ -5,7 +5,17 @@ import test from 'node:test';
 
 const assets=new URL('../assets/',import.meta.url);
 const source=readFileSync(new URL('computer_safety.js',assets),'utf8');
-const grant=(id,space_id,overrides={})=>({id,device_id:'device',space_id,mode:'interactive-computer-control',expires_at:'2099-01-01T00:00:00Z',...overrides});
+const profiles=[
+  {mode:'computer-observe'},
+  {mode:'interactive-computer-control'},
+  {mode:'computer-filesystem'},
+  {mode:'computer-clipboard'},
+  {mode:'computer-process-control'},
+  {mode:'full-computer-control'},
+];
+const grantGroup=(grant_group_id,client_id,profile_key='interactive-computer-control',overrides={})=>({
+  grant_group_id,client_id,profile_key,valid_until:'2099-01-01T00:00:00Z',...overrides,
+});
 const inactiveActivity={ok:true,data:{telemetry_version:1,active:false,active_count:0,active_operations:[],last_completed:null}};
 const liveActivity={ok:true,data:{telemetry_version:1,active:true,active_count:1,active_operations:[{operation_id:'op-1',action:'computer.click',source:'product_remote',started_at_unix_ms:1,request_id:'req-1',device_id:'device',space_id:'space-a',grant_id:'grant-a'}],last_completed:null}};
 
@@ -24,20 +34,29 @@ function harness({managed=false,saveOk=true,revokeOk=true,activityHost=false,act
     },
     computerAccessDraft:{enabled:true,allowed_roots:['C:/unsaved']},
     remoteComputerGrants:{
-      device_id:'device',
-      links:[
-        {link_id:'link-a',device_id:'device',space_id:'space-a'},
-        {link_id:'link-b',device_id:'device',space_id:'space-b'},
-        {link_id:'foreign-link',device_id:'other-device',space_id:'foreign-space'},
+      clients:[
+        {client_id:'client-a',client_name:'ChatGPT A'},
+        {client_id:'client-b',client_name:'ChatGPT B'},
       ],
-      grants:[grant('grant-a','space-a'),grant('grant-b','space-b'),grant('other','foreign-space',{device_id:'other-device'})],
+      grant_groups:[
+        grantGroup('group-a','client-a','interactive-computer-control'),
+        grantGroup('group-b','client-b','computer-observe'),
+      ],
     },
   };
   const windowObject={confirm:()=>true,addEventListener:()=>{}};
   if(activityHost)windowObject.ordaxStudioHost={computerActivityStatus:async()=>activityResult};
   const context=vm.createContext({
     state,
-    remoteGrantIsActive:item=>Boolean(item&&!item.revoked_at&&(!item.expires_at||Date.parse(item.expires_at)>Date.now())),
+    REMOTE_COMPUTER_PROFILES:profiles,
+    ownerClients:data=>Array.isArray(data?.clients)?data.clients:[],
+    ownerGrantGroups:data=>Array.isArray(data?.grant_groups)?data.grant_groups:[],
+    remoteGrantIsActive:item=>{
+      if(!item||item.revoked_at)return false;
+      if(!item.valid_until)return true;
+      const expires=Date.parse(item.valid_until);
+      return Number.isFinite(expires)&&expires>Date.now();
+    },
     escapeHtml:value=>String(value??''),
     setStatus:value=>statuses.push(value),
     loadComputerAccess:async()=>{},
@@ -58,20 +77,28 @@ function harness({managed=false,saveOk=true,revokeOk=true,activityHost=false,act
   return {state,calls,statuses,run:code=>vm.runInContext(code,context)};
 }
 
-test('safety snapshot uses canonical current device id and covers every Space for that device only',()=>{
+test('safety snapshot uses canonical grant groups across every consented OAuth client',()=>{
   const h=harness();
-  h.state.remoteComputerGrants.grants.push(grant('revoked','space-a',{revoked_at:'2026-01-01T00:00:00Z'}));
-  h.state.remoteComputerGrants.grants.push(grant('expired','space-b',{expires_at:'2000-01-01T00:00:00Z'}));
-  assert.equal(h.run('currentComputerDeviceId()'),'device');
+  h.state.remoteComputerGrants.grant_groups.push(grantGroup('revoked','client-a','computer-observe',{revoked_at:'2026-01-01T00:00:00Z'}));
+  h.state.remoteComputerGrants.grant_groups.push(grantGroup('expired','client-b','computer-observe',{valid_until:'2000-01-01T00:00:00Z'}));
+  h.state.remoteComputerGrants.grant_groups.push(grantGroup('foreign-client','client-c','computer-observe'));
+  h.state.remoteComputerGrants.grant_groups.push(grantGroup('unknown-profile','client-a','not-a-real-profile'));
   assert.equal(h.run('computerSafetySnapshot().state'),'armed');
-  assert.deepEqual([...h.run('computerSafetySnapshot().active_grants.map(item=>item.id)')],['grant-a','grant-b']);
+  assert.deepEqual([...h.run('computerSafetySnapshot().active_grant_groups.map(item=>item.grant_group_id)')],['group-a','group-b']);
+  assert.deepEqual([...h.run('computerSafetySnapshot().active_profiles')],['computer-observe','interactive-computer-control']);
 });
 
-test('device id fallback is fail-closed when link data is ambiguous',()=>{
+test('safety authority fails closed for unbound, malformed, expired and revoked groups',()=>{
   const h=harness();
-  delete h.state.remoteComputerGrants.device_id;
-  assert.equal(h.run('currentComputerDeviceId()'),'');
-  assert.equal(h.run('activeDeviceComputerGrants().length'),0);
+  h.state.remoteComputerGrants.grant_groups=[
+    grantGroup('unbound',undefined,'computer-observe'),
+    grantGroup('', 'client-a','computer-observe'),
+    grantGroup('unknown','client-a','not-a-real-profile'),
+    grantGroup('revoked','client-a','computer-observe',{revoked_at:'2026-01-01T00:00:00Z'}),
+    grantGroup('expired','client-a','computer-observe',{valid_until:'2000-01-01T00:00:00Z'}),
+  ];
+  assert.equal(h.run('activeComputerSafetyGrantGroups().length'),0);
+  assert.equal(h.run('computerSafetySnapshot().state'),'local-only');
 });
 
 test('live runtime telemetry distinguishes actual execution from mere authorization',async()=>{
@@ -86,7 +113,7 @@ test('live runtime telemetry distinguishes actual execution from mere authorizat
   assert.doesNotMatch(h.run('computerActivityStatusText()'),/ChatGPT|Grok/);
 });
 
-test('live runtime telemetry can prove no Computer Control action is running while grants remain armed',async()=>{
+test('live runtime telemetry can prove no Computer Control action is running while grant groups remain armed',async()=>{
   const h=harness({activityHost:true,activityResult:inactiveActivity});
   await h.run('refreshComputerActivityStatus({render:false})');
   assert.equal(h.run('computerSafetySnapshot().state'),'armed');
@@ -104,18 +131,19 @@ test('older runtime without activity host method falls back to authorization-onl
   assert.match(h.run('computerActivityStatusText()'),/indisponível neste Runtime/);
 });
 
-test('take back control pauses canonical local policy before revoking every current-device grant',async()=>{
+test('take back control pauses local policy before revoking every canonical computer grant group across clients',async()=>{
   const h=harness();
   const result=await h.run('takeBackComputerControl()');
   assert.equal(result.ok,true);
   assert.equal(result.local_paused,true);
   assert.equal(result.activity_still_active,false);
-  assert.deepEqual([...result.revoked_grant_ids],['grant-a','grant-b']);
+  assert.deepEqual([...result.revoked_grant_group_ids],['group-a','group-b']);
   assert.deepEqual(h.calls.map(call=>call[0]),[
     'save_computer_access_settings',
     'revoke_remote_computer_grant',
     'revoke_remote_computer_grant',
   ]);
+  assert.deepEqual(h.calls.slice(1).map(call=>call[1]),['group-a','group-b']);
   const saved=h.calls[0][1];
   assert.equal(saved.enabled,false);
   assert.equal(saved.expected_revision,'rev-1');
@@ -133,7 +161,7 @@ test('take back control reports an already-started action until Runtime says it 
   assert.match(h.statuses.at(-1),/ação já iniciada ainda está encerrando/);
 });
 
-test('unavailable local policy is reported as unknown while remote grants are still revoked',async()=>{
+test('unavailable local policy is reported as unknown while canonical grant groups are still revoked',async()=>{
   const h=harness();
   h.state.computerAccess=null;
   assert.equal(h.run('computerSafetySnapshot().state'),'unknown');
@@ -141,7 +169,7 @@ test('unavailable local policy is reported as unknown while remote grants are st
   assert.equal(result.ok,false);
   assert.equal(result.local_paused,false);
   assert.equal(result.failures[0].code,'local_policy_unavailable');
-  assert.deepEqual([...result.revoked_grant_ids],['grant-a','grant-b']);
+  assert.deepEqual([...result.revoked_grant_group_ids],['group-a','group-b']);
   assert.deepEqual(h.calls.map(call=>call[0]),[
     'revoke_remote_computer_grant',
     'revoke_remote_computer_grant',
