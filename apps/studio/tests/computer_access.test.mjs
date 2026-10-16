@@ -25,7 +25,7 @@ function harness(){
     remoteProjectBrowserGrants:{clients,grant_groups:[]},remoteProjectBrowserGrantStatus:{ok:true},project:'review'};
   const context=vm.createContext({state,$:node,document:{getElementById:node,querySelectorAll:()=>[]},
     window:{addEventListener:()=>{},confirm:()=>true},setStatus:value=>statuses.push(String(value||'')),setTimeout:()=>{},
-    escapeHtml:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c])),
+    escapeHtml:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
     call:async(...args)=>{calls.push(args);return {ok:false,summary:'offline'}}});
   for(const name of ['computer_access.js','browser_access.js'])vm.runInContext(readFileSync(new URL(name,assets),'utf8'),context);
   return {state,node,calls,statuses,run:code=>vm.runInContext(code,context)};
