@@ -1,6 +1,6 @@
 # ORDAX Studio
 
-Candidato 0.15.4: mantém a fundação **Agentic Apps** e o login Product por **OAuth no navegador padrão com PKCE**, agora alinhado ao enrollment canônico do Product: o Studio nunca coleta senha OrdaX, reaproveita a sessão já aberta no navegador quando disponível, valida/migra a identidade do dispositivo pelo Runtime e não depende de pairing ou grants legados. Remote actions continuam desabilitadas. [Plano e critérios](../../docs/AGENTIC-APP-TESTING.md).
+Candidato 0.15.5: mantém a fundação **Agentic Apps** e o login Product por **OAuth no navegador padrão com PKCE**, agora com separação explícita entre o endpoint Product usado para sessão/enrollment e o Control Plane operacional. O Studio nunca coleta senha OrdaX, reaproveita a sessão já aberta no navegador quando disponível, valida/migra a identidade do dispositivo pelo Runtime e não depende de pairing ou grants legados. Fallback de transporte Product é permitido somente para falha de rede no endpoint branded; erros HTTP/autorização continuam fail-closed. Remote actions continuam desabilitadas. [Plano e critérios](../../docs/AGENTIC-APP-TESTING.md).
 
 O 0.15.0 iniciou a fundação com semântica de UI empacotada, observer local read-only, cenários orientados a objetivo e Goal Runner observacional, sem conceder autoridade nem substituir Runtime/grants.
 
