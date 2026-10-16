@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import unittest
 from pathlib import Path
@@ -20,6 +20,7 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
 
     def test_portable_ui_exposes_only_reviewed_owner_profiles(self) -> None:
         for mode in (
+            "computer-observe",
             "full-computer-control",
             "interactive-computer-control",
             "computer-filesystem",
@@ -27,6 +28,7 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
             "computer-process-control",
         ):
             self.assertIn(mode, self.computer)
+        self.assertIn("Observar computador", self.computer)
         self.assertIn("Acesso total remoto", self.computer)
         self.assertIn("Ative e salve Full Access local", self.computer)
         self.assertNotIn("terminal.exec", self.computer)
@@ -35,6 +37,7 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         combined = "\n".join((self.computer, self.account))
         for forbidden in (
             "/v3/product/device-computer-grants",
+            "/v3/product/device-links",
             "Authorization: Bearer",
             "access_token",
             "CloudflareControlPlane",
@@ -59,7 +62,7 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         self.assertIn("INTELIGÊNCIA DE APLICATIVOS", self.computer)
         self.assertIn("intelligence.app_catalog", self.computer)
         self.assertIn("intelligence.app_detail", self.computer)
-        self.assertIn("Não concede mouse, teclado, clipboard, filesystem, processos, terminal, Git ou execução de apps.", self.computer)
+        self.assertIn("sem autoridade de execução", self.computer)
         for method in (
             "remoteAppIntelligenceGrants",
             "authorizeRemoteAppIntelligenceGrant",
@@ -83,15 +86,39 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         self.assertNotIn("localStorage", self.account)
         self.assertNotIn("sessionStorage", self.account)
 
-    def test_remote_and_local_authority_are_presented_as_independent_gates(self) -> None:
-        self.assertIn("As duas autorizações são necessárias", self.computer)
-        self.assertIn("Isso não cria grant remoto", self.computer)
+    def test_product_login_uses_browser_oauth_without_password_fields(self) -> None:
+        self.assertIn("Continuar no navegador", self.account)
+        self.assertIn("OAuth + PKCE", self.account)
+        self.assertIn("result=await connect();", self.account)
+        for forbidden in (
+            'type="password"',
+            "accountPassword",
+            "current-password",
+            "connect(accountEmail,accountPassword)",
+        ):
+            self.assertNotIn(forbidden, self.account)
 
-    def test_legacy_custom_grants_are_visible_but_never_auto_upgraded(self) -> None:
-        self.assertIn("custom-device-grant", self.computer)
-        self.assertIn("Autorização legada detectada", self.computer)
-        self.assertIn("nunca amplia um grant existente automaticamente", self.computer)
-        self.assertIn("Revogar legado", self.computer)
+    def test_remote_and_local_authority_are_independent_gates(self) -> None:
+        self.assertIn("O Runtime aplica a política local e a Platform aplica grant groups remotos separados", self.computer)
+        self.assertIn("Isso não cria autoridade remota", self.computer)
+        self.assertIn("cliente OAuth e os grant groups da Platform continuam obrigatórios", self.computer)
+
+    def test_legacy_device_link_and_custom_grants_cannot_reenter_ui_authority(self) -> None:
+        for forbidden in (
+            "custom-device-grant",
+            "Autorização legada detectada",
+            "Revogar legado",
+            "link_id",
+            "data?.links",
+            "data?.grants",
+            "grantMatchesLink",
+            "selectedGrantLink",
+        ):
+            self.assertNotIn(forbidden, self.computer)
+        self.assertIn("grant_groups", self.computer)
+        self.assertIn("client_id", self.computer)
+        self.assertIn("Nenhum cliente é escolhido automaticamente", self.computer)
+        self.assertIn("Seleção obrigatória", self.computer)
 
     def test_computer_access_ui_has_clean_portuguese_and_status_summary(self) -> None:
         for expected in (
@@ -121,7 +148,5 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         self.assertIn("Computer Control", self.computer)
 
 
-
 if __name__ == "__main__":
     unittest.main()
-
