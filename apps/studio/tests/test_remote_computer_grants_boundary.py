@@ -86,6 +86,18 @@ class RemoteComputerGrantBoundaryTests(unittest.TestCase):
         self.assertNotIn("localStorage", self.account)
         self.assertNotIn("sessionStorage", self.account)
 
+    def test_product_login_uses_browser_oauth_without_password_fields(self) -> None:
+        self.assertIn("Continuar no navegador", self.account)
+        self.assertIn("OAuth + PKCE", self.account)
+        self.assertIn("result=await connect();", self.account)
+        for forbidden in (
+            'type="password"',
+            "accountPassword",
+            "current-password",
+            "connect(accountEmail,accountPassword)",
+        ):
+            self.assertNotIn(forbidden, self.account)
+
     def test_remote_and_local_authority_are_independent_gates(self) -> None:
         self.assertIn("O Runtime aplica a política local e a Platform aplica grant groups remotos separados", self.computer)
         self.assertIn("Isso não cria autoridade remota", self.computer)
