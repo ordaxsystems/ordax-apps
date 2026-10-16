@@ -50,6 +50,15 @@ class OwnerGrantAuthorityContractTests(unittest.TestCase):
         self.assertNotIn("currentComputerDeviceId", SAFETY)
         self.assertNotIn("activeDeviceComputerGrants", SAFETY)
 
+    def test_browser_authority_requires_exact_client_and_project_scope(self) -> None:
+        self.assertIn("selectedBrowserClientId", BROWSER)
+        self.assertIn("client_id + space_id + project_id", BROWSER)
+        self.assertIn("String(group.client_id||'')===clientId", BROWSER)
+        self.assertIn("String(group.space_id||'')===scope.space_id", BROWSER)
+        self.assertIn("String(group.project_id||'')===scope.project_id", BROWSER)
+        self.assertIn("group.revoked_at", BROWSER)
+        self.assertIn("grant.grant_group_id!==grantId", BROWSER)
+
     def test_browser_grant_creation_fails_closed_without_canonical_scope(self) -> None:
         self.assertIn("space_id + project_id", BROWSER)
         self.assertIn("o slug local não é aceito", BROWSER)
