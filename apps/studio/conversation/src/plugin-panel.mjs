@@ -31,7 +31,7 @@ export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snap
     $('pluginConversation').textContent = mcpSnapshot?.schema === 'ordax.studio-mcp-observation/1'
       ? `MCP direto · UI/DOM não são requisito${mcpSnapshot.runtime?.observed ? ' · Runtime observado' : ' · Runtime não observado'}`
       : 'MCP direto · UI/DOM não são requisito';
-    $('pluginDetails').textContent = detailMessage || service.error || (service.configurationDrift ? 'O login publicado difere da configuração do repositório. A verificação confirma somente disponibilidade e OAuth, não uma implantação atualizada.' : 'Disponibilidade do servidor não confirma login, instalação do plugin ou permissões do computador.');
+    $('pluginDetails').textContent = detailMessage || service.error || (service.configurationDrift ? 'O login publicado difere da configuração do repositório. A verificação confirma somente disponibilidade e OAuth, não uma implantação atualizada.' : 'Disponibilidade do servidor não confirma login, cadastro do cliente MCP ou permissões do computador.');
     $('pluginCheck').disabled = checking || !nativeWeb?.pluginCheck;
     $('pluginOpen').disabled = !nativeWeb?.pluginSetup;
     $('pluginBrowser').disabled = !nativeWeb?.pluginBrowser;
