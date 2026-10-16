@@ -13,7 +13,7 @@ WINDOWS_BUILDER = (ROOT.parents[1] / "tools" / "assistant-host" / "build-windows
 
 class StudioSemanticUiContractTests(unittest.TestCase):
     def test_manifest_is_non_authoritative_and_privacy_first(self) -> None:
-        self.assertEqual(MAP["schema"], "ordax-apps.ui-semantic-map/1"); self.assertEqual(MAP["appId"], "studio"); self.assertEqual(MAP["appVersion"], "0.15.4"); self.assertEqual(MAP["authority"], "none"); self.assertEqual(MAP["execution"], "descriptive-only"); self.assertFalse(MAP["privacy"]["captureInputValues"]); self.assertFalse(MAP["privacy"]["captureCredentials"])
+        self.assertEqual(MAP["schema"], "ordax-apps.ui-semantic-map/1"); self.assertEqual(MAP["appId"], "studio"); self.assertEqual(MAP["appVersion"], "0.15.5"); self.assertEqual(MAP["authority"], "none"); self.assertEqual(MAP["execution"], "descriptive-only"); self.assertFalse(MAP["privacy"]["captureInputValues"]); self.assertFalse(MAP["privacy"]["captureCredentials"])
     def test_every_declared_id_selector_exists_in_portable_studio(self) -> None:
         ids=[]
         for item in MAP["elements"]:
