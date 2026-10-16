@@ -4,8 +4,13 @@ import vm from 'node:vm';
 import test from 'node:test';
 
 const assets=new URL('../assets/',import.meta.url);
-const links=[{link_id:'link-a',device_id:'device',space_id:'a'},{link_id:'link-b',device_id:'device',space_id:'b'}];
-const grant=(id,space_id,mode='full-computer-control')=>({id,device_id:'device',space_id,mode,expires_at:'2099-01-01T00:00:00Z'});
+const clients=[
+  {client_id:'client-a',client_name:'ChatGPT A'},
+  {client_id:'client-b',client_name:'ChatGPT B'},
+];
+const grantGroup=(grant_group_id,client_id,profile_key='full-computer-control',extra={})=>({
+  grant_group_id,client_id,profile_key,valid_until:'2099-01-01T00:00:00Z',...extra,
+});
 function harness(){
   const nodes=new Map();
   const node=id=>{
@@ -13,54 +18,85 @@ function harness(){
     return nodes.get(id);
   };
   const calls=[];
+  const statuses=[];
   const state={computerAccess:{enabled:true,full_access:true,full_filesystem:false,allowed_roots:['C:/work'],allowed_applications:[],revision:'original'},
-    remoteComputerGrants:{links,grants:[]},remoteComputerGrantStatus:{ok:true},
-    remoteAppIntelligenceGrants:{links,grants:[]},remoteAppIntelligenceGrantStatus:{ok:true},
-    remoteProjectBrowserGrants:{links,grants:[]},remoteProjectBrowserGrantStatus:{ok:true},project:'review'};
+    remoteComputerGrants:{clients,grant_groups:[]},remoteComputerGrantStatus:{ok:true},
+    remoteAppIntelligenceGrants:{clients,grant_groups:[]},remoteAppIntelligenceGrantStatus:{ok:true},
+    remoteProjectBrowserGrants:{clients,grant_groups:[]},remoteProjectBrowserGrantStatus:{ok:true},project:'review'};
   const context=vm.createContext({state,$:node,document:{getElementById:node,querySelectorAll:()=>[]},
-    window:{addEventListener:()=>{},confirm:()=>true},setStatus:()=>{},setTimeout:()=>{},
+    window:{addEventListener:()=>{},confirm:()=>true},setStatus:value=>statuses.push(String(value||'')),setTimeout:()=>{},
     escapeHtml:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
     call:async(...args)=>{calls.push(args);return {ok:false,summary:'offline'}}});
   for(const name of ['computer_access.js','browser_access.js'])vm.runInContext(readFileSync(new URL(name,assets),'utf8'),context);
-  return {state,node,calls,run:code=>vm.runInContext(code,context)};
+  return {state,node,calls,statuses,run:code=>vm.runInContext(code,context)};
 }
-test('computer grants are shown only for the selected device and Space',()=>{
-  const h=harness();h.state.remoteComputerGrants.grants=[grant('grant-b','b'),{...grant('other','a'),device_id:'other'}];
+
+test('computer grants are scoped to the explicitly selected OAuth client',()=>{
+  const h=harness();
+  h.state.remoteComputerGrants.grant_groups=[
+    grantGroup('grant-b','client-b'),
+    grantGroup('observe-a','client-a','computer-observe'),
+  ];
   assert.equal(h.run("remoteGrantForMode('full-computer-control')"),null);
-  h.state.remoteComputerLinkId='link-b';
-  assert.equal(h.run("remoteGrantForMode('full-computer-control').id"),'grant-b');
+  assert.equal(h.run("remoteGrantForMode('computer-observe').grant_group_id"),'observe-a');
+  h.state.remoteComputerClientId='client-b';
+  assert.equal(h.run("remoteGrantForMode('full-computer-control').grant_group_id"),'grant-b');
   h.run('renderComputerAccessCanvas()');
-  assert.match(h.node('computerCanvas').innerHTML,/value="link-b" selected/);
+  assert.match(h.node('computerCanvas').innerHTML,/value="client-b" selected/);
   assert.match(h.node('computerCanvas').innerHTML,/data-revoke-remote-grant="grant-b"/);
-  h.node('remoteComputerLink').value='link-a';h.node('remoteComputerLink').onchange();
-  assert.equal(h.state.remoteComputerLinkId,'link-a');
+  h.node('remoteComputerClient').value='client-a';h.node('remoteComputerClient').onchange();
+  assert.equal(h.state.remoteComputerClientId,'client-a');
   assert.doesNotMatch(h.node('computerCanvas').innerHTML,/data-revoke-remote-grant="grant-b"/);
+  assert.match(h.node('computerCanvas').innerHTML,/data-revoke-remote-grant="observe-a"/);
 });
-test('revoked, expired, malformed and unbound grants cannot appear active',()=>{
-  const h=harness();h.state.remoteComputerGrants.grants=[
-    {...grant('revoked','a'),revoked_at:'2025-01-01'}, {...grant('expired','a'),expires_at:'2000-01-01'},
-    {...grant('invalid','a'),expires_at:'invalid'}, {...grant('unbound','a'),device_id:undefined}];
+
+test('expired, malformed, unbound and unknown grant groups cannot appear active',()=>{
+  const h=harness();
+  h.state.remoteComputerGrants.grant_groups=[
+    {...grantGroup('expired','client-a','computer-observe'),valid_until:'2000-01-01T00:00:00Z'},
+    {...grantGroup('invalid','client-a','computer-observe'),valid_until:'invalid'},
+    {...grantGroup('unbound','client-a','computer-observe'),client_id:undefined},
+    grantGroup('unknown','client-a','not-a-real-profile'),
+  ];
   assert.equal(h.run('activeComputerGrants().length'),0);
-  assert.equal(h.run('grantMatchesLink({},{})'),false);
+  assert.equal(h.run("remoteGrantIsActive({valid_until:'2000-01-01T00:00:00Z'})"),false);
+  assert.equal(h.run("remoteGrantIsActive({valid_until:'invalid'})"),false);
 });
-test('intelligence and browser grants use their own selected links and current project',()=>{
-  const h=harness();h.state.remoteAppIntelligenceGrants.grants=[grant('intelligence-b','b','app-intelligence-read')];
+
+test('app intelligence is client scoped and browser grant creation stays fail-closed without canonical project ids',async()=>{
+  const h=harness();
+  h.state.remoteAppIntelligenceGrants.grant_groups=[grantGroup('intelligence-b','client-b','app-intelligence-read')];
   assert.equal(h.run('activeAppIntelligenceGrant()'),null);
-  h.state.remoteAppIntelligenceLinkId='link-b';
-  assert.equal(h.run('activeAppIntelligenceGrant().id'),'intelligence-b');
-  h.state.remoteProjectBrowserGrants.grants=[{...grant('browser-b','b','project-browser-automation'),projects:['review']}];
+  h.state.remoteAppIntelligenceClientId='client-b';
+  assert.equal(h.run('activeAppIntelligenceGrant().grant_group_id'),'intelligence-b');
+
+  h.state.remoteProjectBrowserGrants={clients,grant_groups:[grantGroup('browser-local-slug','client-b','project-browser-automation')]};
   assert.equal(h.run('browserGrantForProject()'),null);
-  h.state.remoteBrowserLinkId='link-b';
-  assert.equal(h.run('browserGrantForProject().id'),'browser-b');
-  h.state.project='other';assert.equal(h.run('browserGrantForProject()'),null);
+  const blockedHtml=h.run('renderBrowserGrant()');
+  assert.match(blockedHtml,/space_id \+ project_id/);
+  assert.match(blockedHtml,/Autorizar indisponível/);
+  assert.match(blockedHtml,/Fail-closed/);
+  await h.run('authorizeRemoteProjectBrowser()');
+  assert.equal(h.calls.length,0);
+  assert.match(h.statuses.at(-1),/Space e projeto canônicos/);
+
+  h.state.remoteProjectBrowserGrants={clients,grant_groups:[grantGroup('browser-canonical','client-b','project-browser-automation',{space_id:'space-uuid',project_id:'project-uuid'})]};
+  assert.equal(h.run('browserGrantForProject().grant_group_id'),'browser-canonical');
 });
-test('every active computer grant remains individually revocable',()=>{
-  const h=harness();h.state.remoteComputerGrants.grants=[grant('grant-1','a'),grant('grant-2','a')];
+
+test('active computer profiles remain independently revocable by grant group id',()=>{
+  const h=harness();
+  h.state.remoteComputerGrants.grant_groups=[
+    grantGroup('grant-observe','client-a','computer-observe'),
+    grantGroup('grant-full','client-a','full-computer-control'),
+  ];
   const html=h.run('renderRemoteComputerAuthorization()');
-  assert.match(html,/data-revoke-remote-grant="grant-1"/);
-  assert.match(html,/data-revoke-remote-grant="grant-2"/);
+  assert.match(html,/data-revoke-remote-grant="grant-observe"/);
+  assert.match(html,/data-revoke-remote-grant="grant-full"/);
+  assert.match(html,/Observar computador/);
 });
-test('local edits survive grant picker rerenders without changing saved authority',async()=>{
+
+test('local edits survive client picker rerenders without changing saved authority',async()=>{
   const h=harness();h.state.computerAccess.full_access=false;
   h.run('renderComputerAccessCanvas()');
   h.node('computerFullAccess').checked=true;h.node('computerFullAccess').onchange();
@@ -75,6 +111,14 @@ test('local edits survive grant picker rerenders without changing saved authorit
   await h.run("authorizeRemoteComputerProfile('full-computer-control')");
   assert.equal(h.calls.length,0);
 });
+
+test('canonical owner grant UI contains no device-link authority vocabulary',()=>{
+  const source=readFileSync(new URL('computer_access.js',assets),'utf8')+readFileSync(new URL('browser_access.js',assets),'utf8');
+  assert.doesNotMatch(source,/link_id|data\.links|device_links|grantMatchesLink|selectedGrantLink/);
+  assert.match(source,/grant_groups/);
+  assert.match(source,/client_id/);
+});
+
 test('portable UI text decodes strictly and carries no known encoding corruption',()=>{
   for(const name of readdirSync(assets).filter(name=>/\.(?:js|css)$/.test(name))){
     const text=new TextDecoder('utf-8',{fatal:true}).decode(readFileSync(new URL(name,assets)));
@@ -90,13 +134,14 @@ test('portable UI text decodes strictly and carries no known encoding corruption
   assert.doesNotMatch(node('mcpCanvas').innerHTML,/\\u00/);
 });
 
-test('owner Full Access UI explains account/device isolation and honest local authority',()=>{
+test('owner Full Access UI explains remote isolation and honest local authority',()=>{
   const h=harness();
   h.run('renderComputerAccessCanvas()');
   const html=h.node('computerCanvas').innerHTML;
-  assert.match(html,/A Conta OrdaX e o grant do dispositivo autorizam o cliente/);
-  assert.match(html,/dados privados legíveis no computador/);
-  assert.match(html,/limites do Windows\/UAC/);
+  assert.match(html,/Runtime aplica a política local e a Platform aplica grant groups remotos separados/);
+  assert.match(html,/dados privados legíveis nesta sessão/);
+  assert.match(html,/cliente OAuth e os grant groups da Platform continuam obrigatórios/);
+  assert.match(html,/Windows\/UAC/);
   assert.doesNotMatch(html,/proteção dos cofres de credenciais/);
   assert.doesNotMatch(html,/proteção de credenciais não foi confirmada/);
 });
