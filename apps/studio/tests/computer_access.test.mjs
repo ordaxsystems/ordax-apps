@@ -31,12 +31,28 @@ function harness(){
   return {state,node,calls,statuses,run:code=>vm.runInContext(code,context)};
 }
 
+test('multiple OAuth clients fail closed until the owner explicitly selects one',()=>{
+  const h=harness();
+  h.state.remoteComputerGrants.grant_groups=[
+    grantGroup('grant-b','client-b'),
+    grantGroup('observe-a','client-a','computer-observe'),
+  ];
+  assert.equal(h.run('selectedComputerClientId()'),'');
+  assert.equal(h.run('activeComputerGrants().length'),0);
+  const html=h.run('renderRemoteComputerAuthorization()');
+  assert.match(html,/Selecione um cliente MCP/);
+  assert.match(html,/Nenhum cliente é escolhido automaticamente/);
+  assert.match(html,/Seleção obrigatória/);
+  assert.match(html,/data-authorize-remote-mode="computer-observe" disabled/);
+});
+
 test('computer grants are scoped to the explicitly selected OAuth client',()=>{
   const h=harness();
   h.state.remoteComputerGrants.grant_groups=[
     grantGroup('grant-b','client-b'),
     grantGroup('observe-a','client-a','computer-observe'),
   ];
+  h.state.remoteComputerClientId='client-a';
   assert.equal(h.run("remoteGrantForMode('full-computer-control')"),null);
   assert.equal(h.run("remoteGrantForMode('computer-observe').grant_group_id"),'observe-a');
   h.state.remoteComputerClientId='client-b';
@@ -50,20 +66,23 @@ test('computer grants are scoped to the explicitly selected OAuth client',()=>{
   assert.match(h.node('computerCanvas').innerHTML,/data-revoke-remote-grant="observe-a"/);
 });
 
-test('expired, malformed, unbound and unknown grant groups cannot appear active',()=>{
+test('expired, malformed, revoked, unbound and unknown grant groups cannot appear active',()=>{
   const h=harness();
+  h.state.remoteComputerClientId='client-a';
   h.state.remoteComputerGrants.grant_groups=[
     {...grantGroup('expired','client-a','computer-observe'),valid_until:'2000-01-01T00:00:00Z'},
     {...grantGroup('invalid','client-a','computer-observe'),valid_until:'invalid'},
+    {...grantGroup('revoked','client-a','computer-observe'),revoked_at:'2026-01-01T00:00:00Z'},
     {...grantGroup('unbound','client-a','computer-observe'),client_id:undefined},
     grantGroup('unknown','client-a','not-a-real-profile'),
   ];
   assert.equal(h.run('activeComputerGrants().length'),0);
   assert.equal(h.run("remoteGrantIsActive({valid_until:'2000-01-01T00:00:00Z'})"),false);
   assert.equal(h.run("remoteGrantIsActive({valid_until:'invalid'})"),false);
+  assert.equal(h.run("remoteGrantIsActive({revoked_at:'2026-01-01T00:00:00Z',valid_until:'2099-01-01T00:00:00Z'})"),false);
 });
 
-test('app intelligence is client scoped and browser grants require the exact canonical project scope',async()=>{
+test('app intelligence and browser grants are client scoped and browser grants require the exact canonical project scope',async()=>{
   const h=harness();
   h.state.remoteAppIntelligenceGrants.grant_groups=[grantGroup('intelligence-b','client-b','app-intelligence-read')];
   assert.equal(h.run('activeAppIntelligenceGrant()'),null);
@@ -87,12 +106,15 @@ test('app intelligence is client scoped and browser grants require the exact can
   assert.match(h.statuses.at(-1),/Space e projeto canônicos/);
 
   h.state.remoteProjectBrowserGrants.canonical_scope={space_id:'space-uuid',project_id:'project-uuid'};
+  assert.equal(h.run('browserGrantForProject()'),null);
+  h.state.remoteProjectBrowserClientId='client-b';
   assert.equal(h.run('browserGrantForProject().grant_group_id'),'browser-current');
   assert.notEqual(h.run('browserGrantForProject().grant_group_id'),'browser-other');
 });
 
 test('active computer profiles remain independently revocable by grant group id',()=>{
   const h=harness();
+  h.state.remoteComputerClientId='client-a';
   h.state.remoteComputerGrants.grant_groups=[
     grantGroup('grant-observe','client-a','computer-observe'),
     grantGroup('grant-full','client-a','full-computer-control'),
@@ -114,6 +136,8 @@ test('local edits survive client picker rerenders without changing saved authori
   assert.match(h.node('computerCanvas').innerHTML,/C:\/new/);
   await h.run("authorizeRemoteComputerProfile('full-computer-control')");
   assert.equal(h.calls.length,0);
+  assert.match(h.statuses.at(-1),/Selecione explicitamente/);
+  h.state.remoteComputerClientId='client-a';
   h.state.computerAccess.full_access=true;h.state.computerAccess.enabled=false;
   await h.run("authorizeRemoteComputerProfile('full-computer-control')");
   assert.equal(h.calls.length,0);
