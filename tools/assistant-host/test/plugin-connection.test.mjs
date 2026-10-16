@@ -53,6 +53,6 @@ test('external browser opens the fixed ChatGPT connection settings URL without a
   const f = fixture(); await f.plugin.browser(); assert.deepEqual(f.opened, [PLUGINS_URL]);
 });
 test('MCP OAuth navigation permits only exact trusted HTTPS authorities', () => {
-  for (const url of [PLUGINS_URL, MCP_URL.replace('/mcp', '/oauth/consent'), issuer + '/oauth/authorize', 'https://accounts.google.com/']) assert.equal(isPluginURL(url), true);
+  for (const url of [PLUGINS_URL, new URL('/oauth/consent', MCP_URL).href, issuer + '/oauth/authorize', 'https://accounts.google.com/']) assert.equal(isPluginURL(url), true);
   for (const url of [legacyIssuer + '/oauth/authorize', 'https://attacker.supabase.co/', 'https://chatgpt.com.attacker.example/', 'javascript:alert(1)', 'http://chatgpt.com/', 'https://user:secret@chatgpt.com/', 'file:///C:/example.exe']) assert.equal(isPluginURL(url), false);
 });
