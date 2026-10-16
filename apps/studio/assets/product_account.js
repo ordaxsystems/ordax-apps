@@ -21,23 +21,17 @@
           <div class="accountDialogTitle">
             <div class="eyebrow">CONEXÃO SEGURA</div>
             <h2 id="accountDialogTitle">Conectar conta ORDAX</h2>
-            <p>Vincule este computador à sua conta ORDAX para acesso remoto autenticado ao Runtime. GitHub é uma integração separada e serve apenas como provedor de projetos/remotos; ele não substitui a conta ORDAX. Outros provedores de projeto seguem o mesmo limite.</p>
+            <p>Continue no navegador padrão para entrar na Conta ORDAX e vincular este computador. GitHub é uma integração separada e serve apenas como provedor de projetos/remotos; ele não substitui a conta ORDAX.</p>
           </div>
           <button id="accountClose" class="accountClose" type="button" aria-label="Fechar">×</button>
         </div>
-        <form id="accountForm" class="accountForm" autocomplete="on">
-          <label>E-mail
-            <input id="accountEmail" class="accountInput" type="email" autocomplete="username" maxlength="320" required>
-          </label>
-          <label>Senha
-            <input id="accountPassword" class="accountInput" type="password" autocomplete="current-password" maxlength="2048" required>
-          </label>
+        <div class="accountForm">
+          <div class="accountSecurity"><strong>OAuth + PKCE:</strong> sua senha permanece exclusivamente na página web da Conta ORDAX. O Studio não solicita, recebe, envia nem armazena sua senha. O Runtime privado conclui a autorização e valida a identidade deste computador antes do vínculo.</div>
           <div class="accountActions">
-            <button id="accountSubmit" class="primary" type="submit">Conectar computador</button>
+            <button id="accountSubmit" class="primary" type="button">Continuar no navegador</button>
             <button id="accountCancel" class="subtleButton" type="button">Cancelar</button>
           </div>
-        </form>
-        <div class="accountSecurity">A senha é enviada diretamente ao serviço de autenticação configurado por este aplicativo local. O Control Plane ORDAX não deve receber nem armazenar a senha. Credenciais de sessão usadas durante o vínculo não pertencem ao Studio.</div>
+        </div>
         <div class="accountSecurity accountAiNotice"><strong>IA e provedores:</strong> conectar sua Conta ORDAX não conecta automaticamente nenhum provedor de IA e, por si só, não consome cota de nenhum provedor. Cada conector é configurado separadamente e deve informar suas próprias regras de uso, cota e custo antes da ativação.</div>
         <div id="accountStatus" class="accountStatus" aria-live="polite"></div>
       </section>`;
@@ -61,21 +55,17 @@
     appbar.insertBefore(button,runtime);
 
     const overlay=createDialog();
-    const form=document.getElementById('accountForm');
-    const email=document.getElementById('accountEmail');
-    const password=document.getElementById('accountPassword');
     const submit=document.getElementById('accountSubmit');
     const status=document.getElementById('accountStatus');
 
     const close=()=>{
       overlay.classList.add('hidden');
-      password.value='';
       status.textContent='';
       status.className='accountStatus';
     };
     const open=()=>{
       overlay.classList.remove('hidden');
-      requestAnimationFrame(()=>email.focus());
+      requestAnimationFrame(()=>submit.focus());
     };
 
     button.onclick=open;
@@ -84,16 +74,11 @@
     overlay.addEventListener('click',event=>{if(event.target===overlay)close()});
     document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!overlay.classList.contains('hidden'))close()});
 
-    form.addEventListener('submit',async event=>{
-      event.preventDefault();
-      const accountEmail=email.value.trim();
-      const accountPassword=password.value;
-      if(!accountEmail||!accountPassword)return;
-
+    submit.onclick=async()=>{
       submit.disabled=true;
       status.className='accountStatus';
-      status.innerHTML='<span class="accountSpinner"></span>Autenticando e vinculando este computador…';
-      setGlobalStatus('Conectando conta ORDAX...');
+      status.innerHTML='<span class="accountSpinner"></span>Aguardando autorização no navegador…';
+      setGlobalStatus('Abrindo Conta ORDAX no navegador...');
 
       let result;
       try{
@@ -101,12 +86,11 @@
         if(typeof connect!=='function'){
           result={ok:false,summary:'Esta edição do ORDAX Studio não expõe conexão de conta.'};
         }else{
-          result=await connect(accountEmail,accountPassword);
+          result=await connect();
         }
       }catch(error){
         result={ok:false,summary:String(error)};
       }finally{
-        password.value='';
         submit.disabled=false;
       }
 
@@ -117,7 +101,7 @@
         return;
       }
 
-      connectedEmail=result.data?.email||accountEmail;
+      connectedEmail=result.data?.email||'';
       button.textContent='Conta conectada';
       button.classList.add('connected');
       button.title=connectedEmail?`Conectado como ${connectedEmail}`:'Conta ORDAX conectada';
@@ -135,7 +119,7 @@
       setGlobalStatus(restartRequired?'ORDAX registrado · Runtime precisa reiniciar':'ORDAX conectado à conta');
       window.dispatchEvent(new CustomEvent('ordax:product-account-connected',{detail:{email:connectedEmail||null}}));
       setTimeout(close,restartRequired?2400:1100);
-    });
+    };
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(mount,0),{once:true});
