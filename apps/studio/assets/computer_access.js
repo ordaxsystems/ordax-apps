@@ -51,7 +51,7 @@ function activeAppIntelligenceGrant(){
 }
 function clientPicker(data,key,id,label){
   const clients=ownerClients(data),selected=selectedOwnerClient(data,key);
-  if(!clients.length)return '<div class="accessWarning"><strong>Nenhum cliente MCP consentido</strong><span>Conecte o plugin OrdaX e conclua o consentimento OAuth antes de autorizar capacidades.</span></div>';
+  if(!clients.length)return '<div class="accessWarning"><strong>Nenhum cliente MCP consentido</strong><span>Conecte um cliente ao MCP OrdaX e conclua o consentimento OAuth antes de autorizar capacidades.</span></div>';
   if(clients.length===1)return `<div class="sideMeta">Cliente MCP: <strong>${escapeHtml(clients[0].client_name||'ChatGPT')}</strong> · <code>${escapeHtml(clients[0].client_id||'')}</code></div>`;
   const placeholder=selected?'':'<option value="" selected disabled>Selecione um cliente MCP</option>';
   return `<label class="accessHeading"><span><strong>${escapeHtml(label)}</strong><small>Selecione explicitamente o cliente OAuth que receberá o grant. Nenhum cliente é escolhido automaticamente.</small></span><select id="${id}">${placeholder}${clients.map(client=>`<option value="${escapeHtml(client.client_id||'')}" ${client.client_id===selected?.client_id?'selected':''}>${escapeHtml(client.client_name||client.client_id||'cliente')}</option>`).join('')}</select></label>`;
