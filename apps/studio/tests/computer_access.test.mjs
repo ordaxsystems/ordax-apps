@@ -66,6 +66,19 @@ test('computer grants are scoped to the explicitly selected OAuth client',()=>{
   assert.match(h.node('computerCanvas').innerHTML,/data-revoke-remote-grant="observe-a"/);
 });
 
+test('computer-observe authorization sends only the reviewed profile, selected client and 30-day expiry',async()=>{
+  const h=harness();
+  h.state.remoteComputerClientId='client-a';
+  await h.run("authorizeRemoteComputerProfile('computer-observe')");
+  assert.deepEqual(h.calls[0],['authorize_remote_computer_grant','computer-observe','client-a',30]);
+  assert.equal(h.calls.some(call=>call.includes('full-computer-control')),false);
+  assert.equal(h.calls.some(call=>call.includes('interactive-computer-control')),false);
+  assert.equal(h.calls.some(call=>call.includes('computer-filesystem')),false);
+  assert.equal(h.calls.some(call=>call.includes('computer-clipboard')),false);
+  assert.equal(h.calls.some(call=>call.includes('computer-process-control')),false);
+  assert.match(h.statuses[0],/Criando autorização remota/);
+});
+
 test('expired, malformed, revoked, unbound and unknown grant groups cannot appear active',()=>{
   const h=harness();
   h.state.remoteComputerClientId='client-a';
