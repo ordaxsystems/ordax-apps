@@ -1,8 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-const { createPluginConnection, isPluginURL, MCP_URL, PLUGINS_URL } = createRequire(import.meta.url)('../native/plugin-connection.cjs');
-const issuer = 'https://eobcxuyvhkvdmkbaihwh.supabase.co/auth/v1';
+const {
+  createPluginConnection,
+  isPluginURL,
+  MCP_URL,
+  MCP_AUTH_ISSUER,
+  PLUGINS_URL,
+} = createRequire(import.meta.url)('../native/plugin-connection.cjs');
+const issuer = MCP_AUTH_ISSUER;
+const legacyIssuer = 'https://eobcxuyvhkvdmkbaihwh.supabase.co/auth/v1';
 const resource = { resource: MCP_URL, authorization_servers: [issuer], scopes_supported: ['openid', 'email', 'offline_access'] };
 const auth = { issuer, authorization_endpoint: issuer + '/oauth/authorize', token_endpoint: issuer + '/oauth/token', registration_endpoint: issuer + '/oauth/clients/register', code_challenge_methods_supported: ['S256'] };
 function fixture(modify = data => data) {
@@ -15,9 +22,12 @@ function fixture(modify = data => data) {
   } });
   return { plugin, requests, opened };
 }
-test('public check verifies production OAuth and matches canonical discovery without claiming installation or accessing tools', async () => {
+test('public check verifies canonical MCP domain and OAuth without claiming installation or accessing tools', async () => {
+  assert.equal(MCP_URL, 'https://mcp.ordax.com.br/mcp');
+  assert.equal(issuer, 'https://jhfphsjptrpmtnzkpwud.supabase.co/auth/v1');
   const f = fixture(); const [a, b] = await Promise.all([f.plugin.check(), f.plugin.check()]);
   assert.deepEqual(a, b); assert.equal(a.status, 'available'); assert.equal(a.configurationDrift, false); assert.equal(a.checkedAt, 100);
+  assert.equal(a.name, 'MCP OrdaX'); assert.equal(a.mcpURL, MCP_URL);
   assert.equal('connected' in a, false); assert.equal(f.requests.length, 3);
   assert.equal(a.oauthSettings.clientRegistration, 'DCR'); assert.equal(a.oauthSettings.scopes, 'openid email offline_access');
   assert.equal(a.oauthSettings.authorizationEndpoint, auth.authorization_endpoint); assert.equal(a.oauthSettings.pkce, 'S256');
@@ -25,8 +35,13 @@ test('public check verifies production OAuth and matches canonical discovery wit
   for (const { options } of f.requests) { assert.equal(options.redirect, 'error'); assert.equal(options.credentials, 'omit'); assert.equal(options.headers.Authorization, undefined); }
   assert.equal(JSON.parse(f.requests[2].options.body).method, 'initialize');
 });
-test('unknown issuers and cross-origin metadata are rejected before any unauthenticated probe', async () => {
-  for (const modify of [j => j.authorization_servers ? { ...j, authorization_servers: ['https://attacker.example/auth'] } : j, j => j.authorization_endpoint ? { ...j, authorization_endpoint: 'https://attacker.example/authorize' } : j, j => j.code_challenge_methods_supported ? { ...j, code_challenge_methods_supported: ['plain'] } : j]) {
+test('legacy or unknown issuers and cross-origin metadata are rejected before any unauthenticated probe', async () => {
+  for (const modify of [
+    j => j.authorization_servers ? { ...j, authorization_servers: [legacyIssuer] } : j,
+    j => j.authorization_servers ? { ...j, authorization_servers: ['https://attacker.example/auth'] } : j,
+    j => j.authorization_endpoint ? { ...j, authorization_endpoint: 'https://attacker.example/authorize' } : j,
+    j => j.code_challenge_methods_supported ? { ...j, code_challenge_methods_supported: ['plain'] } : j,
+  ]) {
     const f = fixture(modify); const state = await f.plugin.check(); assert.equal(state.status, 'unavailable'); assert.ok(f.requests.length < 3);
   }
 });
@@ -34,10 +49,10 @@ test('metadata reads are bounded and errors do not expose response bodies or bea
   const plugin = createPluginConnection({ fetcher: async () => new Response('x'.repeat(40000)) });
   const value = await plugin.check(); assert.equal(value.status, 'unavailable'); assert.match(value.error, /extensos/); assert.ok(value.error.length < 250);
 });
-test('external browser opens the fixed Plugins URL without account or tool access', async () => {
+test('external browser opens the fixed ChatGPT connection settings URL without account or tool access', async () => {
   const f = fixture(); await f.plugin.browser(); assert.deepEqual(f.opened, [PLUGINS_URL]);
 });
-test('plugin OAuth navigation permits only exact trusted HTTPS authorities', () => {
+test('MCP OAuth navigation permits only exact trusted HTTPS authorities', () => {
   for (const url of [PLUGINS_URL, MCP_URL.replace('/mcp', '/oauth/consent'), issuer + '/oauth/authorize', 'https://accounts.google.com/']) assert.equal(isPluginURL(url), true);
-  for (const url of ['https://attacker.supabase.co/', 'https://chatgpt.com.attacker.example/', 'javascript:alert(1)', 'http://chatgpt.com/', 'https://user:secret@chatgpt.com/', 'file:///C:/example.exe']) assert.equal(isPluginURL(url), false);
+  for (const url of [legacyIssuer + '/oauth/authorize', 'https://attacker.supabase.co/', 'https://chatgpt.com.attacker.example/', 'javascript:alert(1)', 'http://chatgpt.com/', 'https://user:secret@chatgpt.com/', 'file:///C:/example.exe']) assert.equal(isPluginURL(url), false);
 });
