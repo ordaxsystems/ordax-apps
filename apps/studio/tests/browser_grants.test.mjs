@@ -14,7 +14,7 @@ function harness(){
     return nodes.get(id);
   };
   const state={
-    project:null,
+    project:'local-slug',
     computerAccess:{enabled:true,full_access:false,full_filesystem:false,allowed_roots:['C:/work'],allowed_applications:[],revision:'rev'},
     remoteComputerGrants:{clients:[],grant_groups:[]},
     remoteComputerGrantStatus:{ok:true},
@@ -78,7 +78,6 @@ test('browser authorization sends only selected client and canonical UUID scope 
 
 test('browser authorization never falls back to local slug when canonical scope is missing',async()=>{
   const h=harness();
-  h.state.project='local-slug';
   h.state.remoteProjectBrowserGrants.canonical_scope=null;
   await h.run('authorizeRemoteProjectBrowser()');
   assert.equal(h.calls.length,0);
