@@ -19,7 +19,7 @@ function computerAccessDraft(){
 function computerAccessValues(field){return [...(computerAccessDraft()?.[field]||[])]}
 function managedNote(field){return computerManaged(field)?'<span class="managedBadge">Gerenciado pelo ambiente</span>':''}
 function remoteGrantIsActive(grant){
-  if(!grant)return false;
+  if(!grant||grant.revoked_at)return false;
   if(!grant.valid_until)return true;
   const expires=Date.parse(grant.valid_until);return Number.isFinite(expires)&&expires>Date.now();
 }
@@ -31,25 +31,30 @@ function ownerClients(data){return Array.isArray(data?.clients)?data.clients:[]}
 function ownerGrantGroups(data){return Array.isArray(data?.grant_groups)?data.grant_groups:[]}
 function selectedOwnerClient(data,key){
   const clients=ownerClients(data),saved=String(state[key]||'').toLowerCase();
-  const selected=clients.find(client=>String(client.client_id||'').toLowerCase()===saved)||clients[0]||null;
-  state[key]=selected?.client_id||null;return selected;
+  const explicit=clients.find(client=>String(client.client_id||'').toLowerCase()===saved)||null;
+  if(explicit){state[key]=explicit.client_id;return explicit}
+  if(clients.length===1){state[key]=clients[0].client_id||null;return clients[0]}
+  state[key]=null;return null;
 }
 function selectedComputerClientId(){return selectedOwnerClient(state.remoteComputerGrants,'remoteComputerClientId')?.client_id||''}
 function selectedAppIntelligenceClientId(){return selectedOwnerClient(state.remoteAppIntelligenceGrants,'remoteAppIntelligenceClientId')?.client_id||''}
 function activeComputerGrants(){
   const clientId=selectedComputerClientId();
+  if(!clientId)return [];
   return ownerGrantGroups(state.remoteComputerGrants).filter(group=>remoteGrantIsActive(group)&&String(group.client_id||'')===clientId&&REMOTE_COMPUTER_PROFILES.some(profile=>profile.mode===group.profile_key));
 }
 function remoteGrantForMode(mode){return activeComputerGrants().find(group=>group.profile_key===mode)||null}
 function activeAppIntelligenceGrant(){
   const clientId=selectedAppIntelligenceClientId();
+  if(!clientId)return null;
   return ownerGrantGroups(state.remoteAppIntelligenceGrants).find(group=>group.profile_key===APP_INTELLIGENCE_PROFILE&&String(group.client_id||'')===clientId&&remoteGrantIsActive(group))||null;
 }
 function clientPicker(data,key,id,label){
   const clients=ownerClients(data),selected=selectedOwnerClient(data,key);
   if(!clients.length)return '<div class="accessWarning"><strong>Nenhum cliente MCP consentido</strong><span>Conecte o plugin OrdaX e conclua o consentimento OAuth antes de autorizar capacidades.</span></div>';
   if(clients.length===1)return `<div class="sideMeta">Cliente MCP: <strong>${escapeHtml(clients[0].client_name||'ChatGPT')}</strong> · <code>${escapeHtml(clients[0].client_id||'')}</code></div>`;
-  return `<label class="accessHeading"><span><strong>${escapeHtml(label)}</strong><small>Selecione explicitamente o cliente OAuth que receberá o grant.</small></span><select id="${id}">${clients.map(client=>`<option value="${escapeHtml(client.client_id||'')}" ${client.client_id===selected?.client_id?'selected':''}>${escapeHtml(client.client_name||client.client_id||'cliente')}</option>`).join('')}</select></label>`;
+  const placeholder=selected?'':'<option value="" selected disabled>Selecione um cliente MCP</option>';
+  return `<label class="accessHeading"><span><strong>${escapeHtml(label)}</strong><small>Selecione explicitamente o cliente OAuth que receberá o grant. Nenhum cliente é escolhido automaticamente.</small></span><select id="${id}">${placeholder}${clients.map(client=>`<option value="${escapeHtml(client.client_id||'')}" ${client.client_id===selected?.client_id?'selected':''}>${escapeHtml(client.client_name||client.client_id||'cliente')}</option>`).join('')}</select></label>`;
 }
 async function loadRemoteComputerGrants(){const result=await call('remote_computer_grants');state.remoteComputerGrantStatus=result||null;state.remoteComputerGrants=result?.ok?(result.data||null):null;return result}
 async function loadRemoteAppIntelligenceGrants(){const result=await call('remote_app_intelligence_grants');state.remoteAppIntelligenceGrantStatus=result||null;state.remoteAppIntelligenceGrants=result?.ok?(result.data||null):null;return result}
@@ -66,22 +71,24 @@ function addComputerAccessValue(field,inputId){
 function renderRemoteComputerAuthorization(){
   const result=state.remoteComputerGrantStatus,data=state.remoteComputerGrants;
   if(!result?.ok){const needsAccount=result?.code==='product_auth_session_required';return `<div class="infoCard"><h4>AUTORIZAÇÃO REMOTA</h4><div class="sideMeta">${escapeHtml(needsAccount?'Conecte sua Conta ORDAX nesta sessão para gerenciar grants do cliente MCP.':(result?.summary||'Autorizações remotas indisponíveis.'))}</div>${needsAccount?'<div class="accessFooter"><span class="sideMeta">A sessão é mantida somente em memória.</span><button id="remoteComputerConnectAccount" class="primary" type="button">Conectar conta ORDAX</button></div>':''}</div>`}
-  const clients=ownerClients(data),active=activeComputerGrants();
-  const cards=REMOTE_COMPUTER_PROFILES.map(profile=>{const grant=remoteGrantForMode(profile.mode);const badge=profile.recommended?'<span class="managedBadge">Recomendado</span>':(profile.risk==='high'||profile.risk==='critical'?'<span class="managedBadge">Alto impacto</span>':'');const action=grant?`<button type="button" data-revoke-remote-grant="${escapeHtml(grant.grant_group_id||'')}" title="${escapeHtml(remoteGrantExpiry(grant))}">Revogar</button>`:`<button type="button" data-authorize-remote-mode="${escapeHtml(profile.mode)}" ${clients.length?'':'disabled'}>Autorizar 30 dias</button>`;return `<div class="accessItem remoteGrantItem"><span><strong>${escapeHtml(profile.title)}</strong>${badge}<small>${escapeHtml(profile.description)}</small><small>${grant?escapeHtml(remoteGrantExpiry(grant)):'Não autorizado remotamente'}</small></span>${action}</div>`}).join('');
-  return `<div class="infoCard"><div class="accessHeading"><div><h4>AUTORIZAÇÃO REMOTA</h4><div class="sideMeta">A Platform é o SSOT de clientes e grant groups. Nenhum vínculo local, pairing ou grant especializado é usado.</div></div></div>${clientPicker(data,'remoteComputerClientId','remoteComputerClient','Cliente MCP')}<div class="accessList">${cards}</div><div class="sideMeta">${active.length} autorização(ões) ativa(s) para o cliente selecionado. Comece por <strong>Observar computador</strong>; amplie somente quando necessário.</div></div>`;
+  const clients=ownerClients(data),selectedClientId=selectedComputerClientId(),active=activeComputerGrants();
+  const cards=REMOTE_COMPUTER_PROFILES.map(profile=>{const grant=remoteGrantForMode(profile.mode);const badge=profile.recommended?'<span class="managedBadge">Recomendado</span>':(profile.risk==='high'||profile.risk==='critical'?'<span class="managedBadge">Alto impacto</span>':'');const action=grant?`<button type="button" data-revoke-remote-grant="${escapeHtml(grant.grant_group_id||'')}" title="${escapeHtml(remoteGrantExpiry(grant))}">Revogar</button>`:`<button type="button" data-authorize-remote-mode="${escapeHtml(profile.mode)}" ${selectedClientId?'':'disabled'}>Autorizar 30 dias</button>`;return `<div class="accessItem remoteGrantItem"><span><strong>${escapeHtml(profile.title)}</strong>${badge}<small>${escapeHtml(profile.description)}</small><small>${grant?escapeHtml(remoteGrantExpiry(grant)):'Não autorizado remotamente'}</small></span>${action}</div>`}).join('');
+  const ambiguity=clients.length>1&&!selectedClientId?'<div class="accessWarning"><strong>Seleção obrigatória</strong><span>Há mais de um cliente MCP consentido. Escolha explicitamente o cliente antes de criar ou interpretar uma autorização remota.</span></div>':'';
+  return `<div class="infoCard"><div class="accessHeading"><div><h4>AUTORIZAÇÃO REMOTA</h4><div class="sideMeta">A Platform é o SSOT de clientes e grant groups. Nenhum vínculo local, pairing ou grant especializado é usado.</div></div></div>${clientPicker(data,'remoteComputerClientId','remoteComputerClient','Cliente MCP')}${ambiguity}<div class="accessList">${cards}</div><div class="sideMeta">${active.length} autorização(ões) ativa(s) para o cliente selecionado. Comece por <strong>Observar computador</strong>; amplie somente quando necessário.</div></div>`;
 }
 function renderAppIntelligenceAuthorization(){
   const result=state.remoteAppIntelligenceGrantStatus,data=state.remoteAppIntelligenceGrants;
   if(!result?.ok){const needsAccount=result?.code==='product_auth_session_required';return `<div class="infoCard"><h4>INTELIGÊNCIA DE APLICATIVOS</h4><div class="sideMeta">${escapeHtml(needsAccount?'Conecte sua Conta ORDAX para permitir leitura declarativa dos apps.':(result?.summary||'Autorização indisponível.'))}</div></div>`}
-  const clients=ownerClients(data),grant=activeAppIntelligenceGrant();
-  const action=grant?`<button type="button" id="revokeRemoteAppIntelligence" data-grant-id="${escapeHtml(grant.grant_group_id||'')}">Revogar</button>`:`<button type="button" id="authorizeRemoteAppIntelligence" class="primary" ${clients.length?'':'disabled'}>Autorizar 30 dias</button>`;
-  return `<div class="infoCard"><div class="accessHeading"><div><h4>INTELIGÊNCIA DE APLICATIVOS</h4><div class="sideMeta">Somente <code>intelligence.app_catalog</code> e <code>intelligence.app_detail</code>; sem autoridade de execução.</div></div></div>${clientPicker(data,'remoteAppIntelligenceClientId','remoteAppIntelligenceClient','Cliente MCP')}<div class="accessItem remoteGrantItem"><span><strong>Leitura semântica dos apps</strong><span class="managedBadge">Somente leitura</span><small>${grant?escapeHtml(remoteGrantExpiry(grant)):'Não autorizado remotamente'}</small></span>${action}</div></div>`;
+  const clients=ownerClients(data),selectedClientId=selectedAppIntelligenceClientId(),grant=activeAppIntelligenceGrant();
+  const action=grant?`<button type="button" id="revokeRemoteAppIntelligence" data-grant-id="${escapeHtml(grant.grant_group_id||'')}">Revogar</button>`:`<button type="button" id="authorizeRemoteAppIntelligence" class="primary" ${selectedClientId?'':'disabled'}>Autorizar 30 dias</button>`;
+  const ambiguity=clients.length>1&&!selectedClientId?'<div class="accessWarning"><strong>Seleção obrigatória</strong><span>Escolha explicitamente o cliente MCP antes de autorizar a inteligência dos aplicativos.</span></div>':'';
+  return `<div class="infoCard"><div class="accessHeading"><div><h4>INTELIGÊNCIA DE APLICATIVOS</h4><div class="sideMeta">Somente <code>intelligence.app_catalog</code> e <code>intelligence.app_detail</code>; sem autoridade de execução.</div></div></div>${clientPicker(data,'remoteAppIntelligenceClientId','remoteAppIntelligenceClient','Cliente MCP')}${ambiguity}<div class="accessItem remoteGrantItem"><span><strong>Leitura semântica dos apps</strong><span class="managedBadge">Somente leitura</span><small>${grant?escapeHtml(remoteGrantExpiry(grant)):'Não autorizado remotamente'}</small></span>${action}</div></div>`;
 }
-async function authorizeRemoteAppIntelligence(){const clientId=selectedAppIntelligenceClientId();if(!clientId){setStatus('Nenhum cliente MCP consentido selecionado');return}if(!window.confirm('Autorizar somente leitura da inteligência declarativa dos aplicativos por 30 dias?'))return;setStatus('Criando autorização...');const result=await call('authorize_remote_app_intelligence_grant',clientId,30);if(!result?.ok){setStatus(result?.summary||'Falha ao autorizar');await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();return}await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();setStatus('Inteligência dos apps autorizada')}
+async function authorizeRemoteAppIntelligence(){const clientId=selectedAppIntelligenceClientId();if(!clientId){setStatus('Selecione explicitamente um cliente MCP consentido');return}if(!window.confirm('Autorizar somente leitura da inteligência declarativa dos aplicativos por 30 dias?'))return;setStatus('Criando autorização...');const result=await call('authorize_remote_app_intelligence_grant',clientId,30);if(!result?.ok){setStatus(result?.summary||'Falha ao autorizar');await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();return}await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();setStatus('Inteligência dos apps autorizada')}
 async function revokeRemoteAppIntelligence(grantId){if(!grantId||!window.confirm('Revogar esta autorização agora?'))return;const result=await call('revoke_remote_app_intelligence_grant',grantId);await loadRemoteAppIntelligenceGrants();renderComputerAccessCanvas();setStatus(result?.ok?'Autorização revogada':(result?.summary||'Falha ao revogar'))}
 function bindRemoteComputerAuthorization(){
-  const client=document.getElementById('remoteComputerClient');if(client)client.onchange=()=>{state.remoteComputerClientId=client.value;renderComputerAccessCanvas()};
-  const appClient=document.getElementById('remoteAppIntelligenceClient');if(appClient)appClient.onchange=()=>{state.remoteAppIntelligenceClientId=appClient.value;renderComputerAccessCanvas()};
+  const client=document.getElementById('remoteComputerClient');if(client)client.onchange=()=>{state.remoteComputerClientId=client.value||null;renderComputerAccessCanvas()};
+  const appClient=document.getElementById('remoteAppIntelligenceClient');if(appClient)appClient.onchange=()=>{state.remoteAppIntelligenceClientId=appClient.value||null;renderComputerAccessCanvas()};
   const connect=document.getElementById('remoteComputerConnectAccount');if(connect)connect.onclick=()=>document.getElementById('accountButton')?.click();
   document.querySelectorAll('[data-authorize-remote-mode]').forEach(button=>button.onclick=()=>authorizeRemoteComputerProfile(button.dataset.authorizeRemoteMode));
   document.querySelectorAll('[data-revoke-remote-grant]').forEach(button=>button.onclick=()=>revokeRemoteComputerProfile(button.dataset.revokeRemoteGrant));
@@ -103,7 +110,7 @@ function renderComputerAccessCanvas(result=null){
   $('computerAccessSave').onclick=saveComputerAccess;bindRemoteComputerAuthorization();
 }
 async function authorizeRemoteComputerProfile(mode){
-  const profile=REMOTE_COMPUTER_PROFILES.find(item=>item.mode===mode);if(!profile)return;const clientId=selectedComputerClientId();if(!clientId){setStatus('Nenhum cliente MCP consentido selecionado');return}
+  const profile=REMOTE_COMPUTER_PROFILES.find(item=>item.mode===mode);if(!profile)return;const clientId=selectedComputerClientId();if(!clientId){setStatus('Selecione explicitamente um cliente MCP consentido');return}
   if(profile.risk==='critical'&&!(state.computerAccess?.enabled&&state.computerAccess?.full_access)){setStatus('Ative e salve Full Access local antes de autorizar Acesso total remoto.');return}
   const warning=profile.risk==='critical'?'Autorizar ACESSO TOTAL REMOTO por 30 dias?':`Autorizar “${profile.title}” para este cliente MCP por 30 dias?`;if(!window.confirm(warning))return;
   setStatus('Criando autorização remota...');const result=await call('authorize_remote_computer_grant',mode,clientId,30);if(!result?.ok){setStatus(result?.summary||'Falha ao autorizar');await loadRemoteComputerGrants();renderComputerAccessCanvas();return}await loadRemoteComputerGrants();renderComputerAccessCanvas();setStatus('Autorização remota criada');
