@@ -70,7 +70,9 @@ test('browser grant creation remains fail closed without client or canonical sco
 test('browser authorization sends only selected client and canonical UUID scope to host',async()=>{
   const h=harness();
   await h.run('authorizeRemoteProjectBrowser()');
-  assert.deepEqual(h.calls,[['authorize_remote_project_browser_grant','client-b','space-uuid','project-uuid',30]]);
+  const authorizationCalls=h.calls.filter(call=>call[0]==='authorize_remote_project_browser_grant');
+  assert.deepEqual(authorizationCalls,[['authorize_remote_project_browser_grant','client-b','space-uuid','project-uuid',30]]);
+  assert.deepEqual(h.calls.slice(1).map(call=>call[0]),['remote_project_browser_grants','browser_list']);
   assert.match(h.statuses.at(-1),/Autorização do navegador criada/);
 });
 
