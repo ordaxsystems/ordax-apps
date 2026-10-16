@@ -25,7 +25,7 @@ function harness(){
     remoteProjectBrowserGrants:{clients,grant_groups:[]},remoteProjectBrowserGrantStatus:{ok:true},project:'review'};
   const context=vm.createContext({state,$:node,document:{getElementById:node,querySelectorAll:()=>[]},
     window:{addEventListener:()=>{},confirm:()=>true},setStatus:value=>statuses.push(String(value||'')),setTimeout:()=>{},
-    escapeHtml:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
+    escapeHtml:value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c])),
     call:async(...args)=>{calls.push(args);return {ok:false,summary:'offline'}}});
   for(const name of ['computer_access.js','browser_access.js'])vm.runInContext(readFileSync(new URL(name,assets),'utf8'),context);
   return {state,node,calls,statuses,run:code=>vm.runInContext(code,context)};
@@ -63,25 +63,32 @@ test('expired, malformed, unbound and unknown grant groups cannot appear active'
   assert.equal(h.run("remoteGrantIsActive({valid_until:'invalid'})"),false);
 });
 
-test('app intelligence is client scoped and browser grant creation stays fail-closed without canonical project ids',async()=>{
+test('app intelligence is client scoped and browser grants require the exact canonical project scope',async()=>{
   const h=harness();
   h.state.remoteAppIntelligenceGrants.grant_groups=[grantGroup('intelligence-b','client-b','app-intelligence-read')];
   assert.equal(h.run('activeAppIntelligenceGrant()'),null);
   h.state.remoteAppIntelligenceClientId='client-b';
   assert.equal(h.run('activeAppIntelligenceGrant().grant_group_id'),'intelligence-b');
 
-  h.state.remoteProjectBrowserGrants={clients,grant_groups:[grantGroup('browser-local-slug','client-b','project-browser-automation')]};
+  h.state.remoteProjectBrowserGrants={clients,grant_groups:[
+    grantGroup('browser-other','client-b','project-browser-automation',{space_id:'space-other',project_id:'project-other'}),
+    grantGroup('browser-current','client-b','project-browser-automation',{space_id:'space-uuid',project_id:'project-uuid'}),
+  ]};
   assert.equal(h.run('browserGrantForProject()'),null);
   const blockedHtml=h.run('renderBrowserGrant()');
   assert.match(blockedHtml,/space_id \+ project_id/);
   assert.match(blockedHtml,/Autorizar indisponível/);
   assert.match(blockedHtml,/Fail-closed/);
+  assert.match(blockedHtml,/host ainda não resolveu/);
+  await h.run("revokeRemoteProjectBrowser('browser-other')");
+  assert.equal(h.calls.length,0);
   await h.run('authorizeRemoteProjectBrowser()');
   assert.equal(h.calls.length,0);
   assert.match(h.statuses.at(-1),/Space e projeto canônicos/);
 
-  h.state.remoteProjectBrowserGrants={clients,grant_groups:[grantGroup('browser-canonical','client-b','project-browser-automation',{space_id:'space-uuid',project_id:'project-uuid'})]};
-  assert.equal(h.run('browserGrantForProject().grant_group_id'),'browser-canonical');
+  h.state.remoteProjectBrowserGrants.canonical_scope={space_id:'space-uuid',project_id:'project-uuid'};
+  assert.equal(h.run('browserGrantForProject().grant_group_id'),'browser-current');
+  assert.notEqual(h.run('browserGrantForProject().grant_group_id'),'browser-other');
 });
 
 test('active computer profiles remain independently revocable by grant group id',()=>{
@@ -117,6 +124,7 @@ test('canonical owner grant UI contains no device-link authority vocabulary',()=
   assert.doesNotMatch(source,/link_id|data\.links|device_links|grantMatchesLink|selectedGrantLink/);
   assert.match(source,/grant_groups/);
   assert.match(source,/client_id/);
+  assert.match(source,/canonical_scope/);
 });
 
 test('portable UI text decodes strictly and carries no known encoding corruption',()=>{
