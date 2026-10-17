@@ -1,7 +1,7 @@
 {
   "schema": "ordax-apps.ui-semantic-map/1",
   "appId": "studio",
-  "appVersion": "0.15.7",
+  "appVersion": "0.15.8",
   "authority": "none",
   "execution": "descriptive-only",
   "privacy": {"captureInputValues": false, "captureCredentials": false, "maxTextLength": 240},
