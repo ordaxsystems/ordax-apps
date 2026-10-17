@@ -13,7 +13,7 @@ const schema = 'ordax.studio-product-account-session/1';
 const fixtureSubject = '00000000-0000-4000-8000-00000000000a';
 const fixtureDevice = '00000000-0000-4000-8000-00000000000b';
 
-function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access_token: 'secret.jwt', email: 'user@example.com', subject_id: fixtureSubject, device_id: fixtureDevice, enrolled_now: true }) + '\n' } = {}) {
+function fixture({ exit = 0, payload = JSON.stringify({ schema, ok: true, access_token: 'secret.jwt', email: 'user@example.com', subject_id: fixtureSubject, device_id: fixtureDevice, product_mcp_url: 'https://mcp.ordax.com.br', enrolled_now: true }) + '\n' } = {}) {
   const calls = [];
   const spawnProcess = (python, argv, options) => {
     calls.push({ python, argv, options });
@@ -38,7 +38,7 @@ test('canonical subprocess owns browser OAuth and no credentials cross Electron 
   const result = await invokeCanonicalProductSignIn(undefined, f);
   assert.deepEqual(result, {
     token: 'secret.jwt', email: 'user@example.com', subjectId: fixtureSubject,
-    deviceId: fixtureDevice, enrolledNow: true,
+    deviceId: fixtureDevice, productOrigin: 'https://mcp.ordax.com.br', enrolledNow: true,
   });
   assert.equal(f.calls.length, 1);
   assert.deepEqual(f.calls[0].argv, ['-I','-u','-m','ordax_studio.electron_account_session']);
@@ -125,7 +125,7 @@ test('one installed-Runtime subject assertion adopts account without duplicate P
     env: {}, fetcher: async (...args) => { calls.push(args); throw new Error('no Product endpoint configured'); },
     interval: 100000 });
   await runtime.init(); t.after(() => runtime.close());
-  const result = await runtime.acceptAccountToken('confidential-jwt', fixtureSubject);
+  const result = await runtime.acceptAccountToken('confidential-jwt', fixtureSubject, 'https://mcp.ordax.com.br');
   assert.equal(result.accountConnected, true);
   assert.equal(result.connected, false);
   assert.equal(result.catalogAvailable, false);
@@ -137,7 +137,7 @@ test('one installed-Runtime subject assertion adopts account without duplicate P
   assert.equal(calls.length, 0);
   assert.equal((await runtime.connect()).accountConnected, true);
   assert.equal(calls.length, 0);
-  await assert.rejects(runtime.acceptAccountToken('another-jwt', fixtureSubject), /Já existe/);
+  await assert.rejects(runtime.acceptAccountToken('another-jwt', fixtureSubject, 'https://mcp.ordax.com.br'), /Já existe/);
 });
 
 test('unverified subject or malformed UUID cannot unlock account or reach network', async t => {
@@ -150,11 +150,31 @@ test('unverified subject or malformed UUID cannot unlock account or reach networ
   });
   await runtime.init(); t.after(()=>runtime.close());
   for (const subject of [undefined, null, 'forged-subject', '../other', fixtureSubject.toUpperCase()]) {
-    await assert.rejects(runtime.acceptAccountToken('secret', subject), /Product inválida/);
+    await assert.rejects(runtime.acceptAccountToken('secret', subject, 'https://mcp.ordax.com.br'), /Product inválida/);
   }
   assert.equal(runtime.state().configured, false);
   assert.equal(runtime.state().accountConnected, false);
   assert.equal(calls, 0);
+});
+
+test('validated Product origin is required before an account token can acquire authority', async () => {
+  const storage = { read: async (_, value) => value, write: async () => {} };
+  for (const origin of [undefined, '', 'http://mcp.ordax.com.br', 'https://mcp.ordax.com.br/path', 'https://user@example.com']) {
+    const runtime = new ProductRuntime({ storage, env: {}, fetcher: async () => { throw new Error('must not call network'); }, interval: 100000 });
+    await runtime.init();
+    await assert.rejects(runtime.acceptAccountToken('secret', fixtureSubject, origin), /Origem Product/);
+    assert.equal(runtime.state().configured, false);
+    assert.equal(runtime.state().accountConnected, false);
+    await runtime.close();
+  }
+});
+
+test('observe authorization bridge exposes no renderer-selected authority parameters', async () => {
+  const preload = await readFile(new URL('../native/preload.cjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../native/main.cjs', import.meta.url), 'utf8');
+  assert.match(preload, /authorizeObserve:\(\)=>ipcRenderer\.invoke\('studio-product:authorize-observe'\)/);
+  assert.match(main, /runtime\.authorizeComputerObserve\(productDeviceId\)/);
+  assert.ok(!preload.includes("ipcRenderer.invoke('studio-product:authorize-observe',"));
 });
 
 test('a prior uncertain action journal fails closed before installing a new account', async t => {
@@ -167,6 +187,6 @@ test('a prior uncertain action journal fails closed before installing a new acco
   });
   await runtime.init(); t.after(()=>runtime.close());
   runtime.operations.push({ status:'uncertain',id:'prior',deviceId:'device',kind:'terminal' });
-  await assert.rejects(runtime.acceptAccountToken('new-session', fixtureSubject),/Confira ou recupere/);
+  await assert.rejects(runtime.acceptAccountToken('new-session', fixtureSubject, 'https://mcp.ordax.com.br'),/Confira ou recupere/);
   assert.equal(runtime.state().configured,false);
 });

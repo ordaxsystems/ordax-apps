@@ -73,10 +73,10 @@ export function centralAccountCopy(connected, available, accountVerified = false
   if (accountVerified) return Object.freeze({
     state: 'account',
     label: 'Conta conectada',
-    title: 'Concluir conexão deste computador',
-    description: 'Sua Conta OrdaX está autenticada, mas este computador ainda não foi autorizado como dispositivo remoto.',
-    action: 'Concluir conexão',
-    hint: 'Abrir a configuração do Runtime para concluir o vínculo deste computador.',
+    title: 'Autorizar observação deste computador',
+    description: 'Sua Conta OrdaX está autenticada. Autorize somente observação deste computador para o cliente MCP consentido.',
+    action: 'Autorizar observação',
+    hint: 'Conceder somente o perfil computer-observe por 30 dias ao cliente MCP consentido.',
     warning: 'Conta OrdaX autenticada; acesso remoto ainda não autorizado. Nenhum computador foi presumido conectado.',
   });
   if (available === 'unavailable') return Object.freeze({
@@ -151,7 +151,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
   const $ = id => document.getElementById(id);
   let model = centralViewModel(null, null);
   let selected = null, checking = false, issue = '', checkedAt = null;
-  let accountAvailability = 'unknown';
+  let accountAvailability = 'unknown', observeAuthorized = false;
   let filter = '', operationFilter = 'all';
   const metric = (id, value) => { $(id).textContent = value === null ? '—' : String(value); };
   function paint() {
@@ -160,8 +160,11 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
     $('centralConnectionState').textContent = connection.label;
     $('centralConnectionTitle').textContent = connection.title;
     $('centralConnectionDescription').textContent = connection.description;
-    $('centralConnect').disabled = checking || typeof openRuntime !== 'function';
-    $('centralConnect').textContent = connection.action;
+    const authorizeObserve = model.state === 'account-connected';
+    $('centralConnect').disabled = checking || (authorizeObserve
+      ? observeAuthorized || typeof accountHost?.authorizeObserve !== 'function'
+      : typeof openRuntime !== 'function');
+    $('centralConnect').textContent = authorizeObserve && observeAuthorized ? 'Observação autorizada' : connection.action;
     $('centralConnect').title = connection.hint;
     $('centralRefresh').disabled = checking;
     $('centralRefresh').textContent = checking ? 'Verificando…' : 'Atualizar estado';
@@ -175,7 +178,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
     $('centralProductStatus').textContent = model.state === 'product-connected'
       ? 'Catálogo Product conectado · presença informada pela plataforma'
       : model.state === 'account-connected'
-      ? 'Conta OrdaX autenticada · acesso remoto não autorizado'
+      ? observeAuthorized ? 'Conta OrdaX autenticada · observação MCP autorizada' : 'Conta OrdaX autenticada · acesso remoto não autorizado'
       : 'Product indisponível · nenhum dispositivo foi presumido conectado';
     $('centralWarning').textContent = issue || connection.warning;
     $('centralLabStatus').textContent = model.lab.state === 'laboratory'
@@ -261,10 +264,18 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
     } finally { checking = false; paint(); }
   }
   $('centralConnect').addEventListener('click', () => {
-    if (checking || typeof openRuntime !== 'function') return;
-    Promise.resolve().then(openRuntime).catch(error => {
-      issue = error?.message || 'Não foi possível abrir a conexão OrdaX.'; paint();
-    });
+    if (checking) return;
+    const authorizeObserve = model.state === 'account-connected';
+    const action = authorizeObserve ? accountHost?.authorizeObserve : openRuntime;
+    if (typeof action !== 'function') return;
+    checking = true; issue = ''; paint();
+    Promise.resolve().then(action).then(result => {
+      if (!authorizeObserve) return;
+      if (result?.authorized !== true || result?.profile !== 'computer-observe') throw new Error('A autorização de observação não foi confirmada.');
+      observeAuthorized = true; issue = 'Observação MCP autorizada para o cliente consentido.';
+    }).catch(error => {
+      issue = error?.message || (authorizeObserve ? 'Não foi possível autorizar observação deste computador.' : 'Não foi possível abrir a conexão OrdaX.');
+    }).finally(() => { checking = false; paint(); });
   });
   $('centralRefresh').addEventListener('click', refresh);
   $('centralOperationFilter').addEventListener('change', event => {

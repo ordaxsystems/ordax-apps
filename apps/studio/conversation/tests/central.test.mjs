@@ -190,7 +190,8 @@ test('Account is verified independently of devices and cannot project fake Centr
   assert.deepEqual(model.devices, []);
   assert.deepEqual(model.operations, []);
   const copy = centralAccountCopy(false, 'available', true);
-  assert.equal(copy.action, 'Concluir conexão');
+  assert.equal(copy.action, 'Autorizar observação');
+  assert.match(copy.hint, /computer-observe/);
   assert.equal(copy.state, 'account');
   assert.match(copy.warning, /não autorizado/);
 });

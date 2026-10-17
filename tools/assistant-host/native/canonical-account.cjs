@@ -11,6 +11,15 @@ const NATIVE_ERROR_CODE = /^[A-Za-z][A-Za-z0-9_]{0,127}$/;
 const MAX_STDOUT = 20000;
 const DEADLINE_MS = 315000;
 
+function canonicalProductOrigin(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
+        || (url.pathname !== '/' && url.pathname !== '')) return null;
+    return url.origin;
+  } catch { return null; }
+}
+
 function fail(message) { return Object.assign(new Error(message), { status: 503 }); }
 
 function nativeFailure(value, exitCode) {
@@ -98,14 +107,16 @@ async function invokeCanonicalProductSignIn(data, {
             || value.access_token.length > 16000 || /[\r\n]/.test(value.access_token)
             || typeof value.subject_id !== 'string' || !SUBJECT_UUID.test(value.subject_id)
             || typeof value.device_id !== 'string' || !SUBJECT_UUID.test(value.device_id)
+            || canonicalProductOrigin(value.product_mcp_url) === null
             || typeof value.enrolled_now !== 'boolean'
             || typeof value.email !== 'string' || value.email.length > 320
-            || Object.keys(value).some(k => !['schema','ok','access_token','email','subject_id','device_id','enrolled_now'].includes(k))) {
+            || Object.keys(value).some(k => !['schema','ok','access_token','email','subject_id','device_id','product_mcp_url','enrolled_now'].includes(k))) {
           throw new Error('bad-payload');
         }
         finish(null, {
           token: value.access_token, email: value.email, subjectId: value.subject_id,
-          deviceId: value.device_id, enrolledNow: value.enrolled_now,
+          deviceId: value.device_id, productOrigin: canonicalProductOrigin(value.product_mcp_url),
+          enrolledNow: value.enrolled_now,
         });
       } catch { finish(fail('Não foi possível confirmar sua sessão ORDAX.')); }
     });
