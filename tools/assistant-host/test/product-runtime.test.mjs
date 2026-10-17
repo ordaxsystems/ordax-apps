@@ -216,3 +216,42 @@ test('the Space supplied by the canonical host is preserved without accepting a 
   await runtime.submit(command); await wait(() => runtime.operations[0].status === 'queued');
   assert.equal(JSON.parse(f.calls.find(c => c.options.method === 'POST').options.body).space_id, 'space-1');
 });
+
+
+test('verified account grants only computer-observe to exactly one consented MCP client', async t => {
+  const subject = '00000000-0000-4000-8000-00000000000a';
+  const device = '11111111-1111-4111-8111-111111111111';
+  const client = '22222222-2222-4222-8222-222222222222';
+  const calls = [];
+  const fetcher = async (url, options) => {
+    calls.push({ url, options }); const parsed = new URL(url);
+    if (parsed.pathname === '/v3/owner/remote-authority') return Response.json({ ok: true, device_id: device, clients: [{ client_id: client }], grant_groups: [] });
+    if (parsed.pathname === '/v3/owner/remote-grant-groups' && options.method === 'POST') return Response.json({ ok: true, grant_group: {} });
+    throw new Error('unexpected request');
+  };
+  const runtime = new ProductRuntime({ storage: { read: async (_, fallback) => fallback, write: async () => {} }, env: {}, fetcher, interval: 100000 });
+  await runtime.init(); t.after(() => runtime.close());
+  await runtime.acceptAccountToken('private-account-token', subject, 'https://mcp.ordax.com.br');
+  const result = await runtime.authorizeComputerObserve(device);
+  assert.equal(result.authorized, true); assert.equal(result.profile, 'computer-observe'); assert.equal(calls.length, 2);
+  assert.equal(new URL(calls[0].url).searchParams.get('device_id'), device);
+  const body = JSON.parse(calls[1].options.body);
+  assert.equal(body.client_id, client); assert.equal(body.device_id, device); assert.equal(body.profile_key, 'computer-observe');
+  assert.equal(body.project_id, null); assert.equal(body.space_id, null);
+  assert.ok(Date.parse(body.valid_until) > Date.now() + 29 * 24 * 60 * 60 * 1000);
+  assert.ok(!JSON.stringify(runtime.state()).includes('private-account-token'));
+});
+
+test('observe grant fails closed when MCP client consent is missing or ambiguous', async () => {
+  const subject = '00000000-0000-4000-8000-00000000000a';
+  const device = '11111111-1111-4111-8111-111111111111';
+  const client = '22222222-2222-4222-8222-222222222222';
+  for (const clients of [[], [{ client_id: client }, { client_id: '33333333-3333-4333-8333-333333333333' }]]) {
+    let posts = 0;
+    const runtime = new ProductRuntime({ storage: { read: async (_, fallback) => fallback, write: async () => {} }, env: {}, interval: 100000,
+      fetcher: async (_url, options) => { if (options.method === 'POST') posts++; return Response.json({ ok: true, device_id: device, clients, grant_groups: [] }); } });
+    await runtime.init(); await runtime.acceptAccountToken('private-account-token', subject, 'https://mcp.ordax.com.br');
+    await assert.rejects(runtime.authorizeComputerObserve(device), /Nenhum cliente MCP|mais de um cliente MCP/);
+    assert.equal(posts, 0); await runtime.close();
+  }
+});

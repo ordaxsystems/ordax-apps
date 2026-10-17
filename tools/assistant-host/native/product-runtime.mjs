@@ -12,6 +12,22 @@ export const validOperations = data => data?.schemaVersion === 1 && Array.isArra
 // key. The full verified Product subject is bound inside the critical journal;
 // the filename is a bounded opaque digest, compatible with LocalStorage.
 const PRODUCT_SUBJECT_UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const OWNER_OBSERVE_PROFILE = 'computer-observe';
+const OWNER_OBSERVE_VALIDITY_MS = 30 * 24 * 60 * 60 * 1000;
+const canonicalUuid = (value, label) => {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (!CANONICAL_UUID.test(normalized)) throw fail(`${label} inválido.`, 400);
+  return normalized;
+};
+const canonicalProductOrigin = value => {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
+        || (url.pathname !== '/' && url.pathname !== '')) throw new Error();
+    return url.origin;
+  } catch { throw fail('Origem Product validada inválida.', 403); }
+};
 export const productSubjectJournalKey = subject => {
   if (typeof subject !== 'string' || !PRODUCT_SUBJECT_UUID.test(subject)) throw fail('Identidade Product inválida.', 403);
   return 'product-ops-' + createHash('sha256').update(subject, 'utf8').digest('hex').slice(0, 28);
@@ -109,17 +125,19 @@ export class ProductRuntime {
   // Subject is attested by the installed Runtime through private stdio after
   // verifying the owner session at the canonical Product authority. Renderer
   // requests and raw JWT claims cannot supply this second argument.
-  async acceptAccountToken(token, verifiedSubjectId) {
+  async acceptAccountToken(token, verifiedSubjectId, verifiedProductOrigin) {
     if (typeof token !== 'string' || !token || token.length > 16000 || /[\r\n]/.test(token)) throw fail('Sessão ORDAX inválida.', 400);
     productSubjectJournalKey(verifiedSubjectId); // strict canonical UUID before acquiring account authority
+    const productOrigin = canonicalProductOrigin(verifiedProductOrigin);
     if (this.configured || this.connected || this.connectPending || this.targetsPending || this.acceptingAccount) throw fail('Já existe uma sessão Product neste host. Encerre o app para trocar de conta.');
     if (this.recoveryRequired || this.unpersisted.size || this.tasks.size ||
       this.operations.some(op => !['succeeded','failed','cancelled','reviewed'].includes(op.status))) {
       throw fail('Confira ou recupere as operações anteriores antes de entrar em outra conta.');
     }
-    const previous = { key: this.journalKey, subject: this.journalSubject, operations: this.operations };
+    const previous = { key: this.journalKey, subject: this.journalSubject, operations: this.operations, base: this.base };
     this.acceptingAccount = true;
     this.#token = token;
+    this.base = productOrigin;
     this.configured = true;
     try {
       // The installed Runtime already verified this owner with the Platform.
@@ -147,6 +165,7 @@ export class ProductRuntime {
       return this.state();
     } catch (error) {
       this.#token = '';
+      this.base = previous.base;
       this.configured = false;
       this.accountConnected = false;
       this.connected = false;
@@ -160,6 +179,25 @@ export class ProductRuntime {
       this.version++;
       throw error;
     } finally { this.acceptingAccount = false; }
+  }
+  async authorizeComputerObserve(deviceId) {
+    if (!this.accountConnected || !this.configured) throw fail('Conecte sua Conta OrdaX antes de autorizar observação.', 403);
+    const device = canonicalUuid(deviceId, 'Dispositivo Product');
+    const authority = await this.request('/v3/owner/remote-authority?device_id=' + encodeURIComponent(device));
+    if (String(authority?.device_id || '').toLowerCase() !== device
+        || !Array.isArray(authority?.clients) || !authority.clients.every(item => item && typeof item === 'object')
+        || !Array.isArray(authority?.grant_groups) || !authority.grant_groups.every(item => item && typeof item === 'object')) {
+      throw fail('Resposta inválida da autoridade Owner.', 502);
+    }
+    if (authority.clients.length === 0) throw fail('Nenhum cliente MCP com consentimento ativo corresponde a esta conta.', 409);
+    if (authority.clients.length !== 1) throw fail('Há mais de um cliente MCP autorizado; selecione explicitamente o cliente correto.', 409);
+    const clientId = canonicalUuid(authority.clients[0].client_id, 'Cliente MCP');
+    const validUntil = new Date(Date.now() + OWNER_OBSERVE_VALIDITY_MS).toISOString();
+    await this.request('/v3/owner/remote-grant-groups', 'POST', {
+      client_id: clientId, device_id: device, profile_key: OWNER_OBSERVE_PROFILE,
+      space_id: null, project_id: null, valid_until: validUntil,
+    });
+    return { authorized: true, profile: OWNER_OBSERVE_PROFILE, validUntil };
   }
   async connect() {
     if (this.accountConnected) {
