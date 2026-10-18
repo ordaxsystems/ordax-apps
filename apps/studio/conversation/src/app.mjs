@@ -702,7 +702,7 @@ const activityTimer = setInterval(() => {
   tickActivityClocks(); renderRunStatus();
   if (navigation?.current() === 'central') centralPanel.poll();
 }, 1000);
-const projectPanel = createProjectPanel({ host, notify, onProjectConversations: openWorkspaceConversations, attach: async attachment => {
+const projectPanel = createProjectPanel({ host, notify, onProjectConversations: openWorkspaceConversations, showConversationLayout: showConversationView, attach: async attachment => {
   if (locked()) throw new Error('Aguarde a resposta antes de adicionar contexto.');
   composeTextMessage({ text: $('prompt').value, attachments: [...attachments, attachment] });
   attachments.push(attachment); saveDraft(); await drafts.flush(); renderAttachments();
