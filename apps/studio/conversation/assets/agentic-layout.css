@@ -38,6 +38,10 @@ body{background:var(--ax-bg);color:var(--ax-text)}
 .studio-navigation button[aria-current=page]{background:linear-gradient(90deg,#14538a,#0f3153);color:#f5fbff;box-shadow:inset 3px 0 #50adff}
 .studio-navigation button svg{height:18px;width:18px;flex:none}
 .studio-workspace-link>span{width:18px;font-size:18px;color:#7bbaff}
+.studio-navigation .studio-workspace-link[aria-pressed=true]{background:#123b60;color:#eff8ff;box-shadow:inset 3px 0 #62b5ff}
+.studio-navigation .studio-workspace-link[aria-pressed=true]>span{color:#b2dcff}
+.preview-workspace-shortcuts button[aria-pressed=true]{background:#175080;border-color:#4a9ce1;color:#f6fbff}
+
 .sidebar-projects{flex:1 1 auto;min-height:0;overflow-y:auto;margin:20px 2px 6px;padding:14px 2px 12px;border-top:1px solid #1d3045}
 .sidebar-projects-heading{padding:0 10px 12px}
 .sidebar-projects-heading h2{margin:0;color:#8ca8c7;font-size:10px;letter-spacing:1.15px}
