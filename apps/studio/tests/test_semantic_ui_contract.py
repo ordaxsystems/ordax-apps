@@ -7,13 +7,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "conversation" / "src" / "index.html").read_text(encoding="utf-8")
+APP = json.loads((ROOT / "app.json").read_text(encoding="utf-8"))
 MAP = json.loads((ROOT / "presentation" / "semantic-ui.json").read_text(encoding="utf-8"))
 SOURCE = (ROOT / "assets" / "semantic_ui.js").read_text(encoding="utf-8")
 WINDOWS_BUILDER = (ROOT.parents[1] / "tools" / "assistant-host" / "build-windows.mjs").read_text(encoding="utf-8")
 
 class StudioSemanticUiContractTests(unittest.TestCase):
     def test_manifest_is_non_authoritative_and_privacy_first(self) -> None:
-        self.assertEqual(MAP["schema"], "ordax-apps.ui-semantic-map/1"); self.assertEqual(MAP["appId"], "studio"); self.assertEqual(MAP["appVersion"], "0.15.8"); self.assertEqual(MAP["authority"], "none"); self.assertEqual(MAP["execution"], "descriptive-only"); self.assertFalse(MAP["privacy"]["captureInputValues"]); self.assertFalse(MAP["privacy"]["captureCredentials"])
+        self.assertEqual(MAP["schema"], "ordax-apps.ui-semantic-map/1"); self.assertEqual(MAP["appId"], "studio"); self.assertEqual(MAP["appVersion"], APP["version"]); self.assertEqual(MAP["authority"], "none"); self.assertEqual(MAP["execution"], "descriptive-only"); self.assertFalse(MAP["privacy"]["captureInputValues"]); self.assertFalse(MAP["privacy"]["captureCredentials"])
     def test_every_declared_id_selector_exists_in_portable_studio(self) -> None:
         ids=[]
         for item in MAP["elements"]:
