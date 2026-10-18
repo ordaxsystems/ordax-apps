@@ -15,6 +15,14 @@ const PRODUCT_SUBJECT_UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const OWNER_OBSERVE_PROFILE = 'computer-observe';
 const OWNER_FULL_PROFILE = 'full-computer-control';
+const OWNER_PROJECT_PROFILES = Object.freeze(['project-native-terminal','project-native-process']);
+const OWNER_PROJECT_GRANT_VALIDITY_MS = 24 * 60 * 60 * 1000;
+const GITHUB_REPO_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
+const canonicalRepository = value => {
+  const name = typeof value === 'string' ? value.trim() : '';
+  if (name.length < 3 || name.length > 140 || !GITHUB_REPO_RE.test(name)) throw fail('Repositório GitHub canônico inválido.', 400);
+  return name;
+};
 const OWNER_OBSERVE_VALIDITY_MS = 30 * 24 * 60 * 60 * 1000;
 const canonicalUuid = (value, label) => {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -208,7 +216,20 @@ export class ProductRuntime {
       profile_key: OWNER_FULL_PROFILE,
       valid_until: group.valid_until ?? null,
     }));
-    return { device_id: device, clients, grant_groups: grants };
+    const project_grant_groups = authority.grant_groups.filter(group =>
+      OWNER_PROJECT_PROFILES.includes(group.profile_key) && group.revoked_at == null
+      && clients.some(client => client.client_id === group.client_id)
+      && (group.valid_until == null || Number.isFinite(Date.parse(group.valid_until))
+        && Date.parse(group.valid_until) > Date.now())
+    ).map(group => ({
+      grant_group_id: canonicalUuid(group.grant_group_id, 'Grant Owner de projeto'),
+      client_id: canonicalUuid(group.client_id, 'Cliente MCP'),
+      profile_key: group.profile_key,
+      space_id: canonicalUuid(group.space_id, 'Space do grant'),
+      project_id: canonicalUuid(group.project_id, 'Projeto do grant'),
+      valid_until: group.valid_until ?? null,
+    }));
+    return { device_id: device, clients, grant_groups: grants, project_grant_groups };
   }
 
   // This is an explicit Owner UI operation, not an MCP/model-callable grant.
@@ -244,6 +265,67 @@ export class ProductRuntime {
       throw fail('A revogação ainda não foi confirmada pela autoridade Owner.', 503);
     }
     return { revoked: true, grant_group_id: groupId };
+  }
+
+  // Project scope is always obtained from PostgreSQL using the signed Owner
+  // identity and attested device binding, never a local slug or renderer UUID.
+  async ownerProjectAuthority(deviceId, repository) {
+    const device = canonicalUuid(deviceId, 'Dispositivo Product');
+    const name = canonicalRepository(repository);
+    const scope = await this.request('/v3/owner/project-scope?device_id='
+      + encodeURIComponent(device) + '&repository_full_name=' + encodeURIComponent(name));
+    if (canonicalUuid(scope.space_id, 'Space do projeto') === ''
+        || canonicalUuid(scope.project_id, 'Projeto') === '') throw fail('Escopo inválido.', 502);
+    const canonical = canonicalRepository(scope.repository_full_name);
+    if (canonical.toLowerCase() !== name.toLowerCase()) throw fail('O repositório canônico não corresponde ao solicitado.', 409);
+    const authority = await this.ownerComputerAuthority(device);
+    return {
+      device_id: device, repository_full_name: canonical,
+      space_id: scope.space_id.toLowerCase(), project_id: scope.project_id.toLowerCase(),
+      clients: authority.clients,
+      grant_groups: authority.project_grant_groups.filter(group =>
+        group.space_id === scope.space_id.toLowerCase()
+        && group.project_id === scope.project_id.toLowerCase()),
+    };
+  }
+
+  async authorizeProjectNative(deviceId, clientIdInput, repository, profile) {
+    if (!OWNER_PROJECT_PROFILES.includes(profile)) throw fail('Perfil nativo de projeto inválido.', 400);
+    const clientId = canonicalUuid(clientIdInput, 'Cliente MCP');
+    const authority = await this.ownerProjectAuthority(deviceId, repository);
+    if (!authority.clients.some(client => client.client_id === clientId)) throw fail('Selecione um cliente MCP consentido desta conta.', 403);
+    if (authority.grant_groups.some(group => group.client_id === clientId && group.profile_key === profile)) {
+      throw fail('Este perfil de projeto já está autorizado para o cliente selecionado.', 409);
+    }
+    const validUntil = new Date(Date.now() + OWNER_PROJECT_GRANT_VALIDITY_MS).toISOString();
+    await this.request('/v3/owner/remote-grant-groups', 'POST', {
+      client_id: clientId, device_id: authority.device_id, profile_key: profile,
+      space_id: authority.space_id, project_id: authority.project_id, valid_until: validUntil,
+    });
+    const verified = await this.ownerProjectAuthority(deviceId, repository);
+    if (!verified.grant_groups.some(group => group.client_id === clientId && group.profile_key === profile)) {
+      throw fail('A autoridade Owner ainda não confirmou a autorização do projeto.', 503);
+    }
+    return { authorized: true, profile, client_id: clientId, project_id: verified.project_id,
+      repository_full_name: verified.repository_full_name, validUntil };
+  }
+
+  async revokeProjectNative(deviceId, clientIdInput, repository, profile, grantIdInput) {
+    if (!OWNER_PROJECT_PROFILES.includes(profile)) throw fail('Perfil nativo de projeto inválido.', 400);
+    const clientId = canonicalUuid(clientIdInput, 'Cliente MCP');
+    const grantId = canonicalUuid(grantIdInput, 'Grant Owner de projeto');
+    const authority = await this.ownerProjectAuthority(deviceId, repository);
+    if (!authority.grant_groups.some(group => group.grant_group_id === grantId
+        && group.client_id === clientId && group.profile_key === profile)) {
+      throw fail('Grant de projeto não corresponde à autorização selecionada.', 403);
+    }
+    await this.request('/v3/owner/remote-grant-groups/' + encodeURIComponent(grantId)
+      + '?client_id=' + encodeURIComponent(clientId), 'DELETE');
+    const verified = await this.ownerProjectAuthority(deviceId, repository);
+    if (verified.grant_groups.some(group => group.grant_group_id === grantId)) {
+      throw fail('A revogação do projeto ainda não foi confirmada.', 503);
+    }
+    return { revoked: true, grant_group_id: grantId };
   }
 
   async authorizeComputerObserve(deviceId) {
