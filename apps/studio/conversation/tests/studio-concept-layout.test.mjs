@@ -31,7 +31,7 @@ test('sidebar shortcuts reuse Studio project ownership, never create new project
 });
 
 test('draft remains editable without model; sending still enforces provider and delivery state', () => {
-  assert.match(app, /\$\('prompt'\)\.disabled = !initialized \|\| locked\(\)/);
+  assert.match(app, /\$\('prompt'\)\.disabled = !initialized \|\| \(locked\(\) && !canTypeNextDraft\)/);
   assert.match(app, /if \(!account\(\)\?\.connected \|\| !account\(\)\?\.planEnabled\)/);
   assert.match(app, /\['prepared','submitted','uncertain'\]/);
   assert.match(app, /\$\('send'\)\.setAttribute\('aria-label', ready \?/);
