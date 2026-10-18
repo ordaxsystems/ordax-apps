@@ -1,3 +1,14 @@
+// One source of truth for native WebContentsView visibility and bounds.
+export function previewSurfaceVisibility({ enabled, expanded, page, workspaceOpen, overlayOpen, mobilePreview }) {
+  const collection = page !== 'conversation' && !workspaceOpen;
+  const fallbackShown = Boolean(enabled && expanded && !workspaceOpen && !collection && !mobilePreview);
+  return {
+    fallbackShown,
+    fallbackBounded: fallbackShown && !overlayOpen,
+    previewBounded: Boolean(enabled && !collection && !overlayOpen),
+  };
+}
+
 export function createPreviewPanel({ nativePreview, nativeWeb, project, configure, openProjects, notify }) {
   const $ = id => document.getElementById(id);
   let enabled = false, last = { status: 'empty' }, scheduled = false, geometryStamp = '', previewStamp = '', scopeStamp='';
@@ -30,19 +41,21 @@ export function createPreviewPanel({ nativePreview, nativeWeb, project, configur
   }
   function measure() {
     scheduled = false; if (!enabled) return;
-    const active = document.body.classList.contains('chatgpt-fallback');
-    const workspaceOpen = !$('projectDialog').hidden;
-    const collection = document.body.dataset.studioPage !== 'conversation' && !workspaceOpen;
-    // Workspace occupies the conversation column; it is not an overlay on the native preview.
-    const overlay = [...document.querySelectorAll('dialog')].some(dialog => dialog.open) || $('sidebar').classList.contains('open') || $('studioTools').open;
-    const hidden = !active || workspaceOpen || collection || document.body.classList.contains('mobile-preview');
-    if ($('chatgptFallback').hidden !== hidden) $('chatgptFallback').hidden = hidden;
+    const visibility = previewSurfaceVisibility({
+      enabled,
+      expanded: document.body.classList.contains('chatgpt-fallback'),
+      page: document.body.dataset.studioPage,
+      workspaceOpen: !$('projectDialog').hidden,
+      overlayOpen: [...document.querySelectorAll('dialog')].some(dialog => dialog.open) || $('sidebar').classList.contains('open') || $('studioTools').open,
+      mobilePreview: document.body.classList.contains('mobile-preview'),
+    });
+    if ($('chatgptFallback').hidden === visibility.fallbackShown) $('chatgptFallback').hidden = !visibility.fallbackShown;
     const rect = $('fallbackCanvas').getBoundingClientRect();
     const bounds = value => value.width > 1 && value.height > 1 ? { x: Math.ceil(value.x), y: Math.ceil(value.y), width: Math.floor(value.width) - 1, height: Math.floor(value.height) - 1 } : null;
-    const value = !hidden && !overlay ? bounds(rect) : null;
+    const value = visibility.fallbackBounded ? bounds(rect) : null;
     const stamp = JSON.stringify(value);
     if (stamp !== geometryStamp) { geometryStamp = stamp; if (nativeWeb?.setFallbackBounds) task(() => nativeWeb.setFallbackBounds(value)); }
-    const preview = !overlay && !collection ? bounds($('previewCanvas').getBoundingClientRect()) : null;
+    const preview = visibility.previewBounded ? bounds($('previewCanvas').getBoundingClientRect()) : null;
     const next = JSON.stringify(preview);
     if (next !== previewStamp) { previewStamp = next; if (nativePreview?.setBounds) task(async () => paint(await nativePreview.setBounds(preview))); }
   }
