@@ -87,6 +87,11 @@ button:focus-visible,.sidebar-project-link:focus-visible,.composer textarea:focu
 .studio-preview .studio-preview-panel .preview-canvas,.studio-preview .studio-preview-panel .preview-empty{top:141px}
 @media(max-width:1000px){.mobile-preview.studio-preview .studio-preview-panel .preview-controls{top:93px;height:80px}.mobile-preview.studio-preview .studio-preview-panel .preview-canvas,.mobile-preview.studio-preview .studio-preview-panel .preview-empty{top:173px}}
 @media(max-width:620px){.preview-workspace-shortcuts button{flex:1;min-width:0;font-size:10px;padding:4px}}
+/* Keep the native preview alongside Workspace, including when entered from Projects. */
+@media(min-width:1001px){
+  body.studio-preview.web-bridge:has(.studio-workspace:not([hidden])) .app{width:var(--assistant-width,60vw)}
+  body.studio-preview .main:has(.studio-workspace:not([hidden])) .studio-preview-panel{display:block}
+}
 /* The same conversation composer remains available below Workspace tools. */
 body .main:has(.studio-workspace:not([hidden])) .studio-workspace{order:1;flex:1 1 auto;min-height:0;overflow:auto}
 body .main:has(.studio-workspace:not([hidden])) .composer-area{order:2;display:block;flex:0 0 auto;width:100%;min-width:0;padding-top:8px;border-top:1px solid #233e5a;background:#081626}
