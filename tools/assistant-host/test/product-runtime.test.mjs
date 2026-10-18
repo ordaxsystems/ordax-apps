@@ -332,3 +332,103 @@ test('Owner Full Access rejects forged, stale and unconsented authority without 
     assert.equal(writes, 0);
   }
 });
+
+
+test('Owner native terminal and process grants bind exactly one canonical project, client and device', async t => {
+  const subject = '00000000-0000-4000-8000-00000000000a';
+  const device = '11111111-1111-4111-8111-111111111111';
+  const client = '22222222-2222-4222-8222-222222222222';
+  const wrongClient = '33333333-3333-4333-8333-333333333333';
+  const space = '44444444-4444-4444-8444-444444444444';
+  const project = '55555555-5555-4555-8555-555555555555';
+  const grantId = '66666666-6666-4666-8666-666666666666';
+  const repository = 'ordaxsystems/ordax-runtime';
+  const calls = [];
+  let active = false;
+  const fetcher = async (url, options) => {
+    const u = new URL(url);
+    const body = options.body ? JSON.parse(options.body) : null;
+    calls.push({ route: u.pathname, query: u.searchParams, method: options.method, body });
+    if (u.pathname === '/v3/owner/project-scope') {
+      assert.equal(u.searchParams.get('repository_full_name'), repository);
+      assert.equal(u.searchParams.get('device_id'), device);
+      return Response.json({ ok: true, space_id: space, project_id: project, repository_full_name: repository });
+    }
+    if (u.pathname === '/v3/owner/remote-authority') {
+      return Response.json({ ok: true, device_id: device,
+        clients: [{ client_id: client, client_name: 'ChatGPT pessoal' }],
+        grant_groups: active ? [{ grant_group_id: grantId, client_id: client,
+          profile_key: 'project-native-terminal', space_id: space, project_id: project,
+          valid_until: '2099-01-01T00:00:00Z' }] : [],
+      });
+    }
+    if (u.pathname === '/v3/owner/remote-grant-groups' && options.method === 'POST') {
+      assert.deepEqual({
+        device: body.device_id, client: body.client_id, space: body.space_id,
+        project: body.project_id, profile: body.profile_key,
+      }, {
+        device, client, space, project, profile: 'project-native-terminal',
+      });
+      active = true;
+      return Response.json({ ok: true, grant_group: {} });
+    }
+    if (u.pathname.endsWith('/' + grantId) && options.method === 'DELETE') {
+      assert.equal(u.searchParams.get('client_id'), client);
+      active = false; return Response.json({ ok: true });
+    }
+    throw new Error('Unexpected path: ' + u.pathname);
+  };
+  const runtime = new ProductRuntime({
+    storage: { read: async (_, fallback) => fallback, write: async () => {} },
+    env: {}, fetcher, interval: 100000,
+  });
+  await runtime.init(); t.after(() => runtime.close());
+  await runtime.acceptAccountToken('private-owner-token', subject, 'https://mcp.ordax.com.br');
+  const resolved = await runtime.ownerProjectAuthority(device, repository);
+  assert.equal(resolved.space_id, space);
+  assert.equal(resolved.project_id, project);
+  assert.equal(resolved.grant_groups.length, 0);
+  await assert.rejects(runtime.authorizeProjectNative(device, wrongClient, repository, 'project-native-terminal'),
+    /cliente MCP consentido/);
+  await assert.rejects(runtime.authorizeProjectNative(device, client, repository, 'full-computer-control'),
+    /Perfil nativo/);
+  assert.equal(calls.filter(call => call.method === 'POST').length, 0);
+  const auth = await runtime.authorizeProjectNative(device, client, repository, 'project-native-terminal');
+  assert.equal(auth.authorized, true);
+  assert.equal(auth.project_id, project);
+  assert.equal(auth.profile, 'project-native-terminal');
+  assert.equal((await runtime.ownerProjectAuthority(device, repository)).grant_groups.length, 1);
+  await assert.rejects(runtime.revokeProjectNative(device, wrongClient, repository, 'project-native-terminal', grantId),
+    /não corresponde/);
+  const removed = await runtime.revokeProjectNative(device, client, repository, 'project-native-terminal', grantId);
+  assert.equal(removed.revoked, true);
+  assert.equal((await runtime.ownerProjectAuthority(device, repository)).grant_groups.length, 0);
+  assert.equal(calls.filter(call => call.method === 'DELETE').length, 1);
+  assert.ok(!JSON.stringify(runtime.state()).includes('private-owner-token'));
+});
+
+test('Owner native project grant rejects invalid repository or mismatched canonical scope before writes', async t => {
+  const subject = '00000000-0000-4000-8000-00000000000a';
+  const device = '11111111-1111-4111-8111-111111111111';
+  const client = '22222222-2222-4222-8222-222222222222';
+  let writes = 0;
+  const runtime = new ProductRuntime({
+    storage: { read: async (_, fallback) => fallback, write: async () => {} }, env: {}, interval: 100000,
+    fetcher: async (url, options) => {
+      if (options.method === 'POST' || options.method === 'DELETE') writes++;
+      if (new URL(url).pathname === '/v3/owner/project-scope') {
+        return Response.json({ ok: true, space_id: '33333333-3333-4333-8333-333333333333',
+          project_id: '44444444-4444-4444-8444-444444444444',
+          repository_full_name: 'another/repository' });
+      }
+      return Response.json({ ok: true, device_id: device,
+        clients: [{ client_id: client }], grant_groups: [] });
+    },
+  });
+  await runtime.init(); t.after(() => runtime.close());
+  await runtime.acceptAccountToken('secret', subject, 'https://mcp.ordax.com.br');
+  await assert.rejects(runtime.ownerProjectAuthority(device, '../malicious'), /repositório GitHub canônico inválido/i);
+  await assert.rejects(runtime.authorizeProjectNative(device, client, 'ordaxsystems/ordax-runtime', 'project-native-terminal'),
+    /repositório canônico não corresponde/);
+  assert.equal(writes, 0);
+});

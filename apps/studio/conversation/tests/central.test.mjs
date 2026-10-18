@@ -218,3 +218,30 @@ test('active Studio Central provides explicit Owner authorization and revocation
   assert.match(preload, /authorizeFull:clientId=>ipcRenderer\.invoke/);
   assert.match(preload, /revokeFull:\(clientId,grantId\)=>ipcRenderer\.invoke/);
 });
+
+
+test('Owner native project grants require verified scope, native confirmation and distinct revocation controls', async () => {
+  const html = await readFile(new URL('../src/index.html', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../src/central.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../../../../tools/assistant-host/native/main.cjs', import.meta.url), 'utf8');
+  const preload = await readFile(new URL('../../../../tools/assistant-host/native/preload.cjs', import.meta.url), 'utf8');
+  for (const id of [
+    'centralProjectGrantPanel','centralProjectRepository','centralProjectInspect','centralProjectStatus',
+    'centralProjectAuthorizeTerminal','centralProjectRevokeTerminal',
+    'centralProjectAuthorizeProcess','centralProjectRevokeProcess',
+  ]) assert.match(html, new RegExp('id="' + id + '"'));
+  assert.match(html, /O terminal executa comandos nativos/);
+  assert.match(html, /confirmação nativa/);
+  assert.match(renderer, /accountHost\.projectAuthority\(repository\)/);
+  assert.match(renderer, /accountHost\.authorizeProjectNative\(ownerClientId, repository, profile\)/);
+  assert.match(renderer, /accountHost\.revokeProjectNative\(ownerClientId, repository, profile, grant\.grant_group_id\)/);
+  assert.doesNotMatch(renderer, /v3\/owner\/remote-grant-groups/);
+  assert.match(main, /studio-product:authorize-project-native/);
+  assert.match(main, /studio-product:revoke-project-native/);
+  assert.match(main, /runtime\.ownerProjectAuthority\(productDeviceId, repository\)/);
+  assert.match(main, /assertStudioAccountCaller\(event\)/);
+  assert.match(main, /dialog\.showMessageBox\(window/);
+  assert.match(preload, /projectAuthority:repository=>ipcRenderer\.invoke/);
+  assert.match(preload, /authorizeProjectNative:\(clientId,repository,profile\)=>ipcRenderer\.invoke/);
+  assert.match(preload, /revokeProjectNative:\(clientId,repository,profile,grantId\)=>ipcRenderer\.invoke/);
+});

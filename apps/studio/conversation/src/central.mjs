@@ -153,8 +153,40 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
   let selected = null, checking = false, issue = '', checkedAt = null;
   let accountAvailability = 'unknown', observeAuthorized = false;
   let ownerAuthority = null, ownerIssue = '', ownerClientId = '';
+  let projectAuthority = null, projectRepository = '', projectIssue = '';
   let filter = '', operationFilter = 'all';
   const metric = (id, value) => { $(id).textContent = value === null ? '—' : String(value); };
+  function projectGrantFor(profile) {
+    const repository = $('centralProjectRepository').value.trim();
+    if (!projectAuthority || projectRepository !== repository || !ownerClientId) return null;
+    return projectAuthority.grant_groups.find(group =>
+      group.client_id === ownerClientId && group.profile_key === profile) || null;
+  }
+  function paintProjectGrants(ownerReady) {
+    const enabled = ownerReady
+      && typeof accountHost?.projectAuthority === 'function'
+      && typeof accountHost?.authorizeProjectNative === 'function'
+      && typeof accountHost?.revokeProjectNative === 'function';
+    $('centralProjectGrantPanel').hidden = !enabled;
+    if (!enabled) return;
+    const repository = $('centralProjectRepository').value.trim();
+    const validRepo = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/.test(repository)
+      && repository.length <= 140;
+    const scoped = Boolean(projectAuthority && projectRepository === repository);
+    const terminalGrant = projectGrantFor('project-native-terminal');
+    const processGrant = projectGrantFor('project-native-process');
+    $('centralProjectInspect').disabled = checking || !ownerClientId || !validRepo;
+    $('centralProjectAuthorizeTerminal').disabled = checking || !scoped || !ownerClientId || Boolean(terminalGrant);
+    $('centralProjectRevokeTerminal').disabled = checking || !terminalGrant;
+    $('centralProjectAuthorizeProcess').disabled = checking || !scoped || !ownerClientId || Boolean(processGrant);
+    $('centralProjectRevokeProcess').disabled = checking || !processGrant;
+    $('centralProjectStatus').textContent = projectIssue || (scoped
+      ? 'Space: ' + projectAuthority.space_id + ' · Projeto: ' + projectAuthority.project_id
+        + ' · Terminal: ' + (terminalGrant ? 'autorizado' : 'sem grant')
+        + ' · Processos: ' + (processGrant ? 'autorizados' : 'sem grant')
+      : !validRepo ? 'Informe um repositório no formato organização/repositório.'
+      : 'Consulte o escopo canônico do repositório antes de autorizar.');
+  }
   function paint() {
     const connection = centralAccountCopy(model.state === 'product-connected', accountAvailability, model.state === 'account-connected');
     $('centralConnectionCard').dataset.state = connection.state;
@@ -211,6 +243,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
           (grant.valid_until ? new Date(grant.valid_until).toLocaleString('pt-BR') : 'revogação')
         : 'Cliente selecionado. O acesso total remoto ainda não está concedido.');
     }
+    paintProjectGrants(ownerReady);
     $('centralWarning').textContent = issue || connection.warning;
     $('centralLabStatus').textContent = model.lab.state === 'laboratory'
       ? 'Laboratório local autenticado (não é produção)'
@@ -292,6 +325,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
       model = centralViewModel(product, relay);
       ownerAuthority = null;
       ownerIssue = '';
+      projectAuthority = null; projectRepository = ''; projectIssue = '';
       if (model.state === 'account-connected' && typeof accountHost?.ownerAuthority === 'function') {
         try { ownerAuthority = await accountHost.ownerAuthority(); }
         catch (error) { ownerIssue = error?.message || 'Falha ao consultar autorização Owner.'; }
@@ -336,6 +370,53 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
       ownerIssue = error?.message || 'Não foi possível alterar a autorização remota.';
     } finally { checking = false; paint(); }
   }
+  $('centralProjectRepository').addEventListener('input', () => {
+    projectAuthority = null; projectRepository = ''; projectIssue = ''; paint();
+  });
+  $('centralProjectInspect').addEventListener('click', async () => {
+    if (checking || model.state !== 'account-connected' || !ownerClientId) return;
+    const repository = $('centralProjectRepository').value.trim();
+    checking = true; projectIssue = ''; paint();
+    try {
+      const authority = await accountHost.projectAuthority(repository);
+      if (!authority || authority.repository_full_name?.toLowerCase() !== repository.toLowerCase()
+          || !Array.isArray(authority.grant_groups)) throw new Error('Escopo canônico inválido.');
+      projectAuthority = authority; projectRepository = repository;
+    } catch (error) {
+      projectAuthority = null; projectRepository = '';
+      projectIssue = error?.message || 'Não foi possível verificar o vínculo do projeto.';
+    } finally { checking = false; paint(); }
+  });
+  async function projectMutation(profile, type) {
+    if (checking || model.state !== 'account-connected' || !ownerClientId) return;
+    if (!['project-native-terminal', 'project-native-process'].includes(profile)) return;
+    const repository = $('centralProjectRepository').value.trim();
+    if (!projectAuthority || repository !== projectRepository) return;
+    const grant = projectGrantFor(profile);
+    const action = type === 'authorize' && !grant
+      ? () => accountHost.authorizeProjectNative(ownerClientId, repository, profile)
+      : type === 'revoke' && grant
+      ? () => accountHost.revokeProjectNative(ownerClientId, repository, profile, grant.grant_group_id) : null;
+    if (!action) return;
+    checking = true; projectIssue = ''; paint();
+    try {
+      const result = await action();
+      if (result?.cancelled) return;
+      if (type === 'authorize' && result?.authorized !== true
+          || type === 'revoke' && result?.revoked !== true) throw new Error('A autoridade Owner não confirmou a operação.');
+      const verified = await accountHost.projectAuthority(repository);
+      if (verified.repository_full_name?.toLowerCase() !== repository.toLowerCase())
+        throw new Error('Escopo do projeto mudou durante a operação.');
+      projectAuthority = verified; projectRepository = repository;
+    } catch (error) {
+      projectAuthority = null; projectRepository = '';
+      projectIssue = error?.message || 'Não foi possível atualizar o grant deste projeto.';
+    } finally { checking = false; paint(); }
+  }
+  $('centralProjectAuthorizeTerminal').addEventListener('click', () => { void projectMutation('project-native-terminal', 'authorize'); });
+  $('centralProjectRevokeTerminal').addEventListener('click', () => { void projectMutation('project-native-terminal', 'revoke'); });
+  $('centralProjectAuthorizeProcess').addEventListener('click', () => { void projectMutation('project-native-process', 'authorize'); });
+  $('centralProjectRevokeProcess').addEventListener('click', () => { void projectMutation('project-native-process', 'revoke'); });
   $('centralOwnerAuthorizeFull').addEventListener('click', () => { void ownerMutation('authorize'); });
   $('centralOwnerRevokeFull').addEventListener('click', () => { void ownerMutation('revoke'); });
   $('centralRefresh').addEventListener('click', refresh);

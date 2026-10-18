@@ -64,6 +64,24 @@
             <button id="centralOwnerRevokeFull" class="connect-secondary" type="button" disabled>Revogar acesso total</button>
           </div>
           <p class="central-advisory">A confirmação final ocorre em janela nativa. O Runtime continua exigindo Full Access local e respeitando Windows/UAC. Nenhum grant é criado automaticamente.</p>
+          <section id="centralProjectGrantPanel" aria-labelledby="centralProjectGrantTitle" hidden>
+            <div class="central-surface-header"><h3 id="centralProjectGrantTitle">Terminal e processos por projeto</h3><span class="central-source">Grant independente · 24 h</span></div>
+            <p>O terminal executa comandos nativos com as permissões do usuário Windows. A autorização é específica do cliente MCP e do projeto registrado no Space, sem conceder acesso a outros projetos.</p>
+            <label class="central-operation-select" for="centralProjectRepository">Repositório canônico do projeto (GitHub)
+              <input id="centralProjectRepository" type="text" maxlength="140" autocomplete="off" spellcheck="false" placeholder="organização/repositório">
+            </label>
+            <div class="central-header-actions">
+              <button id="centralProjectInspect" class="connect-secondary" type="button" disabled>Verificar escopo e grants</button>
+            </div>
+            <p id="centralProjectStatus" class="central-advisory" role="status">Informe um repositório e consulte o vínculo oficial antes de autorizar.</p>
+            <div class="central-header-actions">
+              <button id="centralProjectAuthorizeTerminal" class="directory-primary" type="button" disabled>Autorizar terminal · 24 h</button>
+              <button id="centralProjectRevokeTerminal" class="connect-secondary" type="button" disabled>Revogar terminal</button>
+              <button id="centralProjectAuthorizeProcess" class="directory-primary" type="button" disabled>Autorizar processos · 24 h</button>
+              <button id="centralProjectRevokeProcess" class="connect-secondary" type="button" disabled>Revogar processos</button>
+            </div>
+            <p class="central-advisory">Cada concessão exige confirmação nativa e pode ser revogada de forma independente. A opção de acesso total ao computador não concede terminal automaticamente.</p>
+          </section>
         </section>
         <div class="central-provenance" role="status"><span id="centralProductStatus">Product não verificado</span><small id="centralChecked">Sem consulta nesta sessão</small></div>
         <div class="central-metrics" aria-label="Resumo do Product">
