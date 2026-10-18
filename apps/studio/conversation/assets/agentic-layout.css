@@ -38,7 +38,7 @@ body{background:var(--ax-bg);color:var(--ax-text)}
 .studio-navigation button[aria-current=page]{background:linear-gradient(90deg,#14538a,#0f3153);color:#f5fbff;box-shadow:inset 3px 0 #50adff}
 .studio-navigation button svg{height:18px;width:18px;flex:none}
 .studio-workspace-link>span{width:18px;font-size:18px;color:#7bbaff}
-.sidebar-projects{min-height:0;overflow-y:auto;margin:20px 2px 6px;padding:14px 2px 12px;border-top:1px solid #1d3045}
+.sidebar-projects{flex:1 1 auto;min-height:0;overflow-y:auto;margin:20px 2px 6px;padding:14px 2px 12px;border-top:1px solid #1d3045}
 .sidebar-projects-heading{padding:0 10px 12px}
 .sidebar-projects-heading h2{margin:0;color:#8ca8c7;font-size:10px;letter-spacing:1.15px}
 .sidebar-project-link{width:100%;min-height:39px;display:flex;gap:10px;align-items:center;padding:7px 9px;border:1px solid transparent;border-radius:9px;color:#b9cde6;background:transparent;text-align:left}
@@ -84,11 +84,11 @@ button:focus-visible,.sidebar-project-link:focus-visible,.composer textarea:focu
 @media(max-width:1000px){.mobile-preview.studio-preview .studio-preview-panel .preview-controls{top:93px;height:80px}.mobile-preview.studio-preview .studio-preview-panel .preview-canvas,.mobile-preview.studio-preview .studio-preview-panel .preview-empty{top:173px}}
 @media(max-width:620px){.preview-workspace-shortcuts button{flex:1;min-width:0;font-size:10px;padding:4px}}
 /* The same conversation composer remains available below Workspace tools. */
-body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .studio-workspace{order:1;flex:1 1 auto;min-height:0;overflow:auto}
-body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer-area{order:2;display:block;flex:0 0 auto;width:100%;min-width:0;padding-top:8px;border-top:1px solid #233e5a;background:#081626}
-body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer{box-shadow:0 5px 24px #0005}
-body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer textarea{min-height:42px}
+body .main:has(.studio-workspace:not([hidden])) .studio-workspace{order:1;flex:1 1 auto;min-height:0;overflow:auto}
+body .main:has(.studio-workspace:not([hidden])) .composer-area{order:2;display:block;flex:0 0 auto;width:100%;min-width:0;padding-top:8px;border-top:1px solid #233e5a;background:#081626}
+body .main:has(.studio-workspace:not([hidden])) .composer{box-shadow:0 5px 24px #0005}
+body .main:has(.studio-workspace:not([hidden])) .composer textarea{min-height:42px}
 .main:has(.studio-workspace:not([hidden])) .central-panel{display:none}
-@media(max-height:650px){body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer-area{padding:6px 12px 8px}body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer textarea{min-height:32px}}
+@media(max-height:650px){body .main:has(.studio-workspace:not([hidden])) .composer-area{padding:6px 12px 8px}body .main:has(.studio-workspace:not([hidden])) .composer textarea{min-height:32px}}
 @media(prefers-reduced-motion:reduce){.suggestions button{transform:none!important}}
 }
