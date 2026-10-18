@@ -105,7 +105,10 @@ test('native preview stays bound beside Workspace while Web fallback stays hidde
 
 test('preview native geometry is independent of Web fallback capability', () => {
   const source = readFileSync(new URL('../src/preview-panel.mjs', import.meta.url), 'utf8');
-  assert.match(source, /scheduled = false; if \(!enabled\) return;/);
+  assert.match(source, /scheduled = false;\s*if \(!enabled\) \{/);
+  assert.match(source, /previewStamp !== 'null'/);
+  assert.match(source, /nativePreview\?\.setBounds\) task\(async \(\) => paint\(await nativePreview\.setBounds\(null\)\)\)/);
+  assert.match(source, /nativeWeb\?\.setFallbackBounds\) task\(\(\) => nativeWeb\.setFallbackBounds\(null\)\)/);
   assert.match(source, /if \(nativeWeb\?\.setFallbackBounds\)/);
   assert.match(source, /visibility\.previewBounded \? bounds\(\$\('previewCanvas'\)\.getBoundingClientRect\(\)\) : null/);
   assert.match(css, /body\.studio-preview \.main:has\(\.studio-workspace:not\(\[hidden\]\)\) \.studio-preview-panel/);
