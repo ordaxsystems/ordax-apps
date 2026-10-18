@@ -6,7 +6,7 @@ import { deviceAvailable, deviceLabel, deviceStatus, assertOperationBinding } fr
 
 const resultData = op => op?.result?.data || op?.result || {};
 
-export function createProjectPanel({ host, attach, notify, onProjectConversations }) {
+export function createProjectPanel({ host, attach, notify, onProjectConversations, showConversationLayout = () => {} }) {
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
@@ -41,6 +41,9 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const task = fn => Promise.resolve().then(fn).catch(error => message(error.message));
   const workspaceVisible = () => !$('projectDialog').hidden;
   function showWorkspace(visible) {
+    // Narrow screens cannot show fullscreen preview and Workspace simultaneously.
+    // Ask the owning conversation layout controller to reveal the chat column.
+    if (visible) showConversationLayout();
     $('projectDialog').hidden = !visible;
     $('conversation').hidden = visible;
     // Keep the canonical composer available beneath Workspace instead of mounting a second chat.
