@@ -52,6 +52,19 @@
           </div>
           <button id="centralConnect" type="button" class="directory-primary">Conectar este computador</button>
         </section>
+        <section id="centralOwnerPanel" class="central-surface" aria-labelledby="centralOwnerTitle" hidden>
+          <div class="central-surface-header"><h2 id="centralOwnerTitle">Autorização Owner do computador</h2><span class="central-source">Conta OrdaX · PostgreSQL</span></div>
+          <p>Escolha um cliente MCP já consentido. A concessão remota é vinculada a este dispositivo e não altera a política local ou a autorização de outros computadores.</p>
+          <label class="central-operation-select" for="centralOwnerClient">Cliente MCP autorizado
+            <select id="centralOwnerClient" aria-label="Cliente OAuth para acesso remoto"><option value="">Selecione um cliente consentido</option></select>
+          </label>
+          <p id="centralOwnerStatus" class="central-advisory" role="status">Aguardando identidade Owner verificada.</p>
+          <div class="central-header-actions">
+            <button id="centralOwnerAuthorizeFull" class="directory-primary" type="button" disabled>Autorizar acesso total remoto por 30 dias</button>
+            <button id="centralOwnerRevokeFull" class="connect-secondary" type="button" disabled>Revogar acesso total</button>
+          </div>
+          <p class="central-advisory">A confirmação final ocorre em janela nativa. O Runtime continua exigindo Full Access local e respeitando Windows/UAC. Nenhum grant é criado automaticamente.</p>
+        </section>
         <div class="central-provenance" role="status"><span id="centralProductStatus">Product não verificado</span><small id="centralChecked">Sem consulta nesta sessão</small></div>
         <div class="central-metrics" aria-label="Resumo do Product">
           <div><span id="centralTotal">—</span><small>Dispositivos</small></div>
