@@ -73,6 +73,28 @@ export function createNavigation({ state, openChat, openProject, newChat, option
     const visible = recentConversations(chats, { ...(page === 'project' ? { projectId } : {}), query: needle });
     const nextStamp = JSON.stringify([page, activeId, projectId, disabled, needle, new Date().toLocaleDateString('pt-BR'), projects, visible.map(value => value.id), chats.map(value => [value.id, value.projectId, value.title, value.messages.at(-1)?.text?.slice(0, 140), value.messages.at(-1)?.createdAt])]);
     if (stamp === nextStamp) return; stamp = nextStamp;
+    const recentProjects = $('sidebarRecentProjects');
+    recentProjects.replaceChildren();
+    const lastActivityByProject = new Map();
+    for (const chat of chats) {
+      if (!chat.projectId) continue;
+      const timestamp = Date.parse(chat.messages.at(-1)?.createdAt || chat.createdAt) || 0;
+      lastActivityByProject.set(chat.projectId, Math.max(timestamp, lastActivityByProject.get(chat.projectId) || 0));
+    }
+    const orderedProjects = [...projects].sort((a, b) =>
+      (lastActivityByProject.get(b.id) || 0) - (lastActivityByProject.get(a.id) || 0)
+      || a.name.localeCompare(b.name, 'pt-BR')).slice(0, 6);
+    for (const value of orderedProjects) {
+      const shortcut = element('button', 'sidebar-project-link');
+      shortcut.type = 'button'; shortcut.disabled = disabled; shortcut.title = value.name;
+      shortcut.dataset.projectId = value.id;
+      if (projectId === value.id) shortcut.setAttribute('aria-current', 'true');
+      shortcut.append(element('span', 'sidebar-project-mark', value.name.charAt(0).toUpperCase()),
+        element('span', 'sidebar-project-name', value.name));
+      shortcut.addEventListener('click', () => openProject(value.id));
+      recentProjects.append(shortcut);
+    }
+    if (!orderedProjects.length) recentProjects.append(element('p', 'sidebar-projects-empty', 'Seus projetos aparecerão aqui.'));
     $('conversationProjects').replaceChildren(); $('chatList').replaceChildren();
     if (!collection) return;
     if (page === 'projects') {
