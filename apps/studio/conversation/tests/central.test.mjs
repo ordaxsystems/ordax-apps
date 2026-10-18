@@ -195,3 +195,26 @@ test('Account is verified independently of devices and cannot project fake Centr
   assert.equal(copy.state, 'account');
   assert.match(copy.warning, /não autorizado/);
 });
+
+test('active Studio Central provides explicit Owner authorization and revocation, never silent grants', async () => {
+  const html = await readFile(new URL('../src/index.html', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../src/central.mjs', import.meta.url), 'utf8');
+  const main = await readFile(new URL('../../../../tools/assistant-host/native/main.cjs', import.meta.url), 'utf8');
+  const preload = await readFile(new URL('../../../../tools/assistant-host/native/preload.cjs', import.meta.url), 'utf8');
+  for (const id of ['centralOwnerPanel','centralOwnerClient','centralOwnerStatus',
+    'centralOwnerAuthorizeFull','centralOwnerRevokeFull']) {
+    assert.match(html, new RegExp('id="' + id + '"'));
+  }
+  assert.match(html, /A autorização.*janela nativa/);
+  assert.match(renderer, /accountHost\.authorizeFull/);
+  assert.match(renderer, /accountHost\.revokeFull/);
+  assert.match(renderer, /centralOwnerClient.*addEventListener/);
+  assert.doesNotMatch(renderer, /remote-grant-groups/);
+  assert.match(main, /studio-product:owner-authority/);
+  assert.match(main, /studio-product:authorize-full/);
+  assert.match(main, /studio-product:revoke-full/);
+  assert.match(main, /assertStudioAccountCaller\(event\)/);
+  assert.match(main, /dialog\.showMessageBox\(window/);
+  assert.match(preload, /authorizeFull:clientId=>ipcRenderer\.invoke/);
+  assert.match(preload, /revokeFull:\(clientId,grantId\)=>ipcRenderer\.invoke/);
+});
