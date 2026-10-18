@@ -50,3 +50,13 @@ Evidência: regressões dedicadas no Windows real em checkout isolado, **31/31 t
 As três leituras **somente observacionais** (estado Product, observação Relay de laboratório e disponibilidade do login oficial) agora têm prazo máximo independente de **12 segundos**. Um host que nunca responda não deixa os controles do operador travados em “Verificando…”: a UI recupera o estado de leitura, mantém o Product indisponível quando essa fonte falha e permite uma nova tentativa manual. Um Relay sem resposta não transforma o catálogo Product em falso, nem comprova clientes Relay. Resultado que chegue após o prazo é ignorado para a consulta já encerrada.
 
 O prazo limita **a espera do renderer**, não cancela chamadas que o host já aceitou, não reenvia comandos e não altera grants, conta, sessões ou recibos. O refresh periódico continua restrito à Central visível, sem overlays e sem outra consulta em curso. A suíte direcionada no Windows real confirmou 11/11 casos (central.test.mjs e relay-readiness.test.mjs), inclusive host silencioso, retorno tardio e falha independente das três fontes. Esses testes não provam geração GPT multiusuário nem entrega a outros PCs.
+
+## Studio Meridian — interface de conversa e preview (candidato 2026-10-18)
+
+A experiência visual do Studio padrão evolui **dentro do mesmo app portátil**: navegação Chat/Projetos/Workspace/Conversas recentes/Central, lista de projetos derivada do estado canônico de conversas e painel de preview com atalhos Arquivos/Git/Atividade. Os atalhos reabrem as abas já existentes do Workspace, sem clonar editor, operações ou persistência; a Central mantém a mesma autoridade e os controles Owner da `main`.
+
+O composer ganha destaque visual e permite preparar o texto antes da conexão do modelo; clicar Enviar sem conta continua abrindo o fluxo de conexão e **não efetua envio sem autorização/modelo**. Estados `prepared`, `submitted` e `uncertain`, operações em curso, modo Web incompatível e bloqueios de segurança continuam válidos.
+
+Fonte: `apps/studio/conversation/{src,assets,tests}`. O CSS continua em `assets/agentic-layout.css`; o preview mantém isolamento e geometria supervisionados pelo host; nenhuma tela representa preview ou atividade como prontos quando não houver dados reais.
+
+**Prova de release independente:** aprovação da CI não implica que a instalação Windows atual tenha sido atualizada. Antes de promover: inspecionar a janela do Studio real em diferentes larguras; confirmar chat (digitação, envio, stream, cancelamento, recuperação do envio incerto), alternância e reversão das abas, foco/teclado, preview e ausência de sobreposição; provar build/instalador canônico assinado conforme gates existentes. A PR permanece draft até esse aceite.
