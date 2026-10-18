@@ -27,6 +27,9 @@ export function createPreviewPanel({ nativePreview, nativeWeb, project, configur
     $('previewDimensions').textContent=!browsing&&value.viewport?`${value.viewport.width} × ${value.viewport.height} · ${Math.round(value.viewport.scale*100)}%`:'';
     if(document.activeElement!==$('previewLocation'))$('previewLocation').value=visible.url||'';
     $('previewBack').disabled=visible.status==='loading'||!visible.canGoBack;$('previewForward').disabled=visible.status==='loading'||!visible.canGoForward;$('previewProjectHost').disabled=!selected?.previewUrl;
+    $('previewTag').textContent = browsing
+      ? ({ empty: 'NAVEGADOR', loading: 'CARREGANDO NAVEGADOR', ready: 'NAVEGADOR CONECTADO', error: 'NAVEGADOR INDISPONÍVEL' })[visible.status] || 'NAVEGADOR'
+      : ({ empty: 'AGUARDANDO PROJETO', unconfigured: 'PREVIEW NÃO CONFIGURADO', loading: 'CARREGANDO PREVIEW', ready: 'PREVIEW CONECTADO', error: 'PREVIEW INDISPONÍVEL' })[visible.status] || 'PREVIEW DO PROJETO';
     $('previewStatus').textContent = browsing?({empty:'Navegador',loading:'Carregando página…',ready:'Navegador conectado',error:'Página indisponível'})[visible.status]:({ empty: 'Aguardando projeto', unconfigured: 'Endereço não configurado', loading: 'Carregando preview…', ready: 'Preview conectado', error: 'Preview indisponível' })[visible.status] || 'Aguardando preview';
     $('previewAddress').textContent = visible.url ? new URL(visible.url).host : '';
     $('previewAddress').title = visible.url || '';
