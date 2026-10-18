@@ -214,13 +214,15 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('localRuntimeCheck').disabled = typeof host.localRuntimeObservation !== 'function';
   if ($('localRuntimeCheck').disabled) $('localRuntimeObservation').textContent = 'Observação do serviço local não disponível neste host. Nenhuma autorização foi inferida.';
   $('localRuntimeCheck').addEventListener('click', () => { void refreshLocalObservation(); });
-  async function open({ focusAccount = false } = {}) {
+  async function open({ focusAccount = false, tabId = 'studioFiles' } = {}) {
+    if (!['studioFiles', 'studioGit', 'studioSearch', 'studioPreview', 'studioContinuity', 'studioActivity'].includes(tabId)) throw new Error('Aba do Workspace inválida.');
     showWorkspace(true);
     if (focusAccount && accountHost?.available) {
       try { accountAvailable = await accountHost.available() === true; }
       catch { accountAvailable = false; }
     }
     await refresh();
+    tab(tabId);
     void refreshLocalObservation();
     controls();
     if (focusAccount && !$('productAccountSection').hidden) requestAnimationFrame(() => {
@@ -229,8 +231,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     });
   }
   $('openProject').addEventListener('click', () => task(open));
-  $('openActivity').addEventListener('click', () => task(async () => { await open(); tab('studioActivity'); $('studioTabActivity').focus(); }));
-  $('openContext').addEventListener('click', () => task(async () => { await open(); tab('studioContinuity'); $('studioTabContinuity').focus(); }));
+  $('openActivity').addEventListener('click', () => task(async () => { await open({ tabId: 'studioActivity' }); $('studioTabActivity').focus(); }));
+  $('openContext').addEventListener('click', () => task(async () => { await open({ tabId: 'studioContinuity' }); $('studioTabContinuity').focus(); }));
   $('activityScope').addEventListener('change', renderOperations);
   $('activityRefresh').addEventListener('click', () => task(() => refresh({ fresh: true })));
   $('projectClose').addEventListener('click', () => { if (dirty()) { message('Revise ou descarte a edição antes de fechar.'); return; } showWorkspace(false); });
