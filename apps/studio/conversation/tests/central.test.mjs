@@ -206,8 +206,8 @@ test('active Studio Central provides explicit Owner authorization and revocation
     assert.match(html, new RegExp('id="' + id + '"'));
   }
   assert.match(html, /A confirmação final ocorre em janela nativa/);
-  assert.match(renderer, /accountHost\.authorizeFull/);
-  assert.match(renderer, /accountHost\.revokeFull/);
+  assert.ok(renderer.includes('accountHost?.authorizeFull'));
+  assert.ok(renderer.includes('accountHost?.revokeFull'));
   assert.match(renderer, /centralOwnerClient.*addEventListener/);
   assert.doesNotMatch(renderer, /remote-grant-groups/);
   assert.match(main, /studio-product:owner-authority/);
