@@ -63,6 +63,41 @@ else {
     ipcMain.handle('studio-product:availability', async event => { assertStudioAccountCaller(event); try { await locateInstalledRuntime(); return true; } catch { return false; } });
     ipcMain.handle('studio-product:sign-in', async event => { assertStudioAccountCaller(event); return accountSignIn.run(async () => { if (shuttingDown || closing || runtime.configured || runtime.connected || runtime.recoveryRequired || runtime.acceptingAccount) throw new Error('Sessão Product existente, encerramento ou recuperação pendente.'); const { token, subjectId, deviceId, productOrigin, enrolledNow } = await invokeCanonicalProductSignIn(); if (shuttingDown || closing) throw new Error('O Studio está encerrando.'); const state = await runtime.acceptAccountToken(token, subjectId, productOrigin); productDeviceId = deviceId; return { ...state, deviceEnrollment: { deviceId, enrolledNow, runtimeRestartRequired: enrolledNow } }; }); });
     ipcMain.handle('studio-product:authorize-observe', async event => { assertStudioAccountCaller(event); if (shuttingDown || closing || !productDeviceId) throw new Error('Conecte sua Conta OrdaX antes de autorizar observação.'); return runtime.authorizeComputerObserve(productDeviceId); });
+    ipcMain.handle('studio-product:owner-authority', async event => {
+      assertStudioAccountCaller(event);
+      if (shuttingDown || closing || !productDeviceId) throw new Error('Conecte sua Conta OrdaX para verificar os clientes MCP consentidos.');
+      return runtime.ownerComputerAuthority(productDeviceId);
+    });
+    ipcMain.handle('studio-product:authorize-full', async (event, clientId) => {
+      assertStudioAccountCaller(event);
+      if (shuttingDown || closing || !productDeviceId || typeof clientId !== 'string') throw new Error('A autorização Owner exige identidade e cliente MCP válidos.');
+      const authority = await runtime.ownerComputerAuthority(productDeviceId);
+      const client = authority.clients.find(item => item.client_id === clientId);
+      if (!client) throw new Error('Selecione um cliente OAuth já consentido desta conta.');
+      const answer = await dialog.showMessageBox(window, {
+        type: 'warning', title: 'ORDAX — Acesso total remoto',
+        message: 'Autorizar Acesso total remoto para este cliente MCP por 30 dias?',
+        detail: 'Cliente: ' + client.client_name + '\\nDispositivo: ' + productDeviceId
+          + '\\nEssa autorização permite todas as ações tipadas de Computer Control para o cliente selecionado. '
+          + 'A política Full Access local do Runtime e as proteções do Windows continuam aplicáveis. '
+          + 'Acesso a outros dispositivos ou clientes não é concedido.',
+        buttons: ['Cancelar', 'Autorizar 30 dias'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      if (answer.response !== 1) return { authorized: false, cancelled: true };
+      return runtime.authorizeComputerFull(productDeviceId, clientId);
+    });
+    ipcMain.handle('studio-product:revoke-full', async (event, clientId, grantGroupId) => {
+      assertStudioAccountCaller(event);
+      if (shuttingDown || closing || !productDeviceId || typeof clientId !== 'string'
+          || typeof grantGroupId !== 'string') throw new Error('Revogação Owner inválida.');
+      const answer = await dialog.showMessageBox(window, {
+        type: 'question', title: 'ORDAX — Revogar acesso remoto',
+        message: 'Revogar agora o Acesso total remoto deste cliente MCP?',
+        buttons: ['Cancelar', 'Revogar'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      if (answer.response !== 1) return { revoked: false, cancelled: true };
+      return runtime.revokeComputerFull(productDeviceId, clientId, grantGroupId);
+    });
     console.log('ORDAX Studio: transporte local pronto.'); let loadFailed = false;
     surface.webContents.on('did-start-loading', () => { loadFailed = false; status('loading'); }); surface.webContents.on('did-stop-loading', () => { if (!loadFailed) status('ready'); }); surface.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => { if (mainFrame && code !== -3) { loadFailed = true; status('error', 'Não foi possível carregar o ChatGPT. Use Recarregar.'); } }); surface.webContents.on('render-process-gone', () => status('error', 'A área Web foi interrompida. Use Recarregar.'));
     registerWebControls(ipcMain, { window, origin: host.origin, controls });
