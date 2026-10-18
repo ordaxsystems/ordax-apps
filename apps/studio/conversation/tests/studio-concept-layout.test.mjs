@@ -67,6 +67,16 @@ test('next-message draft stays editable only after the stream starts, without a 
   await controller.flush();
 });
 
+test('Workspace keeps the real composer visible and guards unsaved work on submit', () => {
+  assert.match(workspace, /document\.querySelector\('\.composer-area'\)\.hidden = false/);
+  assert.match(workspace, /\$\('conversation'\)\.hidden = visible/);
+  assert.match(css, /\.main:has\(\.studio-workspace:not\(\[hidden\]\)\) \.composer-area\{order:2/);
+  assert.match(css, /\.main:has\(\.studio-workspace:not\(\[hidden\]\)\) \.studio-workspace\{order:1/);
+  assert.match(app, /if \(!projectPanel\.canClose\(\)\)/);
+  assert.match(app, /projectPanel\.showConversation\(\);\s*navigation\.go\('conversation', \{ focus: false \}\)/);
+  assert.match(app, /if \(locked\(\)\) return;/);
+});
+
 test('concept styling stays in the canonical layered stylesheet and adapts for mobile', () => {
   assert.match(css, /@layer agentic-layout/);
   assert.match(css, /\.sidebar-project-link/);
