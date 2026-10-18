@@ -110,9 +110,11 @@ function updateControls() {
   $('messageBudget').textContent = invalid || `${length.toLocaleString('pt-BR')} / ${MESSAGE_LIMIT.toLocaleString('pt-BR')} caracteres, incluindo arquivos`;
   $('messageBudget').classList.toggle('invalid', Boolean(invalid));
   const modeBlocked = connection.mode === 'chatgpt-web' && webSnapshot.chatModeRequired === true && webSnapshot.automatedSendAllowed !== true;
-  $('send').disabled = !initialized || locked() || unconfirmed || Boolean(invalid) || modeBlocked || !ready || (!$('prompt').value.trim() && !attachments.length);
+  $('send').disabled = !initialized || locked() || unconfirmed || Boolean(invalid) || modeBlocked || (!$('prompt').value.trim() && !attachments.length);
+  $('send').setAttribute('aria-label', ready ? 'Enviar mensagem' : 'Conectar para enviar mensagem');
+  $('send').title = ready ? 'Enviar mensagem' : 'Conectar ou escolher um modelo antes de enviar';
   $('send').hidden = busy || externalBusy; $('stop').hidden = !busy && !externalBusy;
-  $('prompt').disabled = !initialized || locked(); $('attach').disabled = !initialized || locked(); $('newChat').disabled = !initialized || locked(); $('model').disabled = connection.mode === 'chatgpt-web' || locked() || !models.length;
+  $('prompt').disabled = !initialized || locked(); $('sidebarWorkspace').disabled = !initialized || locked() || $('openProject').disabled; $('attach').disabled = !initialized || locked(); $('newChat').disabled = !initialized || locked(); $('model').disabled = connection.mode === 'chatgpt-web' || locked() || !models.length;
   $('exportChat').disabled = !chat()?.messages.length;
   $('chatOptions').disabled = !chat() || locked(); $('saveTitle').disabled = locked();
   $('chooseModel').hidden = !nativeWeb; $('webAttach').hidden = !nativeWeb;
@@ -623,6 +625,7 @@ for (const button of document.querySelectorAll('button[data-studio-page]')) butt
     if (button.dataset.studioPage === 'central') void centralPanel.open();
   } catch (error) { notify(error.message); }
 });
+$('sidebarWorkspace').addEventListener('click', () => $('openProject').click());
 $('contextSelect').addEventListener('click', () => navigation.go('projects'));
 $('projectsBack').addEventListener('click', () => navigation.go('projects'));
 $('projectResources').addEventListener('click', () => $('openProject').click());
