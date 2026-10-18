@@ -69,6 +69,41 @@ app.whenReady().then(async () => {
     assert.equal(await first.webContents.executeJavaScript('document.body.dataset.native'),'undefined');assert.equal(await first.webContents.executeJavaScript('document.body.dataset.ordax'),'undefined');assert.ok(!first.webContents.getLastWebPreferences().preload);
     await first.webContents.executeJavaScript('document.querySelector("button").click()');assert.match(await first.webContents.executeJavaScript('document.querySelector(".card").textContent'),/confirmada/);
     console.log('PASS PREVIEW: projeto carrega endereço automaticamente; preview interativo tem sessão isolada e nenhum Node/preload/port OrdaX.');
+    // Meridian regression on real Electron: Workspace shortcuts must not cover
+    // the shared composer or unmount the already running native project preview.
+    await js('document.getElementById("previewShortcutGit").click()');
+    await until('!document.getElementById("projectDialog").hidden && document.getElementById("projectDialog").dataset.activeTab==="studioGit"');
+    const meridianLayout=await js(`(()=>{
+      const panel=document.getElementById('projectDialog').getBoundingClientRect();
+      const composer=document.querySelector('.composer-area').getBoundingClientRect();
+      const slot=document.getElementById('previewCanvas').getBoundingClientRect();
+      return {workspaceVisible:panel.height>0,composerVisible:composer.height>0,promptEnabled:!document.getElementById('prompt').disabled,
+        composerBelow:composer.top>=panel.bottom-2,notOverlapping:composer.right<=slot.left+2,
+        gitSelected:document.getElementById('previewShortcutGit').getAttribute('aria-pressed')==='true'};
+    })()`);
+    assert.equal(meridianLayout.workspaceVisible,true);
+    assert.equal(meridianLayout.composerVisible,true);
+    assert.equal(meridianLayout.promptEnabled,true);
+    assert.equal(meridianLayout.composerBelow,true);
+    assert.equal(meridianLayout.notOverlapping,true);
+    assert.equal(meridianLayout.gitSelected,true);
+    assert.equal(first.getVisible(),true);
+    await js('document.querySelector(".studio-navigation [data-workspace-tab=studioFiles]").click()');
+    await until('document.getElementById("projectDialog").dataset.activeTab==="studioFiles" && document.getElementById("previewShortcutFiles").getAttribute("aria-pressed")==="true"');
+    assert.equal(await js('document.querySelector(".studio-navigation [data-workspace-tab=studioGit]").getAttribute("aria-pressed")'),'false');
+    await js('document.getElementById("prompt").value="Rascunho Workspace";document.getElementById("prompt").dispatchEvent(new Event("input"))');
+    await js('document.getElementById("previewShortcutActivity").click()');
+    await until('document.getElementById("projectDialog").dataset.activeTab==="studioActivity"');
+    assert.equal(await js('document.getElementById("prompt").value'),'Rascunho Workspace');
+    assert.equal(first.getVisible(),true);
+    await js('document.getElementById("projectClose").click()');
+    await until('document.getElementById("projectDialog").hidden');
+    await js('document.querySelector(".studio-navigation [data-studio-page=conversation]").click()');
+    await until('document.body.dataset.studioPage==="conversation" && !document.getElementById("prompt").disabled');
+    assert.equal(await js('document.getElementById("prompt").value'),'Rascunho Workspace');
+    await js('document.getElementById("prompt").value="";document.getElementById("prompt").dispatchEvent(new Event("input"))');
+    console.log('PASS MERIDIAN: Workspace usa o mesmo composer, preserva rascunho, sincroniza abas e não cobre preview nativo.');
+
     await js('document.getElementById("newChat").click()');
     await until('document.body.classList.contains("chatgpt-fallback") && document.getElementById("chatModeStatus").textContent==="Chat confirmado" && !document.getElementById("newChat").disabled');
     for(let i=0;i<80&&!chat.getVisible();i++)await pause(50);
