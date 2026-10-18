@@ -344,6 +344,15 @@ app.whenReady().then(async () => {
     await pause(250); assert.equal(chat.getVisible(), false); assert.equal(views.at(-1).getVisible(), true);
     const bounds = views.at(-1).getBounds(); assert.ok(bounds.x>=0 && bounds.x+bounds.width<=window.getContentSize()[0] && bounds.y+bounds.height<=768);
     await fs.writeFile(path.join(__dirname,'../.data/studio-responsive-preview.png'), (await capture(window, undefined, {stayHidden:true,stayAwake:true})).toPNG());
+    await js('document.getElementById("previewShortcutFiles").click()');
+    await until('!document.body.classList.contains("mobile-preview") && !document.getElementById("projectDialog").hidden && document.getElementById("projectDialog").dataset.activeTab==="studioFiles"');
+    assert.equal(await js('getComputedStyle(document.querySelector(".composer-area")).display!=="none" && !document.getElementById("prompt").disabled'),true);
+    assert.equal(await js('document.getElementById("showConversation").getAttribute("aria-pressed")'),'true');
+    for(let i=0;i<60&&views.at(-1).getVisible();i++)await pause(50);
+    assert.equal(views.at(-1).getVisible(),false);
+    await js('document.getElementById("projectClose").click()');
+    await until('document.getElementById("projectDialog").hidden && !document.body.classList.contains("mobile-preview")');
+    console.log('PASS MERIDIAN MOBILE: atalhos do preview abrem Workspace/chat sem duplicar composer ou encobrir painel a 390px.');
     await js('document.getElementById("showConversation").click();document.querySelector("button[data-studio-page=recent]").click()');
     await until(`Boolean(document.querySelector('[data-chat-id="${conversationId}"]'))`);
     await js(`document.querySelector('[data-chat-id="${conversationId}"]').click()`);
