@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DraftController } from '../src/drafts.mjs';
-import { previewSurfaceVisibility } from '../src/preview-panel.mjs';
+import { previewSurfaceVisibility, previewStatusTag } from '../src/preview-panel.mjs';
 
 
 const source = relative => readFileSync(new URL(relative, import.meta.url), 'utf8');
@@ -101,6 +101,18 @@ test('native preview stays bound beside Workspace while Web fallback stays hidde
   assert.equal(previewSurfaceVisibility({ ...base, overlayOpen: true }).fallbackBounded, false);
   assert.equal(previewSurfaceVisibility({ ...base, mobilePreview: true }).fallbackShown, false);
   assert.equal(previewSurfaceVisibility({ ...base, enabled: false }).previewBounded, false);
+});
+
+test('preview toolbar declares only observed readiness, never unconditional live output', () => {
+  assert.match(html, /id="previewTag" class="web-tag">PREVIEW DO PROJETO/);
+  assert.doesNotMatch(html, /RESULTADO EM TEMPO REAL/);
+  assert.equal(previewStatusTag({ browsing: false, status: 'empty' }), 'AGUARDANDO PROJETO');
+  assert.equal(previewStatusTag({ browsing: false, status: 'unconfigured' }), 'PREVIEW NÃO CONFIGURADO');
+  assert.equal(previewStatusTag({ browsing: false, status: 'loading' }), 'CARREGANDO PREVIEW');
+  assert.equal(previewStatusTag({ browsing: false, status: 'ready' }), 'PREVIEW CONECTADO');
+  assert.equal(previewStatusTag({ browsing: false, status: 'error' }), 'PREVIEW INDISPONÍVEL');
+  assert.equal(previewStatusTag({ browsing: true, status: 'ready' }), 'NAVEGADOR CONECTADO');
+  assert.equal(previewStatusTag({ browsing: true, status: 'error' }), 'NAVEGADOR INDISPONÍVEL');
 });
 
 test('preview native geometry is independent of Web fallback capability', () => {
