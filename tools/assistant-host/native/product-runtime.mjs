@@ -274,18 +274,18 @@ export class ProductRuntime {
     const name = canonicalRepository(repository);
     const scope = await this.request('/v3/owner/project-scope?device_id='
       + encodeURIComponent(device) + '&repository_full_name=' + encodeURIComponent(name));
-    if (canonicalUuid(scope.space_id, 'Space do projeto') === ''
-        || canonicalUuid(scope.project_id, 'Projeto') === '') throw fail('Escopo inválido.', 502);
+    const spaceId = canonicalUuid(scope.space_id, 'Space do projeto');
+    const projectId = canonicalUuid(scope.project_id, 'Projeto');
     const canonical = canonicalRepository(scope.repository_full_name);
     if (canonical.toLowerCase() !== name.toLowerCase()) throw fail('O repositório canônico não corresponde ao solicitado.', 409);
     const authority = await this.ownerComputerAuthority(device);
     return {
       device_id: device, repository_full_name: canonical,
-      space_id: scope.space_id.toLowerCase(), project_id: scope.project_id.toLowerCase(),
+      space_id: spaceId, project_id: projectId,
       clients: authority.clients,
       grant_groups: authority.project_grant_groups.filter(group =>
-        group.space_id === scope.space_id.toLowerCase()
-        && group.project_id === scope.project_id.toLowerCase()),
+        group.space_id === spaceId
+        && group.project_id === projectId),
     };
   }
 
