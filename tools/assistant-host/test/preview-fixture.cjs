@@ -96,6 +96,29 @@ app.whenReady().then(async () => {
     await until('document.getElementById("projectDialog").dataset.activeTab==="studioActivity"');
     assert.equal(await js('document.getElementById("prompt").value'),'Rascunho Workspace');
     assert.equal(first.getVisible(),true);
+    window.showInactive();
+    for (const width of [390,768,1024,1280,1550]) {
+      window.setContentSize(width,844);
+      const actualWidth=window.getContentSize()[0];
+      await until('innerWidth === '+actualWidth);
+      await pause(160);
+      const geometry=await js(`(()=>{
+        const composer=document.querySelector('.composer-area');
+        const slot=document.getElementById('previewCanvas');
+        const bounds=composer.getBoundingClientRect(),preview=slot.getBoundingClientRect();
+        return {noOverflow:document.documentElement.scrollWidth<=innerWidth,
+          workspace:getComputedStyle(document.getElementById('projectDialog')).display!=='none',
+          composer:getComputedStyle(composer).display!=='none'&&bounds.width>120&&bounds.height>40,
+          view:getComputedStyle(document.getElementById('previewPanel')).display!=='none',
+          noOverlap:bounds.right<=preview.left+2||preview.width===0};
+      })()`);
+      assert.equal(geometry.noOverflow,true,'Workspace horizontal overflow at '+width);
+      assert.equal(geometry.workspace,true,'Workspace hidden at '+width);
+      assert.equal(geometry.composer,true,'Composer inaccessible at '+width);
+      assert.equal(geometry.view,actualWidth>1000,'Preview breakpoint at '+width);
+      assert.equal(geometry.noOverlap,true,'Composer overlaps preview at '+width);
+    }
+    window.setContentSize(1550,900);await until('innerWidth===1550');window.hide();
     await js('document.getElementById("projectClose").click()');
     await until('document.getElementById("projectDialog").hidden');
     await js('document.querySelector(".studio-navigation [data-studio-page=conversation]").click()');
