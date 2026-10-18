@@ -43,7 +43,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   function showWorkspace(visible) {
     $('projectDialog').hidden = !visible;
     $('conversation').hidden = visible;
-    document.querySelector('.composer-area').hidden = visible;
+    // Keep the canonical composer available beneath Workspace instead of mounting a second chat.
+    document.querySelector('.composer-area').hidden = false;
     $('openProject').setAttribute('aria-pressed', String(visible));
     if (!visible) $('prompt').focus();
   }
