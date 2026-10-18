@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DraftController } from '../src/drafts.mjs';
+import { previewSurfaceVisibility } from '../src/preview-panel.mjs';
 
 
 const source = relative => readFileSync(new URL(relative, import.meta.url), 'utf8');
@@ -83,6 +84,31 @@ test('Workspace keeps the real composer visible and guards unsaved work on submi
   assert.match(app, /if \(!projectPanel\.canClose\(\)\)/);
   assert.match(app, /projectPanel\.showConversation\(\);\s*navigation\.go\('conversation', \{ focus: false \}\)/);
   assert.match(app, /if \(locked\(\)\) return;/);
+});
+
+test('native preview stays bound beside Workspace while Web fallback stays hidden', () => {
+  const base = { enabled: true, expanded: true, page: 'conversation', workspaceOpen: false, overlayOpen: false, mobilePreview: false };
+  assert.deepEqual(previewSurfaceVisibility(base), {
+    fallbackShown: true, fallbackBounded: true, previewBounded: true,
+  });
+  for (const page of ['conversation', 'projects', 'project', 'recent']) {
+    assert.deepEqual(previewSurfaceVisibility({ ...base, page, workspaceOpen: true }), {
+      fallbackShown: false, fallbackBounded: false, previewBounded: true,
+    });
+  }
+  assert.equal(previewSurfaceVisibility({ ...base, page: 'projects' }).previewBounded, false);
+  assert.equal(previewSurfaceVisibility({ ...base, overlayOpen: true }).previewBounded, false);
+  assert.equal(previewSurfaceVisibility({ ...base, overlayOpen: true }).fallbackBounded, false);
+  assert.equal(previewSurfaceVisibility({ ...base, mobilePreview: true }).fallbackShown, false);
+  assert.equal(previewSurfaceVisibility({ ...base, enabled: false }).previewBounded, false);
+});
+
+test('preview native geometry is independent of Web fallback capability', () => {
+  const source = readFileSync(new URL('../src/preview-panel.mjs', import.meta.url), 'utf8');
+  assert.match(source, /scheduled = false; if \(!enabled\) return;/);
+  assert.match(source, /if \(nativeWeb\?\.setFallbackBounds\)/);
+  assert.match(source, /visibility\.previewBounded \? bounds\(\$\('previewCanvas'\)\.getBoundingClientRect\(\)\) : null/);
+  assert.match(css, /body\.studio-preview \.main:has\(\.studio-workspace:not\(\[hidden\]\)\) \.studio-preview-panel/);
 });
 
 test('concept styling stays in the canonical layered stylesheet and adapts for mobile', () => {
