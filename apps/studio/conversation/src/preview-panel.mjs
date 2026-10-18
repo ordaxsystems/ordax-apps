@@ -40,7 +40,19 @@ export function createPreviewPanel({ nativePreview, nativeWeb, project, configur
     $('previewBrowser').disabled = !visible.url;
   }
   function measure() {
-    scheduled = false; if (!enabled) return;
+    scheduled = false;
+    if (!enabled) {
+      // Native views exist outside the DOM: hiding CSS alone never releases their bounds.
+      if (geometryStamp !== 'null') {
+        geometryStamp = 'null';
+        if (nativeWeb?.setFallbackBounds) task(() => nativeWeb.setFallbackBounds(null));
+      }
+      if (previewStamp !== 'null') {
+        previewStamp = 'null';
+        if (nativePreview?.setBounds) task(async () => paint(await nativePreview.setBounds(null)));
+      }
+      return;
+    }
     const visibility = previewSurfaceVisibility({
       enabled,
       expanded: document.body.classList.contains('chatgpt-fallback'),
