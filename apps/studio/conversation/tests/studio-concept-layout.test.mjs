@@ -52,6 +52,14 @@ test('preview shortcuts use existing workspace tabs and respect unavailable host
   assert.match(css, /\.studio-preview \.studio-preview-panel \.preview-canvas/);
 });
 
+test('only the existing Workspace tab is highlighted across both surfaces', () => {
+  assert.match(workspace, /\$\('sidebarWorkspace'\)\.setAttribute\('aria-pressed', String\(visible\)\)/);
+  assert.match(workspace, /shortcut\.setAttribute\('aria-pressed', String\(visible && shortcut\.dataset\.workspaceTab === \$\('projectDialog'\)\.dataset\.activeTab\)\)/);
+  assert.match(workspace, /shortcut\.setAttribute\('aria-pressed', String\(workspaceVisible\(\) && shortcut\.dataset\.workspaceTab === id\)\)/);
+  assert.match(css, /\.studio-navigation \.studio-workspace-link\[aria-pressed=true\]/);
+  assert.match(css, /\.preview-workspace-shortcuts button\[aria-pressed=true\]/);
+});
+
 test('next-message draft stays editable only after the stream starts, without a second send', async () => {
   assert.match(app, /busy = true; nextDraftEditable = false;/);
   assert.match(app, /nextDraftEditable = true; updateControls\(\);/);
