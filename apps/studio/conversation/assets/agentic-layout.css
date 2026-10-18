@@ -83,5 +83,12 @@ button:focus-visible,.sidebar-project-link:focus-visible,.composer textarea:focu
 .studio-preview .studio-preview-panel .preview-canvas,.studio-preview .studio-preview-panel .preview-empty{top:141px}
 @media(max-width:1000px){.mobile-preview.studio-preview .studio-preview-panel .preview-controls{top:93px;height:80px}.mobile-preview.studio-preview .studio-preview-panel .preview-canvas,.mobile-preview.studio-preview .studio-preview-panel .preview-empty{top:173px}}
 @media(max-width:620px){.preview-workspace-shortcuts button{flex:1;min-width:0;font-size:10px;padding:4px}}
+/* The same conversation composer remains available below Workspace tools. */
+body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .studio-workspace{order:1;flex:1 1 auto;min-height:0;overflow:auto}
+body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer-area{order:2;display:block;flex:0 0 auto;width:100%;min-width:0;padding-top:8px;border-top:1px solid #233e5a;background:#081626}
+body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer{box-shadow:0 5px 24px #0005}
+body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer textarea{min-height:42px}
+.main:has(.studio-workspace:not([hidden])) .central-panel{display:none}
+@media(max-height:650px){body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer-area{padding:6px 12px 8px}body[data-studio-page=conversation] .main:has(.studio-workspace:not([hidden])) .composer textarea{min-height:32px}}
 @media(prefers-reduced-motion:reduce){.suggestions button{transform:none!important}}
 }
