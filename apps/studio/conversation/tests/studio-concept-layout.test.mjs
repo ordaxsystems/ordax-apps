@@ -6,11 +6,13 @@ const source = relative => readFileSync(new URL(relative, import.meta.url), 'utf
 const html = source('../src/index.html');
 const app = source('../src/app.mjs');
 const navigation = source('../src/navigation.mjs');
+const workspace = source('../src/project-panel.mjs');
 const css = source('../assets/agentic-layout.css');
 
 test('Meridian shell keeps a real chat composer and existing project preview', () => {
   for (const id of ['composer', 'prompt', 'send', 'stop', 'attachmentList',
-    'previewPanel', 'previewCanvas', 'sidebarWorkspace', 'sidebarRecentProjects']) {
+    'previewPanel', 'previewCanvas', 'sidebarWorkspace', 'sidebarRecentProjects',
+    'previewWorkspaceShortcuts', 'previewShortcutFiles', 'previewShortcutGit', 'previewShortcutActivity']) {
     assert.match(html, new RegExp('id="' + id + '"'), id + ' must exist');
   }
   assert.match(html, /data-studio-page="central"/);
@@ -32,6 +34,19 @@ test('draft remains editable without model; sending still enforces provider and 
   assert.match(app, /\['prepared','submitted','uncertain'\]/);
   assert.match(app, /\$\('send'\)\.setAttribute\('aria-label', ready \?/);
   assert.match(app, /drafts\.set\(draftKey\(\)/);
+  assert.match(app, /host\.respond/);
+});
+
+test('preview shortcuts use existing workspace tabs and respect unavailable host state', () => {
+  for (const tab of ['studioFiles', 'studioGit', 'studioActivity']) {
+    assert.match(html, new RegExp('data-workspace-tab="' + tab + '"'));
+  }
+  assert.match(app, /projectPanel\.open\(\{ tabId \}\)/);
+  assert.match(app, /hostAvailability'\)\.dataset\.state !== 'ready'/);
+  assert.match(workspace, /tab\(tabId\)/);
+  assert.match(workspace, /'studioFiles', 'studioGit', 'studioSearch', 'studioPreview'/);
+  assert.match(css, /\.preview-workspace-shortcuts button:disabled/);
+  assert.match(css, /\.studio-preview \.studio-preview-panel \.preview-canvas/);
 });
 
 test('concept styling stays in the canonical layered stylesheet and adapts for mobile', () => {
