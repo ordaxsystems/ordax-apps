@@ -55,7 +55,7 @@ O prazo limita **a espera do renderer**, não cancela chamadas que o host já ac
 
 A experiência visual do Studio padrão evolui **dentro do mesmo app portátil**: navegação Chat/Projetos/Workspace/Conversas recentes/Central, lista de projetos derivada do estado canônico de conversas e painel de preview com atalhos Arquivos/Git/Atividade. Os atalhos reabrem as abas já existentes do Workspace, sem clonar editor, operações ou persistência; a Central mantém a mesma autoridade e os controles Owner da `main`.
 
-O composer ganha destaque visual e permite preparar o texto antes da conexão do modelo; clicar Enviar sem conta continua abrindo o fluxo de conexão e **não efetua envio sem autorização/modelo**. Estados `prepared`, `submitted` e `uncertain`, operações em curso, modo Web incompatível e bloqueios de segurança continuam válidos.
+O composer ganha destaque visual e permite preparar o texto antes da conexão do modelo; clicar Enviar sem conta continua abrindo o fluxo de conexão e **não efetua envio sem autorização/modelo**. Estados `prepared`, `submitted` e `uncertain`, operações em curso, modo Web incompatível e bloqueios de segurança continuam válidos. Após o evento confirmado de início de resposta, o campo de texto pode receber o **rascunho da próxima mensagem** enquanto o stream continua; o botão Enviar permanece bloqueado até a operação terminar. A revisão versionada do rascunho impede que o recibo da mensagem anterior descarte conteúdo novo.
 
 Fonte: `apps/studio/conversation/{src,assets,tests}`. O CSS continua em `assets/agentic-layout.css`; o preview mantém isolamento e geometria supervisionados pelo host; nenhuma tela representa preview ou atividade como prontos quando não houver dados reais.
 
