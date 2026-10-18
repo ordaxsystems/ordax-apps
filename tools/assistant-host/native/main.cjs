@@ -98,6 +98,55 @@ else {
       if (answer.response !== 1) return { revoked: false, cancelled: true };
       return runtime.revokeComputerFull(productDeviceId, clientId, grantGroupId);
     });
+    ipcMain.handle('studio-product:project-authority', async (event, repository) => {
+      assertStudioAccountCaller(event);
+      if (shuttingDown || closing || !productDeviceId || typeof repository !== 'string')
+        throw new Error('Projeto e sessão Owner obrigatórios.');
+      return runtime.ownerProjectAuthority(productDeviceId, repository);
+    });
+    ipcMain.handle('studio-product:authorize-project-native', async (event, clientId, repository, profile) => {
+      assertStudioAccountCaller(event);
+      if (shuttingDown || closing || !productDeviceId || typeof clientId !== 'string'
+          || typeof repository !== 'string' || !['project-native-terminal', 'project-native-process'].includes(profile))
+        throw new Error('Autorização MCP de projeto inválida.');
+      const authority = await runtime.ownerProjectAuthority(productDeviceId, repository);
+      const client = authority.clients.find(item => item.client_id === clientId);
+      if (!client) throw new Error('Cliente OAuth não consentido.');
+      const terminal = profile === 'project-native-terminal';
+      const answer = await dialog.showMessageBox(window, {
+        type: 'warning', title: terminal ? 'ORDAX — Autorizar Terminal Nativo' : 'ORDAX — Autorizar processos de projeto',
+        message: terminal ? 'Autorizar execução de comandos nativos neste projeto por 24 horas?'
+          : 'Autorizar iniciar e controlar processos deste projeto por 24 horas?',
+        detail: 'Cliente MCP: ' + client.client_name
+          + '\nRepositório: ' + authority.repository_full_name
+          + '\nSpace / Projeto: ' + authority.space_id + ' / ' + authority.project_id
+          + '\nDispositivo: ' + authority.device_id
+          + '\nEsta autorização opera com as permissões do usuário Windows, NÃO é uma sandbox.'
+          + '\nNenhum outro projeto, cliente ou dispositivo recebe esse grant.',
+        buttons: ['Cancelar', 'Autorizar por 24 horas'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      if (answer.response !== 1) return { authorized: false, cancelled: true };
+      return runtime.authorizeProjectNative(productDeviceId, clientId, repository, profile);
+    });
+    ipcMain.handle('studio-product:revoke-project-native', async (event, clientId, repository, profile, grantId) => {
+      assertStudioAccountCaller(event);
+      if (shuttingDown || closing || !productDeviceId || typeof clientId !== 'string'
+          || typeof repository !== 'string' || typeof grantId !== 'string'
+          || !['project-native-terminal', 'project-native-process'].includes(profile))
+        throw new Error('Revogação MCP de projeto inválida.');
+      const authority = await runtime.ownerProjectAuthority(productDeviceId, repository);
+      if (!authority.grant_groups.some(item => item.grant_group_id === grantId
+          && item.profile_key === profile && item.client_id === clientId))
+        throw new Error('Grant não encontrado no escopo do projeto.');
+      const answer = await dialog.showMessageBox(window, {
+        type: 'question', title: 'ORDAX — Revogar acesso de projeto',
+        message: 'Revogar este grant de projeto para o cliente selecionado?',
+        detail: 'Repositório: ' + authority.repository_full_name + '\nPerfil: ' + profile,
+        buttons: ['Cancelar', 'Revogar'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      if (answer.response !== 1) return { revoked: false, cancelled: true };
+      return runtime.revokeProjectNative(productDeviceId, clientId, repository, profile, grantId);
+    });
     console.log('ORDAX Studio: transporte local pronto.'); let loadFailed = false;
     surface.webContents.on('did-start-loading', () => { loadFailed = false; status('loading'); }); surface.webContents.on('did-stop-loading', () => { if (!loadFailed) status('ready'); }); surface.webContents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => { if (mainFrame && code !== -3) { loadFailed = true; status('error', 'Não foi possível carregar o ChatGPT. Use Recarregar.'); } }); surface.webContents.on('render-process-gone', () => status('error', 'A área Web foi interrompida. Use Recarregar.'));
     registerWebControls(ipcMain, { window, origin: host.origin, controls });
