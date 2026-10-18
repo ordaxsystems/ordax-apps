@@ -152,6 +152,7 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
   let model = centralViewModel(null, null);
   let selected = null, checking = false, issue = '', checkedAt = null;
   let accountAvailability = 'unknown', observeAuthorized = false;
+  let ownerAuthority = null, ownerIssue = '', ownerClientId = '';
   let filter = '', operationFilter = 'all';
   const metric = (id, value) => { $(id).textContent = value === null ? '—' : String(value); };
   function paint() {
@@ -180,6 +181,36 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
       : model.state === 'account-connected'
       ? observeAuthorized ? 'Conta OrdaX autenticada · observação MCP autorizada' : 'Conta OrdaX autenticada · acesso remoto não autorizado'
       : 'Product indisponível · nenhum dispositivo foi presumido conectado';
+    const ownerReady = model.state === 'account-connected' && typeof accountHost?.ownerAuthority === 'function';
+    $('centralOwnerPanel').hidden = !ownerReady;
+    if (ownerReady) {
+      const clients = Array.isArray(ownerAuthority?.clients) ? ownerAuthority.clients : [];
+      const select = $('centralOwnerClient');
+      const previous = ownerClientId;
+      select.replaceChildren();
+      const placeholder = document.createElement('option');
+      placeholder.value = ''; placeholder.textContent = 'Selecione um cliente MCP consentido';
+      select.append(placeholder);
+      for (const client of clients) {
+        const option = document.createElement('option');
+        option.value = client.client_id;
+        option.textContent = client.client_name + ' · ' + client.client_id;
+        select.append(option);
+      }
+      ownerClientId = clients.some(client => client.client_id === previous)
+        ? previous : clients.length === 1 ? clients[0].client_id : '';
+      select.value = ownerClientId;
+      select.disabled = checking || clients.length < 2;
+      const grant = (ownerAuthority?.grant_groups || []).find(item => item.client_id === ownerClientId);
+      $('centralOwnerAuthorizeFull').disabled = checking || !ownerClientId || Boolean(grant);
+      $('centralOwnerRevokeFull').disabled = checking || !grant;
+      $('centralOwnerStatus').textContent = ownerIssue || (!clients.length
+        ? 'Nenhum cliente OAuth consentido encontrado para esta Conta OrdaX.'
+        : !ownerClientId ? 'Há vários clientes: selecione o cliente MCP explicitamente.'
+        : grant ? 'Acesso total remoto ativo para este cliente. Válido até ' +
+          (grant.valid_until ? new Date(grant.valid_until).toLocaleString('pt-BR') : 'revogação')
+        : 'Cliente selecionado. O acesso total remoto ainda não está concedido.');
+    }
     $('centralWarning').textContent = issue || connection.warning;
     $('centralLabStatus').textContent = model.lab.state === 'laboratory'
       ? 'Laboratório local autenticado (não é produção)'
@@ -259,6 +290,12 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
       const product = results[0].status === 'fulfilled' ? results[0].value : null;
       const relay = results[1].status === 'fulfilled' ? results[1].value : null;
       model = centralViewModel(product, relay);
+      ownerAuthority = null;
+      ownerIssue = '';
+      if (model.state === 'account-connected' && typeof accountHost?.ownerAuthority === 'function') {
+        try { ownerAuthority = await accountHost.ownerAuthority(); }
+        catch (error) { ownerIssue = error?.message || 'Falha ao consultar autorização Owner.'; }
+      }
       if (results[0].status !== 'fulfilled') issue = 'Não foi possível consultar o Product. Confira o Runtime no espaço de trabalho.';
       checkedAt = new Date();
     } finally { checking = false; paint(); }
@@ -277,6 +314,30 @@ export function createCentralPanel({ host, openRuntime, accountHost }) {
       issue = error?.message || (authorizeObserve ? 'Não foi possível autorizar observação deste computador.' : 'Não foi possível abrir a conexão OrdaX.');
     }).finally(() => { checking = false; paint(); });
   });
+  $('centralOwnerClient').addEventListener('change', event => {
+    ownerClientId = String(event.target.value || ''); ownerIssue = ''; paint();
+  });
+  async function ownerMutation(type) {
+    if (checking || model.state !== 'account-connected' || !ownerClientId) return;
+    const grant = (ownerAuthority?.grant_groups || []).find(item => item.client_id === ownerClientId);
+    const action = type === 'authorize' && !grant ? () => accountHost?.authorizeFull?.(ownerClientId)
+      : type === 'revoke' && grant ? () => accountHost?.revokeFull?.(ownerClientId, grant.grant_group_id) : null;
+    if (!action) return;
+    checking = true; ownerIssue = ''; paint();
+    try {
+      const result = await action();
+      if (result?.cancelled) return;
+      if (type === 'authorize' && result?.authorized !== true
+          || type === 'revoke' && result?.revoked !== true) {
+        throw new Error('A autoridade Owner não confirmou a alteração.');
+      }
+      ownerAuthority = await accountHost.ownerAuthority();
+    } catch (error) {
+      ownerIssue = error?.message || 'Não foi possível alterar a autorização remota.';
+    } finally { checking = false; paint(); }
+  }
+  $('centralOwnerAuthorizeFull').addEventListener('click', () => { void ownerMutation('authorize'); });
+  $('centralOwnerRevokeFull').addEventListener('click', () => { void ownerMutation('revoke'); });
   $('centralRefresh').addEventListener('click', refresh);
   $('centralOperationFilter').addEventListener('change', event => {
     operationFilter = ['all','active','uncertain','failed','finished'].includes(event.target.value) ? event.target.value : 'all'; paint();
