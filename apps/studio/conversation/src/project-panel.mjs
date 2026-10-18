@@ -46,10 +46,18 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     // Keep the canonical composer available beneath Workspace instead of mounting a second chat.
     document.querySelector('.composer-area').hidden = false;
     $('openProject').setAttribute('aria-pressed', String(visible));
+    $('sidebarWorkspace').setAttribute('aria-pressed', String(visible));
+    // Reflect the actual selected tool in both navigations, without creating a second workspace.
+    for (const shortcut of document.querySelectorAll('[data-workspace-tab]')) {
+      shortcut.setAttribute('aria-pressed', String(visible && shortcut.dataset.workspaceTab === $('projectDialog').dataset.activeTab));
+    }
     if (!visible) $('prompt').focus();
   }
   function tab(id) {
     $('projectDialog').dataset.activeTab = id;
+    for (const shortcut of document.querySelectorAll('[data-workspace-tab]')) {
+      shortcut.setAttribute('aria-pressed', String(workspaceVisible() && shortcut.dataset.workspaceTab === id));
+    }
     $('projectTitle').textContent = id === 'studioActivity' ? 'Atividade do projeto' : id === 'studioContinuity' ? 'Contexto e continuidade' : 'Espaço de trabalho';
     for (const button of document.querySelectorAll('[data-studio-tab]')) {
       const active = button.dataset.studioTab === id;
