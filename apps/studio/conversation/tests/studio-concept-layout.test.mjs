@@ -39,7 +39,8 @@ test('draft remains editable without model; sending still enforces provider and 
 
 test('preview shortcuts use existing workspace tabs and respect unavailable host state', () => {
   for (const tab of ['studioFiles', 'studioGit', 'studioActivity']) {
-    assert.match(html, new RegExp('data-workspace-tab="' + tab + '"'));
+    const matches = html.match(new RegExp('data-workspace-tab="' + tab + '"', 'g')) || [];
+    assert.equal(matches.length, 2, tab + ' must reuse one Workspace tab from the sidebar and preview');
   }
   assert.match(app, /projectPanel\.open\(\{ tabId \}\)/);
   assert.match(app, /hostAvailability'\)\.dataset\.state !== 'ready'/);
