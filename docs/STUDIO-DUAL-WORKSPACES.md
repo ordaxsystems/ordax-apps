@@ -62,3 +62,13 @@ Ao abrir as ferramentas do Workspace, o composer **do mesmo chat** permanece anc
 Fonte: `apps/studio/conversation/{src,assets,tests}`. O CSS continua em `assets/agentic-layout.css`; o preview mantém isolamento e geometria supervisionados pelo host; nenhuma tela representa preview ou atividade como prontos quando não houver dados reais.
 
 **Prova de release independente:** aprovação da CI não implica que a instalação Windows atual tenha sido atualizada. Antes de promover: inspecionar a janela do Studio real em diferentes larguras; confirmar chat (digitação, envio, stream, cancelamento, recuperação do envio incerto), alternância e reversão das abas, foco/teclado, preview e ausência de sobreposição; provar build/instalador canônico assinado conforme gates existentes. A PR permanece draft até esse aceite.
+
+### Homologação do layout Meridian em fixture Electron Windows — 2026-10-18
+
+O teste integrado **reutiliza** `tools/assistant-host/test/preview-fixture.cjs`, exercitando o renderer Studio, o bridge nativo, as superfícies `WebContentsView` e o preview isolado com dados fictícios de teste. Não foi criado segundo test runner, segunda fonte de interface ou novo executor.
+
+A prova verificou que selecionar Git, Arquivos e Atividade por atalhos da sidebar e do painel direito abre **as mesmas abas do Workspace**; o campo único de chat continua abaixo da área de trabalho, aceita rascunho, mantém o texto durante alternância e não invade a área do preview nativo. As proporções do Workspace foram exercitadas nas larguras **390, 768, 1024, 1280 e 1550 px**, com checagem de overflow horizontal, dimensões do composer e alternância mobile/desktop. Em mobile (390 px), clicar Arquivos a partir do preview dedicado deixa o modo de preview exclusivo e apresenta Workspace e composer sem duplicar a sessão; a troca inversa mantém a conversa existente. O mesmo teste já validava conversas e navegação em **360, 390, 768, 1000, 1024, 1280 e 1550 px**.
+
+Execução: `Studio Windows Candidate Proof` e `OrdaX Apps Foundation` aprovados na revisão `008914c80a27c7465bd90dadacc188f307f9958d` (junto do `Store Catalog Candidate`). No log da fixture constam `PASS MERIDIAN`, `PASS MERIDIAN MOBILE`, `PASS RESPONSIVE` e `STUDIO_WINDOWS_ELECTRON_UI_FIXTURES=PASS`.
+
+**Limite preservado:** trata-se do Electron real no executor Windows da CI, com sessão **isolada e simulada**. Isso não prova que a instalação local no DESKTOP-COHT67R foi atualizada nem substitui a inspeção visual e operacional usando OrdaX MCP. O acesso a targets e operações de desktop segue bloqueado enquanto houver `product_targets_unavailable` / `trusted_operation_required`; sem desativar essas verificações.
