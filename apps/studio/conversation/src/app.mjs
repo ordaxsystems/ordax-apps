@@ -114,6 +114,7 @@ function updateControls() {
   $('send').setAttribute('aria-label', ready ? 'Enviar mensagem' : 'Conectar para enviar mensagem');
   $('send').title = ready ? 'Enviar mensagem' : 'Conectar ou escolher um modelo antes de enviar';
   $('send').hidden = busy || externalBusy; $('stop').hidden = !busy && !externalBusy;
+  for (const button of document.querySelectorAll('[data-workspace-tab]')) button.disabled = !initialized || locked() || $('hostAvailability').dataset.state !== 'ready';
   $('prompt').disabled = !initialized || locked(); $('sidebarWorkspace').disabled = !initialized || locked() || $('openProject').disabled; $('attach').disabled = !initialized || locked(); $('newChat').disabled = !initialized || locked(); $('model').disabled = connection.mode === 'chatgpt-web' || locked() || !models.length;
   $('exportChat').disabled = !chat()?.messages.length;
   $('chatOptions').disabled = !chat() || locked(); $('saveTitle').disabled = locked();
@@ -601,6 +602,15 @@ async function pollWeb() {
   } catch (error) { notify(error.message); } finally { pollRunning = false; }
 }
 const previewPanel = createPreviewPanel({ nativePreview: window.ordaxStudioPreviewHost, nativeWeb, project, configure: openProjectOptions, openProjects: () => navigation.go('projects'), notify });
+// The preview tool shortcuts open the existing Workspace, never a second editor or executor.
+for (const button of document.querySelectorAll('[data-workspace-tab]')) {
+  button.addEventListener('click', () => run(async () => {
+    if (!initialized || locked() || $('hostAvailability').dataset.state !== 'ready') return;
+    const tabId = button.dataset.workspaceTab;
+    await projectPanel.open({ tabId });
+    document.querySelector('[data-studio-tab="' + tabId + '"]')?.focus({ preventScroll: true });
+  }));
+}
 const centralPanel = createCentralPanel({ host, openRuntime: () => projectPanel.open({ focusAccount: true }), accountHost: window.ordaxStudioAccountHost });
 navigation = createNavigation({
   state: () => ({ chats, projects, activeId, projectId: activeProjectId, disabled: locked() || !initialized, previewAvailable: Boolean(window.ordaxStudioPreviewHost) }),
