@@ -255,3 +255,80 @@ test('observe grant fails closed when MCP client consent is missing or ambiguous
     assert.equal(posts, 0); await runtime.close();
   }
 });
+
+test('Owner Full Access binds one explicitly selected consented OAuth client and can be revoked', async t => {
+  const subject = '00000000-0000-4000-8000-00000000000a';
+  const device = '11111111-1111-4111-8111-111111111111';
+  const clientA = '22222222-2222-4222-8222-222222222222';
+  const clientB = '33333333-3333-4333-8333-333333333333';
+  const grantId = '44444444-4444-4444-8444-444444444444';
+  let active = false;
+  const calls = [];
+  const fetcher = async (url, options) => {
+    const u = new URL(url);
+    calls.push({ path: u.pathname, method: options.method, body: options.body && JSON.parse(options.body), query: u.searchParams });
+    if (u.pathname === '/v3/owner/remote-authority') {
+      return Response.json({ ok: true, device_id: device,
+        clients: [{ client_id: clientA, client_name: 'Primeiro' }, { client_id: clientB, client_name: 'Segundo' }],
+        grant_groups: active ? [{ grant_group_id: grantId, client_id: clientB, profile_key: 'full-computer-control',
+          valid_until: '2099-01-01T00:00:00Z' }] : [],
+      });
+    }
+    if (u.pathname === '/v3/owner/remote-grant-groups' && options.method === 'POST') {
+      assert.equal(JSON.parse(options.body).client_id, clientB);
+      active = true; return Response.json({ ok: true, grant_group: {} });
+    }
+    if (u.pathname.endsWith('/' + grantId) && options.method === 'DELETE') {
+      assert.equal(u.searchParams.get('client_id'), clientB);
+      active = false; return Response.json({ ok: true });
+    }
+    throw new Error('Unexpected request to ' + u.pathname);
+  };
+  const runtime = new ProductRuntime({ storage: { read: async (_, fallback) => fallback, write: async () => {} },
+    env: {}, fetcher, interval: 100000 });
+  await runtime.init(); t.after(() => runtime.close());
+  await runtime.acceptAccountToken('private-owner-token', subject, 'https://mcp.ordax.com.br');
+  const before = await runtime.ownerComputerAuthority(device);
+  assert.deepEqual(before.clients.map(c => c.client_id), [clientA, clientB]);
+  assert.equal(before.grant_groups.length, 0);
+  await assert.rejects(runtime.authorizeComputerFull(device, '55555555-5555-4555-8555-555555555555'),
+    /Selecione um cliente MCP/);
+  assert.equal(calls.filter(c => c.method === 'POST').length, 0);
+  const authorized = await runtime.authorizeComputerFull(device, clientB);
+  assert.equal(authorized.authorized, true);
+  assert.equal(authorized.profile, 'full-computer-control');
+  const post = calls.find(c => c.method === 'POST');
+  assert.equal(post.body.device_id, device);
+  assert.equal(post.body.client_id, clientB);
+  assert.equal(post.body.profile_key, 'full-computer-control');
+  assert.equal(post.body.space_id, null);
+  assert.equal(post.body.project_id, null);
+  assert.ok(Date.parse(post.body.valid_until) > Date.now() + 29 * 86400000);
+  const revoked = await runtime.revokeComputerFull(device, clientB, grantId);
+  assert.equal(revoked.revoked, true);
+  assert.equal((await runtime.ownerComputerAuthority(device)).grant_groups.length, 0);
+  assert.ok(!JSON.stringify(runtime.state()).includes('private-owner-token'));
+});
+
+test('Owner Full Access rejects forged, stale and unconsented authority without dispatch', async t => {
+  const subject = '00000000-0000-4000-8000-00000000000a';
+  const device = '11111111-1111-4111-8111-111111111111';
+  const client = '22222222-2222-4222-8222-222222222222';
+  for (const response of [
+    { ok: true, device_id: '33333333-3333-4333-8333-333333333333', clients: [{ client_id: client }], grant_groups: [] },
+    { ok: true, device_id: device, clients: [{ client_id: client }, { client_id: client }], grant_groups: [] },
+    { ok: true, device_id: device, clients: [], grant_groups: [] },
+  ]) {
+    let writes = 0;
+    const runtime = new ProductRuntime({ storage: { read: async (_, fallback) => fallback, write: async () => {} },
+      env: {}, interval: 100000,
+      fetcher: async (_url, options) => {
+        if (options.method !== 'GET') writes++;
+        return Response.json(response);
+      } });
+    await runtime.init(); t.after(() => runtime.close());
+    await runtime.acceptAccountToken('private-owner-token', subject, 'https://mcp.ordax.com.br');
+    await assert.rejects(runtime.authorizeComputerFull(device, client));
+    assert.equal(writes, 0);
+  }
+});
