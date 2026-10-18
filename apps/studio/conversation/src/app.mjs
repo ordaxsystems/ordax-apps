@@ -403,6 +403,12 @@ async function send(retry = false) {
   const message = projectMessage({ project: project(), messages: chat()?.messages, message: { text: $('prompt').value, attachments: [...attachments] }, enabled: $('useProjectContext').checked });
   if (!retry) composeTextMessage(message);
   if (['prepared','submitted','uncertain'].includes(chat()?.delivery?.status)) { notify('Confira o envio sem confirmação na área Web antes de continuar.'); return; }
+  // Sending from Workspace returns to the existing conversation; never discard unreviewed edits.
+  if (!$('projectDialog').hidden) {
+    if (!projectPanel.canClose()) { notify('Revise ou descarte as alterações do Workspace antes de enviar.'); return; }
+    projectPanel.showConversation();
+    navigation.go('conversation', { focus: false });
+  }
   let started = false, terminal = false;
   busy = true; nextDraftEditable = false; notify(''); renderSidebar(); updateControls();
   try {
