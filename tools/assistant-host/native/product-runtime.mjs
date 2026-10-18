@@ -14,6 +14,7 @@ export const validOperations = data => data?.schemaVersion === 1 && Array.isArra
 const PRODUCT_SUBJECT_UUID = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/;
 const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const OWNER_OBSERVE_PROFILE = 'computer-observe';
+const OWNER_FULL_PROFILE = 'full-computer-control';
 const OWNER_OBSERVE_VALIDITY_MS = 30 * 24 * 60 * 60 * 1000;
 const canonicalUuid = (value, label) => {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -180,8 +181,10 @@ export class ProductRuntime {
       throw error;
     } finally { this.acceptingAccount = false; }
   }
-  async authorizeComputerObserve(deviceId) {
-    if (!this.accountConnected || !this.configured) throw fail('Conecte sua Conta OrdaX antes de autorizar observação.', 403);
+  // The Product account bearer is held only by the trusted main process.
+  // The canonical Owner RPC is the sole source of consented clients and grants.
+  async ownerComputerAuthority(deviceId) {
+    if (!this.accountConnected || !this.configured) throw fail('Conecte sua Conta OrdaX antes de gerenciar autorizações.', 403);
     const device = canonicalUuid(deviceId, 'Dispositivo Product');
     const authority = await this.request('/v3/owner/remote-authority?device_id=' + encodeURIComponent(device));
     if (String(authority?.device_id || '').toLowerCase() !== device
@@ -189,12 +192,68 @@ export class ProductRuntime {
         || !Array.isArray(authority?.grant_groups) || !authority.grant_groups.every(item => item && typeof item === 'object')) {
       throw fail('Resposta inválida da autoridade Owner.', 502);
     }
-    if (authority.clients.length === 0) throw fail('Nenhum cliente MCP com consentimento ativo corresponde a esta conta.', 409);
-    if (authority.clients.length !== 1) throw fail('Há mais de um cliente MCP autorizado; selecione explicitamente o cliente correto.', 409);
-    const clientId = canonicalUuid(authority.clients[0].client_id, 'Cliente MCP');
+    const clients = authority.clients.map(item => ({
+      client_id: canonicalUuid(item.client_id, 'Cliente MCP'),
+      client_name: String(item.client_name || 'Cliente MCP').slice(0, 128),
+    }));
+    if (new Set(clients.map(item => item.client_id)).size !== clients.length) throw fail('Clientes MCP duplicados no catálogo Owner.', 502);
+    const grants = authority.grant_groups.filter(group =>
+      group.profile_key === OWNER_FULL_PROFILE && group.revoked_at == null
+      && clients.some(client => client.client_id === group.client_id)
+      && (group.valid_until == null || Number.isFinite(Date.parse(group.valid_until))
+        && Date.parse(group.valid_until) > Date.now())
+    ).map(group => ({
+      grant_group_id: canonicalUuid(group.grant_group_id, 'Grant Owner'),
+      client_id: canonicalUuid(group.client_id, 'Cliente MCP'),
+      profile_key: OWNER_FULL_PROFILE,
+      valid_until: group.valid_until ?? null,
+    }));
+    return { device_id: device, clients, grant_groups: grants };
+  }
+
+  // This is an explicit Owner UI operation, not an MCP/model-callable grant.
+  async authorizeComputerFull(deviceId, selectedClientId) {
+    const authority = await this.ownerComputerAuthority(deviceId);
+    const clientId = canonicalUuid(selectedClientId, 'Cliente MCP');
+    if (!authority.clients.some(client => client.client_id === clientId)) {
+      throw fail('Selecione um cliente MCP consentido desta conta.', 403);
+    }
     const validUntil = new Date(Date.now() + OWNER_OBSERVE_VALIDITY_MS).toISOString();
     await this.request('/v3/owner/remote-grant-groups', 'POST', {
-      client_id: clientId, device_id: device, profile_key: OWNER_OBSERVE_PROFILE,
+      client_id: clientId, device_id: authority.device_id, profile_key: OWNER_FULL_PROFILE,
+      space_id: null, project_id: null, valid_until: validUntil,
+    });
+    const verified = await this.ownerComputerAuthority(authority.device_id);
+    if (!verified.grant_groups.some(grant => grant.client_id === clientId)) {
+      throw fail('A autorização não foi confirmada pela autoridade Owner.', 503);
+    }
+    return { authorized: true, profile: OWNER_FULL_PROFILE, client_id: clientId, validUntil };
+  }
+
+  async revokeComputerFull(deviceId, selectedClientId, grantGroupId) {
+    const authority = await this.ownerComputerAuthority(deviceId);
+    const clientId = canonicalUuid(selectedClientId, 'Cliente MCP');
+    const groupId = canonicalUuid(grantGroupId, 'Grant Owner');
+    if (!authority.grant_groups.some(grant => grant.grant_group_id === groupId && grant.client_id === clientId)) {
+      throw fail('Autorização Owner não encontrada para este cliente.', 403);
+    }
+    await this.request('/v3/owner/remote-grant-groups/' + encodeURIComponent(groupId)
+      + '?client_id=' + encodeURIComponent(clientId), 'DELETE');
+    const verified = await this.ownerComputerAuthority(authority.device_id);
+    if (verified.grant_groups.some(grant => grant.grant_group_id === groupId)) {
+      throw fail('A revogação ainda não foi confirmada pela autoridade Owner.', 503);
+    }
+    return { revoked: true, grant_group_id: groupId };
+  }
+
+  async authorizeComputerObserve(deviceId) {
+    const authority = await this.ownerComputerAuthority(deviceId);
+    if (authority.clients.length === 0) throw fail('Nenhum cliente MCP com consentimento ativo corresponde a esta conta.', 409);
+    if (authority.clients.length !== 1) throw fail('Há mais de um cliente MCP autorizado; selecione explicitamente o cliente correto.', 409);
+    const clientId = authority.clients[0].client_id;
+    const validUntil = new Date(Date.now() + OWNER_OBSERVE_VALIDITY_MS).toISOString();
+    await this.request('/v3/owner/remote-grant-groups', 'POST', {
+      client_id: clientId, device_id: authority.device_id, profile_key: OWNER_OBSERVE_PROFILE,
       space_id: null, project_id: null, valid_until: validUntil,
     });
     return { authorized: true, profile: OWNER_OBSERVE_PROFILE, validUntil };
