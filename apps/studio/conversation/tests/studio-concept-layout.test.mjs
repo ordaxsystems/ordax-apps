@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { DraftController } from '../src/drafts.mjs';
+
 
 const source = relative => readFileSync(new URL(relative, import.meta.url), 'utf8');
 const html = source('../src/index.html');
@@ -48,6 +50,21 @@ test('preview shortcuts use existing workspace tabs and respect unavailable host
   assert.match(workspace, /'studioFiles', 'studioGit', 'studioSearch', 'studioPreview'/);
   assert.match(css, /\.preview-workspace-shortcuts button:disabled/);
   assert.match(css, /\.studio-preview \.studio-preview-panel \.preview-canvas/);
+});
+
+test('next-message draft stays editable only after the stream starts, without a second send', async () => {
+  assert.match(app, /busy = true; nextDraftEditable = false;/);
+  assert.match(app, /nextDraftEditable = true; updateControls\(\);/);
+  assert.match(app, /busy = false; nextDraftEditable = false;/);
+  assert.match(app, /const canTypeNextDraft = busy && nextDraftEditable/);
+  assert.match(app, /\$\('send'\)\.disabled = !initialized \|\| locked\(\)/);
+  const controller = new DraftController({ async saveDraft(_key, entry) { return entry; } });
+  const submitted = controller.set('chat', { text: 'Primeira mensagem', attachments: [] });
+  await controller.flush();
+  controller.set('chat', { text: 'Próxima mensagem', attachments: [] });
+  assert.equal(controller.consume({ draftKey: 'chat', draftRevision: submitted.revision }), false);
+  assert.equal(controller.get('chat').text, 'Próxima mensagem');
+  await controller.flush();
 });
 
 test('concept styling stays in the canonical layered stylesheet and adapts for mobile', () => {
