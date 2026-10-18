@@ -74,5 +74,14 @@ button:focus-visible,.sidebar-project-link:focus-visible,.composer textarea:focu
 @media(max-width:1200px){.sidebar-projects{margin-top:12px}.welcome .suggestions{grid-template-columns:1fr}}
 @media(max-width:1000px){.composer-area,.web-bridge .composer-area{padding:10px 12px 12px}.sidebar,.web-bridge .sidebar{width:min(300px,calc(100vw - 48px))}.top-actions .connection-badge{display:none}}
 @media(max-width:620px){.composer{padding:10px}.composer-toolbar{gap:4px}.composer textarea{font-size:16px}.sidebar-projects{max-height:25dvh}}
+/* Functional preview tool rail: existing Workspace destinations only. */
+.studio-preview-panel .preview-workspace-shortcuts{position:absolute;top:54px;left:0;right:0;height:39px;z-index:2;display:flex;align-items:center;gap:5px;padding:4px 12px;background:#09182a;border-bottom:1px solid #23405d}
+.preview-workspace-shortcuts button{min-height:30px;padding:4px 12px;border:1px solid #264563;border-radius:8px;background:#0f2a46;color:#c6def6;font-size:11px;cursor:pointer}
+.preview-workspace-shortcuts button:hover:not(:disabled){background:#16416c;border-color:#458aca;color:#fff}
+.preview-workspace-shortcuts button:disabled{opacity:.48;cursor:not-allowed}
+.studio-preview .studio-preview-panel .preview-controls{top:93px}
+.studio-preview .studio-preview-panel .preview-canvas,.studio-preview .studio-preview-panel .preview-empty{top:141px}
+@media(max-width:1000px){.mobile-preview.studio-preview .studio-preview-panel .preview-controls{top:93px;height:80px}.mobile-preview.studio-preview .studio-preview-panel .preview-canvas,.mobile-preview.studio-preview .studio-preview-panel .preview-empty{top:173px}}
+@media(max-width:620px){.preview-workspace-shortcuts button{flex:1;min-width:0;font-size:10px;padding:4px}}
 @media(prefers-reduced-motion:reduce){.suggestions button{transform:none!important}}
 }
