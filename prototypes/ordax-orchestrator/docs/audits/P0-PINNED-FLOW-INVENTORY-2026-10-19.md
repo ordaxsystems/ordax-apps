@@ -88,10 +88,23 @@ O script de auditoria é **somente leitura**: lê objetos Git do commit fixo e a
 | Cópia de dados/credenciais do Grátis | P0/P1 bloqueiam; identidades e perfis isolados |
 | Execução de comandos via texto de IA | P6 exige parse/validação/política/autorização independentes |
 
-## 6. Provas e pendências desta entrega
+## 6. Evidência executada no GitHub Actions — Linux / Node 24
+
+**Prova real em CI (19/10/2026):** [Pinned Baseline, run 39299179963](https://github.com/ordaxsystems/ordax-apps/actions/runs/39299179963) — status **success**; [Isolation, run 39299179710](https://github.com/ordaxsystems/ordax-apps/actions/runs/39299179710) — **success**.
+
+- Commit da origem resolvido: `081a7ce989721106aaf27a0c9d09cf9d49713a65`, mesmo `source-lock.json`.
+- Importação real concluída para `workspace/` isolado, sem escrita no clone do Flow.
+- `npm ci --prefix workspace` e `npm run validate --prefix workspace`: **113 testes herdados aprovados, 0 falhas**.
+- Auditor de comparação byte a byte: **84 arquivos inspecionados**, incluindo dois módulos próprios do Lab, e **0 divergências**.
+- **8 arquivos de origem foram transformados:** `desktop/embedded-worker.mjs`, `desktop/main.mjs`, `desktop/preload.cjs`, `desktop/ui.html`, `desktop/ui.js`, `package-lock.json`, `package.json` e `test/desktop-contract.test.mjs`.
+- Owners preliminares: **36** development-test, **2** flow-client-out-of-scope, **11** flow-hub-out-of-scope, **9** legacy-client-core-review, **8** legacy-electron-client, **2** orchestrator-lab e **16** reference-or-resource-review.
+
+O manifesto SHA-256 completo é gerado como `pinned-audit.json` pelo workflow. Após a adição do passo de artifact, novas execuções podem anexá-lo como `ordax-lab-p0-pinned-manifest`. Essas provas **não executaram Electron autenticado nem a integração Windows**.
+
+## 7. Provas e pendências desta entrega
 
 **Entregues no escopo P0:** mapa de owners e contratos ancorados no snapshot; script de hash/byte-comparison somente leitura; testes locais/CI da ferramenta de inspeção. Versão do produto não muda.
 
-**Ainda pendentes para encerrar P0:** relatório real do `pinned-audit.json` gerado sobre o snapshot completo em ambiente com clone autenticado, árvore de imports transitivos e baseline compilado; evidência de paridade no Windows. **P1 não deve iniciar cutover destrutivo antes dessas provas.**
+**Ainda pendentes para encerrar P0:** grafo de imports transitivos com dependências dinâmicas explicitadas, revisão técnica do manifesto por arquivo e (se o gate exigir) evidência de paridade funcional no Windows. O baseline **Linux** de cópia pinada/113 testes e o relatório de hashes **já passaram**; não repeti-los por falta de memória. A paridade do ChatGPT Web real é P3/P5, não consequência da CI Linux. **P1 não deve iniciar cutover destrutivo antes dessas provas.**
 
 **Ainda pendentes para Alpha.3:** P2 Store real; P3 fixtures de transporte; P4 reconciliação de envio; P5 E2E real autenticado. Nenhum deles é declarado concluído aqui.
