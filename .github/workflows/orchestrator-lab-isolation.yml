@@ -1,0 +1,61 @@
+name: OrdaX Orchestrator Lab Isolation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'prototypes/ordax-orchestrator/**'
+      - '.github/workflows/orchestrator-lab-isolation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'prototypes/ordax-orchestrator/**'
+      - '.github/workflows/orchestrator-lab-isolation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout app repo, do not persist GitHub credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+
+      - name: Verify source lock is valid JSON
+        run: node -e "const l=require('./prototypes/ordax-orchestrator/source-lock.json'); if(l.repository!=='ordaxsystems/ordax-flow'||l.distributionEnabled!==false||l.modelSupervisorEnabled!==false||l.externalUserIngressEnabled!==false)process.exit(1)"
+
+      - name: Validate importer modules
+        run: |
+          node --check prototypes/ordax-orchestrator/lib/derive.mjs
+          node --check prototypes/ordax-orchestrator/scripts/import-flow.mjs
+          node --check prototypes/ordax-orchestrator/scripts/start-lab.mjs
+          node --check prototypes/ordax-orchestrator/tests/derive.test.mjs
+
+      - name: Test fail-closed import and separate install/session identities
+        run: npm test --prefix prototypes/ordax-orchestrator
+
+      - name: Prevent accidental committed generated runtime
+        run: |
+          test ! -e prototypes/ordax-orchestrator/workspace
+          test ! -e prototypes/ordax-orchestrator/node_modules
+
+      - name: No direct Flow repo modification or imported credentials
+        run: |
+          if grep -R -nE 'ORDAX_(OPENAI|GROQ|GITHUB)_TOKEN=|OPENAI_API_KEY=[^[:space:]]|sk-[[:alnum:]]{16}' prototypes/ordax-orchestrator --include='*.mjs' --include='*.json'; then
+            echo 'Possible embedded secret found' >&2
+            exit 1
+          fi
+
+# This workflow intentionally does NOT fetch the private Flow repo.
+# Full pinned snapshot import and real Windows ChatGPT E2E require a separate
+# credentialed, explicitly authorized integration environment.
