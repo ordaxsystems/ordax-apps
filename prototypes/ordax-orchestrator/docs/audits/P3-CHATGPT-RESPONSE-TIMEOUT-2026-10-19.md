@@ -1,6 +1,6 @@
 # P3 — Proteção contra conclusão falsa após timeout ChatGPT Web
 
-**Situação:** incremento preparatório de P3, ainda não é caracterização autenticada nem E2E.
+**Situação:** incremento preparatório de P3 integrado na [PR #277](https://github.com/ordaxsystems/ordax-apps/pull/277), commit `8618e2758635cc067cca41a395073f4b86b109d6`; [CI Linux/Windows aprovada](https://github.com/ordaxsystems/ordax-apps/actions/runs/39310802159), 36/36 testes bootstrap e 92/92 produto. **Ainda não é caracterização autenticada nem E2E.**
 
 ## Bug identificado no código próprio do Lab
 
