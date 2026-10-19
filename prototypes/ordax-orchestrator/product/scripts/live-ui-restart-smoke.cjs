@@ -1,10 +1,7 @@
-const { DEBUG_URL, isLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('restart-smoke');
-const http=require('http');
-const path=require('path');
 const {DatabaseSync}=require('node:sqlite');
-const get=u=>new Promise((r,j)=>http.get(u,x=>{let d='';x.on('data',c=>d+=c);x.on('end',()=>r(JSON.parse(d)))}).on('error',j));
 (async()=>{
   const dbPath=labDatabasePath();
   const db=new DatabaseSync(dbPath,{readOnly:true});
@@ -12,8 +9,7 @@ const get=u=>new Promise((r,j)=>http.get(u,x=>{let d='';x.on('data',c=>d+=c);x.o
   db.close();
   if(!latest)throw new Error('persisted_asset_not_found');
   const expectedAssetUrl=`ordax-asset://local/${latest.asset_id}`;
-  const target=(await get(DEBUG_URL)).find(isLabUiTarget);
-  if(!target)throw new Error('ordax_ui_target_not_found');
+  const target=await waitForLabUiTarget();
   const ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});let id=0;const pending=new Map();
   ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const q=pending.get(m.id);pending.delete(m.id);m.error?q.reject(new Error(m.error.message)):q.resolve(m.result)}};
   const call=(method,params)=>new Promise((resolve,reject)=>{const n=++id;pending.set(n,{resolve,reject});ws.send(JSON.stringify({id:n,method,params}))});

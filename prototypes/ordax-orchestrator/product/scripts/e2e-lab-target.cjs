@@ -1,4 +1,5 @@
 const path=require('node:path');
+const http=require('node:http');
 
 const DEBUG_URL='http://127.0.0.1:9445/json/list';
 const PRODUCT_TITLE='OrdaX Orchestrator Lab';
@@ -31,7 +32,72 @@ function isLabUiTarget(target) {
     /\/desktop\/ui\.html(?:$|\?)/.test(target.url);
 }
 
+
+const MAX_DEBUG_RESPONSE_BYTES=256*1024;
+function readLabDebugTargets() {
+  return new Promise((resolve,reject)=>{
+    const req=http.get(DEBUG_URL,{timeout:4000},res=>{
+      if(res.statusCode!==200){res.resume();reject(new Error('lab_debug_http_not_ready'));return;}
+      let payload='';let size=0;
+      res.on('data',chunk=>{
+        size+=chunk.length;
+        if(size>MAX_DEBUG_RESPONSE_BYTES){req.destroy(new Error('lab_debug_response_too_large'));return;}
+        payload+=chunk;
+      });
+      res.on('end',()=>{
+        try {
+          const targets=JSON.parse(payload);
+          if(!Array.isArray(targets))throw new Error('lab_debug_invalid_targets');
+          resolve(targets);
+        }catch {reject(new Error('lab_debug_invalid_response'));}
+      });
+      res.on('error',reject);
+    });
+    req.on('timeout',()=>req.destroy(new Error('lab_debug_request_timeout')));
+    req.on('error',reject);
+  });
+}
+
+function validLabWebSocket(target) {
+  if(!isLabUiTarget(target))return false;
+  try {
+    const url=new URL(target.webSocketDebuggerUrl);
+    return url.protocol==='ws:' && url.hostname==='127.0.0.1' &&
+      url.port==='9445' && !url.username && !url.password &&
+      url.pathname.startsWith('/devtools/page/');
+  }catch{return false;}
+}
+
+// Portable Electron may first extract its payload, then launch its child
+// process. Wait for the exact authorized UI instead of assuming a fixed
+// startup delay or treating a transient ECONNREFUSED as a broken application.
+// This is read-only discovery: it never opens the provider or sends a message.
+async function waitForLabUiTarget({
+  readTargets=readLabDebugTargets,clock=Date.now,
+  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
+  maxWaitMs=90000,pollMs=500
+}={}) {
+  labStagedLocalAppData(); // fail before connecting, unless explicitly staged/approved
+  if(!Number.isSafeInteger(maxWaitMs)||maxWaitMs<1||maxWaitMs>90000 ||
+     !Number.isSafeInteger(pollMs)||pollMs<1||pollMs>5000)
+    throw new Error('lab_e2e_invalid_readiness_bounds');
+  const deadline=clock()+maxWaitMs;
+  let result='endpoint_not_ready';
+  while(true){
+    try {
+      const targets=await readTargets();
+      if(!Array.isArray(targets))throw new Error('lab_debug_invalid_targets');
+      const found=targets.find(validLabWebSocket);
+      if(found)return found;
+      result='ui_target_not_ready';
+    }catch{result='endpoint_not_ready';}
+    const remaining=deadline-clock();
+    if(remaining<=0)throw new Error('lab_ui_not_ready:'+result);
+    await sleep(Math.min(pollMs,remaining));
+  }
+}
+
 module.exports={
   DEBUG_URL,PRODUCT_TITLE,labStagedLocalAppData,labDatabasePath,
-  labLockPath,isLabUiTarget
+  labLockPath,isLabUiTarget,validLabWebSocket,readLabDebugTargets,waitForLabUiTarget
 };

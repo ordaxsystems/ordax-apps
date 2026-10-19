@@ -1,22 +1,14 @@
-const { DEBUG_URL, isLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 const { DatabaseSync } = require('node:sqlite');
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const http = require('node:http');
 
 acquireE2ELock('history-smoke');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const getJson = url => new Promise((resolve, reject) => http.get(url, response => {
-  let text = '';
-  response.on('data', chunk => { text += chunk; });
-  response.on('end', () => { try { resolve(JSON.parse(text)); } catch (error) { reject(error); } });
-}).on('error', reject));
 
 async function main() {
-  const target = (await getJson(DEBUG_URL))
-    .find(isLabUiTarget);
-  if (!target) throw new Error('ordax_ui_target_not_found');
+  const target = await waitForLabUiTarget();
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let seq = 0;

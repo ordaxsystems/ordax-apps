@@ -1,12 +1,8 @@
-const { DEBUG_URL, isLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('image-smoke');
-const http=require('http');
-const getJson=url=>new Promise((resolve,reject)=>http.get(url,r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){reject(e)}})}).on('error',reject));
 (async()=>{
-  const targets=await getJson(DEBUG_URL);
-  const target=targets.find(isLabUiTarget);
-  if(!target) throw new Error('ordax_ui_target_not_found');
+  const target=await waitForLabUiTarget();
   const ws=new WebSocket(target.webSocketDebuggerUrl); let seq=0; const pending=new Map();
   ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(new Error(m.error.message)):p.resolve(m.result);}};
   await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});
