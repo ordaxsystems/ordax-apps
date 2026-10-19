@@ -1,9 +1,7 @@
-const { DEBUG_URL, isLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('text-smoke');
-const http=require('http');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function getJson(url){return new Promise((resolve,reject)=>http.get(url,r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){reject(e)}})}).on('error',reject));}
 (async()=>{
   const mode=String(process.env.ORDAX_E2E_MODE||'auto').toLowerCase();
   if(!['auto','fast','beta'].includes(mode)) throw new Error('invalid_e2e_mode');
@@ -12,9 +10,8 @@ function getJson(url){return new Promise((resolve,reject)=>http.get(url,r=>{let 
   const prompt=String(process.env.ORDAX_E2E_PROMPT||('Responda exatamente: '+marker));
   const requireStream=process.env.ORDAX_REQUIRE_STREAM==='1';
   const requireFastDelivery=process.env.ORDAX_REQUIRE_FAST==='1';
-  const discoverStarted=Date.now(); let target=null;
-  for(let i=0;i<120;i++){const targets=await getJson(DEBUG_URL);target=targets.find(isLabUiTarget);if(target)break;await sleep(100);}
-  if(!target) throw new Error('ordax_ui_target_not_found');
+  const discoverStarted=Date.now();
+  const target=await waitForLabUiTarget();
   const ws=new WebSocket(target.webSocketDebuggerUrl); let seq=0; const pending=new Map();
   ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const {resolve,reject}=pending.get(m.id);pending.delete(m.id);m.error?reject(new Error(m.error.message)):resolve(m.result);}};
   await new Promise((res,rej)=>{ws.onopen=res;ws.onerror=rej;});
