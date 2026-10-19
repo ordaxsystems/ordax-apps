@@ -14,6 +14,7 @@
     "apps/**",
     "build/**",
     "docs/**",
+    "sql/**",
     "README.md",
     "REFERENCIAS.md"
   ],
