@@ -1,0 +1,13 @@
+{
+  "name": "@ordax/orchestrator-lab-bootstrap",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Bootstrap isolado do OrdaX Orchestrator Lab a partir de snapshot pinado do Flow/Grátis.",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "validate": "npm test",
+    "import:flow": "node scripts/import-flow.mjs",
+    "start": "node scripts/start-lab.mjs"
+  }
+}
