@@ -759,7 +759,7 @@ labState.textContent = labStatus.enabled
   ? "Ativo: cada mensagem proposta exige aprovação humana."
   : "Desativado. Requer GROQ_API_KEY e ORDAX_LAB_SUPERVISOR_ENABLE=1 no Lab."; 
 labPlanButton.disabled = !labStatus.enabled;
-labRecoverButton.disabled = !labStatus.enabled;
+labRecoverButton.disabled = false; // Durable read-only recovery never requires Groq.
 labRecoverButton.addEventListener("click", async () => {
   if (!currentTaskId) {labMessage.textContent="Selecione uma tarefa primeiro.";return;}
   const taskId=currentTaskId;
@@ -779,7 +779,7 @@ labRecoverButton.addEventListener("click", async () => {
     labSendButton.hidden=!(plan.status==="approved" && plan.approvalStatus==="approved");
     labInspectButton.hidden=!plan.requiresReconciliation || !["dispatching","indeterminate"].includes(plan.status);
   } catch(error){labMessage.textContent=error?.message||"Falha ao recuperar plano";}
-  finally{labRecoverButton.disabled=!labStatus.enabled;}
+  finally{labRecoverButton.disabled=false;}
 });
 labInspectButton.addEventListener("click", async () => {
   if (!labProposal || currentTaskId !== labProposal.taskId ||
