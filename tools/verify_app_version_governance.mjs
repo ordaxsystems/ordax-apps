@@ -120,6 +120,15 @@ async function policyAt(platformRoot) {
 }
 
 export async function verifyAppCatalog({platformRoot,base=null}){
+  // For pull_request GitHub checks out a two-parent merge commit. Only compare
+  // against its first parent (the exact tested base), otherwise concurrent
+  // main changes can be incorrectly billed to the PR.
+  let testedBase=base;
+  if(base && process.env.GITHUB_EVENT_NAME==='pull_request'){
+    const parents=git('rev-list','--parents','-n','1','HEAD').split(/\s+/);
+    if(parents.length!==3)throw new Error('Expected attested two-parent pull request merge');
+    testedBase=parents[1];
+  }
   const policy=await policyAt(platformRoot);
   const root=path.join(repoRoot,'apps');
   const dirs=fs.readdirSync(root,{withFileTypes:true}).filter(x=>x.isDirectory()).map(x=>x.name).sort();
@@ -136,15 +145,15 @@ export async function verifyAppCatalog({platformRoot,base=null}){
     count++;
   }
   let changed=0;
-  if(base){
-    if(!/^[a-f0-9]{40}$/.test(base))throw new Error('A specific PR base SHA is required');
-    const paths=git('diff','--name-only',base+'...HEAD','--','apps').split('\n').filter(Boolean);
+  if(testedBase){
+    if(!/^[a-f0-9]{40}$/.test(testedBase))throw new Error('A specific PR base SHA is required');
+    const paths=git('diff','--name-only',testedBase,'HEAD','--','apps').split('\n').filter(Boolean);
     for(const id of new Set(paths.map(productSourceAppId).filter(Boolean))){
       const current=versioned.get(id);
       const oldPath='apps/'+id+'/'+RELEASE_MANIFEST;
       let previous=null;
       try{
-        previous=JSON.parse(git('show',base+':'+oldPath));
+        previous=JSON.parse(git('show',testedBase+':'+oldPath));
       }catch(error){
         // New app is allowed only with its canonical manifest, not fake catalog presence.
         const missingOldManifest=/does not exist|exists on disk, but not in|path .* does not exist/i.test(String(error.stderr||error.message));
@@ -173,8 +182,8 @@ export async function verifyAppCatalog({platformRoot,base=null}){
   if(fs.existsSync(prototypeRoot)){
     const prototypes=fs.readdirSync(prototypeRoot,{withFileTypes:true})
       .filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort();
-    const changedPaths=base
-      ?git('diff','--name-only',base+'...HEAD','--','prototypes').split('\n').filter(Boolean)
+    const changedPaths=testedBase
+      ?git('diff','--name-only',testedBase,'HEAD','--','prototypes').split('\n').filter(Boolean)
       :[];
     for(const id of prototypes){
       const root=path.join(prototypeRoot,id);
@@ -185,8 +194,8 @@ export async function verifyAppCatalog({platformRoot,base=null}){
       const bootstrap=fs.existsSync(bootstrapFile)
         ?JSON.parse(fs.readFileSync(bootstrapFile,'utf8')) :null;
       let previous=null;
-      if(base){
-        try{previous=JSON.parse(git('show',base+':prototypes/'+id+'/product-version.json'));}
+      if(testedBase){
+        try{previous=JSON.parse(git('show',testedBase+':prototypes/'+id+'/product-version.json'));}
         catch(error){
           const notFound=/does not exist|exists on disk, but not in|path .* does not exist/i.test(String(error.stderr||error.message));
           if(!notFound)throw error;
@@ -204,7 +213,7 @@ export async function verifyAppCatalog({platformRoot,base=null}){
     schema:'ordax.first-party-version-gate/1',cataloguedApps:count,
     unversionedCandidates,
     changedVersionedApps:changed,prototypeProducts,changedPrototypeProducts,
-    baseline:base||null,
+    baseline:testedBase||null,
   };
 }
 
