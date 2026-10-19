@@ -20,7 +20,7 @@ function fixture() {
     fs.mkdirSync(path.join(base, 'desktop'));
     fs.mkdirSync(path.join(base, 'src'));
   }
-  fs.writeFileSync(path.join(source, 'desktop', 'main.mjs'), 'original\n');
+  fs.writeFileSync(path.join(source, 'desktop', 'main.mjs'), "import '../src/store.mjs';\noriginal\n");
   fs.writeFileSync(path.join(source, 'src', 'store.mjs'), 'store\n');
   git('add', '.');
   git('commit', '-qm', 'pinned test fixture');
@@ -45,6 +45,8 @@ test('read-only audit hashes pinned blobs, names owners and identifies changed b
   assert.deepEqual(report.changed_by_derivation, ['desktop/main.mjs']);
   assert.equal(report.owner_counts['legacy-electron-client'], 1);
   assert.equal(report.owner_counts['legacy-client-core-review'], 1);
+  assert.ok(report.dependency_graph.reachable.includes('src/store.mjs'));
+  assert.ok(report.dependency_graph.edges.some(e => e.from === 'desktop/main.mjs' && e.target === 'src/store.mjs'));
   assert.match(report.files[0].source_sha256, /^[a-f0-9]{64}$/);
   assert.deepEqual(fs.readFileSync(path.join(f.source, 'desktop', 'main.mjs')), before);
 });
