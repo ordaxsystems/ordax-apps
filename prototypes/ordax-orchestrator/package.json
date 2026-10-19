@@ -1,7 +1,7 @@
 {
   "name": "@ordax/orchestrator-lab-bootstrap",
   "private": true,
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-alpha.2",
   "type": "module",
   "description": "Bootstrap isolado do OrdaX Orchestrator Lab a partir de snapshot pinado do Flow/Grátis.",
   "scripts": {
