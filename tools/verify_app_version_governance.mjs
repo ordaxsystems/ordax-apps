@@ -37,6 +37,12 @@ export function productSourcePrototypeId(relative) {
   return match[1];
 }
 
+export function assertPrototypeVersionOwnerContinuity({prototypeId,previous,currentHasOwner}) {
+  if (previous && !currentHasOwner) {
+    throw new Error('Existing prototype version owner removed without ownership/cutover proof: '+prototypeId);
+  }
+}
+
 export function validatePrototypeVersion({meta,bootstrap=null,previous=null,changedRuntime=false,policy}){
   if (!meta || typeof meta!=='object' || typeof meta.version!=='string' ||
       meta.distributionEnabled!==false || meta.releaseDate!==null) {
@@ -185,22 +191,29 @@ export async function verifyAppCatalog({platformRoot,base=null}){
     const changedPaths=testedBase
       ?git('diff','--name-only',testedBase,'HEAD','--','prototypes').split('\n').filter(Boolean)
       :[];
-    for(const id of prototypes){
+    // The union also covers deleted prototype directories and version manifests.
+    // Iterating only directories with a current product-version.json would allow a
+    // PR to remove the owner and escape the independent version gate.
+    const changedPrototypeIds=new Set(changedPaths.map(productSourcePrototypeId).filter(Boolean));
+    const prototypeIds=[...new Set([...prototypes,...changedPrototypeIds])].sort();
+    for(const id of prototypeIds){
       const root=path.join(prototypeRoot,id);
       const versionFile=path.join(root,'product-version.json');
-      if(!fs.existsSync(versionFile))continue; // do not mint a version for unrelated experiments
-      const meta=JSON.parse(fs.readFileSync(versionFile,'utf8'));
-      const bootstrapFile=path.join(root,'package.json');
-      const bootstrap=fs.existsSync(bootstrapFile)
-        ?JSON.parse(fs.readFileSync(bootstrapFile,'utf8')) :null;
       let previous=null;
-      if(testedBase){
+      if(testedBase && changedPrototypeIds.has(id)){
         try{previous=JSON.parse(git('show',testedBase+':prototypes/'+id+'/product-version.json'));}
         catch(error){
           const notFound=/does not exist|exists on disk, but not in|path .* does not exist/i.test(String(error.stderr||error.message));
           if(!notFound)throw error;
         }
       }
+      const currentHasOwner=fs.existsSync(versionFile);
+      assertPrototypeVersionOwnerContinuity({prototypeId:id,previous,currentHasOwner});
+      if(!currentHasOwner)continue; // an unowned experiment is still not released
+      const meta=JSON.parse(fs.readFileSync(versionFile,'utf8'));
+      const bootstrapFile=path.join(root,'package.json');
+      const bootstrap=fs.existsSync(bootstrapFile)
+        ?JSON.parse(fs.readFileSync(bootstrapFile,'utf8')) :null;
       const productionChanged=changedPaths.some(path=>productSourcePrototypeId(path)===id);
       validatePrototypeVersion({
         meta,bootstrap,previous,changedRuntime:productionChanged,policy,
