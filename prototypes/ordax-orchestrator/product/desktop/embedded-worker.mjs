@@ -4,6 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
+import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -454,6 +455,35 @@ export class EmbeddedChatWorker {
     }
     if (current !== url) await this.#safeLoad(url, { requireComposer: true, protectDraft: !force });
     return { ...this.status(), navigated:true };
+  }
+
+  // Inspect the currently visible provider page; never navigate or submit.
+  // The only returned values are allowlisted flags and bounded counts.
+  async inspectDiagnosticReadOnly() {
+    return this.enqueue(async () => {
+      const url=this.view.webContents.getURL();
+      let observation={};
+      try {
+        observation=await this.view.webContents.executeJavaScript(`(() => {
+          const $ = selector => document.querySelector(selector);
+          const all = selector => document.querySelectorAll(selector);
+          const userNodes=all('[data-message-role="user"],[data-message-author-role="user"],[data-message-author="user"]');
+          const assistantNodes=all('[data-message-role="assistant"],[data-message-author-role="assistant"],[data-message-author="assistant"]');
+          const hasContent = nodes => Array.from(nodes).some(node =>
+            Boolean(String(node.innerText || node.textContent || '').trim()));
+          return {
+            composerPresent:Boolean($('#prompt-textarea,[contenteditable="true"][role="textbox"]')),
+            sendControlPresent:Boolean($('button[data-testid="send-button"],button[aria-label="Enviar"],button[aria-label="Send"]')),
+            stopControlPresent:Boolean($('button[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="Parar"]')),
+            assistantContentPresent:hasContent(assistantNodes),
+            userContentPresent:hasContent(userNodes),
+            assistantNodes:assistantNodes.length,
+            userNodes:userNodes.length
+          };
+        })()`);
+      } catch { /* unavailable signals are not success */ }
+      return toSafeProviderDiagnostic({url,observation});
+    });
   }
 
   // Explicit, read-only inspection of an existing, canonical conversation.
