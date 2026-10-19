@@ -26,6 +26,10 @@ Antes de alterar chat Studio, catálogo dos apps, provider adapters ou integraç
 
 Antes de iniciar outra rodada de polimento individual, ler [docs/MVP-MINIMO-TODOS-APPS.md](docs/MVP-MINIMO-TODOS-APPS.md) e executar `python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown`. Priorizar completar estrutura/ports/pacote de todos os 20 alvos sem inventar source ou grants onde os owners ainda não autorizaram. O verificador gera apenas evidência de candidato não assinado; não representa catálogo verificado nem instalação. Bugs de segurança/corrupção de dados continuam prioridade imediata.
 
+## Versionamento obrigatório (gate de CI)
+
+Para **cada app com `apps/<id>/app.json`**, esse manifesto continua como **único owner** de versão. Mudanças de runtime, recursos ou metadados de distribuição exigem aumentar `version` com SemVer; a workflow `.github/workflows/app-version-governance.yml` verifica o diff da PR usando o contrato versionado do OS. Canais oficiais: `alpha.N`, `beta.N`, `rc.N`. Não criar `VERSION`, `product-version.json` adicional ou versão calculada a partir de título/nome. Protótipos sem manifesto distribuível continuam **não promovidos**; o Orchestrator Lab tem sua SSOT experimental própria. Política em [OS docs/VERSION-GOVERNANCE.md](https://github.com/ordaxsystems/ordax-os/blob/feat/structural-product-version-policy-20261019/docs/VERSION-GOVERNANCE.md). CI não cria releases nem grants.
+
 ## Como trabalhar
 
 - Vincular cada mudança ao item/épico do roadmap ou justificar claramente a exceção.
