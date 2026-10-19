@@ -1,0 +1,8 @@
+{
+  "$schema": "ordax.orchestrator-lab-product-version/1",
+  "version": "0.2.0-alpha.1",
+  "channel": "alpha",
+  "name": "Supervisor inicial e isolamento do aplicativo",
+  "distributionEnabled": false,
+  "releaseDate": null
+}
