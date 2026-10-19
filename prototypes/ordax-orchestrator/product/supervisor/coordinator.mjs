@@ -112,7 +112,7 @@ export class SupervisorCoordinator {
       "FROM action_ledger a LEFT JOIN approval_ledger p ON " +
       "p.action_id=a.id AND p.task_id=a.task_id " +
       "WHERE a.task_id=? AND a.action_type=? AND a.status IN " +
-      "('planning','pending_approval','approved','dispatching','indeterminate') " +
+      "('planning','pending_approval','approved','held','dispatching','indeterminate') " +
       "ORDER BY a.updated_at DESC,a.id DESC LIMIT 25"
     ).all(tid,ACTION);
     const filtered = [];
@@ -174,7 +174,8 @@ export class SupervisorCoordinator {
       const decision = validateSupervisorDecision(modelDecision, tid);
       this.store.db.exec('SAVEPOINT supervisor_record_plan');
       try {
-        const newStatus = decision.type === 'send_message' ? 'pending_approval' : 'complete';
+        const newStatus = decision.type === 'send_message' ? 'pending_approval' :
+          decision.type === 'hold' ? 'held' : 'complete';
         this.store.db.prepare(
           "UPDATE action_ledger SET status=?,result=?,updated_at=? WHERE id=? AND status='planning'"
         ).run(newStatus, JSON.stringify({ decision }), this.store.now(), actionId);
