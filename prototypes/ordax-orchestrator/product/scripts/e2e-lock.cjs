@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const lockPath = path.join(process.env.LOCALAPPDATA || process.cwd(), 'OrdaX', 'Gratis', 'e2e.lock');
+const { labLockPath } = require('./e2e-lab-target.cjs');
+const lockPath = labLockPath();
 
 function processAlive(pid) {
   try { process.kill(Number(pid), 0); return true; } catch { return false; }
