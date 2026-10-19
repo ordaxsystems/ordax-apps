@@ -47,9 +47,9 @@ test('missing Run identity or malformed timestamp fail closed',()=>{
 
 test('legacy boolean-only success receipt remains indeterminate, without retry, using real SQLite',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-transport-receipt-'));
-  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   const store=new Store(path.join(dir,'lab.sqlite'));
-  t.after(()=>store.close());
+  // Windows keeps the SQLite WAL handles open until the database is closed.
+  t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
   const task=store.createTask('Transport-only proof');
   let sends=0;
   const coordinator=new SupervisorCoordinator({
@@ -71,9 +71,9 @@ test('legacy boolean-only success receipt remains indeterminate, without retry, 
 
 test('real SQLite ledger records message observations without claiming file effects',async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-transport-success-'));
-  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   const store=new Store(path.join(dir,'lab.sqlite'));
-  t.after(()=>store.close());
+  // Windows keeps the SQLite WAL handles open until the database is closed.
+  t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
   const task=store.createTask('Transport evidence');
   const coordinator=new SupervisorCoordinator({
     store,enabled:true,actorId:'lab-owner',environment:'internal',
