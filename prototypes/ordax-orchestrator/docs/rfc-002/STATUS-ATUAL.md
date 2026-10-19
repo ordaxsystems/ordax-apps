@@ -53,6 +53,14 @@
 - [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39314434461): **36/36 testes do bootstrap, 99/99 do produto em Linux e instalação/testes/build portátil Windows aprovados**. Não declarar P4 concluído, não avançar a versão nem ativar autonomia.
 - Mesmo com a PR aprovada, permanecem pendentes: `reconcile()` somente leitura da conversa real, fixtures redigidas do ChatGPT Web autenticado, P5 (encerrar/reabrir/retomar) e grants oficiais do Runtime.
 
+## P4 — Inspeção somente leitura em revisão
+
+- [PR #279](https://github.com/ordaxsystems/ordax-apps/pull/279) em revisão: botão manual `Verificar conversa (sem envio)`, inspeção de DOM limitada, correlação exata conservadora e verificação de autorização do mesmo Workspace.
+- [Auditoria da inspeção](../audits/P4-READONLY-RECONCILIATION-2026-10-19.md): a recuperação é possível mesmo sem `GROQ_API_KEY`; a ação incerta continua incerta, sem `finishAction`, novo envio, mudança no ledger ou afirmação de patch local executado.
+- Nenhum dado de outra conversa ou HTML bruto é retornado à interface; o worker reutiliza sessão legítima e proteção de rascunhos.
+- **P4 permanece pendente de prova real:** inspeção autenticada no ChatGPT Web, histórico virtualizado/alteração de UI, atribuição imutável do envio e decisão humana baseada em recibos verificáveis; P5 continua sendo o E2E de interrupção/reinício/retomada.
+- CI desta PR ainda deve ser verificada antes do merge. Produto segue `0.2.0-alpha.2`.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
