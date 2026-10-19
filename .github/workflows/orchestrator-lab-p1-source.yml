@@ -6,6 +6,11 @@ on:
     paths:
       - 'prototypes/ordax-orchestrator/scripts/promote-owned-source.mjs'
       - '.github/workflows/orchestrator-lab-p1-source.yml'
+  pull_request:
+    branches: ['feat/orchestrator-lab-isolated-20261019']
+    paths:
+      - 'prototypes/ordax-orchestrator/scripts/promote-owned-source.mjs'
+      - '.github/workflows/orchestrator-lab-p1-source.yml'
   workflow_dispatch:
 
 permissions:
@@ -13,7 +18,7 @@ permissions:
 
 jobs:
   prepare:
-    if: github.repository == 'ordaxsystems/ordax-apps' && github.ref == 'refs/heads/feat/orchestrator-p1-owned-source-20261019'
+    if: github.repository == 'ordaxsystems/ordax-apps' && (github.ref == 'refs/heads/feat/orchestrator-p1-owned-source-20261019' || github.event.pull_request.head.ref == 'feat/orchestrator-p1-owned-source-20261019')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
