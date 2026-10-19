@@ -34,9 +34,11 @@ try {
   if (!fs.existsSync(electronCli)) {
     throw new Error('Electron CLI missing in the isolated workspace.');
   }
+  const childEnv = { ...process.env };
+  delete childEnv.ELECTRON_RUN_AS_NODE;
   const result = spawnSync(process.execPath, [electronCli, '.'], {
     cwd: workspace, stdio: 'inherit', windowsHide: false,
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '' }
+    env: childEnv
   });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
