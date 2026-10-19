@@ -2,7 +2,7 @@ name: OrdaX Orchestrator Lab Isolation
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'feat/orchestrator-lab-isolated-20261019']
     paths:
       - 'prototypes/ordax-orchestrator/**'
       - '.github/workflows/orchestrator-lab-isolation.yml'
@@ -41,9 +41,11 @@ jobs:
           node --check prototypes/ordax-orchestrator/lib/supervisor-overlay.mjs
           node --check prototypes/ordax-orchestrator/supervisor/coordinator.mjs
           node --check prototypes/ordax-orchestrator/supervisor/groq-planner.mjs
+          node --check prototypes/ordax-orchestrator/scripts/audit-pinned-workspace.mjs
           node --check prototypes/ordax-orchestrator/scripts/verify-version.mjs
           node --check prototypes/ordax-orchestrator/scripts/import-flow.mjs
           node --check prototypes/ordax-orchestrator/scripts/start-lab.mjs
+          node --check prototypes/ordax-orchestrator/tests/audit-pinned-workspace.test.mjs
           node --check prototypes/ordax-orchestrator/tests/derive.test.mjs
           node --check prototypes/ordax-orchestrator/tests/version.test.mjs
           node --check prototypes/ordax-orchestrator/tests/supervisor.test.mjs
