@@ -185,9 +185,11 @@ export async function verifyAppCatalog({platformRoot,base=null}){
   let prototypeProducts=0;
   let changedPrototypeProducts=0;
   const prototypeRoot=path.join(repoRoot,'prototypes');
-  if(fs.existsSync(prototypeRoot)){
-    const prototypes=fs.readdirSync(prototypeRoot,{withFileTypes:true})
-      .filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort();
+  if(fs.existsSync(prototypeRoot) || testedBase){
+    const prototypes=fs.existsSync(prototypeRoot)
+      ?fs.readdirSync(prototypeRoot,{withFileTypes:true})
+        .filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort()
+      :[];
     const changedPaths=testedBase
       ?git('diff','--name-only',testedBase,'HEAD','--','prototypes').split('\n').filter(Boolean)
       :[];
