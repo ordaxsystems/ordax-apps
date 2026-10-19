@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('ordax', {
   supervisorStatus: () => ipcRenderer.invoke("ordax:supervisor:status"),
   supervisorPlan: payload => ipcRenderer.invoke("ordax:supervisor:plan", payload),
   supervisorRecoverable: payload => ipcRenderer.invoke("ordax:supervisor:recoverable", payload),
+  supervisorInspect: payload => ipcRenderer.invoke("ordax:supervisor:inspect", payload),
   supervisorApprove: payload => ipcRenderer.invoke("ordax:supervisor:approve", payload),
   supervisorDispatch: payload => ipcRenderer.invoke("ordax:supervisor:dispatch", payload),
   workspace: () => ipcRenderer.invoke('ordax:workspace:get'),
