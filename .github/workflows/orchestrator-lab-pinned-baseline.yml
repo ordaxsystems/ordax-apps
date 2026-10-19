@@ -69,3 +69,11 @@ jobs:
               mismatches:report.problems.length
             }, null, 2));
           '
+
+      - name: Preserve SHA-256 provenance evidence (no source bytes)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ordax-lab-p0-pinned-manifest
+          path: ${{ runner.temp }}/pinned-audit.json
+          retention-days: 14
+          if-no-files-found: error
