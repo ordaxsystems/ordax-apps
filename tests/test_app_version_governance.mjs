@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { productSourceAppId, validateAppVersionTransition, productSourcePrototypeId, validatePrototypeVersion } from '../tools/verify_app_version_governance.mjs';
+import { productSourceAppId, validateAppVersionTransition, productSourcePrototypeId, validatePrototypeVersion, assertVersionOwnerForChangedApp } from '../tools/verify_app_version_governance.mjs';
 
 const base=Object.freeze({
   schema:'ordax.component-manifest/1',id:'studio',title:'OrdaX Studio',
@@ -98,4 +98,17 @@ test('experimental runtime improvement must increase alpha number',()=>{
   assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/tests/version.test.mjs'),null);
   assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/README.md'),null);
   assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/product-version.json'),'ordax-orchestrator');
+});
+
+
+test('source-only app candidates cannot silently evolve without structural version owner',()=>{
+  assert.throws(()=>assertVersionOwnerForChangedApp({
+    appId:'finance',hasManifest:false,changedRuntime:true,
+  }),/source changed without a version owner/);
+  assert.doesNotThrow(()=>assertVersionOwnerForChangedApp({
+    appId:'finance',hasManifest:false,changedRuntime:false,
+  }));
+  assert.doesNotThrow(()=>assertVersionOwnerForChangedApp({
+    appId:'clock',hasManifest:true,changedRuntime:true,
+  }));
 });
