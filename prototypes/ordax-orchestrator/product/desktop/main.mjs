@@ -362,6 +362,11 @@ ipcMain.handle('ordax:provider:observer-mode:set', (_event, mode) => {
   store.updateWorkspaceMetadata({ observer_mode: next });
   return next;
 });
+ipcMain.handle('ordax:provider:diagnostic', async event => {
+  requireTrustedSupervisorRenderer(event);
+  // Read-only provider UI inspection; no API key, chat submission or disk write.
+  return worker.inspectDiagnosticReadOnly();
+});
 ipcMain.handle('ordax:provider:login', () => worker.login());
 ipcMain.handle('ordax:provider:login-google', () => worker.loginGoogle());
 ipcMain.handle('ordax:provider:home', () => worker.newChat());
