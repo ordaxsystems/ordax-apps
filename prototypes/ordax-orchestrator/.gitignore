@@ -1,4 +1,5 @@
 /workspace/
+/workspace-next/
 /workspace-before-fix-*/
 /node_modules/
 /.import-staging-*/
