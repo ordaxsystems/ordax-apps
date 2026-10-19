@@ -2,6 +2,16 @@
 
 A versão do aplicativo Lab é independente da versão do snapshot de origem OrdaX Grátis/Flow. **product-version.json** é a SSOT da versão do produto. O package.json do bootstrap e os package.json / package-lock.json gerados são projeções obrigatoriamente verificadas.
 
+## 0.2.0-alpha.2 — 2026-10-19
+
+**Prévia experimental — recuperação de continuidade sem novos bancos.**
+
+- Restauro de planos e aprovações ainda pendentes após reinicialização do Lab, diretamente do mesmo `action_ledger` e `approval_ledger` do Flow.
+- Botão **Recuperar plano** no painel do supervisor, com escopo por Task, ator e tenant.
+- Planos com envio possivelmente iniciado ficam sinalizados para reconciliação manual; **não há reenvio automático** nem nova chamada à API.
+- Testes de regressão para continuidade, autorização por tenant e recuperação sem repetição do modelo.
+- Versão própria exibida pelo Electron; prévia/Store continuam desativados por padrão.
+
 ## 0.2.0-alpha.1 — 2026-10-19
 
 **Prévia experimental, não distribuída.**
