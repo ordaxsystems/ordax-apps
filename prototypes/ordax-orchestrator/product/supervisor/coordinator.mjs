@@ -51,6 +51,48 @@ export function authorizeLocalSupervisorTask({ store, actorId, tenantId, environ
   return Boolean(task && task.workspace_session_id === session.id && task.status !== 'archived');
 }
 
+// One canonical read path for recovery, independent from paid planner access.
+function readScopedRecoverableRows({ store, tid, actorId, tenantId, environment }) {
+      const rows = store.db.prepare(
+        "SELECT a.id,a.status,a.payload,a.result,a.updated_at,p.id AS approval_id,p.status AS approval_status " +
+        "FROM action_ledger a LEFT JOIN approval_ledger p ON " +
+        "p.action_id=a.id AND p.task_id=a.task_id " +
+        "WHERE a.task_id=? AND a.action_type=? AND a.status IN " +
+        "('planning','pending_approval','approved','held','dispatching','indeterminate') " +
+        "ORDER BY a.updated_at DESC,a.id DESC LIMIT 25"
+      ).all(tid,ACTION);
+      const filtered = [];
+      for (const row of rows) {
+        const scope = JSON.parse(row.payload);
+        if (scope.actorId !== actorId ||
+            scope.tenantId !== tenantId ||
+            scope.environment !== environment) continue;
+        const payload = row.result ? JSON.parse(row.result) : null;
+        const decision = payload?.decision
+          ? validateSupervisorDecision(payload.decision, tid) : null;
+        filtered.push({
+          taskId:tid,actionId:row.id,status:row.status,
+          approvalId:row.approval_id || null,
+          approvalStatus:row.approval_status || null,
+          decision,
+          requiresReconciliation:['planning','dispatching','indeterminate'].includes(row.status),
+          updatedAt:row.updated_at
+        });
+      }
+      return filtered;
+}
+
+export function listLocalSupervisorRecoverable({store,taskId}) {
+  const tid=boundedText(taskId,180,'task_id');
+  if (!authorizeLocalSupervisorTask({
+    store,actorId:'lab-owner',tenantId:null,environment:'internal',taskId:tid,operation:'review'
+  })) throw new Error('supervisor_access_denied');
+  if (!store.getTaskExecutionSnapshot(tid)) throw new Error('task_not_found');
+  return readScopedRecoverableRows({
+    store,tid,actorId:'lab-owner',tenantId:null,environment:'internal'
+  });
+}
+
 export class SupervisorCoordinator {
   constructor({ store, planner, chat, authorizeTask, enabled = false,
     environment = 'internal', actorId, tenantId = null } = {}) {
@@ -119,40 +161,17 @@ export class SupervisorCoordinator {
     };
   }
 
-  // Recovery is read-only. An interrupted planning/dispatching action remains
-  // uncertain until external reconciliation; it is never silently retried.
+  // Review is read-only and shares the same canonical query with the IPC
+  // recovery path that remains accessible without Groq credentials.
   listRecoverable({ taskId }) {
     this.requireEnabled();
-    const tid = boundedText(taskId, 180, 'task_id');
-    this.authorize(tid, 'review');
+    const tid=boundedText(taskId,180,'task_id');
+    this.authorize(tid,'review');
     if (!this.store.getTaskExecutionSnapshot(tid)) throw new Error('task_not_found');
-    const rows = this.store.db.prepare(
-      "SELECT a.id,a.status,a.payload,a.result,a.updated_at,p.id AS approval_id,p.status AS approval_status " +
-      "FROM action_ledger a LEFT JOIN approval_ledger p ON " +
-      "p.action_id=a.id AND p.task_id=a.task_id " +
-      "WHERE a.task_id=? AND a.action_type=? AND a.status IN " +
-      "('planning','pending_approval','approved','held','dispatching','indeterminate') " +
-      "ORDER BY a.updated_at DESC,a.id DESC LIMIT 25"
-    ).all(tid,ACTION);
-    const filtered = [];
-    for (const row of rows) {
-      const scope = JSON.parse(row.payload);
-      if (scope.actorId !== this.actorId ||
-          scope.tenantId !== this.tenantId ||
-          scope.environment !== this.environment) continue;
-      const payload = row.result ? JSON.parse(row.result) : null;
-      const decision = payload?.decision
-        ? validateSupervisorDecision(payload.decision, tid) : null;
-      filtered.push({
-        taskId:tid,actionId:row.id,status:row.status,
-        approvalId:row.approval_id || null,
-        approvalStatus:row.approval_status || null,
-        decision,
-        requiresReconciliation:['planning','dispatching','indeterminate'].includes(row.status),
-        updatedAt:row.updated_at
-      });
-    }
-    return filtered;
+    return readScopedRecoverableRows({
+      store:this.store,tid,actorId:this.actorId,tenantId:this.tenantId,
+      environment:this.environment
+    });
   }
 
   async plan({ taskId, requestId, objective }) {
@@ -282,7 +301,8 @@ export class SupervisorCoordinator {
       // A delivered message, observed response and verified local effect are
       // different concepts. This acknowledges only the first two.
       const evidence = requireConfirmedChatReceipt(receipt);
-      this.store.finishAction(tid, actionId, 'succeeded', evidence);
+      // Preserve the approved message for future read-only reconciliation.
+      this.store.finishAction(tid, actionId, 'succeeded', { decision, ...evidence });
       this.store.event(tid, 'supervisor.chat.response_observed', {
         action_id:actionId, run_id:evidence.runId,
         delivery_observed:true, response_observed:true, effect_verified:false
@@ -290,7 +310,7 @@ export class SupervisorCoordinator {
       return { actionId, status: 'succeeded' };
     } catch {
       this.store.finishAction(tid, actionId, 'indeterminate', {
-        reason: 'send_or_receipt_unknown_no_automatic_retry'
+        decision, reason: 'send_or_receipt_unknown_no_automatic_retry'
       });
       return { actionId, status: 'indeterminate' };
     }

@@ -750,6 +750,7 @@ const labState = document.getElementById("labSupervisorState");
 const labMessage = document.getElementById("labSupervisorProposal");
 const labPlanButton = document.getElementById("labSupervisorPlan");
 const labRecoverButton = document.getElementById("labSupervisorRecover");
+const labInspectButton = document.getElementById("labSupervisorInspect");
 const labApproveButton = document.getElementById("labSupervisorApprove");
 const labSendButton = document.getElementById("labSupervisorSend");
 const labStatus = await window.ordax.supervisorStatus().catch(() => ({enabled:false}));
@@ -758,7 +759,7 @@ labState.textContent = labStatus.enabled
   ? "Ativo: cada mensagem proposta exige aprovação humana."
   : "Desativado. Requer GROQ_API_KEY e ORDAX_LAB_SUPERVISOR_ENABLE=1 no Lab."; 
 labPlanButton.disabled = !labStatus.enabled;
-labRecoverButton.disabled = !labStatus.enabled;
+labRecoverButton.disabled = false; // Durable read-only recovery never requires Groq.
 labRecoverButton.addEventListener("click", async () => {
   if (!currentTaskId) {labMessage.textContent="Selecione uma tarefa primeiro.";return;}
   const taskId=currentTaskId;
@@ -766,6 +767,7 @@ labRecoverButton.addEventListener("click", async () => {
   labProposal=null;
   labApproveButton.hidden=true;
   labSendButton.hidden=true;
+  labInspectButton.hidden=true;
   try {
     const plans=await window.ordax.supervisorRecoverable({taskId});
     if(currentTaskId!==taskId){labMessage.textContent="Tarefa mudou; recuperação interrompida.";return;}
@@ -775,14 +777,47 @@ labRecoverButton.addEventListener("click", async () => {
     labMessage.textContent=["Plano recuperado: "+plan.status,plan.decision?.reason||"",plan.decision?.content||"",plan.requiresReconciliation?"Entrega incerta: verificar manualmente. Nunca reenviar automaticamente.":""].filter(Boolean).join("\n\n");
     labApproveButton.hidden=!(plan.status==="pending_approval" && plan.approvalStatus==="pending" && plan.approvalId);
     labSendButton.hidden=!(plan.status==="approved" && plan.approvalStatus==="approved");
+    labInspectButton.hidden=!plan.requiresReconciliation || !["dispatching","indeterminate"].includes(plan.status);
   } catch(error){labMessage.textContent=error?.message||"Falha ao recuperar plano";}
-  finally{labRecoverButton.disabled=!labStatus.enabled;}
+  finally{labRecoverButton.disabled=false;}
+});
+labInspectButton.addEventListener("click", async () => {
+  if (!labProposal || currentTaskId !== labProposal.taskId ||
+      !labProposal.requiresReconciliation) {
+    labMessage.textContent="Selecione um plano incerto da tarefa atual."; return;
+  }
+  labInspectButton.disabled=true;
+  const taskId=labProposal.taskId, actionId=labProposal.actionId;
+  labMessage.textContent="Verificando somente a conversa já vinculada. Nenhuma mensagem será reenviada.";
+  try {
+    const result=await window.ordax.supervisorInspect({taskId,actionId});
+    if (currentTaskId!==taskId) {
+      labMessage.textContent="Tarefa alterada durante a inspeção; resultado descartado.";
+      return;
+    }
+    const explanations={
+      response_candidate:"Uma resposta candidata aparece após a mensagem na conversa.",
+      message_candidate:"Uma mensagem candidata aparece, sem resposta subsequente observada.",
+      ambiguous:"Há mensagens iguais; não é possível atribuir este envio.",
+      unresolved:"A mensagem não foi localizada na amostra observada.",
+      unavailable:"A inspeção não pôde fornecer evidência confiável."
+    };
+    labMessage.textContent=[
+      "Resultado: "+(explanations[result.kind]||"Inconclusivo"),
+      "Motivo técnico: "+(result.reason||"não informado"),
+      "Ação preservada: "+(result.persistedStatus||"incerta"),
+      "Nenhum efeito local comprovado. NÃO reenviar automaticamente."
+    ].join("\n\n");
+  } catch(error) {
+    labMessage.textContent=error?.message||"Inspeção não concluída.";
+  } finally { labInspectButton.disabled=false; }
 });
 labPlanButton.addEventListener("click", async () => {
   const taskId = currentTaskId;
   const objective = document.getElementById("labSupervisorObjective").value.trim();
   if (!taskId || !objective) {labMessage.textContent="Selecione uma tarefa e informe um objetivo.";return;}
   labPlanButton.disabled = true;
+  labInspectButton.hidden = true;
   labApproveButton.hidden = true;
   labSendButton.hidden = true;
   labProposal = null;

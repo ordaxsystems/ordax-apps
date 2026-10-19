@@ -3,6 +3,7 @@ import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provi
 import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
+import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -453,6 +454,47 @@ export class EmbeddedChatWorker {
     }
     if (current !== url) await this.#safeLoad(url, { requireComposer: true, protectDraft: !force });
     return { ...this.status(), navigated:true };
+  }
+
+  // Explicit, read-only inspection of an existing, canonical conversation.
+  // The only navigation is an ordinary authorized GET to the linked thread.
+  // This never types, submits, retries, creates a chat or writes any Task.
+  async inspectConversationReadOnly(chatUrl) {
+    const expected=canonicalProviderChatUrl(chatUrl);
+    if (!expected) throw new Error('invalid_chat_url');
+    return this.enqueue(async () => {
+      const result=await this.showConversation(expected, {force:false});
+      if (result.navigated === false ||
+          canonicalProviderChatUrl(this.view.webContents.getURL()) !== expected) {
+        return {available:false,url:this.view.webContents.getURL(),reason:'navigation_or_draft_blocked'};
+      }
+      try {
+        return await this.view.webContents.executeJavaScript(`(() => {
+          const entries = Array.from(document.querySelectorAll(
+            '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
+            '[data-message-role="user"],[data-message-role="assistant"],' +
+            '[data-message-author="user"],[data-message-author="assistant"]'
+          ));
+          const tail = entries.slice(-50);
+          const messages = tail.map(node => {
+            const roleValue=node.getAttribute('data-message-author-role') ||
+              node.getAttribute('data-message-role') || node.getAttribute('data-message-author');
+            const text=String(node.innerText || node.textContent || '');
+            return {
+              role:roleValue === 'user' ? 'user' : 'assistant',
+              text:text.slice(0,12001),
+              textTruncated:text.length>12000
+            };
+          });
+          return {
+            available:true, url:location.href, domReliable:entries.length>0,
+            truncated:entries.length>50, messages
+          };
+        })()`);
+      } catch {
+        return {available:false,url:expected,reason:'observation_failed'};
+      }
+    });
   }
 
   async #composerState() {
