@@ -32,6 +32,24 @@ export function validateSupervisorDecision(value, expectedTaskId) {
   return { type: value.type, taskId: expectedTaskId, reason };
 }
 
+// This is a local-scope guard, NOT a user identity or Runtime capability grant.
+// Owner identity is still a fixed single-user development sentinel. Never use
+// this helper as authorization for filesystem, shell, Git, MCP or remote tenants.
+const LOCAL_SUPERVISOR_OPERATIONS = new Set(['plan', 'review', 'approve', 'dispatch']);
+export function authorizeLocalSupervisorTask({ store, actorId, tenantId, environment, taskId, operation }) {
+  if (actorId !== 'lab-owner' || tenantId !== null || environment !== 'internal' ||
+      !LOCAL_SUPERVISOR_OPERATIONS.has(operation) ||
+      typeof taskId !== 'string' || !taskId || taskId.length > 180 ||
+      !store?.db || typeof store.getWorkspaceSession !== 'function') return false;
+  const session = store.getWorkspaceSession();
+  if (!session || session.status !== 'active' || !session.id) return false;
+  const task = store.db.prepare(
+    'SELECT workspace_session_id,status FROM tasks WHERE id=?'
+  ).get(taskId);
+  // Legacy/unowned tasks fail closed: no implicit adoption into the Lab session.
+  return Boolean(task && task.workspace_session_id === session.id && task.status !== 'archived');
+}
+
 export class SupervisorCoordinator {
   constructor({ store, planner, chat, authorizeTask, enabled = false,
     environment = 'internal', actorId, tenantId = null } = {}) {
