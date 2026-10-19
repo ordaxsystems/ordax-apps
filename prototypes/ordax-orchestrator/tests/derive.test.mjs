@@ -71,7 +71,8 @@ test('fork cannot use Gratis session even if legacy env variable is present', ()
 test('UI and desktop-contract fixture use new lab identity', () => {
   assert.equal(text('desktop/ui.html', html),
     '<title>OrdaX Orchestrator Lab</title><p>Orchestrator Lab • memória isolada</p>');
-  const assertion = 'assert.match(main, /OrdaX[\'"], [\'"]Gratis/);';
+  const assertion = 'assert.match(main, /OrdaX[\'"], [\'"]Gratis/);\n' +
+    "assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','package.json']);";
   assert.match(text('test/desktop-contract.test.mjs', assertion), /OrchestratorLab/);
 });
 
