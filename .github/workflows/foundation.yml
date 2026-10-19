@@ -50,6 +50,16 @@ jobs:
             node tools/verify_app_version_governance.mjs --platform-root .ordax-version-contract
           fi
 
+      - name: Remove ephemeral OS contract checkout before package proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The app package prover requires a clean worktree. The verified OS
+          # contract is not an app source file or permanent repository artifact.
+          test -f .ordax-version-contract/system/contracts/product-version-governance.mjs
+          rm -rf -- .ordax-version-contract
+          test -z "$(git status --porcelain --untracked-files=all)"
+
       - name: Validate canonical JSON syntax without hardcoded app inventory
         shell: bash
         run: |
