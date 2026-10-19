@@ -37,7 +37,10 @@ export function assessProviderConversationEvidence({expectedUrl, observed, expec
       requiresReconciliation:true};
   }
   const after=messages.slice(matches[0]+1);
-  const responseCandidate=after.some(item => item.role === 'assistant' && item.text.trim().length>0);
+  // Do not attribute a response belonging to a later, different user turn.
+  const nextUserIndex=after.findIndex(item=>item.role==='user');
+  const sameTurn=nextUserIndex<0 ? after : after.slice(0,nextUserIndex);
+  const responseCandidate=sameTurn.some(item => item.role==='assistant' && item.text.trim().length>0);
   return {
     kind:responseCandidate ? 'response_candidate' : 'message_candidate',
     reason:observed.truncated ? 'partial_dom_match_not_attributable' : 'dom_match_not_attributable',
