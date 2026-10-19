@@ -94,3 +94,15 @@ Sem configuração, a UI exibirá **Supervisor desativado** e preservará todas 
 O comando `npm run import:flow -- --staged` cria `workspace-next/` sem sobrescrever `workspace/`. Para executar a prévia, use `npm ci --prefix workspace-next` e `npm run start:staged`. Este comando impõe um **AppData isolado pela versão** e mantém o supervisor desativado, permitindo verificar o candidato sem usar a sessão ou o SQLite do Lab anterior. A promoção definitiva e o rollback ainda exigem seus próprios gates, não implementados aqui.
 
 **Evidência de referência (19/10/2026):** 20 testes iniciais de bootstrap/supervisor e 113 testes herdados do Flow foram aprovados no Windows, inclusive na versão com supervisor. O novo gate de SemVer é executado na CI do GitHub e deve permanecer verde antes de merge. A CI não acessa o Flow privado nem a API real de um provedor. Nenhuma chamada Groq paga ou envio ChatGPT automático foi realizado.
+
+## P0 — Auditoria da origem pinada (RFC-002)
+
+A [auditoria de contratos/ownership](docs/audits/P0-PINNED-FLOW-INVENTORY-2026-10-19.md) registra os fatos verificados no commit exato do Flow e as diferenças entre `observedAt`, entrega e efeito local.
+
+Para conferir **sem escrever no Flow ou no workspace**, depois de gerar o Lab no ambiente de teste:
+
+```powershell
+node scripts/audit-pinned-workspace.mjs --source C:\\repos\\ordax-flow --workspace .\\workspace > pinned-audit.json
+```
+
+O relatório JSON contém SHA-256 da origem e derivação por arquivo, classificação preliminar de owner, drift e arquivos ausentes. O comando retorna erro em divergências. O teste sintético faz parte de `npm test`; **não** substitui o baseline com Flow pinado, a integração com Store real ou E2E ChatGPT Web autenticado. A migração P1 do código proprietário ainda não foi autorizada por gates.
