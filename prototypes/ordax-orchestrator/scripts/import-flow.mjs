@@ -71,7 +71,7 @@ function createWorkspace(source) {
     // These are lab-owned modules, not copies from the frozen Flow repository.
     const labModules = ['supervisor/coordinator.mjs', 'supervisor/groq-planner.mjs'];
     for (const relative of labModules) {
-      const sourcePath = path.join(root, ...relative.split('/'));
+      const sourcePath = path.join(root, 'product', ...relative.split('/'));
       const targetPath = path.join(stage, ...relative.split('/'));
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
       fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);

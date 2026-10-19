@@ -6,3 +6,7 @@
 *.log
 /workspace-next-prelock/
 /candidate-userdata/
+
+/product/node_modules/
+/product/dist/
+/product/release/

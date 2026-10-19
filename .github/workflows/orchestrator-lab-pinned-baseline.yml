@@ -5,6 +5,8 @@ on:
     branches: [main, 'feat/orchestrator-lab-isolated-20261019']
     paths:
       - 'prototypes/ordax-orchestrator/scripts/audit-pinned-workspace.mjs'
+      - 'prototypes/ordax-orchestrator/scripts/promote-owned-source.mjs'
+      - '.github/workflows/orchestrator-lab-p1-source.yml'
       - 'prototypes/ordax-orchestrator/scripts/import-flow.mjs'
       - 'prototypes/ordax-orchestrator/lib/derive.mjs'
       - 'prototypes/ordax-orchestrator/lib/supervisor-overlay.mjs'
@@ -83,3 +85,4 @@ jobs:
           path: ${{ runner.temp }}/pinned-audit.json
           retention-days: 14
           if-no-files-found: error
+

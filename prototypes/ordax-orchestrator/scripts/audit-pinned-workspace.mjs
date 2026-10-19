@@ -133,7 +133,7 @@ export function auditPinnedWorkspace({ sourceDir, workspaceDir, commit, allow = 
     if (!record.matches_derivation) problems.push({ path: relative, error: missing ? 'missing_workspace_file' : 'derived_bytes_mismatch' });
   }
   for (const module of labModules) {
-    const sourcePath = safeTarget(root, module);
+    const sourcePath = safeTarget(path.join(root, 'product'), module);
     const derivedPath = safeTarget(workspaceDir, module);
     if (sourcePath.missing || derivedPath.missing) {
       problems.push({ path: module, error: 'lab_owned_module_missing' });
