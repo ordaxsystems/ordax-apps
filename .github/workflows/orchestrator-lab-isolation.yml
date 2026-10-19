@@ -37,16 +37,27 @@ jobs:
       - name: Validate importer modules
         run: |
           node --check prototypes/ordax-orchestrator/lib/derive.mjs
+          node --check prototypes/ordax-orchestrator/lib/version-policy.mjs
+          node --check prototypes/ordax-orchestrator/lib/supervisor-overlay.mjs
+          node --check prototypes/ordax-orchestrator/supervisor/coordinator.mjs
+          node --check prototypes/ordax-orchestrator/supervisor/groq-planner.mjs
+          node --check prototypes/ordax-orchestrator/scripts/verify-version.mjs
           node --check prototypes/ordax-orchestrator/scripts/import-flow.mjs
           node --check prototypes/ordax-orchestrator/scripts/start-lab.mjs
           node --check prototypes/ordax-orchestrator/tests/derive.test.mjs
+          node --check prototypes/ordax-orchestrator/tests/version.test.mjs
+          node --check prototypes/ordax-orchestrator/tests/supervisor.test.mjs
 
-      - name: Test fail-closed import and separate install/session identities
-        run: npm test --prefix prototypes/ordax-orchestrator
+      - name: Verify canonical version and pinned Flow baseline
+        run: npm run version:check --prefix prototypes/ordax-orchestrator
+
+      - name: Test fail-closed import, supervisor and isolated version
+        run: npm run validate --prefix prototypes/ordax-orchestrator
 
       - name: Prevent accidental committed generated runtime
         run: |
           test ! -e prototypes/ordax-orchestrator/workspace
+          test ! -e prototypes/ordax-orchestrator/workspace-next
           test ! -e prototypes/ordax-orchestrator/node_modules
 
       - name: No direct Flow repo modification or imported credentials
