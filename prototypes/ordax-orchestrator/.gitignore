@@ -1,4 +1,5 @@
 /workspace/
+/workspace-before-fix-*/
 /node_modules/
 /.import-staging-*/
 *.log
