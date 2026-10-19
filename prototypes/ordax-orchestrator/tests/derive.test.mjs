@@ -108,6 +108,13 @@ test('lab-only supervisor overlay is fail-closed and does not import old Flow pr
   const miniMain = [
     "import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';",
     "import path from 'node:path';",
+    "app.setName('OrdaX Orchestrator Lab');",
+    "const singleInstanceLock = app.requestSingleInstanceLock();",
+    "const here = path.dirname(fileURLToPath(import.meta.url));",
+    "const root = path.resolve(here, '..');",
+    "const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || root, 'AppData', 'Local');",
+    "const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');",
+    "app.setPath('userData', userRoot);",
     "app.whenReady().then(async () => {"
   ].join('\n');
   const output = applySupervisorOverlay('desktop/main.mjs',miniMain).toString('utf8');
@@ -116,6 +123,8 @@ test('lab-only supervisor overlay is fail-closed and does not import old Flow pr
   assert.match(output,/dialog\.showMessageBox/);
   assert.match(output,/runTask\(taskId,content/);
   assert.match(output,/GROQ_API_KEY/);
+  assert.ok(output.indexOf("app.setPath('userData', userRoot)") <
+    output.indexOf('requestSingleInstanceLock'));
   assert.doesNotMatch(output,/app\.setName\('OrdaX Gratis'\)/);
   assert.throws(()=>applySupervisorOverlay('desktop/main.mjs','app.whenReady()'),/Pinned Flow surface drifted/);
   const preload = applySupervisorOverlay('desktop/preload.cjs',
