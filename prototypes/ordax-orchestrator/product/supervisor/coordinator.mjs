@@ -282,7 +282,8 @@ export class SupervisorCoordinator {
       // A delivered message, observed response and verified local effect are
       // different concepts. This acknowledges only the first two.
       const evidence = requireConfirmedChatReceipt(receipt);
-      this.store.finishAction(tid, actionId, 'succeeded', evidence);
+      // Preserve the approved message for future read-only reconciliation.
+      this.store.finishAction(tid, actionId, 'succeeded', { decision, ...evidence });
       this.store.event(tid, 'supervisor.chat.response_observed', {
         action_id:actionId, run_id:evidence.runId,
         delivery_observed:true, response_observed:true, effect_verified:false
@@ -290,7 +291,7 @@ export class SupervisorCoordinator {
       return { actionId, status: 'succeeded' };
     } catch {
       this.store.finishAction(tid, actionId, 'indeterminate', {
-        reason: 'send_or_receipt_unknown_no_automatic_retry'
+        decision, reason: 'send_or_receipt_unknown_no_automatic_retry'
       });
       return { actionId, status: 'indeterminate' };
     }
