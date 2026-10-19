@@ -148,6 +148,7 @@ test('renaming runtime into README cannot evade app or prototype SemVer policy',
     const baseSha=git('rev-parse','HEAD');
     git('mv','apps/studio/src/start.mjs','apps/studio/README.md');
     git('mv','prototypes/ordax-orchestrator/supervisor/run.mjs','prototypes/ordax-orchestrator/README.md');
+    git('commit','-qm','move both sources into README targets');
     const changedApps=listVersionedSourcePaths(baseSha,'apps',{cwd});
     const changedPrototypes=listVersionedSourcePaths(baseSha,'prototypes',{cwd});
     assert.deepEqual(changedApps,['apps/studio/README.md','apps/studio/src/start.mjs']);
