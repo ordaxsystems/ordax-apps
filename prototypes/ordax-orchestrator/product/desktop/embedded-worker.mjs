@@ -546,7 +546,7 @@ export class EmbeddedChatWorker {
       const aborted = error?.code === -3 || /\(-3\)|ERR_ABORTED/i.test(message);
       if (!aborted && message === 'provider_navigation_timeout' && requireComposer) {
         // loadURL might not settle even after the destination became interactive.
-        // Never retry or infer that a stale/in-flight page was loaded successfully.
+        // Never re-navigate or infer a stale/in-flight page was loaded.
         const state=await observeWithin(() => this.#composerState(), {
           timeoutMs:5000,code:'navigation_composer_observation_timeout'
         }).catch(() => null);
