@@ -32,12 +32,19 @@
 - [CI do cutover](https://github.com/ordaxsystems/ordax-apps/actions/runs/39304388349): isolamento e **build portátil Windows** aprovados. **Não** equivale a uso físico autenticado do ChatGPT Web.
 - [Inventário P1](../audits/P1-OWNED-SOURCE-2026-10-19.md) explica proveniência, arquivos, condições de rollback e limitações.
 
-## P2 — Primeiro incremento integrado (P2 ainda tem gates pendentes)
+## P2 — Escopo local reforçado; Runtime grants ainda pendentes
 
-- [PR #274](https://github.com/ordaxsystems/ordax-apps/pull/274) integrada na branch de desenvolvimento, commit `52ad8c543e128819ebbf7a2061ccdf7e152fecd7`.
-- Contrato `hold` distinto de `complete`; teste de supervisor contra **Store SQLite real**, inclusive fechamento/reabertura e impossibilidade de duplicar envio incerto.
-- [Evidências P2](../audits/P2-REAL-STORE-HOLD-2026-10-19.md). [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39305516631): 36/36 testes do bootstrap, 81/81 do produto e construção portátil Windows aprovados.
-- **P2 ainda não está integralmente encerrado:** autorização de operações por escopos reais permanece pendente. A integração Windows **autenticada** (P3/P5), a caracterização e reconciliação de entrega (P3/P4) não foram realizadas; não promover `0.2.0-alpha.3` agora.
+- [PR #274](https://github.com/ordaxsystems/ordax-apps/pull/274): Supervisor contra **Store SQLite real**, `hold` distinto de `complete`, restart e bloqueio de replay incerto; [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39305516631) com 36/36 bootstrap e 81/81 produto e build Windows aprovados.
+- [PR #275](https://github.com/ordaxsystems/ordax-apps/pull/275) integrada em `f0e56cc6bca6ab53f62726d6aa409c08e6ec40e0`: autorização do supervisor limitada à Task da sessão local ativa e às operações `plan/review/approve/dispatch`; bloqueio IPC de frames não confiáveis; [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39309771038) Linux/Windows aprovadas.
+- [PR #276](https://github.com/ordaxsystems/ordax-apps/pull/276) integrada em `89154198f532f628a637cf5f217044cf3a533d5e`: verifica a autorização **antes** de ler e mostrar a proposta para aprovação; [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39310453032) Linux/Windows aprovadas.
+- [Escopo local documentado](../audits/P2-LOCAL-SUPERVISOR-SCOPE-2026-10-19.md). **Limite:** `lab-owner` ainda é sentinela local, não identidade de usuário autenticada nem capability grant de OrdaX Runtime. Nenhum comando externo foi liberado.
+
+## P3 — Transporte ChatGPT Web em validação
+
+- [PR #277](https://github.com/ordaxsystems/ordax-apps/pull/277) em validação: impede que timeout com texto parcial produza `observedAt` e falso sucesso; ausência/erro de sinal de geração equivale a estado incerto.
+- [Teste determinístico](../audits/P3-CHATGPT-RESPONSE-TIMEOUT-2026-10-19.md): 36/36 testes bootstrap e 92/92 produto em Linux aprovados; **build Windows ainda em conferência nesta atualização**.
+- **P3 não está concluído:** faltam fixtures redigidas do ChatGPT Web autenticado e verificação da UX real em Windows. P4 precisa separar entrega, resposta e efeitos; P5 provar queda/reinício/retomada sem duplicação.
+- Lab continua `0.2.0-alpha.2`; sem release, multiusuário, supervisor automático ou mudanças no Flow/Grátis original.
 
 ## Instrução curta para novo chat
 
