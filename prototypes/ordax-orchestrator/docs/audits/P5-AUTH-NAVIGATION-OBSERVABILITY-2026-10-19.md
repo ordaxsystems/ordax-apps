@@ -25,3 +25,10 @@ Estes resultados **não provam** bloqueio externo do ChatGPT, expiração da con
 - CI Linux/Windows + build Windows obrigatórios antes de merge.
 - Teste autenticado real **não realizado**: nenhum login/cookie foi capturado e **nenhuma mensagem foi enviada**. W1–W4 permanecem pendentes.
 - Produto `0.2.0-alpha.2`; nenhuma release ou supervisor automático.
+
+## Resultado de integração
+
+- [PR #286](https://github.com/ordaxsystems/ordax-apps/pull/286) integrada, commit `6a3f0b14823471fbce0ca2ae0dbaec718beae19b`.
+- [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39336158412): **36/36 testes de bootstrap, 141/141 de produto em Linux; 141/141 de produto e build portátil Windows aprovados**.
+- **Não houve novo login real, envio ou retomada de conversa nesta PR.** A sessão staged observada anteriormente permanecia `anonymous`; uma tentativa de navegar para login não teve confirmação. A correção torna o fluxo determinístico no caso de timeout e impede autenticação deduzida de DOM indisponível.
+- Os processos da candidata de teste foram encerrados apenas por identidade e PIDs descendentes. O OrdaX Grátis e Runtime não foram alterados. A versão canônica continua `0.2.0-alpha.2`.
