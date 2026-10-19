@@ -2,13 +2,13 @@
 
 Projects is the second first-party extraction pilot after Notes.
 
-After the physical GitHub transfer, the source of truth remains `ordaxsystems/prototipo-ordax-os/system/apps/projects` (the same repository ID and Git commit history). No source is copied into `apps/projects` until Gate A proves removal of the platform-owned implementation. SDK 1.9 is already merged and an immutable, reproducible source baseline is pinned; this **does not authorize copying**.
+Following the repository transfer and rename, the current **OrdaX OS owner** is `ordaxsystems/ordax-os/system/apps/projects` (same repository ID and Git history; historical URLs may redirect). No source is copied into `apps/projects` until Gate A proves removal of the platform-owned implementation. SDK 1.9 is already merged and an immutable, reproducible source baseline is pinned; this **does not authorize copying**.
 
 ## Why Projects is the second pilot
 
 Projects is a good generalization test because it is already `on-demand + store-only`, has no app-owned durable database, and consumes platform-owned project state through ports.
 
-Its external package must remain a **view/coordinator over platform project identity**, not create a second project store.
+Its external package must remain a **view/coordinator over the OS-owned local project catalog**, not create a second project store. The local `ordax.project-catalog/1` (device/session identity) is not the cloud `ordax_projects.project_id` resource in OrdaX Platform; any cloud association uses the explicit `ordax.project-cloud-links/1` contract.
 
 ## Public boundary
 
@@ -76,3 +76,5 @@ Gate C — distribution:
 6. production activation only through the same platform trust authority used by other component-slot apps.
 
 Temporary absence is allowed before launch. Dual source is not.
+
+**Nomenclature audit (19/10/2026):** The historical repository path `ordaxsystems/prototipo-ordax-os` above is retained **only** as evidence of the 2026-10-08 pinned source snapshot. It is not an active owner name. Current owner: `ordaxsystems/ordax-os`; OrdaX Platform is the remote PostgreSQL identity/authorization authority, while `ordax-apps` owns app presentation and can only read the OS App SDK ports. This correction does not authorize Gate A/B source copying, catalog duplication or distribution promotion.
