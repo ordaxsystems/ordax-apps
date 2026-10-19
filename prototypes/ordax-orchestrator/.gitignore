@@ -4,3 +4,5 @@
 /node_modules/
 /.import-staging-*/
 *.log
+/workspace-next-prelock/
+/candidate-userdata/
