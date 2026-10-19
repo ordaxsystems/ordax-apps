@@ -28,6 +28,8 @@ Antes de iniciar outra rodada de polimento individual, ler [docs/MVP-MINIMO-TODO
 
 ## Versionamento obrigatório (gate de CI)
 
+Apps ainda sem `app.json` **não podem evoluir código/recursos silenciosamente**: a CI bloqueia mudanças de runtime até uma decisão de ownership e versão real, mas não os publica nem cria manifestos fictícios. Documentação e testes de candidatos continuam possíveis.
+
 Para **cada app com `apps/<id>/app.json`**, esse manifesto continua como **único owner** de versão. Mudanças de runtime, recursos ou metadados de distribuição exigem aumentar `version` com SemVer; a workflow `.github/workflows/app-version-governance.yml` verifica o diff da PR usando o contrato versionado do OS. Canais oficiais: `alpha.N`, `beta.N`, `rc.N`. Não criar `VERSION`, `product-version.json` adicional ou versão calculada a partir de título/nome. Protótipos sem manifesto distribuível continuam **não promovidos**; o Orchestrator Lab tem sua SSOT experimental própria. Política em [OS docs/VERSION-GOVERNANCE.md](https://github.com/ordaxsystems/ordax-os/blob/feat/structural-product-version-policy-20261019/docs/VERSION-GOVERNANCE.md). CI não cria releases nem grants.
 
 ## Como trabalhar
