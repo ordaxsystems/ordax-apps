@@ -5,9 +5,14 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { allowSourcePath, deriveSourceFile, assertDerivedIdentity } from '../lib/derive.mjs';
 import { applySupervisorOverlay } from '../lib/supervisor-overlay.mjs';
+import { readProductVersion, assertBootstrapVersion } from '../lib/version-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const lock = JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8'));
+const productVersion = assertBootstrapVersion(root, JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')));
+const lock = {
+  ...JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8')),
+  productVersion
+};
 const options = process.argv.slice(2);
 const staged = options.includes('--staged');
 const parameters = options.filter(option => option !== '--staged');
@@ -71,11 +76,21 @@ function createWorkspace(source) {
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
       fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
     }
-        assertDerivedIdentity(keyFiles, lock);
+    assertDerivedIdentity(keyFiles, lock);
+    const derivedManifest = JSON.parse(keyFiles['package.json'].toString('utf8'));
+    const derivedLock = JSON.parse(fs.readFileSync(path.join(stage, 'package-lock.json'), 'utf8'));
+    if (derivedManifest.version !== productVersion.version ||
+        derivedLock.version !== productVersion.version ||
+        derivedLock.packages?.['']?.version !== productVersion.version) {
+      throw new Error('derived_version_inconsistent');
+    }
     const provenance = {
       schema: 'ordax.orchestrator-lab-provenance/1',
       fromRepository: lock.repository,
       fromCommit: lock.commit,
+      sourceVersion: lock.sourceVersion,
+      productVersion: productVersion.version,
+      channel: productVersion.channel,
       copiedTrackedFiles: paths.length,
       labOwnedModules: labModules,
       appId: lock.targetIdentity.appId,
@@ -86,7 +101,7 @@ function createWorkspace(source) {
       JSON.stringify(provenance, null, 2) + '\n', { flag: 'wx' });
     fs.renameSync(stage, output);
     process.stdout.write('Isolated Orchestrator Lab source created: ' + output + '\n');
-    process.stdout.write('Pinned Flow commit: ' + lock.commit + '; copied files: ' + paths.length + '\n');
+    process.stdout.write('Orchestrator Lab ' + productVersion.version + ' (' + productVersion.channel + ') from Flow ' + lock.sourceVersion + ' (' + lock.commit + '); copied files: ' + paths.length + '\n');
     process.stdout.write('Next: npm ci --prefix workspace && npm run validate --prefix workspace\n');
   } finally {
     if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true });
