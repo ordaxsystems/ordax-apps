@@ -174,7 +174,7 @@ export async function verifyAppCatalog({platformRoot,base=null}){
     const prototypes=fs.readdirSync(prototypeRoot,{withFileTypes:true})
       .filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort();
     const changedPaths=base
-      ?git('diff','--name-only',base,'HEAD','--','prototypes').split('\n').filter(Boolean)
+      ?git('diff','--name-only',base+'...HEAD','--','prototypes').split('\n').filter(Boolean)
       :[];
     for(const id of prototypes){
       const root=path.join(prototypeRoot,id);
