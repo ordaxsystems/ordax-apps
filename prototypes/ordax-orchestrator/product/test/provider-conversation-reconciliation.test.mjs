@@ -26,6 +26,13 @@ test('response before exact user message is not a response to that message',()=>
   assert.equal(result.kind,'message_candidate');
   assert.equal(result.responseCandidate,false);
 });
+test('answer following a newer user message is not attributable to earlier matching message',()=>{
+  const result=assessProviderConversationEvidence(inspect({messages:[
+    user,{role:'user',text:'A different task'},assistant
+  ]}));
+  assert.equal(result.kind,'message_candidate');
+  assert.equal(result.responseCandidate,false);
+});
 test('substring is not proof of exact match',()=>{
   const result=assessProviderConversationEvidence(inspect({messages:[
     {role:'user',text:'prefix '+prompt+' suffix'},assistant
