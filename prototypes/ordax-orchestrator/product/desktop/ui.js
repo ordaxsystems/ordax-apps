@@ -853,3 +853,18 @@ labSendButton.addEventListener("click",async()=>{
   } catch(error){labMessage.textContent = error?.message || "Falha de envio";}
   finally {labProposal=null;labSendButton.disabled=false;}
 });
+
+const diagnosticButton = document.getElementById('providerDiagnostic');
+const diagnosticOutput = document.getElementById('providerDiagnosticResult');
+diagnosticButton.addEventListener('click', async () => {
+  diagnosticButton.disabled = true;
+  diagnosticOutput.textContent = 'Lendo somente indicadores da página atual, sem envio ou navegação…';
+  try {
+    const result = await window.ordax.providerDiagnostic();
+    diagnosticOutput.textContent = JSON.stringify(result, null, 2);
+  } catch {
+    diagnosticOutput.textContent = 'Diagnóstico indisponível. Nenhum envio foi realizado.';
+  } finally {
+    diagnosticButton.disabled = false;
+  }
+});
