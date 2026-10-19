@@ -4,7 +4,6 @@ let currentTaskId = null;
 let currentTask = null;
 let workspace = null;
 let directMode = false;
-let loginFlowVisible = false;
 let observerMode = 'auto';
 let allTasks = [];
 let providerRefreshPending = false;
@@ -637,7 +636,6 @@ $('#login').addEventListener('click', async () => {
   const button = $('#login');
   button.disabled = true;
   button.textContent = 'Abrindo…';
-  loginFlowVisible = true;
   try {
     await window.ordax.setChatVisible(true);
     // Display the provider's official login page, allowing the person to
@@ -662,7 +660,6 @@ $('#observerMode').addEventListener('change', async event => {
 
 $('#directMode').addEventListener('click', async () => {
   directMode = !directMode;
-  loginFlowVisible = false;
   await window.ordax.setChatVisible(directMode);
   if (directMode && currentTaskId) await window.ordax.openTask(currentTaskId).catch(() => null);
   $('#directMode').textContent = directMode ? 'Voltar' : 'Modo direto';
