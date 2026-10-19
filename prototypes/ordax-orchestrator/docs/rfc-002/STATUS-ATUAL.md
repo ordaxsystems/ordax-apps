@@ -97,6 +97,14 @@
 - Os **seis processos** da candidata portátil foram encerrados exclusivamente pela árvore do launcher e os arquivos auxiliares temporários de teste removidos. O checkout e o perfil isolados permanecem disponíveis; Grátis/Runtime/Studio não foram afetados.
 - **P5-W1–W4 não executados**: exigem login legítimo na partição do próprio Lab, envio único autorizado e retomada após reinício. Versão `0.2.0-alpha.2` preservada, sem release.
 
+## P5 — Login manual e bloqueio de envio sem sessão observável (PR #287)
+
+- Encontrados no código integrado: botão `Entrar` acionando automaticamente `loginGoogle()` em vez de mostrar login humano; página escondida por `session_present` heurístico; `sendPrompt()` capaz de preparar envio nos estados `anonymous` e `unknown`.
+- [PR #287](https://github.com/ordaxsystems/ordax-apps/pull/287) **em validação CI**: o login abre a navegação oficial e deixa a escolha do método ao operador. A rotina automática `loginGoogle` foi removida do worker, IPC e preload do Lab. UI mostra indicadores de sessão sem alegar identidade confirmada, e **não esconde o formulário** com base em simples heurística.
+- Política compartilhada `assertProviderSendReadiness`: rejeita `anonymous`, `unknown`, `authenticating`, verificação e compositor não observado **antes** de preparar draft ou enviar. `session_present` continua sendo um sinal mínimo, não prova formal de login.
+- [Auditoria P5](../audits/P5-HUMAN-LOGIN-SEND-GUARD-2026-10-19.md). CI Linux 36/36 bootstrap e 145/145 produto aprovados; Windows/build devem concluir antes do merge.
+- Nenhuma credencial, cookie ou token foi acessado. **P5-W1–W4 continuam pendentes de autenticação humana legítima no Lab isolado**, uma mensagem consentida e retomada sem replay. Manter `0.2.0-alpha.2`, sem release e sem tocar no Grátis.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
