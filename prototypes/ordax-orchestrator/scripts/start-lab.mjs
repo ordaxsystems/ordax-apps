@@ -6,14 +6,19 @@ import { assertDerivedIdentity } from '../lib/derive.mjs';
 import { assertBootstrapVersion } from '../lib/version-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const workspace = path.join(root, 'workspace');
+const args = process.argv.slice(2);
+if (args.length > 1 || (args.length === 1 && args[0] !== '--staged')) {
+  throw new Error('usage: node scripts/start-lab.mjs [--staged]');
+}
+const staged = args[0] === '--staged';
+const workspace = path.join(root, staged ? 'workspace-next' : 'workspace');
 const productVersion = assertBootstrapVersion(root, JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')));
 const lock = { ...JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8')), productVersion };
 const read = name => fs.readFileSync(path.join(workspace, name));
 
 try {
   if (!fs.existsSync(path.join(workspace, 'DERIVATION.json'))) {
-    throw new Error('No isolated snapshot found. Run npm run import:flow first.');
+    throw new Error('No isolated snapshot found. Run npm run import:flow' + (staged ? ' -- --staged' : '') + ' first.');
   }
   const derivation = JSON.parse(read('DERIVATION.json').toString('utf8'));
   if (derivation.fromCommit !== lock.commit ||
@@ -46,6 +51,14 @@ try {
   }
   const childEnv = { ...process.env };
   delete childEnv.ELECTRON_RUN_AS_NODE;
+  // Developer-only staged previews must never compete for the installed Lab
+  // profile, SQLite WAL or browser session. The production profile stays
+  // stable across versions; only staged previews use a separate data root.
+  if (staged) {
+    childEnv.LOCALAPPDATA = path.join(root, 'candidate-userdata-v' + productVersion.version);
+    childEnv.ORDAX_LAB_SUPERVISOR_ENABLE = '0';
+    delete childEnv.GROQ_API_KEY;
+  }
   const result = spawnSync(process.execPath, [electronCli, '.'], {
     cwd: workspace, stdio: 'inherit', windowsHide: false,
     env: childEnv
