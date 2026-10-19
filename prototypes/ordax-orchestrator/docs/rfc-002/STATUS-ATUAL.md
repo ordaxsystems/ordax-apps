@@ -100,9 +100,10 @@
 ## P5 — Login manual e bloqueio de envio sem sessão observável (PR #287)
 
 - Encontrados no código integrado: botão `Entrar` acionando automaticamente `loginGoogle()` em vez de mostrar login humano; página escondida por `session_present` heurístico; `sendPrompt()` capaz de preparar envio nos estados `anonymous` e `unknown`.
-- [PR #287](https://github.com/ordaxsystems/ordax-apps/pull/287) **em validação CI**: o login abre a navegação oficial e deixa a escolha do método ao operador. A rotina automática `loginGoogle` foi removida do worker, IPC e preload do Lab. UI mostra indicadores de sessão sem alegar identidade confirmada, e **não esconde o formulário** com base em simples heurística.
+- [PR #287](https://github.com/ordaxsystems/ordax-apps/pull/287) **integrada** no commit `ef6df71b66d13156117f8bb37a751210bb799c01`: o login abre a navegação oficial e deixa a escolha do método ao operador. A rotina automática `loginGoogle` foi removida do worker, IPC e preload do Lab. UI mostra indicadores de sessão sem alegar identidade confirmada, e **não esconde o formulário** com base em simples heurística.
 - Política compartilhada `assertProviderSendReadiness`: rejeita `anonymous`, `unknown`, `authenticating`, verificação e compositor não observado **antes** de preparar draft ou enviar. `session_present` continua sendo um sinal mínimo, não prova formal de login.
-- [Auditoria P5](../audits/P5-HUMAN-LOGIN-SEND-GUARD-2026-10-19.md). CI Linux 36/36 bootstrap e 145/145 produto aprovados; Windows/build devem concluir antes do merge.
+- [Auditoria P5](../audits/P5-HUMAN-LOGIN-SEND-GUARD-2026-10-19.md). [CI #287](https://github.com/ordaxsystems/ordax-apps/actions/runs/39338475895) **aprovada**: 36/36 bootstrap e 145/145 produto no Linux; 145/145 produto e build portátil Windows aprovados.
+- Verificação física da branch candidata no Windows, no checkout próprio do Lab: `npm run test:live:ready` retornou `labUiReady=true`, porém `authState=loading`, `composerReady=false`, `authenticated=not_verified`, `delivery=not_evaluated`. Isto comprova a janela CDP, **não** a prontidão do ChatGPT nem login. Nenhuma mensagem foi enviada. A tela do Lab staged foi deixada aberta para o login humano quando a página oficial estiver acessível.
 - Nenhuma credencial, cookie ou token foi acessado. **P5-W1–W4 continuam pendentes de autenticação humana legítima no Lab isolado**, uma mensagem consentida e retomada sem replay. Manter `0.2.0-alpha.2`, sem release e sem tocar no Grátis.
 
 ## Instrução curta para novo chat
