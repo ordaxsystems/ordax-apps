@@ -126,7 +126,7 @@ test('lab-only supervisor overlay is fail-closed and does not import old Flow pr
   assert.ok(output.indexOf("app.setPath('userData', userRoot)") <
     output.indexOf('requestSingleInstanceLock'));
   assert.doesNotMatch(output,/app\.setName\('OrdaX Gratis'\)/);
-  assert.throws(()=>applySupervisorOverlay('desktop/main.mjs','app.whenReady()'),/Pinned Flow surface drifted/);
+  assert.throws(()=>applySupervisorOverlay('desktop/main.mjs','app.whenReady()'),/Pinned (?:Flow surface|Lab userData block) drifted/);
   const preload = applySupervisorOverlay('desktop/preload.cjs',
     "  workspace: () => ipcRenderer.invoke('ordax:workspace:get'),");
   assert.match(preload.toString('utf8'),/supervisorApprove/);
