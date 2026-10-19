@@ -3,14 +3,15 @@
   "private": true,
   "version": "0.2.0-alpha.2",
   "type": "module",
-  "description": "Bootstrap isolado do OrdaX Orchestrator Lab a partir de snapshot pinado do Flow/Grátis.",
+  "description": "OrdaX Orchestrator Lab — direct owned Electron source; pinned Flow retained for historical audit only.",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "validate": "npm run version:check && npm test",
-    "import:flow": "node scripts/import-flow.mjs",
     "start": "node scripts/start-lab.mjs",
     "version:check": "node scripts/verify-version.mjs",
     "start:staged": "node scripts/start-lab.mjs --staged",
-    "version:show": "node scripts/verify-version.mjs"
+    "version:show": "node scripts/verify-version.mjs",
+    "validate:owned": "npm run validate --prefix product",
+    "build:win": "npm run build:win --prefix product"
   }
 }
