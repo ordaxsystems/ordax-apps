@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('ordax', {
   reviewMemoryCandidate: (taskId, candidateId, action, changes) => ipcRenderer.invoke('ordax:tasks:memory:candidates:review', { taskId, candidateId, action, changes }),
   send: payload => ipcRenderer.invoke('ordax:tasks:send', payload),
   providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),
+  providerDiagnostic: () => ipcRenderer.invoke('ordax:provider:diagnostic'),
   getObserverMode: () => ipcRenderer.invoke('ordax:provider:observer-mode:get'),
   setObserverMode: mode => ipcRenderer.invoke('ordax:provider:observer-mode:set', mode),
   login: () => ipcRenderer.invoke('ordax:provider:login'),
