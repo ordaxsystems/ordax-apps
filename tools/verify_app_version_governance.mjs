@@ -57,6 +57,13 @@ export function validatePrototypeVersion({meta,bootstrap=null,previous=null,chan
   return {version:meta.version,channel};
 }
 
+export function assertVersionOwnerForChangedApp({appId,hasManifest,changedRuntime}){
+  if(changedRuntime && !hasManifest) {
+    throw new Error('App source changed without a version owner: apps/'+appId+
+      ' (define an authorized app.json in this owner; cataloguing is not publication)');
+  }
+}
+
 export function validateAppVersionTransition({
   previous=null,current,runtimeChanged=false,policy,
 }){
@@ -117,10 +124,11 @@ export async function verifyAppCatalog({platformRoot,base=null}){
   const root=path.join(repoRoot,'apps');
   const dirs=fs.readdirSync(root,{withFileTypes:true}).filter(x=>x.isDirectory()).map(x=>x.name).sort();
   let count=0;
+  let unversionedCandidates=0;
   const versioned=new Map();
   for(const id of dirs){
     const file=path.join(root,id,RELEASE_MANIFEST);
-    if(!fs.existsSync(file)) continue; // unpromoted app prototypes are NOT given invented releases
+    if(!fs.existsSync(file)) {unversionedCandidates++;continue;} // explicitly uncovered, no invented version
     const current=JSON.parse(fs.readFileSync(file,'utf8'));
     if(current.id!==id)throw new Error('App id does not match its canonical directory: '+id);
     validateAppVersionTransition({current,policy});
@@ -144,7 +152,8 @@ export async function verifyAppCatalog({platformRoot,base=null}){
       }
       if(!current){
         if(previous) throw new Error('Existing app manifest removed without ownership/cutover proof: '+id);
-        continue; // pre-existing non-installable candidate; do not invent appId or version
+        assertVersionOwnerForChangedApp({appId:id,hasManifest:false,changedRuntime:true});
+        continue;
       }
       const runtimeChanged=paths.some(file=>productSourceAppId(file)===id && file!==oldPath);
       const sourceManifestChanged=paths.includes(oldPath);
@@ -193,6 +202,7 @@ export async function verifyAppCatalog({platformRoot,base=null}){
   }
   return {
     schema:'ordax.first-party-version-gate/1',cataloguedApps:count,
+    unversionedCandidates,
     changedVersionedApps:changed,prototypeProducts,changedPrototypeProducts,
     baseline:base||null,
   };
