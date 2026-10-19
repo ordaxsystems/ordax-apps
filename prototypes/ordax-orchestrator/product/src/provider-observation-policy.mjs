@@ -1,0 +1,32 @@
+// Shared timeout semantics for already-issued provider observations.
+// This does NOT cancel an HTTP navigation, replay a request, or assert that
+// a navigation/response completed. The caller must treat timeout as unknown.
+export async function observeWithin(work,{timeoutMs=5000,code='provider_observation_timeout'}={}) {
+  if(typeof work!=='function')throw new TypeError('observation_work_required');
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>60000)
+    throw new Error('invalid_observation_timeout');
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(work),
+      new Promise((_,reject)=>{
+        timer=setTimeout(()=>reject(new Error(code)),timeoutMs);
+      })
+    ]);
+  }finally {
+    if(timer)clearTimeout(timer);
+  }
+}
+
+export function classifyProviderAuthObservation({url,page}={}) {
+  const current=String(url||'');
+  if(/^https:\/\/(?:accounts\.google\.com|auth\.openai\.com)\//i.test(current) ||
+     /^https:\/\/chatgpt\.com\/auth\//i.test(current))
+    return 'authenticating';
+  if(!page||typeof page!=='object')return 'unknown';
+  if(page.hasLogin===true && page.hasSignup===true)return 'anonymous';
+  // UI heuristics provide an indication only; not verified session identity.
+  if(page.composer===true && page.hasLogin!==true && page.hasSignup!==true)
+    return 'session_present';
+  return 'unknown';
+}
