@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, protocol, net, dialog } from 'electron';
-import path from 'node:path';import { SupervisorCoordinator } from '../supervisor/coordinator.mjs';
+import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSupervisorTask } from '../supervisor/coordinator.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 
 import fs from 'node:fs';
@@ -385,9 +385,7 @@ function requireLabSupervisor() {
     labSupervisor = new SupervisorCoordinator({
       store, enabled:true, environment:"internal", actorId:"lab-owner",
       planner:createGroqSupervisorPlanner({ apiKey:process.env.GROQ_API_KEY }),
-      authorizeTask:({ actorId,tenantId,environment,taskId }) =>
-        actorId === "lab-owner" && tenantId == null && environment === "internal" &&
-        Boolean(store.getTaskExecutionSnapshot(taskId)),
+      authorizeTask: scope => authorizeLocalSupervisorTask({ store, ...scope }),
       chat:{ send:async ({ taskId,content }) => {
         const reply = await enqueueExecution(() => runTask(taskId,content,{newSession:false}));
         return { confirmed:Boolean(reply?.result?.observedAt), runId:reply?.result?.runId || null };
@@ -397,16 +395,35 @@ function requireLabSupervisor() {
   return labSupervisor;
 }
 
-ipcMain.handle('ordax:supervisor:status', () => ({
+// Only the Lab's trusted top-level local renderer can invoke supervisor IPC.
+function requireTrustedSupervisorRenderer(event) {
+  if (!win || win.isDestroyed() || event?.sender !== win.webContents ||
+      !event.senderFrame || event.senderFrame !== win.webContents.mainFrame ||
+      event.senderFrame.url !== pathToFileURL(path.join(here, 'ui.html')).href) {
+    throw new Error('supervisor_ipc_sender_denied');
+  }
+}
+
+ipcMain.handle('ordax:supervisor:status', (event) => {
+  requireTrustedSupervisorRenderer(event);
+  return ({
   enabled:process.env.ORDAX_LAB_SUPERVISOR_ENABLE === '1' && Boolean(process.env.GROQ_API_KEY),
   configured:Boolean(process.env.GROQ_API_KEY),
   environment:"internal", requires_owner_approval:true, version:app.getVersion()
-}));
-ipcMain.handle('ordax:supervisor:plan', (_event,payload) => requireLabSupervisor().plan({
+  });
+});
+ipcMain.handle('ordax:supervisor:plan', (event,payload) => { 
+  requireTrustedSupervisorRenderer(event);
+  return requireLabSupervisor().plan({
   taskId:payload?.taskId,requestId:payload?.requestId,objective:payload?.objective
-}));
-ipcMain.handle('ordax:supervisor:recoverable', (_event,payload) => requireLabSupervisor().listRecoverable({taskId:payload?.taskId}));
-ipcMain.handle('ordax:supervisor:approve', async (_event,payload) => {
+  });
+});
+ipcMain.handle('ordax:supervisor:recoverable', (event,payload) => {
+  requireTrustedSupervisorRenderer(event);
+  return requireLabSupervisor().listRecoverable({taskId:payload?.taskId});
+});
+ipcMain.handle('ordax:supervisor:approve', async (event,payload) => {
+  requireTrustedSupervisorRenderer(event);
   const controller = requireLabSupervisor();
   const row = store.db.prepare(
     'SELECT result,status FROM action_ledger WHERE id=? AND task_id=? AND action_type=?'
@@ -426,8 +443,10 @@ ipcMain.handle('ordax:supervisor:approve', async (_event,payload) => {
     approvalId:payload?.approvalId,explicitOwnerApproval:true
   })) };
 });
-ipcMain.handle('ordax:supervisor:dispatch', (_event,payload) =>
-  requireLabSupervisor().dispatch({taskId:payload?.taskId,actionId:payload?.actionId}));
+ipcMain.handle('ordax:supervisor:dispatch', (event,payload) => {
+  requireTrustedSupervisorRenderer(event);
+  return requireLabSupervisor().dispatch({taskId:payload?.taskId,actionId:payload?.actionId});
+});
 app.whenReady().then(async () => {
   protocol.handle('ordax-asset', request => {
     try {
