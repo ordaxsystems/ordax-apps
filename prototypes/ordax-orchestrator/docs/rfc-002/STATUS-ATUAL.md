@@ -32,12 +32,12 @@
 - [CI do cutover](https://github.com/ordaxsystems/ordax-apps/actions/runs/39304388349): isolamento e **build portátil Windows** aprovados. **Não** equivale a uso físico autenticado do ChatGPT Web.
 - [Inventário P1](../audits/P1-OWNED-SOURCE-2026-10-19.md) explica proveniência, arquivos, condições de rollback e limitações.
 
-## P2 — Primeiro incremento em desenvolvimento
+## P2 — Primeiro incremento integrado (P2 ainda tem gates pendentes)
 
-- Branch `feat/orchestrator-p2-store-hold-20261019`, separada da fonte própria integrada.
+- [PR #274](https://github.com/ordaxsystems/ordax-apps/pull/274) integrada na branch de desenvolvimento, commit `52ad8c543e128819ebbf7a2061ccdf7e152fecd7`.
 - Contrato `hold` distinto de `complete`; teste de supervisor contra **Store SQLite real**, inclusive fechamento/reabertura e impossibilidade de duplicar envio incerto.
-- [Evidências P2](../audits/P2-REAL-STORE-HOLD-2026-10-19.md).
-- **Ainda pendente de gate:** autorização de operações vinculada a escopos reais, integração Windows autenticada (P3/P5), observação/reconciliação de entrega (P4). Não promover `0.2.0-alpha.3` agora.
+- [Evidências P2](../audits/P2-REAL-STORE-HOLD-2026-10-19.md). [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39305516631): 36/36 testes do bootstrap, 81/81 do produto e construção portátil Windows aprovados.
+- **P2 ainda não está integralmente encerrado:** autorização de operações por escopos reais permanece pendente. A integração Windows **autenticada** (P3/P5), a caracterização e reconciliação de entrega (P3/P4) não foram realizadas; não promover `0.2.0-alpha.3` agora.
 
 ## Instrução curta para novo chat
 
