@@ -47,6 +47,12 @@ test('login button uses official login navigation without auto-clicking Google',
   assert.match(handler,/setChatVisible\(true\)/);
   assert.match(handler,/window\.ordax\.login\(\)/);
   assert.doesNotMatch(handler,/loginGoogle|Continue with Google|mouseDown/);
+  const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
+  const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
+  const preload=fs.readFileSync(path.resolve(here,'../desktop/preload.cjs'),'utf8');
+  assert.doesNotMatch(worker,/async loginGoogle\(\)/);
+  assert.doesNotMatch(main,/ordax:provider:login-google/);
+  assert.doesNotMatch(preload,/loginGoogle/);
   const refresh=ui.split('async function refreshProvider()')[1]
     .split('function setContextOpen(')[0];
   assert.doesNotMatch(refresh,/if \(loginFlowVisible && status\.auth_state/);
