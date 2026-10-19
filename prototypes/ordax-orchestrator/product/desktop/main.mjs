@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, protocol, net, dialog } from 'electron';
 import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSupervisorTask } from '../supervisor/coordinator.mjs';
+import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 
@@ -422,6 +423,14 @@ ipcMain.handle('ordax:supervisor:plan', (event,payload) => {
 ipcMain.handle('ordax:supervisor:recoverable', (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   return requireLabSupervisor().listRecoverable({taskId:payload?.taskId});
+});
+ipcMain.handle('ordax:supervisor:inspect', async (event,payload) => {
+  requireTrustedSupervisorRenderer(event);
+  if (liveRun) return {kind:'unavailable',reason:'another_run_active',requiresReconciliation:true};
+  // Local, manual, read-only examination; no Groq key or auto-execution required.
+  return inspectSupervisorChatReadOnly({
+    store,worker,taskId:payload?.taskId,actionId:payload?.actionId
+  });
 });
 ipcMain.handle('ordax:supervisor:approve', async (event,payload) => {
   requireTrustedSupervisorRenderer(event);
