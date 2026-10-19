@@ -63,3 +63,23 @@ O login no ChatGPT do Lab é intencionalmente separado: não importar/exportar c
 - Não executar duas instâncias distintas apontando para o mesmo perfil. O Lab usa seu próprio perfil separado.
 
 **Escopo deste PR:** criar somente o processo reproduzível de derivação e testes de isolamento no `ordax-apps`, sem alterar a `main` do Flow ou o Windows do usuário. O aplicativo derivado ainda não foi materializado/testado num Windows nesta revisão.
+
+
+## Incremento de supervisão — 19/10/2026
+
+**Código implementado, integração experimental, DESATIVADA por padrão.**
+
+- `supervisor/coordinator.mjs` planeja **um** próximo passo por chamada, valida rigorosamente as decisões da IA (`send_message`, `hold`, `complete`), vincula tudo à Task existente e registra a proposta no **mesmo** `action_ledger` SQLite do Flow. Não há banco paralelo nem importação do GPT standalone.
+- `supervisor/groq-planner.mjs` implementa o adapter opt-in da API oficial de chat Groq, com requisição JSON limitada, formato de resposta estrito, timeout, sem credenciais persistidas e sem repetição automática de chamadas incertas.
+- `lib/supervisor-overlay.mjs` injeta a integração apenas na **cópia gerada** do Lab: IPC do processo Electron, painel de planejamento, revisão por diálogo nativo do Windows e envio autorizado pelo **mesmo** `runTask()` do Flow/Grátis. Nenhum código desses é aplicado ao repositório de origem.
+- **Nunca enviar sem aprovação explícita:** depois de planejar, o usuário revê a mensagem exata e precisa aprová-la num diálogo nativo e acionar o envio. Sem confirmação observável do provedor, o ledger registra `indeterminate` e bloqueia replay automático.
+- **Isolamento de ambientes:** esta primeira integração é somente do ambiente **interno local**. A variante multiusuário usa a mesma interface de Supervisor, porém a autenticação/tenant, sessões e grants externos ainda NÃO estão conectados ou liberados.
+- O modelo não executa shell, Git, MCP ou Runtime por suas próprias palavras. A camada de planejamento não outorga autoridade; permissões de execução continuam nos owners canônicos.
+
+### Uso de desenvolvimento, somente em sessão explicitamente autorizada
+
+Sem configuração, a UI exibirá **Supervisor desativado** e preservará todas as funções manuais. Para habilitar o primeiro passo supervisionado em um **ambiente Dev** com credencial própria, configurar `GROQ_API_KEY` e `ORDAX_LAB_SUPERVISOR_ENABLE=1` no **processo isolado do Lab**, não no OrdaX Grátis e nunca em arquivos versionados. Não utilizar uma conta ChatGPT de terceiros. A chave é fornecida pelo usuário e não é inferida, solicitada ou copiada de outro aplicativo.
+
+O comando `node scripts/import-flow.mjs --staged` cria um novo `workspace-next/` sem sobrescrever `workspace/`. Assim é possível provar o candidato enquanto o Lab anterior está em execução. Os dois usam a **mesma identidade de aplicativo Lab** e, portanto, NÃO devem executar simultaneamente; validar uma versão e encerrar a anterior antes de promovê-la. Para isso ainda é necessário um passo de promoção/rollback explícito, não implementado aqui.
+
+**Evidência:** os 19 testes de bootstrap (incluindo um teste com o `Store` real) passaram no Windows. Os 113 testes herdados do Flow passaram na cópia original derivada; o candidato com supervisor tem validação separada. A CI do `ordax-apps` não acessa o repositório Flow privado nem um provedor de IA real. Nenhuma chamada Groq paga, envio ChatGPT ou automação foi realizada nesta revisão.
