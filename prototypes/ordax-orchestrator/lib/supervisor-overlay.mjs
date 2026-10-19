@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 function once(source, target, insert, position = 'before') {
   const n = source.split(target).length - 1;
   assert.equal(n, 1, 'Pinned Flow surface drifted: ' + target.slice(0, 70));
-  return source.replace(target, position === 'after' ? target + insert : insert + target);
+  return source.replace(target, position === 'replace' ? insert : position === 'after' ? target + insert : insert + target);
 }
 
 const imports = [
