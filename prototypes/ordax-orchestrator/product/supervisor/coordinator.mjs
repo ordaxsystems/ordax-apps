@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { requireConfirmedChatReceipt } from '../src/supervisor-chat-receipt.mjs';
 
 // Supervises the EXISTING Flow Task/Run ledger; no second database, task queue,
 // chat transport or direct computer executor is created by this module.
@@ -278,9 +279,13 @@ export class SupervisorCoordinator {
       const receipt = await this.chat.send({
         taskId: tid, content: decision.content, actionId, newSession: false
       });
-      if (!receipt || receipt.confirmed !== true) throw new Error('unconfirmed_chat_delivery');
-      this.store.finishAction(tid, actionId, 'succeeded', {
-        runId: receipt.runId || null
+      // A delivered message, observed response and verified local effect are
+      // different concepts. This acknowledges only the first two.
+      const evidence = requireConfirmedChatReceipt(receipt);
+      this.store.finishAction(tid, actionId, 'succeeded', evidence);
+      this.store.event(tid, 'supervisor.chat.response_observed', {
+        action_id:actionId, run_id:evidence.runId,
+        delivery_observed:true, response_observed:true, effect_verified:false
       });
       return { actionId, status: 'succeeded' };
     } catch {
