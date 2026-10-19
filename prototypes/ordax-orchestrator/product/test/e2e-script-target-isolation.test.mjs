@@ -11,7 +11,7 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const scripts=path.resolve(here,'../scripts');
 const require=createRequire(import.meta.url);
 const { DEBUG_URL,PRODUCT_TITLE,isLabUiTarget,labStagedLocalAppData,
-  labDatabasePath,labLockPath }=require('../scripts/e2e-lab-target.cjs');
+  labDatabasePath,labLockPath,validLabWebSocket,waitForLabUiTarget }=require('../scripts/e2e-lab-target.cjs');
 const stage=path.join(os.tmpdir(),'ordax-e2e-suite','candidate-userdata-v0.2.0-alpha.2');
 
 function withStagedEnv(stagedRoot,approved,fn) {
@@ -62,8 +62,8 @@ test('all live smoke scripts have canonical Lab-only target and no Gratis refere
   for(const name of ['live-ui-text-smoke.cjs','live-ui-continuity-smoke.cjs',
     'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
-    assert.match(code,/DEBUG_URL/);
-    assert.match(code,/isLabUiTarget/);
+    assert.match(code,/waitForLabUiTarget\(\)/);
+    assert.doesNotMatch(code,/getJson\(DEBUG_URL\)|get\(DEBUG_URL\)/);
     assert.doesNotMatch(code,/9444|ordax-gratis|OrdaX Gratis|['"]Gratis['"]/);
   }
   for(const name of ['live-ui-history-smoke.cjs','live-ui-restart-smoke.cjs']){
@@ -84,4 +84,71 @@ test('smoke script refuses launch without staged profile before any UI network c
   });
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/lab_e2e_staged_profile_required/);
+});
+
+test('WebSocket is accepted only from the exact loopback CDP page',()=>{
+  const target={type:'page',title:PRODUCT_TITLE,url:'file:///C:/lab/desktop/ui.html',
+    webSocketDebuggerUrl:'ws://127.0.0.1:9445/devtools/page/test123'};
+  assert.equal(validLabWebSocket(target),true);
+  assert.equal(validLabWebSocket({...target,webSocketDebuggerUrl:
+    'ws://evil.example:9445/devtools/page/test123'}),false);
+  assert.equal(validLabWebSocket({...target,webSocketDebuggerUrl:
+    'ws://127.0.0.1:9444/devtools/page/test123'}),false);
+  assert.equal(validLabWebSocket({...target,title:'OrdaX Gratis'}),false);
+});
+
+test('portable two-stage launch waits for the real Lab window, not a timer or a foreign target',async()=>{
+  const previousStage=process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
+  const previousApproval=process.env.ORDAX_LAB_E2E_APPROVED;
+  process.env.ORDAX_LAB_E2E_LOCALAPPDATA=stage;
+  process.env.ORDAX_LAB_E2E_APPROVED='1';
+  try {
+    let now=0,calls=0;
+    const valid={type:'page',title:PRODUCT_TITLE,
+      url:'file:///C:/temporary/desktop/ui.html',
+      webSocketDebuggerUrl:'ws://127.0.0.1:9445/devtools/page/valid'};
+    const found=await waitForLabUiTarget({
+      clock:()=>now,
+      sleep:async ms=>{now+=ms;},
+      readTargets:async()=>{
+        calls++;
+        if(calls===1)throw Error('ECONNREFUSED while unpacking');
+        if(calls===2)return [];
+        if(calls===3)return [{...valid,title:'OrdaX Gratis'}];
+        return [valid];
+      },
+      maxWaitMs:2500,pollMs:500
+    });
+    assert.equal(found.webSocketDebuggerUrl,valid.webSocketDebuggerUrl);
+    assert.equal(calls,4);
+    assert.equal(now,1500);
+    await assert.rejects(waitForLabUiTarget({
+      clock:()=>now,sleep:async ms=>{now+=ms;},
+      readTargets:async()=>{throw Error('still extracting');},
+      maxWaitMs:1200,pollMs:500
+    }),/lab_ui_not_ready:endpoint_not_ready/);
+  }finally{
+    if(previousStage==null)delete process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
+    else process.env.ORDAX_LAB_E2E_LOCALAPPDATA=previousStage;
+    if(previousApproval==null)delete process.env.ORDAX_LAB_E2E_APPROVED;
+    else process.env.ORDAX_LAB_E2E_APPROVED=previousApproval;
+  }
+});
+
+test('readiness probing refuses missing approval before any debug-port network request',async()=>{
+  const prevPath=process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
+  const prevApproval=process.env.ORDAX_LAB_E2E_APPROVED;
+  process.env.ORDAX_LAB_E2E_LOCALAPPDATA=stage;
+  delete process.env.ORDAX_LAB_E2E_APPROVED;
+  let calls=0;
+  try {
+    await assert.rejects(waitForLabUiTarget({readTargets:async()=>{calls++;return [];}}),
+      /lab_e2e_explicit_approval_required/);
+    assert.equal(calls,0);
+  }finally{
+    if(prevPath==null)delete process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
+    else process.env.ORDAX_LAB_E2E_LOCALAPPDATA=prevPath;
+    if(prevApproval==null)delete process.env.ORDAX_LAB_E2E_APPROVED;
+    else process.env.ORDAX_LAB_E2E_APPROVED=prevApproval;
+  }
 });
