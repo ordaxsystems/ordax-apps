@@ -10,7 +10,7 @@ export function allowSourcePath(relative) {
   if (typeof relative !== 'string' || !relative ||
       relative.includes('\\') || relative.startsWith('/') ||
       relative.split('/').includes('..') || relative.includes('\0')) return false;
-  return /^(desktop|src|scripts|test|apps|build|docs)\//.test(relative) ||
+  return /^(desktop|src|scripts|test|apps|build|docs|sql)\//.test(relative) ||
     ['package.json', 'package-lock.json', 'README.md', 'REFERENCIAS.md'].includes(relative);
 }
 
@@ -68,7 +68,7 @@ export function deriveSourceFile(relative, original, lock) {
       'Orchestrator Lab • memória isolada');
   }
   if (relative === 'test/desktop-contract.test.mjs') {
-    text = replaceExact(text, "['\"]Gratis/", "['\"]Orchestrator Lab/");
+    text = replaceExact(text, "['\"]Gratis/", "['\"]OrchestratorLab/");
   }
   return Buffer.from(text);
 }
