@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { SupervisorCoordinator, validateSupervisorDecision } from '../supervisor/coordinator.mjs';
-import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
+import { SupervisorCoordinator, validateSupervisorDecision } from '../product/supervisor/coordinator.mjs';
+import { createGroqSupervisorPlanner } from '../product/supervisor/groq-planner.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 class MinimalFlowStore {
@@ -213,7 +213,7 @@ test('Groq errors never echo credentials and do not automatically retry',async()
   assert.equal(calls,1);
 });
 
-const realPath=path.join(root,'workspace','src','store.mjs');
+const realPath=path.join(root,'product','src','store.mjs');
 if(fs.existsSync(realPath)){
   test('real Flow Store uses the same canonical action and approval ledgers',async()=>{
     const {Store}=await import(pathToFileURL(realPath).href);
