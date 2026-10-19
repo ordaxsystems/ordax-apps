@@ -11,12 +11,13 @@ A inspeção não equivale a uma prova de que a mensagem foi enviada por esta a�
 ## Fluxo
 
 1. O IPC é limitado ao frame superior de `desktop/ui.html` e ao `webContents` do Lab; verificações de contexto local do Store são obrigatórias.
-2. Só existe leitura para `action_ledger` com `action_type='supervisor.plan'`, actor sentinela local, ambiente interno, mesmo `task_id`, status incerto e proposta previamente aprovada disponível no registro.
-3. É usada **somente** a URL canônica já associada à Task. Falta de URL ou de conteúdo legado implica resultado `unavailable`, nunca envio nem criação de conversa.
-4. O `EmbeddedChatWorker` serializa a inspeção com sua fila. Navega sem forçar submissão e preserva rascunhos. Faz leitura local e limitada de até 50 mensagens DOM; não capta HTML bruto, cookies, storage nem dados de outras abas.
-5. O classificador de observações, separado do worker, exige URL coincidente e texto **exatamente igual**, nunca `includes()`. Detecta mensagens iguais, respostas posteriores e DOM parcial.
-6. A ação e o contexto são validados novamente após a observação assíncrona para bloquear race com edição externa/alternância de Task.
-7. A interface só recebe resultado sintético (`response_candidate`, `message_candidate`, `ambiguous`, `unresolved` ou `unavailable`), **sem mensagens capturadas**, e exibe aviso para nunca reenviar automaticamente.
+2. A consulta dos planos persistidos foi extraída para um único caminho canônico reutilizado pelo coordenador e pelo IPC local: **recuperação e inspeção independem de GROQ_API_KEY e de supervisão habilitada**. Novos planos/execuções continuam exigindo os controles anteriores.
+3. Só existe leitura para `action_ledger` com `action_type='supervisor.plan'`, actor sentinela local, ambiente interno, mesmo `task_id`, status incerto e proposta previamente aprovada disponível no registro.
+4. É usada **somente** a URL canônica já associada à Task. Falta de URL ou de conteúdo legado implica resultado `unavailable`, nunca envio nem criação de conversa.
+5. O `EmbeddedChatWorker` serializa a inspeção com sua fila. Navega sem forçar submissão e preserva rascunhos. Faz leitura local e limitada de até 50 mensagens DOM; não capta HTML bruto, cookies, storage nem dados de outras abas.
+6. O classificador de observações, separado do worker, exige URL coincidente e texto **exatamente igual**, nunca `includes()`. Detecta mensagens iguais, respostas posteriores e DOM parcial.
+7. A ação e o contexto são validados novamente após a observação assíncrona para bloquear race com edição externa/alternância de Task.
+8. A interface só recebe resultado sintético (`response_candidate`, `message_candidate`, `ambiguous`, `unresolved` ou `unavailable`), **sem mensagens capturadas**, e exibe aviso para nunca reenviar automaticamente.
 
 ## Problema estrutural também corrigido
 
@@ -25,7 +26,7 @@ O antigo `dispatch()` persistia `indeterminate` sobrescrevendo `result.decision`
 ## Gates de testes
 
 - Classificador puro: mensagem exata, substring não equivalente, respostas anteriores, duplicações, leitura parcial, URL errada e observações não confiáveis.
-- Store SQLite real: zero alterações em `action_ledger`, `messages` e `events` durante inspeção; ação legada sem decisão, conversa sem URL, contexto externo, ação não enviada, concorrência de status.
+- Store SQLite real: recuperação com o planejador desligado, zero alterações em `action_ledger`, `messages` e `events` durante inspeção; ação legada sem decisão, conversa sem URL, contexto externo, ação não enviada, concorrência de status.
 - Teste estrutural: o método do worker não chama envio e a rota IPC exige janela autorizada.
 - Linux + build Windows por CI são testes de integração locais. **Não** comprovam detecção real de DOM atual, login, permissões do provedor, reconciliação de conteúdo virtualizado ou retomada após interrupção.
 
