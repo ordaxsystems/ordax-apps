@@ -85,7 +85,7 @@ test('import fails closed if pinned source drifts', () => {
   assert.throws(() => text('desktop/embedded-worker.mjs', "this.partition = 'persist:other-chat';"),
     /Pinned Flow source differs/);
   assert.throws(() => text('package.json', JSON.stringify({ ...pkg, version: '0.4.13' })),
-    /Expected values to be strictly equal/);
+    /pinned_flow_source_version_mismatch/);
 });
 
 test('derived source validation rejects original app credentials/session authority', () => {
