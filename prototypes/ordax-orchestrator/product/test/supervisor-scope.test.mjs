@@ -86,3 +86,13 @@ test('supervisor IPC entry points must enforce trusted local renderer identity',
     assert.match(snippet.slice(0,190),/requireTrustedSupervisorRenderer\(event\)/,method);
   }
 });
+
+test('approval IPC denies foreign task before reading or displaying proposed content',()=>{
+  const main=fs.readFileSync(path.resolve(current,'../desktop/main.mjs'),'utf8');
+  const approval=main.split("ipcMain.handle('ordax:supervisor:approve'")[1]
+    .split("ipcMain.handle('ordax:supervisor:dispatch'")[0];
+  const permission=approval.indexOf("controller.authorize(payload?.taskId, 'approve')");
+  const read=approval.indexOf("SELECT result,status FROM action_ledger");
+  const show=approval.indexOf("dialog.showMessageBox(");
+  assert.ok(permission>=0 && read>permission && show>read);
+});
