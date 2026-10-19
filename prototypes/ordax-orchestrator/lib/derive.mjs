@@ -27,10 +27,12 @@ export function deriveSourceFile(relative, original, lock) {
     assert.equal(pkg.version, '0.4.12');
     assert.equal(pkg.build?.appId, 'br.com.ordax.gratis');
     assert.equal(pkg.build?.productName, 'OrdaX Gratis');
+    assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','package.json']);
     pkg.name = lock.targetIdentity.name;
     pkg.description = 'Laboratorio isolado de orquestracao derivado do Flow/Gratis';
     pkg.build.appId = lock.targetIdentity.appId;
     pkg.build.productName = lock.targetIdentity.productName;
+    pkg.build.files = ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json'];
     pkg.build.win.executableName = lock.targetIdentity.productName;
     pkg.build.win.artifactName = 'OrdaX-Orchestrator-Lab-' + '$' + '{version}.exe';
     return Buffer.from(JSON.stringify(pkg, null, 2) + '\n');
@@ -69,6 +71,9 @@ export function deriveSourceFile(relative, original, lock) {
   }
   if (relative === 'test/desktop-contract.test.mjs') {
     text = replaceExact(text, "['\"]Gratis/", "['\"]OrchestratorLab/");
+    text = replaceExact(text,
+      "assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','package.json']);",
+      "assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);");
   }
   return Buffer.from(text);
 }
@@ -84,6 +89,7 @@ export function assertDerivedIdentity(contents, lock) {
   assert.equal(pkg.name, lock.targetIdentity.name);
   assert.equal(pkg.build?.appId, lock.targetIdentity.appId);
   assert.equal(pkg.build?.productName, lock.targetIdentity.productName);
+  assert.deepEqual(pkg.build?.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
   assert.ok(main.includes("const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');"));
   assert.ok(main.includes("new Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'))"));
   assert.ok(worker.includes("'persist:ordax-orchestrator-lab-chatgpt'"));
