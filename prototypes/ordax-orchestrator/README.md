@@ -106,3 +106,13 @@ node scripts/audit-pinned-workspace.mjs --source C:\\repos\\ordax-flow --workspa
 ```
 
 O relatório JSON contém SHA-256 da origem e derivação por arquivo, classificação preliminar de owner, drift e arquivos ausentes. O comando retorna erro em divergências. O teste sintético faz parte de `npm test`; **não** substitui o baseline com Flow pinado, a integração com Store real ou E2E ChatGPT Web autenticado. A migração P1 do código proprietário ainda não foi autorizada por gates.
+
+## RFC-002 — plano canônico e handoff para novos chats
+
+- **[Leia primeiro](docs/rfc-002/00-LEIA-PRIMEIRO.md)** — regras invariantes e sequência de leitura.
+- **[Plano Mestre](docs/rfc-002/01-RFC002-PLANO-MESTRE.md)** — especificação de produto e fronteiras.
+- **[Histórico e ADRs](docs/rfc-002/02-HISTORICO-ANALISES-E-ADRS.md)** — por que cada decisão foi tomada.
+- **[Execução e gates](docs/rfc-002/03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md)** — P0–P12 e G00–G15.
+- **[Estado atual verificável](docs/rfc-002/STATUS-ATUAL.md)** — evidências recentes e próximo gate.
+
+Esta documentação acompanha o código no GitHub para que novos chats não dependam de histórico de conversa. Ela não modifica o OrdaX Grátis e não autoriza promoção de versão ou release sem os gates previstos.
