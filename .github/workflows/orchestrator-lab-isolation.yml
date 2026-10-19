@@ -69,6 +69,6 @@ jobs:
             exit 1
           fi
 
-# This workflow intentionally does NOT fetch the private Flow repo.
+# This workflow intentionally does NOT fetch the pinned Flow source repository.
 # Full pinned snapshot import and real Windows ChatGPT E2E require a separate
 # credentialed, explicitly authorized integration environment.
