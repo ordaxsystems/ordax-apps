@@ -1,7 +1,7 @@
 {
   "$schema": "ordax.version-governance-consumer-lock/1",
   "policyOwner": "ordaxsystems/ordax-os",
-  "policyCommit": "49625c92648fce344edb3d11ff1f4f69806e3973",
+  "policyCommit": "91c8779ab0e313c9f182225d8a5fa25bf8b54dd5",
   "policyModule": "system/contracts/product-version-governance.mjs",
   "manifestModule": "system/contracts/component-manifest.mjs",
   "usesExistingSdkLock": false,
