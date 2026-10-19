@@ -91,6 +91,73 @@ test('idempotency request cannot be silently reused for different objective', as
   f.store.close();
 });
 
+test('interrupted app restores pending plan and approved dispatch without paid model replay', async()=>{
+  const f=fixture();
+  const p=await f.supervisor.plan(input('recover-001'));
+  let restartedPlannerCalls=0;
+  const restarted=new SupervisorCoordinator({
+    store:f.store, enabled:true, actorId:'owner', authorizeTask:()=>true,
+    planner:{decide:async()=>{restartedPlannerCalls++;throw new Error('model should not run');}},
+    chat:{send:async()=>({confirmed:true})}
+  });
+  const pending=restarted.listRecoverable({taskId:'task_test'});
+  assert.equal(pending.length,1);
+  assert.equal(pending[0].actionId,p.actionId);
+  assert.equal(pending[0].status,'pending_approval');
+  assert.equal(pending[0].approvalId,p.approvalId);
+  assert.equal(pending[0].approvalStatus,'pending');
+  assert.equal(pending[0].decision.content,'Run the relevant tests.');
+  assert.equal(pending[0].requiresReconciliation,false);
+  restarted.approve({
+    taskId:'task_test',actionId:p.actionId,approvalId:p.approvalId,
+    explicitOwnerApproval:true
+  });
+  const approved=restarted.listRecoverable({taskId:'task_test'});
+  assert.equal(approved[0].status,'approved');
+  assert.equal(approved[0].approvalStatus,'approved');
+  assert.equal(restartedPlannerCalls,0);
+  assert.equal(f.plans,1);
+  assert.equal(f.sends,0);
+  f.store.close();
+});
+
+test('ambiguous dispatch after restart is review only, never automatic resend',async()=>{
+  const f=fixture();
+  const p=await f.supervisor.plan(input('unknown-receipt'));
+  f.supervisor.approve({
+    taskId:'task_test',actionId:p.actionId,approvalId:p.approvalId,
+    explicitOwnerApproval:true
+  });
+  // Crash occurred after claiming dispatch, before the result could be stored.
+  f.store.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(p.actionId);
+  const plans=f.supervisor.listRecoverable({taskId:'task_test'});
+  assert.equal(plans[0].status,'dispatching');
+  assert.equal(plans[0].requiresReconciliation,true);
+  await assert.rejects(f.supervisor.dispatch({
+    taskId:'task_test',actionId:p.actionId
+  }),/action_not_approved/);
+  assert.equal(f.sends,0);
+  f.store.close();
+});
+
+test('saved plan review enforces actor identity, tenant and canonical task authorization',async()=>{
+  const f=fixture({environment:'external',tenantId:'tenant-a'});
+  await f.supervisor.plan(input('tenant-private'));
+  const other=new SupervisorCoordinator({
+    store:f.store,enabled:true,actorId:'another-user',tenantId:'tenant-b',
+    environment:'external',authorizeTask:()=>true,
+    planner:{decide:async()=>({})},chat:{}
+  });
+  assert.deepEqual(other.listRecoverable({taskId:'task_test'}),[]);
+  const blocked=new SupervisorCoordinator({
+    store:f.store,enabled:true,actorId:'owner',tenantId:'tenant-a',
+    environment:'external',authorizeTask:()=>false,
+    planner:{decide:async()=>({})},chat:{}
+  });
+  assert.throws(()=>blocked.listRecoverable({taskId:'task_test'}),/supervisor_access_denied/);
+  f.store.close();
+});
+
 test('uncertain chat send remains indeterminate and is never replayed',async()=>{
   const f=fixture({failSend:true});
   const p=await f.supervisor.plan(input());
