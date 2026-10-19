@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store } from '../src/store.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
+import { listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
 
 const url='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';
 function setup(t,{status='indeterminate',decision=true,chatUrl=url,actorId='lab-owner'}={}) {
@@ -100,4 +101,30 @@ test('manual UI guards IPC; browser inspection uses no submission path',()=>{
   assert.match(inspector,/this\.enqueue/);
   assert.match(inspector,/showConversation\(expected, \{force:false\}\)/);
   assert.doesNotMatch(inspector,/submitExactlyOnce|requestSubmit|setComposerAndSend|sendPrompt/);
+});
+
+test('existing pending actions are readable without enabling the supervisor or Groq',t=>{
+  const f=setup(t);
+  const before=f.store.db.prepare('SELECT * FROM action_ledger WHERE id=?').get(f.actionId);
+  const pending=listLocalSupervisorRecoverable({store:f.store,taskId:f.task.id});
+  assert.equal(pending.length,1);
+  assert.equal(pending[0].actionId,f.actionId);
+  assert.equal(pending[0].status,'indeterminate');
+  assert.equal(pending[0].decision.content,'ORDAX_RECOVERY_MESSAGE');
+  assert.equal(f.counts(),0);
+  assert.deepEqual(f.store.db.prepare('SELECT * FROM action_ledger WHERE id=?').get(f.actionId),before);
+  f.store.db.prepare('UPDATE tasks SET workspace_session_id=NULL WHERE id=?').run(f.task.id);
+  assert.throws(()=>listLocalSupervisorRecoverable({store:f.store,taskId:f.task.id}),
+    /supervisor_access_denied/);
+});
+
+test('recovery IPC and UI allow inspection without planner API access',()=>{
+  const here=path.dirname(fileURLToPath(import.meta.url));
+  const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
+  const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
+  const chunk=main.split("ipcMain.handle('ordax:supervisor:recoverable'")[1]
+    .split("ipcMain.handle('ordax:supervisor:inspect'")[0];
+  assert.match(chunk,/listLocalSupervisorRecoverable/);
+  assert.doesNotMatch(chunk,/requireLabSupervisor/);
+  assert.match(ui,/labRecoverButton.disabled = false;/);
 });
