@@ -105,4 +105,7 @@ test('worker retains permalink only after exactly-one submit receipt',()=>{
   assert.match(segment,/canonicalProviderChatUrl\(wc\.getURL\(\)\)/);
   assert.match(main,/bindObservedSubmittedConversation/);
   assert.match(main,/submission_run_context_changed/);
+  // P280's manual, private-safe diagnostic must survive the P281 cutover.
+  assert.match(worker,/async inspectDiagnosticReadOnly\(\)/);
+  assert.match(main,/ordax:provider:diagnostic/);
 });
