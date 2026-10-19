@@ -57,7 +57,7 @@
 
 - [PR #280](https://github.com/ordaxsystems/ordax-apps/pull/280) integrada em `d918e475e87a257974607dfc4bbcd859ed104ce7`: diagnóstico DOM por clique, sem texto/URL/cookies/HTML, e testes de reinício com SQLite real.
 - [Gate P5 e matriz de aceitação](../audits/P5-RESTART-DIAGNOSTIC-GATE-2026-10-19.md). [CI #280](https://github.com/ordaxsystems/ordax-apps/actions/runs/39319760992) Linux/Windows aprovada.
-- [PR #281](https://github.com/ordaxsystems/ordax-apps/pull/281) em validação: vincular a URL canônica da primeira conversa após envio observado e antes da resposta; a URL isoladamente **não** prova resposta nem efeito local.
+- [PR #282](https://github.com/ordaxsystems/ordax-apps/pull/282) em validação (substitui a #281, encerrada sem merge): vincular a URL canônica da primeira conversa após envio observado e antes da resposta; a URL isoladamente **não** prova resposta nem efeito local.
 - OrdaX MCP retornou `product_targets_unavailable` na sessão desta tarefa: **nenhum teste físico autenticado foi executado**. Os gates P5-W1–W4 permanecem pendentes.
 - Produto continua `0.2.0-alpha.2`, com o ChatGPT Web obrigatório e central, sem release nova, automação autônoma ou alterações no Flow/Grátis.
 
