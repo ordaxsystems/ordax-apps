@@ -138,7 +138,7 @@ export async function verifyAppCatalog({platformRoot,base=null}){
   let changed=0;
   if(base){
     if(!/^[a-f0-9]{40}$/.test(base))throw new Error('A specific PR base SHA is required');
-    const paths=git('diff','--name-only',base,'HEAD','--','apps').split('\n').filter(Boolean);
+    const paths=git('diff','--name-only',base+'...HEAD','--','apps').split('\n').filter(Boolean);
     for(const id of new Set(paths.map(productSourceAppId).filter(Boolean))){
       const current=versioned.get(id);
       const oldPath='apps/'+id+'/'+RELEASE_MANIFEST;
