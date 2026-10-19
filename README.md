@@ -23,6 +23,8 @@ Apps first-party também expõem sua semântica ao OrdaX Intelligence por `ai/ma
 
 **Não depende da memória da IA:** a workflow [OrdaX Apps Version Governance](.github/workflows/app-version-governance.yml) percorre os `apps/*/app.json` existentes e rejeita alterações de código ou recurso sem aumento de `version`. A semântica de versão, comparador SemVer e canais `alpha.N/beta.N/rc.N` vêm do [owner de versão do OrdaX OS](https://github.com/ordaxsystems/ordax-os/blob/feat/structural-product-version-policy-20261019/docs/VERSION-GOVERNANCE.md), pinado em [contracts/version-governance.lock.json](contracts/version-governance.lock.json). Não se cria outro parser canônico no repositório Apps nem outra versão por aplicativo. 
 
+Apps ainda sem `app.json` são **candidatos não versionados**, não releases: o gate reporta sua contagem e **bloqueia alterações futuras de código nesses diretórios até existir um owner de versão canônico**, sem promovê-los automaticamente à Store. Documentação e testes desses candidatos não exigem criar versões fictícias.
+
 O Orchestrator Lab pode ter `0.2.0-alpha.N` no protótipo, sem mudar o Grátis/Flow `0.4.12` usado como origem. A numeração do OS não é herdada por Studio, Clock nem outros apps; cada produto avança independentemente. Canais de SemVer, elegibilidade de assinatura e disponibilização na Loja são **controles separados**.
 
 ## Regra de arquitetura
