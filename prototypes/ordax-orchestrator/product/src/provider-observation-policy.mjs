@@ -30,3 +30,15 @@ export function classifyProviderAuthObservation({url,page}={}) {
     return 'session_present';
   return 'unknown';
 }
+
+// A DOM observation is a preliminary safety gate, NOT proof of account
+// identity. Do not submit any text while login is missing or ambiguous.
+export function assertProviderSendReadiness(health) {
+  if(health?.verification_required===true)throw new Error('chatgpt_verification_required');
+  if(health?.auth_state==='authenticating')throw new Error('chatgpt_authentication_in_progress');
+  if(health?.auth_state==='anonymous')throw new Error('chatgpt_login_required');
+  if(health?.auth_state!=='session_present'||health?.composer_ready!==true||
+     health?.health_observed===false)
+    throw new Error('chatgpt_session_not_observed');
+  return true;
+}
