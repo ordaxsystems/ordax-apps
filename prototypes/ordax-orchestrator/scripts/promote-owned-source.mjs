@@ -23,7 +23,7 @@ function walk(directory, prefix = '') {
 }
 function selectRuntime(rel) {
   return rel.startsWith('desktop/') || rel.startsWith('supervisor/') ||
-    /^src\/[^/]+\.mjs$/.test(rel) || rel === 'build/icon.png';
+    /^src\/[^/]+\.(?:mjs|cjs)$/.test(rel) || rel === 'build/icon.png';
 }
 function selectScript(rel) {
   return /^scripts\/(?:e2e-lock|live-ui-(?:text|stream|image|continuity|restart|history|typing|stage)-smoke|read-benchmark|benchmark-suite|set-observer-mode)\.(?:cjs|mjs)$/.test(rel);
