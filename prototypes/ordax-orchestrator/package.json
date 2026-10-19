@@ -9,6 +9,8 @@
     "validate": "npm run version:check && npm test",
     "import:flow": "node scripts/import-flow.mjs",
     "start": "node scripts/start-lab.mjs",
-    "version:check": "node scripts/verify-version.mjs"
+    "version:check": "node scripts/verify-version.mjs",
+    "start:staged": "node scripts/start-lab.mjs --staged",
+    "version:show": "node scripts/verify-version.mjs"
   }
 }
