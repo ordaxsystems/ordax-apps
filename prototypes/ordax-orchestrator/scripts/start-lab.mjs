@@ -3,10 +3,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { assertDerivedIdentity } from '../lib/derive.mjs';
+import { assertBootstrapVersion } from '../lib/version-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const workspace = path.join(root, 'workspace');
-const lock = JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8'));
+const productVersion = assertBootstrapVersion(root, JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')));
+const lock = { ...JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8')), productVersion };
 const read = name => fs.readFileSync(path.join(workspace, name));
 
 try {
@@ -15,7 +17,10 @@ try {
   }
   const derivation = JSON.parse(read('DERIVATION.json').toString('utf8'));
   if (derivation.fromCommit !== lock.commit ||
-      derivation.appId !== lock.targetIdentity.appId) {
+      derivation.appId !== lock.targetIdentity.appId ||
+      derivation.sourceVersion !== lock.sourceVersion ||
+      derivation.productVersion !== productVersion.version ||
+      derivation.channel !== productVersion.channel) {
     throw new Error('Source provenance/identity mismatch; execution refused.');
   }
   assertDerivedIdentity({
@@ -24,6 +29,11 @@ try {
     'desktop/embedded-worker.mjs': read('desktop/embedded-worker.mjs'),
     'desktop/ui.html': read('desktop/ui.html')
   }, lock);
+  const runtimeLock = JSON.parse(read('package-lock.json').toString('utf8'));
+  if (runtimeLock.version !== productVersion.version ||
+      runtimeLock.packages?.['']?.version !== productVersion.version) {
+    throw new Error('Version mismatch in derived package lock');
+  }
   if (!fs.existsSync(path.join(workspace, 'node_modules', 'electron'))) {
     throw new Error('Isolated dependencies missing. Run npm ci --prefix workspace.');
   }
