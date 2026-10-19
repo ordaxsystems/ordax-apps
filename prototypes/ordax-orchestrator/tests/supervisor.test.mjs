@@ -178,7 +178,10 @@ test('invalid model plan is indeterminate and cannot reach chat',async()=>{
 test('hold proposals require neither approval nor sending',async()=>{
   const f=fixture({decision:{type:'hold',taskId:'task_test',reason:'Dependency blocked'}});
   const p=await f.supervisor.plan(input());
-  assert.equal(p.status,'complete');assert.equal(p.approvalId,null);
+  assert.equal(p.status,'held');assert.equal(p.approvalId,null);
+  const recover=f.supervisor.listRecoverable({taskId:'task_test'});
+  assert.equal(recover[0].status,'held');
+  assert.equal(recover[0].requiresReconciliation,false);
   assert.equal(f.sends,0);f.store.close();
 });
 
