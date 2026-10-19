@@ -42,3 +42,27 @@ export function assertProviderSendReadiness(health) {
     throw new Error('chatgpt_session_not_observed');
   return true;
 }
+
+
+// A loadURL timeout is NOT evidence that navigation failed or succeeded.
+// An in-flight navigation may leave the previous document visible. Permit
+// progress only when the requested URL is already active, its main frame
+// has stopped loading and the required authenticated-composer UI is observed.
+// Never use this for login pages, background/unknown state or implicit retries.
+export function canAcceptObservedNavigationAfterTimeout({
+  expectedUrl,actualUrl,requireComposer,mainFrameLoading,
+  composerFound,composerFormReady,authState,healthObserved
+}={}) {
+  if(requireComposer!==true||mainFrameLoading!==false||
+     composerFound!==true||composerFormReady!==true||
+     authState!=='session_present'||healthObserved!==true)return false;
+  try{
+    const wanted=new URL(expectedUrl),actual=new URL(actualUrl);
+    if(wanted.protocol!=='https:'||wanted.hostname!=='chatgpt.com'||
+       wanted.username||wanted.password||wanted.port||wanted.hash||
+       actual.protocol!=='https:'||actual.hostname!=='chatgpt.com'||
+       actual.username||actual.password||actual.port)return false;
+    return wanted.origin===actual.origin && wanted.pathname===actual.pathname &&
+      wanted.search===actual.search;
+  }catch{return false;}
+}

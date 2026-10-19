@@ -4,7 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
-import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness } from '../src/provider-observation-policy.mjs';
+import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -543,7 +543,22 @@ export class EmbeddedChatWorker {
       });
     } catch (error) {
       const message = String(error?.message || error);
-      if (!(error?.code === -3 || /\(-3\)|ERR_ABORTED/i.test(message))) throw error;
+      const aborted = error?.code === -3 || /\(-3\)|ERR_ABORTED/i.test(message);
+      if (!aborted && message === 'provider_navigation_timeout' && requireComposer) {
+        // loadURL might not settle even after the destination became interactive.
+        // Never re-navigate or infer a stale/in-flight page was loaded.
+        const state=await observeWithin(() => this.#composerState(), {
+          timeoutMs:5000,code:'navigation_composer_observation_timeout'
+        }).catch(() => null);
+        const health=await this.health().catch(() => null);
+        const confirmed=canAcceptObservedNavigationAfterTimeout({
+          expectedUrl:url,actualUrl:wc.getURL(),requireComposer,
+          mainFrameLoading:wc.isLoadingMainFrame(),
+          composerFound:state?.found,composerFormReady:state?.formReady,
+          authState:health?.auth_state,healthObserved:health?.health_observed
+        });
+        if (!confirmed) throw error;
+      } else if (!aborted) throw error;
     }
     if (requireComposer) await this.#waitForComposer();
   }
