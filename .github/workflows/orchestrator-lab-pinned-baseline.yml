@@ -66,6 +66,12 @@ jobs:
               inspected:report.inspected_file_count,
               changed:report.changed_by_derivation,
               owners:report.owner_counts,
+              import_graph: {
+                entrypoints:report.dependency_graph.entrypoints,
+                reachable:report.dependency_graph.reachable.length,
+                unresolved:report.dependency_graph.unresolved,
+                dynamic_review:report.dependency_graph.dynamic_review
+              },
               mismatches:report.problems.length
             }, null, 2));
           '
