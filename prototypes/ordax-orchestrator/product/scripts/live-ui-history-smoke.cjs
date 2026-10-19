@@ -1,3 +1,4 @@
+const { DEBUG_URL, isLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 const { DatabaseSync } = require('node:sqlite');
 const assert = require('node:assert/strict');
@@ -13,8 +14,8 @@ const getJson = url => new Promise((resolve, reject) => http.get(url, response =
 }).on('error', reject));
 
 async function main() {
-  const target = (await getJson('http://127.0.0.1:9444/json/list'))
-    .find(row => row.type === 'page' && String(row.url).endsWith('/desktop/ui.html'));
+  const target = (await getJson(DEBUG_URL))
+    .find(isLabUiTarget);
   if (!target) throw new Error('ordax_ui_target_not_found');
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
@@ -72,8 +73,7 @@ async function main() {
       const current = await evaluate("document.querySelector('#taskId')?.textContent || ''");
       return current && current !== previous ? current : null;
     }, 'fixture_created');
-    db = new DatabaseSync(path.join(process.env.LOCALAPPDATA, 'OrdaX', 'Gratis',
-      'data', 'ordax-gratis.sqlite'));
+    db = new DatabaseSync(labDatabasePath());
     db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; BEGIN IMMEDIATE;');
     try {
       const insert = db.prepare('INSERT INTO messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)');

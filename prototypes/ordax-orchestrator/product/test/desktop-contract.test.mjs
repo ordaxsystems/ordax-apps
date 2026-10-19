@@ -77,7 +77,10 @@ test('current ChatGPT DOM identity binds each run to its own assistant message',
 });
 
 test('live E2E gates are exclusive and detect cross-run leaks', () => {
-  assert.match(e2eLock, /e2e\.lock/);
+  const target=fs.readFileSync(path.join(root,'scripts','e2e-lab-target.cjs'),'utf8');
+  assert.match(e2eLock, /labLockPath\(\)/);
+  assert.match(target, /e2e\.lock/);
+  assert.doesNotMatch(e2eLock, /['"]Gratis['"]/);
   assert.match(e2eLock, /e2e_lock_busy/);
   assert.match(liveText, /crossRunLeak/);
   assert.match(liveText, /providerStatus/);
