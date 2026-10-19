@@ -1,6 +1,6 @@
 # OrdaX Orchestrator Lab — protótipo isolado
 
-**Versão própria do Lab: `0.2.0-alpha.1` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
+**Versão própria do Lab: `0.2.0-alpha.2` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
 
 **Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release, sem supervisor de IA ativo e sem submissão automática de tarefas. Esta é uma derivação controlada do **OrdaX Flow/Grátis 0.4.12**, não uma modificação do Grátis existente.
 
@@ -42,7 +42,7 @@ Os arquivos são materializados em `workspace/`, que é ignorado pelo Git. Uma i
 | Git source | `ordaxsystems/ordax-flow` | Protótipo e importador neste diretório |
 | Package/app ID | `br.com.ordax.gratis` | `br.com.ordax.orchestrator.lab` |
 | Nome público | OrdaX Grátis | OrdaX Orchestrator Lab |
-| Versão do aplicativo | `0.4.12` | `0.2.0-alpha.1` |
+| Versão do aplicativo | `0.4.12` | `0.2.0-alpha.2` |
 | Dados do Windows | `%LOCALAPPDATA%\OrdaX\Gratis` | `%LOCALAPPDATA%\OrdaX\OrchestratorLab` |
 | SQLite local | `ordax-gratis.sqlite` | `ordax-orchestrator-lab.sqlite` |
 | Sessão ChatGPT Electron | `persist:ordax-gratis-chatgpt` | `persist:ordax-orchestrator-lab-chatgpt` |
@@ -80,6 +80,12 @@ O login no ChatGPT do Lab é intencionalmente separado: não importar/exportar c
 - **Nunca enviar sem aprovação explícita:** depois de planejar, o usuário revê a mensagem exata e precisa aprová-la num diálogo nativo e acionar o envio. Sem confirmação observável do provedor, o ledger registra `indeterminate` e bloqueia replay automático.
 - **Isolamento de ambientes:** esta primeira integração é somente do ambiente **interno local**. A variante multiusuário usa a mesma interface de Supervisor, porém a autenticação/tenant, sessões e grants externos ainda NÃO estão conectados ou liberados.
 - O modelo não executa shell, Git, MCP ou Runtime por suas próprias palavras. A camada de planejamento não outorga autoridade; permissões de execução continuam nos owners canônicos.
+
+### Recuperação de tarefas sem reenvio
+
+Na versão **0.2.0-alpha.2**, o painel do supervisor inclui **Recuperar plano**. O botão consulta o histórico `action_ledger` e `approval_ledger` da Task selecionada sem chamar a API de planejamento. Propostas `pending_approval` voltam a permitir aprovação, e propostas `approved` voltam a permitir o envio explícito. Estados `planning`, `dispatching` ou `indeterminate` exigem reconciliação humana, sem novo envio ou cobrança automática.
+
+O resultado é limitado por identidade, tenant e permissão de leitura do supervisor. Não cria uma segunda fila, banco ou histórico.
 
 ### Uso de desenvolvimento, somente em sessão explicitamente autorizada
 
