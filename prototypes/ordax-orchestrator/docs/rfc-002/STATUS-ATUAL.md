@@ -70,6 +70,14 @@
 - Windows autorizado acessível via Desktop Commander; GitHub CLI autenticado na conta OrdaX atual; checkout **isolado** em Downloads criado no commit `474090a` e `npm ci` executado. OrdaX MCP continuou com `product_targets_unavailable`. A validação local autenticada W1–W4 permanece sem prova.
 - Não importar cookies/contas do Grátis, não tocar no pendrive, não rodar scripts de envio sem consentimento e sem autenticação própria do Lab. Não promover `0.2.0-alpha.3` até a prova física completa.
 
+## P5 — Windows staged real e candidato CI verificável
+
+- [PR #284](https://github.com/ordaxsystems/ordax-apps/pull/284) integrada no commit `43cc383ce0a4275590f6dddb3eec93bef0b38219`: workflow publica temporariamente o executável Windows **unsigned/test-only** e manifesto SHA-256. [Run 39330800343](https://github.com/ordaxsystems/ordax-apps/actions/runs/39330800343) Linux/Windows aprovado; artifact `12224113468`, expiração prevista em 22/10/2026. Não é release.
+- [Evidência física Windows do Lab staged](../audits/P5-WINDOWS-STAGED-READONLY-2026-10-19.md): checkout isolado no commit `474090a`, `npm ci` e 128/128 testes locais aprovados, Electron iniciou, target único `OrdaX Orchestrator Lab` em `127.0.0.1:9445`.
+- Diagnóstico real e **somente leitura**: `auth_state=anonymous`, `composer_ready=true`, `verification_required=false`, `authenticated_proven=not_verified`. Não houve envio, login automatizado ou captura de dados pessoais.
+- P5-W1–W4 continuam **não executados** até login legítimo no próprio perfil isolado. Não copiar cookies ou sessões do Grátis; não declarar `alpha.3` concluída. [Procedimento do binário e SHA-256](../audits/P5-UNSIGNED-E2E-CANDIDATE-2026-10-19.md).
+- Versão canônica preservada: `0.2.0-alpha.2`; supervisor automático desligado; OrdaX Grátis intocado.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
