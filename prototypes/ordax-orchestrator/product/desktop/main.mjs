@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, protocol, net, dialog } from 'electron';
 import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSupervisorTask, listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
+import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 
 import fs from 'node:fs';
@@ -166,7 +167,17 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
 
   try {
-    const result = await worker.sendPrompt({ prompt: providerPrompt, chatUrl: task.chat_url, newSession: conversationPlan.newSession });
+    const result = await worker.sendPrompt({
+      prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
+      onDeliveryObserved:({chatUrl,submittedAt}) => {
+        if (liveRun?.runId !== runId) throw new Error('submission_run_context_changed');
+        return bindObservedSubmittedConversation({
+          store,taskId,runId,chatUrl,submittedAt,
+          plannedNewSession:conversationPlan.newSession,
+          checkpointVersion:needsContinuation ? checkpointVersion : null
+        });
+      }
+    });
     const rotationOutcome = assessProviderRotation(conversationPlan, task.chat_url, result.chatUrl);
     const confirmedChatUrl = canonicalProviderChatUrl(result.chatUrl);
     // An observed answer is still persisted, but a home/share/login URL must
