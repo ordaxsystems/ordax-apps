@@ -35,7 +35,7 @@ test('source pin and disabled promotion flags are explicit', () => {
 
 test('tracked-file allowlist excludes git metadata, traversal and secrets', () => {
   for (const accepted of ['desktop/main.mjs', 'src/store.mjs', 'build/icon.png',
-    'package.json', 'test/store.test.mjs']) {
+    'package.json', 'test/store.test.mjs', 'sql/flow-conversation-history.sql']) {
     assert.equal(allowSourcePath(accepted), true, accepted);
   }
   for (const denied of ['../desktop/main.mjs', 'src/../../.env', '/etc/passwd',
@@ -69,7 +69,7 @@ test('UI and desktop-contract fixture use new lab identity', () => {
   assert.equal(text('desktop/ui.html', html),
     '<title>OrdaX Orchestrator Lab</title><p>Orchestrator Lab • memória isolada</p>');
   const assertion = 'assert.match(main, /OrdaX[\'"], [\'"]Gratis/);';
-  assert.match(text('test/desktop-contract.test.mjs', assertion), /Orchestrator Lab/);
+  assert.match(text('test/desktop-contract.test.mjs', assertion), /OrchestratorLab/);
 });
 
 test('import fails closed if pinned source drifts', () => {
