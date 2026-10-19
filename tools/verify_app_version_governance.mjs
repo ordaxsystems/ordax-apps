@@ -18,6 +18,8 @@ export function productSourceAppId(relative) {
   const match=/^apps\/([a-z][a-z0-9-]{0,63})\/(.+)$/.exec(relative);
   if(!match) return null;
   const inner=match[2];
+  if(inner.split('/').includes('..') || inner.split('/').includes('.') ||
+      inner.includes('\\') || inner.includes('\0')) return null;
   if (inner===RELEASE_MANIFEST) return match[1];
   if (/(^|\/)(?:tests?|fixtures|__tests__)\/|(?:^|\/)(?:README\.md|CHANGELOG\.md|\.gitignore)$/.test(inner)) return null;
   if (/\.(?:md|mdx|txt|map)$/.test(inner)) return null;
