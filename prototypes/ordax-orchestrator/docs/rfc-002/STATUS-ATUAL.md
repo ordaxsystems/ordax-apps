@@ -92,8 +92,8 @@
 
 - Com W0 da distribuição portátil comprovado, houve uma tentativa de abrir apenas a rota oficial de autenticação pelo IPC normal do Lab, **sem credenciais e sem envio**. A navegação não confirmou término no limite do controlador (`login_navigation_timeout`) e a leitura de status seguinte expirou (`cdp_status_timeout`). Isto **não prova** falha da conta, do serviço ou de proteção anti-bot.
 - A análise do código identificou `health()` e `#safeLoad()` aguardando DOM/`loadURL` sem prazo; observação falha também podia inferir indevidamente `session_present`.
-- [PR #286](https://github.com/ordaxsystems/ordax-apps/pull/286) em validação: prazos limitados (5 s para DOM, 30 s para navegação), `auth_state='unknown'` se não houver prova do DOM e **nenhuma repetição automática**. [Auditoria técnica](../audits/P5-AUTH-NAVIGATION-OBSERVABILITY-2026-10-19.md).
-- A CI Linux da PR #286 passou (36/36 bootstrap; 141/141 produto); build portátil Windows ainda deve ser confirmado antes de merge.
+- [PR #286](https://github.com/ordaxsystems/ordax-apps/pull/286) **integrada** no commit `6a3f0b14823471fbce0ca2ae0dbaec718beae19b`: prazos limitados (5 s para DOM, 30 s para navegação), `auth_state='unknown'` se não houver prova do DOM e **nenhuma repetição automática**. [Auditoria técnica](../audits/P5-AUTH-NAVIGATION-OBSERVABILITY-2026-10-19.md).
+- [CI da PR #286](https://github.com/ordaxsystems/ordax-apps/actions/runs/39336158412) **aprovada**: Linux 36/36 bootstrap e 141/141 produto; Windows 141/141 produto e build portátil aprovados. A correção impede travamentos/estados falsos, mas não substitui o E2E autenticado.
 - Os **seis processos** da candidata portátil foram encerrados exclusivamente pela árvore do launcher e os arquivos auxiliares temporários de teste removidos. O checkout e o perfil isolados permanecem disponíveis; Grátis/Runtime/Studio não foram afetados.
 - **P5-W1–W4 não executados**: exigem login legítimo na partição do próprio Lab, envio único autorizado e retomada após reinício. Versão `0.2.0-alpha.2` preservada, sem release.
 
