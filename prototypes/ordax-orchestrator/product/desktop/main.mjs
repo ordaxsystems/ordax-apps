@@ -379,7 +379,6 @@ ipcMain.handle('ordax:provider:diagnostic', async event => {
   return worker.inspectDiagnosticReadOnly();
 });
 ipcMain.handle('ordax:provider:login', () => worker.login());
-ipcMain.handle('ordax:provider:login-google', () => worker.loginGoogle());
 ipcMain.handle('ordax:provider:home', () => worker.newChat());
 ipcMain.handle('ordax:provider:reload', () => worker.view.webContents.reload());
 ipcMain.handle('ordax:chat:visible', (_event, visible) => {

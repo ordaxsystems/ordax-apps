@@ -27,7 +27,6 @@ contextBridge.exposeInMainWorld('ordax', {
   getObserverMode: () => ipcRenderer.invoke('ordax:provider:observer-mode:get'),
   setObserverMode: mode => ipcRenderer.invoke('ordax:provider:observer-mode:set', mode),
   login: () => ipcRenderer.invoke('ordax:provider:login'),
-  loginGoogle: () => ipcRenderer.invoke('ordax:provider:login-google'),
   home: () => ipcRenderer.invoke('ordax:provider:home'),
   reload: () => ipcRenderer.invoke('ordax:provider:reload'),
   setChatVisible: visible => ipcRenderer.invoke('ordax:chat:visible', visible),

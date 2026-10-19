@@ -4,7 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
-import { observeWithin, classifyProviderAuthObservation } from '../src/provider-observation-policy.mjs';
+import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -317,37 +317,6 @@ export class EmbeddedChatWorker {
   async login() {
     await this.#safeLoad('https://chatgpt.com/auth/login', { requireComposer: false });
     return this.status();
-  }
-
-  async loginGoogle() {
-    await this.#safeLoad('https://chatgpt.com/auth/login', { requireComposer: false });
-    let point = null;
-    for (let i = 0; i < 40; i++) {
-      const currentUrl = this.view.webContents.getURL();
-      if (currentUrl && !currentUrl.includes('chatgpt.com/auth/login')) return this.status();
-      point = await this.view.webContents.executeJavaScript(`(() => {
-        const button = [...document.querySelectorAll('button')]
-          .find(el => /Continuar com o Google|Continue with Google/i.test((el.innerText || el.textContent || '').trim()));
-        if (!button) return null;
-        const rect = button.getBoundingClientRect();
-        if (!rect.width || !rect.height) return null;
-        return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
-      })()`).catch(() => null);
-      if (point) break;
-      await sleep(250);
-    }
-    if (!point) throw new Error('google_login_button_not_found');
-    const wc = this.view.webContents;
-    wc.focus();
-    wc.sendInputEvent({ type:'mouseMove', x:point.x, y:point.y });
-    wc.sendInputEvent({ type:'mouseDown', x:point.x, y:point.y, button:'left', clickCount:1 });
-    wc.sendInputEvent({ type:'mouseUp', x:point.x, y:point.y, button:'left', clickCount:1 });
-    for (let i = 0; i < 60; i++) {
-      await sleep(250);
-      const url = wc.getURL();
-      if (url && !url.includes('chatgpt.com/auth/login')) return this.status();
-    }
-    throw new Error('google_login_navigation_not_observed');
   }
 
   async #clearNewChatComposer() {
@@ -814,8 +783,8 @@ export class EmbeddedChatWorker {
       this.#setStage('health');
       const health = await this.health();
       const healthCompletedAt = Date.now();
-      if (health.verification_required) throw new Error('chatgpt_verification_required');
-      if (health.auth_state === 'authenticating') throw new Error('chatgpt_authentication_in_progress');
+      // Safety gate before preparing any draft or touching the provider UI.
+      assertProviderSendReadiness(health);
       this.#setStage('prepare');
       const currentDraft = await this.#composerState().catch(() => ({ found:false, text:'' }));
       const draftCheckedAt = Date.now();
