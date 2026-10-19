@@ -22,18 +22,22 @@
 
 **Limitação de P0:** passar o baseline no Linux não comprova sessão ChatGPT autenticada, side-by-side Windows, autorização do Runtime ou paridade de UI. Essas provas pertencem a gates posteriores.
 
-## P1 — Próximo trabalho, ainda não executado
+## P1 — Fonte própria do aplicativo concluída
 
-**Objetivo:** tornar a fonte do aplicativo Lab editável diretamente em `ordax-apps` sem depender permanentemente de overlay textual e sem importar produtos Flow Client/Hub.
+- [PR #273](https://github.com/ordaxsystems/ordax-apps/pull/273) integrada na branch de desenvolvimento no commit `c3d2f393945ba7c37a2acfc8e4d2490abd6ab12e`.
+- O código Electron do Lab é versionado em `prototypes/ordax-orchestrator/product/`. `npm start` usa **essa fonte própria**, não a árvore `workspace/` gerada pelo overlay.
+- 47 arquivos rastreados no manifesto inicial, incluindo 12 arquivos de teste. O supervisor tem **uma única implementação** em `product/supervisor/`.
+- `src/relay/`, `apps/flow-client/`, `apps/flow-hub/` e migrações centrais não foram importados. Identidade do Grátis, conta, dados e perfis preservados.
+- CI Linux com **78 testes do produto direto aprovados**, e snapshot original/113 testes ainda auditável.
+- [CI do cutover](https://github.com/ordaxsystems/ordax-apps/actions/runs/39304388349): isolamento e **build portátil Windows** aprovados. **Não** equivale a uso físico autenticado do ChatGPT Web.
+- [Inventário P1](../audits/P1-OWNED-SOURCE-2026-10-19.md) explica proveniência, arquivos, condições de rollback e limitações.
 
-1. Partir de `product-version.json`, `source-lock.json`, inventário P0 e manifesto da CI.
-2. Revisar **código efetivamente necessário** ao cliente Electron: entradas `desktop/`, módulos `src/` raiz, recursos de packaging e módulos `supervisor/`.
-3. Excluir código administrativo/central de `apps/flow-client`, `apps/flow-hub`, `src/relay`, schema/serviços da Platform e quaisquer executores externos não usados.
-4. Definir cutover atômico e reversível, com comparação de hashes, identidade, package-lock e CI; não mexer no repositório Flow.
-5. Demonstrar `npm ci`, `npm test`/build do checkout limpo e paridade das operações manuais antes de eliminar overlays.
-6. Manter supervisor automático desativado e `0.2.0-alpha.2` enquanto não houver gatilho de versão e gate de release aprovado.
+## P2 — Primeiro incremento em desenvolvimento
 
-**Não começar P2 ou P5 como concluídos** por causa da CI P0. Testar o supervisor contra o `Store` real e E2E autorizado continua necessário.
+- Branch `feat/orchestrator-p2-store-hold-20261019`, separada da fonte própria integrada.
+- Contrato `hold` distinto de `complete`; teste de supervisor contra **Store SQLite real**, inclusive fechamento/reabertura e impossibilidade de duplicar envio incerto.
+- [Evidências P2](../audits/P2-REAL-STORE-HOLD-2026-10-19.md).
+- **Ainda pendente de gate:** autorização de operações vinculada a escopos reais, integração Windows autenticada (P3/P5), observação/reconciliação de entrega (P4). Não promover `0.2.0-alpha.3` agora.
 
 ## Instrução curta para novo chat
 
