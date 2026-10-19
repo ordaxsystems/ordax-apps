@@ -1,6 +1,6 @@
 # P4 — Inspeção somente leitura da conversa ChatGPT Web
 
-**Estado:** em revisão. Não declarar P4/P5 concluídos sem prova E2E autenticada.
+**Estado:** [PR #279](https://github.com/ordaxsystems/ordax-apps/pull/279) integrada, commit `9f3aa40d366a181b7dbbe64042ea4137c5b9c18b`, [CI Linux/Windows aprovada](https://github.com/ordaxsystems/ordax-apps/actions/runs/39317386820). **Não declarar P4/P5 concluídos sem prova E2E autenticada.**
 
 ## Objetivo e limite de autoridade
 
@@ -26,7 +26,7 @@ O antigo `dispatch()` persistia `indeterminate` sobrescrevendo `result.decision`
 ## Gates de testes
 
 - Classificador puro: mensagem exata, substring não equivalente, respostas anteriores, duplicações, leitura parcial, URL errada e observações não confiáveis.
-- Store SQLite real: recuperação com o planejador desligado, zero alterações em `action_ledger`, `messages` e `events` durante inspeção; ação legada sem decisão, conversa sem URL, contexto externo, ação não enviada, concorrência de status.
+- Store SQLite real: recuperação sem Groq (mesmo com planejador desligado), zero alterações em `action_ledger`, `messages` e `events` durante inspeção; ação legada sem decisão, conversa sem URL, contexto externo, ação não enviada, concorrência de status.
 - Teste estrutural: o método do worker não chama envio e a rota IPC exige janela autorizada.
 - Linux + build Windows por CI são testes de integração locais. **Não** comprovam detecção real de DOM atual, login, permissões do provedor, reconciliação de conteúdo virtualizado ou retomada após interrupção.
 
