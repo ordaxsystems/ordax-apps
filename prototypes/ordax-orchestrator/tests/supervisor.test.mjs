@@ -81,6 +81,16 @@ test('approval, durable idempotency, and no duplicate provider send',async()=>{
   f.store.close();
 });
 
+test('idempotency request cannot be silently reused for different objective', async()=>{
+  const f=fixture();
+  await f.supervisor.plan(input('fixed-request'));
+  await assert.rejects(f.supervisor.plan({
+    taskId:'task_test',requestId:'fixed-request',objective:'An unrelated new objective'
+  }),/supervisor_request_conflict/);
+  assert.equal(f.plans,1);
+  f.store.close();
+});
+
 test('uncertain chat send remains indeterminate and is never replayed',async()=>{
   const f=fixture({failSend:true});
   const p=await f.supervisor.plan(input());
