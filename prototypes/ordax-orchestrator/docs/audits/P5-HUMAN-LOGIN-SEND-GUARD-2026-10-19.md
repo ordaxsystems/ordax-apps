@@ -26,3 +26,13 @@ Esta correção não declara que o usuário efetuou login: o último teste físi
 **W1–W4 continuam abertos:** autenticação humana legítima **na partição isolada do próprio Lab**; mensagem de teste inofensiva com autorização; interrupção da Run; reinício do mesmo perfil e reconciliação da conversa com a prova de ausência de reenvio. Nenhum teste de envio pode ser executado apenas com `composer_ready=true`.
 
 Sem alterações no `ordax-flow`/Grátis, OrdaX OS, Runtime, pendrive, identidade central, múltiplos usuários ou versão. CI Linux/Windows e build portátil obrigatórios antes do merge.
+
+## Validação e evidência física
+
+- [PR #287](https://github.com/ordaxsystems/ordax-apps/pull/287) integrada, commit `ef6df71b66d13156117f8bb37a751210bb799c01`.
+- [CI #287](https://github.com/ordaxsystems/ordax-apps/actions/runs/39338475895) aprovada: **36/36 testes bootstrap, 145/145 produto em Linux, 145/145 produto em Windows e build portátil Windows**.
+- Atualizado o checkout **exclusivo do Lab** no Windows para o commit `3087d51`, com dependências próprias. `start-lab.mjs --staged` inicializou a janela Electron sem afetar o OrdaX Grátis ou o disco USB.
+- A primeira sonda de prontidão mostrou UI existente com provedor ainda `loading`; uma segunda sonda somente leitura mostrou `labUiReady=true`, `authState=anonymous`, `composerReady=true`, `authenticated=not_verified`, `delivery=not_evaluated`.
+- Acionado **somente o botão Entrar** da UI real através de teste do fluxo oficial, sem selecionar automaticamente provedor de login. Após 8 segundos, consulta somente de status confirmou `authState=authenticating`, `composerReady=false`, `verificationRequired=false`. **A navegação de autenticação foi observada, não a conclusão do login.**
+- Nenhum texto de conversa, email, credencial, cookie, token ou URL de autorização foi extraído. Nenhuma Task foi criada, nenhum comando ou prompt foi enviado. O script temporário de diagnóstico foi excluído; o Lab staged ficou aberto para autenticação **humana**, quando o operador estiver presente.
+- **W1–W4 ainda pendentes:** a partição do Lab não tem sessão autenticada comprovada. Sem reutilização de login do Grátis, sem replay, sem release.
