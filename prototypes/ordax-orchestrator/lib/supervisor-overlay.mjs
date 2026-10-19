@@ -155,6 +155,21 @@ export function applySupervisorOverlay(relative, source) {
     'desktop/ui.js'].includes(relative)) return source;
   let text=Buffer.isBuffer(source)?source.toString('utf8'):String(source);
   if(relative==='desktop/main.mjs'){
+    // In the original snapshot, requestSingleInstanceLock is called BEFORE
+    // userData is configured. Move the derived userData block ahead of lock;
+    // otherwise a staged instance may attach to the already-running Lab.
+    const labDataBlock = [
+      "const here = path.dirname(fileURLToPath(import.meta.url));",
+      "const root = path.resolve(here, '..');",
+      "const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || root, 'AppData', 'Local');",
+      "const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');",
+      "app.setPath('userData', userRoot);",
+      ''
+    ].join('\n');
+    assert.equal(text.split(labDataBlock).length - 1, 1, 'Pinned Lab userData block drifted');
+    text = text.replace(labDataBlock, '');
+    text = once(text, "app.setName('OrdaX Orchestrator Lab');",
+      "app.setName('OrdaX Orchestrator Lab');\n" + labDataBlock, 'replace');
     text=once(text, "import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';",
       "import { app, BrowserWindow, ipcMain, protocol, net, dialog } from 'electron';", 'replace');
     text=once(text,"import path from 'node:path';", imports, 'after');
