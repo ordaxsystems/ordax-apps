@@ -2,70 +2,61 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { assertDerivedIdentity } from '../lib/derive.mjs';
 import { assertBootstrapVersion } from '../lib/version-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const product = path.join(root, 'product');
 const args = process.argv.slice(2);
-if (args.length > 1 || (args.length === 1 && args[0] !== '--staged')) {
-  throw new Error('usage: node scripts/start-lab.mjs [--staged]');
-}
-const staged = args[0] === '--staged';
-const workspace = path.join(root, staged ? 'workspace-next' : 'workspace');
-const productVersion = assertBootstrapVersion(root, JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')));
-const lock = { ...JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8')), productVersion };
-const read = name => fs.readFileSync(path.join(workspace, name));
+const staged = args.length === 1 && args[0] === '--staged';
+if (args.length && !staged) throw Error('usage: node scripts/start-lab.mjs [--staged]');
 
-try {
-  if (!fs.existsSync(path.join(workspace, 'DERIVATION.json'))) {
-    throw new Error('No isolated snapshot found. Run npm run import:flow' + (staged ? ' -- --staged' : '') + ' first.');
+function start() {
+  const version = assertBootstrapVersion(root,
+    JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')));
+  const lock = JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8'));
+  const pkg = JSON.parse(fs.readFileSync(path.join(product, 'package.json'), 'utf8'));
+  const owned = JSON.parse(fs.readFileSync(path.join(product, 'OWNED-SOURCE.json'), 'utf8'));
+
+  if (pkg.name !== lock.targetIdentity.name || pkg.version !== version.version ||
+      pkg.build?.appId !== lock.targetIdentity.appId ||
+      pkg.build?.productName !== lock.targetIdentity.productName ||
+      pkg.build?.win?.executableName !== lock.targetIdentity.productName ||
+      owned.source?.commit !== lock.commit ||
+      owned.source?.repository !== lock.repository ||
+      owned.product?.appId !== lock.targetIdentity.appId) {
+    throw Error('owned_product_contract_mismatch');
   }
-  const derivation = JSON.parse(read('DERIVATION.json').toString('utf8'));
-  if (derivation.fromCommit !== lock.commit ||
-      derivation.appId !== lock.targetIdentity.appId ||
-      derivation.sourceVersion !== lock.sourceVersion ||
-      derivation.productVersion !== productVersion.version ||
-      derivation.channel !== productVersion.channel) {
-    throw new Error('Source provenance/identity mismatch; execution refused.');
+
+  const main = fs.readFileSync(path.join(product, 'desktop', 'main.mjs'), 'utf8');
+  const worker = fs.readFileSync(path.join(product, 'desktop', 'embedded-worker.mjs'), 'utf8');
+  if (!main.includes("'OrdaX', 'OrchestratorLab'") ||
+      !main.includes("'ordax-orchestrator-lab.sqlite'") ||
+      !worker.includes("'persist:ordax-orchestrator-lab-chatgpt'") ||
+      worker.includes('persist:ordax-gratis-chatgpt') ||
+      worker.includes('ORDAX_CHATGPT_PARTITION')) {
+    throw Error('owned_product_profile_isolation_violation');
   }
-  assertDerivedIdentity({
-    'package.json': read('package.json'),
-    'desktop/main.mjs': read('desktop/main.mjs'),
-    'desktop/embedded-worker.mjs': read('desktop/embedded-worker.mjs'),
-    'desktop/ui.html': read('desktop/ui.html')
-  }, lock);
-  const runtimeLock = JSON.parse(read('package-lock.json').toString('utf8'));
-  if (runtimeLock.version !== productVersion.version ||
-      runtimeLock.packages?.['']?.version !== productVersion.version) {
-    throw new Error('Version mismatch in derived package lock');
-  }
-  if (!fs.existsSync(path.join(workspace, 'node_modules', 'electron'))) {
-    throw new Error('Isolated dependencies missing. Run npm ci --prefix workspace.');
-  }
-  // Node 26+ on Windows rejects bare .cmd spawnSync (EINVAL). Launch the
-  // locally installed Electron CLI through this Node executable, without
-  // command-shell interpolation or a dependency on globally installed npm.
-  const electronCli = path.join(workspace, 'node_modules', 'electron', 'cli.js');
+  const electronCli = path.join(product, 'node_modules', 'electron', 'cli.js');
   if (!fs.existsSync(electronCli)) {
-    throw new Error('Electron CLI missing in the isolated workspace.');
+    throw Error('Owned Lab dependencies missing. Run npm ci --prefix product.');
   }
-  const childEnv = { ...process.env };
-  delete childEnv.ELECTRON_RUN_AS_NODE;
-  // Developer-only staged previews must never compete for the installed Lab
-  // profile, SQLite WAL or browser session. The production profile stays
-  // stable across versions; only staged previews use a separate data root.
+
+  const env = { ...process.env };
+  delete env.ELECTRON_RUN_AS_NODE;
+  // Staged preview must never open the installed profile or compete for its SQLite WAL.
   if (staged) {
-    childEnv.LOCALAPPDATA = path.join(root, 'candidate-userdata-v' + productVersion.version);
-    childEnv.ORDAX_LAB_SUPERVISOR_ENABLE = '0';
-    delete childEnv.GROQ_API_KEY;
+    env.LOCALAPPDATA = path.join(root, 'candidate-userdata-v' + version.version);
+    env.ORDAX_LAB_SUPERVISOR_ENABLE = '0';
+    delete env.GROQ_API_KEY;
   }
-  const result = spawnSync(process.execPath, [electronCli, '.'], {
-    cwd: workspace, stdio: 'inherit', windowsHide: false,
-    env: childEnv
+  const proc = spawnSync(process.execPath, [electronCli, '.'], {
+    cwd: product, stdio: 'inherit', windowsHide: false, env
   });
-  if (result.error) throw result.error;
-  process.exitCode = result.status ?? 1;
-} catch (error) {
+  if (proc.error) throw proc.error;
+  process.exitCode = proc.status ?? 1;
+}
+try { start(); }
+catch (error) {
   process.stderr.write('Orchestrator Lab refused to start: ' + error.message + '\n');
   process.exitCode = 1;
 }
