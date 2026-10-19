@@ -5,9 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { allowSourcePath, deriveSourceFile, assertDerivedIdentity } from '../lib/derive.mjs';
 import { applySupervisorOverlay } from '../lib/supervisor-overlay.mjs';
+import { readProductVersion } from '../lib/version-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const lock = JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8'));
+const lock = { ...JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8')),
+  productVersion: readProductVersion(root) };
 const text = (p, v) => deriveSourceFile(p, Buffer.from(v, 'utf8'), lock).toString('utf8');
 const artifact = 'OrdaX-Gratis-' + '$' + '{version}.exe';
 const pkg = {
@@ -52,6 +54,7 @@ test('fork has isolated appId, userData, SQLite and debugging port', () => {
   assert.equal(p.build.appId, 'br.com.ordax.orchestrator.lab');
   assert.equal(p.build.productName, 'OrdaX Orchestrator Lab');
   assert.equal(p.name, 'ordax-orchestrator-lab');
+  assert.equal(p.version, lock.productVersion.version);
   assert.deepEqual(p.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
   assert.equal(p.build.win.artifactName, 'OrdaX-Orchestrator-Lab-' + '$' + '{version}.exe');
   const m = text('desktop/main.mjs', main);
