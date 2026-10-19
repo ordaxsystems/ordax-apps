@@ -29,6 +29,56 @@ function ownerOf(relative) {
   return 'reference-or-resource-review';
 }
 
+
+function dependencyGraph(sources) {
+  // Conservative static inventory, not a substitute for a bundler or AST audit.
+  // Nonliteral imports are reported for manual review; no source is executed.
+  const known = new Set(sources.keys());
+  const edges = [];
+  const dynamicReview = [];
+  for (const [relative, source] of sources) {
+    const specs = new Set();
+    if (/\.(?:mjs|cjs|js)$/.test(relative)) {
+      for (const pattern of [
+        /\b(?:import|export)\s+(?:[^;]{0,2000}?\s+from\s*)?(["'])([^"']+)\1/g,
+        /\brequire\s*\(\s*(["'])([^"']+)\1\s*\)/g,
+        /\bimport\s*\(\s*(["'])([^"']+)\1\s*\)/g
+      ]) {
+        for (const match of source.matchAll(pattern)) specs.add(match[2]);
+      }
+      if (/\bimport\s*\(\s*(?!["'])/.test(source) || /\brequire\s*\(\s*(?!["'])/.test(source)) {
+        dynamicReview.push(relative);
+      }
+    } else if (/\.html$/.test(relative)) {
+      for (const match of source.matchAll(/\b(?:src|href)\s*=\s*(["'])([^"']+)\1/g)) {
+        specs.add(match[2]);
+      }
+    }
+    for (const spec of specs) {
+      if (!spec.startsWith('./') && !spec.startsWith('../')) continue;
+      const base = path.posix.normalize(path.posix.join(path.posix.dirname(relative), spec.split(/[?#]/)[0]));
+      const candidates = [base, base + '.mjs', base + '.cjs', base + '.js', base + '.json'];
+      const target = candidates.find(value => known.has(value)) || null;
+      edges.push({ from: relative, import: spec, target, review: target === null });
+    }
+  }
+  const entrypoints = ['desktop/main.mjs', 'desktop/embedded-worker.mjs',
+    'src/store.mjs', 'desktop/ui.html', 'desktop/ui.js'].filter(p => known.has(p));
+  const reachable = new Set(entrypoints);
+  const pending = [...entrypoints];
+  while (pending.length) {
+    const current = pending.pop();
+    for (const edge of edges) if (edge.from === current && edge.target && !reachable.has(edge.target)) {
+      reachable.add(edge.target);
+      pending.push(edge.target);
+    }
+  }
+  return { source: 'conservative static scan; review dynamic/nonliteral imports',
+    entrypoints, reachable: [...reachable].sort(), edges,
+    unresolved: edges.filter(e => e.review),
+    dynamic_review: [...new Set(dynamicReview)].sort() };
+}
+
 function safeTarget(workspaceDir, relative) {
   if (!relative || relative.includes('\\') || relative.split('/').includes('..') || path.isAbsolute(relative)) {
     throw new Error('invalid_audit_path');
@@ -55,6 +105,7 @@ export function auditPinnedWorkspace({ sourceDir, workspaceDir, commit, allow = 
   const entries = git(sourceDir, 'ls-tree', '-r', '-z', commit).toString('utf8').split('\0').filter(Boolean);
   const files = [];
   const problems = [];
+  const sourceTexts = new Map();
   for (const entry of entries) {
     const tab = entry.indexOf('\t');
     if (tab < 0) throw new Error('invalid_git_tree_entry');
@@ -66,6 +117,7 @@ export function auditPinnedWorkspace({ sourceDir, workspaceDir, commit, allow = 
       continue;
     }
     const original = git(sourceDir, 'show', commit + ':' + relative);
+    if (/\.(?:mjs|cjs|js|html)$/.test(relative)) sourceTexts.set(relative, original.toString('utf8'));
     const transformed = Buffer.from(transform(relative, original));
     const { target, missing } = safeTarget(workspaceDir, relative);
     const current = missing ? null : fs.readFileSync(target);
@@ -99,7 +151,7 @@ export function auditPinnedWorkspace({ sourceDir, workspaceDir, commit, allow = 
     changed_by_derivation: files.filter(f => f.changed_by_derivation).map(f => f.path),
     owner_counts: Object.fromEntries([...new Set(files.map(f => f.owner))]
       .sort().map(owner => [owner, files.filter(f => f.owner === owner).length])),
-    problems, files
+    problems, dependency_graph: dependencyGraph(sourceTexts), files
   };
 }
 
