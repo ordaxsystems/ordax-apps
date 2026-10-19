@@ -105,6 +105,6 @@ O manifesto SHA-256 completo é gerado como `pinned-audit.json` pelo workflow. A
 
 **Entregues no escopo P0:** mapa de owners e contratos ancorados no snapshot; script de hash/byte-comparison somente leitura; testes locais/CI da ferramenta de inspeção. Versão do produto não muda.
 
-**Ainda pendentes para encerrar P0:** grafo de imports transitivos com dependências dinâmicas explicitadas, revisão técnica do manifesto por arquivo e (se o gate exigir) evidência de paridade funcional no Windows. O baseline **Linux** de cópia pinada/113 testes e o relatório de hashes **já passaram**; não repeti-los por falta de memória. A paridade do ChatGPT Web real é P3/P5, não consequência da CI Linux. **P1 não deve iniciar cutover destrutivo antes dessas provas.**
+**Resultado do P0 técnico em CI:** baseline Linux/Node 24, reprodução do snapshot fixo, 113 testes, comparação de hashes e grafo estático **aprovados**, com manifesto anexado ao workflow. **Revisão humana ainda necessária** antes do cutover P1: confirmar o grafo de imports executados indiretamente na UI e a decisão mínima de arquivos a tornar owners do Lab. O teste da UI do ChatGPT Web real, autorização Windows e side-by-side não fazem parte desta evidência e permanecem nos gates posteriores (P3/P5/G01). **P1 não deve iniciar cutover destrutivo antes dessas provas.**
 
 **Ainda pendentes para Alpha.3:** P2 Store real; P3 fixtures de transporte; P4 reconciliação de envio; P5 E2E real autenticado. Nenhum deles é declarado concluído aqui.
