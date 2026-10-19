@@ -11,7 +11,7 @@ function fixture(t) {
   t.after(() => fs.rmSync(dir, { recursive:true, force:true }));
   return path.join(dir, 'orchestrator.sqlite');
 }
-function coordinator(store, { decide, onSend = () => ({ confirmed:true, runId:'simulated' }) } = {}) {
+function coordinator(store, { decide, onSend = () => ({ confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId:'run_00000003' }) } = {}) {
   return new SupervisorCoordinator({
     store, enabled:true, environment:'internal', actorId:'lab-owner',
     authorizeTask: ({taskId,actorId,environment}) =>
