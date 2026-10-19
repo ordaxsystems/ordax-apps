@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { allowSourcePath, deriveSourceFile, assertDerivedIdentity } from '../lib/derive.mjs';
+import { applySupervisorOverlay } from '../lib/supervisor-overlay.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lock = JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8'));
@@ -48,19 +49,28 @@ function createWorkspace(source) {
   try {
     for (const relative of paths) {
       const bytes = git(source, ['show', lock.commit + ':' + relative]);
-      const transformed = deriveSourceFile(relative, bytes, lock);
+      const transformed = applySupervisorOverlay(relative, deriveSourceFile(relative, bytes, lock));
       if (['package.json', 'desktop/main.mjs', 'desktop/embedded-worker.mjs',
         'desktop/ui.html'].includes(relative)) keyFiles[relative] = transformed;
       const target = path.join(stage, ...relative.split('/'));
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, transformed, { flag: 'wx' });
     }
-    assertDerivedIdentity(keyFiles, lock);
+    // These are lab-owned modules, not copies from the frozen Flow repository.
+    const labModules = ['supervisor/coordinator.mjs', 'supervisor/groq-planner.mjs'];
+    for (const relative of labModules) {
+      const sourcePath = path.join(root, ...relative.split('/'));
+      const targetPath = path.join(stage, ...relative.split('/'));
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
+    }
+        assertDerivedIdentity(keyFiles, lock);
     const provenance = {
       schema: 'ordax.orchestrator-lab-provenance/1',
       fromRepository: lock.repository,
       fromCommit: lock.commit,
       copiedTrackedFiles: paths.length,
+      labOwnedModules: labModules,
       appId: lock.targetIdentity.appId,
       userDataSuffix: lock.targetIdentity.userDataSuffix,
       note: 'Local derived workspace. Source of truth for this prototype is the pin and importer in ordax-apps. No upstream writes.'
