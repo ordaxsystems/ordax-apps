@@ -1,5 +1,7 @@
 # OrdaX Orchestrator Lab — protótipo isolado
 
+**Versão própria do Lab: `0.2.0-alpha.1` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
+
 **Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release, sem supervisor de IA ativo e sem submissão automática de tarefas. Esta é uma derivação controlada do **OrdaX Flow/Grátis 0.4.12**, não uma modificação do Grátis existente.
 
 ## Objetivo
@@ -14,7 +16,7 @@ Exige Node.js compatível com a versão do Flow (Node 24+), Git e autenticação
 
 ```powershell
 cd ordax-apps\prototypes\ordax-orchestrator
-npm test
+npm run validate
 npm run import:flow
 npm ci --prefix workspace
 npm run validate --prefix workspace
@@ -29,6 +31,8 @@ node scripts/import-flow.mjs --source C:\caminho\para\ordax-flow
 
 O Git do repositório local precisa conter o commit exato; o importador **não copia o estado de trabalho sujo**. Em vez disso, lê cada blob do commit fixo. Não utiliza Git pull no Grátis, não atualiza dependências do Grátis e não acessa SQLite ou cookies existentes.
 
+A versão canônica do produto está em `product-version.json`, projetada no `package.json` do bootstrap e, pelo importador, no `package.json` e `package-lock.json` do Electron. O `DERIVATION.json` registra a versão do Lab e a versão/commit de origem; versões antigas ou inconsistentes não iniciam. A interface mostra a versão realmente empacotada com `app.getVersion()`.
+
 Os arquivos são materializados em `workspace/`, que é ignorado pelo Git. Uma importação sobre `workspace/` já existente é bloqueada; não há exclusão ou sobrescrita automática. O derivado inclui `DERIVATION.json`, lista de arquivos copiados e identidade. A importação aplica somente mudanças de identidade com correspondência exata e falha se o source não corresponde às expectativas.
 
 ## Barreiras de isolamento (verificáveis)
@@ -38,6 +42,7 @@ Os arquivos são materializados em `workspace/`, que é ignorado pelo Git. Uma i
 | Git source | `ordaxsystems/ordax-flow` | Protótipo e importador neste diretório |
 | Package/app ID | `br.com.ordax.gratis` | `br.com.ordax.orchestrator.lab` |
 | Nome público | OrdaX Grátis | OrdaX Orchestrator Lab |
+| Versão do aplicativo | `0.4.12` | `0.2.0-alpha.1` |
 | Dados do Windows | `%LOCALAPPDATA%\OrdaX\Gratis` | `%LOCALAPPDATA%\OrdaX\OrchestratorLab` |
 | SQLite local | `ordax-gratis.sqlite` | `ordax-orchestrator-lab.sqlite` |
 | Sessão ChatGPT Electron | `persist:ordax-gratis-chatgpt` | `persist:ordax-orchestrator-lab-chatgpt` |
@@ -48,7 +53,7 @@ O login no ChatGPT do Lab é intencionalmente separado: não importar/exportar c
 
 ## Roteiro de implementação, sem fingir funcionalidade
 
-1. **Base Dev isolada:** gerar snapshot exato, testar com `npm run validate --prefix workspace`, executar novo Electron no Windows, provar chats e persistência com conta autorizada. **Pendente no dispositivo real.**
+1. **Base Dev isolada:** gerar snapshot exato, testar com `npm run validate --prefix workspace`, executar novo Electron no Windows, provar chats e persistência com conta autorizada. **Snapshot já validado no Windows com 113 testes herdados; E2E de envio autenticado ainda pendente.**
 2. **Extração de interfaces:** estabilizar conector de conversas, Task/Run/Checkpoint e receipts, mantendo o código operacional do novo app num único owner. Outros aplicativos usarão adaptadores públicos, não cópias do worker Electron. **Pendente.**
 3. **Agentes internos:** ligar uma API de modelo para planejar e coordenar chats/tarefas apenas mediante credencial própria, limites de gasto, permissões e política explícita. Sem chave de API, chat manual permanece funcional. **Pendente.**
 4. **Multiusuário:** usar o mesmo mecanismo sob isolamento por cliente, com sessões de chat legalmente autorizadas ou APIs oficiais onde necessário, e supervisão própria; nunca compartilhar conta pessoal do proprietário. **Pendente.**
@@ -62,7 +67,7 @@ O login no ChatGPT do Lab é intencionalmente separado: não importar/exportar c
 - Automação de interface ChatGPT Web continua **experimental**, sujeita a compatibilidade, consentimento, políticas do provedor e testes reais. Nenhum endpoint privado ou bypass de limites é adicionado.
 - Não executar duas instâncias distintas apontando para o mesmo perfil. O Lab usa seu próprio perfil separado.
 
-**Escopo deste PR:** criar somente o processo reproduzível de derivação e testes de isolamento no `ordax-apps`, sem alterar a `main` do Flow ou o Windows do usuário. O aplicativo derivado ainda não foi materializado/testado num Windows nesta revisão.
+**Escopo desta PR:** a cópia e o candidato com supervisor foram materializados e testados no Windows em diretórios separados, sem alterar o Grátis. O foco do repositório é GitHub/CI; operações no Windows ficam restritas aos gates que exigem Electron, sessão autorizada ou integração local.
 
 
 ## Incremento de supervisão — 19/10/2026
@@ -80,6 +85,6 @@ O login no ChatGPT do Lab é intencionalmente separado: não importar/exportar c
 
 Sem configuração, a UI exibirá **Supervisor desativado** e preservará todas as funções manuais. Para habilitar o primeiro passo supervisionado em um **ambiente Dev** com credencial própria, configurar `GROQ_API_KEY` e `ORDAX_LAB_SUPERVISOR_ENABLE=1` no **processo isolado do Lab**, não no OrdaX Grátis e nunca em arquivos versionados. Não utilizar uma conta ChatGPT de terceiros. A chave é fornecida pelo usuário e não é inferida, solicitada ou copiada de outro aplicativo.
 
-O comando `node scripts/import-flow.mjs --staged` cria um novo `workspace-next/` sem sobrescrever `workspace/`. Assim é possível provar o candidato enquanto o Lab anterior está em execução. Os dois usam a **mesma identidade de aplicativo Lab** e, portanto, NÃO devem executar simultaneamente; validar uma versão e encerrar a anterior antes de promovê-la. Para isso ainda é necessário um passo de promoção/rollback explícito, não implementado aqui.
+O comando `npm run import:flow -- --staged` cria `workspace-next/` sem sobrescrever `workspace/`. Para executar a prévia, use `npm ci --prefix workspace-next` e `npm run start:staged`. Este comando impõe um **AppData isolado pela versão** e mantém o supervisor desativado, permitindo verificar o candidato sem usar a sessão ou o SQLite do Lab anterior. A promoção definitiva e o rollback ainda exigem seus próprios gates, não implementados aqui.
 
-**Evidência:** os 19 testes de bootstrap (incluindo um teste com o `Store` real) passaram no Windows. Os 113 testes herdados do Flow passaram na cópia original derivada; o candidato com supervisor tem validação separada. A CI do `ordax-apps` não acessa o repositório Flow privado nem um provedor de IA real. Nenhuma chamada Groq paga, envio ChatGPT ou automação foi realizada nesta revisão.
+**Evidência de referência (19/10/2026):** 20 testes iniciais de bootstrap/supervisor e 113 testes herdados do Flow foram aprovados no Windows, inclusive na versão com supervisor. O novo gate de SemVer é executado na CI do GitHub e deve permanecer verde antes de merge. A CI não acessa o Flow privado nem a API real de um provedor. Nenhuma chamada Groq paga ou envio ChatGPT automático foi realizado.
