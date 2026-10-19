@@ -39,3 +39,26 @@ Não mudar Electron, driver, seleção de contas, SQLite, Grátis, Runtime ou fl
 - **Confirmado fisicamente:** o portátil CI inicializa sua janela/CDP após o tempo de extração e responde por loopback; autenticação está `anonymous`; não houve envio.
 - **Automatizado em CI:** helper de espera e isolamento; **não** é prova de autenticação nem de retomada real.
 - **Pendente:** sessão ChatGPT do próprio Lab autenticada; mensagem consentida; encerramento/reabertura da mesma Task/Run; ausência de replay.
+
+## Resultado integrado após o teste real
+
+- [PR #285](https://github.com/ordaxsystems/ordax-apps/pull/285) **integrada**, commit `a479269d80e9afd055542227a2004e081ad9a106`.
+- [CI #285](https://github.com/ordaxsystems/ordax-apps/actions/runs/39334597221) **aprovada**: 36 testes de bootstrap, 136 do produto em Linux e 136 no Windows, além do build portátil Windows.
+- O computador autorizado executou a branch candidata no **checkout isolado**, apontando o smoke para o portátil da CI que já estava aberto. `npm run test:live:ready --prefix product` retornou exatamente os indicadores:
+  ```json
+  {
+    "schema": "ordax.lab.windows-readiness.v1",
+    "labUiReady": true,
+    "waitMs": 4880,
+    "authState": "anonymous",
+    "composerReady": true,
+    "verificationRequired": false,
+    "diagnosticSchema": "ordax.lab.provider-dom-diagnostic.v1",
+    "pageType": "provider_other",
+    "authenticated": "not_verified",
+    "delivery": "not_evaluated",
+    "e2eAuthenticated": false,
+    "e2eDelivered": false
+  }
+  ```
+- O comando retornou resultado de **W0-readiness real, não W1–W4**. A conta ainda não estava autenticada no perfil isolado e não houve envio nem alteração da Task. O objetivo de tornar a sondagem determinística e suportar a extração portátil foi cumprido. A autenticação legítima, envio único e prova de continuidade permanecem gates distintos.
