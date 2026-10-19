@@ -1,0 +1,105 @@
+name: OrdaX Orchestrator P1 Source Cutover Candidate
+
+on:
+  push:
+    branches: ['feat/orchestrator-p1-owned-source-20261019']
+    paths:
+      - 'prototypes/ordax-orchestrator/scripts/promote-owned-source.mjs'
+      - '.github/workflows/orchestrator-lab-p1-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    if: github.repository == 'ordaxsystems/ordax-apps' && github.ref == 'refs/heads/feat/orchestrator-p1-owned-source-20261019'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout untrusted build workspace without GitHub token
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+
+      - name: Derive pinned copy in isolation
+        shell: bash
+        working-directory: prototypes/ordax-orchestrator
+        run: |
+          set -euo pipefail
+          git clone --quiet --no-checkout https://github.com/ordaxsystems/ordax-flow.git "$RUNNER_TEMP/source"
+          node scripts/import-flow.mjs --source "$RUNNER_TEMP/source"
+          node scripts/promote-owned-source.mjs --workspace ./workspace --output ./product
+
+      - name: Install owned product from clean checkout
+        shell: bash
+        working-directory: prototypes/ordax-orchestrator
+        run: |
+          npm ci --prefix product
+          npm run validate --prefix product
+
+      - name: Assert forbidden server surfaces are absent
+        shell: bash
+        working-directory: prototypes/ordax-orchestrator
+        run: |
+          test ! -e product/src/relay
+          test ! -e product/apps
+          test ! -e product/sql
+          test ! -e product/node_modules/.git
+          node -e "const p=require('./product/package.json');if(p.name!=='ordax-orchestrator-lab'||p.version!=='0.2.0-alpha.2'||p.build.appId!=='br.com.ordax.orchestrator.lab') process.exit(1)"
+          test -f product/OWNED-SOURCE.json
+
+      - name: Remove generated dependencies from upload
+        shell: bash
+        working-directory: prototypes/ordax-orchestrator
+        run: rm -rf product/node_modules
+
+      - name: Upload validated source candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ordax-p1-owned-product-source
+          path: prototypes/ordax-orchestrator/product/
+          include-hidden-files: false
+          retention-days: 7
+          if-no-files-found: error
+
+  promote:
+    needs: prepare
+    if: github.repository == 'ordaxsystems/ordax-apps' && github.ref == 'refs/heads/feat/orchestrator-p1-owned-source-20261019'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout only protected candidate branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+
+      - name: Retrieve previously tested candidate files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ordax-p1-owned-product-source
+          path: prototypes/ordax-orchestrator/product/
+
+      - name: Commit reviewed candidate to branch, never to main or Flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/feat/orchestrator-p1-owned-source-20261019'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add prototypes/ordax-orchestrator/product/
+          if git diff --cached --quiet; then
+            echo 'Already committed'; exit 0
+          fi
+          git diff --cached --name-only | while read -r file; do
+            case "$file" in prototypes/ordax-orchestrator/product/*) ;; *) echo "Forbidden write: $file"; exit 1;; esac
+          done
+          git commit -m 'feat(orchestrator): vendor isolated owned desktop client from pinned Flow'
+          git push origin HEAD:refs/heads/feat/orchestrator-p1-owned-source-20261019
