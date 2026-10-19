@@ -4,6 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
+import { observeWithin, classifyProviderAuthObservation } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -284,7 +285,7 @@ export class EmbeddedChatWorker {
   async health() {
     const base = this.status();
     if (!base.connected) return { ...base, verification_required:false, auth_state:'unavailable' };
-    const page = await this.view.webContents.executeJavaScript(`(() => {
+    const page = await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
       const body=document.body?.innerText||'';
       const composer=${composerExpression()};
       return {
@@ -294,12 +295,12 @@ export class EmbeddedChatWorker {
         hasSignup:/Cadastre-se|Sign up/i.test(body),
         verification:/Ocorreu um erro durante a verificação|verification.*(?:failed|error)|verificação.*erro/i.test(body)
       };
-    })()`).catch(() => ({ body:'', composer:false, hasLogin:false, hasSignup:false, verification:false }));
+    })()`), { timeoutMs:5000, code:'provider_health_observation_timeout' }).catch(() => null);
     const url = this.view.webContents.getURL();
-    const authState = /accounts\.google\.com|auth\.openai\.com|chatgpt\.com\/auth\//i.test(url)
-      ? 'authenticating'
-      : (page.hasLogin && page.hasSignup ? 'anonymous' : 'session_present');
-    return { ...base, composer_ready:page.composer, verification_required:Boolean(page.verification), auth_state:authState };
+    const authState=classifyProviderAuthObservation({url,page});
+    return { ...base, composer_ready:page?.composer===true,
+      verification_required:page?.verification===true,
+      health_observed:page!==null,auth_state:authState };
   }
 
   enqueue(fn) {
@@ -568,7 +569,9 @@ export class EmbeddedChatWorker {
       } catch {}
     }
     try {
-      await wc.loadURL(url);
+      await observeWithin(() => wc.loadURL(url), {
+        timeoutMs:30000,code:'provider_navigation_timeout'
+      });
     } catch (error) {
       const message = String(error?.message || error);
       if (!(error?.code === -3 || /\(-3\)|ERR_ABORTED/i.test(message))) throw error;
