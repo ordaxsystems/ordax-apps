@@ -56,6 +56,14 @@ jobs:
       - name: Test fail-closed import, supervisor and isolated version
         run: npm run validate --prefix prototypes/ordax-orchestrator
 
+      - name: Validate the directly owned Lab product
+        run: |
+          npm ci --prefix prototypes/ordax-orchestrator/product
+          npm run validate --prefix prototypes/ordax-orchestrator/product
+          test ! -e prototypes/ordax-orchestrator/product/src/relay
+          test ! -e prototypes/ordax-orchestrator/product/apps
+          test ! -e prototypes/ordax-orchestrator/product/sql
+
       - name: Prevent accidental committed generated runtime
         run: |
           test ! -e prototypes/ordax-orchestrator/workspace
