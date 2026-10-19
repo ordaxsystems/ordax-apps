@@ -1,6 +1,7 @@
 import { WebContentsView, session } from 'electron';
 import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
 import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
+import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -783,7 +784,7 @@ export class EmbeddedChatWorker {
 
       this.#setStage('await-response');
       const started = Date.now();
-      let latest = null, latestSignature = '', stable = 0;
+      let latest = null, latestSignature = '', stable = 0, completionConfirmed = false;
       while (Date.now() - started < 180000) {
         await sleep(300);
         const snap = await this.#assistantSnapshot().catch(() => ({ mode:'unknown', messages:[], rawBody:'', images:[] }));
@@ -819,10 +820,15 @@ export class EmbeddedChatWorker {
         if (signature === latestSignature) stable++; else stable = 0;
         latest = candidate; latestSignature = signature;
         const transient = /^(criando|gerando)\s+imagem/i.test(candidate.text||'') || /^(creating|generating)\s+image/i.test(candidate.text||'');
-        const generating = await wc.executeJavaScript(`(() => Boolean(document.querySelector('button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]')))()`).catch(() => false);
-        if (!transient && !generating && ((candidate.complete && stable >= 2) || stable >= 4)) break;
+        const generating = await wc.executeJavaScript(`(() => Boolean(document.querySelector('button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]')))()`).catch(() => null);
+        if (responseObservationComplete({ candidate, stable, transient, generating })) {
+          completionConfirmed = true;
+          break;
+        }
       }
-      if (!latest) throw new Error('response_not_observed');
+      // A partial or actively generating response at timeout is NOT complete,
+      // even if it contains text. Leave the Run uncertain for reconciliation.
+      requireObservedCompletion({ candidate:latest, completed:completionConfirmed });
       this.#setStage('assets');
       const images = await this.#fetchImages(latest.images || []);
       this.lastError = null;
