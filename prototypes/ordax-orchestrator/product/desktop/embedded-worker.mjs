@@ -816,6 +816,12 @@ export class EmbeddedChatWorker {
       const healthCompletedAt = Date.now();
       if (health.verification_required) throw new Error('chatgpt_verification_required');
       if (health.auth_state === 'authenticating') throw new Error('chatgpt_authentication_in_progress');
+      // Do not submit when the DOM indicates anonymous, is unreadable, or is
+      // mid-navigation. The user must complete login in this Lab partition.
+      // A visible composer by itself is NOT a verified account identity.
+      if (health.auth_state === 'anonymous') throw new Error('chatgpt_login_required');
+      if (health.auth_state !== 'session_present' || health.composer_ready !== true)
+        throw new Error('chatgpt_session_not_observed');
       this.#setStage('prepare');
       const currentDraft = await this.#composerState().catch(() => ({ found:false, text:'' }));
       const draftCheckedAt = Date.now();
