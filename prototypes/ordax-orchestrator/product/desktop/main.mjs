@@ -425,6 +425,9 @@ ipcMain.handle('ordax:supervisor:recoverable', (event,payload) => {
 ipcMain.handle('ordax:supervisor:approve', async (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   const controller = requireLabSupervisor();
+  // The proposed text belongs to a potentially different workspace.
+  // Authorize before reading it or showing it in an owner-approval dialog.
+  controller.authorize(payload?.taskId, 'approve');
   const row = store.db.prepare(
     'SELECT result,status FROM action_ledger WHERE id=? AND task_id=? AND action_type=?'
   ).get(payload?.actionId,payload?.taskId,'supervisor.plan');
