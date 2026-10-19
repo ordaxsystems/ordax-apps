@@ -29,6 +29,6 @@ Não são testes de ChatGPT Web real nem prova do Runtime. Eles verificam a pers
 - Reavaliar a autorização local atual: em modo interno ainda não existe grant do Runtime vinculado a recurso/escopo verificável. Não elevar o supervisor a executor.
 - Auditar a ramificação `external` / tenant, que permanece inativa para produtos externos.
 - Definir semântica explícita de `observedAt`, delivery e response nas etapas P3/P4, sem afirmar conclusão de efeitos.
-- Executar os testes nesta PR e verificar os workflows antes de integração.
+- **Verificação concluída:** [PR #274](https://github.com/ordaxsystems/ordax-apps/pull/274) integrada; [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39305516631) aprovou 36 testes do bootstrap, 81 testes do produto e build portátil Windows. Não houve teste de login ChatGPT Web real.
 
-**Conclusão prevista:** primeiro incremento de P2, não autorização para P3/P4, multiusuário, supervisor automático ou release. Manter P0/P1 preservados e seguir a ordem do RFC-002.
+**Conclusão verificada:** primeiro incremento de P2 integrado em `52ad8c543e128819ebbf7a2061ccdf7e152fecd7`, não autorização para P3/P4, multiusuário, supervisor automático ou release. Manter P0/P1 preservados e seguir a ordem do RFC-002.
