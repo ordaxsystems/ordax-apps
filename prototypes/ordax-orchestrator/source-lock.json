@@ -36,5 +36,6 @@
   ],
   "distributionEnabled": false,
   "modelSupervisorEnabled": false,
-  "externalUserIngressEnabled": false
+  "externalUserIngressEnabled": false,
+  "sourceVersion": "0.4.12"
 }
