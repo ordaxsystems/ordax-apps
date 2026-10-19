@@ -8,7 +8,14 @@ import { applySupervisorOverlay } from '../lib/supervisor-overlay.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lock = JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8'));
-const output = path.join(root, 'workspace');
+const options = process.argv.slice(2);
+const staged = options.includes('--staged');
+const parameters = options.filter(option => option !== '--staged');
+if (options.filter(option => option === '--staged').length > 1 ||
+    (parameters.length !== 0 && (parameters.length !== 2 || parameters[0] !== '--source'))) {
+  throw new Error('usage: node scripts/import-flow.mjs [--source LOCAL_FLOW_REPO] [--staged]');
+}
+const output = path.join(root, staged ? 'workspace-next' : 'workspace');
 
 function git(directory, args, maxBuffer = 4 * 1024 * 1024) {
   const result = spawnSync('git', ['-C', directory, ...args], {
@@ -88,13 +95,10 @@ function createWorkspace(source) {
 
 let temporary = null;
 try {
-  if (process.argv.length > 4 || (process.argv.length === 4 && process.argv[2] !== '--source')) {
-    throw new Error('usage: node scripts/import-flow.mjs [--source PATH_TO_LOCAL_FLOW_REPO]');
-  }
   let source;
-  if (process.argv[2] === '--source') {
-    if (!process.argv[3]) throw new Error('missing --source path');
-    source = path.resolve(process.argv[3]);
+  if (parameters[0] === '--source') {
+    if (!parameters[1]) throw new Error('missing --source path');
+    source = path.resolve(parameters[1]);
   } else {
     temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'ordax-orchestrator-source-'));
     source = path.join(temporary, 'flow');
