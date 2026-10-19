@@ -61,6 +61,15 @@
 - **P4 permanece pendente de prova real:** inspeção autenticada no ChatGPT Web, histórico virtualizado/alteração de UI, atribuição imutável do envio e decisão humana baseada em recibos verificáveis; P5 continua sendo o E2E de interrupção/reinício/retomada.
 - [CI da PR #279](https://github.com/ordaxsystems/ordax-apps/actions/runs/39317386820): **36/36 testes do bootstrap, 116/116 do produto em Linux e instalação/testes/build portátil Windows aprovados**. Produto segue `0.2.0-alpha.2`.
 
+## P5 — Reinício e diagnóstico sanitizado em validação
+
+- [PR #280](https://github.com/ordaxsystems/ordax-apps/pull/280) em revisão: fixture **não sensível** de indicadores do ChatGPT Web, capturada somente por clique local, sem texto, URL da conversa, cookie, HTML ou envio.
+- Teste de reinício com **Store SQLite real**: uma Run interrompida permanece `interrupted`, o supervisor `dispatching` continua incerto, sem replay; uma conversa vinculada permite apenas `response_candidate`. Nada disso prova comunicação autenticada.
+- [Procedimento P5 e matriz de aceite](../audits/P5-RESTART-DIAGNOSTIC-GATE-2026-10-19.md).
+- A conexão OrdaX MCP retornou `product_targets_unavailable` nesta conversa. Não foi executado E2E ChatGPT Web real.
+- **Lacuna estrutural prioritária detectada:** a URL da primeira conversa é vinculada depois da resposta, portanto pode faltar em queda após envio. A próxima mudança deve persistir o vínculo **somente com prova da URL canônica e do envio**, sem inventar links nem reenviar.
+- O gate P5-W1–W4 continua pendente. Versão `0.2.0-alpha.2`, sem release nem supervisor autônomo.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
