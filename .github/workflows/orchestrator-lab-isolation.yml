@@ -1,5 +1,9 @@
 name: OrdaX Orchestrator Lab Isolation
 
+concurrency:
+  group: ordax-orchestrator-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     branches: [main, 'feat/orchestrator-lab-isolated-20261019']
