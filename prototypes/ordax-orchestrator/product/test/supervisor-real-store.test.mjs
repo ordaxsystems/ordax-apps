@@ -69,7 +69,7 @@ test('real SQLite Store: persisted approval survives restart and unknown deliver
   let sends=0;
   const decision=async({taskId})=>({type:'send_message',taskId,
     content:'Validate isolated fixture only.',reason:'One authorized step'});
-  const first=coordinator(store,{decide,onSend:async()=>{sends++;throw Error('unknown_response');}});
+  const first=coordinator(store,{decide:decision,onSend:async()=>{sends++;throw Error('unknown_response');}});
   const p=await first.plan({taskId:task.id,requestId:'recovery-001',objective:'Simulate intermittent connection'});
   assert.equal(p.status,'pending_approval');
   first.approve({taskId:task.id,actionId:p.actionId,approvalId:p.approvalId,explicitOwnerApproval:true});
