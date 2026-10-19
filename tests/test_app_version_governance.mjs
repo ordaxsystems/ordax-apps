@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { productSourceAppId, validateAppVersionTransition, productSourcePrototypeId, validatePrototypeVersion, assertVersionOwnerForChangedApp } from '../tools/verify_app_version_governance.mjs';
+import { productSourceAppId, validateAppVersionTransition, productSourcePrototypeId, validatePrototypeVersion, assertPrototypeVersionOwnerContinuity, assertVersionOwnerForChangedApp } from '../tools/verify_app_version_governance.mjs';
 
 const base=Object.freeze({
   schema:'ordax.component-manifest/1',id:'studio',title:'OrdaX Studio',
@@ -100,6 +100,21 @@ test('experimental runtime improvement must increase alpha number',()=>{
   assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/product-version.json'),'ordax-orchestrator');
 });
 
+
+test('prototype version owner cannot be removed through a manifest or full-directory deletion',()=>{
+  const previous={version:'0.2.0-alpha.2',channel:'alpha',distributionEnabled:false,releaseDate:null};
+  assert.throws(()=>assertPrototypeVersionOwnerContinuity({
+    prototypeId:'ordax-orchestrator',previous,currentHasOwner:false,
+  }),/version owner removed/);
+  assert.doesNotThrow(()=>assertPrototypeVersionOwnerContinuity({
+    prototypeId:'ordax-orchestrator',previous,currentHasOwner:true,
+  }));
+  // Unowned experiments remain unreleased; the rule only protects an
+  // owner that already existed at the exact tested Git base.
+  assert.doesNotThrow(()=>assertPrototypeVersionOwnerContinuity({
+    prototypeId:'research-only',previous:null,currentHasOwner:false,
+  }));
+});
 
 test('source-only app candidates cannot silently evolve without structural version owner',()=>{
   assert.throws(()=>assertVersionOwnerForChangedApp({
