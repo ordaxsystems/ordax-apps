@@ -43,7 +43,7 @@ function fixture(opts={}){
     actorId:'owner',tenantId:opts.tenantId||null,
     authorizeTask:opts.authorizeTask||(()=>true),
     planner:{decide:async ({taskId})=>{plans++;return opts.decision||{type:'send_message',taskId,content:'Run the relevant tests.',reason:'Next bounded step'};}},
-    chat:{send:async()=>{sends++;if(opts.failSend)throw new Error('network_unknown');return {confirmed:true,runId:'run_test'};}}
+    chat:{send:async()=>{sends++;if(opts.failSend)throw new Error('network_unknown');return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId:'run_00000001'};}}
   });
   return {store,supervisor,get plans(){return plans;},get sends(){return sends;}};
 }
@@ -227,7 +227,7 @@ if(fs.existsSync(realPath)){
       const supervisor=new SupervisorCoordinator({store,enabled:true,actorId:'owner',
         authorizeTask:()=>true,
         planner:{decide:async()=>({type:'send_message',taskId:task.id,content:'Check status',reason:'One step'})},
-        chat:{send:async()=>({confirmed:true,runId:'verified_run'})}
+        chat:{send:async()=>({confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId:'run_00000002'})}
       });
       const p=await supervisor.plan({taskId:task.id,requestId:'integration',objective:'Review status'});
       assert.equal(p.status,'pending_approval');
