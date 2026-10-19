@@ -1,6 +1,6 @@
 # Comece por aqui — OrdaX Orchestrator Lab / RFC-002
 
-**Pacote autônomo de arquitetura, decisões e execução.** Criado em 19/10/2026, com base em leitura estática dos repositórios e nos debates do proprietário com GPT, Google/Gemini e Claude. **Não é código implementado, PR integrado nem release.** O estado vivo deve sempre ser reconfirmado no GitHub.
+> **Estado vivo com evidência recente:** [STATUS-ATUAL.md](STATUS-ATUAL.md). As versões e gates neste guia são um retrato histórico de 19/10/2026; consulte o status antes de agir.\n\n**Pacote autônomo de arquitetura, decisões e execução.** Criado em 19/10/2026, com base em leitura estática dos repositórios e nos debates do proprietário com GPT, Google/Gemini e Claude. **Não é código implementado, PR integrado nem release.** O estado vivo deve sempre ser reconfirmado no GitHub.
 
 ## Ordem de leitura (para qualquer nova IA/chat)
 
