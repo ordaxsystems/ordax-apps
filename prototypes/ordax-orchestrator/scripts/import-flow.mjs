@@ -86,7 +86,7 @@ try {
   } else {
     temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'ordax-orchestrator-source-'));
     source = path.join(temporary, 'flow');
-    const clone = spawnSync('git', ['clone', '--quiet', '--no-checkout', '--filter=blob:none',
+    const clone = spawnSync('git', ['clone', '--quiet', '--no-checkout',
       'https://github.com/' + lock.repository + '.git', source], {
       encoding: 'utf8', windowsHide: true, maxBuffer: 1024 * 1024
     });
