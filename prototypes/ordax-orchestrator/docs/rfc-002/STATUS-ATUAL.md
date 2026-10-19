@@ -46,29 +46,20 @@
 - **P3 não está concluído:** faltam fixtures redigidas do ChatGPT Web autenticado e verificação da UX real em Windows. P4 precisa separar entrega, resposta e efeitos; P5 provar queda/reinício/retomada sem duplicação.
 - Lab continua `0.2.0-alpha.2`; sem release, multiusuário, supervisor automático ou mudanças no Flow/Grátis original.
 
-## P4 — Contrato de evidências integrado; reconciliação ainda pendente
+## P4 — Evidências de transporte e inspeção somente leitura integradas
 
-- [PR #278](https://github.com/ordaxsystems/ordax-apps/pull/278) **integrada** em `c5a09a13c516770e2774fce117e6b67d2c4fe899` — separação de **entrega observada**, **resposta observada** e **efeito não verificado** no supervisor, usando `action_ledger` e o `runId` reais.
-- [Contrato e testes](../audits/P4-CHATGPT-TRANSPORT-RECEIPT-2026-10-19.md): recibos legados ou incompletos permanecem incertos e **não** autorizam reenvio.
-- [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39314434461): **36/36 testes do bootstrap, 99/99 do produto em Linux e instalação/testes/build portátil Windows aprovados**. Não declarar P4 concluído, não avançar a versão nem ativar autonomia.
-- Mesmo com a PR aprovada, permanecem pendentes: `reconcile()` somente leitura da conversa real, fixtures redigidas do ChatGPT Web autenticado, P5 (encerrar/reabrir/retomar) e grants oficiais do Runtime.
+- [PR #278](https://github.com/ordaxsystems/ordax-apps/pull/278), commit `c5a09a1`: entrega observada, resposta observada e efeito não comprovado permanecem conceitos separados, com `runId` no ledger.
+- [PR #279](https://github.com/ordaxsystems/ordax-apps/pull/279), commit `9f3aa40`: botão `Verificar conversa (sem envio)`, correlação conservadora e leitura do ledger mesmo sem Groq.
+- [CI P4](https://github.com/ordaxsystems/ordax-apps/actions/runs/39317386820): 36 testes bootstrap e 116 testes do produto em Linux, mais build portátil Windows aprovados.
+- [Evidências P4](../audits/P4-READONLY-RECONCILIATION-2026-10-19.md). **P4 não está encerrado**: falta inspeção com DOM real autenticado e comprovante atribuível de entrega, sem assumir efeitos locais.
 
-## P4 — Inspeção somente leitura integrada; prova autenticada ainda pendente
+## P5 — Preparação integrada; retomada autenticada ainda pendente
 
-- [PR #279](https://github.com/ordaxsystems/ordax-apps/pull/279) **integrada** em `9f3aa40d366a181b7dbbe64042ea4137c5b9c18b`: botão manual `Verificar conversa (sem envio)`, inspeção de DOM limitada, correlação exata conservadora e verificação de autorização do mesmo Workspace.
-- [Auditoria da inspeção](../audits/P4-READONLY-RECONCILIATION-2026-10-19.md): a recuperação é possível mesmo sem `GROQ_API_KEY`; a ação incerta continua incerta, sem `finishAction`, novo envio, mudança no ledger ou afirmação de patch local executado.
-- Nenhum dado de outra conversa ou HTML bruto é retornado à interface; o worker reutiliza sessão legítima e proteção de rascunhos.
-- **P4 permanece pendente de prova real:** inspeção autenticada no ChatGPT Web, histórico virtualizado/alteração de UI, atribuição imutável do envio e decisão humana baseada em recibos verificáveis; P5 continua sendo o E2E de interrupção/reinício/retomada.
-- [CI da PR #279](https://github.com/ordaxsystems/ordax-apps/actions/runs/39317386820): **36/36 testes do bootstrap, 116/116 do produto em Linux e instalação/testes/build portátil Windows aprovados**. Produto segue `0.2.0-alpha.2`.
-
-## P5 — Reinício e diagnóstico sanitizado em validação
-
-- [PR #280](https://github.com/ordaxsystems/ordax-apps/pull/280) em revisão: fixture **não sensível** de indicadores do ChatGPT Web, capturada somente por clique local, sem texto, URL da conversa, cookie, HTML ou envio.
-- Teste de reinício com **Store SQLite real**: uma Run interrompida permanece `interrupted`, o supervisor `dispatching` continua incerto, sem replay; uma conversa vinculada permite apenas `response_candidate`. Nada disso prova comunicação autenticada.
-- [Procedimento P5 e matriz de aceite](../audits/P5-RESTART-DIAGNOSTIC-GATE-2026-10-19.md).
-- A conexão OrdaX MCP retornou `product_targets_unavailable` nesta conversa. Não foi executado E2E ChatGPT Web real.
-- **Lacuna estrutural prioritária detectada:** a URL da primeira conversa é vinculada depois da resposta, portanto pode faltar em queda após envio. A próxima mudança deve persistir o vínculo **somente com prova da URL canônica e do envio**, sem inventar links nem reenviar.
-- O gate P5-W1–W4 continua pendente. Versão `0.2.0-alpha.2`, sem release nem supervisor autônomo.
+- [PR #280](https://github.com/ordaxsystems/ordax-apps/pull/280) integrada em `d918e475e87a257974607dfc4bbcd859ed104ce7`: diagnóstico DOM por clique, sem texto/URL/cookies/HTML, e testes de reinício com SQLite real.
+- [Gate P5 e matriz de aceitação](../audits/P5-RESTART-DIAGNOSTIC-GATE-2026-10-19.md). [CI #280](https://github.com/ordaxsystems/ordax-apps/actions/runs/39319760992) Linux/Windows aprovada.
+- [PR #281](https://github.com/ordaxsystems/ordax-apps/pull/281) em validação: vincular a URL canônica da primeira conversa após envio observado e antes da resposta; a URL isoladamente **não** prova resposta nem efeito local.
+- OrdaX MCP retornou `product_targets_unavailable` na sessão desta tarefa: **nenhum teste físico autenticado foi executado**. Os gates P5-W1–W4 permanecem pendentes.
+- Produto continua `0.2.0-alpha.2`, com o ChatGPT Web obrigatório e central, sem release nova, automação autônoma ou alterações no Flow/Grátis.
 
 ## Instrução curta para novo chat
 
