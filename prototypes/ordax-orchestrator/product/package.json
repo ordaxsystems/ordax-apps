@@ -1,0 +1,55 @@
+{
+  "name": "ordax-orchestrator-lab",
+  "version": "0.2.0-alpha.2",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.mjs",
+  "description": "Laboratorio isolado de orquestracao derivado do Flow/Gratis",
+  "author": "OrdaX Systems",
+  "scripts": {
+    "check": "node scripts/check-source.mjs",
+    "test": "node --test test/*.test.mjs",
+    "validate": "npm run check && npm test",
+    "start": "electron .",
+    "build:win": "electron-builder --win portable",
+    "test:live:text": "node scripts/live-ui-text-smoke.cjs",
+    "test:live:continuity": "node scripts/live-ui-continuity-smoke.cjs",
+    "test:live:restart": "node scripts/live-ui-restart-smoke.cjs",
+    "test:live:image": "node scripts/live-ui-image-smoke.cjs",
+    "test:live:history": "node scripts/live-ui-history-smoke.cjs",
+    "test:live:stream": "node scripts/live-ui-stream-smoke.cjs"
+  },
+  "devDependencies": {
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "br.com.ordax.orchestrator.lab",
+    "productName": "OrdaX Orchestrator Lab",
+    "asar": true,
+    "files": [
+      "desktop/**/*",
+      "src/*.mjs",
+      "supervisor/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "OrdaX-Orchestrator-Lab-${version}.exe",
+      "executableName": "OrdaX Orchestrator Lab"
+    },
+    "compression": "normal",
+    "npmRebuild": false
+  }
+}
