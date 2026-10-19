@@ -29,7 +29,9 @@ function listPinnedFiles(source) {
   const paths = git(source, ['ls-tree', '-r', '--name-only', '-z', lock.commit])
     .toString('utf8').split('\0').filter(Boolean).filter(allowSourcePath);
   if (!paths.includes('desktop/main.mjs') || !paths.includes('desktop/embedded-worker.mjs') ||
-      !paths.includes('package-lock.json') || !paths.includes('test/desktop-contract.test.mjs')) {
+      !paths.includes('package-lock.json') || !paths.includes('test/desktop-contract.test.mjs') ||
+      !paths.includes('sql/flow-conversation-history.sql') ||
+      !paths.includes('sql/flow-oauth-transactions.sql')) {
     throw new Error('pinned source is missing required desktop files');
   }
   return paths.sort();
