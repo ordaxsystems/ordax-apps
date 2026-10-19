@@ -80,3 +80,28 @@ jobs:
 # This workflow intentionally does NOT fetch the pinned Flow source repository.
 # Full pinned snapshot import and real Windows ChatGPT E2E require a separate
 # credentialed, explicitly authorized integration environment.
+
+  owned-windows:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Checkout owned Lab source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Clean-install and validate owned product on Windows
+        shell: pwsh
+        run: |
+          npm ci --prefix prototypes/ordax-orchestrator/product
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run validate --prefix prototypes/ordax-orchestrator/product
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build portable Windows alpha artifact without publishing
+        shell: pwsh
+        run: |
+          npm run build:win --prefix prototypes/ordax-orchestrator/product
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
