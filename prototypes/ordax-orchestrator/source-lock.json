@@ -1,0 +1,39 @@
+{
+  "$schema": "ordax.orchestrator-lab-source-lock/1",
+  "repository": "ordaxsystems/ordax-flow",
+  "commit": "081a7ce989721106aaf27a0c9d09cf9d49713a65",
+  "sourceMode": "pinned-readonly-snapshot",
+  "developmentTarget": "prototypes/ordax-orchestrator/workspace",
+  "sourceFiles": [
+    "package.json",
+    "package-lock.json",
+    "desktop/**",
+    "src/**",
+    "scripts/**",
+    "test/**",
+    "apps/**",
+    "build/**",
+    "docs/**",
+    "README.md",
+    "REFERENCIAS.md"
+  ],
+  "targetIdentity": {
+    "name": "ordax-orchestrator-lab",
+    "appId": "br.com.ordax.orchestrator.lab",
+    "productName": "OrdaX Orchestrator Lab",
+    "userDataSuffix": [
+      "OrdaX",
+      "OrchestratorLab"
+    ],
+    "database": "ordax-orchestrator-lab.sqlite",
+    "providerPartition": "persist:ordax-orchestrator-lab-chatgpt"
+  },
+  "forbiddenSourceIdentityRuntime": [
+    "br.com.ordax.gratis",
+    "persist:ordax-gratis-chatgpt",
+    "ordax-gratis.sqlite"
+  ],
+  "distributionEnabled": false,
+  "modelSupervisorEnabled": false,
+  "externalUserIngressEnabled": false
+}
