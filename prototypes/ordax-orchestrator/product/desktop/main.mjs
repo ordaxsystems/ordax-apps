@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, protocol, net, dialog } from 'electron';
 import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSupervisorTask } from '../supervisor/coordinator.mjs';
+import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 
 import fs from 'node:fs';
@@ -213,7 +214,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     });
     store.finishRun(taskId, runId);
     if (confirmedChatUrl) await worker.showConversation(confirmedChatUrl).catch(() => {});
-    return { result: { ...result, assets }, task:getTaskView(taskId) };
+    return { result: { ...result, runId, assets }, task:getTaskView(taskId) };
   } catch (error) {
     if (worker.lastFailureMetrics) {
       try { store.recordRunMetrics(taskId, runId, observerMode, {
@@ -388,7 +389,7 @@ function requireLabSupervisor() {
       authorizeTask: scope => authorizeLocalSupervisorTask({ store, ...scope }),
       chat:{ send:async ({ taskId,content }) => {
         const reply = await enqueueExecution(() => runTask(taskId,content,{newSession:false}));
-        return { confirmed:Boolean(reply?.result?.observedAt), runId:reply?.result?.runId || null };
+        return chatReceiptFromRunTask(reply);
       } }
     });
   }
