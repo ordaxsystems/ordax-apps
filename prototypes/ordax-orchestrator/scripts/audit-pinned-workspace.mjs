@@ -30,10 +30,10 @@ function ownerOf(relative) {
 }
 
 
-function dependencyGraph(sources) {
+function dependencyGraph(sources, trackedPaths) {
   // Conservative static inventory, not a substitute for a bundler or AST audit.
   // Nonliteral imports are reported for manual review; no source is executed.
-  const known = new Set(sources.keys());
+  const known = new Set(trackedPaths);
   const edges = [];
   const dynamicReview = [];
   for (const [relative, source] of sources) {
@@ -75,7 +75,8 @@ function dependencyGraph(sources) {
   }
   return { source: 'conservative static scan; review dynamic/nonliteral imports',
     entrypoints, reachable: [...reachable].sort(), edges,
-    unresolved: edges.filter(e => e.review),
+    unresolved: edges.filter(e => e.review && reachable.has(e.from)),
+    non_runtime_review: edges.filter(e => e.review && !reachable.has(e.from)),
     dynamic_review: [...new Set(dynamicReview)].sort() };
 }
 
@@ -151,7 +152,7 @@ export function auditPinnedWorkspace({ sourceDir, workspaceDir, commit, allow = 
     changed_by_derivation: files.filter(f => f.changed_by_derivation).map(f => f.path),
     owner_counts: Object.fromEntries([...new Set(files.map(f => f.owner))]
       .sort().map(owner => [owner, files.filter(f => f.owner === owner).length])),
-    problems, dependency_graph: dependencyGraph(sourceTexts), files
+    problems, dependency_graph: dependencyGraph(sourceTexts, files.map(f => f.path)), files
   };
 }
 
