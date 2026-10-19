@@ -100,6 +100,42 @@ export class SupervisorCoordinator {
     };
   }
 
+  // Recovery is read-only. An interrupted planning/dispatching action remains
+  // uncertain until external reconciliation; it is never silently retried.
+  listRecoverable({ taskId }) {
+    this.requireEnabled();
+    const tid = boundedText(taskId, 180, 'task_id');
+    this.authorize(tid, 'review');
+    if (!this.store.getTaskExecutionSnapshot(tid)) throw new Error('task_not_found');
+    const rows = this.store.db.prepare(
+      "SELECT a.id,a.status,a.payload,a.result,a.updated_at,p.id AS approval_id,p.status AS approval_status " +
+      "FROM action_ledger a LEFT JOIN approval_ledger p ON " +
+      "p.action_id=a.id AND p.task_id=a.task_id " +
+      "WHERE a.task_id=? AND a.action_type=? AND a.status IN " +
+      "('planning','pending_approval','approved','dispatching','indeterminate') " +
+      "ORDER BY a.updated_at DESC,a.id DESC LIMIT 25"
+    ).all(tid,ACTION);
+    const filtered = [];
+    for (const row of rows) {
+      const scope = JSON.parse(row.payload);
+      if (scope.actorId !== this.actorId ||
+          scope.tenantId !== this.tenantId ||
+          scope.environment !== this.environment) continue;
+      const payload = row.result ? JSON.parse(row.result) : null;
+      const decision = payload?.decision
+        ? validateSupervisorDecision(payload.decision, tid) : null;
+      filtered.push({
+        taskId:tid,actionId:row.id,status:row.status,
+        approvalId:row.approval_id || null,
+        approvalStatus:row.approval_status || null,
+        decision,
+        requiresReconciliation:['planning','dispatching','indeterminate'].includes(row.status),
+        updatedAt:row.updated_at
+      });
+    }
+    return filtered;
+  }
+
   async plan({ taskId, requestId, objective }) {
     this.requireEnabled();
     const tid = boundedText(taskId, 180, 'task_id');
