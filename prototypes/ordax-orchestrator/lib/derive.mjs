@@ -24,11 +24,13 @@ export function deriveSourceFile(relative, original, lock) {
   if (relative === 'package.json') {
     const pkg = JSON.parse(bytes.toString('utf8'));
     assert.equal(pkg.name, 'ordax-gratis');
-    assert.equal(pkg.version, '0.4.12');
+    assert.equal(pkg.version, lock.sourceVersion, 'pinned_flow_source_version_mismatch');
+    assert.ok(lock.productVersion?.version, 'lab_product_version_required');
     assert.equal(pkg.build?.appId, 'br.com.ordax.gratis');
     assert.equal(pkg.build?.productName, 'OrdaX Gratis');
     assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','package.json']);
     pkg.name = lock.targetIdentity.name;
+    pkg.version = lock.productVersion.version;
     pkg.description = 'Laboratorio isolado de orquestracao derivado do Flow/Gratis';
     pkg.build.appId = lock.targetIdentity.appId;
     pkg.build.productName = lock.targetIdentity.productName;
@@ -41,8 +43,13 @@ export function deriveSourceFile(relative, original, lock) {
     const pkg = JSON.parse(bytes.toString('utf8'));
     assert.equal(pkg.name, 'ordax-gratis');
     assert.equal(pkg.packages?.['']?.name, 'ordax-gratis');
+    assert.equal(pkg.version, lock.sourceVersion, 'pinned_flow_lock_version_mismatch');
+    assert.equal(pkg.packages[''].version, lock.sourceVersion, 'pinned_flow_lock_root_version_mismatch');
+    assert.ok(lock.productVersion?.version, 'lab_product_version_required');
     pkg.name = lock.targetIdentity.name;
     pkg.packages[''].name = lock.targetIdentity.name;
+    pkg.version = lock.productVersion.version;
+    pkg.packages[''].version = lock.productVersion.version;
     return Buffer.from(JSON.stringify(pkg, null, 2) + '\n');
   }
   let text = bytes.toString('utf8');
@@ -87,6 +94,7 @@ export function assertDerivedIdentity(contents, lock) {
   const worker = contents['desktop/embedded-worker.mjs'].toString('utf8');
   const html = contents['desktop/ui.html'].toString('utf8');
   assert.equal(pkg.name, lock.targetIdentity.name);
+  assert.equal(pkg.version, lock.productVersion?.version, 'derived_app_version_mismatch');
   assert.equal(pkg.build?.appId, lock.targetIdentity.appId);
   assert.equal(pkg.build?.productName, lock.targetIdentity.productName);
   assert.deepEqual(pkg.build?.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
