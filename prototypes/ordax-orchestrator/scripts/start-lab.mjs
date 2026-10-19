@@ -27,9 +27,16 @@ try {
   if (!fs.existsSync(path.join(workspace, 'node_modules', 'electron'))) {
     throw new Error('Isolated dependencies missing. Run npm ci --prefix workspace.');
   }
-  const cmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const result = spawnSync(cmd, ['start'], {
-    cwd: workspace, stdio: 'inherit', windowsHide: false
+  // Node 26+ on Windows rejects bare .cmd spawnSync (EINVAL). Launch the
+  // locally installed Electron CLI through this Node executable, without
+  // command-shell interpolation or a dependency on globally installed npm.
+  const electronCli = path.join(workspace, 'node_modules', 'electron', 'cli.js');
+  if (!fs.existsSync(electronCli)) {
+    throw new Error('Electron CLI missing in the isolated workspace.');
+  }
+  const result = spawnSync(process.execPath, [electronCli, '.'], {
+    cwd: workspace, stdio: 'inherit', windowsHide: false,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '' }
   });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
