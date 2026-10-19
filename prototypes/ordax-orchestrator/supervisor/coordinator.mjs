@@ -71,6 +71,18 @@ export class SupervisorCoordinator {
     if (decision !== true) throw new Error('supervisor_access_denied');
   }
 
+  assertRequestIdentity(taskId, requestKey, objective) {
+    const row = this.store.db.prepare(
+      'SELECT payload FROM action_ledger WHERE task_id=? AND action_type=? AND resource_key=?'
+    ).get(taskId, ACTION, requestKey);
+    if (!row) return false;
+    const saved = JSON.parse(row.payload);
+    if (saved.objective !== objective || saved.actorId !== this.actorId ||
+        saved.environment !== this.environment || saved.tenantId !== this.tenantId) {
+      throw new Error('supervisor_request_conflict');
+    }
+    return true;
+  }
   getAction(taskId, requestKey) {
     const row = this.store.db.prepare(
       'SELECT * FROM action_ledger WHERE task_id=? AND action_type=? AND resource_key=?'
@@ -97,8 +109,7 @@ export class SupervisorCoordinator {
     if (!this.store.getTaskExecutionSnapshot(tid)) throw new Error('task_not_found');
     const requestKey = [this.environment, this.tenantId || 'owner', rid].join(':');
 
-    const previous = this.getAction(tid, requestKey);
-    if (previous) return previous;
+    if (this.assertRequestIdentity(tid, requestKey, goal)) return this.getAction(tid, requestKey);
 
     // Reserve an ID before calling the paid model. Do not re-plan on uncertain
     // responses or after a crash; status "planning" requires reconciliation.
@@ -112,8 +123,7 @@ export class SupervisorCoordinator {
           tenantId: this.tenantId, actorId: this.actorId }), now, now);
     } catch (error) {
       // Another worker won the idempotency race; do not retry the model.
-      const duplicate = this.getAction(tid, requestKey);
-      if (duplicate) return duplicate;
+      if (this.assertRequestIdentity(tid, requestKey, goal)) return this.getAction(tid, requestKey);
       throw error;
     }
     this.store.event(tid, 'supervisor.planning', { action_id: actionId, environment: this.environment });
