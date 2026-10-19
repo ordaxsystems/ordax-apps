@@ -43,8 +43,8 @@ jobs:
           node --check prototypes/ordax-orchestrator/lib/derive.mjs
           node --check prototypes/ordax-orchestrator/lib/version-policy.mjs
           node --check prototypes/ordax-orchestrator/lib/supervisor-overlay.mjs
-          node --check prototypes/ordax-orchestrator/supervisor/coordinator.mjs
-          node --check prototypes/ordax-orchestrator/supervisor/groq-planner.mjs
+          node --check prototypes/ordax-orchestrator/product/supervisor/coordinator.mjs
+          node --check prototypes/ordax-orchestrator/product/supervisor/groq-planner.mjs
           node --check prototypes/ordax-orchestrator/scripts/audit-pinned-workspace.mjs
           node --check prototypes/ordax-orchestrator/scripts/verify-version.mjs
           node --check prototypes/ordax-orchestrator/scripts/import-flow.mjs
