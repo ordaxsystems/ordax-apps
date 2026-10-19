@@ -125,6 +125,18 @@ async function policyAt(platformRoot) {
   };
 }
 
+// Git rename detection can report only the destination (for example README.md),
+// hiding the removal of executable source. Keep both paths, independent of
+// repository or user diff.renames settings, for both first-party owners.
+export function listVersionedSourcePaths(base,scope,{head='HEAD',cwd=repoRoot}={}) {
+  if (!/^[a-f0-9]{40}$/.test(base)) throw new Error('A specific tested base SHA is required');
+  if (scope!=='apps' && scope!=='prototypes') throw new TypeError('Unsupported version owner scope');
+  const output=execFileSync('git',[
+    '-C',cwd,'diff','--no-renames','--name-only',base,head,'--',scope,
+  ],{encoding:'utf8',maxBuffer:8*1024*1024,windowsHide:true}).trim();
+  return output ? output.split('\n').filter(Boolean) : [];
+}
+
 export async function verifyAppCatalog({platformRoot,base=null}){
   // For pull_request GitHub checks out a two-parent merge commit. Only compare
   // against its first parent (the exact tested base), otherwise concurrent
@@ -153,7 +165,7 @@ export async function verifyAppCatalog({platformRoot,base=null}){
   let changed=0;
   if(testedBase){
     if(!/^[a-f0-9]{40}$/.test(testedBase))throw new Error('A specific PR base SHA is required');
-    const paths=git('diff','--name-only',testedBase,'HEAD','--','apps').split('\n').filter(Boolean);
+    const paths=listVersionedSourcePaths(testedBase,'apps');
     for(const id of new Set(paths.map(productSourceAppId).filter(Boolean))){
       const current=versioned.get(id);
       const oldPath='apps/'+id+'/'+RELEASE_MANIFEST;
@@ -191,7 +203,7 @@ export async function verifyAppCatalog({platformRoot,base=null}){
         .filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort()
       :[];
     const changedPaths=testedBase
-      ?git('diff','--name-only',testedBase,'HEAD','--','prototypes').split('\n').filter(Boolean)
+      ?listVersionedSourcePaths(testedBase,'prototypes')
       :[];
     // The union also covers deleted prototype directories and version manifests.
     // Iterating only directories with a current product-version.json would allow a

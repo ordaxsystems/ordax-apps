@@ -1,6 +1,10 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { productSourceAppId, validateAppVersionTransition, productSourcePrototypeId, validatePrototypeVersion, assertPrototypeVersionOwnerContinuity, assertVersionOwnerForChangedApp } from '../tools/verify_app_version_governance.mjs';
+import { productSourceAppId, validateAppVersionTransition, productSourcePrototypeId, validatePrototypeVersion, assertPrototypeVersionOwnerContinuity, assertVersionOwnerForChangedApp, listVersionedSourcePaths } from '../tools/verify_app_version_governance.mjs';
 
 const base=Object.freeze({
   schema:'ordax.component-manifest/1',id:'studio',title:'OrdaX Studio',
@@ -126,4 +130,45 @@ test('source-only app candidates cannot silently evolve without structural versi
   assert.doesNotThrow(()=>assertVersionOwnerForChangedApp({
     appId:'clock',hasManifest:true,changedRuntime:true,
   }));
+});
+
+test('renaming runtime into README cannot evade app or prototype SemVer policy',()=>{
+  const cwd=mkdtempSync(join(tmpdir(),'ordax-apps-rename-'));
+  const git=(...args)=>execFileSync('git',['-C',cwd,...args],{encoding:'utf8'}).trim();
+  try {
+    git('init','-q');
+    git('config','user.email','ci@example.invalid');
+    git('config','user.name','Version Fixture');
+    mkdirSync(join(cwd,'apps','studio','src'),{recursive:true});
+    mkdirSync(join(cwd,'prototypes','ordax-orchestrator','supervisor'),{recursive:true});
+    writeFileSync(join(cwd,'apps','studio','src','start.mjs'),'export const ready = true;\n');
+    writeFileSync(join(cwd,'prototypes','ordax-orchestrator','supervisor','run.mjs'),'export const running = true;\n');
+    git('add','.');
+    git('commit','-qm','baseline runtime');
+    const baseSha=git('rev-parse','HEAD');
+    git('mv','apps/studio/src/start.mjs','apps/studio/README.md');
+    git('mv','prototypes/ordax-orchestrator/supervisor/run.mjs','prototypes/ordax-orchestrator/README.md');
+    const changedApps=listVersionedSourcePaths(baseSha,'apps',{cwd});
+    const changedPrototypes=listVersionedSourcePaths(baseSha,'prototypes',{cwd});
+    assert.deepEqual(changedApps,['apps/studio/README.md','apps/studio/src/start.mjs']);
+    assert.deepEqual(changedPrototypes,[
+      'prototypes/ordax-orchestrator/README.md',
+      'prototypes/ordax-orchestrator/supervisor/run.mjs',
+    ]);
+    assert.equal(productSourceAppId(changedApps[0]),null);
+    assert.equal(productSourceAppId(changedApps[1]),'studio');
+    assert.equal(productSourcePrototypeId(changedPrototypes[0]),null);
+    assert.equal(productSourcePrototypeId(changedPrototypes[1]),'ordax-orchestrator');
+    assert.throws(()=>validateAppVersionTransition({
+      previous:base,current:base,
+      runtimeChanged:changedApps.some(p=>productSourceAppId(p)==='studio'),policy,
+    }),/without version advance/);
+    const previous={version:'0.2.0-alpha.1',channel:'alpha',distributionEnabled:false,releaseDate:null};
+    assert.throws(()=>validatePrototypeVersion({
+      previous,meta:previous,
+      changedRuntime:changedPrototypes.some(p=>productSourcePrototypeId(p)==='ordax-orchestrator'),policy,
+    }),/without version advance/);
+  } finally {
+    rmSync(cwd,{recursive:true,force:true});
+  }
 });
