@@ -152,3 +152,22 @@ test('readiness probing refuses missing approval before any debug-port network r
     else process.env.ORDAX_LAB_E2E_APPROVED=prevApproval;
   }
 });
+
+test('manual portable readiness probe is read-only and fails before touching CDP without approval',()=>{
+  const file=path.join(scripts,'live-ui-readiness.cjs');
+  const script=fs.readFileSync(file,'utf8');
+  const pkg=JSON.parse(fs.readFileSync(path.resolve(here,'../package.json'),'utf8'));
+  assert.equal(pkg.scripts['test:live:ready'],'node scripts/live-ui-readiness.cjs');
+  assert.match(script,/waitForLabUiTarget\(\)/);
+  assert.match(script,/providerStatus\(\)/);
+  assert.match(script,/providerDiagnostic\(\)/);
+  assert.match(script,/acquireE2ELock\('ui-readiness'\)/);
+  assert.doesNotMatch(script,/requestSubmit|sendPrompt|loadURL|cookies|document\.body\.innerText/);
+  const result=spawnSync(process.execPath,[file],{
+    encoding:'utf8',timeout:4000,env:{
+      ...process.env,ORDAX_LAB_E2E_LOCALAPPDATA:'',ORDAX_LAB_E2E_APPROVED:''
+    }
+  });
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/lab_e2e_staged_profile_required/);
+});
