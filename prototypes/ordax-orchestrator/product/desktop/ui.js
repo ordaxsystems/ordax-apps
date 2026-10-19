@@ -132,7 +132,8 @@ function friendlyError(error) {
     new_chat_composer_clear_failed: 'O ChatGPT recusou a limpeza do rascunho antigo na nova conversa. Nada foi enviado.',
     new_chat_composer_not_empty: 'O campo do ChatGPT não ficou vazio após criar a nova conversa. Nada foi enviado; verifique a página oficial.',
     chatgpt_verification_required: 'O ChatGPT exige uma verificação oficial. Conclua-a no modo direto e tente novamente.',
-    chatgpt_login_required: 'Entre na sua conta do ChatGPT para continuar.',
+    chatgpt_login_required: 'Entre na sua conta do ChatGPT neste Lab para continuar.',
+    chatgpt_session_not_observed: 'Não foi possível observar a sessão autenticada. Conclua o login no modo direto antes de enviar.',
     chatgpt_authentication_in_progress: 'Conclua o login antes de enviar.',
     composer_not_found: 'O campo de mensagem do ChatGPT ainda não está pronto.',
     send_not_observed: 'O ChatGPT não confirmou o envio. Nada foi reenviado automaticamente.',
@@ -563,16 +564,15 @@ async function refreshProvider() {
     const verification = status.verification_required;
     const authenticating = status.auth_state === 'authenticating';
     const anonymous = status.auth_state === 'anonymous';
-    $('#providerText').textContent = verification ? 'ChatGPT • verificação necessária' : status.active ? 'ChatGPT • gerando' : authenticating ? 'ChatGPT • autenticação' : status.ready && status.composer_ready ? 'ChatGPT • pronto' : 'ChatGPT • carregando';
-    $('#providerDetail').textContent = verification ? 'Conclua a verificação no modo direto' : authenticating ? 'Conclua o login no modo direto' : anonymous ? 'Sessão anônima' : 'Sessão persistente do OrdaX';
-    $('#providerDot').className = `dot ${verification ? 'error' : status.ready && status.composer_ready ? 'ok' : ''}`;
+    const sessionObserved = status.auth_state === 'session_present';
+    $('#providerText').textContent = verification ? 'ChatGPT • verificação necessária' : status.active ? 'ChatGPT • gerando' : authenticating ? 'ChatGPT • autenticação' : sessionObserved && status.composer_ready ? 'ChatGPT • sessão detectada' : status.ready && status.composer_ready ? 'ChatGPT • tela disponível' : 'ChatGPT • aguardando';
+    $('#providerDetail').textContent = verification ? 'Conclua a verificação no modo direto' : authenticating ? 'Conclua o login na própria página' : anonymous ? 'Faça login nesta sessão isolada do Lab' : sessionObserved ? 'Indicadores de sessão detectados; identidade não verificada' : 'Estado da sessão não observado; não é seguro enviar';
+    $('#providerDot').className = `dot ${verification ? 'error' : sessionObserved && status.composer_ready ? 'ok' : ''}`;
     observerMode = status.observer_mode || observerMode;
     if ($('#observerMode').value !== observerMode) $('#observerMode').value = observerMode;
     $('#observerHint').textContent = observerMode === 'beta' ? 'Beta observa a interface.' : observerMode === 'fast' ? `Fast${status.fast_observer_ready ? ' • rede observada' : ' • Beta de segurança'}` : `Automático${status.fast_observer_ready ? ' • Fast + Beta' : ' • Beta ativo'}`;
-    if (loginFlowVisible && status.auth_state === 'session_present' && !verification) {
-      loginFlowVisible = false;
-      if (!directMode) await window.ordax.setChatVisible(false);
-    }
+    // Session heuristics must never hide the login view automatically.
+    // The operator returns from direct mode explicitly after signing in.
   } catch (error) {
     $('#providerText').textContent = 'ChatGPT • erro';
     $('#providerDetail').textContent = friendlyError(error);
@@ -638,10 +638,18 @@ $('#login').addEventListener('click', async () => {
   button.disabled = true;
   button.textContent = 'Abrindo…';
   loginFlowVisible = true;
-  await window.ordax.setChatVisible(true);
-  try { await window.ordax.loginGoogle(); }
-  catch (error) { $('#providerDetail').textContent = friendlyError(error); }
-  finally { button.disabled = false; button.textContent = 'Entrar'; await refreshProvider(); }
+  try {
+    await window.ordax.setChatVisible(true);
+    // Display the provider's official login page, allowing the person to
+    // choose their login method. Never click a third-party identity provider.
+    await window.ordax.login();
+  } catch (error) {
+    $('#providerDetail').textContent = friendlyError(error);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Entrar';
+    await refreshProvider();
+  }
 });
 
 $('#observerMode').addEventListener('change', async event => {
