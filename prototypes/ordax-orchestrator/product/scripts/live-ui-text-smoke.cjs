@@ -1,3 +1,4 @@
+const { DEBUG_URL, isLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('text-smoke');
 const http=require('http');
@@ -12,7 +13,7 @@ function getJson(url){return new Promise((resolve,reject)=>http.get(url,r=>{let 
   const requireStream=process.env.ORDAX_REQUIRE_STREAM==='1';
   const requireFastDelivery=process.env.ORDAX_REQUIRE_FAST==='1';
   const discoverStarted=Date.now(); let target=null;
-  for(let i=0;i<120;i++){const targets=await getJson('http://127.0.0.1:9444/json/list');target=targets.find(t=>t.type==='page'&&t.title==='OrdaX Gratis'&&String(t.url).endsWith('/desktop/ui.html'));if(target)break;await sleep(100);}
+  for(let i=0;i<120;i++){const targets=await getJson(DEBUG_URL);target=targets.find(isLabUiTarget);if(target)break;await sleep(100);}
   if(!target) throw new Error('ordax_ui_target_not_found');
   const ws=new WebSocket(target.webSocketDebuggerUrl); let seq=0; const pending=new Map();
   ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const {resolve,reject}=pending.get(m.id);pending.delete(m.id);m.error?reject(new Error(m.error.message)):resolve(m.result);}};
