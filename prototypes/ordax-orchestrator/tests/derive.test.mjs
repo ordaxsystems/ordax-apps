@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { allowSourcePath, deriveSourceFile, assertDerivedIdentity } from '../lib/derive.mjs';
+import { applySupervisorOverlay } from '../lib/supervisor-overlay.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const lock = JSON.parse(fs.readFileSync(path.join(root, 'source-lock.json'), 'utf8'));
@@ -12,6 +13,7 @@ const artifact = 'OrdaX-Gratis-' + '$' + '{version}.exe';
 const pkg = {
   name: 'ordax-gratis', version: '0.4.12',
   build: { appId: 'br.com.ordax.gratis', productName: 'OrdaX Gratis',
+    files: ['desktop/**/*','src/*.mjs','package.json'],
     win: { executableName: 'OrdaX Gratis', artifactName: artifact } }
 };
 const main = [
@@ -50,6 +52,7 @@ test('fork has isolated appId, userData, SQLite and debugging port', () => {
   assert.equal(p.build.appId, 'br.com.ordax.orchestrator.lab');
   assert.equal(p.build.productName, 'OrdaX Orchestrator Lab');
   assert.equal(p.name, 'ordax-orchestrator-lab');
+  assert.deepEqual(p.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
   assert.equal(p.build.win.artifactName, 'OrdaX-Orchestrator-Lab-' + '$' + '{version}.exe');
   const m = text('desktop/main.mjs', main);
   assert.match(m, /app\.setName\('OrdaX Orchestrator Lab'\)/);
@@ -97,4 +100,30 @@ test('derived source validation rejects original app credentials/session authori
 test('copied binary module is unchanged byte-for-byte', () => {
   const source = Buffer.from([0, 255, 7, 8, 10]);
   assert.deepEqual(deriveSourceFile('build/icon.png', source, lock), source);
+});
+
+
+test('lab-only supervisor overlay is fail-closed and does not import old Flow privileges', () => {
+  const miniMain = [
+    "import { app, BrowserWindow, ipcMain, protocol, net } from 'electron';",
+    "import path from 'node:path';",
+    "app.whenReady().then(async () => {"
+  ].join('\n');
+  const output = applySupervisorOverlay('desktop/main.mjs',miniMain).toString('utf8');
+  assert.match(output,/SupervisorCoordinator/);
+  assert.match(output,/supervisor_disabled/);
+  assert.match(output,/dialog\.showMessageBox/);
+  assert.match(output,/runTask\(taskId,content/);
+  assert.match(output,/GROQ_API_KEY/);
+  assert.doesNotMatch(output,/app\.setName\('OrdaX Gratis'\)/);
+  assert.throws(()=>applySupervisorOverlay('desktop/main.mjs','app.whenReady()'),/Pinned Flow surface drifted/);
+  const preload = applySupervisorOverlay('desktop/preload.cjs',
+    "  workspace: () => ipcRenderer.invoke('ordax:workspace:get'),");
+  assert.match(preload.toString('utf8'),/supervisorApprove/);
+  const html = applySupervisorOverlay('desktop/ui.html','    </aside>\n  </main>');
+  assert.match(html.toString('utf8'),/Supervisor OrdaX Lab/);
+  assert.match(html.toString('utf8'),/labSupervisorObjective/);
+  const js = applySupervisorOverlay('desktop/ui.js','// original UI');
+  assert.match(js.toString('utf8'),/labSupervisorPlan/);
+  assert.match(js.toString('utf8'),/supervisorStatus/);
 });
