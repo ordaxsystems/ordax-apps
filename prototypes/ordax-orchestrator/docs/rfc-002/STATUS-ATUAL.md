@@ -62,6 +62,14 @@
 - OrdaX MCP retornou `product_targets_unavailable` na sessão desta tarefa: **nenhum teste físico autenticado foi executado**. Os gates P5-W1–W4 permanecem pendentes.
 - Produto continua `0.2.0-alpha.2`, com o ChatGPT Web obrigatório e central, sem release nova, automação autônoma ou alterações no Flow/Grátis.
 
+## P5 — Scripts E2E isolados do Grátis (integrado)
+
+- [PR #283](https://github.com/ordaxsystems/ordax-apps/pull/283) integrada em `ad7c334583988dfebd7209cbf0dbc071214e205b`. Cinco smoke scripts herdados usavam indevidamente `127.0.0.1:9444` e/ou `OrdaX/Gratis/ordax-gratis.sqlite`, e o lock E2E ficava no diretório do Grátis. **Esses scripts NÃO foram executados antes da correção.**
+- Criado SSOT de testes `product/scripts/e2e-lab-target.cjs` com destino exclusivo `127.0.0.1:9445`, identidade `OrdaX Orchestrator Lab`, banco e mutex específicos do Lab, perfil staged obrigatório e `ORDAX_LAB_E2E_APPROVED=1` explícito.
+- [Auditoria e procedimento](../audits/P5-E2E-SCRIPT-ISOLATION-2026-10-19.md). [CI da PR #283](https://github.com/ordaxsystems/ordax-apps/actions/runs/39329725334): Linux e Windows aprovados, inclusive build portátil. Testes automatizados **não** demonstram sessão ChatGPT Web real.
+- Windows autorizado acessível via Desktop Commander; GitHub CLI autenticado na conta OrdaX atual; checkout **isolado** em Downloads criado no commit `474090a` e `npm ci` executado. OrdaX MCP continuou com `product_targets_unavailable`. A validação local autenticada W1–W4 permanece sem prova.
+- Não importar cookies/contas do Grátis, não tocar no pendrive, não rodar scripts de envio sem consentimento e sem autenticação própria do Lab. Não promover `0.2.0-alpha.3` até a prova física completa.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
