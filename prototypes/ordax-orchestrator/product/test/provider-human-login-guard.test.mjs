@@ -16,8 +16,7 @@ test('anonymous, unreadable and in-progress sessions cannot reach send preparati
     [{auth_state:'session_present',composer_ready:false},'chatgpt_session_not_observed'],
     [{auth_state:'session_present',composer_ready:true,health_observed:false},'chatgpt_session_not_observed'],
     [{auth_state:'session_present',composer_ready:true,verification_required:true},'chatgpt_verification_required'],
-  ])assert.throws(()=>assertProviderSendReadiness(health),
-    new RegExp('^'+expected+'$'));
+  ])assert.throws(()=>assertProviderSendReadiness(health),{message:expected});
 });
 
 test('a positively observed composer plus session heuristics may pass PREP only',()=>{
