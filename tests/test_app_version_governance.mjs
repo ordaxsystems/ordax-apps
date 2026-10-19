@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { productSourceAppId, validateAppVersionTransition } from '../tools/verify_app_version_governance.mjs';
+import { productSourceAppId, validateAppVersionTransition, productSourcePrototypeId, validatePrototypeVersion } from '../tools/verify_app_version_governance.mjs';
 
 const base=Object.freeze({
   schema:'ordax.component-manifest/1',id:'studio',title:'OrdaX Studio',
@@ -73,4 +73,29 @@ test('detects source changes but excludes test and documentation-only edits',()=
   assert.equal(productSourceAppId('apps/clock/assets/clock.png'),'clock');
   assert.equal(productSourceAppId('tools/verify_workspace.py'),null);
   assert.equal(productSourceAppId('apps/studio/../../../evil'),null);
+});
+
+
+test('experimental product gets alpha version through one metadata owner, not its source baseline',()=>{
+  const meta={version:'0.2.0-alpha.2',channel:'alpha',distributionEnabled:false,releaseDate:null};
+  const bootstrap={version:'0.2.0-alpha.2',private:true};
+  assert.deepEqual(validatePrototypeVersion({meta,bootstrap,policy}),{version:'0.2.0-alpha.2',channel:'alpha'});
+  assert.throws(()=>validatePrototypeVersion({meta:{...meta,channel:'stable'},bootstrap,policy}),/channel mismatch/);
+  assert.throws(()=>validatePrototypeVersion({meta:{...meta,distributionEnabled:true},bootstrap,policy}),/non-distributed/);
+  assert.throws(()=>validatePrototypeVersion({meta,bootstrap:{...bootstrap,version:'0.4.12'},policy}),/bootstrap version/);
+});
+
+test('experimental runtime improvement must increase alpha number',()=>{
+  const prev={version:'0.2.0-alpha.1',channel:'alpha',distributionEnabled:false,releaseDate:null};
+  const next={...prev,version:'0.2.0-alpha.2'};
+  assert.deepEqual(validatePrototypeVersion({meta:next,previous:prev,changedRuntime:true,policy}),{
+    version:'0.2.0-alpha.2',channel:'alpha',
+  });
+  assert.throws(()=>validatePrototypeVersion({
+    meta:prev,previous:prev,changedRuntime:true,policy,
+  }),/without version advance/);
+  assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/supervisor/coordinator.mjs'),'ordax-orchestrator');
+  assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/tests/version.test.mjs'),null);
+  assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/README.md'),null);
+  assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/product-version.json'),'ordax-orchestrator');
 });
