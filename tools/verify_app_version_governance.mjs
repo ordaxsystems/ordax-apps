@@ -26,6 +26,37 @@ export function productSourceAppId(relative) {
   return match[1];
 }
 
+export function productSourcePrototypeId(relative) {
+  if (typeof relative!=='string') return null;
+  const match=/^prototypes\/([a-z][a-z0-9-]{0,63})\/(.+)$/.exec(relative);
+  if (!match) return null;
+  const inner=match[2];
+  if (inner.split('/').includes('..') || inner.includes('\\') || inner.includes('\0')) return null;
+  if (/(^|\/)(?:tests?|fixtures|__tests__)\/|(?:^|\/)(?:README\.md|CHANGELOG\.md|\.gitignore)$/.test(inner)) return null;
+  if (/\.(?:md|mdx|txt|map)$/.test(inner)) return null;
+  return match[1];
+}
+
+export function validatePrototypeVersion({meta,bootstrap=null,previous=null,changedRuntime=false,policy}){
+  if (!meta || typeof meta!=='object' || typeof meta.version!=='string' ||
+      meta.distributionEnabled!==false || meta.releaseDate!==null) {
+    throw new Error('Experimental product must declare non-distributed canonical version');
+  }
+  const channel=policy.productVersionChannel(meta.version);
+  if(meta.channel!==channel)throw new Error('Prototype version channel mismatch');
+  if(bootstrap && (bootstrap.version!==meta.version || bootstrap.private!==true)) {
+    throw new Error('Prototype bootstrap version must project canonical version and be private');
+  }
+  if(previous){
+    const prevChannel=policy.productVersionChannel(previous.version);
+    if(prevChannel!==previous.channel)throw new Error('Previous prototype version invalid');
+    const order=policy.compareComponentVersions(meta.version,previous.version);
+    if(order<0)throw new Error('Prototype version regression forbidden');
+    if(changedRuntime && order===0)throw new Error('Prototype source changed without version advance');
+  }
+  return {version:meta.version,channel};
+}
+
 export function validateAppVersionTransition({
   previous=null,current,runtimeChanged=false,policy,
 }){
@@ -127,7 +158,44 @@ export async function verifyAppCatalog({platformRoot,base=null}){
       changed++;
     }
   }
-  return {schema:'ordax.first-party-version-gate/1',cataloguedApps:count,changedVersionedApps:changed,baseline:base||null};
+  let prototypeProducts=0;
+  let changedPrototypeProducts=0;
+  const prototypeRoot=path.join(repoRoot,'prototypes');
+  if(fs.existsSync(prototypeRoot)){
+    const prototypes=fs.readdirSync(prototypeRoot,{withFileTypes:true})
+      .filter(entry=>entry.isDirectory()).map(entry=>entry.name).sort();
+    const changedPaths=base
+      ?git('diff','--name-only',base,'HEAD','--','prototypes').split('\n').filter(Boolean)
+      :[];
+    for(const id of prototypes){
+      const root=path.join(prototypeRoot,id);
+      const versionFile=path.join(root,'product-version.json');
+      if(!fs.existsSync(versionFile))continue; // do not mint a version for unrelated experiments
+      const meta=JSON.parse(fs.readFileSync(versionFile,'utf8'));
+      const bootstrapFile=path.join(root,'package.json');
+      const bootstrap=fs.existsSync(bootstrapFile)
+        ?JSON.parse(fs.readFileSync(bootstrapFile,'utf8')) :null;
+      let previous=null;
+      if(base){
+        try{previous=JSON.parse(git('show',base+':prototypes/'+id+'/product-version.json'));}
+        catch(error){
+          const notFound=/does not exist|exists on disk, but not in|path .* does not exist/i.test(String(error.stderr||error.message));
+          if(!notFound)throw error;
+        }
+      }
+      const productionChanged=changedPaths.some(path=>productSourcePrototypeId(path)===id);
+      validatePrototypeVersion({
+        meta,bootstrap,previous,changedRuntime:productionChanged,policy,
+      });
+      prototypeProducts++;
+      if(productionChanged)changedPrototypeProducts++;
+    }
+  }
+  return {
+    schema:'ordax.first-party-version-gate/1',cataloguedApps:count,
+    changedVersionedApps:changed,prototypeProducts,changedPrototypeProducts,
+    baseline:base||null,
+  };
 }
 
 if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
