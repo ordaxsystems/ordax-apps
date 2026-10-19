@@ -141,25 +141,37 @@ test('renaming runtime into README cannot evade app or prototype SemVer policy',
     git('config','user.name','Version Fixture');
     mkdirSync(join(cwd,'apps','studio','src'),{recursive:true});
     mkdirSync(join(cwd,'prototypes','ordax-orchestrator','supervisor'),{recursive:true});
+    mkdirSync(join(cwd,'apps','studio','docs'),{recursive:true});
+    mkdirSync(join(cwd,'prototypes','ordax-orchestrator','docs'),{recursive:true});
     writeFileSync(join(cwd,'apps','studio','src','start.mjs'),'export const ready = true;\n');
     writeFileSync(join(cwd,'prototypes','ordax-orchestrator','supervisor','run.mjs'),'export const running = true;\n');
+    writeFileSync(join(cwd,'apps','studio','src','ação.mjs'),'export const local = true;\n');
+    writeFileSync(join(cwd,'prototypes','ordax-orchestrator','supervisor','ação.mjs'),'export const local = true;\n');
     git('add','.');
     git('commit','-qm','baseline runtime');
     const baseSha=git('rev-parse','HEAD');
     git('mv','apps/studio/src/start.mjs','apps/studio/README.md');
     git('mv','prototypes/ordax-orchestrator/supervisor/run.mjs','prototypes/ordax-orchestrator/README.md');
+    git('mv','apps/studio/src/ação.mjs','apps/studio/docs/ação.md');
+    git('mv','prototypes/ordax-orchestrator/supervisor/ação.mjs','prototypes/ordax-orchestrator/docs/ação.md');
     git('commit','-qm','move both sources into README targets');
     const changedApps=listVersionedSourcePaths(baseSha,'apps',{cwd});
     const changedPrototypes=listVersionedSourcePaths(baseSha,'prototypes',{cwd});
-    assert.deepEqual(changedApps,['apps/studio/README.md','apps/studio/src/start.mjs']);
-    assert.deepEqual(changedPrototypes,[
+    assert.deepEqual(changedApps.slice().sort(),[
+      'apps/studio/README.md','apps/studio/docs/ação.md',
+      'apps/studio/src/start.mjs','apps/studio/src/ação.mjs',
+    ].sort());
+    assert.deepEqual(changedPrototypes.slice().sort(),[
       'prototypes/ordax-orchestrator/README.md',
+      'prototypes/ordax-orchestrator/docs/ação.md',
       'prototypes/ordax-orchestrator/supervisor/run.mjs',
-    ]);
-    assert.equal(productSourceAppId(changedApps[0]),null);
-    assert.equal(productSourceAppId(changedApps[1]),'studio');
-    assert.equal(productSourcePrototypeId(changedPrototypes[0]),null);
-    assert.equal(productSourcePrototypeId(changedPrototypes[1]),'ordax-orchestrator');
+      'prototypes/ordax-orchestrator/supervisor/ação.mjs',
+    ].sort());
+    assert.equal(productSourceAppId('apps/studio/README.md'),null);
+    assert.equal(productSourceAppId('apps/studio/docs/ação.md'),null);
+    assert.equal(productSourceAppId('apps/studio/src/ação.mjs'),'studio');
+    assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/docs/ação.md'),null);
+    assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/supervisor/ação.mjs'),'ordax-orchestrator');
     assert.throws(()=>validateAppVersionTransition({
       previous:base,current:base,
       runtimeChanged:changedApps.some(p=>productSourceAppId(p)==='studio'),policy,

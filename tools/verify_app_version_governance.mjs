@@ -128,13 +128,14 @@ async function policyAt(platformRoot) {
 // Git rename detection can report only the destination (for example README.md),
 // hiding the removal of executable source. Keep both paths, independent of
 // repository or user diff.renames settings, for both first-party owners.
+// NUL-delimited paths prevent Git quotePath from masking Unicode runtime names.
 export function listVersionedSourcePaths(base,scope,{head='HEAD',cwd=repoRoot}={}) {
   if (!/^[a-f0-9]{40}$/.test(base)) throw new Error('A specific tested base SHA is required');
   if (scope!=='apps' && scope!=='prototypes') throw new TypeError('Unsupported version owner scope');
   const output=execFileSync('git',[
-    '-C',cwd,'diff','--no-renames','--name-only',base,head,'--',scope,
-  ],{encoding:'utf8',maxBuffer:8*1024*1024,windowsHide:true}).trim();
-  return output ? output.split('\n').filter(Boolean) : [];
+    '-C',cwd,'diff','--no-renames','--name-only','-z',base,head,'--',scope,
+  ],{encoding:'utf8',maxBuffer:8*1024*1024,windowsHide:true});
+  return output ? output.split('\0').filter(Boolean) : [];
 }
 
 export async function verifyAppCatalog({platformRoot,base=null}){
