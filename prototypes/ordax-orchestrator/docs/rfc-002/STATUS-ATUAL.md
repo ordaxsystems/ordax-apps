@@ -46,11 +46,11 @@
 - **P3 não está concluído:** faltam fixtures redigidas do ChatGPT Web autenticado e verificação da UX real em Windows. P4 precisa separar entrega, resposta e efeitos; P5 provar queda/reinício/retomada sem duplicação.
 - Lab continua `0.2.0-alpha.2`; sem release, multiusuário, supervisor automático ou mudanças no Flow/Grátis original.
 
-## P4 — Evidências de transporte em revisão
+## P4 — Contrato de evidências integrado; reconciliação ainda pendente
 
-- [PR #278](https://github.com/ordaxsystems/ordax-apps/pull/278) — separação de **entrega observada**, **resposta observada** e **efeito não verificado** no supervisor, usando `action_ledger` e o `runId` reais.
+- [PR #278](https://github.com/ordaxsystems/ordax-apps/pull/278) **integrada** em `c5a09a13c516770e2774fce117e6b67d2c4fe899` — separação de **entrega observada**, **resposta observada** e **efeito não verificado** no supervisor, usando `action_ledger` e o `runId` reais.
 - [Contrato e testes](../audits/P4-CHATGPT-TRANSPORT-RECEIPT-2026-10-19.md): recibos legados ou incompletos permanecem incertos e **não** autorizam reenvio.
-- **Até a confirmação do CI atual**, não declarar P4 concluído, não avançar a versão e não ativar autonomia.
+- [CI](https://github.com/ordaxsystems/ordax-apps/actions/runs/39314434461): **36/36 testes do bootstrap, 99/99 do produto em Linux e instalação/testes/build portátil Windows aprovados**. Não declarar P4 concluído, não avançar a versão nem ativar autonomia.
 - Mesmo com a PR aprovada, permanecem pendentes: `reconcile()` somente leitura da conversa real, fixtures redigidas do ChatGPT Web autenticado, P5 (encerrar/reabrir/retomar) e grants oficiais do Runtime.
 
 ## Instrução curta para novo chat
