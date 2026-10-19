@@ -319,37 +319,6 @@ export class EmbeddedChatWorker {
     return this.status();
   }
 
-  async loginGoogle() {
-    await this.#safeLoad('https://chatgpt.com/auth/login', { requireComposer: false });
-    let point = null;
-    for (let i = 0; i < 40; i++) {
-      const currentUrl = this.view.webContents.getURL();
-      if (currentUrl && !currentUrl.includes('chatgpt.com/auth/login')) return this.status();
-      point = await this.view.webContents.executeJavaScript(`(() => {
-        const button = [...document.querySelectorAll('button')]
-          .find(el => /Continuar com o Google|Continue with Google/i.test((el.innerText || el.textContent || '').trim()));
-        if (!button) return null;
-        const rect = button.getBoundingClientRect();
-        if (!rect.width || !rect.height) return null;
-        return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
-      })()`).catch(() => null);
-      if (point) break;
-      await sleep(250);
-    }
-    if (!point) throw new Error('google_login_button_not_found');
-    const wc = this.view.webContents;
-    wc.focus();
-    wc.sendInputEvent({ type:'mouseMove', x:point.x, y:point.y });
-    wc.sendInputEvent({ type:'mouseDown', x:point.x, y:point.y, button:'left', clickCount:1 });
-    wc.sendInputEvent({ type:'mouseUp', x:point.x, y:point.y, button:'left', clickCount:1 });
-    for (let i = 0; i < 60; i++) {
-      await sleep(250);
-      const url = wc.getURL();
-      if (url && !url.includes('chatgpt.com/auth/login')) return this.status();
-    }
-    throw new Error('google_login_navigation_not_observed');
-  }
-
   async #clearNewChatComposer() {
     // This is called ONLY for an explicit new provider conversation. A hidden
     // WebContentsView may ignore Chromium keyboard events, even with focus.
