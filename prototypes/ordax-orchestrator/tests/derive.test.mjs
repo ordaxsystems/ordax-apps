@@ -126,6 +126,7 @@ test('lab-only supervisor overlay is fail-closed and does not import old Flow pr
   assert.match(output,/dialog\.showMessageBox/);
   assert.match(output,/runTask\(taskId,content/);
   assert.match(output,/GROQ_API_KEY/);
+  assert.match(output,/supervisor:recoverable/);
   assert.ok(output.indexOf("app.setPath('userData', userRoot)") <
     output.indexOf('requestSingleInstanceLock'));
   assert.doesNotMatch(output,/app\.setName\('OrdaX Gratis'\)/);
@@ -133,10 +134,13 @@ test('lab-only supervisor overlay is fail-closed and does not import old Flow pr
   const preload = applySupervisorOverlay('desktop/preload.cjs',
     "  workspace: () => ipcRenderer.invoke('ordax:workspace:get'),");
   assert.match(preload.toString('utf8'),/supervisorApprove/);
+  assert.match(preload.toString('utf8'),/supervisorRecoverable/);
   const html = applySupervisorOverlay('desktop/ui.html','    </aside>\n  </main>');
   assert.match(html.toString('utf8'),/Supervisor OrdaX Lab/);
   assert.match(html.toString('utf8'),/labSupervisorObjective/);
+  assert.match(html.toString('utf8'),/labSupervisorRecover/);
   const js = applySupervisorOverlay('desktop/ui.js','// original UI');
   assert.match(js.toString('utf8'),/labSupervisorPlan/);
   assert.match(js.toString('utf8'),/supervisorStatus/);
+  assert.match(js.toString('utf8'),/labRecoverButton/);
 });
