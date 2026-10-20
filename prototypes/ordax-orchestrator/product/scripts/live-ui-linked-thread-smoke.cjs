@@ -65,8 +65,10 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
       await sleep(100);
     }
     await waitForLabAppMode(evaluate);
+    const diagnosis=await evaluate("(()=>({kind:document.querySelector('#linkedThreadStatus')?.dataset.kind||'unavailable',reason:document.querySelector('#linkedThreadStatus')?.dataset.reason||'unknown'}))()");
     const result={schema:'ordax.lab.linked-thread-app-e2e.v1',appMode:true,
       fixtureFound:true,readOnly:true,providerMessagesSent:0,
+      observationKind:diagnosis.kind,observationReason:diagnosis.reason,
       threadRendered:status.includes('Conversa carregada'),
       inconclusive:status.includes('Não foi possível') || status.includes('Inspeção indisponível')};
     console.log(JSON.stringify(result));
