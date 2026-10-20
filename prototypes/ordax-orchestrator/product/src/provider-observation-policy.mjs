@@ -110,7 +110,8 @@ const READONLY_FAILURES=new Set([
   'chatgpt_draft_present','provider_view_unavailable',
   'provider_conversation_observation_timeout','provider_health_observation_timeout',
   'thread_dom_not_ready','observation_failed','thread_navigation_changed',
-  'navigation_or_draft_blocked','provider_url_mismatch'
+  'navigation_or_draft_blocked','provider_url_mismatch',
+  'provider_readonly_debugger_unavailable','provider_readonly_dom_evaluation_rejected'
 ]);
 export function safeHistoricalThreadFailure(reason) {
   const name=typeof reason==='string' ? reason : '';
