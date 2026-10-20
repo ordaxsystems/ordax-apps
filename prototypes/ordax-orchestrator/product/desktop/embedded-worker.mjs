@@ -4,6 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
+import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
@@ -491,8 +492,9 @@ export class EmbeddedChatWorker {
           canonicalProviderChatUrl(this.view.webContents.getURL()) !== expected) {
         return {available:false,url:this.view.webContents.getURL(),reason:'navigation_or_draft_blocked'};
       }
-      try {
-        return await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
+      return waitForHistoricalThreadDom({
+        expectedUrl:expected,
+        read:()=>this.view.webContents.executeJavaScript(`(() => {
           const entries = Array.from(document.querySelectorAll(
             '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
             '[data-message-role="user"],[data-message-role="assistant"],' +
@@ -513,10 +515,8 @@ export class EmbeddedChatWorker {
             available:true, url:location.href, domReliable:entries.length>0,
             truncated:entries.length>50, messages
           };
-        })()`), {timeoutMs:5000,code:'provider_conversation_observation_timeout'});
-      } catch {
-        return {available:false,url:expected,reason:'observation_failed'};
-      }
+        })()`)
+      });
     });
   }
 
