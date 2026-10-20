@@ -1,4 +1,4 @@
-const { waitForLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath, LAB_APP_MODE_PROBE, assertLabAppModeState } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('restart-smoke');
 const {DatabaseSync}=require('node:sqlite');
@@ -14,6 +14,7 @@ const {DatabaseSync}=require('node:sqlite');
   ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id&&pending.has(m.id)){const q=pending.get(m.id);pending.delete(m.id);m.error?q.reject(new Error(m.error.message)):q.resolve(m.result)}};
   const call=(method,params)=>new Promise((resolve,reject)=>{const n=++id;pending.set(n,{resolve,reject});ws.send(JSON.stringify({id:n,method,params}))});
   const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text);return r.result.value};
+  assertLabAppModeState(await ev(LAB_APP_MODE_PROBE));
   for(let i=0;i<160;i++){if(await ev(`document.querySelectorAll('.task').length>0`))break;await new Promise(r=>setTimeout(r,50));}
   const started=Date.now();
   const clicked=await ev(`(()=>{const target=document.querySelector('.task[data-id=${JSON.stringify(latest.task_id)}]');if(!target)return null;target.click();return target.dataset.id})()`);
