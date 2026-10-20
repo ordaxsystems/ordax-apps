@@ -116,7 +116,11 @@ const READONLY_FAILURES=new Set([
   'provider_conversation_observation_timeout','provider_health_observation_timeout',
   'thread_dom_not_ready','observation_failed','thread_navigation_changed',
   'navigation_or_draft_blocked','provider_url_mismatch',
-  'provider_readonly_debugger_unavailable','provider_readonly_dom_evaluation_rejected'
+  'provider_readonly_debugger_unavailable','provider_readonly_dom_evaluation_rejected',
+  'provider_health_unavailable','provider_verification_required',
+  'provider_rate_limited_observed','provider_access_restricted_observed',
+  'provider_login_required','provider_authentication_in_progress',
+  'provider_session_not_observed'
 ]);
 export function safeHistoricalThreadFailure(reason) {
   const name=typeof reason==='string' ? reason : '';
