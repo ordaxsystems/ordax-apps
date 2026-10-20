@@ -74,6 +74,19 @@ test('historical read-only thread can render without a composer; sending still r
   assert.doesNotMatch(read,/sendPrompt|requestSubmit|Input\.insertText|setComposerAndSend/);
 });
 
+test('historical thread uses one bounded CDP Runtime.evaluate without input or navigation',()=>{
+  const inspector=section('  async #readHistoricalThreadDOM() {',
+    '  // Explicit, read-only inspection of an existing, canonical conversation.');
+  const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
+  assert.match(inspector,/wc\.debugger\.sendCommand\('Runtime\.evaluate'/);
+  assert.match(inspector,/awaitPromise:false,returnByValue:true/);
+  assert.match(read,/read:\(\)=>this\.#readHistoricalThreadDOM\(\)/);
+  assert.doesNotMatch(inspector,/Input\.insertText|requestSubmit|loadURL|sendPrompt|\.click\(/);
+  assert.doesNotMatch(read,/executeJavaScript/);
+  const observation=fs.readFileSync(path.resolve(here,'../src/provider-historical-thread-observation.mjs'),'utf8');
+  assert.match(observation,/safeHistoricalThreadFailure\(error\?\.message\)/);
+});
+
 test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',()=>{
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
   const preload=fs.readFileSync(path.resolve(here,'../desktop/preload.cjs'),'utf8');
