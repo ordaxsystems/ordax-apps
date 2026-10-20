@@ -545,17 +545,20 @@ export class EmbeddedChatWorker {
     }
     const target = new URL(url);
     const currentUrl = wc.getURL();
+    let alreadyAtTarget = false;
     if (currentUrl) {
       try {
         const current = new URL(currentUrl);
-        if (current.origin === target.origin && current.pathname === target.pathname && current.search === target.search) {
-          if (!forceReload) {
-            if (!requireComposer) return;
-            const state = await this.#composerState(); // never reload on observation failure
-            if (state.found) return;
-          }
-        }
-      } catch {}
+        alreadyAtTarget = current.origin === target.origin &&
+          current.pathname === target.pathname && current.search === target.search;
+      } catch { /* only malformed URL parsing is ignored */ }
+    }
+    if (alreadyAtTarget && !forceReload) {
+      if (!requireComposer) return;
+      // Composer observation must stay OUTSIDE the URL parser's catch.
+      // A timeout may not trigger a reload of an uncertain draft.
+      const state = await this.#composerState();
+      if (state.found) return;
     }
     try {
       await observeWithin(() => wc.loadURL(url), {
