@@ -691,16 +691,48 @@ export class Store {
   }
 
   recoverInterruptedRuns() {
-    const running = this.db.prepare("SELECT id,task_id FROM runs WHERE status='running'").all();
-    if (!running.length) return 0;
-    const now = this.now();
-    for (const run of running) {
-      this.db.prepare("UPDATE runs SET status='interrupted',completed_at=?,heartbeat_at=?,error='process_interrupted' WHERE id=?")
-        .run(now, now, run.id);
-      this.db.prepare("UPDATE tasks SET status='interrupted',updated_at=? WHERE id=?").run(now, run.task_id);
-      this.event(run.task_id, 'run.interrupted', { run_id: run.id, reason: 'process_interrupted' });
+    // Startup recovery is one durable SQLite transaction: a power loss must
+    // never leave an interrupted Run with its Task still marked as running.
+    // In-flight run-linked actions have uncertain external side effects.
+    // Mark them indeterminate; NEVER retry or dispatch them on boot.
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const running = this.db.prepare("SELECT id,task_id FROM runs WHERE status='running'").all();
+      const now = this.now();
+      const actions = this.db.prepare(
+        "SELECT id FROM action_ledger WHERE run_id=? AND task_id=? " +
+        "AND status IN ('pending','planning','approved','dispatching') ORDER BY id"
+      );
+      const stopAction = this.db.prepare(
+        "UPDATE action_ledger SET status='indeterminate',updated_at=? WHERE id=? " +
+        "AND run_id=? AND status IN ('pending','planning','approved','dispatching')"
+      );
+      const stopRun = this.db.prepare(
+        "UPDATE runs SET status='interrupted',completed_at=?,heartbeat_at=?,error='process_interrupted' " +
+        "WHERE id=? AND status='running'"
+      );
+      const stopTask = this.db.prepare(
+        "UPDATE tasks SET status='interrupted',updated_at=? WHERE id=?"
+      );
+      for (const run of running) {
+        for (const action of actions.all(run.id,run.task_id)) {
+          if (stopAction.run(now,action.id,run.id).changes===1)
+            this.event(run.task_id,'action.indeterminate',{
+              action_id:action.id,run_id:run.id,reason:'process_interrupted'
+            });
+        }
+        if (stopRun.run(now,now,run.id).changes!==1) throw new Error('run_recovery_state_changed');
+        stopTask.run(now,run.task_id);
+        this.event(run.task_id,'run.interrupted',{
+          run_id:run.id,reason:'process_interrupted'
+        });
+      }
+      this.db.exec('COMMIT');
+      return running.length;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
     }
-    return running.length;
   }
 
   beginAction(taskId, runId, actionType, resourceKey = null, payload = {}) {

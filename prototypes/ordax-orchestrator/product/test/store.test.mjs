@@ -258,6 +258,80 @@ test('Interrupted run is explicit and resumable after reopen', t => {
   assert.equal(capsule.task.status, 'interrupted');
 });
 
+test('boot recovery atomically quarantines uncertain actions without replay or affecting other Runs', t => {
+  const {dir,dbPath}=tempStore();
+  let store=new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const affected=store.createTask('Crash while action may be executing');
+  store.appendMessage(affected.id,'user','Existing harmless offline fixture');
+  store.checkpoint(affected.id,'Durable before crash',{sequence:7});
+  const interrupted=store.startRun(affected.id);
+  const pending=store.beginAction(affected.id,interrupted,'test.local','pending',{test:true});
+  const dispatching=store.beginAction(affected.id,interrupted,'test.local','dispatching',{test:true});
+  const done=store.beginAction(affected.id,interrupted,'test.local','already_done',{test:true});
+  const approval=store.beginAction(affected.id,interrupted,'test.local','await_owner',{test:true});
+  const approvalId=store.requestApproval(affected.id,approval,'Owner permission needed');
+  store.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(dispatching);
+  store.db.prepare("UPDATE action_ledger SET status='succeeded' WHERE id=?").run(done);
+  store.db.prepare("UPDATE action_ledger SET status='pending_approval' WHERE id=?").run(approval);
+  const other=store.createTask('Unrelated already successful');
+  const otherRun=store.startRun(other.id);
+  store.finishRun(other.id,otherRun);
+  const otherAction=store.beginAction(other.id,otherRun,'test.local','unrelated',{});
+  const priorMessageCount=store.db.prepare('SELECT COUNT(*) n FROM messages').get().n;
+  const priorCheckpointCount=store.db.prepare('SELECT COUNT(*) n FROM checkpoints').get().n;
+  const priorRunCount=store.db.prepare('SELECT COUNT(*) n FROM runs').get().n;
+  store.close();
+  store=new Store(dbPath);
+  assert.equal(store.recoverInterruptedRuns(),1);
+  const active=store.db.prepare('SELECT status,error FROM runs WHERE id=?').get(interrupted);
+  assert.equal(active.status,'interrupted');
+  assert.equal(active.error,'process_interrupted');
+  assert.equal(store.getTask(affected.id).status,'interrupted');
+  assert.equal(store.getTask(affected.id).checkpoint_record.payload.sequence,7);
+  const status=id=>store.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(id)?.status;
+  assert.equal(status(pending),'indeterminate');
+  assert.equal(status(dispatching),'indeterminate');
+  assert.equal(status(done),'succeeded');
+  assert.equal(status(approval),'pending_approval');
+  assert.equal(status(otherAction),'pending');
+  assert.equal(store.db.prepare('SELECT status FROM approval_ledger WHERE id=?').get(approvalId).status,'pending');
+  assert.equal(store.pendingApprovals(affected.id).length,1);
+  assert.equal(store.getTask(other.id).status,'ready');
+  const actionsChanged=store.db.prepare(
+    "SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='action.indeterminate'"
+  ).get(affected.id).n;
+  assert.equal(actionsChanged,2);
+  assert.equal(store.recoverInterruptedRuns(),0);
+  assert.equal(store.db.prepare(
+    "SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='action.indeterminate'"
+  ).get(affected.id).n,actionsChanged);
+  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,priorMessageCount);
+  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM checkpoints').get().n,priorCheckpointCount);
+  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,priorRunCount);
+});
+
+test('crash recovery rolls back all Task/Run/action changes if an event fails', t => {
+  const {dir,dbPath}=tempStore();
+  const store=new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task=store.createTask('Atomic recovery rollback');
+  const run=store.startRun(task.id);
+  const action=store.beginAction(task.id,run,'test.local','attempt',{});
+  const eventCount=store.db.prepare('SELECT COUNT(*) n FROM events').get().n;
+  const originalEvent=store.event.bind(store);
+  store.event=()=>{throw new Error('simulated_sqlite_event_failure');};
+  assert.throws(()=>store.recoverInterruptedRuns(),/simulated_sqlite_event_failure/);
+  store.event=originalEvent;
+  assert.equal(store.db.prepare('SELECT status FROM runs WHERE id=?').get(run).status,'running');
+  assert.equal(store.getTask(task.id).status,'running');
+  assert.equal(store.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(action).status,'pending');
+  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM events').get().n,eventCount);
+  assert.equal(store.recoverInterruptedRuns(),1);
+  assert.equal(store.db.prepare('SELECT status FROM runs WHERE id=?').get(run).status,'interrupted');
+  assert.equal(store.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(action).status,'indeterminate');
+});
+
 test('Action and approval ledgers preserve deterministic side-effect state', t => {
   const { dir, dbPath } = tempStore();
   const store = new Store(dbPath);
