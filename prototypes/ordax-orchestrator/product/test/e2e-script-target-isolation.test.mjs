@@ -62,7 +62,7 @@ test('staged AppData requires absolute pinned candidate root and explicit approv
 test('all live smoke scripts have canonical Lab-only target and no Gratis references',()=>{
   for(const name of ['live-ui-text-smoke.cjs','live-ui-continuity-smoke.cjs',
     'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs',
-    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs','live-ui-provider-frame-readonly.cjs']){
+    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
     assert.match(code,/waitForLabUiTarget\(\)/);
     assert.match(code,/waitForLabAppMode\(/);
@@ -185,6 +185,19 @@ test('linked-thread W3 smoke uses the OrdaX App and never sends',()=>{
   assert.match(source,/readOnly:true/);
   assert.match(source,/inspectLinkedThread/);
   assert.doesNotMatch(source,/requestSubmit|sendPrompt|setChatVisible|loadURL|9444|ordax-gratis/i);
+});
+
+test('provider-frame diagnostic is explicitly not certification and accesses only the staged loopback target',()=>{
+  const source=fs.readFileSync(path.join(scripts,'live-ui-provider-frame-readonly.cjs'),'utf8');
+  const pkg=JSON.parse(fs.readFileSync(path.resolve(here,'../package.json'),'utf8'));
+  assert.equal(pkg.scripts['test:live:provider-frame'],'node scripts/live-ui-provider-frame-readonly.cjs');
+  assert.match(source,/acquireE2ELock\('provider-frame-readonly'\)/);
+  assert.match(source,/await waitForLabUiTarget\(\)/);
+  assert.match(source,/notAppCertification:true/);
+  assert.match(source,/ws\.hostname==='127\.0\.0\.1'/);
+  assert.match(source,/ws\.port==='9445'/);
+  assert.match(source,/if\(timer\)clearTimeout\(timer\)/);
+  assert.doesNotMatch(source,/requestSubmit|sendPrompt|loadURL|Input\.insertText|9444|ordax-gratis|cookie/i);
 });
 
 test('app-mode certification is isolated from the usable direct ChatGPT fallback',async()=>{
