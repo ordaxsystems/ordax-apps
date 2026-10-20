@@ -685,7 +685,7 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
     const result=await window.ordax.inspectLinkedThread(taskId);
     if (currentTaskId !== taskId) return;
     $('#linkedThreadStatus').dataset.kind = String(result?.kind || 'unavailable');
-    $('#linkedThreadStatus').dataset.reason = String(result?.reason || 'unknown');
+    $('#linkedThreadStatus').dataset.reason = String(result?.inspectionReason || result?.reason || 'unknown');
     $('#linkedThreadStatus').textContent=result?.threadRendered
       ? result.kind==='response_candidate'
         ? 'Conversa carregada e mensagens correspondentes observadas. Sem comprovação de efeitos externos.'
