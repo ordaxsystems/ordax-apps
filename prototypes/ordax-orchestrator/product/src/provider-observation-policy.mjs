@@ -31,14 +31,17 @@ export function classifyProviderAuthObservation({url,page}={}) {
   return 'unknown';
 }
 
-// Read-only response-status evidence from the current provider document.
-// A 403 is evidence of a refused request, NOT proof that the person failed
-// to authenticate. No URL, cookie, payload or account information is retained.
+// First-party browser resource timing contains only observed status codes.
+// 429 does not prove which endpoint failed, the cause of missing content,
+// or any account-specific limit. Never treat it as an invitation to retry.
 export function classifyProviderAccessRestriction({
-  forbiddenCount=0,composerReady=false
+  forbiddenCount=0,rateLimitedCount=0,composerReady=false
 }={}) {
-  if(!Number.isSafeInteger(forbiddenCount)||forbiddenCount<0)return null;
-  if(composerReady!==true && forbiddenCount>=3)return 'backend_http_403_observed';
+  if(!Number.isSafeInteger(forbiddenCount)||forbiddenCount<0||
+     !Number.isSafeInteger(rateLimitedCount)||rateLimitedCount<0)return null;
+  if(composerReady===true)return null;
+  if(rateLimitedCount>0)return 'backend_http_429_observed';
+  if(forbiddenCount>=3)return 'backend_http_403_observed';
   return null;
 }
 
@@ -48,6 +51,8 @@ export function assertProviderSendReadiness(health) {
   if(health?.verification_required===true)throw new Error('chatgpt_verification_required');
   if(health?.provider_access_problem==='backend_http_403_observed')
     throw new Error('chatgpt_provider_backend_access_restricted');
+  if(health?.provider_access_problem==='backend_http_429_observed')
+    throw new Error('chatgpt_provider_rate_limited_observed');
   if(health?.auth_state==='authenticating')throw new Error('chatgpt_authentication_in_progress');
   if(health?.auth_state==='anonymous')throw new Error('chatgpt_login_required');
   if(health?.auth_state!=='session_present'||health?.composer_ready!==true||
