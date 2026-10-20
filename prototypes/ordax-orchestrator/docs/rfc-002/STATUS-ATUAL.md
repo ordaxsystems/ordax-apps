@@ -312,3 +312,9 @@ Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTO
 - Commits `ec66211` e `4ce4285` incorporados na branch da [PR #268](https://github.com/ordaxsystems/ordax-apps/pull/268), sem nova PR e sem versão/release. O `tasks:open` agora retorna falha estruturada; o `ui.js` apresenta o motivo no painel OrdaX, sem expor URLs/tokens nem certificar uma resposta inexistente.
 - `npm run validate` **215/215, exit 0**. Prova física na UI Electron OrdaX em perfil staged novo, porta 9446: `test:live:w3-offline-preflight` **exit 0**, `appMode=true`, `profileBound=true`, `provider_login_required`, `threadRendered=false`, `providerMessagesSent=0`, ledger sem mudanças; instância staged encerrada e porta liberada, app original na 9445 preservado.
 - **W3 real continua inconclusivo**; o smoke certifica somente a barreira em logout. Sem reenvio, sem navegação histórica real e sem alterações ao Grátis/Flow, OS, Runtime ou USB. [Auditoria e limites](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md).
+
+### W3 — saneamento do diagnóstico antes do IPC (20/10/2026)
+
+- A abertura de tarefas só devolve códigos de navegação allowlisted; exceções brutas do provedor não atravessam o IPC. `task-navigation-status.mjs` permanece a política única para o processo principal e a UI.
+- `npm run validate` **222/222, exit 0** e 12/12 testes focados. Smoke offline no OrdaX App: tentativa concorrente inconclusiva (`exit 2`); execução isolada após conclusão da suíte **exit 0**, perfil staged confirmado, nenhum envio, banco inalterado. **W3 externo não certificado**.
+- [Evidência detalhada](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md). Porta de teste 9446 liberada; App original 9445 preservado.

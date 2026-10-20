@@ -7,6 +7,7 @@ import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run
 import { assertProviderSendReadiness } from '../src/provider-observation-policy.mjs';
 import { assessProviderConversationEvidence } from '../src/provider-conversation-reconciliation.mjs';
 import { safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
+import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 
 import fs from 'node:fs';
@@ -344,9 +345,15 @@ ipcMain.handle('ordax:tasks:open', async (_event, id) => {
   if (chatVisible && task?.chat_url) {
     try {
       const navigation = await worker.showConversation(task.chat_url);
-      if (navigation.navigated === false) return { ...task, provider_navigation:'not_navigated', provider_navigation_reason:navigation.reason || 'unknown' };
+      if (navigation.navigated === false) return {
+        ...task, provider_navigation:'not_navigated',
+        provider_navigation_reason:safeTaskNavigationReason(navigation.reason)
+      };
     } catch (error) {
-      return { ...task, provider_navigation:'failed', provider_navigation_error:String(error?.message || error) };
+      return {
+        ...task, provider_navigation:'failed',
+        provider_navigation_reason:safeTaskNavigationReason(error?.message)
+      };
     }
   }
   return task;

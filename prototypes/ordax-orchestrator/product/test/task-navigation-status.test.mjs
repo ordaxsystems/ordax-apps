@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { taskNavigationStatus } from '../src/task-navigation-status.mjs';
+import { taskNavigationStatus, safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 
 test('W3 navigation timeout is visible without certifying historical response', () => {
   const result = taskNavigationStatus({
@@ -51,4 +51,31 @@ test('W3 App binds the task navigation result into its existing read-only status
   assert.match(ui,/if \(nextVisible && currentTaskId\) await openTask\(currentTaskId\)/);
   assert.match(main,/provider_navigation:'failed'/);
   assert.match(main,/provider_navigation:'not_navigated'/);
+});
+test('W3 IPC never accepts arbitrary provider text even when it resembles a code', () => {
+  for (const raw of [
+    'secret_token_abcdef', 'access_key_hidden', 'user_email',
+    'https://chatgpt.com/c/private', 'provider_navigation_timeout: bearer xyz',
+    '', null, undefined, {message:'provider_navigation_timeout'}
+  ]) {
+    assert.equal(safeTaskNavigationReason(raw),'provider_navigation_unavailable');
+    const status=taskNavigationStatus({provider_navigation:'failed',provider_navigation_reason:raw});
+    assert.equal(status.reason,'provider_navigation_unavailable');
+    assert.equal(status.threadRendered,'false');
+    assert.doesNotMatch(status.message,/secret_token|access_key|bearer|private|user_email/i);
+  }
+});
+
+test('W3 main sanitizes before sending any navigation diagnostic over IPC', () => {
+  const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
+  const start=main.indexOf("ipcMain.handle('ordax:tasks:open'");
+  const end=main.indexOf("ipcMain.handle('ordax:tasks:inspect-linked-thread'",start);
+  assert.ok(start>=0 && end>start);
+  const handler=main.slice(start,end);
+  assert.match(handler,/safeTaskNavigationReason\(navigation\.reason\)/);
+  assert.match(handler,/safeTaskNavigationReason\(error\?\.message\)/);
+  assert.doesNotMatch(handler,/provider_navigation_error/);
+  assert.doesNotMatch(handler,/String\(error\?\.message/);
+  assert.equal(safeTaskNavigationReason('provider_navigation_timeout'),'provider_navigation_timeout');
+  assert.equal(safeTaskNavigationReason('visible_draft_present'),'visible_draft_present');
 });

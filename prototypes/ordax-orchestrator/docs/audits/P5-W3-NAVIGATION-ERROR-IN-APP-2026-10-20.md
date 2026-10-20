@@ -36,3 +36,16 @@ O teste clicou no botão real `Verificar conversa` dentro do App. Por estar sem 
 **W4 real NÃO CERTIFICADO:** o crash durante geração real do ChatGPT continua distinto do teste de crash com Run sintética.
 
 Código publicado na branch vinculada à PR #268; não houve merge na `main`, nova release, alteração de versão, instalação na máquina principal, edição do Grátis/Flow, OS, Runtime ou pendrive. Sem senhas salvas ou bypass de login.
+
+## Hardening adicional do IPC de navegação — 20/10/2026
+
+Foi confirmado que `ordax:tasks:open` ainda transmitia `String(error.message)` à UI. A camada visual sanitizava parte do texto, mas o valor bruto atravessava o IPC, arriscando expor URLs e dados internos. A correção agora usa `safeTaskNavigationReason` no processo principal **antes** de retornar o resultado. Apenas uma allowlist de códigos de navegação reconhecidos é aceita; texto desconhecido vira `provider_navigation_unavailable`. A UI reutiliza a mesma regra. Não foi criada API paralela, nem mecanismo de retry.
+
+Os testes novos executam o manipulador IPC **real** em sandbox local, provando que a tarefa continua acessível no modo App sem navegação; timeout mantém os dados locais; erro arbitrário não atravessa o IPC; rascunho preservado bloqueia navegação; e tarefa inexistente não inicia navegação. Testes de URL, identificador semelhante a segredo e estados reconhecidos também foram ampliados.
+
+- `npm run validate` no Windows: **222/222, zero falhas, zero cancelados, exit 0**, com duração de 577,1 s. A execução demorou muito no teste SQLite, mas terminou normalmente, sem intervenção no processo de testes.
+- 12/12 testes focados de classificação e manipulador IPC aprovados.
+- Primeiro smoke físico staged iniciado enquanto a suíte completa executava: **exit 2**, `lab_w3_offline_inspection_unavailable`; a causa específica não pôde ser determinada. Não considerar aprovado.
+- Após a suíte terminar, o **mesmo smoke offline** executado isoladamente no App real: **exit 0**, `appMode=true`, `profileBound=true`, `inspectionState=complete`, `reason=provider_login_required`, `threadRendered=false`, `providerUrlUnchanged=true`, `ledgerCountsUnchanged=true`, `providerMessagesSent=0`, `W3Certified=false`.
+- O app staged usou a porta 9446 e perfil sintético dedicado, sem importar credenciais. A porta 9446 ficou livre após encerramento da instância, mantendo a instância principal na porta 9445.
+- **W3 autenticado continua inconclusivo**. Não houve nova inspeção da conversa real, autenticação forçada, uso de endpoint privado, reenvio ou prova de resposta histórica. **W4 real** permanece pendente. Sem alteração da `main`, release ou versão.
