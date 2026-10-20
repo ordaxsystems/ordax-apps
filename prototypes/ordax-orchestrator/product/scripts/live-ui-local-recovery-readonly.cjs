@@ -1,5 +1,6 @@
 // P5 local continuity in the real OrdaX App (NOT W3/W4 external certification).
-// Never navigates to the provider, submits a prompt or writes to SQLite.
+// Never navigates to the provider or submits a prompt. Direct SQLite access
+// is read-only; ordinary UI task selection may save an existing local draft.
 const assert=require('node:assert/strict');
 const {DatabaseSync}=require('node:sqlite');
 const {waitForLabUiTarget,waitForLabAppMode,labDatabasePath}=require('./e2e-lab-target.cjs');
