@@ -1,4 +1,4 @@
-const { waitForLabUiTarget, labDatabasePath, LAB_APP_MODE_PROBE, assertLabAppModeState } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath, waitForLabAppMode } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('continuity-smoke');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -11,7 +11,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});
   const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}))});
   const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text||'eval_failed');return r.result.value};
-  assertLabAppModeState(await ev(LAB_APP_MODE_PROBE));
+  await waitForLabAppMode(ev);
   const waitFor=async(fn,attempts=1200,delay=50)=>{for(let i=0;i<attempts;i++){const value=await fn();if(value)return value;await sleep(delay)}return null};
   const providerReady=await waitFor(()=>ev(`(async()=>{const s=await window.ordax.providerStatus();return Boolean(s?.connected&&s?.composer_ready&&!s?.verification_required)})()`),600,50);
   if(!providerReady)throw new Error('provider_not_ready');
