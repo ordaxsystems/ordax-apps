@@ -46,6 +46,27 @@ test('multiple OAuth clients fail closed until the owner explicitly selects one'
   assert.match(html,/data-authorize-remote-mode="computer-observe" disabled/);
 });
 
+test('Owner Dev uses the existing full-computer-control grant, never a new permission authority',async()=>{
+  const h=harness();
+  h.state.remoteComputerClientId='client-a';
+  const html=h.run('renderRemoteComputerAuthorization()');
+  assert.match(html,/Owner Dev · Acesso total remoto/);
+  assert.match(html,/Ativar Owner Dev · 30 dias/);
+  assert.match(html,/Operações do projeto exigem autorização separada/);
+  await h.run("authorizeRemoteComputerProfile('full-computer-control')");
+  assert.deepEqual(h.calls[0],['authorize_remote_computer_grant','full-computer-control','client-a',30]);
+  assert.equal(h.calls.some(call=>call[0]?.includes('project')),false);
+});
+
+test('Owner Dev is denied unless local policy was saved with full access',async()=>{
+  const h=harness();
+  h.state.remoteComputerClientId='client-a';
+  h.state.computerAccess.full_access=false;
+  await h.run("authorizeRemoteComputerProfile('full-computer-control')");
+  assert.equal(h.calls.length,0);
+  assert.match(h.statuses.at(-1),/Ative e salve Full Access local/);
+});
+
 test('computer grants are scoped to the explicitly selected OAuth client',()=>{
   const h=harness();
   h.state.remoteComputerGrants.grant_groups=[

@@ -50,3 +50,11 @@ O candidato 0.11.0 acrescenta opções por conversa na lateral, exclusão local 
 O candidato 0.12.0 acrescenta Atividade por projeto e origem/recibo do contexto, confirma resultados somente após persistência e bloqueia journals danificados sem restaurar backups que poderiam omitir ações já enviadas. [Referências avaliadas e limites de integração](../../docs/STUDIO-ASSISTANT-REFERENCES.md).
 
 O candidato 0.14.1 abre ChatGPT Web como conversa principal ao iniciar/selecionar chat, mantém preview fixo e marca a conversa própria como beta. Novos compositores selecionam Chat somente por controle público identificado, com confirmação; modo desconhecido/Work/Codex bloqueiam envio experimental e início de áudio pelo Studio. Modelo e raciocínio abrem controles reais da conta. [Proteção de modo e limites](../../docs/STUDIO-CHAT-MODE-SAFETY.md).
+
+## Owner Dev — autorização pelo Studio (MCP)
+
+Na tela **Acesso ao computador**, o proprietário conectado à Conta OrdaX escolhe um cliente MCP OAuth consentido e ativa **Owner Dev · Acesso total remoto**. O botão reutiliza **exatamente** o perfil canônico `full-computer-control` do Control Plane; não cria outro sistema de permissões, bypass local, token permanente ou perfil não suportado. O grant dura 30 dias, pode ser revogado na mesma tela e requer que a política local `enabled + full_access` já tenha sido salva. Se houver mais de um cliente OAuth, a seleção é obrigatória.
+
+Esse perfil cobre as capacidades **do dispositivo** que o Runtime instalado de fato implementar, incluindo `computer.terminal_exec` e `computer.process_*` no catálogo canônico. Não registra projeto, não dá acesso automático a `terminal.exec`, `process.*`, `git.*` ou `browser.*` **de projeto**: essas operações requerem `space_id`, `project_id`, vinculação a dispositivo e grants Owner específicos. O projeto não deve ser identificado por um slug improvisado, e uma atualização do catálogo do servidor não prova que o ChatGPT já o recebeu.
+
+A execução real depende ainda da versão instalada do Runtime, da sessão OAuth ativa, do vínculo real de projeto e dos limites do Windows/UAC. O status no Studio indica o grant concedido, não certifica 44/44 ferramentas testadas. Consulte o Runtime `docs/OWNER-MCP-GRANT-AUTHORITY.md` para CLI e diagnóstico canônicos, sem credenciais copiadas para a UI.
