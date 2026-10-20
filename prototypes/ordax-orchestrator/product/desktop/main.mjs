@@ -15,6 +15,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
+import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
   app.commandLine.appendSwitch('remote-debugging-port', '9445');
@@ -23,8 +24,12 @@ if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
 app.setName('OrdaX Orchestrator Lab');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
-const localAppData = process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || root, 'AppData', 'Local');
-const userRoot = path.join(localAppData, 'OrdaX', 'OrchestratorLab');
+const {userRoot} = resolveLabUserRoot({
+  argv:process.argv,
+  localAppData:process.env.LOCALAPPDATA ||
+    path.join(process.env.USERPROFILE || root, 'AppData', 'Local')
+});
+fs.mkdirSync(userRoot,{recursive:true});
 app.setPath('userData', userRoot);
 
 const singleInstanceLock = app.requestSingleInstanceLock();
@@ -391,6 +396,13 @@ ipcMain.handle('ordax:tasks:memory:candidates:scan', (_event, taskId) => {
 ipcMain.handle('ordax:tasks:memory:candidates:review', (_event, { taskId, candidateId, action, changes }) => {
   store.memoryCandidates.review(String(taskId), String(candidateId), String(action), changes || {});
   return getTaskView(taskId);
+});
+// Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
+// filesystem paths, credentials or application data. This is read-only.
+ipcMain.handle('ordax:lab:profile-proof', event => {
+  requireTrustedSupervisorRenderer(event);
+  return {schema:'ordax.lab.profile-proof.v1',
+    fingerprint:labProfileFingerprint(app.getPath('userData'))};
 });
 ipcMain.handle('ordax:provider:status', async () => {
   const base = worker.status();
