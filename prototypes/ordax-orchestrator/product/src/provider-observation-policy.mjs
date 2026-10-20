@@ -79,3 +79,40 @@ export function canAcceptObservedNavigationAfterTimeout({
       wanted.search===actual.search;
   }catch{return false;}
 }
+
+
+// Narrow exception for READ-ONLY observation, never for message submission:
+// Electron may leave loadURL's Promise pending after its main frame has stopped.
+// This only authorizes looking at the rendered DOM, not asserting delivery.
+export function canInspectHistoricalThreadAfterNavigationTimeout({
+  expectedUrl,actualUrl,mainFrameLoading
+}={}) {
+  if(mainFrameLoading!==false)return false;
+  try {
+    const expected=new URL(expectedUrl),actual=new URL(actualUrl);
+    if(expected.protocol!=='https:'||actual.protocol!=='https:'||
+       expected.hostname!=='chatgpt.com'||actual.hostname!=='chatgpt.com'||
+       expected.username||expected.password||actual.username||actual.password||
+       expected.port||actual.port||expected.hash||actual.hash)return false;
+    const pathPattern=/^\/c\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?$/i;
+    if(!pathPattern.test(expected.pathname)||!pathPattern.test(actual.pathname))
+      return false;
+    return expected.origin===actual.origin &&
+      expected.pathname.replace(/\/$/,'')===actual.pathname.replace(/\/$/,'') &&
+      expected.search===actual.search;
+  } catch {return false;}
+}
+
+// Only operator-facing, allowlisted states; never propagate raw exceptions,
+// provider URLs, message content, account data, headers or cookie values.
+const READONLY_FAILURES=new Set([
+  'provider_navigation_timeout','provider_composer_observation_timeout',
+  'chatgpt_draft_present','provider_view_unavailable',
+  'provider_conversation_observation_timeout','provider_health_observation_timeout',
+  'thread_dom_not_ready','observation_failed','thread_navigation_changed',
+  'navigation_or_draft_blocked','provider_url_mismatch'
+]);
+export function safeHistoricalThreadFailure(reason) {
+  const name=typeof reason==='string' ? reason : '';
+  return READONLY_FAILURES.has(name) ? name : 'provider_inspection_unavailable';
+}
