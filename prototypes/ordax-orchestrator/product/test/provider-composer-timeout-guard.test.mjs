@@ -46,11 +46,49 @@ test('read-only provider inspectors have deadlines and remain no-send',()=>{
   const conversation=section('  async inspectConversationReadOnly(','  async #composerState()');
   assert.match(diagnostic,/provider_diagnostic_observation_timeout/);
   assert.match(diagnostic,/timeoutMs:5000/);
-  assert.match(conversation,/provider_conversation_observation_timeout/);
-  assert.match(conversation,/timeoutMs:5000/);
+  assert.match(conversation,/waitForHistoricalThreadDom/);
+  const observation=fs.readFileSync(path.resolve(here,'../src/provider-historical-thread-observation.mjs'),'utf8');
+  assert.match(observation,/provider_conversation_observation_timeout/);
+  assert.match(observation,/timeoutMs:Math\.min\(2000,remaining\)/);
   for(const area of [diagnostic,conversation]){
     assert.doesNotMatch(area,/submitExactlyOnce|requestSubmit|setComposerAndSend|sendPrompt/);
   }
+});
+
+test('historical read-only thread can render without a composer; sending still requires one',()=>{
+  const show=section('  async showConversation(', '  async inspectDiagnosticReadOnly()');
+  const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
+  const load=section('  async #safeLoad(', '  async #assistantSnapshot()');
+  assert.match(show,/requireComposer = true/);
+  assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force \}\)/);
+  assert.match(read,/this\.showConversation\(expected, \{force:false,requireComposer:false\}\)/);
+  assert.match(read,/canonicalProviderChatUrl\(this\.view\.webContents\.getURL\(\)\) !== expected/);
+  assert.match(load,/if \(protectDraft\) \{\s*const state = await this\.#composerState\(\)/);
+  assert.match(load,/if \(requireComposer\) await this\.#waitForComposer\(\)/);
+  const send=worker.slice(worker.indexOf('  async sendPrompt({'));
+  assert.match(send,/assertProviderSendReadiness/);
+  assert.match(send,/await this\.#setComposerAndSend\(/);
+  assert.doesNotMatch(read,/sendPrompt|requestSubmit|Input\.insertText|setComposerAndSend/);
+});
+
+test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',()=>{
+  const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
+  const preload=fs.readFileSync(path.resolve(here,'../desktop/preload.cjs'),'utf8');
+  const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
+  const html=fs.readFileSync(path.resolve(here,'../desktop/ui.html'),'utf8');
+  const chunk=main.split("ipcMain.handle('ordax:tasks:inspect-linked-thread'")[1]
+    .split("ipcMain.handle('ordax:tasks:resume-capsule'")[0];
+  assert.match(chunk,/requireTrustedSupervisorRenderer\(event\)/);
+  assert.match(chunk,/workspace_session_id !== currentSession\?\.id/);
+  assert.match(chunk,/liveRun/);
+  assert.match(chunk,/canonicalProviderChatUrl\(row\.chat_url\)/);
+  assert.match(chunk,/assessProviderConversationEvidence/);
+  assert.match(chunk,/worker\.inspectConversationReadOnly/);
+  assert.doesNotMatch(chunk,/appendMessage|startRun|finishRun|sendPrompt|requestSubmit|insert into|update tasks/i);
+  assert.match(preload,/inspectLinkedThread:/);
+  assert.match(html,/id="inspectLinkedThread"/);
+  assert.match(ui,/window\.ordax\.inspectLinkedThread\(taskId\)/);
+  assert.doesNotMatch(ui.split("$('#inspectLinkedThread').addEventListener")[1].split("$('#directMode').addEventListener")[0],/requestSubmit|sendPrompt|setChatVisible/);
 });
 
 test('safe observation timeout does not turn absence into session or success',async()=>{

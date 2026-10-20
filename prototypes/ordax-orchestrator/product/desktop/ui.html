@@ -77,10 +77,12 @@
             </div>
           </div>
           <div class="task-head-actions">
+            <button id="inspectLinkedThread" class="ghost-button" type="button" disabled>Verificar conversa</button>
             <button id="toggleContext" class="ghost-button context-toggle" type="button" aria-controls="contextRail" aria-expanded="false">Contexto</button>
             <span id="conversationBadge" class="badge">Projeto contínuo</span>
           </div>
         </header>
+        <p id="linkedThreadStatus" class="composer-hint" role="status" aria-live="polite"></p>
         <div id="recoveryBanner" class="recovery hidden"></div>
         <div id="messages" class="messages" aria-label="Histórico da conversa">
           <nav id="messageHistoryNav" class="message-history-nav hidden" aria-label="Páginas do histórico">

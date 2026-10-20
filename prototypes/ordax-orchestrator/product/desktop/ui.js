@@ -446,6 +446,10 @@ async function openTask(id) {
   $('#taskCheckpoint').textContent = version ? `Memória local v${version} • ${plural(total, 'mensagem', 'mensagens')}` : 'Memória local pronta para começar.';
   $('#taskCheckpoint').title = task.checkpoint || '';
   $('#taskId').textContent = task.id;
+  $('#inspectLinkedThread').disabled = !task.chat_url;
+  $('#linkedThreadStatus').textContent = '';
+  $('#linkedThreadStatus').dataset.kind = '';
+  $('#linkedThreadStatus').dataset.reason = '';
   $('#workspaceId').textContent = workspace ? `sessão ${workspace.id.slice(-8)}` : '';
   renderHistory(task, { reset:true, scrollToLatest:true });
   renderContext(task);
@@ -667,6 +671,32 @@ $('#observerMode').addEventListener('change', async event => {
   try { observerMode = await window.ordax.setObserverMode(select.value); await refreshProvider(); }
   catch (error) { $('#providerDetail').textContent = friendlyError(error); select.value = observerMode; }
   finally { select.disabled = false; }
+});
+
+// This inspects the already-linked provider thread from the OrdaX App.
+// It never opens the direct-mode fallback, types a prompt or replays a Run.
+$('#inspectLinkedThread').addEventListener('click', async () => {
+  const taskId=currentTaskId;
+  if (!taskId || !currentTask?.chat_url) return;
+  const button=$('#inspectLinkedThread');
+  button.disabled=true;
+  $('#linkedThreadStatus').textContent='Verificando a conversa vinculada (sem envio)…';
+  try {
+    const result=await window.ordax.inspectLinkedThread(taskId);
+    if (currentTaskId !== taskId) return;
+    $('#linkedThreadStatus').dataset.kind = String(result?.kind || 'unavailable');
+    $('#linkedThreadStatus').dataset.reason = String(result?.reason || 'unknown');
+    $('#linkedThreadStatus').textContent=result?.threadRendered
+      ? result.kind==='response_candidate'
+        ? 'Conversa carregada e mensagens correspondentes observadas. Sem comprovação de efeitos externos.'
+        : 'Conversa carregada. A entrega desta mensagem permanece inconclusiva.'
+      : 'Não foi possível comprovar a renderização da conversa. Nenhuma mensagem foi reenviada.';
+  } catch (error) {
+    if (currentTaskId === taskId)
+      $('#linkedThreadStatus').textContent='Inspeção indisponível: '+friendlyError(error);
+  } finally {
+    if (currentTaskId === taskId) button.disabled=false;
+  }
 });
 
 $('#directMode').addEventListener('click', async () => {

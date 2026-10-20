@@ -4,6 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
+import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
@@ -435,7 +436,7 @@ export class EmbeddedChatWorker {
     });
   }
 
-  async showConversation(url, { force = false } = {}) {
+  async showConversation(url, { force = false, requireComposer = true } = {}) {
     if (!/^https:\/\/chatgpt\.com\//i.test(String(url || ''))) throw new Error('invalid_chat_url');
     const current = this.view.webContents.getURL();
     if (!force && current !== url) {
@@ -443,7 +444,7 @@ export class EmbeddedChatWorker {
       const state = await this.#composerState();
       if (state.text?.trim()) return { ...this.status(), navigated:false, reason:'visible_draft_present' };
     }
-    if (current !== url) await this.#safeLoad(url, { requireComposer: true, protectDraft: !force });
+    if (current !== url) await this.#safeLoad(url, { requireComposer, protectDraft: !force });
     return { ...this.status(), navigated:true };
   }
 
@@ -483,13 +484,17 @@ export class EmbeddedChatWorker {
     const expected=canonicalProviderChatUrl(chatUrl);
     if (!expected) throw new Error('invalid_chat_url');
     return this.enqueue(async () => {
-      const result=await this.showConversation(expected, {force:false});
+      // Historical read-only inspection is not an attempt to send. The provider
+      // editor may be absent even when the old thread is readable. Draft
+      // protection and canonical URL verification still apply.
+      const result=await this.showConversation(expected, {force:false,requireComposer:false});
       if (result.navigated === false ||
           canonicalProviderChatUrl(this.view.webContents.getURL()) !== expected) {
         return {available:false,url:this.view.webContents.getURL(),reason:'navigation_or_draft_blocked'};
       }
-      try {
-        return await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
+      return waitForHistoricalThreadDom({
+        expectedUrl:expected,
+        read:()=>this.view.webContents.executeJavaScript(`(() => {
           const entries = Array.from(document.querySelectorAll(
             '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
             '[data-message-role="user"],[data-message-role="assistant"],' +
@@ -510,10 +515,8 @@ export class EmbeddedChatWorker {
             available:true, url:location.href, domReliable:entries.length>0,
             truncated:entries.length>50, messages
           };
-        })()`), {timeoutMs:5000,code:'provider_conversation_observation_timeout'});
-      } catch {
-        return {available:false,url:expected,reason:'observation_failed'};
-      }
+        })()`)
+      });
     });
   }
 

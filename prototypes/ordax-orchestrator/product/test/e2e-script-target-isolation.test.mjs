@@ -62,7 +62,7 @@ test('staged AppData requires absolute pinned candidate root and explicit approv
 test('all live smoke scripts have canonical Lab-only target and no Gratis references',()=>{
   for(const name of ['live-ui-text-smoke.cjs','live-ui-continuity-smoke.cjs',
     'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs',
-    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs']){
+    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
     assert.match(code,/waitForLabUiTarget\(\)/);
     assert.match(code,/waitForLabAppMode\(/);
@@ -174,6 +174,17 @@ test('manual portable readiness probe is read-only and fails before touching CDP
   });
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/lab_e2e_staged_profile_required/);
+});
+
+test('linked-thread W3 smoke uses the OrdaX App and never sends',()=>{
+  const source=fs.readFileSync(path.join(scripts,'live-ui-linked-thread-smoke.cjs'),'utf8');
+  const pkg=JSON.parse(fs.readFileSync(path.resolve(here,'../package.json'),'utf8'));
+  assert.equal(pkg.scripts['test:live:linked-thread'],'node scripts/live-ui-linked-thread-smoke.cjs');
+  assert.match(source,/waitForLabAppMode/);
+  assert.match(source,/waitForLabUiTarget/);
+  assert.match(source,/readOnly:true/);
+  assert.match(source,/inspectLinkedThread/);
+  assert.doesNotMatch(source,/requestSubmit|sendPrompt|setChatVisible|loadURL|9444|ordax-gratis/i);
 });
 
 test('app-mode certification is isolated from the usable direct ChatGPT fallback',async()=>{
