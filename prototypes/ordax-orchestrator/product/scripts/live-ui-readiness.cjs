@@ -20,6 +20,8 @@ acquireE2ELock('ui-readiness');
         authState:String(status?.auth_state||'unknown'),
         composerReady:status?.composer_ready===true,
         verificationRequired:status?.verification_required===true,
+        backendApi403Observed:status?.provider_access_problem==='backend_http_403_observed',
+        backendApi403Count:Math.max(0,Math.min(100,Number(status?.backend_api_403_count)||0)),
         diagnosticSchema:String(diagnostic?.schema||'unknown'),
         pageType:String(diagnostic?.pageType||'unknown'),
         authenticated:String(diagnostic?.authenticated||'not_verified'),
