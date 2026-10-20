@@ -49,10 +49,11 @@ test('main-process preflight rejects signed-out sends before appendMessage, setD
   assert.ok(start>=0 && end>start);
   const section=main.slice(start,end);
   const probe=section.indexOf('assertProviderSendReadiness(await worker.health());');
-  const append=section.indexOf("store.appendMessage(taskId, 'user', prompt)");
-  const draft=section.indexOf("store.setDraft(taskId, '', draftRevision)");
-  const run=section.indexOf("store.startRun(taskId");
-  assert.ok(probe>0 && append>probe && draft>probe && run>probe);
+  const atomic=section.indexOf('store.beginProviderRun(taskId, prompt, {');
+  const transport=section.indexOf('await worker.sendPrompt(');
+  assert.ok(probe>0 && atomic>probe && transport>atomic);
+  assert.doesNotMatch(section,/store\.appendMessage\(taskId, 'user', prompt\)/);
+  assert.doesNotMatch(section,/store\.startRun\(taskId/);
   assert.match(worker,/assertProviderSendReadiness\(health\)/);
 });
 
