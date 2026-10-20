@@ -133,6 +133,7 @@ function friendlyError(error) {
     chatgpt_verification_required: 'O ChatGPT exige uma verificação oficial. Conclua-a no modo direto e tente novamente.',
     chatgpt_login_required: 'Entre na sua conta do ChatGPT neste Lab para continuar.',
     chatgpt_session_not_observed: 'Não foi possível observar a sessão autenticada. Conclua o login no modo direto antes de enviar.',
+    chatgpt_provider_backend_access_restricted: 'O ChatGPT retornou HTTP 403 nas chamadas internas desta página. Nenhum envio foi feito; verifique o acesso pelo serviço oficial.',
     task_submission_reconciliation_required: 'Envio anterior com entrega incerta. Verifique a conversa antes de enviar novamente nesta tarefa.',
     chatgpt_authentication_in_progress: 'Conclua o login antes de enviar.',
     composer_not_found: 'O campo de mensagem do ChatGPT ainda não está pronto.',
@@ -565,9 +566,10 @@ async function refreshProvider() {
     const authenticating = status.auth_state === 'authenticating';
     const anonymous = status.auth_state === 'anonymous';
     const sessionObserved = status.auth_state === 'session_present';
-    $('#providerText').textContent = verification ? 'ChatGPT • verificação necessária' : status.active ? 'ChatGPT • gerando' : authenticating ? 'ChatGPT • autenticação' : sessionObserved && status.composer_ready ? 'ChatGPT • sessão detectada' : status.ready && status.composer_ready ? 'ChatGPT • tela disponível' : 'ChatGPT • aguardando';
-    $('#providerDetail').textContent = verification ? 'Conclua a verificação no modo direto' : authenticating ? 'Conclua o login na própria página' : anonymous ? 'Faça login nesta sessão isolada do Lab' : sessionObserved ? 'Indicadores de sessão detectados; identidade não verificada' : 'Estado da sessão não observado; não é seguro enviar';
-    $('#providerDot').className = `dot ${verification ? 'error' : sessionObserved && status.composer_ready ? 'ok' : ''}`;
+    const backendDenied = status.provider_access_problem === 'backend_http_403_observed';
+    $('#providerText').textContent = verification ? 'ChatGPT • verificação necessária' : backendDenied ? 'ChatGPT • acesso recusado (403)' : status.active ? 'ChatGPT • gerando' : authenticating ? 'ChatGPT • autenticação' : sessionObserved && status.composer_ready ? 'ChatGPT • sessão detectada' : status.ready && status.composer_ready ? 'ChatGPT • tela disponível' : 'ChatGPT • aguardando';
+    $('#providerDetail').textContent = verification ? 'Conclua a verificação no modo direto' : backendDenied ? 'Requisições internas foram recusadas pelo ChatGPT (HTTP 403). O login informado não está sendo negado pelo Lab; confirme o acesso pelo serviço oficial. Nenhuma mensagem será reenviada.' : authenticating ? 'Conclua o login na própria página' : anonymous ? 'Faça login nesta sessão isolada do Lab' : sessionObserved ? 'Indicadores de sessão detectados; identidade não verificada' : 'Estado da sessão não observado; não é seguro enviar';
+    $('#providerDot').className = `dot ${verification || backendDenied ? 'error' : sessionObserved && status.composer_ready ? 'ok' : ''}`;
     observerMode = status.observer_mode || observerMode;
     if ($('#observerMode').value !== observerMode) $('#observerMode').value = observerMode;
     $('#observerHint').textContent = observerMode === 'beta' ? 'Beta observa a interface.' : observerMode === 'fast' ? `Fast${status.fast_observer_ready ? ' • rede observada' : ' • Beta de segurança'}` : `Automático${status.fast_observer_ready ? ' • Fast + Beta' : ' • Beta ativo'}`;

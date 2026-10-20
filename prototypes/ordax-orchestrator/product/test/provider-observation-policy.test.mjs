@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {observeWithin,classifyProviderAuthObservation} from '../src/provider-observation-policy.mjs';
+import {observeWithin,classifyProviderAuthObservation,classifyProviderAccessRestriction} from '../src/provider-observation-policy.mjs';
 
 test('DOM unavailable on ChatGPT home is UNKNOWN, not logged in',()=>{
   assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',page:null}),'unknown');
@@ -57,4 +57,30 @@ test('worker health is bounded and can never turn missing DOM into confirmed ses
   assert.match(loader,/observeWithin\(\(\) => wc\.loadURL\(url\)/);
   assert.match(loader,/provider_navigation_timeout/);
   assert.doesNotMatch(loader,/retry|attemptSend|requestSubmit/);
+});
+
+test('ChatGPT backend 403 evidence is not confused with account authentication',()=>{
+  assert.equal(classifyProviderAccessRestriction({forbiddenCount:23,composerReady:false}),
+    'backend_http_403_observed');
+  assert.equal(classifyProviderAccessRestriction({forbiddenCount:1,composerReady:false}),null);
+  assert.equal(classifyProviderAccessRestriction({forbiddenCount:23,composerReady:true}),null);
+  assert.equal(classifyProviderAccessRestriction({forbiddenCount:-1}),null);
+  assert.equal(classifyProviderAccessRestriction({forbiddenCount:'23'}),null);
+  assert.equal(classifyProviderAuthObservation({
+    url:'https://chatgpt.com/',page:{composer:false,hasLogin:false,hasSignup:false,
+      backendForbiddenCount:23}
+  }),'unknown');
+});
+
+test('worker health counts only HTTP 403 from first-party backend API with no URL export',()=>{
+  const here=path.dirname(fileURLToPath(import.meta.url));
+  const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
+  const health=worker.split('  async health() {')[1].split('  enqueue(fn) {')[0];
+  assert.match(health,/entry\.responseStatus !== 403/);
+  assert.match(health,/requestUrl\.origin==='https:\/\/chatgpt\.com'/);
+  assert.match(health,/pathname\.startsWith\('\/backend-api\/'\)/);
+  assert.match(health,/backendForbiddenCount:Math\.min\(100,backendForbiddenCount\)/);
+  assert.match(health,/classifyProviderAccessRestriction/);
+  assert.match(health,/provider_access_problem:providerAccessProblem/);
+  assert.doesNotMatch(health,/return.*entry\.name|return.*requestUrl\.href/);
 });

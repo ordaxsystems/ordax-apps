@@ -16,6 +16,7 @@ test('anonymous, unreadable and in-progress sessions cannot reach send preparati
     [{auth_state:'session_present',composer_ready:false},'chatgpt_session_not_observed'],
     [{auth_state:'session_present',composer_ready:true,health_observed:false},'chatgpt_session_not_observed'],
     [{auth_state:'session_present',composer_ready:true,verification_required:true},'chatgpt_verification_required'],
+    [{auth_state:'unknown',composer_ready:false,provider_access_problem:'backend_http_403_observed'},'chatgpt_provider_backend_access_restricted'],
   ])assert.throws(()=>assertProviderSendReadiness(health),{message:expected});
 });
 
@@ -58,4 +59,6 @@ test('login button uses official login navigation without auto-clicking Google',
   assert.doesNotMatch(refresh,/Sessão persistente do OrdaX/);
   assert.match(refresh,/identidade não verificada/);
   assert.match(ui,/chatgpt_session_not_observed/);
+  assert.match(ui,/ChatGPT • acesso recusado \(403\)/);
+  assert.match(ui,/chatgpt_provider_backend_access_restricted/);
 });
