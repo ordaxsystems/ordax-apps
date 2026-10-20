@@ -119,7 +119,15 @@ test('W3 success requires attributable Task user-and-assistant turn, never bare 
   assert.match(chunk,/observed\?\.truncated!==true/);
   assert.doesNotMatch(chunk,/threadRendered=observed\?\.available===true/);
   assert.match(ui,/Conversa e resposta da tarefa observadas/);
-  assert.match(script,/threadRendered:status\.includes\('Conversa e resposta da tarefa observadas'\)/);
+  assert.match(ui,/dataset\.state = 'pending'/);
+  assert.match(ui,/dataset\.state = 'complete'/);
+  assert.match(ui,/dataset\.state = 'error'/);
+  assert.match(ui,/dataset\.threadRendered = result\?\.threadRendered === true/);
+  assert.match(script,/diagnosis\.kind==='response_candidate'/);
+  assert.match(script,/diagnosis\.reason==='thread_rendered'/);
+  assert.match(script,/diagnosis\.attributable===true/);
+  assert.match(script,/diagnosis\.state==='complete'\|\|diagnosis\.state==='error'/);
+  assert.doesNotMatch(script,/status\.includes\(|Conversa carregada|Conversa e resposta da tarefa observadas/);
   assert.match(script,/if\(!result\.threadRendered\)process\.exitCode=2/);
 });
 
