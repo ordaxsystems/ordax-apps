@@ -207,6 +207,11 @@ test('linked-thread W3 smoke uses the OrdaX App and never sends',()=>{
   assert.match(source,/waitForLabUiTarget/);
   assert.match(source,/readOnly:true/);
   assert.match(source,/inspectLinkedThread/);
+  assert.match(source,/diagnosis\.state==='complete'/);
+  assert.match(source,/diagnosis\.reason==='thread_rendered'/);
+  assert.match(source,/diagnosis\.attributable===true/);
+  assert.match(source,/lab_e2e_readonly_inspection_not_settled/);
+  assert.doesNotMatch(source,/status\.includes\(|Conversa carregada/);
   assert.doesNotMatch(source,/requestSubmit|sendPrompt|setChatVisible|loadURL|9444|ordax-gratis/i);
 });
 
