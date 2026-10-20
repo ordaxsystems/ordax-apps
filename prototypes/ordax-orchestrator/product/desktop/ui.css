@@ -149,6 +149,8 @@ button{color:inherit}
 .send-button{width:34px;height:34px;border-radius:10px;background:#e9edf2;color:#0a0d12;font-size:18px;font-weight:800;display:grid;place-items:center}
 .run-status{grid-column:1/-1;font-size:9px;color:#728095;padding:0 2px 1px}
 .composer-hint{text-align:center;color:#485566;font-size:8px;margin-top:7px}
+#linkedThreadStatus:not(:empty){margin:8px max(20px,calc((100% - 790px)/2)) 10px;padding:9px 12px;text-align:left;font-size:12px;line-height:1.5;background:var(--panel-2);border:1px solid var(--border);border-radius:9px;color:#bac7d7}
+#linkedThreadStatus[data-state="error"]:not(:empty),#linkedThreadStatus[data-kind="unavailable"]:not(:empty){color:#f2c3a2;background:#211916;border-color:#553b34}
 .draft-state{text-align:center;color:#627d96;font-size:9px;min-height:12px;margin-top:4px}
 .task-meta{display:none}
 

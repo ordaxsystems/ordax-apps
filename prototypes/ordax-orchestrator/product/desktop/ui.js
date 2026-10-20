@@ -1,5 +1,6 @@
 import { renderLiveStage } from './ui-stage.mjs';
 import { providerComposeAvailability, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
+import { taskNavigationStatus } from '../src/task-navigation-status.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
@@ -467,6 +468,15 @@ async function openTask(id) {
   $('#linkedThreadStatus').dataset.reason = '';
   $('#linkedThreadStatus').dataset.state = 'idle';
   $('#linkedThreadStatus').dataset.threadRendered = 'false';
+  const navigationStatus = taskNavigationStatus(task);
+  if (navigationStatus) {
+    const status = $('#linkedThreadStatus');
+    status.dataset.kind = navigationStatus.kind;
+    status.dataset.reason = navigationStatus.reason;
+    status.dataset.state = navigationStatus.state;
+    status.dataset.threadRendered = navigationStatus.threadRendered;
+    status.textContent = navigationStatus.message;
+  }
   $('#workspaceId').textContent = workspace ? `sessão ${workspace.id.slice(-8)}` : '';
   renderHistory(task, { reset:true, scrollToLatest:true });
   renderContext(task);
@@ -751,7 +761,7 @@ $('#directMode').addEventListener('click', async () => {
   const nextVisible = !directMode;
   try {
     await setDirectModeVisible(nextVisible);
-    if (nextVisible && currentTaskId) await window.ordax.openTask(currentTaskId).catch(() => null);
+    if (nextVisible && currentTaskId) await openTask(currentTaskId);
   } catch (error) {
     $('#providerDetail').textContent = friendlyError(error);
   }

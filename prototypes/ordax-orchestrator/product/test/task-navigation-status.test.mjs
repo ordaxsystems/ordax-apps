@@ -1,0 +1,54 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { taskNavigationStatus } from '../src/task-navigation-status.mjs';
+
+test('W3 navigation timeout is visible without certifying historical response', () => {
+  const result = taskNavigationStatus({
+    provider_navigation:'failed',
+    provider_navigation_error:'provider_navigation_timeout'
+  });
+  assert.equal(result.kind,'unavailable');
+  assert.equal(result.state,'error');
+  assert.equal(result.reason,'provider_navigation_timeout');
+  assert.equal(result.threadRendered,'false');
+  assert.match(result.message,/conversa vinculada não pôde ser aberta/);
+  assert.doesNotMatch(result.message,/resposta.*observada/i);
+});
+
+test('W3 draft protection remains a navigation block, not a confirmed open', () => {
+  const result=taskNavigationStatus({
+    provider_navigation:'not_navigated',
+    provider_navigation_reason:'visible_draft_present'
+  });
+  assert.equal(result.reason,'visible_draft_present');
+  assert.equal(result.threadRendered,'false');
+  assert.match(result.message,/não foi aberta/);
+});
+
+test('W3 provider errors do not print arbitrary URLs or session details in the App', () => {
+  const result=taskNavigationStatus({
+    provider_navigation:'failed',
+    provider_navigation_error:'https://chatgpt.com/c/private?token=example'
+  });
+  assert.equal(result.reason,'provider_navigation_unavailable');
+  assert.doesNotMatch(result.message,/token|private|https:/i);
+});
+
+test('W3 local task load and successful navigation do not assert remote answer', () => {
+  assert.equal(taskNavigationStatus({title:'Local'}),null);
+  assert.equal(taskNavigationStatus({provider_navigation:'navigated'}),null);
+  assert.equal(taskNavigationStatus(null),null);
+});
+
+test('W3 App binds the task navigation result into its existing read-only status', () => {
+  const ui=readFileSync(new URL('../desktop/ui.js',import.meta.url),'utf8');
+  const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
+  assert.match(ui,/import \{ taskNavigationStatus \} from '\.\.\/src\/task-navigation-status\.mjs'/);
+  assert.match(ui,/const navigationStatus = taskNavigationStatus\(task\);/);
+  assert.match(ui,/status\.dataset\.threadRendered = navigationStatus\.threadRendered/);
+  assert.match(ui,/status\.textContent = navigationStatus\.message/);
+  assert.match(ui,/if \(nextVisible && currentTaskId\) await openTask\(currentTaskId\)/);
+  assert.match(main,/provider_navigation:'failed'/);
+  assert.match(main,/provider_navigation:'not_navigated'/);
+});
