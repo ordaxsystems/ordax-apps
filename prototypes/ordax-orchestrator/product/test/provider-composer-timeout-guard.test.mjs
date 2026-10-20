@@ -46,8 +46,10 @@ test('read-only provider inspectors have deadlines and remain no-send',()=>{
   const conversation=section('  async inspectConversationReadOnly(','  async #composerState()');
   assert.match(diagnostic,/provider_diagnostic_observation_timeout/);
   assert.match(diagnostic,/timeoutMs:5000/);
-  assert.match(conversation,/provider_conversation_observation_timeout/);
-  assert.match(conversation,/timeoutMs:5000/);
+  assert.match(conversation,/waitForHistoricalThreadDom/);
+  const observation=fs.readFileSync(path.resolve(here,'../src/provider-historical-thread-observation.mjs'),'utf8');
+  assert.match(observation,/provider_conversation_observation_timeout/);
+  assert.match(observation,/timeoutMs:Math\.min\(2000,remaining\)/);
   for(const area of [diagnostic,conversation]){
     assert.doesNotMatch(area,/submitExactlyOnce|requestSubmit|setComposerAndSend|sendPrompt/);
   }
