@@ -15,6 +15,7 @@
     "test:live:ready": "node scripts/live-ui-readiness.cjs",
     "test:live:linked-thread": "node scripts/live-ui-linked-thread-smoke.cjs",
     "test:live:provider-frame": "node scripts/live-ui-provider-frame-readonly.cjs",
+    "test:live:w4-arm": "node scripts/live-ui-w4-single-send-arm.cjs",
     "test:live:text": "node scripts/live-ui-text-smoke.cjs",
     "test:live:continuity": "node scripts/live-ui-continuity-smoke.cjs",
     "test:live:restart": "node scripts/live-ui-restart-smoke.cjs",
