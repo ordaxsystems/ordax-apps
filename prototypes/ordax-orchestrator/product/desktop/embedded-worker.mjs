@@ -435,7 +435,7 @@ export class EmbeddedChatWorker {
     });
   }
 
-  async showConversation(url, { force = false } = {}) {
+  async showConversation(url, { force = false, requireComposer = true } = {}) {
     if (!/^https:\/\/chatgpt\.com\//i.test(String(url || ''))) throw new Error('invalid_chat_url');
     const current = this.view.webContents.getURL();
     if (!force && current !== url) {
@@ -443,7 +443,7 @@ export class EmbeddedChatWorker {
       const state = await this.#composerState();
       if (state.text?.trim()) return { ...this.status(), navigated:false, reason:'visible_draft_present' };
     }
-    if (current !== url) await this.#safeLoad(url, { requireComposer: true, protectDraft: !force });
+    if (current !== url) await this.#safeLoad(url, { requireComposer, protectDraft: !force });
     return { ...this.status(), navigated:true };
   }
 
@@ -483,7 +483,10 @@ export class EmbeddedChatWorker {
     const expected=canonicalProviderChatUrl(chatUrl);
     if (!expected) throw new Error('invalid_chat_url');
     return this.enqueue(async () => {
-      const result=await this.showConversation(expected, {force:false});
+      // Historical read-only inspection is not an attempt to send. The provider
+      // editor may be absent even when the old thread is readable. Draft
+      // protection and canonical URL verification still apply.
+      const result=await this.showConversation(expected, {force:false,requireComposer:false});
       if (result.navigated === false ||
           canonicalProviderChatUrl(this.view.webContents.getURL()) !== expected) {
         return {available:false,url:this.view.webContents.getURL(),reason:'navigation_or_draft_blocked'};
