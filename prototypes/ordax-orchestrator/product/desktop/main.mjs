@@ -4,6 +4,7 @@ import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
+import { assertProviderSendReadiness } from '../src/provider-observation-policy.mjs';
 import { assessProviderConversationEvidence } from '../src/provider-conversation-reconciliation.mjs';
 import { safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
@@ -165,6 +166,10 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
   const checkpointVersion = task.checkpoint_version;
   const providerPrompt = needsContinuation ? store.buildContinuationPrompt(taskId, prompt) : prompt;
+  // Authoritative, fresh, read-only readiness gate BEFORE any Task/Run/message
+  // mutation or draft clearing. A signed-out/unknown provider creates no Run.
+  // Worker.sendPrompt independently checks again immediately before editing.
+  assertProviderSendReadiness(await worker.health());
   const userMessage = store.appendMessage(taskId, 'user', prompt);
   // The user's text is durable as a message before clearing its pending draft.
   if (draftRevision != null) store.setDraft(taskId, '', draftRevision);
