@@ -1,4 +1,4 @@
-const { waitForLabUiTarget, labDatabasePath, LAB_APP_MODE_PROBE, assertLabAppModeState } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath, waitForLabAppMode } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 const { DatabaseSync } = require('node:sqlite');
 const assert = require('node:assert/strict');
@@ -29,7 +29,7 @@ async function main() {
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || 'ui_evaluation_failed');
     return result.result.value;
   };
-  assertLabAppModeState(await evaluate(LAB_APP_MODE_PROBE));
+  await waitForLabAppMode(evaluate);
   const until = async (predicate, label) => {
     for (let i = 0; i < 150; i++) {
       const value = await predicate();
