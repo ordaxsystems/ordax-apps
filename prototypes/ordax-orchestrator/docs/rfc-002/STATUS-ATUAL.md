@@ -153,6 +153,16 @@
 - [CI da PR #292](https://github.com/ordaxsystems/ordax-apps/actions/runs/39361898690) **aprovada**: 36/36 testes bootstrap, 160/160 do produto em Linux e testes/build portátil Windows aprovados. Garante deadline nas leituras de DOM e proteção contra draft não observado; não comprova que a thread externa voltou a renderizar.
 - **Gates restantes:** queda verdadeira enquanto resposta está em andamento, abertura do DOM da mesma thread e verificação de nenhum replay em envio incerto. Não promover `alpha.3`; Grátis intocado.
 
+## P5 — Testes funcionais em modo App; interface ChatGPT como fallback (20/10/2026)
+
+- **Decisão do proprietário:** a interface do ChatGPT Web **pode continuar acessível como fallback**; não bloquear ou remover o modo direto. Entretanto, o sucesso no modo direto **não comprova** o funcionamento do OrdaX Orchestrator.
+- [PR #293](https://github.com/ordaxsystems/ordax-apps/pull/293) integrada na branch de desenvolvimento, commit `dd9e1ff259f1833c92b6b77af7e8b140396ca694`. O controle de visualização no Electron acompanha o modo real confirmado pelo app, inclusive durante o login; o botão Modo direto/Voltar continua acessível.
+- Gate E2E `waitForLabAppMode()`: observa exclusivamente a interface OrdaX no perfil staged; se o fallback estiver visível, **somente a certificação do teste é recusada**, não a operação do fallback. O runner aguarda até 15 s pelo carregamento do app, sem enviar mensagens de diagnóstico.
+- Corrigidos os scripts antigos de **stage e typing** que ainda apontavam para a porta 9444 e o SQLite do Grátis; agora usam o Orchestrator Lab na porta 9445, com target e AppData próprios. Cobertura de isolamento atualizada.
+- [CI #293](https://github.com/ordaxsystems/ordax-apps/actions/runs/39363662880): **Linux isolamento/produto aprovado e Windows validação/build portátil aprovados**. Essa CI comprova o contrato do gate, **não** envio e recuperação físicos na nova build.
+- [Decisão e evidências](../audits/P5-APP-E2E-FALLBACK-2026-10-20.md) integradas e versionadas, para continuidade independente do chat.
+- **Gates ainda abertos:** navegação da mesma thread no app e queda física durante resposta, reconciliação sem replay, testes físicos da revisão aprovada. `0.2.0-alpha.2` preservada; nenhuma release ou mudança no Flow/Grátis.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
