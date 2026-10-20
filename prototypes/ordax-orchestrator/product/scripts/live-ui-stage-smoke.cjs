@@ -1,5 +1,5 @@
 // Non-mutating UI smoke: temporary DOM element only; no provider send.
-const { waitForLabUiTarget, LAB_APP_MODE_PROBE, assertLabAppModeState } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, waitForLabAppMode } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('stage-smoke');
 (async()=>{
@@ -9,7 +9,7 @@ acquireE2ELock('stage-smoke');
   await new Promise((yes,no)=>{ws.onopen=yes;ws.onerror=no});
   const evaluate=expr=>new Promise((yes,no)=>{const id=++next;pending.set(id,[value=>value.exceptionDetails?no(Error(value.exceptionDetails.exception?.description || value.exceptionDetails.text)):yes(value.result.value),no]);ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expr,returnByValue:true,awaitPromise:true}}))});
   try{
-    assertLabAppModeState(await evaluate(LAB_APP_MODE_PROBE));
+    await waitForLabAppMode(evaluate);
     const result=await evaluate(`(async()=>{ const {renderLiveStage}=await import('./ui-stage.mjs');
       const list=document.querySelector('#messageList'),status=document.querySelector('#runStatus');
       if(!list||!status)throw Error('missing_stage_renderer');
