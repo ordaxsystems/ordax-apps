@@ -3,7 +3,7 @@ import labTarget from './e2e-lab-target.cjs';
 import { DatabaseSync } from 'node:sqlite';
 import { acquireE2ELock } from './e2e-lock.cjs';
 acquireE2ELock('typing-smoke');
-const { waitForLabUiTarget, labDatabasePath, LAB_APP_MODE_PROBE, assertLabAppModeState } = labTarget;
+const { waitForLabUiTarget, labDatabasePath, waitForLabAppMode } = labTarget;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const until=async(fn,label)=>{for(let i=0;i<120;i++){const v=await fn();if(v)return v;await sleep(100);}throw Error('timeout:'+label);};
 const target=await waitForLabUiTarget();
@@ -20,7 +20,7 @@ const evalJs=async expression=>{
   return result.result.value;
 };
 let db;const fixtureIds=[];
-assertLabAppModeState(await evalJs(LAB_APP_MODE_PROBE));
+await waitForLabAppMode(evalJs);
 const previousId=await evalJs("document.querySelector('#taskId')?.textContent||''");
 const current=()=>evalJs("document.querySelector('#taskId')?.textContent||''");
 async function create(){
