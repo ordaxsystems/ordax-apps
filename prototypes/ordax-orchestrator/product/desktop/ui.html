@@ -93,9 +93,13 @@
           <div id="messageList" class="message-list"></div>
         </div>
         <div class="composer-wrap">
+          <div id="composerConnection" class="composer-connection" data-state="unverified" role="status" aria-live="polite">
+            <span id="composerConnectionText">Verificando a sessão do ChatGPT. O rascunho é salvo localmente.</span>
+            <button id="composerLogin" type="button" class="mini-secondary">Entrar no ChatGPT</button>
+          </div>
           <form id="composer" class="composer">
             <textarea id="prompt" rows="1" placeholder="Pergunte, crie ou continue o trabalho…"></textarea>
-            <button id="send" class="send-button" type="submit" aria-label="Enviar">↑</button>
+            <button id="send" class="send-button" type="submit" aria-label="Enviar" disabled title="Verificando a sessão do ChatGPT">↑</button>
             <div id="runStatus" class="run-status hidden"></div>
           </form>
           <div class="composer-hint">Enter envia • Shift+Enter quebra linha • a memória da tarefa é local</div>
