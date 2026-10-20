@@ -1,4 +1,4 @@
-const { waitForLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath, waitForLabAppMode } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('text-smoke');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -17,6 +17,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   await new Promise((res,rej)=>{ws.onopen=res;ws.onerror=rej;});
   const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
   const evalJs=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails){const d=r.exceptionDetails;throw new Error([d.text,d.exception?.description,d.exception?.value].filter(Boolean).join(' | ')||'eval_failed');}return r.result.value;};
+  await waitForLabAppMode(evalJs); // Fail acceptance, not the direct-mode fallback.
   let uiReady=false;for(let i=0;i<200;i++){uiReady=await evalJs(`document.readyState==='complete'&&Boolean(document.querySelector('#newTask'))&&Boolean(document.querySelector('#prompt'))&&Boolean(document.querySelector('#observerMode'))`);if(uiReady)break;await sleep(50);}if(!uiReady)throw new Error('ordax_ui_not_ready');
   const providerWaitStarted=Date.now(); let providerReady=false;
   for(let i=0;i<600;i++){providerReady=await evalJs(`(async()=>{const s=await window.ordax.providerStatus();return Boolean(s?.connected&&s?.composer_ready&&!s?.verification_required)})()`);if(providerReady)break;await sleep(50);}if(!providerReady)throw new Error('provider_not_ready');

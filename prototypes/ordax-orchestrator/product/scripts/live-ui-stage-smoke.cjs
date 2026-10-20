@@ -1,16 +1,15 @@
 // Non-mutating UI smoke: temporary DOM element only; no provider send.
-const http=require('node:http');
-const delay=ms=>new Promise(r=>setTimeout(r,ms));
-const getJson=url=>new Promise((yes,no)=>http.get(url,res=>{let s='';res.on('data',x=>s+=x);res.on('end',()=>{try{yes(JSON.parse(s))}catch(e){no(e)}})}).on('error',no));
+const { waitForLabUiTarget, waitForLabAppMode } = require('./e2e-lab-target.cjs');
+const { acquireE2ELock } = require('./e2e-lock.cjs');
+acquireE2ELock('stage-smoke');
 (async()=>{
-  let target;
-  for(let i=0;i<80;i++){const pages=await getJson('http://127.0.0.1:9444/json/list');target=pages.find(p=>p.type==='page'&&p.title==='OrdaX Gratis'&&p.url.endsWith('/desktop/ui.html'));if(target)break;await delay(100)}
-  if(!target)throw Error('gratis_renderer_not_found');
+  const target=await waitForLabUiTarget();
   const ws=new WebSocket(target.webSocketDebuggerUrl),pending=new Map();let next=0;
   ws.onmessage=e=>{const ev=JSON.parse(e.data),pair=pending.get(ev.id);if(pair){pending.delete(ev.id);ev.error?pair[1](Error(ev.error.message)):pair[0](ev.result)}};
   await new Promise((yes,no)=>{ws.onopen=yes;ws.onerror=no});
   const evaluate=expr=>new Promise((yes,no)=>{const id=++next;pending.set(id,[value=>value.exceptionDetails?no(Error(value.exceptionDetails.exception?.description || value.exceptionDetails.text)):yes(value.result.value),no]);ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expr,returnByValue:true,awaitPromise:true}}))});
   try{
+    await waitForLabAppMode(evaluate);
     const result=await evaluate(`(async()=>{ const {renderLiveStage}=await import('./ui-stage.mjs');
       const list=document.querySelector('#messageList'),status=document.querySelector('#runStatus');
       if(!list||!status)throw Error('missing_stage_renderer');

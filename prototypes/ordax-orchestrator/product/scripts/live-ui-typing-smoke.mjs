@@ -1,17 +1,12 @@
 /* Keyboard-only E2E on OrdaX UI. It never submits text to ChatGPT. */
-import http from 'node:http';
+import labTarget from './e2e-lab-target.cjs';
 import { DatabaseSync } from 'node:sqlite';
-import path from 'node:path';
 import { acquireE2ELock } from './e2e-lock.cjs';
 acquireE2ELock('typing-smoke');
+const { waitForLabUiTarget, labDatabasePath, waitForLabAppMode } = labTarget;
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const getJson=url=>new Promise((resolve,reject)=>http.get(url,res=>{
-  let s='';res.on('data',c=>s+=c);res.on('end',()=>{try{resolve(JSON.parse(s));}catch(e){reject(e);}});
-}).on('error',reject));
 const until=async(fn,label)=>{for(let i=0;i<120;i++){const v=await fn();if(v)return v;await sleep(100);}throw Error('timeout:'+label);};
-const target=(await getJson('http://127.0.0.1:9444/json/list'))
-  .find(t=>t.type==='page'&&String(t.url).endsWith('/desktop/ui.html'));
-if(!target)throw Error('ordax_ui_target_not_found');
+const target=await waitForLabUiTarget();
 const ws=new WebSocket(target.webSocketDebuggerUrl);let seq=0;const pending=new Map();
 ws.onmessage=event=>{const msg=JSON.parse(event.data);const p=pending.get(msg.id);
 if(p){pending.delete(msg.id);msg.error?p.reject(Error(msg.error.message)):p.resolve(msg.result);}};
@@ -25,6 +20,7 @@ const evalJs=async expression=>{
   return result.result.value;
 };
 let db;const fixtureIds=[];
+await waitForLabAppMode(evalJs);
 const previousId=await evalJs("document.querySelector('#taskId')?.textContent||''");
 const current=()=>evalJs("document.querySelector('#taskId')?.textContent||''");
 async function create(){
@@ -44,7 +40,7 @@ const draft=()=>evalJs("document.querySelector('#prompt')?.value||''");
 const persisted=id=>db.prepare('SELECT draft FROM tasks WHERE id=?').get(id)?.draft||'';
 const select=id=>evalJs('document.querySelector(\'.task[data-id="'+id+'"]\')?.click();true');
 try {
-  db=new DatabaseSync(path.join(process.env.LOCALAPPDATA,'OrdaX','Gratis','data','ordax-gratis.sqlite'));
+  db=new DatabaseSync(labDatabasePath());
   db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;');
   const a=await create(),valueA='Teste OrdaX cliente A: rascunho unico 123.';
   await type(valueA);

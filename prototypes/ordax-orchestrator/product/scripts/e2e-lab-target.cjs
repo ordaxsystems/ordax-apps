@@ -97,7 +97,47 @@ async function waitForLabUiTarget({
   }
 }
 
+// Snapshot only the OrdaX Electron shell. A real ChatGPT provider view must
+// never satisfy a functional E2E gate by accident. This does not send data.
+const LAB_APP_MODE_PROBE = `(()=>({
+  view:document.documentElement.dataset.ordaxView||null,
+  directButton:document.querySelector('#directMode')?.textContent?.trim()||null,
+  composer:document.querySelector('#composer')?.tagName||null,
+  prompt:document.querySelector('#prompt')?.tagName||null,
+  newTask:document.querySelector('#newTask')?.tagName||null
+}))()`;
+function assertLabAppModeState(state) {
+  if(state?.view!=='app' || state?.directButton!=='Modo direto' ||
+     state?.composer!=='FORM' || state?.prompt!=='TEXTAREA' ||
+     state?.newTask!=='BUTTON') throw new Error('lab_e2e_app_mode_required');
+  return state;
+}
+
+// Fall back remains fully available to the person; the certification runner
+// simply waits for the OrdaX shell and does not count direct-mode output.
+async function waitForLabAppMode(evaluate,{
+  clock=Date.now,
+  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
+  maxWaitMs=15000,pollMs=100
+}={}) {
+  if(typeof evaluate!=='function') throw new Error('lab_e2e_app_mode_probe_required');
+  if(!Number.isSafeInteger(maxWaitMs)||maxWaitMs<1||maxWaitMs>15000 ||
+     !Number.isSafeInteger(pollMs)||pollMs<1||pollMs>1000)
+    throw new Error('lab_e2e_app_mode_invalid_bounds');
+  const deadline=clock()+maxWaitMs;
+  while(true) {
+    const state=await evaluate(LAB_APP_MODE_PROBE);
+    if(state?.view==='provider')
+      throw new Error('lab_e2e_provider_fallback_not_app_test');
+    if(state?.view==='app') return assertLabAppModeState(state);
+    const remaining=deadline-clock();
+    if(remaining<=0) throw new Error('lab_e2e_app_mode_not_ready');
+    await sleep(Math.min(remaining,pollMs));
+  }
+}
+
 module.exports={
   DEBUG_URL,PRODUCT_TITLE,labStagedLocalAppData,labDatabasePath,
-  labLockPath,isLabUiTarget,validLabWebSocket,readLabDebugTargets,waitForLabUiTarget
+  labLockPath,isLabUiTarget,validLabWebSocket,readLabDebugTargets,waitForLabUiTarget,
+  LAB_APP_MODE_PROBE,assertLabAppModeState,waitForLabAppMode
 };

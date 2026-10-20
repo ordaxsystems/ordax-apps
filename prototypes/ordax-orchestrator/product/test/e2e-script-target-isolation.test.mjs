@@ -11,7 +11,8 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const scripts=path.resolve(here,'../scripts');
 const require=createRequire(import.meta.url);
 const { DEBUG_URL,PRODUCT_TITLE,isLabUiTarget,labStagedLocalAppData,
-  labDatabasePath,labLockPath,validLabWebSocket,waitForLabUiTarget }=require('../scripts/e2e-lab-target.cjs');
+  labDatabasePath,labLockPath,validLabWebSocket,waitForLabUiTarget,
+  LAB_APP_MODE_PROBE,assertLabAppModeState,waitForLabAppMode }=require('../scripts/e2e-lab-target.cjs');
 const stage=path.join(os.tmpdir(),'ordax-e2e-suite','candidate-userdata-v0.2.0-alpha.2');
 
 function withStagedEnv(stagedRoot,approved,fn) {
@@ -60,13 +61,16 @@ test('staged AppData requires absolute pinned candidate root and explicit approv
 
 test('all live smoke scripts have canonical Lab-only target and no Gratis references',()=>{
   for(const name of ['live-ui-text-smoke.cjs','live-ui-continuity-smoke.cjs',
-    'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs']){
+    'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs',
+    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
     assert.match(code,/waitForLabUiTarget\(\)/);
+    assert.match(code,/waitForLabAppMode\(/);
     assert.doesNotMatch(code,/getJson\(DEBUG_URL\)|get\(DEBUG_URL\)/);
     assert.doesNotMatch(code,/9444|ordax-gratis|OrdaX Gratis|['"]Gratis['"]/);
   }
-  for(const name of ['live-ui-history-smoke.cjs','live-ui-restart-smoke.cjs']){
+  for(const name of ['live-ui-history-smoke.cjs','live-ui-restart-smoke.cjs',
+    'live-ui-typing-smoke.mjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
     assert.match(code,/labDatabasePath\(\)/);
   }
@@ -170,4 +174,28 @@ test('manual portable readiness probe is read-only and fails before touching CDP
   });
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/lab_e2e_staged_profile_required/);
+});
+
+test('app-mode certification is isolated from the usable direct ChatGPT fallback',async()=>{
+  const app={view:'app',directButton:'Modo direto',composer:'FORM',prompt:'TEXTAREA',newTask:'BUTTON'};
+  assert.match(LAB_APP_MODE_PROBE,/ordaxView/);
+  assert.equal(assertLabAppModeState(app),app);
+  assert.throws(()=>assertLabAppModeState({...app,view:'provider'}),/lab_e2e_app_mode_required/);
+  assert.throws(()=>assertLabAppModeState({...app,prompt:null}),/lab_e2e_app_mode_required/);
+  let clock=0,reads=0;
+  const observed=await waitForLabAppMode(async()=>{
+    reads++;
+    return reads===1?{view:null}:app;
+  },{clock:()=>clock,sleep:async ms=>{clock+=ms;},maxWaitMs:1000,pollMs:100});
+  assert.equal(observed,app);
+  assert.equal(reads,2);
+  await assert.rejects(waitForLabAppMode(async()=>({...app,view:'provider'})),
+    /lab_e2e_provider_fallback_not_app_test/);
+  await assert.rejects(waitForLabAppMode(async()=>({view:null}),{
+    clock:()=>clock,sleep:async ms=>{clock+=ms;},maxWaitMs:200,pollMs:100
+  }),/lab_e2e_app_mode_not_ready/);
+  const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
+  assert.match(ui,/await setDirectModeVisible\(true\)/);
+  assert.match(ui,/const nextVisible = !directMode/);
+  assert.match(ui,/dataset\.ordaxView = visible \? 'provider' : 'app'/);
 });

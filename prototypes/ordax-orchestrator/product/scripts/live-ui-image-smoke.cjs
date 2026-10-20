@@ -1,4 +1,4 @@
-const { waitForLabUiTarget, labDatabasePath } = require('./e2e-lab-target.cjs');
+const { waitForLabUiTarget, labDatabasePath, waitForLabAppMode } = require('./e2e-lab-target.cjs');
 const { acquireE2ELock } = require('./e2e-lock.cjs');
 acquireE2ELock('image-smoke');
 (async()=>{
@@ -8,6 +8,7 @@ acquireE2ELock('image-smoke');
   await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});
   const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
   const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text||'eval_failed');return r.result.value;};
+  await waitForLabAppMode(ev);
   const previousTaskId=await ev(`document.querySelector('#taskId')?.textContent||''`);
   await ev(`document.querySelector('#newTask').click(); true`);
   let createdTaskId=null;

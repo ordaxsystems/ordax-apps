@@ -44,7 +44,10 @@ test('login button uses official login navigation without auto-clicking Google',
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   const handler=ui.split("$('#login').addEventListener('click'")[1]
     .split("$('#observerMode').addEventListener('change'")[0];
-  assert.match(handler,/setChatVisible\(true\)/);
+  assert.match(handler,/await setDirectModeVisible\(true\)/);
+  assert.match(ui,/async function setDirectModeVisible\(visible\)/);
+  assert.match(ui,/await window\.ordax\.setChatVisible\(visible\)/);
+  assert.match(ui,/dataset\.ordaxView = visible \? 'provider' : 'app'/);
   assert.match(handler,/window\.ordax\.login\(\)/);
   assert.doesNotMatch(handler,/loginGoogle|Continue with Google|mouseDown/);
   const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
