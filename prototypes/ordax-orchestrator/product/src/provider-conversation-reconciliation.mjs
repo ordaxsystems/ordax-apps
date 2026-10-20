@@ -1,10 +1,12 @@
 import { canonicalProviderChatUrl } from './conversation-policy.mjs';
+import { providerPromptDigest } from './provider-submission-provenance.mjs';
 
 // A DOM observation is only a candidate, never attributable proof of delivery.
 // Absence in a bounded, potentially virtualized page is NOT proof of non-delivery.
-export function assessProviderConversationEvidence({expectedUrl, observed, expectedMessage}) {
+export function assessProviderConversationEvidence({expectedUrl, observed, expectedMessage,expectedPromptSha256}) {
   const canonical = canonicalProviderChatUrl(expectedUrl);
-  if (!canonical || !expectedMessage || typeof expectedMessage !== 'string') {
+  const hasDigest=typeof expectedPromptSha256==='string' && /^[a-f0-9]{64}$/.test(expectedPromptSha256);
+  if (!canonical || (!hasDigest && (!expectedMessage || typeof expectedMessage !== 'string'))) {
     return {kind:'unavailable',reason:'missing_canonical_reference',requiresReconciliation:true};
   }
   if (!observed || observed.available !== true ||
@@ -26,7 +28,9 @@ export function assessProviderConversationEvidence({expectedUrl, observed, expec
         item.text.length > 12000 || item.textTruncated === true) {
       return {kind:'unavailable',reason:'message_observation_incomplete',requiresReconciliation:true};
     }
-    if (item.role === 'user' && item.text.trim() === expectedMessage.trim()) matches.push(i);
+    if (item.role === 'user' && (hasDigest
+      ? providerPromptDigest(item.text)===expectedPromptSha256
+      : item.text.trim()===expectedMessage.trim())) matches.push(i);
   }
   if (matches.length > 1) {
     return {kind:'ambiguous',reason:'duplicate_message_candidates',

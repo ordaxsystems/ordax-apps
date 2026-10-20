@@ -49,3 +49,23 @@ Os testes novos executam o manipulador IPC **real** em sandbox local, provando q
 - Após a suíte terminar, o **mesmo smoke offline** executado isoladamente no App real: **exit 0**, `appMode=true`, `profileBound=true`, `inspectionState=complete`, `reason=provider_login_required`, `threadRendered=false`, `providerUrlUnchanged=true`, `ledgerCountsUnchanged=true`, `providerMessagesSent=0`, `W3Certified=false`.
 - O app staged usou a porta 9446 e perfil sintético dedicado, sem importar credenciais. A porta 9446 ficou livre após encerramento da instância, mantendo a instância principal na porta 9445.
 - **W3 autenticado continua inconclusivo**. Não houve nova inspeção da conversa real, autenticação forçada, uso de endpoint privado, reenvio ou prova de resposta histórica. **W4 real** permanece pendente. Sem alteração da `main`, release ou versão.
+
+## W3 — recibo de proveniência do prompt enviado (20/10/2026)
+
+### Risco identificado
+
+A inspeção vinculada consultava a última mensagem do usuário no SQLite e a comparava ao DOM do ChatGPT. Isso não demonstrava que aquela mensagem tinha sido **enviada**: uma mensagem local sem Run poderia ser confundida com a mensagem da thread. Outro caso era o prompt ampliado pelo contexto de continuidade: o texto entregue ao provedor podia ser diferente do texto local, tornando o match impreciso.
+
+### Correção no produto
+
+- `src/provider-submission-provenance.mjs`: política única para registrar/consultar recibos somente após o callback de entrega observada `onDeliveryObserved`. Cada recibo associa `run_id`, `message_id`, `conversation_id`, horário de entrega e SHA-256 do **prompt efetivamente enviado**. Não armazena cópia do prompt, cookies ou tokens; o SQLite do projeto já é o SSOT local.
+- Os vínculos são conferidos contra Run, mensagem user, Task e conversa ativa canônica. Um recibo de URL diferente, sem Run ou sem entrega confirmada não é aceito. Eventos duplicados da mesma Run são evitados.
+- O cálculo de digest no reconciliador permite comparar o DOM com o prompt expandido real, mesmo quando diferente do texto de rascunho/local. Correspondência duplicada, truncada ou atribuível a outro turno continua inconclusiva.
+- `inspect-linked-thread` não muda o fluxo do provedor: continua uma **única observação somente leitura**, sem nova tentativa automática. `threadRendered=true` exige, além dos critérios DOM preexistentes, o recibo durável correto. Uma resposta candidata sem recibo é mostrada com `provider_submission_provenance_missing`, não declarada como W3 certificada.
+- **Retrocompatibilidade segura:** tarefas históricas pré-recibo podem ser observadas, mas não ganham recibos falsos por migração. Sua evidência continuará parcial até existir proveniência legítima. Um callback de entrega que não conseguir gravar o recibo não dispara reenvio.
+
+### Limites e validação
+
+A validação focada executou 19/19 testes locais (incluindo SQLite real e o manipulador IPC real em sandbox), cobrindo prompt expandido, falta de Run, URL divergente, idempotência, não certificação de mensagem apenas local e recusa de DOM parcial. A suíte completa e os checks CI devem ser registrados após sua conclusão, sem classificar W3 externo como aprovado. Ainda é indispensável abrir a thread real numa sessão legítima, observar o turno e a resposta pelo App e preservar o resultado sem enviar novo prompt.
+
+**Sem mudança de versão, sem tocar na main, Grátis/Flow, OS, Runtime, USB, conta ou sessão real.**

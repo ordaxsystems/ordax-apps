@@ -735,7 +735,8 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
       provider_authentication_in_progress:'Conclua a autenticação no ChatGPT antes da inspeção. Nenhum reenvio.',
       provider_session_not_observed:'Sessão não comprovada para abrir outra conversa. Faça login pelo modo direto.',
       provider_verification_required:'Verificação do ChatGPT pendente. Inspeção suspensa, sem reenvio.',
-      provider_health_unavailable:'Não foi possível observar a sessão. Inspeção suspensa, sem reenvio.'
+      provider_health_unavailable:'Não foi possível observar a sessão. Inspeção suspensa, sem reenvio.',
+      provider_submission_provenance_missing:'A conversa contém uma possível resposta, mas a execução antiga não tem recibo verificável do texto enviado. W3 não certificado; nenhum reenvio.'
     };
     const inspectionReason=String(result?.inspectionReason || '');
     $('#linkedThreadStatus').textContent=attributable

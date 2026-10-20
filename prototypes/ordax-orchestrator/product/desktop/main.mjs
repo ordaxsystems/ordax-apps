@@ -3,6 +3,7 @@ import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSuper
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
+import { recordProviderSubmissionProvenance, findProviderSubmissionProvenance } from '../src/provider-submission-provenance.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
 import { assertProviderSendReadiness } from '../src/provider-observation-policy.mjs';
 import { assessProviderConversationEvidence } from '../src/provider-conversation-reconciliation.mjs';
@@ -190,11 +191,25 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
       onDeliveryObserved:({chatUrl,submittedAt}) => {
         if (liveRun?.runId !== runId) throw new Error('submission_run_context_changed');
-        return bindObservedSubmittedConversation({
+        const binding=bindObservedSubmittedConversation({
           store,taskId,runId,chatUrl,submittedAt,
           plannedNewSession:conversationPlan.newSession,
           checkpointVersion:needsContinuation ? checkpointVersion : null
         });
+        // Persist the exact provider-prompt digest only after observed delivery.
+        // Failure to record this optional evidence cannot trigger a resend.
+        try {
+          recordProviderSubmissionProvenance({
+            store,taskId,runId,messageId:userMessage.id,providerPrompt,
+            chatUrl,submittedAt
+          });
+        } catch {
+          // The provider already accepted the send. Never fail or retry it
+          // merely because optional local provenance could not be recorded.
+          try { store.event(taskId,'provider.submission.provenance_unavailable',{run_id:runId}); }
+          catch { /* Preserve transport result; reconcile conservatively. */ }
+        }
+        return binding;
       }
     });
     const rotationOutcome = assessProviderRotation(conversationPlan, task.chat_url, result.chatUrl);
@@ -373,19 +388,25 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
     return {kind:'unavailable',reason:'canonical_chat_url_missing',threadRendered:false,requiresReconciliation:true};
   const message=store.db.prepare(`SELECT content FROM messages WHERE task_id=? AND role='user'
     ORDER BY created_at DESC,id DESC LIMIT 1`).get(taskId);
+  // Local SQLite text alone cannot establish submission: a task may contain
+  // drafts or a provider prompt expanded by the project's continuation context.
+  const provenance=findProviderSubmissionProvenance({store,taskId,chatUrl:expectedUrl});
   // No mutation or replay, including when the provider navigation times out.
   const observed=await worker.inspectConversationReadOnly(expectedUrl).catch(() => ({available:false,reason:'provider_inspection_unavailable'}));
   const assessment=assessProviderConversationEvidence({
-    expectedUrl,observed,expectedMessage:message?.content
+    expectedUrl,observed,expectedMessage:message?.content,
+    expectedPromptSha256:provenance?.promptSha256
   });
   // DOM presence is not evidence that the Task's conversation was restored.
   // The canonical submitted turn and its assistant reply must both match.
-  const threadRendered=assessment.kind==='response_candidate' &&
+  const threadRendered=Boolean(provenance) && assessment.kind==='response_candidate' &&
     assessment.candidates===1 && assessment.responseCandidate===true &&
     observed?.truncated!==true;
   return {
     kind:assessment.kind,reason:assessment.reason,threadRendered,
-    inspectionReason:threadRendered ? 'thread_rendered' : safeHistoricalThreadFailure(observed?.reason),
+    inspectionReason:threadRendered ? 'thread_rendered' :
+      (!provenance && assessment.kind==='response_candidate'
+        ? 'provider_submission_provenance_missing' : safeHistoricalThreadFailure(observed?.reason)),
     responseCandidate:assessment.responseCandidate===true,
     requiresReconciliation:assessment.requiresReconciliation===true
   };

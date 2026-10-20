@@ -318,3 +318,7 @@ Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTO
 - A abertura de tarefas só devolve códigos de navegação allowlisted; exceções brutas do provedor não atravessam o IPC. `task-navigation-status.mjs` permanece a política única para o processo principal e a UI.
 - `npm run validate` **222/222, exit 0** e 12/12 testes focados. Smoke offline no OrdaX App: tentativa concorrente inconclusiva (`exit 2`); execução isolada após conclusão da suíte **exit 0**, perfil staged confirmado, nenhum envio, banco inalterado. **W3 externo não certificado**.
 - [Evidência detalhada](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md). Porta de teste 9446 liberada; App original 9445 preservado.
+
+## W3 — integridade de evidência de envio (20/10/2026)
+
+A certificação da conversa histórica passou a exigir recibo do **prompt efetivamente enviado** associado a Run, mensagem e conversa; a última mensagem SQLite isoladamente não constitui prova. O reconciliador compara SHA-256 do prompt enviado (inclusive continuidade expandida) contra o turno observado; sem recibo, a inspeção pode retornar candidato, mas **não certifica W3**. Os recibos só são escritos após entrega observada; não há replay. Provas focadas: 16/16. A execução completa/CI são gates separados. [Auditoria](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md).
