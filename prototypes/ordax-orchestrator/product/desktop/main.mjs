@@ -352,8 +352,11 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
   const assessment=assessProviderConversationEvidence({
     expectedUrl,observed,expectedMessage:message?.content
   });
-  const threadRendered=observed?.available===true && observed?.domReliable===true &&
-    canonicalProviderChatUrl(observed.url)===expectedUrl;
+  // DOM presence is not evidence that the Task's conversation was restored.
+  // The canonical submitted turn and its assistant reply must both match.
+  const threadRendered=assessment.kind==='response_candidate' &&
+    assessment.candidates===1 && assessment.responseCandidate===true &&
+    observed?.truncated!==true;
   return {
     kind:assessment.kind,reason:assessment.reason,threadRendered,
     responseCandidate:assessment.responseCandidate===true,
