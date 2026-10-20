@@ -687,7 +687,7 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
     const result=await window.ordax.inspectLinkedThread(taskId);
     if (currentTaskId !== taskId) return;
     $('#linkedThreadStatus').dataset.kind = String(result?.kind || 'unavailable');
-    $('#linkedThreadStatus').dataset.reason = String(result?.reason || 'unknown');
+    $('#linkedThreadStatus').dataset.reason = String(result?.inspectionReason || result?.reason || 'unknown');
     $('#linkedThreadStatus').textContent=result?.threadRendered
       ? 'Conversa e resposta da tarefa observadas. Não comprova efeitos externos.'
       : result?.kind==='message_candidate'

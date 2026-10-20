@@ -28,7 +28,10 @@ acquireE2ELock('ui-readiness');
         delivery:String(diagnostic?.delivery||'not_evaluated')
       };
     })()`;
-    const data=await Promise.race([
+    let deadlineTimer;
+    let data;
+    try {
+      data=await Promise.race([
       new Promise((resolve,reject)=>{
         const id=++seq;
         ws.onmessage=event=>{
@@ -41,8 +44,11 @@ acquireE2ELock('ui-readiness');
         ws.send(JSON.stringify({id,method:'Runtime.evaluate',
           params:{expression,awaitPromise:true,returnByValue:true}}));
       }),
-      new Promise((_,reject)=>setTimeout(()=>reject(new Error('lab_cdp_read_timeout')),25000))
-    ]);
+      new Promise((_,reject)=>{ deadlineTimer=setTimeout(()=>reject(new Error('lab_cdp_read_timeout')),25000); })
+      ]);
+    } finally {
+      if(deadlineTimer)clearTimeout(deadlineTimer);
+    }
     if(!data||data.diagnosticSchema!=='ordax.lab.provider-dom-diagnostic.v1')
       throw new Error('lab_diagnostic_contract_missing');
     console.log(JSON.stringify({

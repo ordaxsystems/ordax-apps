@@ -5,7 +5,7 @@ import { responseObservationComplete, requireObservedCompletion } from '../src/p
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
-import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction } from '../src/provider-observation-policy.mjs';
+import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -442,7 +442,7 @@ export class EmbeddedChatWorker {
     });
   }
 
-  async showConversation(url, { force = false, requireComposer = true } = {}) {
+  async showConversation(url, { force = false, requireComposer = true, readOnlyThread = false } = {}) {
     if (!/^https:\/\/chatgpt\.com\//i.test(String(url || ''))) throw new Error('invalid_chat_url');
     const current = this.view.webContents.getURL();
     if (!force && current !== url) {
@@ -450,7 +450,7 @@ export class EmbeddedChatWorker {
       const state = await this.#composerState();
       if (state.text?.trim()) return { ...this.status(), navigated:false, reason:'visible_draft_present' };
     }
-    if (current !== url) await this.#safeLoad(url, { requireComposer, protectDraft: !force });
+    if (current !== url) await this.#safeLoad(url, { requireComposer, protectDraft: !force, readOnlyThread });
     return { ...this.status(), navigated:true };
   }
 
@@ -483,24 +483,19 @@ export class EmbeddedChatWorker {
     });
   }
 
-  // Explicit, read-only inspection of an existing, canonical conversation.
-  // The only navigation is an ordinary authorized GET to the linked thread.
-  // This never types, submits, retries, creates a chat or writes any Task.
-  async inspectConversationReadOnly(chatUrl) {
-    const expected=canonicalProviderChatUrl(chatUrl);
-    if (!expected) throw new Error('invalid_chat_url');
-    return this.enqueue(async () => {
-      // Historical read-only inspection is not an attempt to send. The provider
-      // editor may be absent even when the old thread is readable. Draft
-      // protection and canonical URL verification still apply.
-      const result=await this.showConversation(expected, {force:false,requireComposer:false});
-      if (result.navigated === false ||
-          canonicalProviderChatUrl(this.view.webContents.getURL()) !== expected) {
-        return {available:false,url:this.view.webContents.getURL(),reason:'navigation_or_draft_blocked'};
-      }
-      return waitForHistoricalThreadDom({
-        expectedUrl:expected,
-        read:()=>this.view.webContents.executeJavaScript(`(() => {
+  // Chromium's documented DevTools Runtime.evaluate is used here only to
+  // inspect historical DOM. Electron executeJavaScript may remain unsettled
+  // during provider SPA navigation even when the renderer itself is responsive.
+  // This performs one evaluation, never an input event, retry or network request.
+  async #readHistoricalThreadDOM() {
+    const wc=this.view.webContents;
+    try {
+      if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+    } catch { throw new Error('provider_readonly_debugger_unavailable'); }
+    let result;
+    try {
+      result=await wc.debugger.sendCommand('Runtime.evaluate', {
+        expression:`(() => {
           const entries = Array.from(document.querySelectorAll(
             '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
             '[data-message-role="user"],[data-message-role="assistant"],' +
@@ -521,7 +516,38 @@ export class EmbeddedChatWorker {
             available:true, url:location.href, domReliable:entries.length>0,
             truncated:entries.length>50, messages
           };
-        })()`)
+        })()`,
+        awaitPromise:false,returnByValue:true
+      });
+    } catch { throw new Error('provider_readonly_dom_evaluation_rejected'); }
+    if (result?.exceptionDetails || result?.result?.value?.available!==true)
+      throw new Error('provider_readonly_dom_evaluation_rejected');
+    return result.result.value;
+  }
+
+  // Explicit, read-only inspection of an existing, canonical conversation.
+  // The only navigation is an ordinary authorized GET to the linked thread.
+  // This never types, submits, retries, creates a chat or writes any Task.
+  async inspectConversationReadOnly(chatUrl) {
+    const expected=canonicalProviderChatUrl(chatUrl);
+    if (!expected) throw new Error('invalid_chat_url');
+    return this.enqueue(async () => {
+      // Historical read-only inspection is not an attempt to send. The provider
+      // editor may be absent even when the old thread is readable. Draft
+      // protection and canonical URL verification still apply.
+      let result;
+      try {
+        result=await this.showConversation(expected, {force:false,requireComposer:false,readOnlyThread:true});
+      } catch (error) {
+        return {available:false,url:expected,reason:safeHistoricalThreadFailure(error?.message)};
+      }
+      if (result.navigated === false ||
+          canonicalProviderChatUrl(this.view.webContents.getURL()) !== expected) {
+        return {available:false,url:expected,reason:result.navigated===false?'navigation_or_draft_blocked':'provider_url_mismatch'};
+      }
+      return waitForHistoricalThreadDom({
+        expectedUrl:expected,
+        read:()=>this.#readHistoricalThreadDOM()
       });
     });
   }
@@ -546,7 +572,7 @@ export class EmbeddedChatWorker {
     throw new Error('composer_not_found');
   }
 
-  async #safeLoad(url, { requireComposer = false, protectDraft = false, forceReload = false } = {}) {
+  async #safeLoad(url, { requireComposer = false, protectDraft = false, forceReload = false, readOnlyThread = false } = {}) {
     const wc = this.view.webContents;
     if (protectDraft) {
       const state = await this.#composerState(); // throw if draft cannot be observed
@@ -576,7 +602,13 @@ export class EmbeddedChatWorker {
     } catch (error) {
       const message = String(error?.message || error);
       const aborted = error?.code === -3 || /\(-3\)|ERR_ABORTED/i.test(message);
-      if (!aborted && message === 'provider_navigation_timeout' && requireComposer) {
+      if (!aborted && message === 'provider_navigation_timeout' && readOnlyThread &&
+          canInspectHistoricalThreadAfterNavigationTimeout({
+            expectedUrl:url,actualUrl:wc.getURL(),mainFrameLoading:wc.isLoadingMainFrame()
+          })) {
+        // This permits only the bounded historical DOM observer below.
+        // It does not certify message delivery, authentication or a successful load.
+      } else if (!aborted && message === 'provider_navigation_timeout' && requireComposer) {
         // loadURL might not settle even after the destination became interactive.
         // Never re-navigate or infer a stale/in-flight page was loaded.
         const state=await observeWithin(() => this.#composerState(), {

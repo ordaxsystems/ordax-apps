@@ -36,7 +36,7 @@ test('hung provider JavaScript observation is never re-issued',async()=>{
     timeoutMs:20,pollMs:1
   });
   assert.equal(result.available,false);
-  assert.equal(result.reason,'observation_failed');
+  assert.equal(result.reason,'provider_conversation_observation_timeout');
   assert.equal(attempts,1);
 });
 

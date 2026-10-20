@@ -5,6 +5,7 @@ import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
 import { assessProviderConversationEvidence } from '../src/provider-conversation-reconciliation.mjs';
+import { safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 
 import fs from 'node:fs';
@@ -348,7 +349,7 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
   const message=store.db.prepare(`SELECT content FROM messages WHERE task_id=? AND role='user'
     ORDER BY created_at DESC,id DESC LIMIT 1`).get(taskId);
   // No mutation or replay, including when the provider navigation times out.
-  const observed=await worker.inspectConversationReadOnly(expectedUrl).catch(() => null);
+  const observed=await worker.inspectConversationReadOnly(expectedUrl).catch(() => ({available:false,reason:'provider_inspection_unavailable'}));
   const assessment=assessProviderConversationEvidence({
     expectedUrl,observed,expectedMessage:message?.content
   });
@@ -359,6 +360,7 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
     observed?.truncated!==true;
   return {
     kind:assessment.kind,reason:assessment.reason,threadRendered,
+    inspectionReason:threadRendered ? 'thread_rendered' : safeHistoricalThreadFailure(observed?.reason),
     responseCandidate:assessment.responseCandidate===true,
     requiresReconciliation:assessment.requiresReconciliation===true
   };

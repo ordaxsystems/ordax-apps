@@ -187,6 +187,19 @@ test('linked-thread W3 smoke uses the OrdaX App and never sends',()=>{
   assert.doesNotMatch(source,/requestSubmit|sendPrompt|setChatVisible|loadURL|9444|ordax-gratis/i);
 });
 
+test('provider-frame diagnostic is explicitly not certification and accesses only the staged loopback target',()=>{
+  const source=fs.readFileSync(path.join(scripts,'live-ui-provider-frame-readonly.cjs'),'utf8');
+  const pkg=JSON.parse(fs.readFileSync(path.resolve(here,'../package.json'),'utf8'));
+  assert.equal(pkg.scripts['test:live:provider-frame'],'node scripts/live-ui-provider-frame-readonly.cjs');
+  assert.match(source,/acquireE2ELock\('provider-frame-readonly'\)/);
+  assert.match(source,/await waitForLabUiTarget\(\)/);
+  assert.match(source,/notAppCertification:true/);
+  assert.match(source,/ws\.hostname==='127\.0\.0\.1'/);
+  assert.match(source,/ws\.port==='9445'/);
+  assert.match(source,/if\(timer\)clearTimeout\(timer\)/);
+  assert.doesNotMatch(source,/requestSubmit|sendPrompt|loadURL|Input\.insertText|9444|ordax-gratis|cookie/i);
+});
+
 test('app-mode certification is isolated from the usable direct ChatGPT fallback',async()=>{
   const app={view:'app',directButton:'Modo direto',composer:'FORM',prompt:'TEXTAREA',newTask:'BUTTON'};
   assert.match(LAB_APP_MODE_PROBE,/ordaxView/);

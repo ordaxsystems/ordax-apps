@@ -1,5 +1,5 @@
 import { canonicalProviderChatUrl } from './conversation-policy.mjs';
-import { observeWithin } from './provider-observation-policy.mjs';
+import { observeWithin, safeHistoricalThreadFailure } from './provider-observation-policy.mjs';
 
 // Read-only React hydration observation. The caller navigates at most once.
 // Missing DOM may be retried; a hung observation is never re-issued.
@@ -22,10 +22,10 @@ export async function waitForHistoricalThreadDom({
     try {
       snapshot=await observeWithin(read,{timeoutMs:Math.min(2000,remaining),
         code:'provider_conversation_observation_timeout'});
-    } catch {
-      // A non-settling executeJavaScript may still be pending in Electron.
-      // Never queue another DOM evaluation after that timeout.
-      return {available:false,url:expected,reason:'observation_failed'};
+    } catch(error) {
+      // A non-settling renderer observation may still be pending.
+      // Never queue another DOM evaluation after timeout or rejection.
+      return {available:false,url:expected,reason:safeHistoricalThreadFailure(error?.message)};
     }
     if(!snapshot || canonicalProviderChatUrl(snapshot.url)!==expected)
       return {available:false,url:expected,reason:'thread_navigation_changed'};
