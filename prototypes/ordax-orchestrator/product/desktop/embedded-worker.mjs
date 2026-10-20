@@ -292,17 +292,21 @@ export class EmbeddedChatWorker {
       // Only count status codes of first-party requests. Never export URLs,
       // response payloads, query parameters, user data, or cookies.
       let backendForbiddenCount=0;
+      let backendRateLimitedCount=0;
       for (const entry of performance.getEntriesByType('resource')) {
-        if (entry.responseStatus !== 403) continue;
+        if (entry.responseStatus !== 403 && entry.responseStatus !== 429) continue;
         try {
           const requestUrl=new URL(entry.name);
           if (requestUrl.origin==='https://chatgpt.com' &&
-              requestUrl.pathname.startsWith('/backend-api/'))
-            backendForbiddenCount++;
+              requestUrl.pathname.startsWith('/backend-api/')) {
+            if (entry.responseStatus===403) backendForbiddenCount++;
+            if (entry.responseStatus===429) backendRateLimitedCount++;
+          }
         } catch {}
       }
       return {
         backendForbiddenCount:Math.min(100,backendForbiddenCount),
+        backendRateLimitedCount:Math.min(100,backendRateLimitedCount),
         body:body.slice(-5000),
         composer:Boolean(composer),
         hasLogin:/Entrar|Log in|Sign in/i.test(body),
@@ -314,13 +318,15 @@ export class EmbeddedChatWorker {
     const authState=classifyProviderAuthObservation({url,page});
     const providerAccessProblem=classifyProviderAccessRestriction({
       forbiddenCount:page?.backendForbiddenCount||0,
+      rateLimitedCount:page?.backendRateLimitedCount||0,
       composerReady:page?.composer===true
     });
     return { ...base, composer_ready:page?.composer===true,
       verification_required:page?.verification===true,
       health_observed:page!==null,auth_state:authState,
       provider_access_problem:providerAccessProblem,
-      backend_api_403_count:page?.backendForbiddenCount||0 };
+      backend_api_403_count:page?.backendForbiddenCount||0,
+      backend_api_429_count:page?.backendRateLimitedCount||0 };
   }
 
   enqueue(fn) {
