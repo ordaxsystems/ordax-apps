@@ -477,6 +477,48 @@ export class EmbeddedChatWorker {
     });
   }
 
+  // Chromium's documented DevTools Runtime.evaluate is used here only to
+  // inspect historical DOM. Electron executeJavaScript may remain unsettled
+  // during provider SPA navigation even when the renderer itself is responsive.
+  // This performs one evaluation, never an input event, retry or network request.
+  async #readHistoricalThreadDOM() {
+    const wc=this.view.webContents;
+    try {
+      if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+    } catch { throw new Error('provider_readonly_debugger_unavailable'); }
+    let result;
+    try {
+      result=await wc.debugger.sendCommand('Runtime.evaluate', {
+        expression:`(() => {
+          const entries = Array.from(document.querySelectorAll(
+            '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
+            '[data-message-role="user"],[data-message-role="assistant"],' +
+            '[data-message-author="user"],[data-message-author="assistant"]'
+          ));
+          const tail = entries.slice(-50);
+          const messages = tail.map(node => {
+            const roleValue=node.getAttribute('data-message-author-role') ||
+              node.getAttribute('data-message-role') || node.getAttribute('data-message-author');
+            const text=String(node.innerText || node.textContent || '');
+            return {
+              role:roleValue === 'user' ? 'user' : 'assistant',
+              text:text.slice(0,12001),
+              textTruncated:text.length>12000
+            };
+          });
+          return {
+            available:true, url:location.href, domReliable:entries.length>0,
+            truncated:entries.length>50, messages
+          };
+        })()`,
+        awaitPromise:false,returnByValue:true
+      });
+    } catch { throw new Error('provider_readonly_dom_evaluation_rejected'); }
+    if (result?.exceptionDetails || result?.result?.value?.available!==true)
+      throw new Error('provider_readonly_dom_evaluation_rejected');
+    return result.result.value;
+  }
+
   // Explicit, read-only inspection of an existing, canonical conversation.
   // The only navigation is an ordinary authorized GET to the linked thread.
   // This never types, submits, retries, creates a chat or writes any Task.
@@ -499,28 +541,7 @@ export class EmbeddedChatWorker {
       }
       return waitForHistoricalThreadDom({
         expectedUrl:expected,
-        read:()=>this.view.webContents.executeJavaScript(`(() => {
-          const entries = Array.from(document.querySelectorAll(
-            '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
-            '[data-message-role="user"],[data-message-role="assistant"],' +
-            '[data-message-author="user"],[data-message-author="assistant"]'
-          ));
-          const tail = entries.slice(-50);
-          const messages = tail.map(node => {
-            const roleValue=node.getAttribute('data-message-author-role') ||
-              node.getAttribute('data-message-role') || node.getAttribute('data-message-author');
-            const text=String(node.innerText || node.textContent || '');
-            return {
-              role:roleValue === 'user' ? 'user' : 'assistant',
-              text:text.slice(0,12001),
-              textTruncated:text.length>12000
-            };
-          });
-          return {
-            available:true, url:location.href, domReliable:entries.length>0,
-            truncated:entries.length>50, messages
-          };
-        })()`)
+        read:()=>this.#readHistoricalThreadDOM()
       });
     });
   }
