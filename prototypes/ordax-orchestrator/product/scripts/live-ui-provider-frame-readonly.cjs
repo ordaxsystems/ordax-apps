@@ -29,7 +29,9 @@ acquireE2ELock('provider-frame-readonly');
       "mainPresent:Boolean(document.querySelector('main,[role=\"main\"]')),"+
       "composerPresent:Boolean(document.querySelector('#prompt-textarea,[contenteditable=\"true\"][role=\"textbox\"]')),"+
       "userNodeCount:Math.min(1000,document.querySelectorAll('[data-message-author-role=\"user\"],[data-message-role=\"user\"],[data-message-author=\"user\"]').length),"+
-      "assistantNodeCount:Math.min(1000,document.querySelectorAll('[data-message-author-role=\"assistant\"],[data-message-role=\"assistant\"],[data-message-author=\"assistant\"]').length)"+
+      "assistantNodeCount:Math.min(1000,document.querySelectorAll('[data-message-author-role=\"assistant\"],[data-message-role=\"assistant\"],[data-message-author=\"assistant\"]').length),"+
+      "conversationTurnStructuralCount:Math.min(1000,document.querySelectorAll('[data-testid=\"conversation-turn\"],[data-chatgpt-selection-message-id],[data-message-id]').length),"+
+      "backendApiFailureCounts:(()=>{const c={s401:0,s403:0,s404:0,s429:0,s5xx:0};for(const e of performance.getEntriesByType('resource')){try{const u=new URL(e.name);if(u.origin!==location.origin||!u.pathname.startsWith('/backend-api/'))continue;const s=e.responseStatus;if(s===401)c.s401++;else if(s===403)c.s403++;else if(s===404)c.s404++;else if(s===429)c.s429++;else if(s>=500&&s<=599)c.s5xx++;}catch{}}for(const k of Object.keys(c))c[k]=Math.min(1000,c[k]);return c;})()"+
     "}))()";
     const result=await Promise.race([
       new Promise((resolve,reject)=>{
