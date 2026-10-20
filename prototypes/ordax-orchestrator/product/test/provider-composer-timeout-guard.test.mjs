@@ -91,6 +91,22 @@ test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',
   assert.doesNotMatch(ui.split("$('#inspectLinkedThread').addEventListener")[1].split("$('#directMode').addEventListener")[0],/requestSubmit|sendPrompt|setChatVisible/);
 });
 
+test('W3 success requires attributable Task user-and-assistant turn, never bare provider DOM',()=>{
+  const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
+  const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
+  const script=fs.readFileSync(path.resolve(here,'../scripts/live-ui-linked-thread-smoke.cjs'),'utf8');
+  const chunk=main.split("ipcMain.handle('ordax:tasks:inspect-linked-thread'")[1]
+    .split("ipcMain.handle('ordax:tasks:resume-capsule'")[0];
+  assert.match(chunk,/assessment\.kind==='response_candidate'/);
+  assert.match(chunk,/assessment\.candidates===1/);
+  assert.match(chunk,/assessment\.responseCandidate===true/);
+  assert.match(chunk,/observed\?\.truncated!==true/);
+  assert.doesNotMatch(chunk,/threadRendered=observed\?\.available===true/);
+  assert.match(ui,/Conversa e resposta da tarefa observadas/);
+  assert.match(script,/threadRendered:status\.includes\('Conversa e resposta da tarefa observadas'\)/);
+  assert.match(script,/if\(!result\.threadRendered\)process\.exitCode=2/);
+});
+
 test('safe observation timeout does not turn absence into session or success',async()=>{
   const code='test_observation_expired';
   await assert.rejects(observeWithin(()=>new Promise(()=>{}),{timeoutMs:20,code}),/test_observation_expired/);
