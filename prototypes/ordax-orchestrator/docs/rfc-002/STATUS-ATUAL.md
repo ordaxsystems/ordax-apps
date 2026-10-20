@@ -142,6 +142,16 @@
 - **Proibido** contornar HTTP 403 trocando User-Agent, importando cookies, manipulando tokens, headers, proteção do provedor ou endpoints privados. Se a integração não for suportada na partição Electron, investigar compatibilidade e vias oficiais, sem simular sucesso.
 - Enquanto o serviço não entregar compositor utilizável na partição Lab, **W1–W4 continuam pendentes**. Nenhum prompt foi enviado ou repetido. Manter `0.2.0-alpha.2`, Grátis intacto, sem release.
 
+## P5 — Primeiro W1 real e restart comprovados; thread externa ainda inconclusiva
+
+- **W1 físico aprovado em 19/10/2026:** no Windows autorizado, sessão `session_present`, compositor pronto, zero HTTP 403 na amostra. `live-ui-text-smoke` em perfil staged executou **uma única tentativa** com marcador técnico benigno: `exit=0`, `passed=true`, resposta com marcador observada. Não houve retry.
+- **SQLite real somente leitura:** uma Task identificada, Run única `succeeded`, `error=null`, um envio do usuário, uma resposta, um checkpoint, uma conversa com URL vinculada.
+- **Reinício físico após conclusão da Run:** pré-voo `activeRuns=0` e `dispatchingActions=0`. Foram encerrados **somente seis processos** do caminho exato `product/node_modules/electron/dist/electron.exe` do Lab. Reabertura com `start-lab.mjs --staged` no mesmo perfil. SQLite e IPC `window.ordax.getTask(taskId)` confirmaram mesmas mensagens, checkpoint e URL, **sem Run ou mensagem duplicada**. Sessão `session_present` continuou observável após reinício.
+- **W3 não aprovado:** a tentativa de navegar somente para a thread vinculada via `openTask()` ultrapassou o prazo do observador; depois a página reportou `pageType=conversation`, porém `authState=unknown` e `composerReady=false`. Não afirmar thread renderizada ou provedor funcional nessa navegação; nenhum segundo envio.
+- [Auditoria física W1/restart](../audits/P5-LIVE-W1-RESTART-2026-10-19.md) contém os limites exatos, sem reproduzir conversa, cookie ou identificador da conta. Código executado: checkout local `p5-403-physical` no commit `7043bba`, produto `0.2.0-alpha.2`; não é evidência do binário de release.
+- [PR #292](https://github.com/ordaxsystems/ordax-apps/pull/292) em validação: limita `#composerState()` e inspeções read-only, e impede navegação/envio quando o estado de drafts não puder ser verificado. [Auditoria de causa estrutural](../audits/P5-BOUNDED-COMPOSER-OBSERVATION-2026-10-19.md). Necessária CI Linux/Windows e **uma** validação read-only de thread após integração.
+- **Gates restantes:** queda verdadeira enquanto resposta está em andamento, abertura do DOM da mesma thread e verificação de nenhum replay em envio incerto. Não promover `alpha.3`; Grátis intocado.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
