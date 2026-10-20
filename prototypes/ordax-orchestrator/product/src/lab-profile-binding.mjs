@@ -3,7 +3,9 @@ import {createHash} from 'node:crypto';
 
 const stagedPrefix='--ordax-lab-staged-localappdata=';
 const approvalFlag='--ordax-lab-staged-approved';
-const altDebugFlag='--remote-debugging-port=9446';
+// Both first-party staged E2E ports are supported. Normal non-staged
+// debug launches remain distinct from an explicitly approved staged profile.
+const stagedDebugPorts=new Set(['--remote-debugging-port=9445','--remote-debugging-port=9446']);
 const stagedName=/^candidate-userdata-v\d+\.\d+\.\d+-alpha\.\d+$/;
 
 // The portable launcher may not forward an environment override reliably.
@@ -14,11 +16,11 @@ export function resolveLabUserRoot({
   localAppData=process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE||process.cwd(),'AppData','Local')
 }={}) {
   const candidates=argv.filter(v=>typeof v==='string'&&v.startsWith(stagedPrefix));
-  const debug=argv.includes(altDebugFlag);
+  const debugArgs=argv.filter(v=>typeof v==='string'&&v.startsWith('--remote-debugging-port='));
   const approved=argv.includes(approvalFlag);
-  if(candidates.length>1 || (debug && (!approved || candidates.length!==1)) ||
-     (approved && (!debug || candidates.length!==1)) ||
-     (candidates.length!==0 && (!debug || !approved)))
+  const stagedIntent=approved || candidates.length>0 || argv.includes('--remote-debugging-port=9446');
+  const validStagedPort=debugArgs.length===1 && stagedDebugPorts.has(debugArgs[0]);
+  if(candidates.length>1 || (stagedIntent && (!approved || candidates.length!==1 || !validStagedPort)))
     throw new Error('lab_staged_profile_explicit_binding_required');
   if(candidates.length===1) {
     const candidate=candidates[0].slice(stagedPrefix.length);

@@ -14,6 +14,7 @@ const candidate=path.resolve(os.tmpdir(),'ordax-profile-binding-test','candidate
 const flag='--ordax-lab-staged-localappdata='+candidate;
 const approved='--ordax-lab-staged-approved';
 const debug='--remote-debugging-port=9446';
+const parallelDebug='--remote-debugging-port=9445';
 const stage=argv=>resolveLabUserRoot({argv,localAppData:path.resolve(os.tmpdir(),'ordinary-appdata')});
 
 test('normal OrdaX App without staged flags keeps its existing private Lab root',()=>{
@@ -22,10 +23,13 @@ test('normal OrdaX App without staged flags keeps its existing private Lab root'
   });
 });
 
-test('test-only CDP 9446 may never fall back to another existing Lab profile',()=>{
+test('staged debugging never falls back to a different existing Lab profile',()=>{
   for(const args of [
     [debug],[approved],[flag],[debug,approved],[debug,flag],
     [approved,flag],[debug,approved,flag,flag],
+    [parallelDebug,flag],[parallelDebug,approved],
+    [parallelDebug,debug,approved,flag],
+    ['--remote-debugging-port=9447',approved,flag],
     [debug,approved,'--ordax-lab-staged-localappdata=./candidate-userdata-v0.2.0-alpha.2'],
     [debug,approved,'--ordax-lab-staged-localappdata='+path.resolve(os.tmpdir(),'ordinary-appdata')]
   ])assert.throws(()=>stage(args),/lab_staged_profile_(?:explicit_binding_required|invalid_path)/);
@@ -33,6 +37,8 @@ test('test-only CDP 9446 may never fall back to another existing Lab profile',()
 
 test('explicit staged profile path is authoritative, and fingerprint is stable',()=>{
   const profile=stage(['electron','app',debug,approved,flag]);
+  const parallel=stage(['electron','app',parallelDebug,approved,flag]);
+  assert.deepEqual(parallel,profile);
   assert.equal(profile.staged,true);
   assert.equal(profile.userRoot,path.join(candidate,'OrdaX','OrchestratorLab'));
   assert.match(labProfileFingerprint(profile.userRoot),/^[a-f0-9]{64}$/);
@@ -40,6 +46,10 @@ test('explicit staged profile path is authoritative, and fingerprint is stable',
   if(process.platform==='win32')
     assert.equal(labProfileFingerprint(profile.userRoot),
       labProfileFingerprint(profile.userRoot.toUpperCase()));
+});
+
+test('normal non-staged debugging does not accidentally bind a staged profile',()=>{
+  assert.equal(stage(['electron','app',parallelDebug]).staged,false);
 });
 
 test('main binds userData before opening SQLite and only trusted App UI reads profile proof',()=>{

@@ -350,3 +350,7 @@ Falha reproduzida: uma exceção entre `UPDATE runs` e `UPDATE tasks` podia pers
 ### P5/W4 — falha CI workspace-boundary (20/10/2026)
 
 O encerramento atômico passou em `npm run validate` (254/254), mas o CI `workspace-boundary` falhou ao decodificar como UTF-8 módulos rastreados do `ordax-os/main`. Corrigida a análise na origem: `verify_assistant_gate_b.py` agora procura imports diretamente nos bytes, sem excluir módulos; novo teste verifica que bytes inválidos não ocultam importações proibidas. Isso não muda o escopo do Gate A/B. [Auditoria](../audits/P5-W4-CI-WORKSPACE-BOUNDARY-2026-10-20.md).
+
+### P5/W4 — reinício offline e portas staged (20/10/2026)
+
+Duas inicializações reais do Electron, com perfil e mensagens **sintéticos e isolados**, comprovaram recuperação running → interrupted e idempotência (apenas 1 evento run.interrupted, 3 mensagens, SQLite ok, 0 envios). Corrigida a divergência 9445/9446 entre vinculação staged e runner; o preparador canônico de fixtures recusa perfil existente e exige aprovação. [Auditoria](../audits/P5-W4-OFFLINE-APP-RESTART-2026-10-20.md). **W3 e W4 externos continuam pendentes.**
