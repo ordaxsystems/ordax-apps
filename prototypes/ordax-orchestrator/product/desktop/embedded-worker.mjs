@@ -375,7 +375,7 @@ export class EmbeddedChatWorker {
   async #startNewChat() {
     const wc = this.view.webContents;
     const currentUrl = wc.getURL();
-    const homeComposer = await this.#composerState().catch(() => ({ found:false, formReady:false, text:'' }));
+    const homeComposer = await this.#composerState(); // refuse unknown drafts before new chat
     // A ready provider home already IS a fresh conversation. Avoid an
     // unnecessary DOM click or reload for every new Task.
     if (canReuseFreshProviderHome({ url:currentUrl, composer:homeComposer })) {
@@ -439,7 +439,8 @@ export class EmbeddedChatWorker {
     if (!/^https:\/\/chatgpt\.com\//i.test(String(url || ''))) throw new Error('invalid_chat_url');
     const current = this.view.webContents.getURL();
     if (!force && current !== url) {
-      const state = await this.#composerState().catch(() => ({ found:false, text:'' }));
+      // If the composer is unreadable, its draft state is unknown.
+      const state = await this.#composerState();
       if (state.text?.trim()) return { ...this.status(), navigated:false, reason:'visible_draft_present' };
     }
     if (current !== url) await this.#safeLoad(url, { requireComposer: true, protectDraft: !force });
@@ -453,7 +454,7 @@ export class EmbeddedChatWorker {
       const url=this.view.webContents.getURL();
       let observation={};
       try {
-        observation=await this.view.webContents.executeJavaScript(`(() => {
+        observation=await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
           const $ = selector => document.querySelector(selector);
           const all = selector => document.querySelectorAll(selector);
           const userNodes=all('[data-message-role="user"],[data-message-author-role="user"],[data-message-author="user"]');
@@ -469,7 +470,7 @@ export class EmbeddedChatWorker {
             assistantNodes:assistantNodes.length,
             userNodes:userNodes.length
           };
-        })()`);
+        })()`), {timeoutMs:5000,code:'provider_diagnostic_observation_timeout'});
       } catch { /* unavailable signals are not success */ }
       return toSafeProviderDiagnostic({url,observation});
     });
@@ -488,7 +489,7 @@ export class EmbeddedChatWorker {
         return {available:false,url:this.view.webContents.getURL(),reason:'navigation_or_draft_blocked'};
       }
       try {
-        return await this.view.webContents.executeJavaScript(`(() => {
+        return await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
           const entries = Array.from(document.querySelectorAll(
             '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
             '[data-message-role="user"],[data-message-role="assistant"],' +
@@ -509,7 +510,7 @@ export class EmbeddedChatWorker {
             available:true, url:location.href, domReliable:entries.length>0,
             truncated:entries.length>50, messages
           };
-        })()`);
+        })()`), {timeoutMs:5000,code:'provider_conversation_observation_timeout'});
       } catch {
         return {available:false,url:expected,reason:'observation_failed'};
       }
@@ -517,13 +518,13 @@ export class EmbeddedChatWorker {
   }
 
   async #composerState() {
-    return this.view.webContents.executeJavaScript(`(() => {
+    return observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
       const sels = ${JSON.stringify(selectors.composer)};
       const el = ${composerExpression()};
       if (!el) return { found:false, text:'' };
       const text = 'value' in el ? el.value : (el.innerText || el.textContent || '');
       return { found:true, formReady:Boolean(el.closest('form')) || el.id === 'pending-home-input', text:String(text || ''), tag:el.tagName, id:el.id || '' };
-    })()`);
+    })()`), {timeoutMs:4000,code:'provider_composer_observation_timeout'});
   }
 
   async #waitForComposer(timeout = 30000) {
@@ -539,22 +540,25 @@ export class EmbeddedChatWorker {
   async #safeLoad(url, { requireComposer = false, protectDraft = false, forceReload = false } = {}) {
     const wc = this.view.webContents;
     if (protectDraft) {
-      const state = await this.#composerState().catch(() => ({ found:false, text:'' }));
+      const state = await this.#composerState(); // throw if draft cannot be observed
       if (state.text?.trim()) throw new Error('chatgpt_draft_present');
     }
     const target = new URL(url);
     const currentUrl = wc.getURL();
+    let alreadyAtTarget = false;
     if (currentUrl) {
       try {
         const current = new URL(currentUrl);
-        if (current.origin === target.origin && current.pathname === target.pathname && current.search === target.search) {
-          if (!forceReload) {
-            if (!requireComposer) return;
-            const state = await this.#composerState().catch(() => ({ found:false }));
-            if (state.found) return;
-          }
-        }
-      } catch {}
+        alreadyAtTarget = current.origin === target.origin &&
+          current.pathname === target.pathname && current.search === target.search;
+      } catch { /* only malformed URL parsing is ignored */ }
+    }
+    if (alreadyAtTarget && !forceReload) {
+      if (!requireComposer) return;
+      // Composer observation must stay OUTSIDE the URL parser's catch.
+      // A timeout may not trigger a reload of an uncertain draft.
+      const state = await this.#composerState();
+      if (state.found) return;
     }
     try {
       await observeWithin(() => wc.loadURL(url), {
@@ -820,7 +824,7 @@ export class EmbeddedChatWorker {
       // Safety gate before preparing any draft or touching the provider UI.
       assertProviderSendReadiness(health);
       this.#setStage('prepare');
-      const currentDraft = await this.#composerState().catch(() => ({ found:false, text:'' }));
+      const currentDraft = await this.#composerState(); // fail closed before any send
       const draftCheckedAt = Date.now();
       const startsFresh = Boolean(newSession || !chatUrl);
       assertProviderDraftAllowed({ newConversation: startsFresh, draftText: currentDraft.text });
