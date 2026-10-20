@@ -53,6 +53,22 @@ test('read-only provider inspectors have deadlines and remain no-send',()=>{
   }
 });
 
+test('historical read-only thread can render without a composer; sending still requires one',()=>{
+  const show=section('  async showConversation(', '  async inspectDiagnosticReadOnly()');
+  const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
+  const load=section('  async #safeLoad(', '  async #assistantSnapshot()');
+  assert.match(show,/requireComposer = true/);
+  assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force \}\)/);
+  assert.match(read,/this\.showConversation\(expected, \{force:false,requireComposer:false\}\)/);
+  assert.match(read,/canonicalProviderChatUrl\(this\.view\.webContents\.getURL\(\)\) !== expected/);
+  assert.match(load,/if \(protectDraft\) \{\s*const state = await this\.#composerState\(\)/);
+  assert.match(load,/if \(requireComposer\) await this\.#waitForComposer\(\)/);
+  const send=worker.slice(worker.indexOf('  async sendPrompt({'));
+  assert.match(send,/assertProviderSendReadiness/);
+  assert.match(send,/await this\.#setComposerAndSend\(/);
+  assert.doesNotMatch(read,/sendPrompt|requestSubmit|Input\.insertText|setComposerAndSend/);
+});
+
 test('safe observation timeout does not turn absence into session or success',async()=>{
   const code='test_observation_expired';
   await assert.rejects(observeWithin(()=>new Promise(()=>{}),{timeoutMs:20,code}),/test_observation_expired/);
