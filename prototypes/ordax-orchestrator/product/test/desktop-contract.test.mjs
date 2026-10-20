@@ -52,7 +52,10 @@ test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
 test('ChatGPT worker is hidden by default and direct mode is explicit', () => {
   assert.match(main, /let chatVisible = false/);
   assert.match(ui, /directMode/);
-  assert.match(ui, /setChatVisible\(false\)/);
+  assert.match(ui, /await setDirectModeVisible\(false\)/);
+  assert.match(ui, /await window\.ordax\.setChatVisible\(visible\)/);
+  assert.match(ui, /await setDirectModeVisible\(true\)/);
+  assert.match(ui, /const nextVisible = !directMode/);
 });
 
 test('assistant output streams into OrdaX UI through isolated worker preload', () => {
