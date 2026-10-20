@@ -25,6 +25,7 @@ acquireE2ELock('provider-frame-readonly');
     const expression="(()=>({"+
       "readyState:['loading','interactive','complete'].includes(document.readyState)?document.readyState:'unknown',"+
       "bodyPresent:Boolean(document.body),"+
+      "pageType:/^\\/c\\/[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(location.pathname)?'conversation':location.pathname==='/'?'home':'other',"+
       "mainPresent:Boolean(document.querySelector('main,[role=\"main\"]')),"+
       "composerPresent:Boolean(document.querySelector('#prompt-textarea,[contenteditable=\"true\"][role=\"textbox\"]')),"+
       "userNodeCount:Math.min(1000,document.querySelectorAll('[data-message-author-role=\"user\"],[data-message-role=\"user\"],[data-message-author=\"user\"]').length),"+
