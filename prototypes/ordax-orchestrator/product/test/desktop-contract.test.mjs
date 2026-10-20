@@ -139,7 +139,8 @@ test('drafts are scoped to a Task, revision-guarded and saved without entering p
   assert.match(store, /draft_revision<\?/);
   assert.match(preload, /setDraft/);
   assert.match(main, /ordax:tasks:draft:set/);
-  assert.match(main, /store\.setDraft\(taskId, '', draftRevision\)/);
+  assert.match(main, /store\.beginProviderRun\(taskId, prompt/);
+  assert.match(store, /this\.setDraft\(taskId, '', draftRevision\)/);
   assert.match(ui, /draftCache/);
   assert.match(ui, /flushDraft/);
   assert.match(ui, /navigationEpoch/);
