@@ -448,6 +448,8 @@ async function openTask(id) {
   $('#taskId').textContent = task.id;
   $('#inspectLinkedThread').disabled = !task.chat_url;
   $('#linkedThreadStatus').textContent = '';
+  $('#linkedThreadStatus').dataset.kind = '';
+  $('#linkedThreadStatus').dataset.reason = '';
   $('#workspaceId').textContent = workspace ? `sessão ${workspace.id.slice(-8)}` : '';
   renderHistory(task, { reset:true, scrollToLatest:true });
   renderContext(task);
@@ -682,6 +684,8 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
   try {
     const result=await window.ordax.inspectLinkedThread(taskId);
     if (currentTaskId !== taskId) return;
+    $('#linkedThreadStatus').dataset.kind = String(result?.kind || 'unavailable');
+    $('#linkedThreadStatus').dataset.reason = String(result?.reason || 'unknown');
     $('#linkedThreadStatus').textContent=result?.threadRendered
       ? result.kind==='response_candidate'
         ? 'Conversa carregada e mensagens correspondentes observadas. Sem comprovação de efeitos externos.'
