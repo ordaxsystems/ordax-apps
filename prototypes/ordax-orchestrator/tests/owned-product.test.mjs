@@ -50,7 +50,11 @@ test('start command now runs owned source and retains separate profile', () => {
   assert.match(launch,/staged/);
   const main=read('product/desktop/main.mjs');
   const worker=read('product/desktop/embedded-worker.mjs');
-  assert.match(main,/'OrdaX', 'OrchestratorLab'/);
+  const profile=read('product/src/lab-profile-binding.mjs');
+  assert.match(main,/resolveLabUserRoot/);
+  assert.match(main,/app\.setPath\('userData', userRoot\)/);
+  assert.match(profile,/path\.join\(localAppData,'OrdaX','OrchestratorLab'\)/);
+  assert.match(profile,/lab_staged_profile_explicit_binding_required/);
   assert.match(main,/ordax-orchestrator-lab\.sqlite/);
   assert.doesNotMatch(main,/'OrdaX', 'Gratis'|ordax-gratis\.sqlite/);
   assert.match(worker,/persist:ordax-orchestrator-lab-chatgpt/);
