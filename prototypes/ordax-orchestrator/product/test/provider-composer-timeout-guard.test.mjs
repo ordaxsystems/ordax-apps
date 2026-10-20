@@ -122,7 +122,9 @@ test('W3 success requires attributable Task user-and-assistant turn, never bare 
   assert.match(ui,/dataset\.state = 'pending'/);
   assert.match(ui,/dataset\.state = 'complete'/);
   assert.match(ui,/dataset\.state = 'error'/);
-  assert.match(ui,/dataset\.threadRendered = result\?\.threadRendered === true/);
+  assert.match(ui,/const attributable = result\?\.threadRendered === true/);
+  assert.match(ui,/dataset\.threadRendered = attributable \? 'true' : 'false'/);
+  assert.match(ui,/textContent=attributable/);
   assert.match(script,/diagnosis\.kind==='response_candidate'/);
   assert.match(script,/diagnosis\.reason==='thread_rendered'/);
   assert.match(script,/diagnosis\.attributable===true/);
