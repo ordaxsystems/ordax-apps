@@ -729,8 +729,8 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
     $('#linkedThreadStatus').dataset.threadRendered = attributable ? 'true' : 'false';
     $('#linkedThreadStatus').dataset.state = 'complete';
     const blockedReasons={
-      provider_rate_limited_observed:'O ChatGPT apresentou HTTP 429. Inspeção suspensa sem navegação ou reenvio.',
-      provider_access_restricted_observed:'O ChatGPT apresentou restrição de acesso. Nenhuma navegação ou reenvio.',
+      provider_rate_limited_observed:'O ChatGPT apresentou HTTP 429. Inspeção suspensa, sem nova navegação nem reenvio.',
+      provider_access_restricted_observed:'O ChatGPT apresentou restrição de acesso (HTTP 403 observado). Inspeção suspensa, sem nova navegação nem reenvio.',
       provider_login_required:'Entre no ChatGPT pela página oficial antes de verificar a conversa. Rascunho preservado.',
       provider_authentication_in_progress:'Conclua a autenticação no ChatGPT antes da inspeção. Nenhum reenvio.',
       provider_session_not_observed:'Sessão não comprovada para abrir outra conversa. Faça login pelo modo direto.',

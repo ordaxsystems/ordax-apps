@@ -6,7 +6,7 @@ import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { createProviderDeliveryRecorder } from '../src/provider-delivery-recorder.mjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
-import { assessHistoricalThreadPreflight } from '../src/provider-historical-thread-preflight.mjs';
+import { assessHistoricalThreadPreflight, classifyHistoricalThreadPostNavigation } from '../src/provider-historical-thread-preflight.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
@@ -575,10 +575,16 @@ export class EmbeddedChatWorker {
           canonicalProviderChatUrl(this.view.webContents.getURL()) !== expected) {
         return {available:false,url:expected,reason:result.navigated===false?'navigation_or_draft_blocked':'provider_url_mismatch'};
       }
-      return waitForHistoricalThreadDom({
+      const observation=await waitForHistoricalThreadDom({
         expectedUrl:expected,
         read:()=>this.#readHistoricalThreadDOM()
       });
+      if(observation?.reason!=='thread_dom_not_ready') return observation;
+      // A 403/429 can be observed only after the authorized historical GET.
+      // One fresh, bounded first-party health read; no second navigation, DOM
+      // retry, submission, authentication or speculative status inference.
+      const postHealth=await this.health().catch(()=>null);
+      return classifyHistoricalThreadPostNavigation({observation,health:postHealth});
     });
   }
 

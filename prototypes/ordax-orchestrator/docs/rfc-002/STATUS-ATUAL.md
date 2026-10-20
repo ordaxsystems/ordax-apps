@@ -338,3 +338,7 @@ A inspeção histórica foi endurecida: `threadRendered` não pode ser verdadeir
 ### P5/W3 — Proveniência nas continuações (20/10/2026)
 
 A investigação encontrou e corrigiu um defeito estrutural: `onDeliveryObserved` só era executado para chats novos, impedindo o registro do recibo de envio em uma conversa existente. O worker agora usa um único recorder para ambos os tipos, depois de confirmação pela UI, com URL esperada e idempotência. Testes focados com SQLite real aprovados; sem segundo mecanismo de envio e sem criar evidência retroativa. [Auditoria](../audits/P5-W3-EXISTING-CONVERSATION-DELIVERY-2026-10-20.md). W3 real e W4 real continuam pendentes.
+
+### W3 — sessão Dev real e restrição observada (20/10/2026)
+
+O App Dev antigo rodava fontes anteriores à PR #268; o perfil staged correto foi identificado pelo launcher oficial. Backup SQLite verificado e compatibilidade com a fonte atual comprovada em cópia isolada (7 tarefas, 5 links, nenhuma Run ativa). A instância antiga fechou naturalmente e o App canônico abriu no mesmo perfil autenticado, sem copiar cookies. **Uma única** inspeção histórica pelo App terminou `thread_dom_not_ready`, sem envios. Diagnóstico posterior observou 9 HTTP 403 do backend, compositor ausente e `authState=unknown`; coocorrência não comprova causa. O diagnóstico de W3 agora distingue 403/429 observados pós-navegação sem repetir inspeção ou autenticação. **W3/W4 permanecem pendentes**. [Auditoria](../audits/P5-W3-REAL-SESSION-403-2026-10-20.md).
