@@ -83,7 +83,9 @@ test('real worker implementation stops before showConversation when W3 preflight
   assert.match(method,/return \{available:false,url:expected,reason:preflight\.reason\}/);
   assert.ok(method.indexOf('if(!preflight.allowed)') < method.indexOf('this.showConversation('));
   assert.doesNotMatch(method,/sendPrompt\(|requestSubmit\(|\.login\(/);
-  assert.match(main,/inspectionReason:threadRendered \? 'thread_rendered' : safeHistoricalThreadFailure\(observed\?\.reason\)/);
+  assert.match(main,/const provenance=findProviderSubmissionProvenance\(\{store,taskId,chatUrl:expectedUrl\}\)/);
+  assert.match(main,/const threadRendered=Boolean\(provenance\)/);
+  assert.match(main,/provider_submission_provenance_missing/);
   assert.match(ui,/provider_rate_limited_observed/);
   assert.match(ui,/provider_session_not_observed/);
 });
