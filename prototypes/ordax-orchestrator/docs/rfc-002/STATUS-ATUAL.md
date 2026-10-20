@@ -115,6 +115,16 @@
 - [CI #288](https://github.com/ordaxsystems/ordax-apps/actions/runs/39344527833) aprovada: **36/36 testes bootstrap, 148/148 testes produto em Linux e gates Windows/build portátil aprovados**. [Auditoria física](../audits/P5-FIRST-AUTHENTICATED-TASK-NAVIGATION-2026-10-19.md).
 - **Próxima prova:** atualizar o Lab de teste isolado com a correção e iniciar **nova Task com marcador diferente**, sem reenviar a anterior. Só declarar W1–W4 após resposta real, interrupção/reabertura e correlação da mesma thread sem duplicação. `0.2.0-alpha.2` preservada, Grátis intocado.
 
+## P5 — Sessão presente e entrega incerta: não reenviar
+
+- O usuário confirmou login no ChatGPT Web **na partição isolada do Lab**. Leitura na UI: `authState=session_present`, `composerReady=true`, sem verificação; não é atestado independente de identidade.
+- **Primeira Task de teste:** `task_b4bb9a83-1a5c-4dbc-b61d-dbab37bcbbb0` falhou em `prepare:provider_navigation_timeout`, sem tentativa de envio `submit_attempt_at=null`. Foi preservada, sem replay. [PR #288](https://github.com/ordaxsystems/ordax-apps/pull/288) integrada (`e2722de`) e validada Linux 148/148 + Windows/build.
+- **Segunda Task de teste:** `task_4f255ebd-638f-4456-bde3-7308454fc605` chegou à fase `submit`, mas terminou em `submit:send_confirmation_unknown`. `run.metrics`: `submit_attempt_at` e `provider_request_seen_at` **presentes**, `submitted_at` ausente. SQLite: 1 mensagem `user`, 0 `assistant`, 0 checkpoints, 0 links canônicos. **A entrega é indeterminada. Não reenviar.**
+- [PR #289](https://github.com/ordaxsystems/ordax-apps/pull/289) integrada em `602c23362c60ad93a88f49b0a1945cd67ae0def4`: um novo envio na **mesma Task** é bloqueado quando existe Run interrompida/incerta, usando diretamente `runs.metrics` do Store existente. Nenhuma tabela ou sistema paralelo. [CI #289](https://github.com/ordaxsystems/ordax-apps/actions/runs/39346325642): **36/36 bootstrap, 154/154 produto Linux e Windows/build portátil aprovados**.
+- [Auditoria completa com evidências](../audits/P5-LIVE-SUBMISSION-UNCERTAIN-2026-10-19.md). Última inspeção não obteve URL de thread atribuível; não usar heurística para inventar permalink, resposta ou entrega.
+- **Primeiro gate pendente:** reconciliar **somente leitura** a segunda Task com uma thread válida, caso seja observada no histórico oficial do ChatGPT dentro do Lab. Sem confirmação, manter bloqueio e não automatizar replay. P5 W1–W4 continuam **não concluídos**.
+- OrdaX Grátis, OS, Runtime e pendrive não alterados; versão `0.2.0-alpha.2`, supervisor desativado, nenhuma release.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
