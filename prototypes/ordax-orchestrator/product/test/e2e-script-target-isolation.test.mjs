@@ -238,18 +238,44 @@ test('app-mode certification is isolated from the usable direct ChatGPT fallback
   const observed=await waitForLabAppMode(async()=>{
     reads++;
     return reads===1?{view:null}:app;
-  },{clock:()=>clock,sleep:async ms=>{clock+=ms;},maxWaitMs:1000,pollMs:100});
+  },{clock:()=>clock,sleep:async ms=>{clock+=ms;},maxWaitMs:1000,pollMs:100,requireProfileProof:false});
   assert.equal(observed,app);
   assert.equal(reads,2);
   await assert.rejects(waitForLabAppMode(async()=>({...app,view:'provider'})),
     /lab_e2e_provider_fallback_not_app_test/);
   await assert.rejects(waitForLabAppMode(async()=>({view:null}),{
-    clock:()=>clock,sleep:async ms=>{clock+=ms;},maxWaitMs:200,pollMs:100
+    clock:()=>clock,sleep:async ms=>{clock+=ms;},maxWaitMs:200,pollMs:100,requireProfileProof:false
   }),/lab_e2e_app_mode_not_ready/);
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   assert.match(ui,/await setDirectModeVisible\(true\)/);
   assert.match(ui,/const nextVisible = !directMode/);
   assert.match(ui,/dataset\.ordaxView = visible \? 'provider' : 'app'/);
+});
+
+test('all live App gates reject a Lab with correct title but a different SQLite profile',async()=>{
+  const expectedProfile=path.join(stage,'OrdaX','OrchestratorLab');
+  const {labProfileFingerprint}=await import('../src/lab-profile-binding.mjs');
+  const app={view:'app',directButton:'Modo direto',composer:'FORM',prompt:'TEXTAREA',newTask:'BUTTON'};
+  const priorLocal=process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
+  const priorApproval=process.env.ORDAX_LAB_E2E_APPROVED;
+  process.env.ORDAX_LAB_E2E_LOCALAPPDATA=stage;
+  process.env.ORDAX_LAB_E2E_APPROVED='1';
+  try{
+    await assert.rejects(waitForLabAppMode(async expr=>
+      expr.includes('labProfileProof')?{schema:'ordax.lab.profile-proof.v1',fingerprint:'0'.repeat(64)}:app),
+    /lab_e2e_profile_mismatch/);
+    const observed=await waitForLabAppMode(async expr=>
+      expr.includes('labProfileProof')?{schema:'ordax.lab.profile-proof.v1',
+        fingerprint:labProfileFingerprint(expectedProfile)}:app);
+    assert.equal(observed,app);
+    await assert.rejects(waitForLabAppMode(async expr=>
+      expr.includes('labProfileProof')?null:app),/lab_e2e_profile_mismatch/);
+  }finally{
+    if(priorLocal==null)delete process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
+    else process.env.ORDAX_LAB_E2E_LOCALAPPDATA=priorLocal;
+    if(priorApproval==null)delete process.env.ORDAX_LAB_E2E_APPROVED;
+    else process.env.ORDAX_LAB_E2E_APPROVED=priorApproval;
+  }
 });
 
 test('signed-out E2E stays exclusively in Lab App and never invokes provider transport',()=>{
