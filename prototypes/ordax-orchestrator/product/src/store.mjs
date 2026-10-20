@@ -707,22 +707,39 @@ export class Store {
   }
 
   finishRun(taskId, runId, error = null) {
-    const status = error ? 'failed' : 'succeeded';
-    const now = this.now();
-    this.db.prepare('UPDATE runs SET status=?,completed_at=?,heartbeat_at=?,error=? WHERE id=?')
-      .run(status, now, now, error, runId);
-    this.db.prepare('UPDATE tasks SET status=?,updated_at=? WHERE id=?').run(error ? 'error' : 'ready', now, taskId);
-    this.event(taskId, error ? 'run.failed' : 'run.succeeded', { run_id: runId, error });
-    if (!error) {
-      const active = this.db.prepare("SELECT 1 FROM task_conversations WHERE task_id=? AND status='active' LIMIT 1").get(taskId);
-      if (active) {
-        try { this.recordConversationCompletion(taskId, runId); }
-        catch (accountingError) {
-          this.event(taskId, 'provider.conversation.accounting_failed', {
-            run_id:runId, error:String(accountingError?.message || accountingError)
-          });
+    // A crash must not persist a terminal Run with a still-running Task or
+    // leave success events/accounting for a transaction that did not commit.
+    // Do not mutate a foreign/already terminal Run or retry provider effects.
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const run = this.db.prepare('SELECT task_id,status FROM runs WHERE id=?').get(runId);
+      if (!run || run.task_id !== taskId || run.status !== 'running')
+        throw new Error('run_finish_state_invalid');
+      const status = error ? 'failed' : 'succeeded';
+      const now = this.now();
+      const finalized = this.db.prepare(
+        "UPDATE runs SET status=?,completed_at=?,heartbeat_at=?,error=? WHERE id=? AND task_id=? AND status='running'"
+      ).run(status, now, now, error, runId, taskId);
+      if (finalized.changes !== 1) throw new Error('run_finish_state_invalid');
+      const task = this.db.prepare('UPDATE tasks SET status=?,updated_at=? WHERE id=?')
+        .run(error ? 'error' : 'ready', now, taskId);
+      if (task.changes !== 1) throw new Error('run_finish_task_missing');
+      this.event(taskId, error ? 'run.failed' : 'run.succeeded', { run_id: runId, error });
+      if (!error) {
+        const active = this.db.prepare("SELECT 1 FROM task_conversations WHERE task_id=? AND status='active' LIMIT 1").get(taskId);
+        if (active) {
+          try { this.recordConversationCompletion(taskId, runId); }
+          catch (accountingError) {
+            this.event(taskId, 'provider.conversation.accounting_failed', {
+              run_id:runId, error:String(accountingError?.message || accountingError)
+            });
+          }
         }
       }
+      this.db.exec('COMMIT');
+    } catch (failure) {
+      this.db.exec('ROLLBACK');
+      throw failure;
     }
   }
 

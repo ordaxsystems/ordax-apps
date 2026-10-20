@@ -342,3 +342,7 @@ A investigação encontrou e corrigiu um defeito estrutural: `onDeliveryObserved
 ### W3 — sessão Dev real e restrição observada (20/10/2026)
 
 O App Dev antigo rodava fontes anteriores à PR #268; o perfil staged correto foi identificado pelo launcher oficial. Backup SQLite verificado e compatibilidade com a fonte atual comprovada em cópia isolada (7 tarefas, 5 links, nenhuma Run ativa). A instância antiga fechou naturalmente e o App canônico abriu no mesmo perfil autenticado, sem copiar cookies. **Uma única** inspeção histórica pelo App terminou `thread_dom_not_ready`, sem envios. Diagnóstico posterior observou 9 HTTP 403 do backend, compositor ausente e `authState=unknown`; coocorrência não comprova causa. O diagnóstico de W3 agora distingue 403/429 observados pós-navegação sem repetir inspeção ou autenticação. **W3/W4 permanecem pendentes**. [Auditoria](../audits/P5-W3-REAL-SESSION-403-2026-10-20.md).
+
+### P5/W4 — finalização atômica de execução (20/10/2026)
+
+Falha reproduzida: uma exceção entre `UPDATE runs` e `UPDATE tasks` podia persistir sucesso na Run com a Task ainda `running`; um evento `run.failed` também podia falhar após as duas atualizações. `Store.finishRun` agora valida escopo e estado e grava Run/Task/eventos/contabilização em uma transação SQLite, com rollback integral. Foram aprovadas regressões com triggers de falha e reinício de SQLite real em disco. **W4 real ainda não certificado**, sem envio ou replay. [Auditoria](../audits/P5-W4-ATOMIC-FINALIZATION-2026-10-20.md).
