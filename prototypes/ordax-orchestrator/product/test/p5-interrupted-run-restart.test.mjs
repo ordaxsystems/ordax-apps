@@ -43,7 +43,7 @@ test('actual SQLite restart retains interrupted Run and uncertain supervisor act
   assert.equal(run.status,'interrupted');
   assert.equal(run.error,'process_interrupted');
   assert.equal(reopened.db.prepare('SELECT status FROM tasks WHERE id=?').get(f.task.id).status,'interrupted');
-  assert.equal(reopened.db.prepare('SELECT status FROM action_ledger WHERE id=?') .get(f.actionId).status,'indeterminate');
+  assert.equal(reopened.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(f.actionId).status,'indeterminate');
   const pending=listLocalSupervisorRecoverable({store:reopened,taskId:f.task.id});
   assert.equal(pending.length,1);
   assert.equal(pending[0].status,'indeterminate');
@@ -67,7 +67,7 @@ test('initial chat without verified permalink remains uncertain after crash; bro
   assert.equal(result.requiresReconciliation,true);
   assert.equal(calls,0);
   assert.equal(reopened.db.prepare('SELECT status FROM action_ledger WHERE id=?')
-     .get(f.actionId).status,'indeterminate');
+    .get(f.actionId).status,'indeterminate');
 });
 
 test('linked conversation may show a response candidate but cannot resolve uncertain action',async t=>{
