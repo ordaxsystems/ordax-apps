@@ -4,6 +4,14 @@ let currentTaskId = null;
 let currentTask = null;
 let workspace = null;
 let directMode = false;
+
+// Reflect the acknowledged Electron view, never inferred ChatGPT DOM state.
+async function setDirectModeVisible(visible) {
+  await window.ordax.setChatVisible(visible);
+  directMode = visible;
+  document.documentElement.dataset.ordaxView = visible ? 'provider' : 'app';
+  $('#directMode').textContent = visible ? 'Voltar' : 'Modo direto';
+}
 let observerMode = 'auto';
 let allTasks = [];
 let providerRefreshPending = false;
@@ -640,7 +648,7 @@ $('#login').addEventListener('click', async () => {
   button.disabled = true;
   button.textContent = 'Abrindo…';
   try {
-    await window.ordax.setChatVisible(true);
+    await setDirectModeVisible(true);
     // Display the provider's official login page, allowing the person to
     // choose their login method. Never click a third-party identity provider.
     await window.ordax.login();
@@ -662,10 +670,13 @@ $('#observerMode').addEventListener('change', async event => {
 });
 
 $('#directMode').addEventListener('click', async () => {
-  directMode = !directMode;
-  await window.ordax.setChatVisible(directMode);
-  if (directMode && currentTaskId) await window.ordax.openTask(currentTaskId).catch(() => null);
-  $('#directMode').textContent = directMode ? 'Voltar' : 'Modo direto';
+  const nextVisible = !directMode;
+  try {
+    await setDirectModeVisible(nextVisible);
+    if (nextVisible && currentTaskId) await window.ordax.openTask(currentTaskId).catch(() => null);
+  } catch (error) {
+    $('#providerDetail').textContent = friendlyError(error);
+  }
 });
 
 $('#composer').addEventListener('submit', async event => {
@@ -745,7 +756,7 @@ window.ordax.onTaskStream(payload => {
   updateLiveRun(payload);
 });
 
-await window.ordax.setChatVisible(false);
+await setDirectModeVisible(false);
 workspace = await window.ordax.workspace();
 await loadTasks();
 refreshProvider();
