@@ -176,6 +176,16 @@
 - **W4 (queda física durante resposta ativa) NÃO executado**. Não gerar novo envio enquanto a observação de sessão/compositor estiver incerta. Prioridade seguinte: recuperar o funcionamento da thread pelo contrato de navegação/sinais legítimos, depois completar W3 e W4 exclusivamente no App, sem modificar Flow/Grátis.
 - [Auditoria e critérios](../audits/P5-READONLY-THREAD-APP-2026-10-20.md). Versão `0.2.0-alpha.2` mantida, sem release.
 
+## P5 — Critério de evidência W3 endurecido (20/10/2026)
+
+- [PR #296](https://github.com/ordaxsystems/ordax-apps/pull/296) **integrada** ao desenvolvimento, commit `3d5bcba50fa97d94a1fd8017e99e53fa876ed2d7`.
+- Corrigido falso positivo possível no gate de conversa histórica: DOM não vazio sozinho **não** comprova recuperação da Task. A inspeção da UI OrdaX só marca `threadRendered=true` após `assessProviderConversationEvidence()` indicar exatamente um candidato de mensagem da Task, resposta associada, e observação não truncada.
+- UI diferencia resposta atribuível observada, mensagem localizada sem resposta, e ausência de prova; smoke `test:live:linked-thread` falha quando não houver evidência suficiente.
+- [CI #39375665143](https://github.com/ordaxsystems/ordax-apps/actions/runs/39375665143) **Linux e Windows/build portátil aprovados**. Nenhuma publicação ou nova versão.
+- O checkout físico do Windows observado nesta rodada estava em **outra branch de diagnóstico** (`p5-readonly-evidence-20261020`, commit `021ba2f`); ele não foi alterado ou reiniciado para evitar conflito com teste já em andamento. **Esta PR ainda não teve E2E físico específico após integração.**
+- W3 real continua **inconclusivo** pela ausência de mensagens do provedor na thread histórica, não confundir integridade de validação com correção da disponibilidade da thread. W4 permanece não executado. Próximo trabalho: evidências sanitizadas da razão de não renderização da página na sessão do Lab, sem credenciais e sem automação de envio ou auth, seguido dos gates W3/W4 em perfil de teste não concorrente.
+- OrdaX Flow/Grátis, OS, Runtime e pendrive não modificados. Manter `0.2.0-alpha.2`, sem release.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
