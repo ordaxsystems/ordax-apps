@@ -13,5 +13,5 @@ test('readiness releases its timer and exclusive E2E lock immediately after CDP 
   assert.match(src,/deadlineTimer=setTimeout\(/);
   assert.match(src,/finally \{\s*if\(deadlineTimer\)clearTimeout\(deadlineTimer\)/);
   assert.match(src,/finally \{ws\.close\(\);?\}/);
-  assert.doesNotMatch(src,/setTimeout\(\(\)=>reject\(new Error\('lab_cdp_read_timeout'\)\),25000\)/);
+  assert.doesNotMatch(src,/new Promise\(\(_,reject\)=>setTimeout\(/);
 });
