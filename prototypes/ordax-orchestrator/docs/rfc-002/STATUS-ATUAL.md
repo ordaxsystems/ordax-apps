@@ -326,3 +326,7 @@ A certificação da conversa histórica passou a exigir recibo do **prompt efeti
 ### W3 — comprovante vinculado à última mensagem (20/10/2026)
 
 Foi eliminada a reutilização de recibos antigos: a inspeção usa a última mensagem user **por inserção SQLite** e exige coincidência exata de `messageId` no evento de proveniência; a gravação exige Run ativo. Os quatro novos testes SQLite de regressão foram aprovados. Um turno novo não enviado jamais herda a resposta anterior. [Detalhes](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md). Teste histórico real ainda pendente.
+
+### W3 — diagnóstico por fase no executor offline (20/10/2026)
+
+O smoke W3 staged ganhou fase identificável e códigos sanitizados; erros inesperados nunca expõem detalhes da sessão/URL. Quatro testes de diagnóstico aprovados e o smoke repetido na UI OrdaX isolada com `exit 0`, zero envios, banco/URL intactos. Uma execução anterior apresentou `exit 2` genérico, cuja causa específica não foi demonstrada; não é W3 certificado. [Recibo](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md).

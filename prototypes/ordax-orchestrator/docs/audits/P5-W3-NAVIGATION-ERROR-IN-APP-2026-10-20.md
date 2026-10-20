@@ -83,3 +83,13 @@ A busca `findProviderSubmissionProvenance({taskId,chatUrl})` podia selecionar um
 - Casos de teste: recibo anterior seguido por mensagem local não enviada; tentativa de vincular ID errado; Run já encerrado; mensagens com timestamps idênticos; ausência de navegação no IPC de leitura.
 
 **Gates:** os quatro novos testes SQLite passaram localmente. O resultado da suíte completa e do CI permanece separado até confirmação. W3 histórico autenticado e W4 real continuam abertos.
+
+## W3 — rastreabilidade do diagnóstico do smoke offline (20/10/2026)
+
+Uma execução do smoke staged, após 233/233 testes locais, terminou com `exit 2` e o código genérico `lab_w3_offline_inspection_unavailable`. Isso **não** foi classificado como falha de autenticação nem como prova de que a thread histórica foi carregada. Uma inspeção independente, sem ações de envio, confirmou que a UI Electron estava pronta, que o diagnóstico do provedor respondia e que o estado de autenticação era `anonymous`; a causa precisa daquele `exit 2` não foi demonstrada. Uma execução posterior da mesma prova concluiu com `exit 0`.
+
+O executor `scripts/live-ui-w3-offline-preflight.cjs` passou a registrar a fase interna de operação (`fixture_snapshot`, `lab_ui_target`, `app_profile`, `inspection_result` etc.). Erros de conexão CDP têm timeout explícito. A política de relatório `scripts/w3-offline-error-report.cjs` mantém **apenas** nomes de fase e códigos previamente autorizados, substituindo texto inesperado por `lab_w3_offline_inspection_unavailable`; não divulga URLs, tokens, prompts, conteúdo ou metadados de conta.
+
+Foram aprovados **4 testes novos** de política de relato e sintaxe dos dois scripts. O smoke físico foi repetido no **OrdaX App**, com perfil isolado e porta 9446, e aprovou: `appMode=true`, `profileBound=true`, `reason=provider_login_required`, `threadRendered=false`, `ledgerCountsUnchanged=true`, `providerUrlUnchanged=true`, `providerMessagesSent=0`, `W3Certified=false`. A instância staged foi fechada; porta 9446 livre e porta principal 9445 preservada.
+
+**Ainda não comprova W3 autenticado nem W4 com geração real.** Nenhuma mensagem ao provedor foi enviada, nenhum teste abriu outra conversa e nenhum dado real da instalação principal foi utilizado.
