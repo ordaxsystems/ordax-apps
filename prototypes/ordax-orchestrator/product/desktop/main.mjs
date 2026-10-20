@@ -403,14 +403,25 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
   });
   // DOM presence is not evidence that the Task's conversation was restored.
   // The canonical submitted turn and its assistant reply must both match.
+  // A candidate in a still-generating thread is never a completed W3 answer.
+  // Older/untrusted observations lacking the explicit read-only stop probe also
+  // fail closed. Absence of a stop control is necessary but not sufficient.
+  const generationNotActive=observed?.generationStopVisible===false;
   const threadRendered=Boolean(provenance) && assessment.kind==='response_candidate' &&
     assessment.candidates===1 && assessment.responseCandidate===true &&
-    observed?.truncated!==true;
+    observed?.truncated!==true && generationNotActive;
+  const possibleAnswer=assessment.kind==='response_candidate' &&
+    assessment.candidates===1 && assessment.responseCandidate===true;
   return {
     kind:assessment.kind,reason:assessment.reason,threadRendered,
     inspectionReason:threadRendered ? 'thread_rendered' :
-      (!provenance && assessment.kind==='response_candidate'
-        ? 'provider_submission_provenance_missing' : safeHistoricalThreadFailure(observed?.reason)),
+      (!provenance && possibleAnswer
+        ? 'provider_submission_provenance_missing'
+        : possibleAnswer && observed?.generationStopVisible===true
+          ? 'provider_response_generation_active'
+          : possibleAnswer && observed?.generationStopVisible!==false
+            ? 'provider_generation_state_unobserved'
+            : safeHistoricalThreadFailure(observed?.reason)),
     responseCandidate:assessment.responseCandidate===true,
     requiresReconciliation:assessment.requiresReconciliation===true
   };

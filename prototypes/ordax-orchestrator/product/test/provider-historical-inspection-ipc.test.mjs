@@ -56,7 +56,7 @@ test('W3 actual IPC can attribute exact expanded prompt with persisted receipt',
   const expanded='[CONTEXTO ORDAX]\nPedido atual: continue';
   const app=mount({
     provenance:{runId:'run-1',promptSha256:providerPromptDigest(expanded)},
-    observed:{available:true,url:expectedUrl,domReliable:true,truncated:false,
+    observed:{available:true,url:expectedUrl,domReliable:true,truncated:false,generationStopVisible:false,
       messages:[{role:'user',text:expanded},{role:'assistant',text:'Resposta'}]}
   });
   const result=await app.invoke();
@@ -75,4 +75,44 @@ test('W3 actual IPC never treats a partial DOM as certified',async()=>{
   const result=await app.invoke();
   assert.equal(result.threadRendered,false);
   assert.equal(app.writes(),0);
+});
+
+
+test('W3 actual IPC refuses a still-generating assistant bubble',async()=>{
+  const expanded='[CONTEXTO ORDAX]\\nPedido atual: continue';
+  const app=mount({
+    provenance:{runId:'run-1',promptSha256:providerPromptDigest(expanded)},
+    observed:{available:true,url:expectedUrl,domReliable:true,truncated:false,generationStopVisible:true,
+      messages:[{role:'user',text:expanded},{role:'assistant',text:'Resposta parcial'}]}
+  });
+  const result=await app.invoke();
+  assert.equal(result.kind,'response_candidate');
+  assert.equal(result.threadRendered,false);
+  assert.equal(result.inspectionReason,'provider_response_generation_active');
+  assert.equal(app.writes(),0);
+});
+
+test('W3 actual IPC refuses legacy snapshots without a generation-state probe',async()=>{
+  const expanded='[CONTEXTO ORDAX]\\nPedido atual: continue';
+  const app=mount({
+    provenance:{runId:'run-1',promptSha256:providerPromptDigest(expanded)},
+    observed:{available:true,url:expectedUrl,domReliable:true,truncated:false,
+      messages:[{role:'user',text:expanded},{role:'assistant',text:'Resposta aparente'}]}
+  });
+  const result=await app.invoke();
+  assert.equal(result.kind,'response_candidate');
+  assert.equal(result.threadRendered,false);
+  assert.equal(result.inspectionReason,'provider_generation_state_unobserved');
+  assert.equal(app.writes(),0);
+});
+
+test('W3 DOM inspector captures generation stop state without additional navigation or sends',()=>{
+  const source=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8');
+  const start=source.indexOf('  async #readHistoricalThreadDOM()');
+  const end=source.indexOf('  async inspectConversationReadOnly(',start);
+  assert.ok(start>=0&&end>start);
+  const inspector=source.slice(start,end);
+  assert.match(inspector,/generationStopVisible/);
+  assert.ok(inspector.includes('data-testid="stop-button"'));
+  assert.ok(!inspector.includes('sendPrompt(') && !inspector.includes('requestSubmit(') && !inspector.includes('.loadURL('));
 });

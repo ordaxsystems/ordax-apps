@@ -93,3 +93,11 @@ O executor `scripts/live-ui-w3-offline-preflight.cjs` passou a registrar a fase 
 Foram aprovados **4 testes novos** de política de relato e sintaxe dos dois scripts. O smoke físico foi repetido no **OrdaX App**, com perfil isolado e porta 9446, e aprovou: `appMode=true`, `profileBound=true`, `reason=provider_login_required`, `threadRendered=false`, `ledgerCountsUnchanged=true`, `providerUrlUnchanged=true`, `providerMessagesSent=0`, `W3Certified=false`. A instância staged foi fechada; porta 9446 livre e porta principal 9445 preservada.
 
 **Ainda não comprova W3 autenticado nem W4 com geração real.** Nenhuma mensagem ao provedor foi enviada, nenhum teste abriu outra conversa e nenhum dado real da instalação principal foi utilizado.
+
+## W3 — barreira contra resposta ainda em geração (20/10/2026)
+
+Foi identificado outro falso positivo de certificação: uma observação de DOM contendo o prompt esperado e texto de assistente podia ser tratada como resposta histórica observada, mesmo com o provedor ainda em geração. Texto parcial não demonstra resposta terminada.
+
+A implementação `desktop/embedded-worker.mjs` passou a observar na **mesma** avaliação de DOM somente leitura o indicador `generationStopVisible`, sem cliques ou novas navegações. O handler `ordax:tasks:inspect-linked-thread` só devolve `threadRendered=true` quando a proveniência, URL, par user/assistant e não truncamento já estiverem confirmados **e** o controle de parar geração não estiver visível. Observações antigas sem o novo campo também não são certificadas automaticamente. A UI OrdaX diferencia `provider_response_generation_active` de `provider_generation_state_unobserved`, sem reenvio.
+
+Limite: ausência de um botão de parar é **condição necessária, não prova isolada** de que a resposta terminou; o W3 externo ainda requer uma sessão real autenticada e observação reproduzível. Três novas regressões reais de IPC/worker foram aprovadas. Testes gerais, CI e smoke físico permanecem gates separados até execução completa. Sem alterar versão, Grátis/Flow, sistema principal, USB, sessão, credenciais ou funções de envio.

@@ -517,9 +517,14 @@ export class EmbeddedChatWorker {
               textTruncated:text.length>12000
             };
           });
+          // A visible assistant bubble can still be streaming. Capture the
+          // first-party stop control in the same bounded read-only snapshot.
+          const generationStopVisible=Boolean(document.querySelector(
+            'button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]'
+          ));
           return {
             available:true, url:location.href, domReliable:entries.length>0,
-            truncated:entries.length>50, messages
+            truncated:entries.length>50, generationStopVisible, messages
           };
         })()`,
         awaitPromise:false,returnByValue:true

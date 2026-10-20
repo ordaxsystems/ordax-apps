@@ -330,3 +330,7 @@ Foi eliminada a reutilização de recibos antigos: a inspeção usa a última me
 ### W3 — diagnóstico por fase no executor offline (20/10/2026)
 
 O smoke W3 staged ganhou fase identificável e códigos sanitizados; erros inesperados nunca expõem detalhes da sessão/URL. Quatro testes de diagnóstico aprovados e o smoke repetido na UI OrdaX isolada com `exit 0`, zero envios, banco/URL intactos. Uma execução anterior apresentou `exit 2` genérico, cuja causa específica não foi demonstrada; não é W3 certificado. [Recibo](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md).
+
+### W3 — observação do estado da geração (20/10/2026)
+
+A inspeção histórica foi endurecida: `threadRendered` não pode ser verdadeiro se houver controle de parar geração visível, nem se o estado de geração estiver ausente na observação. O novo campo é capturado no próprio DOM read-only, sem replay. Testes focados de IPC e UI atualizados; ainda é necessário validar o gate externo W3 real. [Detalhes](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md).
