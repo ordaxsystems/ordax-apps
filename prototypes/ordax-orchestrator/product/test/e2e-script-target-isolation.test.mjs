@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const scripts=path.resolve(here,'../scripts');
 const require=createRequire(import.meta.url);
-const { DEBUG_URL,PRODUCT_TITLE,isLabUiTarget,labStagedLocalAppData,
+const { DEBUG_PORT,DEBUG_URL,PRODUCT_TITLE,isLabUiTarget,labStagedLocalAppData,
   labDatabasePath,labLockPath,validLabWebSocket,waitForLabUiTarget,
   LAB_APP_MODE_PROBE,assertLabAppModeState,waitForLabAppMode }=require('../scripts/e2e-lab-target.cjs');
 const stage=path.join(os.tmpdir(),'ordax-e2e-suite','candidate-userdata-v0.2.0-alpha.2');
@@ -32,7 +32,8 @@ function withStagedEnv(stagedRoot,approved,fn) {
   }
 }
 
-test('E2E only discovers loopback port 9445 and exact Orchestrator Lab title',()=>{
+test('E2E defaults to isolated port 9445 and exact Orchestrator Lab title',()=>{
+  assert.equal(DEBUG_PORT,'9445');
   assert.equal(DEBUG_URL,'http://127.0.0.1:9445/json/list');
   assert.equal(PRODUCT_TITLE,'OrdaX Orchestrator Lab');
   assert.equal(isLabUiTarget({type:'page',title:PRODUCT_TITLE,
@@ -43,6 +44,27 @@ test('E2E only discovers loopback port 9445 and exact Orchestrator Lab title',()
     {type:'page',title:PRODUCT_TITLE,url:'file:///C:/other/app.html'},
     {type:'other',title:PRODUCT_TITLE,url:'file:///C:/test/desktop/ui.html'}
   ]) assert.equal(isLabUiTarget(impostor),false);
+});
+
+test('alternate staged port 9446 is explicit and fails closed on foreign ports',()=>{
+  const entry=path.resolve(scripts,'e2e-lab-target.cjs');
+  const run=port=>spawnSync(process.execPath,
+    ['-e','const t=require(process.argv[1]);console.log(t.DEBUG_URL) ',entry],{
+      encoding:'utf8',timeout:5000,env:{
+        ...process.env,ORDAX_LAB_E2E_DEBUG_PORT:port
+      }
+    });
+  const alternate=run('9446');
+  assert.equal(alternate.status,0,alternate.stderr);
+  assert.equal(alternate.stdout.trim(),'http://127.0.0.1:9446/json/list');
+  for(const illegal of ['9444','9447','0',' 9446','-1','http://127.0.0.1:9446']) {
+    const fail=run(illegal);
+    assert.notEqual(fail.status,0);
+    assert.match(fail.stderr,/lab_e2e_debug_port_not_allowed/);
+  }
+  const source=fs.readFileSync(entry,'utf8');
+  assert.match(source,/url.port===DEBUG_PORT/);
+  assert.doesNotMatch(source,/hostname===['"](?:localhost|0.0.0.0)['"]/);
 });
 
 test('staged AppData requires absolute pinned candidate root and explicit approval',()=>{
@@ -196,7 +218,7 @@ test('provider-frame diagnostic is explicitly not certification and accesses onl
   assert.match(source,/await waitForLabUiTarget\(\)/);
   assert.match(source,/notAppCertification:true/);
   assert.match(source,/ws\.hostname==='127\.0\.0\.1'/);
-  assert.match(source,/ws\.port==='9445'/);
+  assert.match(source,/ws\.port===DEBUG_PORT/);
   assert.match(source,/if\(timer\)clearTimeout\(timer\)/);
   assert.doesNotMatch(source,/requestSubmit|sendPrompt|loadURL|Input\.insertText|9444|ordax-gratis|cookie/i);
 });
@@ -232,6 +254,7 @@ test('local recovery E2E uses actual App mode, SQLite read-only and no provider 
   assert.match(source,/acquireE2ELock\('local-recovery-readonly'\)/);
   assert.match(source,/ledgerCountsUnchanged:true/);
   assert.match(source,/providerUrlUnchanged:true/);
+  assert.match(source,/w\.port===DEBUG_PORT/);
   assert.match(source,/readLabDebugTargets\(\)/);
   assert.match(source,/providerMessagesSent:0/);
   assert.match(source,/W3Certified:false,W4Certified:false/);
