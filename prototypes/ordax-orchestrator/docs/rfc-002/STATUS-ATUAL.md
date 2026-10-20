@@ -163,6 +163,19 @@
 - [Decisão e evidências](../audits/P5-APP-E2E-FALLBACK-2026-10-20.md) integradas e versionadas, para continuidade independente do chat.
 - **Gates ainda abertos:** navegação da mesma thread no app e queda física durante resposta, reconciliação sem replay, testes físicos da revisão aprovada. `0.2.0-alpha.2` preservada; nenhuma release ou mudança no Flow/Grátis.
 
+## P5 — Thread antiga observada pelo OrdaX App: contrato corrigido; W3 ainda não comprovado
+
+- [PR #294](https://github.com/ordaxsystems/ordax-apps/pull/294) **integrada** na branch de desenvolvimento no commit `fa5b1ffa05191a480651a58445009efd1380aa8c` (20/10/2026).
+- A leitura histórica do provedor não exige mais a disponibilidade do compositor de envio. As rotas de envio continuam exigindo compositor, sessão observada, proteção de drafts e bloqueio de Run incerta.
+- A UI do OrdaX inclui **Verificar conversa**, com IPC local confiável e consulta do SQLite canônico; não abre ChatGPT direto nem envia mensagem.
+- Observação da hidratação de DOM pelo React é limitada no tempo, sem recarregar URL ou repetir JavaScript depois de timeout. Não produz confirmação fictícia.
+- [CI #294](https://github.com/ordaxsystems/ordax-apps/actions/runs/39366156424): Linux isolado e Windows validação + build portátil **aprovados**; não equivalem a E2E W3 aprovado.
+- No computador Windows autorizado, o pré-voo SQLite mostrou zero Runs ativas/ações em despacho e duas Tasks sintéticas com Run concluída. O E2E acionou o botão da UI do OrdaX, manteve `appMode=true` e `providerMessagesSent=0`.
+- Duas verificações físicas: a primeira `threadRendered=false`, `inconclusive=true`; depois do observador limitado, `observationKind=unavailable`, `observationReason=provider_view_unavailable`, `threadRendered=false`. **W3 ainda pendente.**
+- Após uma navegação, o diagnóstico mostrou rota de conversa, mas `authState=unknown` e `composerReady=false`. Não afirmar login perdido nem culpar mecanismo específico do serviço sem prova. Não forçar reload, autenticação, tokens ou reenvio.
+- **W4 (queda física durante resposta ativa) NÃO executado**. Não gerar novo envio enquanto a observação de sessão/compositor estiver incerta. Prioridade seguinte: recuperar o funcionamento da thread pelo contrato de navegação/sinais legítimos, depois completar W3 e W4 exclusivamente no App, sem modificar Flow/Grátis.
+- [Auditoria e critérios](../audits/P5-READONLY-THREAD-APP-2026-10-20.md). Versão `0.2.0-alpha.2` mantida, sem release.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
