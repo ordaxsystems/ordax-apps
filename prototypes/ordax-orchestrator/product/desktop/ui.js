@@ -687,10 +687,10 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
     $('#linkedThreadStatus').dataset.kind = String(result?.kind || 'unavailable');
     $('#linkedThreadStatus').dataset.reason = String(result?.reason || 'unknown');
     $('#linkedThreadStatus').textContent=result?.threadRendered
-      ? result.kind==='response_candidate'
-        ? 'Conversa carregada e mensagens correspondentes observadas. Sem comprovação de efeitos externos.'
-        : 'Conversa carregada. A entrega desta mensagem permanece inconclusiva.'
-      : 'Não foi possível comprovar a renderização da conversa. Nenhuma mensagem foi reenviada.';
+      ? 'Conversa e resposta da tarefa observadas. Não comprova efeitos externos.'
+      : result?.kind==='message_candidate'
+        ? 'Mensagem da tarefa localizada, mas resposta ainda não comprovada. Nenhum reenvio.'
+        : 'Não foi possível comprovar a conversa e a resposta da tarefa. Nenhum reenvio.';
   } catch (error) {
     if (currentTaskId === taskId)
       $('#linkedThreadStatus').textContent='Inspeção indisponível: '+friendlyError(error);
