@@ -22,7 +22,11 @@ test('desktop package ships only canonical desktop runtime', () => {
 
 test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(main, /requestSingleInstanceLock/);
-  assert.match(main, /OrdaX['"], ['"]OrchestratorLab/);
+  const binding=fs.readFileSync(path.join(root,'src','lab-profile-binding.mjs'),'utf8');
+  assert.match(main,/resolveLabUserRoot/);
+  assert.match(main,/app\.setPath\('userData', userRoot\)/);
+  assert.match(binding,/path\.join\(localAppData,'OrdaX','OrchestratorLab'\)/);
+  assert.match(binding,/lab_staged_profile_explicit_binding_required/);
   assert.match(main, /recoverInterruptedRuns/);
   assert.match(main, /heartbeatRun/);
   assert.match(main, /will-quit/);
