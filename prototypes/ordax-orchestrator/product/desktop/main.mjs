@@ -345,8 +345,8 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
   const expectedUrl=canonicalProviderChatUrl(row.chat_url);
   if (!expectedUrl)
     return {kind:'unavailable',reason:'canonical_chat_url_missing',threadRendered:false,requiresReconciliation:true};
-  const message=store.db.prepare(\`SELECT content FROM messages WHERE task_id=? AND role='user'
-    ORDER BY created_at DESC,id DESC LIMIT 1\`).get(taskId);
+  const message=store.db.prepare(`SELECT content FROM messages WHERE task_id=? AND role='user'
+    ORDER BY created_at DESC,id DESC LIMIT 1`).get(taskId);
   // No mutation or replay, including when the provider navigation times out.
   const observed=await worker.inspectConversationReadOnly(expectedUrl).catch(() => null);
   const assessment=assessProviderConversationEvidence({
