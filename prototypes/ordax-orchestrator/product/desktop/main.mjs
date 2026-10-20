@@ -386,11 +386,15 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
   const expectedUrl=canonicalProviderChatUrl(row.chat_url);
   if (!expectedUrl)
     return {kind:'unavailable',reason:'canonical_chat_url_missing',threadRendered:false,requiresReconciliation:true};
-  const message=store.db.prepare(`SELECT content FROM messages WHERE task_id=? AND role='user'
-    ORDER BY created_at DESC,id DESC LIMIT 1`).get(taskId);
-  // Local SQLite text alone cannot establish submission: a task may contain
-  // drafts or a provider prompt expanded by the project's continuation context.
-  const provenance=findProviderSubmissionProvenance({store,taskId,chatUrl:expectedUrl});
+  // SQLite insertion order is authoritative here. created_at/id can tie or
+  // sort randomly within a millisecond, selecting an older turn by mistake.
+  const message=store.db.prepare(`SELECT id,content FROM messages WHERE task_id=? AND role='user'
+    ORDER BY rowid DESC LIMIT 1`).get(taskId);
+  // The receipt must belong to this exact latest local user turn, not just an
+  // older message sharing its Task and provider conversation.
+  const provenance=findProviderSubmissionProvenance({
+    store,taskId,chatUrl:expectedUrl,messageId:message?.id
+  });
   // No mutation or replay, including when the provider navigation times out.
   const observed=await worker.inspectConversationReadOnly(expectedUrl).catch(() => ({available:false,reason:'provider_inspection_unavailable'}));
   const assessment=assessProviderConversationEvidence({

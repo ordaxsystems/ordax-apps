@@ -322,3 +322,7 @@ Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTO
 ## W3 — integridade de evidência de envio (20/10/2026)
 
 A certificação da conversa histórica passou a exigir recibo do **prompt efetivamente enviado** associado a Run, mensagem e conversa; a última mensagem SQLite isoladamente não constitui prova. O reconciliador compara SHA-256 do prompt enviado (inclusive continuidade expandida) contra o turno observado; sem recibo, a inspeção pode retornar candidato, mas **não certifica W3**. Os recibos só são escritos após entrega observada; não há replay. Provas focadas: 16/16. A execução completa/CI são gates separados. [Auditoria](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md).
+
+### W3 — comprovante vinculado à última mensagem (20/10/2026)
+
+Foi eliminada a reutilização de recibos antigos: a inspeção usa a última mensagem user **por inserção SQLite** e exige coincidência exata de `messageId` no evento de proveniência; a gravação exige Run ativo. Os quatro novos testes SQLite de regressão foram aprovados. Um turno novo não enviado jamais herda a resposta anterior. [Detalhes](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md). Teste histórico real ainda pendente.

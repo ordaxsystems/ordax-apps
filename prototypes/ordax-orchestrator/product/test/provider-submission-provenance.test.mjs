@@ -26,7 +26,7 @@ test('W3 real Store records exact context-expanded prompt only after submitted r
       store,taskId:task.id,runId,messageId:userMessage.id,providerPrompt:actual,chatUrl:url,submittedAt
     });
     assert.deepEqual(receipt,{recorded:true,reason:'receipt_recorded'});
-    const found=findProviderSubmissionProvenance({store,taskId:task.id,chatUrl:url});
+    const found=findProviderSubmissionProvenance({store,taskId:task.id,chatUrl:url,messageId:userMessage.id});
     assert.equal(found.runId,runId);
     assert.equal(found.promptSha256,providerPromptDigest(actual));
     const evidence=assessProviderConversationEvidence({
@@ -58,9 +58,9 @@ test('W3 real Store records exact context-expanded prompt only after submitted r
 test('W3 cannot attribute a synthetic linked thread with only a local message',()=>{
   fixture(store=>{
     const task=store.createTask('Nao enviado');
-    store.appendMessage(task.id,'user','Mensagem local');
+    const local=store.appendMessage(task.id,'user','Mensagem local');
     store.setChatUrl(task.id,url);
-    assert.equal(findProviderSubmissionProvenance({store,taskId:task.id,chatUrl:url}),null);
+    assert.equal(findProviderSubmissionProvenance({store,taskId:task.id,chatUrl:url,messageId:local.id}),null);
   });
 });
 
@@ -73,9 +73,9 @@ test('W3 provenance never binds an unrelated URL, message, or Run',()=>{
     assert.equal(recordProviderSubmissionProvenance({...args,messageId:'invalid'}).recorded,false);
     assert.equal(recordProviderSubmissionProvenance({...args,chatUrl:'https://chatgpt.com/c/22222222-3333-4444-8555-666666666666'}).recorded,false);
     assert.equal(recordProviderSubmissionProvenance({...args,submittedAt:undefined}).recorded,false);
-    assert.equal(findProviderSubmissionProvenance({store,taskId:task.id,chatUrl:url}),null);
+    assert.equal(findProviderSubmissionProvenance({store,taskId:task.id,chatUrl:url,messageId:userMessage.id}),null);
     assert.equal(recordProviderSubmissionProvenance(args).recorded,true);
-    assert.equal(findProviderSubmissionProvenance({store,taskId:task.id,chatUrl:'https://chatgpt.com/c/22222222-3333-4444-8555-666666666666'}),null);
+    assert.equal(findProviderSubmissionProvenance({store,taskId:task.id,chatUrl:'https://chatgpt.com/c/22222222-3333-4444-8555-666666666666',messageId:userMessage.id}),null);
   });
 });
 
@@ -83,7 +83,7 @@ test('W3 provenance changes only the evidence predicate, never retries provider 
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   const inspect=main.slice(main.indexOf("ipcMain.handle('ordax:tasks:inspect-linked-thread'"),
     main.indexOf("ipcMain.handle('ordax:tasks:resume-capsule'"));
-  assert.match(inspect,/findProviderSubmissionProvenance\(\{store,taskId,chatUrl:expectedUrl\}\)/);
+  assert.match(inspect,/messageId:message\?\.id/);
   assert.match(inspect,/const threadRendered=Boolean\(provenance\)/);
   assert.match(inspect,/expectedPromptSha256:provenance\?\.promptSha256/);
   assert.match(inspect,/provider_submission_provenance_missing/);

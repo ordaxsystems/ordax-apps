@@ -14,7 +14,7 @@ const end=main.indexOf("ipcMain.handle('ordax:tasks:resume-capsule'",start);
 assert.ok(start>=0 && end>start,'inspection_ipc_handler_missing');
 const actualHandler=main.slice(start,end);
 
-function mount({provenance=null,observed,localText='continue',url=expectedUrl}={}) {
+function mount({provenance=null,observed,localText='continue',localMessageId='msg-current',url=expectedUrl}={}) {
   let handler=null;let inspections=0;let writes=0;
   const context={
     requireTrustedSupervisorRenderer:()=>{},
@@ -24,11 +24,11 @@ function mount({provenance=null,observed,localText='continue',url=expectedUrl}={
       db:{prepare:sql=>({
         get:()=>sql.includes('FROM tasks')
           ? {chat_url:url,workspace_session_id:'session-test'}
-          : sql.includes('FROM messages') ? {content:localText} : null,
+          : sql.includes('FROM messages') ? {id:localMessageId,content:localText} : null,
         run:()=>{writes++;throw Error('unexpected_write');}
       })}
     },
-    findProviderSubmissionProvenance:()=>provenance,
+    findProviderSubmissionProvenance:({messageId})=>messageId===localMessageId?provenance:null,
     canonicalProviderChatUrl,
     worker:{inspectConversationReadOnly:async()=>{inspections++;return observed || {
       available:true,url:expectedUrl,domReliable:true,truncated:false,

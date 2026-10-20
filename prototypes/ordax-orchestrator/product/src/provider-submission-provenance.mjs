@@ -15,12 +15,14 @@ export function recordProviderSubmissionProvenance({
   const digest=providerPromptDigest(providerPrompt);
   if(!url || !digest || !Number.isSafeInteger(submittedAt) || submittedAt<=0)
     return {recorded:false,reason:'receipt_incomplete'};
-  const run=store?.db?.prepare('SELECT id FROM runs WHERE id=? AND task_id=?').get(runId,taskId);
-  const message=store?.db?.prepare("SELECT id FROM messages WHERE id=? AND task_id=? AND role='user'").get(messageId,taskId);
+  const run=store?.db?.prepare("SELECT id FROM runs WHERE id=? AND task_id=? AND status='running'").get(runId,taskId);
+  const message=store?.db?.prepare(
+    "SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1"
+  ).get(taskId);
   const conversation=store?.db?.prepare(
     "SELECT id FROM task_conversations WHERE task_id=? AND chat_url=? AND status='active' ORDER BY sequence DESC LIMIT 1"
   ).get(taskId,url);
-  if(!run || !message || !conversation)
+  if(!run || message?.id!==messageId || !conversation)
     return {recorded:false,reason:'receipt_reference_missing'};
   // Only append a new immutable receipt if this Run has not already recorded one.
   const previous=store.db.prepare(
@@ -38,12 +40,15 @@ export function recordProviderSubmissionProvenance({
 
 // W3 must not claim a matched answer without a durable, task-bound provider
 // submission receipt. Old records remain readable; they cannot be certified.
-export function findProviderSubmissionProvenance({store,taskId,chatUrl}={}) {
+export function findProviderSubmissionProvenance({store,taskId,chatUrl,messageId}={}) {
   const url=canonicalProviderChatUrl(chatUrl);
-  if(!url || !store?.db) return null;
+  // Never fall back to an older submitted turn when the newest local user
+  // message has no acknowledged provider submission receipt.
+  if(!url || !store?.db || typeof messageId!=='string' || !messageId) return null;
   const rows=store.db.prepare(
-    "SELECT payload FROM events WHERE task_id=? AND kind='provider.submission.provenance' ORDER BY seq DESC LIMIT 100"
-  ).all(taskId);
+    "SELECT payload FROM events WHERE task_id=? AND kind='provider.submission.provenance' " +
+    "AND json_extract(payload,'$.message_id')=? ORDER BY seq DESC LIMIT 100"
+  ).all(taskId,messageId);
   for(const row of rows) {
     let receipt;
     try { receipt=JSON.parse(row.payload); } catch { continue; }

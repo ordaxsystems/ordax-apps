@@ -69,3 +69,17 @@ A inspeção vinculada consultava a última mensagem do usuário no SQLite e a c
 A validação focada executou 19/19 testes locais (incluindo SQLite real e o manipulador IPC real em sandbox), cobrindo prompt expandido, falta de Run, URL divergente, idempotência, não certificação de mensagem apenas local e recusa de DOM parcial. A suíte completa e os checks CI devem ser registrados após sua conclusão, sem classificar W3 externo como aprovado. Ainda é indispensável abrir a thread real numa sessão legítima, observar o turno e a resposta pelo App e preservar o resultado sem enviar novo prompt.
 
 **Sem mudança de versão, sem tocar na main, Grátis/Flow, OS, Runtime, USB, conta ou sessão real.**
+
+## W3 — vinculação exata ao último turno da tarefa (20/10/2026)
+
+### Falha de integridade detectada
+A busca `findProviderSubmissionProvenance({taskId,chatUrl})` podia selecionar um recibo **antigo**, embora a tarefa tivesse uma nova mensagem local ainda não entregue ao provedor. Quando o DOM contivesse o par de mensagens do recibo anterior, `threadRendered=true` poderia certificar o turno errado. A consulta por `created_at,id` também era ambígua em empates de timestamps.
+
+### Correção canônica
+- `inspect-linked-thread` recupera agora `id,content` da última mensagem user por **ordem de inserção SQLite** (`rowid DESC`) e transmite `messageId` ao buscador de proveniência.
+- `findProviderSubmissionProvenance` recusa chamadas sem `messageId` e restringe a seleção do evento àquele ID, além de validar Run, Task, conversa ativa e recibo. Nunca usa como fallback o recibo de outro turno.
+- `recordProviderSubmissionProvenance` exige Run com status `running` e a mesma última mensagem user, antes de gravar o recibo após a entrega observada. Isso impede que uma mensagem antiga ou um Run encerrado ganhe recibo retroativo.
+- Não há novas tabelas, migrations, tokens, duplicação do texto enviado, reenvios ou consultas adicionais ao provedor.
+- Casos de teste: recibo anterior seguido por mensagem local não enviada; tentativa de vincular ID errado; Run já encerrado; mensagens com timestamps idênticos; ausência de navegação no IPC de leitura.
+
+**Gates:** os quatro novos testes SQLite passaram localmente. O resultado da suíte completa e do CI permanece separado até confirmação. W3 histórico autenticado e W4 real continuam abertos.
