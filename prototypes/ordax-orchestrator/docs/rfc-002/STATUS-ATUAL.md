@@ -295,6 +295,14 @@
 - Checkout original `021ba2f` com mudanças locais existentes **intocado**, Lab original na porta `9445` e porta de teste `9446` livre após encerramento; worktree temporária removida. Auditoria: [P5-ATOMIC-RUN-BEGIN-2026-10-20.md](../audits/P5-ATOMIC-RUN-BEGIN-2026-10-20.md).
 - **Permanecem pendentes:** W3 conversa histórica real com sessão autenticada, W4 kill durante resposta **real** do provedor e diagnóstico da inicialização da UI staged desta tentativa. Nenhum login artificial, contorno de MFA/429, chamada de geração ou alteração no OrdaX Grátis/Flow, OrdaX OS/USB e Runtime. Versão `0.2.0-alpha.2`, sem release.
 
+## W3 — Reteste read-only do App original (20/10/2026, 13h local)
+
+- O checkout do Lab original permanece `021ba2f` na branch local `p5-readonly-evidence-20261020`, com **23 alterações locais existentes**, preservadas. Processo da interface na porta `9445` (PID 49200), `9446` livre.
+- Um readiness apenas de leitura no App original retornou inicialmente `authState=session_present`, `composerReady=true`, `backendApi403Observed=false`, mas `authenticated=not_verified`: são sinais transitórios de DOM, não prova de login nem de envio. Com isso foi executada **uma única** inspeção read-only W3 pelo botão de App via `live-ui-linked-thread-smoke.cjs`.
+- A inspeção retornou `appMode=true`, `fixtureFound=true`, `readOnly=true`, `providerMessagesSent=0`, `observationKind=unavailable`, `observationReason=provider_navigation_timeout`, `threadRendered=false`, `inconclusive=true`, exit 1 (32,17s). **Não** houve resposta histórica comprovada nem novo envio. Não repetir navegação automaticamente.
+- Um readiness posterior no mesmo App retornou `authState=unknown`, `composerReady=false`, `pageType=conversation`, `authenticated=not_verified`, 403 não observado. Isso não demonstra logout nem autenticação confiável e reforça que W3 permanece **NÃO CERTIFICADO**.
+- Este teste rodou no checkout original antigo, que não contém necessariamente todas as revisões integradas à branch de desenvolvimento; **não confundir** sua falha com regressão comprovada do código atual. Foi preservado o perfil e o processo original sem reinicialização forçada. W4 com geração externa continua não executado. Nenhuma senha/login automatizado, bypass 429 ou nova release.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
