@@ -69,6 +69,26 @@ test('historical read-only thread can render without a composer; sending still r
   assert.doesNotMatch(read,/sendPrompt|requestSubmit|Input\.insertText|setComposerAndSend/);
 });
 
+test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',()=>{
+  const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
+  const preload=fs.readFileSync(path.resolve(here,'../desktop/preload.cjs'),'utf8');
+  const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
+  const html=fs.readFileSync(path.resolve(here,'../desktop/ui.html'),'utf8');
+  const chunk=main.split("ipcMain.handle('ordax:tasks:inspect-linked-thread'")[1]
+    .split("ipcMain.handle('ordax:tasks:resume-capsule'")[0];
+  assert.match(chunk,/requireTrustedSupervisorRenderer\(event\)/);
+  assert.match(chunk,/workspace_session_id !== currentSession\?\.id/);
+  assert.match(chunk,/liveRun/);
+  assert.match(chunk,/canonicalProviderChatUrl\(row\.chat_url\)/);
+  assert.match(chunk,/assessProviderConversationEvidence/);
+  assert.match(chunk,/worker\.inspectConversationReadOnly/);
+  assert.doesNotMatch(chunk,/appendMessage|startRun|finishRun|sendPrompt|requestSubmit|insert into|update tasks/i);
+  assert.match(preload,/inspectLinkedThread:/);
+  assert.match(html,/id="inspectLinkedThread"/);
+  assert.match(ui,/window\.ordax\.inspectLinkedThread\(taskId\)/);
+  assert.doesNotMatch(ui.split("$('#inspectLinkedThread').addEventListener")[1].split("$('#directMode').addEventListener")[0],/requestSubmit|sendPrompt|setChatVisible/);
+});
+
 test('safe observation timeout does not turn absence into session or success',async()=>{
   const code='test_observation_expired';
   await assert.rejects(observeWithin(()=>new Promise(()=>{}),{timeoutMs:20,code}),/test_observation_expired/);
