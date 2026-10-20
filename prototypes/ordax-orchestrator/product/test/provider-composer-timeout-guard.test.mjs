@@ -60,11 +60,14 @@ test('historical read-only thread can render without a composer; sending still r
   const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
   const load=section('  async #safeLoad(', '  async #assistantSnapshot()');
   assert.match(show,/requireComposer = true/);
-  assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force \}\)/);
-  assert.match(read,/this\.showConversation\(expected, \{force:false,requireComposer:false\}\)/);
+  assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force, readOnlyThread \}\)/);
+  assert.match(read,/this\.showConversation\(expected, \{force:false,requireComposer:false,readOnlyThread:true\}\)/);
   assert.match(read,/canonicalProviderChatUrl\(this\.view\.webContents\.getURL\(\)\) !== expected/);
   assert.match(load,/if \(protectDraft\) \{\s*const state = await this\.#composerState\(\)/);
   assert.match(load,/if \(requireComposer\) await this\.#waitForComposer\(\)/);
+  assert.match(load,/readOnlyThread &&/);
+  assert.match(load,/canInspectHistoricalThreadAfterNavigationTimeout/);
+  assert.match(read,/safeHistoricalThreadFailure\(error\?\.message\)/);
   const send=worker.slice(worker.indexOf('  async sendPrompt({'));
   assert.match(send,/assertProviderSendReadiness/);
   assert.match(send,/await this\.#setComposerAndSend\(/);
