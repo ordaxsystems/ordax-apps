@@ -97,7 +97,24 @@ async function waitForLabUiTarget({
   }
 }
 
+// Snapshot only the OrdaX Electron shell. A real ChatGPT provider view must
+// never satisfy a functional E2E gate by accident. This does not send data.
+const LAB_APP_MODE_PROBE = `(()=>({
+  view:document.documentElement.dataset.ordaxView||null,
+  directButton:document.querySelector('#directMode')?.textContent?.trim()||null,
+  composer:document.querySelector('#composer')?.tagName||null,
+  prompt:document.querySelector('#prompt')?.tagName||null,
+  newTask:document.querySelector('#newTask')?.tagName||null
+}))()`;
+function assertLabAppModeState(state) {
+  if(state?.view!=='app' || state?.directButton!=='Modo direto' ||
+     state?.composer!=='FORM' || state?.prompt!=='TEXTAREA' ||
+     state?.newTask!=='BUTTON') throw new Error('lab_e2e_app_mode_required');
+  return state;
+}
+
 module.exports={
   DEBUG_URL,PRODUCT_TITLE,labStagedLocalAppData,labDatabasePath,
-  labLockPath,isLabUiTarget,validLabWebSocket,readLabDebugTargets,waitForLabUiTarget
+  labLockPath,isLabUiTarget,validLabWebSocket,readLabDebugTargets,waitForLabUiTarget,
+  LAB_APP_MODE_PROBE,assertLabAppModeState
 };
