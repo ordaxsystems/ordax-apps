@@ -4,7 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
-import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout } from '../src/provider-observation-policy.mjs';
+import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -288,7 +288,20 @@ export class EmbeddedChatWorker {
     const page = await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
       const body=document.body?.innerText||'';
       const composer=${composerExpression()};
+      // Only count status codes of first-party requests. Never export URLs,
+      // response payloads, query parameters, user data, or cookies.
+      let backendForbiddenCount=0;
+      for (const entry of performance.getEntriesByType('resource')) {
+        if (entry.responseStatus !== 403) continue;
+        try {
+          const requestUrl=new URL(entry.name);
+          if (requestUrl.origin==='https://chatgpt.com' &&
+              requestUrl.pathname.startsWith('/backend-api/'))
+            backendForbiddenCount++;
+        } catch {}
+      }
       return {
+        backendForbiddenCount:Math.min(100,backendForbiddenCount),
         body:body.slice(-5000),
         composer:Boolean(composer),
         hasLogin:/Entrar|Log in|Sign in/i.test(body),
@@ -298,9 +311,15 @@ export class EmbeddedChatWorker {
     })()`), { timeoutMs:5000, code:'provider_health_observation_timeout' }).catch(() => null);
     const url = this.view.webContents.getURL();
     const authState=classifyProviderAuthObservation({url,page});
+    const providerAccessProblem=classifyProviderAccessRestriction({
+      forbiddenCount:page?.backendForbiddenCount||0,
+      composerReady:page?.composer===true
+    });
     return { ...base, composer_ready:page?.composer===true,
       verification_required:page?.verification===true,
-      health_observed:page!==null,auth_state:authState };
+      health_observed:page!==null,auth_state:authState,
+      provider_access_problem:providerAccessProblem,
+      backend_api_403_count:page?.backendForbiddenCount||0 };
   }
 
   enqueue(fn) {
