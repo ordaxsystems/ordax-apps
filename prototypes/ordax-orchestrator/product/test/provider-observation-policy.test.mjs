@@ -76,11 +76,40 @@ test('worker health counts only HTTP 403 from first-party backend API with no UR
   const here=path.dirname(fileURLToPath(import.meta.url));
   const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const health=worker.split('  async health() {')[1].split('  enqueue(fn) {')[0];
-  assert.match(health,/entry\.responseStatus !== 403/);
+  assert.match(health,/entry\.responseStatus !== 403 && entry\.responseStatus !== 429/);
+  assert.match(health,/backendRateLimitedCount:Math\.min\(100,backendRateLimitedCount\)/);
+  assert.match(health,/rateLimitedCount:page\?\.backendRateLimitedCount/);
+  assert.match(health,/backend_api_429_count:page\?\.backendRateLimitedCount/);
   assert.match(health,/requestUrl\.origin==='https:\/\/chatgpt\.com'/);
   assert.match(health,/pathname\.startsWith\('\/backend-api\/'\)/);
   assert.match(health,/backendForbiddenCount:Math\.min\(100,backendForbiddenCount\)/);
   assert.match(health,/classifyProviderAccessRestriction/);
   assert.match(health,/provider_access_problem:providerAccessProblem/);
   assert.doesNotMatch(health,/return.*entry\.name|return.*requestUrl\.href/);
+});
+
+test('one observed first-party HTTP 429 is a warning, not authentication proof',()=>{
+  assert.equal(classifyProviderAccessRestriction({rateLimitedCount:1,composerReady:false}),
+    'backend_http_429_observed');
+  assert.equal(classifyProviderAccessRestriction({rateLimitedCount:1,composerReady:true}),null);
+  assert.equal(classifyProviderAccessRestriction({rateLimitedCount:1,forbiddenCount:23,composerReady:false}),
+    'backend_http_429_observed');
+  assert.equal(classifyProviderAccessRestriction({rateLimitedCount:-1,composerReady:false}),null);
+  assert.equal(classifyProviderAccessRestriction({rateLimitedCount:'1',composerReady:false}),null);
+  assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',page:{
+    composer:false,hasLogin:false,hasSignup:false,backendRateLimitedCount:1}}),'unknown');
+});
+
+test('429 is surfaced only through sanitized first-party status counts, not private URLs',()=>{
+  const here=path.dirname(fileURLToPath(import.meta.url));
+  const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
+  const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
+  const health=worker.split('  async health() {')[1].split('  enqueue(fn) {')[0];
+  assert.match(health,/requestUrl\.origin==='https:\/\/chatgpt\.com'/);
+  assert.match(health,/requestUrl\.pathname\.startsWith\('\/backend-api\/'\)/);
+  assert.match(health,/entry\.responseStatus===429/);
+  assert.doesNotMatch(health,/return.*entry\.name|return.*requestUrl\.href/);
+  assert.match(ui,/ChatGPT • limitação observada \(429\)/);
+  assert.match(ui,/chatgpt_provider_rate_limited_observed:/);
+  assert.doesNotMatch(ui,/429.*(?:setTimeout|retry|reload)/i);
 });
