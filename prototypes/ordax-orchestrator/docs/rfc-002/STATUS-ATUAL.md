@@ -346,3 +346,7 @@ O App Dev antigo rodava fontes anteriores à PR #268; o perfil staged correto fo
 ### P5/W4 — finalização atômica de execução (20/10/2026)
 
 Falha reproduzida: uma exceção entre `UPDATE runs` e `UPDATE tasks` podia persistir sucesso na Run com a Task ainda `running`; um evento `run.failed` também podia falhar após as duas atualizações. `Store.finishRun` agora valida escopo e estado e grava Run/Task/eventos/contabilização em uma transação SQLite, com rollback integral. Foram aprovadas regressões com triggers de falha e reinício de SQLite real em disco. **W4 real ainda não certificado**, sem envio ou replay. [Auditoria](../audits/P5-W4-ATOMIC-FINALIZATION-2026-10-20.md).
+
+### P5/W4 — falha CI workspace-boundary (20/10/2026)
+
+O encerramento atômico passou em `npm run validate` (254/254), mas o CI `workspace-boundary` falhou ao decodificar como UTF-8 módulos rastreados do `ordax-os/main`. Corrigida a análise na origem: `verify_assistant_gate_b.py` agora procura imports diretamente nos bytes, sem excluir módulos; novo teste verifica que bytes inválidos não ocultam importações proibidas. Isso não muda o escopo do Gate A/B. [Auditoria](../audits/P5-W4-CI-WORKSPACE-BOUNDARY-2026-10-20.md).

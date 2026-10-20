@@ -182,5 +182,49 @@ class AssistantGateBTests(unittest.TestCase):
             with self.assertRaises(gate.AssistantGateError):
                 gate.audit(root)
 
+    def test_platform_main_invalid_utf8_modules_still_scan_removed_assistant_imports(self):
+        import subprocess
+        def git(root, *args):
+            return subprocess.run(["git", "-C", str(root), *args],
+                                  capture_output=True, text=True, check=True).stdout.strip()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            git(root, "init", "-q", "-b", "main")
+            git(root, "config", "user.name", "OrdaX Test")
+            git(root, "config", "user.email", "test@example.invalid")
+            git(root, "remote", "add", "origin",
+                "https://github.com/ordaxsystems/ordax-os.git")
+            policy = root / "docs/contracts/runtime-component-package.json"
+            policy.parent.mkdir(parents=True)
+            policy.write_text(json.dumps({"prelaunch_remove_first_pending": {
+                "assistant": {
+                    "state": "platform-source-removed-app-source-pending",
+                    "expected_repository": "ordaxsystems/ordax-apps",
+                    "platform_source_absence_required": True,
+                    "distribution_activation_allowed": False,
+                }
+            }}), encoding="utf-8")
+            module = root / "system/apps/catalog.mjs"
+            module.parent.mkdir(parents=True)
+            # A binary prefix cannot prevent scanning a real ASCII import.
+            module.write_bytes(b'\xaa\xbbimport "./assistant/runtime.mjs";\n')
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "invalid bytes and orphaned import")
+            git(root, "update-ref", "refs/remotes/origin/main", git(root, "rev-parse", "HEAD"))
+            report = gate.probe_platform_gate_a(root)
+            self.assertFalse(report["platform_gate_a_main_proven"])
+            self.assertEqual(report["live_assistant_source_imports"], [{
+                "module": "system/apps/catalog.mjs",
+                "dependency": "system/apps/assistant/runtime.mjs",
+            }])
+            # Bytes alone must not be falsely interpreted as a live import.
+            module.write_bytes(b'\xaa\xbbexport const otherApps = [];\n')
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "remove orphaned import, keep bytes")
+            git(root, "update-ref", "refs/remotes/origin/main", git(root, "rev-parse", "HEAD"))
+            report = gate.probe_platform_gate_a(root)
+            self.assertTrue(report["platform_gate_a_main_proven"])
+            self.assertEqual(report["live_assistant_source_imports"], [])
+
 if __name__ == "__main__":
     unittest.main()

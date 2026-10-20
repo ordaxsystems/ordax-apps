@@ -13,6 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SHA1 = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 IMPORTS = re.compile(r"""(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s*)['"]([^'"]+)['"]|(?:\bnew\s+URL\s*\(\s*['"]([^'"]+)['"])""")
+# Scan original bytes so an invalid UTF-8 sequence in an OS main blob cannot
+# crash the gate or hide an ASCII import of removed Assistant source.
+IMPORTS_RAW = re.compile(IMPORTS.pattern.encode('ascii'))
 DYNAMIC = re.compile(r"""\bimport\s*\(\s*(?!['"])""")
 REQUIRED_SDK = frozenset({
     "system/contracts/intelligence-conversation-capabilities.mjs",
@@ -94,9 +97,11 @@ def probe_platform_gate_a(main_checkout: Path) -> dict:
         path = main_checkout / name
         need(path.is_file() and not path.is_symlink(),
              "linked/missing platform runtime module")
-        code = path.read_text(encoding="utf-8")
-        for match in IMPORTS.finditer(code):
-            spec = match.group(1) or match.group(2)
+        code = path.read_bytes()
+        for match in IMPORTS_RAW.finditer(code):
+            # Preserve invalid sequences rather than silently discarding any
+            # possible import bytes; paths are compared after normalization.
+            spec = (match.group(1) or match.group(2)).decode('utf-8', 'surrogateescape')
             if not spec.startswith("."):
                 continue
             resolved = posixpath.normpath(posixpath.join(
