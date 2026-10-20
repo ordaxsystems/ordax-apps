@@ -14,6 +14,7 @@
     "build:win": "electron-builder --win portable",
     "test:live:ready": "node scripts/live-ui-readiness.cjs",
     "test:live:linked-thread": "node scripts/live-ui-linked-thread-smoke.cjs",
+    "test:live:local-recovery": "node scripts/live-ui-local-recovery-readonly.cjs",
     "test:live:provider-frame": "node scripts/live-ui-provider-frame-readonly.cjs",
     "test:live:text": "node scripts/live-ui-text-smoke.cjs",
     "test:live:continuity": "node scripts/live-ui-continuity-smoke.cjs",

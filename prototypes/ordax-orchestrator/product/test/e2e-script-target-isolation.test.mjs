@@ -62,7 +62,8 @@ test('staged AppData requires absolute pinned candidate root and explicit approv
 test('all live smoke scripts have canonical Lab-only target and no Gratis references',()=>{
   for(const name of ['live-ui-text-smoke.cjs','live-ui-continuity-smoke.cjs',
     'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs',
-    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs']){
+    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs',
+    'live-ui-local-recovery-readonly.cjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
     assert.match(code,/waitForLabUiTarget\(\)/);
     assert.match(code,/waitForLabAppMode\(/);
@@ -222,4 +223,17 @@ test('app-mode certification is isolated from the usable direct ChatGPT fallback
   assert.match(ui,/await setDirectModeVisible\(true\)/);
   assert.match(ui,/const nextVisible = !directMode/);
   assert.match(ui,/dataset\.ordaxView = visible \? 'provider' : 'app'/);
+});
+
+test('local recovery E2E uses actual App mode, SQLite read-only and no provider path',()=>{
+  const source=fs.readFileSync(path.join(scripts,'live-ui-local-recovery-readonly.cjs'),'utf8');
+  assert.match(source,/waitForLabAppMode\(evaluate\)/);
+  assert.match(source,/new DatabaseSync\(dbpath,\{readOnly:true\}\)/);
+  assert.match(source,/acquireE2ELock\('local-recovery-readonly'\)/);
+  assert.match(source,/ledgerCountsUnchanged:true/);
+  assert.match(source,/providerUrlUnchanged:true/);
+  assert.match(source,/readLabDebugTargets\(\)/);
+  assert.match(source,/providerMessagesSent:0/);
+  assert.match(source,/W3Certified:false,W4Certified:false/);
+  assert.doesNotMatch(source,/window\.ordax\.send|requestSubmit|submitExactlyOnce|sendPrompt|loadURL|navigateTo|Input\.insertText/);
 });
