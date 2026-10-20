@@ -57,20 +57,25 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     }
     if(!ready)throw Error('lab_e2e_readonly_thread_action_not_ready');
     await evaluate(`(()=>{document.querySelector('#inspectLinkedThread').click();return true})()`);
-    let status='';
-    for(let i=0;i<750;i++){
-      status=await evaluate(`document.querySelector('#linkedThreadStatus')?.textContent||''`);
-      if(status.includes('Conversa carregada') || status.includes('Não foi possível') ||
-         status.includes('Inspeção indisponível'))break;
+    let diagnosis=null;
+    for(let i=0;i<600;i++){
+      diagnosis=await evaluate("(()=>{const s=document.querySelector('#linkedThreadStatus');return {state:s?.dataset.state||'unknown',kind:s?.dataset.kind||'unavailable',reason:s?.dataset.reason||'unknown',attributable:s?.dataset.threadRendered==='true'}})()");
+      if(diagnosis.state==='complete'||diagnosis.state==='error')break;
       await sleep(100);
     }
+    if(diagnosis?.state!=='complete'&&diagnosis?.state!=='error')
+      throw Error('lab_e2e_readonly_inspection_not_settled');
     await waitForLabAppMode(evaluate);
-    const diagnosis=await evaluate("(()=>({kind:document.querySelector('#linkedThreadStatus')?.dataset.kind||'unavailable',reason:document.querySelector('#linkedThreadStatus')?.dataset.reason||'unknown'}))()");
+    // W3 is defined by the IPC attribution contract, not by translated text
+    // or the mere presence of a provider page.
+    const certified=diagnosis.state==='complete' &&
+      diagnosis.kind==='response_candidate' &&
+      diagnosis.reason==='thread_rendered' && diagnosis.attributable===true;
     const result={schema:'ordax.lab.linked-thread-app-e2e.v1',appMode:true,
       fixtureFound:true,readOnly:true,providerMessagesSent:0,
-      observationKind:diagnosis.kind,observationReason:diagnosis.reason,
-      threadRendered:status.includes('Conversa e resposta da tarefa observadas'),
-      inconclusive:!status.includes('Conversa e resposta da tarefa observadas')};
+      inspectionState:diagnosis.state,observationKind:diagnosis.kind,
+      observationReason:diagnosis.reason,threadRendered:certified,
+      inconclusive:!certified};
     console.log(JSON.stringify(result));
     if(!result.threadRendered)process.exitCode=2;
   } finally {ws.close();}
