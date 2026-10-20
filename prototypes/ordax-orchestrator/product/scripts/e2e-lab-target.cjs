@@ -1,7 +1,12 @@
 const path=require('node:path');
 const http=require('node:http');
 
-const DEBUG_URL='http://127.0.0.1:9445/json/list';
+// Staged E2E may certify a second, simultaneously running Lab on a distinct
+// loopback port. Refuse arbitrary ports rather than falling back to the old app.
+const requestedPort=process.env.ORDAX_LAB_E2E_DEBUG_PORT || '9445';
+if(!['9445','9446'].includes(requestedPort))throw new Error('lab_e2e_debug_port_not_allowed');
+const DEBUG_PORT=requestedPort;
+const DEBUG_URL='http://127.0.0.1:'+DEBUG_PORT+'/json/list';
 const PRODUCT_TITLE='OrdaX Orchestrator Lab';
 const LAB_ID='OrchestratorLab';
 const DB_FILENAME='ordax-orchestrator-lab.sqlite';
@@ -63,7 +68,7 @@ function validLabWebSocket(target) {
   try {
     const url=new URL(target.webSocketDebuggerUrl);
     return url.protocol==='ws:' && url.hostname==='127.0.0.1' &&
-      url.port==='9445' && !url.username && !url.password &&
+      url.port===DEBUG_PORT && !url.username && !url.password &&
       url.pathname.startsWith('/devtools/page/');
   }catch{return false;}
 }
@@ -137,7 +142,7 @@ async function waitForLabAppMode(evaluate,{
 }
 
 module.exports={
-  DEBUG_URL,PRODUCT_TITLE,labStagedLocalAppData,labDatabasePath,
+  DEBUG_PORT,DEBUG_URL,PRODUCT_TITLE,labStagedLocalAppData,labDatabasePath,
   labLockPath,isLabUiTarget,validLabWebSocket,readLabDebugTargets,waitForLabUiTarget,
   LAB_APP_MODE_PROBE,assertLabAppModeState,waitForLabAppMode
 };

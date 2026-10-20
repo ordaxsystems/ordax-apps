@@ -3,7 +3,7 @@
 // is read-only; ordinary UI task selection may save an existing local draft.
 const assert=require('node:assert/strict');
 const {DatabaseSync}=require('node:sqlite');
-const {waitForLabUiTarget,waitForLabAppMode,readLabDebugTargets,labDatabasePath}=require('./e2e-lab-target.cjs');
+const {DEBUG_PORT,waitForLabUiTarget,waitForLabAppMode,readLabDebugTargets,labDatabasePath}=require('./e2e-lab-target.cjs');
 const {acquireE2ELock}=require('./e2e-lock.cjs');
 acquireE2ELock('local-recovery-readonly');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -47,7 +47,7 @@ async function providerTargetUrl(){
     try {
       const u=new URL(t.url),w=new URL(t.webSocketDebuggerUrl);
       return t.type==='page' && u.protocol==='https:' && u.hostname==='chatgpt.com' &&
-        w.protocol==='ws:' && w.hostname==='127.0.0.1' && w.port==='9445';
+        w.protocol==='ws:' && w.hostname==='127.0.0.1' && w.port===DEBUG_PORT;
     } catch {return false;}
   });
   return match?.url||null;

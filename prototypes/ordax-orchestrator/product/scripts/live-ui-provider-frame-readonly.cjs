@@ -1,7 +1,7 @@
 // Read-only diagnostics for the existing ChatGPT provider renderer of staged OrdaX Lab.
 // Provider CDP is diagnostic only; only actual OrdaX App UI tests count as certification.
 const {acquireE2ELock}=require('./e2e-lock.cjs');
-const {readLabDebugTargets,waitForLabUiTarget}=require('./e2e-lab-target.cjs');
+const {DEBUG_PORT,readLabDebugTargets,waitForLabUiTarget}=require('./e2e-lab-target.cjs');
 acquireE2ELock('provider-frame-readonly');
 (async()=>{
   await waitForLabUiTarget();
@@ -12,7 +12,7 @@ acquireE2ELock('provider-frame-readonly');
       const url=new URL(target.url),ws=new URL(target.webSocketDebuggerUrl);
       return url.protocol==='https:'&&url.hostname==='chatgpt.com'&&
         ws.protocol==='ws:'&&ws.hostname==='127.0.0.1'&&
-        ws.port==='9445'&&ws.pathname.startsWith('/devtools/page/');
+        ws.port===DEBUG_PORT&&ws.pathname.startsWith('/devtools/page/');
     }catch{return false;}
   });
   if(!provider)throw new Error('lab_provider_target_not_available');
