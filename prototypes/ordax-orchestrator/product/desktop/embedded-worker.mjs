@@ -499,7 +499,7 @@ export class EmbeddedChatWorker {
     } catch { throw new Error('provider_readonly_debugger_unavailable'); }
     let result;
     try {
-      result=await wc.debugger.sendCommand('Runtime.evaluate', {
+      result=await observeWithin(() => wc.debugger.sendCommand('Runtime.evaluate', {
         expression:`(() => {
           const entries = Array.from(document.querySelectorAll(
             '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
@@ -523,8 +523,11 @@ export class EmbeddedChatWorker {
           };
         })()`,
         awaitPromise:false,returnByValue:true
-      });
-    } catch { throw new Error('provider_readonly_dom_evaluation_rejected'); }
+      }), {timeoutMs:1800,code:'provider_readonly_dom_evaluation_timeout'});
+    } catch(error) {
+      if(error?.message==='provider_readonly_dom_evaluation_timeout')throw error;
+      throw new Error('provider_readonly_dom_evaluation_rejected');
+    }
     finally {
       // A read-only inspection must not leave DevTools attached to the
       // authenticated provider view after success OR failed evaluation.
