@@ -60,15 +60,31 @@ test('historical read-only thread can render without a composer; sending still r
   const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
   const load=section('  async #safeLoad(', '  async #assistantSnapshot()');
   assert.match(show,/requireComposer = true/);
-  assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force \}\)/);
-  assert.match(read,/this\.showConversation\(expected, \{force:false,requireComposer:false\}\)/);
+  assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force, readOnlyThread \}\)/);
+  assert.match(read,/this\.showConversation\(expected, \{force:false,requireComposer:false,readOnlyThread:true\}\)/);
   assert.match(read,/canonicalProviderChatUrl\(this\.view\.webContents\.getURL\(\)\) !== expected/);
   assert.match(load,/if \(protectDraft\) \{\s*const state = await this\.#composerState\(\)/);
   assert.match(load,/if \(requireComposer\) await this\.#waitForComposer\(\)/);
+  assert.match(load,/readOnlyThread &&/);
+  assert.match(load,/canInspectHistoricalThreadAfterNavigationTimeout/);
+  assert.match(read,/safeHistoricalThreadFailure\(error\?\.message\)/);
   const send=worker.slice(worker.indexOf('  async sendPrompt({'));
   assert.match(send,/assertProviderSendReadiness/);
   assert.match(send,/await this\.#setComposerAndSend\(/);
   assert.doesNotMatch(read,/sendPrompt|requestSubmit|Input\.insertText|setComposerAndSend/);
+});
+
+test('historical thread uses one bounded CDP Runtime.evaluate without input or navigation',()=>{
+  const inspector=section('  async #readHistoricalThreadDOM() {',
+    '  // Explicit, read-only inspection of an existing, canonical conversation.');
+  const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
+  assert.match(inspector,/wc\.debugger\.sendCommand\('Runtime\.evaluate'/);
+  assert.match(inspector,/awaitPromise:false,returnByValue:true/);
+  assert.match(read,/read:\(\)=>this\.#readHistoricalThreadDOM\(\)/);
+  assert.doesNotMatch(inspector,/Input\.insertText|requestSubmit|loadURL|sendPrompt|\.click\(/);
+  assert.doesNotMatch(read,/executeJavaScript/);
+  const observation=fs.readFileSync(path.resolve(here,'../src/provider-historical-thread-observation.mjs'),'utf8');
+  assert.match(observation,/safeHistoricalThreadFailure\(error\?\.message\)/);
 });
 
 test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',()=>{
