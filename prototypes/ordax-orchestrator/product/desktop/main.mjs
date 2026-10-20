@@ -3,6 +3,7 @@ import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSuper
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
+import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 
 import fs from 'node:fs';
@@ -151,6 +152,10 @@ function persistImages(taskId, messageId, images = []) {
 }
 
 async function runTask(taskId, prompt, { newSession = false, draftRevision = null } = {}) {
+  // Before appending another user message or starting another Run, require
+  // reconciliation of any earlier uncertain transport effect on this Task.
+  // The single existing Store is authoritative; this performs no replay.
+  assertTaskHasNoUncertainTransport(store,taskId);
   const task = store.getTaskExecutionSnapshot(taskId);
   if (!task) throw new Error('task_not_found');
 
