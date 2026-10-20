@@ -306,3 +306,9 @@
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
+
+## P5 — W3: falhas de abertura visíveis no App (20/10/2026)
+
+- Commits `ec66211` e `4ce4285` incorporados na branch da [PR #268](https://github.com/ordaxsystems/ordax-apps/pull/268), sem nova PR e sem versão/release. O `tasks:open` agora retorna falha estruturada; o `ui.js` apresenta o motivo no painel OrdaX, sem expor URLs/tokens nem certificar uma resposta inexistente.
+- `npm run validate` **215/215, exit 0**. Prova física na UI Electron OrdaX em perfil staged novo, porta 9446: `test:live:w3-offline-preflight` **exit 0**, `appMode=true`, `profileBound=true`, `provider_login_required`, `threadRendered=false`, `providerMessagesSent=0`, ledger sem mudanças; instância staged encerrada e porta liberada, app original na 9445 preservado.
+- **W3 real continua inconclusivo**; o smoke certifica somente a barreira em logout. Sem reenvio, sem navegação histórica real e sem alterações ao Grátis/Flow, OS, Runtime ou USB. [Auditoria e limites](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md).
