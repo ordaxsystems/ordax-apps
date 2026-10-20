@@ -99,7 +99,7 @@ test('manual UI guards IPC; browser inspection uses no submission path',()=>{
   assert.match(ui,/id="labSupervisorInspect"/);
   const inspector=worker.split('async inspectConversationReadOnly(')[1].split('async #composerState()')[0];
   assert.match(inspector,/this\.enqueue/);
-  assert.match(inspector,/showConversation\(expected, \{force:false\}\)/);
+  assert.match(inspector,/showConversation\(expected, \{force:false,requireComposer:false\}\)/);
   assert.doesNotMatch(inspector,/submitExactlyOnce|requestSubmit|setComposerAndSend|sendPrompt/);
 });
 
