@@ -21,3 +21,21 @@ Antes, o formulário OrdaX podia parecer habilitado mesmo com `auth_state='anony
 Testes de política e callback da **própria UI** verificam sessão disponível, autenticação anônima, autenticando, desconhecida, restrições, texto preservado quando login cai durante IPC, ausência de despacho ao bloquear envio e limpeza apenas após sucesso. Testes de contrato garantem que o processo main verifica saúde antes do registro no SQLite.
 
 Um E2E físico no OrdaX App requer build staged isolada e deve comprovar a apresentação do aviso e botão bloqueado sem login. **Não tentar entrar no ChatGPT pelo usuário e não copiar senha, cookies nem sessão da instalação anterior.** Confirmação de login real depende do provedor e de sessão válida.
+
+## Validação realizada no Windows em 20/10/2026
+
+- [CI da PR #302 — execução #39394955844](https://github.com/ordaxsystems/ordax-apps/actions/runs/39394955844): **isolamento Linux, validação Windows e construção portátil aprovados**. O artefato não assinado de teste foi identificado pela revisão `538033bc618fdff1dfb3b63eb2d094a7b1e596a4` e verificado no Windows pelo SHA-256 do manifesto antes de qualquer tentativa de execução. Não é release.
+- Na worktree Windows de código atualizado, `node --test` dos arquivos `provider-compose-login-guard.test.mjs` e `e2e-script-target-isolation.test.mjs`: **21/21 aprovados**. Suíte adicional de observação do provedor e teste de login: **16/16 aprovados** após ajustar a fixture de teste `refreshProvider`.
+- Um perfil staged **novo**, sem login nem cookies copiados, recebeu pelo Store apenas a Task `P5 Offline Login Gate Fixture`, com zero Runs e zero mensagens. O aplicativo original permaneceu em `127.0.0.1:9445`.
+- **Limitação do executável portátil**: nesta tentativa, o processo foi criado mas não publicou a porta `9446` e não abriu janela própria, portanto o gate funcional do portátil **não foi certificado**. O processo da candidata identificada foi encerrado; a build passou na CI, mas não foi declarada aprovada fisicamente.
+- Foi usado, no mesmo perfil isolado e sem alterar a lógica da PR, o binário Electron de desenvolvimento já instalado no computador, apontando à worktree da PR #302 e à porta local `9446`. A janela própria do Lab abriu. A primeira tentativa da prova funcional retornou erro genérico inconclusivo; uma segunda execução, com diferença **somente na apresentação de erro de teste**, terminou com código 0:
+  - `appMode=true`, `signedOutSendBlocked=true`, `offlineDraftEditable=true`, `draftPersisted=true`
+  - `providerUrlUnchanged=true`, `providerMessagesSent=0`, `ledgerCountsUnchanged=true`.
+- Depois foi encerrada normalmente apenas a instância de desenvolvimento isolada e reaberta no **mesmo perfil**. A verificação read-only da interface retornou `draftRestoredAfterRestart=true`, `sendStillDisabled=true`, `ledgerCountsUnchanged=true`, `providerMessagesSent=0`, exit code 0.
+- O teste foi realizado **na UI OrdaX**, sem substituir o modo App pelo ChatGPT direto. Não autenticou conta real nem comprovou restauração de sessão vencida. A partição persistente existente preserva os dados de sessão entre inicializações enquanto o ChatGPT a aceitar, mas a validade e a solicitação de novo login pertencem ao provedor.
+
+## Pendências não mascaradas
+
+- Não afirmar que o executável portátil abriu no Windows nesta rodada; somente CI/build passaram e o **Electron de desenvolvimento** executou o gate físico.
+- Não equiparar `session_present` a prova de identidade de conta: é indicador DOM, protegido por fail-closed. Fluxo de login real na página oficial depende da pessoa e da sessão do provedor.
+- W3 conversa externa e W4 crash durante resposta ainda não certificados.
