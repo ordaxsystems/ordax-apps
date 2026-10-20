@@ -123,7 +123,7 @@ function assertLabAppModeState(state) {
 async function waitForLabAppMode(evaluate,{
   clock=Date.now,
   sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
-  maxWaitMs=15000,pollMs=100
+  maxWaitMs=15000,pollMs=100,requireProfileProof=true
 }={}) {
   if(typeof evaluate!=='function') throw new Error('lab_e2e_app_mode_probe_required');
   if(!Number.isSafeInteger(maxWaitMs)||maxWaitMs<1||maxWaitMs>15000 ||
@@ -134,7 +134,22 @@ async function waitForLabAppMode(evaluate,{
     const state=await evaluate(LAB_APP_MODE_PROBE);
     if(state?.view==='provider')
       throw new Error('lab_e2e_provider_fallback_not_app_test');
-    if(state?.view==='app') return assertLabAppModeState(state);
+    if(state?.view==='app') {
+      const checked=assertLabAppModeState(state);
+      if(requireProfileProof){
+        // The port/title are insufficient: another Lab profile could have
+        // the same UI. Fail before selecting a Task or issuing an IPC action.
+        const expectedRoot=path.join(labStagedLocalAppData(),'OrdaX',LAB_ID);
+        const {labProfileFingerprint}=await import('../src/lab-profile-binding.mjs');
+        let proof=null;
+        try {proof=await evaluate('window.ordax?.labProfileProof?.()');}
+        catch {throw new Error('lab_e2e_profile_proof_unavailable');}
+        if(proof?.schema!=='ordax.lab.profile-proof.v1' ||
+           proof?.fingerprint!==labProfileFingerprint(expectedRoot))
+          throw new Error('lab_e2e_profile_mismatch');
+      }
+      return checked;
+    }
     const remaining=deadline-clock();
     if(remaining<=0) throw new Error('lab_e2e_app_mode_not_ready');
     await sleep(Math.min(remaining,pollMs));
