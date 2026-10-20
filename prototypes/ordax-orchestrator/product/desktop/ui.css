@@ -137,6 +137,10 @@ button{color:inherit}
 .asset img{display:block;max-width:100%;max-height:420px;border-radius:12px;border:1px solid #27313d;background:#0a0d12;object-fit:contain}
 .asset figcaption{font-size:9px;color:#687688;margin-top:5px}
 
+.composer-connection{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;padding:8px 11px;border:1px solid #314151;background:#131c27;border-radius:10px;color:#b6c8db;font-size:11px;line-height:1.5}
+.composer-connection[data-state="ready"]{color:#9bb6a4;border-color:#2a4338;background:#101c17}
+.composer-connection button{flex-shrink:0;white-space:nowrap;font-size:10px}
+.composer-connection[data-state="ready"] button{display:none}
 .composer-wrap{padding:0 max(20px,calc((100% - 790px)/2)) 13px;background:linear-gradient(180deg,rgba(11,15,20,0),#0b0f14 22%)}
 .composer{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 36px;align-items:end;gap:7px;border:1px solid #2a3543;background:#111820;border-radius:17px;padding:9px 9px 9px 13px;box-shadow:0 12px 40px rgba(0,0,0,.22)}
 .composer:focus-within{border-color:#3a4758}

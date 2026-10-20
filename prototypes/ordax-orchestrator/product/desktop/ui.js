@@ -1,4 +1,5 @@
 import { renderLiveStage } from './ui-stage.mjs';
+import { providerComposeAvailability, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
@@ -15,6 +16,19 @@ async function setDirectModeVisible(visible) {
 let observerMode = 'auto';
 let allTasks = [];
 let providerRefreshPending = false;
+let composeAvailability = { allowed:false, reason:'unverified' };
+function syncComposerAvailability() {
+  // Editor stays enabled: local draft text is NOT a ChatGPT submission.
+  const allowed = composeAvailability.allowed===true && Boolean(currentTaskId) && !submittingTaskId;
+  $('#send').disabled = !allowed;
+  $('#send').title = allowed ? 'Enviar ao ChatGPT' :
+    (COMPOSE_STATUS_MESSAGES[composeAvailability.reason] || COMPOSE_STATUS_MESSAGES.unverified);
+  $('#composer').dataset.sendReady = allowed ? 'true' : 'false';
+  $('#composerConnection').dataset.state = composeAvailability.reason;
+  $('#composerConnectionText').textContent =
+    COMPOSE_STATUS_MESSAGES[composeAvailability.reason] || COMPOSE_STATUS_MESSAGES.unverified;
+  $('#composerLogin').hidden = composeAvailability.reason==='ready' || composeAvailability.reason==='busy';
+}
 let navigationEpoch = 0;
 let submittingTaskId = null;
 const draftCache = new Map();
@@ -434,7 +448,7 @@ async function openTask(id) {
   currentTaskId = id;
   currentTask = task;
   showDraft(task);
-  $('#send').disabled = Boolean(submittingTaskId);
+  syncComposerAvailability();
   setMemoryEditor(false);
   $('#empty').classList.add('hidden');
   $('#taskPanel').classList.remove('hidden');
@@ -577,6 +591,8 @@ async function refreshProvider() {
   providerRefreshPending = true;
   try {
     const status = await window.ordax.providerStatus();
+    composeAvailability = providerComposeAvailability(status);
+    syncComposerAvailability();
     const verification = status.verification_required;
     const authenticating = status.auth_state === 'authenticating';
     const anonymous = status.auth_state === 'anonymous';
@@ -592,6 +608,8 @@ async function refreshProvider() {
     // Session heuristics must never hide the login view automatically.
     // The operator returns from direct mode explicitly after signing in.
   } catch (error) {
+    composeAvailability = { allowed:false, reason:'unverified' };
+    syncComposerAvailability();
     $('#providerText').textContent = 'ChatGPT • erro';
     $('#providerDetail').textContent = friendlyError(error);
     $('#providerDot').className = 'dot error';
@@ -651,6 +669,7 @@ window.matchMedia('(min-width:1181px)').addEventListener('change', event => {
   if (event.matches) setContextOpen(false);
 });
 
+$('#composerLogin').addEventListener('click', () => $('#login').click());
 $('#login').addEventListener('click', async () => {
   const button = $('#login');
   button.disabled = true;
@@ -732,22 +751,29 @@ $('#composer').addEventListener('submit', async event => {
   if (!currentTaskId) return;
   const input = $('#prompt');
   const content = input.value.trim();
-  if (!content) return;
-  if (submittingTaskId) return;
+  if (!content || submittingTaskId) return;
+  // Enter/requestSubmit cannot bypass the disabled submit button.
+  if (!composeAvailability.allowed) {
+    syncComposerAvailability();
+    stageDraft();
+    return;
+  }
   const taskId = currentTaskId;
   flushDraft();
   const draftRevision = Math.max(draftCache.get(taskId)?.revision || 0, Number(currentTask?.draft_revision || 0)) + 1;
-  draftCache.set(taskId, { content:'', revision:draftRevision });
   submittingTaskId = taskId;
-  input.value = '';
-  input.style.height = '';
-  $('#draftState').textContent = '';
+  syncComposerAvailability();
+  // Preserve text until backend accepts the send: logout must not consume drafts.
   $('#runStatus').textContent = currentTask?.chat_url ? 'Enviando…' : currentTask?.continuation?.total_messages ? 'Abrindo nova conversa com memória…' : 'Enviando…';
   $('#runStatus').classList.remove('hidden');
   $('#send').disabled = true;
   try {
     const { task } = await window.ordax.send({ taskId, content, draftRevision });
+    draftCache.set(taskId, { content:'', revision:draftRevision });
     if (currentTaskId === taskId) {
+      input.value = '';
+      input.style.height = '';
+      $('#draftState').textContent = '';
       currentTask = task;
       renderHistory(task, { reset:true, scrollToLatest:true });
       renderContext(task);
@@ -769,7 +795,7 @@ $('#composer').addEventListener('submit', async event => {
     $('#runStatus').classList.add('hidden');
     $('#runStatus').textContent = '';
     submittingTaskId = null;
-    $('#send').disabled = false;
+    syncComposerAvailability();
     if (currentTaskId === taskId) input.focus();
     refreshProvider();
   }
@@ -805,6 +831,7 @@ window.ordax.onTaskStream(payload => {
 });
 
 await setDirectModeVisible(false);
+syncComposerAvailability(); // no send until session observed
 workspace = await window.ordax.workspace();
 await loadTasks();
 refreshProvider();
