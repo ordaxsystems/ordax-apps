@@ -62,7 +62,7 @@ test('staged AppData requires absolute pinned candidate root and explicit approv
 test('all live smoke scripts have canonical Lab-only target and no Gratis references',()=>{
   for(const name of ['live-ui-text-smoke.cjs','live-ui-continuity-smoke.cjs',
     'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs',
-    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs']){
+    'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs','live-ui-provider-frame-readonly.cjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
     assert.match(code,/waitForLabUiTarget\(\)/);
     assert.match(code,/waitForLabAppMode\(/);
