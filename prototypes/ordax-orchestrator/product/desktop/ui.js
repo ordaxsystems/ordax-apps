@@ -133,6 +133,7 @@ function friendlyError(error) {
     chatgpt_verification_required: 'O ChatGPT exige uma verificação oficial. Conclua-a no modo direto e tente novamente.',
     chatgpt_login_required: 'Entre na sua conta do ChatGPT neste Lab para continuar.',
     chatgpt_session_not_observed: 'Não foi possível observar a sessão autenticada. Conclua o login no modo direto antes de enviar.',
+    task_submission_reconciliation_required: 'Envio anterior com entrega incerta. Verifique a conversa antes de enviar novamente nesta tarefa.',
     chatgpt_authentication_in_progress: 'Conclua o login antes de enviar.',
     composer_not_found: 'O campo de mensagem do ChatGPT ainda não está pronto.',
     send_not_observed: 'O ChatGPT não confirmou o envio. Nada foi reenviado automaticamente.',
