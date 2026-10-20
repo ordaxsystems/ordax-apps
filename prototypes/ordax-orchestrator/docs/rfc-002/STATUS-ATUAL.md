@@ -134,6 +134,14 @@
 - **Gate atual:** investigar estado pós-login/retorno para a página principal do ChatGPT na partição Lab e obter sinal observável de sessão sem despejar URL, HTML, credenciais ou dados de conversa. Não automatizar reutilização de cookies nem pressionar enviar em estado `unknown`.
 - **P5-W1–W4 ainda não executados**: primeiro obter estado de sessão observado; depois teste único consentido, interrupção e retomada sem replay. Versão segue `0.2.0-alpha.2`; Grátis intacto.
 
+## P5 — Causa observada após login: ChatGPT backend HTTP 403
+
+- **Evidência física obtida após o proprietário confirmar login**: o Lab continua acessível pela porta 9445, com duas páginas Electron (UI OrdaX e `https://chatgpt.com/`). O documento principal do provedor retornou 200 e `readyState=complete`, mas não montou editor/formulário.
+- Inspeção estritamente estrutural, sem cookies, identidade, payload, HTML bruto ou URL de conversa: 205 recursos, 23 respostas HTTP **403**, todas da origem `chatgpt.com` e do prefixo `/backend-api/`. **Motivo da recusa ainda desconhecido.** A observação não prova que o login informado pelo proprietário esteja incorreto.
+- [PR #290](https://github.com/ordaxsystems/ordax-apps/pull/290) em CI: diagnóstico canônico de 403 por contagem limitada, exibição clara no Lab, bloqueio de envio e smoke de prontidão sanitizado. [Auditoria técnica](../audits/P5-CHATGPT-BACKEND-403-2026-10-19.md).
+- **Proibido** contornar HTTP 403 trocando User-Agent, importando cookies, manipulando tokens, headers, proteção do provedor ou endpoints privados. Se a integração não for suportada na partição Electron, investigar compatibilidade e vias oficiais, sem simular sucesso.
+- Enquanto o serviço não entregar compositor utilizável na partição Lab, **W1–W4 continuam pendentes**. Nenhum prompt foi enviado ou repetido. Manter `0.2.0-alpha.2`, Grátis intacto, sem release.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
