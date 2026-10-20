@@ -341,7 +341,14 @@ ipcMain.handle('ordax:tasks:draft:set', (_event, { taskId, content, revision }) 
   store.setDraft(String(taskId), content, revision));
 ipcMain.handle('ordax:tasks:open', async (_event, id) => {
   const task = getTaskView(id);
-  if (chatVisible && task?.chat_url) await worker.showConversation(task.chat_url).catch(() => {});
+  if (chatVisible && task?.chat_url) {
+    try {
+      const navigation = await worker.showConversation(task.chat_url);
+      if (navigation.navigated === false) return { ...task, provider_navigation:'not_navigated', provider_navigation_reason:navigation.reason || 'unknown' };
+    } catch (error) {
+      return { ...task, provider_navigation:'failed', provider_navigation_error:String(error?.message || error) };
+    }
+  }
   return task;
 });
 // A first-party OrdaX App action, not the ChatGPT direct-mode UI.
