@@ -5,6 +5,7 @@ import { responseObservationComplete, requireObservedCompletion } from '../src/p
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
+import { assessHistoricalThreadPreflight } from '../src/provider-historical-thread-preflight.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import path from 'node:path';
@@ -489,8 +490,12 @@ export class EmbeddedChatWorker {
   // This performs one evaluation, never an input event, retry or network request.
   async #readHistoricalThreadDOM() {
     const wc=this.view.webContents;
+    let attachedHere=false;
     try {
-      if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+      if (!wc.debugger.isAttached()) {
+        wc.debugger.attach('1.3');
+        attachedHere=true;
+      }
     } catch { throw new Error('provider_readonly_debugger_unavailable'); }
     let result;
     try {
@@ -520,6 +525,15 @@ export class EmbeddedChatWorker {
         awaitPromise:false,returnByValue:true
       });
     } catch { throw new Error('provider_readonly_dom_evaluation_rejected'); }
+    finally {
+      // A read-only inspection must not leave DevTools attached to the
+      // authenticated provider view after success OR failed evaluation.
+      // Never detach a debugger that belonged to another observer.
+      if(attachedHere) {
+        try { if(wc.debugger.isAttached()) wc.debugger.detach(); }
+        catch { /* teardown errors cannot certify inspection */ }
+      }
+    }
     if (result?.exceptionDetails || result?.result?.value?.available!==true)
       throw new Error('provider_readonly_dom_evaluation_rejected');
     return result.result.value;
@@ -532,6 +546,13 @@ export class EmbeddedChatWorker {
     const expected=canonicalProviderChatUrl(chatUrl);
     if (!expected) throw new Error('invalid_chat_url');
     return this.enqueue(async () => {
+      // Read-only health first. Never navigate if no usable session, verified
+      // login is required, verification is pending or 429/403 is observed.
+      // The already-open linked thread can be read despite absent composer.
+      const health=await this.health().catch(() => null);
+      const preflight=assessHistoricalThreadPreflight({expectedUrl:expected,health});
+      if(!preflight.allowed)
+        return {available:false,url:expected,reason:preflight.reason};
       // Historical read-only inspection is not an attempt to send. The provider
       // editor may be absent even when the old thread is readable. Draft
       // protection and canonical URL verification still apply.
