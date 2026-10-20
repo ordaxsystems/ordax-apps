@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {observeWithin,classifyProviderAuthObservation,classifyProviderAccessRestriction} from '../src/provider-observation-policy.mjs';
+import {observeWithin,classifyProviderAuthObservation,classifyProviderAccessRestriction,assertProviderSendReadiness} from '../src/provider-observation-policy.mjs';
 
 test('DOM unavailable on ChatGPT home is UNKNOWN, not logged in',()=>{
   assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',page:null}),'unknown');
@@ -98,6 +98,10 @@ test('one observed first-party HTTP 429 is a warning, not authentication proof',
   assert.equal(classifyProviderAccessRestriction({rateLimitedCount:'1',composerReady:false}),null);
   assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',page:{
     composer:false,hasLogin:false,hasSignup:false,backendRateLimitedCount:1}}),'unknown');
+  assert.throws(()=>assertProviderSendReadiness({
+    provider_access_problem:'backend_http_429_observed',auth_state:'unknown',
+    composer_ready:false,health_observed:true
+  }),/chatgpt_provider_rate_limited_observed/);
 });
 
 test('429 is surfaced only through sanitized first-party status counts, not private URLs',()=>{
