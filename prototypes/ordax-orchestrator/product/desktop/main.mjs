@@ -175,10 +175,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   // mutation or draft clearing. A signed-out/unknown provider creates no Run.
   // Worker.sendPrompt independently checks again immediately before editing.
   assertProviderSendReadiness(await worker.health());
-  const userMessage = store.appendMessage(taskId, 'user', prompt);
-  // The user's text is durable as a message before clearing its pending draft.
-  if (draftRevision != null) store.setDraft(taskId, '', draftRevision);
-  const runId = store.startRun(taskId, 'electron-embedded-chatgpt', observerMode);
+  // No provider interaction happens until this atomic transaction commits.
+  // The message, draft-clear and Run must never be persisted separately.
+  const { userMessage, runId } = store.beginProviderRun(taskId, prompt, {
+    draftRevision,workerId:'electron-embedded-chatgpt',observerMode
+  });
   liveRun = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
   if (win && !win.isDestroyed()) win.webContents.send('ordax:task:run-started', { taskId, runId, userMessage });
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
