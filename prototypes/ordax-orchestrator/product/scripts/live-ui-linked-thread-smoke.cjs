@@ -69,8 +69,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const result={schema:'ordax.lab.linked-thread-app-e2e.v1',appMode:true,
       fixtureFound:true,readOnly:true,providerMessagesSent:0,
       observationKind:diagnosis.kind,observationReason:diagnosis.reason,
-      threadRendered:status.includes('Conversa carregada'),
-      inconclusive:status.includes('Não foi possível') || status.includes('Inspeção indisponível')};
+      threadRendered:status.includes('Conversa e resposta da tarefa observadas'),
+      inconclusive:!status.includes('Conversa e resposta da tarefa observadas')};
     console.log(JSON.stringify(result));
     if(!result.threadRendered)process.exitCode=2;
   } finally {ws.close();}
