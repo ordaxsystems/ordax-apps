@@ -695,11 +695,11 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
     $('#linkedThreadStatus').dataset.kind = String(result?.kind || 'unavailable');
     $('#linkedThreadStatus').dataset.reason = String(result?.inspectionReason || result?.reason || 'unknown');
     // Machine-readable result: never certify W3 from localized UI copy.
-    $('#linkedThreadStatus').dataset.threadRendered = result?.threadRendered === true &&
-      result?.kind === 'response_candidate' && result?.inspectionReason === 'thread_rendered'
-      ? 'true' : 'false';
+    const attributable = result?.threadRendered === true &&
+      result?.kind === 'response_candidate' && result?.inspectionReason === 'thread_rendered';
+    $('#linkedThreadStatus').dataset.threadRendered = attributable ? 'true' : 'false';
     $('#linkedThreadStatus').dataset.state = 'complete';
-    $('#linkedThreadStatus').textContent=result?.threadRendered
+    $('#linkedThreadStatus').textContent=attributable
       ? 'Conversa e resposta da tarefa observadas. Não comprova efeitos externos.'
       : result?.kind==='message_candidate'
         ? 'Mensagem da tarefa localizada, mas resposta ainda não comprovada. Nenhum reenvio.'
