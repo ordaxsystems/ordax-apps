@@ -231,6 +231,8 @@ test('local recovery E2E uses actual App mode, SQLite read-only and no provider 
   assert.match(source,/new DatabaseSync\(dbpath,\{readOnly:true\}\)/);
   assert.match(source,/acquireE2ELock\('local-recovery-readonly'\)/);
   assert.match(source,/ledgerCountsUnchanged:true/);
+  assert.match(source,/providerUrlUnchanged:true/);
+  assert.match(source,/readLabDebugTargets\(\)/);
   assert.match(source,/providerMessagesSent:0/);
   assert.match(source,/W3Certified:false,W4Certified:false/);
   assert.doesNotMatch(source,/window\.ordax\.send|requestSubmit|submitExactlyOnce|sendPrompt|loadURL|navigateTo|Input\.insertText/);
