@@ -334,3 +334,7 @@ O smoke W3 staged ganhou fase identificável e códigos sanitizados; erros inesp
 ### W3 — observação do estado da geração (20/10/2026)
 
 A inspeção histórica foi endurecida: `threadRendered` não pode ser verdadeiro se houver controle de parar geração visível, nem se o estado de geração estiver ausente na observação. O novo campo é capturado no próprio DOM read-only, sem replay. Testes focados de IPC e UI atualizados; ainda é necessário validar o gate externo W3 real. [Detalhes](../audits/P5-W3-NAVIGATION-ERROR-IN-APP-2026-10-20.md).
+
+### P5/W3 — Proveniência nas continuações (20/10/2026)
+
+A investigação encontrou e corrigiu um defeito estrutural: `onDeliveryObserved` só era executado para chats novos, impedindo o registro do recibo de envio em uma conversa existente. O worker agora usa um único recorder para ambos os tipos, depois de confirmação pela UI, com URL esperada e idempotência. Testes focados com SQLite real aprovados; sem segundo mecanismo de envio e sem criar evidência retroativa. [Auditoria](../audits/P5-W3-EXISTING-CONVERSATION-DELIVERY-2026-10-20.md). W3 real e W4 real continuam pendentes.

@@ -4,6 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-
 import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
+import { createProviderDeliveryRecorder } from '../src/provider-delivery-recorder.mjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
 import { assessHistoricalThreadPreflight } from '../src/provider-historical-thread-preflight.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
@@ -934,27 +935,23 @@ export class EmbeddedChatWorker {
       await this.#setComposerAndSend(promptText);
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
 
-      // After the single UI submission receipt, record the newly created
-      // canonical conversation before its response; never infer from / or /auth.
-      // The callback is local and synchronous-DB-only in the owning process.
-      let initialPermalinkRecorded = false;
-      const retainNewConversation = async () => {
-        if (initialPermalinkRecorded || !newSession || typeof onDeliveryObserved !== 'function') return;
-        const observedUrl = canonicalProviderChatUrl(wc.getURL());
-        if (!observedUrl) return;
-        await onDeliveryObserved({
-          chatUrl:observedUrl,submittedAt:this.streamContext?.submittedAt
-        });
-        initialPermalinkRecorded = true;
-      };
-      await retainNewConversation();
+      // New chats may need time to acquire a canonical permalink. Existing
+      // conversations also need a receipt, but only at their expected URL.
+      // One canonical recorder handles both paths after the UI submit receipt.
+      const recordDelivery=createProviderDeliveryRecorder({
+        startsFresh,expectedChatUrl:chatUrl,onDeliveryObserved
+      });
+      const retainSubmittedConversation=()=>recordDelivery({
+        currentUrl:wc.getURL(),submittedAt:this.streamContext?.submittedAt
+      });
+      await retainSubmittedConversation();
 
       this.#setStage('await-response');
       const started = Date.now();
       let latest = null, latestSignature = '', stable = 0, completionConfirmed = false;
       while (Date.now() - started < 180000) {
         await sleep(300);
-        await retainNewConversation();
+        await retainSubmittedConversation();
         const snap = await this.#assistantSnapshot().catch(() => ({ mode:'unknown', messages:[], rawBody:'', images:[] }));
         let candidate = snap.messages.at(-1) || null;
         if (snap.mode === 'direct' && snap.latestUserText && String(snap.latestUserText).trim() !== promptText) continue;
@@ -996,7 +993,7 @@ export class EmbeddedChatWorker {
       }
       // A partial or actively generating response at timeout is NOT complete,
       // even if it contains text. Leave the Run uncertain for reconciliation.
-      await retainNewConversation();
+      await retainSubmittedConversation();
       requireObservedCompletion({ candidate:latest, completed:completionConfirmed });
       this.#setStage('assets');
       const images = await this.#fetchImages(latest.images || []);
