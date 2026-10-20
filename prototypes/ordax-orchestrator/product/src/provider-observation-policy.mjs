@@ -31,10 +31,23 @@ export function classifyProviderAuthObservation({url,page}={}) {
   return 'unknown';
 }
 
+// Read-only response-status evidence from the current provider document.
+// A 403 is evidence of a refused request, NOT proof that the person failed
+// to authenticate. No URL, cookie, payload or account information is retained.
+export function classifyProviderAccessRestriction({
+  forbiddenCount=0,composerReady=false
+}={}) {
+  if(!Number.isSafeInteger(forbiddenCount)||forbiddenCount<0)return null;
+  if(composerReady!==true && forbiddenCount>=3)return 'backend_http_403_observed';
+  return null;
+}
+
 // A DOM observation is a preliminary safety gate, NOT proof of account
 // identity. Do not submit any text while login is missing or ambiguous.
 export function assertProviderSendReadiness(health) {
   if(health?.verification_required===true)throw new Error('chatgpt_verification_required');
+  if(health?.provider_access_problem==='backend_http_403_observed')
+    throw new Error('chatgpt_provider_backend_access_restricted');
   if(health?.auth_state==='authenticating')throw new Error('chatgpt_authentication_in_progress');
   if(health?.auth_state==='anonymous')throw new Error('chatgpt_login_required');
   if(health?.auth_state!=='session_present'||health?.composer_ready!==true||
