@@ -451,6 +451,8 @@ async function openTask(id) {
   $('#linkedThreadStatus').textContent = '';
   $('#linkedThreadStatus').dataset.kind = '';
   $('#linkedThreadStatus').dataset.reason = '';
+  $('#linkedThreadStatus').dataset.state = 'idle';
+  $('#linkedThreadStatus').dataset.threadRendered = 'false';
   $('#workspaceId').textContent = workspace ? `sessão ${workspace.id.slice(-8)}` : '';
   renderHistory(task, { reset:true, scrollToLatest:true });
   renderContext(task);
@@ -682,20 +684,34 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
   if (!taskId || !currentTask?.chat_url) return;
   const button=$('#inspectLinkedThread');
   button.disabled=true;
+  $('#linkedThreadStatus').dataset.state = 'pending';
+  $('#linkedThreadStatus').dataset.kind = '';
+  $('#linkedThreadStatus').dataset.reason = '';
+  $('#linkedThreadStatus').dataset.threadRendered = 'false';
   $('#linkedThreadStatus').textContent='Verificando a conversa vinculada (sem envio)…';
   try {
     const result=await window.ordax.inspectLinkedThread(taskId);
     if (currentTaskId !== taskId) return;
     $('#linkedThreadStatus').dataset.kind = String(result?.kind || 'unavailable');
     $('#linkedThreadStatus').dataset.reason = String(result?.inspectionReason || result?.reason || 'unknown');
+    // Machine-readable result: never certify W3 from localized UI copy.
+    $('#linkedThreadStatus').dataset.threadRendered = result?.threadRendered === true &&
+      result?.kind === 'response_candidate' && result?.inspectionReason === 'thread_rendered'
+      ? 'true' : 'false';
+    $('#linkedThreadStatus').dataset.state = 'complete';
     $('#linkedThreadStatus').textContent=result?.threadRendered
       ? 'Conversa e resposta da tarefa observadas. Não comprova efeitos externos.'
       : result?.kind==='message_candidate'
         ? 'Mensagem da tarefa localizada, mas resposta ainda não comprovada. Nenhum reenvio.'
         : 'Não foi possível comprovar a conversa e a resposta da tarefa. Nenhum reenvio.';
   } catch (error) {
-    if (currentTaskId === taskId)
+    if (currentTaskId === taskId) {
+      $('#linkedThreadStatus').dataset.kind = 'unavailable';
+      $('#linkedThreadStatus').dataset.reason = 'provider_inspection_unavailable';
+      $('#linkedThreadStatus').dataset.threadRendered = 'false';
+      $('#linkedThreadStatus').dataset.state = 'error';
       $('#linkedThreadStatus').textContent='Inspeção indisponível: '+friendlyError(error);
+    }
   } finally {
     if (currentTaskId === taskId) button.disabled=false;
   }
