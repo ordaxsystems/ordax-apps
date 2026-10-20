@@ -593,6 +593,42 @@ export class Store {
     return row ? { ...row, payload: JSON.parse(row.payload || '{}') } : null;
   }
 
+  beginProviderRun(taskId, prompt, { draftRevision = null,
+    workerId = 'electron-embedded-chatgpt', observerMode = 'auto' } = {}) {
+    // Sending preparation is a SINGLE crash-consistent SQLite operation.
+    // Crash before COMMIT: no orphan user message, no lost draft, no Run.
+    // Crash after COMMIT: the running Run is recovered as interrupted, NEVER
+    // automatically re-sent, regardless of whether delivery happened.
+    const content = String(prompt || '').trim();
+    if (!content) throw new Error('content_required');
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const task = this.db.prepare('SELECT draft_revision FROM tasks WHERE id=?').get(taskId);
+      if (!task) throw new Error('task_not_found');
+      if (this.db.prepare("SELECT 1 FROM runs WHERE task_id=? AND status='running' LIMIT 1").get(taskId))
+        throw new Error('task_run_already_active');
+      if (draftRevision != null) {
+        const nextRevision = Number(draftRevision);
+        if (!Number.isSafeInteger(nextRevision) || nextRevision < 1)
+          throw new Error('invalid_task_draft_revision');
+        if (nextRevision <= Number(task.draft_revision || 0))
+          throw new Error('task_draft_revision_conflict');
+      }
+      const userMessage = this.appendMessage(taskId, 'user', content);
+      if (draftRevision != null) {
+        const draft = this.setDraft(taskId, '', draftRevision);
+        if (draft.draft !== '' || draft.draft_revision !== Number(draftRevision))
+          throw new Error('task_draft_revision_conflict');
+      }
+      const runId = this.startRun(taskId, workerId, observerMode);
+      this.db.exec('COMMIT');
+      return { userMessage, runId };
+    } catch(error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
   startRun(taskId, workerId = 'electron-embedded-chatgpt', observerMode = 'auto') {
     const id = `run_${randomUUID()}`;
     const now = this.now();
