@@ -97,6 +97,7 @@ function mount({allowed,send}){
     $:selector=>selector==='#composer'?{addEventListener:(type,fn)=>{if(type==='submit')callback=fn;}}:node(selector),
     stageDraft:()=>{staged++;},
     flushDraft:()=>{flushed++;},
+    refreshProvider:()=>{},
     syncComposerAvailability:()=>{},
     loadTasks:async()=>{},
     openTask:async()=>{},
