@@ -4,6 +4,7 @@ import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
+import { assessProviderConversationEvidence } from '../src/provider-conversation-reconciliation.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 
 import fs from 'node:fs';
@@ -330,6 +331,34 @@ ipcMain.handle('ordax:tasks:open', async (_event, id) => {
   const task = getTaskView(id);
   if (chatVisible && task?.chat_url) await worker.showConversation(task.chat_url).catch(() => {});
   return task;
+});
+// A first-party OrdaX App action, not the ChatGPT direct-mode UI.
+// Historical inspection never sends messages or changes the SQLite ledger.
+ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) => {
+  requireTrustedSupervisorRenderer(event);
+  if (liveRun) return {kind:'unavailable',reason:'run_active',threadRendered:false,requiresReconciliation:true};
+  const taskId=String(requestedId || '');
+  const row=store.db.prepare('SELECT chat_url,workspace_session_id FROM tasks WHERE id=?').get(taskId);
+  const currentSession=store.getWorkspaceSession();
+  if (!row || row.workspace_session_id !== currentSession?.id)
+    throw new Error('task_access_denied');
+  const expectedUrl=canonicalProviderChatUrl(row.chat_url);
+  if (!expectedUrl)
+    return {kind:'unavailable',reason:'canonical_chat_url_missing',threadRendered:false,requiresReconciliation:true};
+  const message=store.db.prepare(\`SELECT content FROM messages WHERE task_id=? AND role='user'
+    ORDER BY created_at DESC,id DESC LIMIT 1\`).get(taskId);
+  // No mutation or replay, including when the provider navigation times out.
+  const observed=await worker.inspectConversationReadOnly(expectedUrl).catch(() => null);
+  const assessment=assessProviderConversationEvidence({
+    expectedUrl,observed,expectedMessage:message?.content
+  });
+  const threadRendered=observed?.available===true && observed?.domReliable===true &&
+    canonicalProviderChatUrl(observed.url)===expectedUrl;
+  return {
+    kind:assessment.kind,reason:assessment.reason,threadRendered,
+    responseCandidate:assessment.responseCandidate===true,
+    requiresReconciliation:assessment.requiresReconciliation===true
+  };
 });
 ipcMain.handle('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
 ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => {
