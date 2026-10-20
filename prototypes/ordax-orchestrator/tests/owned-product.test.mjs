@@ -67,6 +67,8 @@ test('owned product keeps manual ChatGPT Web as required and supervisor gated', 
   assert.match(worker,/class EmbeddedChatWorker/);
   assert.match(main,/ORDAX_LAB_SUPERVISOR_ENABLE/);
   assert.match(main,/runTask/);
-  assert.match(main,/startRun/);
+  const store=read('product/src/store.mjs');
+  assert.match(main,/store\.beginProviderRun\(taskId, prompt/);
+  assert.match(store,/this\.startRun\(taskId, workerId, observerMode\)/);
   assert.match(main,/finishRun/);
 });

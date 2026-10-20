@@ -84,8 +84,11 @@ test('main enforces guard before local user message and Run creation',()=>{
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
   const part=main.split('async function runTask(')[1].split('const heartbeat =')[0];
   const guard=part.indexOf('assertTaskHasNoUncertainTransport(store,taskId)');
-  assert.ok(guard>=0 && guard<part.indexOf("store.appendMessage(taskId, 'user'"));
-  assert.ok(guard<part.indexOf('store.startRun(taskId'));
+  const atomic=part.indexOf('store.beginProviderRun(taskId, prompt');
+  assert.ok(guard>=0 && atomic>guard);
+  assert.ok(part.indexOf('assertProviderSendReadiness(await worker.health())')<atomic);
+  assert.doesNotMatch(part,/store\.appendMessage\(taskId, 'user'/);
+  assert.doesNotMatch(part,/store\.startRun\(taskId/);
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   assert.match(ui,/task_submission_reconciliation_required/);
 });
