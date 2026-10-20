@@ -85,7 +85,8 @@ test('all live smoke scripts have canonical Lab-only target and no Gratis refere
   for(const name of ['live-ui-text-smoke.cjs','live-ui-continuity-smoke.cjs',
     'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs',
     'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs',
-    'live-ui-local-recovery-readonly.cjs','live-ui-signed-out-compose.cjs']){
+    'live-ui-local-recovery-readonly.cjs','live-ui-signed-out-compose.cjs',
+    'live-ui-w3-offline-preflight.cjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
     assert.match(code,/waitForLabUiTarget\(\)/);
     assert.match(code,/waitForLabAppMode\(/);
@@ -276,6 +277,17 @@ test('all live App gates reject a Lab with correct title but a different SQLite 
     if(priorApproval==null)delete process.env.ORDAX_LAB_E2E_APPROVED;
     else process.env.ORDAX_LAB_E2E_APPROVED=priorApproval;
   }
+});
+
+test('offline W3 App gate requires exact staged profile and refuses unsafe navigation',()=>{
+  const code=fs.readFileSync(path.join(scripts,'live-ui-w3-offline-preflight.cjs'),'utf8');
+  assert.match(code,/waitForLabAppMode\(evaluate\)/);
+  assert.match(code,/new DatabaseSync\(labDatabasePath\(\),\{readOnly:true\}\)/);
+  assert.match(code,/lab_w3_offline_precondition_not_safe/);
+  assert.match(code,/lab_w3_offline_unexpected_navigation/);
+  assert.match(code,/W3Certified:false/);
+  assert.match(code,/providerMessagesSent:0/);
+  assert.doesNotMatch(code,/window\.ordax\.send|sendPrompt|Input\.insertText|\.loadURL\(|\.navigateTo\(/);
 });
 
 test('signed-out E2E stays exclusively in Lab App and never invokes provider transport',()=>{
