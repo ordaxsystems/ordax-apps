@@ -125,6 +125,15 @@
 - **Primeiro gate pendente:** reconciliar **somente leitura** a segunda Task com uma thread válida, caso seja observada no histórico oficial do ChatGPT dentro do Lab. Sem confirmação, manter bloqueio e não automatizar replay. P5 W1–W4 continuam **não concluídos**.
 - OrdaX Grátis, OS, Runtime e pendrive não alterados; versão `0.2.0-alpha.2`, supervisor desativado, nenhuma release.
 
+## P5 — Usuário confirmou login; sessão do Lab ainda não comprovada em teste remoto
+
+- Em 19/10/2026 o proprietário confirmou explicitamente **LOGIN JA FEITO**. Não pedir que repita a autenticação como pré-requisito sem verificar a superfície correta.
+- Desktop Commander: computador Windows **online** e porta `9445` oferecendo **um target da UI do OrdaX Orchestrator Lab**.
+- Com `npm run test:live:ready` no checkout staged isolado da PR #287, **duas leituras somente de indicadores** retornaram `labUiReady=true`, `authState=unknown`, `composerReady=false`, `verificationRequired=false`, `pageType=provider_other`, `authenticated=not_verified`, `delivery=not_evaluated`. A segunda leitura foi feita após a primeira, sem envio, login adicional, cookie ou navegação.
+- Isto não contradiz a afirmação do proprietário de que fez login; apenas diz que o **worker/partição autenticada do Lab não demonstrou a sessão** nessas leituras. Não confundir com conta pessoal já logada em outro navegador/perfil.
+- **Gate atual:** investigar estado pós-login/retorno para a página principal do ChatGPT na partição Lab e obter sinal observável de sessão sem despejar URL, HTML, credenciais ou dados de conversa. Não automatizar reutilização de cookies nem pressionar enviar em estado `unknown`.
+- **P5-W1–W4 ainda não executados**: primeiro obter estado de sessão observado; depois teste único consentido, interrupção e retomada sem replay. Versão segue `0.2.0-alpha.2`; Grátis intacto.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
