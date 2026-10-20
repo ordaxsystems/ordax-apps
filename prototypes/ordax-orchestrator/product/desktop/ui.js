@@ -718,11 +718,22 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
       result?.kind === 'response_candidate' && result?.inspectionReason === 'thread_rendered';
     $('#linkedThreadStatus').dataset.threadRendered = attributable ? 'true' : 'false';
     $('#linkedThreadStatus').dataset.state = 'complete';
+    const blockedReasons={
+      provider_rate_limited_observed:'O ChatGPT apresentou HTTP 429. Inspeção suspensa sem navegação ou reenvio.',
+      provider_access_restricted_observed:'O ChatGPT apresentou restrição de acesso. Nenhuma navegação ou reenvio.',
+      provider_login_required:'Entre no ChatGPT pela página oficial antes de verificar a conversa. Rascunho preservado.',
+      provider_authentication_in_progress:'Conclua a autenticação no ChatGPT antes da inspeção. Nenhum reenvio.',
+      provider_session_not_observed:'Sessão não comprovada para abrir outra conversa. Faça login pelo modo direto.',
+      provider_verification_required:'Verificação do ChatGPT pendente. Inspeção suspensa, sem reenvio.',
+      provider_health_unavailable:'Não foi possível observar a sessão. Inspeção suspensa, sem reenvio.'
+    };
+    const inspectionReason=String(result?.inspectionReason || '');
     $('#linkedThreadStatus').textContent=attributable
       ? 'Conversa e resposta da tarefa observadas. Não comprova efeitos externos.'
-      : result?.kind==='message_candidate'
-        ? 'Mensagem da tarefa localizada, mas resposta ainda não comprovada. Nenhum reenvio.'
-        : 'Não foi possível comprovar a conversa e a resposta da tarefa. Nenhum reenvio.';
+      : blockedReasons[inspectionReason] ||
+        (result?.kind==='message_candidate'
+          ? 'Mensagem da tarefa localizada, mas resposta ainda não comprovada. Nenhum reenvio.'
+          : 'Não foi possível comprovar a conversa e a resposta da tarefa. Nenhum reenvio.');
   } catch (error) {
     if (currentTaskId === taskId) {
       $('#linkedThreadStatus').dataset.kind = 'unavailable';
