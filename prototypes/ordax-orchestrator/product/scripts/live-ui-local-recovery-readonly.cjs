@@ -3,7 +3,7 @@
 // is read-only; ordinary UI task selection may save an existing local draft.
 const assert=require('node:assert/strict');
 const {DatabaseSync}=require('node:sqlite');
-const {waitForLabUiTarget,waitForLabAppMode,labDatabasePath}=require('./e2e-lab-target.cjs');
+const {waitForLabUiTarget,waitForLabAppMode,readLabDebugTargets,labDatabasePath}=require('./e2e-lab-target.cjs');
 const {acquireE2ELock}=require('./e2e-lock.cjs');
 acquireE2ELock('local-recovery-readonly');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -40,6 +40,18 @@ function fixtures(){
     return pair;
   }finally{db.close();}
 }
+// Only loopback DevTools target metadata. Does not evaluate or navigate provider.
+async function providerTargetUrl(){
+  const targets=await readLabDebugTargets();
+  const match=targets.find(t=>{
+    try {
+      const u=new URL(t.url),w=new URL(t.webSocketDebuggerUrl);
+      return t.type==='page' && u.protocol==='https:' && u.hostname==='chatgpt.com' &&
+        w.protocol==='ws:' && w.hostname==='127.0.0.1' && w.port==='9445';
+    } catch {return false;}
+  });
+  return match?.url||null;
+}
 async function main(){
   const before=snapshot();
   assert.equal(before.active,0,'lab_e2e_active_run_detected');
@@ -70,6 +82,7 @@ async function main(){
   try{
     await waitForLabAppMode(evaluate);
     previous=await evaluate("document.querySelector('#taskId')?.textContent||''");
+    const providerBefore=await providerTargetUrl();
     for(const v of pair){
       const click="(()=>{const n=[...document.querySelectorAll('.task[data-id]')].find(t=>t.dataset.id==="+
         JSON.stringify(v.id)+");if(!n)return false;n.click();return true})()";
@@ -97,11 +110,12 @@ async function main(){
       await waitForLabAppMode(evaluate);
     }
     assert.deepEqual(snapshot(),before,'lab_e2e_local_read_modified_ledger');
+    assert.equal(await providerTargetUrl(),providerBefore,'lab_e2e_provider_url_changed');
     console.log(JSON.stringify({schema:'ordax.lab.local-recovery-app-e2e.v1',
       appMode:true,readOnly:true,completedTaskReopened:true,
       completedReplyVisible:true,interruptedTaskReopened:true,
       interruptionBannerVisible:true,providerMessagesSent:0,
-      providerNavigationPerformed:false,ledgerCountsUnchanged:true,
+      providerUrlUnchanged:true,ledgerCountsUnchanged:true,
       W3Certified:false,W4Certified:false}));
   }finally{
     if(previous){
@@ -116,7 +130,7 @@ main().catch(error=>{
     'lab_e2e_active_run_detected','lab_e2e_task_not_in_navigation',
     'lab_e2e_task_selection_not_confirmed','lab_e2e_user_content_not_rendered',
     'lab_e2e_assistant_not_rendered','lab_e2e_interruption_not_rendered',
-    'lab_e2e_local_read_modified_ledger','lab_e2e_ui_timeout']);
+    'lab_e2e_local_read_modified_ledger','lab_e2e_provider_url_changed','lab_e2e_ui_timeout']);
   const code=String(error?.message||'');
   console.error(JSON.stringify({schema:'ordax.lab.local-recovery-app-e2e.v1',success:false,
     reason:reasons.has(code)?code:'lab_e2e_local_recovery_failed'}));
