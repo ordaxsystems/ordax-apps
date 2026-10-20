@@ -186,6 +186,15 @@
 - W3 real continua **inconclusivo** pela ausência de mensagens do provedor na thread histórica, não confundir integridade de validação com correção da disponibilidade da thread. W4 permanece não executado. Próximo trabalho: evidências sanitizadas da razão de não renderização da página na sessão do Lab, sem credenciais e sem automação de envio ou auth, seguido dos gates W3/W4 em perfil de teste não concorrente.
 - OrdaX Flow/Grátis, OS, Runtime e pendrive não modificados. Manter `0.2.0-alpha.2`, sem release.
 
+## P5 — HTTP 429 observado no renderer real e tratamento canônico (20/10/2026)
+
+- Diagnóstico **somente leitura** no Windows autorizado, perfil staged e checkout de investigação `021ba2f`: página de thread histórica com documento `complete` e `main` presente, mas **zero turnos e compositor ausente**. Contagens de recursos da origem ChatGPT sob `/backend-api/`: `401=0`, `403=0`, `404=0`, **`429=1`**, `5xx=0`. Nenhuma mensagem enviada. A amostra não revela URL, conteúdo, cookie ou identidade; é `notAppCertification`.
+- Uma resposta 429 indica limitação observada, **não prova causalidade**, nem perda de login, nem impossibilidade permanente. Inspeção anterior na PR #295 teve `429=0`; ambas as observações são amostras limitadas de recursos e não abrangem o tráfego total.
+- [PR #297](https://github.com/ordaxsystems/ordax-apps/pull/297) **integrada** na branch de desenvolvimento, commit `81c00a2cb7859c0a18a76b0a124368cab82e3225`: `health()` agora reconhece contagem restrita de 429 em recursos do próprio provedor, sem URLs/payload, quando a avaliação de DOM estiver disponível. A UI do OrdaX separa limitação observada de HTTP 403 e estado de autenticação desconhecido; `assertProviderSendReadiness()` bloqueia tentativa quando não há compositor. Não executa retry/reload/bypass.
+- [CI #39376795625](https://github.com/ordaxsystems/ordax-apps/actions/runs/39376795625): testes Linux e Windows, incluindo build portátil **aprovados**. CI não comprova funcionamento do provedor ou conclusão de W3.
+- [Auditoria com limites](../audits/P5-W3-OBSERVED-429-2026-10-20.md) integrada. O diagnóstico CDP aprofundado da [PR #295](https://github.com/ordaxsystems/ordax-apps/pull/295) continua separado e **em rascunho**; não iniciar nova série de requisições ao provedor para acelerar W3.
+- **Gates W3 e W4 continuam abertos**: nenhuma thread externa foi comprovada com a resposta da Task; nenhuma queda física durante geração foi certificada. Continuar pelo App, não modo direto; aceitar somente a mesma conversa e resposta atribuível. OrdaX Grátis/Flow, Runtime, OS, pendrive e versão `0.2.0-alpha.2` intocados; nenhuma release.
+
 ## Instrução curta para novo chat
 
 Leia, nesta ordem: `00-LEIA-PRIMEIRO.md`, `01-RFC002-PLANO-MESTRE.md`, `02-HISTORICO-ANALISES-E-ADRS.md`, `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md`, este status e o inventário P0. Verifique GitHub novamente e execute o **primeiro gate ainda pendente**. Não invente conclusão de testes, não crie sistemas paralelos nem altere o OrdaX Grátis.
