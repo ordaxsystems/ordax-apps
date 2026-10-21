@@ -1,5 +1,5 @@
-// OrdaX App-only W3 preflight: test an explicitly isolated, unauthenticated
-// staged profile with an intentionally UNDELIVERED linked fixture.
+// OrdaX App-only W3 preflight: test an explicitly isolated staged profile
+// with an intentionally UNDELIVERED linked fixture, regardless of provider login.
 // This is a negative safety test, NEVER proof that a real thread was restored.
 const assert=require('node:assert/strict');
 const {DatabaseSync}=require('node:sqlite');
