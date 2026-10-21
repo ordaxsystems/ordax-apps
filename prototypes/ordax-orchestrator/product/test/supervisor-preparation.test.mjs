@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createHash} from 'node:crypto';
 import {Store} from '../src/store.mjs';
 import {SUPERVISOR_ROLES,supervisorRole,assertSupervisorRole} from '../src/supervisor-role-presets.mjs';
 import {createLocalGroqCredential} from '../src/local-supervisor-credential.mjs';
