@@ -52,5 +52,8 @@ test('W3 physical App script requires missing receipt before inspection and zero
   assert.match(source,/assert\.equal\(await providerUrl\(\),urlBefore/);
   assert.match(source,/assert\.deepEqual\(\{runs:after\.runs,messages:after\.messages,actions:after\.actions\}/);
   assert.match(source,/W3Certified:false/);
+  // A valid composer must not bypass the receipt-first negative test.
+  assert.doesNotMatch(source,/lab_w3_offline_precondition_not_safe/);
+  assert.match(source,/health\.url&&linked\.href===health\.url/);
   assert.doesNotMatch(source,/sendPrompt\(|requestSubmit\(|\.reload\(/);
 });
