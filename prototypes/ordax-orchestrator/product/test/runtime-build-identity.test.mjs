@@ -42,6 +42,20 @@ test('manifest binds exact own files, version and commit by content hash',t=>{
  assert.equal(proof.packageVersion,'0.2.0-alpha.2');
  assert.ok(m.files.some(x=>x.path==='desktop/main.mjs'));
 });
+test('externally stored packaged manifest verifies exact extracted code',t=>{
+ const root=fixture(t);
+ const manifest=makeRuntimeManifest(root,commit);
+ const outside=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-external-proof-'));
+ t.after(()=>fs.rmSync(outside,{force:true,recursive:true}));
+ const manifestPath=path.join(outside,'runtime-build.json');
+ fs.writeFileSync(manifestPath,JSON.stringify(manifest));
+ const proof=verifyRuntimeManifest(root,{manifestPath});
+ assert.equal(proof.status,'verified');
+ assert.equal(proof.contentDigest,manifest.contentDigest);
+ fs.appendFileSync(path.join(root,'desktop','main.mjs'),'// altered\n');
+ assert.equal(verifyRuntimeManifest(root,{manifestPath}).status,'invalid');
+});
+
 test('tampered or missing file is rejected without leaking root path',t=>{
  const root=fixture(t);seal(root);
  fs.appendFileSync(path.join(root,'desktop','main.mjs'),'// modified\n');
@@ -108,12 +122,12 @@ test('bootstrap gates module loading and main verifies again before userData/SQL
  const bootstrap=fs.readFileSync(new URL('../desktop/bootstrap.mjs',import.meta.url),'utf8');
  const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
  assert.equal(pkg.main,'desktop/bootstrap.mjs');
- assert.match(bootstrap,/verifyRuntimeManifest\(root\)/);
+ assert.match(bootstrap,/verifyRuntimeManifest\(root,manifestOptions\)/);
  assert.ok(bootstrap.indexOf('verifyRuntimeManifest(root)')<bootstrap.indexOf("await import('./main.mjs')"));
  assert.doesNotMatch(bootstrap,/^import.*(?:main|store|supervisor)/m);
  const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
  const preload=fs.readFileSync(new URL('../desktop/preload.cjs',import.meta.url),'utf8');
- assert.ok(main.indexOf('const runtimeBuildProof=verifyRuntimeManifest(root)')>=0);
+ assert.ok(main.indexOf('const runtimeBuildProof=verifyRuntimeManifest(root,')>=0);
  assert.ok(main.indexOf('const runtimeBuildProof=verifyRuntimeManifest(root)')<
    main.indexOf('const store = new Store('));
  assert.match(main,/runtimeBuildProof.status==='invalid'/);
