@@ -59,13 +59,11 @@ async function main(){
   try{
     preflightStage='app_profile';
     await waitForLabAppMode(evaluate); // includes exact staged profile attestation
-    // Observe existing health only. We must NEVER navigate if this test profile
-    // unexpectedly has a ready account or composer.
+    // A receipt-less Task must be denied locally regardless of whether the
+    // provider is logged in or has a ready composer. The canonical IPC handler
+    // must return before calling the provider; assert zero navigation below.
     preflightStage='provider_health';
-    const health=await evaluate("(async()=>{const h=await window.ordax.providerStatus();return {auth:h.auth_state,composer:h.composer_ready,restriction:h.provider_access_problem,url:h.url,observed:h.health_observed}})()");
-    const canNavigate=health.auth==='session_present'&&health.composer===true &&
-      health.observed===true&&!health.restriction;
-    if(canNavigate)throw Error('lab_w3_offline_precondition_not_safe');
+    const health=await evaluate("(async()=>{const h=await window.ordax.providerStatus();return {url:h.url}})()");
     const linked=new URL(before.task.chat_url);
     if(health.url&&linked.href===health.url)
       throw Error('lab_w3_offline_already_at_linked_thread');
