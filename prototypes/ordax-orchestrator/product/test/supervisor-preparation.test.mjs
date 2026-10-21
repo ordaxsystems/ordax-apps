@@ -90,3 +90,14 @@ test('preparation IPC checks trusted renderer and does not invoke planning or Ch
   assert.match(ui,/labKeyForm\.addEventListener\('submit'/);
   assert.doesNotMatch(ui.slice(ui.indexOf('labKeyForm.addEventListener'),ui.indexOf('labKeyRemove.addEventListener')),/supervisorPlan\(|supervisorDispatch\(/);
 });
+
+test('optional packaged MVP App proof stays read-only, with no role mutation or key write',()=>{
+  const source=fs.readFileSync(new URL('../scripts/live-ui-build-proof-readonly.cjs',import.meta.url),'utf8');
+  assert.match(source,/ORDAX_LAB_E2E_VERIFY_MVP_PREPARATION/);
+  assert.match(source,/preparationUiVerified/);
+  assert.match(source,/labSupervisorRole/);
+  assert.match(source,/labSupervisorKeyInput/);
+  assert.match(source,/window\.ordax\.supervisorStatus\(\)/);
+  assert.match(source,/lab_build_mvp_preparation_not_ready/);
+  assert.doesNotMatch(source,/window\.ordax\.(?:send|supervisorPlan|supervisorDispatch|supervisorSaveKey|supervisorRemoveKey|setTaskSupervisorRole)\(/);
+});
