@@ -223,7 +223,25 @@
         <summary class="section-title-row"><span>Supervisor OrdaX Lab</span></summary>
         <p id="labVersion" class="diagnostics-hint">Versão do Lab indisponível</p>
         <p id="labSupervisorState" class="diagnostics-hint">Verificando supervisor...</p>
-        <label for="labSupervisorObjective">Objetivo do próximo passo</label>
+        <label for="labSupervisorRole">Papel desta conversa</label>
+        <select id="labSupervisorRole" aria-describedby="labRoleDescription" disabled>
+          <option value="none">Sem papel definido</option>
+        </select>
+        <p id="labRoleDescription" role="status" class="diagnostics-hint">Selecione uma tarefa para preparar seu papel. Isso não inicia a IA.</p>
+        <details id="labSupervisorKeySettings" class="context-section">
+          <summary>Chave API do supervisor (Groq)</summary>
+          <p class="diagnostics-hint">Usada somente pelo planejador Groq. Não é a senha do ChatGPT; salvar não testa a conexão nem ativa comandos.</p>
+          <form id="labSupervisorKeyForm" autocomplete="off">
+            <label for="labSupervisorKeyInput">Chave Groq</label>
+            <input id="labSupervisorKeyInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="gsk_..." maxlength="244" aria-describedby="labSupervisorKeyState" />
+            <div class="memory-editor-actions">
+              <button type="submit" class="mini-secondary" id="labSupervisorKeySave">Salvar chave no Windows</button>
+              <button type="button" class="mini-secondary" id="labSupervisorKeyRemove">Remover chave</button>
+            </div>
+          </form>
+          <p id="labSupervisorKeyState" role="status" aria-live="polite" class="diagnostics-hint">Nenhuma chave enviada ou testada.</p>
+        </details>
+        <label for="labSupervisorObjective">Objetivo do próximo passo (rascunho)</label>
         <textarea id="labSupervisorObjective" rows="3" maxlength="4000" style="width:100%" placeholder="Descreva uma tarefa objetiva para os agentes"></textarea>
         <div class="memory-editor-actions">
           <button type="button" class="mini-secondary" id="labSupervisorPlan">Planejar um passo</button>
