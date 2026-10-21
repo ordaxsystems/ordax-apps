@@ -71,9 +71,12 @@ async function verifyHostFixture({child,root,profile,exchange}) {
       projects.result.projects[0].name!=='Projeto E2E isolado')throw Error('host_shared_project_missing');
     const projectId=projects.result.projects[0].id;
     const works=await exchange(request('work_list',{projectId}));
-    if(works.ok!==true||works.result?.works?.length!==1||works.result.works[0].title!=='Frente criada pelo MCP')
+    const workRows=works.result?.works||[];
+    const mcpWork=workRows.find(work=>work.title==='Frente criada pelo MCP');
+    if(works.ok!==true||workRows.length!==2||!mcpWork||
+      !workRows.some(work=>work.title==='Frente criada pela interface'))
       throw Error('host_shared_work_missing');
-    const taskId=works.result.works[0].id;
+    const taskId=mcpWork.id;
     const work=await exchange(request('work_get',{projectId,taskId}));
     if(work.ok!==true||work.result?.id!==taskId||work.result.monitor.mayAutomaticallySend!==false)
       throw Error('host_work_state_mismatch');
