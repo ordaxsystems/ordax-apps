@@ -18,6 +18,7 @@ from pathlib import Path
 
 import verify_files_cutover as cutover
 import verify_files_portable_layout as portable
+import verify_packaged_runtimes as runtime_smoke
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER_FILE = ROOT / "tools" / "app-package" / "build.py"
@@ -268,6 +269,20 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
             packages.append((hashlib.sha256(output.read_bytes()).hexdigest(), release["package"]["sha256"]))
         if packages[0] != packages[1] or packages[0][0] != packages[0][1]:
             raise FilesProofError("unsigned Files candidate was not deterministic")
+        # Verify the real exported runtime from the ZIP, not from live OS source.
+        # Files requires a DOM; this proves only real ZIP import and identity.
+        # It cannot claim missing-host denial, signed slots or a live host mount.
+        runtime_evidence = runtime_smoke.probe_verified_package(
+            staging / "candidate-0" / "files.zip",
+            "files",
+            staging / "files-runtime-smoke",
+            expected_manifest=manifest,
+            probe_mode="import-only",
+        )
+        if (runtime_evidence["module_import"] != "verified"
+                or runtime_evidence["missing_host_ports"] != "not-assessed"
+                or runtime_evidence["component_version"] != app["version"]):
+            raise FilesProofError("packaged Files runtime contract smoke is incomplete")
         owner_gate = (
             _canonical_source_owner_gate_proof(
                 channel_bin, staging,
@@ -285,6 +300,9 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
             "canonical_source_graph_verified": True,
             "deterministic_package_sha256": packages[0][0],
             "release_v2_candidate_verified": True,
+            "packaged_runtime_import_verified": True,
+            "empty_host_context_rejected": False,
+            "real_host_mount_verified": False,
             "source_of_truth_repository": "ordaxsystems/ordax-os",
             "second_permanent_files_source_created": False,
             "canonical_owner_gate_verified": owner_gate is not None,
@@ -313,7 +331,7 @@ def main() -> int:
         ))
         return 0
     except (OSError, ValueError, KeyError, FilesProofError, cutover.FilesCutoverError,
-            builder.AppPackageError, subprocess.CalledProcessError,
+            builder.AppPackageError, runtime_smoke.RuntimeSmokeError, subprocess.CalledProcessError,
             subprocess.TimeoutExpired) as exc:
         print(f"FILES_EPHEMERAL_CANDIDATE=FAIL: {exc}", file=sys.stderr)
         return 1

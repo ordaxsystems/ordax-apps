@@ -27,19 +27,22 @@ class RuntimeSmokeError(ValueError):
     pass
 
 
-def probe_app(root: Path, app_id: str, source_commit: str, output: Path) -> dict:
-    """Probe exactly the bytes from a canonical package, not live source files."""
-    if not SOURCE_SHA.fullmatch(source_commit):
-        raise RuntimeSmokeError("source commit must be exact 40-hex")
+def probe_verified_package(package: Path, expected_id: str, output: Path, *,
+                           expected_manifest: dict | None = None,
+                           probe_mode: str = "require-denial") -> dict:
+    """Probe prebuilt canonical ZIP bytes, with no second builder or source tree."""
     if not PROBE.is_file():
         raise RuntimeSmokeError("canonical Node runtime probe is missing")
-    package = output / (app_id + ".zip")
+    if probe_mode not in {"require-denial", "import-only"}:
+        raise RuntimeSmokeError("unsupported packaged runtime probe mode")
     try:
-        manifest, _ = builder.build_package(root / "apps" / app_id, source_commit, package)
-        verified, _ = builder.verify_package(package)
-        if verified != manifest or manifest["component"]["id"] != app_id:
-            raise RuntimeSmokeError(f"{app_id}: package verification differs from build")
+        manifest, _ = builder.verify_package(package)
+        if (manifest["component"]["id"] != expected_id
+                or (expected_manifest is not None and manifest != expected_manifest)):
+            raise RuntimeSmokeError(f"{expected_id}: verified package identity or manifest drifted")
         extracted = output / "package"
+        if extracted.exists():
+            raise RuntimeSmokeError(f"{expected_id}: packaged runtime output is not empty")
         with zipfile.ZipFile(package, "r") as archive:
             for record in manifest["files"]:
                 relative = builder.safe_relative(record["path"], "verified package member")
@@ -50,33 +53,47 @@ def probe_app(root: Path, app_id: str, source_commit: str, output: Path) -> dict
                 target.write_bytes(archive.read(record["path"]))
         entrypoint = extracted.joinpath(*PurePosixPath(manifest["entrypoint"]).parts)
         result = subprocess.run(
-            ["node", str(PROBE), str(entrypoint), app_id, manifest["component"]["version"]],
+            ["node", str(PROBE), str(entrypoint), expected_id, manifest["component"]["version"], probe_mode],
             cwd=extracted,
             check=False, capture_output=True, text=True, timeout=15,
         )
         if result.returncode != 0:
             raise RuntimeSmokeError(
-                f"{app_id}: packaged runtime smoke failed: "
+                f"{expected_id}: packaged runtime smoke failed: "
                 + (result.stderr.strip() or result.stdout.strip())[-1600:]
             )
         evidence = json.loads(result.stdout.strip())
         if evidence != {
             "schema": "ordax.component-runtime/1",
-            "componentId": app_id,
+            "componentId": expected_id,
             "version": manifest["component"]["version"],
             "moduleImport": "passed",
-            "missingHostPorts": "rejected",
+            "missingHostPorts": "rejected" if probe_mode == "require-denial" else "not-assessed",
             "authority": "none",
         }:
-            raise RuntimeSmokeError(f"{app_id}: unexpected packaged runtime probe evidence")
+            raise RuntimeSmokeError(f"{expected_id}: unexpected packaged runtime probe evidence")
         return {
-            "source_commit": source_commit,
             "component_version": manifest["component"]["version"],
             "module_import": "verified",
-            "missing_host_ports": "rejected",
+            "missing_host_ports": "rejected" if probe_mode == "require-denial" else "not-assessed",
         }
     except (builder.AppPackageError, OSError, ValueError, zipfile.BadZipFile,
             subprocess.TimeoutExpired) as exc:
+        raise RuntimeSmokeError(f"{expected_id}: {exc}") from exc
+
+
+def probe_app(root: Path, app_id: str, source_commit: str, output: Path) -> dict:
+    """Build and probe via the same verifier used by prebuilt Files ZIPs."""
+    if not SOURCE_SHA.fullmatch(source_commit):
+        raise RuntimeSmokeError("source commit must be exact 40-hex")
+    package = output / (app_id + ".zip")
+    try:
+        manifest, _ = builder.build_package(root / "apps" / app_id, source_commit, package)
+        evidence = probe_verified_package(
+            package, app_id, output, expected_manifest=manifest,
+        )
+        return {"source_commit": source_commit, **evidence}
+    except (builder.AppPackageError, OSError, ValueError) as exc:
         raise RuntimeSmokeError(f"{app_id}: {exc}") from exc
 
 

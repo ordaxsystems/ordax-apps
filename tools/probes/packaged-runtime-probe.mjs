@@ -3,9 +3,12 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const [entrypoint, expectedId, expectedVersion] = process.argv.slice(2);
+const [entrypoint, expectedId, expectedVersion, probeMode = "require-denial"] = process.argv.slice(2);
 if (!entrypoint || !expectedId || !expectedVersion) {
   throw new Error("expected package entrypoint, component id and version");
+}
+if (!["require-denial", "import-only"].includes(probeMode)) {
+  throw new Error("unsupported packaged runtime probe mode");
 }
 
 const module = await import(pathToFileURL(resolve(entrypoint)).href);
@@ -26,17 +29,21 @@ if (typeof runtime.mount !== "function") {
   throw new Error("exported component runtime has no mount function");
 }
 
-let refusedMissingPorts = false;
-try {
-  await runtime.mount({});
-} catch (error) {
-  if (!(error instanceof TypeError)) {
-    throw new Error("runtime failed with non-contract error for missing host ports", { cause: error });
+// DOM-based apps can prove real ZIP import in Node, but mount/host-port denial
+// requires an actual DOM-capable Surface. Never simulate DOM or mark it passed.
+if (probeMode === "require-denial") {
+  let refusedMissingPorts = false;
+  try {
+    await runtime.mount({});
+  } catch (error) {
+    if (!(error instanceof TypeError)) {
+      throw new Error("runtime failed with non-contract error for missing host ports", { cause: error });
+    }
+    refusedMissingPorts = true;
   }
-  refusedMissingPorts = true;
-}
-if (!refusedMissingPorts) {
-  throw new Error("component mounted without mandatory host ports");
+  if (!refusedMissingPorts) {
+    throw new Error("component mounted without mandatory host ports");
+  }
 }
 
 process.stdout.write(JSON.stringify({
@@ -44,6 +51,6 @@ process.stdout.write(JSON.stringify({
   componentId: runtime.componentId,
   version: runtime.version,
   moduleImport: "passed",
-  missingHostPorts: "rejected",
+  missingHostPorts: probeMode === "require-denial" ? "rejected" : "not-assessed",
   authority: "none",
 }) + "\n");
