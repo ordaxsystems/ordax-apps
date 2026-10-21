@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.5",
+  "version": "0.2.0-alpha.6",
   "channel": "alpha",
-  "name": "Análise explícita das conversas pelo Orquestrador",
+  "name": "Propostas revisáveis de novas frentes",
   "distributionEnabled": false,
   "releaseDate": null
 }

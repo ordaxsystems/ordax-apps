@@ -1,3 +1,16 @@
+## Preparar uma nova frente pelo chat — alpha.6
+
+Descreva a frente no campo do chat central e clique em **Preparar nova frente**.
+A API Groq propõe título, justificativa e primeira mensagem. Revise a proposta,
+clique em **Criar frente com este rascunho** e confirme o diálogo nativo. O App
+cria uma Task vinculada ao projeto/orquestrador e abre o rascunho para edição.
+Nada é enviado ao ChatGPT nessa ação. Propostas podem ser descartadas e
+persistem após reinício, mesmo com a API desativada.
+
+O booleano de um cliente/MCP não aprova a ação sozinho: a confirmação é uma
+porta exclusiva do processo Electron. Task, rascunho, aprovação e recibo são
+persistidos atomicamente no mesmo SQLite e usam os ledgers existentes.
+
 ## Analisar conversas pelo Orquestrador — alpha.5
 
 Selecione um projeto e orquestrador, habilite o chat pela API Groq e use
@@ -38,7 +51,7 @@ não são executadas automaticamente. Não há serviço 24h ativo ou nova releas
 Detalhes, testes e dependências em
 [auditoria do incremento](docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
 
-**Versão própria do Lab: `0.2.0-alpha.5` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
+**Versão própria do Lab: `0.2.0-alpha.6` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
 
 **Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release nem submissão automática de tarefas. Preserva os fluxos herdados de Task/Run/Store, ChatGPT Web, continuidade e sessão do **OrdaX Flow/Grátis 0.4.12**; os novos recursos de análise/coordenador permanecem explícitos e separados. Esta é uma derivação controlada, não uma modificação do Grátis existente.
 

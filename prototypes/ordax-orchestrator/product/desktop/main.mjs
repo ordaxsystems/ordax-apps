@@ -634,6 +634,11 @@ const localOrchestratorContext=Object.freeze({actorId:'lab-owner',clientId:'lab-
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorService=new OrchestratorService({
+  confirmProposal:({proposal})=>dialog.showMessageBoxSync(win,{
+    type:'question',title:'Revisar nova frente',message:proposal.title,
+    detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+'\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
+    buttons:['Criar frente com rascunho','Cancelar'],defaultId:1,cancelId:1,noLink:true
+  })===0,
   store,authorize:({context,operation})=>context===localOrchestratorContext||
     runtimeOrchestratorBridge?.allows(context,operation)===true,
   provider:{busy:()=>Boolean(liveRun||worker?.active),send:async({taskId,content,draftRevision})=>

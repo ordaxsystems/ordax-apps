@@ -3,14 +3,16 @@ import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput} from
 import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
+import {validateWorkProposal} from './orchestrator-proposal.mjs';
 
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null}={}) {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
+    this.confirmProposal=confirmProposal;
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS lab_projects (
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
@@ -135,11 +137,11 @@ export class OrchestratorService {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     this.requireAccess(context,operation,input.projectId||null);
     if(tool.readOnly)return this.read(context,operation,input);
-    if(['work_send','orchestrator_chat','orchestrator_analyze'].includes(operation))return this.dispatch(context,operation,input);
+    if(['work_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
-      const result=this.mutate(operation,input);
+      const result=operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
       if(operation==='project_create')this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
@@ -147,6 +149,16 @@ export class OrchestratorService {
   }
 
   read(context,operation,input) {
+    if(operation==='proposals_list') {
+      const owner=this.orchestrator(input.projectId,input.orchestratorId);
+      return {proposals:this.db.prepare(`SELECT id,payload FROM action_ledger WHERE task_id=?
+        AND action_type='orchestrator.work-proposal' AND status='pending' ORDER BY created_at DESC,id LIMIT 50`)
+        .all(owner.chat_task_id).flatMap(row=>{
+          const payload=JSON.parse(row.payload);
+          return payload.actorId===context.actorId&&payload.clientId===context.clientId
+            ?[{actionId:row.id,...validateWorkProposal(payload.proposal)}]:[];
+        })};
+    }
     if(operation==='status')return {
       contract:ORCHESTRATOR_CONTRACT,engine:'app-owned',
       tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
@@ -270,6 +282,36 @@ export class OrchestratorService {
     throw Error('orchestrator_unknown_operation');
   }
 
+  reviewProposal(context,input) {
+    const owner=this.orchestrator(input.projectId,input.orchestratorId);
+    const action=this.db.prepare(`SELECT payload,status FROM action_ledger WHERE id=? AND task_id=?
+      AND action_type='orchestrator.work-proposal'`).get(input.actionId,owner.chat_task_id);
+    if(!action)throw Error('orchestrator_proposal_unavailable');
+    const payload=JSON.parse(action.payload);
+    if(payload.actorId!==context.actorId||payload.clientId!==context.clientId||
+      payload.projectId!==input.projectId||payload.orchestratorId!==input.orchestratorId)
+      throw Error('orchestrator_access_denied');
+    if(action.status!=='pending')throw Error('orchestrator_proposal_already_reviewed');
+    if(input.approved&&owner.status==='paused')throw Error('orchestrator_paused');
+    const approval=this.db.prepare(`SELECT id FROM approval_ledger WHERE action_id=? AND task_id=? AND status='pending'`)
+      .get(input.actionId,owner.chat_task_id);
+    if(!approval)throw Error('orchestrator_proposal_approval_missing');
+    const proposal=validateWorkProposal(payload.proposal);
+    let taskId=null;
+    if(input.approved) {
+      // A caller/model-supplied boolean is not approval. Only the trusted App
+      // process can supply the confirmation port; MCP uses this same gate.
+      if(this.confirmProposal?.({projectId:input.projectId,orchestratorId:input.orchestratorId,proposal})!==true)
+        throw Error('orchestrator_proposal_not_approved');
+      taskId=this.mutate('work_create',{projectId:input.projectId,orchestratorId:input.orchestratorId,title:proposal.title}).taskId;
+      this.store.setDraft(taskId,proposal.content,1);
+    }
+    this.store.resolveApproval(owner.chat_task_id,approval.id,input.approved);
+    const result={taskId,approved:input.approved,providerMessagesSent:0};
+    this.store.finishAction(owner.chat_task_id,input.actionId,input.approved?'succeeded':'cancelled',result);
+    return result;
+  }
+
   async dispatch(context,operation,input) {
     const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
       AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
@@ -285,9 +327,10 @@ export class OrchestratorService {
     const port=isWorkSend?this.provider:this.coordinator;
     if(typeof port?.send!=='function'||(port.available&&port.available()!==true))
       throw Error('orchestrator_provider_unavailable');
-    const analysisContext=operation==='orchestrator_analyze'
+    const prepareWork=operation==='orchestrator_prepare';
+    const analysisContext=operation==='orchestrator_analyze'||prepareWork
       ?this.analysisContext(input.projectId,input.orchestratorId):null;
-    if(analysisContext&&analysisContext.works.length===0)throw Error('orchestrator_works_unavailable');
+    if(operation==='orchestrator_analyze'&&analysisContext.works.length===0)throw Error('orchestrator_works_unavailable');
     const content=operation==='orchestrator_analyze'
       ?'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
       :input.content;
@@ -309,14 +352,22 @@ export class OrchestratorService {
       this.requireAccess(context,operation,input.projectId);
       if(!isWorkSend)this.transaction(()=>this.store.appendMessage(task.id,'user',content));
       const reply=await port.send({taskId:task.id,content,draftRevision:input.draftRevision??null,
-        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext});
+        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork});
       this.requireAccess(context,operation,input.projectId);
       if(!isWorkSend) {
         if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
           throw Error('orchestrator_reply_invalid');
         return this.transaction(()=>{
+          let proposalActionId=null;
+          if(prepareWork) {
+            const proposal=validateWorkProposal(reply.proposal);
+            proposalActionId=this.store.beginAction(task.id,null,'orchestrator.work-proposal',reserved.commandId,
+              {projectId:input.projectId,orchestratorId:owner.id,actorId:context.actorId,clientId:context.clientId,proposal});
+            this.store.requestApproval(task.id,proposalActionId,'Revisar nova frente e rascunho; nenhum envio ao GPT');
+          }
           this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
+            ...(proposalActionId?{proposalActionId}:{}),
             proposalsExecuted:0,provider:'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
               messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})});
         });

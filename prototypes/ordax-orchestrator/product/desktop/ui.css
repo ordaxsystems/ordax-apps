@@ -414,3 +414,7 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
   body.orchestrator-focus .coordinator-messages{padding:14px}
   body.orchestrator-focus #coordinatorComposer{width:calc(100% - 26px);margin-bottom:11px}
 }
+.coordinator-proposals { max-height: 40vh; overflow: auto; flex-shrink: 0; }
+.coordinator-proposal { padding: 16px; border: 1px solid var(--border, #334155); border-radius: 12px; margin: 8px 16px; }
+.coordinator-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font: inherit; }
+.coordinator-proposal button { margin: 4px 8px 0 0; }

@@ -1,3 +1,21 @@
+# Incremento alpha.6 — preparação e revisão de novas frentes
+
+Implementado no candidato: pedido explícito no chat central → proposta de
+título/primeira mensagem pela API → revisão visível → confirmação nativa →
+Task vinculada ao mesmo projeto/orquestrador com rascunho salvo e aberto.
+Não envia ao ChatGPT. O booleano fornecido por MCP/UI não substitui a porta
+nativa de confirmação. Sem essa porta, a aplicação é recusada. Rejeição não
+cria Task; falha no rascunho reverte Task/binding/aprovação/recibo juntos.
+Catálogo local: 18 operações; host Runtime continua somente leitura.
+
+Alpha.5 foi validada no source `047638581b2e58f7d34d87edbf505d1f1f5ef0ac`:
+354 testes e CI Windows empacotado aprovados no workflow 39686907722.
+A validação alpha.6 deve ser consultada no commit/CI próprio; não herda prova
+de API Groq real ou ChatGPT autenticado. Próximos gates: envio aprovado da
+primeira mensagem pelo executor existente e criação/abertura comprovada da
+sessão ChatGPT no App, reconciliação sem replay e supervisão contínua.
+[Aceite e riscos alpha.6](../audits/ORCHESTRATOR-WORK-PROPOSALS-2026-10-21.md).
+
 # OrdaX Orchestrator Lab — Estado atual de engenharia
 
 ## Alpha.5 — análise explícita e limitada das conversas do projeto (2026-10-21)

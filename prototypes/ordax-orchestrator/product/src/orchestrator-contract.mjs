@@ -18,6 +18,9 @@ const definitions = [
   ['conversation_rotate','Prepare a new GPT segment for the same work. Does not send or bypass limits.',{projectId:id,taskId:id},['projectId','taskId'],false],
   ['orchestrator_chat','Send one message to the configured API coordinator. Records the reply; proposals do not execute automatically.',{projectId:id,orchestratorId:id,content:text(4000)},['projectId','orchestratorId','content'],false],
   ['orchestrator_analyze','Analyze a bounded set of recent conversations in this project with the configured coordinator. Records recommendations only; does not send to GPT.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],false],
+  ['orchestrator_prepare','Prepare one proposed new work and initial draft with the coordinator API. No work or GPT submission until local review.',{projectId:id,orchestratorId:id,content:text(4000)},['projectId','orchestratorId','content'],false],
+  ['proposals_list','Read pending work proposals for the selected coordinator.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
+  ['proposal_review','Approve creation of one local work with a saved draft, or reject it. Never submits to GPT.',{projectId:id,orchestratorId:id,actionId:id,approved:{type:'boolean'}},['projectId','orchestratorId','actionId','approved'],false],
   ['command_get','Inspect a previously accepted command without repeating it.',{commandId:id},['commandId'],true]
 ];
 export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,description,properties,required,readOnly]) => ({
@@ -26,7 +29,7 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
   annotations:{readOnlyHint:readOnly,destructiveHint:false,idempotentHint:true,
-    openWorldHint:['work_send','orchestrator_chat','orchestrator_analyze'].includes(operation)}
+    openWorldHint:['work_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation)}
 })));
 
 export function validateOrchestratorInput(operation, input) {

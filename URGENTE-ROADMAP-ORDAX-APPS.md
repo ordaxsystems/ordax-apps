@@ -1,3 +1,12 @@
+## Continuidade solicitada — propostas de frentes no Orchestrator Lab
+
+Exceção explícita do proprietário: avançar a coordenação pelo chat central.
+Owner Apps; alpha.6 usa o mesmo OrchestratorService/Store e action/approval
+ledgers para preparar uma frente via API e criar Task+rascunho somente após
+revisão nativa. Não cria outro executor/Memory/Identity, não altera Flow/Grátis
+0.4.12 nem habilita envio ao GPT, MCP externo, instalação ou autonomia 24h.
+[Aceite, limites e provas](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-WORK-PROPOSALS-2026-10-21.md).
+
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
 ## Continuidade — renovação autenticada Runtime/Lab (2026-10-21)

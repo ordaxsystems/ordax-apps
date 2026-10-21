@@ -10,8 +10,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const enabled=coordinatorAvailable&&Boolean(selected)&&selected.status!=='paused';
-    $('coordinatorSend').disabled=!enabled;
+    $('coordinatorSend').disabled=!enabled||analysisBusy;
     $('analyzeWorks').disabled=!enabled||workCount===0||analysisBusy;
+    $('prepareWork').disabled=!enabled||analysisBusy;
   }
   function renderProjectNavigation(projects) {
     const list=$('projectNavList');list.replaceChildren();
@@ -146,8 +147,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
-    const p=projectId,t=chatTaskId;
+    const p=projectId,t=chatTaskId,o=orchestratorId;
     const page=await call('work_messages',{projectId:p,taskId:t,limit:50});
+    const {proposals}=await call('proposals_list',{projectId:p,orchestratorId:o});
     if(p!==projectId||t!==chatTaskId)return;
     const box=$('coordinatorMessages');box.replaceChildren();
     if(page.has_more) {
@@ -162,6 +164,29 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       article.append(role,text);box.append(article);
     }
     box.scrollTop=box.scrollHeight;
+    const cards=$('coordinatorProposals');cards.replaceChildren();
+    for(const proposal of proposals) {
+      const card=document.createElement('article');card.className='coordinator-proposal';
+      const title=document.createElement('strong');title.textContent=proposal.title;
+      const reason=document.createElement('p');reason.textContent=proposal.reason;
+      const draft=document.createElement('pre');draft.textContent=proposal.content;
+      const note=document.createElement('p');note.textContent='Revisar primeira mensagem: criar salva um rascunho local. Nenhum envio ao ChatGPT.';
+      const accept=document.createElement('button');accept.type='button';accept.textContent='Criar frente com este rascunho';
+      accept.disabled=orchestrators.find(item=>item.id===o)?.status==='paused';
+      const reject=document.createElement('button');reject.type='button';reject.textContent='Descartar proposta';
+      for(const [button,approved] of [[accept,true],[reject,false]])button.addEventListener('click',async()=>{
+        if(p!==projectId||o!==orchestratorId)return;
+        accept.disabled=true;reject.disabled=true;
+        try {
+          const receipt=await command('proposal_review',{projectId:p,orchestratorId:o,actionId:proposal.actionId,approved});
+          if(p!==projectId||o!==orchestratorId||receipt.status!=='succeeded')return;
+          await refreshWorks();await renderCoordinator();
+          if(receipt.result.taskId){coordinatorOpen=false;$('orchestrationPanel').hidden=true;await onOpenWork(receipt.result.taskId);}
+          status(approved?'Frente criada com rascunho. Revise e envie pela conversa quando desejar.':'Proposta descartada.');
+        }catch{error();await renderCoordinator();}
+      });
+      card.append(title,reason,draft,note,accept,reject);cards.append(card);
+    }
   }
   async function showCoordinator() {
     if(!chatTaskId)return;
@@ -245,6 +270,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await renderCoordinator();
     }catch{error();}
     finally{analysisBusy=false;syncCoordinatorActions();}
+  });
+  $('prepareWork').addEventListener('click',async()=>{
+    if($('prepareWork').disabled||!projectId||!orchestratorId)return;
+    const p=projectId,o=orchestratorId,content=$('coordinatorPrompt').value.trim();
+    if(!content){status('Descreva no campo de mensagem a frente que o orquestrador deve preparar.');$('coordinatorPrompt').focus();return;}
+    analysisBusy=true;syncCoordinatorActions();
+    status('A IA está preparando uma proposta de frente para sua revisão…');
+    try {
+      const receipt=await command('orchestrator_prepare',{projectId:p,orchestratorId:o,content});
+      if(p!==projectId||o!==orchestratorId)return;
+      if(receipt.status==='succeeded'){$('coordinatorPrompt').value='';status('Proposta pronta. Confira título e mensagem antes de criar a frente.');}
+      await renderCoordinator();
+    }catch{error();}finally{analysisBusy=false;syncCoordinatorActions();}
   });
   $('coordinatorPrompt').addEventListener('keydown',event=>{
     if(event.key==='Enter'&&!event.shiftKey&&!$('coordinatorSend').disabled){event.preventDefault();$('coordinatorComposer').requestSubmit();}

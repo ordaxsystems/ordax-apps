@@ -1,3 +1,11 @@
+## 0.2.0-alpha.6 — propostas revisáveis de novas frentes
+
+- Pedido no chat central prepara uma proposta limitada via Groq.
+- Revisão nativa cria uma Task e salva o primeiro rascunho, sem enviar ao GPT.
+- Propostas persistentes no action/approval ledger existentes; criação atômica,
+  isolamento de projeto/cliente e proteção contra duplicação.
+- Nenhuma instalação, release ou execução autônoma habilitada.
+
 # OrdaX Orchestrator Lab — histórico de versões
 
 A versão do aplicativo Lab é independente da versão do snapshot de origem OrdaX Grátis/Flow. **product-version.json** é a SSOT da versão do produto. O package.json do bootstrap e os package.json / package-lock.json gerados são projeções obrigatoriamente verificadas.

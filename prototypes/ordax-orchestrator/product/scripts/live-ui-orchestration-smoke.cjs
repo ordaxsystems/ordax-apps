@@ -34,10 +34,12 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       taskCount:(await window.ordax.listTasks()).length,
       analysisButton:!!document.getElementById('analyzeWorks'),
       analysisDisabled:document.getElementById('analyzeWorks')?.disabled,
+      prepareDisabled:document.getElementById('prepareWork')?.disabled,
+      proposalsPresent:!!document.getElementById('coordinatorProposals'),
       analysisHint:document.getElementById('analysisScopeHint')?.textContent||''}))()`);
     if(before.projects!==0||before.taskCount!==0||before.status.coordinatorAvailable!==false||
       before.status.autonomousExecution!==false||!before.analysisButton||before.analysisDisabled!==true||
-      !before.analysisHint.includes('não executam ações'))throw Error('fresh_disabled_profile_required');
+      !before.analysisHint.includes('não executam ações')||before.prepareDisabled!==true||!before.proposalsPresent)throw Error('fresh_disabled_profile_required');
     await evaluate(`(()=>{
       document.getElementById('projectSetup').open=true;
       document.getElementById('projectName').value='Projeto E2E isolado';
@@ -64,6 +66,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
     await wait("!document.getElementById('coordinatorApiEnable').disabled");
     await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
     await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='true' && !document.getElementById('coordinatorSend').disabled");
+    if(await evaluate("document.getElementById('prepareWork').disabled"))throw Error('prepare_action_unavailable');
     await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
     await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='false' && document.getElementById('coordinatorSend').disabled");
     await evaluate(`window.ordax.supervisorRemoveKey()`);
@@ -89,7 +92,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
         idempotent:JSON.stringify(first.result)===JSON.stringify(repeated.result),
         workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length};
     })()`);
-    if(summary.projectId!==projectId||summary.toolCount!==15||!summary.commandSucceeded||
+    if(summary.projectId!==projectId||summary.toolCount!==18||!summary.commandSucceeded||
       !summary.idempotent||summary.workCount!==1||summary.coordinatorMessages!==0)
       throw Error('native_mcp_state_mismatch');
     await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
@@ -110,7 +113,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       layoutResult.analysisDisabled!==true)
       throw Error('work_conversation_layout_failed');
     console.log(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
-      appMode:true,runtimeVerified:true,toolCount:15,sharedStateVerified:true,
+      appMode:true,runtimeVerified:true,toolCount:18,sharedStateVerified:true,
       projectFormVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
