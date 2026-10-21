@@ -57,6 +57,38 @@ class PackagedRuntimeTests(unittest.TestCase):
             self.assertEqual(report["apps"][2]["status"], "not-assessed-no-canonical-source")
             self.assertFalse(list(root.rglob("*.zip")))
 
+    def test_prebuilt_verified_package_reuses_same_smoke_without_rebuilding(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fixtures.make_workspace(root, ["alpha"])
+            fixtures.make_app(root)
+            write_runtime(root)
+            package = root / "candidate.zip"
+            manifest, _ = smoke.builder.build_package(root / "apps" / "alpha", COMMIT, package)
+            before = package.read_bytes()
+            evidence = smoke.probe_verified_package(
+                package, "alpha", root / "smoke", expected_manifest=manifest,
+            )
+            self.assertEqual(evidence["module_import"], "verified")
+            self.assertEqual(evidence["missing_host_ports"], "rejected")
+            self.assertEqual(evidence["component_version"], "0.1.0")
+            self.assertEqual(package.read_bytes(), before)
+            with self.assertRaisesRegex(smoke.RuntimeSmokeError, "identity or manifest drifted"):
+                smoke.probe_verified_package(package, "other", root / "other-smoke")
+            with self.assertRaisesRegex(smoke.RuntimeSmokeError, "output is not empty"):
+                smoke.probe_verified_package(package, "alpha", root / "smoke")
+
+    def test_prebuilt_package_refuses_missing_host_port_denial_regression(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            fixtures.make_workspace(root, ["alpha"])
+            fixtures.make_app(root)
+            write_runtime(root, refuses_host=False)
+            package = root / "candidate.zip"
+            smoke.builder.build_package(root / "apps" / "alpha", COMMIT, package)
+            with self.assertRaisesRegex(smoke.RuntimeSmokeError, "mounted without mandatory host ports"):
+                smoke.probe_verified_package(package, "alpha", root / "smoke")
+
     def test_manifest_runtime_version_mismatch_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
