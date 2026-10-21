@@ -1,3 +1,14 @@
+## 0.2.0-alpha.8 — respostas longas com progresso
+
+- Corrige o limite fixo de 180 segundos encontrado no teste real da loja VESTE.
+- Novos trechos observados renovam a espera ociosa de três minutos, com teto
+  absoluto de quinze minutos. Texto repetido/heartbeat não renovam o prazo.
+- Mantém confirmação de término, resposta parcial não verificada e recibo
+  incerto sem replay. Não reconcilia automaticamente execuções anteriores.
+- Teste real alpha.7: sessão autenticada, criação de projeto/frentes e entrega
+  observada ao ChatGPT; construção longa expirou com 25.362 caracteres parciais.
+  A loja não foi concluída nem validada nesse envio.
+
 ## 0.2.0-alpha.7 — primeiro envio aprovado pelo Orquestrador
 
 - Nova ação de revisão/envio do rascunho atual de uma frente preparada.

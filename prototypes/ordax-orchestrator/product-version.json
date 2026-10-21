@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.7",
+  "version": "0.2.0-alpha.8",
   "channel": "alpha",
-  "name": "Primeiro envio aprovado pelo orquestrador",
+  "name": "Observacao de respostas longas com progresso",
   "distributionEnabled": false,
   "releaseDate": null
 }

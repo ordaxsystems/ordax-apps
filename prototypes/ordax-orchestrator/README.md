@@ -65,7 +65,7 @@ não são executadas automaticamente. Não há serviço 24h ativo ou nova releas
 Detalhes, testes e dependências em
 [auditoria do incremento](docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
 
-**Versão própria do Lab: `0.2.0-alpha.7` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
+**Versão própria do Lab: `0.2.0-alpha.8` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
 
 **Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release nem submissão automática de tarefas. Preserva os fluxos herdados de Task/Run/Store, ChatGPT Web, continuidade e sessão do **OrdaX Flow/Grátis 0.4.12**; os novos recursos de análise/coordenador permanecem explícitos e separados. Esta é uma derivação controlada, não uma modificação do Grátis existente.
 

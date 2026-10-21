@@ -1,3 +1,15 @@
+## Teste real solicitado — loja VESTE e espera de resposta longa
+
+Owner Apps, candidata alpha.7 atestada no computador do proprietário: login
+confirmado, projeto/orquestrador e duas frentes criados no modo App. Envio real
+vinculou conversa ChatGPT; resposta ainda crescendo expirou no limite fixo de
+180 segundos, preservando parcial e recibo incerto sem reenvio. Alpha.8 troca
+somente o orçamento de observação: idle de três minutos renovado por conteúdo
+novo, teto absoluto de quinze minutos e os mesmos gates de término. Aceite:
+resposta com progresso ultrapassa três minutos; parada/limite absoluto continuam
+incertos; nenhum replay. Não representa site validado, release ou autonomia 24h.
+[Evidências e limites](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md).
+
 ## Continuidade solicitada — primeiro envio aprovado no Orchestrator
 
 Owner Apps: alpha.7 liga frente preparada ao executor já existente, com

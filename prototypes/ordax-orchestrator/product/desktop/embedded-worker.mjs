@@ -1,7 +1,7 @@
 import { WebContentsView, session } from 'electron';
 import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
 import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
-import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
+import { createResponseObservationBudget, responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { createProviderDeliveryRecorder } from '../src/provider-delivery-recorder.mjs';
@@ -981,9 +981,9 @@ export class EmbeddedChatWorker {
       await retainSubmittedConversation();
 
       this.#setStage('await-response');
-      const started = Date.now();
+      const responseBudget = createResponseObservationBudget();
       let latest = null, latestSignature = '', stable = 0, completionConfirmed = false;
-      while (Date.now() - started < 180000) {
+      while (responseBudget.active()) {
         await sleep(300);
         await retainSubmittedConversation();
         const snap = await this.#assistantSnapshot().catch(() => ({ mode:'unknown', messages:[], rawBody:'', images:[] }));
@@ -1016,6 +1016,7 @@ export class EmbeddedChatWorker {
         const signature = signatureFor(candidate);
         const isNew = snap.mode === 'body' ? signature !== baseline : (snap.messages.length > beforeCount || signature !== baseline);
         if (!isNew) continue;
+        responseBudget.observe(signature);
         // A candidate is an UNVERIFIED observation, not a completed reply.
         // Never make optional local progress persistence affect delivery.
         if (candidate.text?.trim() && typeof onProvisionalProgress==='function') {

@@ -3,7 +3,38 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
+import { createResponseObservationBudget, responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
+
+test('a progressing code answer survives three minutes but has a hard fifteen minute bound',()=>{
+  let time=0;
+  const budget=createResponseObservationBudget({now:()=>time});
+  for(time=0;time<900000;time+=30000) {
+    assert.equal(budget.active(),true);
+    budget.observe(`code through ${time}`);
+  }
+  assert.equal(budget.active(),false);
+  assert.throws(()=>requireObservedCompletion({candidate:{text:'partial'},completed:false}),/completion_unconfirmed/);
+});
+
+test('repeated partial text and heartbeats do not extend stalled observation',()=>{
+  let time=0;
+  const budget=createResponseObservationBudget({now:()=>time});
+  budget.observe('partial');
+  time=179999;budget.observe('partial');assert.equal(budget.active(),true);
+  time=180000;budget.observe('partial');assert.equal(budget.active(),false);
+});
+
+test('fresh output renews only idle time; absent output and invalid clocks expire',()=>{
+  let time=0;
+  const idle=createResponseObservationBudget({now:()=>time});
+  const growing=createResponseObservationBudget({now:()=>time});
+  time=170000;growing.observe('new code');
+  time=180000;assert.equal(idle.active(),false);assert.equal(growing.active(),true);
+  time=350000;assert.equal(growing.active(),false);
+  growing.observe('late content cannot revive expired execution');
+  assert.equal(growing.active(),false);
+  time=NaN;assert.equal(growing.active(),false);
+});
 
 const candidate={ text:'Partial ChatGPT message', complete:false };
 
