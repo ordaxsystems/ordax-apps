@@ -5,7 +5,13 @@ import {ORCHESTRATOR_TOOLS} from './orchestrator-contract.mjs';
 export const RUNTIME_BRIDGE_SCHEMA='ordax.orchestrator-host/1';
 export const RUNTIME_READ_CAPABILITY='orchestrator.app_read';
 export const RUNTIME_LEASE_RENEWAL='hmac-sha256-key-rotation/1';
-export const RUNTIME_READ_OPERATIONS=Object.freeze(ORCHESTRATOR_TOOLS.filter(t=>t.readOnly).map(t=>t.operation));
+// Host v1 is a fixed authority boundary. New App/MCP reads must not silently
+// expand a previously granted Runtime capability.
+export const RUNTIME_READ_OPERATIONS=Object.freeze([
+  'status','projects_list','orchestrators_list','work_list','work_get','work_messages','command_get'
+]);
+if(RUNTIME_READ_OPERATIONS.some(operation=>!ORCHESTRATOR_TOOLS.some(t=>t.operation===operation&&t.readOnly)))
+  throw Error('orchestrator_host_catalog_incompatible');
 const READS=new Set(RUNTIME_READ_OPERATIONS);
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const keys=(value,expected)=>value&&typeof value==='object'&&!Array.isArray(value)&&

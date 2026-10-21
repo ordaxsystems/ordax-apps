@@ -37,10 +37,14 @@ não pode executar ferramentas, shell ou código. Texto é renderizado com
 textContent. Redação de padrões comuns de segredos não é detector universal.
 Nenhum envio ao ChatGPT, sessão externa ou fluxo 24h é iniciado por esse recurso.
 Flow/Grátis e os owners Runtime/Platform permanecem intactos. Sem nova dependência.
+O host v1 mantém uma allowlist explícita das sete leituras já contratadas;
+novas leituras locais/MCP não ampliam a capability Runtime automaticamente.
+O E2E empacotado detectou essa ampliação implícita e motivou a correção no
+bridge do App, com teste de recusa de proposals_list/prepare/review.
 
 ## Validação e critérios de aceite
 
-Validação local: 360/360 testes do produto, 38/38 bootstrap, sintaxe e
+Validação local: 361/361 testes do produto, 38/38 bootstrap, sintaxe e
 versionamento aprovados. Testes com SQLite real cobrem persistência/reabertura, escopo de projeto e
 cliente, ausência de confirmação nativa, rejeição, pausa, rollback por erro de
 rascunho, duplicação e saída inválida da IA. O adapter usa HTTP simulado, sem

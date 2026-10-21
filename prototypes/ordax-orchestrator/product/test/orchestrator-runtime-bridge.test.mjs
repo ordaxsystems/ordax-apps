@@ -37,6 +37,13 @@ test('signed read uses a host-minted context; ordinary object lookalikes have no
   assert.equal((await f.bridge.handle(f.request())).ok,true);assert.equal(f.reads(),1);
   assert.equal(f.bridge.allows({actorId:f.bootstrap.ownerUserId},'status'),false);
 });
+test('host v1 never inherits new local proposal reads or writes from the App catalog',async()=>{
+  const f=fixture(),ready=await f.bridge.handle(f.bootstrap);
+  assert.deepEqual(ready.operations,['status','projects_list','orchestrators_list','work_list','work_get','work_messages','command_get']);
+  for(const operation of ['proposals_list','orchestrator_prepare','proposal_review'])
+    assert.equal((await f.bridge.handle(f.request(operation))).error,'host_read_only');
+  assert.equal(f.reads(),0);
+});
 test('tampered inputs, cross-session messages and signature failures never call the App service',async()=>{
   const f=fixture();await f.bridge.handle(f.bootstrap);
   assert.equal((await f.bridge.handle({...f.request('projects_list'),input:{deviceId:'forged'}})).error,'host_signature_rejected');
