@@ -44,3 +44,11 @@ Teste determinístico adicional: um fixture de main com efeito observável é ex
 GitHub: revisão de código `9423d3cab76a0bdcaa551d67e1ffa1ceb62677c6`; CI dessa revisão aprovado em [Lab Isolation](https://github.com/ordaxsystems/ordax-apps/actions/runs/39542130977), [Pinned Baseline](https://github.com/ordaxsystems/ordax-apps/actions/runs/39542130991) e [Foundation](https://github.com/ordaxsystems/ordax-apps/actions/runs/39542130979). A execução física anterior em App comprovou a candidata `f88ee5c`, não a alteração posterior do bootstrap, que ainda requer prova física específica.
 
 Condições preservadas: PR #268 draft; App Dev principal não reiniciado; Grátis, OS, USB e perfis não modificados; W3/W4 não homologados. A próxima prova física deve usar checkout e perfil novos, porta E2E exclusiva, sem reaproveitar cookies nem controlar a instância principal.
+
+## Adendo W8: candidata de bootstrap em Windows (21/10/2026)
+
+Checkout isolado criado em DESKTOP-COHT67R, revisão `d0b24a20dec19c51fa2fac5ddc1937765e2fe408`, sob `Downloads/OrdaX-Orchestrator-W8-Bootstrap-20261021`. O preparador canônico concluiu com `status=verified`, 40 arquivos próprios, `contentDigest=87a7853bd1e89fa6611565126c5f2bebc43c09592ab1eeb75db4e999cbdd6ff9`, `profileCopied=false`, `providerMessagesSent=0` e `cutoverPerformed=false`. A candidata ficou em diretório novo `Downloads/OrdaX-Orchestrator-W8-Stage-20261021/candidate-app-v0.2.0-alpha.2`.
+
+A porta 9446 do App Dev principal estava ocupada; a porta isolada 9445 estava livre quando consultada. A instalação separada de dependências (`npm ci`) não concluiu durante a verificação; sua sessão de terminal foi encerrada pelo agente remoto, sem executar o Electron desta candidata. Portanto **NÃO há prova App/IPC para o bootstrap da revisão d0b24a20**. A prova App anterior continua limitada à revisão f88ee5c e não deve ser extrapolada para o novo entrypoint.
+
+Próxima ação objetiva: confirmar término/estado dos processos de instalação isolados e dependências do novo checkout, depois iniciar somente a candidata em perfil staged NOVO com porta 9445 e rodar `test:live:build-proof` exigindo commit e digest acima. Não tocar na porta 9446, não copiar cookies/sessão, não enviar ao provedor. Só marcar W8 Bootstrap App como aprovado mediante recibo E2E real.
