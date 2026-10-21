@@ -1,5 +1,19 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Continuidade comprovada — launcher gerenciado do Lab (2026-10-21)
+
+Runtime candidato valida inventário/hash do pacote inteiro e inicia o Lab por
+pipe Windows local com DACL do usuário e confirmação do PID do filho pelo kernel.
+Protocolo/Store únicos, sem descoberta visual, listener no App ou fallback de
+transporte. **346 testes Windows e E2E com cliente Python + Electron empacotado
+aprovados** no source Apps `92c510f8f587e6efbf3fbe81aa8d4b1d427e1b56`
+([CI 39647922343](https://github.com/ordaxsystems/ordax-apps/actions/runs/39647922343)).
+Runtime `23601f3f9764ea8c4ed226155adac6c3bb84f6f8`: 301 testes Windows / uma
+exclusão preexistente, Linux/SDK mínimo aprovados. Fixtures CI não concedem
+cadastro ou autoridade Product. Vínculo do registro/provenance, OAuth/grants,
+MCP público e lease/24h continuam pendentes. Mesmas PRs draft #268 e Runtime #182.
+[Contrato e evidências](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
+
 ## Continuidade solicitada — canal privado Runtime/Orchestrator (2026-10-21)
 
 App expõe sete leituras do mesmo serviço por contrato `ordax.orchestrator-host/1`

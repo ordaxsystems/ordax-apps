@@ -1,5 +1,24 @@
 # OrdaX Orchestrator Lab — Estado atual de engenharia
 
+## Continuidade — launcher Python/Windows validado
+
+Source App `92c510f8f587e6efbf3fbe81aa8d4b1d427e1b56`:
+**346 testes Windows + E2E empacotado aprovados**;
+[CI 39647922343](https://github.com/ordaxsystems/ordax-apps/actions/runs/39647922343),
+Foundation e P0 também aprovados. Agora o cliente **Python real** do Runtime
+inicia o App verificado, confere o inventário do pacote, valida o PID do cliente
+pelo kernel e lê status/projetos via named pipe local restrito ao usuário.
+Perfil novo/vazio, sem envios; fechar a sessão não encerra o App humano.
+O mesmo serviço/Store e o modo explícito fd 3/4 foram preservados.
+
+Runtime source `23601f3f9764ea8c4ed226155adac6c3bb84f6f8`:
+contratos Windows **301 testes / uma exclusão preexistente**, Linux e SDK mínimo
+aprovados. Recibo de instalação e autorização E2E são fixtures, não cadastro
+ou grant Product real. Faltam vínculo do registro/provenance da instalação,
+Platform/OAuth/grants, projeção pública MCP e renovação de lease/operação 24h.
+PRs Apps #268 e Runtime #182 continuam draft; nada instalado no PC do usuário.
+[Provas, hashes e limites](../audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
+
 ## Continuidade — canal Runtime → App de leitura
 
 Implementado `ordax.orchestrator-host/1` no mesmo processo/Store, com pipe privado

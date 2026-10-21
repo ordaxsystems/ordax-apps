@@ -102,8 +102,28 @@ O CI do App fixa o source Runtime `23601f3f9764ea8c4ed226155adac6c3bb84f6f8`
 e acrescenta prova do **cliente Python real contra o Electron empacotado**
 em perfil temporário novo, além do cenário nativo/UI/MCP anterior. Recibo de
 instalação e autorização desse ensaio são fixtures; não representam cadastro
-ou grants de produção. **Consultar o resultado do novo workflow antes de
-considerar essa prova aprovada.**
+ou grants de produção. **Prova aprovada** no source App
+`92c510f8f587e6efbf3fbe81aa8d4b1d427e1b56`, checkout de merge
+`de471012524a32e0dd002f0f7483f53cf5944ec9`,
+[workflow 39647922343](https://github.com/ordaxsystems/ordax-apps/actions/runs/39647922343),
+job `119388302215`. Os três workflows Apps passaram nesse source.
+
+**346/346 testes Windows**, E2E de formulários/MCP local, E2E fd 3/4 e novo
+recibo `ordax.orchestrator-managed-app-e2e/1` com `ok:true`. O Python iniciou
+o Electron real, conferiu o inventário completo, confirmou o PID pelo kernel,
+validou perfil novo e leu status/projetos; encerrar a sessão preservou o processo
+do App. Esse perfil Python é novo e vazio: não confundir suas leituras com o
+projeto criado no perfil distinto do cenário nativo anterior. Nenhum prompt
+ou chamada à API coordenadora foi enviado.
+
+- Content digest: `23b1ff824f7aeb8fbfd7b1b781018e957fe9b3bde8e62eb7990f970f2cbc77fb`.
+- ASAR SHA-256: `4070dafff4de6933b356dcbd1770682035ebf47615573260edb0b3c0ffecfacf`.
+- Artefato temporário não assinado `12368128175`, retenção de três dias.
+- Runtime source `23601f3f9764ea8c4ed226155adac6c3bb84f6f8`:
+  [contratos 39647724264](https://github.com/ordaxsystems/ordax-runtime/actions/runs/39647724264),
+  Windows **301 testes / uma exclusão preexistente**; Linux e SDK mínimo também
+  passaram. Inclui I/O nativo, PID incorreto, cancelamento, DACL real e proteção
+  de arquivos. Local Linux: 47 testes, cinco exclusões nativas Windows esperadas.
 
 Permanecem pendentes o registro/provenance canônico da instalação, integração
 Platform/OAuth/grants, projeção MCP pública, W3/W4 e execução contínua. Não
