@@ -100,6 +100,14 @@ node scripts/audit-pinned-workspace.mjs --source C:\\repos\\ordax-flow --workspa
 
 O relatório JSON contém SHA-256 da origem e derivação por arquivo, classificação preliminar de owner, drift e arquivos ausentes. O comando retorna erro em divergências. O teste sintético faz parte de `npm test`; **não** substitui o baseline com Flow pinado, a integração com Store real ou E2E ChatGPT Web autenticado. A migração P1 do código proprietário ainda não foi autorizada por gates.
 
+## MVP de preparação dos papéis — sem comandos nem chamadas de API
+
+Na interface já existente **Supervisor OrdaX Lab**, cada conversa/Task pode receber um papel de apresentação **Professor de Matemática** ou **Arquiteto OrdaX**, ou ficar sem papel. O papel é salvo como evento da própria Task no SQLite canônico; não cria agente paralelo, não envia mensagem nem altera o histórico ChatGPT. Um rascunho de objetivo é exibido para edição; não é uma ordem executada.
+
+A chave **Groq** do planejador pode ser cadastrada/removida no campo do próprio App, em `Supervisor OrdaX Lab → Chave API do supervisor (Groq)`. O segredo é criptografado pelo `safeStorage` do Electron no Windows e mantido exclusivamente no userData privado da instalação/perfil staged, fora do Git, SQLite e logs. Nenhuma chave é devolvida à interface. Em sistemas sem armazenamento criptografado compatível, o cadastro é recusado, sem fallback em texto puro. **A chave Groq não é a senha do ChatGPT Web e não autentica o ChatGPT.**
+
+Esta preparação **não testa a API, não faz cobrança, não ativa execução e não liga o supervisor**. O mecanismo existente ainda requer habilitação explícita no ambiente de desenvolvimento (`ORDAX_LAB_SUPERVISOR_ENABLE=1`) e aprovação individual de envio. Nenhuma integração GitHub/Runtime é habilitada pela seleção de um papel. Usar **Professor de Matemática** primeiro permite avaliar as interações sem modificar os projetos OrdaX; após homologar, o papel Arquiteto poderá receber integrações autorizadas. W3 positivo e W4 de geração real continuam pendentes.
+
 ## RFC-002 — plano canônico e handoff para novos chats
 
 - **[Leia primeiro](docs/rfc-002/00-LEIA-PRIMEIRO.md)** — regras invariantes e sequência de leitura.
