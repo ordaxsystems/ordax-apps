@@ -14,7 +14,7 @@ import { createLocalGroqCredential } from '../src/local-supervisor-credential.mj
 import { OrchestratorService } from '../src/orchestrator-service.mjs';
 import { createOrchestratorMcp } from '../src/orchestrator-mcp.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
-import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,openInheritedOrchestratorStreams } from '../src/orchestrator-runtime-bridge.mjs';
+import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
 
 import fs from 'node:fs';
@@ -31,6 +31,7 @@ if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
   app.commandLine.appendSwitch('remote-debugging-port', '9445');
 }
 
+const runtimeTransportRequest=resolveOrchestratorRuntimeTransport();
 app.setName('OrdaX Orchestrator Lab');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -639,13 +640,13 @@ orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
 // A Runtime launcher must supply the first bootstrap AFTER canonical owner
 // authorization and verify the returned build/profile identity independently.
-if(process.argv.includes('--ordax-runtime-bridge-fds')) {
+if(runtimeTransportRequest) {
   if(process.env.ORDAX_LAB_RUNTIME_BRIDGE_ENABLE!=='1')
     throw Error('orchestrator_host_launch_not_authorized');
   runtimeOrchestratorBridge=createOrchestratorRuntimeBridge({service:orchestratorService,
     workspaceSessionId:store.getWorkspaceSession().id,buildProof:runtimeBuildProof,
     profileFingerprint:labProfileFingerprint(app.getPath('userData'))});
-  const streams=openInheritedOrchestratorStreams();
+  const streams=openOrchestratorRuntimeStreams(runtimeTransportRequest);
   const detach=attachOrchestratorRuntimePipes({...streams,bridge:runtimeOrchestratorBridge});
   closeRuntimeOrchestratorPipe=()=>{detach();streams.close();};
 }

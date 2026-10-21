@@ -1,5 +1,5 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
-import {Socket} from 'node:net';
+import {Socket,createConnection} from 'node:net';
 import {ORCHESTRATOR_TOOLS} from './orchestrator-contract.mjs';
 
 export const RUNTIME_BRIDGE_SCHEMA='ordax.orchestrator-host/1';
@@ -144,4 +144,26 @@ export function openInheritedOrchestratorStreams() {
     input?.destroy();output?.destroy();
     throw Error('orchestrator_host_inherited_pipes_required');
   }
+}
+
+// A Windows Runtime owns this local named pipe and verifies the connecting
+// child's kernel PID before sending bootstrap. The App is only a client.
+export function resolveOrchestratorRuntimeTransport(argv=process.argv,platform=process.platform) {
+  const options=argv.filter(value=>typeof value==='string'&&value.startsWith('--ordax-runtime-bridge-'));
+  if(options.length===0)return null;
+  if(options.length!==1)throw Error('orchestrator_host_transport_invalid');
+  if(options[0]==='--ordax-runtime-bridge-fds')return Object.freeze({kind:'inherited'});
+  const prefix='--ordax-runtime-bridge-pipe=';
+  const name=options[0].startsWith(prefix)?options[0].slice(prefix.length):'';
+  if(platform!=='win32'||!/^\\\\\.\\pipe\\ordax\.orchestrator\.[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(name))
+    throw Error('orchestrator_host_transport_invalid');
+  return Object.freeze({kind:'windows-pipe',name});
+}
+
+export function openOrchestratorRuntimeStreams(request) {
+  if(request?.kind==='inherited')return openInheritedOrchestratorStreams();
+  // Revalidate at use; no arbitrary TCP, UNC, filesystem or remote pipe path.
+  const checked=resolveOrchestratorRuntimeTransport(['--ordax-runtime-bridge-pipe='+request?.name]);
+  const socket=createConnection({path:checked.name});
+  return {input:socket,output:socket,close(){socket.destroy();}};
 }

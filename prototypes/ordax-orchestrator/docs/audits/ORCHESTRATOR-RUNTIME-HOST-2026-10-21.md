@@ -81,3 +81,30 @@ por chamada e projeção no MCP público. Nenhuma dessas permissões foi criada
 por este código. O canal não entra no catálogo de produção nem é ativado no PC.
 Escritas, GPT/Groq real, supervisão contínua e 24h permanecem gates posteriores.
 W3/W4 positivos, cutover do perfil real e PR #268 draft continuam preservados.
+
+
+## Continuidade: launcher Python/Windows gerenciado
+
+O candidato Runtime agora valida o inventário completo de uma instalação
+atestada pelo owner, fixa arquivos/diretórios contra substituição e inicia
+somente o executável do Lab. O recibo é um resultado tipado do owner; não se
+aceita JSON/modelo como prova de instalação ou grant.
+
+No Windows, esse launcher cria um named pipe local com DACL protegida para o
+usuário atual e recusa clientes remotos. Antes de transmitir bootstrap/chave,
+o PID retornado pelo kernel deve ser o do filho ainda vivo iniciado pelo host.
+O App conecta como cliente, pelo modo explícito `--ordax-runtime-bridge-pipe`.
+Não abre servidor ou porta TCP, nem tenta converter esse modo para fd 3/4.
+O framing, catálogo, assinatura e serviço/Store canônicos são os mesmos.
+O modo anterior de descritores herdados permanece explícito e testado.
+
+O CI do App fixa o source Runtime `23601f3f9764ea8c4ed226155adac6c3bb84f6f8`
+e acrescenta prova do **cliente Python real contra o Electron empacotado**
+em perfil temporário novo, além do cenário nativo/UI/MCP anterior. Recibo de
+instalação e autorização desse ensaio são fixtures; não representam cadastro
+ou grants de produção. **Consultar o resultado do novo workflow antes de
+considerar essa prova aprovada.**
+
+Permanecem pendentes o registro/provenance canônico da instalação, integração
+Platform/OAuth/grants, projeção MCP pública, W3/W4 e execução contínua. Não
+se instalou/ativou candidata no computador do usuário.

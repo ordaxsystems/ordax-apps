@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID,randomBytes,createHmac} from 'node:crypto';
 import {PassThrough} from 'node:stream';
 import {createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,
-  canonicalHostJson,RUNTIME_BRIDGE_SCHEMA} from '../src/orchestrator-runtime-bridge.mjs';
+  canonicalHostJson,RUNTIME_BRIDGE_SCHEMA,resolveOrchestratorRuntimeTransport} from '../src/orchestrator-runtime-bridge.mjs';
 
 function fixture(){
   let now=100000,bridge,reads=0;
@@ -81,4 +81,18 @@ test('oversized and invalid UTF-8 framing close the pipe before invoking the ser
 test('canonical signed wire format preserves Unicode and forbids ambiguous noninteger values',()=>{
   assert.equal(canonicalHostJson({z:'ação',a:[true,null,2]}),'{"a":[true,null,2],"z":"ação"}');
   assert.throws(()=>canonicalHostJson({x:NaN}));assert.throws(()=>canonicalHostJson({x:0.5}));
+});
+
+test('Windows managed transport accepts one exact local pipe and never guesses a fallback',()=>{
+  const name=String.raw`\\.\pipe\ordax.orchestrator.11111111-2222-3333-4444-555555555555`;
+  const flag='--ordax-runtime-bridge-pipe='+name;
+  assert.deepEqual(resolveOrchestratorRuntimeTransport([flag],'win32'),{kind:'windows-pipe',name});
+  assert.deepEqual(resolveOrchestratorRuntimeTransport(['--ordax-runtime-bridge-fds'],'win32'),{kind:'inherited'});
+  assert.equal(resolveOrchestratorRuntimeTransport([],'win32'),null);
+  for(const args of [[flag,flag],[flag,'--ordax-runtime-bridge-fds'],
+    ['--ordax-runtime-bridge-pipe=\\server\\pipe\\name'],
+    ['--ordax-runtime-bridge-pipe=http://localhost:1234'],
+    ['--ordax-runtime-bridge-pipe='+name+'\\suffix'],['--ordax-runtime-bridge-stdio']])
+    assert.throws(()=>resolveOrchestratorRuntimeTransport(args,'win32'));
+  assert.throws(()=>resolveOrchestratorRuntimeTransport([flag],'linux'));
 });
