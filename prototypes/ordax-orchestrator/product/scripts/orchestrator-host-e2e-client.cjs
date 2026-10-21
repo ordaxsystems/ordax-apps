@@ -10,13 +10,14 @@ const canonical=value=>{
   return JSON.stringify(value);
 };
 function createHostFixture(child) {
+  const input=child.stdio[3],output=child.stdio[4];
   let buffer='',pending=null,failure=null;
   const poison=reason=>{
     failure??=reason;
     if(pending){const item=pending;pending=null;clearTimeout(item.timer);item.reject(Error(failure));}
   };
-  child.stdout.setEncoding('utf8');
-  child.stdout.on('data',chunk=>{
+  output.setEncoding('utf8');
+  output.on('data',chunk=>{
     if(failure)return;
     buffer+=chunk;if(Buffer.byteLength(buffer)>524288){poison('host_frame_oversized');return;}
     let end;while((end=buffer.indexOf('\n'))>=0){
@@ -26,14 +27,14 @@ function createHostFixture(child) {
       const item=pending;pending=null;clearTimeout(item.timer);item.resolve(message);
     }
   });
-  child.stdout.on('end',()=>poison('host_pipe_ended'));
-  child.stdout.on('error',()=>poison('host_pipe_read_failed'));
-  child.stdin.on('error',()=>poison('host_pipe_write_failed'));
+  output.on('end',()=>poison('host_pipe_ended'));
+  output.on('error',()=>poison('host_pipe_read_failed'));
+  input.on('error',()=>poison('host_pipe_write_failed'));
   const exchange=message=>new Promise((resolve,reject)=>{
     if(failure||pending)return reject(Error(failure||'host_pipe_unavailable'));
     const timer=setTimeout(()=>poison('host_pipe_timeout'),15000);
     pending={resolve,reject,timer};
-    child.stdin.write(JSON.stringify(message)+'\n',error=>{
+    input.write(JSON.stringify(message)+'\n',error=>{
       if(error)poison('host_pipe_write_failed');
     });
   });

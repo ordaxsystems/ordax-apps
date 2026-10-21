@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,randomBytes,createHmac} from 'node:crypto';
 import {PassThrough} from 'node:stream';
-import {createOrchestratorRuntimeBridge,attachOrchestratorRuntimeStdio,
+import {createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,
   canonicalHostJson,RUNTIME_BRIDGE_SCHEMA} from '../src/orchestrator-runtime-bridge.mjs';
 
 function fixture(){
@@ -62,7 +62,7 @@ test('bootstrap cannot enlarge the fixed read-only capability or smuggle caller-
 test('closing the private pipe drops authority without changing the App service or Store',async()=>{
   const f=fixture(),input=new PassThrough(),output=new PassThrough();let received='';
   output.on('data',chunk=>received+=chunk);
-  const detach=attachOrchestratorRuntimeStdio({input,output,bridge:f.bridge});
+  const detach=attachOrchestratorRuntimePipes({input,output,bridge:f.bridge});
   const line=Buffer.from(JSON.stringify(f.bootstrap)+'\n');
   input.write(line.subarray(0,7));input.write(line.subarray(7));
   await new Promise(r=>setImmediate(r));
@@ -74,7 +74,7 @@ test('closing the private pipe drops authority without changing the App service 
 test('oversized and invalid UTF-8 framing close the pipe before invoking the service',async()=>{
   for(const chunk of [Buffer.alloc(70000,65),Buffer.from([255,10])]) {
     const f=fixture(),input=new PassThrough(),output=new PassThrough();
-    attachOrchestratorRuntimeStdio({input,output,bridge:f.bridge});input.write(chunk);
+    attachOrchestratorRuntimePipes({input,output,bridge:f.bridge});input.write(chunk);
     await new Promise(r=>setImmediate(r));assert.equal(f.bridge.connected,false);assert.equal(f.reads(),0);
   }
 });

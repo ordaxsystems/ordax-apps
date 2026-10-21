@@ -1,4 +1,5 @@
 import {createHmac,timingSafeEqual} from 'node:crypto';
+import {Socket} from 'node:net';
 import {ORCHESTRATOR_TOOLS} from './orchestrator-contract.mjs';
 
 export const RUNTIME_BRIDGE_SCHEMA='ordax.orchestrator-host/1';
@@ -96,7 +97,7 @@ export function createOrchestratorRuntimeBridge({service,workspaceSessionId,buil
 // Bounded newline framing over pipes exclusively inherited from the launcher.
 // No reopening, transport fallback or request retry. Malformed framing closes
 // the channel; the human App and its existing Store remain alive.
-export function attachOrchestratorRuntimeStdio({input,output,bridge,maxFrameBytes=65536}={}) {
+export function attachOrchestratorRuntimePipes({input,output,bridge,maxFrameBytes=65536}={}) {
   if(typeof input?.on!=='function'||typeof output?.write!=='function'||typeof bridge?.handle!=='function')
     throw Error('orchestrator_host_pipe_required');
   let buffer=Buffer.alloc(0),tail=Promise.resolve(),pending=0,closed=false;
@@ -128,4 +129,19 @@ export function attachOrchestratorRuntimeStdio({input,output,bridge,maxFrameByte
   };
   input.on('data',onData);input.on('end',detach);input.on('error',detach);output.on('error',detach);
   return detach;
+}
+
+// Fixed dedicated inherited descriptors. Electron/Chromium diagnostics may
+// write to stdout, so descriptors 0/1/2 are never protocol transports.
+// The launch owner creates only these private pipes; no path/port comes from AI.
+export function openInheritedOrchestratorStreams() {
+  let input,output;
+  try {
+    input=new Socket({fd:3,readable:true,writable:false});
+    output=new Socket({fd:4,readable:false,writable:true});
+    return {input,output,close(){input.destroy();output.destroy();}};
+  } catch {
+    input?.destroy();output?.destroy();
+    throw Error('orchestrator_host_inherited_pipes_required');
+  }
 }

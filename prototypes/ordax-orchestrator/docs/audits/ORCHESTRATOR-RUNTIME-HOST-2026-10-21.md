@@ -7,7 +7,9 @@ sem usar screenshots, mouse, terminal como transporte ou um segundo SQLite.
 ## Incremento
 
 `src/orchestrator-runtime-bridge.mjs` implementa `ordax.orchestrator-host/1`
-sobre stdin/stdout privados herdados do processo que inicia o App. É desligado
+sobre dois descritores dedicados herdados do processo que inicia o App
+(fd 3: host → App; fd 4: App → host). Stdin/stdout/stderr não transportam
+o protocolo, pois Electron/Chromium pode emitir diagnósticos neles. É desligado
 por padrão: exige flag de lançamento específica, habilitação Dev explícita e
 build com manifesto verificado. Não abre porta HTTP/TCP nem método de bootstrap
 no preload/renderer. O serviço/Store existentes continuam a executar as leituras.
@@ -39,7 +41,7 @@ O runner Windows empacotado agora usa pipe privado e repete o cenário App-only
 de formulários/MCP local. Depois, o host de teste lê do App os mesmos projeto
 e trabalho, verifica assinatura/replay e tenta um envio que deve ser recusado.
 No Windows, o launcher cria handles com `FILE_FLAG_OVERLAPPED` (`stdio:
-["overlapped", "overlapped", "ignore"]`) para I/O assíncrona do Electron/libuv.
+["ignore", "ignore", "ignore", "overlapped", "overlapped"]`) para I/O assíncrona do Electron/libuv.
 Fechamento ou erro do pipe invalida a sessão; não há fallback.
 Esta é uma **fixture de autorização em CI**, não um grant ou MCP público real.
 Consultar resultado do workflow do commit antes de declarar essa prova aprovada.

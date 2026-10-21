@@ -14,7 +14,7 @@ import { createLocalGroqCredential } from '../src/local-supervisor-credential.mj
 import { OrchestratorService } from '../src/orchestrator-service.mjs';
 import { createOrchestratorMcp } from '../src/orchestrator-mcp.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
-import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimeStdio } from '../src/orchestrator-runtime-bridge.mjs';
+import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,openInheritedOrchestratorStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
 
 import fs from 'node:fs';
@@ -639,13 +639,15 @@ orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
 // A Runtime launcher must supply the first bootstrap AFTER canonical owner
 // authorization and verify the returned build/profile identity independently.
-if(process.argv.includes('--ordax-runtime-bridge-stdio')) {
-  if(process.env.ORDAX_LAB_RUNTIME_BRIDGE_ENABLE!=='1'||process.stdin.isTTY||process.stdout.isTTY)
+if(process.argv.includes('--ordax-runtime-bridge-fds')) {
+  if(process.env.ORDAX_LAB_RUNTIME_BRIDGE_ENABLE!=='1')
     throw Error('orchestrator_host_launch_not_authorized');
   runtimeOrchestratorBridge=createOrchestratorRuntimeBridge({service:orchestratorService,
     workspaceSessionId:store.getWorkspaceSession().id,buildProof:runtimeBuildProof,
     profileFingerprint:labProfileFingerprint(app.getPath('userData'))});
-  closeRuntimeOrchestratorPipe=attachOrchestratorRuntimeStdio({input:process.stdin,output:process.stdout,bridge:runtimeOrchestratorBridge});
+  const streams=openInheritedOrchestratorStreams();
+  const detach=attachOrchestratorRuntimePipes({...streams,bridge:runtimeOrchestratorBridge});
+  closeRuntimeOrchestratorPipe=()=>{detach();streams.close();};
 }
 const localOrchestratorMcp=createOrchestratorMcp({service:orchestratorService,
   getContext:()=>localOrchestratorContext,version:app.getVersion()});

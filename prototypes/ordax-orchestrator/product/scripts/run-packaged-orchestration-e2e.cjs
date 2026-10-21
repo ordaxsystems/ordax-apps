@@ -20,10 +20,10 @@ let phase='preflight';
     ORDAX_LAB_E2E_DEBUG_PORT:'9446',ORDAX_LAB_E2E_LOCALAPPDATA:profile,
     ORDAX_LAB_E2E_EXPECTED_COMMIT:process.env.GITHUB_SHA};
   delete env.GROQ_API_KEY;delete env.ORDAX_DESKTOP_DEBUG;
-  const child=spawn(executable,['--ordax-runtime-bridge-stdio','--ordax-lab-staged-approved',
+  const child=spawn(executable,['--ordax-runtime-bridge-fds','--ordax-lab-staged-approved',
     '--ordax-lab-staged-localappdata='+profile,'--remote-debugging-port=9446'],
     // Electron/libuv requires Windows handles opened for overlapped I/O.
-    {cwd:root,env,stdio:['overlapped','overlapped','ignore']});
+    {cwd:root,env,stdio:['ignore','ignore','ignore','overlapped','overlapped']});
   const hostFixture=createHostFixture(child);
   let spawnFailed=false;child.on('error',()=>{spawnFailed=true;});
   try {
