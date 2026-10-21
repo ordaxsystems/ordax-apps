@@ -1,6 +1,7 @@
 import { renderLiveStage } from './ui-stage.mjs';
 import { providerComposeAvailability, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 import { taskNavigationStatus } from '../src/task-navigation-status.mjs';
+import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
@@ -449,6 +450,7 @@ async function openTask(id) {
   if (epoch !== navigationEpoch || !task) return;
   currentTaskId = id;
   currentTask = task;
+  showSupervisorRole(task);
   showDraft(task);
   syncComposerAvailability();
   setMemoryEditor(false);
@@ -887,12 +889,99 @@ const labRecoverButton = document.getElementById("labSupervisorRecover");
 const labInspectButton = document.getElementById("labSupervisorInspect");
 const labApproveButton = document.getElementById("labSupervisorApprove");
 const labSendButton = document.getElementById("labSupervisorSend");
-const labStatus = await window.ordax.supervisorStatus().catch(() => ({enabled:false}));
-document.getElementById("labVersion").textContent = labStatus.version ? "OrdaX Orchestrator Lab v" + labStatus.version : "Versão do Lab indisponível";
-labState.textContent = labStatus.enabled
-  ? "Ativo: cada mensagem proposta exige aprovação humana."
-  : "Desativado. Requer GROQ_API_KEY e ORDAX_LAB_SUPERVISOR_ENABLE=1 no Lab."; 
-labPlanButton.disabled = !labStatus.enabled;
+
+// A role is a local Task preference; changing it does NOT call a model or
+// change the embedded ChatGPT conversation. Keep the existing Task/Store.
+const labRoleSelect=document.getElementById('labSupervisorRole');
+const labRoleDescription=document.getElementById('labRoleDescription');
+const labObjective=document.getElementById('labSupervisorObjective');
+labRoleSelect.replaceChildren(...SUPERVISOR_ROLES.map(role=>{
+  const option=document.createElement('option');
+  option.value=role.id; option.textContent=role.name;
+  return option;
+}));
+function showSupervisorRole(task) {
+  const role=supervisorRole(task?.supervisor_role);
+  labRoleSelect.disabled=!task;
+  labRoleSelect.value=role.id;
+  labRoleDescription.textContent=task
+    ? role.description+' Papel salvo somente nesta tarefa; nenhuma IA iniciada.'
+    : 'Selecione uma tarefa antes de escolher seu papel.';
+  // This is a *preview objective*, not a provider message or persisted Run.
+  labObjective.value=task?role.draft:'';
+}
+labRoleSelect.addEventListener('change',async()=>{
+  const taskId=currentTaskId;
+  if(!taskId){showSupervisorRole(null);return;}
+  const role=labRoleSelect.value;
+  labRoleSelect.disabled=true;
+  try{
+    const saved=await window.ordax.setTaskSupervisorRole(taskId,role);
+    if(currentTaskId===taskId){
+      currentTask=saved;
+      showSupervisorRole(saved);
+      await loadTasks();
+    }
+  }catch{
+    if(currentTaskId===taskId){
+      showSupervisorRole(currentTask);
+      labRoleDescription.textContent='Não foi possível salvar o papel da tarefa.';
+    }
+  }finally{
+    if(currentTaskId===taskId)labRoleSelect.disabled=false;
+  }
+});
+const labKeyForm=document.getElementById('labSupervisorKeyForm');
+const labKeyInput=document.getElementById('labSupervisorKeyInput');
+const labKeySave=document.getElementById('labSupervisorKeySave');
+const labKeyRemove=document.getElementById('labSupervisorKeyRemove');
+const labKeyState=document.getElementById('labSupervisorKeyState');
+let labStatus=await window.ordax.supervisorStatus().catch(()=>({enabled:false,configured:false,secureStorageAvailable:false}));
+function showSupervisorStatus() {
+  document.getElementById('labVersion').textContent=labStatus.version
+    ? 'OrdaX Orchestrator Lab v'+labStatus.version : 'Versão do Lab indisponível';
+  labState.textContent=labStatus.enabled
+    ? 'Supervisor habilitado no ambiente Dev: cada mensagem proposta exige aprovação.'
+    : 'Supervisor desativado. A configuração da chave não inicia comandos nem faz chamadas à API.';
+  labPlanButton.disabled=!labStatus.enabled;
+  const available=labStatus.secureStorageAvailable===true;
+  labKeySave.disabled=!available;
+  labKeyRemove.disabled=!labStatus.keySaved;
+  labKeyState.textContent=!available
+    ? 'Proteção local do Windows indisponível: a chave não será armazenada.'
+    : labStatus.keySaved
+      ? 'Chave Groq salva e protegida localmente; conexão ainda não testada.'
+      : labStatus.configured
+        ? 'Chave definida pelo ambiente; não é exibida aqui. Nenhuma conexão foi testada.'
+        : 'Nenhuma chave cadastrada. Salvar não ativa o supervisor.';
+}
+showSupervisorStatus();
+labKeyForm.addEventListener('submit',async event=>{
+  event.preventDefault();
+  labKeySave.disabled=true;
+  try{
+    await window.ordax.supervisorSaveKey(labKeyInput.value.trim());
+    labKeyInput.value='';
+    labStatus=await window.ordax.supervisorStatus();
+    showSupervisorStatus();
+  }catch(error){
+    labKeyInput.value='';
+    labKeyState.textContent=error?.message?.includes('supervisor_key_invalid_format')
+      ? 'Formato inválido. Use uma chave Groq iniciada por gsk_.'
+      : 'Não foi possível proteger a chave neste dispositivo.';
+  }finally{labKeySave.disabled=labStatus.secureStorageAvailable!==true;}
+});
+labKeyRemove.addEventListener('click',async()=>{
+  labKeyRemove.disabled=true;
+  labKeyInput.value='';
+  try{
+    await window.ordax.supervisorRemoveKey();
+    labStatus=await window.ordax.supervisorStatus();
+    showSupervisorStatus();
+  }catch{labKeyState.textContent='Não foi possível remover a chave armazenada.';}
+  finally{labKeyRemove.disabled=!labStatus.keySaved;}
+});
+
 labRecoverButton.disabled = false; // Durable read-only recovery never requires Groq.
 labRecoverButton.addEventListener("click", async () => {
   if (!currentTaskId) {labMessage.textContent="Selecione uma tarefa primeiro.";return;}
