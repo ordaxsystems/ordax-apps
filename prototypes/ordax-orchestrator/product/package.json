@@ -31,6 +31,7 @@
     "test:live:stream": "node scripts/live-ui-stream-smoke.cjs"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "electron": "^44.8.0",
     "electron-builder": "^26.15.3"
   },
@@ -62,6 +63,7 @@
       "executableName": "OrdaX Orchestrator Lab"
     },
     "compression": "normal",
-    "npmRebuild": false
+    "npmRebuild": false,
+    "afterPack": "./scripts/attest-packaged-asar.cjs"
   }
 }
