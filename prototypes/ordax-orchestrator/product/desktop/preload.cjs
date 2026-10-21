@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ordax', {
   supervisorStatus: () => ipcRenderer.invoke("ordax:supervisor:status"),
+  supervisorSaveKey: key => ipcRenderer.invoke('ordax:supervisor:key:save',key),
+  supervisorRemoveKey: () => ipcRenderer.invoke('ordax:supervisor:key:remove'),
+  setTaskSupervisorRole: (taskId,role) => ipcRenderer.invoke('ordax:tasks:supervisor-role:set',{taskId,role}),
   supervisorPlan: payload => ipcRenderer.invoke("ordax:supervisor:plan", payload),
   supervisorRecoverable: payload => ipcRenderer.invoke("ordax:supervisor:recoverable", payload),
   supervisorInspect: payload => ipcRenderer.invoke("ordax:supervisor:inspect", payload),
