@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage } from 'electron';
 import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSupervisorTask, listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
@@ -10,6 +10,7 @@ import { assessProviderConversationEvidence } from '../src/provider-conversation
 import { safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
 import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
+import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -42,6 +43,7 @@ const {userRoot} = resolveLabUserRoot({
 });
 fs.mkdirSync(userRoot,{recursive:true});
 app.setPath('userData', userRoot);
+const groqCredential=createLocalGroqCredential({userRoot,safeStorage});
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
@@ -539,13 +541,17 @@ ipcMain.handle('ordax:tasks:send', async (_event, { taskId, content, newSession 
 
 // LAB ONLY. No automatic model or chat execution while disabled.
 let labSupervisor = null;
+// The UI may prepare a key, but only an explicit dev enable flag permits a
+// model call. Stored secrets never travel back through IPC.
+const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
 function requireLabSupervisor() {
   if (process.env.ORDAX_LAB_SUPERVISOR_ENABLE !== '1') throw new Error('supervisor_disabled');
-  if (!process.env.GROQ_API_KEY) throw new Error('supervisor_api_key_missing');
+  const apiKey=currentGroqKey();
+  if (!apiKey) throw new Error('supervisor_api_key_missing');
   if (!labSupervisor) {
     labSupervisor = new SupervisorCoordinator({
       store, enabled:true, environment:"internal", actorId:"lab-owner",
-      planner:createGroqSupervisorPlanner({ apiKey:process.env.GROQ_API_KEY }),
+      planner:createGroqSupervisorPlanner({ apiKey }),
       authorizeTask: scope => authorizeLocalSupervisorTask({ store, ...scope }),
       chat:{ send:async ({ taskId,content }) => {
         const reply = await enqueueExecution(() => runTask(taskId,content,{newSession:false}));
@@ -568,10 +574,30 @@ function requireTrustedSupervisorRenderer(event) {
 ipcMain.handle('ordax:supervisor:status', (event) => {
   requireTrustedSupervisorRenderer(event);
   return ({
-  enabled:process.env.ORDAX_LAB_SUPERVISOR_ENABLE === '1' && Boolean(process.env.GROQ_API_KEY),
-  configured:Boolean(process.env.GROQ_API_KEY),
+  enabled:process.env.ORDAX_LAB_SUPERVISOR_ENABLE === '1' && Boolean(currentGroqKey()),
+  configured:Boolean(currentGroqKey()),
+  keySaved:groqCredential.hasSaved(),
+  secureStorageAvailable:groqCredential.isAvailable(),
   environment:"internal", requires_owner_approval:true, version:app.getVersion()
   });
+});
+// Credential operations are local-only: no validation network request and no
+// automatic activation. A key never appears in any status response or event.
+ipcMain.handle('ordax:supervisor:key:save',(event,key)=>{
+  requireTrustedSupervisorRenderer(event);
+  const result=groqCredential.save(key);
+  labSupervisor=null;
+  return result;
+});
+ipcMain.handle('ordax:supervisor:key:remove',(event)=>{
+  requireTrustedSupervisorRenderer(event);
+  const result=groqCredential.remove();
+  labSupervisor=null;
+  return result;
+});
+ipcMain.handle('ordax:tasks:supervisor-role:set',(event,payload)=>{
+  requireTrustedSupervisorRenderer(event);
+  return store.setTaskSupervisorRole(String(payload?.taskId||''),payload?.role);
 });
 ipcMain.handle('ordax:supervisor:plan', (event,payload) => { 
   requireTrustedSupervisorRenderer(event);
