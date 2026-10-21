@@ -29,7 +29,10 @@ function start() {
 
   const main = fs.readFileSync(path.join(product, 'desktop', 'main.mjs'), 'utf8');
   const worker = fs.readFileSync(path.join(product, 'desktop', 'embedded-worker.mjs'), 'utf8');
-  if (!main.includes("'OrdaX', 'OrchestratorLab'") ||
+  const profileBinding = fs.readFileSync(path.join(product, 'src', 'lab-profile-binding.mjs'), 'utf8');
+  if (!main.includes('resolveLabUserRoot({') ||
+      !main.includes("app.setPath('userData', userRoot)") ||
+      !profileBinding.includes("path.join(localAppData,'OrdaX','OrchestratorLab')") ||
       !main.includes("'ordax-orchestrator-lab.sqlite'") ||
       !worker.includes("'persist:ordax-orchestrator-lab-chatgpt'") ||
       worker.includes('persist:ordax-gratis-chatgpt') ||
@@ -49,7 +52,11 @@ function start() {
     env.ORDAX_LAB_SUPERVISOR_ENABLE = '0';
     delete env.GROQ_API_KEY;
   }
-  const proc = spawnSync(process.execPath, [electronCli, '.'], {
+  const electronArgs = [electronCli, '.'];
+  if (staged) electronArgs.push('--ordax-lab-staged-approved',
+    '--ordax-lab-staged-localappdata=' + env.LOCALAPPDATA,
+    '--remote-debugging-port=9446');
+  const proc = spawnSync(process.execPath, electronArgs, {
     cwd: product, stdio: 'inherit', windowsHide: false, env
   });
   if (proc.error) throw proc.error;
