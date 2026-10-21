@@ -1,5 +1,17 @@
 # OrdaX Orchestrator Lab — protótipo isolado
 
+## MCP e domínio integrado de projetos — 21/10/2026
+
+O Lab passa a ter um serviço interno único para projetos, orquestradores,
+conversas de trabalho e chat de coordenação. UI e adapter MCP usam o mesmo
+`ordax.orchestrator/1`, Store e executor; operar o Lab não exige screenshot.
+O adapter MCP é local nesta fatia: conexão externa depende dos bindings
+Platform/Runtime, não de abrir uma porta ou reutilizar `lab-owner` remotamente.
+O coordenador Groq conversa mediante a configuração Dev já existente; propostas
+não são executadas automaticamente. Não há serviço 24h ativo ou nova release.
+Detalhes, testes e dependências em
+[auditoria do incremento](docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
+
 **Versão própria do Lab: `0.2.0-alpha.2` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
 
 **Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release, sem supervisor de IA ativo e sem submissão automática de tarefas. Esta é uma derivação controlada do **OrdaX Flow/Grátis 0.4.12**, não uma modificação do Grátis existente.
@@ -117,3 +129,4 @@ Esta preparação **não testa a API, não faz cobrança, não ativa execução 
 - **[Estado atual verificável](docs/rfc-002/STATUS-ATUAL.md)** — evidências recentes e próximo gate.
 
 Esta documentação acompanha o código no GitHub para que novos chats não dependam de histórico de conversa. Ela não modifica o OrdaX Grátis e não autoriza promoção de versão ou release sem os gates previstos.
+

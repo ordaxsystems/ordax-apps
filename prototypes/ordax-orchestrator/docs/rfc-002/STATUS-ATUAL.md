@@ -1,5 +1,22 @@
 # OrdaX Orchestrator Lab — Estado atual de engenharia
 
+## Incremento MCP integrado ao App — 21/10/2026
+
+Implementado em source na branch do Lab: serviço `ordax.orchestrator/1`, 14
+operações com adapter MCP local, projetos e N orquestradores por projeto,
+missão persistente, chat de coordenação Groq e conversas de trabalho vinculadas.
+UI/IPC/MCP compartilham Store e execução canônica. Recibos duráveis bloqueiam
+duplicação, colisão de requests e replay incerto. Supervisor/worker existentes
+preservados; nenhuma execução autônoma ligada nem prompt/API real enviado.
+
+Local: primeira suíte completa **330/330 produto + 38/38 bootstrap**. Novo gate
+App-only Windows empacotado verifica formulários e MCP no mesmo perfil staged;
+seu resultado depende do workflow do commit, não da existência do script.
+**MCP externo ainda não conectado:** faltam binding Platform/Runtime, OAuth/grants
+e E2E. Esta fatia não entrega operação 24h nem criação autônoma de sites.
+PR #268 segue draft, sem main/release/cutover e sem tocar no Grátis/USB.
+[Owner, contratos, risco e próximos gates](../audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
+
 **Última confirmação operacional:** 2026-10-21 (seções anteriores preservam seus registros e datas históricas) · **Fonte da verdade deste status:** GitHub + workflows e evidência física atestada, não o chat.  
 **Contrato normativo:** `01-RFC002-PLANO-MESTRE.md` (produto) e `03-PLANO-DE-EXECUCAO-GATES-E-HANDOFF.md` (ordem/gates).  
 **Mudanças de status:** atualizar este arquivo apenas com evidência verificável; não reescrever as análises históricas.
@@ -438,3 +455,4 @@ Inventário próprio do produto com SHA-256 por arquivo e digest, manifesto conf
 - **Fatia MVP:** interface e persistência preparadas para N projetos e N Orquestradores, mas somente um executor global ativo até W3 positivo, W4 real, autorização, orçamento e reconciliação comprovados. Sem execução simultânea com risco de conflito, sem bypass de limites legítimos do ChatGPT.
 - **Documentos normativos:** RFC-002 seção 4.1 e H14/ADR-016/017 do histórico de decisões. A implementação atual **não possui** hierarquia de projeto com N Orquestradores, chat conversacional Groq central ou criação dinâmica de agentes; o seletor de papéis por Task foi apenas a interface preliminar anterior.
 - **Sequência de implementação proposta:** vínculo canônico de projeto/orquestrador e isolamento → chat do supervisor Groq com histórico persistente → gestão de sessão ChatGPT com consentimento/recibos/continuidade → sugestões tipadas de especialistas → expansão gradual de concorrência. Não disparar prompts, comandos ou migrações por esta documentação. PR #268 permanece draft e main/Flow Grátis intactos.
+

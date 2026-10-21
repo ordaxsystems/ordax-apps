@@ -2,6 +2,7 @@ import { renderLiveStage } from './ui-stage.mjs';
 import { providerComposeAvailability, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
 import { taskNavigationStatus } from '../src/task-navigation-status.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
+import { mountOrchestratorUi } from './orchestrator-ui.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
@@ -17,6 +18,8 @@ async function setDirectModeVisible(visible) {
 }
 let observerMode = 'auto';
 let allTasks = [];
+let scopedTaskIds = null;
+let orchestrationUi = null;
 let providerRefreshPending = false;
 let composeAvailability = { allowed:false, reason:'unverified' };
 function syncComposerAvailability() {
@@ -284,8 +287,9 @@ function renderMemoryCandidates(task) {
 
 function renderTaskList() {
   const query = ($('#taskSearch')?.value || '').trim().toLocaleLowerCase('pt-BR');
-  const tasks = query ? allTasks.filter(task => String(task.title || '').toLocaleLowerCase('pt-BR').includes(query)) : allTasks;
-  $('#taskCount').textContent = String(allTasks.length);
+  const scoped = scopedTaskIds ? allTasks.filter(task=>scopedTaskIds.has(task.id)) : allTasks.filter(task=>!task.lab_binding);
+  const tasks = query ? scoped.filter(task => String(task.title || '').toLocaleLowerCase('pt-BR').includes(query)) : scoped;
+  $('#taskCount').textContent = String(scoped.length);
   $('#tasks').innerHTML = tasks.map(task => `
     <button class="task ${task.id === currentTaskId ? 'active' : ''}" data-id="${esc(task.id)}">
       <strong>${esc(task.title)}</strong>
@@ -444,6 +448,7 @@ function renderContext(task) {
 }
 
 async function openTask(id) {
+  orchestrationUi?.hide();
   if (id !== currentTaskId) flushDraft();
   const epoch = ++navigationEpoch;
   const task = await window.ordax.openTask(id);
@@ -539,6 +544,11 @@ async function saveTaskRename(event) {
 }
 
 async function createTask() {
+  if(orchestrationUi?.hasProject()) {
+    try {await orchestrationUi.createWork();await loadTasks();}
+    catch {$('#orchestrationNotice').textContent='Selecione ou configure um orquestrador para criar o trabalho.';}
+    return;
+  }
   const task = await window.ordax.createTask(`Nova conversa ${new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}`);
   await loadTasks();
   await openTask(task.id);
@@ -875,6 +885,24 @@ window.ordax.onTaskStream(payload => {
 await setDirectModeVisible(false);
 syncComposerAvailability(); // no send until session observed
 workspace = await window.ordax.workspace();
+orchestrationUi=mountOrchestratorUi({api:window.ordax,
+  onScopeChange:ids=>{
+    scopedTaskIds=ids;renderTaskList();
+    void loadTasks().catch(()=>{});
+    if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
+      flushDraft();currentTaskId=null;currentTask=null;navigationEpoch++;
+      $('#taskPanel').classList.add('hidden');$('#empty').classList.remove('hidden');
+      syncComposerAvailability();
+    }
+  },
+  onOpenWork:async id=>{await loadTasks();await openTask(id);},
+  onShowCoordinator:async()=>{
+    flushDraft();await setDirectModeVisible(false);
+    currentTaskId=null;currentTask=null;navigationEpoch++;syncComposerAvailability();
+    $('#taskPanel').classList.add('hidden');$('#empty').classList.add('hidden');
+  }
+});
+await orchestrationUi.start();
 await loadTasks();
 refreshProvider();
 setInterval(refreshProvider, 1500);
@@ -1091,3 +1119,4 @@ diagnosticButton.addEventListener('click', async () => {
     diagnosticButton.disabled = false;
   }
 });
+

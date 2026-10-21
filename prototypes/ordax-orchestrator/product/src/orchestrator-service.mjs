@@ -1,0 +1,299 @@
+import {randomUUID,createHash} from 'node:crypto';
+import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput} from './orchestrator-contract.mjs';
+import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
+
+// App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
+// provider worker, device executor, identity, grants or global Memory service.
+export class OrchestratorService {
+  constructor({store,authorize,provider=null,coordinator=null}={}) {
+    if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
+    this.store=store; this.db=store.db; this.authorize=authorize;
+    this.provider=provider; this.coordinator=coordinator;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS lab_projects (
+        id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+        name TEXT NOT NULL, objective TEXT NOT NULL, created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_lab_project_session ON lab_projects(workspace_session_id);
+      CREATE TABLE IF NOT EXISTS lab_orchestrators (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES lab_projects(id),
+        name TEXT NOT NULL, mission TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('ready','paused')),
+        chat_task_id TEXT NOT NULL UNIQUE REFERENCES tasks(id), created_at TEXT NOT NULL,
+        UNIQUE(id,project_id)
+      );
+      CREATE TABLE IF NOT EXISTS lab_task_bindings (
+        task_id TEXT PRIMARY KEY REFERENCES tasks(id),
+        project_id TEXT NOT NULL REFERENCES lab_projects(id), orchestrator_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('work','orchestrator')),
+        FOREIGN KEY(orchestrator_id,project_id) REFERENCES lab_orchestrators(id,project_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_lab_binding_project ON lab_task_bindings(project_id,kind);
+      -- Idempotency receipts for App commands, including project creation
+      -- before a Task exists. NOT a provider queue or replacement action ledger.
+      CREATE TABLE IF NOT EXISTS lab_command_receipts (
+        id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+        actor_id TEXT NOT NULL, client_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        project_id TEXT REFERENCES lab_projects(id), operation TEXT NOT NULL,
+        input_hash TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','succeeded','uncertain')),
+        result TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(workspace_session_id,actor_id,client_id,request_id)
+      );
+    `);
+  }
+
+  transaction(operation) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {const result=operation();this.db.exec('COMMIT');return result;}
+    catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
+
+  // Call exactly once by the App at startup, never when a client connects.
+  recoverInterruptedCommands() {
+    return Number(this.db.prepare("UPDATE lab_command_receipts SET status='uncertain',updated_at=? WHERE status='running'")
+      .run(this.store.now()).changes);
+  }
+
+  requireAccess(context,operation,projectId=null) {
+    const session=this.store.getWorkspaceSession();
+    if(!context || typeof context.actorId!=='string' || !context.actorId ||
+      typeof context.clientId!=='string'||!context.clientId ||
+      context.workspaceSessionId!==session?.id || session?.status!=='active' ||
+      this.authorize({context,operation,projectId})!==true)
+      throw Error('orchestrator_access_denied');
+    if(projectId && !this.db.prepare('SELECT 1 FROM lab_projects WHERE id=? AND workspace_session_id=?')
+      .get(projectId,session.id))throw Error('orchestrator_project_unavailable');
+  }
+
+  orchestrator(projectId,id) {
+    const row=this.db.prepare('SELECT * FROM lab_orchestrators WHERE id=? AND project_id=?').get(id,projectId);
+    if(!row)throw Error('orchestrator_unavailable');
+    return row;
+  }
+
+  task(projectId,taskId,kind=null) {
+    const row=this.db.prepare(`SELECT t.id,t.title,t.status,t.chat_url,t.updated_at,b.kind,b.orchestrator_id
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE t.id=? AND b.project_id=? AND t.workspace_session_id=?`)
+      .get(taskId,projectId,this.store.getWorkspaceSession().id);
+    if(!row || (kind&&row.kind!==kind))throw Error('orchestrator_work_unavailable');
+    return row;
+  }
+
+  assertProviderTaskAvailable(taskId) {
+    const binding=this.db.prepare(`SELECT b.kind,o.status FROM lab_task_bindings b
+      JOIN lab_orchestrators o ON o.id=b.orchestrator_id WHERE b.task_id=?`).get(taskId);
+    if(binding?.kind==='orchestrator')throw Error('orchestrator_coordinator_channel_required');
+    if(binding?.status==='paused')throw Error('orchestrator_paused');
+    if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(taskId))
+      throw Error('orchestrator_reconciliation_required');
+  }
+
+  receipt(row) {
+    return {commandId:row.id,operation:row.operation,status:row.status,
+      requiresReconciliation:row.status==='uncertain',
+      result:row.result?JSON.parse(row.result):null,updatedAt:row.updated_at};
+  }
+
+  getReceipt(context,id) {
+    const row=this.db.prepare(`SELECT * FROM lab_command_receipts WHERE id=? AND
+      workspace_session_id=? AND actor_id=? AND client_id=?`)
+      .get(id,context.workspaceSessionId,context.actorId,context.clientId);
+    if(!row)throw Error('orchestrator_command_unavailable');
+    this.requireAccess(context,row.operation,row.project_id);
+    return this.receipt(row);
+  }
+
+  reserve(context,operation,input) {
+    const inputHash=createHash('sha256').update(JSON.stringify({operation,input})).digest('hex');
+    const existing=this.db.prepare(`SELECT * FROM lab_command_receipts WHERE
+      workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+      .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+    if(existing) {
+      if(existing.input_hash!==inputHash)throw Error('orchestrator_request_conflict');
+      this.requireAccess(context,operation,existing.project_id);
+      return {existing:this.receipt(existing)};
+    }
+    const commandId='command_'+randomUUID(),now=this.store.now();
+    this.db.prepare(`INSERT INTO lab_command_receipts
+      (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,'running',?,?)`).run(commandId,context.workspaceSessionId,
+      context.actorId,context.clientId,input.requestId,input.projectId||null,operation,inputHash,now,now);
+    return {commandId};
+  }
+
+  finish(commandId,result,status='succeeded') {
+    const changed=this.db.prepare("UPDATE lab_command_receipts SET status=?,result=?,updated_at=? WHERE id=? AND status='running'")
+      .run(status,JSON.stringify(result),this.store.now(),commandId).changes;
+    if(changed!==1)throw Error('orchestrator_command_state_conflict');
+    return this.receipt(this.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?').get(commandId));
+  }
+
+  async invoke(context,operation,raw={}) {
+    const {tool,input}=validateOrchestratorInput(operation,raw);
+    this.requireAccess(context,operation,input.projectId||null);
+    if(tool.readOnly)return this.read(context,operation,input);
+    if(['work_send','orchestrator_chat'].includes(operation))return this.dispatch(context,operation,input);
+    return this.transaction(()=>{
+      const reserved=this.reserve(context,operation,input);
+      if(reserved.existing)return reserved.existing;
+      const result=this.mutate(operation,input);
+      if(operation==='project_create')this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
+        .run(result.projectId,reserved.commandId);
+      return this.finish(reserved.commandId,result);
+    });
+  }
+
+  read(context,operation,input) {
+    if(operation==='status')return {
+      contract:ORCHESTRATOR_CONTRACT,engine:'app-owned',
+      tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
+      externalTransport:'not_connected',autonomousExecution:false,
+      coordinatorAvailable:this.coordinator?.available?.()===true,
+      providerExecutionAvailable:typeof this.provider?.send==='function',
+      activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
+      uncertainCommands:Number(this.db.prepare(`SELECT COUNT(*) n FROM lab_command_receipts
+        WHERE status='uncertain' AND workspace_session_id=? AND actor_id=? AND client_id=?`)
+        .get(context.workspaceSessionId,context.actorId,context.clientId).n)
+    };
+    if(operation==='projects_list')return {projects:this.db.prepare(
+      'SELECT id,name,objective,created_at FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
+      .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
+    if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
+      'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
+    if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+      b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
+      AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)
+      .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)};
+    if(operation==='work_get') {
+      const task=this.task(input.projectId,input.taskId);
+      const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
+        FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 10`).all(task.id);
+      return {...task,runs,conversations:this.store.listConversations(task.id).slice(-50),
+        pendingApprovals:this.store.pendingApprovals(task.id).map(a=>({id:a.id,status:a.status,actionId:a.action_id})),
+        monitor:this.monitor(task,runs)};
+    }
+    if(operation==='work_messages') {
+      this.task(input.projectId,input.taskId);
+      const page=this.store.messagesPage(input.taskId,{before:input.before||null,limit:input.limit||50});
+      return {...page,messages:page.messages.map(m=>({id:m.id,role:m.role,content:m.content,created_at:m.created_at}))};
+    }
+    if(operation==='command_get')return this.getReceipt(context,input.commandId);
+    throw Error('orchestrator_unknown_operation');
+  }
+
+  monitor(task,runs) {
+    const command=this.db.prepare(`SELECT status FROM lab_command_receipts WHERE status IN ('running','uncertain')
+      AND json_extract(result,'$.taskId')=? ORDER BY rowid DESC LIMIT 1`).get(task.id);
+    if(command?.status==='uncertain')return {state:'reconciliation_required',mayAutomaticallySend:false};
+    if(command?.status==='running')return {state:'running',mayAutomaticallySend:false};
+    const current=runs[0];
+    if(current?.status==='running') {
+      const lastHeartbeatAt=current.heartbeat_at||current.started_at;
+      const age=Date.parse(this.store.now())-Date.parse(lastHeartbeatAt);
+      return {state:!Number.isFinite(age)||age>30000?'execution_unresponsive':'running',
+        lastHeartbeatAt,mayAutomaticallySend:false};
+    }
+    if(['interrupted','failed'].includes(current?.status))return {state:'reconciliation_required',mayAutomaticallySend:false};
+    return {state:task.status==='completed'?'completed':'awaiting_instruction',mayAutomaticallySend:false};
+  }
+
+  mutate(operation,input) {
+    const now=this.store.now();
+    if(operation==='project_create') {
+      const projectId='project_'+randomUUID();
+      this.db.prepare('INSERT INTO lab_projects VALUES(?,?,?,?,?)').run(projectId,
+        this.store.getWorkspaceSession().id,input.name,input.objective||'',now);
+      return {projectId};
+    }
+    if(operation==='orchestrator_create') {
+      const orchestratorId='orchestrator_'+randomUUID();
+      const chat=this.store.createTask(input.name);
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,input.projectId,input.name,input.mission,'ready',chat.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(chat.id,input.projectId,orchestratorId,'orchestrator');
+      return {orchestratorId,chatTaskId:chat.id};
+    }
+    if(operation==='orchestrator_pause') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
+        .run(input.paused?'paused':'ready',input.orchestratorId);
+      return {orchestratorId:input.orchestratorId,status:input.paused?'paused':'ready'};
+    }
+    if(operation==='work_create') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      const task=this.store.createTask(input.title);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(task.id,input.projectId,input.orchestratorId,'work');
+      return {taskId:task.id};
+    }
+    if(operation==='conversation_rotate') {
+      this.task(input.projectId,input.taskId,'work');
+      assertTaskHasNoUncertainTransport(this.store,input.taskId);
+      if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||this.provider?.busy?.())
+        throw Error('orchestrator_executor_busy');
+      this.store.rotateConversation(input.taskId,'orchestrator_command');
+      return {taskId:input.taskId,rotationPrepared:true,providerMessagesSent:0};
+    }
+    throw Error('orchestrator_unknown_operation');
+  }
+
+  async dispatch(context,operation,input) {
+    const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
+      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
+      context.actorId,context.clientId,input.requestId);
+    // Return an accepted command even if the provider is now offline; never replay.
+    if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
+    const orch=operation==='orchestrator_chat'?this.orchestrator(input.projectId,input.orchestratorId):null;
+    const task=operation==='work_send'?this.task(input.projectId,input.taskId,'work'):
+      this.task(input.projectId,orch.chat_task_id,'orchestrator');
+    const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
+    if(owner.status==='paused')throw Error('orchestrator_paused');
+    const port=operation==='work_send'?this.provider:this.coordinator;
+    if(typeof port?.send!=='function'||(port.available&&port.available()!==true))
+      throw Error('orchestrator_provider_unavailable');
+    assertTaskHasNoUncertainTransport(this.store,task.id);
+    // A single global executor until multi-session E2E proves concurrency.
+    if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
+      this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||this.provider?.busy?.())
+      throw Error('orchestrator_executor_busy');
+    if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(task.id))
+      throw Error('orchestrator_reconciliation_required');
+    const reserved=this.transaction(()=>{
+      const reservation=this.reserve(context,operation,input);
+      this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+        .run(JSON.stringify({taskId:task.id}),reservation.commandId);
+      return reservation;
+    });
+    try {
+      // Fresh authorization immediately before a potentially external effect.
+      this.requireAccess(context,operation,input.projectId);
+      if(operation==='orchestrator_chat')this.transaction(()=>this.store.appendMessage(task.id,'user',input.content));
+      const reply=await port.send({taskId:task.id,content:input.content,draftRevision:input.draftRevision??null,
+        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id});
+      this.requireAccess(context,operation,input.projectId);
+      if(operation==='orchestrator_chat') {
+        if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
+          throw Error('orchestrator_reply_invalid');
+        return this.transaction(()=>{
+          this.store.appendMessage(task.id,'assistant',reply.content);
+          return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
+            proposalsExecuted:0,provider:'groq'});
+        });
+      }
+      // Existing runTask can return an error result instead of throwing.
+      if(!reply?.runId||reply.error||reply.confirmed!==true)throw Error('orchestrator_effect_unconfirmed');
+      return this.finish(reserved.commandId,{taskId:task.id,runId:reply.runId,
+        responseObserved:true,effectVerified:false});
+    } catch {
+      // Do not log upstream content/credentials, or retry an uncertain effect.
+      const result={taskId:task.id,reason:'execution_unconfirmed'};
+      this.finish(reserved.commandId,result,'uncertain');
+      this.requireAccess(context,operation,input.projectId);
+      return this.getReceipt(context,reserved.commandId);
+    }
+  }
+}

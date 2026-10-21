@@ -110,6 +110,12 @@ jobs:
           npm run build:win --prefix prototypes/ordax-orchestrator/product
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Exercise native project forms and MCP on the packaged App
+        shell: pwsh
+        run: |
+          node prototypes/ordax-orchestrator/product/scripts/run-packaged-orchestration-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # This artifact is a temporary unsigned E2E candidate, NOT a release.
       # A checksum manifest binds the exact bytes under test to the CI run.
       - name: Write E2E build receipt
@@ -157,3 +163,4 @@ jobs:
             prototypes/ordax-orchestrator/product/dist/orchestrator-packaged-proof.json
           retention-days: 3
           if-no-files-found: error
+

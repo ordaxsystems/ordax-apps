@@ -11,6 +11,10 @@ import { safeHistoricalThreadFailure } from '../src/provider-observation-policy.
 import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
+import { OrchestratorService } from '../src/orchestrator-service.mjs';
+import { createOrchestratorMcp } from '../src/orchestrator-mcp.mjs';
+import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
+import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
 
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -174,6 +178,7 @@ function persistImages(taskId, messageId, images = [], writtenPaths = null) {
 }
 
 async function runTask(taskId, prompt, { newSession = false, draftRevision = null } = {}) {
+  orchestratorService.assertProviderTaskAvailable(taskId);
   // Before appending another user message or starting another Run, require
   // reconciliation of any earlier uncertain transport effect on this Task.
   // The single existing Store is authoritative; this performs no replay.
@@ -394,7 +399,10 @@ ipcMain.on('ordax:worker:stream', (event, snapshot) => {
 });
 
 ipcMain.handle('ordax:workspace:get', () => store.getWorkspaceSession());
-ipcMain.handle('ordax:tasks:list', () => store.listTasks());
+ipcMain.handle('ordax:tasks:list', () => {
+  const bindings=new Map(store.db.prepare('SELECT * FROM lab_task_bindings').all().map(row=>[row.task_id,row]));
+  return store.listTasks().map(task=>({...task,lab_binding:bindings.get(task.id)||null}));
+});
 ipcMain.handle('ordax:tasks:create', (_event, title) => decorateTask(store.createTask(String(title || 'Nova tarefa'))));
 ipcMain.handle('ordax:tasks:get', (_event, id) => getTaskView(id));
 ipcMain.handle('ordax:tasks:messages:page', (_event, { taskId, before }) => {
@@ -563,9 +571,19 @@ ipcMain.handle('ordax:chat:visible', (_event, visible) => {
   layoutViews();
   return chatVisible;
 });
-ipcMain.handle('ordax:tasks:send', async (_event, { taskId, content, newSession = false, draftRevision = null }) => {
+ipcMain.handle('ordax:tasks:send', async (event, { taskId, content, newSession = false, draftRevision = null, requestId = null }) => {
+  requireTrustedSupervisorRenderer(event);
   const prompt = String(content || '').trim();
   if (!prompt) throw new Error('content_required');
+  const binding=store.db.prepare('SELECT project_id FROM lab_task_bindings WHERE task_id=?').get(String(taskId));
+  if(binding) {
+    if(newSession)throw Error('orchestrator_explicit_rotation_required');
+    const receipt=await orchestratorService.invoke(localOrchestratorContext,'work_send',{
+      projectId:binding.project_id,taskId:String(taskId),content:prompt,
+      requestId:requestId||randomUUID(),...(draftRevision!==null?{draftRevision}:{})});
+    if(receipt.status!=='succeeded')throw Error('orchestrator_reconciliation_required');
+    return {task:getTaskView(taskId),command:receipt};
+  }
   return enqueueExecution(() => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision }));
 });
 
@@ -601,6 +619,36 @@ function requireTrustedSupervisorRenderer(event) {
     throw new Error('supervisor_ipc_sender_denied');
   }
 }
+
+// One App service for native UI and the MCP adapter. The fixed identity is
+// local-only; it is NOT exported as authentication for a remote MCP endpoint.
+const localOrchestratorContext=Object.freeze({actorId:'lab-owner',clientId:'lab-ui',
+  workspaceSessionId:store.getWorkspaceSession().id});
+const orchestratorService=new OrchestratorService({
+  store,authorize:({context})=>context===localOrchestratorContext,
+  provider:{busy:()=>Boolean(liveRun||worker?.active),send:async({taskId,content,draftRevision})=>
+    chatReceiptFromRunTask(await enqueueExecution(()=>runTask(taskId,content,{newSession:false,draftRevision})))},
+  coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
+    isEnabled:()=>process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1'})
+});
+orchestratorService.recoverInterruptedCommands();
+const localOrchestratorMcp=createOrchestratorMcp({service:orchestratorService,
+  getContext:()=>localOrchestratorContext,version:app.getVersion()});
+ipcMain.handle('ordax:orchestrator:invoke',async(event,payload)=>{
+  requireTrustedSupervisorRenderer(event);
+  const result=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
+  if(ORCHESTRATOR_TOOLS.some(t=>t.operation===payload?.operation&&!t.readOnly)&&win&&!win.isDestroyed())
+    win.webContents.send('ordax:orchestrator:changed');
+  return result;
+});
+// Local protocol conformance/host integration entrypoint, never arbitrary eval.
+ipcMain.handle('ordax:orchestrator:mcp',async(event,message)=>{
+  requireTrustedSupervisorRenderer(event);
+  const result=await localOrchestratorMcp.handle(message);
+  if(message?.method==='tools/call'&&ORCHESTRATOR_TOOLS.some(t=>t.name===message.params?.name&&!t.readOnly)&&win&&!win.isDestroyed())
+    win.webContents.send('ordax:orchestrator:changed');
+  return result;
+});
 
 ipcMain.handle('ordax:supervisor:status', (event) => {
   requireTrustedSupervisorRenderer(event);
@@ -710,3 +758,4 @@ app.on('will-quit', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
+

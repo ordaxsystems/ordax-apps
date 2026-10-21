@@ -1,5 +1,18 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Incremento solicitado — Orchestrator Lab e MCP sem visão (2026-10-21)
+
+Exceção explícita à rodada geral: o proprietário pediu iniciar o MCP integrado
+e atualizar front/backend do Lab. Owner Apps: serviço e domínio de projetos,
+orquestradores, missão, chat e conversas de trabalho, catálogo de 14 operações
+e adapter MCP local sobre o mesmo Store/executor. UI não usa screenshots para
+descobrir/acionar operações próprias. Contexto remoto, OAuth/grants e transporte
+continuam Platform/Runtime; nenhum novo backend de identidade, inferência global
+ou executor de dispositivo foi criado. Testes locais iniciais: 330 produto e
+38 bootstrap; gate App-only Windows empacotado adicionado, resultado consultar
+no commit. Conector externo/24h/autonomia permanecem pendentes.
+[Owner, contratos, limites, riscos e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
+
 ## Frente P0 — Agentic Apps / Semantic UI / Test Runtime (2026-10-15)
 
 Decisão transversal: todo app OrdaX first-party deve convergir para operação por **capabilities tipadas** e testes por **UI semântica**, mantendo mouse/teclado/screenshot como camadas de fallback ou validação da interação humana. IA local, GPT, Claude e futuros clientes devem usar a mesma semântica/capability; não criar forks por provedor nem exigir screenshot para descobrir controles de apps que o próprio OrdaX possui.
@@ -593,3 +606,4 @@ Por instrução explícita do usuário, o incremento da experiência desktop pas
 A conversa sincronizada continua usando ChatGPT Web. O projeto passou de modal a espaço de trabalho com Arquivos, Git, Busca, Preview (estado) e Continuidade (briefing/get/update). As ações usam o mesmo Product API autorizado, lista fixa, limites, revisão para mutações e journal sem reenvio automático. Perfil, session partition e rascunhos mantêm os nomes internos anteriores para preservar dados/login. Plugin no owner Platform: display name `ORDAX Studio`, source `0.4.8`, ID estável `ordax-chatgpt`; seleção aceita também o nome legado.
 
 O workspace avançado Studio foi preservado; sua adoção completa e o host Windows canônico exigem paridade no Runtime. Não portar informalmente pairing, grants ou execution authority. Fonte local e pacote portátil não representam publicação/ativação. Critérios de aceite, contratos, riscos e matriz de recursos em [STUDIO-CONVERSATION-REPLACEMENT.md](docs/STUDIO-CONVERSATION-REPLACEMENT.md).
+

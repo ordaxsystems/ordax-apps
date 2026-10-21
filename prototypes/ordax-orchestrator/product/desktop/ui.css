@@ -270,3 +270,20 @@ button{color:inherit}
   .chat-column{margin-left:76px;height:100vh}
   .task-head{padding-left:13px;padding-right:13px}.task-head p{max-width:220px}.task-avatar{display:none}
 }
+
+/* Project/coordinator controls share the existing Lab layout and typography. */
+.orchestration-navigation { display:grid; gap:7px; padding:12px 16px; max-height:38vh; overflow:auto; }
+.orchestration-navigation form { display:grid; gap:6px; padding:8px 0; }
+.orchestration-navigation label { font-size:12px; opacity:.8; }
+.orchestration-navigation select,.orchestration-navigation input,.orchestration-navigation textarea,
+.orchestration-panel input,.orchestration-panel textarea { width:100%; box-sizing:border-box; padding:8px; border:1px solid #3e454d; border-radius:8px; background:#171b21; color:#f0f3f7; font:inherit; }
+.orchestration-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.orchestration-panel { display:flex; flex:1; flex-direction:column; min-height:0; padding:24px; gap:14px; overflow:auto; }
+.orchestration-panel[hidden],.orchestration-navigation form[hidden] { display:none; }
+.orchestration-panel header p { white-space:pre-wrap; opacity:.8; }
+.coordinator-messages { flex:1; min-height:120px; overflow:auto; }
+.coordinator-message { padding:14px 0; border-bottom:1px solid #3e454d; }
+.coordinator-message p { white-space:pre-wrap; overflow-wrap:anywhere; }
+#coordinatorComposer { display:grid; gap:8px; }
+.orchestration-notice { margin:0; padding:6px 20px; font-size:12px; }
+.orchestration-notice:empty { display:none; }

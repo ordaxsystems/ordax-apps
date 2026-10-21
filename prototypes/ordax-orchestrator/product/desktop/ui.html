@@ -17,7 +17,31 @@
         </div>
       </header>
 
-      <button id="newTask" class="primary new-task">+ Nova conversa</button>
+      <section class="orchestration-navigation" aria-label="Projetos e orquestradores">
+        <label for="projectSelect">Projeto</label>
+        <select id="projectSelect"><option value="">Conversas sem projeto</option></select>
+        <details id="projectSetup"><summary>Novo projeto</summary>
+          <form id="newProjectForm">
+            <label for="projectName">Nome</label><input id="projectName" maxlength="140" required />
+            <label for="projectObjective">Objetivo</label><textarea id="projectObjective" maxlength="4000" rows="2"></textarea>
+            <button type="submit">Criar projeto</button>
+          </form>
+        </details>
+        <label for="orchestratorSelect">Orquestrador</label>
+        <select id="orchestratorSelect"><option value="">Selecione um orquestrador</option></select>
+        <div class="orchestration-actions">
+          <button id="openOrchestrator" type="button" disabled>Conversar</button>
+          <button id="pauseOrchestrator" type="button" disabled>Pausar</button>
+        </div>
+        <details><summary>Configurar orquestrador</summary>
+          <form id="newOrchestratorForm" hidden>
+            <label for="orchestratorName">Nome</label><input id="orchestratorName" maxlength="140" required />
+            <label for="missionInput">Missão e instruções</label><textarea id="missionInput" maxlength="4000" rows="3" required></textarea>
+            <button type="submit">Criar orquestrador</button>
+          </form>
+        </details>
+      </section>
+      <button id="newTask" class="primary new-task">+ Nova conversa de trabalho</button>
 
       <div class="search-wrap">
         <span aria-hidden="true">⌕</span>
@@ -60,6 +84,22 @@
     </aside>
 
     <section class="chat-column">
+      <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
+        <header><h2 id="orchestratorTitle">Orquestrador</h2><p id="orchestratorMission"></p></header>
+        <p id="orchestrationConnection" role="status"></p>
+        <div id="coordinatorMessages" class="coordinator-messages" aria-live="polite"></div>
+        <form id="coordinatorComposer">
+          <label for="coordinatorPrompt">Mensagem ao orquestrador</label>
+          <textarea id="coordinatorPrompt" maxlength="4000" rows="3" required></textarea>
+          <button id="coordinatorSend" type="submit">Enviar ao orquestrador</button>
+        </form>
+        <form id="newScopedWorkForm" class="orchestration-actions">
+          <label for="scopedWorkTitle">Nova frente</label>
+          <input id="scopedWorkTitle" maxlength="140" placeholder="Nome do trabalho" required />
+          <button type="submit">Criar conversa de trabalho</button>
+        </form>
+      </section>
+      <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
       <section id="taskPanel" class="task-panel hidden">
         <header class="task-head">
           <div class="task-identity">
@@ -257,3 +297,4 @@
   <script type="module" src="./ui.js"></script>
 </body>
 </html>
+

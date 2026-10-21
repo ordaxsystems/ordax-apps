@@ -1,6 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ordax', {
+  orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
+  orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
+  onOrchestratorChanged: callback => {
+    const listener=()=>callback();
+    ipcRenderer.on('ordax:orchestrator:changed',listener);
+    return ()=>ipcRenderer.removeListener('ordax:orchestrator:changed',listener);
+  },
   supervisorStatus: () => ipcRenderer.invoke("ordax:supervisor:status"),
   supervisorSaveKey: key => ipcRenderer.invoke('ordax:supervisor:key:save',key),
   supervisorRemoveKey: () => ipcRenderer.invoke('ordax:supervisor:key:remove'),
@@ -40,3 +47,4 @@ contextBridge.exposeInMainWorld('ordax', {
   onTaskStage: callback => ipcRenderer.on('ordax:task:stage', (_event, payload) => callback(payload)),
   onTaskStream: callback => ipcRenderer.on('ordax:task:stream', (_event, payload) => callback(payload))
 });
+
