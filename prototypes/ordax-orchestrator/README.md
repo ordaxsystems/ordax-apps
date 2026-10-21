@@ -1,3 +1,13 @@
+## Analisar conversas pelo Orquestrador — alpha.5
+
+Selecione um projeto e orquestrador, habilite o chat pela API Groq e use
+**Analisar conversas**. A ação envia ao Groq até quatro frentes recentes daquele
+orquestrador, até cinco mensagens por frente e até oito mensagens recentes do
+chat central, além do nome/objetivo do projeto e missão do orquestrador. O App
+exclui anexos e links e redige padrões comuns de tokens e senhas. A análise fica
+no histórico central e só recomenda próximos passos; ela não envia prompts ao
+ChatGPT nem executa as recomendações. Cada envio à API ocorre após ação explícita.
+
 ## Teste local do chat por API — alpha.4
 
 O chat de coordenação pode ser ativado na interface, sem MCP ou variável de ambiente.
@@ -28,9 +38,9 @@ não são executadas automaticamente. Não há serviço 24h ativo ou nova releas
 Detalhes, testes e dependências em
 [auditoria do incremento](docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
 
-**Versão própria do Lab: `0.2.0-alpha.2` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
+**Versão própria do Lab: `0.2.0-alpha.5` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
 
-**Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release, sem supervisor de IA ativo e sem submissão automática de tarefas. Esta é uma derivação controlada do **OrdaX Flow/Grátis 0.4.12**, não uma modificação do Grátis existente.
+**Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release nem submissão automática de tarefas. Preserva os fluxos herdados de Task/Run/Store, ChatGPT Web, continuidade e sessão do **OrdaX Flow/Grátis 0.4.12**; os novos recursos de análise/coordenador permanecem explícitos e separados. Esta é uma derivação controlada, não uma modificação do Grátis existente.
 
 ## Objetivo
 

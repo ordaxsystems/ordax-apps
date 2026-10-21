@@ -2,6 +2,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput} from './orchestrator-contract.mjs';
 import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
+import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
@@ -134,7 +135,7 @@ export class OrchestratorService {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     this.requireAccess(context,operation,input.projectId||null);
     if(tool.readOnly)return this.read(context,operation,input);
-    if(['work_send','orchestrator_chat'].includes(operation))return this.dispatch(context,operation,input);
+    if(['work_send','orchestrator_chat','orchestrator_analyze'].includes(operation))return this.dispatch(context,operation,input);
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
@@ -201,6 +202,33 @@ export class OrchestratorService {
     return {state:task.status==='completed'?'completed':'awaiting_instruction',mayAutomaticallySend:false};
   }
 
+  analysisContext(projectId,orchestratorId) {
+    const owner=this.orchestrator(projectId,orchestratorId);
+    const project=this.db.prepare(`SELECT name,objective FROM lab_projects
+      WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
+    if(!project)throw Error('orchestrator_project_unavailable');
+    const rows=this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+      (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+        AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 4`)
+      .all(projectId,orchestratorId,this.store.getWorkspaceSession().id);
+    return {
+      project:{name:redactOrchestratorAnalysisText(project.name,160),objective:redactOrchestratorAnalysisText(project.objective,600)},
+      orchestrator:{name:redactOrchestratorAnalysisText(owner.name,160),mission:redactOrchestratorAnalysisText(owner.mission,800)},
+      scope:{includedWorkCount:rows.length,workLimit:4,messageLimitPerWork:5},
+      works:rows.map(row=>{
+        const runs=this.db.prepare(`SELECT status,started_at,completed_at,heartbeat_at
+          FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 3`).all(row.id);
+        const messages=this.store.messages(row.id,{limit:5}).map(message=>({
+          role:message.role,content:redactOrchestratorAnalysisText(message.content,1200),createdAt:message.created_at
+        }));
+        return {title:redactOrchestratorAnalysisText(row.title,180),status:row.status,updatedAt:row.updated_at,
+          providerSegments:row.provider_segments,monitor:this.monitor(row,runs),runs,messages};
+      })
+    };
+  }
+
   mutate(operation,input) {
     const now=this.store.now();
     if(operation==='project_create') {
@@ -248,14 +276,21 @@ export class OrchestratorService {
       context.actorId,context.clientId,input.requestId);
     // Return an accepted command even if the provider is now offline; never replay.
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
-    const orch=operation==='orchestrator_chat'?this.orchestrator(input.projectId,input.orchestratorId):null;
+    const isWorkSend=operation==='work_send';
+    const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
     const task=operation==='work_send'?this.task(input.projectId,input.taskId,'work'):
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
     if(owner.status==='paused')throw Error('orchestrator_paused');
-    const port=operation==='work_send'?this.provider:this.coordinator;
+    const port=isWorkSend?this.provider:this.coordinator;
     if(typeof port?.send!=='function'||(port.available&&port.available()!==true))
       throw Error('orchestrator_provider_unavailable');
+    const analysisContext=operation==='orchestrator_analyze'
+      ?this.analysisContext(input.projectId,input.orchestratorId):null;
+    if(analysisContext&&analysisContext.works.length===0)throw Error('orchestrator_works_unavailable');
+    const content=operation==='orchestrator_analyze'
+      ?'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
+      :input.content;
     assertTaskHasNoUncertainTransport(this.store,task.id);
     // A single global executor until multi-session E2E proves concurrency.
     if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
@@ -272,17 +307,18 @@ export class OrchestratorService {
     try {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
-      if(operation==='orchestrator_chat')this.transaction(()=>this.store.appendMessage(task.id,'user',input.content));
-      const reply=await port.send({taskId:task.id,content:input.content,draftRevision:input.draftRevision??null,
-        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id});
+      if(!isWorkSend)this.transaction(()=>this.store.appendMessage(task.id,'user',content));
+      const reply=await port.send({taskId:task.id,content,draftRevision:input.draftRevision??null,
+        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext});
       this.requireAccess(context,operation,input.projectId);
-      if(operation==='orchestrator_chat') {
+      if(!isWorkSend) {
         if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
           throw Error('orchestrator_reply_invalid');
         return this.transaction(()=>{
           this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
-            proposalsExecuted:0,provider:'groq'});
+            proposalsExecuted:0,provider:'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
+              messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})});
         });
       }
       // Existing runTask can return an error result instead of throwing.

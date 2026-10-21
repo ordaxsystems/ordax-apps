@@ -165,6 +165,37 @@ test('coordinator chat is separate from GPT work; calls require a port and persi
   await f.call('orchestrator_chat',input);assert.equal(calls,1);
 });
 
+test('explicit coordinator analysis is bounded to one project and orchestrator and never sends GPT work',async t=>{
+  let analysis,calls=0,providerCalls=0;
+  const f=fixture(t,{provider:{send:async()=>{providerCalls++;throw Error('must_not_send');}},
+    coordinator:{available:()=>true,send:async args=>{calls++;analysis=args.analysisContext;return {content:'A frente precisa de revisão; recomendo verificar a resposta mais recente.'};}}});
+  const a=await project(f);
+  for(let i=0;i<5;i++)await f.call('work_create',{projectId:a.p,orchestratorId:a.o,title:`Frente ${i}`});
+  const other=(await f.call('orchestrator_create',{projectId:a.p,name:'Outro orquestrador',mission:'Outra área'})).result;
+  const otherWork=(await f.call('work_create',{projectId:a.p,orchestratorId:other.orchestratorId,title:'OUTRA_FRENTE_PRIVADA'})).result.taskId;
+  const b=await project(f,'Projeto privado');
+  f.store.appendMessage(a.w,'user','Primeira mensagem antiga');
+  for(let i=0;i<6;i++)f.store.appendMessage(a.w,i%2?'assistant':'user',`Mensagem recente ${i}`);
+  f.store.appendMessage(a.w,'user','api_key=very-secret-value gsk_abcdefghijklmnopqrstuv https://private.example/chat');
+  f.store.appendMessage(otherWork,'user','OUTRO_ORQUESTRADOR_PRIVADO');
+  f.store.appendMessage(b.w,'user','OUTRO_PROJETO_PRIVADO');
+  const input={requestId:'analysis-once',projectId:a.p,orchestratorId:a.o};
+  const receipt=await f.call('orchestrator_analyze',input);
+  assert.equal(receipt.status,'succeeded');
+  assert.deepEqual(receipt.result.analysis,{workCount:4,messageCount:5});
+  assert.equal(calls,1);assert.equal(providerCalls,0);
+  assert.equal(analysis.works.length,4);
+  assert.ok(analysis.works.every(work=>work.title!=='OUTRA_FRENTE_PRIVADA'));
+  const serialized=JSON.stringify(analysis);
+  assert.doesNotMatch(serialized,/OUTRO_ORQUESTRADOR_PRIVADO|OUTRO_PROJETO_PRIVADO|OUTRA_FRENTE_PRIVADA/);
+  assert.doesNotMatch(serialized,/very-secret-value|gsk_abcdefghijklmnopqrstuv|https:\/\/private\.example/);
+  assert.match(serialized,/\[redigido\]|\[credencial redigida\]|\[link omitido\]/);
+  assert.equal(analysis.works.find(work=>work.title==='Site').messages.length,5);
+  assert.doesNotMatch(serialized,/Primeira mensagem antiga/);
+  assert.deepEqual(f.store.messages(a.chat).map(message=>message.role).sort(),['assistant','user']);
+  await f.call('orchestrator_analyze',input);assert.equal(calls,1,'same receipt never repeats the API request');
+});
+
 test('late response after authorization revocation is not disclosed or falsely confirmed',async t=>{
   let resolve;
   const gate=new Promise(r=>resolve=r);
@@ -193,7 +224,7 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.equal(init.result.protocolVersion,'2025-11-25');
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const tools=(await rpc('tools/list')).result.tools;
-  assert.equal(tools.length,14);
+  assert.equal(tools.length,15);
   assert.ok(tools.every(tool=>tool.inputSchema.additionalProperties===false));
   const created=await rpc('tools/call',{name:'orchestrator_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   const receipt=created.result.structuredContent;
@@ -209,17 +240,20 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
 
 test('Groq coordinator is opt-in, project scoped and refuses a truncated response without retries',async t=>{
   const f=fixture(t),a=await project(f),b=await project(f,'Other secret project');
-  f.store.appendMessage(a.chat,'user','Planeje');
+  f.store.appendMessage(a.chat,'user','Planeje api_key=history-secret https://private.example/path');
   f.store.appendMessage(b.chat,'user','OTHER_PRIVATE_TEXT');
   let calls=0;
   const adapter=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-only',isEnabled:()=>true,
     fetchImpl:async(_url,options)=>{
       calls++;const body=JSON.parse(options.body);
-      assert.doesNotMatch(JSON.stringify(body),/OTHER_PRIVATE_TEXT|Other secret project|fixture-only/);
+      assert.doesNotMatch(JSON.stringify(body),/OTHER_PRIVATE_TEXT|Other secret project|fixture-only|history-secret|https:\/\/private\.example/);
+      assert.doesNotMatch(JSON.stringify(body),/analysis-secret|https:\/\/analysis\.example/);
+      assert.match(body.messages[0].content,/somente consultiva/);
       assert.match(options.headers.Authorization,/fixture-only/);
       return {ok:true,text:async()=>JSON.stringify({choices:[{finish_reason:'length',message:{content:'Partial'}}]})};
     }});
-  await assert.rejects(adapter.send({taskId:a.chat,projectId:a.p,mission:'Planejar'}),/incomplete/);
+  await assert.rejects(adapter.send({taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Planejar',
+    analysisContext:{works:[{title:'Site',messages:[{content:'api_key=analysis-secret https://analysis.example/path'}]}]}}),/incomplete/);
   assert.equal(calls,1);
   const disabled=createGroqCoordinatorConversation({store:f.store,getApiKey:()=>null,isEnabled:()=>false,
     fetchImpl:async()=>{throw Error('must not call');}});

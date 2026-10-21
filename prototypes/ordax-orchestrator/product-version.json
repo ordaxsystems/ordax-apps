@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.4",
+  "version": "0.2.0-alpha.5",
   "channel": "alpha",
-  "name": "Chat por API ativado na interface local",
+  "name": "Análise explícita das conversas pelo Orquestrador",
   "distributionEnabled": false,
   "releaseDate": null
 }

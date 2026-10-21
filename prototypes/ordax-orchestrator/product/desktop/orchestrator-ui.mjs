@@ -2,11 +2,17 @@
 // ChatGPT, coordinates or direct SQLite access is used to operate the Lab.
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator}) {
   const $=id=>document.getElementById(id);
-  let projectId=null,orchestratorId=null,orchestrators=[],epoch=0,chatTaskId=null;
-  let coordinatorOpen=false,coordinatorAvailable=false;
+  let projectId=null,orchestratorId=null,orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
+  let coordinatorOpen=false,coordinatorAvailable=false,analysisBusy=false;
   const requestKeys=new Map();
   const status=text=>{$('orchestrationNotice').textContent=text;};
   const call=(operation,input={})=>api.orchestratorInvoke(operation,input);
+  function syncCoordinatorActions() {
+    const selected=orchestrators.find(item=>item.id===orchestratorId);
+    const enabled=coordinatorAvailable&&Boolean(selected)&&selected.status!=='paused';
+    $('coordinatorSend').disabled=!enabled;
+    $('analyzeWorks').disabled=!enabled||workCount===0||analysisBusy;
+  }
   function renderProjectNavigation(projects) {
     const list=$('projectNavList');list.replaceChildren();
     if(!projects.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Crie seu primeiro projeto.';list.append(empty);return;}
@@ -103,11 +109,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
-    if(!p) {renderWorks([]);onScopeChange(null);return;}
+    if(!p) {workCount=0;renderWorks([]);onScopeChange(null);syncCoordinatorActions();return;}
     const {works}=await call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})});
     if(generation!==epoch)return;
+    workCount=works.length;
     renderWorks(works);
     onScopeChange(new Set(works.map(w=>w.id)));
+    syncCoordinatorActions();
   }
   async function refreshProjects() {
     const {projects}=await call('projects_list');
@@ -131,7 +139,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('newOrchestratorForm').hidden=!p;
     $('orchestratorMission').textContent=selected?.mission||'Configure um orquestrador para este projeto.';
     $('orchestratorTitle').textContent=selected?.name||'Orquestrador';
-    $('coordinatorSend').disabled=!coordinatorAvailable||!selected||selected.status==='paused';
+    syncCoordinatorActions();
     renderOrchestratorNavigation();
     await refreshWorks();
     return orchestrators;
@@ -224,6 +232,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       }
       await renderCoordinator();
     });
+  });
+  $('analyzeWorks').addEventListener('click',async()=>{
+    if($('analyzeWorks').disabled||!projectId||!orchestratorId)return;
+    const p=projectId,o=orchestratorId;
+    analysisBusy=true;syncCoordinatorActions();
+    status('Enviando ao Groq somente o histórico recente limitado deste orquestrador…');
+    try {
+      const receipt=await command('orchestrator_analyze',{projectId:p,orchestratorId:o});
+      if(p!==projectId||o!==orchestratorId)return;
+      if(receipt.status==='succeeded')status('Análise registrada no histórico. Nenhuma recomendação foi executada.');
+      await renderCoordinator();
+    }catch{error();}
+    finally{analysisBusy=false;syncCoordinatorActions();}
   });
   $('coordinatorPrompt').addEventListener('keydown',event=>{
     if(event.key==='Enter'&&!event.shiftKey&&!$('coordinatorSend').disabled){event.preventDefault();$('coordinatorComposer').requestSubmit();}

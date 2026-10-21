@@ -143,6 +143,9 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
     assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/Conversas no GPT/);
   assert.match(html,/Nova conversa no GPT/);
+  assert.match(html,/id="analyzeWorks"/);
+  assert.match(html,/até quatro conversas recentes e oito mensagens do chat central/);
+  assert.match(orchestration,/command\('orchestrator_analyze'/);
   assert.match(orchestration,/call\('work_list'/);
   assert.match(orchestration,/onOpenWork\(work\.id\)/);
   assert.match(orchestration,/orchestrator-focus/);

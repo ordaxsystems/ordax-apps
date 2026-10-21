@@ -2,6 +2,14 @@
 
 A versão do aplicativo Lab é independente da versão do snapshot de origem OrdaX Grátis/Flow. **product-version.json** é a SSOT da versão do produto. O package.json do bootstrap e os package.json / package-lock.json gerados são projeções obrigatoriamente verificadas.
 
+## 0.2.0-alpha.5 — 2026-10-21
+
+- Ação explícita “Analisar conversas” envia ao Groq até quatro frentes recentes do orquestrador selecionado, com até cinco mensagens por frente.
+- O contexto é isolado por projeto/orquestrador, limitado, sem anexos/URLs e com padrões comuns de credenciais redigidos.
+- A análise é registrada no histórico do chat central e produz recomendações consultivas; nenhuma proposta chama o worker ChatGPT automaticamente.
+- UI/API exigem a configuração e ativação local da API já existente. Não altera Flow/Grátis, identidade, Runtime ou Platform.
+- Prévia de desenvolvimento; integração de propostas aprováveis e abertura/envio de novas sessões ainda não implementadas nesta fatia. Sem release/distribuição.
+
 ## 0.2.0-alpha.4 — 2026-10-21
 
 - Configuração da chave e ativação do chat por API diretamente na interface.

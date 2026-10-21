@@ -1,5 +1,27 @@
 # OrdaX Orchestrator Lab — Estado atual de engenharia
 
+## Alpha.5 — análise explícita e limitada das conversas do projeto (2026-10-21)
+
+Em implementação na PR #268. A UI oferece **Analisar conversas**, habilitado
+somente quando a API Groq está configurada/ativada e há frentes do orquestrador
+selecionado. A chamada envia até quatro frentes recentes, com até cinco
+mensagens de cada, somente dentro do projeto/orquestrador selecionados. Anexos e
+URLs não entram no contexto; padrões comuns de chaves/tokens/senhas são
+redigidos. A análise fica no chat central e só recomenda ações. Ela não chama o
+worker ChatGPT, não abre sessões externas e não executa propostas.
+
+O incremento usa o mesmo `OrchestratorService`, Store/SQLite e adapter Groq do
+Lab; não cria outro executor, fila ou banco e não modifica o Flow/Grátis pinado
+em `081a7ce989721106aaf27a0c9d09cf9d49713a65`. O catálogo MCP cresce de 14 para
+15 operações através do mesmo serviço. Teste focal de serviço e contrato de UI:
+37/37 aprovados; validação integral e CI do commit ainda pendentes nesta edição.
+Próximos gates: validar no Electron empacotado; depois construir propostas
+tipadas e aprovação explícita sobre o executor existente. Envio de prompts,
+automação contínua, W3/W4 externos e abertura de sessões independentes seguem
+desligados/não implementados.
+Detalhes de contexto, privacidade, evidências e limite de execução:
+[auditoria alpha.5](../audits/ORCHESTRATOR-CONVERSATION-ANALYSIS-2026-10-21.md).
+
 ## Continuidade — launcher Python/Windows validado
 
 Source App `92c510f8f587e6efbf3fbe81aa8d4b1d427e1b56`:

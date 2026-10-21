@@ -17,6 +17,7 @@ const definitions = [
   ['work_send','Send one authorized prompt through the existing App executor. An uncertain command must never be replayed.',{projectId:id,taskId:id,content:text(6000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','taskId','content'],false],
   ['conversation_rotate','Prepare a new GPT segment for the same work. Does not send or bypass limits.',{projectId:id,taskId:id},['projectId','taskId'],false],
   ['orchestrator_chat','Send one message to the configured API coordinator. Records the reply; proposals do not execute automatically.',{projectId:id,orchestratorId:id,content:text(4000)},['projectId','orchestratorId','content'],false],
+  ['orchestrator_analyze','Analyze a bounded set of recent conversations in this project with the configured coordinator. Records recommendations only; does not send to GPT.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],false],
   ['command_get','Inspect a previously accepted command without repeating it.',{commandId:id},['commandId'],true]
 ];
 export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,description,properties,required,readOnly]) => ({
@@ -25,7 +26,7 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
   annotations:{readOnlyHint:readOnly,destructiveHint:false,idempotentHint:true,
-    openWorldHint:['work_send','orchestrator_chat'].includes(operation)}
+    openWorldHint:['work_send','orchestrator_chat','orchestrator_analyze'].includes(operation)}
 })));
 
 export function validateOrchestratorInput(operation, input) {

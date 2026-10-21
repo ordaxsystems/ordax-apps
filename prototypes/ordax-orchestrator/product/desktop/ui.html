@@ -95,6 +95,10 @@
           </div>
         </header>
         <p id="orchestrationConnection" class="orchestration-connection" role="status"></p>
+        <div class="coordinator-analysis-actions">
+          <button id="analyzeWorks" type="button" class="mini-secondary" disabled>Analisar conversas</button>
+          <small id="analysisScopeHint">Envia ao Groq o contexto do projeto/orquestrador, até quatro conversas recentes e oito mensagens do chat central. Sem anexos ou links; recomendações não executam ações.</small>
+        </div>
         <div id="coordinatorMessages" class="coordinator-messages" aria-live="polite"></div>
         <form id="coordinatorComposer">
           <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>

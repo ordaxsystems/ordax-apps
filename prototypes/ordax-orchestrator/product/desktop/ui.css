@@ -328,6 +328,10 @@ body.orchestrator-focus .app-shell{grid-template-columns:250px minmax(430px,1fr)
 .coordinator-enable:hover{background:#175343}
 .coordinator-rail-toggle{display:none}
 .orchestration-connection{margin:0;padding:8px 22px;border-bottom:1px solid #17212b;color:#718196;font-size:10px;min-height:30px}
+.coordinator-analysis-actions{display:flex;align-items:center;gap:12px;padding:8px 22px;border-bottom:1px solid #17212b}
+.coordinator-analysis-actions button{flex:none}
+.coordinator-analysis-actions small{color:#718196;font-size:10px;line-height:1.45}
+.coordinator-analysis-actions button:disabled{opacity:.48;cursor:not-allowed}
 .coordinator-messages{flex:1;min-height:0;padding:18px 24px;overflow:auto;display:flex;flex-direction:column;gap:12px}
 .coordinator-message{width:min(100%,790px);margin:0 auto;padding:12px 14px;border:1px solid #202c39;border-radius:12px;background:#101720}
 .coordinator-message strong{display:block;margin-bottom:6px;color:#8190a3;font-size:10px}
