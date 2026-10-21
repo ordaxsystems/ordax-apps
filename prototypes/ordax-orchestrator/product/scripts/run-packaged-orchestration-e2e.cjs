@@ -5,6 +5,7 @@ const path=require('node:path');
 const os=require('node:os');
 const {spawn}=require('node:child_process');
 const {createHostFixture,verifyHostFixture}=require('./orchestrator-host-e2e-client.cjs');
+let phase='preflight';
 (async()=>{
   if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')
     throw Error('packaged_orchestration_requires_windows_ci');
@@ -25,6 +26,7 @@ const {createHostFixture,verifyHostFixture}=require('./orchestrator-host-e2e-cli
   const hostFixture=createHostFixture(child);
   let spawnFailed=false;child.on('error',()=>{spawnFailed=true;});
   try {
+    phase='native_app_scenario';
     const runner=spawn(process.execPath,[path.join(__dirname,'live-ui-orchestration-smoke.cjs')],
       {cwd:root,env,stdio:'inherit'});
     const code=await new Promise((resolve,reject)=>{
@@ -33,6 +35,7 @@ const {createHostFixture,verifyHostFixture}=require('./orchestrator-host-e2e-cli
       runner.on('exit',value=>{clearTimeout(timer);resolve(value);});
     });
     if(spawnFailed||code!==0)throw Error('packaged_orchestration_scenario_failed');
+    phase='runtime_host_scenario';
     await verifyHostFixture({child,root,profile,exchange:hostFixture.exchange});
   }finally{
     // Exact child PID owned by this runner, never process-name matching.
@@ -41,4 +44,14 @@ const {createHostFixture,verifyHostFixture}=require('./orchestrator-host-e2e-cli
       kill.on('error',resolve);kill.on('exit',resolve);
     });
   }
-})().catch(()=>{console.error('packaged_orchestration_e2e_failed');process.exitCode=2;});
+})().catch(error=>{
+  const allowed=new Set(['packaged_orchestration_requires_windows_ci','packaged_orchestration_binary_missing',
+    'packaged_orchestration_timeout','packaged_orchestration_scenario_failed','host_identity_not_verified',
+    'host_shared_project_missing','host_shared_work_missing','host_work_state_mismatch',
+    'host_replay_guard_missing','host_signature_guard_missing','host_write_not_blocked',
+    'host_unexpected_provider_message','host_pipe_timeout','host_pipe_unavailable',
+    'host_frame_invalid','host_frame_oversized','host_fixture_requires_ci']);
+  console.error(JSON.stringify({schema:'ordax.lab.packaged-orchestration-failure.v1',phase,
+    reason:allowed.has(error?.message)?error.message:'packaged_orchestration_e2e_failed'}));
+  process.exitCode=2;
+});

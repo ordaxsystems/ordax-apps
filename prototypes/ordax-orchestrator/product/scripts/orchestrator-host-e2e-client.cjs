@@ -43,7 +43,15 @@ async function verifyHostFixture({child,root,profile,exchange}) {
       expectedDigest:proof.contentDigest,
       expectedProfile:labProfileFingerprint(path.join(profile,'OrdaX','OrchestratorLab'))});
     if(ready.ok!==true||ready.type!=='ready'||ready.sourceCommit!==process.env.GITHUB_SHA||
-      ready.contentDigest!==proof.contentDigest||ready.operations?.length!==7)throw Error('host_identity_not_verified');
+      ready.contentDigest!==proof.contentDigest||ready.operations?.length!==7) {
+      console.error(JSON.stringify({schema:'ordax.lab.host-identity-diagnostic.v1',
+        accepted:ready.ok===true,ready:ready.type==='ready',
+        commitMatches:ready.sourceCommit===process.env.GITHUB_SHA,
+        digestMatches:ready.contentDigest===proof.contentDigest,
+        operationCount:ready.operations?.length??null,
+        reason:['host_bootstrap_rejected','host_session_closed'].includes(ready.error)?ready.error:null}));
+      throw Error('host_identity_not_verified');
+    }
     const request=(operation,input={})=>{
       const body={schema,sessionId,id:randomUUID(),operation,input,
         issuedAt:Date.now(),expiresAt:Math.min(Date.now()+20000,expiresAt)};
