@@ -126,7 +126,14 @@ jobs:
           if ($packagedProof.schema -ne 'ordax.lab.packaged-runtime-proof.v1' -or
               $packagedProof.status -ne 'verified' -or
               $packagedProof.sourceCommit -ne $env:GITHUB_SHA -or
-              $packagedProof.contentDigest -notmatch '^[a-f0-9]{64}
+              $packagedProof.contentDigest -notmatch '^[a-f0-9]{64}$' -or
+              $packagedProof.fileCount -lt 30) { throw 'w8_packaged_identity_invalid' }
+          $archive = Join-Path $dist 'win-unpacked/resources/app.asar'
+          if (-not (Test-Path -LiteralPath $archive)) { throw 'w8_packaged_asar_missing' }
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne
+              $packagedProof.asarSha256) { throw 'w8_packaged_asar_hash_mismatch' }
+          $manifest = [ordered]@{
+            schema = 'ordax.lab.unsigned-e2e-candidate.v1'
             build_type = 'unsigned_test_only'
             workflow_run_id = $env:GITHUB_RUN_ID
             checkout_sha = $env:GITHUB_SHA
@@ -148,31 +155,5 @@ jobs:
             prototypes/ordax-orchestrator/product/dist/OrdaX-Orchestrator-Lab-*.exe
             prototypes/ordax-orchestrator/product/dist/orchestrator-e2e-build.json
             prototypes/ordax-orchestrator/product/dist/orchestrator-packaged-proof.json
-          retention-days: 3
-          if-no-files-found: error
- -or
-              $packagedProof.fileCount -lt 30) { throw 'w8_packaged_identity_invalid' }
-          $archive = Join-Path $dist 'win-unpacked/resources/app.asar'
-          if (-not (Test-Path -LiteralPath $archive)) { throw 'w8_packaged_asar_missing' }
-          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne
-              $packagedProof.asarSha256) { throw 'w8_packaged_asar_hash_mismatch' }
-          $manifest = [ordered]@{
-            schema = 'ordax.lab.unsigned-e2e-candidate.v1'
-            build_type = 'unsigned_test_only'
-            workflow_run_id = $env:GITHUB_RUN_ID
-            checkout_sha = $env:GITHUB_SHA
-            file = $file.Name
-            sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            app_id = 'br.com.ordax.orchestrator.lab'
-          }
-          $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $dist 'orchestrator-e2e-build.json') -Encoding utf8
-
-      - name: Upload short-lived unsigned Windows E2E candidate
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: ordax-orchestrator-unsigned-e2e-${{ github.sha }}
-          path: |
-            prototypes/ordax-orchestrator/product/dist/OrdaX-Orchestrator-Lab-*.exe
-            prototypes/ordax-orchestrator/product/dist/orchestrator-e2e-build.json
           retention-days: 3
           if-no-files-found: error
