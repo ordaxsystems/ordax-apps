@@ -1,0 +1,55 @@
+// Read-only runtime identity from the real OrdaX App via trusted IPC.
+// Never types, navigates, sends prompts, authenticates or restores data.
+const {waitForLabUiTarget,LAB_APP_MODE_PROBE}=require('./e2e-lab-target.cjs');
+const {acquireE2ELock}=require('./e2e-lock.cjs');
+acquireE2ELock('runtime-build-proof');
+(async()=>{
+ const expectedCommit=process.env.ORDAX_LAB_E2E_EXPECTED_COMMIT;
+ const expectedDigest=process.env.ORDAX_LAB_E2E_EXPECTED_DIGEST;
+ if(!/^[a-f0-9]{40}$/.test(expectedCommit||'') ||
+    !/^[a-f0-9]{64}$/.test(expectedDigest||''))
+   throw Error('lab_build_expected_identity_required');
+ const tab=await waitForLabUiTarget();
+ const ws=new WebSocket(tab.webSocketDebuggerUrl);
+ try{
+  await new Promise((resolve,reject)=>{
+   ws.onopen=resolve;ws.onerror=()=>reject(Error('lab_build_socket_not_ready'));
+  });
+  const expression='(async()=>({mode:'+LAB_APP_MODE_PROBE+
+    ',proof:await window.ordax.labBuildProof()}))()';
+  let timer;
+  const data=await Promise.race([
+    new Promise((resolve,reject)=>{
+      ws.onmessage=event=>{
+       let msg;
+       try{msg=JSON.parse(event.data)}catch{return reject(Error('lab_build_invalid_response'))}
+       if(msg.id!==1)return;
+       if(msg.error||msg.result?.exceptionDetails)
+         return reject(Error('lab_build_ipc_rejected'));
+       resolve(msg.result?.result?.value);
+      };
+      ws.send(JSON.stringify({id:1,method:'Runtime.evaluate',
+        params:{expression,awaitPromise:true,returnByValue:true}}));
+    }),
+    new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('lab_build_read_timeout')),20000)})
+  ]).finally(()=>clearTimeout(timer));
+  if(data?.mode?.view!=='app' || data?.mode?.newTask!=='BUTTON')
+    throw Error('lab_build_app_mode_required');
+  const proof=data.proof;
+  if(proof?.schema!=='ordax.lab.runtime-build.v1' || proof?.verified!==true ||
+    proof?.status!=='verified'||proof.sourceCommit!==expectedCommit||
+    proof.contentDigest!==expectedDigest)
+    throw Error('lab_build_runtime_identity_mismatch');
+  console.log(JSON.stringify({schema:'ordax.lab.runtime-app-proof.v1',
+    appMode:true,runtimeVerified:true,sourceCommit:proof.sourceCommit,
+    contentDigest:proof.contentDigest,providerMessagesSent:0,
+    cutoverPerformed:false}));
+ }finally{ws.close()}
+})().catch(e=>{
+ const allowed=new Set(['lab_build_expected_identity_required','lab_build_socket_not_ready',
+ 'lab_build_invalid_response','lab_build_ipc_rejected','lab_build_read_timeout',
+ 'lab_build_app_mode_required','lab_build_runtime_identity_mismatch']);
+ console.error(JSON.stringify({schema:'ordax.lab.runtime-app-proof.v1',ok:false,
+  reason:allowed.has(e?.message)?e.message:'lab_build_probe_unavailable'}));
+ process.exitCode=2;
+});

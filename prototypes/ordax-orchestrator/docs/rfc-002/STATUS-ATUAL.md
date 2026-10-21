@@ -378,3 +378,7 @@ O roteiro App-only W3 passou a exigir receipt-first. Novo preparador seguro cria
 ### P5/W7 — recuperação antes de atualizar o Dev (21/10/2026)
 
 Criado preflight explícito com `node:sqlite.backup()`, integrity_check, bloqueio para Run ativa, cópia/hash dos assets e manifest SHA-256 em diretório único dentro do perfil staged, sem cookies nem alterações na origem. 3/3 testes focados aprovados. Ponto de recuperação real criado para 10 Tasks/12 mensagens/8 Runs (0 ativas), 63 eventos/4 checkpoints e 0 assets. **Atualização/reinício ainda bloqueados:** revisão carregada no Electron não atestada; backup íntegro não equivale a rollback de código. [Auditoria](../audits/P5-W7-DEV-UPGRADE-RECOVERY-POINT-2026-10-21.md).
+
+### P5/W8 — identidade do runtime e staging de código (21/10/2026)
+
+Inventário próprio do produto com SHA-256 por arquivo e digest, manifesto conferido no arranque Electron **antes de abrir SQLite**, status `verified`/`unattested`/`invalid` exposto apenas em IPC local confiável; stager de candidata isolada exige Git limpo e nunca copia perfil ou envia mensagens. Política de cutover recusa runtime anterior não atestado, Run ativa ou rollback sem código verificável. 13/13 testes focados aprovados. **Ainda sem reiniciar o Dev:** backup W7 não comprova identidade da revisão carregada. [Auditoria](../audits/P5-W8-RUNTIME-BUILD-IDENTITY-2026-10-21.md).

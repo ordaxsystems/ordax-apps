@@ -19,6 +19,7 @@ import { planProviderConversation, assessProviderRotation, canonicalProviderChat
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
+import { verifyRuntimeManifest } from '../src/runtime-build-identity.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
   app.commandLine.appendSwitch('remote-debugging-port', '9445');
@@ -27,6 +28,10 @@ if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
 app.setName('OrdaX Orchestrator Lab');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
+// Capture an immutable proof VALUE at startup, before any SQLite is opened.
+// A missing manifest is legacy/unattested, never presented as a verified build.
+const runtimeBuildProof=verifyRuntimeManifest(root);
+if(runtimeBuildProof.status==='invalid') throw new Error('lab_runtime_build_integrity_failed');
 const {userRoot} = resolveLabUserRoot({
   argv:process.argv,
   localAppData:process.env.LOCALAPPDATA ||
@@ -471,6 +476,10 @@ ipcMain.handle('ordax:tasks:memory:candidates:review', (_event, { taskId, candid
 });
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
+ipcMain.handle('ordax:lab:build-proof', event => {
+  requireTrustedSupervisorRenderer(event);
+  return runtimeBuildProof;
+});
 ipcMain.handle('ordax:lab:profile-proof', event => {
   requireTrustedSupervisorRenderer(event);
   return {schema:'ordax.lab.profile-proof.v1',
