@@ -338,12 +338,43 @@ async function createWindow() {
     win.webContents.send('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, ...delta, mirrorAt:Date.now(), runStartedAt:liveRun.startedAt });
   });
 
+  // Native WebContentsView defaults to visible. Hide the embedded provider
+  // BEFORE awaiting the App renderer, or it can cover a still-loading UI.
   win.contentView.addChildView(worker.view);
+  layoutViews();
   win.on('resize', layoutViews);
   win.on('maximize', layoutViews);
   win.on('unmaximize', layoutViews);
 
-  await win.loadFile(path.join(here, 'ui.html'));
+  // A dead App renderer must never look like a successfully started product.
+  // Report only local, sanitized shell failure codes, never provider content.
+  let shellFailureReported=false;
+  const reportShellFailure=code=>{
+    if(shellFailureReported || !win || win.isDestroyed())return;
+    shellFailureReported=true;
+    dialog.showMessageBox(win,{
+      type:'error',
+      title:'OrdaX Orchestrator — falha na interface',
+      message:'A interface do aplicativo não pôde ser carregada.',
+      detail:'Código local: '+code+'. Nenhuma tarefa foi enviada. Feche esta janela e reinicie o Orchestrator.',
+      buttons:['Entendi'],defaultId:0
+    }).catch(()=>{});
+  };
+  win.webContents.on('render-process-gone',(_event,details)=>{
+    const reason=['crashed','oom','killed','integrity-failure','launch-failed','abnormal-exit']
+      .includes(details?.reason)?details.reason:'unavailable';
+    reportShellFailure('renderer_'+reason);
+  });
+  win.webContents.on('did-fail-load',(_event,errorCode,_description,_url,isMainFrame)=>{
+    if(isMainFrame && errorCode!==-3)
+      reportShellFailure('ui_load_'+Number(errorCode||0));
+  });
+  try {
+    await win.loadFile(path.join(here, 'ui.html'));
+  } catch {
+    reportShellFailure('ui_load_rejected');
+    return;
+  }
   layoutViews();
   await worker.load('https://chatgpt.com/');
 }
