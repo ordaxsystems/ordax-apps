@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {verifyRuntimeManifest} from '../src/runtime-build-identity.mjs';
 
@@ -28,7 +29,10 @@ function fixture(t,entry='desktop/bootstrap.mjs') {
 test('afterPack seals actual ASAR bytes and produces a self-consistent runtime identity',async t=>{
   const f=fixture(t);
   await asar.createPackage(f.source,f.archive);
+  const beforeSha=createHash('sha256').update(fs.readFileSync(f.archive)).digest('hex');
   const proof=await attestPackagedAsar({archive:f.archive,sourceCommit:commit});
+  const afterSha=createHash('sha256').update(fs.readFileSync(f.archive)).digest('hex');
+  assert.equal(afterSha,beforeSha,'Electron ASAR must never be rewritten');
   assert.equal(proof.status,'verified');
   assert.equal(proof.sourceCommit,commit);
   assert.match(proof.asarSha256,/^[a-f0-9]{64}$/);
@@ -40,13 +44,15 @@ test('afterPack seals actual ASAR bytes and produces a self-consistent runtime i
   const newlyOpened=path.join(f.root,'packaged-final-copy.asar');
   fs.copyFileSync(f.archive,newlyOpened,fs.constants.COPYFILE_EXCL);
   asar.extractAll(newlyOpened,extracted);
-  const verified=verifyRuntimeManifest(extracted);
+  const packagedManifest=path.join(f.root,'runtime-build.json');
+  assert.equal(fs.existsSync(packagedManifest),true);
+  const verified=verifyRuntimeManifest(extracted,{manifestPath:packagedManifest});
   assert.equal(verified.verified,true);
   assert.equal(verified.contentDigest,proof.contentDigest);
   assert.equal(verified.fileCount,proof.fileCount);
   assert.equal(fs.existsSync(f.archive+'.ordax-pre-attestation'),false);
   fs.appendFileSync(path.join(extracted,'desktop','main.mjs'),'// tamper\n');
-  assert.equal(verifyRuntimeManifest(extracted).verified,false);
+  assert.equal(verifyRuntimeManifest(extracted,{manifestPath:packagedManifest}).verified,false);
 });
 test('packager rejects an archive with a non-bootstrap entrypoint',async t=>{
   const f=fixture(t,'desktop/main.mjs');
