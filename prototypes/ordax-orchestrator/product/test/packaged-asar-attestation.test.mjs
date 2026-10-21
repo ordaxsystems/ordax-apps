@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {createRequire} from 'node:module';
+import {verifyRuntimeManifest} from '../src/runtime-build-identity.mjs';
+
+const require=createRequire(import.meta.url);
+const asar=require('@electron/asar');
+const {attestPackagedAsar}=require('../scripts/attest-packaged-asar.cjs');
+const commit='1234567890abcdef1234567890abcdef12345678';
+
+function fixture(t,entry='desktop/bootstrap.mjs') {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-packaged-attest-'));
+  t.after(()=>fs.rmSync(root,{force:true,recursive:true}));
+  const source=path.join(root,'source');
+  for(const dir of ['desktop','src','supervisor'])
+    fs.mkdirSync(path.join(source,dir),{recursive:true});
+  fs.writeFileSync(path.join(source,'package.json'),
+    JSON.stringify({name:'ordax-orchestrator-lab',version:'0.2.0-alpha.2',main:entry}));
+  fs.writeFileSync(path.join(source,'desktop','bootstrap.mjs'),'await import("./main.mjs");\n');
+  fs.writeFileSync(path.join(source,'desktop','main.mjs'),'export const main=true;\n');
+  fs.writeFileSync(path.join(source,'src','runtime-build-identity.mjs'),'export {};\n');
+  fs.writeFileSync(path.join(source,'supervisor','coordinator.mjs'),'export {};\n');
+  return {root,source,archive:path.join(root,'app.asar')};
+}
+test('afterPack seals actual ASAR bytes and produces a self-consistent runtime identity',async t=>{
+  const f=fixture(t);
+  await asar.createPackage(f.source,f.archive);
+  const proof=await attestPackagedAsar({archive:f.archive,sourceCommit:commit});
+  assert.equal(proof.status,'verified');
+  assert.equal(proof.sourceCommit,commit);
+  assert.match(proof.asarSha256,/^[a-f0-9]{64}$/);
+  assert.equal(proof.profileCopied,false);
+  assert.equal(proof.providerMessagesSent,0);
+  const extracted=path.join(f.root,'verified');
+  asar.extractAll(f.archive,extracted);
+  const verified=verifyRuntimeManifest(extracted);
+  assert.equal(verified.verified,true);
+  assert.equal(verified.contentDigest,proof.contentDigest);
+  assert.equal(verified.fileCount,proof.fileCount);
+  assert.equal(fs.existsSync(f.archive+'.ordax-pre-attestation'),false);
+  fs.appendFileSync(path.join(extracted,'desktop','main.mjs'),'// tamper\n');
+  assert.equal(verifyRuntimeManifest(extracted).verified,false);
+});
+test('packager rejects an archive with a non-bootstrap entrypoint',async t=>{
+  const f=fixture(t,'desktop/main.mjs');
+  await asar.createPackage(f.source,f.archive);
+  await assert.rejects(
+    attestPackagedAsar({archive:f.archive,sourceCommit:commit}),
+    /packaged_entrypoint_not_bootstrap/);
+  assert.ok(fs.existsSync(f.archive));
+  assert.equal(fs.existsSync(f.archive+'.ordax-pre-attestation'),false);
+});
