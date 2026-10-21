@@ -279,11 +279,12 @@ test('all live App gates reject a Lab with correct title but a different SQLite 
   }
 });
 
-test('offline W3 App gate requires exact staged profile and refuses unsafe navigation',()=>{
+test('offline W3 App gate binds the staged profile and blocks receipt-less navigation regardless of login',()=>{
   const code=fs.readFileSync(path.join(scripts,'live-ui-w3-offline-preflight.cjs'),'utf8');
   assert.match(code,/waitForLabAppMode\(evaluate\)/);
   assert.match(code,/new DatabaseSync\(labDatabasePath\(\),\{readOnly:true\}\)/);
-  assert.match(code,/lab_w3_offline_precondition_not_safe/);
+  assert.doesNotMatch(code,/lab_w3_offline_precondition_not_safe/);
+  assert.match(code,/provider_submission_provenance_missing/);
   assert.match(code,/lab_w3_offline_unexpected_navigation/);
   assert.match(code,/W3Certified:false/);
   assert.match(code,/providerMessagesSent:0/);
