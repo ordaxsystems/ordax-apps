@@ -1,6 +1,7 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput} from './orchestrator-contract.mjs';
 import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
+import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
@@ -285,7 +286,9 @@ export class OrchestratorService {
         });
       }
       // Existing runTask can return an error result instead of throwing.
-      if(!reply?.runId||reply.error||reply.confirmed!==true)throw Error('orchestrator_effect_unconfirmed');
+      requireConfirmedChatReceipt(reply);
+      const canonicalRun=this.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?').get(reply.runId,task.id);
+      if(canonicalRun?.status!=='succeeded')throw Error('orchestrator_effect_unconfirmed');
       return this.finish(reserved.commandId,{taskId:task.id,runId:reply.runId,
         responseObserved:true,effectVerified:false});
     } catch {

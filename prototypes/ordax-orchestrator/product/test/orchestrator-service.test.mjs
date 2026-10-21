@@ -27,6 +27,10 @@ async function project(f,name='Projeto A') {
   const w=(await f.call('work_create',{projectId:p,orchestratorId:o.orchestratorId,title:'Site'})).result.taskId;
   return {p,o:o.orchestratorId,chat:o.chatTaskId,w};
 }
+function executorReceipt(store,taskId) {
+  const runId=store.startRun(taskId);store.finishRun(taskId,runId);
+  return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
+}
 
 test('projects, coordinators and work persist in the same SQLite, with bounded semantic reads',async t=>{
   const f=fixture(t),a=await project(f),b=await project(f,'Projeto B');
@@ -73,14 +77,14 @@ test('forged subjects, unknown keys, cross-project bindings and read revocation 
 
 test('one provider send uses the injected canonical executor and a stable receipt, with no replay',async t=>{
   let calls=0;
-  const f=fixture(t,{provider:{send:async()=>{calls++;return {confirmed:true,runId:'run_12345678'};}}}),a=await project(f);
+  const f=fixture(t,{provider:{send:async({taskId})=>{calls++;return executorReceipt(f.store,taskId);}}}),a=await project(f);
   const input={requestId:'send-once',projectId:a.p,taskId:a.w,content:'Olá'};
   const first=await f.call('work_send',input);
   assert.equal(first.status,'succeeded');
   assert.equal(first.result.effectVerified,false);
   assert.deepEqual(await f.call('work_send',input),first);
   assert.equal(calls,1);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,0,'service does not create a second Run implementation');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,1,'only the injected canonical executor creates a Run');
 });
 
 test('unknown delivery remains uncertain across restart; neither same nor new request can resend',async t=>{
@@ -104,10 +108,24 @@ test('unknown delivery remains uncertain across restart; neither same nor new re
   }finally{reopened.close();}
 });
 
+test('a claimed success without transport evidence and a canonical successful Run stays uncertain',async t=>{
+  const f=fixture(t,{provider:{send:async()=>({confirmed:true,runId:'run_12345678'})}}),a=await project(f);
+  const result=await f.call('work_send',{projectId:a.p,taskId:a.w,content:'Teste'});
+  assert.equal(result.status,'uncertain');
+});
+
+test('a complete transport receipt belonging to another Task cannot confirm the current work',async t=>{
+  const f=fixture(t,{provider:{send:async()=>executorReceipt(f.store,otherTask)}}),a=await project(f);
+  const otherTask=f.store.createTask('Other').id;
+  const result=await f.call('work_send',{projectId:a.p,taskId:a.w,content:'Teste'});
+  assert.equal(result.status,'uncertain');
+  assert.equal(f.store.getTask(a.w).status,'ready');
+});
+
 test('in-flight requests do not run twice; pause and a second work cannot bypass the executor',async t=>{
   let resolve,calls=0;
   const gate=new Promise(r=>resolve=r);
-  const f=fixture(t,{provider:{send:async()=>{calls++;await gate;return {confirmed:true,runId:'run_12345678'};}}}),a=await project(f);
+  const f=fixture(t,{provider:{send:async({taskId})=>{calls++;await gate;return executorReceipt(f.store,taskId);}}}),a=await project(f);
   const input={requestId:'active',projectId:a.p,taskId:a.w,content:'Trabalhe'};
   const pending=f.call('work_send',input);
   assert.equal((await f.call('work_send',input)).status,'running');
