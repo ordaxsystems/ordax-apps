@@ -54,13 +54,13 @@ test('W3 physical App script requires missing receipt before inspection and zero
   assert.match(source,/W3Certified:false/);
   // A valid composer must not bypass the receipt-first negative test.
   assert.doesNotMatch(source,/lab_w3_offline_precondition_not_safe/);
-  assert.match(source,/urlBefore===before\\.task\\.chat_url/);
-  assert.doesNotMatch(source,/window\\.ordax\\.providerStatus\\(/);
+  assert.match(source,/urlBefore===before\.task\.chat_url/);
+  assert.doesNotMatch(source,/window\.ordax\.providerStatus\(/);
   const discovery=source.slice(source.indexOf("preflightStage='task_selection'"),
     source.indexOf("preflightStage='task_click'"));
   assert.ok(discovery.includes("document.querySelectorAll"));
-  assert.doesNotMatch(discovery,/item\\.click\\(/);
-  assert.equal((source.match(/item\\.click\\(\\)/g)||[]).length,1);
+  assert.doesNotMatch(discovery,/item\.click\(/);
+  assert.equal((source.match(/item\.click\(\)/g)||[]).length,1);
   assert.match(source,/preflightStage='task_click'/);
   assert.doesNotMatch(source,/sendPrompt\(|requestSubmit\(|\.reload\(/);
 });
