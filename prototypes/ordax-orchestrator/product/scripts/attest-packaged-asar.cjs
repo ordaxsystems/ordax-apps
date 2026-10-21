@@ -66,10 +66,14 @@ async function attestPackagedAsar({archive,sourceCommit}) {
     // A second check of bytes on the final output is required.
     const finalCheck=path.join(temp,'final-check');
     fs.mkdirSync(finalCheck);
-    asar.extractAll(archive,finalCheck);
+    // @electron/asar can cache archive headers by PATH. The old app.asar was
+    // read before replacement, so reopen final bytes under a fresh filename.
+    const reopenedArchive=path.join(temp,'reopened-final.asar');
+    fs.copyFileSync(archive,reopenedArchive,fs.constants.COPYFILE_EXCL);
+    asar.extractAll(reopenedArchive,finalCheck);
     const finalProof=verifyRuntimeManifest(finalCheck);
     if(!finalProof.verified || finalProof.contentDigest!==manifest.contentDigest)
-      throw Error('packaged_final_verification_failed');
+      throw Error('packaged_final_verification_failed:'+String(finalProof.reason||'digest'));
     fs.rmSync(originalBackup);
     return {schema:'ordax.lab.packaged-runtime-proof.v1',status:'verified',
       sourceCommit,contentDigest:finalProof.contentDigest,
