@@ -16,7 +16,7 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.equal(pkg.main, 'desktop/bootstrap.mjs');
   // The only extra packaged file is the bounded content-integrity manifest.
   // No test, userData, cookies or arbitrary source directory may be shipped.
-  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json','runtime-build.json']);
+  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
   assert.equal(pkg.dependencies, undefined);
   assert.ok(!JSON.stringify(pkg).includes('playwright-core'));
   assert.ok(!JSON.stringify(pkg.build.files).includes('chrome-extension'));
