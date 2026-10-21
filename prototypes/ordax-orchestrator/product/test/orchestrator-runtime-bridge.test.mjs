@@ -130,9 +130,9 @@ test('24 hours of simulated leases retain one session and bounded replay memory'
     assert.equal(result.ok,true);
     f.bootstrap.key=key;f.bootstrap.expiresAt=expiresAt;
     f.advance(240000);
-    assert.equal((await f.bridge.handle(f.request())).ok,true);
+    for(let read=0;read<7;read++)assert.equal((await f.bridge.handle(f.request())).ok,true);
   }
-  assert.equal(f.bootstrap.sessionId,sessionId);assert.equal(f.reads(),360);
+  assert.equal(f.bootstrap.sessionId,sessionId);assert.equal(f.reads(),2520);
 });
 
 test('renewal cannot race an active read or invalidate its live context',async()=>{
