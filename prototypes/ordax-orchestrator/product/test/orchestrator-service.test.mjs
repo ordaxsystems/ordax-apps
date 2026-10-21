@@ -88,13 +88,17 @@ test('proposal rejection, paused coordinator and transaction failure never creat
 });
 
 test('invalid model proposal cannot create an approval or work, and the uncertain API call never replays',async t=>{
-  let calls=0;
-  const f=fixture(t,{coordinator:{send:async()=>{calls++;return {content:'Invalid',proposal:{title:'X',content:'Y',reason:'Z',command:'execute'}};}}}),a=await project(f);
+  let calls=0,valid=false;
+  const f=fixture(t,{coordinator:{send:async()=>{calls++;return {content:'Proposal',proposal:{title:'X',content:'Y',reason:'Z',...(!valid?{command:'execute'}:{})}};}}}),a=await project(f);
   const input={projectId:a.p,orchestratorId:a.o,content:'Prepare',requestId:'invalid-proposal'};
   assert.equal((await f.call('orchestrator_prepare',input)).status,'uncertain');
   await f.call('orchestrator_prepare',input);assert.equal(calls,1);
   assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,0);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM approval_ledger').get().n,0);
+  valid=true;
+  const fresh=await f.call('orchestrator_prepare',{...input,requestId:'new-explicit-request',content:'Prepare uma nova proposta'});
+  assert.equal(fresh.status,'succeeded');assert.equal(calls,2);
+  assert.equal((await f.call('orchestrator_prepare',input)).status,'uncertain');assert.equal(calls,2);
 });
 
 test('an approval boolean without trusted native confirmation cannot apply a model proposal',async t=>{

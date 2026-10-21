@@ -367,7 +367,10 @@ export class OrchestratorService {
     if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
       this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||this.provider?.busy?.())
       throw Error('orchestrator_executor_busy');
-    if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(task.id))
+    // Advisory API replies cannot submit GPT work. Preserve their uncertain
+    // receipts without replay, but allow a fresh explicit API request. Only
+    // uncertain provider submissions quarantine the work transport.
+    if(isWorkSend&&this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(task.id))
       throw Error('orchestrator_reconciliation_required');
     const reserved=this.transaction(()=>{
       const reservation=this.reserve(context,operation,input);

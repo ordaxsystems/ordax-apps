@@ -8,7 +8,10 @@ Owner: Apps, no produto isolado. Versão candidata: 0.2.0-alpha.6.
 contexto limitado da análise e pedido do chat. A resposta é um objeto estrito
 com título (140), rascunho (6000) e justificativa (500 caracteres). Campos de
 comando/IDs extras, JSON inválido ou resposta incompleta não geram proposta.
-A resposta fica consultiva até a revisão.
+A resposta fica consultiva até a revisão. Uma chamada API incerta conserva
+seu recibo sem replay, mas não impede um novo pedido explícito de análise ou
+proposta; ela não pode ter submetido trabalho ao GPT. A quarentena de envio
+incerto do provider continua intacta.
 
 A proposta e sua aprovação pendente ficam nos action/approval ledgers do
 Store existente, vinculadas à Task central, projeto, orquestrador, ator e
