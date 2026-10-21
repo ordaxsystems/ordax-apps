@@ -277,7 +277,7 @@ export class Store {
     return this.db.prepare(`SELECT t.id,t.title,t.status,t.created_at,t.updated_at,
       COALESCE((SELECT json_extract(e.payload,'$.role') FROM events e
         WHERE e.task_id=t.id AND e.kind='task.supervisor_role'
-        ORDER BY e.id DESC LIMIT 1),'none') AS supervisor_role,
+        ORDER BY e.rowid DESC LIMIT 1),'none') AS supervisor_role,
       (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count,
       (SELECT COUNT(*) FROM project_memory_candidates c WHERE c.task_id=t.id AND c.status='pending') AS pending_memory_count
       FROM tasks t ORDER BY t.updated_at DESC`).all();
@@ -286,7 +286,7 @@ export class Store {
   // Role is a view-level preference recorded in the existing canonical event
   // ledger. It does not start a model, mutate messages or authorize a Run.
   getTaskSupervisorRole(taskId){
-    const row=this.db.prepare("SELECT json_extract(payload,'$.role') role FROM events WHERE task_id=? AND kind='task.supervisor_role' ORDER BY id DESC LIMIT 1").get(taskId);
+    const row=this.db.prepare("SELECT json_extract(payload,'$.role') role FROM events WHERE task_id=? AND kind='task.supervisor_role' ORDER BY rowid DESC LIMIT 1").get(taskId);
     return row?.role||'none';
   }
 
