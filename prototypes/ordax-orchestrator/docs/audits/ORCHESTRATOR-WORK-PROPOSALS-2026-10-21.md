@@ -17,6 +17,11 @@ revalida o vínculo e estado; aprovar exige uma porta de confirmação do
 processo Electron que mostra exatamente o título, justificativa e mensagem.
 Chamadas MCP usam a mesma porta; um booleano do cliente não concede aprovação.
 
+O diálogo nativo é assíncrono, sem transação SQLite durante a espera; uma
+segunda revisão da mesma ação é bloqueada. Permissão, pausa e pendência são
+revalidadas depois da confirmação. Crash durante a revisão deixa a proposta
+pendente sem criar Task nem repetir modelo.
+
 Depois da confirmação, criação da Task/binding, rascunho, resolução da aprovação,
 ação e recibo ocorrem numa única transação. Repetir requestId não duplica a
 Task nem repete o modelo. Recusar cancela a proposta sem criar trabalho.
@@ -32,7 +37,7 @@ Flow/Grátis e os owners Runtime/Platform permanecem intactos. Sem nova dependê
 
 ## Validação e critérios de aceite
 
-Validação local: 359/359 testes do produto, 38/38 bootstrap, sintaxe e
+Validação local: 360/360 testes do produto, 38/38 bootstrap, sintaxe e
 versionamento aprovados. Testes com SQLite real cobrem persistência/reabertura, escopo de projeto e
 cliente, ausência de confirmação nativa, rejeição, pausa, rollback por erro de
 rascunho, duplicação e saída inválida da IA. O adapter usa HTTP simulado, sem

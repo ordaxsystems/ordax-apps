@@ -105,6 +105,25 @@ test('an approval boolean without trusted native confirmation cannot apply a mod
   assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,1);
 });
 
+test('native review holds no database transaction and revalidates pause and authorization after confirmation',async t=>{
+  let confirm;
+  const f=fixture(t,{confirmProposal:()=>new Promise(resolve=>{confirm=resolve;}),
+    coordinator:{send:async()=>({content:'Proposta',proposal:{title:'X',content:'Y',reason:'Z'}})}}),a=await project(f);
+  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Prepare'})).result.proposalActionId;
+  const input={projectId:a.p,orchestratorId:a.o,actionId,approved:true};
+  const pending=f.call('proposal_review',input);
+  await assert.rejects(f.call('proposal_review',input),/review_busy/);
+  // This metadata transaction must remain possible while the human reviews.
+  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
+  confirm(true);await assert.rejects(pending,/paused/);
+  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:false});
+  const revoked=f.call('proposal_review',input);
+  f.setAllowed(false);confirm(true);await assert.rejects(revoked,/access_denied/);
+  f.setAllowed(true);
+  assert.equal((await f.call('work_list',{projectId:a.p})).works.length,1);
+  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,1);
+});
+
 test('Groq work preparation parses a strictly bounded JSON proposal without invoking tools',async t=>{
   const f=fixture(t),a=await project(f);
   let response=JSON.stringify({title:'Pesquisar',content:'Pesquise as alternativas.',reason:'Fundamentar o projeto'});
@@ -247,7 +266,9 @@ test('coordinator chat is separate from GPT work; calls require a port and persi
   const reply=await f.call('orchestrator_chat',input);
   assert.equal(reply.status,'succeeded');
   assert.equal(reply.result.proposalsExecuted,0);
-  assert.deepEqual(f.store.messages(a.chat).map(m=>m.role),['user','assistant']);
+  // The immediate HTTP fixture may persist both messages in the same clock
+  // tick. This test proves presence, not the Store's UUID tie-break ordering.
+  assert.deepEqual(f.store.messages(a.chat).map(m=>m.role).sort(),['assistant','user']);
   assert.equal(f.store.messages(a.w).length,0);
   await f.call('orchestrator_chat',input);assert.equal(calls,1);
 });

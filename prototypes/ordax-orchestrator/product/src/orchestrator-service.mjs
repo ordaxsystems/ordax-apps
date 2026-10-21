@@ -13,6 +13,7 @@ export class OrchestratorService {
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
     this.confirmProposal=confirmProposal;
+    this.pendingProposalReviews=new Set();
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS lab_projects (
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
@@ -137,6 +138,7 @@ export class OrchestratorService {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     this.requireAccess(context,operation,input.projectId||null);
     if(tool.readOnly)return this.read(context,operation,input);
+    if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
     if(['work_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
     return this.transaction(()=>{
       const reserved=this.reserve(context,operation,input);
@@ -282,7 +284,7 @@ export class OrchestratorService {
     throw Error('orchestrator_unknown_operation');
   }
 
-  reviewProposal(context,input) {
+  inspectProposal(context,input) {
     const owner=this.orchestrator(input.projectId,input.orchestratorId);
     const action=this.db.prepare(`SELECT payload,status FROM action_ledger WHERE id=? AND task_id=?
       AND action_type='orchestrator.work-proposal'`).get(input.actionId,owner.chat_task_id);
@@ -297,11 +299,37 @@ export class OrchestratorService {
       .get(input.actionId,owner.chat_task_id);
     if(!approval)throw Error('orchestrator_proposal_approval_missing');
     const proposal=validateWorkProposal(payload.proposal);
+    return {owner,approval,proposal};
+  }
+
+  async confirmAndReviewProposal(context,input) {
+    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE workspace_session_id=?
+      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
+      context.actorId,context.clientId,input.requestId);
+    if(existing)return this.transaction(()=>this.reserve(context,'proposal_review',input).existing);
+    const {proposal}=this.inspectProposal(context,input);
+    if(this.pendingProposalReviews.has(input.actionId))throw Error('orchestrator_proposal_review_busy');
+    this.pendingProposalReviews.add(input.actionId);
+    try {
+      // No SQLite transaction or main-thread blocking dialog during human review.
+      if(await this.confirmProposal?.({projectId:input.projectId,orchestratorId:input.orchestratorId,proposal})!==true)
+        throw Error('orchestrator_proposal_not_approved');
+      this.requireAccess(context,'proposal_review',input.projectId);
+      return this.transaction(()=>{
+        const reserved=this.reserve(context,'proposal_review',input);
+        if(reserved.existing)return reserved.existing;
+        return this.finish(reserved.commandId,this.reviewProposal(context,input,true));
+      });
+    } finally {this.pendingProposalReviews.delete(input.actionId);}
+  }
+
+  reviewProposal(context,input,nativeConfirmed=false) {
+    const {owner,approval,proposal}=this.inspectProposal(context,input);
     let taskId=null;
     if(input.approved) {
       // A caller/model-supplied boolean is not approval. Only the trusted App
       // process can supply the confirmation port; MCP uses this same gate.
-      if(this.confirmProposal?.({projectId:input.projectId,orchestratorId:input.orchestratorId,proposal})!==true)
+      if(nativeConfirmed!==true)
         throw Error('orchestrator_proposal_not_approved');
       taskId=this.mutate('work_create',{projectId:input.projectId,orchestratorId:input.orchestratorId,title:proposal.title}).taskId;
       this.store.setDraft(taskId,proposal.content,1);
