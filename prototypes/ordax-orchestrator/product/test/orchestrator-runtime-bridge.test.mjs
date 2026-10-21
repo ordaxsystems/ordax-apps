@@ -5,7 +5,7 @@ import {PassThrough} from 'node:stream';
 import {createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,
   canonicalHostJson,RUNTIME_BRIDGE_SCHEMA,resolveOrchestratorRuntimeTransport} from '../src/orchestrator-runtime-bridge.mjs';
 
-function fixture(){
+function fixture(onInvoke){
   let now=100000,bridge,reads=0;
   const build={verified:true,status:'verified',sourceCommit:'a'.repeat(40),contentDigest:'b'.repeat(64)};
   const bootstrap={schema:RUNTIME_BRIDGE_SCHEMA,type:'bootstrap',sessionId:randomUUID(),
@@ -15,7 +15,7 @@ function fixture(){
   bridge=createOrchestratorRuntimeBridge({workspaceSessionId:'session_test',buildProof:build,
     profileFingerprint:bootstrap.expectedProfile,clock:()=>now,
     service:{async invoke(context,operation,input){
-      assert.equal(bridge.allows(context,operation),true);reads++;return {operation,input};
+      assert.equal(bridge.allows(context,operation),true);reads++;await onInvoke?.();return {operation,input};
     }}});
   const request=(operation='status',input={},id=randomUUID())=>{
     const body={schema:RUNTIME_BRIDGE_SCHEMA,sessionId:bootstrap.sessionId,id,operation,input,
@@ -83,6 +83,68 @@ test('canonical signed wire format preserves Unicode and forbids ambiguous nonin
   assert.throws(()=>canonicalHostJson({x:NaN}));assert.throws(()=>canonicalHostJson({x:0.5}));
 });
 
+test('authenticated renewal rotates keys, extends only a live lease and invalidates old frames',async()=>{
+  const f=fixture();const ready=await f.bridge.handle(f.bootstrap);
+  assert.equal(ready.leaseRenewal,'hmac-sha256-key-rotation/1');
+  const old=f.request(),newKey=randomBytes(32).toString('base64');
+  const renewal=f.request('$lease_renew',{key:newKey,expiresAt:400000});
+  const result=await f.bridge.handle(renewal);
+  assert.deepEqual(result.result,{leaseRenewal:ready.leaseRenewal,expiresAt:400000});
+  assert.equal((await f.bridge.handle(old)).error,'host_signature_rejected');
+  assert.equal((await f.bridge.handle(renewal)).error,'host_signature_rejected');
+  f.bootstrap.key=newKey;f.bootstrap.expiresAt=400000;
+  f.advance(61000);
+  assert.equal((await f.bridge.handle(f.request())).ok,true);
+  assert.equal((await f.bridge.handle(f.request('work_send'))).error,'host_read_only');
+  assert.equal(f.reads(),1);
+});
+
+test('renewal cannot alter identity, reuse key, remove the lease bound or resurrect expiration',async()=>{
+  for(const change of [
+    {expiresAt:160000},{expiresAt:400001},{expiresAt:Infinity},
+    {key:'invalid'},{ownerUserId:randomUUID()},{capability:'computer.full'},
+  ]) {
+    const f=fixture();await f.bridge.handle(f.bootstrap);
+    // Infinity has no canonical signed representation: reject it before wire use.
+    if(change.expiresAt===Infinity){assert.throws(()=>f.request('$lease_renew',change));continue;}
+    const input={key:randomBytes(32).toString('base64'),expiresAt:400000,...change};
+    assert.equal((await f.bridge.handle(f.request('$lease_renew',input))).error,'host_renewal_rejected');
+    assert.equal((await f.bridge.handle(f.request())).ok,true);
+  }
+  const f=fixture();await f.bridge.handle(f.bootstrap);
+  assert.equal((await f.bridge.handle(f.request('$lease_renew',{
+    key:f.bootstrap.key,expiresAt:400000}))).error,'host_renewal_rejected');
+  const pending=f.request('$lease_renew',{key:randomBytes(32).toString('base64'),expiresAt:400000});
+  f.advance(60000);
+  assert.equal((await f.bridge.handle(pending)).error,'host_session_expired');
+  assert.equal(f.bridge.connected,false);
+});
+
+test('24 hours of simulated leases retain one session and bounded replay memory',async()=>{
+  const f=fixture();await f.bridge.handle(f.bootstrap);
+  const sessionId=f.bootstrap.sessionId;
+  // 360 four-minute advances: no provider calls, wall-clock wait or new bootstrap.
+  for(let index=0;index<360;index++) {
+    const key=randomBytes(32).toString('base64'),expiresAt=400000+index*240000;
+    const result=await f.bridge.handle(f.request('$lease_renew',{key,expiresAt}));
+    assert.equal(result.ok,true);
+    f.bootstrap.key=key;f.bootstrap.expiresAt=expiresAt;
+    f.advance(240000);
+    assert.equal((await f.bridge.handle(f.request())).ok,true);
+  }
+  assert.equal(f.bootstrap.sessionId,sessionId);assert.equal(f.reads(),360);
+});
+
+test('renewal cannot race an active read or invalidate its live context',async()=>{
+  let finish;
+  const pending=new Promise(resolve=>finish=resolve),f=fixture(()=>pending);
+  await f.bridge.handle(f.bootstrap);
+  const read=f.bridge.handle(f.request());
+  assert.equal((await f.bridge.handle(f.request('$lease_renew',{
+    key:randomBytes(32).toString('base64'),expiresAt:400000}))).error,'host_exchange_busy');
+  finish();assert.equal((await read).ok,true);
+});
+
 test('Windows managed transport accepts one exact local pipe and never guesses a fallback',()=>{
   const name=String.raw`\\.\pipe\ordax.orchestrator.11111111-2222-3333-4444-555555555555`;
   const flag='--ordax-runtime-bridge-pipe='+name;
@@ -96,3 +158,4 @@ test('Windows managed transport accepts one exact local pipe and never guesses a
     assert.throws(()=>resolveOrchestratorRuntimeTransport(args,'win32'));
   assert.throws(()=>resolveOrchestratorRuntimeTransport([flag],'linux'));
 });
+

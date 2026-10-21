@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.2",
+  "version": "0.2.0-alpha.3",
   "channel": "alpha",
-  "name": "Recuperação durável e segura de planos do supervisor",
+  "name": "Renovação autenticada do canal Runtime e Lab",
   "distributionEnabled": false,
   "releaseDate": null
 }

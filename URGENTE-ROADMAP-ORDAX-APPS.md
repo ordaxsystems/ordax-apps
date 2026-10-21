@@ -1,5 +1,18 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Continuidade — renovação autenticada Runtime/Lab (2026-10-21)
+
+Candidata alpha.3 acrescenta renovação da lease no mesmo canal privado, com
+reautorização Product no host, mesma identidade/grant e rotação da chave antes
+de limpar IDs de replay. Lease individual continua limitada a cinco minutos.
+350 testes do produto e 38 bootstrap aprovados. Cliente Python e bridge JS reais
+passaram 361 renovações em 24 horas de relógio simulado; isso não comprova 24h
+de autonomia real. Runtime #182 contém cliente/launcher e teste Windows ampliado;
+workflow Apps fixa o commit desse candidato e exige renovação no Electron
+empacotado. Registro/provenance, OAuth/grants reais, MCP público e supervisor
+contínuo continuam pendentes. Mesmas PRs; sem instalação ou envio ao GPT.
+[Contrato, riscos e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-LEASE-RENEWAL-2026-10-21.md).
+
 ## Continuidade comprovada — launcher gerenciado do Lab (2026-10-21)
 
 Runtime candidato valida inventário/hash do pacote inteiro e inicia o Lab por

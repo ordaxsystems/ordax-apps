@@ -4,6 +4,7 @@ import {ORCHESTRATOR_TOOLS} from './orchestrator-contract.mjs';
 
 export const RUNTIME_BRIDGE_SCHEMA='ordax.orchestrator-host/1';
 export const RUNTIME_READ_CAPABILITY='orchestrator.app_read';
+export const RUNTIME_LEASE_RENEWAL='hmac-sha256-key-rotation/1';
 export const RUNTIME_READ_OPERATIONS=Object.freeze(ORCHESTRATOR_TOOLS.filter(t=>t.readOnly).map(t=>t.operation));
 const READS=new Set(RUNTIME_READ_OPERATIONS);
 const uuid=value=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -32,7 +33,7 @@ export function createOrchestratorRuntimeBridge({service,workspaceSessionId,buil
     !/^[a-f0-9]{40}$/.test(buildProof.sourceCommit||'')||
     !/^[a-f0-9]{64}$/.test(buildProof.contentDigest||'')||
     !/^[a-f0-9]{64}$/.test(profileFingerprint||''))throw Error('orchestrator_host_attestation_required');
-  let session=null,key=null,closed=false;
+  let session=null,key=null,closed=false,activeReads=0;
   const contexts=new WeakSet(),seen=new Set();
   function close(){if(closed)return;closed=true;key?.fill(0);key=null;session=null;onClosed();}
   function allows(context,operation){return !closed&&session!==null&&clock()<session.expiresAt&&
@@ -63,7 +64,8 @@ export function createOrchestratorRuntimeBridge({service,workspaceSessionId,buil
           deviceId:value.deviceId,grantId:value.grantId,expiresAt:value.expiresAt});
         return {schema:RUNTIME_BRIDGE_SCHEMA,type:'ready',ok:true,sessionId:session.sessionId,
           sourceCommit:buildProof.sourceCommit,contentDigest:buildProof.contentDigest,
-          profileFingerprint,capability:RUNTIME_READ_CAPABILITY,operations:RUNTIME_READ_OPERATIONS};
+          profileFingerprint,capability:RUNTIME_READ_CAPABILITY,operations:RUNTIME_READ_OPERATIONS,
+          leaseRenewal:RUNTIME_LEASE_RENEWAL};
       }
       if(clock()>=session.expiresAt){close();return failure(id,'host_session_expired');}
       if(!keys(value,['schema','sessionId','id','operation','input','issuedAt','expiresAt','signature'])||
@@ -80,16 +82,37 @@ export function createOrchestratorRuntimeBridge({service,workspaceSessionId,buil
       if(seen.has(id))return failure(id,'host_request_replayed');
       if(seen.size>=2048){close();return failure(id,'host_session_capacity');}
       seen.add(id);
+      if(value.operation==='$lease_renew') {
+        // Host reauthorizes the SAME caller/grant; this is not an App grant.
+        // Rotate the key before resetting replay IDs. Old signed requests can
+        // never become valid again, even when their IDs leave the bounded set.
+        if(activeReads)return failure(id,'host_exchange_busy');
+        if(!keys(value.input,['key','expiresAt'])||
+          typeof value.input.key!=='string'||!/^[A-Za-z0-9+/]{43}=$/.test(value.input.key)||
+          !Number.isSafeInteger(value.input.expiresAt)||
+          value.input.expiresAt<=session.expiresAt||value.input.expiresAt>clock()+300000)
+          return failure(id,'host_renewal_rejected');
+        const nextKey=Buffer.from(value.input.key,'base64');
+        if(nextKey.length!==32||nextKey.toString('base64')!==value.input.key||timingSafeEqual(key,nextKey)) {
+          nextKey.fill(0);return failure(id,'host_renewal_rejected');
+        }
+        key.fill(0);key=nextKey;
+        session=Object.freeze({...session,expiresAt:value.input.expiresAt});
+        seen.clear();
+        return {schema:RUNTIME_BRIDGE_SCHEMA,id,ok:true,
+          result:{leaseRenewal:RUNTIME_LEASE_RENEWAL,expiresAt:session.expiresAt}};
+      }
       if(!READS.has(value.operation))return failure(id,'host_read_only');
       const context=Object.freeze({actorId:session.ownerUserId,clientId:session.clientId,workspaceSessionId});
       contexts.add(context);
+      activeReads++;
       try {
         const result=await service.invoke(context,value.operation,value.input);
         if(!allows(context,value.operation))return failure(id,'host_session_expired');
         if(clock()>=value.expiresAt)return failure(id,'host_request_expired');
         return {schema:RUNTIME_BRIDGE_SCHEMA,id,ok:true,result};
       } catch {return failure(id,'host_operation_unavailable');}
-      finally{contexts.delete(context);}
+      finally{contexts.delete(context);activeReads--;}
     }
   });
 }
@@ -167,3 +190,4 @@ export function openOrchestratorRuntimeStreams(request) {
   const socket=createConnection({path:checked.name});
   return {input:socket,output:socket,close(){socket.destroy();}};
 }
+

@@ -2,6 +2,13 @@
 
 A versão do aplicativo Lab é independente da versão do snapshot de origem OrdaX Grátis/Flow. **product-version.json** é a SSOT da versão do produto. O package.json do bootstrap e os package.json / package-lock.json gerados são projeções obrigatoriamente verificadas.
 
+## 0.2.0-alpha.3 — 2026-10-21
+
+- Renovação autenticada da lease no mesmo canal privado, sessão e processo.
+- Chave efêmera rotacionada; mensagens antigas não voltam a ser aceitas ao limpar IDs de replay.
+- Lease continua limitada a cinco minutos; somente o host com autorização renovada pode estendê-la antes do vencimento.
+- Simulação de 24 horas valida o protocolo, sem ativar supervisor, instalação, grant ou MCP público.
+
 ## 0.2.0-alpha.2 — 2026-10-19
 
 **Prévia experimental — recuperação de continuidade sem novos bancos.**

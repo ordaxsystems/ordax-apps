@@ -120,7 +120,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ordaxsystems/ordax-runtime
-          ref: '23601f3f9764ea8c4ed226155adac6c3bb84f6f8'
+          ref: 'fce875ffbc1082ada20c18e0b0fb6fcad710ca31'
           path: .ordax/runtime-orchestrator-host
           persist-credentials: false
       - name: Python 3.12 for canonical Runtime client
@@ -131,6 +131,8 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check ./.ordax/runtime-orchestrator-host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python .ordax/runtime-orchestrator-host/scripts/orchestrator/bridge_lease_e2e.py prototypes/ordax-orchestrator/product/src/orchestrator-runtime-bridge.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python .ordax/runtime-orchestrator-host/scripts/orchestrator/managed_app_e2e.py prototypes/ordax-orchestrator/product
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

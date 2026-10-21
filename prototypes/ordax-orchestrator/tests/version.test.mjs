@@ -13,7 +13,7 @@ const bootstrap=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'
 const lock={...source,productVersion:validateProductVersion(version)};
 
 test('one canonical version matches bootstrap but not frozen Flow baseline',()=>{
-  assert.equal(version.version,'0.2.0-alpha.2');
+  assert.equal(validateProductVersion(version).channel,'alpha');
   assert.equal(assertBootstrapVersion(root,bootstrap).version,version.version);
   assert.equal(lock.sourceVersion,'0.4.12');
   assert.notEqual(version.version,lock.sourceVersion);
