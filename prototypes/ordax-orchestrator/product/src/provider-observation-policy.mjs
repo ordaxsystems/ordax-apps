@@ -48,6 +48,8 @@ export function classifyProviderAccessRestriction({
 // A DOM observation is a preliminary safety gate, NOT proof of account
 // identity. Do not submit any text while login is missing or ambiguous.
 export function assertProviderSendReadiness(health) {
+  if(health?.page_state==='conversation_load_failed')
+    throw new Error('chatgpt_conversation_load_failed');
   if(health?.verification_required===true)throw new Error('chatgpt_verification_required');
   if(health?.provider_access_problem==='backend_http_403_observed')
     throw new Error('chatgpt_provider_backend_access_restricted');
@@ -115,6 +117,7 @@ const READONLY_FAILURES=new Set([
   'chatgpt_draft_present','provider_view_unavailable',
   'provider_conversation_observation_timeout','provider_health_observation_timeout',
   'thread_dom_not_ready','observation_failed','thread_navigation_changed',
+  'provider_conversation_load_failed',
   'navigation_or_draft_blocked','provider_url_mismatch',
   'provider_readonly_debugger_unavailable','provider_readonly_dom_evaluation_rejected',
   'provider_readonly_dom_evaluation_timeout',

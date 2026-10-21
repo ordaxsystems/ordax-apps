@@ -155,6 +155,7 @@ function friendlyError(error) {
     new_chat_composer_not_empty: 'O campo do ChatGPT não ficou vazio após criar a nova conversa. Nada foi enviado; verifique a página oficial.',
     chatgpt_verification_required: 'O ChatGPT exige uma verificação oficial. Conclua-a no modo direto e tente novamente.',
     chatgpt_login_required: 'Entre na sua conta do ChatGPT neste Lab para continuar.',
+    chatgpt_conversation_load_failed: 'A conversa do ChatGPT não carregou. Rascunho e histórico local preservados; nenhum envio ou recarga automática.',
     chatgpt_session_not_observed: 'Não foi possível observar a sessão autenticada. Conclua o login no modo direto antes de enviar.',
     chatgpt_provider_backend_access_restricted: 'O ChatGPT retornou HTTP 403 nas chamadas internas desta página. Nenhum envio foi feito; verifique o acesso pelo serviço oficial.',
     chatgpt_provider_rate_limited_observed: 'O ChatGPT apresentou ao menos uma resposta HTTP 429 nas requisições internas desta página. Não é confirmação da causa da falha. Nenhum reenvio ou nova tentativa automática.',
@@ -612,6 +613,13 @@ async function refreshProvider() {
     $('#providerText').textContent = verification ? 'ChatGPT • verificação necessária' : backendDenied ? 'ChatGPT • acesso recusado (403)' : backendRateLimited ? 'ChatGPT • limitação observada (429)' : status.active ? 'ChatGPT • gerando' : authenticating ? 'ChatGPT • autenticação' : sessionObserved && status.composer_ready ? 'ChatGPT • sessão detectada' : status.ready && status.composer_ready ? 'ChatGPT • tela disponível' : 'ChatGPT • aguardando';
     $('#providerDetail').textContent = verification ? 'Conclua a verificação no modo direto' : backendDenied ? 'Requisições internas foram recusadas pelo ChatGPT (HTTP 403). O login informado não está sendo negado pelo Lab; confirme o acesso pelo serviço oficial. Nenhuma mensagem será reenviada.' : backendRateLimited ? 'Foi observado HTTP 429 em pelo menos uma requisição interna do ChatGPT. Isso não demonstra a causa da falha de conversa nem invalida o login. Não faremos novas tentativas automáticas.' : authenticating ? 'Conclua o login na própria página' : anonymous ? 'Faça login nesta sessão isolada do Lab' : sessionObserved ? 'Indicadores de sessão detectados; identidade não verificada' : 'Estado da sessão não observado; não é seguro enviar';
     $('#providerDot').className = `dot ${verification || backendDenied || backendRateLimited ? 'error' : sessionObserved && status.composer_ready ? 'ok' : ''}`;
+    if (status.page_state === 'conversation_load_failed') {
+      $('#providerText').textContent = 'ChatGPT • conversa indisponível';
+      $('#providerDetail').textContent = 'A página oficial não carregou a conversa. As tarefas e mensagens já salvas continuam disponíveis no OrdaX. Não houve recarga ou reenvio automático.';
+      $('#providerDot').className = 'dot error';
+    } else if (status.history_unavailable === true && !backendDenied && !backendRateLimited) {
+      $('#providerDetail').textContent = 'O histórico lateral do ChatGPT está indisponível. O histórico local do OrdaX continua acessível. Não será feita recarga automática.';
+    }
     observerMode = status.observer_mode || observerMode;
     if ($('#observerMode').value !== observerMode) $('#observerMode').value = observerMode;
     $('#observerHint').textContent = observerMode === 'beta' ? 'Beta observa a interface.' : observerMode === 'fast' ? `Fast${status.fast_observer_ready ? ' • rede observada' : ' • Beta de segurança'}` : `Automático${status.fast_observer_ready ? ' • Fast + Beta' : ' • Beta ativo'}`;
@@ -735,6 +743,7 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
       provider_authentication_in_progress:'Conclua a autenticação no ChatGPT antes da inspeção. Nenhum reenvio.',
       provider_session_not_observed:'Sessão não comprovada para abrir outra conversa. Faça login pelo modo direto.',
       provider_verification_required:'Verificação do ChatGPT pendente. Inspeção suspensa, sem reenvio.',
+      provider_conversation_load_failed:'O ChatGPT exibiu erro ao carregar esta conversa. Histórico local preservado; não será feita nova navegação nem reenvio.',
       provider_health_unavailable:'Não foi possível observar a sessão. Inspeção suspensa, sem reenvio.',
       provider_submission_provenance_missing:'A conversa contém uma possível resposta, mas a execução antiga não tem recibo verificável do texto enviado. W3 não certificado; nenhum reenvio.',
       provider_response_generation_active:'A resposta ainda pode estar sendo gerada. W3 não certificado; nenhum reenvio.',

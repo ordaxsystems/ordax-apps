@@ -354,3 +354,7 @@ O encerramento atômico passou em `npm run validate` (254/254), mas o CI `worksp
 ### P5/W4 — reinício offline e portas staged (20/10/2026)
 
 Duas inicializações reais do Electron, com perfil e mensagens **sintéticos e isolados**, comprovaram recuperação running → interrupted e idempotência (apenas 1 evento run.interrupted, 3 mensagens, SQLite ok, 0 envios). Corrigida a divergência 9445/9446 entre vinculação staged e runner; o preparador canônico de fixtures recusa perfil existente e exige aprovação. [Auditoria](../audits/P5-W4-OFFLINE-APP-RESTART-2026-10-20.md). **W3 e W4 externos continuam pendentes.**
+
+### Provider — falha ao carregar conversa/histórico lateral (20/10/2026)
+
+Erro explícito da conversa e falha da sidebar agora são classificados separadamente, sem inferir problema de login pelo botão Novo chat. O OrdaX bloqueia envio e W3 diante da tela de erro, preserva histórico local e rascunho, evita reload implícito da mesma URL e bloqueia reload manual durante Run. [Auditoria](../audits/P5-PROVIDER-CONVERSATION-LOAD-FAILURE-2026-10-20.md). W3/W4 externos não certificados; sem troca de chat/reenvio automático.

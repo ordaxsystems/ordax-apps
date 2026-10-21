@@ -9,6 +9,7 @@ import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-ob
 import { assessHistoricalThreadPreflight, classifyHistoricalThreadPostNavigation } from '../src/provider-historical-thread-preflight.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
+import { classifyProviderPageAvailability } from '../src/provider-page-availability.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -311,6 +312,7 @@ export class EmbeddedChatWorker {
         backendRateLimitedCount:Math.min(100,backendRateLimitedCount),
         body:body.slice(-5000),
         composer:Boolean(composer),
+        messageNodes:document.querySelectorAll('[data-message-author-role="user"],[data-message-author-role="assistant"],[data-message-role="user"],[data-message-role="assistant"]').length,
         hasLogin:/Entrar|Log in|Sign in/i.test(body),
         hasSignup:/Cadastre-se|Sign up/i.test(body),
         verification:/Ocorreu um erro durante a verificação|verification.*(?:failed|error)|verificação.*erro/i.test(body)
@@ -318,6 +320,9 @@ export class EmbeddedChatWorker {
     })()`), { timeoutMs:5000, code:'provider_health_observation_timeout' }).catch(() => null);
     const url = this.view.webContents.getURL();
     const authState=classifyProviderAuthObservation({url,page});
+    const availability=classifyProviderPageAvailability({
+      body:page?.body,messageNodes:page?.messageNodes,composerPresent:page?.composer
+    });
     const providerAccessProblem=classifyProviderAccessRestriction({
       forbiddenCount:page?.backendForbiddenCount||0,
       rateLimitedCount:page?.backendRateLimitedCount||0,
@@ -326,6 +331,8 @@ export class EmbeddedChatWorker {
     return { ...base, composer_ready:page?.composer===true,
       verification_required:page?.verification===true,
       health_observed:page!==null,auth_state:authState,
+      page_state:availability.page_state,
+      history_unavailable:availability.history_unavailable,
       provider_access_problem:providerAccessProblem,
       backend_api_403_count:page?.backendForbiddenCount||0,
       backend_api_429_count:page?.backendRateLimitedCount||0 };
@@ -523,9 +530,17 @@ export class EmbeddedChatWorker {
           const generationStopVisible=Boolean(document.querySelector(
             'button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]'
           ));
+          const hasComposer=Boolean(document.querySelector(
+            '#prompt-textarea,[contenteditable="true"][role="textbox"]'
+          ));
+          // Read diagnostic copy only when there is no chat DOM or composer.
+          // Never export page text, prompt content or errors to the App IPC.
+          const loadFailureText=entries.length===0 && !hasComposer
+            ? String(document.body?.innerText||'').slice(-5000) : '';
           return {
             available:true, url:location.href, domReliable:entries.length>0,
-            truncated:entries.length>50, generationStopVisible, messages
+            truncated:entries.length>50, generationStopVisible,
+            loadFailureText, messages
           };
         })()`,
         awaitPromise:false,returnByValue:true
@@ -545,7 +560,12 @@ export class EmbeddedChatWorker {
     }
     if (result?.exceptionDetails || result?.result?.value?.available!==true)
       throw new Error('provider_readonly_dom_evaluation_rejected');
-    return result.result.value;
+    const {loadFailureText, ...safeSnapshot}=result.result.value;
+    const availability=classifyProviderPageAvailability({
+      body:loadFailureText,messageNodes:safeSnapshot.messages.length,
+      composerPresent:false
+    });
+    return {...safeSnapshot,page_state:availability.page_state};
   }
 
   // Explicit, read-only inspection of an existing, canonical conversation.
@@ -625,11 +645,18 @@ export class EmbeddedChatWorker {
       } catch { /* only malformed URL parsing is ignored */ }
     }
     if (alreadyAtTarget && !forceReload) {
+      // Never reload an already-targeted provider page merely because its
+      // editor is absent (hydrating, failed or in an uncertain generation).
+      // The operator may request an explicit reload separately, but no
+      // automatic retry may erase a live/unknown provider state.
       if (!requireComposer) return;
-      // Composer observation must stay OUTSIDE the URL parser's catch.
-      // A timeout may not trigger a reload of an uncertain draft.
       const state = await this.#composerState();
-      if (state.found) return;
+      if (state.found && state.formReady) return;
+      const observed = await this.health().catch(() => null);
+      if (observed?.page_state==='conversation_load_failed')
+        throw new Error('chatgpt_conversation_load_failed');
+      await this.#waitForComposer();
+      return;
     }
     try {
       await observeWithin(() => wc.loadURL(url), {

@@ -487,7 +487,11 @@ ipcMain.handle('ordax:provider:diagnostic', async event => {
 });
 ipcMain.handle('ordax:provider:login', () => worker.login());
 ipcMain.handle('ordax:provider:home', () => worker.newChat());
-ipcMain.handle('ordax:provider:reload', () => worker.view.webContents.reload());
+ipcMain.handle('ordax:provider:reload', () => {
+  // Manual reload must never interrupt a pending/uncertain provider send.
+  if (liveRun || worker.active) throw new Error('provider_reload_during_run_blocked');
+  return worker.view.webContents.reload();
+});
 ipcMain.handle('ordax:chat:visible', (_event, visible) => {
   chatVisible = Boolean(visible);
   layoutViews();

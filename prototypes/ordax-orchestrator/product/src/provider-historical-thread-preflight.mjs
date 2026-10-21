@@ -22,6 +22,8 @@ export function assessHistoricalThreadPreflight({expectedUrl,health}={}) {
   if(!expected)return {allowed:false,reason:'canonical_chat_url_missing'};
   if(!health||health.connected!==true||health.health_observed!==true)
     return {allowed:false,reason:'provider_health_unavailable'};
+  if(health.page_state==='conversation_load_failed')
+    return {allowed:false,reason:'provider_conversation_load_failed'};
   if(health.verification_required===true)
     return {allowed:false,reason:'provider_verification_required'};
   if(health.provider_access_problem==='backend_http_429_observed')

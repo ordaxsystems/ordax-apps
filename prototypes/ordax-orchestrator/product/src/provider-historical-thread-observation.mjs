@@ -29,6 +29,8 @@ export async function waitForHistoricalThreadDom({
     }
     if(!snapshot || canonicalProviderChatUrl(snapshot.url)!==expected)
       return {available:false,url:expected,reason:'thread_navigation_changed'};
+    if(snapshot.page_state==='conversation_load_failed')
+      return {available:false,url:expected,reason:'provider_conversation_load_failed'};
     if(snapshot.available===true && snapshot.domReliable===true &&
        Array.isArray(snapshot.messages) && snapshot.messages.length>0)
       return snapshot;
