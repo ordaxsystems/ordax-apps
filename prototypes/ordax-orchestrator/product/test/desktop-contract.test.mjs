@@ -14,7 +14,9 @@ const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cj
 
 test('desktop package ships only canonical desktop runtime', () => {
   assert.equal(pkg.main, 'desktop/main.mjs');
-  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
+  // The only extra packaged file is the bounded content-integrity manifest.
+  // No test, userData, cookies or arbitrary source directory may be shipped.
+  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json','runtime-build.json']);
   assert.equal(pkg.dependencies, undefined);
   assert.ok(!JSON.stringify(pkg).includes('playwright-core'));
   assert.ok(!JSON.stringify(pkg.build.files).includes('chrome-extension'));
