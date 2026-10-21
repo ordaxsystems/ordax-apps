@@ -35,7 +35,11 @@ test('afterPack seals actual ASAR bytes and produces a self-consistent runtime i
   assert.equal(proof.profileCopied,false);
   assert.equal(proof.providerMessagesSent,0);
   const extracted=path.join(f.root,'verified');
-  asar.extractAll(f.archive,extracted);
+  // Emulate a new Electron process: avoid the in-process ASAR header cache
+  // for the original archive path before it was replaced by the hook.
+  const newlyOpened=path.join(f.root,'packaged-final-copy.asar');
+  fs.copyFileSync(f.archive,newlyOpened,fs.constants.COPYFILE_EXCL);
+  asar.extractAll(newlyOpened,extracted);
   const verified=verifyRuntimeManifest(extracted);
   assert.equal(verified.verified,true);
   assert.equal(verified.contentDigest,proof.contentDigest);
