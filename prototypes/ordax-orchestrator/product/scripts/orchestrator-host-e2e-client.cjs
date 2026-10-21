@@ -10,23 +10,31 @@ const canonical=value=>{
   return JSON.stringify(value);
 };
 function createHostFixture(child) {
-  let buffer='',pending=null,poisoned=false;
+  let buffer='',pending=null,failure=null;
+  const poison=reason=>{
+    failure??=reason;
+    if(pending){const item=pending;pending=null;clearTimeout(item.timer);item.reject(Error(failure));}
+  };
   child.stdout.setEncoding('utf8');
   child.stdout.on('data',chunk=>{
-    buffer+=chunk;if(Buffer.byteLength(buffer)>524288){poisoned=true;pending?.reject(Error('host_frame_oversized'));return;}
+    if(failure)return;
+    buffer+=chunk;if(Buffer.byteLength(buffer)>524288){poison('host_frame_oversized');return;}
     let end;while((end=buffer.indexOf('\n'))>=0){
       const line=buffer.slice(0,end);buffer=buffer.slice(end+1);
-      let message;try{message=JSON.parse(line);}catch{poisoned=true;pending?.reject(Error('host_frame_invalid'));return;}
-      if(!pending){poisoned=true;return;}
+      let message;try{message=JSON.parse(line);}catch{poison('host_frame_invalid');return;}
+      if(!pending){poison('host_response_unsolicited');return;}
       const item=pending;pending=null;clearTimeout(item.timer);item.resolve(message);
     }
   });
+  child.stdout.on('end',()=>poison('host_pipe_ended'));
+  child.stdout.on('error',()=>poison('host_pipe_read_failed'));
+  child.stdin.on('error',()=>poison('host_pipe_write_failed'));
   const exchange=message=>new Promise((resolve,reject)=>{
-    if(poisoned||pending)return reject(Error('host_pipe_unavailable'));
-    const timer=setTimeout(()=>{pending=null;poisoned=true;reject(Error('host_pipe_timeout'));},15000);
+    if(failure||pending)return reject(Error(failure||'host_pipe_unavailable'));
+    const timer=setTimeout(()=>poison('host_pipe_timeout'),15000);
     pending={resolve,reject,timer};
     child.stdin.write(JSON.stringify(message)+'\n',error=>{
-      if(error){clearTimeout(timer);pending=null;poisoned=true;reject(Error('host_pipe_unavailable'));}
+      if(error)poison('host_pipe_write_failed');
     });
   });
   return {exchange};

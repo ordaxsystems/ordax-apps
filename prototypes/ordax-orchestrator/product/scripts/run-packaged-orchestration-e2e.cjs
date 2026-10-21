@@ -22,7 +22,8 @@ let phase='preflight';
   delete env.GROQ_API_KEY;delete env.ORDAX_DESKTOP_DEBUG;
   const child=spawn(executable,['--ordax-runtime-bridge-stdio','--ordax-lab-staged-approved',
     '--ordax-lab-staged-localappdata='+profile,'--remote-debugging-port=9446'],
-    {cwd:root,env,stdio:['pipe','pipe','ignore']});
+    // Electron/libuv requires Windows handles opened for overlapped I/O.
+    {cwd:root,env,stdio:['overlapped','overlapped','ignore']});
   const hostFixture=createHostFixture(child);
   let spawnFailed=false;child.on('error',()=>{spawnFailed=true;});
   try {
@@ -50,7 +51,8 @@ let phase='preflight';
     'host_shared_project_missing','host_shared_work_missing','host_work_state_mismatch',
     'host_replay_guard_missing','host_signature_guard_missing','host_write_not_blocked',
     'host_unexpected_provider_message','host_pipe_timeout','host_pipe_unavailable',
-    'host_frame_invalid','host_frame_oversized','host_fixture_requires_ci']);
+    'host_frame_invalid','host_frame_oversized','host_fixture_requires_ci',
+    'host_response_unsolicited','host_pipe_ended','host_pipe_write_failed','host_pipe_read_failed']);
   console.error(JSON.stringify({schema:'ordax.lab.packaged-orchestration-failure.v1',phase,
     reason:allowed.has(error?.message)?error.message:'packaged_orchestration_e2e_failed'}));
   process.exitCode=2;

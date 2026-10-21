@@ -38,6 +38,9 @@ testes novos e 25 regressões de Product Gateway aprovados.
 O runner Windows empacotado agora usa pipe privado e repete o cenário App-only
 de formulários/MCP local. Depois, o host de teste lê do App os mesmos projeto
 e trabalho, verifica assinatura/replay e tenta um envio que deve ser recusado.
+No Windows, o launcher cria handles com `FILE_FLAG_OVERLAPPED` (`stdio:
+["overlapped", "overlapped", "ignore"]`) para I/O assíncrona do Electron/libuv.
+Fechamento ou erro do pipe invalida a sessão; não há fallback.
 Esta é uma **fixture de autorização em CI**, não um grant ou MCP público real.
 Consultar resultado do workflow do commit antes de declarar essa prova aprovada.
 
