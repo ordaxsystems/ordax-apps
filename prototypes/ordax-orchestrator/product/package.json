@@ -43,8 +43,7 @@
       "desktop/**/*",
       "src/*.mjs",
       "supervisor/**/*",
-      "package.json",
-      "runtime-build.json"
+      "package.json"
     ],
     "directories": {
       "buildResources": "build"
