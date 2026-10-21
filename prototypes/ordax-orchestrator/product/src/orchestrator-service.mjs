@@ -8,11 +8,12 @@ import {validateWorkProposal} from './orchestrator-proposal.mjs';
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null}={}) {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
     this.confirmProposal=confirmProposal;
+    this.confirmProposalSend=confirmProposalSend;
     this.pendingProposalReviews=new Set();
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS lab_projects (
@@ -55,8 +56,16 @@ export class OrchestratorService {
 
   // Call exactly once by the App at startup, never when a client connects.
   recoverInterruptedCommands() {
-    return Number(this.db.prepare("UPDATE lab_command_receipts SET status='uncertain',updated_at=? WHERE status='running'")
-      .run(this.store.now()).changes);
+    return this.transaction(()=>{
+      const rows=this.db.prepare("SELECT result FROM lab_command_receipts WHERE status='running' AND operation='proposal_send'").all();
+      for(const row of rows) {
+        const result=row.result?JSON.parse(row.result):null;
+        if(result?.sendActionId&&result?.taskId)this.store.finishAction(result.taskId,result.sendActionId,'indeterminate',
+          {reason:'process_interrupted',providerMessagesSent:null});
+      }
+      return Number(this.db.prepare("UPDATE lab_command_receipts SET status='uncertain',updated_at=? WHERE status='running'")
+        .run(this.store.now()).changes);
+    });
   }
 
   requireAccess(context,operation,projectId=null) {
@@ -138,6 +147,7 @@ export class OrchestratorService {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     this.requireAccess(context,operation,input.projectId||null);
     if(tool.readOnly)return this.read(context,operation,input);
+    if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
     if(['work_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation))return this.dispatch(context,operation,input);
     return this.transaction(()=>{
@@ -153,12 +163,18 @@ export class OrchestratorService {
   read(context,operation,input) {
     if(operation==='proposals_list') {
       const owner=this.orchestrator(input.projectId,input.orchestratorId);
-      return {proposals:this.db.prepare(`SELECT id,payload FROM action_ledger WHERE task_id=?
-        AND action_type='orchestrator.work-proposal' AND status='pending' ORDER BY created_at DESC,id LIMIT 50`)
+      return {proposals:this.db.prepare(`SELECT id,payload,status,result FROM action_ledger WHERE task_id=?
+        AND action_type='orchestrator.work-proposal' AND status IN ('pending','succeeded') ORDER BY created_at DESC,id LIMIT 50`)
         .all(owner.chat_task_id).flatMap(row=>{
           const payload=JSON.parse(row.payload);
-          return payload.actorId===context.actorId&&payload.clientId===context.clientId
-            ?[{actionId:row.id,...validateWorkProposal(payload.proposal)}]:[];
+          if(payload.actorId!==context.actorId||payload.clientId!==context.clientId)return [];
+          const proposal={actionId:row.id,status:'pending',...validateWorkProposal(payload.proposal)};
+          if(row.status==='pending')return [proposal];
+          const result=row.result?JSON.parse(row.result):null;
+          if(!result?.approved||!result.taskId)return [];
+          const task=this.preparedTask(input.projectId,input.orchestratorId,result.taskId);
+          if(!task||!task.draft.trim()||task.has_messages||task.has_runs||task.has_send)return [];
+          return [{...proposal,status:'prepared',taskId:task.id,title:task.title,content:task.draft,draftRevision:task.draft_revision}];
         })};
     }
     if(operation==='status')return {
@@ -340,15 +356,71 @@ export class OrchestratorService {
     return result;
   }
 
-  async dispatch(context,operation,input) {
+  preparedTask(projectId,orchestratorId,taskId) {
+    return this.db.prepare(`SELECT t.id,t.title,t.draft,t.draft_revision,
+      EXISTS(SELECT 1 FROM messages WHERE task_id=t.id) has_messages,
+      EXISTS(SELECT 1 FROM runs WHERE task_id=t.id) has_runs,
+      EXISTS(SELECT 1 FROM action_ledger WHERE task_id=t.id AND action_type='orchestrator.proposal-send') has_send
+      FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id WHERE t.id=? AND b.project_id=?
+      AND b.orchestrator_id=? AND b.kind='work' AND t.workspace_session_id=? AND t.status!='archived'`)
+      .get(taskId,projectId,orchestratorId,this.store.getWorkspaceSession().id);
+  }
+
+  inspectPreparedSend(context,input) {
+    const owner=this.orchestrator(input.projectId,input.orchestratorId);
+    if(owner.status==='paused')throw Error('orchestrator_paused');
+    const action=this.db.prepare(`SELECT payload,result FROM action_ledger WHERE id=? AND task_id=?
+      AND action_type='orchestrator.work-proposal' AND status='succeeded'`).get(input.actionId,owner.chat_task_id);
+    if(!action)throw Error('orchestrator_proposal_unavailable');
+    const payload=JSON.parse(action.payload),result=JSON.parse(action.result||'null');
+    if(payload.actorId!==context.actorId||payload.clientId!==context.clientId||
+      payload.projectId!==input.projectId||payload.orchestratorId!==input.orchestratorId)
+      throw Error('orchestrator_access_denied');
+    if(!result?.approved||!this.db.prepare(`SELECT 1 FROM approval_ledger WHERE action_id=? AND task_id=? AND status='approved'`)
+      .get(input.actionId,owner.chat_task_id))throw Error('orchestrator_proposal_approval_missing');
+    const task=this.preparedTask(input.projectId,input.orchestratorId,result.taskId);
+    if(!task||task.has_messages||task.has_runs||task.has_send)throw Error('orchestrator_first_send_unavailable');
+    if(task.draft_revision!==input.draftRevision||!Number.isSafeInteger(task.draft_revision+1)||!task.draft.trim()||task.draft.length>6000)
+      throw Error('orchestrator_draft_changed');
+    // Existing executor consumes the NEXT revision when clearing the draft.
+    return {taskId:task.id,title:task.title,content:task.draft,reviewedDraftRevision:task.draft_revision,draftRevision:task.draft_revision+1};
+  }
+
+  async confirmAndSendProposal(context,input) {
+    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE workspace_session_id=?
+      AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
+      context.actorId,context.clientId,input.requestId);
+    if(existing)return this.transaction(()=>this.reserve(context,'proposal_send',input).existing);
+    this.requireAccess(context,'work_send',input.projectId);
+    const draft=this.inspectPreparedSend(context,input);
+    if(typeof this.provider?.send!=='function')throw Error('orchestrator_provider_unavailable');
+    if(this.provider.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
+      this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
+      throw Error('orchestrator_executor_busy');
+    if(this.pendingProposalReviews.has(input.actionId))throw Error('orchestrator_proposal_review_busy');
+    this.pendingProposalReviews.add(input.actionId);
+    try {
+      if(this.provider.ready&&await this.provider.ready()!==true)throw Error('orchestrator_provider_unavailable');
+      if(await this.confirmProposalSend?.({...draft,projectId:input.projectId,orchestratorId:input.orchestratorId})!==true)
+        throw Error('orchestrator_proposal_not_approved');
+      this.requireAccess(context,'proposal_send',input.projectId);
+      this.requireAccess(context,'work_send',input.projectId);
+      const current=this.inspectPreparedSend(context,input);
+      if(current.content!==draft.content)throw Error('orchestrator_draft_changed');
+      return await this.dispatch(context,'proposal_send',input,current);
+    }finally{this.pendingProposalReviews.delete(input.actionId);}
+  }
+
+  async dispatch(context,operation,input,preparedSend=null) {
     const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
       AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
       context.actorId,context.clientId,input.requestId);
     // Return an accepted command even if the provider is now offline; never replay.
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
-    const isWorkSend=operation==='work_send';
+    const isWorkSend=operation==='work_send'||operation==='proposal_send';
+    const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
-    const task=operation==='work_send'?this.task(input.projectId,input.taskId,'work'):
+    const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
     if(owner.status==='paused')throw Error('orchestrator_paused');
@@ -361,7 +433,7 @@ export class OrchestratorService {
     if(operation==='orchestrator_analyze'&&analysisContext.works.length===0)throw Error('orchestrator_works_unavailable');
     const content=operation==='orchestrator_analyze'
       ?'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
-      :input.content;
+      :sendInput.content;
     assertTaskHasNoUncertainTransport(this.store,task.id);
     // A single global executor until multi-session E2E proves concurrency.
     if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
@@ -374,15 +446,25 @@ export class OrchestratorService {
       throw Error('orchestrator_reconciliation_required');
     const reserved=this.transaction(()=>{
       const reservation=this.reserve(context,operation,input);
+      if(preparedSend) {
+        reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',reservation.commandId,
+          {actorId:context.actorId,clientId:context.clientId,sourceActionId:input.actionId,
+            contentSha256:createHash('sha256').update(content).digest('hex'),reviewedDraftRevision:sendInput.reviewedDraftRevision,
+            draftRevision:sendInput.draftRevision});
+        reservation.approvalId=this.store.requestApproval(task.id,reservation.sendActionId,'Envio único confirmado em diálogo nativo');
+        this.store.resolveApproval(task.id,reservation.approvalId,true);
+        this.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(reservation.sendActionId);
+      }
       this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
-        .run(JSON.stringify({taskId:task.id}),reservation.commandId);
+        .run(JSON.stringify({taskId:task.id,...(reservation.sendActionId?{
+          sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),reservation.commandId);
       return reservation;
     });
     try {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
       if(!isWorkSend)this.transaction(()=>this.store.appendMessage(task.id,'user',content));
-      const reply=await port.send({taskId:task.id,content,draftRevision:input.draftRevision??null,
+      const reply=await port.send({taskId:task.id,content,draftRevision:sendInput.draftRevision??null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork});
       this.requireAccess(context,operation,input.projectId);
       if(!isWorkSend) {
@@ -407,12 +489,23 @@ export class OrchestratorService {
       requireConfirmedChatReceipt(reply);
       const canonicalRun=this.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?').get(reply.runId,task.id);
       if(canonicalRun?.status!=='succeeded')throw Error('orchestrator_effect_unconfirmed');
-      return this.finish(reserved.commandId,{taskId:task.id,runId:reply.runId,
-        responseObserved:true,effectVerified:false});
+      return this.transaction(()=>{
+        const result={taskId:task.id,runId:reply.runId,responseObserved:true,effectVerified:false,
+          ...(reserved.sendActionId?{sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
+        if(reserved.sendActionId){
+          this.db.prepare('UPDATE action_ledger SET run_id=? WHERE id=?').run(reply.runId,reserved.sendActionId);
+          this.store.finishAction(task.id,reserved.sendActionId,'succeeded',result);
+        }
+        return this.finish(reserved.commandId,result);
+      });
     } catch {
       // Do not log upstream content/credentials, or retry an uncertain effect.
-      const result={taskId:task.id,reason:'execution_unconfirmed'};
-      this.finish(reserved.commandId,result,'uncertain');
+      const result={taskId:task.id,reason:'execution_unconfirmed',...(reserved.sendActionId?{
+        sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
+      this.transaction(()=>{
+        if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,'indeterminate',result);
+        this.finish(reserved.commandId,result,'uncertain');
+      });
       this.requireAccess(context,operation,input.projectId);
       return this.getReceipt(context,reserved.commandId);
     }

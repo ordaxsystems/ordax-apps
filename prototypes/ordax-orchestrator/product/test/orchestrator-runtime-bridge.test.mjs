@@ -40,7 +40,7 @@ test('signed read uses a host-minted context; ordinary object lookalikes have no
 test('host v1 never inherits new local proposal reads or writes from the App catalog',async()=>{
   const f=fixture(),ready=await f.bridge.handle(f.bootstrap);
   assert.deepEqual(ready.operations,['status','projects_list','orchestrators_list','work_list','work_get','work_messages','command_get']);
-  for(const operation of ['proposals_list','orchestrator_prepare','proposal_review'])
+  for(const operation of ['proposals_list','orchestrator_prepare','proposal_review','proposal_send'])
     assert.equal((await f.bridge.handle(f.request(operation))).error,'host_read_only');
   assert.equal(f.reads(),0);
 });

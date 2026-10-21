@@ -9,13 +9,13 @@ import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/orchestrator-contract.mjs';
 import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation.mjs';
 
-function fixture(t,{provider,coordinator,confirmProposal=()=>true}={}) {
+function fixture(t,{provider,coordinator,confirmProposal=()=>true,confirmProposalSend=()=>true}={}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-orchestration-'));
   const file=path.join(dir,'lab.sqlite');
   const store=new Store(file);
   const context=Object.freeze({actorId:'local-test-owner',clientId:'app-test',workspaceSessionId:store.getWorkspaceSession().id});
   let allowed=true;
-  const service=new OrchestratorService({store,provider,coordinator,confirmProposal,authorize:({context:c})=>allowed&&c===context});
+  const service=new OrchestratorService({store,provider,coordinator,confirmProposal,confirmProposalSend,authorize:({context:c})=>allowed&&c===context});
   t.after(()=>{try{store.close();}catch{}fs.rmSync(dir,{recursive:true,force:true});});
   let request=0;
   return {file,store,context,service,setAllowed:v=>allowed=v,
@@ -31,6 +31,116 @@ function executorReceipt(store,taskId) {
   const runId=store.startRun(taskId);store.finishRun(taskId,runId);
   return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
 }
+
+async function preparedWork(f) {
+  const a=await project(f);
+  const actionId=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Preparar pesquisa'})).result.proposalActionId;
+  const created=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId,approved:true});
+  return {...a,actionId,taskId:created.result.taskId,draftRevision:1};
+}
+const proposedReply=async()=>({content:'Proposta para revisão',proposal:{title:'Pesquisar',content:'Compare as alternativas.',reason:'Fundamentar o projeto'}});
+
+test('native-approved first send uses the existing executor, durable approval and one receipt without coordinator API',async t=>{
+  let sends=0,confirms=0;
+  const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:async({content})=>{
+    confirms++;assert.equal(content,'Compare as alternativas.');return true;
+  },provider:{ready:async()=>true,send:async({taskId,content,draftRevision})=>{
+    sends++;
+    assert.equal(draftRevision,2);
+    assert.equal(f.store.db.prepare("SELECT status FROM approval_ledger WHERE task_id=?").get(taskId).status,'approved');
+    assert.equal(f.store.db.prepare("SELECT status FROM action_ledger WHERE task_id=? AND action_type='orchestrator.proposal-send'").get(taskId).status,'dispatching');
+    const {runId}=f.store.beginProviderRun(taskId,content,{draftRevision});
+    f.store.appendMessage(taskId,'assistant','Comparação observada');f.store.finishRun(taskId,runId);
+    return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
+  }}}),a=await preparedWork(f);
+  f.service.coordinator=null;
+  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals[0].status,'prepared');
+  const input={requestId:'first-send',projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1};
+  const result=await f.call('proposal_send',input);
+  assert.equal(result.status,'succeeded');assert.equal(result.result.effectVerified,false);
+  assert.equal(f.store.getTask(a.taskId).draft,'');
+  assert.deepEqual(await f.call('proposal_send',input),result);
+  await assert.rejects(f.call('proposal_send',{...input,requestId:'another-send'}),/first_send_unavailable/);
+  assert.equal(sends,1);assert.equal(confirms,1);
+  assert.equal((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.length,0);
+});
+
+test('missing or cancelled native send confirmation and failed readiness create no send approval or provider call',async t=>{
+  for(const mode of ['missing','cancelled','not-ready']) {
+    let sends=0,confirms=0;
+    const f=fixture(t,{coordinator:{send:proposedReply},
+      confirmProposalSend:mode==='missing'?null:async()=>{confirms++;return false;},
+      provider:{ready:async()=>mode!=='not-ready',send:()=>{sends++;throw Error('must not send');}}}),a=await preparedWork(f);
+    await assert.rejects(f.call('proposal_send',{projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1}),/not_approved|provider_unavailable/);
+    assert.equal(sends,0);assert.equal(confirms,mode==='cancelled'?1:0);
+    assert.equal(f.store.getTask(a.taskId).draft,'Compare as alternativas.');
+    assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.proposal-send'").get().n,0);
+  }
+});
+
+test('first send revalidates draft, pause, permission and intervening runs after native review',async t=>{
+  for(const mode of ['draft','pause','revocation','run']) {
+    let confirm,sends=0;
+    const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:()=>new Promise(resolve=>{confirm=resolve;}),
+      provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await preparedWork(f);
+    const input={projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1};
+    const pending=f.call('proposal_send',input);
+    // Metadata remains usable while the owner reviews; no SQL transaction is open.
+    if(mode==='draft')f.store.setDraft(a.taskId,'Mensagem editada',2);
+    if(mode==='pause')await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
+    if(mode==='revocation')f.setAllowed(false);
+    if(mode==='run'){const id=f.store.startRun(a.taskId);f.store.finishRun(a.taskId,id);}
+    confirm(true);
+    await assert.rejects(pending,/draft_changed|paused|access_denied|first_send_unavailable/);
+    assert.equal(sends,0);
+    assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.proposal-send'").get().n,0);
+  }
+});
+
+test('uncertain first send survives recovery and neither same nor new commands replay transport',async t=>{
+  let sends=0;
+  const f=fixture(t,{coordinator:{send:proposedReply},provider:{send:async({taskId,content,draftRevision})=>{
+    sends++;f.store.beginProviderRun(taskId,content,{draftRevision});throw Error('lost transport');
+  }}}),a=await preparedWork(f);
+  const input={projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1,requestId:'uncertain-first-send'};
+  const receipt=await f.call('proposal_send',input);
+  assert.equal(receipt.status,'uncertain');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(a.taskId).n,1);
+  assert.equal(f.store.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(receipt.result.sendActionId).status,'indeterminate');
+  // Simulate process loss before final receipt/action persistence.
+  f.store.db.prepare("UPDATE lab_command_receipts SET status='running' WHERE id=?").run(receipt.commandId);
+  f.store.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(receipt.result.sendActionId);
+  f.store.close();
+  const reopened=new Store(f.file);
+  try {
+    const service=new OrchestratorService({store:reopened,authorize:()=>true,
+      provider:{send:()=>{sends++;throw Error('must not replay');}}});
+    assert.equal(service.recoverInterruptedCommands(),1);
+    assert.equal(service.recoverInterruptedCommands(),0);
+    assert.equal((await service.invoke(f.context,'proposal_send',input)).status,'uncertain');
+    await assert.rejects(service.invoke(f.context,'proposal_send',{...input,requestId:'new-first-send'}),/first_send_unavailable/);
+    assert.equal(reopened.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(receipt.result.sendActionId).status,'indeterminate');
+  }finally{reopened.close();}
+  assert.equal(sends,1);
+});
+
+test('send approval persistence is atomic and project/work-send permissions cannot be bypassed',async t=>{
+  let sends=0,confirms=0;
+  const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:async()=>{confirms++;return true;},
+    provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await preparedWork(f),b=await project(f,'B');
+  const input={projectId:a.p,orchestratorId:a.o,actionId:a.actionId,draftRevision:1};
+  await assert.rejects(f.call('proposal_send',{...input,projectId:b.p,orchestratorId:b.o}),/unavailable/);
+  const authorize=f.service.authorize;
+  f.service.authorize=args=>args.operation!=='work_send'&&authorize(args);
+  await assert.rejects(f.call('proposal_send',input),/access_denied/);assert.equal(confirms,0);
+  f.service.authorize=authorize;
+  f.store.db.exec("CREATE TRIGGER reject_send_approval BEFORE INSERT ON approval_ledger BEGIN SELECT RAISE(ABORT,'injected_send_approval'); END");
+  await assert.rejects(f.call('proposal_send',input),/injected_send_approval/);
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='proposal_send'").get().n,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.proposal-send'").get().n,0);
+  assert.equal(f.store.getTask(a.taskId).draft,'Compare as alternativas.');
+});
 
 test('coordinator work proposal survives restart and approval creates exactly one scoped work and draft without GPT',async t=>{
   let calls=0,sends=0;
@@ -336,7 +446,7 @@ test('MCP initialize/discovery/call use exactly the same App service and persist
   assert.equal(init.result.protocolVersion,'2025-11-25');
   await mcp.handle({jsonrpc:'2.0',method:'notifications/initialized'});
   const tools=(await rpc('tools/list')).result.tools;
-  assert.equal(tools.length,18);
+  assert.equal(tools.length,19);
   assert.ok(tools.every(tool=>tool.inputSchema.additionalProperties===false));
   const created=await rpc('tools/call',{name:'orchestrator_project_create',arguments:{requestId:'mcp-one',name:'MCP project'}});
   const receipt=created.result.structuredContent;

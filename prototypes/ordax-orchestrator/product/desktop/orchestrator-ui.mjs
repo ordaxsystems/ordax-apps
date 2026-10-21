@@ -1,5 +1,6 @@
 // Native App UI is a client of the same command service as MCP. No DOM of
 // ChatGPT, coordinates or direct SQLite access is used to operate the Lab.
+import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
@@ -166,23 +167,35 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     box.scrollTop=box.scrollHeight;
     const cards=$('coordinatorProposals');cards.replaceChildren();
     for(const proposal of proposals) {
+      const prepared=proposal.status==='prepared';
       const card=document.createElement('article');card.className='coordinator-proposal';
       const title=document.createElement('strong');title.textContent=proposal.title;
       const reason=document.createElement('p');reason.textContent=proposal.reason;
       const draft=document.createElement('pre');draft.textContent=proposal.content;
-      const note=document.createElement('p');note.textContent='Revisar primeira mensagem: criar salva um rascunho local. Nenhum envio ao ChatGPT.';
-      const accept=document.createElement('button');accept.type='button';accept.textContent='Criar frente com este rascunho';
+      const note=document.createElement('p');note.textContent=prepared?'Frente criada. O envio exige nova confirmação da mensagem exata no App.':'Revisar primeira mensagem: criar salva um rascunho local. Nenhum envio ao ChatGPT.';
+      const accept=document.createElement('button');accept.type='button';accept.textContent=prepared?'Revisar e enviar ao GPT':'Criar frente com este rascunho';
       accept.disabled=orchestrators.find(item=>item.id===o)?.status==='paused';
-      const reject=document.createElement('button');reject.type='button';reject.textContent='Descartar proposta';
+      const reject=document.createElement('button');reject.type='button';reject.textContent=prepared?'Abrir e editar':'Descartar proposta';
       for(const [button,approved] of [[accept,true],[reject,false]])button.addEventListener('click',async()=>{
         if(p!==projectId||o!==orchestratorId)return;
         accept.disabled=true;reject.disabled=true;
         try {
-          const receipt=await command('proposal_review',{projectId:p,orchestratorId:o,actionId:proposal.actionId,approved});
-          if(p!==projectId||o!==orchestratorId||receipt.status!=='succeeded')return;
+          if(prepared&&!approved){coordinatorOpen=false;$('orchestrationPanel').hidden=true;await onOpenWork(proposal.taskId);return;}
+          if(prepared) {
+            const availability=providerComposeAvailability(await api.providerStatus());
+            if(p!==projectId||o!==orchestratorId)return;
+            if(!availability.allowed){status(COMPOSE_STATUS_MESSAGES[availability.reason]);accept.disabled=false;reject.disabled=false;return;}
+          }
+          const receipt=await command(prepared?'proposal_send':'proposal_review',{projectId:p,orchestratorId:o,actionId:proposal.actionId,
+            ...(prepared?{draftRevision:proposal.draftRevision}:{approved})});
+          if(p!==projectId||o!==orchestratorId)return;
           await refreshWorks();await renderCoordinator();
+          if(receipt.status!=='succeeded') {
+            if(prepared&&receipt.result?.taskId){coordinatorOpen=false;$('orchestrationPanel').hidden=true;await onOpenWork(receipt.result.taskId);}
+            return;
+          }
           if(receipt.result.taskId){coordinatorOpen=false;$('orchestrationPanel').hidden=true;await onOpenWork(receipt.result.taskId);}
-          status(approved?'Frente criada com rascunho. Revise e envie pela conversa quando desejar.':'Proposta descartada.');
+          status(prepared?'Resposta do GPT observada e registrada na conversa.':approved?'Frente criada com rascunho. Revise e envie pela conversa quando desejar.':'Proposta descartada.');
         }catch{error();await renderCoordinator();}
       });
       card.append(title,reason,draft,note,accept,reject);cards.append(card);

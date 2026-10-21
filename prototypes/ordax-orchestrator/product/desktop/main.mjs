@@ -634,6 +634,11 @@ const localOrchestratorContext=Object.freeze({actorId:'lab-owner',clientId:'lab-
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorService=new OrchestratorService({
+  confirmProposalSend:async({title,content})=>(await dialog.showMessageBox(win,{
+    type:'question',title:'Confirmar primeiro envio ao ChatGPT',message:title,
+    detail:'Mensagem exata a enviar:\n\n'+content+'\n\nSerá enviada uma única mensagem pelo executor do App. Uma resposta observada não comprova alterações em arquivos ou outros efeitos.',
+    buttons:['Enviar ao ChatGPT','Cancelar'],defaultId:1,cancelId:1,noLink:true
+  })).response===0,
   confirmProposal:async({proposal})=>(await dialog.showMessageBox(win,{
     type:'question',title:'Revisar nova frente',message:proposal.title,
     detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+'\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
@@ -641,7 +646,9 @@ const orchestratorService=new OrchestratorService({
   })).response===0,
   store,authorize:({context,operation})=>context===localOrchestratorContext||
     runtimeOrchestratorBridge?.allows(context,operation)===true,
-  provider:{busy:()=>Boolean(liveRun||worker?.active),send:async({taskId,content,draftRevision})=>
+  provider:{busy:()=>Boolean(liveRun||worker?.active),
+    ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
+    send:async({taskId,content,draftRevision})=>
     chatReceiptFromRunTask(await enqueueExecution(()=>runTask(taskId,content,{newSession:false,draftRevision})))},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})

@@ -1,3 +1,27 @@
+# Incremento alpha.7 — primeiro envio aprovado pelo Orquestrador
+
+A ação `proposal_send` conecta a frente já criada ao mesmo executor `work_send`
+do Lab, com confirmação nativa separada e mensagem exata. Somente primeiro
+envio: a Task deve estar sem mensagens/Runs e sem tentativa anterior. O
+rascunho, revisão, autorização `proposal_send` + `work_send` e pausa são
+revalidados depois do diálogo. A criação continua sem envio. API Groq não é
+necessária para enviar o rascunho salvo.
+
+Antes do transporte, approval/action ledger e recibo são persistidos na mesma
+transação. Resultado só é sucesso com recibo de entrega/resposta e Run da Task
+concluído. Recovery de processo torna tentativa em andamento indeterminada;
+nenhum envio é repetido. Fonte Runtime host v1 mantém sete leituras; catálogo
+local cresce para 19 ferramentas. Owner Apps, sem alteração de Runtime,
+Platform, Flow/Grátis ou instalação.
+
+Validação local: 366 testes do produto passaram; CI desta revisão precisa ser
+consultada no commit. A alpha.6 `839ea2572ae3e51770e8b0a5791a9e3130b69873`
+passou nos três workflows, inclusive pacote Windows e launcher Runtime.
+Este incremento **não comprova** ainda entrega a uma conta real ChatGPT.
+Próximo gate: instalar/testar candidata atestada em perfil autorizado, confirmar
+primeiro envio e abertura da sessão pelo modo App; só depois ampliar supervisão.
+[Contrato, riscos e testes alpha.7](../audits/ORCHESTRATOR-FIRST-SEND-2026-10-21.md).
+
 # Incremento alpha.6 — preparação e revisão de novas frentes
 
 Implementado no candidato: pedido explícito no chat central → proposta de

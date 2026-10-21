@@ -92,7 +92,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
         idempotent:JSON.stringify(first.result)===JSON.stringify(repeated.result),
         workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length};
     })()`);
-    if(summary.projectId!==projectId||summary.toolCount!==18||!summary.commandSucceeded||
+    if(summary.projectId!==projectId||summary.toolCount!==19||!summary.commandSucceeded||
       !summary.idempotent||summary.workCount!==1||summary.coordinatorMessages!==0)
       throw Error('native_mcp_state_mismatch');
     await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
@@ -113,7 +113,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       layoutResult.analysisDisabled!==true)
       throw Error('work_conversation_layout_failed');
     console.log(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
-      appMode:true,runtimeVerified:true,toolCount:18,sharedStateVerified:true,
+      appMode:true,runtimeVerified:true,toolCount:19,sharedStateVerified:true,
       projectFormVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,

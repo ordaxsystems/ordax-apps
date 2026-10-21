@@ -1,3 +1,17 @@
+## Primeiro envio aprovado pelo Orquestrador — alpha.7
+
+Após criar uma frente com rascunho, retorne ao chat do orquestrador. A proposta
+aparece como **Revisar e enviar ao GPT**, com o rascunho atual. O App verifica
+prontidão, pede confirmação nativa da mensagem exata e chama o executor
+existente uma única vez. A API Groq pode estar desligada nessa etapa.
+**Abrir e editar** mantém o fluxo manual. Se o rascunho mudar durante a revisão,
+o envio é recusado para nova revisão. Criar uma frente continua sem enviar.
+
+O resultado só é confirmado com recibo de entrega/resposta e Run canônico
+concluído. Falha incerta ou reinício não repetem o envio. Este incremento
+implementa o caminho de envio; a prova com uma conta real do ChatGPT em modo
+App ainda é um gate separado. Não ativa supervisão contínua nem instalação.
+
 ## Preparar uma nova frente pelo chat — alpha.6
 
 Descreva a frente no campo do chat central e clique em **Preparar nova frente**.
@@ -51,7 +65,7 @@ não são executadas automaticamente. Não há serviço 24h ativo ou nova releas
 Detalhes, testes e dependências em
 [auditoria do incremento](docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
 
-**Versão própria do Lab: `0.2.0-alpha.6` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
+**Versão própria do Lab: `0.2.0-alpha.7` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
 
 **Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release nem submissão automática de tarefas. Preserva os fluxos herdados de Task/Run/Store, ChatGPT Web, continuidade e sessão do **OrdaX Flow/Grátis 0.4.12**; os novos recursos de análise/coordenador permanecem explícitos e separados. Esta é uma derivação controlada, não uma modificação do Grátis existente.
 

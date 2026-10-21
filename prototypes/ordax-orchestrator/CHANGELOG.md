@@ -1,3 +1,12 @@
+## 0.2.0-alpha.7 — primeiro envio aprovado pelo Orquestrador
+
+- Nova ação de revisão/envio do rascunho atual de uma frente preparada.
+- Confirmação nativa separada da criação, prontidão e revalidação de permissões,
+  pausa, rascunho e primeiro envio; mesmo executor Task/Run/Store.
+- Approval/action ledger e recibo persistidos antes do transporte; recovery
+  conserva incerteza sem reenvio. MCP host v1 continua com sete leituras.
+- Nenhuma chamada real à Groq/ChatGPT, instalação ou autonomia 24h nesta validação.
+
 ## 0.2.0-alpha.6 — propostas revisáveis de novas frentes
 
 - Pedido no chat central prepara uma proposta limitada via Groq.

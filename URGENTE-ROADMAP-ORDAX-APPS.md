@@ -1,3 +1,13 @@
+## Continuidade solicitada — primeiro envio aprovado no Orchestrator
+
+Owner Apps: alpha.7 liga frente preparada ao executor já existente, com
+confirmação nativa de envio separada da criação, rascunho/revisão/permissões
+revalidados, ledgers e recibo duráveis antes do transporte. Primeiro envio
+somente, sem replay em falha/reinício. 366 testes locais aprovados. Contrato
+host Runtime v1 permanece com sete leituras; catálogo local tem 19 ferramentas.
+Sem alterar Flow/Grátis, instalar, chamar modelos reais ou ativar 24h.
+[Escopo, riscos, aceite e gate real](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-FIRST-SEND-2026-10-21.md).
+
 ## Continuidade solicitada — propostas de frentes no Orchestrator Lab
 
 Exceção explícita do proprietário: avançar a coordenação pelo chat central.
