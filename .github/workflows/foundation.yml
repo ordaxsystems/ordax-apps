@@ -305,6 +305,11 @@ jobs:
           path: .ordax-assistant-os-main
           persist-credentials: false
 
+      - name: Test transferred Assistant behavior against canonical OS ports
+        env:
+          ORDAX_ASSISTANT_TEST_OS_ROOT: .ordax-assistant-os-main
+        run: node --test apps/assistant/tests/*.test.mjs
+
       - name: Audit transferred Assistant source, public SDK and remove-first ownership
         run: |
           set -euo pipefail
