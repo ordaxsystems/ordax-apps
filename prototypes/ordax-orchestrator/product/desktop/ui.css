@@ -185,6 +185,17 @@ button{color:inherit}
 .memory-editor input,.memory-editor select,.memory-editor textarea{width:100%;border:1px solid #263241;background:#0b1118;color:#dce3ec;border-radius:8px;outline:0;font-size:9px;padding:7px 8px}
 .memory-editor textarea{resize:vertical;min-height:64px;line-height:1.4;margin-top:6px}
 .memory-editor input:focus,.memory-editor select:focus,.memory-editor textarea:focus{border-color:#3a4a5d}
+/* One Lab-only preparation surface; no second agent dashboard. */
+#labSupervisorRole,#labSupervisorKeyInput,#labSupervisorObjective{
+  display:block;width:100%;min-width:0;margin:6px 0 9px;
+  padding:8px;border:1px solid var(--border);border-radius:8px;
+  background:#0b1118;color:var(--text);font-size:11px;
+}
+#labSupervisorKeySettings{margin:11px 0;padding:10px;border:1px solid var(--border);border-radius:10px}
+#labSupervisorKeySettings summary{cursor:pointer;font-size:11px;font-weight:650}
+#labSupervisorKeySettings .memory-editor-actions{flex-wrap:wrap;justify-content:flex-start}
+#labSupervisorKeySettings button:disabled,#labSupervisorRole:disabled{opacity:.5;cursor:not-allowed}
+
 .memory-editor-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:7px}
 .mini-secondary,.mini-primary{border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:9px;cursor:pointer}
 .mini-secondary{background:#111821;color:#7f8b9b}.mini-primary{background:#e8edf3;color:#0a0e13;border-color:#e8edf3;font-weight:800}
