@@ -7,6 +7,49 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   const requestKeys=new Map();
   const status=text=>{$('orchestrationNotice').textContent=text;};
   const call=(operation,input={})=>api.orchestratorInvoke(operation,input);
+  function renderProjectNavigation(projects) {
+    const list=$('projectNavList');list.replaceChildren();
+    if(!projects.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Crie seu primeiro projeto.';list.append(empty);return;}
+    for(const project of projects){
+      const button=document.createElement('button');button.type='button';button.className='nav-item project-nav-item';
+      button.textContent=project.name;button.dataset.projectId=project.id;
+      button.setAttribute('aria-pressed',String(project.id===projectId));
+      if(project.id===projectId)button.classList.add('active');
+      button.addEventListener('click',()=>{ $('projectSelect').value=project.id;$('projectSelect').dispatchEvent(new Event('change')); });
+      list.append(button);
+    }
+  }
+  function renderOrchestratorNavigation() {
+    const list=$('orchestratorNavList');list.replaceChildren();
+    if(!projectId){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Selecione um projeto.';list.append(empty);return;}
+    if(!orchestrators.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Adicione um orquestrador para começar.';list.append(empty);return;}
+    for(const item of orchestrators){
+      const button=document.createElement('button');button.type='button';button.className='nav-item orchestrator-nav-item';
+      button.textContent=item.name;button.dataset.orchestratorId=item.id;
+      button.setAttribute('aria-pressed',String(item.id===orchestratorId));
+      if(item.id===orchestratorId)button.classList.add('active');
+      button.addEventListener('click',()=>{ $('orchestratorSelect').value=item.id;$('orchestratorSelect').dispatchEvent(new Event('change')); });
+      list.append(button);
+    }
+  }
+  function renderWorks(works) {
+    const labels={running:['Em andamento','running'],completed:['Concluída','completed'],failed:['Revisar','attention'],interrupted:['Revisar','attention'],paused:['Pausada','paused'],ready:['Aguardando','ready']};
+    $('workRailCount').textContent=String(works.length);
+    $('workRailProject').textContent=$('projectSelect').selectedOptions[0]?.textContent||'';
+    const list=$('orchestratorWorks');list.replaceChildren();
+    if(!works.length){const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
+    for(const work of works){
+      const [label,state]=labels[work.status]||labels.ready;const button=document.createElement('button');
+      button.type='button';button.className='work-card';button.dataset.taskId=work.id;
+      const copy=document.createElement('span');copy.className='work-card-copy';
+      const title=document.createElement('strong');title.textContent=work.title;
+      const detail=document.createElement('small');detail.textContent=work.provider_segments?`${work.provider_segments} conversa${work.provider_segments===1?'':'s'} no histórico`:'Conversa pronta para iniciar';
+      copy.append(title,detail);const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
+      button.append(copy,badge);button.addEventListener('click',async()=>{
+        try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
+      });list.append(button);
+    }
+  }
   async function command(operation,input) {
     const key=JSON.stringify({operation,input});
     const requestId=requestKeys.get(key)||crypto.randomUUID();
@@ -31,8 +74,26 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       : 'Chave configurada. Ative o chat por API para enviar uma mensagem.';
   }
   $('coordinatorApiSettings').addEventListener('click',()=>{
+    document.body.classList.add('orchestrator-api-settings');
+    $('contextRail').classList.add('open');
     $('labSupervisorPanel').open=true;$('labSupervisorKeySettings').open=true;
     $('labSupervisorKeyInput').scrollIntoView({block:'center'});$('labSupervisorKeyInput').focus();
+  });
+  $('closeCoordinatorApiSettings').addEventListener('click',()=>{
+    document.body.classList.remove('orchestrator-api-settings');$('contextRail').classList.remove('open');
+  });
+  $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectName').focus(); });
+  $('addOrchestrator').addEventListener('click',()=>{
+    if(!projectId){status('Selecione ou crie um projeto antes de adicionar um orquestrador.');return;}
+    $('orchestratorSetup').open=true;$('orchestratorName').focus();
+  });
+  $('newScopedWorkButton').addEventListener('click',()=>{
+    $('newScopedWorkDetails').open=true;$('scopedWorkTitle').focus();
+  });
+  $('coordinatorRailToggle').addEventListener('click',()=>{
+    const open=document.body.classList.toggle('orchestrator-rail-open');
+    $('contextRail').classList.toggle('open',open);
+    $('coordinatorRailToggle').setAttribute('aria-expanded',String(open));
   });
   $('coordinatorApiEnable').addEventListener('click',async()=>{
     $('coordinatorApiEnable').disabled=true;
@@ -42,15 +103,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
-    if(!p) {onScopeChange(null);return;}
+    if(!p) {renderWorks([]);onScopeChange(null);return;}
     const {works}=await call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})});
     if(generation!==epoch)return;
+    renderWorks(works);
     onScopeChange(new Set(works.map(w=>w.id)));
   }
   async function refreshProjects() {
     const {projects}=await call('projects_list');
     options($('projectSelect'),projects,'Conversas sem projeto');
     if(projects.some(p=>p.id===projectId))$('projectSelect').value=projectId;
+    renderProjectNavigation(projects);
+    return projects;
   }
   async function refreshOrchestrators() {
     const p=projectId;
@@ -68,7 +132,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('orchestratorMission').textContent=selected?.mission||'Configure um orquestrador para este projeto.';
     $('orchestratorTitle').textContent=selected?.name||'Orquestrador';
     $('coordinatorSend').disabled=!coordinatorAvailable||!selected||selected.status==='paused';
+    renderOrchestratorNavigation();
     await refreshWorks();
+    return orchestrators;
   }
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
@@ -92,8 +158,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function showCoordinator() {
     if(!chatTaskId)return;
     coordinatorOpen=true;
+    document.body.classList.remove('orchestrator-api-settings','orchestrator-rail-open');$('contextRail').classList.remove('open');
+    $('orchestrationPanel').hidden=false;$('orchestratorWorkRail').hidden=false;
     await onShowCoordinator();
-    $('orchestrationPanel').hidden=false;
     await renderCoordinator();
   }
   function error() {status('Não foi possível confirmar a operação. Consulte o estado antes de repetir.');}
@@ -103,13 +170,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     try {await action();}catch{error();}finally{buttons.forEach((b,i)=>b.disabled=previous[i]);}
   }
   $('projectSelect').addEventListener('change',async()=>{
+    document.body.classList.remove('orchestrator-api-settings','orchestrator-rail-open');$('contextRail').classList.remove('open');
     projectId=$('projectSelect').value||null;orchestratorId=null;
+    renderProjectNavigation((await call('projects_list')).projects);
     $('orchestrationPanel').hidden=true;coordinatorOpen=false;
-    try{await refreshOrchestrators();}catch{error();}
+    try{
+      const items=await refreshOrchestrators();
+      if(items.length)await showCoordinator();
+      else{document.body.classList.remove('orchestrator-focus','orchestrator-rail-open','orchestrator-api-settings');$('empty').classList.remove('hidden');}
+    }catch{error();}
   });
   $('orchestratorSelect').addEventListener('change',async()=>{
     orchestratorId=$('orchestratorSelect').value||null;
-    try{await refreshOrchestrators();if(coordinatorOpen)await showCoordinator();}catch{error();}
+    try{await refreshOrchestrators();if(chatTaskId)await showCoordinator();}catch{error();}
   });
   $('newProjectForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
@@ -127,7 +200,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const receipt=await command('orchestrator_create',{projectId:p,name:$('orchestratorName').value,mission:$('missionInput').value});
       if(receipt.status!=='succeeded'||p!==projectId)return;
       orchestratorId=receipt.result.orchestratorId;
-      $('newOrchestratorForm').reset();
+      $('newOrchestratorForm').reset();$('orchestratorSetup').open=false;
       await refreshOrchestrators();await showCoordinator();status('Orquestrador configurado.');
     });
   });
@@ -152,10 +225,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await renderCoordinator();
     });
   });
+  $('coordinatorPrompt').addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&!event.shiftKey&&!$('coordinatorSend').disabled){event.preventDefault();$('coordinatorComposer').requestSubmit();}
+  });
   $('newScopedWorkForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
       await createWork($('scopedWorkTitle').value);
-      $('newScopedWorkForm').reset();
+      $('newScopedWorkForm').reset();$('newScopedWorkDetails').open=false;
     });
   });
   async function createWork(title='Nova conversa de trabalho') {
@@ -168,9 +244,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     return receipt.result.taskId;
   }
   return Object.freeze({
-    async start(){await refreshProjects();
+    async start(){const projects=await refreshProjects();
       await refreshApiStatus();
-      await refreshOrchestrators();
+      if(!projectId&&projects.length){projectId=projects[0].id;$('projectSelect').value=projectId;renderProjectNavigation(projects);}
+      const items=await refreshOrchestrators();
+      if(items.length)await showCoordinator();
       let refreshPending=false;
       api.onOrchestratorChanged?.(()=>{
         if(refreshPending)return;

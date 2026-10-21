@@ -449,6 +449,9 @@ function renderContext(task) {
 
 async function openTask(id) {
   orchestrationUi?.hide();
+  document.body.classList.remove('orchestrator-focus','orchestrator-rail-open','orchestrator-api-settings');
+  $('#contextRail').classList.remove('open');
+  $('#orchestratorWorkRail').hidden=true;
   if (id !== currentTaskId) flushDraft();
   const epoch = ++navigationEpoch;
   const task = await window.ordax.openTask(id);
@@ -897,6 +900,8 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,
   },
   onOpenWork:async id=>{await loadTasks();await openTask(id);},
   onShowCoordinator:async()=>{
+    document.body.classList.add('orchestrator-focus');
+    $('#orchestratorWorkRail').hidden=false;
     flushDraft();await setDirectModeVisible(false);
     currentTaskId=null;currentTask=null;navigationEpoch++;syncComposerAvailability();
     $('#taskPanel').classList.add('hidden');$('#empty').classList.add('hidden');

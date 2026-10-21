@@ -135,6 +135,21 @@ test('OrdaX UI exposes responsive conversation, chat and context columns', () =>
   assert.match(css, /@media \(max-width:620px\)/);
 });
 
+test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  for(const id of ['projectNavList','orchestratorNavList','orchestrationPanel','orchestratorWorkRail','orchestratorWorks','newScopedWorkForm'])
+    assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(html,/Conversas no GPT/);
+  assert.match(html,/Nova conversa no GPT/);
+  assert.match(orchestration,/call\('work_list'/);
+  assert.match(orchestration,/onOpenWork\(work\.id\)/);
+  assert.match(orchestration,/orchestrator-focus/);
+  assert.match(css,/body\.orchestrator-focus #contextRail/);
+  assert.match(css,/\.work-card:hover/);
+});
+
 test('drafts are scoped to a Task, revision-guarded and saved without entering provider memory', () => {
   const store = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'desktop', 'ui.html'), 'utf8');

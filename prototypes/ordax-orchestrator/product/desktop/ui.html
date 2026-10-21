@@ -18,22 +18,21 @@
       </header>
 
       <section class="orchestration-navigation" aria-label="Projetos e orquestradores">
-        <label for="projectSelect">Projeto</label>
-        <select id="projectSelect"><option value="">Conversas sem projeto</option></select>
-        <details id="projectSetup"><summary>Novo projeto</summary>
+        <div class="nav-section-heading"><span>Projetos</span><button id="addProject" class="nav-add" type="button" aria-label="Novo projeto">+</button></div>
+        <div id="projectNavList" class="nav-item-list" aria-label="Lista de projetos"></div>
+        <select id="projectSelect" class="native-state-control" aria-label="Projeto"><option value="">Conversas sem projeto</option></select>
+        <details id="projectSetup" class="nav-setup">
+          <summary>Novo projeto</summary>
           <form id="newProjectForm">
             <label for="projectName">Nome</label><input id="projectName" maxlength="140" required />
             <label for="projectObjective">Objetivo</label><textarea id="projectObjective" maxlength="4000" rows="2"></textarea>
             <button type="submit">Criar projeto</button>
           </form>
         </details>
-        <label for="orchestratorSelect">Orquestrador</label>
-        <select id="orchestratorSelect"><option value="">Selecione um orquestrador</option></select>
-        <div class="orchestration-actions">
-          <button id="openOrchestrator" type="button" disabled>Conversar</button>
-          <button id="pauseOrchestrator" type="button" disabled>Pausar</button>
-        </div>
-        <details><summary>Configurar orquestrador</summary>
+        <div class="nav-section-heading orchestrator-heading"><span>Orquestradores</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo orquestrador">+</button></div>
+        <div id="orchestratorNavList" class="nav-item-list" aria-label="Lista de orquestradores"></div>
+        <select id="orchestratorSelect" class="native-state-control" aria-label="Orquestrador"><option value="">Selecione um orquestrador</option></select>
+        <details id="orchestratorSetup" class="nav-setup"><summary>Novo orquestrador</summary>
           <form id="newOrchestratorForm" hidden>
             <label for="orchestratorName">Nome</label><input id="orchestratorName" maxlength="140" required />
             <label for="missionInput">Missão e instruções</label><textarea id="missionInput" maxlength="4000" rows="3" required></textarea>
@@ -85,22 +84,22 @@
 
     <section class="chat-column">
       <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
-        <header><h2 id="orchestratorTitle">Orquestrador</h2><p id="orchestratorMission"></p></header>
-        <div class="orchestration-actions">
-          <button id="coordinatorApiSettings" type="button">Configurar API</button>
-          <button id="coordinatorApiEnable" type="button" disabled>Ativar chat por API</button>
-        </div>
-        <p id="orchestrationConnection" role="status"></p>
+        <header class="coordinator-head">
+          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><h2 id="orchestratorTitle">Orquestrador</h2><p id="orchestratorMission"></p></div></div>
+          <div class="coordinator-head-actions">
+            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Conversas</button>
+            <button id="openOrchestrator" class="ghost-button" type="button" disabled>Orquestrador</button>
+            <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
+            <button id="coordinatorApiSettings" class="ghost-button" type="button">Configurar API</button>
+            <button id="coordinatorApiEnable" class="primary coordinator-enable" type="button" disabled>Ativar chat por API</button>
+          </div>
+        </header>
+        <p id="orchestrationConnection" class="orchestration-connection" role="status"></p>
         <div id="coordinatorMessages" class="coordinator-messages" aria-live="polite"></div>
         <form id="coordinatorComposer">
-          <label for="coordinatorPrompt">Mensagem ao orquestrador</label>
-          <textarea id="coordinatorPrompt" maxlength="4000" rows="3" required></textarea>
-          <button id="coordinatorSend" type="submit">Enviar ao orquestrador</button>
-        </form>
-        <form id="newScopedWorkForm" class="orchestration-actions">
-          <label for="scopedWorkTitle">Nova frente</label>
-          <input id="scopedWorkTitle" maxlength="140" placeholder="Nome do trabalho" required />
-          <button type="submit">Criar conversa de trabalho</button>
+          <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>
+          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Converse com o orquestrador..." required></textarea>
+          <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao orquestrador" disabled>↑</button>
         </form>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
@@ -169,6 +168,21 @@
     </section>
 
     <aside id="contextRail" class="context-rail">
+      <section id="orchestratorWorkRail" class="orchestrator-work-rail" hidden aria-label="Conversas do projeto no GPT">
+        <header class="work-rail-head"><div><span class="eyebrow">Projeto ativo</span><h3>Conversas no GPT</h3></div><span id="workRailCount" class="work-rail-count">0</span></header>
+        <p id="workRailProject" class="work-rail-project"></p>
+        <button id="newScopedWorkButton" class="primary new-gpt-conversation" type="button">＋ Nova conversa no GPT</button>
+        <details id="newScopedWorkDetails" class="new-work-details">
+          <summary>Configurar nome da conversa</summary>
+          <form id="newScopedWorkForm" class="new-work-form">
+            <label for="scopedWorkTitle">Frente de trabalho</label>
+            <input id="scopedWorkTitle" maxlength="140" placeholder="Ex.: Revisar inicialização USB" required />
+            <button class="primary" type="submit">Criar e abrir conversa</button>
+          </form>
+        </details>
+        <div id="orchestratorWorks" class="orchestrator-works" aria-live="polite"></div>
+        <p class="work-rail-note">Cada conversa mantém o próprio histórico dentro do projeto.</p>
+      </section>
       <header class="context-head">
         <div>
           <span class="eyebrow">Contexto</span>
@@ -265,6 +279,7 @@
       </details>
       <details class="context-section" id="labSupervisorPanel">
         <summary class="section-title-row"><span>Supervisor OrdaX Lab</span></summary>
+        <button id="closeCoordinatorApiSettings" class="mini-secondary coordinator-settings-back" type="button">Voltar às conversas</button>
         <p id="labVersion" class="diagnostics-hint">Versão do Lab indisponível</p>
         <p id="labSupervisorState" class="diagnostics-hint">Verificando supervisor...</p>
         <label for="labSupervisorRole">Papel desta conversa</label>
