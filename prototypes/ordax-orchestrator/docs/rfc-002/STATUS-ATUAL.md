@@ -366,3 +366,7 @@ Implementado no SQLite canônico um registro de texto provisório por Run, limit
 ### P5/W6 — commit transacional da resposta confirmada (20/10/2026)
 
 Falha na origem: resposta assistant, assets e checkpoint eram autocommits separados antes de `finishRun`, permitindo resposta/checkpoint fantasma em queda de banco. `Store.commitObservedProviderReply` agora os grava na **mesma transação** de finalização Run/Task/eventos/turno e exclusão do snapshot unverified. Rollback mantém provisório. **21/21 testes focados**, falhas injetadas e prova no App isolado passando (sem envios). [Auditoria](../audits/P5-W6-ATOMIC-CONFIRMED-REPLY-2026-10-20.md). W3/W4 externos ainda não certificados, sem merge nem alterar a instalação Dev.
+
+### P5/W3 — recibo antes da navegação (20/10/2026)
+
+O handler de inspeção W3 navegava para o provedor mesmo sem recibo de envio, embora essa ausência já tornasse a certificação impossível. Corrigido na origem: o guard local devolve `provider_submission_provenance_missing` antes de qualquer inspeção remota; a abertura manual permanece independente. SQLite Dev read-only: **5 links, 0 recibos, 0 Runs ativas, quick_check ok**. 8/8 regressões focadas passaram, incluindo worker instrumentado com zero chamadas sem recibo. [Auditoria](../audits/P5-W3-RECEIPT-FIRST-2026-10-20.md). W3/W4 reais ainda pendentes; sem replay.

@@ -752,7 +752,7 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
       provider_verification_required:'Verificação do ChatGPT pendente. Inspeção suspensa, sem reenvio.',
       provider_conversation_load_failed:'O ChatGPT exibiu erro ao carregar esta conversa. Histórico local preservado; não será feita nova navegação nem reenvio.',
       provider_health_unavailable:'Não foi possível observar a sessão. Inspeção suspensa, sem reenvio.',
-      provider_submission_provenance_missing:'A conversa contém uma possível resposta, mas a execução antiga não tem recibo verificável do texto enviado. W3 não certificado; nenhum reenvio.',
+      provider_submission_provenance_missing:'Esta tarefa não tem recibo verificável de envio para a última mensagem. A inspeção remota não foi iniciada; histórico local preservado, W3 pendente.',
       provider_response_generation_active:'A resposta ainda pode estar sendo gerada. W3 não certificado; nenhum reenvio.',
       provider_generation_state_unobserved:'Não foi possível comprovar o estado de geração da resposta. W3 não certificado; nenhum reenvio.'
     };

@@ -407,6 +407,15 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
   const provenance=findProviderSubmissionProvenance({
     store,taskId,chatUrl:expectedUrl,messageId:message?.id
   });
+  // Without a receipt for the latest submitted turn, W3 certification is
+  // impossible regardless of what the remote DOM displays. Return from the
+  // local ledger BEFORE triggering any provider navigation or extra traffic.
+  // Manual task opening remains a separate, explicitly requested action.
+  if (!provenance) return {
+    kind:'unavailable',reason:'provider_submission_provenance_missing',
+    inspectionReason:'provider_submission_provenance_missing',
+    threadRendered:false,responseCandidate:false,requiresReconciliation:true
+  };
   // No mutation or replay, including when the provider navigation times out.
   const observed=await worker.inspectConversationReadOnly(expectedUrl).catch(() => ({available:false,reason:'provider_inspection_unavailable'}));
   const assessment=assessProviderConversationEvidence({
