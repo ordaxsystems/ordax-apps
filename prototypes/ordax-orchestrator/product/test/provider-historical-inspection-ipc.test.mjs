@@ -45,10 +45,12 @@ function mount({provenance=null,observed,localText='continue',localMessageId='ms
 test('W3 actual read-only IPC never certifies an unsubmitted local message',async()=>{
   const app=mount();
   const outcome=await app.invoke();
-  assert.equal(outcome.kind,'response_candidate');
+  assert.equal(outcome.kind,'unavailable');
   assert.equal(outcome.threadRendered,false);
+  assert.equal(outcome.responseCandidate,false);
   assert.equal(outcome.inspectionReason,'provider_submission_provenance_missing');
-  assert.equal(app.inspections(),1);
+  // Without a durable receipt, the UI must not trigger a futile GET.
+  assert.equal(app.inspections(),0);
   assert.equal(app.writes(),0);
 });
 
