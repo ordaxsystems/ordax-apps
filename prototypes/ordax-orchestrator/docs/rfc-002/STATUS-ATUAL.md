@@ -374,3 +374,7 @@ O handler de inspeção W3 navegava para o provedor mesmo sem recibo de envio, e
 ### P5/W3 — prova física da inspeção bloqueada sem recibo (20/10/2026)
 
 O roteiro App-only W3 passou a exigir receipt-first. Novo preparador seguro cria perfil staged inédito com uma Task vinculada sintética, uma mensagem não enviada, 0 Runs e 0 recibos. Em Electron real (9445), o botão Inspecionar conversa retornou `provider_submission_provenance_missing`, com URL e SQLite intactos, zero envios e W3 não certificado; a instância principal 9446 permaneceu ativa. 23/23 testes focados de isolamento/fixture passaram inicialmente. [Auditoria](../audits/P5-W3-RECEIPT-FIRST-APP-E2E-2026-10-20.md). W3/W4 reais ainda pendentes.
+
+### P5/W7 — recuperação antes de atualizar o Dev (21/10/2026)
+
+Criado preflight explícito com `node:sqlite.backup()`, integrity_check, bloqueio para Run ativa, cópia/hash dos assets e manifest SHA-256 em diretório único dentro do perfil staged, sem cookies nem alterações na origem. 3/3 testes focados aprovados. Ponto de recuperação real criado para 10 Tasks/12 mensagens/8 Runs (0 ativas), 63 eventos/4 checkpoints e 0 assets. **Atualização/reinício ainda bloqueados:** revisão carregada no Electron não atestada; backup íntegro não equivale a rollback de código. [Auditoria](../audits/P5-W7-DEV-UPGRADE-RECOVERY-POINT-2026-10-21.md).

@@ -17,6 +17,7 @@
     "test:live:w3-offline-seed": "node scripts/seed-w3-unsubmitted-offline.cjs",
     "test:live:w3-offline-preflight": "node scripts/live-ui-w3-offline-preflight.cjs",
     "test:live:w4-offline-seed": "node scripts/seed-w4-offline-recovery.cjs",
+    "dev:recovery-point": "node scripts/create-dev-recovery-point.cjs",
     "test:live:local-recovery": "node scripts/live-ui-local-recovery-readonly.cjs",
     "test:live:signed-out": "node scripts/live-ui-signed-out-compose.cjs",
     "test:live:provider-frame": "node scripts/live-ui-provider-frame-readonly.cjs",
