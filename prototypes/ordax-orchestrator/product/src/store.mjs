@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { MemoryCandidateLedger } from './memory-candidates.mjs';
+import { assertSupervisorRole } from './supervisor-role-presets.mjs';
 import { canonicalProviderChatUrl } from './conversation-policy.mjs';
 import { buildProjectContinuation } from './continuation-context.mjs';
 
@@ -274,9 +275,29 @@ export class Store {
     // Navigation needs metadata only. Do not clone drafts, checkpoints or provider
     // URLs for every item of a potentially huge sidebar.
     return this.db.prepare(`SELECT t.id,t.title,t.status,t.created_at,t.updated_at,
+      COALESCE((SELECT json_extract(e.payload,'$.role') FROM events e
+        WHERE e.task_id=t.id AND e.kind='task.supervisor_role'
+        ORDER BY e.id DESC LIMIT 1),'none') AS supervisor_role,
       (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count,
       (SELECT COUNT(*) FROM project_memory_candidates c WHERE c.task_id=t.id AND c.status='pending') AS pending_memory_count
       FROM tasks t ORDER BY t.updated_at DESC`).all();
+  }
+
+  // Role is a view-level preference recorded in the existing canonical event
+  // ledger. It does not start a model, mutate messages or authorize a Run.
+  getTaskSupervisorRole(taskId){
+    const row=this.db.prepare("SELECT json_extract(payload,'$.role') role FROM events WHERE task_id=? AND kind='task.supervisor_role' ORDER BY id DESC LIMIT 1").get(taskId);
+    return row?.role||'none';
+  }
+
+  setTaskSupervisorRole(taskId,role){
+    const value=assertSupervisorRole(role);
+    const task=this.db.prepare('SELECT workspace_session_id FROM tasks WHERE id=?').get(taskId);
+    if(!task || task.workspace_session_id!==this.workspaceSession.id)throw Error('task_access_denied');
+    if(this.getTaskSupervisorRole(taskId)!==value){
+      this.event(taskId,'task.supervisor_role',{role:value});
+    }
+    return this.getTask(taskId);
   }
 
   renameTask(taskId, title) {
@@ -316,6 +337,7 @@ export class Store {
     const pendingCount = this.memoryCandidates.pendingCount(id);
     return {
       ...task,
+      supervisor_role:this.getTaskSupervisorRole(id),
       messages,
       ...(page ? { message_page:{ has_more:page.has_more, next_cursor:page.next_cursor, page_size:page.page_size } } : {}),
       events: this.events(id, 100),
