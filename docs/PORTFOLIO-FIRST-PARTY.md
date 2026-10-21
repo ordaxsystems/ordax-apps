@@ -10,9 +10,27 @@ O SSOT **da política de seleção inicial** pertence ao OS e foi implementado e
 - **Distribuição especial/Windows + OS**: Studio, cujo código portátil canônico é `apps/studio`; a plataforma e o Runtime não são clonados dentro dele.
 - **Domínios empresariais em fundação, sem `app.json` e sem distribuição**: Finanças, Estoque e Vendas.
 
-## Apps em migração (ainda com fonte canônica no OS)
+## Transferência de fonte e distribuição
 
-Arquivos, Internet, Assistente, Projetos, Atividade e Rede **não devem ganhar uma segunda cópia autoritativa**. Os respectivos `migrations/<id>.externalization.json` são os gates de transferência: primeiro provar ausência e remover o owner antigo do OS, depois ativar o código deste repositório, por pacote verificável. Não manter snapshot executável ou pacote paralelo de Arquivos em `ordax-apps` antes do cutover remove-first: o código de produto continua apenas no OS até a remoção comprovada do owner antigo.
+- **Fonte já transferida ao OrdaX Apps:** Internet, Assistente, Projetos,
+  Atividade, Rede e Notas possuem implementação canônica em `apps/<id>/`.
+  Isso **não** significa que a distribuição esteja autorizada. Os respectivos
+  `migrations/<id>.externalization.json` ainda preservam os gates de pacote,
+  assinatura, saúde, promoção e rollback.
+- **Arquivos ainda pertence ao OrdaX OS:** `system/apps/files` é a única
+  fonte executável. O handoff bootstrap depende de instalação externa assinada,
+  interface funcional no boot e provas do MVP USB. O pacote de ensaio em diretório
+  temporário não é uma segunda fonte nem pode ser instalado; consulte
+  [o contrato Files](../migrations/files.externalization.json) e
+  [o acompanhamento no OS](https://github.com/ordaxsystems/ordax-os/issues/1743).
+- **Studio tem fonte portátil canônica em Apps**, mas o OS ainda mantém
+  `system/apps/studio` como integração `git-app`. Consolidar essa integração
+  no host e no lifecycle verificado exige prova de paridade antes de remover o
+  caminho local; o código portátil de produto não deve ser duplicado.
+
+**Regra única:** nunca criar `apps/files` permanente enquanto a fonte Files
+estiver ativa no OS, nunca reintroduzir cópias de Internet/Assistente/Projetos/
+Atividade/Rede no OS e nunca confundir source cutover com ativação de produção.
 
 ## Como os apps básicos chegam ao usuário
 
@@ -33,6 +51,6 @@ O plano é disponibilizar os utilitários básicos já selecionados na instalaç
 - **Brain** é experiência de Memory/Research, não serviço concorrente.
 - **Relay** é proposta futura de laboratório separado para IA multi-PC, não alteração do Studio.
 
-**Gates restantes:** source cutover dos seis apps do OS, artefatos assinados, distribuição inicial persistente, inventário completo na Loja e E2E de instalação/desinstalação/reboot. Nenhum desses foi provado apenas por esta documentação.
+**Gates restantes:** handoff de fonte do Arquivos com continuidade bootstrap USB; consolidação da integração local do Studio; artefatos e catálogo assinados; provisionamento inicial persistente; inventário real na Loja; e E2E de instalação, atualização, desinstalação, reinício e rollback. A fonte já transferida dos demais aplicativos não comprova essas etapas.
 
 Ver também [arquitetura e política no OS](https://github.com/ordaxsystems/ordax-os/blob/main/docs/APP-PORTFOLIO-AND-PREINSTALL.md), `apps/README.md`, `docs/MVP-MINIMO-TODOS-APPS.md` e `HANDOFF.md`.

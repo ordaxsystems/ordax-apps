@@ -38,20 +38,26 @@ A execução de `python3 tools/verify_mvp_app_minimum.py --minimum-candidates 13
 | Situação | Alvos | Próxima ação |
 | --- | --- | --- |
 | **13 com source, metadados e descriptor para candidato não assinado** | `notes`, `calculator`, `clock`, `converter`, `text-viewer`, `image-viewer`, `calendar`, `colors`, `character-map`, `paint`, `media-player`, `pdf-viewer`, `toolbox` | Manter gates G0/G1/G2 e testar os candidatos na cadeia assinada oficial; não fazer polishing extra antes dos alvos bloqueados |
-| **Distribuição especial** | `studio` | Source portátil canônico próprio OS/Windows; não aplicar descriptor ou runtime fictício só para aumentar a contagem |
-| **Source ainda pertence à plataforma** | `files`, `internet`, `assistant`, `activity` | O source permanece no OS; exigir Gate A remove-first e contrato público antes de transferir o app |
-| **Rede e Projetos com source canônico, entrega bloqueada** | `network`, `projects` | Gate A comprovado no OS; source transferido para `apps/network` e `apps/projects`. Projetos consome apenas o catálogo local por reader e traduções de pacote, sem instalação Native, promoção ou rollback comprovados |
+| **Distribuição especial e integração do host pendente** | `studio` | Fonte portátil canônica em Apps, mas o OS ainda mantém integração local `git-app`; provar paridade com lifecycle externo antes de retirar esse caminho |
+| **Source ainda pertence à plataforma** | `files` | Preservar o Arquivos funcional no boot USB até comprovar handoff por slot assinado; ensaio de pacote efêmero não autoriza remover a fonte original |
+| **Fonte transferida, distribuição bloqueada** | `internet`, `assistant`, `activity`, `network`, `projects` | Gate A concluído, fonte em Apps; completar assinatura, instalação Native, saúde, promoção, rollback e recuperação sem reintroduzir implementação no OS |
 
 
 A verificação de **13** é um piso de regressão, não uma contagem manual de identidades nem um compromisso de 13 releases em produção. Aumentar o piso conforme novos apps tornam-se elegíveis, nunca diminuí-lo para esconder regressões. Estado de instalação pública validada permanece **zero** nessa auditoria, porque o verificador não consulta a autoridade nativa.
 
-**Nota de ownership do Internet:** a migração é governada exclusivamente por `migrations/internet.externalization.json`; o produto futuro é `apps/internet`, mas o motor WebKitGTK e os adaptadores nativos permanecem no owner do OS. Criar uma pasta provisória `apps/internet` antes do Gate A também é duplicação proibida. O auditor G0 recusa inclusive skeletons vazios ou runtimes sem `app.json`.
-
-**Prova de ownership:** os estados atuais de `migrations/{internet,assistant,activity,network}.externalization.json` são verificados individualmente contra o owner do source. Após os cortes da Rede e Projetos, os outros quatro ainda mantêm `platform-until-cutover`; `network` e `projects` têm source canônico em Apps e distribuição ainda bloqueada. `tools/verify_mvp_app_minimum.py` já deriva os estados dessas migrations (sem copiar serviços). `tests/test_mvp_platform_ownership.py` impede que fontes ainda platform-owned sejam tratadas como candidatos ou apps publicados. O OS está preparando a extensão separada de política de Loja para os 12 utilitários pela PR `ordaxsystems/prototipo-ordax-os#1372`; registro de policy **não** autoriza instalação.
+**Ownership atual:** `migrations/{files,internet,assistant,activity,network,projects}.externalization.json`
+define os gates por aplicativo. Internet, Assistente, Atividade, Rede e
+Projetos já possuem fonte em Apps; Arquivos continua no OS até o handoff
+bootstrap assinado. Para Internet, o motor WebKitGTK e os adaptadores Native
+continuam no OS: não transferi-los com a UI. A implementação portátil do
+Studio pertence a Apps, enquanto o OS ainda precisa concluir sua integração
+externa. `tools/verify_mvp_app_minimum.py` e
+`tests/test_mvp_platform_ownership.py` verificam os estados sem criar uma
+segunda fonte. A política de entrega do OS não equivale à instalação real.
 
 ## Sequência acelerada de implementação
 
-1. **P0: mínimo e catalogação para o conjunto.** Proteger as 13 entradas de catálogo já comprovadas, resolver a rota especial do Studio e os quatro cutovers restantes, iniciando por Arquivos/Internet conforme seus contratos públicos. Para os alvos ainda platform-owned, usar exclusivamente as implementações já existentes no owner da plataforma e seguir os gates remove-first; **não criar uma segunda fonte** só para aumentar a contagem. Após o cutover, portar a menor capacidade autorizada e documentar cada grant/port, sem um segundo runtime.
+1. **P0: mínimo e catalogação para o conjunto.** Preservar o piso verificado de 13 candidatos não assinados, fechar o handoff de Arquivos sem interromper o bootstrap USB e consolidar a integração local do Studio com o lifecycle externo. Para os demais apps já transferidos, avançar apenas os gates reais de distribuição e host; não reabrir Gates A concluídos nem criar fontes paralelas para aumentar a contagem.
 2. **P0: entrega inicial viável.** O owner da plataforma define quais apps entram no **MVP Stable assinado**; os opcionais podem ser acrescentados por atualizações oficiais de Stable, sem recriar USB. Manter Store UI instalada como superfície estrutural, mas não alegar instalação independente enquanto o executor/verificador não estiver pronto.
 3. **P0: contrato de catálogo/install independente.** Reutilizar o pipeline **já existente** de candidate/Store publication v2/envelopes; obter os gates reais de trust, monotonicidade de catálogo, inventory da ativação, install, reinstall offline, failed update, rollback e uninstall preservando dados. Não implantar segundo updater.
 4. **P1: melhorias individuais após baseline.** Ajustar UI, idioma, performance, funcionalidades extras e novas versões dos aplicativos; bug de segurança/corrupção de dados continua P0 e não é adiado.

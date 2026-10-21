@@ -53,18 +53,27 @@ tools/
   ...              # build/validation local de apps
 ```
 
-Files e Internet permanecem bootstrap candidates até haver prova completa de install/reinstall/offline/rollback/uninstall.
+Arquivos (`files`) e Internet (`internet`) são apps da classe `bootstrap`; isso
+não significa que ambos ainda tenham o mesmo owner de fonte ou distribuição
+independente aprovada.
 
-**Owner atual do Internet:** `ordaxsystems/ordax-os/system/apps/internet`.
-**Owner de produto previsto após cutover:** `ordaxsystems/ordax-apps/apps/internet`.
-A decisão canônica (e seus gates) está somente em
-[`migrations/internet.externalization.json`](migrations/internet.externalization.json).
-Até o Gate A, não criar `apps/internet`, nem uma cópia parcial sem manifesto.
-Quando o cutover ocorrer, migrar apenas o produto/UI/estado pertencente ao app:
-WebKitGTK, isolamento dos sites, ports do host, permissões e política nativa
-de downloads continuarão na plataforma. O Internet externo consumirá contratos
-públicos versionados do App SDK e nunca importará código privado do OS.
-A passagem de source e a publicação assinada são provas independentes. Settings, Account, System e Store são superfícies estruturais e permanecem na plataforma/base apropriada.
+- **Arquivos:** a fonte executável permanece exclusivamente em
+  `ordaxsystems/ordax-os/system/apps/files`. O Gate A está bloqueado porque
+  remover Arquivos antes de provar o bootstrap por slot assinado quebra as
+  operações obrigatórias do MVP USB. A prova de pacote *efêmero e não assinado*
+  não cria `apps/files`, fonte paralela ou autorização de instalação. Consulte
+  [o plano Files](migrations/files.externalization.json) e
+  [a issue de handoff](https://github.com/ordaxsystems/ordax-os/issues/1743).
+- **Internet:** o Gate A de fonte já ocorreu. O owner portátil é
+  `ordaxsystems/ordax-apps/apps/internet`, com `app.json` e código canônico
+  presentes. A ativação de distribuição permanece bloqueada no
+  [plano Internet](migrations/internet.externalization.json).
+
+Motor WebKitGTK, isolamento de sites, portas do host, permissões e política
+nativa de downloads continuam na plataforma; nenhum deles deve ser copiado
+para o app Internet. A passagem de fonte, o pacote candidato e a publicação
+assinada são gates distintos. Settings, Account, System e Store permanecem
+superfícies estruturais no OS.
 
 ## Migração
 
