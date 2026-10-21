@@ -18,7 +18,15 @@ O processo Electron verifica o manifesto ANTES da abertura do Store SQLite, cong
 
 ## Testes
 
-13/13 regressões focadas de identidade, política de cutover e staging em Git isolado: ausência de manifesto, verificação íntegra, alteração ou inclusão de código, symlink, commit inválido, checkout sujo, diretório já existente, identidade do Git em diretório novo, ausência de cópia de perfil e bloqueios de rollback. Todos os casos foram testados sem acessar o ChatGPT. O smoke read-only do build dentro do Electron e o CI do commit devem ser relatados separadamente quando terminarem.
+14/14 regressões focadas de identidade, política de cutover, contrato do E2E e staging em Git isolado: ausência de manifesto, verificação íntegra, alteração ou inclusão de código, symlink, commit inválido, checkout sujo, diretório já existente, identidade do Git em diretório novo, ausência de cópia de perfil e bloqueios de rollback. Todos os casos são locais e não enviam mensagens ao ChatGPT.
+
+## Prova física no OrdaX Electron
+
+Foi preparada uma candidata em diretório novo fora do repositório, com 39 arquivos inventariados, a partir de `f88ee5c9cbfa22cd753361316020bd16223fdc18`. O manifesto retornou `verified`, com digest `cf7bf59bc8c21a04fb889f88ad8cc39faa414ca81ac881c168a8155c1722a29e`. Não foram copiados perfis, credenciais ou bancos.
+
+O Electron real iniciou essa candidata na porta 9445, com perfil staged NOVO e separado. O primeiro smoke não aguardava explicitamente a UI em modo App e retornou `lab_build_app_mode_required`; o roteiro foi corrigido para usar `waitForLabAppMode`, inclusive com fingerprint obrigatório do perfil. O segundo smoke **passou com exit 0**: `appMode=true`, `runtimeVerified=true`, commit e digest retornados pelo IPC confiável exatamente iguais ao manifesto e `providerMessagesSent=0`. A instância isolada foi fechada normalmente, o PID terminou, a porta 9445 ficou livre e a instância principal permaneceu ativa em 9446, sem alteração da instalação ou do SQLite W7.
+
+O CI da revisão final deve ser consultado na PR; a prova física não substitui assinatura de publicação ou certificação W3/W4.
 
 ## Limites
 

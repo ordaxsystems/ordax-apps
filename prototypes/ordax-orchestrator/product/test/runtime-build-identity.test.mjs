@@ -68,6 +68,16 @@ test('manifest permits no symlink in owned code tree',t=>{
  catch(e){if(e.code==='EPERM')return;t.diagnostic(String(e));return;}
  assert.throws(()=>makeRuntimeManifest(root,commit),/build_tree_unsafe/);
 });
+
+test('App-only build proof awaits exact staged profile, then checks commit and digest without any send',()=>{
+ const script=fs.readFileSync(new URL('../scripts/live-ui-build-proof-readonly.cjs',import.meta.url),'utf8');
+ assert.match(script,/await waitForLabAppMode\(evaluate\)/);
+ assert.match(script,/await evaluate\('window\.ordax\.labBuildProof\(\)'\)/);
+ assert.match(script,/proof\.sourceCommit!==expectedCommit/);
+ assert.match(script,/proof\.contentDigest!==expectedDigest/);
+ assert.doesNotMatch(script,/sendPrompt\(|requestSubmit\(|\.reload\(|\.loadURL\(/);
+});
+
 test('startup verifies content BEFORE userData/SQLite and exposes trusted-only IPC',()=>{
  const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
  const preload=fs.readFileSync(new URL('../desktop/preload.cjs',import.meta.url),'utf8');

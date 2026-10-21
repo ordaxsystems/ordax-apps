@@ -1,6 +1,6 @@
 // Read-only runtime identity from the real OrdaX App via trusted IPC.
 // Never types, navigates, sends prompts, authenticates or restores data.
-const {waitForLabUiTarget,LAB_APP_MODE_PROBE}=require('./e2e-lab-target.cjs');
+const {waitForLabUiTarget,waitForLabAppMode}=require('./e2e-lab-target.cjs');
 const {acquireE2ELock}=require('./e2e-lock.cjs');
 acquireE2ELock('runtime-build-proof');
 (async()=>{
@@ -15,10 +15,9 @@ acquireE2ELock('runtime-build-proof');
   await new Promise((resolve,reject)=>{
    ws.onopen=resolve;ws.onerror=()=>reject(Error('lab_build_socket_not_ready'));
   });
-  const expression='(async()=>({mode:'+LAB_APP_MODE_PROBE+
-    ',proof:await window.ordax.labBuildProof()}))()';
-  let timer;
-  const data=await Promise.race([
+  const evaluate=expression=>new Promise((resolve,reject)=>{
+    let timer;
+    Promise.race([
     new Promise((resolve,reject)=>{
       ws.onmessage=event=>{
        let msg;
@@ -32,10 +31,10 @@ acquireE2ELock('runtime-build-proof');
         params:{expression,awaitPromise:true,returnByValue:true}}));
     }),
     new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('lab_build_read_timeout')),20000)})
-  ]).finally(()=>clearTimeout(timer));
-  if(data?.mode?.view!=='app' || data?.mode?.newTask!=='BUTTON')
-    throw Error('lab_build_app_mode_required');
-  const proof=data.proof;
+    ]).then(resolve,reject).finally(()=>clearTimeout(timer));
+  });
+  await waitForLabAppMode(evaluate); // Real App shell + exact staged profile.
+  const proof=await evaluate('window.ordax.labBuildProof()');
   if(proof?.schema!=='ordax.lab.runtime-build.v1' || proof?.verified!==true ||
     proof?.status!=='verified'||proof.sourceCommit!==expectedCommit||
     proof.contentDigest!==expectedDigest)
