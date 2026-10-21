@@ -648,7 +648,7 @@ export class EmbeddedChatWorker {
       // Never reload an already-targeted provider page merely because its
       // editor is absent (hydrating, failed or in an uncertain generation).
       // The operator may request an explicit reload separately, but no
-      // automatic retry may erase a live/unknown provider state.
+      // automatic navigation may erase a live/unknown provider state.
       if (!requireComposer) return;
       const state = await this.#composerState();
       if (state.found && state.formReady) return;

@@ -33,7 +33,8 @@ test('unreadable draft never becomes a synthetic empty draft during thread switc
   assert.match(load,/if \(protectDraft\) \{\s*const state = await this\.#composerState\(\);/);
   assert.match(load,/let alreadyAtTarget = false/);
   assert.match(load,/if \(alreadyAtTarget && !forceReload\) \{/);
-  assert.match(load,/const state = await this\.#composerState\(\);\s*if \(state\.found\) return/);
+  assert.match(load,/const state = await this\.#composerState\(\);\s*if \(state\.found && state\.formReady\) return/);
+  assert.match(load,/await this\.#waitForComposer\(\);\s*return;/);
   const samePageBlock=load.split('if (alreadyAtTarget && !forceReload) {')[1].split('    try {\n      await observeWithin')[0];
   assert.doesNotMatch(samePageBlock,/catch \{/);
   const send=worker.slice(worker.indexOf('  async sendPrompt({'));
