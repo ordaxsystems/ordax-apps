@@ -1,5 +1,17 @@
 # OrdaX Orchestrator Lab — Estado atual de engenharia
 
+### MCP/App — primeira prova Windows empacotada aprovada
+
+Source `adf9e5da117af524a65ca33bf0f315ba17d39231`: **332/332 testes Windows**,
+build e E2E App-only aprovados no
+[workflow 39635986032](https://github.com/ordaxsystems/ordax-apps/actions/runs/39635986032).
+Formulários de projeto/orquestrador, catálogo de 14 ferramentas, criação
+idempotente de frente via MCP local, estado compartilhado e frente visível na
+UI comprovados no binário empacotado com identidade verificada e perfil novo.
+Zero prompts GPT e zero chamadas à API coordenadora. Foundation e P0 também
+aprovados. MCP externo/24h e instalação no PC do usuário continuam pendentes;
+PR #268 permanece draft. [Evidência e limites](../audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
+
 ## Incremento MCP integrado ao App — 21/10/2026
 
 Implementado em source na branch do Lab: serviço `ordax.orchestrator/1`, 14

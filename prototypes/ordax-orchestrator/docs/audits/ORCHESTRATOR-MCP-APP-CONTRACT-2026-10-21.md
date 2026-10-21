@@ -1,5 +1,25 @@
 # Orchestrator MCP + App — primeiro incremento integrado
 
+## Resultado confirmado na CI Windows
+
+Source testado: `adf9e5da117af524a65ca33bf0f315ba17d39231`.
+[Workflow 39635986032](https://github.com/ordaxsystems/ordax-apps/actions/runs/39635986032),
+job Windows `119346550368`: **332/332 testes**, build Windows e cenário real
+App-only no binário empacotado aprovados. P0 baseline `39635986068` e Foundation
+`39635986040` também concluíram com sucesso no mesmo source.
+
+Saída atestada em log: `ordax.lab.orchestration-app-e2e.v1`, `ok=true`,
+`appMode=true`, `runtimeVerified=true`, `toolCount=14`,
+`sharedStateVerified=true`, `projectFormVerified=true`,
+`coordinatorFormVerified=true`, `workVisibleInApp=true`,
+`idempotencyVerified=true`, `providerMessagesSent=0`, `coordinatorApiCalls=0`,
+`externalMcpConnected=false`, `autonomousExecution=false`.
+
+Essa prova é do Windows efêmero da CI, com perfil novo e sem conta GPT. Não
+substitui instalação/homologação no computador do proprietário, persistência
+das novas telas após restart, MCP remoto, API paga real nem W3/W4 positivos.
+Este registro acrescenta evidência documental; não modifica o produto testado.
+
 Data: 2026-10-21. Owner: `ordax-apps/prototypes/ordax-orchestrator/product`.
 Solicitação explícita: implementar projetos/orquestradores e controle direto do
 Lab por MCP, sem reconhecimento visual. Exceção autorizada à ordem geral de
