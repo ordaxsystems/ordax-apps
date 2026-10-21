@@ -77,7 +77,7 @@ test('Electron bootstrap attests code before any application module is evaluated
    path.join(root,'src','runtime-build-identity.mjs'));
  // This main module has an observable side effect; unverified code must never run.
  fs.writeFileSync(path.join(root,'desktop','main.mjs'),
-   "import fs from 'node:fs'; fs.writeFileSync(process.env.ORDAX_TEST_MAIN_MARKER,'loaded');\\n");
+   "import fs from 'node:fs'; fs.writeFileSync(process.env.ORDAX_TEST_MAIN_MARKER,'loaded');\n");
  const marker=path.join(os.tmpdir(),'ordax-bootstrap-test-'+process.pid+'-'+Date.now());
  t.after(()=>fs.rmSync(marker,{force:true}));
  const run=()=>spawnSync(process.execPath,[path.join(root,'desktop','bootstrap.mjs')],{
@@ -88,7 +88,7 @@ test('Electron bootstrap attests code before any application module is evaluated
  assert.equal(run().status,0);
  assert.equal(fs.readFileSync(marker,'utf8'),'loaded');
  fs.rmSync(marker);
- fs.appendFileSync(path.join(root,'desktop','main.mjs'),'// tampered\\n');
+ fs.appendFileSync(path.join(root,'desktop','main.mjs'),'// tampered\n');
  const blocked=run();
  assert.notEqual(blocked.status,0);
  assert.match(blocked.stderr,/lab_runtime_build_integrity_failed/);
@@ -108,7 +108,7 @@ test('bootstrap gates module loading and main verifies again before userData/SQL
  const bootstrap=fs.readFileSync(new URL('../desktop/bootstrap.mjs',import.meta.url),'utf8');
  const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
  assert.equal(pkg.main,'desktop/bootstrap.mjs');
- assert.match(bootstrap,/verifyRuntimeManifest\\(root\\)/);
+ assert.match(bootstrap,/verifyRuntimeManifest\(root\)/);
  assert.ok(bootstrap.indexOf('verifyRuntimeManifest(root)')<bootstrap.indexOf("await import('./main.mjs')"));
  assert.doesNotMatch(bootstrap,/^import.*(?:main|store|supervisor)/m);
  const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
