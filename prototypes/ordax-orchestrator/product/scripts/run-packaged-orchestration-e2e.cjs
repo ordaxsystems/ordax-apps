@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const os=require('node:os');
 const {spawn}=require('node:child_process');
+const {createHostFixture,verifyHostFixture}=require('./orchestrator-host-e2e-client.cjs');
 (async()=>{
   if(process.platform!=='win32'||process.env.GITHUB_ACTIONS!=='true')
     throw Error('packaged_orchestration_requires_windows_ci');
@@ -13,14 +14,15 @@ const {spawn}=require('node:child_process');
   if(!fs.existsSync(executable))throw Error('packaged_orchestration_binary_missing');
   const base=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-orchestration-app-'));
   const profile=path.join(base,'candidate-userdata-v'+version);
-  const env={...process.env,ORDAX_LAB_SUPERVISOR_ENABLE:'0',
+  const env={...process.env,ORDAX_LAB_SUPERVISOR_ENABLE:'0',ORDAX_LAB_RUNTIME_BRIDGE_ENABLE:'1',
     ORDAX_LAB_E2E_APPROVED:'1',ORDAX_LAB_E2E_ORCHESTRATION_APPROVED:'1',
     ORDAX_LAB_E2E_DEBUG_PORT:'9446',ORDAX_LAB_E2E_LOCALAPPDATA:profile,
     ORDAX_LAB_E2E_EXPECTED_COMMIT:process.env.GITHUB_SHA};
   delete env.GROQ_API_KEY;delete env.ORDAX_DESKTOP_DEBUG;
-  const child=spawn(executable,['--ordax-lab-staged-approved',
+  const child=spawn(executable,['--ordax-runtime-bridge-stdio','--ordax-lab-staged-approved',
     '--ordax-lab-staged-localappdata='+profile,'--remote-debugging-port=9446'],
-    {cwd:root,env,stdio:'ignore'});
+    {cwd:root,env,stdio:['pipe','pipe','ignore']});
+  const hostFixture=createHostFixture(child);
   let spawnFailed=false;child.on('error',()=>{spawnFailed=true;});
   try {
     const runner=spawn(process.execPath,[path.join(__dirname,'live-ui-orchestration-smoke.cjs')],
@@ -31,6 +33,7 @@ const {spawn}=require('node:child_process');
       runner.on('exit',value=>{clearTimeout(timer);resolve(value);});
     });
     if(spawnFailed||code!==0)throw Error('packaged_orchestration_scenario_failed');
+    await verifyHostFixture({child,root,profile,exchange:hostFixture.exchange});
   }finally{
     // Exact child PID owned by this runner, never process-name matching.
     if(child.pid)await new Promise(resolve=>{

@@ -1,5 +1,15 @@
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
 
+## Continuidade solicitada — canal privado Runtime/Orchestrator (2026-10-21)
+
+App expõe sete leituras do mesmo serviço por contrato `ordax.orchestrator-host/1`
+em pipe herdado, build/perfil conferidos, assinatura/expiração/antirreplay e sem
+escritas. Candidato Runtime consome catálogo pinado e exige autorização Product
+externa a ele. Local: 340 testes Apps + 37 Runtime/Gateway. Gate Windows
+empacotado ampliado; conferir CI. Nenhuma nova autoridade OAuth/grant, canal
+público ou ativação: launcher gerenciado e publicação continuam Platform/Runtime.
+[Owners, contrato e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
+
 ## Incremento solicitado — Orchestrator Lab e MCP sem visão (2026-10-21)
 
 Exceção explícita à rodada geral: o proprietário pediu iniciar o MCP integrado

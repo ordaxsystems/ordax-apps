@@ -14,6 +14,7 @@ import { createLocalGroqCredential } from '../src/local-supervisor-credential.mj
 import { OrchestratorService } from '../src/orchestrator-service.mjs';
 import { createOrchestratorMcp } from '../src/orchestrator-mcp.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
+import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimeStdio } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
 
 import fs from 'node:fs';
@@ -624,14 +625,28 @@ function requireTrustedSupervisorRenderer(event) {
 // local-only; it is NOT exported as authentication for a remote MCP endpoint.
 const localOrchestratorContext=Object.freeze({actorId:'lab-owner',clientId:'lab-ui',
   workspaceSessionId:store.getWorkspaceSession().id});
+let runtimeOrchestratorBridge=null;
+let closeRuntimeOrchestratorPipe=null;
 const orchestratorService=new OrchestratorService({
-  store,authorize:({context})=>context===localOrchestratorContext,
+  store,authorize:({context,operation})=>context===localOrchestratorContext||
+    runtimeOrchestratorBridge?.allows(context,operation)===true,
   provider:{busy:()=>Boolean(liveRun||worker?.active),send:async({taskId,content,draftRevision})=>
     chatReceiptFromRunTask(await enqueueExecution(()=>runTask(taskId,content,{newSession:false,draftRevision})))},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:()=>process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1'})
 });
 orchestratorService.recoverInterruptedCommands();
+// Off by default. This inherited private pipe is NOT a public MCP endpoint.
+// A Runtime launcher must supply the first bootstrap AFTER canonical owner
+// authorization and verify the returned build/profile identity independently.
+if(process.argv.includes('--ordax-runtime-bridge-stdio')) {
+  if(process.env.ORDAX_LAB_RUNTIME_BRIDGE_ENABLE!=='1'||process.stdin.isTTY||process.stdout.isTTY)
+    throw Error('orchestrator_host_launch_not_authorized');
+  runtimeOrchestratorBridge=createOrchestratorRuntimeBridge({service:orchestratorService,
+    workspaceSessionId:store.getWorkspaceSession().id,buildProof:runtimeBuildProof,
+    profileFingerprint:labProfileFingerprint(app.getPath('userData'))});
+  closeRuntimeOrchestratorPipe=attachOrchestratorRuntimeStdio({input:process.stdin,output:process.stdout,bridge:runtimeOrchestratorBridge});
+}
 const localOrchestratorMcp=createOrchestratorMcp({service:orchestratorService,
   getContext:()=>localOrchestratorContext,version:app.getVersion()});
 ipcMain.handle('ordax:orchestrator:invoke',async(event,payload)=>{
@@ -752,6 +767,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  closeRuntimeOrchestratorPipe?.();
   store.close();
 });
 

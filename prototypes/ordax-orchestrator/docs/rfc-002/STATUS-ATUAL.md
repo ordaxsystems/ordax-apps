@@ -1,5 +1,18 @@
 # OrdaX Orchestrator Lab — Estado atual de engenharia
 
+## Continuidade — canal Runtime → App de leitura
+
+Implementado `ordax.orchestrator-host/1` no mesmo processo/Store, com pipe privado
+herdado, build/perfil atestados, sessão curta e sete operações de leitura do
+catálogo existente. Assinatura, prazo, antirreplay e recusa de escrita; sem porta
+pública, segundo banco, visão ou credencial persistida. Off por padrão.
+Local: 340 testes Apps e 37 testes Runtime/Gateway aprovados. O cenário Windows
+empacotado foi ampliado para ler os mesmos projeto/trabalho pelo canal privado;
+aguardar CI do commit. Cliente Runtime é candidato em branch própria, sem
+registro no catálogo. Publicação Platform, launcher gerenciado e autorização
+OAuth/grants real continuam pendentes; nada instalado/ativado no PC.
+[Contrato, evidências e limites](../audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
+
 ### MCP/App — primeira prova Windows empacotada aprovada
 
 Source `adf9e5da117af524a65ca33bf0f315ba17d39231`: **332/332 testes Windows**,
