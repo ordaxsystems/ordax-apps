@@ -33,7 +33,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
   }
   function renderWorks(works) {
-    const labels={running:['Em andamento','running'],completed:['Concluída','completed'],failed:['Revisar','attention'],interrupted:['Revisar','attention'],paused:['Pausada','paused'],ready:['Aguardando','ready']};
+    const labels={running:['Em andamento','running'],completed:['Concluída','completed'],failed:['Revisar','attention'],error:['Revisar','attention'],interrupted:['Revisar','attention'],paused:['Pausada','paused'],ready:['Pronta','ready']};
     $('workRailCount').textContent=String(works.length);
     $('workRailProject').textContent=$('projectSelect').selectedOptions[0]?.textContent||'';
     const list=$('orchestratorWorks');list.replaceChildren();
