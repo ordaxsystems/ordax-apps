@@ -62,21 +62,26 @@ async function main(){
     // A receipt-less Task must be denied locally regardless of whether the
     // provider is logged in or has a ready composer. The canonical IPC handler
     // must return before calling the provider; assert zero navigation below.
-    preflightStage='provider_health';
-    const health=await evaluate("(async()=>{const h=await window.ordax.providerStatus();return {url:h.url}})()");
-    const linked=new URL(before.task.chat_url);
-    if(health.url&&linked.href===health.url)
-      throw Error('lab_w3_offline_already_at_linked_thread');
     preflightStage='provider_url_baseline';
     const urlBefore=await providerUrl();
+    // Avoid a second providerStatus IPC: the URL baseline already proves
+    // the linked synthetic conversation was not open before this test.
+    if(urlBefore===before.task.chat_url)
+      throw Error('lab_w3_offline_already_at_linked_thread');
     preflightStage='task_selection';
-    let selected=false;
+    let found=false;
     for(let i=0;i<90;i++){
-      selected=await evaluate("(()=>{const item=[...document.querySelectorAll('.task[data-id]')].find(n=>n.dataset.id==="+JSON.stringify(before.task.id)+");if(!item)return false;item.click();return true;})()");
-      if(selected)break;
+      // Read-only discovery: never dispatch a click in a repeated probe.
+      found=await evaluate("(()=>!![...document.querySelectorAll('.task[data-id]')].find(n=>n.dataset.id==="+JSON.stringify(before.task.id)+"))()");
+      if(found)break;
       await sleep(100);
     }
-    assert.equal(selected,true,'lab_w3_offline_task_missing_in_app');
+    assert.equal(found,true,'lab_w3_offline_task_missing_in_app');
+    preflightStage='task_click';
+    // The one explicit App task click is NOT retried if the CDP reply is
+    // lost: a timeout cannot prove whether the click was processed.
+    assert.equal(await evaluate("(()=>{const item=[...document.querySelectorAll('.task[data-id]')].find(n=>n.dataset.id==="+JSON.stringify(before.task.id)+");if(!item)return false;item.click();return true;})()"),true,
+      'lab_w3_offline_task_missing_in_app');
     preflightStage='task_panel';
     let ready=false;
     for(let i=0;i<90;i++){
