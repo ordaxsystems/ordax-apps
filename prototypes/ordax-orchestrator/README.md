@@ -1,3 +1,19 @@
+## Teste local do chat por API — alpha.4
+
+O chat de coordenação pode ser ativado na interface, sem MCP ou variável de ambiente.
+Abra o candidato Windows de teste, crie um projeto e um orquestrador, clique em
+**Configurar API**, salve sua chave Groq no campo protegido e clique em
+**Ativar chat por API**. Nenhuma chamada é feita até você enviar uma mensagem.
+A ativação vale somente para esta sessão do App. O supervisor de tarefas não é
+ativado por esse botão. Não envie sua chave por chat, issue ou log.
+
+Primeiro teste: envie “Responda somente TESTE LOCAL OK”. Confirme a resposta no
+histórico, feche o App, reabra e selecione o mesmo projeto/orquestrador para
+conferir a persistência. Ative o chat novamente para o próximo envio.
+O artefato é uma prévia local não assinada, sem instalação oficial ou release.
+Uma resposta real exige sua chave e disponibilidade da API Groq; CI não a simula
+como evidência de teste real com sua conta.
+
 # OrdaX Orchestrator Lab — protótipo isolado
 
 ## MCP e domínio integrado de projetos — 21/10/2026

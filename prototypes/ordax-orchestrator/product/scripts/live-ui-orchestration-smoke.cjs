@@ -51,6 +51,15 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       document.getElementById('newOrchestratorForm').requestSubmit();
     })()`);
     await wait("document.getElementById('orchestratorSelect').value && !document.getElementById('orchestrationPanel').hidden");
+    // Disposable credential fixture only: activation must not call the API.
+    await evaluate(`window.ordax.supervisorSaveKey('gsk_'+ 'A'.repeat(40))`);
+    await wait("!document.getElementById('coordinatorApiEnable').disabled");
+    await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
+    await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='true' && !document.getElementById('coordinatorSend').disabled");
+    await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
+    await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='false' && document.getElementById('coordinatorSend').disabled");
+    await evaluate(`window.ordax.supervisorRemoveKey()`);
+    await wait("document.getElementById('coordinatorApiEnable').disabled");
     const summary=await evaluate(`(async()=>{
       const p=document.getElementById('projectSelect').value;
       const o=document.getElementById('orchestratorSelect').value;
@@ -83,6 +92,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
     console.log(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
       appMode:true,runtimeVerified:true,toolCount:14,sharedStateVerified:true,
       projectFormVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
+      localApiOptInVerified:true,localApiDisableVerified:true,
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
       externalMcpConnected:false,autonomousExecution:false}));
   }finally{

@@ -86,6 +86,10 @@
     <section class="chat-column">
       <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
         <header><h2 id="orchestratorTitle">Orquestrador</h2><p id="orchestratorMission"></p></header>
+        <div class="orchestration-actions">
+          <button id="coordinatorApiSettings" type="button">Configurar API</button>
+          <button id="coordinatorApiEnable" type="button" disabled>Ativar chat por API</button>
+        </div>
         <p id="orchestrationConnection" role="status"></p>
         <div id="coordinatorMessages" class="coordinator-messages" aria-live="polite"></div>
         <form id="coordinatorComposer">
@@ -270,7 +274,7 @@
         <p id="labRoleDescription" role="status" class="diagnostics-hint">Selecione uma tarefa para preparar seu papel. Isso não inicia a IA.</p>
         <details id="labSupervisorKeySettings" class="context-section">
           <summary>Chave API do supervisor (Groq)</summary>
-          <p class="diagnostics-hint">Usada somente pelo planejador Groq. Não é a senha do ChatGPT; salvar não testa a conexão nem ativa comandos.</p>
+          <p class="diagnostics-hint">Usada pelo chat de coordenação e pelo planejador Groq. Não é a senha do ChatGPT; salvar não faz chamadas à API nem ativa comandos.</p>
           <form id="labSupervisorKeyForm" autocomplete="off">
             <label for="labSupervisorKeyInput">Chave Groq</label>
             <input id="labSupervisorKeyInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="gsk_..." maxlength="244" aria-describedby="labSupervisorKeyState" />

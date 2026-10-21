@@ -2,6 +2,13 @@
 
 A versão do aplicativo Lab é independente da versão do snapshot de origem OrdaX Grátis/Flow. **product-version.json** é a SSOT da versão do produto. O package.json do bootstrap e os package.json / package-lock.json gerados são projeções obrigatoriamente verificadas.
 
+## 0.2.0-alpha.4 — 2026-10-21
+
+- Configuração da chave e ativação do chat por API diretamente na interface.
+- Ativação válida somente nesta sessão do App, independente do MCP e do supervisor de tarefas.
+- Histórico do coordenador permanece no serviço e SQLite existentes; salvar chave e ativar não enviam mensagens.
+- Prévia de teste local; execução de propostas e automação de conversas continuam separadas.
+
 ## 0.2.0-alpha.3 — 2026-10-21
 
 - Renovação autenticada da lease no mesmo canal privado, sessão e processo.

@@ -19,6 +19,27 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function options(select,rows,label) {
     select.replaceChildren(new Option(label,''),...rows.map(row=>new Option(row.name,row.id)));
   }
+  async function refreshApiStatus() {
+    const state=await api.coordinatorChatStatus();
+    coordinatorAvailable=(await call('status')).coordinatorAvailable===true;
+    $('coordinatorApiEnable').disabled=!state.configured;
+    $('coordinatorApiEnable').textContent=state.enabled?'Desativar chat por API':'Ativar chat por API';
+    $('coordinatorApiEnable').dataset.enabled=String(state.enabled);
+    $('orchestrationConnection').textContent=!state.configured
+      ? 'Configure sua chave Groq para conversar pela API. O MCP não é necessário.'
+      : coordinatorAvailable?'Chat por API ativo nesta sessão. Cada envio usa sua conta Groq.'
+      : 'Chave configurada. Ative o chat por API para enviar uma mensagem.';
+  }
+  $('coordinatorApiSettings').addEventListener('click',()=>{
+    $('labSupervisorPanel').open=true;$('labSupervisorKeySettings').open=true;
+    $('labSupervisorKeyInput').scrollIntoView({block:'center'});$('labSupervisorKeyInput').focus();
+  });
+  $('coordinatorApiEnable').addEventListener('click',async()=>{
+    $('coordinatorApiEnable').disabled=true;
+    try {await api.coordinatorChatEnable($('coordinatorApiEnable').dataset.enabled!=='true');
+      await refreshApiStatus();await refreshOrchestrators();}
+    catch {status('Não foi possível ativar o chat. Confira a configuração da API.');}
+  });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
     if(!p) {onScopeChange(null);return;}
@@ -148,18 +169,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   return Object.freeze({
     async start(){await refreshProjects();
-      const state=await call('status');
-      coordinatorAvailable=state.coordinatorAvailable===true;
+      await refreshApiStatus();
       await refreshOrchestrators();
-      $('orchestrationConnection').textContent=state.coordinatorAvailable?
-        'Coordenador disponível · execução supervisionada':'Configure e habilite a API para conversar com o orquestrador.';
       let refreshPending=false;
       api.onOrchestratorChanged?.(()=>{
         if(refreshPending)return;
         refreshPending=true;
         queueMicrotask(()=>{void(async()=>{
           try {
-            coordinatorAvailable=(await call('status')).coordinatorAvailable===true;
+            await refreshApiStatus();
             await refreshProjects();await refreshOrchestrators();if(coordinatorOpen)await renderCoordinator();}
           catch{error();}finally{refreshPending=false;}
         })();});

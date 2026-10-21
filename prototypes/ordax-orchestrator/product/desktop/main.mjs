@@ -595,6 +595,11 @@ let labSupervisor = null;
 // The UI may prepare a key, but only an explicit dev enable flag permits a
 // model call. Stored secrets never travel back through IPC.
 const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
+// Local chat opt-in lasts only for this App process; it does not enable the
+// supervisor, provider automation, remote grants or an external MCP endpoint.
+let localCoordinatorChatEnabled=null;
+const coordinatorChatEnabled=()=>localCoordinatorChatEnabled??(process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1');
+const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey())});
 function requireLabSupervisor() {
   if (process.env.ORDAX_LAB_SUPERVISOR_ENABLE !== '1') throw new Error('supervisor_disabled');
   const apiKey=currentGroqKey();
@@ -634,7 +639,7 @@ const orchestratorService=new OrchestratorService({
   provider:{busy:()=>Boolean(liveRun||worker?.active),send:async({taskId,content,draftRevision})=>
     chatReceiptFromRunTask(await enqueueExecution(()=>runTask(taskId,content,{newSession:false,draftRevision})))},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
-    isEnabled:()=>process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1'})
+    isEnabled:coordinatorChatEnabled})
 });
 orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
@@ -668,6 +673,22 @@ ipcMain.handle('ordax:orchestrator:mcp',async(event,message)=>{
   return result;
 });
 
+function notifyOrchestratorChanged(){
+  if(win&&!win.isDestroyed())win.webContents.send('ordax:orchestrator:changed');
+}
+ipcMain.handle('ordax:orchestrator:chat-status',event=>{
+  requireTrustedSupervisorRenderer(event);
+  return coordinatorChatStatus();
+});
+ipcMain.handle('ordax:orchestrator:chat-enable',(event,enabled)=>{
+  requireTrustedSupervisorRenderer(event);
+  if(typeof enabled!=='boolean')throw Error('orchestrator_chat_setting_invalid');
+  if(enabled&&!currentGroqKey())throw Error('supervisor_api_key_missing');
+  localCoordinatorChatEnabled=enabled;
+  notifyOrchestratorChanged();
+  return coordinatorChatStatus();
+});
+
 ipcMain.handle('ordax:supervisor:status', (event) => {
   requireTrustedSupervisorRenderer(event);
   return ({
@@ -684,12 +705,14 @@ ipcMain.handle('ordax:supervisor:key:save',(event,key)=>{
   requireTrustedSupervisorRenderer(event);
   const result=groqCredential.save(key);
   labSupervisor=null;
+  notifyOrchestratorChanged();
   return result;
 });
 ipcMain.handle('ordax:supervisor:key:remove',(event)=>{
   requireTrustedSupervisorRenderer(event);
   const result=groqCredential.remove();
   labSupervisor=null;
+  notifyOrchestratorChanged();
   return result;
 });
 ipcMain.handle('ordax:tasks:supervisor-role:set',(event,payload)=>{

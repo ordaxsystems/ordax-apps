@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.3",
+  "version": "0.2.0-alpha.4",
   "channel": "alpha",
-  "name": "Renovação autenticada do canal Runtime e Lab",
+  "name": "Chat por API ativado na interface local",
   "distributionEnabled": false,
   "releaseDate": null
 }
