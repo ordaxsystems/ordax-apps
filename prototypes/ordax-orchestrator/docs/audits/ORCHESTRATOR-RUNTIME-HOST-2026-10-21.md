@@ -33,9 +33,11 @@ rejeita mudança de identidade/grant e descarta respostas tardias ou incertas.
 
 ## Evidências e gates
 
-Local Apps: **340 testes**, incluindo oito novos cenários de bootstrap, perfil,
-assinatura, replay, prazo, read-only, fechamento e framing/UTF-8. Runtime: 12
-testes novos e 25 regressões de Product Gateway aprovados.
+Apps: **345 testes aprovados no Windows**, incluindo bootstrap, perfil,
+assinatura, replay, prazo, read-only, fechamento, framing/UTF-8 e processo real
+com diagnósticos fora dos descritores de dados. Runtime: 13 testes novos e 25
+regressões de Product Gateway aprovados localmente. Os contratos Windows,
+composição Linux e SDK MCP mínimo passaram no CI do Runtime.
 
 O runner Windows empacotado agora usa pipe privado e repete o cenário App-only
 de formulários/MCP local. Depois, o host de teste lê do App os mesmos projeto
@@ -44,7 +46,32 @@ No Windows, o launcher cria handles com `FILE_FLAG_OVERLAPPED` (`stdio:
 ["ignore", "ignore", "ignore", "overlapped", "overlapped"]`) para I/O assíncrona do Electron/libuv.
 Fechamento ou erro do pipe invalida a sessão; não há fallback.
 Esta é uma **fixture de autorização em CI**, não um grant ou MCP público real.
-Consultar resultado do workflow do commit antes de declarar essa prova aprovada.
+**Prova Windows empacotada aprovada:** source App
+`68cd7ef0d9fcabbf869dc7bfc684b6a71eced139`, checkout de merge
+`0f462776a14f5fc3e64234b94d8f39f558f2f699`,
+[workflow 39642528709](https://github.com/ordaxsystems/ordax-apps/actions/runs/39642528709),
+job `119369479977`. Foundation e P0 do mesmo source também passaram.
+
+Recibos `ordax.lab.orchestration-app-e2e.v1` e
+`ordax.lab.runtime-host-app-e2e.v1` com `ok:true`: formulários nativos,
+14 ferramentas locais, idempotência, projeto/trabalho compartilhados pelo canal,
+identidade exata, assinatura, replay e escrita recusados. Zero mensagens ao
+provedor e zero chamadas coordenadoras. O host deste cenário é uma fixture
+Node do protocolo; não certifica um launcher Python/Runtime de produção.
+
+- Content digest executado:
+  `793e46e96df56ef382706904fae88730897c7c373f6d3e4606db7eabc8c9216e`.
+- SHA-256 do ASAR:
+  `58664232b1d0edf48e6a336de2f4d499c08e692b0a9617da1fb297d1af8122b4`.
+- Artefato efêmero não assinado `12365239670`, retenção de três dias; não é release.
+- Source Runtime `693d98c75f4c681f525796e48162e5ea30908b92`,
+  [contratos 39642673193](https://github.com/ordaxsystems/ordax-runtime/actions/runs/39642673193),
+  [PR #182](https://github.com/ordaxsystems/ordax-runtime/pull/182).
+
+A tentativa inicial sobre stdout foi rejeitada pelo teste por frame inválido;
+não se adicionou filtro permissivo de logs. O protocolo foi movido para os
+pipes exclusivos 3/4. No Runtime, o prazo do pedido é conferido novamente ao
+receber a resposta, mesmo que a sessão ainda esteja válida.
 
 ## Dependências para conexão externa
 

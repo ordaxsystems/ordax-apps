@@ -5,8 +5,14 @@
 App expõe sete leituras do mesmo serviço por contrato `ordax.orchestrator-host/1`
 em pipe herdado, build/perfil conferidos, assinatura/expiração/antirreplay e sem
 escritas. Candidato Runtime consome catálogo pinado e exige autorização Product
-externa a ele. Local: 340 testes Apps + 37 Runtime/Gateway. Gate Windows
-empacotado ampliado; conferir CI. Nenhuma nova autoridade OAuth/grant, canal
+externa a ele. **345 testes Windows e E2E do App empacotado aprovados** no source
+`68cd7ef0d9fcabbf869dc7bfc684b6a71eced139`
+([CI 39642528709](https://github.com/ordaxsystems/ordax-apps/actions/runs/39642528709)).
+Mesmo projeto/trabalho lido pela UI/MCP e host privado; identidade, assinatura,
+replay e escrita recusados. Descritores dedicados 3/4 separam diagnósticos.
+Runtime: 13 testes novos + 25 Gateway locais; contratos Windows/Linux/SDK mínimo
+aprovados na [PR #182](https://github.com/ordaxsystems/ordax-runtime/pull/182).
+A prova host usa fixture de autorização, sem grant Product real. Nenhuma nova autoridade OAuth/grant, canal
 público ou ativação: launcher gerenciado e publicação continuam Platform/Runtime.
 [Owners, contrato e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
 

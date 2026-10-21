@@ -6,10 +6,16 @@ Implementado `ordax.orchestrator-host/1` no mesmo processo/Store, com pipe priva
 herdado, build/perfil atestados, sessão curta e sete operações de leitura do
 catálogo existente. Assinatura, prazo, antirreplay e recusa de escrita; sem porta
 pública, segundo banco, visão ou credencial persistida. Off por padrão.
-Local: 340 testes Apps e 37 testes Runtime/Gateway aprovados. O cenário Windows
-empacotado foi ampliado para ler os mesmos projeto/trabalho pelo canal privado;
-aguardar CI do commit. Cliente Runtime é candidato em branch própria, sem
-registro no catálogo. Publicação Platform, launcher gerenciado e autorização
+App: **345 testes Windows + E2E empacotado aprovados** no source
+`68cd7ef0d9fcabbf869dc7bfc684b6a71eced139`,
+[workflow 39642528709](https://github.com/ordaxsystems/ordax-apps/actions/runs/39642528709).
+UI/MCP local e host privado leem os mesmos projeto/trabalho; identidade,
+assinatura, replay e recusa de escrita verificados. Pipes dedicados 3/4 mantêm
+diagnósticos fora do protocolo. Host CI é fixture Node, não launcher Product.
+Runtime: 13 testes novos + 25 Gateway locais; contratos Windows/Linux/SDK mínimo
+aprovados em `693d98c75f4c681f525796e48162e5ea30908b92`,
+[PR #182](https://github.com/ordaxsystems/ordax-runtime/pull/182).
+Cliente Runtime é candidato em branch própria, sem registro no catálogo. Publicação Platform, launcher gerenciado e autorização
 OAuth/grants real continuam pendentes; nada instalado/ativado no PC.
 [Contrato, evidências e limites](../audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
 
