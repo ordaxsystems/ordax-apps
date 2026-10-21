@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {makeRuntimeManifest,verifyRuntimeManifest} from '../src/runtime-build-identity.mjs';
 
 const commit='1234567890abcdef1234567890abcdef12345678';
@@ -69,6 +70,31 @@ test('manifest permits no symlink in owned code tree',t=>{
  assert.throws(()=>makeRuntimeManifest(root,commit),/build_tree_unsafe/);
 });
 
+test('Electron bootstrap attests code before any application module is evaluated',t=>{
+ const root=fixture(t);
+ fs.copyFileSync(new URL('../desktop/bootstrap.mjs',import.meta.url),path.join(root,'desktop','bootstrap.mjs'));
+ fs.copyFileSync(new URL('../src/runtime-build-identity.mjs',import.meta.url),
+   path.join(root,'src','runtime-build-identity.mjs'));
+ // This main module has an observable side effect; unverified code must never run.
+ fs.writeFileSync(path.join(root,'desktop','main.mjs'),
+   "import fs from 'node:fs'; fs.writeFileSync(process.env.ORDAX_TEST_MAIN_MARKER,'loaded');\\n");
+ const marker=path.join(os.tmpdir(),'ordax-bootstrap-test-'+process.pid+'-'+Date.now());
+ t.after(()=>fs.rmSync(marker,{force:true}));
+ const run=()=>spawnSync(process.execPath,[path.join(root,'desktop','bootstrap.mjs')],{
+   encoding:'utf8',timeout:10000,env:{...process.env,ORDAX_TEST_MAIN_MARKER:marker}
+ });
+ const manifest=seal(root);
+ assert.ok(manifest.files.some(file=>file.path==='desktop/bootstrap.mjs'));
+ assert.equal(run().status,0);
+ assert.equal(fs.readFileSync(marker,'utf8'),'loaded');
+ fs.rmSync(marker);
+ fs.appendFileSync(path.join(root,'desktop','main.mjs'),'// tampered\\n');
+ const blocked=run();
+ assert.notEqual(blocked.status,0);
+ assert.match(blocked.stderr,/lab_runtime_build_integrity_failed/);
+ assert.equal(fs.existsSync(marker),false);
+});
+
 test('App-only build proof awaits exact staged profile, then checks commit and digest without any send',()=>{
  const script=fs.readFileSync(new URL('../scripts/live-ui-build-proof-readonly.cjs',import.meta.url),'utf8');
  assert.match(script,/await waitForLabAppMode\(evaluate\)/);
@@ -78,7 +104,13 @@ test('App-only build proof awaits exact staged profile, then checks commit and d
  assert.doesNotMatch(script,/sendPrompt\(|requestSubmit\(|\.reload\(|\.loadURL\(/);
 });
 
-test('startup verifies content BEFORE userData/SQLite and exposes trusted-only IPC',()=>{
+test('bootstrap gates module loading and main verifies again before userData/SQLite',()=>{
+ const bootstrap=fs.readFileSync(new URL('../desktop/bootstrap.mjs',import.meta.url),'utf8');
+ const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+ assert.equal(pkg.main,'desktop/bootstrap.mjs');
+ assert.match(bootstrap,/verifyRuntimeManifest\\(root\\)/);
+ assert.ok(bootstrap.indexOf('verifyRuntimeManifest(root)')<bootstrap.indexOf("await import('./main.mjs')"));
+ assert.doesNotMatch(bootstrap,/^import.*(?:main|store|supervisor)/m);
  const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
  const preload=fs.readFileSync(new URL('../desktop/preload.cjs',import.meta.url),'utf8');
  assert.ok(main.indexOf('const runtimeBuildProof=verifyRuntimeManifest(root)')>=0);
