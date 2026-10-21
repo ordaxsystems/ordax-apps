@@ -28,13 +28,18 @@ teste”. O painel do orquestrador está visível, o prompt de teste foi preench
 a configuração de chave ficou aberta. Windows safeStorage está disponível; o
 campo é password. Nenhuma mensagem ao provedor foi enviada.
 
-Resultado físico: `ordax.lab.physical-api-ready/1`, `ok=true`, versão alpha.4,
-`configured=false`, `enabled=false`, `apiResponseTested=false`,
-`humanCredentialEntryRequired=true`, `originalProfileChanged=false`.
-A chave deve ser inserida pelo usuário diretamente no App; depois, salvar no
-Windows, ativar chat por API e enviar `Responda apenas: ORDAX_API_LOCAL_OK`.
-A resposta real e a persistência dessa resposta após reabrir ainda precisam de
-aceite humano. O opt-in de chat precisa ser ativado novamente a cada sessão.
+Resultado físico inicial: `ordax.lab.physical-api-ready/1`, `ok=true`, versão
+alpha.4, armazenamento seguro disponível, sem credencial copiada e sem envio
+automático. Após configuração pelo usuário, o estado passou a `configured=true`,
+`enabled=true`; a resposta da API foi registrada no histórico do orquestrador.
+Após a preparação, o usuário inseriu e salvou sua chave diretamente no App e
+ativou o chat por API. Pela API autenticada, o histórico local do mesmo trabalho
+registrou a mensagem enviada `Responda apenas: ORDAX_API_LOCAL_OK` e a resposta do
+assistente `ORDAX_API_LOCAL_OK`. Evidência consultada em 2026-10-21 pelo Remote
+Desktop Commander, por IPC do App; status informado somente como booleano, sem
+ler a chave. Resultado: a chamada real ao provedor passou. A persistência após
+fechar e reabrir o App ainda não foi verificada. O opt-in precisa ser ativado
+novamente a cada sessão.
 
 O helper `product/scripts/prepare-physical-api-test.cjs` limita o ensaio ao artefato
 validado e perfil novo. Não lê chaves, não envia prompts e não acessa DOM do
