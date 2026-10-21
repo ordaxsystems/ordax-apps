@@ -14,11 +14,12 @@ const {labStagedLocalAppData,labDatabasePath}=require('./e2e-lab-target.cjs');
  try{
   store=new Store(dbPath);
   const done=store.createTask('W4 Offline Completed Fixture');
-  store.appendMessage(done.id,'user','ORDAX_W4_DONE_LOCAL_ONLY');
-  store.appendMessage(done.id,'assistant','ORDAX_W4_SYNTHETIC_COMPLETED_REPLY');
-  store.checkpoint(done.id,'Synthetic completed checkpoint (local only)');
-  const doneRun=store.startRun(done.id);
-  store.finishRun(done.id,doneRun);
+  const {runId:doneRun}=store.beginProviderRun(done.id,'ORDAX_W4_DONE_LOCAL_ONLY');
+  store.commitObservedProviderReply(done.id,doneRun,{
+    text:'ORDAX_W4_SYNTHETIC_COMPLETED_REPLY',
+    observedAt:'2026-10-20T21:00:00.000Z',observerMode:'beta',
+    attachAssets:()=>[]
+  });
   const interrupted=store.createTask('W4 Offline Interrupted Fixture');
   store.checkpoint(interrupted.id,'Synthetic checkpoint before interruption');
   const {runId}=store.beginProviderRun(interrupted.id,'ORDAX_W4_INTERRUPTED_LOCAL_ONLY');

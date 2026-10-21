@@ -362,3 +362,7 @@ Erro explícito da conversa e falha da sidebar agora são classificados separada
 ### P5/W5 — captura provisória durável de respostas (20/10/2026)
 
 Implementado no SQLite canônico um registro de texto provisório por Run, limitado a 64K caracteres e gravado com intervalo mínimo de 2s; em sucesso é removido na transação de finalização, em erro/reinício permanece `unverified`. O App mostra esse texto somente em um painel recolhido, sem torná-lo mensagem confirmada. Testes focados 11/11 e dois boots físicos sintéticos com observação UI passaram; SQLite íntegro, nenhum reenvio. **Teste integral não executado nesta rodada por bloqueio de segurança da ferramenta.** W3 e W4 externos pendentes. [Auditoria](../audits/P5-W5-PROVISIONAL-RECOVERY-2026-10-20.md).
+
+### P5/W6 — commit transacional da resposta confirmada (20/10/2026)
+
+Falha na origem: resposta assistant, assets e checkpoint eram autocommits separados antes de `finishRun`, permitindo resposta/checkpoint fantasma em queda de banco. `Store.commitObservedProviderReply` agora os grava na **mesma transação** de finalização Run/Task/eventos/turno e exclusão do snapshot unverified. Rollback mantém provisório. **21/21 testes focados**, falhas injetadas e prova no App isolado passando (sem envios). [Auditoria](../audits/P5-W6-ATOMIC-CONFIRMED-REPLY-2026-10-20.md). W3/W4 externos ainda não certificados, sem merge nem alterar a instalação Dev.

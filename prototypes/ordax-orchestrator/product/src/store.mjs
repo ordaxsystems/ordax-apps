@@ -752,7 +752,12 @@ export class Store {
     this.db.prepare('UPDATE runs SET heartbeat_at=? WHERE id=? AND status=?').run(now, runId, 'running');
   }
 
-  finishRun(taskId, runId, error = null) {
+  // Commit a provider answer only together with its checkpoint and terminal Run.
+  // The optional success callback runs after validating Run ownership, within
+  // the SAME SQLite transaction. Failures roll every canonical write back.
+  finishRun(taskId, runId, error = null, onConfirmedSuccess = null) {
+    if (onConfirmedSuccess != null && (error || typeof onConfirmedSuccess !== 'function'))
+      throw new Error('run_finish_success_callback_invalid');
     // A crash must not persist a terminal Run with a still-running Task or
     // leave success events/accounting for a transaction that did not commit.
     // Do not mutate a foreign/already terminal Run or retry provider effects.
@@ -761,6 +766,7 @@ export class Store {
       const run = this.db.prepare('SELECT task_id,status FROM runs WHERE id=?').get(runId);
       if (!run || run.task_id !== taskId || run.status !== 'running')
         throw new Error('run_finish_state_invalid');
+      const committedReply = onConfirmedSuccess ? onConfirmedSuccess() : null;
       const status = error ? 'failed' : 'succeeded';
       const now = this.now();
       const finalized = this.db.prepare(
@@ -787,10 +793,33 @@ export class Store {
         }
       }
       this.db.exec('COMMIT');
+      return committedReply;
     } catch (failure) {
       this.db.exec('ROLLBACK');
       throw failure;
     }
+  }
+
+  commitObservedProviderReply(taskId, runId, {
+    text, observedAt, chatUrl = null, observerMode = 'beta', runMetrics = null,
+    attachAssets = () => []
+  } = {}) {
+    if (typeof text !== 'string' || typeof observedAt !== 'string' || !observedAt ||
+        typeof attachAssets !== 'function') throw new Error('invalid_confirmed_reply');
+    return this.finishRun(taskId, runId, null, () => {
+      const assistant = this.appendMessage(taskId, 'assistant', text);
+      const assets = attachAssets(assistant.id);
+      if (!Array.isArray(assets)) throw new Error('invalid_confirmed_assets');
+      const summary = text.trim() ? text.slice(0, 800)
+        : assets.length ? `[${assets.length} imagem(ns) armazenada(s) localmente]`
+          : '[resposta sem conteúdo]';
+      this.checkpoint(taskId, `Última resposta observada em ${observedAt}: ${summary}`, {
+        run_id: runId, chat_url: chatUrl,
+        asset_ids: assets.map(asset => asset.id), observer_mode: observerMode,
+        run_metrics: runMetrics
+      });
+      return { assistant, assets };
+    });
   }
 
   recoverInterruptedRuns() {

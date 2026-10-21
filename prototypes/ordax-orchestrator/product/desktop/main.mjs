@@ -131,7 +131,7 @@ function getTaskView(id) {
   return decorateTask(store.getTask(String(id), { messageLimit:MESSAGE_PAGE_SIZE }));
 }
 
-function persistImages(taskId, messageId, images = []) {
+function persistImages(taskId, messageId, images = [], writtenPaths = null) {
   if (!images.length) return [];
   const dir = path.join(assetsRoot, taskId);
   fs.mkdirSync(dir, { recursive: true });
@@ -145,6 +145,7 @@ function persistImages(taskId, messageId, images = []) {
     const id = `asset_${randomUUID()}`;
     const localPath = path.join(dir, `${id}.${ext}`);
     fs.writeFileSync(localPath, bytes, { flag: 'wx' });
+    if (writtenPaths) writtenPaths.push(localPath);
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     const asset = store.addAsset(taskId, messageId, {
       id,
@@ -250,23 +251,24 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       });
     }
     const runMetrics = store.recordRunMetrics(taskId, runId, observerMode, { ...(result.metrics || {}), runStartedAt: liveRun?.startedAt || null });
-    const assistant = store.appendMessage(taskId, 'assistant', result.text || '');
-    const assets = persistImages(taskId, assistant.id, result.images || []);
-    const summary = result.text?.trim()
-      ? result.text.slice(0, 800)
-      : assets.length
-        ? `[${assets.length} imagem(ns) armazenada(s) localmente]`
-        : '[resposta sem conteúdo]';
-
-    store.checkpoint(taskId, `Última resposta observada em ${result.observedAt}: ${summary}`, {
-      run_id: runId,
-      chat_url: confirmedChatUrl,
-      asset_ids: assets.map(asset => asset.id),
-      observer_mode: observerMode,
-      run_metrics: runMetrics
-    });
     provisional.flush();
-    store.finishRun(taskId, runId);
+    // File bytes live outside SQLite. Track new writes so an SQL rollback
+    // does not leave unnecessary assets in a normal (non-crash) failure.
+    const writtenPaths = [];
+    let assets;
+    try {
+      ({ assets } = store.commitObservedProviderReply(taskId, runId, {
+        text:result.text || '', observedAt:result.observedAt,
+        chatUrl:confirmedChatUrl, observerMode, runMetrics,
+        attachAssets:(messageId)=>persistImages(taskId, messageId,
+          result.images || [], writtenPaths)
+      }));
+    } catch (commitError) {
+      for (const assetPath of writtenPaths) {
+        try { fs.unlinkSync(assetPath); } catch { /* Orphan is never in the committed asset ledger. */ }
+      }
+      throw commitError;
+    }
     if (confirmedChatUrl) await worker.showConversation(confirmedChatUrl).catch(() => {});
     return { result: { ...result, runId, assets }, task:getTaskView(taskId) };
   } catch (error) {
