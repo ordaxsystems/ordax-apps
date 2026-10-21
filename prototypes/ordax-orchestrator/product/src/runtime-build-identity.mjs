@@ -50,8 +50,9 @@ export function makeRuntimeManifest(root,sourceCommit) {
  manifest.contentDigest=hash(canonical(manifest));
  return manifest;
 }
-export function verifyRuntimeManifest(root){
- const file=path.join(root,'runtime-build.json');
+export function verifyRuntimeManifest(root,{manifestPath=path.join(root,'runtime-build.json')}={}){
+ invariant(path.isAbsolute(manifestPath),'build_manifest_path_invalid');
+ const file=manifestPath;
  if(!fs.existsSync(file))return {schema:BUILD_SCHEMA,status:'unattested',
   verified:false,reason:'manifest_missing',sourceCommit:null,contentDigest:null};
  try{
