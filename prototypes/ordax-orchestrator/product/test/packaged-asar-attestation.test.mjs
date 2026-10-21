@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
+import {finished} from 'node:stream/promises';
 import {createRequire} from 'node:module';
 import {verifyRuntimeManifest} from '../src/runtime-build-identity.mjs';
 
@@ -26,9 +27,16 @@ function fixture(t,entry='desktop/bootstrap.mjs') {
   fs.writeFileSync(path.join(source,'supervisor','coordinator.mjs'),'export {};\n');
   return {root,source,archive:path.join(root,'app.asar')};
 }
+// @electron/asar v3.4.1 returns the WritableStream before its 'finish' event.
+// A complete header may already exist while file bodies are still unwritten.
+// Never hand a partial test archive to the integrity attestor.
+async function createCompleteFixtureArchive(f) {
+  const output=await asar.createPackage(f.source,f.archive);
+  await finished(output);
+}
 test('afterPack seals actual ASAR bytes and produces a self-consistent runtime identity',async t=>{
   const f=fixture(t);
-  await asar.createPackage(f.source,f.archive);
+  await createCompleteFixtureArchive(f);
   const beforeSha=createHash('sha256').update(fs.readFileSync(f.archive)).digest('hex');
   const proof=await attestPackagedAsar({archive:f.archive,sourceCommit:commit});
   const afterSha=createHash('sha256').update(fs.readFileSync(f.archive)).digest('hex');
@@ -56,7 +64,7 @@ test('afterPack seals actual ASAR bytes and produces a self-consistent runtime i
 });
 test('packager rejects an archive with a non-bootstrap entrypoint',async t=>{
   const f=fixture(t,'desktop/main.mjs');
-  await asar.createPackage(f.source,f.archive);
+  await createCompleteFixtureArchive(f);
   await assert.rejects(
     attestPackagedAsar({archive:f.archive,sourceCommit:commit}),
     /packaged_entrypoint_not_bootstrap/);
