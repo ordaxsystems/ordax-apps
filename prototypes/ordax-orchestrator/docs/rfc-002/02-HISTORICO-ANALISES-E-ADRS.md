@@ -124,6 +124,24 @@ Claude propôs vendorizar um snapshot completo e abandonar overlay. GPT concordo
 | ADR-013 | Contratos versionados e versionamento do produto por `product-version.json`. | Firme/implementado parcialmente | U, V |
 | ADR-014 | Saída de LLM é proposta não confiável; patch só por validação/autorização do Runtime. | Firme; implementação pendente | C, G, GPT |
 | ADR-015 | Compatibilidade futura com provedores adicionais não substitui ChatGPT Web obrigatório do primeiro marco. | Firme no escopo | U, C |
+| ADR-016 | Multi-projeto e múltiplos Orquestradores por projeto; chat central do usuário com o Orquestrador, e ChatGPT Web subordinado a trabalhos/sessões. | Requisito de produto confirmado; implementação pendente | U, GPT |
+| ADR-017 | Um Orquestrador padrão; especialistas/agentes persistentes apenas quando justificáveis e autorizados; serialização inicial das operações. | Arquitetura recomendada; validação incremental | U, GPT, V |
+
+### H14 — Refinamento do proprietário: múltiplos projetos, orquestradores e agentes opcionais (21/10/2026) [U, GPT, V]
+
+**Pedido do proprietário:** vários projetos simultaneamente configuráveis; cada projeto com mais de um Orquestrador possível; cada Orquestrador configurado para missão específica, conversando com o usuário por IA (inicialmente Groq); ChatGPT subordinado para raciocínio e desenvolvimento de trabalhos, com abertura/continuidade/rotação de threads e contexto persistente. GPT pode ajudar a **propor** especialistas conforme necessidade, mas é aceitável que o próprio Orquestrador administre as sessões sem equipe adicional.
+
+**Comparação de alternativas:**
+- **A — um agente permanente por função:** tende a multiplicar custo, sincronização, conflitos, sessões e incerteza sem ganho necessário nas tarefas simples. Não recomendado como padrão.
+- **B — Groq executa tudo e GPT só responde:** sobrecarrega a camada barata com raciocínio técnico/validação e aumenta risco de decisões mal fundamentadas. Não recomendado como obrigação fixa de capacidade.
+- **C — orquestrador leve + ChatGPT por trabalho + especialistas lógicos sob demanda:** recomendado. Usuário conversa com orquestrador, mas decisões de estado e permissões são do motor determinístico; GPT resolve partes técnicas complexas; papéis especializados viram agentes persistentes somente quando houver benefício verificável.
+- **D — Groq apenas repassa cegamente o GPT:** inadequado; não protege orçamento, grants, loops, evidência ou continuidade.
+
+**Regra decidida:** multi-projeto e N Orquestradores por projeto são **domínio do produto**. **Recomendação de implementação:** mostrar essas entidades e seus vínculos sem iniciar vários executores em paralelo. 1 execução ativa global no MVP, política progressiva de orçamento/escopo/grants e isolamento. O sistema não cria agentes, contas, chats ou submissões apenas porque o GPT sugeriu; apresenta proposta validada e audita aceitação. Não existe “agente” independente sem motivo técnico.
+
+**Exemplo OrdaX OS:** projeto `OrdaX OS` contém Orquestrador `Evolução do Sistema`, que coordena trabalhos `Wi-Fi`, `Atualização USB` e `Boot/Recovery` em threads ChatGPT distintas ou rotacionadas, sem permitir escrita concorrente no mesmo alvo. Um segundo Orquestrador `QA/Release` pode ser configurado posteriormente; a IA não recebe privilégios para inserir patches sem aprovação e Runtime/grants. Primeiro teste com Professor de Matemática permanece caminho seguro para validar fluxo sem efeitos externos.
+
+**Não implementado nesta análise:** gerenciamento de projeto/orquestrador N:N, chat central Groq, agentes, agendamento de várias sessões, criação dinâmica pelo GPT e política de executor único. Esta decisão arquitetural não autoriza testes reais ou disparos de comandos. Ver `01-RFC002-PLANO-MESTRE.md §4.1`.
 
 ## Questões sem encerramento — registrar decisão antes do código afetado
 
