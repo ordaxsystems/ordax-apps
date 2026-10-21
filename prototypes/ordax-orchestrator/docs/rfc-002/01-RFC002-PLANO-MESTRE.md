@@ -90,6 +90,35 @@ Lista + chat + preview, isoladamente, não são novidade. O diferencial pretendi
 
 **Regra de SSOT:** nomes e estados devem ser reconciliados com os schemas e contratos reais antes de criar migrations. “Work” e “Agent” não justificam duplicar persistência ou autorização. Um gráfico de tarefas (DAG) pode ser uma **visão calculada** de dependências, sem exigir novo motor ou framework.
 
+### 4.1 — Hierarquia de múltiplos projetos e orquestradores (direção do proprietário, 21/10/2026)
+
+**Escopo do produto:** o usuário pode criar/associar **múltiplos projetos**; um projeto pode ter **um ou vários Orquestradores configurados**, com objetivos, instruções, provedor/modelo, credencial referenciada por alias seguro, escopo, orçamento e política de aprovações próprios. Cada Orquestrador mantém um **chat principal com o usuário**; suas **Tasks/Works**, Runs e sessões do ChatGPT Web são filhas operacionais do projeto/orquestrador, e não o lugar onde se configura a IA coordenadora. Um Orquestrador pode pedir auxílio de especialistas/roles, mas esses agentes são opcionais e limitados, não subprocessos independentes por padrão.
+
+```text
+Projeto A (contexto/recursos/grants)
+ ├─ Orquestrador 1 (persona + chat humano + políticas)
+ │   ├─ Trabalho/Task X ─ Runs ─ ChatGPT sessão 1 ─ sessão 2 (continuidade)
+ │   └─ Trabalho/Task Y ─ Runs ─ ChatGPT sessão 3 (frente distinta)
+ └─ Orquestrador 2 (responsabilidade distinta; futuramente)
+Projeto B (contexto/recursos/grants segregados)
+ └─ Orquestrador 3 ─ Trabalho/Task Z ─ sessões autorizadas
+```
+
+**Estratégia recomendada — agentes sob demanda, não explosão de agentes:**
+- **Padrão:** **um Orquestrador** por projeto/objetivo amplo. Ele conversa com o usuário, solicita raciocínio ou divisão do problema ao ChatGPT quando útil, cria trabalhos e coordena sessões de ChatGPT para especializações *lógicas* (ex.: arquitetura, correção, testes). Cada especialização pode ser só uma instrução tipada no mesmo trabalho; não precisa de agente vivo, credencial ou estado de chat extras.
+- **Especialistas:** só promover um papel a **agente persistente** se houver ganho verificável: ferramentas/grants distintos, memória/ciclo de vida próprios, escopo isolado, revisão independente ou subtrabalhos de longa duração. O GPT pode **propor** uma equipe/estrutura de especialistas, mas a criação e concessão de privilégios dependem de validação de escopo, orçamento e autorização do OrdaX/usuário; a resposta do modelo não é autoridade.
+- **Vários Orquestradores no mesmo projeto:** suportar no modelo de domínio, mas executar de modo serial no MVP, com locks por recurso/alvo e sem escrituras simultâneas conflitantes. Compartilhar apenas memória aprovada do **projeto**; identidade, rascunho de instruções, chat e autorização são específicos de cada Orquestrador. Nenhuma transferência automática de segredos ou grants.
+- **Divisão dos modelos:** Groq (provedor de modelos, não um único modelo) oferece inicialmente o **chat de coordenação e planejamento limitado**, escolhendo modelos mensurados por tarefa/custo; ChatGPT Web permanece como canal de **raciocínio técnico e execução de conversas** conforme o escopo do RFC. Tarefas difíceis podem ser planejadas/avaliadas pelo GPT, mas a transição determinística de estados nunca pertence exclusivamente a um LLM. Modelo supervisor alternativo futuro é porta configurável, não obrigação de múltiplas assinaturas.
+
+**Contrato de controle de sessão:** uma sessão ChatGPT pode servir a vários passos da mesma Task enquanto houver contexto confiável; abrir nova conversa para outro trabalho, revisão independente, degradação comprovada de contexto ou continuidade autorizada. Rotação **não** é troca de conta/cookie, contorno de limites do provedor nem reenvio de ação incerta. Se a sessão falhar, registrar estado e reconciliar antes de decidir próximo passo; “fechar” normalmente significa encerramento **lógico no OrdaX**, sem exclusão automática do histórico ChatGPT.
+
+**Experiência de produto:** coluna 1 = projetos → orquestradores → trabalhos; coluna 2 = chat principal **usuário ↔ Orquestrador** com decisões, propostas e progresso; coluna 3 = sessões ChatGPT subordinadas, instruções, provas, arquivos/preview e aprovações. Trocar de projeto não mistura contextos. A chave Groq e o perfil ficam no **Orquestrador**, não na thread do provedor nem em cada Task.
+
+**Fatia vertical MVP:** apresentar a hierarquia multi-projeto/multi-orquestrador na UX e no vínculo persistente, mas **ativar somente um Orquestrador / uma Task em execução / uma sessão ChatGPT ativa globalmente por vez** enquanto W3/W4, login, execução, retomada e reconciliação não passarem. Ensaiar primeiro Professor de Matemática sem Runtime/Git; depois OrdaX OS, com ações externas exclusivamente via ferramentas autorizadas. O vínculo ao catálogo de projetos existente deve ser auditado antes de qualquer esquema novo; reutilizar o Store/eventos/Task/Run/conversations/ledger, sem criar motor paralelo.
+
+**Fronteira de confiabilidade:** supervisor via Groq usa API própria (custos/limites separados da assinatura ChatGPT). ChatGPT Web não deve ser tratado como API de automação garantida; acesso depende de sessão autenticada, autorização, interface observável e respeito aos limites e condições do provedor. Sem acesso/consentimento, o sistema pausa e informa o bloqueio, não finge execução.
+
+
 ## 5. Fronteiras de responsabilidade
 
 | Componente | Deve fazer | Não deve fazer |
