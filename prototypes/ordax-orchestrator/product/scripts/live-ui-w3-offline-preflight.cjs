@@ -20,7 +20,8 @@ function snapshot(){
     const task=db.prepare('SELECT id,chat_url FROM tasks WHERE title=?').get(expectedTaskTitle);
     assert.ok(task && task.chat_url,'lab_w3_offline_fixture_missing');
     return {task,runs:n('SELECT COUNT(*) n FROM runs'),
-      messages:n('SELECT COUNT(*) n FROM messages'),actions:n('SELECT COUNT(*) n FROM action_ledger')};
+      messages:n('SELECT COUNT(*) n FROM messages'),actions:n('SELECT COUNT(*) n FROM action_ledger'),
+      receipts:n("SELECT COUNT(*) n FROM events WHERE kind='provider.submission.provenance'")};
   }finally{db.close();}
 }
 async function providerUrl(){
@@ -30,6 +31,7 @@ async function providerUrl(){
 async function main(){
   preflightStage='fixture_snapshot';
   const before=snapshot();
+  assert.equal(before.receipts,0,'lab_w3_offline_fixture_must_lack_receipt');
   preflightStage='lab_ui_target';
   const target=await waitForLabUiTarget();
   preflightStage='cdp_connection';
@@ -93,12 +95,11 @@ async function main(){
       if(['complete','error'].includes(state?.state))break;
       await sleep(100);
     }
-    const known=new Set(['provider_health_unavailable','provider_login_required',
-      'provider_authentication_in_progress','provider_session_not_observed',
-      'provider_rate_limited_observed','provider_access_restricted_observed',
-      'provider_verification_required']);
     assert.equal(state?.state,'complete','lab_w3_offline_inspection_not_terminal');
-    assert.ok(known.has(state?.reason),'lab_w3_offline_preflight_not_observed');
+    // A missing latest-turn receipt must block BEFORE a provider auth check
+    // or navigation; this is why the no-receipt fixture exists.
+    assert.equal(state?.reason,'provider_submission_provenance_missing',
+      'lab_w3_offline_receipt_first_not_observed');
     assert.equal(state?.rendered,'false','lab_w3_offline_false_certification');
     preflightStage='postconditions';
     assert.equal(await providerUrl(),urlBefore,'lab_w3_offline_unexpected_navigation');
@@ -112,6 +113,7 @@ async function main(){
     console.log(JSON.stringify({schema:'ordax.lab.w3-offline-preflight.v1',
       appMode:true,profileBound:true,inspectionState:state.state,
       reason:state.reason,threadRendered:false,providerUrlUnchanged:true,
+      receiptCount:before.receipts,receiptGuardTriggered:true,
       ledgerCountsUnchanged:true,providerMessagesSent:0,W3Certified:false}));
   }finally{ws.close();}
 }

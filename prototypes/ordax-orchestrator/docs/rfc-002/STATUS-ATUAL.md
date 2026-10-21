@@ -370,3 +370,7 @@ Falha na origem: resposta assistant, assets e checkpoint eram autocommits separa
 ### P5/W3 — recibo antes da navegação (20/10/2026)
 
 O handler de inspeção W3 navegava para o provedor mesmo sem recibo de envio, embora essa ausência já tornasse a certificação impossível. Corrigido na origem: o guard local devolve `provider_submission_provenance_missing` antes de qualquer inspeção remota; a abertura manual permanece independente. SQLite Dev read-only: **5 links, 0 recibos, 0 Runs ativas, quick_check ok**. 8/8 regressões focadas passaram, incluindo worker instrumentado com zero chamadas sem recibo. [Auditoria](../audits/P5-W3-RECEIPT-FIRST-2026-10-20.md). W3/W4 reais ainda pendentes; sem replay.
+
+### P5/W3 — prova física da inspeção bloqueada sem recibo (20/10/2026)
+
+O roteiro App-only W3 passou a exigir receipt-first. Novo preparador seguro cria perfil staged inédito com uma Task vinculada sintética, uma mensagem não enviada, 0 Runs e 0 recibos. Em Electron real (9445), o botão Inspecionar conversa retornou `provider_submission_provenance_missing`, com URL e SQLite intactos, zero envios e W3 não certificado; a instância principal 9446 permaneceu ativa. 23/23 testes focados de isolamento/fixture passaram inicialmente. [Auditoria](../audits/P5-W3-RECEIPT-FIRST-APP-E2E-2026-10-20.md). W3/W4 reais ainda pendentes.
