@@ -18,6 +18,7 @@ O conjunto de arquivos é autossuficiente: não depende da conversa original e c
 - **Supervisor não é dono da segurança nem do ciclo de vida**; Orchestrator governa estados, Runtime executa sob grants reais, texto da IA vira proposta.
 - **Não reenviar operação incerta.** Envio, resposta observada, resposta completa, patch aplicado e efeito verificado são fatos diferentes.
 - **Interface definida:** três colunas redimensionáveis, trabalho/conversas à esquerda, chat humano+agentes no centro, preview/workspace com abas à direita. Blender/Unity são posteriores; não apagá-los do objetivo.
+- **Esclarecimento de produto em 21/10/2026:** o chat central é entre **usuário e IA Orquestradora (inicialmente Groq)**, que coordena as conversas do ChatGPT Web como sessões subordinadas. Selecionar "Professor de Matemática" ou "Arquiteto OrdaX" em uma Task do ChatGPT **não é** a UX aprovada. Configuração de persona/chave pertence ao Orquestrador, não à sessão do provedor. Leia a seção `Retificação de produto — chat com o Orquestrador` em `STATUS-ATUAL.md` antes de implementar. **Não executar automações ou modelos só por esta retificação.**
 - **Agente de Compatibilidade permanece no roadmap**, mas propõe correções testadas e revisadas, sem autoreparo irrestrito ou ping oculto não autorizado.
 - **Apenas fatos verificados são implementação.** O primeiro gate é uma Task real com ChatGPT Web real, queda e recuperação sem duplicação.
 
