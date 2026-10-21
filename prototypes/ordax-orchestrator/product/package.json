@@ -3,7 +3,7 @@
   "version": "0.2.0-alpha.2",
   "private": true,
   "type": "module",
-  "main": "desktop/main.mjs",
+  "main": "desktop/bootstrap.mjs",
   "description": "Laboratorio isolado de orquestracao derivado do Flow/Gratis",
   "author": "OrdaX Systems",
   "scripts": {
