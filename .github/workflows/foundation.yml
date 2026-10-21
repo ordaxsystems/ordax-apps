@@ -183,7 +183,7 @@ jobs:
           assert proof["release_v2_candidate_verified"] is True
           assert len(proof["deterministic_package_sha256"]) == 64
           assert proof["packaged_runtime_import_verified"] is True
-          assert proof["empty_host_context_rejected"] is True
+          assert proof["empty_host_context_rejected"] is False
           assert proof["real_host_mount_verified"] is False
           assert proof["source_of_truth_repository"] == "ordaxsystems/ordax-os"
           assert proof["second_permanent_files_source_created"] is False

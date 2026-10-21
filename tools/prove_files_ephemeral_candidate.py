@@ -270,15 +270,17 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
         if packages[0] != packages[1] or packages[0][0] != packages[0][1]:
             raise FilesProofError("unsigned Files candidate was not deterministic")
         # Verify the real exported runtime from the ZIP, not from live OS source.
-        # This G2 smoke cannot claim a boot, signed slot, or live host mount.
+        # Files requires a DOM; this proves only real ZIP import and identity.
+        # It cannot claim missing-host denial, signed slots or a live host mount.
         runtime_evidence = runtime_smoke.probe_verified_package(
             staging / "candidate-0" / "files.zip",
             "files",
             staging / "files-runtime-smoke",
             expected_manifest=manifest,
+            probe_mode="import-only",
         )
         if (runtime_evidence["module_import"] != "verified"
-                or runtime_evidence["missing_host_ports"] != "rejected"
+                or runtime_evidence["missing_host_ports"] != "not-assessed"
                 or runtime_evidence["component_version"] != app["version"]):
             raise FilesProofError("packaged Files runtime contract smoke is incomplete")
         owner_gate = (
@@ -299,7 +301,7 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
             "deterministic_package_sha256": packages[0][0],
             "release_v2_candidate_verified": True,
             "packaged_runtime_import_verified": True,
-            "empty_host_context_rejected": True,
+            "empty_host_context_rejected": False,
             "real_host_mount_verified": False,
             "source_of_truth_repository": "ordaxsystems/ordax-os",
             "second_permanent_files_source_created": False,

@@ -73,6 +73,16 @@ class PackagedRuntimeTests(unittest.TestCase):
             self.assertEqual(evidence["missing_host_ports"], "rejected")
             self.assertEqual(evidence["component_version"], "0.1.0")
             self.assertEqual(package.read_bytes(), before)
+            imported = smoke.probe_verified_package(
+                package, "alpha", root / "import-only",
+                expected_manifest=manifest, probe_mode="import-only",
+            )
+            self.assertEqual(imported["module_import"], "verified")
+            self.assertEqual(imported["missing_host_ports"], "not-assessed")
+            with self.assertRaisesRegex(smoke.RuntimeSmokeError, "unsupported packaged runtime probe mode"):
+                smoke.probe_verified_package(
+                    package, "alpha", root / "invalid-probe", probe_mode="skip-all",
+                )
             with self.assertRaisesRegex(smoke.RuntimeSmokeError, "identity or manifest drifted"):
                 smoke.probe_verified_package(package, "other", root / "other-smoke")
             with self.assertRaisesRegex(smoke.RuntimeSmokeError, "output is not empty"):

@@ -28,10 +28,13 @@ class RuntimeSmokeError(ValueError):
 
 
 def probe_verified_package(package: Path, expected_id: str, output: Path, *,
-                           expected_manifest: dict | None = None) -> dict:
+                           expected_manifest: dict | None = None,
+                           probe_mode: str = "require-denial") -> dict:
     """Probe prebuilt canonical ZIP bytes, with no second builder or source tree."""
     if not PROBE.is_file():
         raise RuntimeSmokeError("canonical Node runtime probe is missing")
+    if probe_mode not in {"require-denial", "import-only"}:
+        raise RuntimeSmokeError("unsupported packaged runtime probe mode")
     try:
         manifest, _ = builder.verify_package(package)
         if (manifest["component"]["id"] != expected_id
@@ -50,7 +53,7 @@ def probe_verified_package(package: Path, expected_id: str, output: Path, *,
                 target.write_bytes(archive.read(record["path"]))
         entrypoint = extracted.joinpath(*PurePosixPath(manifest["entrypoint"]).parts)
         result = subprocess.run(
-            ["node", str(PROBE), str(entrypoint), expected_id, manifest["component"]["version"]],
+            ["node", str(PROBE), str(entrypoint), expected_id, manifest["component"]["version"], probe_mode],
             cwd=extracted,
             check=False, capture_output=True, text=True, timeout=15,
         )
@@ -65,14 +68,14 @@ def probe_verified_package(package: Path, expected_id: str, output: Path, *,
             "componentId": expected_id,
             "version": manifest["component"]["version"],
             "moduleImport": "passed",
-            "missingHostPorts": "rejected",
+            "missingHostPorts": "rejected" if probe_mode == "require-denial" else "not-assessed",
             "authority": "none",
         }:
             raise RuntimeSmokeError(f"{expected_id}: unexpected packaged runtime probe evidence")
         return {
             "component_version": manifest["component"]["version"],
             "module_import": "verified",
-            "missing_host_ports": "rejected",
+            "missing_host_ports": "rejected" if probe_mode == "require-denial" else "not-assessed",
         }
     except (builder.AppPackageError, OSError, ValueError, zipfile.BadZipFile,
             subprocess.TimeoutExpired) as exc:
