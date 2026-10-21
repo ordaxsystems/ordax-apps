@@ -13,7 +13,7 @@ const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8')
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
 test('desktop package ships only canonical desktop runtime', () => {
-  assert.equal(pkg.main, 'desktop/main.mjs');
+  assert.equal(pkg.main, 'desktop/bootstrap.mjs');
   // The only extra packaged file is the bounded content-integrity manifest.
   // No test, userData, cookies or arbitrary source directory may be shipped.
   assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json','runtime-build.json']);
