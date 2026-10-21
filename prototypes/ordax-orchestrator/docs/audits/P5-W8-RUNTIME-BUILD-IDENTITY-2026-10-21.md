@@ -33,3 +33,14 @@ O CI da revisão final deve ser consultado na PR; a prova física não substitui
 Uma candidata isolada verificada por SHA-256 não é assinatura criptográfica confiável do distribuidor e não prova integridade permanente se o diretório for posteriormente modificado. Antes de iniciar o Electron, o launcher deve repetir a verificação. Uma versão portátil distribuível deve incorporar o manifesto ao empacotamento, apresentar proveniência CI e assinatura no fluxo de publicação. O processo Dev legado permanece unattested e portanto o W8 ainda NÃO libera seu reinício.
 
 Os gates W3 (resposta histórica atribuível) e W4 (geração real interrompida) permanecem pendentes. A PR continua draft, sem merge na main, release ou atualização do OrdaX OS/USB.
+## Adendo W8: ordem real de avaliação ESM (21/10/2026)
+
+Revisão estrutural após a primeira candidata: o antigo `desktop/main.mjs` chamava `verifyRuntimeManifest()` antes do SQLite, mas os imports estáticos do ESM podem executar módulos ANTES do corpo de `main.mjs`. Portanto, a afirmação anterior não bastava para atestar a ordem de carregamento do código de aplicação.
+
+Correção no código do produto: `desktop/bootstrap.mjs` é o novo `package.json#main`. Ele importa somente módulos nativos de Node estaticamente, carrega o verificador por import dinâmico, rejeita manifesto inválido e **só depois** faz import dinâmico de `desktop/main.mjs`. O main preserva a segunda verificação antes do Store. A verificação local por hash continua sendo detecção de drift, não assinatura de publicador: o próprio verificador e o bootstrap constituem a base de confiança local, ainda sujeita à proveniência da distribuição.
+
+Teste determinístico adicional: um fixture de main com efeito observável é executado quando o manifesto está íntegro e bloqueado antes de qualquer efeito quando o mesmo arquivo é adulterado. O contrato do empacotamento passa a exigir explicitamente `desktop/bootstrap.mjs` como entrypoint. Não foram executados envio, reload do ChatGPT, migração de SQLite, atualização da instalação principal nem cutover.
+
+GitHub: revisão de código `9423d3cab76a0bdcaa551d67e1ffa1ceb62677c6`; CI dessa revisão aprovado em [Lab Isolation](https://github.com/ordaxsystems/ordax-apps/actions/runs/39542130977), [Pinned Baseline](https://github.com/ordaxsystems/ordax-apps/actions/runs/39542130991) e [Foundation](https://github.com/ordaxsystems/ordax-apps/actions/runs/39542130979). A execução física anterior em App comprovou a candidata `f88ee5c`, não a alteração posterior do bootstrap, que ainda requer prova física específica.
+
+Condições preservadas: PR #268 draft; App Dev principal não reiniciado; Grátis, OS, USB e perfis não modificados; W3/W4 não homologados. A próxima prova física deve usar checkout e perfil novos, porta E2E exclusiva, sem reaproveitar cookies nem controlar a instância principal.
