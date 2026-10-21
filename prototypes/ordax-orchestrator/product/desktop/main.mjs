@@ -30,7 +30,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 // Capture an immutable proof VALUE at startup, before any SQLite is opened.
 // A missing manifest is legacy/unattested, never presented as a verified build.
-const runtimeBuildProof=verifyRuntimeManifest(root);
+const runtimeBuildProof=verifyRuntimeManifest(root,
+  process.versions.electron && process.defaultApp!==true
+    ? {manifestPath:path.join(process.resourcesPath,'runtime-build.json')}
+    : undefined);
 if(runtimeBuildProof.status==='invalid') throw new Error('lab_runtime_build_integrity_failed');
 const {userRoot} = resolveLabUserRoot({
   argv:process.argv,
