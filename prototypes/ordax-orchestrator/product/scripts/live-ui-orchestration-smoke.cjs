@@ -44,6 +44,8 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       const value=(${expression});if(value)return value;
       await new Promise(r=>setTimeout(r,100));}throw Error('ui_condition_timeout');})()`);
     const projectId=await wait("document.getElementById('projectSelect').value");
+    const projectNavigation=await evaluate(`(()=>{const row=[...document.querySelectorAll('#projectNavList button')].find(b=>b.dataset.projectId==='${projectId}');return row?.getAttribute('aria-pressed')==='true'&&row?.textContent==='Projeto E2E isolado'})()`);
+    if(!projectNavigation)throw Error('project_navigation_not_selected');
     await evaluate(`(()=>{
       document.getElementById('newOrchestratorForm').closest('details').open=true;
       document.getElementById('orchestratorName').value='Coordenador E2E';
@@ -51,6 +53,8 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       document.getElementById('newOrchestratorForm').requestSubmit();
     })()`);
     await wait("document.getElementById('orchestratorSelect').value && !document.getElementById('orchestrationPanel').hidden");
+    const coordinatorLayout=await evaluate(`(()=>({focus:document.body.classList.contains('orchestrator-focus'),rail:!document.getElementById('orchestratorWorkRail').hidden,selected:[...document.querySelectorAll('#orchestratorNavList button')].some(b=>b.getAttribute('aria-pressed')==='true')}))()`);
+    if(!coordinatorLayout.focus||!coordinatorLayout.rail||!coordinatorLayout.selected)throw Error('coordinator_workspace_layout_missing');
     // Disposable credential fixture only: activation must not call the API.
     await evaluate(`window.ordax.supervisorSaveKey('gsk_'+ 'A'.repeat(40))`);
     await wait("!document.getElementById('coordinatorApiEnable').disabled");
@@ -87,11 +91,22 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
     await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
     await evaluate(`document.querySelector('#tasks .task').click()`);
     await wait("!document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('orchestrationPanel').hidden");
-    await evaluate(`document.getElementById('openOrchestrator').click()`);
+    await evaluate(`document.querySelector('#orchestratorNavList button.active').click()`);
     await wait("!document.getElementById('orchestrationPanel').hidden && document.getElementById('taskPanel').classList.contains('hidden')");
+    await evaluate(`document.getElementById('newScopedWorkButton').click()`);
+    await wait("document.getElementById('newScopedWorkDetails').open");
+    await evaluate(`(()=>{document.getElementById('scopedWorkTitle').value='Frente criada pela interface';document.getElementById('newScopedWorkForm').requestSubmit()})()`);
+    await wait("document.querySelectorAll('#orchestratorWorks .work-card').length===2 && !document.getElementById('taskPanel').classList.contains('hidden')");
+    const layoutResult=await evaluate(`(()=>({openedWork:document.getElementById('taskTitle').textContent,
+      projectItems:document.querySelectorAll('#projectNavList button').length,
+      orchestratorItems:document.querySelectorAll('#orchestratorNavList button').length,
+      conversationCards:document.querySelectorAll('#orchestratorWorks .work-card').length}))()`);
+    if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==2)
+      throw Error('work_conversation_layout_failed');
     console.log(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
       appMode:true,runtimeVerified:true,toolCount:14,sharedStateVerified:true,
       projectFormVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
+      projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
       externalMcpConnected:false,autonomousExecution:false}));
