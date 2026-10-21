@@ -6,7 +6,11 @@ import {fileURLToPath} from 'node:url';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const {verifyRuntimeManifest}=await import('../src/runtime-build-identity.mjs');
-const proof=verifyRuntimeManifest(root);
+const packaged=Boolean(process.versions.electron) && process.defaultApp!==true;
+const manifestOptions=packaged
+  ? {manifestPath:path.join(process.resourcesPath,'runtime-build.json')}
+  : undefined;
+const proof=verifyRuntimeManifest(root,manifestOptions);
 if(proof.status==='invalid')throw new Error('lab_runtime_build_integrity_failed');
 // Development Electron (electron .) may be unattested, but packaged binaries
 // MUST have a valid bundled manifest. Missing means untrusted, not success.
