@@ -358,3 +358,7 @@ Duas inicializações reais do Electron, com perfil e mensagens **sintéticos e 
 ### Provider — falha ao carregar conversa/histórico lateral (20/10/2026)
 
 Erro explícito da conversa e falha da sidebar agora são classificados separadamente, sem inferir problema de login pelo botão Novo chat. O OrdaX bloqueia envio e W3 diante da tela de erro, preserva histórico local e rascunho, evita reload implícito da mesma URL e bloqueia reload manual durante Run. [Auditoria](../audits/P5-PROVIDER-CONVERSATION-LOAD-FAILURE-2026-10-20.md). W3/W4 externos não certificados; sem troca de chat/reenvio automático.
+
+### P5/W5 — captura provisória durável de respostas (20/10/2026)
+
+Implementado no SQLite canônico um registro de texto provisório por Run, limitado a 64K caracteres e gravado com intervalo mínimo de 2s; em sucesso é removido na transação de finalização, em erro/reinício permanece `unverified`. O App mostra esse texto somente em um painel recolhido, sem torná-lo mensagem confirmada. Testes focados 11/11 e dois boots físicos sintéticos com observação UI passaram; SQLite íntegro, nenhum reenvio. **Teste integral não executado nesta rodada por bloqueio de segurança da ferramenta.** W3 e W4 externos pendentes. [Auditoria](../audits/P5-W5-PROVISIONAL-RECOVERY-2026-10-20.md).

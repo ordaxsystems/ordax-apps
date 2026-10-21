@@ -22,6 +22,8 @@ const {labStagedLocalAppData,labDatabasePath}=require('./e2e-lab-target.cjs');
   const interrupted=store.createTask('W4 Offline Interrupted Fixture');
   store.checkpoint(interrupted.id,'Synthetic checkpoint before interruption');
   const {runId}=store.beginProviderRun(interrupted.id,'ORDAX_W4_INTERRUPTED_LOCAL_ONLY');
+  store.saveRunProvisionalOutput(interrupted.id,runId,
+    'ORDAX_W5_SYNTHETIC_PARTIAL_RESPONSE_UNVERIFIED','beta');
   const now=Date.now();
   // These timestamps are deliberately SYNTHETIC, not a provider receipt.
   // They model a crash after a possible send; the real App must fail closed.

@@ -481,6 +481,13 @@ async function openTask(id) {
   $('#workspaceId').textContent = workspace ? `sessão ${workspace.id.slice(-8)}` : '';
   renderHistory(task, { reset:true, scrollToLatest:true });
   renderContext(task);
+  // Provisional text is shown only as a collapsed LOCAL recovery artifact.
+  // It is never added to confirmed messages or checkpoints.
+  const partial=$('#provisionalResponse');
+  const observation=task.provisional_response;
+  partial.classList.toggle('hidden',!observation);
+  partial.open=false;
+  $('#provisionalResponseText').textContent=observation?.content || '';
 
   const recovery = $('#recoveryBanner');
   if (task.status === 'interrupted') {

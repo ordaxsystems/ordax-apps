@@ -91,6 +91,18 @@ export class Store {
         completed_at TEXT,
         error TEXT
       );
+      -- Provisional observations are NOT assistant messages or successful runs.
+      -- At most one bounded snapshot per Run, updated in place (no stream log).
+      CREATE TABLE IF NOT EXISTS run_provisional_outputs (
+        run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        content TEXT NOT NULL,
+        source TEXT NOT NULL CHECK(source IN ('beta','dom')),
+        observed_kind TEXT NOT NULL DEFAULT 'unverified' CHECK(observed_kind='unverified'),
+        first_observed_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_run_provisional_task ON run_provisional_outputs(task_id);
       CREATE TABLE IF NOT EXISTS events (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id TEXT NOT NULL,
@@ -307,6 +319,8 @@ export class Store {
       messages,
       ...(page ? { message_page:{ has_more:page.has_more, next_cursor:page.next_cursor, page_size:page.page_size } } : {}),
       events: this.events(id, 100),
+      provisional_response:['running','interrupted','error'].includes(task.status)
+        ? this.getRunProvisionalOutput(id) : null,
       checkpoint_record: checkpoint,
       pending_approvals: this.pendingApprovals(id),
       conversations,
@@ -321,6 +335,38 @@ export class Store {
         totalMessages:page ? page.total_messages : messages.length
       })
     };
+  }
+
+  // Read only the latest Run for this Task. A previous failed Run's partial
+  // must not appear as the current answer after a newer Run succeeds.
+  getRunProvisionalOutput(taskId) {
+    return this.db.prepare(`SELECT p.run_id,p.content,p.source,p.observed_kind,p.first_observed_at,p.updated_at
+      FROM runs r JOIN run_provisional_outputs p ON p.run_id=r.id AND p.task_id=r.task_id
+      WHERE r.task_id=? AND r.status IN ('running','failed','interrupted')
+        AND r.rowid=(SELECT MAX(rowid) FROM runs WHERE task_id=?)
+      LIMIT 1`).get(taskId, taskId) || null;
+  }
+
+  // No event or checkpoint per delta. A disk failure must not turn a partial
+  // into a delivered response, and the caller must never resend as a remedy.
+  saveRunProvisionalOutput(taskId, runId, content, source='beta') {
+    if(typeof content!=='string' || !content.trim()) throw new Error('invalid_provisional_content');
+    if(content.length>262144) throw new Error('provisional_input_too_large');
+    if(!['beta','dom'].includes(source)) throw new Error('invalid_provisional_source');
+    const run=this.db.prepare('SELECT status FROM runs WHERE id=? AND task_id=?').get(runId,taskId);
+    if(run?.status!=='running') throw new Error('provisional_run_not_running');
+    const text=content.slice(0,65536);
+    const existing=this.db.prepare('SELECT content FROM run_provisional_outputs WHERE run_id=?').get(runId);
+    // Shorter DOM reads may be stale or momentarily truncated. Preserve the
+    // longest observed candidate; a change of equal length remains provisional.
+    if(existing && (existing.content===text || text.length<existing.content.length)) return false;
+    const now=this.now();
+    this.db.prepare(`INSERT INTO run_provisional_outputs
+      (run_id,task_id,content,source,observed_kind,first_observed_at,updated_at)
+      VALUES(?,?,?,?,'unverified',?,?)
+      ON CONFLICT(run_id) DO UPDATE SET content=excluded.content,
+        source=excluded.source,updated_at=excluded.updated_at`).run(runId,taskId,text,source,now,now);
+    return true;
   }
 
   // Execution reads only the fields required by the provider conversation policy.
@@ -726,6 +772,10 @@ export class Store {
       if (task.changes !== 1) throw new Error('run_finish_task_missing');
       this.event(taskId, error ? 'run.failed' : 'run.succeeded', { run_id: runId, error });
       if (!error) {
+        // The confirmed assistant message is authoritative after success.
+        // Delete the redundant provisional snapshot in this SAME transaction.
+        this.db.prepare('DELETE FROM run_provisional_outputs WHERE run_id=? AND task_id=?')
+          .run(runId,taskId);
         const active = this.db.prepare("SELECT 1 FROM task_conversations WHERE task_id=? AND status='active' LIMIT 1").get(taskId);
         if (active) {
           try { this.recordConversationCompletion(taskId, runId); }

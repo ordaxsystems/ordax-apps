@@ -917,7 +917,8 @@ export class EmbeddedChatWorker {
     };
   }
 
-  async sendPrompt({ prompt, chatUrl = null, newSession = false, onDeliveryObserved = null }) {
+  async sendPrompt({ prompt, chatUrl = null, newSession = false, onDeliveryObserved = null,
+    onProvisionalProgress = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -1015,6 +1016,12 @@ export class EmbeddedChatWorker {
         const signature = signatureFor(candidate);
         const isNew = snap.mode === 'body' ? signature !== baseline : (snap.messages.length > beforeCount || signature !== baseline);
         if (!isNew) continue;
+        // A candidate is an UNVERIFIED observation, not a completed reply.
+        // Never make optional local progress persistence affect delivery.
+        if (candidate.text?.trim() && typeof onProvisionalProgress==='function') {
+          try { onProvisionalProgress({text:candidate.text,source:snap.mode==='body'?'dom':'beta'}); }
+          catch { /* A local observation cannot trigger another submission. */ }
+        }
         if (signature === latestSignature) stable++; else stable = 0;
         latest = candidate; latestSignature = signature;
         const transient = /^(criando|gerando)\s+imagem/i.test(candidate.text||'') || /^(creating|generating)\s+image/i.test(candidate.text||'');

@@ -36,7 +36,8 @@ test('W4 offline seed creates only synthetic interrupted and completed Runs, exa
    succeeded:get("SELECT COUNT(*) n FROM runs WHERE status='succeeded'"),
    running:get("SELECT COUNT(*) n FROM runs WHERE status='running'"),
    interrupted:get("SELECT COUNT(*) n FROM runs WHERE status='interrupted'"),
-   confirmedSubmission:get("SELECT COUNT(*) n FROM runs WHERE metrics LIKE '%submitted_at%'")
+   confirmedSubmission:get("SELECT COUNT(*) n FROM runs WHERE metrics LIKE '%submitted_at%'"),
+   provisional:get('SELECT COUNT(*) n FROM run_provisional_outputs')
   };
  }finally{db.close()}
  assert.equal(counts.tasks,2);
@@ -45,6 +46,7 @@ test('W4 offline seed creates only synthetic interrupted and completed Runs, exa
  assert.equal(counts.running,1);
  assert.equal(counts.interrupted,0);
  assert.equal(counts.confirmedSubmission,1);
+ assert.equal(counts.provisional,1);
  const second=spawn(profile);
  assert.equal(second.status,2);
  assert.match(second.stderr,/lab_w4_refuse_existing_profile/);

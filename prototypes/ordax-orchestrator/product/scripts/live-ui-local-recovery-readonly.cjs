@@ -17,6 +17,7 @@ function snapshot(){
       runs:n('SELECT COUNT(*) AS n FROM runs'),
       messages:n('SELECT COUNT(*) AS n FROM messages'),
       actions:n('SELECT COUNT(*) AS n FROM action_ledger'),
+      provisional:n('SELECT COUNT(*) AS n FROM run_provisional_outputs'),
       active:n("SELECT COUNT(*) AS n FROM runs WHERE status IN ('running','planning','dispatching')")
     };
   }finally{db.close();}
@@ -34,7 +35,8 @@ function fixtures(){
     const get=(id,role)=>last.get(id,role)?.content;
     const pair=[
       {kind:'complete',id:done.id,user:get(done.id,'user'),assistant:get(done.id,'assistant')},
-      {kind:'interrupted',id:interrupted.id,user:get(interrupted.id,'user'),assistant:null}
+      {kind:'interrupted',id:interrupted.id,user:get(interrupted.id,'user'),assistant:null,
+        provisional:db.prepare('SELECT content FROM run_provisional_outputs WHERE task_id=? LIMIT 1').get(interrupted.id)?.content||null}
     ];
     for(const v of pair)assert.ok(v.user&&(v.kind!=='complete'||v.assistant),'lab_e2e_local_fixture_content_missing');
     return pair;
@@ -94,7 +96,10 @@ async function main(){
         "selected:document.querySelector('#taskId')?.textContent==="+JSON.stringify(v.id)+","+
         "userVisible:t.some(x=>x.includes("+JSON.stringify(v.user)+")),"+
         "assistantVisible:"+(v.assistant?"t.some(x=>x.includes("+JSON.stringify(v.assistant)+"))":"false")+","+
-        "interruptedBannerVisible:Boolean(banner&&!banner.classList.contains('hidden'))"+
+        "interruptedBannerVisible:Boolean(banner&&!banner.classList.contains('hidden')),"+
+        "provisionalVisible:Boolean(document.querySelector('#provisionalResponse')&&!document.querySelector('#provisionalResponse').classList.contains('hidden')),"+
+        "provisionalCollapsed:document.querySelector('#provisionalResponse')?.open===false,"+
+        "provisionalText:document.querySelector('#provisionalResponseText')?.textContent||''"+
         "}})()";
       let state=null;
       for(let i=0;i<100;i++){
@@ -106,7 +111,14 @@ async function main(){
       assert.equal(state?.selected,true,'lab_e2e_task_selection_not_confirmed');
       assert.equal(state.userVisible,true,'lab_e2e_user_content_not_rendered');
       if(v.kind==='complete')assert.equal(state.assistantVisible,true,'lab_e2e_assistant_not_rendered');
-      else assert.equal(state.interruptedBannerVisible,true,'lab_e2e_interruption_not_rendered');
+      else {
+        assert.equal(state.interruptedBannerVisible,true,'lab_e2e_interruption_not_rendered');
+        if(v.provisional){
+          assert.equal(state.provisionalVisible,true,'lab_e2e_provisional_not_rendered');
+          assert.equal(state.provisionalCollapsed,true,'lab_e2e_provisional_not_collapsed');
+          assert.equal(state.provisionalText,v.provisional,'lab_e2e_provisional_text_mismatch');
+        }
+      }
       await waitForLabAppMode(evaluate);
     }
     assert.deepEqual(snapshot(),before,'lab_e2e_local_read_modified_ledger');
@@ -130,6 +142,7 @@ main().catch(error=>{
     'lab_e2e_active_run_detected','lab_e2e_task_not_in_navigation',
     'lab_e2e_task_selection_not_confirmed','lab_e2e_user_content_not_rendered',
     'lab_e2e_assistant_not_rendered','lab_e2e_interruption_not_rendered',
+    'lab_e2e_provisional_not_rendered','lab_e2e_provisional_not_collapsed','lab_e2e_provisional_text_mismatch',
     'lab_e2e_local_read_modified_ledger','lab_e2e_provider_url_changed','lab_e2e_ui_timeout']);
   const code=String(error?.message||'');
   console.error(JSON.stringify({schema:'ordax.lab.local-recovery-app-e2e.v1',success:false,

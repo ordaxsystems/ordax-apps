@@ -17,6 +17,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
+import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
@@ -183,12 +184,18 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     draftRevision,workerId:'electron-embedded-chatgpt',observerMode
   });
   liveRun = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
+  const provisional=createProviderProvisionalRecorder({
+    save:(text,source)=>store.saveRunProvisionalOutput(taskId,runId,text,source)
+  });
   if (win && !win.isDestroyed()) win.webContents.send('ordax:task:run-started', { taskId, runId, userMessage });
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
 
   try {
     const result = await worker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
+      onProvisionalProgress:({text,source})=>{
+        if(liveRun?.runId===runId)provisional.capture(text,source);
+      },
       onDeliveryObserved:({chatUrl,submittedAt}) => {
         if (liveRun?.runId !== runId) throw new Error('submission_run_context_changed');
         const binding=bindObservedSubmittedConversation({
@@ -258,10 +265,13 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       observer_mode: observerMode,
       run_metrics: runMetrics
     });
+    provisional.flush();
     store.finishRun(taskId, runId);
     if (confirmedChatUrl) await worker.showConversation(confirmedChatUrl).catch(() => {});
     return { result: { ...result, runId, assets }, task:getTaskView(taskId) };
   } catch (error) {
+    // Persist the last pending observed text, never as a confirmed message.
+    provisional.flush();
     if (worker.lastFailureMetrics) {
       try { store.recordRunMetrics(taskId, runId, observerMode, {
         ...worker.lastFailureMetrics,
