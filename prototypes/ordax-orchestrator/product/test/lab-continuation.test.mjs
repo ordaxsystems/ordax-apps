@@ -6,6 +6,7 @@ import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {LabContinuation} from '../src/lab-continuation.mjs';
+import {ORCHESTRATOR_TOOLS} from '../src/orchestrator-contract.mjs';
 
 function setup(t,coordinator={available:()=>true,send:async()=>({content:'Revisão registrada; não houve envio automático.'})}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'lab-continuity-'));
@@ -14,7 +15,7 @@ function setup(t,coordinator={available:()=>true,send:async()=>({content:'Revis�
   const service=new OrchestratorService({store,authorize:()=>true,coordinator});
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
   let n=0;
-  const call=(op,data={})=>service.invoke(context,op,{...data,...(['continuity_status','work_list'].includes(op)?{}:{requestId:'test_'+(++n)})});
+  const call=(op,data={})=>service.invoke(context,op,{...data,...(ORCHESTRATOR_TOOLS.find(tool=>tool.operation===op)?.readOnly?{}:{requestId:'test_'+(++n)})});
   return {dir,store,service,context,call};
 }
 async function prepare(f) {
