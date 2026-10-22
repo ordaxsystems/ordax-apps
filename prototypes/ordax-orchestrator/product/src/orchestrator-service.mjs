@@ -5,11 +5,12 @@ import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
+import {ProjectWorkspace} from './project-workspace.mjs';
 
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
-  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null}={}) {
+  constructor({store,authorize,provider=null,coordinator=null,confirmProposal=null,confirmProposalSend=null,workspacePort=null}={}) {
     if(!store?.db || typeof authorize!=='function')throw Error('orchestrator_ports_required');
     this.store=store; this.db=store.db; this.authorize=authorize;
     this.provider=provider; this.coordinator=coordinator;
@@ -48,6 +49,7 @@ export class OrchestratorService {
       );
     `);
     this.continuation=new LabContinuation({store,service:this});
+    this.workspace=new ProjectWorkspace({store,port:workspacePort});
   }
 
   transaction(operation) {
@@ -148,6 +150,8 @@ export class OrchestratorService {
   async invoke(context,operation,raw={}) {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='workspace_snapshot')return this.workspace.snapshot(context,input,()=>this.requireAccess(context,operation,input.projectId));
+    if(operation==='workspace_bind')return this.bindWorkspace(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
     if(operation==='proposal_send')return this.confirmAndSendProposal(context,input);
     if(operation==='proposal_review'&&input.approved)return this.confirmAndReviewProposal(context,input);
@@ -159,6 +163,16 @@ export class OrchestratorService {
       if(operation==='project_create')this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
+    });
+  }
+
+  async bindWorkspace(context,input) {
+    await this.workspace.authorizeBinding(context,input,()=>this.requireAccess(context,'workspace_bind',input.projectId));
+    return this.transaction(()=>{
+      this.requireAccess(context,'workspace_bind',input.projectId);
+      const reserved=this.reserve(context,'workspace_bind',input);
+      if(reserved.existing)return reserved.existing;
+      return this.finish(reserved.commandId,this.workspace.bindVerified(context,input));
     });
   }
 
@@ -179,6 +193,7 @@ export class OrchestratorService {
           return [{...proposal,status:'prepared',taskId:task.id,title:task.title,content:task.draft,draftRevision:task.draft_revision}];
         })};
     }
+    if(operation==='workspace_status')return this.workspace.status(context,input.projectId);
     if(operation==='continuity_status') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.status(input.projectId,input.orchestratorId);
@@ -188,6 +203,7 @@ export class OrchestratorService {
       tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
       externalTransport:'not_connected',autonomousExecution:false,
       autonomousAnalysisAvailable:true,
+      workspacePortAvailable:this.workspace.available(),
       continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
       coordinatorAvailable:this.coordinator?.available?.()===true,
       providerExecutionAvailable:typeof this.provider?.send==='function',

@@ -35,6 +35,10 @@ Tarefas:
 
 **Testes:** fixtures com pasta contendo `index.html`, subdiretório, .git, arquivos ocultos; traversal, symlink/junction escape, roots de outra conta, grant expirado/revogado, device offline e reabertura de UI. **Aceite:** App lê por Runtime, não por filesystem próprio; não muda um byte da fixture; nenhuma chamada GPT/paid API.
 
+**Contrato Runtime/Platform ainda proposto:** [Project Workspace Port v1](PROJECT-WORKSPACE-RUNTIME-PORT-V1.md). Não é API publicada nem instalação.
+
+**Progresso M1 na alpha.11:** adicionado `project-workspace.mjs` com binding lógico por ID opaco, verificação de port e snapshot limitado, operações `workspace_status/workspace_snapshot/workspace_bind` e sinalização na UI. Sem port Runtime/Platform real; não considerar vínculo local ou leitura real aprovados. Testes de fake port/verificação/scope são necessários, mas não substituem E2E.
+
 ## M2 — Observação e histórico de alterações (READ-ONLY)
 
 **Owner Runtime:** watcher tipado/versionado ou mecanismo canônico já existente; **owner Apps:** apresentação e reconciliação.

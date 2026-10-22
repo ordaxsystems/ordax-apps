@@ -126,6 +126,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     renderProjectNavigation(projects);
     return projects;
   }
+  async function refreshProjectWorkspace() {
+    const p=projectId;if(!p){$('workspaceConnection').textContent='Selecione um projeto.';$('workspaceEvidence').textContent='Nenhuma pasta é aberta sem grant específico.';return;}
+    const result=await call('workspace_status',{projectId:p});
+    if(p!==projectId)return;
+    $('workspaceConnection').textContent=!result.available
+      ?'Runtime: vínculo de pasta por grant ainda indisponível. Nenhum arquivo foi lido.'
+      : result.bindings.length?`${result.bindings.length} vínculo(s) registrado(s), sujeitos a reverificação pelo Runtime.`
+        :'Nenhuma pasta vinculada. Aguarde seleção autorizada pelo Runtime.';
+    $('workspaceEvidence').textContent='Acesso somente leitura · arquivos lidos: 0 · nenhuma mensagem enviada ao GPT.';
+  }
   async function refreshContinuityStatus() {
     const p=projectId,o=orchestratorId;
     if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
@@ -160,6 +170,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     renderOrchestratorNavigation();
     await refreshWorks();
     await refreshContinuityStatus();
+    await refreshProjectWorkspace();
     return orchestrators;
   }
   async function renderCoordinator() {

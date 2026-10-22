@@ -6,6 +6,9 @@ const requestId = {...text(120),pattern:'^[A-Za-z0-9_-]+$'};
 const definitions = [
   ['status','Inspect local engine state and limitations.',{},[],true],
   ['projects_list','List accessible Lab projects.',{},[],true],
+  ['workspace_status','Inspect verified project-local workspace bindings and capability availability. No filesystem access.',{projectId:id},['projectId'],true],
+  ['workspace_snapshot','Read a bounded Runtime-verified workspace summary through a project-scoped resource grant.',{projectId:id,bindingId:id},['projectId','bindingId'],true],
+  ['workspace_bind','Bind a preauthorized opaque Runtime resource to a project. Never accepts a filesystem path or grants authority.',{projectId:id,deviceId:id,resourceId:{...text(180),pattern:'^resource_[A-Za-z0-9_-]{8,160}$'}},['projectId','deviceId','resourceId'],false],
   ['project_create','Create an isolated Lab project. Does not create files or send prompts.',{name:text(140),objective:text(4000,0)},['name'],false],
   ['orchestrators_list','List coordinators of one project.',{projectId:id},['projectId'],true],
   ['orchestrator_create','Create a coordinator with persistent mission and its own local conversation.',{projectId:id,name:text(140),mission:text(4000)},['projectId','name','mission'],false],

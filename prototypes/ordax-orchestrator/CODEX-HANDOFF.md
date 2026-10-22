@@ -1,6 +1,8 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
-**Objetivo do próximo executor:** continuar o OrdaX Orchestrator como supervisor de **projetos/pastas reais** no computador via Runtime/OrdaX MCP, e não só como gerenciador de chats. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
+**Objetivo do próximo executor:** continuar o OrdaX Orchestrator como supervisor de **projetos/pastas reais** no computador via Runtime/OrdaX MCP, e não só como gerenciador de chats.
+
+**Incremento Apps em desenvolvimento (alpha.11):** o Lab já tem modelo de vínculo lógico de workspace por recurso opaco, status e snapshot somente leitura **dependentes de um port Runtime verificado**. O port não está conectado no Windows; não há pasta real vinculada. Consulte `product/src/project-workspace.mjs`, testes `product/test/project-workspace.test.mjs` e matriz em `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md`. O Codex deverá auditar essa implementação e, depois, evoluir o [contrato Workspace Runtime proposto](docs/PROJECT-WORKSPACE-RUNTIME-PORT-V1.md) com Runtime/Platform — não duplicar filesystem no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
 
 **Branch:** `ordaxsystems/ordax-apps` PR draft [#268](https://github.com/ordaxsystems/ordax-apps/pull/268), `feat/orchestrator-lab-isolated-20261019`. **Antes de editar, consultar o HEAD remoto atual, Git status e PR CI**; não assumir que o SHA visto nesta documentação ainda é o HEAD.
 **Produto:** `prototypes/ordax-orchestrator/product/`, fonte própria. **Base Flow/Grátis** `ordax-flow@081a7ce989721106aaf27a0c9d09cf9d49713a65` imutável; não modificar dados/perfil do Grátis.

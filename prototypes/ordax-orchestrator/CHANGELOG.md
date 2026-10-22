@@ -1,3 +1,11 @@
+## 0.2.0-alpha.11 — Project-First / Workspace M0–M1 (somente leitura)
+
+- Registra exclusivamente vínculo lógico projeto + dispositivo + recurso opaco no SQLite Lab existente; nenhum path de autoridade, arquivo ou segredo é persistido.
+- Novas operações canônicas MCP/IPC `workspace_status`, `workspace_snapshot` e `workspace_bind`, todas dependentes de port Runtime que valida de novo identidade, grant e vínculo de projeto. Snapshot só libera resumo limitado e verificado. Sem port real, status `capability_unavailable` e vínculo recusado.
+- UI informa disponibilidade real do workspace, sem botão fictício ou acesso direto a filesystem/terminal; nenhum envio GPT ou mudança de arquivo.
+- Testes cobrem ausência do port, revalidação, escopo cruzado, idempotência, revogação, restart, entrada path inválido e dados sensíveis no snapshot. Runtime/Platform ainda precisam publicar port de workspace grant real para ativar M1 no computador.
+- Não representa watcher, execução local, autonomia headless ou E2E VESTE completo; preserva Flow/Grátis 0.4.12 e perfil estável.
+
 ## 0.2.0-alpha.10 — próxima frente consultiva automaticamente preparada
 
 - Após Run confirmado e análise opt-in, o Lab pode pedir à Groq até duas propostas de novas frentes por ativação, sem enviar ao GPT ou criar tarefas sem revisão.

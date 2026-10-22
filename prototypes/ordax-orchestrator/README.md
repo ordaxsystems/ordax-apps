@@ -3,11 +3,11 @@
 > **Leia primeiro:** [Arquitetura Project-First](docs/PROJECT-FIRST-ARCHITECTURE.md) ·
 > [Plano M0–M7](docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) ·
 > [Handoff obrigatório para Codex](CODEX-HANDOFF.md) ·
-> [Aceite VESTE](docs/VESTE-PROJECT-FIRST-E2E.md).
+> [Aceite VESTE](docs/VESTE-PROJECT-FIRST-E2E.md) · [Port Runtime ainda proposto](docs/PROJECT-WORKSPACE-RUNTIME-PORT-V1.md).
 
 **Direção oficial aprovada:** o objeto central é um projeto com missão, pasta/repositório local autorizado, plano, diffs, testes e evidências. ChatGPT e outros modelos são inteligências/executores opcionais. O App e o plugin OrdaX MCP devem consumir o mesmo Runtime e grants canônicos; não criar segunda camada de arquivos/Git/terminal dentro do Lab.
 
-**Estado verificado do source em 2026-10-21:** alpha.10 tem supervisão de análises/propostas opt-in enquanto a janela está aberta; **não** tem ainda workspace binding via Runtime, monitor de arquivos, execução local por missão nem supervisor headless. Não declarar autonomia por estar documentada. Conferir [versionamento atual](product-version.json) e CI/PR #268 antes de executar. Flow/Grátis 0.4.12 e sessão instalada permanecem isolados.
+**Estado do source:** alpha.11 incorpora domínio de vínculo lógico e snapshot de workspace com port Runtime obrigatório, além de análise/propostas opt-in enquanto a janela está aberta. **O port não está conectado**, logo nenhuma pasta real é lida; monitor de arquivos, execução local por missão e supervisor headless continuam pendentes. Não declarar autonomia por estar documentada. Conferir [versionamento atual](product-version.json) e CI/PR #268 antes de executar. Flow/Grátis 0.4.12 e sessão instalada permanecem isolados.
 
 As seções históricas abaixo documentam incrementos anteriores; **não superam** a decisão Project-First nem a fonte canônica de versionamento.
 
