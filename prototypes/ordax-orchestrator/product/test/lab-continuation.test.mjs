@@ -105,3 +105,100 @@ test('uncertain VESTE construction does not stop an independent verified work',a
   assert.equal(analyses,1);
   assert.equal((await f.service.continuation.tick(f.context)).state,'reconciliation_required');
 });
+
+test('opt-in makes one reviewable proposal after analysis; never opens or sends a GPT chat',async t=>{
+  let analyzed=0,proposed=0;
+  const f=setup(t,{available:()=>true,send:async input=>{
+    if(input.prepareWork){proposed++;return {content:'Proposta pronta',proposal:{
+      title:'Testar carrinho VESTE',content:'Teste localmente quantidade e total do carrinho.',
+      reason:'Aceite do MVP'}};}
+    analyzed++;return {content:'Verificar o carrinho.'};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const runId=finish(f.store,a.taskId);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'proposed',runId});
+  assert.equal(analyzed,1);assert.equal(proposed,1);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(proposed,1);
+  const action=f.store.db.prepare("SELECT status FROM action_ledger WHERE action_type='orchestrator.work-proposal'").get();
+  assert.equal(action.status,'pending');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_task_bindings').get().n,2);
+  assert.equal((await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId})).nextProposals.remaining,1);
+});
+test('proposal automation cannot be enabled without confirmed-run analysis, and is disabled by default',async t=>{
+  const f=setup(t);
+  const a=await prepare(f);
+  await assert.rejects(f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true}),/continuation_analysis_required/);
+  const status=await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId});
+  assert.equal(status.nextProposals.enabled,false);
+});
+test('interrupted planning is quarantined permanently without repeating model request',async t=>{
+  let planned=0;
+  const f=setup(t,{available:()=>true,send:async input=>{
+    if(input.prepareWork)planned++;
+    return input.prepareWork?{content:'Proposta',proposal:{title:'Teste',content:'Executar teste',reason:'Revisão'}}:{content:'Análise'};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const runId=finish(f.store,a.taskId);
+  await f.service.continuation.tick(f.context);
+  f.store.db.prepare("INSERT INTO lab_next_proposals (review_run_id,project_id,orchestrator_id,status,updated_at) VALUES(?,?,?,'planning',?)")
+    .run(runId,a.projectId,a.orchestratorId,f.store.now());
+  new LabContinuation({store:f.store,service:f.service});
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(planned,0);
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_next_proposals WHERE review_run_id=?').get(runId).status,'reconciliation_required');
+});
+
+test('two automatic proposals per activation, with human review before local task creation',async t=>{
+  let plans=0;
+  const f=setup(t,{available:()=>true,send:async input=>input.prepareWork
+    ? {content:'Proposta para aprovação',proposal:{title:'Teste '+(++plans),content:'Revisar o componente.',reason:'Verificação necessária'}}
+    : {content:'Revisão registrada'}});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  for(let n=0;n<3;n++){
+    finish(f.store,a.taskId);
+    assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+    if(n<2){
+      assert.equal((await f.service.continuation.tick(f.context)).state,'proposed');
+      const items=(await f.call('proposals_list',{projectId:a.projectId,orchestratorId:a.orchestratorId})).proposals;
+      const pending=items.find(item=>item.status==='pending');
+      assert.ok(pending);
+      await f.call('proposal_review',{projectId:a.projectId,orchestratorId:a.orchestratorId,actionId:pending.actionId,approved:true});
+    }else{
+      assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+    }
+  }
+  assert.equal(plans,2);
+  const status=await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId});
+  assert.equal(status.nextProposals.remaining,0);
+  assert.equal(status.nextProposals.automaticGPTSends,false);
+});
+
+test('only one proposal model request can be active during a periodic tick',async t=>{
+  let release,entered;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  let prepares=0;
+  const f=setup(t,{available:()=>true,send:async input=>{
+    if(input.prepareWork){prepares++;entered();await gate;return {content:'Proposta',proposal:{title:'Revisão',content:'Testar site',reason:'Critérios de aceite'}};}
+    return {content:'Análise confirmada'};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  finish(f.store,a.taskId);
+  await f.service.continuation.tick(f.context);
+  const first=f.service.continuation.tick(f.context);
+  await started;
+  assert.equal((await f.service.continuation.tick(f.context)).state,'busy');
+  release();
+  assert.equal((await first).state,'proposed');
+  assert.equal(prepares,1);
+});

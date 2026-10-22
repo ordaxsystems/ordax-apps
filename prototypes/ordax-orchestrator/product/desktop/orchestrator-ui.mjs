@@ -128,14 +128,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   async function refreshContinuityStatus() {
     const p=projectId,o=orchestratorId;
-    if(!p||!o){$('continuityToggle').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
+    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
     const result=await call('continuity_status',{projectId:p,orchestratorId:o});
     if(p!==projectId||o!==orchestratorId)return;
     $('continuityToggle').disabled=false;
+    $('continuityProposalsToggle').disabled=!result.enabled;
+    $('continuityProposalsToggle').dataset.enabled=String(result.nextProposals.enabled);
+    $('continuityProposalsToggle').textContent=result.nextProposals.enabled?'Desativar propostas automáticas':'Propor próximas frentes automaticamente';
     $('continuityToggle').dataset.enabled=String(result.enabled);
     $('continuityToggle').textContent=result.enabled?'Desativar análise automática':'Ativar análise automática';
     const messages={disabled:'Desativada',blocked_coordinator:'Bloqueada: configure e ative a API Groq',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
-    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'. Análise automática apenas; nenhum envio automático ao GPT.';
+    const proposals=result.nextProposals.enabled?(' Próximas propostas: '+result.nextProposals.proposed+'/'+result.nextProposals.maximum+' geradas neste ciclo; exigem revisão.'):' Próximas propostas desativadas.';
+    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+' Nenhum envio automático ao GPT.';
   }
   async function refreshOrchestrators() {
     const p=projectId;
@@ -269,6 +273,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await command('orchestrator_pause',{projectId,orchestratorId,paused:o.status!=='paused'});
       await refreshOrchestrators();
     } catch {error();}
+  });
+  $('continuityProposalsToggle').addEventListener('click',async()=>{
+    const p=projectId,o=orchestratorId;if(!p||!o)return;
+    $('continuityProposalsToggle').disabled=true;
+    try {await command('continuity_proposals_set',{projectId:p,orchestratorId:o,enabled:$('continuityProposalsToggle').dataset.enabled!=='true'});
+      await refreshContinuityStatus();}
+    catch {status('Não foi possível mudar as propostas automáticas.');await refreshContinuityStatus();}
   });
   $('continuityToggle').addEventListener('click',async()=>{
     const p=projectId,o=orchestratorId;if(!p||!o)return;

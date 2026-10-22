@@ -1,3 +1,11 @@
+## 0.2.0-alpha.10 — próxima frente consultiva automaticamente preparada
+
+- Após Run confirmado e análise opt-in, o Lab pode pedir à Groq até duas propostas de novas frentes por ativação, sem enviar ao GPT ou criar tarefas sem revisão.
+- Ativação específica por orquestrador, fila idempotente SQLite e estado de proposta persistido; reinicialização no meio da solicitação exige reconciliação, nunca repetição cega.
+- Mantém aprovação explícita existente para criação de tarefas e primeiro envio. Novas propostas ficam no mesmo action/approval ledger.
+- Corrige regressão de CI: o teste MCP valida o catálogo canônico (21+ ferramentas) em vez de número fixo 19.
+- Não representa autonomia de execução nem serviço em segundo plano após fechar o App; esses gates continuam pendentes.
+
 ## 0.2.0-alpha.9 — análise pós-execução persistente (prévia)
 
 - Fila SQLite por Run confirmado, ativação explícita por orquestrador e observação periódica durante a vida do App.

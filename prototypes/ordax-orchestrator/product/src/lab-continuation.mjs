@@ -1,3 +1,5 @@
+import {LabNextProposal} from './lab-next-proposal.mjs';
+
 // Durable, opt-in continuation of completed work into coordinator analysis.
 // No chat submission, provider retry, second queue service or implicit consent.
 export class LabContinuation {
@@ -23,6 +25,7 @@ export class LabContinuation {
       );
       CREATE INDEX IF NOT EXISTS idx_lab_continuation_queue ON lab_continuation_reviews(state,updated_at);
     `);
+    this.nextProposal=new LabNextProposal({store,service});
     // Crash after reserving API review has an unknown outcome: NEVER replay.
     this.db.prepare("UPDATE lab_continuation_reviews SET state='reconciliation_required',reason='interrupted_review',updated_at=? WHERE state='analyzing'")
       .run(this.store.now());
@@ -38,7 +41,13 @@ export class LabContinuation {
       start_run_rowid=CASE WHEN excluded.enabled=1 AND lab_continuation_policies.enabled=0
         THEN excluded.start_run_rowid ELSE lab_continuation_policies.start_run_rowid END`)
       .run(projectId,orchestratorId,enabled?1:0,now,baseline);
+    if(!enabled)this.nextProposal.configure(projectId,orchestratorId,false);
     return this.status(projectId,orchestratorId);
+  }
+  configureProposals(projectId,orchestratorId,enabled) {
+    if(enabled&&this.db.prepare('SELECT enabled FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?')
+      .get(projectId,orchestratorId)?.enabled!==1)throw Error('continuation_analysis_required');
+    return this.nextProposal.configure(projectId,orchestratorId,enabled);
   }
   status(projectId,orchestratorId) {
     const policy=this.db.prepare('SELECT enabled FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?')
@@ -50,7 +59,8 @@ export class LabContinuation {
       WHERE project_id=? AND orchestrator_id=? ORDER BY updated_at DESC,run_id DESC LIMIT 1`)
       .get(projectId,orchestratorId)||null;
     const enabled=policy?.enabled===1;
-    return {enabled,mode:'automatic_analysis_only',automaticGPTSends:false,
+    return {enabled,mode:'automatic_analysis_and_optional_proposals',automaticGPTSends:false,
+      nextProposals:this.nextProposal.status(projectId,orchestratorId),
       state:!enabled?'disabled':this.service.coordinator?.available?.()!==true
         ?'blocked_coordinator':counts.reconciliation_required?'reconciliation_required':
           counts.queued||counts.analyzing?'pending':'observing',
@@ -84,7 +94,7 @@ export class LabContinuation {
         JOIN lab_orchestrators o ON o.id=q.orchestrator_id
         WHERE q.state='queued' AND p.enabled=1 AND o.status='ready'
         ORDER BY transport_uncertain ASC,q.updated_at,q.run_id LIMIT 1`).get();
-      if(!row)return {state:'idle'};
+      if(!row)return await this.nextProposal.tick(context);
       if(this.service.coordinator?.available?.()!==true)return {state:'blocked_coordinator'};
       if(row.transport_uncertain)return {state:'reconciliation_required'};
       if(this.service.provider?.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||

@@ -284,6 +284,10 @@ export class OrchestratorService {
         .run(chat.id,input.projectId,orchestratorId,'orchestrator');
       return {orchestratorId,chatTaskId:chat.id};
     }
+    if(operation==='continuity_proposals_set') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      return this.continuation.configureProposals(input.projectId,input.orchestratorId,input.enabled);
+    }
     if(operation==='continuity_set') {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled);
