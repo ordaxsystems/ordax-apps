@@ -26,6 +26,7 @@
           <form id="newProjectForm">
             <label for="projectName">Nome</label><input id="projectName" maxlength="140" required />
             <label for="projectObjective">Objetivo</label><textarea id="projectObjective" maxlength="4000" rows="2"></textarea>
+            <label for="projectRepositoryUrl">Repositório GitHub remoto (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
             <button type="submit">Criar projeto</button>
           </form>
         </details>
@@ -95,10 +96,20 @@
           </div>
         </header>
         <p id="orchestrationConnection" class="orchestration-connection" role="status"></p>
-        <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Pasta local do projeto">
-          <strong>Workspace local · somente leitura</strong>
-          <small id="workspaceConnection" role="status">Selecione um projeto para consultar o vínculo com o Runtime.</small>
-          <small id="workspaceEvidence">Nenhuma pasta é aberta sem grant específico do projeto.</small>
+        <section id="remoteRepositoryOverview" class="coordinator-analysis-actions remote-repository-panel" aria-label="Repositório GitHub remoto do projeto">
+          <strong>GitHub remoto do projeto</strong>
+          <form id="projectRepositoryForm" class="remote-repository-form">
+            <label class="sr-only" for="projectRepositoryInput">URL do repositório GitHub</label>
+            <input id="projectRepositoryInput" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
+            <button id="saveProjectRepository" class="mini-secondary" type="submit">Salvar repositório</button>
+          </form>
+          <small id="remoteRepositoryStatus" role="status">Vincule um repositório GitHub para orientar as conversas de trabalho.</small>
+          <small>A API recebe somente a URL. As tarefas pedem ao ChatGPT para usar a integração GitHub disponível na sessão. Nenhum arquivo local é lido nesta etapa.</small>
+        </section>
+        <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Workspace local em etapa futura">
+          <strong>Arquivos locais · etapa posterior</strong>
+          <small id="workspaceConnection" role="status">Acesso local via Runtime não é necessário para o fluxo GitHub remoto.</small>
+          <small id="workspaceEvidence">Nenhum arquivo local é lido ou enviado nesta fase.</small>
         </section>
         <div class="coordinator-analysis-actions">
           <button id="analyzeWorks" type="button" class="mini-secondary" disabled>Analisar conversas</button>

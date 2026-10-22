@@ -2,7 +2,7 @@
 
 ## Projeto OrdaX Orchestrator — handoff para agentes
 
-Se a tarefa envolver `prototypes/ordax-orchestrator`, **antes de implementar** leia [CODEX-HANDOFF](prototypes/ordax-orchestrator/CODEX-HANDOFF.md), a [RFC Project-First](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md), o [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) e o [E2E VESTE](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md). Comece em M0/M1 **read-only**, valide capabilities/grants do Runtime/Platform antes de criar código. O projeto real (pasta, Git, testes, evidências) é o centro; o GPT é ferramenta, não SSOT. Nada de filesystem/shell direto, segundo Runtime, bypass MCP/grants ou autonomia declarada sem gate. Preserve Flow/Grátis, o envio VESTE incerto e PR draft.
+Se a tarefa envolver `prototypes/ordax-orchestrator`, **antes de implementar** leia [CODEX-HANDOFF](prototypes/ordax-orchestrator/CODEX-HANDOFF.md), a [RFC Project-First](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md), o [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) e o [E2E VESTE](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md). Siga a ordem de prioridade mais recente no roadmap: primeiro conversa pela API existente com repositório GitHub remoto encaminhado ao GPT; workspace local via Runtime fica para depois. Confirme contratos Platform para qualquer acesso autenticado e não crie OAuth/token store paralelo. Nada de filesystem/shell direto, segundo Runtime, bypass MCP/grants ou autonomia declarada sem gate. Preserve Flow/Grátis e o envio VESTE incerto; PR #268 já está mesclada.
 
 ## Leitura obrigatória antes de analisar ou modificar este repositório
 

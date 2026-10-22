@@ -390,6 +390,102 @@ test('coordinator chat is separate from GPT work; calls require a port and persi
   await f.call('orchestrator_chat',input);assert.equal(calls,1);
 });
 
+test('project remote repository is persisted and can be changed or cleared without local workspace access',async t=>{
+  const f=fixture(t);
+  const created=await f.call('project_create',{name:'VESTE',repositoryUrl:'https://github.com/ordaxsystems/veste.git'});
+  const projectId=created.result.projectId;
+  assert.equal((await f.call('projects_list')).projects.find(item=>item.id===projectId).repository_url,
+    'https://github.com/ordaxsystems/veste');
+  const updated=await f.call('project_repository_set',{projectId,repositoryUrl:'https://github.com/ordaxsystems/veste-store/'});
+  assert.equal(updated.result.repositoryUrl,'https://github.com/ordaxsystems/veste-store');
+  await assert.rejects(f.call('project_repository_set',{projectId,repositoryUrl:'https://example.com/repo'}),
+    /github_repository_invalid/);
+  f.store.close();
+  const reopened=new Store(f.file);
+  try {
+    const service=new OrchestratorService({store:reopened,authorize:()=>true});
+    const afterRestart=await service.invoke(f.context,'projects_list',{});
+    assert.equal(afterRestart.projects.find(item=>item.id===projectId).repository_url,
+      'https://github.com/ordaxsystems/veste-store');
+    const cleared=await service.invoke(f.context,'project_repository_set',{
+      requestId:'clear-remote',projectId,repositoryUrl:''});
+    assert.equal(cleared.result.repositoryUrl,null);
+    assert.equal((await service.invoke(f.context,'projects_list',{})).projects.find(item=>item.id===projectId).repository_url,null);
+    assert.equal(reopened.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE operation=?')
+      .get('project_repository_set').n,2);
+  } finally {reopened.close();}
+});
+
+test('existing Lab project schema receives the remote URL column without losing project data',async t=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-project-schema-migration-'));
+  const store=new Store(path.join(dir,'lab.sqlite'));
+  t.after(()=>{try{store.close();}catch{}fs.rmSync(dir,{recursive:true,force:true});});
+  const session=store.getWorkspaceSession();
+  store.db.exec(`CREATE TABLE lab_projects (
+    id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+    name TEXT NOT NULL, objective TEXT NOT NULL, created_at TEXT NOT NULL
+  )`);
+  store.db.prepare('INSERT INTO lab_projects VALUES(?,?,?,?,?)')
+    .run('project_legacy',session.id,'Projeto antigo','Continuar a loja','2026-10-21T00:00:00.000Z');
+  const service=new OrchestratorService({store,authorize:()=>true});
+  const context={actorId:'migration-test',clientId:'app-test',workspaceSessionId:session.id};
+  const before=await service.invoke(context,'projects_list',{});
+  assert.equal(before.projects[0].name,'Projeto antigo');
+  assert.equal(before.projects[0].repository_url,null);
+  const columns=store.db.prepare('PRAGMA table_info(lab_projects)').all().map(column=>column.name);
+  assert.ok(columns.includes('repository_url'));
+  const linked=await service.invoke(context,'project_repository_set',{requestId:'legacy-link',
+    projectId:'project_legacy',repositoryUrl:'https://github.com/ordaxsystems/veste'});
+  assert.equal(linked.result.repositoryUrl,'https://github.com/ordaxsystems/veste');
+});
+
+test('work send targets the linked GitHub remote and clearly reports that no local workspace is attached',async t=>{
+  let received;
+  const f=fixture(t,{provider:{send:async({taskId,content,repositoryUrl})=>{
+    received={content,repositoryUrl};
+    const runId=f.store.startRun(taskId);
+    f.store.appendMessage(taskId,'assistant','Consulta remota indisponível nesta fixture.');
+    f.store.finishRun(taskId,runId);
+    return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
+  }}});
+  const projectId=(await f.call('project_create',{name:'VESTE',repositoryUrl:'https://github.com/ordaxsystems/veste'})).result.projectId;
+  const orchestratorId=(await f.call('orchestrator_create',{projectId,name:'VESTE',mission:'Evoluir a loja'})).result.orchestratorId;
+  const taskId=(await f.call('work_create',{projectId,orchestratorId,title:'Loja remota'})).result.taskId;
+  const receipt=await f.call('work_send',{projectId,taskId,content:'Inspecione a loja e proponha a primeira alteração.'});
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(received.repositoryUrl,'https://github.com/ordaxsystems/veste');
+  assert.match(received.content,/Repositório alvo: https:\/\/github\.com\/ordaxsystems\/veste/);
+  assert.match(received.content,/Nenhuma pasta local está conectada/);
+  assert.equal(receipt.result.effectVerified,false);
+  await assert.rejects(f.call('project_repository_set',{projectId,repositoryUrl:'https://github.com/ordaxsystems/another-repo'}),
+    /repository_change_requires_new_project/);
+  assert.equal((await f.call('projects_list')).projects.find(item=>item.id===projectId).repository_url,
+    'https://github.com/ordaxsystems/veste');
+});
+
+test('API coordinator continues its persisted conversation and receives only the linked remote URL',async t=>{
+  const f=fixture(t),a=await project(f);
+  await f.call('project_repository_set',{projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/veste'});
+  const requests=[];
+  f.service.coordinator=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-only',isEnabled:()=>true,
+    fetchImpl:async(_url,options)=>{
+      const body=JSON.parse(options.body);requests.push(body);
+      assert.match(body.messages[0].content,/API não consultou o GitHub nem recebeu conteúdo/);
+      assert.match(body.messages[0].content,/"remoteRepository":\{"provider":"github","url":"https:\/\/github.com\/ordaxsystems\/veste"\}/);
+      return {ok:true,text:async()=>JSON.stringify({choices:[{finish_reason:'stop',message:{content:`Resposta ${requests.length}`}}]})};
+    }});
+  const first=await f.call('orchestrator_chat',{projectId:a.p,orchestratorId:a.o,content:'Vamos criar a loja VESTE.'});
+  const second=await f.call('orchestrator_chat',{projectId:a.p,orchestratorId:a.o,content:'Continue pela etapa de catálogo.'});
+  assert.equal(first.status,'succeeded');assert.equal(second.status,'succeeded');
+  assert.equal(requests.length,2);
+  const secondHistory=JSON.stringify(requests[1].messages.slice(1));
+  assert.match(secondHistory,/Vamos criar a loja VESTE\./);
+  assert.match(secondHistory,/Resposta 1/);
+  assert.match(secondHistory,/Continue pela etapa de catálogo\./);
+  assert.doesNotMatch(secondHistory,/package\.json|src\/|checkout|filesystem/);
+  assert.equal(f.store.messages(a.chat).filter(message=>message.role==='assistant').length,2);
+});
+
 test('explicit coordinator analysis is bounded to one project and orchestrator and never sends GPT work',async t=>{
   let analysis,calls=0,providerCalls=0;
   const f=fixture(t,{provider:{send:async()=>{providerCalls++;throw Error('must_not_send');}},

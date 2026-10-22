@@ -1,4 +1,5 @@
 // One catalog for the App service, IPC and MCP projection. No authority here.
+import {normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 export const ORCHESTRATOR_CONTRACT = 'ordax.orchestrator/1';
 const text = (maxLength, minLength = 1) => ({type:'string',minLength,maxLength});
 const id = {...text(180),pattern:'^[A-Za-z0-9_-]+$'};
@@ -9,7 +10,8 @@ const definitions = [
   ['workspace_status','Inspect verified project-local workspace bindings and capability availability. No filesystem access.',{projectId:id},['projectId'],true],
   ['workspace_snapshot','Read a bounded Runtime-verified workspace summary through a project-scoped resource grant.',{projectId:id,bindingId:id},['projectId','bindingId'],true],
   ['workspace_bind','Bind a preauthorized opaque Runtime resource to a project. Never accepts a filesystem path or grants authority.',{projectId:id,deviceId:id,resourceId:{...text(180),pattern:'^resource_[A-Za-z0-9_-]{8,160}$'}},['projectId','deviceId','resourceId'],false],
-  ['project_create','Create an isolated Lab project. Does not create files or send prompts.',{name:text(140),objective:text(4000,0)},['name'],false],
+  ['project_create','Create an isolated Lab project and optionally bind its canonical GitHub repository URL. No repository contents are read.',{name:text(140),objective:text(4000,0),repositoryUrl:text(300,0)},['name'],false],
+  ['project_repository_set','Set or clear the project GitHub remote reference. This stores a URL only and does not read or write the repository.',{projectId:id,repositoryUrl:text(300,0)},['projectId','repositoryUrl'],false],
   ['orchestrators_list','List coordinators of one project.',{projectId:id},['projectId'],true],
   ['orchestrator_create','Create a coordinator with persistent mission and its own local conversation.',{projectId:id,name:text(140),mission:text(4000)},['projectId','name','mission'],false],
   ['orchestrator_pause','Pause or resume coordination; does not cancel an already submitted provider request.',{projectId:id,orchestratorId:id,paused:{type:'boolean'}},['projectId','orchestratorId','paused'],false],
@@ -66,5 +68,7 @@ export function validateOrchestratorInput(operation, input) {
       normalized[key]=value;
     }
   }
+  if(Object.hasOwn(normalized,'repositoryUrl'))
+    normalized.repositoryUrl=normalizeGitHubRepositoryUrl(normalized.repositoryUrl);
   return {tool,input:normalized};
 }

@@ -6,6 +6,7 @@ import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
@@ -20,7 +21,8 @@ export class OrchestratorService {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS lab_projects (
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
-        name TEXT NOT NULL, objective TEXT NOT NULL, created_at TEXT NOT NULL
+        name TEXT NOT NULL, objective TEXT NOT NULL, created_at TEXT NOT NULL,
+        repository_url TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_lab_project_session ON lab_projects(workspace_session_id);
       CREATE TABLE IF NOT EXISTS lab_orchestrators (
@@ -48,6 +50,8 @@ export class OrchestratorService {
         UNIQUE(workspace_session_id,actor_id,client_id,request_id)
       );
     `);
+    if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='repository_url'))
+      this.db.exec('ALTER TABLE lab_projects ADD COLUMN repository_url TEXT');
     this.continuation=new LabContinuation({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
   }
@@ -96,6 +100,13 @@ export class OrchestratorService {
       .get(taskId,projectId,this.store.getWorkspaceSession().id);
     if(!row || (kind&&row.kind!==kind))throw Error('orchestrator_work_unavailable');
     return row;
+  }
+
+  projectRepositoryUrl(projectId) {
+    const row=this.db.prepare(`SELECT repository_url FROM lab_projects
+      WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
+    if(!row)throw Error('orchestrator_project_unavailable');
+    return normalizeGitHubRepositoryUrl(row.repository_url);
   }
 
   assertProviderTaskAvailable(taskId) {
@@ -213,7 +224,7 @@ export class OrchestratorService {
         .get(context.workspaceSessionId,context.actorId,context.clientId).n)
     };
     if(operation==='projects_list')return {projects:this.db.prepare(
-      'SELECT id,name,objective,created_at FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
+      'SELECT id,name,objective,repository_url,created_at FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
       .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
     if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
       'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
@@ -287,9 +298,33 @@ export class OrchestratorService {
     const now=this.store.now();
     if(operation==='project_create') {
       const projectId='project_'+randomUUID();
-      this.db.prepare('INSERT INTO lab_projects VALUES(?,?,?,?,?)').run(projectId,
-        this.store.getWorkspaceSession().id,input.name,input.objective||'',now);
+      this.db.prepare(`INSERT INTO lab_projects
+        (id,workspace_session_id,name,objective,created_at,repository_url) VALUES(?,?,?,?,?,?)`).run(projectId,
+        this.store.getWorkspaceSession().id,input.name,input.objective||'',now,input.repositoryUrl||null);
       return {projectId};
+    }
+    if(operation==='project_repository_set') {
+      const repositoryUrl=normalizeGitHubRepositoryUrl(input.repositoryUrl);
+      const project=this.db.prepare(`SELECT repository_url FROM lab_projects
+        WHERE id=? AND workspace_session_id=?`).get(input.projectId,this.store.getWorkspaceSession().id);
+      if(!project)throw Error('orchestrator_project_unavailable');
+      if(project.repository_url!==repositoryUrl) {
+        const workStarted=this.db.prepare(`SELECT 1 FROM lab_task_bindings b JOIN tasks t ON t.id=b.task_id
+          WHERE b.project_id=? AND b.kind='work' AND (
+            t.draft_revision>0 OR
+            EXISTS(SELECT 1 FROM messages m WHERE m.task_id=b.task_id) OR
+            EXISTS(SELECT 1 FROM runs r WHERE r.task_id=b.task_id) OR
+            EXISTS(SELECT 1 FROM action_ledger a WHERE a.task_id=b.task_id AND a.action_type='orchestrator.proposal-send')
+          ) LIMIT 1`).get(input.projectId);
+        const workUncertain=this.db.prepare(`SELECT 1 FROM lab_command_receipts
+          WHERE project_id=? AND operation IN ('work_send','proposal_send') AND status IN ('running','uncertain') LIMIT 1`)
+          .get(input.projectId);
+        if(workStarted||workUncertain)throw Error('orchestrator_repository_change_requires_new_project');
+      }
+      const changed=this.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=? AND workspace_session_id=?')
+        .run(repositoryUrl,input.projectId,this.store.getWorkspaceSession().id).changes;
+      if(changed!==1)throw Error('orchestrator_project_unavailable');
+      return {projectId:input.projectId,repositoryUrl};
     }
     if(operation==='orchestrator_create') {
       const orchestratorId='orchestrator_'+randomUUID();
@@ -425,6 +460,9 @@ export class OrchestratorService {
     if(existing)return this.transaction(()=>this.reserve(context,'proposal_send',input).existing);
     this.requireAccess(context,'work_send',input.projectId);
     const draft=this.inspectPreparedSend(context,input);
+    const repositoryUrl=this.projectRepositoryUrl(input.projectId);
+    const providerContent=appendRemoteRepositoryInstructions(draft.content,repositoryUrl);
+    const reviewedDraft={...draft,repositoryUrl,providerContent};
     if(typeof this.provider?.send!=='function')throw Error('orchestrator_provider_unavailable');
     if(this.provider.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
       this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
@@ -433,13 +471,15 @@ export class OrchestratorService {
     this.pendingProposalReviews.add(input.actionId);
     try {
       if(this.provider.ready&&await this.provider.ready()!==true)throw Error('orchestrator_provider_unavailable');
-      if(await this.confirmProposalSend?.({...draft,projectId:input.projectId,orchestratorId:input.orchestratorId})!==true)
+      if(await this.confirmProposalSend?.({...draft,content:providerContent,sourceContent:draft.content,
+        repositoryUrl,projectId:input.projectId,orchestratorId:input.orchestratorId})!==true)
         throw Error('orchestrator_proposal_not_approved');
       this.requireAccess(context,'proposal_send',input.projectId);
       this.requireAccess(context,'work_send',input.projectId);
       const current=this.inspectPreparedSend(context,input);
-      if(current.content!==draft.content)throw Error('orchestrator_draft_changed');
-      return await this.dispatch(context,'proposal_send',input,current);
+      if(current.content!==draft.content||this.projectRepositoryUrl(input.projectId)!==repositoryUrl)
+        throw Error('orchestrator_draft_changed');
+      return await this.dispatch(context,'proposal_send',input,{...current,...reviewedDraft});
     }finally{this.pendingProposalReviews.delete(input.actionId);}
   }
 
@@ -455,6 +495,7 @@ export class OrchestratorService {
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
+    const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
     const port=isWorkSend?this.provider:this.coordinator;
     if(typeof port?.send!=='function'||(port.available&&port.available()!==true))
@@ -466,6 +507,9 @@ export class OrchestratorService {
     const content=operation==='orchestrator_analyze'
       ?'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
       :sendInput.content;
+    const providerContent=isWorkSend
+      ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
+      :content;
     const workspaceStatus=isWorkSend?null:this.workspace.status(context,input.projectId);
     const workspaceObservation=workspaceStatus?{
       state:workspaceStatus.state,
@@ -491,7 +535,7 @@ export class OrchestratorService {
       if(preparedSend) {
         reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',reservation.commandId,
           {actorId:context.actorId,clientId:context.clientId,sourceActionId:input.actionId,
-            contentSha256:createHash('sha256').update(content).digest('hex'),reviewedDraftRevision:sendInput.reviewedDraftRevision,
+            contentSha256:createHash('sha256').update(providerContent).digest('hex'),reviewedDraftRevision:sendInput.reviewedDraftRevision,
             draftRevision:sendInput.draftRevision});
         reservation.approvalId=this.store.requestApproval(task.id,reservation.sendActionId,'Envio único confirmado em diálogo nativo');
         this.store.resolveApproval(task.id,reservation.approvalId,true);
@@ -506,9 +550,9 @@ export class OrchestratorService {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
       if(!isWorkSend)this.transaction(()=>this.store.appendMessage(task.id,'user',content));
-      const reply=await port.send({taskId:task.id,content,draftRevision:sendInput.draftRevision??null,
+      const reply=await port.send({taskId:task.id,content:isWorkSend?providerContent:content,draftRevision:sendInput.draftRevision??null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
-        workspaceObservation});
+        workspaceObservation,repositoryUrl});
       this.requireAccess(context,operation,input.projectId);
       if(!isWorkSend) {
         if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)

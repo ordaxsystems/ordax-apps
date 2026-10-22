@@ -3,7 +3,7 @@
 import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator}) {
   const $=id=>document.getElementById(id);
-  let projectId=null,orchestratorId=null,orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
+  let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let coordinatorOpen=false,coordinatorAvailable=false,analysisBusy=false;
   const requestKeys=new Map();
   const status=text=>{$('orchestrationNotice').textContent=text;};
@@ -70,6 +70,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function options(select,rows,label) {
     select.replaceChildren(new Option(label,''),...rows.map(row=>new Option(row.name,row.id)));
   }
+  function syncProjectRepository() {
+    const project=projectsCache.find(item=>item.id===projectId);
+    const input=$('projectRepositoryInput');
+    input.value=project?.repository_url||'';
+    input.disabled=!project;
+    $('saveProjectRepository').disabled=!project;
+    $('remoteRepositoryStatus').textContent=!project
+      ?'Selecione um projeto.'
+      :project.repository_url
+        ?`Destino remoto: ${project.repository_url}. A API não leu o conteúdo do repositório.`
+        :'Nenhum repositório remoto vinculado. Vincule o GitHub antes de iniciar trabalho sobre código.';
+  }
   async function refreshApiStatus() {
     const state=await api.coordinatorChatStatus();
     coordinatorAvailable=(await call('status')).coordinatorAvailable===true;
@@ -120,21 +132,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     syncCoordinatorActions();
   }
   async function refreshProjects() {
-    const {projects}=await call('projects_list');
-    options($('projectSelect'),projects,'Conversas sem projeto');
-    if(projects.some(p=>p.id===projectId))$('projectSelect').value=projectId;
-    renderProjectNavigation(projects);
-    return projects;
-  }
-  async function refreshProjectWorkspace() {
-    const p=projectId;if(!p){$('workspaceConnection').textContent='Selecione um projeto.';$('workspaceEvidence').textContent='Nenhuma pasta é aberta sem grant específico.';return;}
-    const result=await call('workspace_status',{projectId:p});
-    if(p!==projectId)return;
-    $('workspaceConnection').textContent=!result.available
-      ?'Runtime: vínculo de pasta por grant ainda indisponível. Nenhum arquivo foi lido.'
-      : result.bindings.length?`${result.bindings.length} vínculo(s) registrado(s), sujeitos a reverificação pelo Runtime.`
-        :'Nenhuma pasta vinculada. Aguarde seleção autorizada pelo Runtime.';
-    $('workspaceEvidence').textContent='Acesso somente leitura · arquivos lidos: 0 · nenhuma mensagem enviada ao GPT.';
+    const result=await call('projects_list');
+    projectsCache=result.projects;
+    options($('projectSelect'),projectsCache,'Conversas sem projeto');
+    if(projectsCache.some(p=>p.id===projectId))$('projectSelect').value=projectId;
+    renderProjectNavigation(projectsCache);
+    syncProjectRepository();
+    return projectsCache;
   }
   async function refreshContinuityStatus() {
     const p=projectId,o=orchestratorId;
@@ -170,7 +174,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     renderOrchestratorNavigation();
     await refreshWorks();
     await refreshContinuityStatus();
-    await refreshProjectWorkspace();
     return orchestrators;
   }
   async function renderCoordinator() {
@@ -245,7 +248,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('projectSelect').addEventListener('change',async()=>{
     document.body.classList.remove('orchestrator-api-settings','orchestrator-rail-open');$('contextRail').classList.remove('open');
     projectId=$('projectSelect').value||null;orchestratorId=null;
-    renderProjectNavigation((await call('projects_list')).projects);
+    await refreshProjects();
     $('orchestrationPanel').hidden=true;coordinatorOpen=false;
     try{
       const items=await refreshOrchestrators();
@@ -259,13 +262,35 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   $('newProjectForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
-      const receipt=await command('project_create',{name:$('projectName').value,objective:$('projectObjective').value});
+      const receipt=await command('project_create',{name:$('projectName').value,objective:$('projectObjective').value,
+        repositoryUrl:$('projectRepositoryUrl').value});
       if(receipt.status!=='succeeded')return;
       projectId=receipt.result.projectId;orchestratorId=null;
       $('newProjectForm').reset();$('projectSetup').open=false;
       await refreshProjects();await refreshOrchestrators();
       status('Projeto criado. Configure a missão do orquestrador.');
     });
+  });
+  $('projectRepositoryForm').addEventListener('submit',event=>{
+    event.preventDefault();
+    const p=projectId,button=$('saveProjectRepository');if(!p)return;
+    button.disabled=true;
+    void (async()=>{
+      try {
+        const receipt=await command('project_repository_set',{projectId:p,repositoryUrl:$('projectRepositoryInput').value});
+        if(receipt.status!=='succeeded'||p!==projectId)return;
+        await refreshProjects();
+        status(receipt.result.repositoryUrl
+          ?'Repositório remoto vinculado. As tarefas de trabalho vão receber essa URL como destino GitHub.'
+          :'Vínculo remoto removido.');
+      } catch(error) {
+        if(error?.message==='orchestrator_github_repository_invalid')
+          status('URL inválida. Use https://github.com/owner/repository.');
+        else if(error?.message==='orchestrator_repository_change_requires_new_project')
+          status('Este projeto já iniciou trabalho com o remoto atual. Crie outro projeto para usar um repositório diferente.');
+        else status('Não foi possível salvar o repositório. Consulte o estado antes de repetir.');
+      } finally {button.disabled=false;}
+    })();
   });
   $('newOrchestratorForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
@@ -360,6 +385,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     async start(){const projects=await refreshProjects();
       await refreshApiStatus();
       if(!projectId&&projects.length){projectId=projects[0].id;$('projectSelect').value=projectId;renderProjectNavigation(projects);}
+      syncProjectRepository();
       const items=await refreshOrchestrators();
       if(items.length)await showCoordinator();
       let refreshPending=false;

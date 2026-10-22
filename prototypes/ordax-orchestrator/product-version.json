@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.12",
+  "version": "0.2.0-alpha.13",
   "channel": "alpha",
-  "name": "Coordenador limitado a evidências observadas",
+  "name": "Contexto remoto GitHub por projeto",
   "distributionEnabled": false,
   "releaseDate": null
 }
