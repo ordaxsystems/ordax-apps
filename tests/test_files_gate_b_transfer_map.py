@@ -43,6 +43,19 @@ class FilesGateBTransferMapTests(unittest.TestCase):
         self.assertFalse(self.plan["source_cutover"]["dual_source_allowed"])
         self.assertEqual(self.mapping["authority"], "none")
 
+    def test_test_ownership_is_explicit_and_disjoint(self):
+        groups = self.mapping["test_ownership"]
+        paths = [path for key in (
+            "moves_with_product",
+            "remains_with_platform",
+            "split_before_cutover",
+            "remains_with_apps_migration_infrastructure",
+        ) for path in groups[key]]
+        self.assertTrue(all(path.startswith("tests/test_") for path in paths))
+        self.assertEqual(len(paths), len(set(paths)))
+        self.assertIn("tests/test_files_bootstrap_continuity.py", groups["remains_with_platform"])
+        self.assertIn("tests/test_files_copy_destination.py", groups["split_before_cutover"])
+
 
 if __name__ == "__main__":
     unittest.main()

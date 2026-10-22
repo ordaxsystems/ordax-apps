@@ -70,9 +70,51 @@
     }
   ],
   "test_ownership": {
-    "moves_with_product": "Files UI, app manifest, provider declaration, localization and app runtime behavior tests; imports must target apps/files after Gate A.",
-    "remains_with_platform": "File Space contracts/adapters, native host routes and storage, slot verification, app lifecycle, bootstrap continuity, USB/QEMU, and remove-first absence tests.",
-    "mixed_tests": "Split by asserted owner and behavior before the cutover; never move host-service assertions into the app package."
+    "moves_with_product": [
+      "tests/test_files_application_actions.mjs",
+      "tests/test_files_async_activation.mjs",
+      "tests/test_files_component_runtime.mjs",
+      "tests/test_files_response_identity.mjs",
+      "tests/test_files_current_folder_search.py",
+      "tests/test_files_deep_localization.py",
+      "tests/test_files_navigation_history.py",
+      "tests/test_files_sorting.py"
+    ],
+    "remains_with_platform": [
+      "tests/test_app_sdk_files_ports.mjs",
+      "tests/test_component_mount_health_probe.mjs",
+      "tests/test_file_space_trash_contract.mjs",
+      "tests/test_files_bootstrap_continuity.py",
+      "tests/test_files_component_ownership.mjs",
+      "tests/test_native_file_export.py",
+      "tests/test_native_file_import.py",
+      "tests/test_native_file_move.py",
+      "tests/test_native_file_space_response_identity.mjs",
+      "tests/test_native_file_trash.py",
+      "tests/test_native_files_activation_policy.py",
+      "tests/test_native_files_probation_context.mjs",
+      "tests/test_native_files_trusted_context.mjs",
+      "tests/test_native_isolated_component_executor.mjs",
+      "tests/test_recent_files.mjs",
+      "tests/test_surface_app_localization.mjs",
+      "tests/test_verified_app_semantics_source.mjs",
+      "tests/test_verified_current_component_runtime.mjs",
+      "tests/test_verified_external_app_catalog.mjs"
+    ],
+    "split_before_cutover": [
+      "tests/test_files_copy_destination.py",
+      "tests/test_files_modified_time.py",
+      "tests/test_files_move_controls.py",
+      "tests/test_project_file_space_continuity.mjs",
+      "tests/test_project_files_ui_contract.py",
+      "tests/test_recent_files_ui_contract.py"
+    ],
+    "remains_with_apps_migration_infrastructure": [
+      "tests/test_files_cutover.py",
+      "tests/test_files_gate_b_transfer_map.py",
+      "tests/test_files_portable_layout.py"
+    ],
+    "split_rule": "Move only app-owned assertions and rewire them to apps/files. Keep host, contract, bootstrap, lifecycle, USB/QEMU and source-absence assertions in the OS; split mixed files before the cutover."
   },
   "gate_a": {
     "required_before_materialization": true,
