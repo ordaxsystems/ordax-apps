@@ -202,4 +202,3 @@ O Files atualmente mantém o contexto de Recentes e Lixeira quando uma navegaç�
 - Não foi copiado código da plataforma nem alterado o OS.
 
 Referências: `URGENTE-ROADMAP-ORDAX-APPS.md`, `HANDOFF.md`, `docs/APP-READINESS-AUDIT.md`, `migrations/projects.externalization.json`.
-

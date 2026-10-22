@@ -637,6 +637,16 @@ class FilesCutoverTests(unittest.TestCase):
                     "--root", str(root), "--emit-source-snapshot",
                 ]), 1)
 
+    def test_files_package_workflow_is_gated_by_canonical_cutover(self):
+        workflow = (ROOT / ".github/workflows/files-external-package.yml").read_text(encoding="utf-8")
+        self.assertIn("python3 tools/verify_files_cutover.py --format json", workflow)
+        self.assertIn("--platform-root .ordax-files-os-main --require-cutover-ready", workflow)
+        self.assertIn("if: needs.ownership.outputs.cutover_allowed == 'true'", workflow)
+        self.assertIn("if: steps.plan.outputs.cutover_allowed == 'true'", workflow)
+        self.assertIn("source-cutover-not-authorized", workflow)
+        self.assertIn("Gate A declared but Files app source is missing", workflow)
+        self.assertIn("if-no-files-found: error", workflow)
+
     def test_missing_coupling_owner_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
             parent = Path(temp)
