@@ -53,6 +53,14 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
     const projectId=await wait("document.getElementById('projectSelect').value");
     const projectNavigation=await evaluate(`(()=>{const row=[...document.querySelectorAll('#projectNavList button')].find(b=>b.dataset.projectId==='${projectId}');return row?.getAttribute('aria-pressed')==='true'&&row?.textContent==='Projeto E2E isolado'})()`);
     if(!projectNavigation)throw Error('project_navigation_not_selected');
+    await wait("document.getElementById('workspaceConnection')?.textContent?.includes('ainda indisponível')");
+    const workspace=await evaluate(`(async()=>{const projectId=document.getElementById('projectSelect').value;
+      const state=await window.ordax.orchestratorInvoke('workspace_status',{projectId});
+      return {available:state.available,state:state.state,bindings:state.bindings.length,
+        ui:document.getElementById('workspaceConnection')?.textContent||''};})()`);
+    if(workspace.available!==false||workspace.state!=='capability_unavailable'||
+      workspace.bindings!==0||!workspace.ui.includes('ainda indisponível'))
+      throw Error('workspace_grant_absence_not_visible');
     await evaluate(`(()=>{
       document.getElementById('newOrchestratorForm').closest('details').open=true;
       document.getElementById('orchestratorName').value='Coordenador E2E';
@@ -119,6 +127,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
       projectFormVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
+      projectWorkspaceFailClosedVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
       externalMcpConnected:false,autonomousExecution:false}));
