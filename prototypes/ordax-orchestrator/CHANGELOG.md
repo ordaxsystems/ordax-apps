@@ -1,3 +1,9 @@
+## 0.2.0-alpha.12 — respostas limitadas a evidências observadas
+
+- O coordenador recebe somente o estado de workspace limitado e allowlisted disponível pelo port.
+- O adapter descarta paths e identificadores arbitrários e orienta o modelo a não inventar estado Git, arquivos, defeitos ou resultados de teste que não foram observados.
+- O port Runtime continua desconectado nesta versão: `capability_unavailable` permanece correto; nenhuma pasta real, execução local ou autonomia headless foi habilitada.
+
 ## 0.2.0-alpha.11 — Project-First / Workspace M0–M1 (somente leitura)
 
 - Registra exclusivamente vínculo lógico projeto + dispositivo + recurso opaco no SQLite Lab existente; nenhum path de autoridade, arquivo ou segredo é persistido.
