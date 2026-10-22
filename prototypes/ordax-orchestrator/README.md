@@ -7,7 +7,7 @@
 
 **Direção oficial aprovada:** o objeto central é um projeto com missão, pasta/repositório local autorizado, plano, diffs, testes e evidências. ChatGPT e outros modelos são inteligências/executores opcionais. O App e o plugin OrdaX MCP devem consumir o mesmo Runtime e grants canônicos; não criar segunda camada de arquivos/Git/terminal dentro do Lab.
 
-**Estado do source:** alpha.11 incorpora domínio de vínculo lógico e snapshot de workspace com port Runtime obrigatório, além de análise/propostas opt-in enquanto a janela está aberta. **O port não está conectado**, logo nenhuma pasta real é lida; monitor de arquivos, execução local por missão e supervisor headless continuam pendentes. Não declarar autonomia por estar documentada. Conferir [versionamento atual](product-version.json) e CI/PR #268 antes de executar. Flow/Grátis 0.4.12 e sessão instalada permanecem isolados.
+**Estado do source:** alpha.12 limita as respostas do coordenador a estado de workspace observado e allowlisted; ele não deve afirmar branch, arquivos, defeitos ou testes sem evidência recebida. **O port Runtime ainda não está conectado**, logo nenhuma pasta real é lida; monitor de arquivos, execução local por missão e supervisor headless continuam pendentes. Não declarar autonomia por estar documentada. Conferir [versionamento atual](product-version.json) e CI antes de executar. Flow/Grátis 0.4.12 e sessão instalada permanecem isolados.
 
 As seções históricas abaixo documentam incrementos anteriores; **não superam** a decisão Project-First nem a fonte canônica de versionamento.
 
