@@ -1,6 +1,6 @@
 # Plano de execução — OrdaX Orchestrator Project-First
 
-**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps/PR draft #268; dependências Runtime/Platform/OS em PRs/contratos próprios. Data: 2026-10-21.
+**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Revisão de estado: 2026-10-22.
 
 ## Regras do programa
 
@@ -35,9 +35,9 @@ Tarefas:
 
 **Testes:** fixtures com pasta contendo `index.html`, subdiretório, .git, arquivos ocultos; traversal, symlink/junction escape, roots de outra conta, grant expirado/revogado, device offline e reabertura de UI. **Aceite:** App lê por Runtime, não por filesystem próprio; não muda um byte da fixture; nenhuma chamada GPT/paid API.
 
-**Contrato Runtime/Platform ainda proposto:** [Project Workspace Port v1](PROJECT-WORKSPACE-RUNTIME-PORT-V1.md). Não é API publicada nem instalação.
+**Contrato consumidor sem conexão produtiva:** [Project Workspace Port v1](PROJECT-WORKSPACE-RUNTIME-PORT-V1.md). O núcleo read-only e o vínculo ao projeto registrado **já existem no Runtime `main`**; ainda faltam grant real por pasta emitido na autoridade Platform, transporte autenticado até Apps e E2E físico. Não é API publicada nem instalação.
 
-**Progresso M1 na alpha.11:** adicionado `project-workspace.mjs` com binding lógico por ID opaco, verificação de port e snapshot limitado, operações `workspace_status/workspace_snapshot/workspace_bind` e sinalização na UI. Sem port Runtime/Platform real; não considerar vínculo local ou leitura real aprovados. Testes de fake port/verificação/scope são necessários, mas não substituem E2E.
+**Progresso M1 na alpha.11:** adicionado `project-workspace.mjs` com binding lógico por ID opaco, verificação de port e snapshot limitado, operações `workspace_status/workspace_snapshot/workspace_bind` e sinalização na UI. Sem `workspacePort` injetado na execução real e sem grant Product emitido; não considerar vínculo local ou leitura real aprovados. Testes de fake port/verificação/scope são necessários, mas não substituem E2E.
 
 ## M2 — Observação e histórico de alterações (READ-ONLY)
 
