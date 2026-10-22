@@ -2,6 +2,36 @@
 
 > Estado: **bloqueado por ownership**. Este documento não autoriza criar `apps/files`, publicar pacotes ou alterar o OrdaX OS. O plano machine-readable está em `migrations/files.externalization.json`.
 
+## Estado reconciliado com os repositórios atuais (2026-10-22)
+
+- O owner atual da plataforma é `ordaxsystems/ordax-os`; a fonte do produto
+  permanece em `system/apps/files/`. O `ordax-apps/main` verificado em
+  `97f26ec8e8c7f1afabb50bf67371939ab7d314a9` não contém `apps/files/`.
+- O snapshot de dez arquivos continua preso ao commit
+  `a102446133719e3359b585381b3aa19edc95ab78`. Seus dez Git blob IDs foram
+  comparados com `ordax-os/main` em `924feae15eb808e3390b52c48e700d7a33992a88`
+  e todos coincidem. Essa confirmação não substitui o snapshot final que deverá
+  ser capturado imediatamente antes do Gate A.
+- A PR [`ordax-os#2156`](https://github.com/ordaxsystems/ordax-os/pull/2156)
+  prepara o broker Native opaco para File Space local e o contrato SDK 1.20.0.
+  No head `c8f0608b668819020fba7136e463ea5d1736a585`, ela ainda está aberta;
+  CI está em andamento. O Apps lock permanece em 1.19.0. Não transferir a UI
+  contra um contrato que ainda não entrou no owner OS `main`.
+- A PR não corta a fonte embutida, não cria runtime em Apps e não libera
+  distribuição. O Gate A exige uma mudança coordenada no OS, prova de ausência
+  do app bundled, bootstrap verificado e evidências de boot/recuperação e
+  rollback; o handoff completo continua em
+  [`ordax-os#1743`](https://github.com/ordaxsystems/ordax-os/issues/1743).
+- O mapa de Gate B em `migrations/files.gate-b-transfer-map.json` descreve
+  somente a transformação futura dos dez arquivos inventariados. Ele não
+  materializa `apps/files/`, não habilita o corte e exige atualizar o snapshot
+  após a integração da PR #2156, pois ela altera arquivos de produto incluídos
+  no inventário.
+
+Os parágrafos abaixo identificados como evidência de 2026-10-08 são históricos;
+quando divergirem desta reconciliação, prevalecem os repositórios, pins e
+verificações atuais.
+
 ## Evidência observada (2026-10-08)
 
 Esta evidência foi registrada antes da transferência física do OS e não define a autoridade operacional após o corte. O proprietário canônico preparado é `ordaxsystems/prototipo-ordax-os`; confirmar a transferência do repositório GitHub ID `1371063347` antes de mesclar as alterações de namespace.
@@ -149,7 +179,7 @@ O verificador exige origem Git canônica, checkout limpo, HEAD igual ao snapshot
 
 ### Snapshot verificável antes da remoção
 
-O inventário `migrations/files.source-snapshot.json` deriva do commit canônico [`ordax-os@9d0ddd89`](https://github.com/ordaxsystems/ordax-os/commit/9d0ddd897bd6f39fb07583b144fed50508832d8a) e fixa **10 Git blobs** app-owned, incluindo o novo manifesto de componente do Files. O aplicativo continua pré-instalado no OrdaX OS. O inventário registra apenas identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
+O inventário `migrations/files.source-snapshot.json` fixa **10 Git blobs** app-owned no commit `a102446133719e3359b585381b3aa19edc95ab78`, incluindo o manifesto do componente Files. Essa árvore coincide blob a blob com o OS `main` observado em `924feae15eb808e3390b52c48e700d7a33992a88`; a confirmação corrente e a necessidade de recaptura após mudanças de source estão registradas no estado reconciliado acima. O inventário registra identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
 
 A verificação final deverá executar `tools/verify_files_cutover.py --platform-root ... --require-cutover-ready` contra o checkout Git oficial, provar a ancestralidade e a remoção, reconciliar alterações posteriores ao snapshot e **somente então** permitir o cutover. Enquanto isso, o Files continua instalado na imagem Base. A Foundation do OS possui regressão específica em `tests/test_files_bootstrap_continuity.py` para bloquear remoção acidental do bootstrap.
 

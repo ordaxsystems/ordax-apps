@@ -83,6 +83,11 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         if source.is_symlink() or not source.is_file():
             raise cutover.FilesCutoverError(f"Files portable source is missing: {path}")
         content = source.read_bytes()
+        if source.suffix.lower() in {".mjs", ".js", ".css"}:
+            # Git blob pins are over canonical LF text. A Windows checkout may
+            # materialize CRLF; normalize only the tracked text representation
+            # before identity/size checks so the same pinned source is portable.
+            content = content.replace(b"\r\n", b"\n")
         actual = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest()
         if actual != blob:
             raise cutover.FilesCutoverError(f"Files portable source identity mismatch: {path}")

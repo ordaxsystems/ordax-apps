@@ -69,7 +69,6 @@
       "system/surface/ui/file-space-controls.mjs",
       "system/surface/ui/file-space-response-identity.mjs",
       "system/surface/ui/files-component-runtime.mjs",
-      "system/surface/ui/file-notes-action.mjs",
       "system/surface/ui/files.css",
       "system/services/i18n/catalog/files.mjs"
     ],
