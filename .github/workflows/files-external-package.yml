@@ -1,6 +1,13 @@
 name: Files External Package Candidate
 
 on:
+  pull_request:
+    paths:
+      - "apps/files/**"
+      - "tools/app-package/**"
+      - "platform-sdk.lock.json"
+      - "migrations/files.externalization.json"
+      - ".github/workflows/files-external-package.yml"
   push:
     branches: [main]
     paths:
