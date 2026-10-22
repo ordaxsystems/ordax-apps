@@ -113,18 +113,23 @@ def probe_platform_gate_a(main_checkout: Path) -> dict:
     need(package_policy.is_file() and not package_policy.is_symlink(),
          "OS runtime-component package policy is absent")
     policy = json.loads(package_policy.read_text(encoding="utf-8"))
-    marker = policy.get("prelaunch_remove_first_pending", {}).get("assistant")
-    policy_correct = isinstance(marker, dict) and all((
-        marker.get("state") == "platform-source-removed-app-source-pending",
-        marker.get("expected_repository") == "ordaxsystems/ordax-apps",
-        marker.get("platform_source_absence_required") is True,
-        marker.get("distribution_activation_allowed") is False,
-    ))
+    package_owners = policy.get("canonical_package_source_repository_by_component")
+    external_owners = policy.get("canonical_external_source_repository_by_component")
+    native_broker_components = policy.get("native_loopback_broker_supported_components")
+    policy_correct = (
+        isinstance(package_owners, dict)
+        and package_owners.get("assistant") == "ordaxsystems/ordax-apps"
+        and isinstance(external_owners, dict)
+        and "assistant" not in external_owners
+        and isinstance(native_broker_components, list)
+        and "assistant" not in native_broker_components
+        and policy.get("slot_activation_available") is False
+    )
     return {
         "observed_main_commit": commit,
         "tracked_assistant_source": owned_paths,
         "live_assistant_source_imports": unresolved_consumers,
-        "pending_policy_fail_closed": policy_correct,
+        "canonical_source_policy_fail_closed": policy_correct,
         "platform_gate_a_main_proven": not owned_paths and
             not unresolved_consumers and policy_correct,
     }
