@@ -466,6 +466,16 @@ export class OrchestratorService {
     const content=operation==='orchestrator_analyze'
       ?'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
       :sendInput.content;
+    const workspaceStatus=isWorkSend?null:this.workspace.status(context,input.projectId);
+    const workspaceObservation=workspaceStatus?{
+      state:workspaceStatus.state,
+      capabilityAvailable:workspaceStatus.available===true,
+      snapshotObserved:false,
+      gitMetadataAvailable:false,
+      fileContentAvailable:false,
+      filesRead:workspaceStatus.filesRead,
+      filesWritten:workspaceStatus.filesWritten
+    }:null;
     assertTaskHasNoUncertainTransport(this.store,task.id);
     // A single global executor until multi-session E2E proves concurrency.
     if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
@@ -497,7 +507,8 @@ export class OrchestratorService {
       this.requireAccess(context,operation,input.projectId);
       if(!isWorkSend)this.transaction(()=>this.store.appendMessage(task.id,'user',content));
       const reply=await port.send({taskId:task.id,content,draftRevision:sendInput.draftRevision??null,
-        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork});
+        mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
+        workspaceObservation});
       this.requireAccess(context,operation,input.projectId);
       if(!isWorkSend) {
         if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
