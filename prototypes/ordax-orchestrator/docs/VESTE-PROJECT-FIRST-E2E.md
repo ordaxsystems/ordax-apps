@@ -9,9 +9,9 @@ O registro histórico `docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md` compro
 ## 1. Pré-condições
 
 1. Build App atestado, pacote Windows candidato separado da instalação principal; Runtime gerenciado ativo, conta/grant de teste autorizados e Product MCP quando o cenário exigir. Não usar cookies/sessão de outro app.
-2. Criar fixture descartável fora de arquivos pessoais, em root escolhido pelo operador. Conceder ao Orchestrator acesso limitado ao root, com expiração e escopo `read/write/test`, e ao provedor somente o contexto permitido. Sem varredura no disco.
+2. Criar fixture descartável fora de arquivos pessoais, em root escolhido pelo operador. A autorização do recurso de workspace é **somente read-only** (`workspace.project_snapshot`), com expiração e vínculo a projeto, device, client, actor, sessão e resourceId. Ela não autoriza escrita ou execução de testes. Essas ações exigem uma capacidade de executor separada, já autorizada e validada pelo Runtime; se essa capacidade não existir, parar antes de qualquer alteração. Sem varredura no disco.
 3. Missão: “Construir, validar e corrigir um MVP de loja de roupas, com 8 produtos fictícios, BRL, busca/filtro, tamanho, carrinho e checkout demonstrativo”.
-4. Criar baseline/snapshot de conteúdo, identidade de device, Git status, branch e custo inicial. O próprio Runtime deve retornar a lista de arquivos e grants; não assumir um arquivo `index.html` preexistente.
+4. Criar baseline/snapshot de conteúdo, identidade de device, Git status, branch e custo inicial. O próprio Runtime deve retornar a lista de arquivos e grants; não assumir um arquivo `index.html` preexistente. **Hoje essa precondição não está satisfeita:** o Orchestrator permanece em `capability_unavailable` até haver emissão autenticada de recurso no Platform e verificação live pelo Runtime.
 5. Um agente/fila responsável por edição; revisão independente preferencialmente read-only; sem Git reset/clean e sem deploy externo.
 6. Definir orçamento de chamadas/tempo/custo, expiração, limite de retries para **leituras**, stop/revoke e consentimento para criar arquivo local.
 
@@ -39,7 +39,7 @@ O registro histórico `docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md` compro
 - **Teclado/acessibilidade:** Tab/Shift+Tab, foco visível, labels, botões acessíveis e acionamento Enter/Space; nenhuma ação essencial apenas por mouse.
 - **Checkout:** mensagem explícita **DEMONSTRAÇÃO, sem pagamento real**; não coletar cartão, não enviar compra e não criar serviço/backend financeiro.
 
-**Provas aceitáveis:** navegador real com ações simuladas/DOM assertions + logs/exit codes + snapshot do workspace. Uma análise textual de checklist é útil, mas **não equivale** a verificar site executando.
+**Provas aceitáveis:** navegador real com ações simuladas/DOM assertions + logs/exit codes + snapshot do workspace. Uma análise textual de checklist é útil, mas **não equivale** a verificar site executando. O snapshot de workspace prova somente leitura; arquivo criado, diff e teste aprovado exigem recibos do executor autorizado além da resposta do GPT.
 
 ## 4. Cenários negativos obrigatórios
 
