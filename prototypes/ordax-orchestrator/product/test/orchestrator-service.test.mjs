@@ -370,9 +370,10 @@ test('interrupted command recovery only marks uncertain and cannot dispatch or c
 });
 
 test('coordinator chat is separate from GPT work; calls require a port and persist only observed text',async t=>{
-  let calls=0;
-  const f=fixture(t,{coordinator:{available:()=>true,send:async({taskId,mission})=>{
+  let calls=0,workspaceObservation;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async({taskId,mission,workspaceObservation:observation})=>{
     calls++;assert.match(mission,/evoluir/);
+    workspaceObservation=observation;
     assert.equal(f.store.messages(taskId).at(-1).role,'user');
     return {content:'Podemos começar pelo layout.'};
   }}}),a=await project(f);
@@ -380,6 +381,8 @@ test('coordinator chat is separate from GPT work; calls require a port and persi
   const reply=await f.call('orchestrator_chat',input);
   assert.equal(reply.status,'succeeded');
   assert.equal(reply.result.proposalsExecuted,0);
+  assert.deepEqual(workspaceObservation,{state:'capability_unavailable',capabilityAvailable:false,
+    snapshotObserved:false,gitMetadataAvailable:false,fileContentAvailable:false,filesRead:0,filesWritten:0});
   // The immediate HTTP fixture may persist both messages in the same clock
   // tick. This test proves presence, not the Store's UUID tie-break ordering.
   assert.deepEqual(f.store.messages(a.chat).map(m=>m.role).sort(),['assistant','user']);
@@ -484,4 +487,24 @@ test('Groq coordinator is opt-in, project scoped and refuses a truncated respons
     fetchImpl:async()=>{throw Error('must not call');}});
   assert.equal(disabled.available(),false);
   await assert.rejects(disabled.send({taskId:a.chat,projectId:a.p,mission:'Planejar'}),/disabled/);
+});
+
+test('Groq coordinator receives only bounded workspace facts and is instructed not to invent local evidence',async t=>{
+  const f=fixture(t),a=await project(f);
+  const adapter=createGroqCoordinatorConversation({store:f.store,getApiKey:()=> 'fixture-only',isEnabled:()=>true,
+    fetchImpl:async(_url,options)=>{
+      const body=JSON.parse(options.body),system=body.messages[0].content;
+      assert.match(system,/única evidência sobre o workspace/);
+      assert.match(system,/não afirme branch, HEAD nem estado do Git/);
+      assert.match(system,/nenhum conteúdo de arquivo foi lido/);
+      assert.match(system,/"state":"capability_unavailable"/);
+      assert.match(system,/"filesRead":0/);
+      assert.doesNotMatch(system,/C:\\private\\VESTE|resource_private-id/);
+      return {ok:true,text:async()=>JSON.stringify({choices:[{finish_reason:'stop',message:{content:'Nenhum arquivo foi lido.'}}]})};
+    }});
+  const result=await adapter.send({taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Planejar',
+    workspaceObservation:{state:'capability_unavailable',capabilityAvailable:false,snapshotObserved:false,
+      gitMetadataAvailable:false,fileContentAvailable:false,filesRead:0,filesWritten:0,
+      absolutePath:'C:\\private\\VESTE',resourceId:'resource_private-id'}});
+  assert.equal(result.content,'Nenhum arquivo foi lido.');
 });
