@@ -47,7 +47,9 @@ class ActivityGateBTests(unittest.TestCase):
     def test_sdk_blobs_are_canonical_and_no_host_service_is_copied(self):
         sdk = obj(APP / "sdk-provenance.json")
         lock = obj(ROOT / "platform-sdk.lock.json")
-        self.assertEqual(lock["bundle_version"], "1.19.0")
+        plan = obj(MIG / "activity.externalization.json")
+        self.assertEqual(lock["bundle_version"], plan["target_sdk"]["minimum_bundle_version"])
+        self.assertEqual(lock["commit"], plan["target_sdk"]["published_bundle_commit"])
         self.assertEqual(sdk["source_commit"], lock["commit"])
         self.assertEqual(sdk["sdk_bundle_version"], lock["bundle_version"])
         self.assertEqual(sdk["authority"], "none")

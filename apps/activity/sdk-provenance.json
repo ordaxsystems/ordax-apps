@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.activity-sdk-contract-provenance/1",
-  "sdk_bundle_version": "1.19.0",
+  "sdk_bundle_version": "1.20.0",
   "source_repository": "ordaxsystems/ordax-os",
-  "source_commit": "97627b7e2c4d359e0943d8866e047dd337d08bec",
+  "source_commit": "ee2a50db334e7abb798918d99d772ebfd02f8cef",
   "source_bundle": "sdk/app-sdk-v1/bundle.json",
   "contracts": [
     {

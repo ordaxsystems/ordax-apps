@@ -36,9 +36,9 @@
   "authority": "none",
   "gate_a_platform_commit": "d7ffe657afe349fa847b40f19ab071bbd9608417",
   "target_sdk": {
-    "minimum_bundle_version": "1.19.0",
+    "minimum_bundle_version": "1.20.0",
     "lock_file": "platform-sdk.lock.json",
-    "published_bundle_commit": "97627b7e2c4d359e0943d8866e047dd337d08bec",
+    "published_bundle_commit": "ee2a50db334e7abb798918d99d772ebfd02f8cef",
     "sdk_contract_source_paths": [
       "system/contracts/component-runtime.mjs",
       "system/contracts/app-intelligence-manifest.mjs",
@@ -55,7 +55,7 @@
   },
   "gate_b": {
     "state": "source-materialized-unsigned",
-    "sdk_bundle_version": "1.19.0",
+    "sdk_bundle_version": "1.20.0",
     "platform_absence_proven": true,
     "app_source_authority": "ordaxsystems/ordax-apps",
     "signed_distribution_verified": false,
