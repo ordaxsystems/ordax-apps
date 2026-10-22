@@ -778,6 +778,7 @@ ipcMain.handle('ordax:supervisor:dispatch', (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   return requireLabSupervisor().dispatch({taskId:payload?.taskId,actionId:payload?.actionId});
 });
+let continuationTimer=null;
 app.whenReady().then(async () => {
   protocol.handle('ordax-asset', request => {
     try {
@@ -798,6 +799,13 @@ app.whenReady().then(async () => {
   });
 
   await createWindow();
+  // Observe completed Runs even when the coordinator chat is not selected.
+  // Bound to this App lifetime; does not promise a headless 24h supervisor.
+  continuationTimer=setInterval(()=>{
+    void orchestratorService.continuation.tick(localOrchestratorContext)
+      .then(result=>{if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();})
+      .catch(()=>{}); // No auto-retry of an uncertain provider/API effect.
+  },10000);
 });
 
 app.on('window-all-closed', () => {
@@ -805,6 +813,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('will-quit', () => {
+  if(continuationTimer)clearInterval(continuationTimer);
   closeRuntimeOrchestratorPipe?.();
   store.close();
 });

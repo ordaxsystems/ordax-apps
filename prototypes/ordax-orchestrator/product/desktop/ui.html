@@ -97,6 +97,8 @@
         <p id="orchestrationConnection" class="orchestration-connection" role="status"></p>
         <div class="coordinator-analysis-actions">
           <button id="analyzeWorks" type="button" class="mini-secondary" disabled>Analisar conversas</button>
+          <button id="continuityToggle" type="button" class="mini-secondary" disabled>Ativar análise automática</button>
+          <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
           <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
           <small id="analysisScopeHint">Envia ao Groq o contexto do projeto/orquestrador, até quatro conversas recentes e oito mensagens do chat central. Sem anexos ou links; recomendações não executam ações.</small>
         </div>

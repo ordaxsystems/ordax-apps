@@ -1,3 +1,11 @@
+## 0.2.0-alpha.9 — análise pós-execução persistente (prévia)
+
+- Fila SQLite por Run confirmado, ativação explícita por orquestrador e observação periódica durante a vida do App.
+- O coordenador configurado analisa automaticamente a próxima execução concluída e registra a análise no mesmo histórico do Lab, sem abrir nem enviar novas mensagens ao GPT.
+- Falha, crash ou recibo incerto exigem reconciliação: nada é reenviado automaticamente. Pausar o orquestrador suspende a fila.
+- UI mostra ativação e bloqueios; a API desconfigurada não inicia análises. Ainda não há supervisor headless, execução contínua após fechar o App ou autonomia de criação/envio de frentes.
+- Mantém Flow/Grátis e sessões existentes intocados.
+
 ## 0.2.0-alpha.8 — respostas longas com progresso
 
 - Corrige o limite fixo de 180 segundos encontrado no teste real da loja VESTE.

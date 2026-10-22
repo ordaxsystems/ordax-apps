@@ -4,6 +4,7 @@ import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
+import {LabContinuation} from './lab-continuation.mjs';
 
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
@@ -46,6 +47,7 @@ export class OrchestratorService {
         UNIQUE(workspace_session_id,actor_id,client_id,request_id)
       );
     `);
+    this.continuation=new LabContinuation({store,service:this});
   }
 
   transaction(operation) {
@@ -177,10 +179,16 @@ export class OrchestratorService {
           return [{...proposal,status:'prepared',taskId:task.id,title:task.title,content:task.draft,draftRevision:task.draft_revision}];
         })};
     }
+    if(operation==='continuity_status') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      return this.continuation.status(input.projectId,input.orchestratorId);
+    }
     if(operation==='status')return {
       contract:ORCHESTRATOR_CONTRACT,engine:'app-owned',
       tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
       externalTransport:'not_connected',autonomousExecution:false,
+      autonomousAnalysisAvailable:true,
+      continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
       coordinatorAvailable:this.coordinator?.available?.()===true,
       providerExecutionAvailable:typeof this.provider?.send==='function',
       activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
@@ -275,6 +283,10 @@ export class OrchestratorService {
       this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
         .run(chat.id,input.projectId,orchestratorId,'orchestrator');
       return {orchestratorId,chatTaskId:chat.id};
+    }
+    if(operation==='continuity_set') {
+      this.orchestrator(input.projectId,input.orchestratorId);
+      return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled);
     }
     if(operation==='orchestrator_pause') {
       this.orchestrator(input.projectId,input.orchestratorId);

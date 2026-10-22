@@ -126,6 +126,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     renderProjectNavigation(projects);
     return projects;
   }
+  async function refreshContinuityStatus() {
+    const p=projectId,o=orchestratorId;
+    if(!p||!o){$('continuityToggle').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
+    const result=await call('continuity_status',{projectId:p,orchestratorId:o});
+    if(p!==projectId||o!==orchestratorId)return;
+    $('continuityToggle').disabled=false;
+    $('continuityToggle').dataset.enabled=String(result.enabled);
+    $('continuityToggle').textContent=result.enabled?'Desativar análise automática':'Ativar análise automática';
+    const messages={disabled:'Desativada',blocked_coordinator:'Bloqueada: configure e ative a API Groq',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
+    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'. Análise automática apenas; nenhum envio automático ao GPT.';
+  }
   async function refreshOrchestrators() {
     const p=projectId;
     orchestrators=p?(await call('orchestrators_list',{projectId:p})).orchestrators:[];
@@ -144,6 +155,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     syncCoordinatorActions();
     renderOrchestratorNavigation();
     await refreshWorks();
+    await refreshContinuityStatus();
     return orchestrators;
   }
   async function renderCoordinator() {
@@ -257,6 +269,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await command('orchestrator_pause',{projectId,orchestratorId,paused:o.status!=='paused'});
       await refreshOrchestrators();
     } catch {error();}
+  });
+  $('continuityToggle').addEventListener('click',async()=>{
+    const p=projectId,o=orchestratorId;if(!p||!o)return;
+    $('continuityToggle').disabled=true;
+    try {await command('continuity_set',{projectId:p,orchestratorId:o,enabled:$('continuityToggle').dataset.enabled!=='true'});
+      await refreshContinuityStatus();}
+    catch {status('Não foi possível mudar a análise automática.');await refreshContinuityStatus();}
   });
   $('coordinatorComposer').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
