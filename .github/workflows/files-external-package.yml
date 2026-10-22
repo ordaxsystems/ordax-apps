@@ -15,7 +15,70 @@ permissions:
   contents: read
 
 jobs:
+  ownership:
+    name: Verify canonical Files ownership and Gate A
+    runs-on: ubuntu-24.04
+    outputs:
+      cutover_allowed: ${{ steps.plan.outputs.cutover_allowed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - name: Validate one Files ownership plan and negative cutover tests
+        run: |
+          set -euo pipefail
+          python3 -m unittest tests.test_files_cutover -v
+          python3 tools/verify_files_cutover.py --format json > "$RUNNER_TEMP/files-cutover.json"
+      - name: Classify package eligibility from the validated owner contract
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          plan = json.loads(Path("migrations/files.externalization.json").read_text(encoding="utf-8"))
+          proof = json.loads((Path(os.environ["RUNNER_TEMP"]) / "files-cutover.json").read_text(encoding="utf-8"))
+          allowed = plan["source_cutover_allowed"]
+          target = Path("apps/files")
+          if allowed is False:
+              if target.exists() or target.is_symlink():
+                  raise SystemExit("Files source duplicated before OS Gate A")
+              if "source-cutover-not-authorized" not in proof["source_cutover"]["blockers"]:
+                  raise SystemExit("Files ownership proof disagrees with blocked cutover")
+              print("FILES_PACKAGE=GATE_A_PENDING", file=sys.stderr)
+              print("cutover_allowed=false")
+          elif allowed is True:
+              if not (target / "app.json").is_file():
+                  raise SystemExit("Gate A declared but Files app source is missing")
+              print("cutover_allowed=true")
+          else:
+              raise SystemExit("Invalid cutover authorization")
+          PY
+      - name: Inspect the canonical OS checkout only after authorized cutover
+        if: steps.plan.outputs.cutover_allowed == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: main
+          path: .ordax-files-os-main
+          persist-credentials: false
+      - name: Verify actual OS Gate A removal and pinned source history
+        if: steps.plan.outputs.cutover_allowed == 'true'
+        run: |
+          python3 tools/verify_files_cutover.py \
+            --platform-root .ordax-files-os-main --require-cutover-ready
+
   package:
+    name: Build unsigned Files candidate after verified Gate A
+    needs: ownership
+    if: needs.ownership.outputs.cutover_allowed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
