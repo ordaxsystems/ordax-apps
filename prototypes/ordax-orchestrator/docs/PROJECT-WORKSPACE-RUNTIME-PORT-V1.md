@@ -1,12 +1,12 @@
-# Proposed Runtime Workspace Port v1 — contract handoff (M1)
+# Runtime Workspace Port v1 — consumer contract and production gate (M1)
 
-**Status:** **proposal only**, Runtime/Platform have **not** implemented or accepted this port. Lab alpha.11 contains a fail-closed consumer seam, *not* a locally connected computer integration. Owner of this document: Apps. Runtime owns the host implementation; Platform owns Product grants/remote policy.
+**Status (22/10/2026):** the **Runtime read-only port core and canonical project-registry adapter exist on `main`** (`ordax-runtime@6984650`); the **Platform has only a grant projection**, not issuance or authorization transport (`ordax-platform@f1e4e7c`). Apps alpha.11 still contains **only a fail-closed consumer seam**, without a live `workspacePort`, trusted resource picker or Product grant. The v1 ABI below remains the consumer contract, **not proof of end-to-end integration**. Owner of this document: Apps. Runtime owns host implementation; Platform owns Product authorization.
 
 ## Purpose
 
 Allow OrdaX Orchestrator to attach a **preauthorized folder/repository resource** to one Lab Project and read a bounded workspace/Git summary. The App never resolves `C:\\...`, symlinks/junctions or runs shell commands. The existing Computer Control/plugin may offer broad full access but that is **not** evidence of project-scoped consent.
 
-## Consumer interface, proposed and currently injectable only in tests
+## Consumer interface, injectable in tests but not wired in the packaged App
 
 ```ts
 interface ProjectWorkspacePort {
@@ -72,4 +72,4 @@ Only the human-facing **trusted Runtime chooser**, with explicit resource select
 - Idempotency after retry/restart, no duplicate binding, no phantom completion.
 - Windows packaged App + **real** Runtime/Platform Product grant required before marking M1 fully implemented.
 
-**Owners:** App's interface and tests are already staged in `product/src/project-workspace.mjs`. Runtime/Platform owners must provide the actual port via a separate reviewed contract/PR. No temporary filesystem adapter may be added to the Electron UI as a substitute.
+**Owners and existing code:** Apps consumer/tests are in `product/src/project-workspace.mjs`; Runtime's core and canonical registry binding are in `ordax_dev_agent/project_workspace_port.py` and `project_workspace_registry_binding.py`. **Still missing:** trusted per-project grant issuance by Platform, authenticated Runtime→Apps channel, and a real Windows read-only E2E. No temporary filesystem adapter may be added to the Electron UI as a substitute.
