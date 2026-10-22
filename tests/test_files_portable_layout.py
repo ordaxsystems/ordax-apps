@@ -57,6 +57,18 @@ def fixture(root):
 
 
 class PortableFilesLayoutTests(unittest.TestCase):
+    def test_windows_crlf_checkout_uses_the_pinned_git_blob_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source, sdk, inventory, bundle, audit = fixture(Path(temp))
+            for root in (source, sdk):
+                for path in root.rglob("*"):
+                    if path.is_file() and path.suffix.lower() in {".mjs", ".js", ".css"}:
+                        canonical = path.read_bytes().replace(b"\r\n", b"\n")
+                        path.write_bytes(canonical.replace(b"\n", b"\r\n"))
+            report = derive_layout(source, sdk, inventory, bundle, audit)
+            self.assertTrue(report["source_graph_self_contained"])
+            self.assertFalse(report["package_built"])
+
     def test_pinned_source_and_transitive_sdk_keep_imports_without_rewriting(self):
         with tempfile.TemporaryDirectory() as temp:
             source, sdk, inventory, bundle, audit = fixture(Path(temp))

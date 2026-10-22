@@ -1,0 +1,130 @@
+{
+  "$schema": "ordax.files-gate-b-transfer-map/1",
+  "state": "prepared-no-source-copy",
+  "source_snapshot": "migrations/files.source-snapshot.json",
+  "source_commit": "a102446133719e3359b585381b3aa19edc95ab78",
+  "source_file_count": 10,
+  "source_snapshot_refresh_required_after": "ordaxsystems/ordax-os#2156",
+  "target_root": "apps/files",
+  "target_manifest": "apps/files/app.json",
+  "rules": {
+    "materialize_target_before_gate_a": false,
+    "copy_platform_private_imports": false,
+    "copy_native_filesystem_adapters": false,
+    "copy_platform_persistence_or_identity": false,
+    "copy_host_grant_or_install_authority": false,
+    "app_owned_ui_and_declarative_manifests_move_with_product": true,
+    "public_platform_contracts_consumed_via_sdk_or_injected_ports": true,
+    "dual_source_allowed": false
+  },
+  "mappings": [
+    {
+      "source": "system/apps/files/actions/manifest.mjs",
+      "target": "apps/files/actions/manifest.json",
+      "operation": "derive-declarative-actions-manifest"
+    },
+    {
+      "source": "system/apps/files/actions/providers/files-native.mjs",
+      "target": "apps/files/actions/providers/files-native.mjs",
+      "operation": "rebuild-over-public-sdk-and-injected-host-ports"
+    },
+    {
+      "source": "system/apps/files/ai/manifest.mjs",
+      "target": "apps/files/ai/manifest.json",
+      "operation": "derive-declarative-ai-manifest"
+    },
+    {
+      "source": "system/apps/files/app.mjs",
+      "target": "apps/files/app.json",
+      "operation": "derive-portable-app-manifest"
+    },
+    {
+      "source": "system/apps/files/component.mjs",
+      "target": "apps/files/app.json",
+      "operation": "fold-component-metadata-into-app-manifest"
+    },
+    {
+      "source": "system/services/i18n/catalog/files.mjs",
+      "target": "apps/files/src/i18n/messages.mjs",
+      "operation": "move-component-scoped-messages"
+    },
+    {
+      "source": "system/surface/ui/file-space-controls.mjs",
+      "target": "apps/files/src/ui/file-space-controls.mjs",
+      "operation": "adapt-product-ui-to-public-sdk-ports"
+    },
+    {
+      "source": "system/surface/ui/file-space-response-identity.mjs",
+      "target": "apps/files/src/ui/file-space-response-identity.mjs",
+      "operation": "move-app-owned-response-identity-validation"
+    },
+    {
+      "source": "system/surface/ui/files-component-runtime.mjs",
+      "target": "apps/files/src/runtime.mjs",
+      "operation": "adapt-runtime-to-public-component-lifecycle"
+    },
+    {
+      "source": "system/surface/ui/files.css",
+      "target": "apps/files/assets/files.css",
+      "operation": "move-component-scoped-styles"
+    }
+  ],
+  "test_ownership": {
+    "moves_with_product": [
+      "tests/test_files_application_actions.mjs",
+      "tests/test_files_async_activation.mjs",
+      "tests/test_files_component_runtime.mjs",
+      "tests/test_files_response_identity.mjs",
+      "tests/test_files_current_folder_search.py",
+      "tests/test_files_deep_localization.py",
+      "tests/test_files_navigation_history.py",
+      "tests/test_files_sorting.py"
+    ],
+    "remains_with_platform": [
+      "tests/test_app_sdk_files_ports.mjs",
+      "tests/test_component_mount_health_probe.mjs",
+      "tests/test_file_space_trash_contract.mjs",
+      "tests/test_files_bootstrap_continuity.py",
+      "tests/test_files_component_ownership.mjs",
+      "tests/test_native_file_export.py",
+      "tests/test_native_file_import.py",
+      "tests/test_native_file_move.py",
+      "tests/test_native_file_space_response_identity.mjs",
+      "tests/test_native_file_trash.py",
+      "tests/test_native_files_activation_policy.py",
+      "tests/test_native_files_probation_context.mjs",
+      "tests/test_native_files_trusted_context.mjs",
+      "tests/test_native_isolated_component_executor.mjs",
+      "tests/test_recent_files.mjs",
+      "tests/test_surface_app_localization.mjs",
+      "tests/test_verified_app_semantics_source.mjs",
+      "tests/test_verified_current_component_runtime.mjs",
+      "tests/test_verified_external_app_catalog.mjs"
+    ],
+    "split_before_cutover": [
+      "tests/test_files_copy_destination.py",
+      "tests/test_files_modified_time.py",
+      "tests/test_files_move_controls.py",
+      "tests/test_project_file_space_continuity.mjs",
+      "tests/test_project_files_ui_contract.py",
+      "tests/test_recent_files_ui_contract.py"
+    ],
+    "remains_with_apps_migration_infrastructure": [
+      "tests/test_files_cutover.py",
+      "tests/test_files_gate_b_transfer_map.py",
+      "tests/test_files_portable_layout.py"
+    ],
+    "split_rule": "Move only app-owned assertions and rewire them to apps/files. Keep host, contract, bootstrap, lifecycle, USB/QEMU and source-absence assertions in the OS; split mixed files before the cutover."
+  },
+  "gate_a": {
+    "required_before_materialization": true,
+    "requirements": [
+      "OS main removes the bundled Files app and all implementation couplings in the externalization plan.",
+      "A clean canonical OS checkout proves source absence and retained platform ports at the exact Gate A commit.",
+      "Refresh the complete source snapshot against the parent of Gate A after all source changes, including OS PR #2156.",
+      "Signed bootstrap, verified slot-to-host binding, health, rollback, offline reinstall, USB boot and recovery evidence pass.",
+      "The Apps SDK lock pins the merged public File Space contract required by the external runtime."
+    ]
+  },
+  "authority": "none"
+}
