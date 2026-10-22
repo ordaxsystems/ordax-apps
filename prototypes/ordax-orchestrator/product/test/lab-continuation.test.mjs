@@ -8,11 +8,11 @@ import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {LabContinuation} from '../src/lab-continuation.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/orchestrator-contract.mjs';
 
-function setup(t,coordinator={available:()=>true,send:async()=>({content:'Revisão registrada; não houve envio automático.'})}) {
+function setup(t,coordinator={available:()=>true,send:async()=>({content:'Revisão registrada; não houve envio automático.'})},{confirmProposal=null}={}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'lab-continuity-'));
   const store=new Store(path.join(dir,'lab.sqlite'));
   const context={actorId:'owner-test',clientId:'app-test',workspaceSessionId:store.getWorkspaceSession().id};
-  const service=new OrchestratorService({store,authorize:()=>true,coordinator});
+  const service=new OrchestratorService({store,authorize:()=>true,coordinator,confirmProposal});
   t.after(()=>{store.close();fs.rmSync(dir,{recursive:true,force:true});});
   let n=0;
   const call=(op,data={})=>service.invoke(context,op,{...data,...(ORCHESTRATOR_TOOLS.find(tool=>tool.operation===op)?.readOnly?{}:{requestId:'test_'+(++n)})});
@@ -159,7 +159,7 @@ test('two automatic proposals per activation, with human review before local tas
   let plans=0;
   const f=setup(t,{available:()=>true,send:async input=>input.prepareWork
     ? {content:'Proposta para aprovação',proposal:{title:'Teste '+(++plans),content:'Revisar o componente.',reason:'Verificação necessária'}}
-    : {content:'Revisão registrada'}});
+    : {content:'Revisão registrada'}},{confirmProposal:()=>true});
   const a=await prepare(f);
   await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
   await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
