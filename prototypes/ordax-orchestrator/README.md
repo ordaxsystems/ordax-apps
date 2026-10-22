@@ -1,3 +1,18 @@
+# OrdaX Orchestrator — Project-First (decisão 2026-10-21)
+
+> **Leia primeiro:** [Arquitetura Project-First](docs/PROJECT-FIRST-ARCHITECTURE.md) ·
+> [Plano M0–M7](docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) ·
+> [Handoff obrigatório para Codex](CODEX-HANDOFF.md) ·
+> [Aceite VESTE](docs/VESTE-PROJECT-FIRST-E2E.md).
+
+**Direção oficial aprovada:** o objeto central é um projeto com missão, pasta/repositório local autorizado, plano, diffs, testes e evidências. ChatGPT e outros modelos são inteligências/executores opcionais. O App e o plugin OrdaX MCP devem consumir o mesmo Runtime e grants canônicos; não criar segunda camada de arquivos/Git/terminal dentro do Lab.
+
+**Estado verificado do source em 2026-10-21:** alpha.10 tem supervisão de análises/propostas opt-in enquanto a janela está aberta; **não** tem ainda workspace binding via Runtime, monitor de arquivos, execução local por missão nem supervisor headless. Não declarar autonomia por estar documentada. Conferir [versionamento atual](product-version.json) e CI/PR #268 antes de executar. Flow/Grátis 0.4.12 e sessão instalada permanecem isolados.
+
+As seções históricas abaixo documentam incrementos anteriores; **não superam** a decisão Project-First nem a fonte canônica de versionamento.
+
+---
+
 ## Primeiro envio aprovado pelo Orquestrador — alpha.7
 
 Após criar uma frente com rascunho, retorne ao chat do orquestrador. A proposta
@@ -65,7 +80,7 @@ não são executadas automaticamente. Não há serviço 24h ativo ou nova releas
 Detalhes, testes e dependências em
 [auditoria do incremento](docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
 
-**Versão própria do Lab: `0.2.0-alpha.8` (canal alpha)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
+**Versão do Lab: consultar [`product-version.json`](product-version.json) (SSOT)** — diferente do **Flow/Grátis `0.4.12`** usado como snapshot imutável de origem. [Versionamento canônico](product-version.json) · [Histórico](CHANGELOG.md).
 
 **Status:** protótipo de desenvolvimento, **não instalável pela Loja**, sem release nem submissão automática de tarefas. Preserva os fluxos herdados de Task/Run/Store, ChatGPT Web, continuidade e sessão do **OrdaX Flow/Grátis 0.4.12**; os novos recursos de análise/coordenador permanecem explícitos e separados. Esta é uma derivação controlada, não uma modificação do Grátis existente.
 

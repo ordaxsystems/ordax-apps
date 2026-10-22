@@ -1,3 +1,16 @@
+## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21)
+
+**Prioridade autorizada e específica:** o OrdaX Orchestrator deixa de ser concebido apenas como coordenador de conversas e passa a organizar **projetos locais reais**: um projeto pode vincular diretório/repositório escolhido e autorizado, acompanhar Git/alterações/testes, planejar e verificar trabalho, usando o GPT como inteligência sem depender do chat como fonte de verdade. O App não pode executar arquivos/comandos diretamente como um Runtime paralelo; ele consome capacidades tipadas do owner **ordax-runtime** e autorizações dos owners **ordax-platform/OS**. Plugin OrdaX MCP e App são entradas separadas para o mesmo Runtime.
+
+**Primeiro gate:** documentar capabilities reais e implementar read-only workspace binding por grant opaco (M0/M1); depois watcher, supervisor headless, execução autorizada, autonomia e teste VESTE. Apenas o desenho/planejamento foi aprovado nesta decisão; não atesta que M0–M7 estejam implementados. Preservar PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) draft, Flow/Grátis e envio VESTE incerto. Fontes:
+[RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md),
+[plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md),
+[handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md),
+[aceite VESTE](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
+Os incrementos de chat/alpha.10 descritos abaixo são **histórico e fundação**, não conclusão dessa arquitetura.
+
+---
+
 ## Teste real solicitado — loja VESTE e espera de resposta longa
 
 Owner Apps, candidata alpha.7 atestada no computador do proprietário: login

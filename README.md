@@ -1,5 +1,7 @@
 # OrdaX Apps
 
+**OrdaX Orchestrator — direção Project-First:** o projeto local autorizado, suas alterações e evidências passam a ser o centro da evolução do protótipo; não apenas a conversa GPT. [Arquitetura](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md) · [Plano](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) · [Handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md). Documentação de alvo, **não funcionalidade concluída**; PR #268 draft e owners Runtime/Platform preservados.
+
 > [!IMPORTANT]
 > **Leitura prioritária:** antes de analisar, planejar ou implementar aplicativos, leia o [URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS](URGENTE-ROADMAP-ORDAX-APPS.md).
 > Para agentes e assistentes, consulte também [AGENTS.md](AGENTS.md). O roadmap é um plano vivo e não substitui os contratos, o CI nem os gates canônicos de trust e distribuição.

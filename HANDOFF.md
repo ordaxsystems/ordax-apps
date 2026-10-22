@@ -1,5 +1,13 @@
 # OrdaX Apps — canonical handoff
 
+## Atualização Orchestrator Project-First (decisão 2026-10-21)
+
+A continuidade do OrdaX Orchestrator não depende mais conceitualmente de uma conversa GPT como local do trabalho. A arquitetura-alvo é **missão vinculada a workspace local autorizado**, acompanhando snapshots/diffs/Git/testes via Runtime e planejando/conversando via provedores quando necessário. A implementação do watcher, do executor por missão e do serviço headless **não está concluída**.
+
+**Para Codex e implementadores:** começar em [`prototypes/ordax-orchestrator/CODEX-HANDOFF.md`](prototypes/ordax-orchestrator/CODEX-HANDOFF.md); seguir [RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md) e [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md). Owner Apps para produto, Runtime para ações locais, Platform para MCP/grants e OS para Intelligence/contratos; sem duplicação de serviços. PR #268 permanece draft até gates. Este bloco prevalece como decisão nova de Orchestrator, não altera os handoffs históricos de Studio/Notes.
+
+---
+
 Atualizado em 2026-10-09.
 
 ## Studio Web (MVP-04) — fonte de escopo
