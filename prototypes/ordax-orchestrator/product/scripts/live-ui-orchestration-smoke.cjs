@@ -6,6 +6,7 @@ acquireE2ELock('orchestration-native-mcp');
 if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
   throw Error('lab_orchestration_e2e_approval_required');
 (async()=>{
+  const {ORCHESTRATOR_TOOLS}=await import('../src/orchestrator-contract.mjs');
   const tab=await waitForLabUiTarget();
   const ws=new WebSocket(tab.webSocketDebuggerUrl);
   let sequence=0;
@@ -88,11 +89,13 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       const orchs=await api.orchestratorInvoke('orchestrators_list',{projectId:p});
       const messages=await api.orchestratorInvoke('work_messages',{projectId:p,taskId:orchs.orchestrators[0].chat_task_id});
       return {projectId:p,toolCount:catalog.result.tools.length,
+        continuationAvailable:catalog.result.tools.some(t=>t.name==='orchestrator_continuity_status'&&t.annotations?.readOnlyHint===true)&&
+          catalog.result.tools.some(t=>t.name==='orchestrator_continuity_proposals_set'&&t.annotations?.readOnlyHint===false),
         commandSucceeded:first.result.structuredContent.status==='succeeded',
         idempotent:JSON.stringify(first.result)===JSON.stringify(repeated.result),
         workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length};
     })()`);
-    if(summary.projectId!==projectId||summary.toolCount!==19||!summary.commandSucceeded||
+    if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.length||!summary.continuationAvailable||!summary.commandSucceeded||
       !summary.idempotent||summary.workCount!==1||summary.coordinatorMessages!==0)
       throw Error('native_mcp_state_mismatch');
     await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
@@ -113,7 +116,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       layoutResult.analysisDisabled!==true)
       throw Error('work_conversation_layout_failed');
     console.log(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
-      appMode:true,runtimeVerified:true,toolCount:19,sharedStateVerified:true,
+      appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
       projectFormVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
