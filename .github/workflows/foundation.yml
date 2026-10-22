@@ -35,7 +35,9 @@ jobs:
           done < <(find apps migrations -type f -name '*.json' -print0 | sort -z)
 
       - name: Prove repository boundary invariants
-        run: python3 tools/verify_workspace.py
+        run: |
+          python3 tools/verify_workspace.py
+          python3 -m unittest -v tests.test_studio_project_nomenclature_contract
 
       - name: Guard OrdaX OS owner handoff and exact Platform SDK lock
         env:

@@ -47,3 +47,17 @@ O plugin não é obrigatório para organizar chats nem para o app chamar o Runti
 Owner da UI e notas: Apps. Host oficial, filesystem e execução: Runtime. Sessão/grants, GitHub e MCP: Platform. OS consome ports da plataforma e não embute outro Runtime.
 
 Aceite local: abertura vazia; seleção de projeto sem criar chat; criação/importação tipadas após confirmação dos campos; nenhum vínculo antes de catálogo confirmado; recusa de paths absolutos/traversal, dispositivos/campos/grants injetados; contexto isolado/opcional e dentro dos limites; rascunho composto consumido após um único envio; páginas de cadastro ignoradas pela ponte; preview e fallback preservados. Unitários e Electron isolado comprovam o cliente. Sessão/grants reais, criação/importação em dispositivo, picker externo, clone, installer/OS e publicação permanecem gates independentes.
+ 
+## Termos canônicos: Projeto local ≠ Projeto cloud ≠ Space (19/10/2026)
+
+A interface "Criar projeto" deste Studio atualmente aciona `workspace.project_create` no **Runtime autorizado** e registra **uma pasta/projeto local** (slug e dispositivo) por `projects.list`. Isso não executa `ordax_create_project_v1`, não cria `ordax_projects.project_id` na Platform, não cria um Space e não associa GitHub automaticamente. O retorno do Runtime é prova apenas de criação/registro local, sob grant próprio.
+
+- **Conta OrdaX:** identidade da Platform (subject), sem segunda conta Studio ou outro perfil de autenticação.
+- **Perfil do usuário:** preferências; **Profile Pack:** composição versionada de Space no OrdaX OS. Nenhum deles é o UUID do projeto.
+- **Space/Espaço:** ambiente de trabalho canônico `ordax_spaces.space_id`, apresentado no OS; *não* equivale a "Espaço de trabalho" (diretório/área visual) no Studio.
+- **Projeto canônico:** `ordax_projects.project_id`, vinculado ao Space, com autorização e conexão GitHub verificadas pela Platform quando aplicável.
+- **Projeto local Studio/Runtime:** `binding.deviceId + binding.project` (slug), com estado local. Um mapeamento futuro para projeto cloud exige associação explícita e autorização, nunca igualdade presumida de nome, pasta ou repository.
+- **Target/Dispositivo e grant:** descoberta e observação do dispositivo continuam separadas da permissão para ações de projeto; não exigir Space artificial para mostrar um dispositivo.
+- **Flow:** produtos e projetos de conversa independentes; o Studio não converte Tasks Flow em projetos de desenvolvimento.
+
+Nomes públicos das tools e contratos REST existentes são preservados até inventário e migração versionada. **Não** habilitar ações de criar/associar projetos cloud no Studio enquanto a issue `ordax-platform#220` e a PR #222 não passarem pelos gates reais de identidade, vínculos, GitHub App, revogação e Runtime.
