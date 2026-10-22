@@ -101,7 +101,7 @@ class AssistantGateBTests(unittest.TestCase):
             with self.assertRaises(gate.AssistantGateError):
                 gate.audit(root)
 
-    def test_real_main_absence_requires_canonical_origin_policy_and_no_runtime_imports(self):
+    def test_real_main_absence_requires_canonical_source_policy_and_no_runtime_imports(self):
         import subprocess
         def run_git(root, *args):
             return subprocess.run(["git", "-C", str(root), *args],
@@ -115,14 +115,14 @@ class AssistantGateBTests(unittest.TestCase):
                     "https://github.com/ordaxsystems/ordax-os.git")
             policy = root / "docs/contracts/runtime-component-package.json"
             policy.parent.mkdir(parents=True)
-            marker = {
-                "state": "platform-source-removed-app-source-pending",
-                "expected_repository": "ordaxsystems/ordax-apps",
-                "platform_source_absence_required": True,
-                "distribution_activation_allowed": False,
-            }
-            policy.write_text(json.dumps({"prelaunch_remove_first_pending":
-                                          {"assistant": marker}}), encoding="utf-8")
+            policy.write_text(json.dumps({
+                "canonical_package_source_repository_by_component": {
+                    "assistant": "ordaxsystems/ordax-apps",
+                },
+                "canonical_external_source_repository_by_component": {},
+                "native_loopback_broker_supported_components": [],
+                "slot_activation_available": False,
+            }), encoding="utf-8")
             app = root / "system/apps/catalog.mjs"
             app.parent.mkdir(parents=True)
             app.write_text('export const apps = [];\n', encoding="utf-8")
@@ -156,18 +156,46 @@ class AssistantGateBTests(unittest.TestCase):
             self.assertFalse(report["platform_gate_a_main_proven"])
             self.assertIn("system/apps/assistant/runtime.mjs",
                           report["tracked_assistant_source"])
-            # Changing a policy flag cannot substitute for source removal.
+            # A canonical source owner does not imply that the runtime may
+            # install or load the app. Distribution and Native authority stay
+            # disabled while this audit proves source ownership only.
             old.unlink()
-            marker["distribution_activation_allowed"] = True
-            policy.write_text(json.dumps({"prelaunch_remove_first_pending":
-                                          {"assistant": marker}}), encoding="utf-8")
+            current_policy = json.loads(policy.read_text(encoding="utf-8"))
+            current_policy["canonical_external_source_repository_by_component"] = {
+                "assistant": "ordaxsystems/ordax-apps",
+            }
+            policy.write_text(json.dumps(current_policy), encoding="utf-8")
             run_git(root, "add", "-A")
-            run_git(root, "commit", "-qm", "bad pending policy")
+            run_git(root, "commit", "-qm", "premature external Assistant authority")
             run_git(root, "update-ref", "refs/remotes/origin/main",
                     run_git(root, "rev-parse", "HEAD"))
             report = gate.probe_platform_gate_a(root)
             self.assertFalse(report["platform_gate_a_main_proven"])
-            self.assertFalse(report["pending_policy_fail_closed"])
+            self.assertFalse(report["canonical_source_policy_fail_closed"])
+
+            # Even after restoring the canonical package owner, enabling any
+            # Native install/read path must keep this source-only gate closed.
+            current_policy["canonical_external_source_repository_by_component"] = {}
+            current_policy["slot_activation_available"] = True
+            policy.write_text(json.dumps(current_policy), encoding="utf-8")
+            run_git(root, "add", "-A")
+            run_git(root, "commit", "-qm", "premature Assistant slot activation")
+            run_git(root, "update-ref", "refs/remotes/origin/main",
+                    run_git(root, "rev-parse", "HEAD"))
+            report = gate.probe_platform_gate_a(root)
+            self.assertFalse(report["platform_gate_a_main_proven"])
+            self.assertFalse(report["canonical_source_policy_fail_closed"])
+
+            current_policy["slot_activation_available"] = False
+            current_policy["native_loopback_broker_supported_components"] = ["assistant"]
+            policy.write_text(json.dumps(current_policy), encoding="utf-8")
+            run_git(root, "add", "-A")
+            run_git(root, "commit", "-qm", "premature Assistant Native broker")
+            run_git(root, "update-ref", "refs/remotes/origin/main",
+                    run_git(root, "rev-parse", "HEAD"))
+            report = gate.probe_platform_gate_a(root)
+            self.assertFalse(report["platform_gate_a_main_proven"])
+            self.assertFalse(report["canonical_source_policy_fail_closed"])
 
     def test_security_rules_and_published_contract_floor_are_required(self):
         for key in ("copy_host_memory_service", "inline_private_contracts"):
@@ -196,14 +224,14 @@ class AssistantGateBTests(unittest.TestCase):
                 "https://github.com/ordaxsystems/ordax-os.git")
             policy = root / "docs/contracts/runtime-component-package.json"
             policy.parent.mkdir(parents=True)
-            policy.write_text(json.dumps({"prelaunch_remove_first_pending": {
-                "assistant": {
-                    "state": "platform-source-removed-app-source-pending",
-                    "expected_repository": "ordaxsystems/ordax-apps",
-                    "platform_source_absence_required": True,
-                    "distribution_activation_allowed": False,
-                }
-            }}), encoding="utf-8")
+            policy.write_text(json.dumps({
+                "canonical_package_source_repository_by_component": {
+                    "assistant": "ordaxsystems/ordax-apps",
+                },
+                "canonical_external_source_repository_by_component": {},
+                "native_loopback_broker_supported_components": [],
+                "slot_activation_available": False,
+            }), encoding="utf-8")
             module = root / "system/apps/catalog.mjs"
             module.parent.mkdir(parents=True)
             # A binary prefix cannot prevent scanning a real ASCII import.

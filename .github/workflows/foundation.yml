@@ -344,7 +344,7 @@ jobs:
           assert len(proof['platform_main_observation']['observed_main_commit'])==40
           assert proof['platform_gate_a_main_proven'] is (not proof['platform_main_observation']['tracked_assistant_source']
               and not proof['platform_main_observation']['live_assistant_source_imports']
-              and proof['platform_main_observation']['pending_policy_fail_closed'])
+              and proof['platform_main_observation']['canonical_source_policy_fail_closed'])
           assert proof['gate_b_allowed_now'] is False
           assert proof['signed_install_verified'] is False
           assert proof['app_source_materialized'] is True
