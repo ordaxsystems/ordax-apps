@@ -1,0 +1,52 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('ordax', {
+  coordinatorChatStatus: () => ipcRenderer.invoke('ordax:orchestrator:chat-status'),
+  coordinatorChatEnable: enabled => ipcRenderer.invoke('ordax:orchestrator:chat-enable',enabled),
+  orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
+  orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
+  onOrchestratorChanged: callback => {
+    const listener=()=>callback();
+    ipcRenderer.on('ordax:orchestrator:changed',listener);
+    return ()=>ipcRenderer.removeListener('ordax:orchestrator:changed',listener);
+  },
+  supervisorStatus: () => ipcRenderer.invoke("ordax:supervisor:status"),
+  supervisorSaveKey: key => ipcRenderer.invoke('ordax:supervisor:key:save',key),
+  supervisorRemoveKey: () => ipcRenderer.invoke('ordax:supervisor:key:remove'),
+  setTaskSupervisorRole: (taskId,role) => ipcRenderer.invoke('ordax:tasks:supervisor-role:set',{taskId,role}),
+  supervisorPlan: payload => ipcRenderer.invoke("ordax:supervisor:plan", payload),
+  supervisorRecoverable: payload => ipcRenderer.invoke("ordax:supervisor:recoverable", payload),
+  supervisorInspect: payload => ipcRenderer.invoke("ordax:supervisor:inspect", payload),
+  supervisorApprove: payload => ipcRenderer.invoke("ordax:supervisor:approve", payload),
+  supervisorDispatch: payload => ipcRenderer.invoke("ordax:supervisor:dispatch", payload),
+  workspace: () => ipcRenderer.invoke('ordax:workspace:get'),
+  listTasks: () => ipcRenderer.invoke('ordax:tasks:list'),
+  createTask: title => ipcRenderer.invoke('ordax:tasks:create', title),
+  getTask: id => ipcRenderer.invoke('ordax:tasks:get', id),
+  openTask: id => ipcRenderer.invoke('ordax:tasks:open', id),
+  inspectLinkedThread: taskId => ipcRenderer.invoke('ordax:tasks:inspect-linked-thread', taskId),
+  loadMessagePage: (taskId, before) => ipcRenderer.invoke('ordax:tasks:messages:page', { taskId, before }),
+  renameTask: (taskId, title) => ipcRenderer.invoke('ordax:tasks:rename', { taskId, title }),
+  setDraft: (taskId, content, revision) => ipcRenderer.invoke('ordax:tasks:draft:set', { taskId, content, revision }),
+  resumeCapsule: id => ipcRenderer.invoke('ordax:tasks:resume-capsule', id),
+  rotateConversation: id => ipcRenderer.invoke('ordax:tasks:rotate-conversation', id),
+  upsertProjectMemory: (taskId, item) => ipcRenderer.invoke('ordax:tasks:memory:upsert', { taskId, item }),
+  archiveProjectMemory: (taskId, memoryId) => ipcRenderer.invoke('ordax:tasks:memory:archive', { taskId, memoryId }),
+  scanMemoryCandidates: taskId => ipcRenderer.invoke('ordax:tasks:memory:candidates:scan', taskId),
+  reviewMemoryCandidate: (taskId, candidateId, action, changes) => ipcRenderer.invoke('ordax:tasks:memory:candidates:review', { taskId, candidateId, action, changes }),
+  send: payload => ipcRenderer.invoke('ordax:tasks:send', payload),
+  labProfileProof: () => ipcRenderer.invoke('ordax:lab:profile-proof'),
+  labBuildProof: () => ipcRenderer.invoke('ordax:lab:build-proof'),
+  providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),
+  providerDiagnostic: () => ipcRenderer.invoke('ordax:provider:diagnostic'),
+  getObserverMode: () => ipcRenderer.invoke('ordax:provider:observer-mode:get'),
+  setObserverMode: mode => ipcRenderer.invoke('ordax:provider:observer-mode:set', mode),
+  login: () => ipcRenderer.invoke('ordax:provider:login'),
+  home: () => ipcRenderer.invoke('ordax:provider:home'),
+  reload: () => ipcRenderer.invoke('ordax:provider:reload'),
+  setChatVisible: visible => ipcRenderer.invoke('ordax:chat:visible', visible),
+  onRunStarted: callback => ipcRenderer.on('ordax:task:run-started', (_event, payload) => callback(payload)),
+  onTaskStage: callback => ipcRenderer.on('ordax:task:stage', (_event, payload) => callback(payload)),
+  onTaskStream: callback => ipcRenderer.on('ordax:task:stream', (_event, payload) => callback(payload))
+});
+

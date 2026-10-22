@@ -1,0 +1,12 @@
+/workspace/
+/workspace-next/
+/workspace-before-fix-*/
+/node_modules/
+/.import-staging-*/
+*.log
+/workspace-next-prelock/
+/candidate-userdata/
+
+/product/node_modules/
+/product/dist/
+/product/release/

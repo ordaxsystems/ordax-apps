@@ -1,0 +1,88 @@
+name: OrdaX Orchestrator Lab P0 Pinned Baseline
+
+on:
+  pull_request:
+    branches: [main, 'feat/orchestrator-lab-isolated-20261019']
+    paths:
+      - 'prototypes/ordax-orchestrator/scripts/audit-pinned-workspace.mjs'
+      - 'prototypes/ordax-orchestrator/scripts/promote-owned-source.mjs'
+      - '.github/workflows/orchestrator-lab-p1-source.yml'
+      - 'prototypes/ordax-orchestrator/scripts/import-flow.mjs'
+      - 'prototypes/ordax-orchestrator/lib/derive.mjs'
+      - 'prototypes/ordax-orchestrator/lib/supervisor-overlay.mjs'
+      - 'prototypes/ordax-orchestrator/source-lock.json'
+      - '.github/workflows/orchestrator-lab-pinned-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout Lab without storing credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+
+      - name: Checkout only Flow source into isolated temporary location
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --no-checkout https://github.com/ordaxsystems/ordax-flow.git "$RUNNER_TEMP/ordax-flow-source"
+          PIN=$(node -p "require('./prototypes/ordax-orchestrator/source-lock.json').commit")
+          test "$(git -C "$RUNNER_TEMP/ordax-flow-source" rev-parse "$PIN^{commit}")" = "$PIN"
+          echo "Using immutable Flow commit: $PIN"
+
+      - name: Derive candidate without writing to source repository
+        shell: bash
+        working-directory: prototypes/ordax-orchestrator
+        run: node scripts/import-flow.mjs --source "$RUNNER_TEMP/ordax-flow-source"
+
+      - name: Install and test the actual derived Flow client
+        shell: bash
+        working-directory: prototypes/ordax-orchestrator
+        run: |
+          npm ci --prefix workspace --ignore-scripts=false
+          npm run validate --prefix workspace
+
+      - name: Prove imported bytes and summarize ownership
+        shell: bash
+        working-directory: prototypes/ordax-orchestrator
+        run: |
+          set -euo pipefail
+          node scripts/audit-pinned-workspace.mjs --source "$RUNNER_TEMP/ordax-flow-source" --workspace ./workspace > "$RUNNER_TEMP/pinned-audit.json"
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const report = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + "/pinned-audit.json", "utf8"));
+            if (report.problems.length || !report.changed_by_derivation.length) process.exit(1);
+            console.log(JSON.stringify({
+              source_commit:report.source_commit,
+              inspected:report.inspected_file_count,
+              changed:report.changed_by_derivation,
+              owners:report.owner_counts,
+              import_graph: {
+                entrypoints:report.dependency_graph.entrypoints,
+                reachable:report.dependency_graph.reachable.length,
+                unresolved:report.dependency_graph.unresolved,
+                dynamic_review:report.dependency_graph.dynamic_review
+              },
+              mismatches:report.problems.length
+            }, null, 2));
+          '
+
+      - name: Preserve SHA-256 provenance evidence (no source bytes)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ordax-lab-p0-pinned-manifest
+          path: ${{ runner.temp }}/pinned-audit.json
+          retention-days: 14
+          if-no-files-found: error
+

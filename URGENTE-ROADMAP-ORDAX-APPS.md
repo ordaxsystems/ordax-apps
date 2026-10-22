@@ -1,4 +1,104 @@
+## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21)
+
+**Prioridade autorizada e específica:** o OrdaX Orchestrator deixa de ser concebido apenas como coordenador de conversas e passa a organizar **projetos locais reais**: um projeto pode vincular diretório/repositório escolhido e autorizado, acompanhar Git/alterações/testes, planejar e verificar trabalho, usando o GPT como inteligência sem depender do chat como fonte de verdade. O App não pode executar arquivos/comandos diretamente como um Runtime paralelo; ele consome capacidades tipadas do owner **ordax-runtime** e autorizações dos owners **ordax-platform/OS**. Plugin OrdaX MCP e App são entradas separadas para o mesmo Runtime.
+
+**Primeiro gate:** documentar capabilities reais e implementar read-only workspace binding por grant opaco (M0/M1); depois watcher, supervisor headless, execução autorizada, autonomia e teste VESTE. Apenas o desenho/planejamento foi aprovado nesta decisão; não atesta que M0–M7 estejam implementados. Preservar PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) draft, Flow/Grátis e envio VESTE incerto. Fontes:
+[RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md),
+[plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md),
+[handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md),
+[aceite VESTE](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
+Os incrementos de chat/alpha.10 descritos abaixo são **histórico e fundação**, não conclusão dessa arquitetura.
+
+---
+
+## Teste real solicitado — loja VESTE e espera de resposta longa
+
+Owner Apps, candidata alpha.7 atestada no computador do proprietário: login
+confirmado, projeto/orquestrador e duas frentes criados no modo App. Envio real
+vinculou conversa ChatGPT; resposta ainda crescendo expirou no limite fixo de
+180 segundos, preservando parcial e recibo incerto sem reenvio. Alpha.8 troca
+somente o orçamento de observação: idle de três minutos renovado por conteúdo
+novo, teto absoluto de quinze minutos e os mesmos gates de término. Aceite:
+resposta com progresso ultrapassa três minutos; parada/limite absoluto continuam
+incertos; nenhum replay. Não representa site validado, release ou autonomia 24h.
+[Evidências e limites](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md).
+
+## Continuidade solicitada — primeiro envio aprovado no Orchestrator
+
+Owner Apps: alpha.7 liga frente preparada ao executor já existente, com
+confirmação nativa de envio separada da criação, rascunho/revisão/permissões
+revalidados, ledgers e recibo duráveis antes do transporte. Primeiro envio
+somente, sem replay em falha/reinício. 366 testes locais aprovados. Contrato
+host Runtime v1 permanece com sete leituras; catálogo local tem 19 ferramentas.
+Sem alterar Flow/Grátis, instalar, chamar modelos reais ou ativar 24h.
+[Escopo, riscos, aceite e gate real](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-FIRST-SEND-2026-10-21.md).
+
+## Continuidade solicitada — propostas de frentes no Orchestrator Lab
+
+Exceção explícita do proprietário: avançar a coordenação pelo chat central.
+Owner Apps; alpha.6 usa o mesmo OrchestratorService/Store e action/approval
+ledgers para preparar uma frente via API e criar Task+rascunho somente após
+revisão nativa. Não cria outro executor/Memory/Identity, não altera Flow/Grátis
+0.4.12 nem habilita envio ao GPT, MCP externo, instalação ou autonomia 24h.
+[Aceite, limites e provas](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-WORK-PROPOSALS-2026-10-21.md).
+
 # URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS
+
+## Continuidade — renovação autenticada Runtime/Lab (2026-10-21)
+
+Candidata alpha.3 acrescenta renovação da lease no mesmo canal privado, com
+reautorização Product no host, mesma identidade/grant e rotação da chave antes
+de limpar IDs de replay. Lease individual continua limitada a cinco minutos.
+350 testes do produto e 38 bootstrap aprovados. Cliente Python e bridge JS reais
+passaram 361 renovações em 24 horas de relógio simulado; isso não comprova 24h
+de autonomia real. Runtime #182 contém cliente/launcher e teste Windows ampliado;
+workflow Apps fixa o commit desse candidato e exige renovação no Electron
+empacotado. Registro/provenance, OAuth/grants reais, MCP público e supervisor
+contínuo continuam pendentes. Mesmas PRs; sem instalação ou envio ao GPT.
+[Contrato, riscos e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-LEASE-RENEWAL-2026-10-21.md).
+
+## Continuidade comprovada — launcher gerenciado do Lab (2026-10-21)
+
+Runtime candidato valida inventário/hash do pacote inteiro e inicia o Lab por
+pipe Windows local com DACL do usuário e confirmação do PID do filho pelo kernel.
+Protocolo/Store únicos, sem descoberta visual, listener no App ou fallback de
+transporte. **346 testes Windows e E2E com cliente Python + Electron empacotado
+aprovados** no source Apps `92c510f8f587e6efbf3fbe81aa8d4b1d427e1b56`
+([CI 39647922343](https://github.com/ordaxsystems/ordax-apps/actions/runs/39647922343)).
+Runtime `23601f3f9764ea8c4ed226155adac6c3bb84f6f8`: 301 testes Windows / uma
+exclusão preexistente, Linux/SDK mínimo aprovados. Fixtures CI não concedem
+cadastro ou autoridade Product. Vínculo do registro/provenance, OAuth/grants,
+MCP público e lease/24h continuam pendentes. Mesmas PRs draft #268 e Runtime #182.
+[Contrato e evidências](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
+
+## Continuidade solicitada — canal privado Runtime/Orchestrator (2026-10-21)
+
+App expõe sete leituras do mesmo serviço por contrato `ordax.orchestrator-host/1`
+em pipe herdado, build/perfil conferidos, assinatura/expiração/antirreplay e sem
+escritas. Candidato Runtime consome catálogo pinado e exige autorização Product
+externa a ele. **345 testes Windows e E2E do App empacotado aprovados** no source
+`68cd7ef0d9fcabbf869dc7bfc684b6a71eced139`
+([CI 39642528709](https://github.com/ordaxsystems/ordax-apps/actions/runs/39642528709)).
+Mesmo projeto/trabalho lido pela UI/MCP e host privado; identidade, assinatura,
+replay e escrita recusados. Descritores dedicados 3/4 separam diagnósticos.
+Runtime: 13 testes novos + 25 Gateway locais; contratos Windows/Linux/SDK mínimo
+aprovados na [PR #182](https://github.com/ordaxsystems/ordax-runtime/pull/182).
+A prova host usa fixture de autorização, sem grant Product real. Nenhuma nova autoridade OAuth/grant, canal
+público ou ativação: launcher gerenciado e publicação continuam Platform/Runtime.
+[Owners, contrato e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md).
+
+## Incremento solicitado — Orchestrator Lab e MCP sem visão (2026-10-21)
+
+Exceção explícita à rodada geral: o proprietário pediu iniciar o MCP integrado
+e atualizar front/backend do Lab. Owner Apps: serviço e domínio de projetos,
+orquestradores, missão, chat e conversas de trabalho, catálogo de 14 operações
+e adapter MCP local sobre o mesmo Store/executor. UI não usa screenshots para
+descobrir/acionar operações próprias. Contexto remoto, OAuth/grants e transporte
+continuam Platform/Runtime; nenhum novo backend de identidade, inferência global
+ou executor de dispositivo foi criado. Testes locais iniciais: 330 produto e
+38 bootstrap; gate App-only Windows empacotado adicionado, resultado consultar
+no commit. Conector externo/24h/autonomia permanecem pendentes.
+[Owner, contratos, limites, riscos e aceite](prototypes/ordax-orchestrator/docs/audits/ORCHESTRATOR-MCP-APP-CONTRACT-2026-10-21.md).
 
 ## Frente P0 — Agentic Apps / Semantic UI / Test Runtime (2026-10-15)
 
@@ -593,3 +693,4 @@ Por instrução explícita do usuário, o incremento da experiência desktop pas
 A conversa sincronizada continua usando ChatGPT Web. O projeto passou de modal a espaço de trabalho com Arquivos, Git, Busca, Preview (estado) e Continuidade (briefing/get/update). As ações usam o mesmo Product API autorizado, lista fixa, limites, revisão para mutações e journal sem reenvio automático. Perfil, session partition e rascunhos mantêm os nomes internos anteriores para preservar dados/login. Plugin no owner Platform: display name `ORDAX Studio`, source `0.4.8`, ID estável `ordax-chatgpt`; seleção aceita também o nome legado.
 
 O workspace avançado Studio foi preservado; sua adoção completa e o host Windows canônico exigem paridade no Runtime. Não portar informalmente pairing, grants ou execution authority. Fonte local e pacote portátil não representam publicação/ativação. Critérios de aceite, contratos, riscos e matriz de recursos em [STUDIO-CONVERSATION-REPLACEMENT.md](docs/STUDIO-CONVERSATION-REPLACEMENT.md).
+

@@ -1,0 +1,8 @@
+{
+  "$schema": "ordax.orchestrator-lab-product-version/1",
+  "version": "0.2.0-alpha.11",
+  "channel": "alpha",
+  "name": "Workspace Project-First com binding opaco e port fail-closed",
+  "distributionEnabled": false,
+  "releaseDate": null
+}

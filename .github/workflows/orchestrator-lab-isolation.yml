@@ -1,0 +1,187 @@
+name: OrdaX Orchestrator Lab Isolation
+
+concurrency:
+  group: ordax-orchestrator-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    branches: [main, 'feat/orchestrator-lab-isolated-20261019']
+    paths:
+      - 'prototypes/ordax-orchestrator/**'
+      - '.github/workflows/orchestrator-lab-isolation.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'prototypes/ordax-orchestrator/**'
+      - '.github/workflows/orchestrator-lab-isolation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout app repo, do not persist GitHub credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+
+      - name: Verify source lock is valid JSON
+        run: node -e "const l=require('./prototypes/ordax-orchestrator/source-lock.json'); if(l.repository!=='ordaxsystems/ordax-flow'||l.distributionEnabled!==false||l.modelSupervisorEnabled!==false||l.externalUserIngressEnabled!==false)process.exit(1)"
+
+      - name: Validate importer modules
+        run: |
+          node --check prototypes/ordax-orchestrator/lib/derive.mjs
+          node --check prototypes/ordax-orchestrator/lib/version-policy.mjs
+          node --check prototypes/ordax-orchestrator/lib/supervisor-overlay.mjs
+          node --check prototypes/ordax-orchestrator/product/supervisor/coordinator.mjs
+          node --check prototypes/ordax-orchestrator/product/supervisor/groq-planner.mjs
+          node --check prototypes/ordax-orchestrator/scripts/audit-pinned-workspace.mjs
+          node --check prototypes/ordax-orchestrator/scripts/verify-version.mjs
+          node --check prototypes/ordax-orchestrator/scripts/import-flow.mjs
+          node --check prototypes/ordax-orchestrator/scripts/start-lab.mjs
+          node --check prototypes/ordax-orchestrator/tests/audit-pinned-workspace.test.mjs
+          node --check prototypes/ordax-orchestrator/tests/derive.test.mjs
+          node --check prototypes/ordax-orchestrator/tests/version.test.mjs
+          node --check prototypes/ordax-orchestrator/tests/supervisor.test.mjs
+
+      - name: Verify canonical version and pinned Flow baseline
+        run: npm run version:check --prefix prototypes/ordax-orchestrator
+
+      - name: Test fail-closed import, supervisor and isolated version
+        run: npm run validate --prefix prototypes/ordax-orchestrator
+
+      - name: Validate the directly owned Lab product
+        run: |
+          npm ci --prefix prototypes/ordax-orchestrator/product
+          npm run validate --prefix prototypes/ordax-orchestrator/product
+          test ! -e prototypes/ordax-orchestrator/product/src/relay
+          test ! -e prototypes/ordax-orchestrator/product/apps
+          test ! -e prototypes/ordax-orchestrator/product/sql
+
+      - name: Prevent accidental committed generated runtime
+        run: |
+          test ! -e prototypes/ordax-orchestrator/workspace
+          test ! -e prototypes/ordax-orchestrator/workspace-next
+          test ! -e prototypes/ordax-orchestrator/node_modules
+
+      - name: No direct Flow repo modification or imported credentials
+        run: |
+          if grep -R -nE 'ORDAX_(OPENAI|GROQ|GITHUB)_TOKEN=|OPENAI_API_KEY=[^[:space:]]|sk-[[:alnum:]]{16}' prototypes/ordax-orchestrator --include='*.mjs' --include='*.json'; then
+            echo 'Possible embedded secret found' >&2
+            exit 1
+          fi
+
+# This workflow intentionally does NOT fetch the pinned Flow source repository.
+# Full pinned snapshot import and real Windows ChatGPT E2E require a separate
+# credentialed, explicitly authorized integration environment.
+
+  owned-windows:
+    runs-on: windows-2025
+    timeout-minutes: 25
+    steps:
+      - name: Checkout owned Lab source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Clean-install and validate owned product on Windows
+        shell: pwsh
+        run: |
+          npm ci --prefix prototypes/ordax-orchestrator/product
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run validate --prefix prototypes/ordax-orchestrator/product
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build portable Windows alpha artifact without publishing
+        shell: pwsh
+        run: |
+          npm run build:win --prefix prototypes/ordax-orchestrator/product
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Exercise native project forms and MCP on the packaged App
+        shell: pwsh
+        run: |
+          node prototypes/ordax-orchestrator/product/scripts/run-packaged-orchestration-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Checkout pinned Runtime managed Orchestrator host
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-runtime
+          ref: '1cf7add32180ce87c19d3864877837d32f2baed4'
+          path: .ordax/runtime-orchestrator-host
+          persist-credentials: false
+      - name: Python 3.12 for canonical Runtime client
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Verify Python Runtime launcher against the packaged App
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check ./.ordax/runtime-orchestrator-host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python .ordax/runtime-orchestrator-host/scripts/orchestrator/bridge_lease_e2e.py prototypes/ordax-orchestrator/product/src/orchestrator-runtime-bridge.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python .ordax/runtime-orchestrator-host/scripts/orchestrator/managed_app_e2e.py prototypes/ordax-orchestrator/product
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # This artifact is a temporary unsigned E2E candidate, NOT a release.
+      # A checksum manifest binds the exact bytes under test to the CI run.
+      - name: Write E2E build receipt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dist = 'prototypes/ordax-orchestrator/product/dist'
+          $candidates = @(Get-ChildItem -LiteralPath $dist -File -Filter 'OrdaX-Orchestrator-Lab-*.exe')
+          if ($candidates.Count -ne 1) { throw 'e2e_portable_candidate_not_unique' }
+          $file = $candidates[0]
+          $packagedProofFile = Join-Path $dist 'orchestrator-packaged-proof.json'
+          if (-not (Test-Path -LiteralPath $packagedProofFile)) { throw 'w8_packaged_identity_missing' }
+          $packagedProof = Get-Content -LiteralPath $packagedProofFile -Raw | ConvertFrom-Json
+          if ($packagedProof.schema -ne 'ordax.lab.packaged-runtime-proof.v1' -or
+              $packagedProof.status -ne 'verified' -or
+              $packagedProof.sourceCommit -ne $env:GITHUB_SHA -or
+              $packagedProof.contentDigest -notmatch '^[a-f0-9]{64}$' -or
+              $packagedProof.fileCount -lt 30) { throw 'w8_packaged_identity_invalid' }
+          $archive = Join-Path $dist 'win-unpacked/resources/app.asar'
+          if (-not (Test-Path -LiteralPath $archive)) { throw 'w8_packaged_asar_missing' }
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne
+              $packagedProof.asarSha256) { throw 'w8_packaged_asar_hash_mismatch' }
+          $manifest = [ordered]@{
+            schema = 'ordax.lab.unsigned-e2e-candidate.v1'
+            build_type = 'unsigned_test_only'
+            workflow_run_id = $env:GITHUB_RUN_ID
+            checkout_sha = $env:GITHUB_SHA
+            file = $file.Name
+            sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            app_id = 'br.com.ordax.orchestrator.lab'
+            runtime_source_commit = $packagedProof.sourceCommit
+            runtime_content_digest = $packagedProof.contentDigest
+            runtime_file_count = $packagedProof.fileCount
+            packaged_asar_sha256 = $packagedProof.asarSha256
+          }
+          $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $dist 'orchestrator-e2e-build.json') -Encoding utf8
+
+      - name: Upload short-lived unsigned Windows E2E candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-orchestrator-unsigned-e2e-${{ github.sha }}
+          path: |
+            prototypes/ordax-orchestrator/product/dist/OrdaX-Orchestrator-Lab-*.exe
+            prototypes/ordax-orchestrator/product/dist/orchestrator-e2e-build.json
+            prototypes/ordax-orchestrator/product/dist/orchestrator-packaged-proof.json
+          retention-days: 3
+          if-no-files-found: error
+
