@@ -67,11 +67,11 @@ test('browser grant creation remains fail closed without client or canonical sco
   assert.match(html,/Fail-closed/);
 });
 
-test('browser authorization sends only selected client and canonical UUID scope to host',async()=>{
+test('browser authorization sends only the selected client and duration to the trusted host',async()=>{
   const h=harness();
   await h.run('authorizeRemoteProjectBrowser()');
   const authorizationCalls=h.calls.filter(call=>call[0]==='authorize_remote_project_browser_grant');
-  assert.deepEqual(authorizationCalls,[['authorize_remote_project_browser_grant','client-b','space-uuid','project-uuid',30]]);
+  assert.deepEqual(authorizationCalls,[['authorize_remote_project_browser_grant','client-b',30]]);
   assert.deepEqual(h.calls.slice(1).map(call=>call[0]),['remote_project_browser_grants','browser_list']);
   assert.match(h.statuses.at(-1),/Autorização do navegador criada/);
 });
@@ -82,4 +82,14 @@ test('browser authorization never falls back to local slug when canonical scope 
   await h.run('authorizeRemoteProjectBrowser()');
   assert.equal(h.calls.length,0);
   assert.match(h.statuses.at(-1),/Space e projeto canônicos/);
+});
+
+test('browser revocation is bound to the selected consented client',async()=>{
+  const h=harness();
+  h.state.remoteProjectBrowserGrants.grant_groups=[{
+    grant_group_id:'browser-grant',client_id:'client-b',profile_key:'project-browser-automation',
+    space_id:'space-uuid',project_id:'project-uuid',
+  }];
+  await h.run("revokeRemoteProjectBrowser('browser-grant')");
+  assert.deepEqual(h.calls[0],['revoke_remote_project_browser_grant','browser-grant','client-b']);
 });

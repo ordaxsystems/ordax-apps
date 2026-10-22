@@ -59,11 +59,11 @@ async function authorizeRemoteProjectBrowser(){
   if(!scope||!clientId){setStatus('A autorização remota exige cliente OAuth selecionado, Space e projeto canônicos fornecidos pelo host; o slug local não é aceito.');return}
   if(!window.confirm('Autorizar automação do navegador por 30 dias para este cliente OAuth e somente neste Space/projeto?'))return;
   setStatus('Criando autorização do navegador...');
-  const result=await call('authorize_remote_project_browser_grant',clientId,scope.space_id,scope.project_id,30);
+  const result=await call('authorize_remote_project_browser_grant',clientId,30);
   await loadBrowserAccess();
   setStatus(result?.ok?'Autorização do navegador criada':(result?.summary||'Falha ao autorizar navegador'));
 }
-async function revokeRemoteProjectBrowser(grantId){const grant=browserGrantForProject();if(!grantId||!grant||grant.grant_group_id!==grantId||!window.confirm('Revogar a autorização remota do navegador deste cliente e projeto?'))return;setStatus('Revogando autorização do navegador...');const result=await call('revoke_remote_project_browser_grant',grantId);await loadBrowserAccess();setStatus(result?.ok?'Autorização do navegador revogada':(result?.summary||'Falha ao revogar autorização'))}
+async function revokeRemoteProjectBrowser(grantId){const grant=browserGrantForProject(),clientId=selectedBrowserClientId();if(!grantId||!grant||grant.grant_group_id!==grantId||!clientId||!window.confirm('Revogar a autorização remota do navegador deste cliente e projeto?'))return;setStatus('Revogando autorização do navegador...');const result=await call('revoke_remote_project_browser_grant',grantId,clientId);await loadBrowserAccess();setStatus(result?.ok?'Autorização do navegador revogada':(result?.summary||'Falha ao revogar autorização'))}
 async function startManagedBrowser(){const url=String(document.getElementById('managedBrowserUrl')?.value||'').trim();if(!/^https?:\/\//i.test(url)){setStatus('Informe uma URL http:// ou https:// válida');return}setStatus('Abrindo navegador gerenciado...');const result=await call('browser_start',url,false,3);if(!result?.ok){setStatus(result?.summary||'Falha ao abrir navegador gerenciado');await loadBrowserAccess();return}await loadBrowserAccess();setStatus('Sessão de navegador aberta')}
 async function stopManagedBrowser(sessionId){if(!sessionId)return;setStatus('Encerrando sessão do navegador...');const result=await call('browser_stop',sessionId);await loadBrowserAccess();setStatus(result?.ok?'Sessão encerrada':(result?.summary||'Falha ao encerrar sessão'))}
 window.addEventListener('ordax:product-account-connected',()=>{if(state.view==='browser')void loadBrowserAccess()});
