@@ -1,6 +1,6 @@
 # Runtime Workspace Port v1 — consumer contract and production gate (M1)
 
-**Status (22/10/2026):** the **Runtime read-only port core and canonical project-registry adapter exist on `main`** (`ordax-runtime@6984650`); the **Platform has only a grant projection**, not issuance or authorization transport (`ordax-platform@f1e4e7c`). Apps alpha.11 still contains **only a fail-closed consumer seam**, without a live `workspacePort`, trusted resource picker or Product grant. The v1 ABI below remains the consumer contract, **not proof of end-to-end integration**. Owner of this document: Apps. Runtime owns host implementation; Platform owns Product authorization.
+**Status (22/10/2026; checked against the current `main` of all three repositories):** Runtime `main` contains the read-only `ProjectWorkspacePort`, canonical local-project registry binding, in-memory resource-selection broker and a native Windows folder-picker adapter. The picker and broker are **not composed into an authenticated Owner flow**, and no live Platform proof reaches the Orchestrator. Platform `main` contains the canonical Owner project-scope resolver, the `project-workspace-read` profile, and a source-only proposal for the subordinate resource binding/verifier; it has **no resource issuance/revocation route, no applied resource-binding migration, and no Runtime verification endpoint**. Apps Orchestrator alpha.12 contains the fail-closed consumer seam in `product/src/project-workspace.mjs`, but the packaged service is not given a live `workspacePort`, so status remains `capability_unavailable`. The browser-grant integration in Studio does not authorize workspace reads. The v1 ABI below remains a consumer contract, **not proof of end-to-end integration**. Owner of this document: Apps. Runtime owns host implementation; Platform owns Product authorization.
 
 ## Purpose
 
@@ -40,9 +40,9 @@ interface ProjectWorkspacePort {
 
 **This is a consumer shape, not permission issuance.** In production Runtime must authenticate the caller, map actor/client/workspace session to the OrdaX user and device, verify the specific project resource grant, local filesystem policy, resource-bound path and symlink safety **inside Runtime**, and return only an already authorized result. It must revalidate the grant at the moment of snapshot, not reuse an old `verifyBinding` as proof. `resourceId` is a reference, not a secret/bearer token. Any attempt to forge it must fail.
 
-### Selector gate (not yet implemented)
+### Owner-selection and authorization gate (partially implemented)
 
-Only the human-facing **trusted Runtime chooser**, with explicit resource selection and expiry, may issue a new resourceId/grant. The current App UI deliberately does not offer a path text field or an `Attach` button: such a control would be fake until this selector is connected. `workspace_bind` (an MCP/App service operation) can record only an **already validated** opaque resource reference, and rejects raw paths; the Runtime remains the sole authorizer. If it cannot resolve/prove the exact grant, binding fails and writes nothing.
+Runtime now has a native Windows folder-picker adapter and an in-memory selection broker. Neither is connected to the authenticated Owner host or a Product issuer/verifier. Only a human-facing trusted Runtime flow with explicit resource selection, consent and expiry may create a resourceId binding. The App deliberately has no path text field or active `Attach` action: such a control would be fake until this flow is connected. `workspace_bind` can record only an **already validated** opaque resource reference and rejects raw paths; Runtime remains the sole filesystem and grant verifier. If it cannot prove the exact grant, binding fails and writes nothing.
 
 ### State / failure
 
@@ -54,8 +54,8 @@ Only the human-facing **trusted Runtime chooser**, with explicit resource select
 
 ### Open architecture questions for Runtime/Platform
 
-1. Product grants: map `lab_project_id` to a canonical Platform/Space project scope without treating an arbitrary Lab ID as an authority; no project collisions or cross-user use.
-2. Selector: trusted OS/Windows UI resource picker, deny symlink/junction outside root, ensure identity and consent after restart.
+1. Product grants: the canonical Owner project-scope resolver exists, but the Lab-to-Product authority mapping and resource issuance/revocation are not exposed to Runtime. Never treat an arbitrary Lab ID as authority; prevent project collisions and cross-user use.
+2. Selector: the native Windows picker and selection broker exist in Runtime, but trusted Owner composition, authenticated consent binding and the live proof callback are not wired. Preserve the existing root/junction checks and revalidate identity after selection.
 3. Device offline/revoked: typed responses vs transport failures, status receipt and no eventual privilege reuse.
 4. Snapshot read ownership: source identity/attestation, Git detached HEAD and worktrees, untracked vs ignored, bounded filenames, content-sensitive access, filesystem events sequencing.
 5. Lifecycle: grant expiry, unbind/revoke in canonical authority, already-bound records after Runtime uninstall/reinstall, machine/device switch.
@@ -72,4 +72,4 @@ Only the human-facing **trusted Runtime chooser**, with explicit resource select
 - Idempotency after retry/restart, no duplicate binding, no phantom completion.
 - Windows packaged App + **real** Runtime/Platform Product grant required before marking M1 fully implemented.
 
-**Owners and existing code:** Apps consumer/tests are in `product/src/project-workspace.mjs`; Runtime's core and canonical registry binding are in `ordax_dev_agent/project_workspace_port.py` and `project_workspace_registry_binding.py`. **Still missing:** trusted per-project grant issuance by Platform, authenticated Runtime→Apps channel, and a real Windows read-only E2E. No temporary filesystem adapter may be added to the Electron UI as a substitute.
+**Owners and existing code:** Apps consumer/tests are in `product/src/project-workspace.mjs`; Runtime's core, canonical registry binding, resource-selection broker and native picker are in `ordax_dev_agent/project_workspace_port.py`, `project_workspace_registry_binding.py`, `workspace_resource_selection.py` and `windows_owner_workspace_picker.py`. Platform's verifier proposal is under `control-plane/supabase/proposals/`, not applied. **Still missing:** authenticated Owner issuance/revocation, a live Runtime-to-Platform proof transport composed into the App, and a real Windows read-only E2E. No temporary filesystem adapter may be added to the Electron UI as a substitute.
