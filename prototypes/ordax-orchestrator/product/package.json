@@ -1,6 +1,6 @@
 {
   "name": "ordax-orchestrator-lab",
-  "version": "0.2.0-alpha.12",
+  "version": "0.2.0-alpha.13",
   "private": true,
   "type": "module",
   "main": "desktop/bootstrap.mjs",

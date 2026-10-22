@@ -2,9 +2,9 @@
 
 ## Atualização Orchestrator Project-First (decisão 2026-10-21)
 
-A continuidade do OrdaX Orchestrator não depende mais conceitualmente de uma conversa GPT como local do trabalho. A arquitetura-alvo é **missão vinculada a workspace local autorizado**, acompanhando snapshots/diffs/Git/testes via Runtime e planejando/conversando via provedores quando necessário. A implementação do watcher, do executor por missão e do serviço headless **não está concluída**.
+A arquitetura final é **missão vinculada a projeto e workspace autorizado**, acompanhando snapshots/diffs/Git/testes via owners canônicos e usando provedores quando necessário. Pela prioridade revisada pelo proprietário em 2026-10-22, a primeira etapa é projeto → URL GitHub remota → conversa persistente pela API existente → tarefa pelo executor ChatGPT existente. Groq recebe somente a URL, sem conteúdo do repositório; o GPT deve usar uma integração GitHub realmente disponível e parar se faltar acesso. Workspace local, watcher e serviço headless ficam para fases posteriores. Nada disso está concluído integralmente.
 
-**Para Codex e implementadores:** começar em [`prototypes/ordax-orchestrator/CODEX-HANDOFF.md`](prototypes/ordax-orchestrator/CODEX-HANDOFF.md); seguir [RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md) e [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md). Owner Apps para produto, Runtime para ações locais, Platform para MCP/grants e OS para Intelligence/contratos; sem duplicação de serviços. PR #268 permanece draft até gates. Este bloco prevalece como decisão nova de Orchestrator, não altera os handoffs históricos de Studio/Notes.
+**Para Codex e implementadores:** começar em [`prototypes/ordax-orchestrator/CODEX-HANDOFF.md`](prototypes/ordax-orchestrator/CODEX-HANDOFF.md); seguir [RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md) e [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) como arquitetura de destino. Owner Apps para produto, Runtime para ações locais futuras, Platform para MCP/grants e conectores, OS para Intelligence/contratos; sem duplicação. PR #268 foi mesclada em main. Este bloco atualiza somente a prioridade do Orchestrator, sem alterar os handoffs históricos de Studio/Notes.
 
 ---
 

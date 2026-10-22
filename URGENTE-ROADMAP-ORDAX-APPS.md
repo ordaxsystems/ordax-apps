@@ -1,8 +1,28 @@
 ## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21)
 
-**Prioridade autorizada e específica:** o OrdaX Orchestrator deixa de ser concebido apenas como coordenador de conversas e passa a organizar **projetos locais reais**: um projeto pode vincular diretório/repositório escolhido e autorizado, acompanhar Git/alterações/testes, planejar e verificar trabalho, usando o GPT como inteligência sem depender do chat como fonte de verdade. O App não pode executar arquivos/comandos diretamente como um Runtime paralelo; ele consome capacidades tipadas do owner **ordax-runtime** e autorizações dos owners **ordax-platform/OS**. Plugin OrdaX MCP e App são entradas separadas para o mesmo Runtime.
+### Prioridade revisada: GitHub remoto antes de workspace local (2026-10-22)
 
-**Primeiro gate:** documentar capabilities reais e implementar read-only workspace binding por grant opaco (M0/M1); depois watcher, supervisor headless, execução autorizada, autonomia e teste VESTE. Apenas o desenho/planejamento foi aprovado nesta decisão; não atesta que M0–M7 estejam implementados. Preservar PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) draft, Flow/Grátis e envio VESTE incerto. Fontes:
+O proprietário definiu que a primeira etapa de uso deve começar por um projeto
+vinculado a um repositório GitHub remoto. A conversa do coordenador continua
+usando a API já existente; as conversas de trabalho continuam usando o executor
+ChatGPT já existente. O App pode guardar e encaminhar a URL canônica como
+referência, mas a API Groq não consulta arquivos GitHub e a URL não é evidência
+de leitura ou alteração. A tarefa enviada ao ChatGPT deve identificar o remoto
+e usar somente a integração GitHub realmente disponível naquela sessão; se ela
+não estiver conectada ou não tiver permissão, o trabalho deve parar e informar o
+bloqueio. Arquivos locais, Git local e Runtime passam para uma etapa posterior.
+
+Esta prioridade não autoriza criar OAuth, token store ou conector GitHub paralelo:
+acesso autenticado da aplicação precisa reutilizar um contrato público do owner
+Platform quando disponível. O primeiro aceite é criar/vincular a URL, manter o
+histórico conversacional e encaminhar o destino remoto ao GPT sem alegar leitura
+ou execução sem evidência.
+
+---
+
+**Arquitetura final autorizada:** o OrdaX Orchestrator gerencia projetos reais, acompanha Git/alterações/testes e usa o GPT como ferramenta, sem duplicar Runtime. Para acesso local, consome capacidades tipadas do owner **ordax-runtime** e grants dos owners **ordax-platform/OS**. A ordem atual é remota primeiro, conforme a decisão de 2026-10-22 acima; binding local, watcher, executor de missão e autonomia permanecem fases posteriores, ainda não concluídas.
+
+**Primeiro gate atual:** criar/vincular URL GitHub remota, manter conversa pela API existente e encaminhar o destino às tarefas GPT sem inventar acesso ou efeito. A URL é só referência: Groq não lê GitHub. Integração GitHub autenticada do App depende do contrato público do Platform, sem OAuth ou token store duplicado. PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) foi mesclada; preservar Flow/Grátis e envio VESTE incerto. Fontes:
 [RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md),
 [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md),
 [handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md),

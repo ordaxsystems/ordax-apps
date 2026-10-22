@@ -1,10 +1,20 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+**Prioridade atual revisada pelo proprietário (2026-10-22):** primeiro validar
+projeto → referência GitHub remota → conversa persistente pela API existente →
+conversa de trabalho pelo executor ChatGPT existente. A etapa de workspace local
+via Runtime fica depois. O App só guarda/encaminha a URL; não alegar que Groq
+acessou o GitHub. A tarefa GPT deve usar uma integração GitHub efetivamente
+disponível na sessão e parar se faltar acesso. Integração GitHub autenticada do
+App continua pertencendo ao owner Platform; não criar outro OAuth/token store.
+Esta decisão substitui a ordem inicial M0/M1 local descrita abaixo, mas mantém
+os gates de grants, receipts e evidência quando o trabalho local for iniciado.
+
 **Objetivo do próximo executor:** continuar o OrdaX Orchestrator como supervisor de **projetos/pastas reais** no computador via Runtime/OrdaX MCP, e não só como gerenciador de chats.
 
 **Incremento Apps em desenvolvimento (alpha.11):** o Lab já tem modelo de vínculo lógico de workspace por recurso opaco, status e snapshot somente leitura **dependentes de um port Runtime verificado**. O port não está conectado no Windows; não há pasta real vinculada. Consulte `product/src/project-workspace.mjs`, testes `product/test/project-workspace.test.mjs` e matriz em `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md`. O Codex deverá auditar essa implementação e, depois, evoluir o [contrato Workspace Runtime proposto](docs/PROJECT-WORKSPACE-RUNTIME-PORT-V1.md) com Runtime/Platform — não duplicar filesystem no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
 
-**Branch:** `ordaxsystems/ordax-apps` PR draft [#268](https://github.com/ordaxsystems/ordax-apps/pull/268), `feat/orchestrator-lab-isolated-20261019`. **Antes de editar, consultar o HEAD remoto atual, Git status e PR CI**; não assumir que o SHA visto nesta documentação ainda é o HEAD.
+**Base remota conferida em 2026-10-22:** `ordaxsystems/ordax-apps/main` em `ba1d2df1cb439b37681bfa426fe4df0426b80165`; PR #268 foi mesclada. Os nomes de branch e estados de PR antigos abaixo são históricos. Antes de editar, conferir novamente main, Git status e CI; não assumir SHA antigo como HEAD.
 **Produto:** `prototypes/ordax-orchestrator/product/`, fonte própria. **Base Flow/Grátis** `ordax-flow@081a7ce989721106aaf27a0c9d09cf9d49713a65` imutável; não modificar dados/perfil do Grátis.
 **Bibliografia obrigatória na ordem:**
 1. `/AGENTS.md`, `/URGENTE-ROADMAP-ORDAX-APPS.md`, `/HANDOFF.md`, `/README.md`.
