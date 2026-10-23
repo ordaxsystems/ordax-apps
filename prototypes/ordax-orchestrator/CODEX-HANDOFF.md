@@ -3,9 +3,10 @@
 **Objetivo do proprietário:** o usuário informa uma missão uma vez; o Orchestrator
 coordena o projeto e conversa com GPT. GPT/ChatGPT Web com OrdaX MCP é o caminho
 principal desejado; Groq/API pode assumir quando GPT comprovadamente parar. Esse
-monitoramento, handoff automático e continuidade 24h ainda não existem. A alpha.14
-persiste projeto, coordenador e primeiro rascunho e usa o executor ChatGPT existente
-quando a sessão está pronta. O teste empacotado não enviou mensagem a GPT.
+monitoramento, handoff automático e continuidade 24h ainda não existem. A versão
+`0.2.0-alpha.16` já tem entrada transacional de missão, persistência do rascunho,
+proteção contra replay de envio incerto e detecção de conclusão visível do GPT.
+Os testes de produto não enviam mensagens reais ao provedor nem provam leitura GitHub.
 
 **Ordem atual:** provar primeiro R0 remoto: o App encaminha uma URL canônica e a
 tarefa GPT deve usar uma integração GitHub realmente autorizada na sessão. URL no
@@ -18,11 +19,11 @@ store nem acessar filesystem por fora do Runtime.
 
 **Ordem de implementação vigente:** cumprir primeiro R0 remoto — URL GitHub como referência, conversa de coordenação existente e tarefa GPT pelo executor existente, com evidência da integração GitHub real. O workspace local vem depois dos grants e do port autenticado dos owners Runtime/Platform. A composição de 24 horas é uma fase posterior, pois o Scheduler/Background Runtime do OS e o provider externo ainda estão desativados em `main`; não duplicar fila, banco, scheduler ou roteador no App.
 
-**Base Apps `main` (alpha.14, `17c43d42b681b1e77b0b65d4771f990281b520aa`):** o Lab mantém modelo de vínculo lógico de workspace por recurso opaco, status e snapshot somente leitura **dependentes de um port Runtime verificado**. O port não está conectado no Windows do usuário; não há pasta real vinculada. Consulte `product/src/project-workspace.mjs`, testes `product/test/project-workspace.test.mjs` e matriz em `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md`. A integração de filesystem/Git segue nos owners Runtime/Platform — não duplicar esses serviços no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
+**Base Apps `main` atualizada em 2026-10-23:** `0.2.0-alpha.16`, commit `0aca672f381b3b4a59fdef48ce27bc4c576c1a00`. O Lab mantém modelo de vínculo lógico de workspace por recurso opaco, status e snapshot somente leitura **dependentes de um port Runtime verificado**. O port não está conectado no Windows do usuário; não há pasta real vinculada. Consulte `product/src/project-workspace.mjs`, testes `product/test/project-workspace.test.mjs` e matriz em `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md`. A integração de filesystem/Git segue nos owners Runtime/Platform — não duplicar esses serviços no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
 
 **Incremento alpha.14 integrado pela PR #335:** a entrada `mission_create` compõe projeto, coordenador e primeira conversa/rascunho em uma transação no Store já existente; a UI envia pelo executor ChatGPT quando a sessão está pronta e mantém o rascunho quando não está. `project_rename` atualiza metadados sob o escopo de sessão. Os quatro checks de CI passaram no head `52c4cef49263de6f770a956abf7e4c2ad69a91bb`; o E2E executou o `.exe` portátil em perfil descartável e validou o fluxo App→Runtime host de teste. A sessão GPT não foi usada e nenhum provedor recebeu mensagem. Isso não comprova resposta final do GPT, uso da integração GitHub, artefato em disco/site validado ou autonomia 24h.
 
-**Bases remotas conferidas em 2026-10-23 após o merge:** Apps `main` `17c43d42b681b1e77b0b65d4771f990281b520aa`; Runtime `main` `9154cb977bbad9f007e7734ebfbeeb4997e7db57`; Platform `main` `3ae5d914df03f8f6a677ddd18cf3337cd0bcb89a`; OS `main` `8bdea25a19541ba3b734d6f3895ad48251fc3124`. PR #268 e PR #335 foram mescladas em Apps. Runtime #208 está aberta, Runtime #205 e Platform #274 estão draft; Platform #181/#182 continuam propostas abertas de continuidade MCP. Nenhuma dessas PRs foi integrada à `main` por este trabalho. Antes de cada incremento, conferir novamente main, Git status e CI; não assumir SHA antigo como HEAD.
+**Bases remotas conferidas em 2026-10-23:** Apps `main` `0aca672f381b3b4a59fdef48ce27bc4c576c1a00`; Runtime `main` `9154cb977bbad9f007e7734ebfbeeb4997e7db57`; Platform `main` `3ae5d914df03f8f6a677ddd18cf3337cd0bcb89a`; OS `main` `4add80f9e5ff77f5d5463ff620f1983d5ab432b1`. Apps #268/#335/#337/#338 estão integradas. Runtime #208 está aberta, Runtime #205 e Platform #274 estão draft; Platform #182 continua aberta. Essas mudanças de workspace/grants não estão integradas à `main` e não habilitam o port no App. Antes de cada incremento, conferir novamente main, Git status e CI; não assumir SHA antigo como HEAD.
 **Produto:** `prototypes/ordax-orchestrator/product/`, fonte própria. **Base Flow/Grátis** `ordax-flow@081a7ce989721106aaf27a0c9d09cf9d49713a65` imutável; não modificar dados/perfil do Grátis.
 **Bibliografia obrigatória na ordem:**
 1. `/AGENTS.md`, `/URGENTE-ROADMAP-ORDAX-APPS.md`, `/HANDOFF.md`, `/README.md`.

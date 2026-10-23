@@ -1,6 +1,6 @@
 # Plano de execução — OrdaX Orchestrator Project-First
 
-**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Revisão pós-merge em 2026-10-23; bases consultadas: Apps `17c43d4`, Runtime `9154cb9`, Platform `3ae5d91`, OS `8bdea25`.
+**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Bases conferidas em 2026-10-23: Apps `0aca672`, Runtime `9154cb9`, Platform `3ae5d91`, OS `4add80f`.
 
 ## Regras do programa
 
@@ -26,6 +26,18 @@ Esta ordem incorpora a prioridade definida pelo proprietário em 2026-10-22 e ev
 **Estado no Apps `main` `17c43d4` consultado em 2026-10-23:** normalização da URL, armazenamento de referência e inclusão de instruções de destino na tarefa GPT existem em `remote-repository-context.mjs` e `orchestrator-service.mjs`, com testes unitários. A entrada única `mission_create` e o início condicional pelo executor GPT existente também foram integrados na PR #335. O teste empacotado confirma persistência do rascunho em perfil sem sessão e bloqueio de envio; não comprova resposta real do GPT, leitura/edição GitHub pela conta, nem trabalho contínuo após fechar a janela. O próximo aceite R0 é uma execução real autorizada que produza evidência remota verificável.
 
 **Incremento #335 integrado à `main`:** `mission_create` cria projeto, coordenador e primeira conversa com rascunho em uma transação idempotente do Store existente; a UI encaminha a missão pelo executor GPT existente somente quando a sessão está pronta e conserva o rascunho quando está desconectada. `project_rename` altera metadados do projeto sob escopo da sessão. O CI executou a alpha.14 empacotada no Windows em perfil descartável; App e Runtime compartilharam projeto e três frentes, com assinatura/replay verificados e escrita negada pelo cenário read-only. Nenhuma mensagem foi enviada ao provedor. Isso simplifica o início, mas não comprova resposta real do GPT, leitura do repositório, criação de arquivos, validação do site ou continuidade após fechar o App; VESTE continua sem E2E aprovado.
+
+**Versão atual da Apps `main` em 2026-10-23:** `0.2.0-alpha.16`, commit `0aca672f381b3b4a59fdef48ce27bc4c576c1a00`. PR #337 conserva falhas pré-envio distinguíveis de transporte incerto e impede replay automático; PR #338 cobre a conclusão observável do ChatGPT. A validação local do pacote de código no worktree isolado passou em `npm run validate` (**403/403 testes**). Isso comprova regressões de código/SQLite e fixtures, não uma resposta real, uso do GitHub MCP, trabalho em background ou o E2E VESTE.
+
+## Dois caminhos diferentes de ChatGPT e o gate de 24 horas
+
+As fontes atuais do OS, Runtime e Platform distinguem duas direções:
+
+- **ChatGPT externo → OrdaX MCP → Platform/Runtime:** a conta ChatGPT chama ferramentas OrdaX sob OAuth, grants, target e Runtime autorizados. Isso permite ao GPT operar capacidades concedidas; **não** cria um canal para o aplicativo enviar mensagens ao ChatGPT nem uma API de inferência para o painel OrdaX.
+- **OrdaX App → ChatGPT Web:** o executor presente no Lab trabalha pela superfície web e depende da sessão/interação do ChatGPT. Ele pode servir ao fluxo foreground já existente, mas não é um worker headless suportado para 24 horas. Bridge via DOM/cookies/browser permanece experimental nos owners; não ampliar isso como substituto de provider.
+- **OrdaX App/OS → Intelligence/Model Router → provider:** esta é a fronteira prevista para inferência fora da janela. Exige adapter de provider publicado, egress, consentimento, credenciais e ciclo de vida/scheduler aprovados pelos owners. O Groq direto do Lab é opt-in e ligado ao processo do App; não é fallback automático pelo Router.
+
+Portanto, manter a preferência do produto por GPT Web para trabalho interativo, mas só declarar continuidade sem a janela depois que os owners habilitarem um transporte de inferência suportado e a fila/lease autoritativa for composta. A conta ChatGPT e o MCP conectado não atendem esse gate por si sós.
 
 ## Composição de autonomia contínua — alvo posterior, sem serviço paralelo
 
