@@ -335,7 +335,7 @@ class ReadinessAuditTests(unittest.TestCase):
             commit = audit.checked_git_commit(root)
             self.assertRegex(commit, r"^[0-9a-f]{40}$")
             (root / "unexpected-untracked").write_text("dirty", encoding="utf-8")
-            with self.assertRaisesRegex(audit.AuditError, "clean Git checkout"):
+            with self.assertRaisesRegex(audit.AuditError, "unexpected-untracked"):
                 audit.checked_git_commit(root)
             (root / "unexpected-untracked").unlink()
             git("remote", "set-url", "origin", "https://github.com/attacker/fake.git")
@@ -364,3 +364,4 @@ class ReadinessAuditTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
