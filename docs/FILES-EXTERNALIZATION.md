@@ -5,8 +5,8 @@
 ## Estado reconciliado com os repositórios atuais (2026-10-23)
 
 - O owner atual da plataforma é `ordaxsystems/ordax-os`; a fonte do produto
-  permanece em `system/apps/files/`. O `ordax-apps/main` em
-  `5f590d7f00c478640800d59f897fd1e53e4e5566` não contém `apps/files/`.
+  permanece em `system/apps/files/`. O snapshot de `ordax-apps/main` usado na
+  prova, `6c1090fe022a8b78a2967c8f1b57d18310accbea`, não contém `apps/files/`.
 - O snapshot dos dez arquivos está pinado à árvore canônica integrada
   `ordax-os/main@fe8d233681801386ed8fb9fbfb47fe091d8d2e42`. Os dez Git blob IDs
   foram comparados com o snapshot anterior e permanecem idênticos; nenhum source
