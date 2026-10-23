@@ -101,10 +101,9 @@ class TestDocument {
 globalThis.Element = TestElement;
 
 const documentObject = new TestDocument();
-const root = documentObject.createElement("div");
-const slot = documentObject.createElement("section");
-slot.dataset.appExtension = "assistant-conversation";
-root.append(slot);
+// A real isolated Native iframe provides only <main id="ordax-app-root">.
+const root = documentObject.createElement("main");
+assert.equal(root.childElementCount, 0);
 const profile = {
   schema: "ordax.locale-profile/1", locale: "pt-BR", language: "pt",
   region: "BR", script: "Latn", direction: "ltr",
@@ -156,6 +155,9 @@ const mounted = await componentRuntime.mount({
   identitySessionPort: identity, spaceSelectionPort: space, intelligence,
 });
 assert.equal(typeof mounted.destroy, "function");
+const slot = root.querySelector('[data-app-extension="assistant-conversation"]');
+assert.ok(slot, "real app owns and creates its slot inside the empty Native root");
+assert.equal(root.childElementCount, 1, "the app must not create a parallel UI");
 assert.equal(slot.classList.contains("ordax-assistant-host"), true);
 assert.ok(slot.querySelector("[data-assistant-input]"), "real runtime rendered a textarea");
 const headings = slot.querySelectorAll("[data-assistant-input]");
@@ -165,7 +167,35 @@ assert.equal(inferenceCalls, 0);
 mounted.destroy();
 mounted.destroy(); // idempotent tear-down, no leaked CSS or foreground state
 assert.equal(slot.childElementCount, 0);
+assert.equal(root.childElementCount, 0, "app-owned slot must be released with the runtime");
 assert.equal(documentObject.head.querySelector('link[data-ordax-component-style="assistant"]'), null);
+
+// A parent-owned extension remains intact after teardown; no duplicate slot.
+const providedSlot = documentObject.createElement("section");
+providedSlot.dataset.appExtension = "assistant-conversation";
+root.append(providedSlot);
+const embedded = await componentRuntime.mount({
+  root, surfaceLifecycle: lifecycle,
+  identitySessionPort: identity, spaceSelectionPort: space, intelligence,
+});
+assert.equal(root.childElementCount, 1);
+assert.strictEqual(root.querySelector('[data-app-extension="assistant-conversation"]'), providedSlot);
+assert.ok(providedSlot.querySelector("[data-assistant-input]"));
+embedded.destroy();
+assert.equal(root.childElementCount, 1, "app cannot remove a host-owned extension");
+assert.equal(providedSlot.childElementCount, 0);
+assert.equal(documentObject.head.querySelector('link[data-ordax-component-style="assistant"]'), null);
+providedSlot.remove();
+
+// Mount failure must rollback both DOM slot and app-owned CSS.
+await assert.rejects(() => componentRuntime.mount({
+  root, surfaceLifecycle: lifecycle,
+  identitySessionPort: null, spaceSelectionPort: null, intelligence,
+}), /Identity|Session|required|port|compatible/i);
+assert.equal(root.childElementCount, 0, "failed mount must not strand app DOM");
+assert.equal(documentObject.head.querySelector('link[data-ordax-component-style="assistant"]'), null);
+assert.equal(inferenceCalls, 0);
+
 console.log(JSON.stringify({
   schema: "ordax.assistant-packaged-mount-proof/1",
   componentId: manifest.id,
@@ -174,6 +204,9 @@ console.log(JSON.stringify({
   actualPackagedRuntimeImported: true,
   actualPackagedRuntimeMounted: true,
   actualPackagedRuntimeDestroyed: true,
+  nativeEmptyRootRendered: true,
+  hostExtensionOwnershipPreserved: true,
+  failedMountTeardownVerified: true,
   syntheticIdentitySpaceIntelligenceOnly: true,
   inferenceExecuted: false,
   signedDistributionVerified: false,
