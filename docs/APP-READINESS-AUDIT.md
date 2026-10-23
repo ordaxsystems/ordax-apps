@@ -1,6 +1,6 @@
 # G0 — Auditoria automática de prontidão dos apps
 
-Este incremento inicia a implementação do [roadmap urgente](../URGENTE-ROADMAP-ORDAX-APPS.md) **sem alterar o OrdaX OS**, que está em processo de migração de organização.
+Este documento registra a auditoria de prontidão dos apps e inicia a implementação do [roadmap urgente](../URGENTE-ROADMAP-ORDAX-APPS.md). Ele não altera ownership ou implementação do OrdaX OS.
 
 ## Executar
 
@@ -19,7 +19,7 @@ O relatório JSON tem schema `ordax.app-readiness-audit/1` e `authority=none`. A
 - A identidade e ownership de cada source first-party seguem o workspace.
 - `app.json`, `ai/manifest.json`, `actions/manifest.json` e o manifesto/digest dos providers passam nos validadores canônicos do package builder.
 - A compatibilidade é consistente com id/versão e não existe segundo descriptor.
-- Um app ainda owned pela plataforma (por exemplo, Projects antes do cutover) não pode ganhar uma segunda implementação canônica em `ordax-apps`.
+- Um app ainda owned pela plataforma (por exemplo, Files antes do cutover) não pode ganhar uma segunda implementação canônica em `ordax-apps`.
 - Alvos sem source, candidatos bootstrap e blockers conhecidos são relatados sem tornar a CI vermelha apenas por ainda serem planejados.
 - Gates de produção de Notes e de distribuição de Studio continuam visíveis como bloqueios conhecidos.
 
@@ -199,6 +199,6 @@ A auditoria **sem flags** não prova execução de runtime, integração com hos
 1. Após G0 de pacote, G1 de presença de contratos e G2 de importação/identidade/negação sem host, ampliar os testes de **montagem com host real** e lifecycle de instalação/rollback por app, sem supor publicação ou disponibilidade.
 2. Especificar os contratos de acesso autorizado a recursos do Files e o caminho de cutover da implementação bootstrap, sem duplicar o source da plataforma.
 3. Abrir MVPs de Internet e Assistant somente após confirmar host isolation e Action Gateway/permissions públicos.
-4. Avançar Projects apenas quando o owner da plataforma registrar `source_cutover_allowed=true` e a ausência do source antigo for comprovada.
+4. Para Projects, manter o source cutover já autorizado e comprovado; avançar somente os gates restantes de distribuição e host, sem reintroduzir sua implementação no OS.
 
 Qualquer divergência com `HANDOFF.md`, migrations, locks e CI deve ser resolvida consultando os owners canônicos, nunca relaxando as validações.

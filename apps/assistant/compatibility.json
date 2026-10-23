@@ -1,0 +1,63 @@
+{
+  "schema": "ordax.component-compatibility/1",
+  "componentId": "assistant",
+  "componentVersion": "0.1.1",
+  "provides": [
+    {
+      "id": "ordax.component-runtime",
+      "major": 1
+    }
+  ],
+  "requires": [
+    {
+      "id": "ordax.localization",
+      "minMajor": 2,
+      "maxMajor": 2,
+      "optional": false
+    },
+    {
+      "id": "ordax.surface-render-lifecycle",
+      "minMajor": 5,
+      "maxMajor": 5,
+      "optional": false
+    },
+    {
+      "id": "ordax.identity-session",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    },
+    {
+      "id": "ordax.space-selection",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    },
+    {
+      "id": "ordax.intelligence",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.profile-activation-state-port",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.personal-runtime",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.app-activation",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    }
+  ],
+  "state": null,
+  "authority": "none"
+}

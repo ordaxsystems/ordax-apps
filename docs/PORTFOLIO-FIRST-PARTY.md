@@ -2,12 +2,13 @@
 
 **Decisão:** `ordax-apps` é o destino oficial único para a **fonte portátil dos aplicativos first-party removíveis**. Estar presente no OrdaX OS por padrão **não** exige manter uma segunda fonte no repositório do sistema. O OrdaX OS mantém a Store, a imagem inicial, o verificador de pacotes, as permissões e a desinstalação. Conta, Ajustes, Sistema e Loja são superfícies estruturais do OS, não apps removíveis deste repositório.
 
-**Prontidão verificada em 2026-10-23 (`main@5f590d7f`):** a auditoria de
-metadados encontrou 19 fontes canônicas para 20 alvos. Os 16 apps com descriptor
-de compatibilidade produziram candidatos não assinados idênticos em duas
-montagens temporárias; Internet, Assistente e Studio ainda precisam fechar esse
-boundary de pacote. Files permanece platform-owned, sem fonte paralela. Nenhum
-resultado autoriza instalação, assinatura, publicação ou ativação de produção.
+**Prontidão verificada em 2026-10-23:** a auditoria encontrou 19 fontes
+canônicas para 20 alvos. Os 18 apps com descriptor de compatibilidade
+produziram candidatos não assinados idênticos em duas montagens temporárias.
+Internet e Assistente declaram agora seus ports públicos no App SDK pinado;
+Studio ainda precisa de um runtime portátil e descriptor compatível com o host.
+Files permanece platform-owned, sem fonte paralela. A prova de pacote não
+autoriza instalação, assinatura, publicação ou ativação de produção.
 
 O SSOT **da política de seleção inicial** pertence ao OS e foi implementado em [`first-run-selection.mjs`](https://github.com/ordaxsystems/ordax-os/blob/main/system/services/apps/first-run-selection.mjs). O SSOT **dos alvos e contratos portáteis** permanece `ordax-apps.workspace.json`. Esta documentação não adiciona uma segunda lista executável de defaults nem promove candidatos não assinados.
 
