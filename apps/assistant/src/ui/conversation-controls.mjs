@@ -8,7 +8,10 @@ import { projectAssistantResultCanvas } from "./result-view-model.mjs";
 import { ASSISTANT_SOURCE_MESSAGES, ASSISTANT_ENGLISH_MESSAGES, translateAssistantMessage } from "../i18n/messages.mjs";
 import { projectAssistantWorkStrip, resolveAssistantWorkScope } from "./work-strip.mjs";
 
-const EXTENSION_SELECTOR = '[data-app-extension="assistant-conversation"]';
+// Single app-owned DOM extension identity. Stable across visual product renames.
+export const ASSISTANT_CONVERSATION_EXTENSION = "assistant-conversation";
+export const ASSISTANT_CONVERSATION_EXTENSION_SELECTOR =
+  `[data-app-extension="${ASSISTANT_CONVERSATION_EXTENSION}"]`;
 
 function requireConversation(value) {
   if (!value || typeof value !== "object" || value.schema !== ASSISTANT_CONVERSATION_SCHEMA) {
@@ -171,7 +174,7 @@ export function mountAssistantConversationControls(
     // Do not trust an old observer argument when Identity/Space changed between
     // publication and rendering. Reconcile the canonical conversation scope.
     const snapshot = conversation.getSnapshot();
-    const slot = root.querySelector(EXTENSION_SELECTOR);
+    const slot = root.querySelector(ASSISTANT_CONVERSATION_EXTENSION_SELECTOR);
     if (!slot) {
       mountedSlot = null;
       return;

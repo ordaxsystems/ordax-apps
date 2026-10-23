@@ -2,7 +2,11 @@ import { COMPONENT_RUNTIME_SCHEMA } from "./sdk/contracts/component-runtime.mjs"
 import appManifest from "../app.json" with { type: "json" };
 const ASSISTANT_VERSION = appManifest.version;
 import { createAssistantConversationRuntime } from "./conversation.mjs";
-import { mountAssistantConversationControls } from "./ui/conversation-controls.mjs";
+import {
+  ASSISTANT_CONVERSATION_EXTENSION,
+  ASSISTANT_CONVERSATION_EXTENSION_SELECTOR,
+  mountAssistantConversationControls,
+} from "./ui/conversation-controls.mjs";
 
 const ASSISTANT_STYLESHEET_URL = new URL("../assets/assistant.css", import.meta.url).href;
 const ASSISTANT_STYLE_SELECTOR = 'link[data-ordax-component-style="assistant"]';
@@ -41,6 +45,22 @@ async function mountAssistantStyles(root) {
   return () => link.remove();
 }
 
+// The isolated Native component iframe provides an empty root. The product
+// owns its extension slot, while legacy/embed hosts may provide it themselves.
+// Never make the OS know an app-specific DOM selector or create a second UI.
+function ensureConversationExtensionSlot(root) {
+  if (!(root instanceof Element)) {
+    throw new TypeError("Assistant runtime requires a DOM Element root");
+  }
+  if (root.querySelector(ASSISTANT_CONVERSATION_EXTENSION_SELECTOR)) {
+    return () => {};
+  }
+  const slot = root.ownerDocument.createElement("section");
+  slot.dataset.appExtension = ASSISTANT_CONVERSATION_EXTENSION;
+  root.append(slot);
+  return () => slot.remove();
+}
+
 export const componentRuntime = Object.freeze({
   schema: COMPONENT_RUNTIME_SCHEMA,
   componentId: "assistant",
@@ -58,14 +78,23 @@ export const componentRuntime = Object.freeze({
     projectWorkCanvas = null,
   } = {}) {
     const releaseStyles = await mountAssistantStyles(root);
+    let releaseExtensionSlot = () => {};
     let conversation = null;
     let controls = null;
     const cleanup = () => {
-      controls?.destroy();
-      conversation?.dispose();
-      releaseStyles();
+      try {
+        controls?.destroy();
+      } finally {
+        try {
+          conversation?.dispose();
+        } finally {
+          releaseExtensionSlot();
+          releaseStyles();
+        }
+      }
     };
     try {
+      releaseExtensionSlot = ensureConversationExtensionSlot(root);
       conversation = createAssistantConversationRuntime({
         intelligencePort: intelligence,
         memoryCapture,

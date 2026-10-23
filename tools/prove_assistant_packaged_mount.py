@@ -76,6 +76,9 @@ def proof(verified_candidate_dir: Path | None = None) -> dict:
             or report.get("actualPackagedRuntimeImported") is not True
             or report.get("actualPackagedRuntimeMounted") is not True
             or report.get("actualPackagedRuntimeDestroyed") is not True
+            or report.get("nativeEmptyRootRendered") is not True
+            or report.get("hostExtensionOwnershipPreserved") is not True
+            or report.get("failedMountTeardownVerified") is not True
             or report.get("syntheticIdentitySpaceIntelligenceOnly") is not True
             or report.get("inferenceExecuted") is not False
             or report.get("signedDistributionVerified") is not False

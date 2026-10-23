@@ -89,6 +89,24 @@ do CI**, não a âncora pública de produção. Esse resultado não valida
 trust canônico, WebKit Native, probation, receipt, promoção, rollback,
 publicação, instalação ou boot USB e não abre os gates de distribuição.
 
+## Montagem visual no sandbox Native
+
+O iframe isolado do OrdaX OS oferece apenas o elemento raiz do componente.
+O runtime da Aura **cria seu próprio slot de conversa** quando a raiz está
+vazia, usando a única constante `ASSISTANT_CONVERSATION_EXTENSION` dos
+controles do aplicativo. O OS não inclui marcação ou seletor específico
+da Aura. A mesma implementação aceita um slot já oferecido por outra
+composição: nesse caso apenas os controles internos são desmontados, sem
+remover o slot pertencente ao host.
+
+A prova do pacote real (`tools/prove_assistant_packaged_mount.py`) agora
+exige: UI efetivamente renderizada numa raiz vazia; um único slot; limpeza
+de CSS/DOM na desmontagem; preservação de slot de terceiros; e limpeza após
+falha de criação, sem executar inferência. Um recibo de `mount()` sem UI
+visível não é aceito como prova de prontidão do produto. Esse teste usa
+DOM sintético em Node, **não equivale a WebKit no USB**, assinatura ou
+Gate B liberado.
+
 ## Disponibilidade e instalação
 
 **Estado verificado em código:** a fonte está externalizada; o pacote
