@@ -78,6 +78,17 @@ verifica assinatura do envelope e não autoriza saúde, promoção, instalação
 publicação ou mudança em `migrations/assistant.externalization.json`.
 O workflow Foundation executa essa prova além da suíte do aplicativo.
 
+O workflow **Store Catalog Candidate** também prova o `mount()/destroy()`
+com o **mesmo ZIP** cujo release e compatibilidade acabaram de passar pelo
+verificador de envelope Ed25519 do OS. Ele chama
+`tools/prove_assistant_packaged_mount.py --verified-candidate-dir <diretório>`,
+que executa novamente o verificador canônico de pacote, confere
+`source_commit` e SHA-256 e usa o smoke test existente, sem gerar um segundo ZIP
+para essa prova. A assinatura nesse workflow usa **chave efêmera exclusiva
+do CI**, não a âncora pública de produção. Esse resultado não valida
+trust canônico, WebKit Native, probation, receipt, promoção, rollback,
+publicação, instalação ou boot USB e não abre os gates de distribuição.
+
 ## Disponibilidade e instalação
 
 **Estado verificado em código:** a fonte está externalizada; o pacote
