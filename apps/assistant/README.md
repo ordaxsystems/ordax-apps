@@ -44,6 +44,23 @@ OrdaX Intelligence, `ordax.local-ai/1`, Memory, seleção de modelos,
 permissões e ativação/rollback dos componentes pertencem ao OrdaX OS. Um
 aplicativo terceiro pode consumir a mesma porta autorizada sem abrir a Aura.
 
+## Gate de leitura assinada (não é ativação)
+
+O verificador Gate A/B em `tools/verify_assistant_gate_b.py` distingue a
+**fonte única** `apps/assistant` da leitura de seus módulos por um broker
+Native. O ID técnico continua `assistant`; o nome apresentado continua
+exclusivamente em `app.json#title`.
+
+O OS pode habilitar a leitura do **slot assinado e identificado exatamente**
+pelo Component Manager depois que o app deixou de ter fonte bundled. Essa
+permissão é somente leitura e exige helper assinado, trust, hash, versão,
+commit e revisão do slot; não permite importar código não assinado,
+instalar/promover a Aura, registrar saúde, abrir grants nem escrever Memory.
+
+Este gate **não** é prova de disponibilidade da Aura no primeiro boot. Ainda
+são necessários probation com o app real em ambiente isolado, recibos de
+saúde, promoção/rollback, confiança canônica e teste de pacote/boot offline.
+
 ## Disponibilidade e instalação
 
 **Estado verificado em código:** a fonte está externalizada; o pacote

@@ -173,8 +173,8 @@ class AssistantGateBTests(unittest.TestCase):
             self.assertFalse(report["platform_gate_a_main_proven"])
             self.assertFalse(report["canonical_source_policy_fail_closed"])
 
-            # Even after restoring the canonical package owner, enabling any
-            # Native install/read path must keep this source-only gate closed.
+            # Publication and activation are distinct from read-only
+            # verification; either one must keep source-only Gate A closed.
             current_policy["canonical_external_source_repository_by_component"] = {}
             current_policy["slot_activation_available"] = True
             policy.write_text(json.dumps(current_policy), encoding="utf-8")
@@ -196,6 +196,57 @@ class AssistantGateBTests(unittest.TestCase):
             report = gate.probe_platform_gate_a(root)
             self.assertFalse(report["platform_gate_a_main_proven"])
             self.assertFalse(report["canonical_source_policy_fail_closed"])
+
+            # A signed, immutable, exact-slot read is not an activation.
+            # No second source, install permission, probation or health write.
+            current_policy.update({
+                "native_loopback_broker_read_only": True,
+                "native_loopback_broker_requires_component_trust": True,
+                "native_loopback_broker_requires_signed_system_helper": True,
+                "runtime_file_read_revalidates_slot_and_hash": True,
+                "runtime_file_read_requires_exact_version_and_source_commit": True,
+                "runtime_file_read_rejects_state_identity_change": True,
+                "native_loopback_broker_health_mutation_components": [],
+                "runtime_health_bridge_supported_components": [],
+                "native_pending_decision_supported_components": [],
+                "pending_health_promotion_available": False,
+                "publish_allowed": False,
+            })
+            policy.write_text(json.dumps(current_policy), encoding="utf-8")
+            run_git(root, "add", "-A")
+            run_git(root, "commit", "-qm", "read-only signed Assistant slot")
+            run_git(root, "update-ref", "refs/remotes/origin/main",
+                    run_git(root, "rev-parse", "HEAD"))
+            report = gate.probe_platform_gate_a(root)
+            self.assertTrue(report["platform_gate_a_main_proven"])
+            self.assertTrue(report["canonical_source_policy_fail_closed"])
+
+            for invalid_change in (
+                {"native_loopback_broker_read_only": False},
+                {"native_loopback_broker_requires_component_trust": False},
+                {"runtime_file_read_revalidates_slot_and_hash": False},
+                {"native_loopback_broker_health_mutation_components": ["assistant"]},
+                {"runtime_health_bridge_supported_components": ["assistant"]},
+                {"native_pending_decision_supported_components": ["assistant"]},
+                {"pending_health_promotion_available": True},
+                {"publish_allowed": True},
+                {"slot_activation_available": True},
+            ):
+                with self.subTest(invalid_change=invalid_change):
+                    unsafe = {**current_policy, **invalid_change}
+                    policy.write_text(json.dumps(unsafe), encoding="utf-8")
+                    run_git(root, "add", "-A")
+                    run_git(root, "commit", "-qm", "forbidden Assistant escalation")
+                    run_git(root, "update-ref", "refs/remotes/origin/main",
+                            run_git(root, "rev-parse", "HEAD"))
+                    report = gate.probe_platform_gate_a(root)
+                    self.assertFalse(report["platform_gate_a_main_proven"])
+                    # Reset and commit clean state, preserving tracked-main proof.
+                    policy.write_text(json.dumps(current_policy), encoding="utf-8")
+                    run_git(root, "add", "-A")
+                    run_git(root, "commit", "-qm", "restore signed-read-only gate")
+                    run_git(root, "update-ref", "refs/remotes/origin/main",
+                            run_git(root, "rev-parse", "HEAD"))
 
     def test_security_rules_and_published_contract_floor_are_required(self):
         for key in ("copy_host_memory_service", "inline_private_contracts"):
