@@ -1,17 +1,29 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import nodeTest from "node:test";
 import { readFile } from "node:fs/promises";
 import {
   projectAssistantWorkStrip as projectAssistantWorkStripCore,
   ASSISTANT_WORK_STRIP_SCHEMA,
 } from "../src/ui/work-strip.mjs";
-import { createPersonalOrdaxRuntime, projectPersonalWorkCanvas, createAppActivationChannel, platformSourceUrl } from "../test-support/platform.mjs";
+import {
+  createPersonalOrdaxRuntime,
+  projectPersonalWorkCanvas,
+  createAppActivationChannel,
+  platformSourceUrl,
+  platformRuntimeAvailable,
+} from "../test-support/platform.mjs";
 import { PERSONAL_ORDAX_MAX_GOAL_CHARS } from "../src/sdk/contracts/personal-ordax.mjs";
 import {
   canRecordAssistantWork,
   beginAssistantRecordedWork,
   openAssistantWorkInActivity as openAssistantWorkInActivityCore,
 } from "../src/ui/conversation-controls.mjs";
+
+// The candidate-package job has no cross-repository checkout. This suite is
+// exercised with the real pinned OS sources by the dedicated integration job.
+const test = (name, fn) => nodeTest(name, {
+  skip: platformRuntimeAvailable ? false : "requires canonical OrdaX OS test checkout",
+}, fn);
 
 // Tests consume the real canonical Intelligence projection through the same explicit port.
 const projectAssistantWorkStrip = (snapshot, identity, selection) =>

@@ -16,7 +16,10 @@ The Work integration suite uses the real OS Personal OrdaX runtime, Work Canvas
 projection and activation channel through `../test-support/platform.mjs`.
 This dependency is test-only, outside the app's `src/` graph; it does not bundle
 OS services or create another runtime owner. Foundation CI supplies its existing
-observed canonical OS checkout at `.ordax-assistant-os-main`.
+observed canonical OS checkout at `.ordax-assistant-os-main`. The standalone
+candidate-package job has no cross-repository checkout, so this integration
+suite reports skipped tests there; the dedicated Foundation integration job
+supplies the OS checkout and runs all cases against the actual platform modules.
 
 The two old source assertions that required the OS to mount an embedded Assistant
 now require its absence while checking the portable app consumes supplied ports.
