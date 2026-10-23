@@ -1,0 +1,105 @@
+{
+  "schema": "ordax.component-compatibility/1",
+  "componentId": "internet",
+  "componentVersion": "0.3.0",
+  "provides": [
+    {
+      "id": "ordax.component-runtime",
+      "major": 1
+    }
+  ],
+  "requires": [
+    {
+      "id": "ordax.localization",
+      "minMajor": 2,
+      "maxMajor": 2,
+      "optional": false
+    },
+    {
+      "id": "ordax.surface-render-lifecycle",
+      "minMajor": 5,
+      "maxMajor": 5,
+      "optional": false
+    },
+    {
+      "id": "ordax.browser-session",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": false
+    },
+    {
+      "id": "ordax.browser-favorites-store",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.browser-history-store",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.browser-search-preferences-store",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.browser-page-selection-port",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.browser-page-find-port",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.browser-download-port",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.intelligence",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.identity-session",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.space-selection",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.profile-activation-state-port",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.project-catalog",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    },
+    {
+      "id": "ordax.project-web-references",
+      "minMajor": 1,
+      "maxMajor": 1,
+      "optional": true
+    }
+  ],
+  "state": null,
+  "authority": "none"
+}
