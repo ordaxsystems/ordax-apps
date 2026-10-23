@@ -1,6 +1,6 @@
 # Plano de execução — OrdaX Orchestrator Project-First
 
-**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Revisão de estado: 2026-10-23; bases consultadas: Apps `cd3b4c6`, Runtime `9154cb9`, Platform `3ae5d91`, OS `0b32f8f`.
+**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Revisão pós-merge em 2026-10-23; bases consultadas: Apps `17c43d4`, Runtime `9154cb9`, Platform `3ae5d91`, OS `8bdea25`.
 
 ## Regras do programa
 
@@ -9,7 +9,7 @@
 3. O aplicativo não acessa arquivos/terminal/Git por bypass de grants: o owner da capacidade é Runtime. Não criar outro daemon local, SQLite de projetos ou execução por DOM do ChatGPT.
 4. Mudanças devem ser pequenas, revisáveis, com rollback seguro; cada gate exige testes positivos e negativos.
 5. Continuar projetos sem depender do chat é objetivo prioritário; ainda exige owner Runtime/headless e políticas.
-6. **Iniciar pelo M0 e pela fatia remota R0 definida abaixo.** A prioridade vigente é projeto → referência GitHub remota → conversa de coordenação existente → tarefa pelo executor GPT existente. M1 local só começa quando Runtime/Platform fornecerem grant e port autenticados. Não antecipar M3–M7 nem declarar autonomia antes dos respectivos gates.
+6. **M0 está reconciliado; R0 remoto é o próximo gate.** A entrada única de missão já está integrada à `main`; a prioridade restante é projeto → referência GitHub remota → conversa pelo executor GPT existente, com evidência de leitura autorizada. M1 local só começa quando Runtime/Platform fornecerem grant e port autenticados. Não antecipar M3–M7 nem declarar autonomia antes dos respectivos gates.
 
 ## Ordem vigente — R0 remoto antes do workspace local
 
@@ -18,14 +18,14 @@ Esta ordem incorpora a prioridade definida pelo proprietário em 2026-10-22 e ev
 ### R0 — referência remota e tarefa GPT existente
 
 - O projeto pode guardar uma URL canônica `https://github.com/{owner}/{repo}`. Ela é referência, não prova de que o conteúdo foi lido.
-- O coordenador Groq recebe apenas a URL e o contexto de missão permitido; não pode alegar que leu o repositório.
+- Quando o usuário invoca análise Groq, o coordenador recebe apenas a URL e o contexto de missão permitido; não pode alegar que leu o repositório. Groq ainda não é um supervisor que detecta parada do GPT nem um fallback automático.
 - A tarefa de trabalho encaminha a URL ao executor ChatGPT existente. A tarefa deve usar a integração GitHub que esteja realmente autorizada naquela sessão e parar se ela estiver ausente ou sem permissão.
 - Só registrar leitura, mudança, commit ou teste com evidência da ferramenta correspondente. Resposta textual não substitui diff, commit ou status de CI.
 - Não criar token store/OAuth no App para “resolver” a leitura remota; autenticação de produto pertence ao Platform. Não clonar ou abrir pastas locais como fallback.
 
-**Estado no Apps `main` consultado em 2026-10-23:** normalização da URL, armazenamento de referência e inclusão de instruções de destino na tarefa GPT existem em `remote-repository-context.mjs` e `orchestrator-service.mjs`, com testes unitários. Isso não comprova leitura/edição real pelo GPT, conexão GitHub autenticada do App, nem trabalho contínuo após fechar a janela. O próximo aceite R0 é uma execução real autorizada que produza evidência remota verificável.
+**Estado no Apps `main` `17c43d4` consultado em 2026-10-23:** normalização da URL, armazenamento de referência e inclusão de instruções de destino na tarefa GPT existem em `remote-repository-context.mjs` e `orchestrator-service.mjs`, com testes unitários. A entrada única `mission_create` e o início condicional pelo executor GPT existente também foram integrados na PR #335. O teste empacotado confirma persistência do rascunho em perfil sem sessão e bloqueio de envio; não comprova resposta real do GPT, leitura/edição GitHub pela conta, nem trabalho contínuo após fechar a janela. O próximo aceite R0 é uma execução real autorizada que produza evidência remota verificável.
 
-**Incremento em implementação após essa revisão:** `mission_create` cria projeto, coordenador e primeira conversa com rascunho em uma transação idempotente do Store existente; a UI encaminha a missão pelo executor GPT existente somente quando a sessão está pronta e conserva o rascunho quando está desconectada. `project_rename` altera metadados do projeto com escopo da sessão. Isso simplifica o início de uma tarefa, mas não lê o repositório, não cria arquivo, não valida site, não chama Groq e não continua após fechar o App. A mudança está em revisão e só passa a integrar `main` após CI e merge; os testes direcionados não equivalem ao E2E VESTE.
+**Incremento #335 integrado à `main`:** `mission_create` cria projeto, coordenador e primeira conversa com rascunho em uma transação idempotente do Store existente; a UI encaminha a missão pelo executor GPT existente somente quando a sessão está pronta e conserva o rascunho quando está desconectada. `project_rename` altera metadados do projeto sob escopo da sessão. O CI executou a alpha.14 empacotada no Windows em perfil descartável; App e Runtime compartilharam projeto e três frentes, com assinatura/replay verificados e escrita negada pelo cenário read-only. Nenhuma mensagem foi enviada ao provedor. Isso simplifica o início, mas não comprova resposta real do GPT, leitura do repositório, criação de arquivos, validação do site ou continuidade após fechar o App; VESTE continua sem E2E aprovado.
 
 ## Composição de autonomia contínua — alvo posterior, sem serviço paralelo
 
@@ -189,4 +189,4 @@ Em cada milestone: documentar source commit, contratos públicos (major/version)
 
 ## Ordem imediata para o Codex
 
-**Sequência de código vigente:** fechar a entrada única de missão pelo executor existente e a revisão remota R0 com evidência GitHub real; depois implementar M1 read-only somente quando grant e port autenticados dos owners estiverem ativos. Se faltar contrato público, abrir/atualizar PR no owner Runtime/Platform; o Lab não implementa filesystem direto como substituto. M2 vem após snapshot live e casos negativos de escopo. Não avançar para supervisor M3/M4 enquanto os gates anteriores não passarem.
+**Sequência de código vigente:** a entrada única de missão pelo executor existente está concluída na Apps `main`; fechar R0 com evidência real de leitura remota GitHub autorizada. Depois implementar M1 read-only somente quando grant e port autenticados dos owners estiverem ativos. No snapshot consultado, Runtime PR #208 está aberta para emissão staged de workspace, Runtime PR #205 continua draft de lifecycle, Platform PR #274 continua draft de grants e Platform PRs #181/#182 propõem continuidade MCP para repositório e ChatGPT. Nenhuma delas equivale a grant de produção ligado ao App. Se faltar contrato público integrado, atualizar o owner correto; o Lab não implementa filesystem direto como substituto. M2 vem após snapshot live e casos negativos de escopo. Não avançar para supervisor M3/M4 enquanto os gates anteriores não passarem.
