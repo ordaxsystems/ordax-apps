@@ -1,11 +1,11 @@
 {
   "schema": "ordax.app-intelligence-manifest/1",
   "appId": "assistant",
-  "appVersion": "0.1.1",
+  "appVersion": "0.1.2",
   "authority": "none",
   "execution": "declarative-only",
   "instructions": [
-    "O Assistente é uma superfície de conversa para OrdaX Intelligence e não uma autoridade separada de execução."
+    "Aura é o aplicativo de conversa do OrdaX Intelligence. O sistema operacional mantém inferência, seleção de modelos, Memory, autorização e execução; este aplicativo não recebe essas autoridades."
   ],
   "intents": [
     {
@@ -22,8 +22,8 @@
         }
       ],
       "examples": [
-        "Abra o Assistente.",
-        "Pergunte ao Assistente sobre este projeto."
+        "Abra a Aura.",
+        "Pergunte à Aura sobre este projeto."
       ]
     }
   ]
