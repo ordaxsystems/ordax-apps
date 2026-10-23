@@ -157,16 +157,19 @@ test('a new mission is persisted once, starts through the existing GPT executor,
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const contract=fs.readFileSync(path.join(root,'src','orchestrator-contract.mjs'),'utf8');
+  const packagedSmoke=fs.readFileSync(path.join(root,'scripts','live-ui-orchestration-smoke.cjs'),'utf8');
   assert.match(html,/id="newProjectForm"/);
   assert.match(html,/id="renameProjectForm"/);
   assert.match(html,/aria-label="Nome da conversa"/);
   assert.match(orchestration,/command\('mission_create',input\)/);
-  assert.match(orchestration,/canStartMission\(\)!==true/);
+  assert.match(orchestration,/canStartMission\(\)===true/);
   assert.match(orchestration,/onStartMission\(\{taskId:receipt\.result\.taskId,mission\}\)/);
   assert.match(ui,/return submitTaskMessage\(mission\)/);
   assert.match(ui,/window\.ordax\.send\(\{ taskId, content, draftRevision \}\)/);
   assert.match(contract,/\['mission_create'/);
   assert.match(contract,/\['project_rename'/);
+  assert.match(packagedSmoke,/missionDraftPreserved/);
+  assert.match(packagedSmoke,/mission_draft_not_persisted/);
 });
 
 test('drafts are scoped to a Task, revision-guarded and saved without entering provider memory', () => {

@@ -44,7 +44,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
     await evaluate(`(()=>{
       document.getElementById('projectSetup').open=true;
       document.getElementById('projectName').value='Projeto E2E isolado';
-      document.getElementById('projectObjective').value='Validar integração sem envios';
+      document.getElementById('projectObjective').value='Criar missão isolada sem enviar ao provedor';
       document.getElementById('newProjectForm').requestSubmit();
     })()`);
     const wait=expression=>evaluate(`(async()=>{for(let n=0;n<80;n++){
@@ -53,6 +53,20 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
     const projectId=await wait("document.getElementById('projectSelect').value");
     const projectNavigation=await evaluate(`(()=>{const row=[...document.querySelectorAll('#projectNavList button')].find(b=>b.dataset.projectId==='${projectId}');return row?.getAttribute('aria-pressed')==='true'&&row?.textContent==='Projeto E2E isolado'})()`);
     if(!projectNavigation)throw Error('project_navigation_not_selected');
+    await wait("document.getElementById('orchestrationNotice')?.textContent?.includes('salva como rascunho')");
+    const missionDraft=await evaluate(`(async()=>{
+      const projectId=document.getElementById('projectSelect').value;
+      const coordinators=(await window.ordax.orchestratorInvoke('orchestrators_list',{projectId})).orchestrators;
+      const works=(await window.ordax.orchestratorInvoke('work_list',{projectId})).works;
+      const first=works.find(work=>work.title==='Primeira frente');
+      const task=first?await window.ordax.getTask(first.id):null;
+      return {coordinatorCount:coordinators.length,workCount:works.length,
+        mission:coordinators[0]?.mission,draft:task?.draft,draftRevision:task?.draft_revision};
+    })()`);
+    if(missionDraft.coordinatorCount!==1||missionDraft.workCount!==1||
+      missionDraft.mission!=='Criar missão isolada sem enviar ao provedor'||
+      missionDraft.draft!==missionDraft.mission||missionDraft.draftRevision!==1)
+      throw Error('mission_draft_not_persisted');
     await wait("document.getElementById('workspaceConnection')?.textContent?.includes('ainda indisponível')");
     const workspace=await evaluate(`(async()=>{const projectId=document.getElementById('projectSelect').value;
       const state=await window.ordax.orchestratorInvoke('workspace_status',{projectId});
@@ -96,15 +110,18 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       const works=await api.orchestratorInvoke('work_list',{projectId:p});
       const orchs=await api.orchestratorInvoke('orchestrators_list',{projectId:p});
       const messages=await api.orchestratorInvoke('work_messages',{projectId:p,taskId:orchs.orchestrators[0].chat_task_id});
+      const missionWork=works.works.find(work=>work.title==='Primeira frente');
+      const missionTask=missionWork?await api.getTask(missionWork.id):null;
       return {projectId:p,toolCount:catalog.result.tools.length,
         continuationAvailable:catalog.result.tools.some(t=>t.name==='orchestrator_continuity_status'&&t.annotations?.readOnlyHint===true)&&
           catalog.result.tools.some(t=>t.name==='orchestrator_continuity_proposals_set'&&t.annotations?.readOnlyHint===false),
         commandSucceeded:first.result.structuredContent.status==='succeeded',
         idempotent:JSON.stringify(first.result)===JSON.stringify(repeated.result),
-        workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length};
+        workCount:works.works.length,workId:works.works[0]?.id,coordinatorMessages:messages.messages.length,
+        missionDraftPreserved:missionTask?.draft==='Criar missão isolada sem enviar ao provedor'&&missionTask?.draft_revision===1};
     })()`);
     if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.length||!summary.continuationAvailable||!summary.commandSucceeded||
-      !summary.idempotent||summary.workCount!==1||summary.coordinatorMessages!==0)
+      !summary.idempotent||summary.workCount!==2||!summary.missionDraftPreserved||summary.coordinatorMessages!==0)
       throw Error('native_mcp_state_mismatch');
     await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
     await evaluate(`document.querySelector('#tasks .task').click()`);
@@ -120,12 +137,13 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
       orchestratorItems:document.querySelectorAll('#orchestratorNavList button').length,
       conversationCards:document.querySelectorAll('#orchestratorWorks .work-card').length,
       analysisDisabled:document.getElementById('analyzeWorks').disabled}))()`);
-    if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==2||
+    if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==3||
       layoutResult.analysisDisabled!==true)
       throw Error('work_conversation_layout_failed');
     console.log(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
       appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
-      projectFormVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
+      projectFormVerified:true,missionDraftPersisted:true,missionStartBlockedWithoutSession:true,
+      coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
       projectWorkspaceFailClosedVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,

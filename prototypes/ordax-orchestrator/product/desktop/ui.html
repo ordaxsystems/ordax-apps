@@ -27,8 +27,8 @@
             <label for="projectName">Nome do projeto (opcional)</label><input id="projectName" maxlength="140" placeholder="Derivado da missão se ficar vazio" />
             <label for="projectObjective">O que você quer fazer?</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Ex.: Crie uma loja de roupas chamada VESTE, com catálogo e carrinho." required></textarea>
             <label for="projectRepositoryUrl">Repositório GitHub remoto (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
-            <small>Cria projeto, orquestrador e primeira conversa em uma operação. A missão será enviada à sessão ativa do ChatGPT.</small>
-            <button type="submit">Criar e iniciar missão</button>
+            <small>Cria projeto, orquestrador e primeira conversa em uma operação. Se o ChatGPT estiver conectado, inicia a missão; caso contrário, salva como rascunho.</small>
+            <button type="submit">Criar missão</button>
           </form>
         </details>
         <details id="projectRenameSetup" class="nav-setup">

@@ -1,7 +1,7 @@
 ## 0.2.0-alpha.14 — entrada única de missão (2026-10-23)
 
 - Uma missão cria, em uma transação idempotente, o projeto, o coordenador e a primeira conversa com rascunho no Store existente.
-- A UI inicia a primeira conversa pelo executor ChatGPT existente após confirmar a sessão; envio incerto permanece sem replay e exige reconciliação.
+- A UI inicia a primeira conversa pelo executor ChatGPT existente após confirmar a sessão; sem sessão, conserva o rascunho. Envio incerto permanece sem replay e exige reconciliação.
 - Adiciona renomeação de projeto com escopo de sessão e distingue esse nome do título de conversa.
 - Continua sendo um fluxo interativo: não lê/escreve GitHub, não cria/valida arquivos e não trabalha após fechar a janela. Distribuição permanece desativada.
 

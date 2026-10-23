@@ -269,10 +269,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   $('newProjectForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
-      if(typeof canStartMission==='function'&&canStartMission()!==true) {
-        status('Conecte uma sessão válida do ChatGPT antes de iniciar a missão. Nenhum projeto foi criado.');
-        return;
-      }
       const mission=$('projectObjective').value.trim();
       const name=$('projectName').value.trim();
       const repositoryUrl=$('projectRepositoryUrl').value.trim();
@@ -282,14 +278,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       projectId=receipt.result.projectId;orchestratorId=receipt.result.orchestratorId;
       $('newProjectForm').reset();$('projectSetup').open=false;
       await refreshProjects();await refreshOrchestrators();
-      if(typeof onStartMission==='function') {
+      const readyToStart=typeof onStartMission==='function'&&
+        (typeof canStartMission!=='function'||canStartMission()===true);
+      if(readyToStart) {
         let sent=false;
         try {sent=await onStartMission({taskId:receipt.result.taskId,mission});} catch {}
         status(sent===true
           ?'Missão enviada à sessão ativa do ChatGPT. Acompanhe a execução e os resultados nesta conversa.'
           :'Projeto criado e missão preservada como rascunho. O envio não foi confirmado; verifique a conversa antes de repetir.');
       } else {
-        status('Projeto criado com a missão salva. O executor GPT não está disponível.');
+        status(typeof onStartMission==='function'
+          ?'Projeto criado e missão salva como rascunho. Conecte uma sessão válida do ChatGPT para iniciar o trabalho.'
+          :'Projeto criado com a missão salva. O executor GPT não está disponível.');
       }
     });
   });
