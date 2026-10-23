@@ -59,7 +59,7 @@
   "source_snapshot": {
     "state": "captured",
     "repository": "ordaxsystems/ordax-os",
-    "commit": "ee2a50db334e7abb798918d99d772ebfd02f8cef",
+    "commit": "fe8d233681801386ed8fb9fbfb47fe091d8d2e42",
     "inventory_file": "migrations/files.source-snapshot.json"
   },
   "gate_a_platform_commit": null,
