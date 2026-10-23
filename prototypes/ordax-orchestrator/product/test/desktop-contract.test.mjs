@@ -153,6 +153,30 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(css,/\.work-card:hover/);
 });
 
+test('a new mission is persisted once, starts through the existing GPT executor, and labels project and conversation actions separately',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const contract=fs.readFileSync(path.join(root,'src','orchestrator-contract.mjs'),'utf8');
+  const packagedSmoke=fs.readFileSync(path.join(root,'scripts','live-ui-orchestration-smoke.cjs'),'utf8');
+  const hostFixture=fs.readFileSync(path.join(root,'scripts','orchestrator-host-e2e-client.cjs'),'utf8');
+  assert.match(html,/id="newProjectForm"/);
+  assert.match(html,/id="renameProjectForm"/);
+  assert.match(html,/aria-label="Nome da conversa"/);
+  assert.match(orchestration,/command\('mission_create',input\)/);
+  assert.match(orchestration,/canStartMission\(\)===true/);
+  assert.match(orchestration,/onStartMission\(\{taskId:receipt\.result\.taskId,mission\}\)/);
+  assert.match(ui,/return submitTaskMessage\(mission\)/);
+  assert.match(ui,/window\.ordax\.send\(\{ taskId, content, draftRevision \}\)/);
+  assert.match(contract,/\['mission_create'/);
+  assert.match(contract,/\['project_rename'/);
+  assert.match(packagedSmoke,/missionDraftPreserved/);
+  assert.match(packagedSmoke,/mission_draft_not_persisted/);
+  assert.match(packagedSmoke,/conversationCards!==2/);
+  assert.match(packagedSmoke,/phase,reason:'app_orchestration_scenario_failed'/);
+  assert.match(hostFixture,/workRows\.length!==3/);
+  assert.match(hostFixture,/work\.title==='Primeira frente'/);
+});
+
 test('drafts are scoped to a Task, revision-guarded and saved without entering provider memory', () => {
   const store = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'desktop', 'ui.html'), 'utf8');

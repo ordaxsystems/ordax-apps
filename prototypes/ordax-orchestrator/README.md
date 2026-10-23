@@ -7,7 +7,7 @@
 
 **Direção oficial aprovada:** o objeto central é um projeto com missão, pasta/repositório local autorizado, plano, diffs, testes e evidências. ChatGPT e outros modelos são inteligências/executores opcionais. O App e o plugin OrdaX MCP devem consumir o mesmo Runtime e grants canônicos; não criar segunda camada de arquivos/Git/terminal dentro do Lab.
 
-**Estado do source:** alpha.12 limita as respostas do coordenador a estado de workspace observado e allowlisted; ele não deve afirmar branch, arquivos, defeitos ou testes sem evidência recebida. **O port Runtime ainda não está conectado**, logo nenhuma pasta real é lida; monitor de arquivos, execução local por missão e supervisor headless continuam pendentes. Não declarar autonomia por estar documentada. Conferir [versionamento atual](product-version.json) e CI antes de executar. Flow/Grátis 0.4.12 e sessão instalada permanecem isolados.
+**Estado do source:** alpha.14 inicia uma missão pela criação transacional de projeto, coordenador e conversa inicial. Com sessão ChatGPT pronta, a UI usa o executor existente; sem sessão, deixa a missão em rascunho. Workspace permanece `capability_unavailable` sem o port Runtime real; GitHub remoto continua sendo apenas uma URL de referência até haver evidência da integração autorizada. Leitura/escrita de arquivos, site validado e supervisor headless 24h ainda não existem. Distribuição segue desativada; Flow/Grátis 0.4.12 e a sessão instalada permanecem isolados.
 
 As seções históricas abaixo documentam incrementos anteriores; **não superam** a decisão Project-First nem a fonte canônica de versionamento.
 

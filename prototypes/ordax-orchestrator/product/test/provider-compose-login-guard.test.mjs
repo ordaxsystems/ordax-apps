@@ -71,7 +71,7 @@ test('App has visible login warning, optional local draft, and disabled send ini
 
 // Exercise actual production submit callback against a minimal isolated UI.
 // This is NOT a ChatGPT login simulation, account confirmation or provider E2E.
-const first="$('#composer').addEventListener('submit', async event => {";
+const first='async function submitTaskMessage(contentOverride = null) {';
 const last="$('#prompt').addEventListener('input', event => {";
 const i=ui.indexOf(first),j=ui.indexOf(last,i);
 assert.ok(i>=0 && j>i,'submit_handler_not_found');

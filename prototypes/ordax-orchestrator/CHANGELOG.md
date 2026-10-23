@@ -1,3 +1,15 @@
+## 0.2.0-alpha.14 — entrada única de missão (2026-10-23)
+
+- Uma missão cria, em uma transação idempotente, o projeto, o coordenador e a primeira conversa com rascunho no Store existente.
+- A UI inicia a primeira conversa pelo executor ChatGPT existente após confirmar a sessão; sem sessão, conserva o rascunho. Envio incerto permanece sem replay e exige reconciliação.
+- Adiciona renomeação de projeto com escopo de sessão e distingue esse nome do título de conversa.
+- Continua sendo um fluxo interativo: não lê/escreve GitHub, não cria/valida arquivos e não trabalha após fechar a janela. Distribuição permanece desativada.
+
+## 0.2.0-alpha.13 — referência remota GitHub por projeto
+
+- Armazena e encaminha uma URL GitHub canônica à tarefa GPT como destino pretendido.
+- A URL não prova leitura ou escrita remota; faltam E2E com a integração GitHub autorizada e execução com recibos.
+
 ## 0.2.0-alpha.12 — respostas limitadas a evidências observadas
 
 - O coordenador recebe somente o estado de workspace limitado e allowlisted disponível pelo port.

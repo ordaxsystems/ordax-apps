@@ -801,17 +801,20 @@ $('#directMode').addEventListener('click', async () => {
   }
 });
 
-$('#composer').addEventListener('submit', async event => {
-  event.preventDefault();
-  if (!currentTaskId) return;
+async function submitTaskMessage(contentOverride = null) {
+  if (!currentTaskId) return false;
   const input = $('#prompt');
+  if (typeof contentOverride === 'string') {
+    input.value = contentOverride;
+    input.dispatchEvent(new Event('input', { bubbles:true }));
+  }
   const content = input.value.trim();
-  if (!content || submittingTaskId) return;
+  if (!content || submittingTaskId) return false;
   // Enter/requestSubmit cannot bypass the disabled submit button.
   if (!composeAvailability.allowed) {
     syncComposerAvailability();
     stageDraft();
-    return;
+    return false;
   }
   const taskId = currentTaskId;
   flushDraft();
@@ -822,6 +825,7 @@ $('#composer').addEventListener('submit', async event => {
   $('#runStatus').textContent = currentTask?.chat_url ? 'Enviando…' : currentTask?.continuation?.total_messages ? 'Abrindo nova conversa com memória…' : 'Enviando…';
   $('#runStatus').classList.remove('hidden');
   $('#send').disabled = true;
+  let sent = false;
   try {
     const { task } = await window.ordax.send({ taskId, content, draftRevision });
     draftCache.set(taskId, { content:'', revision:draftRevision });
@@ -837,6 +841,7 @@ $('#composer').addEventListener('submit', async event => {
       $('#taskCheckpoint').textContent = `Memória local v${version} • ${plural(task.continuation?.total_messages || task.messages.length, 'mensagem', 'mensagens')}`;
     }
     await loadTasks();
+    sent = true;
   } catch (error) {
     const message = friendlyError(error);
     if (currentTaskId === taskId) {
@@ -854,6 +859,12 @@ $('#composer').addEventListener('submit', async event => {
     if (currentTaskId === taskId) input.focus();
     refreshProvider();
   }
+  return sent;
+}
+
+$('#composer').addEventListener('submit', event => {
+  event.preventDefault();
+  return submitTaskMessage();
 });
 
 $('#prompt').addEventListener('input', event => {
@@ -889,6 +900,12 @@ await setDirectModeVisible(false);
 syncComposerAvailability(); // no send until session observed
 workspace = await window.ordax.workspace();
 orchestrationUi=mountOrchestratorUi({api:window.ordax,
+  canStartMission:()=>composeAvailability.allowed===true&&!submittingTaskId,
+  onStartMission:async({taskId,mission})=>{
+    await loadTasks();await openTask(taskId);
+    if(currentTaskId!==taskId)return false;
+    return submitTaskMessage(mission);
+  },
   onScopeChange:ids=>{
     scopedTaskIds=ids;renderTaskList();
     void loadTasks().catch(()=>{});

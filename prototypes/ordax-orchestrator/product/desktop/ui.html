@@ -18,16 +18,24 @@
       </header>
 
       <section class="orchestration-navigation" aria-label="Projetos e orquestradores">
-        <div class="nav-section-heading"><span>Projetos</span><button id="addProject" class="nav-add" type="button" aria-label="Novo projeto">+</button></div>
+        <div class="nav-section-heading"><span>Projetos</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="addProject" class="nav-add" type="button" aria-label="Nova missão">+</button></div></div>
         <div id="projectNavList" class="nav-item-list" aria-label="Lista de projetos"></div>
         <select id="projectSelect" class="native-state-control" aria-label="Projeto"><option value="">Conversas sem projeto</option></select>
         <details id="projectSetup" class="nav-setup">
-          <summary>Novo projeto</summary>
+          <summary>Nova missão</summary>
           <form id="newProjectForm">
-            <label for="projectName">Nome</label><input id="projectName" maxlength="140" required />
-            <label for="projectObjective">Objetivo</label><textarea id="projectObjective" maxlength="4000" rows="2"></textarea>
+            <label for="projectName">Nome do projeto (opcional)</label><input id="projectName" maxlength="140" placeholder="Derivado da missão se ficar vazio" />
+            <label for="projectObjective">O que você quer fazer?</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Ex.: Crie uma loja de roupas chamada VESTE, com catálogo e carrinho." required></textarea>
             <label for="projectRepositoryUrl">Repositório GitHub remoto (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
-            <button type="submit">Criar projeto</button>
+            <small>Cria projeto, orquestrador e primeira conversa em uma operação. Se o ChatGPT estiver conectado, inicia a missão; caso contrário, salva como rascunho.</small>
+            <button type="submit">Criar missão</button>
+          </form>
+        </details>
+        <details id="projectRenameSetup" class="nav-setup">
+          <summary>Renomear projeto</summary>
+          <form id="renameProjectForm">
+            <label for="renameProjectInput">Nome do projeto</label><input id="renameProjectInput" maxlength="140" required />
+            <button type="submit">Salvar nome</button>
           </form>
         </details>
         <div class="nav-section-heading orchestrator-heading"><span>Orquestradores</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo orquestrador">+</button></div>
@@ -135,10 +143,10 @@
             <div>
               <div class="task-title-line">
                 <h2 id="taskTitle"></h2>
-                <button id="renameTask" class="rename-task" type="button" title="Renomear projeto" aria-label="Renomear projeto">✎</button>
+                <button id="renameTask" class="rename-task" type="button" title="Renomear conversa" aria-label="Renomear conversa">✎</button>
               </div>
               <form id="renameTaskForm" class="task-rename-form hidden">
-                <input id="renameTaskInput" type="text" maxlength="140" required aria-label="Nome do projeto" />
+                <input id="renameTaskInput" type="text" maxlength="140" required aria-label="Nome da conversa" />
                 <button type="submit">Salvar</button>
                 <button id="cancelTaskRename" type="button">Cancelar</button>
               </form>

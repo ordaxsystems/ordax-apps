@@ -25,6 +25,8 @@ Esta ordem incorpora a prioridade definida pelo proprietário em 2026-10-22 e ev
 
 **Estado no Apps `main` consultado em 2026-10-23:** normalização da URL, armazenamento de referência e inclusão de instruções de destino na tarefa GPT existem em `remote-repository-context.mjs` e `orchestrator-service.mjs`, com testes unitários. Isso não comprova leitura/edição real pelo GPT, conexão GitHub autenticada do App, nem trabalho contínuo após fechar a janela. O próximo aceite R0 é uma execução real autorizada que produza evidência remota verificável.
 
+**Incremento em implementação após essa revisão:** `mission_create` cria projeto, coordenador e primeira conversa com rascunho em uma transação idempotente do Store existente; a UI encaminha a missão pelo executor GPT existente somente quando a sessão está pronta e conserva o rascunho quando está desconectada. `project_rename` altera metadados do projeto com escopo da sessão. Isso simplifica o início de uma tarefa, mas não lê o repositório, não cria arquivo, não valida site, não chama Groq e não continua após fechar o App. A mudança está em revisão e só passa a integrar `main` após CI e merge; os testes direcionados não equivalem ao E2E VESTE.
+
 ## Composição de autonomia contínua — alvo posterior, sem serviço paralelo
 
 “24 horas” significa poder retomar etapas limitadas sem a janela do App aberta, quando o host/serviço, a rede, a credencial autorizada e o orçamento estiverem disponíveis. Não significa chamar um modelo continuamente quando não há trabalho.
@@ -187,4 +189,4 @@ Em cada milestone: documentar source commit, contratos públicos (major/version)
 
 ## Ordem imediata para o Codex
 
-**Primeiro PR pequeno de código:** M0/M1, read-only, sem ativações automáticas; acrescentar `workspace_binding` e painel de estado apenas **depois** de validar a capability e seu grant. Se faltar port público, fazer RFC/PR no Runtime/Platform; o Lab não implementa filesystem direto como paliativo. Tests de escopo negativo antes de qualquer mutação. Depois M2. Não avançar para M3/M4 enquanto M1/M2 não comprovarem recursos locais.
+**Sequência de código vigente:** fechar a entrada única de missão pelo executor existente e a revisão remota R0 com evidência GitHub real; depois implementar M1 read-only somente quando grant e port autenticados dos owners estiverem ativos. Se faltar contrato público, abrir/atualizar PR no owner Runtime/Platform; o Lab não implementa filesystem direto como substituto. M2 vem após snapshot live e casos negativos de escopo. Não avançar para supervisor M3/M4 enquanto os gates anteriores não passarem.
