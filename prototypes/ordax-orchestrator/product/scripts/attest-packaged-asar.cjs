@@ -101,4 +101,3 @@ exports.default=async function afterPack(context){
     sourceCommit:proof.sourceCommit,contentDigest:proof.contentDigest,
     fileCount:proof.fileCount,asarSha256:proof.asarSha256}));
 };
-
