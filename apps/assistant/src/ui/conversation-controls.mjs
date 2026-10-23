@@ -180,7 +180,11 @@ export function mountAssistantConversationControls(
     // No model-generated progress, HTML, actions or data sources are promoted.
     const view = projectAssistantResultCanvas(snapshot);
     const priorInput = slot.querySelector("[data-assistant-input]");
-    const focusWasInDraft = documentObject.activeElement === priorInput;
+    // On an unmounted first render, both activeElement and the draft are
+    // legitimately null (notably in opaque-origin Native WebKit frames).
+    // Null must never be treated as an already-focused textarea.
+    const focusWasInDraft = priorInput !== null
+      && documentObject.activeElement === priorInput;
     const cursor = focusWasInDraft ? [priorInput.selectionStart, priorInput.selectionEnd] : null;
     const expandedWork = new Set([...slot.querySelectorAll("details[data-assistant-work-details][open]")]
       .map((element) => element.dataset.assistantWorkDetails));
