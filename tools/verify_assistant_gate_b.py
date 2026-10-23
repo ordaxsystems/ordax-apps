@@ -116,14 +116,40 @@ def probe_platform_gate_a(main_checkout: Path) -> dict:
     package_owners = policy.get("canonical_package_source_repository_by_component")
     external_owners = policy.get("canonical_external_source_repository_by_component")
     native_broker_components = policy.get("native_loopback_broker_supported_components")
+    # Gate A is proof of a SINGLE source owner, not a permanent prohibition
+    # against reading the eventual signed component. Module read is safe only
+    # after the package's exact slot is reverified by the OS-owned broker.
+    # It does not authorize mount, health mutation, installation or promotion.
+    broker_read_only = (
+        isinstance(native_broker_components, list)
+        and (len(native_broker_components) == len(set(native_broker_components)))
+        and (
+            "assistant" not in native_broker_components
+            or (
+                policy.get("native_loopback_broker_read_only") is True
+                and policy.get("native_loopback_broker_requires_component_trust") is True
+                and policy.get("native_loopback_broker_requires_signed_system_helper") is True
+                and policy.get("runtime_file_read_revalidates_slot_and_hash") is True
+                and policy.get("runtime_file_read_requires_exact_version_and_source_commit") is True
+                and policy.get("runtime_file_read_rejects_state_identity_change") is True
+                and "assistant" not in policy.get(
+                    "native_loopback_broker_health_mutation_components", [])
+                and "assistant" not in policy.get(
+                    "runtime_health_bridge_supported_components", [])
+                and "assistant" not in policy.get(
+                    "native_pending_decision_supported_components", [])
+            )
+        )
+    )
     policy_correct = (
         isinstance(package_owners, dict)
         and package_owners.get("assistant") == "ordaxsystems/ordax-apps"
         and isinstance(external_owners, dict)
         and "assistant" not in external_owners
-        and isinstance(native_broker_components, list)
-        and "assistant" not in native_broker_components
+        and broker_read_only
         and policy.get("slot_activation_available") is False
+        and policy.get("pending_health_promotion_available", False) is False
+        and policy.get("publish_allowed", False) is False
     )
     return {
         "observed_main_commit": commit,
