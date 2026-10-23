@@ -385,7 +385,6 @@ class FilesCutoverTests(unittest.TestCase):
             self.assertFalse(private["sdk_boundary_clean"])
 
     def test_published_sdk_contract_git_blobs_are_verified_when_sdk_root_is_supplied(self):
-        import hashlib
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             app = root / "system/apps/files/app.mjs"
@@ -394,10 +393,12 @@ class FilesCutoverTests(unittest.TestCase):
             contract = root / "system/contracts/recent-files.mjs"
             contract.parent.mkdir(parents=True, exist_ok=True)
             contract.write_text("export const recent = true;\n", encoding="utf-8")
-            payload = contract.read_bytes()
-            valid_blob = hashlib.sha1(
-                b"blob " + str(len(payload)).encode() + b"\0" + payload
-            ).hexdigest()
+            git(root, "init", "-q")
+            git(root, "config", "user.name", "OrdaX CI Fixture")
+            git(root, "config", "user.email", "ci-fixture@ordax.invalid")
+            git(root, "add", "--all")
+            git(root, "commit", "-qm", "pin published contract fixture")
+            valid_blob = git(root, "rev-parse", "HEAD:system/contracts/recent-files.mjs")
             inventory = {"commit": SNAPSHOT_SHA, "files": [{"path": "system/apps/files/app.mjs"}]}
             sdk = {"$schema": "ordax.app-sdk-bundle/1", "authority": "none",
                    "bundle_version": "1.15.0", "contracts": [{
@@ -405,6 +406,9 @@ class FilesCutoverTests(unittest.TestCase):
                        "schema": "ordax.recent-files/1", "major": 1,
                        "source_git_blob": valid_blob,
                    }]}
+            # Simulate a Windows working tree conversion while preserving the
+            # canonical LF blob pinned by the bundle.
+            contract.write_bytes(contract.read_bytes().replace(b"\n", b"\r\n"))
             verified = files.audit_files_sdk_dependencies(root, inventory, sdk, sdk_root=root)
             self.assertEqual(verified["unpublished_contracts"], [])
             self.assertEqual(verified["transitive_public_contracts"], [])
