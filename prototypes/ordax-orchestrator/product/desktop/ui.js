@@ -166,7 +166,7 @@ function friendlyError(error) {
     task_submission_reconciliation_required: 'Envio anterior com entrega incerta. Verifique a conversa antes de enviar novamente nesta tarefa.',
     orchestrator_provider_not_submitted: 'A mensagem não chegou ao ChatGPT. Corrija a sessão e envie novamente; nenhum reenvio automático foi feito.',
     provider_health_observation_timeout: 'Não foi possível confirmar o estado da sessão do ChatGPT. Nenhuma mensagem foi enviada; tente novamente quando a sessão estiver disponível.',
-    provider_send_unconfirmed: 'O provedor não recebeu a mensagem. A sessão deve ser verificada antes de uma nova tentativa.',
+    provider_send_unconfirmed: 'Não foi possível confirmar a entrega ao ChatGPT. Confira a conversa antes de tentar novamente; não houve reenvio automático.',
     chatgpt_authentication_in_progress: 'Conclua o login antes de enviar.',
     composer_not_found: 'O campo de mensagem do ChatGPT ainda não está pronto.',
     send_not_observed: 'O ChatGPT não confirmou o envio. Nada foi reenviado automaticamente.',
