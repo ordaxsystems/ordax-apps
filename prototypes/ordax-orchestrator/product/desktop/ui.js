@@ -864,7 +864,7 @@ async function submitTaskMessage(contentOverride = null) {
 
 $('#composer').addEventListener('submit', event => {
   event.preventDefault();
-  void submitTaskMessage();
+  return submitTaskMessage();
 });
 
 $('#prompt').addEventListener('input', event => {
