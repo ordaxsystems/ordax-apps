@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname, resolve, join } from "node:path";
+import { tmpdir } from "node:os";
 import { ASSISTANT_SOURCE_MESSAGES, ASSISTANT_ENGLISH_MESSAGES, translateAssistantMessage } from "../src/i18n/messages.mjs";
 
 const appRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -17,7 +18,8 @@ test("Aura is the single product identity of the versioned Assistant component",
   const providers = json("actions/providers/manifest.json");
 
   assert.equal(manifest.id, "assistant"); // Stable install/activation key, not a second app.
-  assert.equal(manifest.title, "Aura");
+  assert.equal(typeof manifest.title, "string");
+  assert.ok(manifest.title.length > 0, "Product title must be non-empty");
   assert.equal(manifest.version, "0.1.2");
   assert.equal(manifest.owner, "ordaxsystems/ordax-apps");
   assert.equal(manifest.kind, "app");
@@ -50,6 +52,31 @@ test("Aura's app name is coherent in both localized presentation catalogs", () =
   }
   assert.equal(translateAssistantMessage("pt-BR", "assistant.title"), title);
   assert.equal(translateAssistantMessage("en-US", "assistant.title"), title);
+});
+
+
+test("a single app.json title change updates both languages without editing the UI", async () => {
+  const tmp = mkdtempSync(join(tmpdir(), "ordax-assistant-name-"));
+  try {
+    const i18nFolder = join(tmp, "src", "i18n");
+    mkdirSync(i18nFolder, { recursive: true });
+    const renamed = { ...json("app.json"), title: "Example Future Name" };
+    writeFileSync(join(tmp, "app.json"), JSON.stringify(renamed), "utf8");
+    const originalSource = readFileSync(resolve(appRoot, "src/i18n/messages.mjs"), "utf8");
+    assert.match(originalSource, /import appManifest from "\.\.\/\.\.\/app\.json"/);
+    assert.doesNotMatch(originalSource, /"Aura"/, "No duplicate brand literal in localization");
+    writeFileSync(join(i18nFolder, "messages.mjs"), originalSource, "utf8");
+    const localMessages = await import(pathToFileURL(join(i18nFolder, "messages.mjs")).href);
+    for (const locale of ["pt-BR", "en-US"]) {
+      assert.equal(localMessages.translateAssistantMessage(locale, "assistant.title"), renamed.title);
+      assert.equal(localMessages.translateAssistantMessage(locale, "assistant.role.assistant"), renamed.title);
+      assert.equal(localMessages.translateAssistantMessage(locale, "app.assistant.title"), renamed.title);
+      assert.ok(localMessages.translateAssistantMessage(locale, "assistant.input.placeholder").includes(renamed.title));
+      assert.ok(localMessages.translateAssistantMessage(locale, "assistant.input.aria").includes(renamed.title));
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test("Aura consumes system Intelligence and does not declare its own model/runtime owner", () => {
