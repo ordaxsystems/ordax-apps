@@ -16,13 +16,26 @@ function fixture(t){
   return {store,task};
 }
 
-test('prepare failure with no submission evidence does NOT block another operation',t=>{
+test('prepare failure blocks only when the executor durably proves no submission',t=>{
+  const {store,task}=fixture(t);
+  const id=store.startRun(task.id);
+  store.recordRunMetrics(task.id,id,'beta',{
+    failedStage:'prepare',submitAttemptAt:null,providerDeliveryState:'not_submitted'
+  });
+  store.finishRun(task.id,id,'prepare:provider_navigation_timeout');
+  assert.deepEqual(listTaskUncertainTransportRuns(store,task.id),[]);
+  assert.equal(assertTaskHasNoUncertainTransport(store,task.id),true);
+});
+
+test('a failed prepare stage without explicit delivery evidence remains uncertain',t=>{
   const {store,task}=fixture(t);
   const id=store.startRun(task.id);
   store.recordRunMetrics(task.id,id,'beta',{failedStage:'prepare',submitAttemptAt:null});
   store.finishRun(task.id,id,'prepare:provider_navigation_timeout');
-  assert.deepEqual(listTaskUncertainTransportRuns(store,task.id),[]);
-  assert.equal(assertTaskHasNoUncertainTransport(store,task.id),true);
+  assert.equal(listTaskUncertainTransportRuns(store,task.id).length,1);
+  assert.throws(()=>assertTaskHasNoUncertainTransport(store,task.id),{
+    message:'task_submission_reconciliation_required'
+  });
 });
 
 test('uncertain live request blocks same Task; another Task still works, no SQL writes',t=>{

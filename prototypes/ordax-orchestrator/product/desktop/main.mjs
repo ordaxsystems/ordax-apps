@@ -5,7 +5,7 @@ import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
 import { recordProviderSubmissionProvenance, findProviderSubmissionProvenance } from '../src/provider-submission-provenance.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
-import { assertProviderSendReadiness } from '../src/provider-observation-policy.mjs';
+import { assertProviderSendReadiness, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { assessProviderConversationEvidence } from '../src/provider-conversation-reconciliation.mjs';
 import { safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
 import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
@@ -195,7 +195,8 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   // Authoritative, fresh, read-only readiness gate BEFORE any Task/Run/message
   // mutation or draft clearing. A signed-out/unknown provider creates no Run.
   // Worker.sendPrompt independently checks again immediately before editing.
-  assertProviderSendReadiness(await worker.health());
+  try { assertProviderSendReadiness(await worker.health()); }
+  catch(error) { throw normalizeProviderFailure(error,{stage:'health'}); }
   // No provider interaction happens until this atomic transaction commits.
   // The message, draft-clear and Run must never be persisted separately.
   const { userMessage, runId } = store.beginProviderRun(taskId, prompt, {
@@ -583,6 +584,7 @@ ipcMain.handle('ordax:tasks:send', async (event, { taskId, content, newSession =
     const receipt=await orchestratorService.invoke(localOrchestratorContext,'work_send',{
       projectId:binding.project_id,taskId:String(taskId),content:prompt,
       requestId:requestId||randomUUID(),...(draftRevision!==null?{draftRevision}:{})});
+    if(receipt.status==='failed')throw Error(receipt.result?.failureCode||'orchestrator_provider_not_submitted');
     if(receipt.status!=='succeeded')throw Error('orchestrator_reconciliation_required');
     return {task:getTaskView(taskId),command:receipt};
   }

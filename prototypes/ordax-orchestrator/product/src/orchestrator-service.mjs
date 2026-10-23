@@ -1,6 +1,6 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {ORCHESTRATOR_CONTRACT,ORCHESTRATOR_TOOLS,validateOrchestratorInput} from './orchestrator-contract.mjs';
-import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
+import {assertTaskHasNoUncertainTransport,listTaskUncertainTransportRuns} from './provider-uncertain-run-policy.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
@@ -51,11 +51,28 @@ export class OrchestratorService {
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
         actor_id TEXT NOT NULL, client_id TEXT NOT NULL, request_id TEXT NOT NULL,
         project_id TEXT REFERENCES lab_projects(id), operation TEXT NOT NULL,
-        input_hash TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','succeeded','uncertain')),
+        input_hash TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','succeeded','failed','uncertain')),
         result TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
         UNIQUE(workspace_session_id,actor_id,client_id,request_id)
       );
     `);
+    const receiptSchema=this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='lab_command_receipts'").get()?.sql||'';
+    if(!receiptSchema.includes("'failed'"))this.transaction(()=>{
+      this.db.exec('ALTER TABLE lab_command_receipts RENAME TO lab_command_receipts_legacy');
+      this.db.exec(`CREATE TABLE lab_command_receipts (
+        id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+        actor_id TEXT NOT NULL, client_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        project_id TEXT REFERENCES lab_projects(id), operation TEXT NOT NULL,
+        input_hash TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','succeeded','failed','uncertain')),
+        result TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(workspace_session_id,actor_id,client_id,request_id)
+      )`);
+      this.db.exec(`INSERT INTO lab_command_receipts
+        (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at)
+        SELECT id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at
+        FROM lab_command_receipts_legacy`);
+      this.db.exec('DROP TABLE lab_command_receipts_legacy');
+    });
     if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='repository_url'))
       this.db.exec('ALTER TABLE lab_projects ADD COLUMN repository_url TEXT');
     this.continuation=new LabContinuation({store,service:this});
@@ -166,6 +183,7 @@ export class OrchestratorService {
   }
 
   finish(commandId,result,status='succeeded') {
+    if(!['succeeded','failed','uncertain'].includes(status))throw Error('invalid_orchestrator_receipt_status');
     const changed=this.db.prepare("UPDATE lab_command_receipts SET status=?,result=?,updated_at=? WHERE id=? AND status='running'")
       .run(status,JSON.stringify(result),this.store.now(),commandId).changes;
     if(changed!==1)throw Error('orchestrator_command_state_conflict');
@@ -266,10 +284,11 @@ export class OrchestratorService {
   }
 
   monitor(task,runs) {
-    const command=this.db.prepare(`SELECT status FROM lab_command_receipts WHERE status IN ('running','uncertain')
-      AND json_extract(result,'$.taskId')=? ORDER BY rowid DESC LIMIT 1`).get(task.id);
+    const command=this.db.prepare(`SELECT status,result FROM lab_command_receipts
+      WHERE json_extract(result,'$.taskId')=? ORDER BY rowid DESC LIMIT 1`).get(task.id);
     if(command?.status==='uncertain')return {state:'reconciliation_required',mayAutomaticallySend:false};
     if(command?.status==='running')return {state:'running',mayAutomaticallySend:false};
+    if(command?.status==='failed')return {state:'failed',retryAllowed:true,mayAutomaticallySend:false};
     const current=runs[0];
     if(current?.status==='running') {
       const lastHeartbeatAt=current.heartbeat_at||current.started_at;
@@ -277,7 +296,9 @@ export class OrchestratorService {
       return {state:!Number.isFinite(age)||age>30000?'execution_unresponsive':'running',
         lastHeartbeatAt,mayAutomaticallySend:false};
     }
-    if(['interrupted','failed'].includes(current?.status))return {state:'reconciliation_required',mayAutomaticallySend:false};
+    if(current?.status==='interrupted'||listTaskUncertainTransportRuns(this.store,task.id).length)
+      return {state:'reconciliation_required',mayAutomaticallySend:false};
+    if(current?.status==='failed')return {state:'failed',retryAllowed:true,mayAutomaticallySend:false};
     return {state:task.status==='completed'?'completed':'awaiting_instruction',mayAutomaticallySend:false};
   }
 
@@ -619,13 +640,18 @@ export class OrchestratorService {
         }
         return this.finish(reserved.commandId,result);
       });
-    } catch {
-      // Do not log upstream content/credentials, or retry an uncertain effect.
-      const result={taskId:task.id,reason:'execution_unconfirmed',...(reserved.sendActionId?{
+    } catch(error) {
+      // Only an explicit pre-submit disposition from the provider executor is
+      // retryable. Missing/invalid evidence remains uncertain and quarantined.
+      const notSubmitted=isWorkSend&&error?.providerDeliveryState==='not_submitted';
+      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(error?.providerFailureCode||''))
+        ?String(error.providerFailureCode):'provider_send_unconfirmed';
+      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':'execution_unconfirmed',
+        ...(notSubmitted?{providerStage:String(error?.providerFailureStage||'unknown'),failureCode}:{}),...(reserved.sendActionId?{
         sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
       this.transaction(()=>{
-        if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,'indeterminate',result);
-        this.finish(reserved.commandId,result,'uncertain');
+        if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,notSubmitted?'failed':'indeterminate',result);
+        this.finish(reserved.commandId,result,notSubmitted?'failed':'uncertain');
       });
       this.requireAccess(context,operation,input.projectId);
       return this.getReceipt(context,reserved.commandId);

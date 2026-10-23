@@ -381,6 +381,65 @@ test('unknown delivery remains uncertain across restart; neither same nor new re
   }finally{reopened.close();}
 });
 
+test('explicitly proven pre-submit failure is retryable without replaying the same request',async t=>{
+  let calls=0;
+  const f=fixture(t,{provider:{send:async({taskId})=>{
+    calls++;
+    const runId=f.store.startRun(taskId);
+    f.store.recordRunMetrics(taskId,runId,'beta',{
+      failedStage:'health',providerDeliveryState:'not_submitted'
+    });
+    f.store.finishRun(taskId,runId,'health:chatgpt_session_not_observed');
+    const error=Object.assign(new Error('health:chatgpt_session_not_observed'),{
+      providerDeliveryState:'not_submitted',providerFailureStage:'health',
+      providerFailureCode:'chatgpt_session_not_observed'
+    });
+    throw error;
+  }}}),a=await project(f);
+  const input={requestId:'pre-submit',projectId:a.p,taskId:a.w,content:'Leia o README'};
+  const first=await f.call('work_send',input);
+  assert.equal(first.status,'failed');
+  assert.equal(first.requiresReconciliation,false);
+  assert.equal(first.result.reason,'provider_not_submitted');
+  assert.equal(first.result.failureCode,'chatgpt_session_not_observed');
+  assert.deepEqual(await f.call('work_send',input),first);
+  assert.equal(calls,1,'an identical requestId is idempotent');
+  const work=await f.call('work_get',{projectId:a.p,taskId:a.w});
+  assert.deepEqual(work.monitor,{state:'failed',retryAllowed:true,mayAutomaticallySend:false});
+  const retry=await f.call('work_send',{...input,requestId:'pre-submit-retry'});
+  assert.equal(retry.status,'failed');
+  assert.equal(calls,2,'only a new explicit request can retry');
+});
+
+test('command receipt migration adds failed state without losing uncertain history',async t=>{
+  const f=fixture(t),a=await project(f);
+  const existing=f.store.db.prepare('SELECT * FROM lab_command_receipts ORDER BY rowid LIMIT 1').get();
+  const preserved={taskId:a.w,reason:'execution_unconfirmed'};
+  f.store.db.prepare("UPDATE lab_command_receipts SET status='uncertain',result=? WHERE id=?")
+    .run(JSON.stringify(preserved),existing.id);
+  f.store.db.exec('ALTER TABLE lab_command_receipts RENAME TO lab_command_receipts_current');
+  f.store.db.exec(`CREATE TABLE lab_command_receipts (
+    id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
+    actor_id TEXT NOT NULL, client_id TEXT NOT NULL, request_id TEXT NOT NULL,
+    project_id TEXT REFERENCES lab_projects(id), operation TEXT NOT NULL,
+    input_hash TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('running','succeeded','uncertain')),
+    result TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    UNIQUE(workspace_session_id,actor_id,client_id,request_id)
+  )`);
+  f.store.db.exec(`INSERT INTO lab_command_receipts
+    SELECT id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at
+    FROM lab_command_receipts_current`);
+  f.store.db.exec('DROP TABLE lab_command_receipts_current');
+
+  const migrated=new OrchestratorService({store:f.store,authorize:()=>true});
+  const row=f.store.db.prepare('SELECT * FROM lab_command_receipts WHERE id=?').get(existing.id);
+  assert.equal(row.status,'uncertain');
+  assert.deepEqual(JSON.parse(row.result),preserved);
+  f.store.db.prepare("UPDATE lab_command_receipts SET status='failed' WHERE id=?").run(existing.id);
+  assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?').get(existing.id).status,'failed');
+  assert.equal(migrated.receipt(row).requiresReconciliation,true);
+});
+
 test('a claimed success without transport evidence and a canonical successful Run stays uncertain',async t=>{
   const f=fixture(t,{provider:{send:async()=>({confirmed:true,runId:'run_12345678'})}}),a=await project(f);
   const result=await f.call('work_send',{projectId:a.p,taskId:a.w,content:'Teste'});

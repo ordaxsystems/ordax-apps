@@ -7,7 +7,7 @@ import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { createProviderDeliveryRecorder } from '../src/provider-delivery-recorder.mjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
 import { assessHistoricalThreadPreflight, classifyHistoricalThreadPostNavigation } from '../src/provider-historical-thread-preflight.mjs';
-import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
+import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import { classifyProviderPageAvailability } from '../src/provider-page-availability.mjs';
 import path from 'node:path';
@@ -1040,7 +1040,7 @@ export class EmbeddedChatWorker {
       const images = await this.#fetchImages(latest.images || []);
       this.lastError = null;
       if (this.streamContext?.currentAssistantMessageId) this.seenAssistantMessageIds.add(this.streamContext.currentAssistantMessageId);
-      const metrics = this.streamContext ? { prepareStartedAt:this.streamContext.prepareStartedAt, healthCompletedAt:this.streamContext.healthCompletedAt, draftCheckedAt:this.streamContext.draftCheckedAt, conversationReadyAt:this.streamContext.conversationReadyAt, observerReadyAt:this.streamContext.observerReadyAt, baselineReadyAt:this.streamContext.baselineReadyAt, submitAttemptAt:this.streamContext.submitAttemptAt, providerRequestSeenAt:this.streamContext.providerRequestSeenAt, submittedAt:this.streamContext.submittedAt, firstActivityAt:this.streamContext.firstActivityAt, firstDeltaAt:this.streamContext.firstDeltaAt, fastFirstDeltaAt:this.streamContext.fastFirstDeltaAt, betaFirstDeltaAt:this.streamContext.betaFirstDeltaAt, networkFirstByteAt:this.streamContext.networkFirstByteAt, completedAt:Date.now(), observerUsed:this.streamContext.firstObserver || (this.streamContext.fastDelivered ? 'fast' : 'beta'), firstObserver:this.streamContext.firstObserver || null, fastSeen:Boolean(this.streamContext.fastSeen), betaSeen:Boolean(this.streamContext.betaSeen), fastDelivered:Boolean(this.streamContext.fastDelivered), fastSuppressed:Boolean(this.streamContext.fastSuppressed), fastSuppressionReason:this.streamContext.fastSuppressionReason || null } : null;
+      const metrics = this.streamContext ? { prepareStartedAt:this.streamContext.prepareStartedAt, healthCompletedAt:this.streamContext.healthCompletedAt, draftCheckedAt:this.streamContext.draftCheckedAt, conversationReadyAt:this.streamContext.conversationReadyAt, observerReadyAt:this.streamContext.observerReadyAt, baselineReadyAt:this.streamContext.baselineReadyAt, submitAttemptAt:this.streamContext.submitAttemptAt, providerRequestSeenAt:this.streamContext.providerRequestSeenAt, submittedAt:this.streamContext.submittedAt, firstActivityAt:this.streamContext.firstActivityAt, firstDeltaAt:this.streamContext.firstDeltaAt, fastFirstDeltaAt:this.streamContext.fastFirstDeltaAt, betaFirstDeltaAt:this.streamContext.betaFirstDeltaAt, networkFirstByteAt:this.streamContext.networkFirstByteAt, completedAt:Date.now(), providerDeliveryState:'submitted', observerUsed:this.streamContext.firstObserver || (this.streamContext.fastDelivered ? 'fast' : 'beta'), firstObserver:this.streamContext.firstObserver || null, fastSeen:Boolean(this.streamContext.fastSeen), betaSeen:Boolean(this.streamContext.betaSeen), fastDelivered:Boolean(this.streamContext.fastDelivered), fastSuppressed:Boolean(this.streamContext.fastSuppressed), fastSuppressionReason:this.streamContext.fastSuppressionReason || null } : null;
       this.streamContext = null;
       this.#setStage('idle');
       return { text:String(latest.text||'').trim(), images, chatUrl:wc.getURL(), observedAt:new Date().toISOString(), metrics };
@@ -1061,12 +1061,14 @@ export class EmbeddedChatWorker {
         submittedAt:ctx.submittedAt,
         firstDeltaAt:ctx.firstDeltaAt,
         completedAt:Date.now(),
-        failedStage:stage
-      } : { prepareStartedAt:Date.now(), completedAt:Date.now(), failedStage:stage };
+        failedStage:stage,
+        providerDeliveryState:ctx.submitAttemptAt?'uncertain':'not_submitted'
+      } : { prepareStartedAt:Date.now(), completedAt:Date.now(), failedStage:stage, providerDeliveryState:'not_submitted' };
       this.streamContext = null;
       this.#setStage('idle');
-      this.lastError = `${stage}:${String(error?.message || error)}`;
-      throw new Error(this.lastError);
+      const failure=normalizeProviderFailure(error,{stage,submitAttemptAt:ctx?.submitAttemptAt||null});
+      this.lastError = failure.message;
+      throw failure;
     });
   }
 }

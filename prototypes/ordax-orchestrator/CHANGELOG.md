@@ -1,3 +1,10 @@
+## 0.2.0-alpha.15 — recuperação segura antes do envio (2026-10-23)
+
+- O executor registra uma disposição explícita quando falha antes de tentar submeter; somente esse recibo permite uma nova tentativa explícita. O mesmo `requestId` continua idempotente.
+- Entrega incerta e falha depois da tentativa permanecem bloqueadas, sem replay. Falhas passam a expor uma causa sanitizada ao usuário.
+- O estado terminal `failed` é adicionado por migração transacional da tabela existente; recibos `uncertain` são preservados.
+- Não adiciona acesso GitHub ao App nem comprova sessão GPT, leitura remota ou autonomia 24h.
+
 ## 0.2.0-alpha.14 — entrada única de missão (2026-10-23)
 
 - Uma missão cria, em uma transação idempotente, o projeto, o coordenador e a primeira conversa com rascunho no Store existente.
