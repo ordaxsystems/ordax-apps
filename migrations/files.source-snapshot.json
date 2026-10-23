@@ -2,7 +2,7 @@
   "$schema": "ordax.source-snapshot-inventory/1",
   "app_id": "files",
   "repository": "ordaxsystems/ordax-os",
-  "commit": "ee2a50db334e7abb798918d99d772ebfd02f8cef",
+  "commit": "fe8d233681801386ed8fb9fbfb47fe091d8d2e42",
   "file_count": 10,
   "files": [
     {

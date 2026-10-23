@@ -2,17 +2,18 @@
 
 > Estado: **bloqueado por ownership**. Este documento não autoriza criar `apps/files`, publicar pacotes ou alterar o OrdaX OS. O plano machine-readable está em `migrations/files.externalization.json`.
 
-## Estado reconciliado com os repositórios atuais (2026-10-22)
+## Estado reconciliado com os repositórios atuais (2026-10-23)
 
 - O owner atual da plataforma é `ordaxsystems/ordax-os`; a fonte do produto
   permanece em `system/apps/files/`. O `ordax-apps/main` em
-  `112aa2a5fcf6a702f082ca08a5ecb719ae840cd8` não contém `apps/files/`.
-- O snapshot dos dez arquivos foi recapturado da árvore canônica integrada
-  `ordax-os/main@ee2a50db334e7abb798918d99d772ebfd02f8cef`. Os Git blob IDs
-  correspondem aos dez caminhos app-owned, incluindo as atualizações do broker
-  Native no runtime visual e na localização. Este é o baseline de source atual;
-  o snapshot deve ser recapturado novamente no pai direto do Gate A se qualquer
-  arquivo inventariado mudar antes da remoção.
+  `c5794efdaa5d227d270bdb90c87e3568fcfb538b` não contém `apps/files/`.
+- O snapshot dos dez arquivos está pinado à árvore canônica integrada
+  `ordax-os/main@fe8d233681801386ed8fb9fbfb47fe091d8d2e42`. Os dez Git blob IDs
+  foram comparados com o snapshot anterior e permanecem idênticos; nenhum source
+  do Files mudou na integração subsequente. Este é o baseline de source atual;
+  a verificação `--verify-pinned-source` confirmou os dez blobs nesse commit. O
+  snapshot ainda deve ser recapturado no pai direto do Gate A se qualquer arquivo
+  inventariado mudar antes da remoção.
 - A PR [`ordax-os#2156`](https://github.com/ordaxsystems/ordax-os/pull/2156) foi
   integrada por merge commit. Ela publica o App SDK 1.20.0 (73 contratos,
   `authority:none`) e prepara o executor isolado e a porta File Space/11 com
@@ -23,11 +24,19 @@
   o broker de Files, a entrega do slot e as flags de publicação/ativação continuam
   fechados. O SDK 1.20.0 é agora o mínimo pinado para validar o escopo do File
   Space. Não criar `apps/files` antes da ausência comprovada da fonte no OS.
+- A PR [`ordax-os#2164`](https://github.com/ordaxsystems/ordax-os/pull/2164) foi
+  integrada em `fe8d233681801386ed8fb9fbfb47fe091d8d2e42`, com todos os workflows
+  verdes, incluindo a prova QEMU/UEFI. Ela permite montar o candidato Files
+  durante probation em frame isolado, somente com File Space sintético vazio,
+  sem App Data, workspace real, mutações ou autoridade de promoção. Isso habilita
+  uma prova segura de contrato de montagem; não comprova distribuição offline
+  assinada, associação real do slot aos dados do usuário, recuperação em pendrive
+  físico nem autoriza o cutover.
 - O mapa de Gate B continua descrevendo a transformação dos dez arquivos sem
   copiá-los nem liberar o corte. O Gate A ainda exige bootstrap offline assinado,
-  vínculo real do slot ao File Space, health/probation, rollback, reinstalação e
-  recuperação USB comprovados; o handoff segue acompanhado em
-  [`ordax-os#1743`](https://github.com/ordaxsystems/ordax-os/issues/1743).
+  vínculo real do slot ao File Space, health/probation no host e nos dados reais,
+  rollback, reinstalação e recuperação USB comprovados; o handoff segue acompanhado
+  em [`ordax-os#1743`](https://github.com/ordaxsystems/ordax-os/issues/1743).
 
 Os parágrafos abaixo identificados como evidência de 2026-10-08 são históricos;
 quando divergirem desta reconciliação, prevalecem os repositórios, pins e
@@ -180,7 +189,7 @@ O verificador exige origem Git canônica, checkout limpo, HEAD igual ao snapshot
 
 ### Snapshot verificável antes da remoção
 
-O inventário `migrations/files.source-snapshot.json` fixa **10 Git blobs** app-owned no commit `a102446133719e3359b585381b3aa19edc95ab78`, incluindo o manifesto do componente Files. Essa árvore coincide blob a blob com o OS `main` observado em `924feae15eb808e3390b52c48e700d7a33992a88`; a confirmação corrente e a necessidade de recaptura após mudanças de source estão registradas no estado reconciliado acima. O inventário registra identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
+O inventário `migrations/files.source-snapshot.json` fixa **10 Git blobs** app-owned no commit `fe8d233681801386ed8fb9fbfb47fe091d8d2e42`, incluindo o manifesto do componente Files. A verificação pinada confirmou os blobs na `main` atual; a necessidade de recaptura no pai direto do Gate A continua registrada no estado reconciliado acima. O inventário registra identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
 
 A verificação final deverá executar `tools/verify_files_cutover.py --platform-root ... --require-cutover-ready` contra o checkout Git oficial, provar a ancestralidade e a remoção, reconciliar alterações posteriores ao snapshot e **somente então** permitir o cutover. Enquanto isso, o Files continua instalado na imagem Base. A Foundation do OS possui regressão específica em `tests/test_files_bootstrap_continuity.py` para bloquear remoção acidental do bootstrap.
 
