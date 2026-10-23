@@ -1,5 +1,9 @@
 ## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21)
 
+### Alvo de continuidade 24h (2026-10-23)
+
+O produto deve retomar etapas limitadas sem depender de um turno ou da janela do ChatGPT. GPT é o provedor principal quando houver uma rota autorizada; Groq pode assumir uma nova etapa pelo mesmo Model Router após falha confirmada e a partir do mesmo checkpoint. OrdaX MCP/Runtime continuam sendo a fronteira de ferramentas e efeitos; Platform mantém grants/receipts; Scheduler, Background Runtime e Intelligence existentes no OS compõem a continuidade. Esses blocos ainda não estão integrados para autonomia: o OS declara scheduler/background e providers externos desativados, Runtime não chama modelos e o Groq atual do Lab roda no Electron. **Não há autonomia 24h implementada.** A sequência, os owners e o gate estão no [plano Project-First existente](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md#composição-de-autonomia-contínua--alvo-posterior-sem-serviço-paralelo).
+
 ### Prioridade revisada: GitHub remoto antes de workspace local (2026-10-22)
 
 O proprietário definiu que a primeira etapa de uso deve começar por um projeto

@@ -10,11 +10,13 @@ App continua pertencendo ao owner Platform; não criar outro OAuth/token store.
 Esta decisão substitui a ordem inicial M0/M1 local descrita abaixo, mas mantém
 os gates de grants, receipts e evidência quando o trabalho local for iniciado.
 
-**Objetivo do próximo executor:** continuar o OrdaX Orchestrator como supervisor de **projetos/pastas reais** no computador via Runtime/OrdaX MCP, e não só como gerenciador de chats.
+**Objetivo de produto:** manter projetos e missões avançando sem depender de um turno ou da janela do ChatGPT. Para autonomia contínua, GPT deve ser o provedor principal autorizado pelo OrdaX Intelligence; Groq pode atuar como alternativa pelo mesmo Model Router e com o mesmo checkpoint. OrdaX MCP/Runtime continuam sendo o caminho de ferramentas e efeitos autorizados. A interface ChatGPT Web existente é uma superfície interativa, não um supervisor headless de 24 horas.
 
-**Incremento Apps em desenvolvimento (alpha.11):** o Lab já tem modelo de vínculo lógico de workspace por recurso opaco, status e snapshot somente leitura **dependentes de um port Runtime verificado**. O port não está conectado no Windows; não há pasta real vinculada. Consulte `product/src/project-workspace.mjs`, testes `product/test/project-workspace.test.mjs` e matriz em `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md`. O Codex deverá auditar essa implementação e, depois, evoluir o [contrato Workspace Runtime proposto](docs/PROJECT-WORKSPACE-RUNTIME-PORT-V1.md) com Runtime/Platform — não duplicar filesystem no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
+**Ordem de implementação vigente:** cumprir primeiro R0 remoto — URL GitHub como referência, conversa de coordenação existente e tarefa GPT pelo executor existente, com evidência da integração GitHub real. O workspace local vem depois dos grants e do port autenticado dos owners Runtime/Platform. A composição de 24 horas é uma fase posterior, pois o Scheduler/Background Runtime do OS e o provider externo ainda estão desativados em `main`; não duplicar fila, banco, scheduler ou roteador no App.
 
-**Base remota conferida em 2026-10-22:** `ordaxsystems/ordax-apps/main` em `ba1d2df1cb439b37681bfa426fe4df0426b80165`; PR #268 foi mesclada. Os nomes de branch e estados de PR antigos abaixo são históricos. Antes de editar, conferir novamente main, Git status e CI; não assumir SHA antigo como HEAD.
+**Incremento Apps atual (alpha.13):** o Lab mantém modelo de vínculo lógico de workspace por recurso opaco, status e snapshot somente leitura **dependentes de um port Runtime verificado**. O port não está conectado no Windows; não há pasta real vinculada. Consulte `product/src/project-workspace.mjs`, testes `product/test/project-workspace.test.mjs` e matriz em `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md`. A integração de filesystem/Git segue nos owners Runtime/Platform — não duplicar esses serviços no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
+
+**Bases remotas conferidas em 2026-10-23:** Apps `main` `cd3b4c6554054f8a6aa49843763e5f7913c13e77`; Runtime `main` `9154cb977bbad9f007e7734ebfbeeb4997e7db57`; Platform `main` `3ae5d914df03f8f6a677ddd18cf3337cd0bcb89a`; OS `main` `0b32f8f4a6d6630edf17b584899c2d9e69ab4f1c`. PR #268 foi mesclada. Antes de cada incremento, conferir novamente main, Git status e CI; não assumir SHA antigo como HEAD.
 **Produto:** `prototypes/ordax-orchestrator/product/`, fonte própria. **Base Flow/Grátis** `ordax-flow@081a7ce989721106aaf27a0c9d09cf9d49713a65` imutável; não modificar dados/perfil do Grátis.
 **Bibliografia obrigatória na ordem:**
 1. `/AGENTS.md`, `/URGENTE-ROADMAP-ORDAX-APPS.md`, `/HANDOFF.md`, `/README.md`.
@@ -25,14 +27,15 @@ os gates de grants, receipts e evidência quando o trabalho local for iniciado.
 
 ## Instrução inicial — PRIMEIRO CICLO
 
-Faça **M0 + primeiro slice de M1 read-only**; não tente construir M0–M7 num único PR.
+Faça **M0 + R0 remoto**; não tente construir M0–M7 num único PR. M1 local só pode começar quando o grant e o port autenticados estiverem disponíveis e verificados.
 
 1. **Reconciliar estado:** `git status --short --branch`, `git log -5 --oneline`, `git remote -v`, PR #268/CI atuais e files alterados. Criar worktree/branch isolado se outro trabalho estiver em andamento. **Não force push**, não sobrescrever mudanças locais ou sessão GPT existente.
-2. **Checar ferramentas reais:** ler contratos/catálogo correntes do `ordax-runtime`, PR Runtime #182 e Product MCP no `ordax-platform`. Verificar o que o plugin `ordax-mcp` já oferece **realmente**, quais grants estão disponíveis e quais operações ainda não têm contratos públicos. Não confundir acesso do ChatGPT externo ao Runtime com permissão automática do App. Salvar `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md` com fonte/revisão/owner/risco/gate.
-3. **Propor e implementar somente M1 quando houver port autorizado:** botão/fluxo de vínculo de diretório escolhido pelo proprietário, referência opaca `resourceId` e `deviceId` na mesma base do Lab, snapshot e Git status **read-only**, estados reais offline/denied/revoked. Nunca usar `fs`, `child_process`, string raw path ou shell dentro do Orchestrator como substituição do port.
-4. **Se faltar capability:** atualizar contrato/issue/PR no Runtime/Platform corretos. No Lab, mostrar `capability_unavailable` com evidência, sem botões fictícios. Esse bloqueio é resultado legítimo; não criar endpoint privilegiado “temporário”.
-5. **Testes:** fixtures de escopo, symlink/junction traversal, grant vencido, offline, reabertura, snapshot/diff, nulidade de envio GPT. Teste App Windows empacotado em perfil isolado depois de tests de código.
-6. **Fechamento:** registrar diff/commits, CI Linux/Windows, estado real do dispositivo, capabilities ainda não disponíveis e próximo passo; atualizar docs sem declarar projeto VESTE pronto. Preservar PR draft e instalação anterior.
+2. **Checar o caminho R0:** confirmar que a URL é somente uma referência, que Groq não recebe conteúdo GitHub e que a tarefa GPT declara bloqueio quando a integração GitHub não está disponível. Um URL no prompt não é prova de leitura. Não criar OAuth/token store/conector paralelo.
+3. **Atualizar a matriz M0:** registrar commits `main` dos quatro owners (Apps, Runtime, Platform e OS), capacidade observada, lacuna, owner e gate. Não manter contagens ou commits históricos como estado atual.
+4. **M1 local apenas após autorização real:** usar o port de workspace do Runtime e resource grant do Platform; a App guarda referência opaca e estado tipado. Nunca usar `fs`, `child_process`, string raw path ou shell no Orchestrator como substituição do port.
+5. **24h sem duplicação:** antes de codificar worker, reconciliar Runtime `OrchestratorStore` com OS Scheduler/Background Runtime e OS Intelligence. Fixar um owner para cada fila/lease e exigir provider externo autorizado pelo Model Router. Timer no Electron, Groq direto e automação de UI do ChatGPT Web não satisfazem esse gate.
+6. **Testes:** R0 com evidência remota autorizada; depois fixtures de escopo, symlink/junction traversal, grant vencido, offline, reabertura e snapshot/diff; E2E VESTE só com executor e grants reais. Teste App Windows empacotado em perfil isolado depois de testes de código.
+7. **Fechamento:** registrar diff/commits, CI Linux/Windows, estado real do dispositivo, capabilities ainda não disponíveis e próximo passo; atualizar docs sem declarar projeto VESTE pronto. Preservar PR draft e instalação anterior.
 
 ## Arquivos e owners a inspecionar
 
