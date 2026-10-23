@@ -1,9 +1,9 @@
 {
   "schema": "ordax.component-manifest/1",
   "id": "assistant",
-  "title": "Assistente",
+  "title": "Aura",
   "kind": "app",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "releaseMode": "component-slot",
   "criticality": "optional",
   "failureDomain": "app",
