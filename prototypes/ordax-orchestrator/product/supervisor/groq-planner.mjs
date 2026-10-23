@@ -1,4 +1,5 @@
 import { validateSupervisorDecision } from './coordinator.mjs';
+import { readBoundedJsonResponse } from '../src/bounded-json-response.mjs';
 
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 
@@ -74,14 +75,11 @@ export function createGroqSupervisorPlanner({
         // Do not disclose provider error bodies; they can echo keys/input.
         throw new Error('supervisor_model_http_' + (Number(response?.status) || 'unknown'));
       }
-      let result;
-      try {
-        const raw = await response.text();
-        if (raw.length > 16000) throw new Error('oversized');
-        result = JSON.parse(raw);
-      } catch {
+      const result = await readBoundedJsonResponse(response,{
+        maxBytes:16000,errorCode:'supervisor_model_response_invalid'
+      });
+      if(result?.choices?.[0]?.finish_reason!=='stop')
         throw new Error('supervisor_model_response_invalid');
-      }
       const raw = result?.choices?.[0]?.message?.content;
       if (typeof raw !== 'string' || raw.length > 8000) {
         throw new Error('supervisor_model_response_invalid');
@@ -96,3 +94,4 @@ export function createGroqSupervisorPlanner({
     }
   });
 }
+
