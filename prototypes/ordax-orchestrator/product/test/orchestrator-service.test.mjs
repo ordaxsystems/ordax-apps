@@ -718,4 +718,3 @@ test('Groq coordinator receives only bounded workspace facts and is instructed n
       absolutePath:'C:\\private\\VESTE',resourceId:'resource_private-id'}});
   assert.equal(result.content,'Nenhum arquivo foi lido.');
 });
-
