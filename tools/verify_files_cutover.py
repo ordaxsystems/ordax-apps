@@ -515,15 +515,20 @@ def audit_files_sdk_dependencies(platform_root: Path, inventory: dict, sdk_bundl
         if module.is_symlink() or not module.is_file():
             raise FilesCutoverError(f"Published Files contract source missing: {current}")
         try:
-            bytes_content = module.read_bytes()
+            if sdk_root is not None:
+                # Compare and inspect the canonical Git object. Reading the
+                # checkout file here makes core.autocrlf on Windows change the
+                # bytes, even when the pinned commit and bundle are identical.
+                object_name = f"HEAD:{current}"
+                actual_blob = _git_text(sdk_root, "rev-parse", object_name)
+                bytes_content = _git_bytes(sdk_root, "cat-file", "blob", object_name)
+            else:
+                bytes_content = module.read_bytes()
             content = bytes_content.decode("utf-8")
         except (OSError, UnicodeError) as exc:
             raise FilesCutoverError(f"Published Files contract unreadable: {current}") from exc
         if sdk_root is not None:
             expected_blob = public_git_blobs.get(current)
-            actual_blob = hashlib.sha1(
-                b"blob " + str(len(bytes_content)).encode("ascii") + b"\0" + bytes_content
-            ).hexdigest()
             if expected_blob != actual_blob:
                 raise FilesCutoverError(f"Published Files SDK source Git blob mismatch: {current}")
         if NON_LITERAL_IMPORT_RE.search(content):
