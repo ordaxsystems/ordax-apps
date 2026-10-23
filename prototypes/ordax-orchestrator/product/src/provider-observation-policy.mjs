@@ -18,6 +18,20 @@ export async function observeWithin(work,{timeoutMs=5000,code='provider_observat
   }
 }
 
+export function normalizeProviderFailure(error,{stage='unknown',submitAttemptAt=null}={}) {
+  const raw=String(error?.message||error||'');
+  const candidate=raw.split(':').at(-1)?.trim()||'';
+  const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(candidate)
+    ?candidate:'provider_send_unconfirmed';
+  const failureStage=/^[a-z][a-z0-9_-]{0,40}$/i.test(String(stage))
+    ?String(stage):'unknown';
+  const failure=new Error(`${failureStage}:${failureCode}`);
+  failure.providerDeliveryState=submitAttemptAt?'uncertain':'not_submitted';
+  failure.providerFailureStage=failureStage;
+  failure.providerFailureCode=failureCode;
+  return failure;
+}
+
 export function classifyProviderAuthObservation({url,page}={}) {
   const current=String(url||'');
   if(/^https:\/\/(?:accounts\.google\.com|auth\.openai\.com)\//i.test(current) ||

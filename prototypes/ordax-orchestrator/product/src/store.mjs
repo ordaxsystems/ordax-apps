@@ -711,6 +711,8 @@ export class Store {
     const normalized = {
       observer_mode: observerMode,
       failed_stage: metrics?.failedStage || null,
+      provider_delivery_state: ['not_submitted','uncertain','submitted'].includes(metrics?.providerDeliveryState)
+        ? metrics.providerDeliveryState : null,
       run_started_at: metrics?.runStartedAt || null,
       prepare_started_at: metrics?.prepareStartedAt || null,
       health_completed_at: metrics?.healthCompletedAt || null,

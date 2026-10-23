@@ -3,7 +3,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {observeWithin,classifyProviderAuthObservation,classifyProviderAccessRestriction,assertProviderSendReadiness} from '../src/provider-observation-policy.mjs';
+import {observeWithin,classifyProviderAuthObservation,classifyProviderAccessRestriction,assertProviderSendReadiness,normalizeProviderFailure} from '../src/provider-observation-policy.mjs';
+
+test('provider failure exposes a safe retry disposition only before submit was attempted',()=>{
+  const safe=normalizeProviderFailure(new Error('health:chatgpt_session_not_observed'),{stage:'health'});
+  assert.equal(safe.message,'health:chatgpt_session_not_observed');
+  assert.equal(safe.providerDeliveryState,'not_submitted');
+  assert.equal(safe.providerFailureCode,'chatgpt_session_not_observed');
+  const uncertain=normalizeProviderFailure(new Error('private provider detail'),{
+    stage:'await-response',submitAttemptAt:123
+  });
+  assert.equal(uncertain.message,'await-response:provider_send_unconfirmed');
+  assert.equal(uncertain.providerDeliveryState,'uncertain');
+  assert.equal(uncertain.providerFailureCode,'provider_send_unconfirmed');
+});
 
 test('DOM unavailable on ChatGPT home is UNKNOWN, not logged in',()=>{
   assert.equal(classifyProviderAuthObservation({url:'https://chatgpt.com/',page:null}),'unknown');
