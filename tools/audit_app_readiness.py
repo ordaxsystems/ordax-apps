@@ -257,8 +257,13 @@ def checked_git_commit(root: Path) -> str:
     }
     if origin not in allowed:
         raise AuditError("package proof Git origin does not match canonical app repository")
-    if git("status", "--porcelain", "--untracked-files=all"):
-        raise AuditError("package proof requires a clean Git checkout")
+    dirty = git("status", "--porcelain", "--untracked-files=all")
+    if dirty:
+        sample = " | ".join(
+            "".join(char if char.isalnum() or char in " ._-/\\" else "?" for char in line)[:160]
+            for line in dirty.splitlines()[:5]
+        )
+        raise AuditError(f"package proof requires a clean Git checkout; dirty paths: {sample}")
     commit = git("rev-parse", "--verify", "HEAD")
     if not builder.SHA40_RE.fullmatch(commit):
         raise AuditError("package proof HEAD is not a canonical commit SHA")

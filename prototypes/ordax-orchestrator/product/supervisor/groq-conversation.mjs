@@ -3,6 +3,7 @@
 import {redactOrchestratorAnalysisText} from '../src/orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from '../src/orchestrator-proposal.mjs';
 import {normalizeGitHubRepositoryUrl} from '../src/remote-repository-context.mjs';
+import {readBoundedJsonResponse} from '../src/bounded-json-response.mjs';
 
 function sanitizeAnalysisValue(value,depth=0) {
   if(depth>8)throw Error('orchestrator_analysis_context_invalid');
@@ -86,9 +87,7 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
             remoteRepository:safeRepositoryUrl?{provider:'github',url:safeRepositoryUrl}:undefined})},...history]})
       });
       if(!response?.ok)throw Error('orchestrator_coordinator_http_failed');
-      const raw=await response.text();
-      if(raw.length>64000)throw Error('orchestrator_reply_invalid');
-      let parsed;try{parsed=JSON.parse(raw);}catch{throw Error('orchestrator_reply_invalid');}
+      const parsed=await readBoundedJsonResponse(response,{maxBytes:64000,errorCode:'orchestrator_reply_invalid'});
       if(parsed?.choices?.[0]?.finish_reason!=='stop')throw Error('orchestrator_reply_incomplete');
       const content=parsed?.choices?.[0]?.message?.content;
       if(typeof content!=='string'||!content.trim()||content.length>12000)throw Error('orchestrator_reply_invalid');

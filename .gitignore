@@ -2,3 +2,13 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Read-only canonical owner snapshots checked out by CI into the repository root.
+/.ordax-assistant-os-main/
+/.ordax-files-sdk/
+/.ordax-files-source/
+/.ordax-internet-current/
+/.ordax-internet-source/
+/.ordax-pending-source/
+/.ordax-platform-lifecycle/
+/.ordax-platform-trust/

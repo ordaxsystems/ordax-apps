@@ -9,6 +9,8 @@ import {createOrchestratorMcp} from '../src/orchestrator-mcp.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/orchestrator-contract.mjs';
 import {createGroqCoordinatorConversation} from '../supervisor/groq-conversation.mjs';
 
+const jsonResponse=value=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
+
 function fixture(t,{provider,coordinator,confirmProposal=()=>true,confirmProposalSend=()=>true}={}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-orchestration-'));
   const file=path.join(dir,'lab.sqlite');
@@ -245,7 +247,7 @@ test('Groq work preparation parses a strictly bounded JSON proposal without invo
     fetchImpl:async(_url,options)=>{
       const body=JSON.parse(options.body);assert.equal(body.tools,undefined);
       assert.match(body.messages[0].content,/objeto JSON/);
-      return {ok:true,text:async()=>JSON.stringify({choices:[{finish_reason:'stop',message:{content:response}}]})};
+      return jsonResponse({choices:[{finish_reason:'stop',message:{content:response}}]});
     }});
   const input={taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Pesquisar',prepareWork:true};
   assert.equal((await adapter.send(input)).proposal.title,'Pesquisar');
@@ -584,7 +586,7 @@ test('API coordinator continues its persisted conversation and receives only the
       const body=JSON.parse(options.body);requests.push(body);
       assert.match(body.messages[0].content,/API não consultou o GitHub nem recebeu conteúdo/);
       assert.match(body.messages[0].content,/"remoteRepository":\{"provider":"github","url":"https:\/\/github.com\/ordaxsystems\/veste"\}/);
-      return {ok:true,text:async()=>JSON.stringify({choices:[{finish_reason:'stop',message:{content:`Resposta ${requests.length}`}}]})};
+      return jsonResponse({choices:[{finish_reason:'stop',message:{content:`Resposta ${requests.length}`}}]});
     }});
   const first=await f.call('orchestrator_chat',{projectId:a.p,orchestratorId:a.o,content:'Vamos criar a loja VESTE.'});
   const second=await f.call('orchestrator_chat',{projectId:a.p,orchestratorId:a.o,content:'Continue pela etapa de catálogo.'});
@@ -686,7 +688,7 @@ test('Groq coordinator is opt-in, project scoped and refuses a truncated respons
       assert.doesNotMatch(JSON.stringify(body),/analysis-secret|https:\/\/analysis\.example/);
       assert.match(body.messages[0].content,/somente consultiva/);
       assert.match(options.headers.Authorization,/fixture-only/);
-      return {ok:true,text:async()=>JSON.stringify({choices:[{finish_reason:'length',message:{content:'Partial'}}]})};
+      return jsonResponse({choices:[{finish_reason:'length',message:{content:'Partial'}}]});
     }});
   await assert.rejects(adapter.send({taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Planejar',
     analysisContext:{works:[{title:'Site',messages:[{content:'api_key=analysis-secret https://analysis.example/path'}]}]}}),/incomplete/);
@@ -708,7 +710,7 @@ test('Groq coordinator receives only bounded workspace facts and is instructed n
       assert.match(system,/"state":"capability_unavailable"/);
       assert.match(system,/"filesRead":0/);
       assert.doesNotMatch(system,/C:\\private\\VESTE|resource_private-id/);
-      return {ok:true,text:async()=>JSON.stringify({choices:[{finish_reason:'stop',message:{content:'Nenhum arquivo foi lido.'}}]})};
+      return jsonResponse({choices:[{finish_reason:'stop',message:{content:'Nenhum arquivo foi lido.'}}]});
     }});
   const result=await adapter.send({taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Planejar',
     workspaceObservation:{state:'capability_unavailable',capabilityAvailable:false,snapshotObserved:false,
