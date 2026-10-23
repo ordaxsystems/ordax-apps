@@ -1,6 +1,6 @@
 # OrdaX Apps
 
-**OrdaX Orchestrator — direção Project-First:** o projeto local autorizado, suas alterações e evidências passam a ser o centro da evolução do protótipo; não apenas a conversa GPT. [Arquitetura](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md) · [Plano](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) · [Handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md). Documentação de alvo, **não funcionalidade concluída**; PR #268 draft e owners Runtime/Platform preservados.
+**OrdaX Orchestrator — Project-First:** PR #268 foi mesclada e o protótipo `0.2.0-alpha.13` continua em desenvolvimento. A referência remota GitHub pode ser encaminhada ao GPT; isso não comprova leitura do repo. Workspace local, supervisor 24h, providers externos via Intelligence e execução autônoma continuam incompletos e dependem dos owners Runtime/Platform/OS. [Arquitetura](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md) · [Plano e gates](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) · [Matriz atual](prototypes/ordax-orchestrator/docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md) · [Handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md).
 
 > [!IMPORTANT]
 > **Leitura prioritária:** antes de analisar, planejar ou implementar aplicativos, leia o [URGENTE — Roadmap mestre de aplicativos e ecossistema OrdaX OS](URGENTE-ROADMAP-ORDAX-APPS.md).

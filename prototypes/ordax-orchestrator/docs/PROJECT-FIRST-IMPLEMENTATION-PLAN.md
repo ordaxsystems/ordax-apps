@@ -1,6 +1,6 @@
 # Plano de execução — OrdaX Orchestrator Project-First
 
-**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Revisão de estado: 2026-10-22.
+**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Revisão de estado: 2026-10-23; bases consultadas: Apps `cd3b4c6`, Runtime `9154cb9`, Platform `3ae5d91`, OS `96f70c9`.
 
 ## Regras do programa
 
@@ -9,7 +9,64 @@
 3. O aplicativo não acessa arquivos/terminal/Git por bypass de grants: o owner da capacidade é Runtime. Não criar outro daemon local, SQLite de projetos ou execução por DOM do ChatGPT.
 4. Mudanças devem ser pequenas, revisáveis, com rollback seguro; cada gate exige testes positivos e negativos.
 5. Continuar projetos sem depender do chat é objetivo prioritário; ainda exige owner Runtime/headless e políticas.
-6. **Iniciar pelo marco M0/M1.** Não implementar M3–M7 de uma vez e não declarar autonomia antes de M7.
+6. **Iniciar pelo M0 e pela fatia remota R0 definida abaixo.** A prioridade vigente é projeto → referência GitHub remota → conversa de coordenação existente → tarefa pelo executor GPT existente. M1 local só começa quando Runtime/Platform fornecerem grant e port autenticados. Não antecipar M3–M7 nem declarar autonomia antes dos respectivos gates.
+
+## Ordem vigente — R0 remoto antes do workspace local
+
+Esta ordem incorpora a prioridade definida pelo proprietário em 2026-10-22 e evita transformar a falta de grants de workspace em um acesso local alternativo.
+
+### R0 — referência remota e tarefa GPT existente
+
+- O projeto pode guardar uma URL canônica `https://github.com/{owner}/{repo}`. Ela é referência, não prova de que o conteúdo foi lido.
+- O coordenador Groq recebe apenas a URL e o contexto de missão permitido; não pode alegar que leu o repositório.
+- A tarefa de trabalho encaminha a URL ao executor ChatGPT existente. A tarefa deve usar a integração GitHub que esteja realmente autorizada naquela sessão e parar se ela estiver ausente ou sem permissão.
+- Só registrar leitura, mudança, commit ou teste com evidência da ferramenta correspondente. Resposta textual não substitui diff, commit ou status de CI.
+- Não criar token store/OAuth no App para “resolver” a leitura remota; autenticação de produto pertence ao Platform. Não clonar ou abrir pastas locais como fallback.
+
+**Estado no Apps `main` consultado em 2026-10-23:** normalização da URL, armazenamento de referência e inclusão de instruções de destino na tarefa GPT existem em `remote-repository-context.mjs` e `orchestrator-service.mjs`, com testes unitários. Isso não comprova leitura/edição real pelo GPT, conexão GitHub autenticada do App, nem trabalho contínuo após fechar a janela. O próximo aceite R0 é uma execução real autorizada que produza evidência remota verificável.
+
+## Composição de autonomia contínua — alvo posterior, sem serviço paralelo
+
+“24 horas” significa poder retomar etapas limitadas sem a janela do App aberta, quando o host/serviço, a rede, a credencial autorizada e o orçamento estiverem disponíveis. Não significa chamar um modelo continuamente quando não há trabalho.
+
+| Responsabilidade | Owner/capacidade a reutilizar | Regra de integração |
+| --- | --- | --- |
+| Projeto, missão humana, conversas e apresentação | Orchestrator Apps Store/Task/Run existentes | Não criar outro banco de projetos nem duplicar histórico de conversa. |
+| Objetivos de agente, work items, leases e checkpoints persistentes | `OrchestratorStore` existente no Runtime | Não criar fila/lease paralela no Electron. Definir mapeamento por IDs/revisões antes de ligar o domínio Apps. |
+| Agenda, ciclo de vida e execução em background | Scheduler e Background Runtime do OS existentes, atualmente source-only/desativados | Compor esses owners; uma fila de trabalho autoritativa e idempotência por chave, sem um segundo scheduler no App. |
+| Inferência e seleção de provedor | OrdaX Intelligence/Model Router do OS | Provedor remoto GPT/Groq só depois do adapter, egress, consentimento e credenciais pelo contrato canônico. A chamada Groq direta atual no Electron não vira worker 24h. |
+| Arquivos, Git, testes, processos e preview locais | Runtime/Device Host | Capability tipada e grant por recurso; nunca raw path, `shell` ou filesystem no app como atalho. |
+| Grants, ações externas e recibos | Platform/Product MCP | Revalidar no despacho; wake é apenas sinal para Runtime consultar a fila canônica. |
+
+**Limite importante:** Runtime já tem work queue/leases persistentes; OS já tem Scheduler/Background Runtime, mas seus contratos declaram composição de Personal OrdaX, store de produção, auto-resume e mutação autônoma desativados. Antes de qualquer ciclo contínuo, Runtime/OS devem definir qual lease protege cada camada e provar um único claim autoritativo por work item. A janela Electron não deve manter a autoridade nem ser dona do timer.
+
+### Ciclo de uma etapa autônoma
+
+```text
+evento (missão / resultado / falha / lease vencido)
+  → claim idempotente de um work item
+  → montar checkpoint e evidências mínimas
+  → chamar Intelligence somente se houver decisão de modelo
+  → validar proposta, grant, orçamento e alvo
+  → executar por Runtime ou integração remota autorizada
+  → verificar resultado com diff / receipt / teste
+  → salvar checkpoint e agendar a próxima etapa, pausar ou bloquear
+```
+
+Ausência de resposta não é conclusão nem autorização para replay. Primeiro reconciliar estado/recibo e só então decidir entre continuar na mesma missão, abrir nova conversa de trabalho ou pedir intervenção. Groq pode assumir uma etapa nova a partir do checkpoint depois de uma falha confirmada do provedor primário; nunca pode repetir ação de efeito incerto.
+
+**Custo e ritmo:** Git, snapshots, leases e testes determinísticos não exigem tokens. Chamar modelo em mudanças relevantes, falhas ou decisões; usar contexto resumido com referências de evidência, limites por missão e backoff em indisponibilidade. Não fazer polling de inferência quando a fila está vazia.
+
+### Gate de aceitação para 24h
+
+- três transições de trabalho consecutivas sem mensagem humana, com status e evidência reais;
+- fechar a UI durante a missão e comprovar que o serviço autorizado continua; reabrir a UI mostra o mesmo estado;
+- reiniciar worker/Runtime durante uma etapa e recuperar do último checkpoint, sem repetir envio ou escrita incerta;
+- falha confirmada do provedor primário permite handoff para o provedor alternativo pelo Model Router, sem duas escritas concorrentes;
+- provar pause, cancel, revogação de grant, limite de passos/tempo/egress e orçamento esgotado;
+- confirmar condição de disponibilidade: trabalho local requer máquina/Runtime online; trabalho remoto requer um executor e credencial GitHub autorizados no host que realmente fará a operação.
+
+Até esse gate passar, o produto deve mostrar `paused`, `waiting_provider`, `blocked` ou `not_running` conforme o estado observado; nunca indicar “trabalhando 24h” por existir um timer, uma conversa aberta ou uma agenda em source.
 
 ## M0 — Reconciliação e especificação (DOCUMENTAÇÃO)
 
@@ -23,7 +80,7 @@ Tarefas:
 
 **Aceite:** nenhuma capacidade suposta como existente sem prova; documento com cada gap e owner; CI atual da PR inspeccionada. **Risco:** confundir MCP externo com API interna.
 
-## M1 — Vínculo seguro de projeto local (READ-ONLY, PRIMEIRA IMPLEMENTAÇÃO)
+## M1 — Vínculo seguro de projeto local (READ-ONLY, após R0)
 
 **Owner Apps:** seleção UX e persistência de referência opaca no projeto existente. **Owner Runtime/Platform:** grant e snapshot de diretório, se ausentes.
 
