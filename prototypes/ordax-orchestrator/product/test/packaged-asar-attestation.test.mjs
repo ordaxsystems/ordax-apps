@@ -87,4 +87,3 @@ test('packager rejects an archive with a non-bootstrap entrypoint',async t=>{
   assert.ok(fs.existsSync(f.archive));
   assert.equal(fs.existsSync(f.archive+'.ordax-pre-attestation'),false);
 });
-
