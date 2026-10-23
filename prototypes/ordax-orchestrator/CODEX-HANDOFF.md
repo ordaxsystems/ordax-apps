@@ -1,24 +1,28 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
-**Prioridade atual revisada pelo proprietário (2026-10-22):** primeiro validar
-projeto → referência GitHub remota → conversa persistente pela API existente →
-conversa de trabalho pelo executor ChatGPT existente. A etapa de workspace local
-via Runtime fica depois. O App só guarda/encaminha a URL; não alegar que Groq
-acessou o GitHub. A tarefa GPT deve usar uma integração GitHub efetivamente
-disponível na sessão e parar se faltar acesso. Integração GitHub autenticada do
-App continua pertencendo ao owner Platform; não criar outro OAuth/token store.
-Esta decisão substitui a ordem inicial M0/M1 local descrita abaixo, mas mantém
-os gates de grants, receipts e evidência quando o trabalho local for iniciado.
+**Objetivo do proprietário:** o usuário informa uma missão uma vez; o Orchestrator
+coordena o projeto e conversa com GPT. GPT/ChatGPT Web com OrdaX MCP é o caminho
+principal desejado; Groq/API pode assumir quando GPT comprovadamente parar. Esse
+monitoramento, handoff automático e continuidade 24h ainda não existem. A alpha.14
+persiste projeto, coordenador e primeiro rascunho e usa o executor ChatGPT existente
+quando a sessão está pronta. O teste empacotado não enviou mensagem a GPT.
+
+**Ordem atual:** provar primeiro R0 remoto: o App encaminha uma URL canônica e a
+tarefa GPT deve usar uma integração GitHub realmente autorizada na sessão. URL no
+prompt ou texto do GPT não prova leitura remota. O App não dá acesso próprio ao
+GitHub, e Groq não recebe conteúdo do repositório. Workspace local via Runtime fica
+depois dos grants e do port autenticado dos owners; não criar outro OAuth/token
+store nem acessar filesystem por fora do Runtime.
 
 **Objetivo de produto:** manter projetos e missões avançando sem depender de um turno ou da janela do ChatGPT. Para autonomia contínua, GPT deve ser o provedor principal autorizado pelo OrdaX Intelligence; Groq pode atuar como alternativa pelo mesmo Model Router e com o mesmo checkpoint. OrdaX MCP/Runtime continuam sendo o caminho de ferramentas e efeitos autorizados. A interface ChatGPT Web existente é uma superfície interativa, não um supervisor headless de 24 horas.
 
 **Ordem de implementação vigente:** cumprir primeiro R0 remoto — URL GitHub como referência, conversa de coordenação existente e tarefa GPT pelo executor existente, com evidência da integração GitHub real. O workspace local vem depois dos grants e do port autenticado dos owners Runtime/Platform. A composição de 24 horas é uma fase posterior, pois o Scheduler/Background Runtime do OS e o provider externo ainda estão desativados em `main`; não duplicar fila, banco, scheduler ou roteador no App.
 
-**Base Apps `main` (alpha.13):** o Lab mantém modelo de vínculo lógico de workspace por recurso opaco, status e snapshot somente leitura **dependentes de um port Runtime verificado**. O port não está conectado no Windows; não há pasta real vinculada. Consulte `product/src/project-workspace.mjs`, testes `product/test/project-workspace.test.mjs` e matriz em `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md`. A integração de filesystem/Git segue nos owners Runtime/Platform — não duplicar esses serviços no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
+**Base Apps `main` (alpha.14, `17c43d42b681b1e77b0b65d4771f990281b520aa`):** o Lab mantém modelo de vínculo lógico de workspace por recurso opaco, status e snapshot somente leitura **dependentes de um port Runtime verificado**. O port não está conectado no Windows do usuário; não há pasta real vinculada. Consulte `product/src/project-workspace.mjs`, testes `product/test/project-workspace.test.mjs` e matriz em `docs/audits/PROJECT-WORKSPACE-CAPABILITY-MATRIX.md`. A integração de filesystem/Git segue nos owners Runtime/Platform — não duplicar esses serviços no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
 
-**Candidata alpha.14 em revisão:** a entrada `mission_create` compõe projeto, coordenador e primeira conversa/rascunho em uma transação no Store já existente; a UI envia pelo executor ChatGPT quando a sessão está pronta e mantém o rascunho quando não está. `project_rename` atualiza metadados sob o escopo de sessão. Testes direcionados cobrem transação, rollback, idempotência, persistência, renomeação, guard de login e ligação UI→executor. Isso não comprova resposta final do GPT, uso da integração GitHub, artefato em disco/site validado ou autonomia 24h.
+**Incremento alpha.14 integrado pela PR #335:** a entrada `mission_create` compõe projeto, coordenador e primeira conversa/rascunho em uma transação no Store já existente; a UI envia pelo executor ChatGPT quando a sessão está pronta e mantém o rascunho quando não está. `project_rename` atualiza metadados sob o escopo de sessão. Os quatro checks de CI passaram no head `52c4cef49263de6f770a956abf7e4c2ad69a91bb`; o E2E executou o `.exe` portátil em perfil descartável e validou o fluxo App→Runtime host de teste. A sessão GPT não foi usada e nenhum provedor recebeu mensagem. Isso não comprova resposta final do GPT, uso da integração GitHub, artefato em disco/site validado ou autonomia 24h.
 
-**Bases remotas conferidas em 2026-10-23:** Apps `main` `cd3b4c6554054f8a6aa49843763e5f7913c13e77`; Runtime `main` `9154cb977bbad9f007e7734ebfbeeb4997e7db57`; Platform `main` `3ae5d914df03f8f6a677ddd18cf3337cd0bcb89a`; OS `main` `0b32f8f4a6d6630edf17b584899c2d9e69ab4f1c`. PR #268 foi mesclada. Antes de cada incremento, conferir novamente main, Git status e CI; não assumir SHA antigo como HEAD.
+**Bases remotas conferidas em 2026-10-23 após o merge:** Apps `main` `17c43d42b681b1e77b0b65d4771f990281b520aa`; Runtime `main` `9154cb977bbad9f007e7734ebfbeeb4997e7db57`; Platform `main` `3ae5d914df03f8f6a677ddd18cf3337cd0bcb89a`; OS `main` `8bdea25a19541ba3b734d6f3895ad48251fc3124`. PR #268 e PR #335 foram mescladas em Apps. Runtime #208 está aberta, Runtime #205 e Platform #274 estão draft; Platform #181/#182 continuam propostas abertas de continuidade MCP. Nenhuma dessas PRs foi integrada à `main` por este trabalho. Antes de cada incremento, conferir novamente main, Git status e CI; não assumir SHA antigo como HEAD.
 **Produto:** `prototypes/ordax-orchestrator/product/`, fonte própria. **Base Flow/Grátis** `ordax-flow@081a7ce989721106aaf27a0c9d09cf9d49713a65` imutável; não modificar dados/perfil do Grátis.
 **Bibliografia obrigatória na ordem:**
 1. `/AGENTS.md`, `/URGENTE-ROADMAP-ORDAX-APPS.md`, `/HANDOFF.md`, `/README.md`.
@@ -27,11 +31,11 @@ os gates de grants, receipts e evidência quando o trabalho local for iniciado.
 4. [Roteiro VESTE](docs/VESTE-PROJECT-FIRST-E2E.md).
 5. `docs/audits/ORCHESTRATOR-AUTOCONTINUATION-ALPHA10-2026-10-21.md`, `docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md`, `docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md` (evidências **históricas**, não estados novos).
 
-## Instrução inicial — PRIMEIRO CICLO
+## Próximo ciclo — fechar R0 remoto
 
-Faça **M0 + R0 remoto**; não tente construir M0–M7 num único PR. M1 local só pode começar quando o grant e o port autenticados estiverem disponíveis e verificados.
+O baseline M0 e a entrada única de missão já estão registrados e integrados. Continue pelo R0 remoto com evidência real; não tente construir M1–M7 num único PR. M1 local só pode começar quando o grant e o port autenticados estiverem disponíveis e verificados.
 
-1. **Reconciliar estado:** `git status --short --branch`, `git log -5 --oneline`, `git remote -v`, PR #268/CI atuais e files alterados. Criar worktree/branch isolado se outro trabalho estiver em andamento. **Não force push**, não sobrescrever mudanças locais ou sessão GPT existente.
+1. **Reconciliar estado:** `git status --short --branch`, `git log -5 --oneline`, `git remote -v`, Apps PR #335/CI atuais e PRs de owner #208/#205/#274/#181/#182. Criar branch isolada se outro trabalho estiver em andamento. **Não force push**, não sobrescrever mudanças locais ou sessão GPT existente.
 2. **Checar o caminho R0:** confirmar que a URL é somente uma referência, que Groq não recebe conteúdo GitHub e que a tarefa GPT declara bloqueio quando a integração GitHub não está disponível. Um URL no prompt não é prova de leitura. Não criar OAuth/token store/conector paralelo.
 3. **Atualizar a matriz M0:** registrar commits `main` dos quatro owners (Apps, Runtime, Platform e OS), capacidade observada, lacuna, owner e gate. Não manter contagens ou commits históricos como estado atual.
 4. **M1 local apenas após autorização real:** usar o port de workspace do Runtime e resource grant do Platform; a App guarda referência opaca e estado tipado. Nunca usar `fs`, `child_process`, string raw path ou shell no Orchestrator como substituição do port.
@@ -93,4 +97,4 @@ Ao final do primeiro ciclo, responder:
 
 ## Mensagem curta sugerida ao Codex
 
-> Continue a PR draft #268 do OrdaX Orchestrator. Leia obrigatoriamente `prototypes/ordax-orchestrator/CODEX-HANDOFF.md` e a RFC/Plano/VESTE ali ligados. A nova arquitetura é Project-First: o App acompanha pastas/repositórios locais autorizados via Runtime/OrdaX MCP, monitora diffs/testes e usa GPT como inteligência/ferramenta, não como lugar onde fica todo o trabalho. Comece por M0 e M1 read-only; preserve Flow/Grátis, VESTE incerta e instalações. Corrija apenas no owner canônico, com testes E2E e evidências. Não invente capabilities nem autonomia já existente.
+> Continue o OrdaX Orchestrator a partir da Apps `main` atual e leia `prototypes/ordax-orchestrator/CODEX-HANDOFF.md`, a RFC, o plano e o roteiro VESTE. A entrada única de missão alpha.14 já está integrada pela PR #335. Feche R0 com evidência real da integração GitHub na sessão GPT; uma URL ou resposta textual não prova leitura. M1 local depende do port e dos grants Runtime/Platform integrados; não use filesystem, Git ou shell por fora desses owners. Preserve Flow/Grátis, a instalação existente e o trabalho da VESTE. Não invente capabilities nem declare autonomia antes dos critérios de aceite.
