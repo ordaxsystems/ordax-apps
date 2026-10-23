@@ -315,6 +315,11 @@ jobs:
           ORDAX_ASSISTANT_TEST_OS_ROOT: .ordax-assistant-os-main
         run: node --test apps/assistant/tests/*.test.mjs
 
+      - name: Verify canonical Aura package bytes and smoke-mount the real runtime offline
+        run: |
+          set -euo pipefail
+          python3 tools/prove_assistant_packaged_mount.py
+
       - name: Audit transferred Assistant source, public SDK and remove-first ownership
         run: |
           set -euo pipefail
