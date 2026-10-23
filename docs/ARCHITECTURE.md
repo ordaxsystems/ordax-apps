@@ -6,14 +6,16 @@ This repository owns first-party application source that can evolve independentl
 
 It does **not** own boot, kernel, recovery, Surface/Shell, Identity, Memory, Intelligence, permissions, sync, Component Manager, Store service, update trust, or authority.
 
-Those remain platform-owned by `ordaxsystems/prototipo-ordax-os`.
+Those capabilities are owned by `ordaxsystems/ordax-os`, except remote OAuth/grants/control-plane responsibilities in `ordaxsystems/ordax-platform` and device-host/computer execution in `ordaxsystems/ordax-runtime`. The authoritative cross-repository boundary is [`ordax-os/docs/contracts/repository-ownership.json`](https://github.com/ordaxsystems/ordax-os/blob/main/docs/contracts/repository-ownership.json).
 
 ## Repository model
 
 OrdaX uses a hybrid model:
 
-- platform/core: `prototipo-ordax-os`;
-- official removable/bootstrap/on-demand apps: `ordax-apps`;
+- operating system, boot, Surface/Shell, structural services and package lifecycle: `ordaxsystems/ordax-os`;
+- official removable/bootstrap/on-demand app source: `ordaxsystems/ordax-apps`;
+- device-host Runtime and computer execution: `ordaxsystems/ordax-runtime`;
+- remote OAuth, grants, MCP and control plane: `ordaxsystems/ordax-platform`;
 - third-party/user apps: their own repositories;
 - structural Store/Settings/Account/System surfaces remain platform-owned.
 
@@ -74,6 +76,6 @@ Identity / Memory / permissions / updater / trust
 
 Localization remains component-scoped. Each app owns its strings/packs while honoring the global OrdaX locale and fallback contract. A translation-only app change must not require rebuilding the Base image.
 
-## First extraction candidate
+## Notes source cutover (completed, distribution still gated)
 
-`notes` is the initial candidate because it is non-structural and comparatively bounded. Because OrdaX is still pre-launch and has no production Notes data, Notes uses the **remove-platform-first** cutover above. Package/lifecycle proof then happens from the canonical source in `ordax-apps`; until that proof is complete, Notes may simply be unavailable rather than duplicated.
+The Notes source is already canonical in `ordaxsystems/ordax-apps/apps/notes`, as recorded in [`migrations/notes.externalization.json`](../migrations/notes.externalization.json). The source transfer used the pre-launch **remove-platform-first** rule above. Package/lifecycle candidate proofs are separate from production activation: `distribution_activation_allowed=false` remains binding until the release/trust gates are closed. The platform must not restore a parallel Notes implementation to compensate for unavailable distribution.
