@@ -80,10 +80,11 @@ exports.beforePack=async function beforePack(){
     throw Error('packaged_build_source_changed');
   buildSourceCommit=sourceCommit;
 };
-exports.default=async function afterPack(context){
+async function afterPack(context){
   if(context.electronPlatformName!=='win32')throw Error('packaged_windows_only');
   const productRoot=path.resolve(__dirname,'..');
-  if(!buildSourceCommit)throw Error('packaged_build_source_not_attested');
+  const sourceCommit=buildSourceCommit;
+  if(!sourceCommit)throw Error('packaged_build_source_not_attested');
   const head=cp.execFileSync('git',['-C',productRoot,'rev-parse','--verify','HEAD'],
     {encoding:'utf8',timeout:10000}).trim();
   if(head!==buildSourceCommit)throw Error('packaged_build_source_changed');
@@ -100,4 +101,6 @@ exports.default=async function afterPack(context){
   console.log(JSON.stringify({schema:proof.schema,status:proof.status,
     sourceCommit:proof.sourceCommit,contentDigest:proof.contentDigest,
     fileCount:proof.fileCount,asarSha256:proof.asarSha256}));
-};
+}
+exports.afterPack=afterPack;
+exports.default=afterPack;
