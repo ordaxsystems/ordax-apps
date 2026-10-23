@@ -160,6 +160,14 @@ assert.ok(slot, "real app owns and creates its slot inside the empty Native root
 assert.equal(root.childElementCount, 1, "the app must not create a parallel UI");
 assert.equal(slot.classList.contains("ordax-assistant-host"), true);
 assert.ok(slot.querySelector("[data-assistant-input]"), "real runtime rendered a textarea");
+const renderedTitles = [];
+const inspectTitles = (node) => {
+  if (node.className === "ordax-assistant-title") renderedTitles.push(node.textContent);
+  for (const child of node.children) inspectTitles(child);
+};
+inspectTitles(slot);
+assert.deepEqual(renderedTitles, [manifest.title],
+  "visible conversation title must come only from the canonical app manifest");
 const headings = slot.querySelectorAll("[data-assistant-input]");
 assert.equal(headings.length, 1);
 assert.equal(documentObject.head.querySelector('link[data-ordax-component-style="assistant"]') !== null, true);
