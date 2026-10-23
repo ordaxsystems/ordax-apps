@@ -285,6 +285,59 @@ test('metadata commands are atomic, idempotent, and reject a reused request with
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts').get().n,1);
 });
 
+test('one mission atomically creates a project, coordinator and first durable GPT draft',async t=>{
+  let providerCalls=0;
+  const f=fixture(t,{provider:{send:async()=>{providerCalls++;throw Error('mission_create_must_not_send');}}});
+  const mission='Crie uma loja de roupas chamada VESTE, com catálogo e carrinho.';
+  const input={requestId:'mission-once',mission,repositoryUrl:'https://github.com/ordaxsystems/veste-store'};
+  const first=await f.call('mission_create',input);
+  assert.equal(first.status,'succeeded');
+  const {projectId,projectName,orchestratorId,chatTaskId,taskId,draftRevision}=first.result;
+  assert.equal(projectName,mission);
+  assert.equal(draftRevision,1);
+  assert.equal(providerCalls,0);
+  const projectRow=(await f.call('projects_list')).projects.find(row=>row.id===projectId);
+  assert.equal(projectRow.name,mission);
+  assert.equal(projectRow.objective,mission);
+  assert.equal(projectRow.repository_url,'https://github.com/ordaxsystems/veste-store');
+  const coordinator=(await f.call('orchestrators_list',{projectId})).orchestrators[0];
+  assert.equal(coordinator.id,orchestratorId);
+  assert.equal(coordinator.chat_task_id,chatTaskId);
+  assert.equal(coordinator.name,'Orquestrador');
+  assert.equal(coordinator.mission,mission);
+  const work=(await f.call('work_list',{projectId,orchestratorId})).works[0];
+  assert.equal(work.id,taskId);
+  assert.equal(f.store.getTask(taskId).draft,mission);
+  assert.equal(f.store.getTask(taskId).draft_revision,1);
+  assert.deepEqual(await f.call('mission_create',input),first);
+  assert.equal((await f.call('projects_list')).projects.length,1);
+  await assert.rejects(f.call('mission_create',{...input,mission:'Missão diferente'}),/request_conflict/);
+  assert.equal(providerCalls,0);
+});
+
+test('mission creation rolls back its project, tasks, bindings and receipt on a binding failure',async t=>{
+  const f=fixture(t);
+  f.store.db.exec("CREATE TRIGGER fail_mission_binding BEFORE INSERT ON lab_task_bindings BEGIN SELECT RAISE(ABORT,'mission_binding_failed'); END");
+  await assert.rejects(f.call('mission_create',{requestId:'mission-fails',mission:'Criar uma loja VESTE'}),/mission_binding_failed/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_projects').get().n,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_orchestrators').get().n,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_task_bindings').get().n,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id='mission-fails'").get().n,0);
+});
+
+test('project rename changes project metadata without changing its remote or work',async t=>{
+  const f=fixture(t),a=await project(f,'VESTE inicial');
+  await f.call('project_repository_set',{projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/veste-store'});
+  const renamed=await f.call('project_rename',{projectId:a.p,name:'VESTE loja'});
+  assert.deepEqual(renamed.result,{projectId:a.p,name:'VESTE loja'});
+  const row=(await f.call('projects_list')).projects.find(item=>item.id===a.p);
+  assert.equal(row.name,'VESTE loja');
+  assert.equal(row.repository_url,'https://github.com/ordaxsystems/veste-store');
+  assert.equal((await f.call('work_list',{projectId:a.p,orchestratorId:a.o})).works[0].id,a.w);
+  await assert.rejects(f.call('project_rename',{projectId:'project_missing',name:'No'}),/project_unavailable/);
+});
+
 test('forged subjects, unknown keys, cross-project bindings and read revocation fail closed',async t=>{
   const f=fixture(t),a=await project(f),b=await project(f,'B');
   await assert.rejects(f.service.invoke({...f.context},'projects_list',{}),/access_denied/);

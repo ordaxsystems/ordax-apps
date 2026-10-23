@@ -1,7 +1,7 @@
 // Native App UI is a client of the same command service as MCP. No DOM of
 // ChatGPT, coordinates or direct SQLite access is used to operate the Lab.
 import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
-export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator}) {
+export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onStartMission,canStartMission}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let coordinatorOpen=false,coordinatorAvailable=false,analysisBusy=false;
@@ -76,6 +76,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     input.value=project?.repository_url||'';
     input.disabled=!project;
     $('saveProjectRepository').disabled=!project;
+    $('renameProjectButton').disabled=!project;
+    $('renameProjectInput').value=project?.name||'';
     $('remoteRepositoryStatus').textContent=!project
       ?'Selecione um projeto.'
       :project.repository_url
@@ -102,7 +104,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('closeCoordinatorApiSettings').addEventListener('click',()=>{
     document.body.classList.remove('orchestrator-api-settings');$('contextRail').classList.remove('open');
   });
-  $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectName').focus(); });
+  $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectObjective').focus(); });
+  $('renameProjectButton').addEventListener('click',()=>{
+    if(!projectId)return;
+    $('renameProjectInput').value=projectsCache.find(item=>item.id===projectId)?.name||'';
+    $('projectRenameSetup').open=true;$('renameProjectInput').focus();
+  });
   $('addOrchestrator').addEventListener('click',()=>{
     if(!projectId){status('Selecione ou crie um projeto antes de adicionar um orquestrador.');return;}
     $('orchestratorSetup').open=true;$('orchestratorName').focus();
@@ -262,13 +269,39 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   $('newProjectForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
-      const receipt=await command('project_create',{name:$('projectName').value,objective:$('projectObjective').value,
-        repositoryUrl:$('projectRepositoryUrl').value});
+      if(typeof canStartMission==='function'&&canStartMission()!==true) {
+        status('Conecte uma sessão válida do ChatGPT antes de iniciar a missão. Nenhum projeto foi criado.');
+        return;
+      }
+      const mission=$('projectObjective').value.trim();
+      const name=$('projectName').value.trim();
+      const repositoryUrl=$('projectRepositoryUrl').value.trim();
+      const input={mission,...(name?{name}:{}),...(repositoryUrl?{repositoryUrl}:{})};
+      const receipt=await command('mission_create',input);
       if(receipt.status!=='succeeded')return;
-      projectId=receipt.result.projectId;orchestratorId=null;
+      projectId=receipt.result.projectId;orchestratorId=receipt.result.orchestratorId;
       $('newProjectForm').reset();$('projectSetup').open=false;
       await refreshProjects();await refreshOrchestrators();
-      status('Projeto criado. Configure a missão do orquestrador.');
+      if(typeof onStartMission==='function') {
+        let sent=false;
+        try {sent=await onStartMission({taskId:receipt.result.taskId,mission});} catch {}
+        status(sent===true
+          ?'Missão enviada à sessão ativa do ChatGPT. Acompanhe a execução e os resultados nesta conversa.'
+          :'Projeto criado e missão preservada como rascunho. O envio não foi confirmado; verifique a conversa antes de repetir.');
+      } else {
+        status('Projeto criado com a missão salva. O executor GPT não está disponível.');
+      }
+    });
+  });
+  $('renameProjectForm').addEventListener('submit',event=>{
+    event.preventDefault();void formAction(event.currentTarget,async()=>{
+      if(!projectId)return;
+      const p=projectId;
+      const receipt=await command('project_rename',{projectId:p,name:$('renameProjectInput').value});
+      if(receipt.status!=='succeeded'||p!==projectId)return;
+      $('projectRenameSetup').open=false;
+      await refreshProjects();
+      status('Nome do projeto atualizado.');
     });
   });
   $('projectRepositoryForm').addEventListener('submit',event=>{

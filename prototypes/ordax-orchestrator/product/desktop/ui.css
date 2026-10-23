@@ -292,8 +292,10 @@ button{color:inherit}
 .native-state-control{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
 .nav-section-heading{display:flex;align-items:center;justify-content:space-between;padding:13px 8px 7px;color:#a7b3c4;font-size:11px;font-weight:750}
 .nav-section-heading:first-child{padding-top:4px}
+.nav-heading-actions{display:flex;align-items:center;gap:5px}
 .nav-add{width:27px;height:27px;border:1px solid #263241;border-radius:8px;background:#111821;color:#9aa9ba;font-size:18px;line-height:1;cursor:pointer}
 .nav-add:hover{background:#17212b;color:#fff;border-color:#37485b}
+.nav-add:disabled{opacity:.35;cursor:not-allowed}
 .nav-item-list{display:grid;gap:3px}
 .nav-item{width:100%;min-width:0;display:flex;align-items:center;gap:10px;border:1px solid transparent;border-radius:9px;padding:9px 10px;background:transparent;color:#aeb9c8;text-align:left;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-item::before{content:"▱";display:grid;place-items:center;width:18px;flex:none;color:#738399;font-size:15px}
@@ -307,6 +309,7 @@ button{color:inherit}
 .nav-setup[open]{display:block}
 .nav-setup form{display:grid;gap:6px;padding:9px 3px}
 .nav-setup label{font-size:10px;color:#8997a8}
+.nav-setup small{font-size:9px;line-height:1.45;color:#758498}
 .nav-setup input,.nav-setup textarea{width:100%;border:1px solid #293646;border-radius:8px;background:#0d141b;color:#edf2f7;padding:8px;font-size:11px;resize:vertical}
 .nav-setup button,.nav-orchestrator-actions{border:1px solid #263443;border-radius:8px;background:#111922;color:#aeb9c8;padding:7px 9px;font-size:10px;cursor:pointer}
 body.orchestrator-focus .left-rail .new-task,
@@ -396,6 +399,7 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
   body.orchestrator-focus .nav-section-heading{justify-content:center;padding:8px 0}
   body.orchestrator-focus .nav-add{font-size:0;width:34px;height:30px}
   body.orchestrator-focus .nav-add::after{content:"+";font-size:17px}
+  body.orchestrator-focus #renameProjectButton::after{content:"✎";font-size:14px}
   body.orchestrator-focus .nav-item.active{font-size:0;justify-content:center;padding:10px 3px}
   body.orchestrator-focus .nav-item.active::before{font-size:17px}
   body.orchestrator-focus .orchestration-navigation{overflow:hidden}

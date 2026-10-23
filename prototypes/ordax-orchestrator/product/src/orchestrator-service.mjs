@@ -8,6 +8,12 @@ import {LabContinuation} from './lab-continuation.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
+function missionProjectName(mission) {
+  const firstLine=String(mission||'').trim().split(/\r?\n/u,1)[0].trim();
+  const firstSentence=firstLine.split(/(?<=[.!?])\s+/u,1)[0].trim();
+  return Array.from(firstSentence).slice(0,140).join('')||'Novo projeto';
+}
+
 // App-owned domain only. Reuses Store/Task/Run/messages; no second SQLite,
 // provider worker, device executor, identity, grants or global Memory service.
 export class OrchestratorService {
@@ -60,6 +66,14 @@ export class OrchestratorService {
     this.db.exec('BEGIN IMMEDIATE');
     try {const result=operation();this.db.exec('COMMIT');return result;}
     catch(error){this.db.exec('ROLLBACK');throw error;}
+  }
+
+  createProjectRecord(name,objective,repositoryUrl,now) {
+    const projectId='project_'+randomUUID();
+    this.db.prepare(`INSERT INTO lab_projects
+      (id,workspace_session_id,name,objective,created_at,repository_url) VALUES(?,?,?,?,?,?)`).run(projectId,
+      this.store.getWorkspaceSession().id,name,objective,now,repositoryUrl||null);
+    return projectId;
   }
 
   // Call exactly once by the App at startup, never when a client connects.
@@ -171,7 +185,7 @@ export class OrchestratorService {
       const reserved=this.reserve(context,operation,input);
       if(reserved.existing)return reserved.existing;
       const result=operation==='proposal_review'?this.reviewProposal(context,input):this.mutate(operation,input);
-      if(operation==='project_create')this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
+      if(['project_create','mission_create'].includes(operation))this.db.prepare('UPDATE lab_command_receipts SET project_id=? WHERE id=?')
         .run(result.projectId,reserved.commandId);
       return this.finish(reserved.commandId,result);
     });
@@ -297,11 +311,31 @@ export class OrchestratorService {
   mutate(operation,input) {
     const now=this.store.now();
     if(operation==='project_create') {
-      const projectId='project_'+randomUUID();
-      this.db.prepare(`INSERT INTO lab_projects
-        (id,workspace_session_id,name,objective,created_at,repository_url) VALUES(?,?,?,?,?,?)`).run(projectId,
-        this.store.getWorkspaceSession().id,input.name,input.objective||'',now,input.repositoryUrl||null);
-      return {projectId};
+      return {projectId:this.createProjectRecord(input.name,input.objective||'',input.repositoryUrl,now)};
+    }
+    if(operation==='mission_create') {
+      const projectName=input.name||missionProjectName(input.mission);
+      const projectId=this.createProjectRecord(projectName,input.mission,input.repositoryUrl,now);
+      const orchestratorId='orchestrator_'+randomUUID();
+      const coordinatorName='Orquestrador';
+      const coordinator=this.store.createTask(coordinatorName);
+      this.db.prepare('INSERT INTO lab_orchestrators VALUES(?,?,?,?,?,?,?)')
+        .run(orchestratorId,projectId,coordinatorName,input.mission,'ready',coordinator.id,now);
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(coordinator.id,projectId,orchestratorId,'orchestrator');
+      const work=this.store.createTask('Primeira frente');
+      this.db.prepare('INSERT INTO lab_task_bindings VALUES(?,?,?,?)')
+        .run(work.id,projectId,orchestratorId,'work');
+      this.store.setDraft(work.id,input.mission,1);
+      return {projectId,projectName,orchestratorId,chatTaskId:coordinator.id,
+        taskId:work.id,taskTitle:work.title,draftRevision:1};
+    }
+    if(operation==='project_rename') {
+      const workspaceSessionId=this.store.getWorkspaceSession().id;
+      const changed=this.db.prepare('UPDATE lab_projects SET name=? WHERE id=? AND workspace_session_id=?')
+        .run(input.name,input.projectId,workspaceSessionId).changes;
+      if(changed!==1)throw Error('orchestrator_project_unavailable');
+      return {projectId:input.projectId,name:input.name};
     }
     if(operation==='project_repository_set') {
       const repositoryUrl=normalizeGitHubRepositoryUrl(input.repositoryUrl);
