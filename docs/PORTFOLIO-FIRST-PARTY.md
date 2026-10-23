@@ -39,6 +39,8 @@ O SSOT **da política de seleção inicial** pertence ao OS e foi implementado e
   no host e no lifecycle verificado exige prova de paridade antes de remover o
   caminho local; o código portátil de produto não deve ser duplicado.
 
+**Identidade Aura:** o branding do pacote `assistant` foi atualizado sem criar `apps/aura` nem alterar a autoridade de distribuição. `migrations/assistant.externalization.json` permanece deliberadamente com `distribution_activation_allowed:false`, e o plano inicial de apps do OS só pode ativar esse mesmo pacote após prova de assinatura, montagem Native, health e rollback. O motor e os pesos de IA local não fazem parte do app e continuam no OrdaX OS.
+
 **Regra única:** nunca criar `apps/files` permanente enquanto a fonte Files
 estiver ativa no OS, nunca reintroduzir cópias de Internet/Assistente/Projetos/
 Atividade/Rede no OS e nunca confundir source cutover com ativação de produção.
@@ -55,7 +57,7 @@ O plano é disponibilizar os utilitários básicos já selecionados na instalaç
 
 ## Rótulos e colisões
 
-- **Assistant** é uma superfície do **Intelligence**, não outro modelo, memória ou gateway.
+- **Aura** é o nome do app conversacional com ID técnico imutável `assistant`, cuja fonte canônica é `apps/assistant/`. Ele consome `ordax.intelligence/1` do OS, não hospeda um segundo modelo, memória, serviço de inferência ou gateway. Veja `apps/assistant/README.md`.
 - **Network/Rede** significa comunidades e mensagens; a camada de rede e pareamento não deve ganhar outro app com a mesma função sob **Connect**.
 - **Activity/Timeline**: Timeline é exibição de eventos do Activity, não outro serviço.
 - **Flow** é um futuro editor que usa Action Gateway, e **App Forge** deve ser modo do Studio.
