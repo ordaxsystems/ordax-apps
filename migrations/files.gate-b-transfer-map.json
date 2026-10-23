@@ -2,7 +2,7 @@
   "$schema": "ordax.files-gate-b-transfer-map/1",
   "state": "prepared-no-source-copy",
   "source_snapshot": "migrations/files.source-snapshot.json",
-  "source_commit": "fe8d233681801386ed8fb9fbfb47fe091d8d2e42",
+  "source_commit": "cf8b07ba6d152856b34cc190079beaa8312252f2",
   "source_file_count": 10,
   "target_root": "apps/files",
   "target_manifest": "apps/files/app.json",

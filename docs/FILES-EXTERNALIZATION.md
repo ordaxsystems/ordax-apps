@@ -7,20 +7,19 @@
 - O owner atual da plataforma é `ordaxsystems/ordax-os`; a fonte do produto
   permanece em `system/apps/files/`. O snapshot de `ordax-apps/main` usado na
   prova, `6c1090fe022a8b78a2967c8f1b57d18310accbea`, não contém `apps/files/`.
-- O snapshot dos dez arquivos está pinado à árvore canônica integrada
-  `ordax-os/main@fe8d233681801386ed8fb9fbfb47fe091d8d2e42`. Os dez Git blob IDs
-  foram comparados com o snapshot anterior e permanecem idênticos; nenhum source
-  do Files mudou na integração subsequente. Este é o baseline de source atual;
-  a verificação `--verify-pinned-source` confirmou os dez blobs nesse commit. O
-  snapshot ainda deve ser recapturado no pai direto do Gate A se qualquer arquivo
-  inventariado mudar antes da remoção.
+- O snapshot dos dez arquivos foi recapturado da árvore canônica limpa
+  `ordax-os/main@cf8b07ba6d152856b34cc190079beaa8312252f2`. Os dez Git blob IDs
+  foram comparados com o snapshot anterior (`fe8d233`) e permanecem idênticos;
+  nenhum source do Files mudou nas integrações subsequentes. Este é o baseline
+  de source atual; o snapshot ainda deve ser recapturado no pai direto do Gate A
+  se qualquer arquivo inventariado mudar antes da remoção.
 - A PR [`ordax-os#2156`](https://github.com/ordaxsystems/ordax-os/pull/2156) foi
   integrada por merge commit. Ela publica o App SDK 1.20.0 (73 contratos,
   `authority:none`) e prepara o executor isolado e a porta File Space/11 com
   escopo `device-local`. As 14 execuções no HEAD final passaram, incluindo boot
   QEMU direto, fallback one-shot e UEFI/OVMF; essas provas validam a base USB,
   não a montagem de Files como componente externo.
-- O OS `main@fe8d233681801386ed8fb9fbfb47fe091d8d2e42` já implementa a
+- O commit integrado `fe8d233681801386ed8fb9fbfb47fe091d8d2e42` já implementa a
   fronteira Native para um slot externo Files: o runtime executa em iframe de
   origem opaca (`5ef5439a`), recebe File Space/11 device-local apenas pelo
   provider ligado à identidade `current` verificada (`fd494f11`) e cada RPC
@@ -221,7 +220,7 @@ O verificador exige origem Git canônica, checkout limpo, HEAD igual ao snapshot
 
 ### Snapshot verificável antes da remoção
 
-O inventário `migrations/files.source-snapshot.json` fixa **10 Git blobs** app-owned no commit `fe8d233681801386ed8fb9fbfb47fe091d8d2e42`, incluindo o manifesto do componente Files. A verificação pinada confirmou os blobs na `main` atual; a necessidade de recaptura no pai direto do Gate A continua registrada no estado reconciliado acima. O inventário registra identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
+O inventário `migrations/files.source-snapshot.json` fixa **10 Git blobs** app-owned no commit `cf8b07ba6d152856b34cc190079beaa8312252f2`, incluindo o manifesto do componente Files. A recaptura direta da `main` atual confirmou que todos os blobs seguem idênticos ao snapshot anterior; a necessidade de nova captura no pai direto do Gate A continua registrada no estado reconciliado acima. O inventário registra identidade de source, não cópias do código e não constitui Gate A, prova de instalabilidade ou distribuição.
 
 A verificação final deverá executar `tools/verify_files_cutover.py --platform-root ... --require-cutover-ready` contra o checkout Git oficial, provar a ancestralidade e a remoção, reconciliar alterações posteriores ao snapshot e **somente então** permitir o cutover. Enquanto isso, o Files continua instalado na imagem Base. A Foundation do OS possui regressão específica em `tests/test_files_bootstrap_continuity.py` para bloquear remoção acidental do bootstrap.
 
