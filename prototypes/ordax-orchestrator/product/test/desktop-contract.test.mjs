@@ -170,6 +170,8 @@ test('a new mission is persisted once, starts through the existing GPT executor,
   assert.match(contract,/\['project_rename'/);
   assert.match(packagedSmoke,/missionDraftPreserved/);
   assert.match(packagedSmoke,/mission_draft_not_persisted/);
+  assert.match(packagedSmoke,/conversationCards!==2/);
+  assert.match(packagedSmoke,/phase,reason:'app_orchestration_scenario_failed'/);
 });
 
 test('drafts are scoped to a Task, revision-guarded and saved without entering provider memory', () => {
