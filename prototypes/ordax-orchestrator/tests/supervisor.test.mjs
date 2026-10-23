@@ -238,4 +238,3 @@ if(fs.existsSync(realPath)){
     }finally{store.close();fs.rmSync(folder,{recursive:true,force:true});}
   });
 }
-
