@@ -19,8 +19,11 @@ O SSOT **da política de seleção inicial** pertence ao OS e foi implementado e
   assinatura, saúde, promoção e rollback.
 - **Arquivos ainda pertence ao OrdaX OS:** `system/apps/files` é a única
   fonte executável. O handoff bootstrap depende de instalação externa assinada,
-  interface funcional no boot e provas do MVP USB. O pacote de ensaio em diretório
-  temporário não é uma segunda fonte nem pode ser instalado; consulte
+  interface funcional no boot e provas do MVP USB. O OS já implementa execução
+  isolada e File Space ligado ao slot current por operação; o que ainda falta é
+  provisionar e provar o pacote externo assinado no boot, com recuperação e
+  rollback. O pacote de ensaio em diretório temporário não é uma segunda fonte
+  nem pode ser instalado; consulte
   [o contrato Files](../migrations/files.externalization.json) e
   [o acompanhamento no OS](https://github.com/ordaxsystems/ordax-os/issues/1743).
 - **Studio tem fonte portátil canônica em Apps**, mas o OS ainda mantém
