@@ -1,6 +1,6 @@
 # Plano de execução — OrdaX Orchestrator Project-First
 
-**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Revisão de estado: 2026-10-23; bases consultadas: Apps `cd3b4c6`, Runtime `9154cb9`, Platform `3ae5d91`, OS `96f70c9`.
+**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Revisão de estado: 2026-10-23; bases consultadas: Apps `cd3b4c6`, Runtime `9154cb9`, Platform `3ae5d91`, OS `0b32f8f`.
 
 ## Regras do programa
 
