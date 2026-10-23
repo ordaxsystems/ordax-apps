@@ -15,6 +15,7 @@ from verify_files_portable_layout import (  # noqa: E402
     PACKAGE_RUNTIME_ENTRYPOINT,
     PACKAGE_PROVIDER_ENTRYPOINT,
     PROVIDER_ENTRYPOINT_BYTES,
+    canonical_source_bytes,
 )
 
 
@@ -65,6 +66,10 @@ class PortableFilesLayoutTests(unittest.TestCase):
                     if path.is_file() and path.suffix.lower() in {".mjs", ".js", ".css"}:
                         canonical = path.read_bytes().replace(b"\r\n", b"\n")
                         path.write_bytes(canonical.replace(b"\n", b"\r\n"))
+                        self.assertEqual(
+                            canonical_source_bytes(path.relative_to(root).as_posix(), path.read_bytes()),
+                            canonical,
+                        )
             report = derive_layout(source, sdk, inventory, bundle, audit)
             self.assertTrue(report["source_graph_self_contained"])
             self.assertFalse(report["package_built"])
