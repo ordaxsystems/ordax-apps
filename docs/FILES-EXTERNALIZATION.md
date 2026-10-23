@@ -6,7 +6,7 @@
 
 - O owner atual da plataforma é `ordaxsystems/ordax-os`; a fonte do produto
   permanece em `system/apps/files/`. O `ordax-apps/main` em
-  `c5794efdaa5d227d270bdb90c87e3568fcfb538b` não contém `apps/files/`.
+  `2b5b36a377c6a36979db280bee3d8a559b2e24c6` não contém `apps/files/`.
 - O snapshot dos dez arquivos está pinado à árvore canônica integrada
   `ordax-os/main@fe8d233681801386ed8fb9fbfb47fe091d8d2e42`. Os dez Git blob IDs
   foram comparados com o snapshot anterior e permanecem idênticos; nenhum source
@@ -20,10 +20,26 @@
   escopo `device-local`. As 14 execuções no HEAD final passaram, incluindo boot
   QEMU direto, fallback one-shot e UEFI/OVMF; essas provas validam a base USB,
   não a montagem de Files como componente externo.
-- A integração não corta a fonte embutida nem habilita o runtime Files externo:
-  o broker de Files, a entrega do slot e as flags de publicação/ativação continuam
-  fechados. O SDK 1.20.0 é agora o mínimo pinado para validar o escopo do File
-  Space. Não criar `apps/files` antes da ausência comprovada da fonte no OS.
+- O OS `main@fe8d233681801386ed8fb9fbfb47fe091d8d2e42` já implementa a
+  fronteira Native para um slot externo Files: o runtime executa em iframe de
+  origem opaca (`5ef5439a`), recebe File Space/11 device-local apenas pelo
+  provider ligado à identidade `current` verificada (`fd494f11`) e cada RPC
+  revalida a revisão/identidade exatas; perda da autoridade revoga o frame e
+  drena as chamadas em andamento. O gate
+  `native_files_slot_bound_file_space_enforced` está `true`. As suítes focadas
+  de executor isolado, contexto Files, loader current e probation passaram
+  localmente: 46/46.
+- Isso fecha a implementação do limite host/runtime, mas não prova a montagem
+  de um pacote Files assinado e instalado durante o boot. No mesmo HEAD, o
+  trust anchor canônico ainda não está pinado, ativação/promoção/rollback de
+  slots seguem desabilitados e não há provisionamento offline de Files nem
+  prova QEMU/USB de operações diárias com o pacote externo. A #2164 testa
+  probation com File Space sintético vazio e sem dados do usuário; ela não é
+  essa prova de entrega.
+- O SDK 1.20.0 continua sendo o mínimo pinado para validar o escopo do File
+  Space. `source_cutover_allowed=false` e `distribution_activation_allowed=false`
+  continuam corretos. Não criar `apps/files` até que a entrega assinada e o
+  handoff preservem as operações obrigatórias do USB sem dupla fonte.
 - A PR [`ordax-os#2164`](https://github.com/ordaxsystems/ordax-os/pull/2164) foi
   integrada em `fe8d233681801386ed8fb9fbfb47fe091d8d2e42`, com todos os workflows
   verdes, incluindo a prova QEMU/UEFI. Ela permite montar o candidato Files

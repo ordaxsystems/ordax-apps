@@ -620,6 +620,16 @@ Os projetos abaixo são **referências/candidatos**, não dependências aprovada
 - Evidência de ownership, dependências e lacunas do App SDK: [`docs/FILES-EXTERNALIZATION.md`](docs/FILES-EXTERNALIZATION.md).
 - **Estado:** proteção de cutover integrada; **cutover ainda bloqueado**. O Files pertence à plataforma; não criar `apps/files` nem copiar código até Gate A remove-first comprovado.
 
+**Reconciliação verificada em 2026-10-23:** no OS `main@fe8d2336`, o runtime
+externo já executa em origem opaca e o broker Native entrega File Space/11
+device-local somente ao slot Files current cuja identidade é revalidada em
+cada RPC. As regressões locais do executor, binding trusted, loader current e
+probation passaram (46/46). O bloqueio restante é a entrega completa: trust
+canônico e ativação de slots continuam desabilitados, não há pacote Files
+assinado provisionado offline e ainda faltam as provas de boot/recuperação USB
+com esse pacote. Portanto, manter os gates fechados e a fonte única no OS até
+o handoff bootstrap comprovado.
+
 ### Execução G0 — SSOT dos inventários de CI (PR #131 integrada)
 
 - A Foundation deriva checks de JSON da árvore canônica, e a lista de providers exclusivamente de `actions/providers/manifest.json`, sem IDs de apps copiados para o YAML.
