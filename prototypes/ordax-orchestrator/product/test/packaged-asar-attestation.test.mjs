@@ -5,12 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {finished} from 'node:stream/promises';
+import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {verifyRuntimeManifest} from '../src/runtime-build-identity.mjs';
 
 const require=createRequire(import.meta.url);
 const asar=require('@electron/asar');
-const {attestPackagedAsar}=require('../scripts/attest-packaged-asar.cjs');
+const {attestPackagedAsar,sourceCommitFromGit}=require('../scripts/attest-packaged-asar.cjs');
 const commit='1234567890abcdef1234567890abcdef12345678';
 
 function fixture(t,entry='desktop/bootstrap.mjs') {
@@ -27,6 +28,21 @@ function fixture(t,entry='desktop/bootstrap.mjs') {
   fs.writeFileSync(path.join(source,'supervisor','coordinator.mjs'),'export {};\n');
   return {root,source,archive:path.join(root,'app.asar')};
 }
+test('packaging source identity is captured only from a clean checkout',t=>{
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-clean-source-'));
+  t.after(()=>fs.rmSync(root,{force:true,recursive:true}));
+  const git=(...args)=>execFileSync('git',['-C',root,...args],{stdio:'ignore'});
+  git('init');
+  git('config','user.name','OrdaX test');
+  git('config','user.email','ordax-test@example.invalid');
+  fs.writeFileSync(path.join(root,'source.txt'),'canonical source\n');
+  git('add','source.txt');
+  git('commit','-m','test source');
+  const commit=sourceCommitFromGit(root);
+  assert.match(commit,/^[a-f0-9]{40}$/);
+  fs.writeFileSync(path.join(root,'unexpected-output.txt'),'untracked');
+  assert.throws(()=>sourceCommitFromGit(root),/packaged_build_source_dirty/);
+});
 // @electron/asar v3.4.1 returns the WritableStream before its 'finish' event.
 // A complete header may already exist while file bodies are still unwritten.
 // Never hand a partial test archive to the integrity attestor.
@@ -71,3 +87,4 @@ test('packager rejects an archive with a non-bootstrap entrypoint',async t=>{
   assert.ok(fs.existsSync(f.archive));
   assert.equal(fs.existsSync(f.archive+'.ordax-pre-attestation'),false);
 });
+
