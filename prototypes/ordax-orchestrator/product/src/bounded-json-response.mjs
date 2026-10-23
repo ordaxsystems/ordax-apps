@@ -36,4 +36,3 @@ export async function readBoundedJsonResponse(response, {maxBytes, errorCode} = 
     try { reader.releaseLock(); } catch { /* A failed stream may already be released. */ }
   }
 }
-
