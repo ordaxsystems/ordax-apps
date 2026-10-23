@@ -1,7 +1,7 @@
 {
   "schema": "ordax.application-action-manifest/1",
   "appId": "assistant",
-  "appVersion": "0.1.1",
+  "appVersion": "0.1.2",
   "authority": "none",
   "execution": "proposal-only",
   "capabilities": [
@@ -9,7 +9,7 @@
       "schema": "ordax.application-action-capability/1",
       "appId": "assistant",
       "actionId": "assistant.ask",
-      "title": "Conversar com o Assistente",
+      "title": "Conversar com a Aura",
       "description": "Propor uma conversa ao OrdaX Intelligence; a execução depende de uma porta de host autorizada.",
       "sourceClass": "first-party",
       "platform": "ordax",
