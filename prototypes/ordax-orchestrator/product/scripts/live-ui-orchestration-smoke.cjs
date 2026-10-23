@@ -93,16 +93,28 @@ let phase='startup';
     await wait("document.getElementById('orchestratorSelect').value && !document.getElementById('orchestrationPanel').hidden");
     const coordinatorLayout=await evaluate(`(()=>({focus:document.body.classList.contains('orchestrator-focus'),rail:!document.getElementById('orchestratorWorkRail').hidden,selected:[...document.querySelectorAll('#orchestratorNavList button')].some(b=>b.getAttribute('aria-pressed')==='true')}))()`);
     if(!coordinatorLayout.focus||!coordinatorLayout.rail||!coordinatorLayout.selected)throw Error('coordinator_workspace_layout_missing');
-    phase='api_opt_in';
+    phase='api_key_save';
     // Disposable credential fixture only: activation must not call the API.
     await evaluate(`window.ordax.supervisorSaveKey('gsk_'+ 'A'.repeat(40))`);
+    phase='api_key_save_status';
+    const credential=await evaluate(`window.ordax.supervisorStatus()`);
+    if(credential.configured!==true||credential.keySaved!==true||credential.secureStorageAvailable!==true)
+      throw Error('api_key_not_persisted_securely');
+    phase='api_enable_button_available';
     await wait("!document.getElementById('coordinatorApiEnable').disabled");
+    phase='api_enable_request';
     await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
+    phase='api_enable_state';
     await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='true' && !document.getElementById('coordinatorSend').disabled");
+    phase='api_prepare_action_available';
     if(await evaluate("document.getElementById('prepareWork').disabled"))throw Error('prepare_action_unavailable');
+    phase='api_disable_request';
     await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
+    phase='api_disable_state';
     await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='false' && document.getElementById('coordinatorSend').disabled");
+    phase='api_key_remove';
     await evaluate(`window.ordax.supervisorRemoveKey()`);
+    phase='api_key_remove_state';
     await wait("document.getElementById('coordinatorApiEnable').disabled");
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
@@ -169,3 +181,4 @@ let phase='startup';
   }
 })().catch(()=>{console.error(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,
   phase,reason:'app_orchestration_scenario_failed'}));process.exitCode=2;});
+
