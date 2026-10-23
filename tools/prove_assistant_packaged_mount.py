@@ -6,6 +6,7 @@ Native WebKit proof, component promotion, Store install or physical boot.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import subprocess
@@ -26,23 +27,27 @@ def run(*args: str) -> str:
     ).strip()
 
 
-def proof() -> dict:
+def proof(verified_candidate_dir: Path | None = None) -> dict:
     source_commit = run("git", "rev-parse", "HEAD")
     if len(source_commit) != 40 or any(x not in "0123456789abcdef" for x in source_commit):
         raise ValueError("Cannot prove an exact canonical source commit")
     with tempfile.TemporaryDirectory(prefix="ordax-assistant-package-mount-") as temp:
         directory = Path(temp)
-        package = directory / "assistant.zip"
-        release = directory / "assistant.release.json"
-        compatibility = directory / "assistant.compatibility.json"
-        run(
-            sys.executable, str(BUILDER), "build",
-            "--app-root", str(APP),
-            "--source-commit", source_commit,
-            "--compatibility", str(APP / "compatibility.json"),
-            "--package-out", str(package),
-            "--release-dir", str(directory),
-        )
+        # Use exactly the CI-signed catalog candidate when supplied. The
+        # existing builder/verifier remains the only package authority.
+        candidate = verified_candidate_dir if verified_candidate_dir is not None else directory
+        package = candidate / "assistant.zip"
+        release = candidate / "assistant.release.json"
+        compatibility = candidate / "assistant.compatibility.json"
+        if verified_candidate_dir is None:
+            run(
+                sys.executable, str(BUILDER), "build",
+                "--app-root", str(APP),
+                "--source-commit", source_commit,
+                "--compatibility", str(APP / "compatibility.json"),
+                "--package-out", str(package),
+                "--release-dir", str(directory),
+            )
         run(
             sys.executable, str(BUILDER), "verify",
             "--package", str(package),
@@ -91,8 +96,14 @@ def proof() -> dict:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--verified-candidate-dir", type=Path, default=None,
+        help="Reuse the exact assistant ZIP/release/compatibility from the catalog CI signer",
+    )
+    args = parser.parse_args()
     try:
-        print(json.dumps(proof(), ensure_ascii=False, sort_keys=True))
+        print(json.dumps(proof(args.verified_candidate_dir), ensure_ascii=False, sort_keys=True))
     except (OSError, ValueError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
         print(f"ASSISTANT_PACKAGED_MOUNT_PROOF_ERROR={error}", file=sys.stderr)
         if isinstance(error, subprocess.CalledProcessError):

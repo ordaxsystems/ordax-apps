@@ -281,6 +281,17 @@ jobs:
           test -z "$(find "$secrets_dir" -type f -print -quit)"
           rmdir "$secrets_dir"
 
+      - name: Prove Aura real mount from the verified signed-test-envelope ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/ordax-store-catalog-proof"
+          # The preceding step verified the Ed25519 test envelope for this
+          # exact candidate. Never rebuild a second ZIP for this mount proof.
+          test -f "$out/artifacts/assistant/assistant.runtime-component-envelope.json"
+          python3 tools/prove_assistant_packaged_mount.py \
+            --verified-candidate-dir "$out/artifacts/assistant"
+
       - name: Assert catalog boundaries remain authority-free
         run: |
           set -euo pipefail
