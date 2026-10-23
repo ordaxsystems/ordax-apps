@@ -33,9 +33,15 @@
   pinado `ee2a50db` (1.20.0), confirmou os 10 blobs do app e 15 blobs de
   contratos públicos. O builder gerou duas vezes o mesmo candidato não assinado
   (`3db0bebc…e0b794a`) e importou o runtime diretamente do ZIP. Tudo ficou em
-  diretório temporário; não criou `apps/files`. Essa prova não inclui montagem
-  no host nem validação pelo signer Go, e mantém falsos os gates de assinatura,
-  instalação, bootstrap e ativação.
+  diretório temporário; não criou `apps/files`. A prova do pacote continua sem
+  montagem no host e não demonstra instalação assinada, bootstrap ou ativação.
+- A Foundation do Apps agora compila o signer Go canônico do owner OS pinado em
+  `migrations/notes.platform-lifecycle.lock.json` (`cf8b07ba`) e passa o
+  candidato efêmero ao `sign-v2`. O signer rejeita Files porque o source ainda
+  pertence ao OS. A CI exige explicitamente essa rejeição e confirma que nenhum
+  envelope/slot foi criado, nenhuma instalação foi autorizada e nenhuma trust
+  de produção ou ativação foi usada. Esta é uma prova negativa do gate de
+  ownership, não assinatura de release nem permissão para o cutover.
 - A prova revelou e corrigiu a divergência Windows/Unix na comparação dos blobs:
   agora a auditoria e a materialização usam a mesma normalização CRLF→LF para
   `.mjs`, `.js` e `.css`, com regressão dedicada ao checkout Windows.
