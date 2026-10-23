@@ -158,6 +158,7 @@ test('a new mission is persisted once, starts through the existing GPT executor,
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const contract=fs.readFileSync(path.join(root,'src','orchestrator-contract.mjs'),'utf8');
   const packagedSmoke=fs.readFileSync(path.join(root,'scripts','live-ui-orchestration-smoke.cjs'),'utf8');
+  const hostFixture=fs.readFileSync(path.join(root,'scripts','orchestrator-host-e2e-client.cjs'),'utf8');
   assert.match(html,/id="newProjectForm"/);
   assert.match(html,/id="renameProjectForm"/);
   assert.match(html,/aria-label="Nome da conversa"/);
@@ -172,6 +173,8 @@ test('a new mission is persisted once, starts through the existing GPT executor,
   assert.match(packagedSmoke,/mission_draft_not_persisted/);
   assert.match(packagedSmoke,/conversationCards!==2/);
   assert.match(packagedSmoke,/phase,reason:'app_orchestration_scenario_failed'/);
+  assert.match(hostFixture,/workRows\.length!==3/);
+  assert.match(hostFixture,/work\.title==='Primeira frente'/);
 });
 
 test('drafts are scoped to a Task, revision-guarded and saved without entering provider memory', () => {
