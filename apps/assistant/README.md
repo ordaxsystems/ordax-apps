@@ -61,6 +61,23 @@ Este gate **não** é prova de disponibilidade da Aura no primeiro boot. Ainda
 são necessários probation com o app real em ambiente isolado, recibos de
 saúde, promoção/rollback, confiança canônica e teste de pacote/boot offline.
 
+## Prova do pacote real (sem assinatura nem autoridade)
+
+O único `tools/app-package/build.py` gera e verifica o pacote candidato
+reproduzível. O comando `python3 tools/prove_assistant_packaged_mount.py`
+usa o próprio builder/verificador, confere hash do ZIP e source commit,
+extrai **somente o ZIP já verificado** e carrega seu `src/runtime.mjs` real
+em Node. Em um pequeno DOM sintético, executa `mount()` e `destroy()`
+com Identity/Space indisponíveis e Intelligence degradada, e verifica que
+os estilos são removidos e nenhuma inferência aconteceu.
+
+A prova valida **os bytes efetivamente empacotados**, não somente um runtime
+de simulação ou cópia do source. Continua sendo uma prova em Node de contrato
+de montagem, **não é execução em WebKit**, não usa slot real de USB, não
+verifica assinatura do envelope e não autoriza saúde, promoção, instalação,
+publicação ou mudança em `migrations/assistant.externalization.json`.
+O workflow Foundation executa essa prova além da suíte do aplicativo.
+
 ## Disponibilidade e instalação
 
 **Estado verificado em código:** a fonte está externalizada; o pacote
