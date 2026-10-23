@@ -11,7 +11,8 @@ import {verifyRuntimeManifest} from '../src/runtime-build-identity.mjs';
 
 const require=createRequire(import.meta.url);
 const asar=require('@electron/asar');
-const {attestPackagedAsar,sourceCommitFromGit}=require('../scripts/attest-packaged-asar.cjs');
+const packagerHooks=require('../scripts/attest-packaged-asar.cjs');
+const {attestPackagedAsar,sourceCommitFromGit}=packagerHooks;
 const commit='1234567890abcdef1234567890abcdef12345678';
 
 function fixture(t,entry='desktop/bootstrap.mjs') {
@@ -28,6 +29,14 @@ function fixture(t,entry='desktop/bootstrap.mjs') {
   fs.writeFileSync(path.join(source,'supervisor','coordinator.mjs'),'export {};\n');
   return {root,source,archive:path.join(root,'app.asar')};
 }
+test('electron-builder runs clean-source capture and ASAR attestation hooks',()=>{
+  const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+  assert.equal(pkg.build.beforePack,'./scripts/attest-packaged-asar.cjs');
+  assert.equal(pkg.build.afterPack,'./scripts/attest-packaged-asar.cjs');
+  assert.equal(typeof packagerHooks.beforePack,'function');
+  assert.equal(typeof packagerHooks.afterPack,'function');
+  assert.equal(packagerHooks.afterPack,packagerHooks.default);
+});
 test('packaging source identity is captured only from a clean checkout',t=>{
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-clean-source-'));
   t.after(()=>fs.rmSync(root,{force:true,recursive:true}));
