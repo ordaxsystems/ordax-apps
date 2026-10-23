@@ -42,6 +42,14 @@ PROVIDER_ENTRYPOINT_BYTES = (
     'applicationActionProviderArtifact } from '
     '"../../src/system/apps/files/actions/providers/files-native.mjs";\n'
 ).encode("utf-8")
+TEXT_SOURCE_SUFFIXES = frozenset({".mjs", ".js", ".css"})
+
+
+def canonical_source_bytes(path: str, content: bytes) -> bytes:
+    """Return the Git-blob representation of a checked-out text source file."""
+    if PurePosixPath(path).suffix.lower() in TEXT_SOURCE_SUFFIXES:
+        return content.replace(b"\r\n", b"\n")
+    return content
 
 
 def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
@@ -82,12 +90,7 @@ def derive_layout(source_root: Path, sdk_root: Path, inventory: dict,
         source = root / path
         if source.is_symlink() or not source.is_file():
             raise cutover.FilesCutoverError(f"Files portable source is missing: {path}")
-        content = source.read_bytes()
-        if source.suffix.lower() in {".mjs", ".js", ".css"}:
-            # Git blob pins are over canonical LF text. A Windows checkout may
-            # materialize CRLF; normalize only the tracked text representation
-            # before identity/size checks so the same pinned source is portable.
-            content = content.replace(b"\r\n", b"\n")
+        content = canonical_source_bytes(path, source.read_bytes())
         actual = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest()
         if actual != blob:
             raise cutover.FilesCutoverError(f"Files portable source identity mismatch: {path}")

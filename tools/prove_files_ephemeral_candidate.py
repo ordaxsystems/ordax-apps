@@ -227,7 +227,9 @@ def prove(root: Path, platform_root: Path, sdk_root: Path,
             source_path = parent / record["source"]
             if not source_path.is_file() or source_path.is_symlink():
                 raise FilesProofError("invalid Files source file")
-            content = source_path.read_bytes()
+            content = portable.canonical_source_bytes(
+                record["source"], source_path.read_bytes()
+            )
             blob = hashlib.sha1(b"blob " + str(len(content)).encode() + bytes([0]) + content).hexdigest()
             if blob != record["git_blob_sha"]:
                 raise FilesProofError("Files original Git blob mismatch")

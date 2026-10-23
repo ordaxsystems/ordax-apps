@@ -6,7 +6,7 @@
 
 - O owner atual da plataforma é `ordaxsystems/ordax-os`; a fonte do produto
   permanece em `system/apps/files/`. O `ordax-apps/main` em
-  `2b5b36a377c6a36979db280bee3d8a559b2e24c6` não contém `apps/files/`.
+  `5f590d7f00c478640800d59f897fd1e53e4e5566` não contém `apps/files/`.
 - O snapshot dos dez arquivos está pinado à árvore canônica integrada
   `ordax-os/main@fe8d233681801386ed8fb9fbfb47fe091d8d2e42`. Os dez Git blob IDs
   foram comparados com o snapshot anterior e permanecem idênticos; nenhum source
@@ -29,6 +29,16 @@
   `native_files_slot_bound_file_space_enforced` está `true`. As suítes focadas
   de executor isolado, contexto Files, loader current e probation passaram
   localmente: 46/46.
+- `tools/prove_files_ephemeral_candidate.py`, contra OS `fe8d2336` e o SDK
+  pinado `ee2a50db` (1.20.0), confirmou os 10 blobs do app e 15 blobs de
+  contratos públicos. O builder gerou duas vezes o mesmo candidato não assinado
+  (`3db0bebc…e0b794a`) e importou o runtime diretamente do ZIP. Tudo ficou em
+  diretório temporário; não criou `apps/files`. Essa prova não inclui montagem
+  no host nem validação pelo signer Go, e mantém falsos os gates de assinatura,
+  instalação, bootstrap e ativação.
+- A prova revelou e corrigiu a divergência Windows/Unix na comparação dos blobs:
+  agora a auditoria e a materialização usam a mesma normalização CRLF→LF para
+  `.mjs`, `.js` e `.css`, com regressão dedicada ao checkout Windows.
 - Isso fecha a implementação do limite host/runtime, mas não prova a montagem
   de um pacote Files assinado e instalado durante o boot. No mesmo HEAD, o
   trust anchor canônico ainda não está pinado, ativação/promoção/rollback de
