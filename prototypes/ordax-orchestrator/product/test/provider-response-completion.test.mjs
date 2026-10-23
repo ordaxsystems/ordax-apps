@@ -82,5 +82,6 @@ test('worker gates observedAt behind an explicit completion confirmation',()=>{
   assert.match(loop,/completionConfirmed = true;/);
   assert.match(loop,/requireObservedCompletion\(\{ candidate:latest, completed:completionConfirmed \}\)/);
   assert.ok(loop.indexOf('requireObservedCompletion')<loop.indexOf('const images ='));
-  assert.match(loop,/catch\(\(\) => null\)/);
+  assert.match(loop,/const generating = snap\.generationStopVisible/);
+  assert.match(worker,/generationStopVisible = \$\{providerGenerationStopProbeExpression\}/);
 });

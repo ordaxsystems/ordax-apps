@@ -1,3 +1,9 @@
+## 0.2.0-alpha.16 — confirmação visível da conclusão do GPT (2026-10-23)
+
+- A conclusão da resposta usa um único snapshot e confirma controles de geração visíveis; elementos ocultos no DOM não mantêm a execução presa como ativa.
+- O estado é compartilhado entre o streaming e a inspeção histórica. A consulta separada de estado por ciclo foi removida.
+- A prova permanece conservadora: resposta instável, incompleta ou com estado de geração desconhecido não é marcada como concluída.
+
 ## 0.2.0-alpha.15 — recuperação segura antes do envio (2026-10-23)
 
 - O executor registra uma disposição explícita quando falha antes de tentar submeter; somente esse recibo permite uma nova tentativa explícita. O mesmo `requestId` continua idempotente.
