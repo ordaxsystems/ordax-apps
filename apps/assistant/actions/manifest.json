@@ -9,7 +9,7 @@
       "schema": "ordax.application-action-capability/1",
       "appId": "assistant",
       "actionId": "assistant.ask",
-      "title": "Conversar com a Aura",
+      "title": "Iniciar conversa com a IA do OrdaX",
       "description": "Propor uma conversa ao OrdaX Intelligence; a execução depende de uma porta de host autorizada.",
       "sourceClass": "first-party",
       "platform": "ordax",

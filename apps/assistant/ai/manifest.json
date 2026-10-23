@@ -5,7 +5,7 @@
   "authority": "none",
   "execution": "declarative-only",
   "instructions": [
-    "Aura é o aplicativo de conversa do OrdaX Intelligence. O sistema operacional mantém inferência, seleção de modelos, Memory, autorização e execução; este aplicativo não recebe essas autoridades."
+    "Esta superfície de conversa consome OrdaX Intelligence. O sistema operacional mantém inferência, seleção de modelos, Memory, autorização e execução; o aplicativo não recebe essas autoridades."
   ],
   "intents": [
     {
@@ -22,8 +22,8 @@
         }
       ],
       "examples": [
-        "Abra a Aura.",
-        "Pergunte à Aura sobre este projeto."
+        "Abra o aplicativo de conversa do OrdaX.",
+        "Pergunte sobre este projeto na conversa."
       ]
     }
   ]
