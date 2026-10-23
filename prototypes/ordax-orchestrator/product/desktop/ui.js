@@ -771,6 +771,18 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
       provider_conversation_load_failed:'O ChatGPT exibiu erro ao carregar esta conversa. Histórico local preservado; não será feita nova navegação nem reenvio.',
       provider_health_unavailable:'Não foi possível observar a sessão. Inspeção suspensa, sem reenvio.',
       provider_submission_provenance_missing:'Esta tarefa não tem recibo verificável de envio para a última mensagem. A inspeção remota não foi iniciada; histórico local preservado, W3 pendente.',
+      thread_dom_not_ready:'A estrutura da conversa vinculada ainda não ficou disponível para inspeção segura. Abra a conversa no ChatGPT, confirme que ela carregou e tente verificar novamente. Nenhuma mensagem foi reenviada.',
+      thread_navigation_changed:'A conversa aberta mudou durante a inspeção. Volte à conversa vinculada e tente verificar novamente. Nenhuma mensagem foi reenviada.',
+      navigation_or_draft_blocked:'A navegação foi bloqueada para proteger um rascunho ou uma conversa em andamento. Preserve o rascunho e verifique a conversa vinculada depois.',
+      provider_url_mismatch:'O ChatGPT não permaneceu na conversa vinculada. Abra a conversa correta antes de verificar novamente. Nenhuma mensagem foi reenviada.',
+      provider_readonly_debugger_unavailable:'A inspeção somente leitura do ChatGPT não pôde ser iniciada. Nenhuma mensagem foi reenviada; tente novamente quando o painel do ChatGPT estiver disponível.',
+      provider_readonly_dom_evaluation_timeout:'O ChatGPT demorou para responder à inspeção somente leitura. Nenhuma mensagem foi reenviada; aguarde a conversa carregar e tente novamente.',
+      provider_readonly_dom_evaluation_rejected:'O ChatGPT recusou a inspeção somente leitura da conversa. Nenhuma mensagem foi reenviada.',
+      provider_view_unavailable:'A visualização do ChatGPT não está disponível para inspeção. Nenhuma mensagem foi reenviada.',
+      provider_conversation_observation_timeout:'A inspeção da conversa excedeu o limite de tempo. Nenhuma mensagem foi reenviada; tente novamente quando a conversa estiver carregada.',
+      provider_health_observation_timeout:'A verificação do estado do ChatGPT excedeu o limite de tempo. Nenhuma mensagem foi reenviada.',
+      chatgpt_draft_present:'Há um rascunho no ChatGPT. Ele foi preservado e a inspeção não tentou navegar nem reenviar.',
+      observation_failed:'A inspeção somente leitura falhou. Nenhuma mensagem foi reenviada; tente novamente quando o ChatGPT estiver disponível.',
       provider_response_generation_active:'A resposta ainda pode estar sendo gerada. W3 não certificado; nenhum reenvio.',
       provider_generation_state_unobserved:'Não foi possível comprovar o estado de geração da resposta. W3 não certificado; nenhum reenvio.'
     };
@@ -1144,4 +1156,3 @@ diagnosticButton.addEventListener('click', async () => {
     diagnosticButton.disabled = false;
   }
 });
-
