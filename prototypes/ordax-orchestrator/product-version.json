@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.15",
+  "version": "0.2.0-alpha.16",
   "channel": "alpha",
-  "name": "Recuperação segura antes do envio",
+  "name": "Confirmação visível da conclusão do GPT",
   "distributionEnabled": false,
   "releaseDate": null
 }

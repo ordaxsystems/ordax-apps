@@ -2,6 +2,7 @@ import { WebContentsView, session } from 'electron';
 import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
 import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
 import { createResponseObservationBudget, responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
+import { providerGenerationStopProbeExpression } from '../src/provider-generation-stop-probe.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { createProviderDeliveryRecorder } from '../src/provider-delivery-recorder.mjs';
@@ -480,7 +481,7 @@ export class EmbeddedChatWorker {
           return {
             composerPresent:Boolean($('#prompt-textarea,[contenteditable="true"][role="textbox"]')),
             sendControlPresent:Boolean($('button[data-testid="send-button"],button[aria-label="Enviar"],button[aria-label="Send"]')),
-            stopControlPresent:Boolean($('button[data-testid="stop-button"],button[aria-label*="Stop"],button[aria-label*="Parar"]')),
+            stopControlPresent:${providerGenerationStopProbeExpression},
             assistantContentPresent:hasContent(assistantNodes),
             userContentPresent:hasContent(userNodes),
             assistantNodes:assistantNodes.length,
@@ -527,9 +528,7 @@ export class EmbeddedChatWorker {
           });
           // A visible assistant bubble can still be streaming. Capture the
           // first-party stop control in the same bounded read-only snapshot.
-          const generationStopVisible=Boolean(document.querySelector(
-            'button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]'
-          ));
+          const generationStopVisible=${providerGenerationStopProbeExpression};
           const hasComposer=Boolean(document.querySelector(
             '#prompt-textarea,[contenteditable="true"][role="textbox"]'
           ));
@@ -698,6 +697,7 @@ export class EmbeddedChatWorker {
       const imageData = img => ({ src: img.currentSrc || img.src || '', alt: img.alt || '', width: img.naturalWidth || 0, height: img.naturalHeight || 0 });
       const validImage = (img, min) => Boolean(img.src) && (img.width >= min || img.height >= min || img.src.includes('images.openai.com'));
       const generatedImages = Array.from(document.querySelectorAll('[data-testid="generated-image-preview"] img')).map(imageData).filter(img => validImage(img, 64));
+      const generationStopVisible = ${providerGenerationStopProbeExpression};
       const readNode = node => {
         const id = node.getAttribute('data-chatgpt-selection-message-id') || node.getAttribute('data-message-id') || '';
         const markdown = node.querySelector('[data-assistant-markdown], [data-message-content]');
@@ -705,14 +705,13 @@ export class EmbeddedChatWorker {
         text = text.replace(/^O ChatGPT disse:\\s*/i, '').replace(/^ChatGPT disse:\\s*/i, '').replace(/^ChatGPT said:\\s*/i, '').trim();
         text = text.split(/\\r?\\n/).map(line => line.trim()).filter(line => line && !/^(Editar|Edit|Resposta concluída|Response completed|Copiar|Copy|Compartilhar|Share|Você gosta dessa personalidade\??|Do you like this personality\??|Conte-nos mais|Tell us more)$/i.test(line)).join('\\n').trim();
         const images = Array.from(node.querySelectorAll('img')).map(imageData).filter(img => validImage(img, 64));
-        const generating = Boolean(document.querySelector('button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]'));
-        return { id, text, images, complete: !generating || node.hasAttribute('data-message-complete') || Boolean(node.querySelector('[data-message-complete]')) };
+        return { id, text, images, complete: !generationStopVisible || node.hasAttribute('data-message-complete') || Boolean(node.querySelector('[data-message-complete]')) };
       };
-      if (nodes.length) return { mode:'direct', messages:nodes.map(readNode), rawBody:'', images:generatedImages, latestUserText };
+      if (nodes.length) return { mode:'direct', messages:nodes.map(readNode), rawBody:'', images:generatedImages, latestUserText, generationStopVisible };
       const conversationRoot = document.querySelector('main,[role="main"]');
       const body = (conversationRoot && conversationRoot.innerText) || '';
       const images = Array.from((conversationRoot || document).querySelectorAll('img')).map(imageData).filter(img => validImage(img, 128));
-      return { mode:'body', messages:[], rawBody:body, images:[...images, ...generatedImages].filter((image,index,all) => all.findIndex(other => other.src === image.src) === index), latestUserText };
+      return { mode:'body', messages:[], rawBody:body, images:[...images, ...generatedImages].filter((image,index,all) => all.findIndex(other => other.src === image.src) === index), latestUserText, generationStopVisible };
     })()`);
   }
 
@@ -1026,7 +1025,7 @@ export class EmbeddedChatWorker {
         if (signature === latestSignature) stable++; else stable = 0;
         latest = candidate; latestSignature = signature;
         const transient = /^(criando|gerando)\s+imagem/i.test(candidate.text||'') || /^(creating|generating)\s+image/i.test(candidate.text||'');
-        const generating = await wc.executeJavaScript(`(() => Boolean(document.querySelector('button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]')))()`).catch(() => null);
+        const generating = snap.generationStopVisible;
         if (responseObservationComplete({ candidate, stable, transient, generating })) {
           completionConfirmed = true;
           break;

@@ -115,6 +115,7 @@ test('W3 DOM inspector captures generation stop state without additional navigat
   assert.ok(start>=0&&end>start);
   const inspector=source.slice(start,end);
   assert.match(inspector,/generationStopVisible/);
-  assert.ok(inspector.includes('data-testid="stop-button"'));
+  assert.match(inspector,/generationStopVisible=\$\{providerGenerationStopProbeExpression\}/);
+  assert.match(source,/import \{ providerGenerationStopProbeExpression \} from '\.\.\/src\/provider-generation-stop-probe\.mjs'/);
   assert.ok(!inspector.includes('sendPrompt(') && !inspector.includes('requestSubmit(') && !inspector.includes('.loadURL('));
 });
