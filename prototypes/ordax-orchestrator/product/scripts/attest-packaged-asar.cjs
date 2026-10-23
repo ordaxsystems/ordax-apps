@@ -19,7 +19,11 @@ function sourceCommitFromGit(root){
   if(!/^[a-f0-9]{40}$/.test(commit))throw Error('packaged_build_commit_invalid');
   const status=cp.execFileSync('git',['-C',repo,'status','--porcelain','--untracked-files=all'],
     {encoding:'utf8',timeout:15000}).trim();
-  if(status)throw Error('packaged_build_source_dirty');
+  if(status){
+    const summary=status.split(/\r?\n/).slice(0,5)
+      .map(line=>line.replace(/[^\w./\\ -]/g,'?').slice(0,120)).join('|');
+    throw Error('packaged_build_source_dirty:'+summary);
+  }
   return commit;
 }
 exports.sourceCommitFromGit=sourceCommitFromGit;
