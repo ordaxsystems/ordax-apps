@@ -153,6 +153,17 @@ def make_git_gate(parent: Path, root: Path, *, change_after_snapshot: bool = Fal
 
 
 class FilesCutoverTests(unittest.TestCase):
+    def test_gate_b_transfer_plan_uses_the_canonical_source_snapshot_pin(self):
+        snapshot = json.loads(
+            (ROOT / "migrations" / "files.source-snapshot.json").read_text(encoding="utf-8")
+        )
+        transfer = json.loads(
+            (ROOT / "migrations" / "files.gate-b-transfer-map.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(transfer["source_snapshot"], "migrations/files.source-snapshot.json")
+        self.assertEqual(transfer["source_commit"], snapshot["commit"])
+        self.assertEqual(transfer["source_file_count"], snapshot["file_count"])
+
     def test_current_plan_blocks_cutover_without_claiming_release(self):
         with tempfile.TemporaryDirectory() as temp:
             root = make_root(Path(temp))
