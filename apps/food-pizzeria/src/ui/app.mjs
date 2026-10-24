@@ -888,7 +888,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
             lines,
             at: new Date().toISOString(),
           },
-        }, "Ficha técnica salva. A cozinha usará esta composição ao iniciar o preparo.", { renderAfter: false });
+        }, "Ficha técnica salva. A nova composição será aplicada aos próximos pedidos; os pedidos existentes preservam sua proposta de consumo.", { renderAfter: false });
         if (saved) {
           recipeFlavorId = null;
           recipeDraftLines = [];
