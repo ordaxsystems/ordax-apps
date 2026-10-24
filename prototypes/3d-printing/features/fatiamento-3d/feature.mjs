@@ -1,0 +1,1051 @@
+import * as shared from "/shared.mjs";
+import { parseMeshFile } from "./mesh-import.mjs";
+import { createDemoModel } from "./demo-model.mjs";
+import { createMeshViewer } from "./mesh-viewer.mjs";
+import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
+import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
+import { readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
+import { askSliceIntelligence, intelligenceState, parseAssistantSuggestion, assistantSuggestionSchema } from "./ai-copilot.mjs";
+
+const { escapeHtml, number, bytes, toast, icon, button } = shared;
+const MAX_MODEL_BYTES = 50 * 1024 * 1024;
+const MAX_PREVIEW_BYTES = 64 * 1024 * 1024;
+const MAX_AI_HISTORY = 20;
+const MAX_AI_MESSAGES = 40;
+const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
+const DEFAULT_OBJECT_TRANSFORM = Object.freeze({ x: 0, y: 0, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scale: 1 });
+const defaultDraft = Object.freeze({
+  printer: "generic", filament: "pla", quality: "standard", layerHeight: 0.2, walls: 3, infill: 15, fan: 80,
+  supports: false, rotation: 0, scale: 1, stlUnit: "mm", objectTransforms: {}, selectedTab: "prepare",
+});
+
+const printers = Object.freeze({
+  generic: { name: "FDM genérica · referência", bed: [256, 256, 256], reference: true },
+  a1: { name: "Bambu Lab A1 · referência", bed: [256, 256, 256], reference: true },
+  mk4: { name: "Original Prusa MK4 · referência", bed: [250, 210, 220], reference: true },
+  ender: { name: "Creality Ender 3 V3 · referência", bed: [220, 220, 250], reference: true },
+});
+const materials = Object.freeze({
+  pla: { name: "PLA", nozzle: "190–220 °C", bed: "45–65 °C" },
+  petg: { name: "PETG", nozzle: "225–250 °C", bed: "70–85 °C" },
+  abs: { name: "ABS", nozzle: "240–265 °C", bed: "90–110 °C" },
+});
+const unitScales = Object.freeze({ mm: 1, cm: 10, in: 25.4 });
+
+function safeDraft(value) {
+  const next = { ...defaultDraft, ...(value && typeof value === "object" ? value : {}) };
+  if (!printers[next.printer]) next.printer = defaultDraft.printer;
+  if (!materials[next.filament]) next.filament = defaultDraft.filament;
+  if (!unitScales[next.stlUnit]) next.stlUnit = defaultDraft.stlUnit;
+  next.layerHeight = Math.max(0.08, Math.min(0.4, Number(next.layerHeight) || defaultDraft.layerHeight));
+  next.walls = Math.max(1, Math.min(8, Math.round(Number(next.walls) || defaultDraft.walls)));
+  next.infill = Math.max(0, Math.min(100, Number(next.infill) || 0));
+  next.fan = Math.max(0, Math.min(100, Math.round(Number(next.fan) || 0)));
+  next.rotation = ((Math.round(Number(next.rotation) || 0) % 360) + 360) % 360;
+  next.scale = Math.max(0.1, Math.min(3, Number(next.scale) || 1));
+  next.supports = Boolean(next.supports);
+  next.selectedTab = next.selectedTab === "preview" ? "preview" : "prepare";
+  const validQuality = quality => ["standard", "fine", "draft"].includes(quality) ? quality : "standard";
+  const normalizeProcessSettings = (source, fallback = next) => ({
+    quality: validQuality(source?.quality ?? fallback.quality),
+    layerHeight: Math.max(0.08, Math.min(0.4, Number(source?.layerHeight ?? fallback.layerHeight) || 0.2)),
+    walls: Math.max(1, Math.min(8, Math.round(Number(source?.walls ?? fallback.walls) || 3))),
+    infill: Math.max(0, Math.min(100, Number(source?.infill ?? fallback.infill) || 0)),
+    supports: Boolean(source?.supports ?? fallback.supports),
+    fan: Math.max(0, Math.min(100, Math.round(Number(source?.fan ?? fallback.fan) || 0))),
+  });
+  next.quality = validQuality(next.quality);
+  const seenProcessIds = new Set();
+  const seenObjectIds = new Set();
+  const sourceProcesses = Array.isArray(next.processes) ? next.processes.slice(0, 100) : [];
+  next.processes = sourceProcesses.flatMap((process, index) => {
+    if (!process || typeof process !== "object") return [];
+    const id = String(process.id || `process-${index + 1}`).slice(0, 64);
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/i.test(id) || seenProcessIds.has(id)) return [];
+    seenProcessIds.add(id);
+    const objectIds = [...new Set((Array.isArray(process.objectIds) ? process.objectIds : [])
+      .filter(item => typeof item === "string" && item.length > 0 && item.length <= 128 && !seenObjectIds.has(item)))].slice(0, 10_000);
+    for (const objectId of objectIds) seenObjectIds.add(objectId);
+    return [{ id, name: String(process.name || `Processo ${index + 1}`).slice(0, 80), objectIds, settings: normalizeProcessSettings(process.settings) }];
+  });
+  if (!next.processes.length) {
+    next.processes = [{ id: "process-1", name: "Processo 1", objectIds: [], settings: normalizeProcessSettings(next) }];
+  }
+  next.selectedProcessId = next.processes.some(process => process.id === next.selectedProcessId) ? next.selectedProcessId : next.processes[0].id;
+  const active = next.processes.find(process => process.id === next.selectedProcessId);
+  Object.assign(next, active.settings);
+  const transformEntries = Object.entries(next.objectTransforms && typeof next.objectTransforms === "object" ? next.objectTransforms : {}).slice(0, 500);
+  next.objectTransforms = Object.fromEntries(transformEntries.flatMap(([id, transform]) => {
+    if (!/^[a-z0-9_-]{1,128}$/i.test(id) || !transform || typeof transform !== "object") return [];
+    const boundedNumber = (key, fallback, min, max, whole = false) => {
+      const parsed = Number(transform[key]);
+      const value = Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
+      return whole ? Math.round(value) : value;
+    };
+    return [[id, {
+      x: boundedNumber("x", 0, -500, 500), y: boundedNumber("y", 0, -500, 500), z: boundedNumber("z", 0, -500, 500),
+      rotationX: ((boundedNumber("rotationX", 0, -3600, 3600, true) % 360) + 360) % 360,
+      rotationY: ((boundedNumber("rotationY", 0, -3600, 3600, true) % 360) + 360) % 360,
+      rotationZ: ((boundedNumber("rotationZ", 0, -3600, 3600, true) % 360) + 360) % 360,
+      scale: boundedNumber("scale", 1, 0.1, 3),
+    }]];
+  }));
+  return next;
+}
+
+function modelFingerprint(model) {
+  const metadata = JSON.stringify({
+    name: model.name, format: model.format, size: model.size,
+    objects: model.objects.map(object => [object.id, object.sourceObjectId || object.id, object.buildItemIndex ?? 0, object.name, object.triangleCount]),
+  });
+  let first = 2166136261, second = 0x9e3779b9;
+  for (let index = 0; index < metadata.length; index++) {
+    const code = metadata.charCodeAt(index);
+    first = Math.imul(first ^ code, 16777619);
+    second = Math.imul(second ^ code, 2246822519);
+  }
+  return `metadata-${(first >>> 0).toString(16)}-${(second >>> 0).toString(16)}-${metadata.length}`;
+}
+
+function hasCompleteProcessAssignment(processes, objects) {
+  if (!Array.isArray(processes) || !processes.length || processes.length > 100 || !Array.isArray(objects) || !objects.length) return false;
+  const objectIds = new Set(objects.map(object => object.id)), assigned = new Set();
+  for (const process of processes) {
+    if (!process?.objectIds?.length) return false;
+    for (const objectId of process.objectIds) {
+      if (!objectIds.has(objectId) || assigned.has(objectId)) return false;
+      assigned.add(objectId);
+    }
+  }
+  return assigned.size === objectIds.size;
+}
+
+function objectTransform(draft, objectId) {
+  return draft.objectTransforms?.[objectId] || DEFAULT_OBJECT_TRANSFORM;
+}
+
+function mergeModelObjects(model, selectedObjectId = null, objectTransforms = {}) {
+  const positions = new Float32Array(model.objects.reduce((sum, object) => sum + object.positions.length, 0));
+  let offset = 0;
+  const ranges = [];
+  for (const object of model.objects) {
+    positions.set(object.positions, offset);
+    ranges.push({ id: object.id, firstVertex: offset / 3, vertexCount: object.positions.length / 3, bounds: object.bounds, transform: objectTransforms[object.id] || DEFAULT_OBJECT_TRANSFORM });
+    offset += object.positions.length;
+  }
+  return { positions, bounds: model.bounds, objectRanges: ranges, selectedObjectId };
+}
+
+function transformedModelBounds(model, draft) {
+  if (!model) return null;
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  const unitScale = model.format === "STL" ? unitScales[draft.stlUnit] : 1;
+  const globalScale = draft.scale * unitScale, globalRadians = draft.rotation * Math.PI / 180;
+  const globalCos = Math.cos(globalRadians), globalSin = Math.sin(globalRadians);
+  const globalCenterX = (model.bounds.min[0] + model.bounds.max[0]) / 2;
+  const globalCenterY = (model.bounds.min[1] + model.bounds.max[1]) / 2;
+  for (const object of model.objects) {
+    const transform = objectTransform(draft, object.id), center = object.bounds.min.map((value, axis) => (value + object.bounds.max[axis]) / 2);
+    const rx = transform.rotationX * Math.PI / 180, ry = transform.rotationY * Math.PI / 180, rz = transform.rotationZ * Math.PI / 180;
+    const cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry), cz = Math.cos(rz), sz = Math.sin(rz);
+    for (let corner = 0; corner < 8; corner++) {
+      let x = ((corner & 1) ? object.bounds.max[0] : object.bounds.min[0]) - center[0];
+      let y = ((corner & 2) ? object.bounds.max[1] : object.bounds.min[1]) - center[1];
+      let z = ((corner & 4) ? object.bounds.max[2] : object.bounds.min[2]) - center[2];
+      x *= transform.scale; y *= transform.scale; z *= transform.scale;
+      const y1 = y * cx - z * sx, z1 = y * sx + z * cx;
+      const x2 = x * cy + z1 * sy, z2 = -x * sy + z1 * cy;
+      const x3 = x2 * cz - y1 * sz + center[0];
+      const y3 = x2 * sz + y1 * cz + center[1];
+      const z3 = z2 + center[2];
+      const x4 = (x3 - globalCenterX) * globalCos - (y3 - globalCenterY) * globalSin;
+      const y4 = (x3 - globalCenterX) * globalSin + (y3 - globalCenterY) * globalCos;
+      const point = [x4 * globalScale + transform.x, y4 * globalScale + transform.y, (z3 - model.bounds.min[2]) * globalScale + transform.z];
+      for (let axis = 0; axis < 3; axis++) { min[axis] = Math.min(min[axis], point[axis]); max[axis] = Math.max(max[axis], point[axis]); }
+    }
+  }
+  return { min, max, dimensions: min.map((value, axis) => max[axis] - value) };
+}
+
+function formatDimensions(dimensions, unitScale = 1) {
+  return dimensions.map(value => `${number(value * unitScale, 1)} mm`).join(" × ");
+}
+
+function formatDuration(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value < 0) return "—";
+  const hours = Math.floor(value / 3600), minutes = Math.floor((value % 3600) / 60);
+  return hours ? `${hours}h ${String(minutes).padStart(2, "0")}m` : `${minutes} min`;
+}
+
+function downloadBlob(blob, filename) {
+  const safeName = String(filename || "ordax-print.gcode").split(/[\\/]/).pop().replace(/[^\p{L}\p{N}._ -]/gu, "_") || "ordax-print.gcode";
+  const url = URL.createObjectURL(blob), link = document.createElement("a");
+  link.href = url; link.download = safeName; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+export function mountFeature(host = {}) {
+  if (typeof host.mountShell !== "function") throw new TypeError("Fatiamento 3D must be mounted by its product app");
+  if (typeof host.data?.read !== "function" || typeof host.data?.write !== "function") throw new TypeError("Fatiamento 3D requires the public App Data port");
+  const savedDraft = host.data.read("fatiamento-3d-draft", defaultDraft);
+  let draft = safeDraft(savedDraft);
+  let restoredSourceName = typeof savedDraft?.sourceName === "string" ? savedDraft.sourceName : null;
+  let restoredSourceFingerprint = typeof savedDraft?.sourceFingerprint === "string" ? savedDraft.sourceFingerprint : null;
+  let model = savedDraft?.sourceName ? null : createDemoModel();
+  let sliced = null, preview = null, previewLayer = 0, previewProgress = 1, controller = null, analysisController = null, revision = 0, importSequence = 0;
+  let engineStatus = { available: false, engine: null, version: null, reason: "Consultando o host…" };
+  const intelligence = host.intelligence ?? null;
+  let aiAvailability = intelligenceState(intelligence), aiController = null;
+  const aiHistory = [];
+  let selectedObjectId = model?.objects?.[0]?.id ?? null;
+  if (model?.demo && draft.processes.length === 1 && draft.processes[0].objectIds.length === 0) draft.processes[0].objectIds = [model.objects[0].id];
+
+  const shell = host.mountShell({
+    title: "Fatiamento 3D", subtitle: "PREPARE MODELO · GERE ARQUIVO DE IMPRESSÃO",
+    nav: [{ id: "prepare", label: "Prepare", icon: "cube" }, { id: "preview", label: "Preview", icon: "layers" }],
+    content: `
+      <section class="slicer-workspace" aria-label="Fatiamento 3D">
+        <header class="slice-toolbar">
+          <div class="slice-project-name"><span class="slice-project-mark">3D</span><div><strong data-project-name>Novo projeto</strong><small data-project-meta>Rascunho local · arquivo não salvo no navegador</small></div></div>
+          <div class="slice-actions">
+            <button class="button ai-toggle" type="button" data-ai-toggle aria-expanded="false" aria-controls="ai-drawer">✦ Copiloto IA</button>
+            <span class="engine-chip" data-engine-chip><i></i><span data-engine-label>Verificando motor</span></span>
+            <button class="button secondary" type="button" data-open>${icon("upload", 15)}<span>Abrir modelo</span></button>
+            <button class="button primary slice-button" type="button" data-slice disabled title="Conecte um motor de fatiamento ao host.">${icon("layers", 15)}<span>Fatiar</span></button>
+            <button class="button secondary" type="button" data-export hidden>${icon("arrow", 15)}<span>Exportar G-code</span></button>
+            <button class="button secondary" type="button" data-cancel hidden>Cancelar</button>
+          </div>
+        </header>
+
+        <div class="engine-notice" data-engine-notice role="status" aria-live="polite"><span class="notice-icon">i</span><div><strong data-engine-title>Motor de fatiamento não conectado</strong><p data-engine-message>Importe e prepare um modelo. A geração e a exportação serão habilitadas quando este host receber um motor e perfis compatíveis.</p></div></div>
+
+        <div class="ai-scrim" data-ai-scrim hidden></div>
+        <aside class="ai-drawer" id="ai-drawer" data-ai-drawer hidden role="dialog" aria-modal="true" aria-labelledby="ai-title">
+          <header class="ai-drawer-head"><div><span class="panel-kicker">ORDAX INTELLIGENCE</span><h2 id="ai-title">Copiloto de impressão</h2></div><button class="small-icon" type="button" data-ai-close aria-label="Fechar copiloto">${icon("close", 15)}</button></header>
+          <div class="ai-connection" data-ai-connection role="status"><i></i><span data-ai-connection-label>Verificando OrdaX Intelligence</span></div>
+          <div class="ai-context-note">A IA recebe metadados e verificações numéricas locais; o arquivo 3D não é enviado. Ela pode sugerir parâmetros do processo e transformações da peça. Nada muda até você revisar e aplicar.</div>
+          <div class="ai-quick-prompts" aria-label="Perguntas rápidas"><button type="button" data-ai-prompt="Revise as dimensões e os riscos de preparação desta peça.">Revisar peça</button><button type="button" data-ai-prompt="Sugira um equilíbrio entre resistência e consumo de material para esta peça.">Mais resistente</button><button type="button" data-ai-prompt="Sugira ajustes para reduzir o tempo de impressão sem comprometer demais a qualidade.">Mais rápido</button><button type="button" data-ai-prompt="Avalie a posição da peça selecionada e proponha um ajuste de deslocamento XYZ se os metadados permitirem.">Ajustar posição</button><button type="button" data-ai-prompt="Proponha uma rotação segura para a peça selecionada e explique a limitação da análise sem acesso à malha.">Orientar peça</button></div>
+          <div class="ai-messages" data-ai-messages aria-live="polite"><div class="ai-message assistant"><strong>Copiloto</strong><p>Posso explicar configurações e sugerir ajustes com base nos metadados do projeto. Nenhum ajuste é aplicado sem sua revisão.</p></div></div>
+          <form class="ai-composer" data-ai-form><label class="sr-only" for="ai-prompt">Pergunte sobre esta impressão</label><textarea id="ai-prompt" rows="3" maxlength="4000" data-ai-input placeholder="Ex.: como reduzir o tempo sem perder tanta resistência?"></textarea><div><span data-ai-disclaimer>Resposta consultiva · revise antes de aplicar</span><button class="button primary" type="submit" data-ai-send disabled>Enviar</button><button class="button secondary" type="button" data-ai-cancel hidden>Cancelar</button></div></form>
+        </aside>
+
+        <div class="prepare-view" data-prepare-view>
+          <aside class="slice-panel object-panel">
+            <div class="panel-heading"><div><span class="panel-kicker">PROJETO</span><h2>Objetos na mesa</h2></div><button class="small-icon" type="button" data-open aria-label="Adicionar modelo">${icon("plus", 16)}</button></div>
+            <input type="file" data-file accept=".stl,.3mf,model/stl,application/vnd.ms-3mfdocument" hidden />
+            <button class="model-drop" type="button" data-open><span class="drop-glyph">${icon("upload", 20)}</span><span><strong>Solte um STL ou 3MF</strong><small>ou escolha um arquivo no computador</small></span><b>ATÉ 50 MB</b></button>
+            <div class="object-card" data-object-card hidden><div class="object-thumb">${icon("cube", 22)}</div><div class="object-name"><strong data-file-name>—</strong><small data-file-details>—</small></div><button class="small-icon remove-object" type="button" data-remove aria-label="Remover modelo">${icon("close", 14)}</button></div>
+            <section class="object-processes" data-object-processes hidden aria-label="Processos de impressão por objeto"><div class="processes-heading"><div><span class="panel-kicker">SIMPLIFY3D · POR OBJETO</span><strong data-process-summary>1 objeto · 1 processo</strong></div><span class="processes-count" data-process-count>1</span></div><div class="object-process-list" data-object-process-list></div><div class="process-actions"><button class="button secondary" type="button" data-process-add title="Cria um processo com os parâmetros atuais para a peça selecionada.">Separar peça</button><button class="button secondary" type="button" data-process-remove title="Move as peças deste processo para outro processo antes de removê-lo.">Remover</button></div><p class="process-note" data-process-note>Os processos são aplicados por objeto 3MF. Um arquivo STL corresponde a um único objeto.</p></section>
+            <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Áreas degeneradas</span><strong data-degenerate-faces>—</strong></div><p class="geometry-note" data-geometry-note>O diagnóstico não certifica topologia nem imprimibilidade.</p></div>
+            <div class="draft-note" data-source-note>${icon("file", 14)}<span>O arquivo original fica nesta sessão. O rascunho guarda apenas seus parâmetros neste navegador.</span></div>
+            <div class="panel-separator"></div>
+            <div class="panel-heading compact"><div><span class="panel-kicker">IMPRESSORA</span><h2>Perfil de referência</h2></div></div>
+            <label class="slice-field"><span>Máquina</span><select data-printer class="dark-select"><option value="generic">FDM genérica · 256 × 256 × 256</option><option value="a1">Bambu Lab A1 · referência</option><option value="mk4">Original Prusa MK4 · referência</option><option value="ender">Creality Ender 3 V3 · referência</option></select></label>
+            <div class="profile-disclaimer">${icon("tool", 13)}<span>Dimensões de referência para layout. Não são perfis validados pelo fabricante.</span></div>
+            <label class="slice-field"><span>Filamento</span><select data-filament class="dark-select"><option value="pla">PLA · bico 190–220 °C</option><option value="petg">PETG · bico 225–250 °C</option><option value="abs">ABS · bico 240–265 °C</option></select></label>
+            <div class="material-summary" data-material-summary>Faixa de mesa: 45–65 °C · valores de referência</div>
+          </aside>
+
+          <section class="slice-stage" data-stage aria-label="Visualização do modelo">
+            <div class="stage-topbar"><div class="stage-indicators"><span class="stage-dot"></span><span data-stage-label>Visualização da mesa</span><span class="stage-separator">/</span><span data-stage-units>mm</span></div><div class="stage-actions"><button class="stage-button" type="button" data-fit-view title="Enquadrar modelo">Enquadrar</button><button class="stage-button" type="button" data-reset-view title="Redefinir câmera">Vista inicial</button></div></div>
+            <canvas data-mesh-canvas aria-label="Modelo 3D e mesa de impressão; arraste para orbitar e use a roda do mouse para aproximar"></canvas>
+            <div class="stage-empty" data-empty-state><span class="empty-cube">${icon("cube", 26)}</span><strong>Comece por um modelo</strong><p>Arraste um arquivo .STL ou .3MF para esta área. A visualização é local no navegador.</p><button class="button secondary" type="button" data-open>${icon("upload", 14)}<span>Escolher arquivo</span></button></div>
+            <div class="stage-axis" aria-hidden="true"><span>X</span><span>Y</span><span>Z</span></div>
+            <div class="stage-legend" data-model-legend hidden><i class="mesh-swatch"></i><span>Malha</span><i class="selected-swatch"></i><span>Peça selecionada</span></div>
+            <div class="stage-hint">Arraste para orbitar <span>·</span> scroll para zoom</div>
+            <div class="stage-error" data-viewer-error hidden></div>
+          </section>
+
+          <aside class="slice-panel settings-panel">
+            <div class="panel-heading"><div><span class="panel-kicker">PREPARAR</span><h2>Configurações do trabalho</h2></div><span class="draft-badge">RASCUNHO</span></div>
+            <label class="slice-field process-editor"><span>Editar configurações de</span><select class="dark-select" data-active-process aria-label="Processo de impressão cujas configurações serão editadas"></select><small data-active-process-note>As configurações abaixo valem para os objetos atribuídos a este processo.</small></label>
+            <div class="settings-section"><div class="settings-section-title"><span>01</span><strong>Qualidade</strong></div><label class="slice-field"><span>Perfil</span><select class="dark-select" data-quality><option value="standard">Equilibrado · 0,20 mm</option><option value="fine">Detalhado · 0,12 mm</option><option value="draft">Rápido · 0,28 mm</option></select></label><div class="setting-value"><label for="layer-height">Altura de camada</label><div class="number-unit"><input id="layer-height" type="number" min="0.08" max="0.4" step="0.01" data-layer-height/><span>mm</span></div></div></div>
+            <div class="settings-section"><div class="settings-section-title"><span>02</span><strong>Paredes e preenchimento</strong></div><div class="setting-value"><label for="wall-count">Paredes</label><div class="number-unit"><input id="wall-count" type="number" min="1" max="8" step="1" data-walls/><span>linhas</span></div></div><div class="setting-value"><label for="infill-density">Densidade de preenchimento</label><div class="number-unit"><input id="infill-density" type="number" min="0" max="100" step="1" data-infill/><span>%</span></div></div></div>
+            <div class="settings-section"><div class="settings-section-title"><span>03</span><strong>Suportes</strong></div><label class="toggle-row"><span><strong>Gerar suportes</strong><small>Áreas suspensas do modelo</small></span><input type="checkbox" data-supports/><i></i></label><p class="not-applied-note">Parâmetros salvos no rascunho; ainda não aplicados a um fatiamento.</p></div>
+            <div class="settings-section"><div class="settings-section-title"><span>04</span><strong>Resfriamento</strong></div><div class="setting-value"><label for="fan-speed">Ventoinha da peça</label><div class="number-unit"><input id="fan-speed" type="number" min="0" max="100" step="5" data-fan/><span>%</span></div></div><p class="not-applied-note">Valor de referência do processo; a curva por camada depende do motor e do material.</p></div>
+            <div class="settings-section object-transform-section"><div class="settings-section-title"><span>05</span><strong>Transformação da peça</strong></div><p class="selected-transform-name" data-selected-transform-name>Selecione uma peça na lista de objetos.</p><span class="transform-group-label">Deslocamento sobre a mesa · mm</span><div class="object-transform-grid"><label><span>X</span><input type="number" min="-500" max="500" step="1" data-object-transform="x" aria-label="Deslocamento X da peça em milímetros"/></label><label><span>Y</span><input type="number" min="-500" max="500" step="1" data-object-transform="y" aria-label="Deslocamento Y da peça em milímetros"/></label><label><span>Z</span><input type="number" min="-500" max="500" step="1" data-object-transform="z" aria-label="Deslocamento Z da peça em milímetros"/></label></div><span class="transform-group-label">Rotação em torno do centro · graus</span><div class="object-transform-grid"><label><span>X</span><input type="number" min="0" max="359" step="1" data-object-transform="rotationX" aria-label="Rotação X da peça em graus"/></label><label><span>Y</span><input type="number" min="0" max="359" step="1" data-object-transform="rotationY" aria-label="Rotação Y da peça em graus"/></label><label><span>Z</span><input type="number" min="0" max="359" step="1" data-object-transform="rotationZ" aria-label="Rotação Z da peça em graus"/></label></div><div class="setting-value object-scale-row"><label for="object-scale">Escala da peça</label><div class="number-unit"><input id="object-scale" type="number" min="10" max="300" step="1" data-object-transform="scale"/><span>%</span></div></div><div class="object-transform-actions"><button class="rotate-button" type="button" data-rotate-object>${icon("tune", 14)}<span>Girar Z 90°</span></button><button class="rotate-button" type="button" data-reset-object-transform>Redefinir peça</button></div><p class="not-applied-note">Os deslocamentos são aplicados em milímetros na mesa. A rotação e a escala usam o centro geométrico da peça. Alterações entram no contrato do motor conectado.</p></div>
+            <div class="settings-section transform-section"><div class="settings-section-title"><span>06</span><strong>Transformação global do projeto</strong></div><div class="setting-value"><label for="rotation-z">Rotação Z do projeto</label><div class="number-unit"><input id="rotation-z" type="number" min="0" max="359" step="1" data-rotation/><span>°</span></div></div><div class="setting-value"><label for="model-scale">Escala do projeto</label><div class="number-unit"><input id="model-scale" type="number" min="10" max="300" step="1" data-scale/><span>%</span></div></div><button class="rotate-button" type="button" data-rotate>${icon("tune", 14)}<span>Girar projeto 90°</span></button><label class="slice-field stl-unit-field" data-stl-unit-row><span>Unidade presumida do STL</span><select class="dark-select" data-unit><option value="mm">Milímetros</option><option value="cm">Centímetros</option><option value="in">Polegadas</option></select></label></div>
+            <div class="settings-footer"><span class="settings-save-dot"></span><span data-save-state>Rascunho salvo neste navegador</span></div>
+          </aside>
+        </div>
+
+        <section class="preview-view" data-preview-view hidden>
+          <div class="preview-canvas-wrap"><div class="preview-stage-head"><div><span class="panel-kicker">TRAJETÓRIA REAL DO MOTOR</span><h2 data-preview-title>Preview de fatiamento</h2></div><span class="engine-chip"><i></i><span data-preview-engine>—</span></span></div><canvas data-gcode-canvas aria-label="Trajetórias G-code da camada selecionada"></canvas><div class="preview-legend"><span><i class="legend-outer"></i>Perímetro externo</span><span><i class="legend-inner"></i>Perímetro interno</span><span><i class="legend-infill"></i>Preenchimento</span><span><i class="legend-support"></i>Suporte</span><span><i class="legend-travel"></i>Deslocamento</span></div><div class="line-inspector"><span>Trajetórias da camada</span><input type="range" min="0" max="100" value="100" data-line-slider aria-label="Progresso da simulação da camada"/><strong data-line-count>—</strong></div></div>
+          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
+        </section>
+      </section>
+    `,
+  });
+
+  const content = shell.content;
+  const canvas = content.querySelector("[data-mesh-canvas]");
+  const gcodeCanvas = content.querySelector("[data-gcode-canvas]");
+  const engineNotice = content.querySelector("[data-engine-notice]");
+  let viewer = null;
+  try { viewer = createMeshViewer(canvas); }
+  catch (error) { content.querySelector("[data-viewer-error]").hidden = false; content.querySelector("[data-viewer-error]").textContent = error.message; }
+
+  function persist() {
+    try {
+      host.data.write("fatiamento-3d-draft", {
+        ...draft,
+        sourceName: model && !model.demo ? model.name : restoredSourceName,
+        sourceFingerprint: model && !model.demo ? modelFingerprint(model) : restoredSourceFingerprint,
+        savedAt: new Date().toISOString(),
+      });
+      content.querySelector("[data-save-state]").textContent = "Rascunho salvo neste navegador";
+    }
+    catch { content.querySelector("[data-save-state]").textContent = "Não foi possível salvar o rascunho"; }
+  }
+
+  function profile() { return printers[draft.printer] || printers.generic; }
+  function activeProcess() { return draft.processes.find(process => process.id === draft.selectedProcessId) || draft.processes[0]; }
+  function activeSettings() { return activeProcess()?.settings || draft; }
+  function processForObject(objectId) { return draft.processes.find(process => process.objectIds.includes(objectId)) || null; }
+  function canSplitSelectedObject() {
+    if (!model || model.demo || !selectedObjectId || draft.processes.length >= 100) return false;
+    const process = processForObject(selectedObjectId);
+    return Boolean(process && process.objectIds.length > 1);
+  }
+
+  function updateProcessUi() {
+    const panel = content.querySelector("[data-object-processes]");
+    const list = content.querySelector("[data-object-process-list]");
+    const activeSelect = content.querySelector("[data-active-process]");
+    const objects = model?.objects || [];
+    panel.hidden = !objects.length;
+    list.replaceChildren();
+    activeSelect.replaceChildren();
+    for (const process of draft.processes) {
+      const option = document.createElement("option");
+      option.value = process.id;
+      option.textContent = `${process.name} · ${process.objectIds.length} peça${process.objectIds.length === 1 ? "" : "s"}`;
+      activeSelect.append(option);
+    }
+    activeSelect.value = draft.selectedProcessId;
+    activeSelect.disabled = !objects.length;
+    content.querySelector("[data-process-summary]").textContent = `${objects.length} objeto${objects.length === 1 ? "" : "s"} · ${draft.processes.length} processo${draft.processes.length === 1 ? "" : "s"}`;
+    content.querySelector("[data-process-count]").textContent = String(draft.processes.length);
+    content.querySelector("[data-process-add]").disabled = !canSplitSelectedObject();
+    content.querySelector("[data-process-remove]").disabled = draft.processes.length <= 1;
+    content.querySelector("[data-active-process-note]").textContent = model?.demo
+      ? "A amostra demonstra o fluxo; o motor ainda não consome estes parâmetros."
+      : "As configurações abaixo valem para os objetos atribuídos a este processo.";
+    content.querySelector("[data-process-note]").textContent = model?.demo
+      ? "A amostra não pode ser fatiada. Importe um arquivo 3MF real para separar objetos em processos."
+      : model?.format === "STL"
+        ? "Um STL importado corresponde a um único objeto. Para processos por peça, use um 3MF com vários itens na mesa."
+        : "Atribuição por item da mesa do 3MF. Cada objeto deve pertencer a exatamente um processo.";
+    for (const button of content.querySelectorAll("[data-ai-suggestion]")) {
+      const stale = Number(button.dataset.suggestionRevision) !== revision
+        || button.dataset.suggestionProcess !== draft.selectedProcessId
+        || (button.dataset.suggestionObject || "") !== (selectedObjectId || "")
+        || (button.dataset.suggestionHasTransform === "true" && !button.dataset.suggestionObject);
+      button.disabled = stale;
+      button.title = stale ? "O projeto, processo ou peça selecionada mudou desde a pergunta; peça uma nova sugestão." : "Aplica os ajustes propostos ao rascunho local após sua revisão.";
+    }
+
+    for (const [objectIndex, object] of objects.entries()) {
+      const row = document.createElement("div");
+      row.className = `object-process-row${object.id === selectedObjectId ? " is-selected" : ""}`;
+      const selectObject = document.createElement("button");
+      selectObject.type = "button";
+      selectObject.className = "object-process-select";
+      selectObject.dataset.objectSelect = "";
+      selectObject.dataset.objectId = object.id;
+      selectObject.setAttribute("aria-pressed", String(object.id === selectedObjectId));
+      const name = document.createElement("strong"); name.textContent = `${objectIndex + 1}. ${object.name || "Objeto sem nome"}`;
+      const details = document.createElement("small"); details.textContent = `${Number(object.triangleCount || 0).toLocaleString("pt-BR")} faces`;
+      selectObject.append(name, details);
+
+      const assignment = document.createElement("select");
+      assignment.className = "dark-select object-process-assignment";
+      assignment.dataset.objectProcessSelect = "";
+      assignment.dataset.objectId = object.id;
+      assignment.setAttribute("aria-label", `Processo de impressão para ${object.name || "objeto"}`);
+      for (const process of draft.processes) {
+        const option = document.createElement("option"); option.value = process.id;
+        option.textContent = process.name; assignment.append(option);
+      }
+      const assigned = processForObject(object.id);
+      assignment.value = assigned?.id || draft.selectedProcessId;
+      assignment.disabled = model?.demo || draft.processes.length <= 1;
+      row.append(selectObject, assignment);
+      list.append(row);
+    }
+    if (selectedObjectId) {
+      const selected = objects.find(object => object.id === selectedObjectId);
+      content.querySelector("[data-process-add]").title = canSplitSelectedObject()
+        ? `Cria um processo para ${selected?.name || "a peça selecionada"}, copiando as configurações atuais.`
+        : "Selecione uma peça que ainda compartilhe um processo para separá-la.";
+    }
+  }
+
+  function selectObject(objectId) {
+    if (!model?.objects.some(object => object.id === objectId)) return;
+    selectedObjectId = objectId;
+    const assigned = processForObject(objectId);
+    if (assigned) draft = safeDraft({ ...draft, selectedProcessId: assigned.id });
+    updateInputs(); persist();
+  }
+
+  function assignObjectToProcess(objectId, processId) {
+    if (!model || model.demo || !model.objects.some(object => object.id === objectId) || !draft.processes.some(process => process.id === processId)) return;
+    const processes = draft.processes.map(process => ({ ...process, objectIds: process.objectIds.filter(id => id !== objectId) }));
+    processes.find(process => process.id === processId).objectIds.push(objectId);
+    const nonEmptyProcesses = processes.filter(process => process.id === processId || process.objectIds.length > 0);
+    selectedObjectId = objectId;
+    draft = safeDraft({ ...draft, processes: nonEmptyProcesses, selectedProcessId: processId });
+    clearSlicedOutput("A atribuição de peça mudou. Gere um novo fatiamento para atualizar o trabalho.");
+    updateInputs(); persist();
+  }
+
+  function createProcessForSelectedObject() {
+    if (draft.processes.length >= 100) { toast("Esta versão permite até 100 processos por projeto."); return; }
+    if (!canSplitSelectedObject()) { toast("Selecione uma peça que compartilhe o processo com outra peça."); return; }
+    const source = processForObject(selectedObjectId);
+    let suffix = 1;
+    while (draft.processes.some(process => process.id === `process-${suffix}`)) suffix++;
+    const id = `process-${suffix}`;
+    const name = `Processo ${suffix}`;
+    const settings = { ...source.settings };
+    const processes = draft.processes.map(process => process.id === source.id
+      ? { ...process, objectIds: process.objectIds.filter(objectId => objectId !== selectedObjectId) }
+      : { ...process, objectIds: [...process.objectIds] });
+    processes.push({ id, name, objectIds: [selectedObjectId], settings });
+    draft = safeDraft({ ...draft, processes, selectedProcessId: id, ...settings });
+    clearSlicedOutput("Um processo foi separado para esta peça. Gere um novo fatiamento para atualizar o trabalho.");
+    updateInputs(); persist();
+    toast(`${name} criado para a peça selecionada.`);
+  }
+
+  function removeActiveProcess() {
+    if (draft.processes.length <= 1) return;
+    const removed = activeProcess();
+    const destination = draft.processes.find(process => process.id !== removed.id);
+    const processes = draft.processes.filter(process => process.id !== removed.id).map(process => process.id === destination.id
+      ? { ...process, objectIds: [...new Set([...process.objectIds, ...removed.objectIds])] }
+      : { ...process, objectIds: [...process.objectIds] });
+    draft = safeDraft({ ...draft, processes, selectedProcessId: destination.id, ...destination.settings });
+    clearSlicedOutput("Um processo foi removido e suas peças foram reatribuídas. Gere o fatiamento novamente.");
+    updateInputs(); persist();
+    toast(`${removed.name} removido; peças movidas para ${destination.name}.`);
+  }
+
+  function configureProcessesForModel(nextModel) {
+    const previousName = model && !model.demo ? model.name : restoredSourceName;
+    const previousFingerprint = model && !model.demo ? modelFingerprint(model) : restoredSourceFingerprint;
+    const sameProject = previousName === nextModel.name && previousFingerprint === modelFingerprint(nextModel) && hasCompleteProcessAssignment(draft.processes, nextModel.objects);
+    const transforms = sameProject ? { ...draft.objectTransforms } : {};
+    for (const object of nextModel.objects) transforms[object.id] ||= { ...DEFAULT_OBJECT_TRANSFORM };
+    if (sameProject) {
+      draft = safeDraft({ ...draft, objectTransforms: transforms });
+      selectedObjectId = activeProcess()?.objectIds[0] || nextModel.objects[0]?.id || null;
+      return;
+    }
+    const settings = { ...activeSettings() };
+    draft = safeDraft({
+      ...draft, ...settings, objectTransforms: transforms, selectedProcessId: "process-1",
+      processes: [{ id: "process-1", name: "Processo 1", objectIds: nextModel.objects.map(object => object.id), settings }],
+    });
+    selectedObjectId = nextModel.objects[0]?.id ?? null;
+  }
+
+  function resetProcessesWithoutModel() {
+    const settings = { ...activeSettings() };
+    draft = safeDraft({ ...draft, ...settings, objectTransforms: {}, selectedProcessId: "process-1", processes: [{ id: "process-1", name: "Processo 1", objectIds: [], settings }] });
+    selectedObjectId = null;
+  }
+
+  function scaledDimensions() {
+    return transformedModelBounds(model, draft)?.dimensions || null;
+  }
+
+  function clearSlicedOutput(message = "As configurações mudaram. Gere o fatiamento novamente para criar um arquivo atualizado.") {
+    revision++;
+    controller?.abort();
+    if (!sliced && !preview) return;
+    sliced = null; preview = null; previewLayer = 0; previewProgress = 1;
+    content.querySelector("[data-export]").hidden = true;
+    const previewButton = shell.root.querySelector('[data-nav="preview"]');
+    if (previewButton) previewButton.disabled = true;
+    if (draft.selectedTab === "preview") updateTab("prepare");
+    content.querySelector("[data-engine-title]").textContent = "Resultado desatualizado";
+    content.querySelector("[data-engine-message]").textContent = message;
+  }
+
+  function updateEngineUi() {
+    const chip = content.querySelector("[data-engine-chip]");
+    const label = content.querySelector("[data-engine-label]");
+    const title = content.querySelector("[data-engine-title]");
+    const message = content.querySelector("[data-engine-message]");
+    const sliceButton = content.querySelector("[data-slice]");
+    chip.classList.toggle("is-ready", engineStatus.available);
+    label.textContent = engineStatus.available ? `${engineStatus.engine} ${engineStatus.version}` : "Motor desconectado";
+    if (engineStatus.available) {
+      title.textContent = "Motor conectado";
+      message.textContent = `${engineStatus.engine} ${engineStatus.version} está disponível no host. A compatibilidade do perfil será confirmada pelo serviço ao iniciar o trabalho.`;
+    } else {
+      title.textContent = "Motor de fatiamento não conectado";
+      message.textContent = `${engineStatus.reason} Importe e prepare um modelo; o botão de fatiar fica bloqueado e nenhum G-code será inventado.`;
+    }
+    engineNotice.classList.toggle("is-ready", engineStatus.available);
+    sliceButton.disabled = !engineStatus.available || !model?.originalFile || Boolean(controller);
+    sliceButton.title = !engineStatus.available ? "Conecte um motor real de fatiamento ao host." : !model?.originalFile ? "Abra um arquivo STL ou 3MF real; a geometria de demonstração é somente visual." : "Gerar trajetórias com o motor conectado.";
+  }
+
+  function updateAiUi() {
+    aiAvailability = intelligenceState(intelligence);
+    const connection = content.querySelector("[data-ai-connection]");
+    connection.classList.toggle("is-ready", aiAvailability.available);
+    connection.classList.toggle("is-busy", Boolean(aiController));
+    content.querySelector("[data-ai-connection-label]").textContent = aiController
+      ? `${aiAvailability.label} · respondendo`
+      : aiAvailability.available ? aiAvailability.label : aiAvailability.reason;
+    const send = content.querySelector("[data-ai-send]");
+    send.disabled = !aiAvailability.available || Boolean(aiController);
+    send.title = aiAvailability.available ? "Enviar pergunta ao OrdaX Intelligence" : aiAvailability.reason;
+    content.querySelector("[data-ai-cancel]").hidden = !aiController;
+    content.querySelector("[data-ai-input]").disabled = Boolean(aiController);
+    for (const button of content.querySelectorAll("[data-ai-prompt]")) button.disabled = Boolean(aiController);
+  }
+
+  function appendAiMessage(role, text, suggestion = null, suggestionRevision = revision, suggestionProcessId = draft.selectedProcessId, suggestionObjectId = selectedObjectId) {
+    const list = content.querySelector("[data-ai-messages]");
+    const article = document.createElement("article");
+    article.className = `ai-message ${role === "user" ? "user" : "assistant"}`;
+    const heading = document.createElement("strong"); heading.textContent = role === "user" ? "Você" : "Copiloto";
+    const body = document.createElement("p"); body.textContent = text;
+    article.append(heading, body);
+    if (suggestion) {
+      const card = document.createElement("div"); card.className = "ai-suggestion";
+      const title = document.createElement("strong"); title.textContent = "Ajustes propostos";
+      const summary = document.createElement("p"); summary.textContent = suggestion.summary;
+      if (Object.keys(suggestion.settings).length) {
+        const settingsLabel = document.createElement("span"); settingsLabel.className = "ai-suggestion-label"; settingsLabel.textContent = `Processo: ${draft.processes.find(process => process.id === suggestionProcessId)?.name || "selecionado"}`;
+        const changes = document.createElement("ul");
+        const labels = { quality: "Qualidade", layerHeight: "Altura de camada", walls: "Paredes", infill: "Preenchimento", supports: "Suportes", fan: "Ventoinha" };
+        for (const [key, value] of Object.entries(suggestion.settings)) {
+          const item = document.createElement("li");
+          const shown = key === "supports" ? value ? "Ligados" : "Desligados" : key === "layerHeight" ? `${number(value, 2)} mm` : key === "fan" ? `${value}%` : key === "infill" ? `${value}%` : String(value);
+          item.textContent = `${labels[key] || key}: ${shown}`;
+          changes.append(item);
+        }
+        card.append(settingsLabel, changes);
+      }
+      if (Object.keys(suggestion.transform).length) {
+        const selectedObject = model?.objects.find(object => object.id === suggestionObjectId);
+        const transformLabel = document.createElement("span"); transformLabel.className = "ai-suggestion-label";
+        transformLabel.textContent = `Peça: ${selectedObject?.name || "selecionada"} · XYZ relativos à posição original`;
+        const changes = document.createElement("ul");
+        const labels = { x: "Deslocamento X", y: "Deslocamento Y", z: "Deslocamento Z", rotationX: "Rotação X", rotationY: "Rotação Y", rotationZ: "Rotação Z", scalePercent: "Escala" };
+        for (const [key, value] of Object.entries(suggestion.transform)) {
+          const item = document.createElement("li");
+          const shown = key === "scalePercent" ? `${number(value, 0)}%` : ["x", "y", "z"].includes(key) ? `${number(value, 2)} mm` : `${value}°`;
+          item.textContent = `${labels[key] || key}: ${shown}`;
+          changes.append(item);
+        }
+        card.append(transformLabel, changes);
+      }
+      const apply = document.createElement("button"); apply.className = "button secondary"; apply.type = "button"; apply.textContent = "Revisar e aplicar ao rascunho";
+      apply.dataset.suggestionProcess = suggestionProcessId;
+      apply.dataset.suggestionRevision = String(suggestionRevision);
+      apply.dataset.suggestionObject = suggestionObjectId || "";
+      apply.dataset.suggestionHasTransform = String(Object.keys(suggestion.transform).length > 0);
+      const isStale = () => suggestionRevision !== revision || suggestionProcessId !== draft.selectedProcessId
+        || (suggestionObjectId || "") !== (selectedObjectId || "")
+        || (Object.keys(suggestion.transform).length > 0 && !suggestionObjectId);
+      apply.dataset.aiSuggestion = "";
+      apply.disabled = isStale();
+      apply.title = apply.disabled ? "O projeto, processo ou peça selecionada mudou desde a pergunta; peça uma nova sugestão." : "Aplica os ajustes propostos ao rascunho local após sua revisão.";
+      apply.addEventListener("click", () => {
+        if (isStale()) { apply.disabled = true; toast("O projeto, processo ou peça mudou; peça uma nova sugestão antes de aplicar."); return; }
+        const process = draft.processes.find(item => item.id === suggestionProcessId);
+        if (!process || (Object.keys(suggestion.transform).length && !model?.objects.some(object => object.id === suggestionObjectId))) {
+          apply.disabled = true; toast("A peça ou processo não está mais disponível. Peça uma nova sugestão."); return;
+        }
+        const previousSettings = { ...process.settings };
+        const nextSettings = { ...previousSettings, ...suggestion.settings };
+        const processes = Object.keys(suggestion.settings).length
+          ? draft.processes.map(item => item.id === suggestionProcessId ? { ...item, settings: nextSettings } : item)
+          : draft.processes;
+        const objectTransforms = { ...draft.objectTransforms };
+        const previousTransform = objectTransform(draft, suggestionObjectId);
+        if (Object.keys(suggestion.transform).length) {
+          objectTransforms[suggestionObjectId] = {
+            ...previousTransform,
+            ...Object.fromEntries(Object.entries(suggestion.transform).map(([key, value]) => [key === "scalePercent" ? "scale" : key, key === "scalePercent" ? value / 100 : value])),
+          };
+        }
+        const nextDraft = safeDraft({ ...draft, ...(Object.keys(suggestion.settings).length ? nextSettings : {}), processes, objectTransforms });
+        const nextProcessSettings = nextDraft.processes.find(item => item.id === suggestionProcessId)?.settings;
+        const settingsChanged = Object.keys(suggestion.settings).some(key => nextProcessSettings?.[key] !== previousSettings[key]);
+        const transformChanged = Object.keys(suggestion.transform).length > 0
+          && JSON.stringify(objectTransform(nextDraft, suggestionObjectId)) !== JSON.stringify(previousTransform);
+        const changed = settingsChanged || transformChanged;
+        draft = nextDraft;
+        if (changed) clearSlicedOutput("A sugestão de IA foi aplicada ao rascunho. Gere um novo fatiamento para atualizar a trajetória.");
+        updateInputs(); persist(); apply.disabled = true; apply.textContent = "Aplicado ao rascunho";
+        toast("Sugestões aplicadas ao rascunho local.");
+      });
+      card.prepend(title, summary); card.append(apply); article.append(card);
+    }
+    list.append(article); list.scrollTop = list.scrollHeight;
+    while (list.querySelectorAll(":scope > .ai-message").length > MAX_AI_MESSAGES) list.firstElementChild?.remove();
+  }
+
+  function rememberAi(role, text) {
+    aiHistory.push({ role, text });
+    if (aiHistory.length > MAX_AI_HISTORY) aiHistory.splice(0, aiHistory.length - MAX_AI_HISTORY);
+  }
+
+  function aiContext() {
+    const machine = profile(), material = materials[draft.filament];
+    const settings = activeSettings(), selectedProcess = activeProcess();
+    const project = {
+      model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm: scaledDimensions().map(value => Number(value.toFixed(2))), triangleCount: model.triangleCount } : null,
+      geometryDiagnostics: model?.geometryDiagnostics ? {
+        method: model.geometryDiagnostics.method,
+        triangleCount: model.geometryDiagnostics.triangleCount,
+        degenerateTriangleCount: model.geometryDiagnostics.degenerateTriangleCount,
+        topologyVerified: model.geometryDiagnostics.topologyVerified,
+        watertightness: model.geometryDiagnostics.watertightness,
+      } : null,
+      printerReference: { id: draft.printer, bedMm: machine.bed },
+      materialReference: { id: draft.filament, nozzleRange: material.nozzle, bedRange: material.bed },
+      selectedObject: selectedObjectId ? {
+        id: selectedObjectId, name: model?.objects.find(object => object.id === selectedObjectId)?.name || null,
+        sourceDimensionsMm: model?.objects.find(object => object.id === selectedObjectId)?.bounds?.dimensions?.map(value => Number((value * (model.format === "STL" ? unitScales[draft.stlUnit] : 1)).toFixed(2))) || null,
+        transform: (() => {
+          const current = objectTransform(draft, selectedObjectId);
+          return { offsetMm: { x: current.x, y: current.y, z: current.z }, rotationDeg: { x: current.rotationX, y: current.rotationY, z: current.rotationZ }, scalePercent: Math.round(current.scale * 100) };
+        })(),
+      } : null,
+      selectedProcess: selectedProcess ? { id: selectedProcess.id, name: selectedProcess.name, objectCount: selectedProcess.objectIds.length } : null,
+      processSummary: { count: draft.processes.length, assignedObjects: draft.processes.reduce((sum, process) => sum + process.objectIds.length, 0), selectedSettings: settings },
+      settings: { quality: settings.quality, layerHeightMm: settings.layerHeight, walls: settings.walls, infillPercent: settings.infill, supports: settings.supports, fanSpeedPercent: settings.fan },
+      limits: { profilesAreReferences: true, engineConnected: engineStatus.available, sourceGeometrySent: false },
+    };
+    const context = [{ id: "slicer-project-metadata", scope: "document", text: JSON.stringify(project), provenance: "ordax-apps:3d-printing:fatiamento-3d:local-metadata" }];
+    if (aiHistory.length) {
+      context.push({ id: "slicer-copilot-session", scope: "user", text: aiHistory.slice(-6).map(item => `${item.role}: ${item.text}`).join("\n").slice(-6000), provenance: "ordax-apps:3d-printing:fatiamento-3d:in-memory-session" });
+    }
+    return context;
+  }
+
+  function makeAiPrompt(question) {
+    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. Uma contagem local de áreas degeneradas não comprova topologia ou imprimibilidade. Perfis de impressora/material são referências não validadas pelo fabricante. Não afirme que executou fatiamento, verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nQuando houver uma recomendação objetiva, devolva somente JSON válido neste formato: {"schema":"${assistantSuggestionSchema}","summary":"motivo e ressalvas","settings":{"layerHeight":0.2,"walls":3,"infill":15,"supports":false,"fanSpeedPercent":80,"quality":"standard"},"transform":{"x":0,"y":0,"z":0,"rotationX":0,"rotationY":0,"rotationZ":0,"scalePercent":100}}. settings e transform são opcionais e podem aparecer juntos. Inclua apenas os campos que realmente recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando valores absolutos de deslocamento inteiro em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Campos omitidos preservam o valor atual. Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. Se não houver base suficiente, responda em texto e diga o que falta. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
+  }
+
+  async function askAi(question = content.querySelector("[data-ai-input]").value) {
+    const prompt = String(question || "").trim();
+    if (!prompt || !aiAvailability.available || aiController) return;
+    rememberAi("user", prompt);
+    appendAiMessage("user", prompt);
+    content.querySelector("[data-ai-input]").value = "";
+    const requestRevision = revision;
+    const requestProcessId = draft.selectedProcessId;
+    const requestObjectId = selectedObjectId;
+    const requestContext = aiContext();
+    const requestController = new AbortController();
+    aiController = requestController;
+    updateAiUi();
+    try {
+      const answer = await askSliceIntelligence(intelligence, { prompt: makeAiPrompt(prompt), context: requestContext, signal: requestController.signal });
+      if (requestController.signal.aborted) throw new DOMException("Solicitação cancelada.", "AbortError");
+      rememberAi("assistant", answer.text);
+      const suggestion = parseAssistantSuggestion(answer.text);
+      appendAiMessage("assistant", suggestion ? suggestion.summary : answer.text, suggestion, requestRevision, requestProcessId, requestObjectId);
+    } catch (error) {
+      if (error?.name === "AbortError") appendAiMessage("assistant", "Solicitação cancelada.");
+      else appendAiMessage("assistant", `Não consegui consultar o OrdaX Intelligence: ${error?.message || "falha de comunicação"}`);
+    } finally {
+      if (aiController === requestController) aiController = null;
+      updateAiUi();
+    }
+  }
+
+  function openAi() {
+    const drawer = content.querySelector("[data-ai-drawer]");
+    content.querySelector("[data-ai-scrim]").hidden = false;
+    drawer.hidden = false;
+    content.querySelector("[data-ai-toggle]").setAttribute("aria-expanded", "true");
+    updateAiUi(); content.querySelector("[data-ai-input]").focus();
+  }
+
+  function closeAi() {
+    content.querySelector("[data-ai-scrim]").hidden = true;
+    content.querySelector("[data-ai-drawer]").hidden = true;
+    content.querySelector("[data-ai-toggle]").setAttribute("aria-expanded", "false");
+    content.querySelector("[data-ai-toggle]").focus();
+  }
+
+  function updateMaterial() {
+    const material = materials[draft.filament];
+    content.querySelector("[data-material-summary]").textContent = `Bico ${material.nozzle} · mesa ${material.bed} · faixa de referência`;
+  }
+
+  function updateModelUi() {
+    const empty = content.querySelector("[data-empty-state]");
+    const card = content.querySelector("[data-object-card]");
+    const metrics = content.querySelector("[data-model-metrics]");
+    const legend = content.querySelector("[data-model-legend]");
+    const unitRow = content.querySelector("[data-stl-unit-row]");
+    const objectTransformInputs = [...content.querySelectorAll("[data-object-transform]")];
+    empty.hidden = Boolean(model);
+    card.hidden = !model;
+    metrics.hidden = !model;
+    legend.hidden = !model;
+    unitRow.hidden = !model || model.format !== "STL";
+    for (const input of objectTransformInputs) input.disabled = !model || !selectedObjectId;
+    content.querySelector("[data-rotate-object]").disabled = !model || !selectedObjectId;
+    content.querySelector("[data-reset-object-transform]").disabled = !model || !selectedObjectId;
+    if (!model) {
+      content.querySelector("[data-project-name]").textContent = restoredSourceName ? `Reabra ${restoredSourceName}` : "Novo projeto";
+      content.querySelector("[data-project-meta]").textContent = restoredSourceName ? "O arquivo não foi restaurado; os parâmetros continuam no rascunho" : "Rascunho local · arquivo não salvo no navegador";
+      content.querySelector("[data-stage-label]").textContent = "Visualização da mesa";
+      if (viewer) viewer.setMesh(null);
+      updateProcessUi();
+      updateEngineUi();
+      return;
+    }
+    content.querySelector("[data-project-name]").textContent = model.name;
+    content.querySelector("[data-project-meta]").textContent = model.demo ? "Modelo de demonstração · visualização apenas · não será enviado ao motor" : `${model.format} · ${bytes(model.size)} · ${model.objects.length} objeto${model.objects.length === 1 ? "" : "s"} · somente nesta sessão`;
+    content.querySelector("[data-file-name]").textContent = model.name;
+    content.querySelector("[data-file-details]").textContent = `${model.format} · ${model.triangleCount.toLocaleString("pt-BR")} faces`;
+    content.querySelector("[data-triangles]").textContent = model.triangleCount.toLocaleString("pt-BR");
+    const geometryCheck = content.querySelector("[data-degenerate-faces]");
+    const geometryNote = content.querySelector("[data-geometry-note]");
+    if (model.demo) {
+      geometryCheck.textContent = "Amostra";
+      geometryCheck.className = "";
+      geometryNote.textContent = "A geometria de demonstração não foi analisada. A checagem numérica não certifica topologia nem imprimibilidade.";
+    } else if (model.geometryDiagnostics) {
+      const count = model.geometryDiagnostics.degenerateTriangleCount;
+      geometryCheck.textContent = count ? `${count.toLocaleString("pt-BR")} encontradas` : "Nenhuma detectada";
+      geometryCheck.className = count ? "fit-warning" : "fit-ok";
+      geometryNote.textContent = "Checagem local de área dos triângulos; não verifica watertightness, manifold ou orientação.";
+    } else {
+      geometryCheck.textContent = "Não analisada";
+      geometryCheck.className = "";
+      geometryNote.textContent = "A checagem local não certifica topologia nem imprimibilidade.";
+    }
+    const bounds = transformedModelBounds(model, draft);
+    const dims = bounds.dimensions;
+    content.querySelector("[data-dimensions]").textContent = formatDimensions(dims);
+    const machine = profile();
+    const fits = bounds.min[0] >= -machine.bed[0] / 2 && bounds.max[0] <= machine.bed[0] / 2
+      && bounds.min[1] >= -machine.bed[1] / 2 && bounds.max[1] <= machine.bed[1] / 2
+      && bounds.min[2] >= 0 && bounds.max[2] <= machine.bed[2];
+    const fit = content.querySelector("[data-fit]");
+    fit.textContent = fits ? "Dentro da área de referência" : "Excede a área de referência";
+    fit.className = fits ? "fit-ok" : "fit-warning";
+    content.querySelector("[data-stage-label]").textContent = `${machine.name.split(" · ")[0]} · mesa ${machine.bed.join(" × ")} mm`;
+    content.querySelector("[data-stage-units]").textContent = model.format === "STL" ? `${draft.stlUnit} presumido` : `${model.sourceUnit} → mm`;
+    content.querySelector("[data-source-note]").lastElementChild.textContent = model.demo ? "Amostra geométrica local para explorar a interface. Não representa um modelo fabricável." : "O arquivo original fica nesta sessão. O rascunho guarda apenas seus parâmetros neste navegador.";
+    if (viewer) {
+      viewer.setSettings({ bed: machine.bed, rotation: draft.rotation, scale: draft.scale, unitScale: model.format === "STL" ? unitScales[draft.stlUnit] : 1 });
+      viewer.setMesh({ ...mergeModelObjects(model, selectedObjectId, draft.objectTransforms), visualBounds: bounds });
+    }
+    updateProcessUi();
+    updateEngineUi();
+  }
+
+  function updateInputs() {
+    const settings = activeSettings();
+    content.querySelector("[data-printer]").value = draft.printer;
+    content.querySelector("[data-filament]").value = draft.filament;
+    content.querySelector("[data-quality]").value = settings.quality;
+    content.querySelector("[data-layer-height]").value = String(settings.layerHeight);
+    content.querySelector("[data-walls]").value = String(settings.walls);
+    content.querySelector("[data-infill]").value = String(settings.infill);
+    content.querySelector("[data-fan]").value = String(settings.fan);
+    content.querySelector("[data-supports]").checked = settings.supports;
+    content.querySelector("[data-rotation]").value = String(draft.rotation);
+    content.querySelector("[data-scale]").value = String(Math.round(draft.scale * 100));
+    content.querySelector("[data-unit]").value = draft.stlUnit;
+    const selectedObject = model?.objects.find(object => object.id === selectedObjectId);
+    const selectedTransform = objectTransform(draft, selectedObjectId);
+    content.querySelector("[data-selected-transform-name]").textContent = selectedObject
+      ? `${selectedObject.name || "Objeto sem nome"} · transformações individuais`
+      : "Selecione uma peça na lista de objetos.";
+    for (const input of content.querySelectorAll("[data-object-transform]")) {
+      const key = input.dataset.objectTransform;
+      input.value = String(key === "scale" ? Math.round(selectedTransform.scale * 100) : selectedTransform[key]);
+    }
+    updateMaterial(); updateModelUi();
+  }
+
+  function updateTab(tab) {
+    if (tab === "preview" && !sliced) tab = "prepare";
+    draft.selectedTab = tab;
+    content.querySelector("[data-prepare-view]").hidden = tab !== "prepare";
+    content.querySelector("[data-preview-view]").hidden = tab !== "preview";
+    const previewButton = shell.root.querySelector('[data-nav="preview"]');
+    if (previewButton) { previewButton.disabled = !sliced; previewButton.title = sliced ? "Inspecionar o G-code gerado" : "O preview será habilitado após um fatiamento real."; }
+    content.querySelector("[data-stage-label]").textContent = tab === "preview" ? "Preview do G-code" : model ? `${profile().name.split(" · ")[0]} · mesa ${profile().bed.join(" × ")} mm` : "Visualização da mesa";
+    if (tab === "preview" && sliced) requestAnimationFrame(drawSelectedLayer);
+    persist();
+  }
+
+  function updateDraftFromInputs() {
+    const numberValue = selector => Number(content.querySelector(selector).value);
+    const previousSettings = { ...activeSettings() };
+    const nextSettings = {
+      quality: content.querySelector("[data-quality]").value,
+      layerHeight: numberValue("[data-layer-height]"), walls: numberValue("[data-walls]"), infill: numberValue("[data-infill]"),
+      supports: content.querySelector("[data-supports]").checked, fan: numberValue("[data-fan]"),
+    };
+    const processes = draft.processes.map(process => process.id === draft.selectedProcessId ? { ...process, settings: nextSettings } : process);
+    const previousObjectTransform = objectTransform(draft, selectedObjectId);
+    const objectTransforms = { ...draft.objectTransforms };
+    if (selectedObjectId) objectTransforms[selectedObjectId] = {
+      x: numberValue('[data-object-transform="x"]'), y: numberValue('[data-object-transform="y"]'), z: numberValue('[data-object-transform="z"]'),
+      rotationX: numberValue('[data-object-transform="rotationX"]'), rotationY: numberValue('[data-object-transform="rotationY"]'),
+      rotationZ: numberValue('[data-object-transform="rotationZ"]'), scale: numberValue('[data-object-transform="scale"]') / 100,
+    };
+    const nextDraft = safeDraft({
+      ...draft,
+      printer: content.querySelector("[data-printer]").value,
+      filament: content.querySelector("[data-filament]").value,
+      ...nextSettings,
+      processes,
+      rotation: numberValue("[data-rotation]"), scale: numberValue("[data-scale]") / 100,
+      stlUnit: content.querySelector("[data-unit]").value, objectTransforms,
+    });
+    const changed = ["printer", "filament", "rotation", "scale", "stlUnit"].some(key => nextDraft[key] !== draft[key])
+      || (selectedObjectId && JSON.stringify(objectTransform(nextDraft, selectedObjectId)) !== JSON.stringify(previousObjectTransform))
+      || Object.keys(nextSettings).some(key => nextDraft.processes.find(process => process.id === draft.selectedProcessId)?.settings[key] !== previousSettings[key]);
+    draft = nextDraft;
+    if (changed) clearSlicedOutput();
+    updateInputs(); persist();
+  }
+
+  async function openFile(file) {
+    if (!file) return;
+    if (file.size > MAX_MODEL_BYTES) { toast("O limite de importação desta versão é 50 MB."); return; }
+    const currentImport = ++importSequence;
+    analysisController?.abort();
+    const currentAnalysisController = new AbortController();
+    analysisController = currentAnalysisController;
+    content.classList.add("is-importing");
+    content.querySelector("[data-project-meta]").textContent = `Lendo geometria local · ${bytes(file.size)}`;
+    try {
+      const imported = await parseMeshFile(file);
+      if (currentImport !== importSequence) return;
+      imported.geometryDiagnostics = await analyzeMeshGeometry(imported, { signal: currentAnalysisController.signal });
+      if (currentImport !== importSequence) return;
+      clearSlicedOutput("O modelo foi substituído. Gere um novo fatiamento para revisar o arquivo atualizado.");
+      configureProcessesForModel(imported);
+      model = imported;
+      restoredSourceName = null;
+      restoredSourceFingerprint = modelFingerprint(imported);
+      sliced = null; preview = null; previewLayer = 0; previewProgress = 1;
+      updateModelUi();
+      const warning = model.format === "STL" ? "A unidade do STL não é declarada. Confirme a escala antes de fabricar." : "3MF importado para inspeção da geometria; a aplicação de perfis e extensões completas depende do motor.";
+      content.querySelector("[data-project-meta]").textContent = `${model.format} · ${bytes(model.size)} · arquivo local · ${warning}`;
+      content.querySelector("[data-unit]").disabled = false;
+      persist();
+      toast(`${model.format} carregado e exibido localmente.`);
+    } catch (error) {
+      if (currentImport !== importSequence) return;
+      updateModelUi();
+      content.querySelector("[data-project-meta]").textContent = model ? `Importação cancelada; ${model.name} continua aberto.` : "Arquivo não carregado";
+      toast(error.message || "Não foi possível ler esta malha.");
+    } finally {
+      if (currentImport === importSequence) {
+        if (analysisController === currentAnalysisController) analysisController = null;
+        content.classList.remove("is-importing");
+        content.querySelector("[data-file]").value = "";
+      }
+    }
+  }
+
+  function drawSelectedLayer() {
+    if (!sliced || !preview) return;
+    const layer = preview.layers[previewLayer] ?? preview.layers[0] ?? 0;
+    const result = drawGcodeLayer(gcodeCanvas, preview, layer, previewProgress, profile().bed);
+    content.querySelector("[data-line-count]").textContent = `${result.visibleCount.toLocaleString("pt-BR")} / ${result.totalCount.toLocaleString("pt-BR")}`;
+    content.querySelector("[data-layer-current]").textContent = `${previewLayer + 1} / ${preview.layers.length}`;
+    content.querySelector("[data-layer-max]").textContent = String(preview.layers.length || 0);
+    const slider = content.querySelector("[data-layer-slider]");
+    slider.max = String(Math.max(0, preview.layers.length - 1)); slider.value = String(previewLayer);
+    const unsupported = preview.unsupported.length ? `A prévia desta versão não desenha comandos de arco ${preview.unsupported.join(" e ")}; a exportação permanece o arquivo original gerado pelo motor.` : "Prévia desenhada a partir dos comandos do G-code gerado pelo motor.";
+    content.querySelector("[data-preview-note]").textContent = unsupported;
+  }
+
+  async function runSlice() {
+    if (!model?.originalFile || !engineStatus.available || controller) return;
+    const sliceButton = content.querySelector("[data-slice]"), cancelButton = content.querySelector("[data-cancel]");
+    controller = new AbortController();
+    const requestRevision = revision;
+    const requestModel = model;
+    const requestDraft = { ...draft };
+    sliceButton.hidden = true; cancelButton.hidden = false;
+    content.querySelector("[data-engine-title]").textContent = "Fatiando o modelo";
+    content.querySelector("[data-engine-message]").textContent = `Executando ${engineStatus.engine} ${engineStatus.version} com o perfil selecionado…`;
+    try {
+      const result = await requestRealSlice(host.slicer, {
+        file: requestModel.originalFile,
+        filename: requestModel.name,
+        format: requestModel.format,
+        settings: { layerHeight: requestDraft.layerHeight, walls: requestDraft.walls, infill: requestDraft.infill, supports: requestDraft.supports, fanSpeedPercent: requestDraft.fan, quality: requestDraft.quality, rotationZ: requestDraft.rotation, scale: requestDraft.scale, stlUnit: requestDraft.stlUnit },
+        processesSchema: "ordax.slicer-processes/1",
+        objects: requestModel.objects.map(object => ({ id: object.id, name: object.name, sourceObjectId: object.sourceObjectId || object.id, buildItemIndex: object.buildItemIndex ?? 0, triangleCount: object.triangleCount })),
+        objectTransformsSchema: OBJECT_TRANSFORM_SCHEMA,
+        objectTransforms: requestModel.objects.map(object => {
+          const transform = objectTransform(requestDraft, object.id);
+          return { objectId: object.id, offsetMm: [transform.x, transform.y, transform.z], rotationDeg: [transform.rotationX, transform.rotationY, transform.rotationZ], scale: transform.scale };
+        }),
+        processes: requestDraft.processes.map(process => ({
+          id: process.id, name: process.name, objectIds: [...process.objectIds],
+          settings: { quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls, infill: process.settings.infill, supports: process.settings.supports, fanSpeedPercent: process.settings.fan },
+        })),
+        printerProfileId: requestDraft.printer,
+        filamentProfileId: requestDraft.filament,
+      }, { signal: controller.signal, onProgress: progress => {
+        const percent = Math.max(0, Math.min(100, Number(progress?.percent) || 0));
+        content.querySelector("[data-engine-message]").textContent = `Fatiamento em andamento · ${Math.round(percent)}%${progress?.stage ? ` · ${String(progress.stage)}` : ""}`;
+      } });
+      if (requestRevision !== revision || requestModel !== model) return;
+      sliced = result;
+      if (result.gcode.size <= MAX_PREVIEW_BYTES) preview = parseGcodePreview(await result.gcode.text());
+      else preview = null;
+      const previewButton = shell.root.querySelector('[data-nav="preview"]');
+      if (previewButton) previewButton.disabled = !preview;
+      content.querySelector("[data-export]").hidden = false;
+      content.querySelector("[data-preview-engine]").textContent = `${result.engine} ${result.engineVersion}`;
+      content.querySelector("[data-preview-title]").textContent = requestModel.name;
+      content.querySelector("[data-stat-time]").textContent = formatDuration(result.stats?.timeSeconds);
+      content.querySelector("[data-stat-filament]").textContent = Number.isFinite(Number(result.stats?.filamentGrams)) ? `${number(result.stats.filamentGrams, 1)} g` : "Não informado pelo motor";
+      content.querySelector("[data-stat-layers]").textContent = Number.isFinite(Number(result.stats?.layerCount)) ? number(result.stats.layerCount) : preview?.layers.length ? number(preview.layers.length) : "Não informado";
+      content.querySelector("[data-line-slider]").value = "100";
+      content.querySelector("[data-engine-title]").textContent = "Fatiamento concluído pelo motor";
+      content.querySelector("[data-engine-message]").textContent = `${result.engine} ${result.engineVersion} gerou ${bytes(result.gcode.size)} de G-code para ${result.printerProfile || draft.printer}. Revise o preview antes de exportar.`;
+      host.files?.publish("gcode", { filename: result.filename, file: result.gcode });
+      if (preview) updateTab("preview");
+      else toast("G-code gerado. O preview foi omitido porque o arquivo excede o limite visual desta versão.");
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        content.querySelector("[data-engine-title]").textContent = "Fatiamento cancelado";
+        content.querySelector("[data-engine-message]").textContent = "Nenhum arquivo novo foi criado.";
+      } else {
+        content.querySelector("[data-engine-title]").textContent = "Não foi possível fatiar";
+        content.querySelector("[data-engine-message]").textContent = error?.message || "O motor não concluiu o trabalho.";
+      }
+    } finally {
+      controller = null; sliceButton.hidden = false; cancelButton.hidden = true;
+      updateEngineUi();
+    }
+  }
+
+  for (const buttonNode of content.querySelectorAll("[data-open]")) buttonNode.addEventListener("click", () => content.querySelector("[data-file]").click());
+  content.querySelector("[data-file]").addEventListener("change", event => openFile(event.currentTarget.files?.[0]));
+  content.querySelector("[data-object-process-list]").addEventListener("click", event => {
+    const buttonNode = event.target.closest("[data-object-select]");
+    if (buttonNode) selectObject(buttonNode.dataset.objectId);
+  });
+  content.querySelector("[data-object-process-list]").addEventListener("change", event => {
+    const select = event.target.closest("[data-object-process-select]");
+    if (select) assignObjectToProcess(select.dataset.objectId, select.value);
+  });
+  content.querySelector("[data-active-process]").addEventListener("change", event => {
+    const selectedProcessId = event.currentTarget.value;
+    const process = draft.processes.find(item => item.id === selectedProcessId);
+    selectedObjectId = process?.objectIds[0] ?? null;
+    draft = safeDraft({ ...draft, selectedProcessId });
+    updateInputs(); persist();
+  });
+  content.querySelector("[data-process-add]").addEventListener("click", createProcessForSelectedObject);
+  content.querySelector("[data-process-remove]").addEventListener("click", removeActiveProcess);
+  content.querySelector("[data-remove]").addEventListener("click", () => {
+    clearSlicedOutput("O modelo foi removido desta sessão.");
+    resetProcessesWithoutModel();
+    model = null; sliced = null; preview = null; content.querySelector("[data-export]").hidden = true;
+    importSequence++;
+    analysisController?.abort(); analysisController = null;
+    restoredSourceName = null;
+    restoredSourceFingerprint = null;
+    content.querySelector("[data-project-meta]").textContent = "Arquivo removido desta sessão.";
+    updateModelUi(); persist();
+  });
+  const stage = content.querySelector("[data-stage]");
+  stage.addEventListener("dragover", event => { event.preventDefault(); stage.classList.add("is-over"); });
+  stage.addEventListener("dragleave", event => { if (!stage.contains(event.relatedTarget)) stage.classList.remove("is-over"); });
+  stage.addEventListener("drop", event => { event.preventDefault(); stage.classList.remove("is-over"); openFile([...event.dataTransfer.files].find(file => /\.(?:stl|3mf)$/i.test(file.name))); });
+  content.querySelector("[data-printer]").addEventListener("change", updateDraftFromInputs);
+  content.querySelector("[data-filament]").addEventListener("change", updateDraftFromInputs);
+  content.querySelector("[data-quality]").addEventListener("change", () => {
+    const quality = content.querySelector("[data-quality]").value;
+    content.querySelector("[data-layer-height]").value = quality === "fine" ? "0.12" : quality === "draft" ? "0.28" : "0.20";
+    updateDraftFromInputs();
+  });
+  for (const selector of ["[data-layer-height]", "[data-walls]", "[data-infill]", "[data-supports]", "[data-fan]", "[data-rotation]", "[data-scale]", "[data-unit]", "[data-object-transform]"]) {
+    content.querySelector(selector).addEventListener("change", updateDraftFromInputs);
+  }
+  content.querySelector("[data-rotate]").addEventListener("click", () => { draft.rotation = (draft.rotation + 90) % 360; content.querySelector("[data-rotation]").value = String(draft.rotation); updateDraftFromInputs(); });
+  content.querySelector("[data-rotate-object]").addEventListener("click", () => {
+    if (!selectedObjectId) return;
+    const current = objectTransform(draft, selectedObjectId);
+    content.querySelector('[data-object-transform="rotationZ"]').value = String((current.rotationZ + 90) % 360);
+    updateDraftFromInputs();
+  });
+  content.querySelector("[data-reset-object-transform]").addEventListener("click", () => {
+    if (!selectedObjectId) return;
+    for (const input of content.querySelectorAll("[data-object-transform]")) {
+      input.value = String(input.dataset.objectTransform === "scale" ? 100 : 0);
+    }
+    updateDraftFromInputs();
+    toast("Transformação da peça redefinida.");
+  });
+  content.querySelector("[data-fit-view]").addEventListener("click", () => { viewer?.reset(); });
+  content.querySelector("[data-reset-view]").addEventListener("click", () => { viewer?.reset(); });
+  content.querySelector("[data-slice]").addEventListener("click", runSlice);
+  content.querySelector("[data-cancel]").addEventListener("click", () => controller?.abort());
+  content.querySelector("[data-export]").addEventListener("click", () => { if (sliced?.gcode instanceof Blob) downloadBlob(sliced.gcode, sliced.filename); });
+  content.querySelector("[data-layer-slider]").addEventListener("input", event => { previewLayer = Number(event.currentTarget.value); drawSelectedLayer(); });
+  content.querySelector("[data-line-slider]").addEventListener("input", event => { previewProgress = Number(event.currentTarget.value) / 100; drawSelectedLayer(); });
+  content.querySelector("[data-back-prepare]").addEventListener("click", () => updateTab("prepare"));
+  content.querySelector("[data-ai-toggle]").addEventListener("click", openAi);
+  content.querySelector("[data-ai-close]").addEventListener("click", closeAi);
+  content.querySelector("[data-ai-scrim]").addEventListener("click", closeAi);
+  content.querySelector("[data-ai-form]").addEventListener("submit", event => { event.preventDefault(); askAi(); });
+  content.querySelector("[data-ai-cancel]").addEventListener("click", () => aiController?.abort());
+  content.querySelectorAll("[data-ai-prompt]").forEach(buttonNode => buttonNode.addEventListener("click", () => {
+    content.querySelector("[data-ai-input]").value = buttonNode.dataset.aiPrompt;
+    content.querySelector("[data-ai-input]").focus();
+  }));
+  shell.root.addEventListener("keydown", event => {
+    const drawer = content.querySelector("[data-ai-drawer]");
+    if (drawer.hidden) return;
+    if (event.key === "Escape") { event.preventDefault(); closeAi(); return; }
+    if (event.key !== "Tab") return;
+    const focusable = [...drawer.querySelectorAll('button:not(:disabled), textarea:not(:disabled), input:not(:disabled), select:not(:disabled), [href], [tabindex]:not([tabindex="-1"])')]
+      .filter(element => !element.hidden && element.getClientRects().length);
+    if (!focusable.length) { event.preventDefault(); drawer.focus(); return; }
+    const activeElement = shell.root.activeElement || document.activeElement;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (event.shiftKey && (activeElement === first || !drawer.contains(activeElement))) {
+      event.preventDefault(); last.focus();
+    } else if (!event.shiftKey && (activeElement === last || !drawer.contains(activeElement))) {
+      event.preventDefault(); first.focus();
+    }
+  });
+  shell.root.addEventListener("app:navigate", event => { if (event.detail === "prepare" || event.detail === "preview") updateTab(event.detail); });
+  shell.root.addEventListener("app:activate", () => { if (draft.selectedTab === "preview" && preview) requestAnimationFrame(drawSelectedLayer); else viewer?.setSettings({ bed: profile().bed, rotation: draft.rotation, scale: draft.scale, unitScale: model?.format === "STL" ? unitScales[draft.stlUnit] : 1 }); });
+
+  updateInputs();
+  updateTab(draft.selectedTab);
+  updateAiUi();
+  let unsubscribeIntelligence = null;
+  if (typeof intelligence?.subscribe === "function") {
+    try {
+      const unsubscribe = intelligence.subscribe(updateAiUi);
+      if (typeof unsubscribe === "function") unsubscribeIntelligence = unsubscribe;
+    } catch { /* A falha na assinatura não deve impedir o restante do app. */ }
+  }
+  readSlicerStatus(host.slicer).then(status => { engineStatus = status; updateEngineUi(); });
+  host.onDestroy?.(() => { controller?.abort(); importSequence++; analysisController?.abort(); aiController?.abort(); unsubscribeIntelligence?.(); viewer?.dispose(); });
+  return shell;
+}

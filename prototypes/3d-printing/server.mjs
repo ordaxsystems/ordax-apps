@@ -1,0 +1,189 @@
+import { createServer } from "node:http";
+import { readFile, stat } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { featureIds } from "./shared/feature-registry.mjs";
+import { getGroqStatus, handleGroqRequest } from "./shared/groq-development-api.mjs";
+
+const root = dirname(fileURLToPath(import.meta.url));
+const apps = new Map([
+  ["qualidade-manutencao", 4235], ["biblioteca-impressao", 4236],
+  ["preparacao-impressao", 4237], ["operacoes-impressao", 4238],
+  ["materiais-custos", 4239],
+]);
+const features = new Set(featureIds);
+const contentTypes = {
+  "index.html": "text/html; charset=utf-8",
+  "app.mjs": "text/javascript; charset=utf-8",
+  "app.css": "text/css; charset=utf-8",
+  "feature.mjs": "text/javascript; charset=utf-8",
+  "mesh-import.mjs": "text/javascript; charset=utf-8",
+  "demo-model.mjs": "text/javascript; charset=utf-8",
+  "mesh-viewer.mjs": "text/javascript; charset=utf-8",
+  "slicer-port.mjs": "text/javascript; charset=utf-8",
+  "ai-copilot.mjs": "text/javascript; charset=utf-8",
+  "mesh-analysis.mjs": "text/javascript; charset=utf-8",
+  "gcode-preview.mjs": "text/javascript; charset=utf-8",
+  "shared.mjs": "text/javascript; charset=utf-8",
+  "shared.css": "text/css; charset=utf-8",
+  "product-host.mjs": "text/javascript; charset=utf-8",
+  "product-host.css": "text/css; charset=utf-8",
+  "development-entry.mjs": "text/javascript; charset=utf-8",
+  "development-services.mjs": "text/javascript; charset=utf-8",
+  "feature-registry.mjs": "text/javascript; charset=utf-8",
+  "feature-surface.css": "text/css; charset=utf-8",
+};
+
+const appId = process.argv[2] ?? process.env.ORDAX_3D_APP;
+if (!apps.has(appId)) throw new TypeError("Pass a product app ID or set ORDAX_3D_APP: qualidade-manutencao, biblioteca-impressao, preparacao-impressao, operacoes-impressao or materiais-custos");
+const port = Number(process.env.PORT ?? apps.get(appId));
+if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new TypeError("PORT must be between 1024 and 65535");
+
+const appRoot = resolve(root, "apps", appId);
+const sharedRoot = resolve(root, "shared");
+
+function sendJson(response, status, body) {
+  response.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Referrer-Policy": "no-referrer",
+  });
+  response.end(JSON.stringify(body));
+}
+
+function isLoopback(address = "") {
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+function isLocalRequest(request, requireOrigin) {
+  if (!isLoopback(request.socket.remoteAddress)) return false;
+  const host = request.headers.host;
+  if (typeof host !== "string") return false;
+  let hostUrl;
+  try { hostUrl = new URL(`http://${host}`); } catch { return false; }
+  if (!new Set(["127.0.0.1", "localhost", "[::1]"]).has(hostUrl.hostname) || Number(hostUrl.port || 80) !== port) return false;
+  const origin = request.headers.origin;
+  if (requireOrigin && typeof origin !== "string") return false;
+  if (typeof origin === "string") {
+    try {
+      const originUrl = new URL(origin);
+      if (originUrl.protocol !== "http:" || originUrl.host !== hostUrl.host) return false;
+    } catch { return false; }
+  }
+  const fetchSite = request.headers["sec-fetch-site"];
+  return !fetchSite || fetchSite === "same-origin" || fetchSite === "none";
+}
+
+async function readJsonBody(request, maxBytes = 256 * 1024) {
+  const declaredLength = Number(request.headers["content-length"] ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw Object.assign(new Error("O pedido excede o limite permitido."), { statusCode: 413 });
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxBytes) throw Object.assign(new Error("O pedido excede o limite permitido."), { statusCode: 413 });
+    chunks.push(chunk);
+  }
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+  catch { throw Object.assign(new Error("O corpo precisa ser JSON válido."), { statusCode: 400 }); }
+}
+
+async function handleApi(request, response, pathname) {
+  if (appId !== "preparacao-impressao") {
+    sendJson(response, 404, { error: "API indisponível para este app de desenvolvimento." });
+    return;
+  }
+  if (!isLocalRequest(request, request.method === "POST")) {
+    sendJson(response, 403, { error: "Origem local não autorizada." });
+    return;
+  }
+  if (pathname === "/api/intelligence/status" && request.method === "GET") {
+    const snapshot = getGroqStatus();
+    const setupHint = snapshot.state === "error"
+      ? "GROQ_MODEL contém um identificador inválido; corrija a variável e reinicie o host."
+      : snapshot.state === "degraded" ? "Defina GROQ_API_KEY no servidor local e reinicie o host para habilitar consultas Groq." : "";
+    sendJson(response, 200, { snapshot, setupHint });
+    return;
+  }
+  if (pathname === "/api/intelligence" && request.method === "POST") {
+    if (!process.env.GROQ_API_KEY) {
+      sendJson(response, 503, { error: "Groq não está configurado. Defina GROQ_API_KEY no servidor local e reinicie o host." });
+      return;
+    }
+    let body;
+    try { body = await readJsonBody(request); }
+    catch (error) {
+      const status = error.statusCode ?? 400;
+      sendJson(response, status, { error: error.statusCode ? error.message : "Não foi possível ler o pedido JSON." });
+      return;
+    }
+    const controller = new AbortController();
+    const abortIfDisconnected = () => { if (!response.writableEnded) controller.abort(); };
+    response.once("close", abortIfDisconnected);
+    try {
+      const result = await handleGroqRequest(body, { signal: controller.signal });
+      if (!response.destroyed) sendJson(response, 200, result);
+    } catch (error) {
+      if (controller.signal.aborted || response.destroyed) return;
+      sendJson(response, error.statusCode ?? 502, { error: error.publicMessage ?? "Não foi possível consultar Groq. Confira a conexão e a configuração do modelo." });
+    } finally { response.off("close", abortIfDisconnected); }
+    return;
+  }
+  sendJson(response, 405, { error: "Método ou rota de Intelligence não permitidos." });
+}
+
+function resolveRequest(pathname) {
+  if (pathname === "/" || pathname === "/index.html") return [resolve(appRoot, "index.html"), contentTypes["index.html"]];
+  if (pathname === "/app.mjs" || pathname === "/app.css") return [resolve(appRoot, pathname.slice(1)), contentTypes[pathname.slice(1)]];
+  if (["/shared.mjs", "/shared.css", "/product-host.mjs", "/product-host.css", "/development-entry.mjs", "/development-services.mjs", "/feature-registry.mjs", "/feature-surface.css"].includes(pathname)) {
+    const name = pathname.slice(1);
+    return [resolve(sharedRoot, name), contentTypes[name]];
+  }
+  const feature = pathname.match(/^\/features\/([a-z0-9-]+)\/(feature\.mjs|app\.css|ai-copilot\.mjs|mesh-analysis\.mjs|demo-model\.mjs|mesh-import\.mjs|mesh-viewer\.mjs|slicer-port\.mjs|gcode-preview\.mjs)$/);
+  if (feature && features.has(feature[1])) {
+    const [ , featureId, fileName ] = feature;
+    return [resolve(root, "features", featureId, fileName), contentTypes[fileName]];
+  }
+  return null;
+}
+
+const server = createServer(async (request, response) => {
+  let pathname;
+  try { pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname; }
+  catch { response.writeHead(400, { "Cache-Control": "no-store" }); response.end(); return; }
+  if (pathname.startsWith("/api/")) {
+    await handleApi(request, response, pathname);
+    return;
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    response.writeHead(405, { Allow: "GET, HEAD", "Cache-Control": "no-store" });
+    response.end();
+    return;
+  }
+  const file = resolveRequest(pathname);
+  if (!file) {
+    response.writeHead(404, { "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" });
+    response.end("Not found");
+    return;
+  }
+  try {
+    const metadata = await stat(file[0]);
+    if (!metadata.isFile()) throw new Error("Not a file");
+    const body = await readFile(file[0]);
+    response.writeHead(200, {
+      "Content-Type": file[1], "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
+      "Cross-Origin-Resource-Policy": "same-origin", "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'",
+    });
+    response.end(request.method === "HEAD" ? undefined : body);
+  } catch {
+    response.writeHead(404, { "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" });
+    response.end("App resource unavailable");
+  }
+});
+
+server.listen(port, "127.0.0.1", () => process.stdout.write(`${appId} development host: http://127.0.0.1:${port}/\n`));
+server.on("error", error => { process.stderr.write(`3D development host failed: ${error.message}\n`); process.exitCode = 1; });

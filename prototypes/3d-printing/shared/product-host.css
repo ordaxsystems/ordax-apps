@@ -1,0 +1,11 @@
+.product-shell{overflow-x:clip}
+.product-content{max-width:1440px;margin:0 auto;min-width:0}
+.product-feature-panel{display:block;min-width:0}
+.product-feature-panel[hidden]{display:none!important}
+.product-shell [data-product-nav][hidden]{display:none!important}
+.product-shell .sidebar[hidden]{display:none!important}
+.product-layout--single{grid-template-columns:minmax(0,1fr)}
+.product-shell .topbar{justify-content:flex-start}
+.product-area-description{margin:7px 0 0;color:#858d82;font-size:11px;line-height:1.5}
+.product-shell .page-heading{align-items:flex-start}
+@media(max-width:680px){.product-area-description{max-width:42rem}}

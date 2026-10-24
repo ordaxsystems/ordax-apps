@@ -1,0 +1,8 @@
+:host{display:block;min-width:0;max-width:100%;color:var(--ink);font-family:inherit}
+.feature-surface{min-width:0;max-width:100%}
+.feature-nav{display:flex;flex-direction:row;flex-wrap:wrap;gap:5px;margin:0 0 14px;min-width:0;max-width:100%}
+.feature-nav .nav-item{width:auto;min-height:33px;padding:0 10px;white-space:nowrap}
+.feature-toolbar{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:0 0 14px}
+.feature-content{max-width:none;margin:0}
+.feature-content>*{min-width:0}
+@media(max-width:680px){.feature-nav{overflow-x:visible;flex-wrap:wrap}.feature-toolbar{justify-content:stretch}.feature-toolbar>*{flex:1}}
