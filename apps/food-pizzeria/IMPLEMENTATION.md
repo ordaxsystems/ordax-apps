@@ -52,6 +52,30 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Revisão adicional — idempotência do preview (2026-10-24)
+
+A chave de idempotência do browser havia sido persistida apenas como `commandId`.
+Uma segunda operação com o mesmo identificador e payload diferente era aceita como
+replay, sem comparação do comando original. Isso ocultava colisões e erros de
+reenvio. O envelope de armazenamento local evoluiu de
+`ordax.food-pizzeria.browser-state/1` para `/2`, mantendo intacto o schema
+do domínio Food v5.
+
+Agora cada comando gravado no preview registra `id` e digest SHA-256
+do comando normalizado. Replay idêntico devolve o resultado corrente sem
+duplicar efeito; conteúdo diferente com o mesmo ID é rejeitado.
+A migração de envelopes `/1` preserva IDs antigos com digest `null`:
+esses IDs não autorizam replay, pois não existe prova do conteúdo original.
+Os dados Food, inclusive o arquivo separado de Inventory v3, continuam
+preservados. WebCrypto seguro é requisito do preview para emitir comandos;
+nenhum serviço de criptografia paralelo foi criado.
+
+Os testes adicionais em `local-store-persistence.test.mjs` verificam replay
+idêntico entre reaberturas, reutilização maliciosa/acidental do ID e rejeição
+de replay ambíguo após migração de `/1` para `/2`.
+Esses testes verificam exclusivamente armazenamento local de demonstração,
+**não** idempotência transacional do futuro owner Sales ou isolamento empresarial.
+
 ## Testes executados nesta correção
 
 Arquivo `tests/space-first-boundaries.test.mjs`:
