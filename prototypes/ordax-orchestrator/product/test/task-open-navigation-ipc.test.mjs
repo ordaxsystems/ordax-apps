@@ -1,38 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import vm from 'node:vm';
+import {createProviderAwareTaskOpener,createTaskUiHandlers} from '../src/task-ui-handlers.mjs';
 import {safeTaskNavigationReason} from '../src/task-navigation-status.mjs';
 
-const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-const start=main.indexOf("registerUiHandler('ordax:tasks:open'");
-const end=main.indexOf("// A first-party OrdaX App action",start);
-assert.ok(start>=0 && end>start,'task_open_handler_not_found');
-const actualHandler=main.slice(start,end);
-
-function mount({visible=false, showConversation=async()=>({navigated:true}), task={id:'local_1',title:'Local',chat_url:'https://chatgpt.com/c/11111111-2222-4333-8444-555555555555'}}={}) {
-  let handler=null;let navigations=0;
-  const context={
-    chatVisible:visible,
-    getTaskView:id=>id===task?.id?task:null,
-    worker:{showConversation:async url=>{navigations++;return showConversation(url);}},
-    safeTaskNavigationReason,
-    registerUiHandler:(name,fn)=>{assert.equal(name,'ordax:tasks:open');handler=fn;}
-  };
-  vm.runInNewContext(actualHandler,context,{timeout:1500});
-  assert.equal(typeof handler,'function');
-  return {run:id=>handler({},id), navigations:()=>navigations};
+const task={id:'local_1',title:'Local',chat_url:'https://chatgpt.com/c/11111111-2222-4333-8444-555555555555'};
+function mount({visible=false,showConversation=async()=>({navigated:true}),currentTask=task}={}) {
+  let navigations=0;
+  const store={getTask:id=>id===currentTask?.id?currentTask:null,listTasks:()=>[]};
+  const handlers=createTaskUiHandlers({
+    store,
+    onOpenTask:createProviderAwareTaskOpener({
+      isChatVisible:()=>visible,
+      showConversation:async url=>{navigations++;assert.equal(url,currentTask?.chat_url);return showConversation(url);},
+      safeTaskNavigationReason
+    })
+  });
+  return {run:id=>handlers.get('ordax:tasks:open')(null,id),navigations:()=>navigations};
 }
 
-test('W3 actual IPC loads local task without provider navigation in App mode',async()=>{
+test('shared task handler loads local task without provider navigation in Host mode',async()=>{
   const app=mount({visible:false,showConversation:()=>{throw Error('unexpected_navigation');}});
-  const result=await app.run('local_1');
-  assert.equal(result.title,'Local');
+  assert.equal(await app.run('local_1'),task);
   assert.equal(app.navigations(),0);
-  assert.equal(result.provider_navigation,undefined);
 });
 
-test('W3 actual IPC retains local task and classifies timeout',async()=>{
+test('shared task handler retains task and classifies provider navigation timeout',async()=>{
   const app=mount({visible:true,showConversation:async()=>{throw Error('provider_navigation_timeout');}});
   const result=await app.run('local_1');
   assert.equal(result.id,'local_1');
@@ -41,7 +34,7 @@ test('W3 actual IPC retains local task and classifies timeout',async()=>{
   assert.equal(app.navigations(),1);
 });
 
-test('W3 actual IPC never returns raw exception or account data',async()=>{
+test('provider navigation failures never return raw exception or account data',async()=>{
   const secret='secret_token_hidden_user_account';
   const app=mount({visible:true,showConversation:async()=>{throw Error(secret);}});
   const result=await app.run('local_1');
@@ -51,7 +44,7 @@ test('W3 actual IPC never returns raw exception or account data',async()=>{
   assert.equal('provider_navigation_error' in result,false);
 });
 
-test('W3 actual IPC preserves draft-blocked navigation state',async()=>{
+test('provider draft blockage remains a safe non-navigation state',async()=>{
   const app=mount({visible:true,showConversation:async()=>({navigated:false,reason:'visible_draft_present'})});
   const result=await app.run('local_1');
   assert.equal(result.provider_navigation,'not_navigated');
@@ -59,9 +52,14 @@ test('W3 actual IPC preserves draft-blocked navigation state',async()=>{
   assert.equal(app.navigations(),1);
 });
 
-test('W3 actual IPC does not navigate missing tasks',async()=>{
+test('missing task never navigates to a provider URL',async()=>{
   const app=mount({visible:true});
-  const result=await app.run('nonexistent');
-  assert.equal(result,null);
+  assert.equal(await app.run('nonexistent'),null);
   assert.equal(app.navigations(),0);
+});
+
+test('Electron main composes the tested shared provider-aware opener',()=>{
+  const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
+  assert.match(main,/import \{ createProviderAwareTaskOpener, createTaskUiHandlers \} from '\.\.\/src\/task-ui-handlers\.mjs'/);
+  assert.match(main,/onOpenTask:createProviderAwareTaskOpener\(\{[\s\S]*?safeTaskNavigationReason[\s\S]*?\}\)/);
 });

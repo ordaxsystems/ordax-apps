@@ -1,4 +1,31 @@
 /** Shared Store-backed task handlers for the native shell and browser host. */
+export function createProviderAwareTaskOpener({
+  isChatVisible=()=>false,
+  showConversation,
+  safeTaskNavigationReason
+}={}) {
+  if(typeof isChatVisible!=='function'||typeof showConversation!=='function'||
+    typeof safeTaskNavigationReason!=='function')throw Error('task_navigation_dependencies_required');
+  return async task=>{
+    if(!task)return null;
+    if(isChatVisible()&&task.chat_url){
+      try {
+        const navigation=await showConversation(task.chat_url);
+        if(navigation?.navigated===false)return {
+          ...task,provider_navigation:'not_navigated',
+          provider_navigation_reason:safeTaskNavigationReason(navigation.reason)
+        };
+      } catch(error) {
+        return {
+          ...task,provider_navigation:'failed',
+          provider_navigation_reason:safeTaskNavigationReason(error?.message)
+        };
+      }
+    }
+    return task;
+  };
+}
+
 export function createTaskUiHandlers({
   store,
   decorateTask=task=>task,

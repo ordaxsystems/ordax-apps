@@ -63,8 +63,7 @@ test('W3 App binds the task navigation result into its existing read-only status
   assert.match(ui,/status\.dataset\.threadRendered = navigationStatus\.threadRendered/);
   assert.match(ui,/status\.textContent = navigationStatus\.message/);
   assert.match(ui,/if \(nextVisible && currentTaskId\) await openTask\(currentTaskId\)/);
-  assert.match(main,/provider_navigation:'failed'/);
-  assert.match(main,/provider_navigation:'not_navigated'/);
+  assert.match(main,/onOpenTask:createProviderAwareTaskOpener\(/);
 });
 test('W3 IPC never accepts arbitrary provider text even when it resembles a code', () => {
   for (const raw of [
@@ -80,16 +79,12 @@ test('W3 IPC never accepts arbitrary provider text even when it resembles a code
   }
 });
 
-test('W3 main sanitizes before sending any navigation diagnostic over IPC', () => {
+test('Electron main delegates task navigation to the shared safe provider-aware opener', () => {
   const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-  const start=main.indexOf("registerUiHandler('ordax:tasks:open'");
-  const end=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'",start);
-  assert.ok(start>=0 && end>start);
-  const handler=main.slice(start,end);
-  assert.match(handler,/safeTaskNavigationReason\(navigation\.reason\)/);
-  assert.match(handler,/safeTaskNavigationReason\(error\?\.message\)/);
-  assert.doesNotMatch(handler,/provider_navigation_error/);
-  assert.doesNotMatch(handler,/String\(error\?\.message/);
+  const shared=readFileSync(new URL('../src/task-ui-handlers.mjs',import.meta.url),'utf8');
+  assert.match(main,/createProviderAwareTaskOpener/);
+  assert.match(main,/safeTaskNavigationReason\s*\n\s*\}\)/);
+  assert.doesNotMatch(shared,/provider_navigation_error|String\(error\?\.message/);
   assert.equal(safeTaskNavigationReason('provider_navigation_timeout'),'provider_navigation_timeout');
   assert.equal(safeTaskNavigationReason('visible_draft_present'),'visible_draft_present');
 });

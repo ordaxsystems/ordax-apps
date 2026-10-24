@@ -9,7 +9,7 @@ import {findProviderSubmissionProvenance,recordProviderSubmissionProvenance} fro
 const link='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';
 const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
 const start=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
-const end=main.indexOf("registerUiHandler('ordax:tasks:resume-capsule'",start);
+const end=main.indexOf("// Exact-profile attestation for Lab E2E",start);
 assert.ok(start>=0&&end>start,'W3 canonical handler not found');
 const handlerSource=main.slice(start,end);
 

@@ -12,7 +12,7 @@ import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
-import { createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
+import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
@@ -462,23 +462,11 @@ ipcMain.on('ordax:worker:stream', (event, snapshot) => {
 
 const sharedTaskHandlers=createTaskUiHandlers({
   store,decorateTask,decorateMessages,getTaskView,isRunActive:()=>Boolean(liveRun),
-  onOpenTask:async task=>{
-  if (chatVisible && task?.chat_url) {
-    try {
-      const navigation = await worker.showConversation(task.chat_url);
-      if (navigation.navigated === false) return {
-        ...task, provider_navigation:'not_navigated',
-        provider_navigation_reason:safeTaskNavigationReason(navigation.reason)
-      };
-    } catch (error) {
-      return {
-        ...task, provider_navigation:'failed',
-        provider_navigation_reason:safeTaskNavigationReason(error?.message)
-      };
-    }
-  }
-  return task;
-  }
+  onOpenTask:createProviderAwareTaskOpener({
+    isChatVisible:()=>chatVisible,
+    showConversation:url=>worker.showConversation(url),
+    safeTaskNavigationReason
+  })
 });
 for(const [channel,handler] of sharedTaskHandlers)registerUiHandler(channel,handler);
 // A first-party OrdaX App action, not the ChatGPT direct-mode UI.
