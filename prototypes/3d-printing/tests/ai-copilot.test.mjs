@@ -15,7 +15,7 @@ const allowedProfiles = {
 
 function reply({ evidence = allowedEvidence, profiles = { machine: machineId, process: null, filament: null }, settings = null } = {}) {
   const completeSettings = settings === null ? null : {
-    quality: null, layerHeight: null, walls: null, topShellLayers: null, bottomShellLayers: null, topShellThickness: null, bottomShellThickness: null, brimType: null, brimWidth: null,
+    quality: null, layerHeight: null, walls: null, topShellLayers: null, bottomShellLayers: null, topShellThickness: null, bottomShellThickness: null, brimType: null, brimWidth: null, brimGap: null,
     infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null,
     supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null,
     ...settings,
@@ -163,6 +163,9 @@ test("valida recomendações de tipo e largura de brim", () => {
     settings: { quality: null, layerHeight: null, walls: null, brimType: "outer_only", brimWidth: 5, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
   }), { allowedEvidence: ["settings"], allowedProfiles });
   assert.deepEqual(parsed.suggestion.settings, { brimType: "outer_only", brimWidth: 5 });
+  const gapReply = parseAssistantReply(reply({ evidence: ["settings"], profiles: null, settings: { quality: null, layerHeight: null, walls: null, brimType: null, brimWidth: null, brimGap: 0.2, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null } }), { allowedEvidence: ["settings"], allowedProfiles });
+  assert.deepEqual(gapReply.suggestion.settings, { brimGap: 0.2 });
+  assert.throws(() => parseAssistantReply(reply({ evidence: ["settings"], profiles: null, settings: { quality: null, layerHeight: null, walls: null, brimType: null, brimWidth: null, brimGap: 10.1, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null } }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
   for (const [brimType, brimWidth] of [["painted", 5], ["outer_only", 20.1]]) {
     assert.throws(() => parseAssistantReply(reply({
       evidence: ["settings"], profiles: null,
@@ -220,6 +223,8 @@ test("schema estrito exige os três campos de perfil na proposta", () => {
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.bottomShellThickness.anyOf[0].minimum, 0);
   assert.deepEqual(suggestionSchema.properties.settings.anyOf[0].properties.brimType.anyOf[0].enum, ["outer_only", "inner_only", "outer_and_inner", "no_brim"]);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.brimWidth.anyOf[0].maximum, 20);
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.brimGap.anyOf[0].maximum, 10);
+  assert.ok(suggestionSchema.required.includes("settings"));
   assert.ok(suggestionSchema.properties.settings.anyOf[0].properties.infillPattern.anyOf[0].enum.includes("gyroid"));
   assert.deepEqual(suggestionSchema.properties.settings.anyOf[0].properties.supportType.anyOf[0].enum, ["normal(auto)", "tree(auto)"]);
   assert.deepEqual(suggestionSchema.properties.profiles.anyOf[0].required, ["machine", "process", "filament"]);

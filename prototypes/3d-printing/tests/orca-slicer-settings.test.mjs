@@ -13,6 +13,7 @@ const settings = Object.freeze({
   bottomShellThickness: 1.2,
   brimType: null,
   brimWidth: null,
+  brimGap: null,
   infill: 15,
   infillPattern: "gyroid",
   supports: true,
@@ -43,13 +44,14 @@ test("mapeia as configurações do projeto para argumentos explícitos do OrcaSl
 });
 
 test("mapeia tipo e largura de brim apenas quando há override explícito", () => {
-  assert.deepEqual(buildOrcaSettingArguments({ ...settings, brimType: "outer_only", brimWidth: 5 }).slice(8, 10), [
-    "--brim-type=outer_only", "--brim-width=5",
+  assert.deepEqual(buildOrcaSettingArguments({ ...settings, brimType: "outer_only", brimWidth: 5, brimGap: 0.2 }).slice(8, 11), [
+    "--brim-type=outer_only", "--brim-width=5", "--brim-object-gap=0.2",
   ]);
   const inherited = buildOrcaSettingArguments(settings);
   assert.equal(inherited.some(argument => argument.startsWith("--brim-")), false);
   assert.throws(() => buildOrcaSettingArguments({ ...settings, brimType: "painted" }), /configurações solicitadas estão fora dos limites/);
   assert.throws(() => buildOrcaSettingArguments({ ...settings, brimWidth: 20.1 }), /configurações solicitadas estão fora dos limites/);
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, brimGap: 10.1 }), /configurações solicitadas estão fora dos limites/);
 });
 
 test("rejeita espessura de casca fora do intervalo suportado", () => {

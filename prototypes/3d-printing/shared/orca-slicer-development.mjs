@@ -11,7 +11,7 @@ import { isSupportedInfillPattern } from "./infill-patterns.mjs";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/8";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/9";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
@@ -578,6 +578,7 @@ function normalSettings(value) {
     bottomShellThickness: Number(value.bottomShellThickness),
     brimType: value.brimType === null || value.brimType === undefined || value.brimType === "" ? null : value.brimType,
     brimWidth: value.brimWidth === null || value.brimWidth === undefined || value.brimWidth === "" ? null : Number(value.brimWidth),
+    brimGap: value.brimGap === null || value.brimGap === undefined || value.brimGap === "" ? null : Number(value.brimGap),
     infill: Number(value.infill),
     infillPattern: value.infillPattern,
     supports: value.supports,
@@ -596,6 +597,7 @@ function normalSettings(value) {
     || !Number.isFinite(settings.bottomShellThickness) || settings.bottomShellThickness < 0 || settings.bottomShellThickness > 10
     || !(settings.brimType === null || ["outer_only", "inner_only", "outer_and_inner", "no_brim"].includes(settings.brimType))
     || !(settings.brimWidth === null || Number.isFinite(settings.brimWidth) && settings.brimWidth >= 0 && settings.brimWidth <= 20)
+    || !(settings.brimGap === null || Number.isFinite(settings.brimGap) && settings.brimGap >= 0 && settings.brimGap <= 10)
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
     || !isSupportedInfillPattern(settings.infillPattern)
     || typeof settings.supports !== "boolean"
@@ -620,6 +622,7 @@ export function buildOrcaSettingArguments(value) {
     `--bottom-shell-thickness=${settings.bottomShellThickness}`,
     ...(settings.brimType === null ? [] : [`--brim-type=${settings.brimType}`]),
     ...(settings.brimWidth === null ? [] : [`--brim-width=${settings.brimWidth}`]),
+    ...(settings.brimGap === null ? [] : [`--brim-object-gap=${settings.brimGap}`]),
     "--sparse-infill-density", `${settings.infill}%`,
     `--sparse-infill-pattern=${settings.infillPattern}`,
     `--enable-support=${settings.supports ? 1 : 0}`,

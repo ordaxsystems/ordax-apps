@@ -98,6 +98,16 @@ function rectangularOutline(bedSizeMm) {
   return [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
 }
 
+export function estimateBrimMarginMm({ brimType, brimWidthMm, brimGapMm } = {}) {
+  if (brimType === "no_brim" || brimType === "inner_only") return 0;
+  if (typeof brimType !== "string" || !Number.isFinite(brimGapMm) || brimGapMm < 0 || brimGapMm > 10) return null;
+  if (brimType === "auto_brim") return 18 + brimGapMm;
+  if (brimType === "painted") return null;
+  if (!Number.isFinite(brimWidthMm) || brimWidthMm < 0) return null;
+  if (brimWidthMm === 0) return ["outer_only", "outer_and_inner"].includes(brimType) ? brimGapMm : null;
+  return brimWidthMm + brimGapMm;
+}
+
 export function boundsWithinPrintableSpace(bounds, { bedSizeMm, bedOutlineMm, bedExcludeAreasMm = [], xyMarginMm = 0 } = {}) {
   if (!Number.isFinite(xyMarginMm) || xyMarginMm < 0 || xyMarginMm > 50) return false;
   const source = rectangleFor(bounds);

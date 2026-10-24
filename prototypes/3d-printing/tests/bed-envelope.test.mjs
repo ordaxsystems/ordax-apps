@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assessModelEnvelope, boundsWithinPrintableSpace, objectsWithinPrintableSpace } from "../features/fatiamento-3d/bed-envelope.mjs";
+import { assessModelEnvelope, boundsWithinPrintableSpace, estimateBrimMarginMm, objectsWithinPrintableSpace } from "../features/fatiamento-3d/bed-envelope.mjs";
 import { parseBedShape } from "../shared/orca-slicer-development.mjs";
 
 test("normaliza o polígono imprimível ao centro do espaço de trabalho", () => {
@@ -56,6 +56,15 @@ test("avalia cada objeto separadamente sem preencher o vão entre as peças", ()
   ], space), false);
 });
 
+test("estima margem de brim automático sem depender da largura fixa do perfil", () => {
+  assert.equal(estimateBrimMarginMm({ brimType: "auto_brim", brimWidthMm: 0, brimGapMm: 0.2 }), 18.2);
+  assert.equal(estimateBrimMarginMm({ brimType: "outer_only", brimWidthMm: 5, brimGapMm: 0.2 }), 5.2);
+  assert.equal(estimateBrimMarginMm({ brimType: "inner_only", brimWidthMm: 5, brimGapMm: 0.2 }), 0);
+  assert.equal(estimateBrimMarginMm({ brimType: "no_brim", brimWidthMm: 5, brimGapMm: 0.2 }), 0);
+  assert.equal(estimateBrimMarginMm({ brimType: "brim_ears", brimWidthMm: 0, brimGapMm: 0.2 }), null);
+  assert.equal(estimateBrimMarginMm({ brimType: "painted", brimWidthMm: 5, brimGapMm: 0.2 }), null);
+});
+
 test("expande a caixa por margem XY de brim antes de validar bordas e zonas excluídas", () => {
   const bed = {
     bedSizeMm: [100, 100],
@@ -67,6 +76,7 @@ test("expande a caixa por margem XY de brim antes de validar bordas e zonas excl
   const nearKeepout = { min: [7, -1, 0], max: [9, 1, 1] };
   assert.equal(boundsWithinPrintableSpace(nearKeepout, bed), true);
   assert.equal(boundsWithinPrintableSpace(nearKeepout, { ...bed, xyMarginMm: 3 }), false);
+  assert.equal(boundsWithinPrintableSpace(nearKeepout, { ...bed, xyMarginMm: 1.9 }), true);
   assert.equal(boundsWithinPrintableSpace(nearEdge, { ...bed, xyMarginMm: 50.1 }), false);
 });
 

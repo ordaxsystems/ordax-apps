@@ -23,6 +23,7 @@ function validDraft() {
     bottomShellThickness: 1.2,
     brimType: "outer_only",
     brimWidth: 5,
+    brimGap: 0.2,
     infill: 15,
     infillPattern: "gyroid",
     selectedTab: "preview",
@@ -30,7 +31,7 @@ function validDraft() {
       id: "process-1",
       name: "Processo fino",
       objectIds: ["object-1"],
-      settings: { quality: "fine", layerHeight: 0.12, walls: 4, topShellLayers: 6, bottomShellLayers: 2, topShellThickness: 0.6, bottomShellThickness: 0.4, brimType: "outer_and_inner", brimWidth: 3, infill: 20, infillPattern: "lightning", supports: false, fanMin: 25, fanMax: 80, privateValue: "must-not-be-saved" },
+      settings: { quality: "fine", layerHeight: 0.12, walls: 4, topShellLayers: 6, bottomShellLayers: 2, topShellThickness: 0.6, bottomShellThickness: 0.4, brimType: "outer_and_inner", brimWidth: 3, brimGap: 0.15, infill: 20, infillPattern: "lightning", supports: false, fanMin: 25, fanMax: 80, privateValue: "must-not-be-saved" },
     }],
     objectTransforms: { "object-1": { x: 1, y: 2, z: 0, rotationX: 0, rotationY: 0, rotationZ: 90, scale: 1.2 } },
     privateValue: "must-not-be-saved",
@@ -61,12 +62,14 @@ for (const extension of ["stl", "3mf"]) {
     assert.equal(restored.draft.bottomShellThickness, 1.2);
     assert.equal(restored.draft.brimType, "outer_only");
     assert.equal(restored.draft.brimWidth, 5);
+    assert.equal(restored.draft.brimGap, 0.2);
     assert.equal(restored.draft.processes[0].settings.topShellLayers, 6);
     assert.equal(restored.draft.processes[0].settings.bottomShellLayers, 2);
     assert.equal(restored.draft.processes[0].settings.topShellThickness, 0.6);
     assert.equal(restored.draft.processes[0].settings.bottomShellThickness, 0.4);
     assert.equal(restored.draft.processes[0].settings.brimType, "outer_and_inner");
     assert.equal(restored.draft.processes[0].settings.brimWidth, 3);
+    assert.equal(restored.draft.processes[0].settings.brimGap, 0.15);
     assert.equal(restored.draft.infillPattern, "gyroid");
     assert.equal(restored.draft.processes[0].settings.infillPattern, "lightning");
   });
@@ -89,6 +92,18 @@ test("abre projetos /2 preservando as configurações antigas de casca", async (
   assert.equal(restored.projectName, "Projeto legado");
   assert.equal(restored.draft.topShellLayers, 5);
   assert.equal(restored.draft.processes[0].settings.bottomShellLayers, 2);
+});
+
+test("abre projetos /4 com campos de brim que vieram antes do gap editável", async () => {
+  const source = new Blob([1, 2, 3]);
+  const draft = validDraft();
+  delete draft.brimGap;
+  delete draft.processes[0].settings.brimGap;
+  const manifest = { schema: "ordax.3d-printing-project/4", projectName: "Projeto quatro", source: { path: "models/source.stl", name: "modelo.stl", format: "STL", size: source.size }, draft };
+  const archive = await createStoredZipBlob([{ name: "project.json", data: new Blob([JSON.stringify(manifest)]) }, { name: "models/source.stl", data: source }]);
+  const restored = await readProjectBundle(await archive.arrayBuffer());
+  assert.equal(restored.draft.brimWidth, 5);
+  assert.equal(restored.draft.processes[0].settings.brimWidth, 3);
 });
 
 test("projeto portátil rejeita extensão e nome de projeto inválidos", async () => {
