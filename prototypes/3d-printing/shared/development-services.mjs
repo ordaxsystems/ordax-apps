@@ -100,7 +100,12 @@ function createDevelopmentSlicer() {
       if (!response.ok || body?.schema !== SLICER_STATUS_SCHEMA || typeof body.available !== "boolean" || typeof body.reason !== "string") {
         throw new Error("O host não forneceu um status OrcaSlicer compatível.");
       }
-      return body;
+      // This adapter talks to the loopback development host. Older host builds
+      // omit executionTarget, so treat that response as local while preserving
+      // an explicit server target from a newer host contract.
+      return body.executionTarget === "device" || body.executionTarget === "server"
+        ? body
+        : { ...body, executionTarget: "device" };
     },
     async slice(request, { signal, onProgress } = {}) {
       if (signal?.aborted) throw new DOMException("Fatiamento cancelado.", "AbortError");
@@ -188,3 +193,4 @@ export function createDevelopmentServices(appId) {
   }
   return Object.freeze(services);
 }
+
