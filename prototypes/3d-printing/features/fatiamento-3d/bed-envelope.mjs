@@ -100,11 +100,10 @@ function rectangularOutline(bedSizeMm) {
 
 export function estimateBrimMarginMm({ brimType, brimWidthMm, brimGapMm } = {}) {
   if (brimType === "no_brim" || brimType === "inner_only") return 0;
-  if (typeof brimType !== "string" || !Number.isFinite(brimGapMm) || brimGapMm < 0 || brimGapMm > 10) return null;
-  if (brimType === "auto_brim") return 18 + brimGapMm;
-  if (brimType === "painted") return null;
-  if (!Number.isFinite(brimWidthMm) || brimWidthMm < 0) return null;
-  if (brimWidthMm === 0) return ["outer_only", "outer_and_inner"].includes(brimType) ? brimGapMm : null;
+  if (!["outer_only", "outer_and_inner"].includes(brimType)
+    || !Number.isFinite(brimGapMm) || brimGapMm < 0 || brimGapMm > 10
+    || !Number.isFinite(brimWidthMm) || brimWidthMm < 0 || brimWidthMm > 50) return null;
+  if (brimWidthMm === 0) return 0;
   return brimWidthMm + brimGapMm;
 }
 
@@ -124,11 +123,22 @@ export function boundsWithinPrintableSpace(bounds, { bedSizeMm, bedOutlineMm, be
 }
 
 export function assessModelEnvelope(objectBounds, { bedSizeMm, bedOutlineMm, bedExcludeAreasMm = [], heightMm, reference = false, xyMarginMm = 0 } = {}) {
+  const notAssessed = {
+    status: "not-assessed",
+    method: "per-object-expanded-bounds/2",
+    objectCount: Array.isArray(objectBounds) ? objectBounds.length : 0,
+    checkedObjectCount: 0,
+    outsideObjectCount: null,
+    outsideObjectItems: [],
+  };
   if (!Array.isArray(objectBounds) || !objectBounds.length || !Number.isFinite(heightMm) || heightMm <= 0
-    || !Number.isFinite(xyMarginMm) || xyMarginMm < 0 || xyMarginMm > 50
+    || xyMarginMm !== null && (!Number.isFinite(xyMarginMm) || xyMarginMm < 0 || xyMarginMm > 50)
     || objectBounds.some(bounds => !rectangleFor(bounds) || !Array.isArray(bounds.min) || !Array.isArray(bounds.max)
       || bounds.min.length < 3 || bounds.max.length < 3 || ![bounds.min[2], bounds.max[2]].every(Number.isFinite))) {
-    return Object.freeze({ status: "not-assessed", method: "per-object-expanded-bounds/2", objectCount: Array.isArray(objectBounds) ? objectBounds.length : 0, checkedObjectCount: 0, outsideObjectCount: null, outsideObjectItems: [] });
+    return Object.freeze({ ...notAssessed, reason: "A geometria, o envelope ou a margem informada não permitem avaliar o espaço imprimível." });
+  }
+  if (xyMarginMm === null) {
+    return Object.freeze({ ...notAssessed, xyMarginMm: null, reason: "A largura do brim depende do OrcaSlicer e não pode ser determinada antes do fatiamento." });
   }
   const outsideObjectItems = [];
   for (let index = 0; index < objectBounds.length; index++) {
