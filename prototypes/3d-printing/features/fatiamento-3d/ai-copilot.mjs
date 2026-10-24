@@ -1,6 +1,6 @@
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/5";
+const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/6";
 const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
@@ -114,10 +114,13 @@ export const assistantStructuredOutput = Object.freeze({
               walls: nullableInteger(1, 8),
               infill: nullableInteger(0, 100),
               supports: nullable({ type: "boolean" }),
+              supportType: nullable({ type: "string", enum: ["normal(auto)", "tree(auto)"] }),
+              supportThresholdAngle: nullableInteger(0, 90),
+              supportOnBuildPlateOnly: nullable({ type: "boolean" }),
               fanMinSpeedPercent: nullableInteger(0, 100),
               fanMaxSpeedPercent: nullableInteger(0, 100),
             },
-            required: ["quality", "layerHeight", "walls", "infill", "supports", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
+            required: ["quality", "layerHeight", "walls", "infill", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
           }),
           transform: nullable({
             type: "object",
@@ -249,6 +252,9 @@ function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = n
     walls: item => Number.isInteger(item) && item >= 1 && item <= 8,
     infill: item => Number.isInteger(item) && item >= 0 && item <= 100,
     supports: item => typeof item === "boolean",
+    supportType: item => ["normal(auto)", "tree(auto)"].includes(item),
+    supportThresholdAngle: item => Number.isInteger(item) && item >= 0 && item <= 90,
+    supportOnBuildPlateOnly: item => typeof item === "boolean",
     fanMinSpeedPercent: item => Number.isInteger(item) && item >= 0 && item <= 100,
     fanMaxSpeedPercent: item => Number.isInteger(item) && item >= 0 && item <= 100,
   };

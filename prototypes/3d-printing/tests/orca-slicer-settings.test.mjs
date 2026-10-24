@@ -8,6 +8,9 @@ const settings = Object.freeze({
   walls: 3,
   infill: 15,
   supports: true,
+  supportType: "normal(auto)",
+  supportThresholdAngle: 45,
+  supportOnBuildPlateOnly: false,
   fanMinSpeedPercent: 35,
   fanMaxSpeedPercent: 80,
 });
@@ -18,6 +21,9 @@ test("mapeia as configurações do projeto para argumentos explícitos do OrcaSl
     "--wall-loops", "3",
     "--sparse-infill-density", "15%",
     "--enable-support=1",
+    "--support-type", "normal(auto)",
+    "--support-threshold-angle", "45",
+    "--support-on-build-plate-only=0",
     "--fan-min-speed", "35",
     "--fan-max-speed", "80",
   ]);
@@ -28,4 +34,9 @@ test("não cria argumentos de resfriamento quando a faixa mínimo/máximo é inv
     () => buildOrcaSettingArguments({ ...settings, fanMinSpeedPercent: 81, fanMaxSpeedPercent: 80 }),
     /configurações solicitadas estão fora dos limites/,
   );
+});
+
+test("rejeita suporte manual e ângulo não suportado pelo contrato", () => {
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, supportType: "normal(manual)" }), /configurações solicitadas estão fora dos limites/);
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, supportThresholdAngle: 91 }), /configurações solicitadas estão fora dos limites/);
 });

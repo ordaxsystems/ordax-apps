@@ -52,7 +52,7 @@ test("mantém válidas recomendações de parâmetros sem mudança de perfil", (
   const parsed = parseAssistantReply(reply({
     evidence: ["settings"],
     profiles: null,
-    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, supports: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
   }), { allowedEvidence: ["settings"], allowedProfiles });
   assert.deepEqual(parsed.suggestion.settings, { quality: "fine" });
   assert.deepEqual(parsed.suggestion.profiles, {});
@@ -75,11 +75,34 @@ test("rejeita sugestão com limite mínimo de ventoinha maior que o máximo", ()
   }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
 });
 
+test("valida e mapeia tipo, ângulo e alcance dos suportes", () => {
+  const parsed = parseAssistantReply(reply({
+    evidence: ["settings"],
+    profiles: null,
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, supports: true, supportType: "tree(auto)", supportThresholdAngle: 45, supportOnBuildPlateOnly: true, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+  }), { allowedEvidence: ["settings"], allowedProfiles });
+  assert.deepEqual(parsed.suggestion.settings, { supports: true, supportType: "tree(auto)", supportThresholdAngle: 45, supportOnBuildPlateOnly: true });
+});
+
+test("rejeita tipo de suporte manual e ângulo fora do limite", () => {
+  for (const support of [
+    { supportType: "tree(manual)", supportThresholdAngle: 45 },
+    { supportType: "tree(auto)", supportThresholdAngle: 91 },
+  ]) {
+    assert.throws(() => parseAssistantReply(reply({
+      evidence: ["settings"],
+      profiles: null,
+      settings: { quality: null, layerHeight: null, walls: null, infill: null, supports: true, ...support, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+    }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
+  }
+});
+
 test("schema estrito exige os três campos de perfil na proposta", () => {
   const suggestionSchema = assistantStructuredOutput.schema.properties.suggestion.anyOf[0];
   assert.ok(suggestionSchema.required.includes("profiles"));
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMinSpeedPercent.anyOf[0].minimum, 0);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMaxSpeedPercent.anyOf[0].maximum, 100);
+  assert.deepEqual(suggestionSchema.properties.settings.anyOf[0].properties.supportType.anyOf[0].enum, ["normal(auto)", "tree(auto)"]);
   assert.deepEqual(suggestionSchema.properties.profiles.anyOf[0].required, ["machine", "process", "filament"]);
 });
 

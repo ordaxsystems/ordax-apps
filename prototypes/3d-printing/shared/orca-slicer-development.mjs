@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/3";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/4";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
@@ -216,6 +216,9 @@ function normalSettings(value) {
     walls: Number(value.walls),
     infill: Number(value.infill),
     supports: value.supports,
+    supportType: value.supportType,
+    supportThresholdAngle: Number(value.supportThresholdAngle),
+    supportOnBuildPlateOnly: value.supportOnBuildPlateOnly,
     fanMinSpeedPercent: Number(value.fanMinSpeedPercent),
     fanMaxSpeedPercent: Number(value.fanMaxSpeedPercent),
   };
@@ -224,6 +227,9 @@ function normalSettings(value) {
     || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
     || typeof settings.supports !== "boolean"
+    || !["normal(auto)", "tree(auto)"].includes(settings.supportType)
+    || !Number.isInteger(settings.supportThresholdAngle) || settings.supportThresholdAngle < 0 || settings.supportThresholdAngle > 90
+    || typeof settings.supportOnBuildPlateOnly !== "boolean"
     || !Number.isInteger(settings.fanMinSpeedPercent) || settings.fanMinSpeedPercent < 0 || settings.fanMinSpeedPercent > 100
     || !Number.isInteger(settings.fanMaxSpeedPercent) || settings.fanMaxSpeedPercent < settings.fanMinSpeedPercent || settings.fanMaxSpeedPercent > 100) {
     throw publicError("As configurações solicitadas estão fora dos limites permitidos.");
@@ -238,6 +244,9 @@ export function buildOrcaSettingArguments(value) {
     "--wall-loops", String(settings.walls),
     "--sparse-infill-density", `${settings.infill}%`,
     `--enable-support=${settings.supports ? 1 : 0}`,
+    "--support-type", settings.supportType,
+    "--support-threshold-angle", String(settings.supportThresholdAngle),
+    `--support-on-build-plate-only=${settings.supportOnBuildPlateOnly ? 1 : 0}`,
     "--fan-min-speed", String(settings.fanMinSpeedPercent),
     "--fan-max-speed", String(settings.fanMaxSpeedPercent),
   ];

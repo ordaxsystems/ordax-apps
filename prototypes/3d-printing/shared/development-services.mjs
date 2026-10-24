@@ -109,7 +109,7 @@ function createDevelopmentSlicer() {
         throw new Error("O adaptador precisa receber a malha STL transformada localmente.");
       }
       const manifest = {
-        schema: "ordax.orca-slice-request/3",
+        schema: "ordax.orca-slice-request/4",
         filename: String(request.filename || "ordax-print.stl").slice(0, 180),
         settings: request.settings,
         profileSelectionSchema: request.profileSelectionSchema,

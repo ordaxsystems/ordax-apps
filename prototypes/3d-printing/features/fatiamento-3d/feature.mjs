@@ -36,7 +36,7 @@ const AI_EVIDENCE_LABELS = Object.freeze({
 });
 const defaultDraft = Object.freeze({
   printer: "generic", filament: "pla", printerProfileId: "", processProfileId: "", filamentProfileId: "", quality: "standard", layerHeight: 0.2, walls: 3, infill: 15, fanMin: 80, fanMax: 80,
-  supports: false, rotation: 0, scale: 1, stlUnit: "mm", objectTransforms: {}, selectedTab: "prepare",
+  supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, rotation: 0, scale: 1, stlUnit: "mm", objectTransforms: {}, selectedTab: "prepare",
 });
 
 const printers = Object.freeze({
@@ -76,12 +76,16 @@ function safeDraft(value) {
   next.supports = Boolean(next.supports);
   next.selectedTab = next.selectedTab === "preview" ? "preview" : "prepare";
   const validQuality = quality => ["standard", "fine", "draft"].includes(quality) ? quality : "standard";
+  const validSupportType = supportType => ["normal(auto)", "tree(auto)"].includes(supportType) ? supportType : "normal(auto)";
   const normalizeProcessSettings = (source, fallback = next) => ({
     quality: validQuality(source?.quality ?? fallback.quality),
     layerHeight: Math.max(0.08, Math.min(0.4, Number(source?.layerHeight ?? fallback.layerHeight) || 0.2)),
     walls: Math.max(1, Math.min(8, Math.round(Number(source?.walls ?? fallback.walls) || 3))),
     infill: Math.max(0, Math.min(100, Number(source?.infill ?? fallback.infill) || 0)),
     supports: Boolean(source?.supports ?? fallback.supports),
+    supportType: validSupportType(source?.supportType ?? fallback.supportType),
+    supportThresholdAngle: Math.max(0, Math.min(90, Math.round(Number(source?.supportThresholdAngle ?? fallback.supportThresholdAngle) || 0))),
+    supportOnBuildPlateOnly: Boolean(source?.supportOnBuildPlateOnly ?? fallback.supportOnBuildPlateOnly),
     fanMin: Math.max(0, Math.min(100, Math.round(Number(source?.fanMin ?? source?.fan ?? fallback.fanMin) || 0))),
     fanMax: Math.max(
       Math.max(0, Math.min(100, Math.round(Number(source?.fanMin ?? source?.fan ?? fallback.fanMin) || 0))),
@@ -308,7 +312,7 @@ export function mountFeature(host = {}) {
             <label class="slice-field process-editor"><span>Editar configurações de</span><select class="dark-select" data-active-process aria-label="Processo de impressão cujas configurações serão editadas"></select><small data-active-process-note>As configurações abaixo valem para os objetos atribuídos a este processo.</small></label>
             <div class="settings-section"><div class="settings-section-title"><span>01</span><strong>Qualidade</strong></div><label class="slice-field"><span>Predefinição deste app</span><select class="dark-select" data-quality><option value="standard">Equilibrado · 0,20 mm</option><option value="fine">Detalhado · 0,12 mm</option><option value="draft">Rápido · 0,28 mm</option></select></label><div class="setting-value"><label for="layer-height">Altura de camada</label><div class="number-unit"><input id="layer-height" type="number" min="0.08" max="0.4" step="0.01" data-layer-height/><span>mm</span></div></div></div>
             <div class="settings-section"><div class="settings-section-title"><span>02</span><strong>Paredes e preenchimento</strong></div><div class="setting-value"><label for="wall-count">Paredes</label><div class="number-unit"><input id="wall-count" type="number" min="1" max="8" step="1" data-walls/><span>linhas</span></div></div><div class="setting-value"><label for="infill-density">Densidade de preenchimento</label><div class="number-unit"><input id="infill-density" type="number" min="0" max="100" step="1" data-infill/><span>%</span></div></div></div>
-            <div class="settings-section"><div class="settings-section-title"><span>03</span><strong>Suportes</strong></div><label class="toggle-row"><span><strong>Gerar suportes</strong><small>Áreas suspensas do modelo</small></span><input type="checkbox" data-supports/><i></i></label><p class="not-applied-note">Parâmetros salvos no rascunho; ainda não aplicados a um fatiamento.</p></div>
+            <div class="settings-section"><div class="settings-section-title"><span>03</span><strong>Suportes</strong></div><label class="toggle-row"><span><strong>Gerar suportes</strong><small>Áreas suspensas do modelo</small></span><input type="checkbox" data-supports/><i></i></label><label class="slice-field"><span>Estrutura automática</span><select class="dark-select" data-support-type><option value="normal(auto)">Normal · estável e contínua</option><option value="tree(auto)">Árvore · ramificada</option></select></label><div class="setting-value"><label for="support-angle">Ângulo limite</label><div class="number-unit"><input id="support-angle" type="number" min="0" max="90" step="1" data-support-angle/><span>°</span></div></div><label class="toggle-row"><span><strong>Somente sobre a mesa</strong><small>Não apoia em superfícies da peça</small></span><input type="checkbox" data-support-build-plate/><i></i></label><p class="not-applied-note">Ângulo 0 usa o limite de sobreposição do perfil para suporte normal; em árvore, o Orca usa 30°. O app não oferece colocação manual de bloqueadores/enforcers.</p></div>
             <div class="settings-section"><div class="settings-section-title"><span>04</span><strong>Resfriamento</strong></div><div class="setting-value"><label for="fan-min-speed">Ventoinha mínima</label><div class="number-unit"><input id="fan-min-speed" type="number" min="0" max="100" step="5" data-fan-min/><span>%</span></div></div><div class="setting-value"><label for="fan-max-speed">Ventoinha máxima</label><div class="number-unit"><input id="fan-max-speed" type="number" min="0" max="100" step="5" data-fan-max/><span>%</span></div></div><p class="not-applied-note">Faixa da ventoinha de peça. O Orca varia a velocidade dentro desses limites conforme o tempo da camada e as regras do perfil do material; o mínimo não é aplicado quando o perfil desativa o resfriamento.</p></div>
             <div class="settings-section object-transform-section"><div class="settings-section-title"><span>05</span><strong>Transformação da peça</strong></div><p class="selected-transform-name" data-selected-transform-name>Selecione uma peça na lista de objetos.</p><span class="transform-group-label">Deslocamento sobre a mesa · mm</span><div class="object-transform-grid"><label><span>X</span><input type="number" min="-500" max="500" step="1" data-object-transform="x" aria-label="Deslocamento X da peça em milímetros"/></label><label><span>Y</span><input type="number" min="-500" max="500" step="1" data-object-transform="y" aria-label="Deslocamento Y da peça em milímetros"/></label><label><span>Z</span><input type="number" min="-500" max="500" step="1" data-object-transform="z" aria-label="Deslocamento Z da peça em milímetros"/></label></div><span class="transform-group-label">Rotação em torno do centro · graus</span><div class="object-transform-grid"><label><span>X</span><input type="number" min="0" max="359" step="1" data-object-transform="rotationX" aria-label="Rotação X da peça em graus"/></label><label><span>Y</span><input type="number" min="0" max="359" step="1" data-object-transform="rotationY" aria-label="Rotação Y da peça em graus"/></label><label><span>Z</span><input type="number" min="0" max="359" step="1" data-object-transform="rotationZ" aria-label="Rotação Z da peça em graus"/></label></div><div class="setting-value object-scale-row"><label for="object-scale">Escala da peça</label><div class="number-unit"><input id="object-scale" type="number" min="10" max="300" step="1" data-object-transform="scale"/><span>%</span></div></div><div class="object-transform-actions"><button class="rotate-button" type="button" data-rotate-object>${icon("tune", 14)}<span>Girar Z 90°</span></button><button class="rotate-button" type="button" data-reset-object-transform>Redefinir peça</button></div><p class="not-applied-note">Os deslocamentos são aplicados em milímetros na mesa. A rotação e a escala usam o centro geométrico da peça. Alterações entram no contrato do motor conectado.</p></div>
             <div class="settings-section transform-section"><div class="settings-section-title"><span>06</span><strong>Transformação global do projeto</strong></div><div class="setting-value"><label for="rotation-z">Rotação Z do projeto</label><div class="number-unit"><input id="rotation-z" type="number" min="0" max="359" step="1" data-rotation/><span>°</span></div></div><div class="setting-value"><label for="model-scale">Escala do projeto</label><div class="number-unit"><input id="model-scale" type="number" min="10" max="300" step="1" data-scale/><span>%</span></div></div><button class="rotate-button" type="button" data-rotate>${icon("tune", 14)}<span>Girar projeto 90°</span></button><label class="slice-field stl-unit-field" data-stl-unit-row><span>Unidade presumida do STL</span><select class="dark-select" data-unit><option value="mm">Milímetros</option><option value="cm">Centímetros</option><option value="in">Polegadas</option></select></label></div>
@@ -375,7 +379,7 @@ export function mountFeature(host = {}) {
     if (!engineStatus.available || engineStatus.processScope !== "uniform" || draft.processes.length < 2) return "";
     const settings = new Set(draft.processes.map(process => JSON.stringify({
       quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls,
-      infill: process.settings.infill, supports: process.settings.supports, fanMinSpeedPercent: process.settings.fanMin, fanMaxSpeedPercent: process.settings.fanMax,
+      infill: process.settings.infill, supports: process.settings.supports, supportType: process.settings.supportType, supportThresholdAngle: process.settings.supportThresholdAngle, supportOnBuildPlateOnly: process.settings.supportOnBuildPlateOnly, fanMinSpeedPercent: process.settings.fanMin, fanMaxSpeedPercent: process.settings.fanMax,
     })));
     return settings.size > 1
       ? "O adaptador OrcaSlicer atual fatia com uma configuração uniforme por mesa. Igualize os processos antes de fatiar."
@@ -712,10 +716,10 @@ export function mountFeature(host = {}) {
       if (Object.keys(suggestion.settings).length) {
         const settingsLabel = document.createElement("span"); settingsLabel.className = "ai-suggestion-label"; settingsLabel.textContent = `Processo: ${draft.processes.find(process => process.id === suggestionProcessId)?.name || "selecionado"}`;
         const changes = document.createElement("ul");
-        const labels = { quality: "Qualidade", layerHeight: "Altura de camada", walls: "Paredes", infill: "Preenchimento", supports: "Suportes", fanMin: "Ventoinha mínima", fanMax: "Ventoinha máxima" };
+        const labels = { quality: "Qualidade", layerHeight: "Altura de camada", walls: "Paredes", infill: "Preenchimento", supports: "Gerar suportes", supportType: "Estrutura de suporte", supportThresholdAngle: "Ângulo limite de suporte", supportOnBuildPlateOnly: "Somente sobre a mesa", fanMin: "Ventoinha mínima", fanMax: "Ventoinha máxima" };
         for (const [key, value] of Object.entries(suggestion.settings)) {
           const item = document.createElement("li");
-          const shown = key === "supports" ? value ? "Ligados" : "Desligados" : key === "layerHeight" ? `${number(value, 2)} mm` : key === "fanMin" || key === "fanMax" || key === "infill" ? `${value}%` : String(value);
+          const shown = key === "supports" ? value ? "Ligados" : "Desligados" : key === "supportOnBuildPlateOnly" ? value ? "Sim" : "Não" : key === "supportType" ? value === "tree(auto)" ? "Árvore automática" : "Normal automático" : key === "supportThresholdAngle" ? `${value}°` : key === "layerHeight" ? `${number(value, 2)} mm` : key === "fanMin" || key === "fanMax" || key === "infill" ? `${value}%` : String(value);
           item.textContent = `${labels[key] || key}: ${shown}`;
           changes.append(item);
         }
@@ -873,7 +877,7 @@ export function mountFeature(host = {}) {
       } : null,
       selectedProcess: selectedProcess ? { id: selectedProcess.id, name: selectedProcess.name, objectCount: selectedProcess.objectIds.length } : null,
       processSummary: { count: draft.processes.length, assignedObjects: draft.processes.reduce((sum, process) => sum + process.objectIds.length, 0), selectedSettings: settings },
-      settings: { quality: settings.quality, layerHeightMm: settings.layerHeight, walls: settings.walls, infillPercent: settings.infill, supports: settings.supports, fanMinSpeedPercent: settings.fanMin, fanMaxSpeedPercent: settings.fanMax },
+      settings: { quality: settings.quality, layerHeightMm: settings.layerHeight, walls: settings.walls, infillPercent: settings.infill, supports: settings.supports, supportType: settings.supportType, supportThresholdAngleDeg: settings.supportThresholdAngle, supportOnBuildPlateOnly: settings.supportOnBuildPlateOnly, fanMinSpeedPercent: settings.fanMin, fanMaxSpeedPercent: settings.fanMax },
       slicer: {
         connected: engineStatus.available,
         engine: engineStatus.engine,
@@ -925,7 +929,7 @@ export function mountFeature(host = {}) {
   }
 
   function makeAiPrompt(question, evidenceIds) {
-    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. A contagem local de faces degeneradas e a área triangulada são medições geométricas parciais: não comprovam topologia, watertightness, orientação da malha ou imprimibilidade. A área triangulada soma as faces fornecidas após a conversão de unidades e as escalas atuais; não deduz consumo de filamento e pode incluir faces coincidentes ou internas. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se houver uma sugestão, confidence deve ser low, medium ou high como avaliação informada pela IA, não como probabilidade medida. evidence deve citar de 1 a 5 IDs que existam nesta solicitação; use somente estes: ${evidenceIds.join(", ")}. Nunca cite um ID ausente. Se não houver base suficiente para recomendar, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanMinSpeedPercent e fanMaxSpeedPercent de 0–100, sempre com o mínimo menor ou igual ao máximo; quality standard, fine ou draft. A faixa de ventoinha define os limites de resfriamento da peça; não prometa velocidade fixa nem ignore regras do perfil/material e do tempo de camada. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
+    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. A contagem local de faces degeneradas e a área triangulada são medições geométricas parciais: não comprovam topologia, watertightness, orientação da malha ou imprimibilidade. A área triangulada soma as faces fornecidas após a conversão de unidades e as escalas atuais; não deduz consumo de filamento e pode incluir faces coincidentes ou internas. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se houver uma sugestão, confidence deve ser low, medium ou high como avaliação informada pela IA, não como probabilidade medida. evidence deve citar de 1 a 5 IDs que existam nesta solicitação; use somente estes: ${evidenceIds.join(", ")}. Nunca cite um ID ausente. Se não houver base suficiente para recomendar, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; supportType normal(auto) ou tree(auto); supportThresholdAngle 0–90°; supportOnBuildPlateOnly boolean; fanMinSpeedPercent e fanMaxSpeedPercent de 0–100, sempre com o mínimo menor ou igual ao máximo; quality standard, fine ou draft. Os suportes automáticos podem ser propostos apenas como opção; sem receber a geometria, não afirme que sabe onde eles são necessários nem que a peça ficará imprimível. Ângulo de suporte 0 preserva as regras próprias do Orca: overlap para tipo normal e 30° para árvore. A faixa de ventoinha define os limites de resfriamento da peça; não prometa velocidade fixa nem ignore regras do perfil/material e do tempo de camada. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
   }
 
   async function askAi(question = content.querySelector("[data-ai-input]").value) {
@@ -1058,6 +1062,9 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-fan-min]").value = String(settings.fanMin);
     content.querySelector("[data-fan-max]").value = String(settings.fanMax);
     content.querySelector("[data-supports]").checked = settings.supports;
+    content.querySelector("[data-support-type]").value = settings.supportType;
+    content.querySelector("[data-support-angle]").value = String(settings.supportThresholdAngle);
+    content.querySelector("[data-support-build-plate]").checked = settings.supportOnBuildPlateOnly;
     content.querySelector("[data-rotation]").value = String(draft.rotation);
     content.querySelector("[data-scale]").value = String(Math.round(draft.scale * 100));
     content.querySelector("[data-unit]").value = draft.stlUnit;
@@ -1091,7 +1098,11 @@ export function mountFeature(host = {}) {
     const nextSettings = {
       quality: content.querySelector("[data-quality]").value,
       layerHeight: numberValue("[data-layer-height]"), walls: numberValue("[data-walls]"), infill: numberValue("[data-infill]"),
-      supports: content.querySelector("[data-supports]").checked, fanMin: numberValue("[data-fan-min]"), fanMax: numberValue("[data-fan-max]"),
+      supports: content.querySelector("[data-supports]").checked,
+      supportType: content.querySelector("[data-support-type]").value,
+      supportThresholdAngle: numberValue("[data-support-angle]"),
+      supportOnBuildPlateOnly: content.querySelector("[data-support-build-plate]").checked,
+      fanMin: numberValue("[data-fan-min]"), fanMax: numberValue("[data-fan-max]"),
     };
     const processes = draft.processes.map(process => process.id === draft.selectedProcessId ? { ...process, settings: nextSettings } : process);
     const previousObjectTransform = objectTransform(draft, selectedObjectId);
@@ -1223,8 +1234,8 @@ export function mountFeature(host = {}) {
         filename: requestModel.name,
         format: requestModel.format,
         preparedModel: createOrcaInputStl(requestModel, requestDraft),
-        settings: { layerHeight: requestDraft.layerHeight, walls: requestDraft.walls, infill: requestDraft.infill, supports: requestDraft.supports, fanMinSpeedPercent: requestDraft.fanMin, fanMaxSpeedPercent: requestDraft.fanMax, quality: requestDraft.quality, rotationZ: requestDraft.rotation, scale: requestDraft.scale, stlUnit: requestDraft.stlUnit },
-        processesSchema: "ordax.slicer-processes/2",
+        settings: { layerHeight: requestDraft.layerHeight, walls: requestDraft.walls, infill: requestDraft.infill, supports: requestDraft.supports, supportType: requestDraft.supportType, supportThresholdAngle: requestDraft.supportThresholdAngle, supportOnBuildPlateOnly: requestDraft.supportOnBuildPlateOnly, fanMinSpeedPercent: requestDraft.fanMin, fanMaxSpeedPercent: requestDraft.fanMax, quality: requestDraft.quality, rotationZ: requestDraft.rotation, scale: requestDraft.scale, stlUnit: requestDraft.stlUnit },
+        processesSchema: "ordax.slicer-processes/3",
         objects: requestModel.objects.map(object => ({ id: object.id, name: object.name, sourceObjectId: object.sourceObjectId || object.id, buildItemIndex: object.buildItemIndex ?? 0, triangleCount: object.triangleCount })),
         objectTransformsSchema: OBJECT_TRANSFORM_SCHEMA,
         objectTransforms: requestModel.objects.map(object => {
@@ -1233,7 +1244,7 @@ export function mountFeature(host = {}) {
         }),
         processes: requestDraft.processes.map(process => ({
           id: process.id, name: process.name, objectIds: [...process.objectIds],
-          settings: { quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls, infill: process.settings.infill, supports: process.settings.supports, fanMinSpeedPercent: process.settings.fanMin, fanMaxSpeedPercent: process.settings.fanMax },
+          settings: { quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls, infill: process.settings.infill, supports: process.settings.supports, supportType: process.settings.supportType, supportThresholdAngle: process.settings.supportThresholdAngle, supportOnBuildPlateOnly: process.settings.supportOnBuildPlateOnly, fanMinSpeedPercent: process.settings.fanMin, fanMaxSpeedPercent: process.settings.fanMax },
         })),
         profileSelectionSchema: PROFILE_SELECTION_SCHEMA,
         profileIds: { machine: requestDraft.printerProfileId, process: requestDraft.processProfileId, filament: requestDraft.filamentProfileId },
@@ -1317,7 +1328,7 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-layer-height]").value = quality === "fine" ? "0.12" : quality === "draft" ? "0.28" : "0.20";
     updateDraftFromInputs();
   });
-  for (const selector of ["[data-layer-height]", "[data-walls]", "[data-infill]", "[data-supports]", "[data-fan-min]", "[data-fan-max]", "[data-rotation]", "[data-scale]", "[data-unit]", "[data-object-transform]"]) {
+  for (const selector of ["[data-layer-height]", "[data-walls]", "[data-infill]", "[data-supports]", "[data-support-type]", "[data-support-angle]", "[data-support-build-plate]", "[data-fan-min]", "[data-fan-max]", "[data-rotation]", "[data-scale]", "[data-unit]", "[data-object-transform]"]) {
     content.querySelector(selector).addEventListener("change", updateDraftFromInputs);
   }
   content.querySelector("[data-rotate]").addEventListener("click", () => { draft.rotation = (draft.rotation + 90) % 360; content.querySelector("[data-rotation]").value = String(draft.rotation); updateDraftFromInputs(); });
