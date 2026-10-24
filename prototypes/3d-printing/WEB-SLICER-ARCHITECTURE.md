@@ -38,6 +38,14 @@ O serviço OrdaX deriva identidade e Space da sessão verificada. Não aceita `u
 
 Os contratos OS `ordax.background-runtime/1` e `ordax.service-quota-*` são fundações úteis para trabalho limitado e admissão de recursos; eles não são, sozinhos, uma API pública de jobs Orca nem autorizam ativar execução web. O owner correspondente precisa confirmar a composição antes do worker usar esses serviços.
 
+## Estado dos owners canônicos
+
+Na revisão de 2026-10-24, o plano FAB-001 do OrdaX OS está documentalmente pronto, mas marcado como `DEFERRED FOR EXECUTION`, exceto pelo recorte do Profile Pack que os owners do MVP já exigirem. O contrato de Operational Realtime está em estado `PRE-MVP CONTRACT FOUNDATION — RUNTIME POST-MVP`; ele cita jobs e telemetria de impressão como domínios futuros, e mantém slicer, CAD, gestão de farm e protocolos de impressora fora dessa fundação. O plano FAB-001 também deixa a integração com slicers para adapters futuros, quando segura e licenciada.
+
+Esta branch pode continuar a evolução do protótipo e do port `services.slicer`. Um worker web de produção depende de promoção do escopo pelos owners e de um contrato público para identidade, Space, autorização, admissão, ciclo de vida e transferência dos jobs. O app não cria esse contrato em `server.mjs`, não cria outra fila/Runtime e não usa a resposta de cotas como autorização.
+
+Fontes canônicas consultadas: [FAB-001 — OrdaX Fabrication e piloto Impressão 3D](https://github.com/ordaxsystems/ordax-os/blob/main/00-PLANOS-PRIORITARIOS/plans/FAB-001-ORDAX-FABRICATION-3D-PRINTING-PILOT.md) e [Operational Realtime and Device Actions](https://github.com/ordaxsystems/ordax-os/blob/main/docs/OPERATIONAL-REALTIME.md).
+
 ## Ciclo de vida esperado
 
 1. O app consulta `services.slicer.getStatus()` e mostra o destino, versão do motor, perfis remotos disponíveis e limites do serviço.
@@ -59,4 +67,4 @@ O app já mantém uma chamada `slice()` para o host abstrair esse ciclo. Se a AP
 
 ## Próximo passo
 
-Apps já tem a seleção de destino, consentimento e payload mínimo no contrato `services.slicer`. O próximo passo de produto é consolidar a API de job remoto no port público do host e integrar o adapter do OS/Platform que fornece sessão, Space, autorização e admissão. A implementação do worker vem ligada a esse contrato; não se publica um endpoint anônimo ou uma fila paralela em `server.mjs`.
+Apps já tem a seleção de destino, consentimento e payload mínimo no contrato `services.slicer`. O próximo passo de produto, quando os owners promoverem esse escopo, é consolidar a API de job remoto no port público do host e integrar os adapters do OS/Platform para sessão, Space, autorização e admissão. Até essa promoção, a branch continua a evolução do protótipo e do modo local. A implementação do worker vem ligada ao contrato canônico; não se publica um endpoint anônimo ou uma fila paralela em `server.mjs`.
