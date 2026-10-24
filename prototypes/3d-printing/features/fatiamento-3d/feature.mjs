@@ -3,6 +3,7 @@ import { parseMeshFile } from "./mesh-import.mjs";
 import { createDemoModel } from "./demo-model.mjs";
 import { createMeshViewer } from "./mesh-viewer.mjs";
 import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
+import { assessModelEnvelope } from "./bed-envelope.mjs";
 import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
 import { hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
@@ -168,34 +169,45 @@ function mergeModelObjects(model, selectedObjectId = null, objectTransforms = {}
   return { positions, bounds: model.bounds, objectRanges: ranges, selectedObjectId };
 }
 
-function transformedModelBounds(model, draft) {
-  if (!model) return null;
+function transformedBoundsForObject(object, model, draft) {
+  if (!model || !object) return null;
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   const unitScale = model.format === "STL" ? unitScales[draft.stlUnit] : 1;
   const globalScale = draft.scale * unitScale, globalRadians = draft.rotation * Math.PI / 180;
   const globalCos = Math.cos(globalRadians), globalSin = Math.sin(globalRadians);
   const globalCenterX = (model.bounds.min[0] + model.bounds.max[0]) / 2;
   const globalCenterY = (model.bounds.min[1] + model.bounds.max[1]) / 2;
-  for (const object of model.objects) {
-    const transform = objectTransform(draft, object.id), center = object.bounds.min.map((value, axis) => (value + object.bounds.max[axis]) / 2);
-    const rx = transform.rotationX * Math.PI / 180, ry = transform.rotationY * Math.PI / 180, rz = transform.rotationZ * Math.PI / 180;
-    const cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry), cz = Math.cos(rz), sz = Math.sin(rz);
-    for (let corner = 0; corner < 8; corner++) {
-      let x = ((corner & 1) ? object.bounds.max[0] : object.bounds.min[0]) - center[0];
-      let y = ((corner & 2) ? object.bounds.max[1] : object.bounds.min[1]) - center[1];
-      let z = ((corner & 4) ? object.bounds.max[2] : object.bounds.min[2]) - center[2];
-      x *= transform.scale; y *= transform.scale; z *= transform.scale;
-      const y1 = y * cx - z * sx, z1 = y * sx + z * cx;
-      const x2 = x * cy + z1 * sy, z2 = -x * sy + z1 * cy;
-      const x3 = x2 * cz - y1 * sz + center[0];
-      const y3 = x2 * sz + y1 * cz + center[1];
-      const z3 = z2 + center[2];
-      const x4 = (x3 - globalCenterX) * globalCos - (y3 - globalCenterY) * globalSin;
-      const y4 = (x3 - globalCenterX) * globalSin + (y3 - globalCenterY) * globalCos;
-      const point = [x4 * globalScale + transform.x, y4 * globalScale + transform.y, (z3 - model.bounds.min[2]) * globalScale + transform.z];
-      for (let axis = 0; axis < 3; axis++) { min[axis] = Math.min(min[axis], point[axis]); max[axis] = Math.max(max[axis], point[axis]); }
-    }
+  const transform = objectTransform(draft, object.id), center = object.bounds.min.map((value, axis) => (value + object.bounds.max[axis]) / 2);
+  const rx = transform.rotationX * Math.PI / 180, ry = transform.rotationY * Math.PI / 180, rz = transform.rotationZ * Math.PI / 180;
+  const cx = Math.cos(rx), sx = Math.sin(rx), cy = Math.cos(ry), sy = Math.sin(ry), cz = Math.cos(rz), sz = Math.sin(rz);
+  for (let corner = 0; corner < 8; corner++) {
+    let x = ((corner & 1) ? object.bounds.max[0] : object.bounds.min[0]) - center[0];
+    let y = ((corner & 2) ? object.bounds.max[1] : object.bounds.min[1]) - center[1];
+    let z = ((corner & 4) ? object.bounds.max[2] : object.bounds.min[2]) - center[2];
+    x *= transform.scale; y *= transform.scale; z *= transform.scale;
+    const y1 = y * cx - z * sx, z1 = y * sx + z * cx;
+    const x2 = x * cy + z1 * sy, z2 = -x * sy + z1 * cy;
+    const x3 = x2 * cz - y1 * sz + center[0];
+    const y3 = x2 * sz + y1 * cz + center[1];
+    const z3 = z2 + center[2];
+    const x4 = (x3 - globalCenterX) * globalCos - (y3 - globalCenterY) * globalSin;
+    const y4 = (x3 - globalCenterX) * globalSin + (y3 - globalCenterY) * globalCos;
+    const point = [x4 * globalScale + transform.x, y4 * globalScale + transform.y, (z3 - model.bounds.min[2]) * globalScale + transform.z];
+    for (let axis = 0; axis < 3; axis++) { min[axis] = Math.min(min[axis], point[axis]); max[axis] = Math.max(max[axis], point[axis]); }
   }
+  return { min, max, dimensions: min.map((value, axis) => max[axis] - value) };
+}
+
+function transformedObjectsBounds(model, draft) {
+  if (!model) return [];
+  return model.objects.map(object => transformedBoundsForObject(object, model, draft));
+}
+
+function transformedModelBounds(model, draft) {
+  if (!model) return null;
+  const bounds = transformedObjectsBounds(model, draft);
+  const min = [0, 1, 2].map(axis => Math.min(...bounds.map(item => item.min[axis])));
+  const max = [0, 1, 2].map(axis => Math.max(...bounds.map(item => item.max[axis])));
   return { min, max, dimensions: min.map((value, axis) => max[axis] - value) };
 }
 
@@ -358,8 +370,16 @@ export function mountFeature(host = {}) {
   function profile() {
     const machine = selectedEngineProfile("machine");
     return machine?.bedSizeMm?.length === 2 && Number.isFinite(machine.heightMm)
-      ? { name: machine.name, bed: [...machine.bedSizeMm, machine.heightMm], reference: false }
+      ? { name: machine.name, bed: [...machine.bedSizeMm, machine.heightMm], bedOutlineMm: machine.bedOutlineMm, bedExcludeAreasMm: machine.bedExcludeAreasMm || [], reference: false }
       : printers[draft.printer] || printers.generic;
+  }
+  function modelFitAssessment() {
+    if (!model || model.demo) return { status: model?.demo ? "demo-only" : "no-model", method: "not-assessed/1", objectCount: model?.objects?.length || 0, checkedObjectCount: 0, outsideObjectCount: null, outsideObjectItems: [] };
+    const machine = profile();
+    return assessModelEnvelope(transformedObjectsBounds(model, draft), {
+      bedSizeMm: machine.bed.slice(0, 2), bedOutlineMm: machine.bedOutlineMm,
+      bedExcludeAreasMm: machine.bedExcludeAreasMm || [], heightMm: machine.bed[2], reference: machine.reference,
+    });
   }
   function activeMaterial() {
     const filament = selectedEngineProfile("filament");
@@ -386,11 +406,7 @@ export function mountFeature(host = {}) {
   }
   function modelFitReason() {
     if (!model || model.demo || !engineStatus.profiles?.machine) return "";
-    const bounds = transformedModelBounds(model, draft), machine = profile();
-    const fits = bounds.min[0] >= -machine.bed[0] / 2 && bounds.max[0] <= machine.bed[0] / 2
-      && bounds.min[1] >= -machine.bed[1] / 2 && bounds.max[1] <= machine.bed[1] / 2
-      && bounds.min[2] >= 0 && bounds.max[2] <= machine.bed[2];
-    return fits ? "" : "A peça transformada excede a área útil do perfil OrcaSlicer configurado.";
+    return modelFitAssessment().status === "within-profile-envelope" ? "" : "A caixa envolvente de uma ou mais peças excede o envelope imprimível do perfil OrcaSlicer configurado.";
   }
   function activeProcess() { return draft.processes.find(process => process.id === draft.selectedProcessId) || draft.processes[0]; }
   function activeSettings() { return activeProcess()?.settings || draft; }
@@ -865,7 +881,7 @@ export function mountFeature(host = {}) {
       getSurfaceAreaMm2: transformedSurfaceAreaMm2,
     }) : null;
     const project = {
-      model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm: scaledDimensions().map(value => Number(value.toFixed(2))), triangleCount: model.triangleCount } : null,
+      model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm: scaledDimensions().map(value => Number(value.toFixed(2))), triangleCount: model.triangleCount, printableSpaceFit: modelFitAssessment() } : null,
       geometryDiagnostics: model?.geometryDiagnostics ? {
         method: model.geometryDiagnostics.method,
         triangleCount: model.geometryDiagnostics.triangleCount,
@@ -925,6 +941,7 @@ export function mountFeature(host = {}) {
     const evidenceCandidates = [
       ["settings", project.settings],
       ["model.dimensionsMm", project.model?.dimensionsMm],
+      ["model.printableSpaceFit", project.model?.printableSpaceFit],
       ["model.triangleCount", project.model?.triangleCount],
       ["geometryDiagnostics.degenerateTriangleCount", project.geometryDiagnostics?.degenerateTriangleCount],
       ["geometryDiagnostics.boundaryEdgeCount", project.geometryDiagnostics?.edgeIncidence?.boundaryEdgeCount],
@@ -958,10 +975,11 @@ export function mountFeature(host = {}) {
       "Faces degeneradas, área e incidência de arestas são medições locais. A área soma as faces após unidade/escala, pode incluir superfícies internas e não estima filamento. As arestas comparam coordenadas Float32 idênticas por objeto, até 100.000 faces por objeto; contagens parciais cobrem apenas objetos verificados.",
       "A triagem de vértices examina o grafo de vizinhança de cada vértice: um caminho único é esperado na borda e um ciclo único no interior. Vértices com mais de uma região conectada ou graus incompatíveis são contados como não manifold. Use a contagem apenas como sinal local de revisão, não como prova de falha na peça. geometryDiagnostics.objectSummary lista até 12 peças: prioriza a peça selecionada e depois ordena por sinais locais para revisão. O campo item mantém a posição original 1-based na lista carregada, mesmo quando a lista é reordenada. Essa ordem é apenas uma triagem heurística, não mede severidade nem risco calibrado. Confira selected e omittedObjectCount antes de dizer que avaliou todas as peças.",
       "Arestas abertas, arestas com mais de duas faces, orientação compartilhada inconsistente e vizinhança não manifold são sinais para revisão, mas não explicam sozinhos a causa. A análise não detecta autointerseções ou cavidades, não faz reparos e não conclui watertightness nem imprimibilidade.",
+      "model.printableSpaceFit é uma triagem geométrica por caixa envolvente individual de cada peça, contorno imprimível e regiões excluídas do perfil. outsideObjectItems contém índices 1-based na lista original; a caixa é conservadora e não representa a malha exata, brim/skirt, suportes, saliências nem colisões. Status com reference refere-se somente à mesa visual genérica; só o OrcaSlicer valida o fatiamento final.",
       "Identifique quando os perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade.",
       "Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.",
     ];
-    const responseRules = `Retorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se houver uma sugestão, confidence deve ser low, medium ou high como avaliação informada pela IA, não como probabilidade medida. evidence deve citar de 1 a 5 IDs que existam nesta solicitação; use somente estes: ${evidenceIds.join(", ")}. Nunca cite um ID ausente. Se não houver base suficiente para recomendar, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; supportType normal(auto) ou tree(auto); supportThresholdAngle 0–90°; supportOnBuildPlateOnly boolean; fanMinSpeedPercent e fanMaxSpeedPercent de 0–100, sempre com o mínimo menor ou igual ao máximo; quality standard, fine ou draft. Os suportes automáticos podem ser propostos apenas como opção; sem receber a geometria, não afirme que sabe onde eles são necessários nem que a peça ficará imprimível. Ângulo de suporte 0 preserva as regras próprias do Orca: overlap para tipo normal e 30° para árvore. A faixa de ventoinha define os limites de resfriamento da peça; não prometa velocidade fixa nem ignore regras do perfil/material e do tempo de camada. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu geometria suficiente para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.`;
+    const responseRules = `Retorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se houver uma sugestão, confidence deve ser low, medium ou high como avaliação informada pela IA, não como probabilidade medida. evidence deve citar de 1 a 5 IDs que existam nesta solicitação; use somente estes: ${evidenceIds.join(", ")}. Nunca cite um ID ausente. Se não houver base suficiente para recomendar, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; supportType normal(auto) ou tree(auto); supportThresholdAngle 0–90°; supportOnBuildPlateOnly boolean; fanMinSpeedPercent e fanMaxSpeedPercent de 0–100, sempre com o mínimo menor ou igual ao máximo; quality standard, fine ou draft. Os suportes automáticos podem ser propostos apenas como opção; sem receber a geometria, não afirme que sabe onde eles são necessários nem que a peça ficará imprimível. Ângulo de suporte 0 preserva as regras próprias do Orca: overlap para tipo normal e 30° para árvore. A faixa de ventoinha define os limites de resfriamento da peça; não prometa velocidade fixa nem ignore regras do perfil/material e do tempo de camada. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Use model.printableSpaceFit para relatar a triagem da área; cite essa evidência quando avaliar a mesa e deixe claro que ela usa caixas envolventes e não avalia orientação de face, colisões, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.`;
     return `${instructions.join("\n\n")}\n\n${responseRules}\n\nPedido do usuário: ${question}`;
   }
   async function askAi(question = content.querySelector("[data-ai-input]").value) {
@@ -1089,11 +1107,19 @@ export function mountFeature(host = {}) {
     const dims = bounds.dimensions;
     content.querySelector("[data-dimensions]").textContent = formatDimensions(dims);
     const machine = profile();
-    const fits = bounds.min[0] >= -machine.bed[0] / 2 && bounds.max[0] <= machine.bed[0] / 2
-      && bounds.min[1] >= -machine.bed[1] / 2 && bounds.max[1] <= machine.bed[1] / 2
-      && bounds.min[2] >= 0 && bounds.max[2] <= machine.bed[2];
+    const fitAssessment = modelFitAssessment();
+    const fits = ["within-profile-envelope", "within-reference-envelope"].includes(fitAssessment.status);
     const fit = content.querySelector("[data-fit]");
-    fit.textContent = fits ? "Dentro da área de referência" : "Excede a área de referência";
+    fit.textContent = fitAssessment.status === "not-assessed"
+      ? "Envelope não analisado"
+      : fitAssessment.status === "demo-only" || fitAssessment.status === "within-reference-envelope"
+        ? "Dentro da área de referência"
+        : fitAssessment.status === "outside-reference-envelope"
+          ? "Excede a área de referência"
+        : fits ? "Dentro do envelope do perfil" : "Fora do envelope do perfil";
+    fit.title = machine.reference
+      ? "Comparação aproximada com a mesa de referência desta interface."
+      : "Triagem pela caixa envolvente individual de cada peça, contorno imprimível e zonas excluídas do perfil; o OrcaSlicer continua sendo a validação final.";
     fit.className = fits ? "fit-ok" : "fit-warning";
     content.querySelector("[data-stage-label]").textContent = `${machine.name.split(" · ")[0]} · mesa ${machine.bed.join(" × ")} mm`;
     content.querySelector("[data-stage-units]").textContent = model.format === "STL" ? `${draft.stlUnit} presumido` : `${model.sourceUnit} → mm`;

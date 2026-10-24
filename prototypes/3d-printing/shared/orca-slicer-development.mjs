@@ -40,23 +40,101 @@ function displayName(profile, fallback) {
   return fallback;
 }
 
+function profilePoint(point) {
+  if (Array.isArray(point) && point.length >= 2) return [Number(point[0]), Number(point[1])];
+  if (typeof point === "string") {
+    const match = point.trim().match(/^(-?(?:\d+\.?\d*|\.\d+))\s*(?:x|,|\s)\s*(-?(?:\d+\.?\d*|\.\d+))$/i);
+    if (match) return [Number(match[1]), Number(match[2])];
+  }
+  return null;
+}
+
+function cleanPolygon(points) {
+  const cleaned = [];
+  for (const point of points) {
+    if (!cleaned.length || Math.hypot(point[0] - cleaned.at(-1)[0], point[1] - cleaned.at(-1)[1]) > 1e-7) cleaned.push(point);
+  }
+  if (cleaned.length > 1 && Math.hypot(cleaned[0][0] - cleaned.at(-1)[0], cleaned[0][1] - cleaned.at(-1)[1]) <= 1e-7) cleaned.pop();
+  return cleaned;
+}
+
+function splitProfilePolygons(points) {
+  const polygons = [];
+  let current = [];
+  const samePoint = (left, right) => Math.hypot(left[0] - right[0], left[1] - right[1]) <= 1e-7;
+  for (const point of points) {
+    const repeatedAt = current.findIndex(existing => samePoint(existing, point));
+    if (repeatedAt >= 0 && (repeatedAt === current.length - 1 ? current.length >= 3 : current.length - repeatedAt >= 3)) {
+      const polygon = cleanPolygon(current);
+      if (polygon.length >= 3) polygons.push(polygon);
+      current = [point];
+      continue;
+    }
+    current.push(point);
+  }
+  const polygon = cleanPolygon(current);
+  if (polygon.length >= 3) polygons.push(polygon);
+  return polygons;
+}
+
+function profileSegmentsIntersect(a, b, c, d) {
+  const cross = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const onSegment = (p, q, r) => Math.abs(cross(p, q, r)) < 1e-7
+    && r[0] >= Math.min(p[0], q[0]) - 1e-7 && r[0] <= Math.max(p[0], q[0]) + 1e-7
+    && r[1] >= Math.min(p[1], q[1]) - 1e-7 && r[1] <= Math.max(p[1], q[1]) + 1e-7;
+  const abC = cross(a, b, c), abD = cross(a, b, d), cdA = cross(c, d, a), cdB = cross(c, d, b);
+  if (Math.abs(abC) < 1e-7 && onSegment(a, b, c)) return true;
+  if (Math.abs(abD) < 1e-7 && onSegment(a, b, d)) return true;
+  if (Math.abs(cdA) < 1e-7 && onSegment(c, d, a)) return true;
+  if (Math.abs(cdB) < 1e-7 && onSegment(c, d, b)) return true;
+  return (abC > 0) !== (abD > 0) && (cdA > 0) !== (cdB > 0);
+}
+
+function validSimplePolygon(points) {
+  if (points.length < 3 || points.length > 100) return false;
+  let twiceArea = 0;
+  for (let index = 0; index < points.length; index++) {
+    const current = points[index], next = points[(index + 1) % points.length];
+    if (Math.hypot(current[0] - next[0], current[1] - next[1]) <= 1e-7) return false;
+    twiceArea += current[0] * next[1] - next[0] * current[1];
+    for (let other = index + 1; other < points.length; other++) {
+      if (other === index || other === (index + 1) % points.length || (other + 1) % points.length === index) continue;
+      if (profileSegmentsIntersect(current, next, points[other], points[(other + 1) % points.length])) return false;
+    }
+  }
+  return Number.isFinite(twiceArea) && Math.abs(twiceArea) > 1e-5;
+}
+
 function parseBedShape(profile) {
   const source = profile.printable_area ?? profile.bed_shape;
   if (!Array.isArray(source) || source.length < 3 || source.length > 100) return null;
-  const points = source.map(point => {
-    if (Array.isArray(point) && point.length >= 2) return [Number(point[0]), Number(point[1])];
-    if (typeof point === "string") {
-      const match = point.trim().match(/^(-?(?:\d+\.?\d*|\.\d+))\s*(?:x|,|\s)\s*(-?(?:\d+\.?\d*|\.\d+))$/i);
-      if (match) return [Number(match[1]), Number(match[2])];
-    }
-    return null;
-  });
-  if (points.some(point => !point || !point.every(Number.isFinite))) return null;
+  const parsedPoints = source.map(profilePoint);
+  if (parsedPoints.some(point => !point || !point.every(Number.isFinite))) return null;
+  const points = cleanPolygon(parsedPoints);
+  if (!validSimplePolygon(points)) return null;
   const x = points.map(point => point[0]), y = points.map(point => point[1]);
-  const size = [Math.max(...x) - Math.min(...x), Math.max(...y) - Math.min(...y)];
+  const min = [Math.min(...x), Math.min(...y)], max = [Math.max(...x), Math.max(...y)];
+  const center = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2];
+  const size = [max[0] - min[0], max[1] - min[1]];
   if (size.some(value => value < 50 || value > 2000)) return null;
-  return size.map(value => Number(value.toFixed(2)));
+  const normalized = points.map(point => point.map((value, axis) => Number((value - center[axis]).toFixed(3))));
+  const rawExcluded = profile.bed_exclude_area;
+  let excludedAreas = [];
+  if (rawExcluded !== undefined) {
+    if (!Array.isArray(rawExcluded) || rawExcluded.length > 100) return null;
+    const points = rawExcluded.map(profilePoint);
+    if (points.some(point => !point || !point.every(Number.isFinite))) return null;
+    excludedAreas = splitProfilePolygons(points).map(polygon => polygon.map(point => point.map((value, axis) => Number((value - center[axis]).toFixed(3)))));
+    if (excludedAreas.some(polygon => !validSimplePolygon(polygon))) return null;
+  }
+  return {
+    bedSizeMm: size.map(value => Number(value.toFixed(2))),
+    bedOutlineMm: normalized,
+    bedExcludeAreasMm: excludedAreas,
+  };
 }
+
+export { parseBedShape };
 
 function parseProfile(raw, kind, fallbackName) {
   const label = ({ machine: "máquina", process: "processo", filament: "filamento" })[kind] || kind;
@@ -68,13 +146,13 @@ function parseProfile(raw, kind, fallbackName) {
   if (kind === "machine") {
     const technology = first(profile.printer_technology);
     if (technology && !/^(?:fff|fdm)$/i.test(String(technology))) throw publicError("Esta integração inicial aceita apenas perfis FDM/FFF.", 503);
-    const bedSizeMm = parseBedShape(profile);
+    const bed = parseBedShape(profile);
     const height = numeric(profile.max_print_height ?? profile.printable_height);
-    if (!bedSizeMm || !Number.isFinite(height) || height < 50 || height > 2000) {
+    if (!bed || !Number.isFinite(height) || height < 50 || height > 2000) {
       throw publicError("O perfil da máquina precisa declarar printable_area e max_print_height válidos.", 503);
     }
     const nozzle = first(profile.nozzle_diameter);
-    return { name, bedSizeMm, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null, source: "JSON local configurado no host" };
+    return { name, ...bed, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null, source: "JSON local configurado no host" };
   }
   if (kind === "process") {
     if (!profile.layer_height && !profile.layer_height_0) throw publicError("O perfil de processo não contém altura de camada.", 503);

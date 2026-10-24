@@ -5,6 +5,7 @@ const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
   "model.dimensionsMm",
+  "model.printableSpaceFit",
   "model.triangleCount",
   "geometryDiagnostics.degenerateTriangleCount",
   "geometryDiagnostics.boundaryEdgeCount",

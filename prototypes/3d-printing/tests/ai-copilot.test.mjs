@@ -113,6 +113,18 @@ test("schema de evidências permite citar links de vértices e resumo geométric
   }
 });
 
+test("schema da IA aceita a evidência determinística do envelope da mesa", () => {
+  const evidenceId = "model.printableSpaceFit";
+  assert.ok(assistantEvidenceIds.includes(evidenceId));
+  assert.ok(assistantStructuredOutput.schema.properties.suggestion.anyOf[0].properties.evidence.items.enum.includes(evidenceId));
+  const parsed = parseAssistantReply(reply({
+    evidence: [evidenceId],
+    profiles: null,
+    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+  }), { allowedEvidence: [evidenceId], allowedProfiles });
+  assert.deepEqual(parsed.suggestion.evidence, [evidenceId]);
+});
+
 test("resumo geométrico limita peças, prioriza a selecionada e preserva a ordem como referência", () => {
   const objects = Array.from({ length: 15 }, (_, index) => ({ id: `id-${index}`, name: `nome privado ${index}`, positions: new Float32Array(9) }));
   const diagnostics = {
