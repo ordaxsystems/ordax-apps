@@ -2,6 +2,7 @@ import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { isSupportedInfillPattern } from "../../shared/infill-patterns.mjs";
 import { isSupportedSeamPosition } from "../../shared/seam-positions.mjs";
 import { isNozzleTemperatureInRange, nozzleTemperatureLimits } from "../../shared/nozzle-temperatures.mjs";
+import { validateBedTypeSelection } from "../../shared/bed-types.mjs";
 
 const MAX_GCODE_BYTES = 512 * 1024 * 1024;
 const PROCESS_SCHEMA = "ordax.slicer-processes/10";
@@ -51,6 +52,7 @@ function publicProcessSettings(settings) {
     brimType: settings.brimType,
     brimWidth: settings.brimWidth,
     brimGap: settings.brimGap,
+    ...(settings.bedType !== undefined ? { bedType: settings.bedType } : {}),
     infill: settings.infill,
     infillPattern: settings.infillPattern,
     seamPosition: settings.seamPosition,
@@ -133,6 +135,8 @@ function validateSelectedProfileCompatibility(request, status) {
       throw new Error(`A temperatura do bico para ${layer} precisa ficar em ${allowed}.`);
     }
   }
+  const bedTypeValidation = validateBedTypeSelection(request.settings?.bedType, selected.machine, selected.filament);
+  if (!bedTypeValidation.valid) throw new Error(bedTypeValidation.reason);
 }
 
 function validateProcessAssignmentRequest(request) {
