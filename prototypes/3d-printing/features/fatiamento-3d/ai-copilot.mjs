@@ -1,12 +1,15 @@
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/6";
+const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/7";
 const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
   "model.dimensionsMm",
   "model.triangleCount",
   "geometryDiagnostics.degenerateTriangleCount",
+  "geometryDiagnostics.boundaryEdgeCount",
+  "geometryDiagnostics.nonManifoldEdgeCount",
+  "geometryDiagnostics.inconsistentWindingEdgeCount",
   "geometryDiagnostics.surfaceAreaMm2",
   "selectedObject.sourceDimensionsMm",
   "selectedObject.surfaceAreaMm2",

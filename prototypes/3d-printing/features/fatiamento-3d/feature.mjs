@@ -21,6 +21,9 @@ const AI_EVIDENCE_LABELS = Object.freeze({
   "model.dimensionsMm": "Dimensões do projeto",
   "model.triangleCount": "Quantidade de faces",
   "geometryDiagnostics.degenerateTriangleCount": "Faces degeneradas",
+  "geometryDiagnostics.boundaryEdgeCount": "Arestas abertas na análise local",
+  "geometryDiagnostics.nonManifoldEdgeCount": "Arestas com mais de duas faces",
+  "geometryDiagnostics.inconsistentWindingEdgeCount": "Arestas com orientação inconsistente",
   "geometryDiagnostics.surfaceAreaMm2": "Área triangulada do projeto",
   "selectedObject.sourceDimensionsMm": "Dimensões originais da peça",
   "selectedObject.surfaceAreaMm2": "Área triangulada da peça",
@@ -286,7 +289,7 @@ export function mountFeature(host = {}) {
             <button class="model-drop" type="button" data-open><span class="drop-glyph">${icon("upload", 20)}</span><span><strong>Solte um STL ou 3MF</strong><small>ou escolha um arquivo no computador</small></span><b>ATÉ 50 MB</b></button>
             <div class="object-card" data-object-card hidden><div class="object-thumb">${icon("cube", 22)}</div><div class="object-name"><strong data-file-name>—</strong><small data-file-details>—</small></div><button class="small-icon remove-object" type="button" data-remove aria-label="Remover modelo">${icon("close", 14)}</button></div>
             <section class="object-processes" data-object-processes hidden aria-label="Processos de impressão por objeto"><div class="processes-heading"><div><span class="panel-kicker">SIMPLIFY3D · POR OBJETO</span><strong data-process-summary>1 objeto · 1 processo</strong></div><span class="processes-count" data-process-count>1</span></div><div class="object-process-list" data-object-process-list></div><div class="process-actions"><button class="button secondary" type="button" data-process-add title="Cria um processo com os parâmetros atuais para a peça selecionada.">Separar peça</button><button class="button secondary" type="button" data-process-remove title="Move as peças deste processo para outro processo antes de removê-lo.">Remover</button></div><p class="process-note" data-process-note>Os processos são aplicados por objeto 3MF. Um arquivo STL corresponde a um único objeto.</p></section>
-            <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Área triangulada</span><strong data-surface-area>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Faces degeneradas</span><strong data-degenerate-faces>—</strong></div><p class="geometry-note" data-geometry-note>Área somada das faces após escala e unidade. Não certifica topologia nem imprimibilidade.</p></div>
+            <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Área triangulada</span><strong data-surface-area>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Faces degeneradas</span><strong data-degenerate-faces>—</strong></div><div><span>Arestas abertas · análise local</span><strong data-boundary-edges>—</strong></div><div><span>Arestas com 3+ faces</span><strong data-nonmanifold-edges>—</strong></div><div><span>Orientação compartilhada</span><strong data-inconsistent-winding-edges>—</strong></div><p class="geometry-note" data-geometry-note>A análise local de arestas não detecta interseções nem certifica imprimibilidade.</p></div>
             <div class="draft-note" data-source-note>${icon("file", 14)}<span>O arquivo original fica nesta sessão. O rascunho guarda apenas seus parâmetros neste navegador.</span></div>
             <div class="panel-separator"></div>
             <div class="panel-heading compact"><div><span class="panel-kicker">PERFIS DE FATIAMENTO</span><h2 data-profile-heading>Perfis de referência</h2></div></div>
@@ -857,6 +860,8 @@ export function mountFeature(host = {}) {
         method: model.geometryDiagnostics.method,
         triangleCount: model.geometryDiagnostics.triangleCount,
         degenerateTriangleCount: model.geometryDiagnostics.degenerateTriangleCount,
+        edgeIncidence: model.geometryDiagnostics.edgeIncidence,
+        edgeIncidenceLimitations: "arestas comparadas por coordenadas Float32 idênticas, separadamente em cada objeto; quando a análise é parcial, as contagens cobrem somente os objetos verificados; não detecta vértices não manifold, autointerseções, cavidades ou reparos e não certifica watertightness nem imprimibilidade",
         surfaceAreaMm2: transformedSurfaceAreaMm2(),
         surfaceAreaBasis: "soma local das áreas triangulares em mm² após conversão da unidade de origem e escalas globais/individuais atuais",
         surfaceAreaLimitations: "faces coincidentes ou internas não são deduplicadas; área não certifica topologia, watertightness ou consumo de filamento",
@@ -908,6 +913,9 @@ export function mountFeature(host = {}) {
       ["model.dimensionsMm", project.model?.dimensionsMm],
       ["model.triangleCount", project.model?.triangleCount],
       ["geometryDiagnostics.degenerateTriangleCount", project.geometryDiagnostics?.degenerateTriangleCount],
+      ["geometryDiagnostics.boundaryEdgeCount", project.geometryDiagnostics?.edgeIncidence?.boundaryEdgeCount],
+      ["geometryDiagnostics.nonManifoldEdgeCount", project.geometryDiagnostics?.edgeIncidence?.nonManifoldEdgeCount],
+      ["geometryDiagnostics.inconsistentWindingEdgeCount", project.geometryDiagnostics?.edgeIncidence?.inconsistentWindingEdgeCount],
       ["geometryDiagnostics.surfaceAreaMm2", project.geometryDiagnostics?.surfaceAreaMm2],
       ["selectedObject.sourceDimensionsMm", project.selectedObject?.sourceDimensionsMm],
       ["selectedObject.surfaceAreaMm2", project.selectedObject?.surfaceAreaMm2],
@@ -929,7 +937,7 @@ export function mountFeature(host = {}) {
   }
 
   function makeAiPrompt(question, evidenceIds) {
-    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. A contagem local de faces degeneradas e a área triangulada são medições geométricas parciais: não comprovam topologia, watertightness, orientação da malha ou imprimibilidade. A área triangulada soma as faces fornecidas após a conversão de unidades e as escalas atuais; não deduz consumo de filamento e pode incluir faces coincidentes ou internas. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se houver uma sugestão, confidence deve ser low, medium ou high como avaliação informada pela IA, não como probabilidade medida. evidence deve citar de 1 a 5 IDs que existam nesta solicitação; use somente estes: ${evidenceIds.join(", ")}. Nunca cite um ID ausente. Se não houver base suficiente para recomendar, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; supportType normal(auto) ou tree(auto); supportThresholdAngle 0–90°; supportOnBuildPlateOnly boolean; fanMinSpeedPercent e fanMaxSpeedPercent de 0–100, sempre com o mínimo menor ou igual ao máximo; quality standard, fine ou draft. Os suportes automáticos podem ser propostos apenas como opção; sem receber a geometria, não afirme que sabe onde eles são necessários nem que a peça ficará imprimível. Ângulo de suporte 0 preserva as regras próprias do Orca: overlap para tipo normal e 30° para árvore. A faixa de ventoinha define os limites de resfriamento da peça; não prometa velocidade fixa nem ignore regras do perfil/material e do tempo de camada. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
+    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. Faces degeneradas, área e incidência de arestas são medições geométricas locais parciais. A área soma as faces após unidade/escala, pode incluir superfícies internas e não estima filamento. A incidência compara coordenadas Float32 idênticas por objeto, com limite de 100.000 faces por objeto; contagens parciais abrangem apenas os objetos analisados. Arestas abertas, com mais de duas faces e orientação compartilhada igual são sinais para revisão, mas não afirmam defeito. Não conclua watertightness nem imprimibilidade: a análise não detecta vértices não manifold, autointerseções ou cavidades. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se houver uma sugestão, confidence deve ser low, medium ou high como avaliação informada pela IA, não como probabilidade medida. evidence deve citar de 1 a 5 IDs que existam nesta solicitação; use somente estes: ${evidenceIds.join(", ")}. Nunca cite um ID ausente. Se não houver base suficiente para recomendar, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; supportType normal(auto) ou tree(auto); supportThresholdAngle 0–90°; supportOnBuildPlateOnly boolean; fanMinSpeedPercent e fanMaxSpeedPercent de 0–100, sempre com o mínimo menor ou igual ao máximo; quality standard, fine ou draft. Os suportes automáticos podem ser propostos apenas como opção; sem receber a geometria, não afirme que sabe onde eles são necessários nem que a peça ficará imprimível. Ângulo de suporte 0 preserva as regras próprias do Orca: overlap para tipo normal e 30° para árvore. A faixa de ventoinha define os limites de resfriamento da peça; não prometa velocidade fixa nem ignore regras do perfil/material e do tempo de camada. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
   }
 
   async function askAi(question = content.querySelector("[data-ai-input]").value) {
@@ -1013,20 +1021,36 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-file-details]").textContent = `${model.format} · ${model.triangleCount.toLocaleString("pt-BR")} faces`;
     content.querySelector("[data-triangles]").textContent = model.triangleCount.toLocaleString("pt-BR");
     const geometryCheck = content.querySelector("[data-degenerate-faces]");
+    const boundaryCheck = content.querySelector("[data-boundary-edges]");
+    const nonManifoldCheck = content.querySelector("[data-nonmanifold-edges]");
+    const windingCheck = content.querySelector("[data-inconsistent-winding-edges]");
     content.querySelector("[data-surface-area]").textContent = model.demo ? "Amostra" : formatSurfaceArea(transformedSurfaceAreaMm2());
     const geometryNote = content.querySelector("[data-geometry-note]");
     if (model.demo) {
       geometryCheck.textContent = "Amostra";
       geometryCheck.className = "";
-      geometryNote.textContent = "A amostra não foi analisada. A área e a checagem de faces não certificam topologia nem imprimibilidade.";
+      for (const control of [boundaryCheck, nonManifoldCheck, windingCheck]) { control.textContent = "Amostra"; control.className = ""; }
+      geometryNote.textContent = "A amostra não foi analisada. A área e a checagem local de arestas não certificam topologia nem imprimibilidade.";
     } else if (model.geometryDiagnostics) {
       const count = model.geometryDiagnostics.degenerateTriangleCount;
       geometryCheck.textContent = count ? `${count.toLocaleString("pt-BR")} encontradas` : "Nenhuma detectada";
       geometryCheck.className = count ? "fit-warning" : "fit-ok";
-      geometryNote.textContent = "Área soma faces após unidade/escala e pode incluir superfícies internas; não verifica watertightness, manifold ou orientação.";
+      const incidence = model.geometryDiagnostics.edgeIncidence;
+      const checkedCount = (value) => incidence?.complete ? value.toLocaleString("pt-BR") : `Parcial · ${value.toLocaleString("pt-BR")}`;
+      const unavailable = incidence ? "Não analisada" : "Indisponível";
+      const metrics = [
+        [boundaryCheck, incidence ? checkedCount(incidence.boundaryEdgeCount) : unavailable, !incidence?.complete || incidence.boundaryEdgeCount > 0],
+        [nonManifoldCheck, incidence ? checkedCount(incidence.nonManifoldEdgeCount) : unavailable, !incidence?.complete || incidence.nonManifoldEdgeCount > 0],
+        [windingCheck, incidence ? checkedCount(incidence.inconsistentWindingEdgeCount) : unavailable, !incidence?.complete || incidence.inconsistentWindingEdgeCount > 0],
+      ];
+      for (const [control, value, warning] of metrics) { control.textContent = value; control.className = warning ? "fit-warning" : "fit-ok"; }
+      geometryNote.textContent = incidence
+        ? `Arestas comparadas por coordenadas Float32 idênticas, por objeto e até ${incidence.triangleLimitPerObject.toLocaleString("pt-BR")} faces por objeto${incidence.complete ? "" : `; ${incidence.skippedObjectCount.toLocaleString("pt-BR")} objeto(s) excederam o limite`}. A análise não detecta autointerseções nem certifica imprimibilidade.`
+        : "A análise de arestas não está disponível para este arquivo. A área e faces degeneradas não certificam imprimibilidade.";
     } else {
       geometryCheck.textContent = "Não analisada";
       geometryCheck.className = "";
+      for (const control of [boundaryCheck, nonManifoldCheck, windingCheck]) { control.textContent = "Não analisada"; control.className = ""; }
       geometryNote.textContent = "A checagem local não certifica topologia nem imprimibilidade.";
     }
     const bounds = transformedModelBounds(model, draft);
