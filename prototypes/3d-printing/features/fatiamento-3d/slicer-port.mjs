@@ -1,5 +1,5 @@
 const MAX_GCODE_BYTES = 512 * 1024 * 1024;
-const PROCESS_SCHEMA = "ordax.slicer-processes/1";
+const PROCESS_SCHEMA = "ordax.slicer-processes/2";
 const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const PROFILE_KINDS = Object.freeze(["machine", "process", "filament"]);
@@ -52,7 +52,7 @@ function validateProcessAssignmentRequest(request) {
     }
     processIds.add(process.id);
     const settings = process.settings;
-    if (!["standard", "fine", "draft"].includes(settings.quality) || !Number.isFinite(settings.layerHeight) || settings.layerHeight < 0.08 || settings.layerHeight > 0.4 || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8 || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100 || typeof settings.supports !== "boolean" || !Number.isInteger(settings.fanSpeedPercent) || settings.fanSpeedPercent < 0 || settings.fanSpeedPercent > 100) {
+    if (!["standard", "fine", "draft"].includes(settings.quality) || !Number.isFinite(settings.layerHeight) || settings.layerHeight < 0.08 || settings.layerHeight > 0.4 || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8 || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100 || typeof settings.supports !== "boolean" || !Number.isInteger(settings.fanMinSpeedPercent) || settings.fanMinSpeedPercent < 0 || settings.fanMinSpeedPercent > 100 || !Number.isInteger(settings.fanMaxSpeedPercent) || settings.fanMaxSpeedPercent < settings.fanMinSpeedPercent || settings.fanMaxSpeedPercent > 100) {
       throw new Error(`As configurações do ${String(process.name || "processo").slice(0, 80)} estão fora dos limites deste app.`);
     }
     for (const objectId of process.objectIds) {

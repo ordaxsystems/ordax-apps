@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/2";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/3";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
@@ -216,17 +216,31 @@ function normalSettings(value) {
     walls: Number(value.walls),
     infill: Number(value.infill),
     supports: value.supports,
-    fanSpeedPercent: Number(value.fanSpeedPercent),
+    fanMinSpeedPercent: Number(value.fanMinSpeedPercent),
+    fanMaxSpeedPercent: Number(value.fanMaxSpeedPercent),
   };
   if (!["standard", "fine", "draft"].includes(settings.quality)
     || !Number.isFinite(settings.layerHeight) || settings.layerHeight < 0.08 || settings.layerHeight > 0.4
     || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
     || typeof settings.supports !== "boolean"
-    || !Number.isInteger(settings.fanSpeedPercent) || settings.fanSpeedPercent < 0 || settings.fanSpeedPercent > 100) {
+    || !Number.isInteger(settings.fanMinSpeedPercent) || settings.fanMinSpeedPercent < 0 || settings.fanMinSpeedPercent > 100
+    || !Number.isInteger(settings.fanMaxSpeedPercent) || settings.fanMaxSpeedPercent < settings.fanMinSpeedPercent || settings.fanMaxSpeedPercent > 100) {
     throw publicError("As configurações solicitadas estão fora dos limites permitidos.");
   }
   return settings;
+}
+
+export function buildOrcaSettingArguments(value) {
+  const settings = normalSettings(value);
+  return [
+    "--layer-height", String(settings.layerHeight),
+    "--wall-loops", String(settings.walls),
+    "--sparse-infill-density", `${settings.infill}%`,
+    `--enable-support=${settings.supports ? 1 : 0}`,
+    "--fan-min-speed", String(settings.fanMinSpeedPercent),
+    "--fan-max-speed", String(settings.fanMaxSpeedPercent),
+  ];
 }
 
 function validateManifest(manifest, meshBytes) {
@@ -423,12 +437,7 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
       "--debug", "2",
       "--arrange=0",
       "--orient=0",
-      "--layer-height", String(settings.layerHeight),
-      "--wall-loops", String(settings.walls),
-      "--sparse-infill-density", `${settings.infill}%`,
-      `--enable-support=${settings.supports ? 1 : 0}`,
-      "--fan-min-speed", String(settings.fanSpeedPercent),
-      "--fan-max-speed", String(settings.fanSpeedPercent),
+      ...buildOrcaSettingArguments(settings),
       "--export-statistics",
       "--slice", "0",
     ];

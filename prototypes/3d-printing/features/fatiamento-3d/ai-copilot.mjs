@@ -1,6 +1,6 @@
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/4";
+const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/5";
 const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
@@ -114,9 +114,10 @@ export const assistantStructuredOutput = Object.freeze({
               walls: nullableInteger(1, 8),
               infill: nullableInteger(0, 100),
               supports: nullable({ type: "boolean" }),
-              fanSpeedPercent: nullableInteger(0, 100),
+              fanMinSpeedPercent: nullableInteger(0, 100),
+              fanMaxSpeedPercent: nullableInteger(0, 100),
             },
-            required: ["quality", "layerHeight", "walls", "infill", "supports", "fanSpeedPercent"],
+            required: ["quality", "layerHeight", "walls", "infill", "supports", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
           }),
           transform: nullable({
             type: "object",
@@ -248,14 +249,17 @@ function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = n
     walls: item => Number.isInteger(item) && item >= 1 && item <= 8,
     infill: item => Number.isInteger(item) && item >= 0 && item <= 100,
     supports: item => typeof item === "boolean",
-    fanSpeedPercent: item => Number.isInteger(item) && item >= 0 && item <= 100,
+    fanMinSpeedPercent: item => Number.isInteger(item) && item >= 0 && item <= 100,
+    fanMaxSpeedPercent: item => Number.isInteger(item) && item >= 0 && item <= 100,
   };
   for (const [key, item] of Object.entries(source)) {
     if (!Object.hasOwn(validators, key)) return null;
     if (item === null) continue;
     if (!validators[key] || !validators[key](item)) return null;
-    settings[key === "fanSpeedPercent" ? "fan" : key] = item;
+    const settingKey = key === "fanMinSpeedPercent" ? "fanMin" : key === "fanMaxSpeedPercent" ? "fanMax" : key;
+    settings[settingKey] = item;
   }
+  if (settings.fanMin !== undefined && settings.fanMax !== undefined && settings.fanMin > settings.fanMax) return null;
   const transformSource = value.transform ?? null;
   if (transformSource !== null && (!transformSource || typeof transformSource !== "object" || Array.isArray(transformSource))) return null;
   const transform = {};

@@ -52,15 +52,34 @@ test("mantém válidas recomendações de parâmetros sem mudança de perfil", (
   const parsed = parseAssistantReply(reply({
     evidence: ["settings"],
     profiles: null,
-    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, supports: null, fanSpeedPercent: null },
+    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, supports: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
   }), { allowedEvidence: ["settings"], allowedProfiles });
   assert.deepEqual(parsed.suggestion.settings, { quality: "fine" });
   assert.deepEqual(parsed.suggestion.profiles, {});
 });
 
+test("valida e mapeia os limites mínimo e máximo da ventoinha de peça", () => {
+  const parsed = parseAssistantReply(reply({
+    evidence: ["settings"],
+    profiles: null,
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, supports: null, fanMinSpeedPercent: 35, fanMaxSpeedPercent: 80 },
+  }), { allowedEvidence: ["settings"], allowedProfiles });
+  assert.deepEqual(parsed.suggestion.settings, { fanMin: 35, fanMax: 80 });
+});
+
+test("rejeita sugestão com limite mínimo de ventoinha maior que o máximo", () => {
+  assert.throws(() => parseAssistantReply(reply({
+    evidence: ["settings"],
+    profiles: null,
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, supports: null, fanMinSpeedPercent: 85, fanMaxSpeedPercent: 70 },
+  }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
+});
+
 test("schema estrito exige os três campos de perfil na proposta", () => {
   const suggestionSchema = assistantStructuredOutput.schema.properties.suggestion.anyOf[0];
   assert.ok(suggestionSchema.required.includes("profiles"));
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMinSpeedPercent.anyOf[0].minimum, 0);
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMaxSpeedPercent.anyOf[0].maximum, 100);
   assert.deepEqual(suggestionSchema.properties.profiles.anyOf[0].required, ["machine", "process", "filament"]);
 });
 
