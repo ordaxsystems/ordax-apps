@@ -39,6 +39,15 @@ test("browser preview persists revisions, accepts an exact command replay once, 
   assert.equal(committed.revision, initial.revision + 1);
   assert.equal(replayed.revision, committed.revision);
   assert.equal(replayed.orders.find(({ id }) => id === order.id).statusHistory.filter(({ status }) => status === "preparing").length, 1);
+  const changedReplay = createFoodCommand({
+    type: "order.transition",
+    payload: { ...transition.payload, nextStatus: "cancelled", reason: "Reuso de ID" },
+    expectedRevision: transition.expectedRevision,
+    issuedAt: transition.issuedAt,
+    commandId: transition.commandId,
+  });
+  await assert.rejects(store.execute(changedReplay), /Identificador de operação reutilizado/);
+  assert.equal(store.getSnapshot().revision, committed.revision);
 
   const stale = createFoodCommand({
     type: "order.transition",
@@ -57,5 +66,36 @@ test("browser preview persists revisions, accepts an exact command replay once, 
 
   const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
   assert.deepEqual(await reopened.initialize(), committed);
+  assert.equal((await reopened.execute(transition)).revision, committed.revision);
+  await assert.rejects(reopened.execute(changedReplay), /Identificador de operação reutilizado/);
   reopened.destroy();
+});
+
+test("legacy command ids without fingerprints are migrated but cannot authorize ambiguous replays", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-legacy-replay";
+  const { createSeedFoodState } = await import("../src/fixtures/mock-data.mjs");
+  const source = createSeedFoodState();
+  const commandId = "legacy-command-1";
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/1",
+    state: source,
+    processedCommandIds: [commandId],
+  }));
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const restored = await store.initialize();
+  assert.equal(restored.revision, source.revision);
+  const upgraded = JSON.parse(environment.storage.getItem(key));
+  assert.equal(upgraded.schema, "ordax.food-pizzeria.browser-state/2");
+  assert.deepEqual(upgraded.processedCommands, [{ id: commandId, digest: null }]);
+  const blocked = createFoodCommand({
+    type: "food.settings.update",
+    payload: { halfPricePolicy: "average" },
+    expectedRevision: source.revision,
+    commandId,
+  });
+  await assert.rejects(store.execute(blocked), /legado não verificável/);
+  assert.equal(store.getSnapshot().revision, source.revision);
+  store.destroy();
 });
