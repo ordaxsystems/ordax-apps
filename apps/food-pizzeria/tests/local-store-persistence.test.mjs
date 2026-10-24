@@ -99,3 +99,39 @@ test("legacy command ids without fingerprints are migrated but cannot authorize 
   assert.equal(store.getSnapshot().revision, source.revision);
   store.destroy();
 });
+
+test("browser adapter transparently upgrades v5 Food records without fabricating historical consumption", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-upgrade-food-v5";
+  const { createSeedFoodState } = await import("../src/fixtures/mock-data.mjs");
+  const { calculatePizzeriaOrderConsumption } = await import("../src/domain/domain.mjs");
+  const source = createSeedFoodState();
+  const historicalState = {
+    ...source,
+    schema: "ordax.food-pizzeria-state/5",
+    orders: source.orders.map(({ consumptionSnapshot, ...order }) => order),
+  };
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state: historicalState,
+    processedCommands: [],
+  }));
+
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const migrated = await store.initialize();
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.revision, source.revision);
+  assert.equal(migrated.orders.length, source.orders.length);
+  assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
+  assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
+    /consumo histórico não é verificável/);
+  const persisted = JSON.parse(environment.storage.getItem(key));
+  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(Object.hasOwn(persisted.state, "inventoryMovements"), false);
+  store.destroy();
+
+  const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
+  assert.deepEqual(await reopened.initialize(), migrated);
+  reopened.destroy();
+});
