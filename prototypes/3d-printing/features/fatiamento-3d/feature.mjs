@@ -990,7 +990,7 @@ export function mountFeature(host = {}) {
       const heading = document.createElement("div"); heading.className = "preview-feature-heading";
       const name = document.createElement("span"); name.textContent = String(feature.name || "Tipo sem nome");
       const time = document.createElement("strong");
-      const share = Number(feature.timeSharePercent);
+      const share = feature.timeSharePercent === null || feature.timeSharePercent === undefined ? NaN : Number(feature.timeSharePercent);
       time.textContent = `${formatPreciseDuration(Number(feature.timeSeconds))}${Number.isFinite(share) ? ` · ${number(share, 1)}%` : ""}`;
       heading.append(name, time);
       const track = document.createElement("div"); track.className = "preview-feature-track";
