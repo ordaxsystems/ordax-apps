@@ -57,6 +57,8 @@ O script usa a porta `4241` e o modelo configurável por `-Model` (padrão `open
 
 Para habilitar também o fatiamento, exporte no OrcaSlicer perfis de máquina, processo e filamento como JSON. Passe um ou mais caminhos por categoria junto com o executável (até 32 por catálogo):
 
+No Windows, os perfis de usuário ficam em `%APPDATA%\OrcaSlicer\user\<perfil>`. O perfil costuma ser `default` quando o OrcaCloud não está conectado; com sincronização, pode ser uma pasta UUID. Use **Help → Show Configuration Folder** no OrcaSlicer para conferir qual diretório está ativo. Exporte os JSONs pela interface do OrcaSlicer; esses arquivos são os mesmos formatos consumidos por `--load-settings` (máquina/processo) e `--load-filaments` (filamento). Consulte a [documentação de perfis do OrcaSlicer](https://github.com/OrcaSlicer/OrcaSlicer/wiki/user_profiles) e a [referência oficial das opções CLI](https://github.com/OrcaSlicer/OrcaSlicer/wiki/cli_misc).
+
 ```powershell
 .\groq-dev.ps1 -Port 4242 `
   -OrcaSlicerPath "C:\caminho\para\OrcaSlicer.exe" `
