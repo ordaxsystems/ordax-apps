@@ -1,6 +1,25 @@
 const MAX_GCODE_BYTES = 512 * 1024 * 1024;
 const PROCESS_SCHEMA = "ordax.slicer-processes/1";
 const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
+const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
+const PROFILE_KINDS = Object.freeze(["machine", "process", "filament"]);
+
+function validProfileCatalogs(profiles) {
+  if (!profiles || typeof profiles !== "object") return false;
+  return PROFILE_KINDS.every(kind => {
+    const catalog = profiles[kind]?.catalog;
+    return Array.isArray(catalog) && catalog.length > 0 && catalog.length <= 32
+      && catalog.every(profile => profile && typeof profile.id === "string" && new RegExp(`^orca-${kind}-[a-f0-9]{24}$`).test(profile.id) && typeof profile.name === "string");
+  });
+}
+
+function validateProfileSelection(request, status) {
+  if (request.profileSelectionSchema !== PROFILE_SELECTION_SCHEMA || !request.profileIds || typeof request.profileIds !== "object" || Array.isArray(request.profileIds)) throw new Error("Selecione os perfis reais de máquina, processo e filamento.");
+  for (const kind of PROFILE_KINDS) {
+    const selected = request.profileIds[kind];
+    if (!status.profiles[kind].catalog.some(profile => profile.id === selected)) throw new Error(`O perfil de ${kind} não está no catálogo disponível do motor. Atualize os perfis e tente novamente.`);
+  }
+}
 
 function validateProcessAssignmentRequest(request) {
   if (request.processesSchema !== PROCESS_SCHEMA || !Array.isArray(request.objects) || !request.objects.length || request.objects.length > 500 || !Array.isArray(request.processes) || !request.processes.length || request.processes.length > 100) {
@@ -50,7 +69,7 @@ export async function readSlicerStatus(port) {
   }
   try {
     const status = await port.getStatus();
-    if (!status || status.available !== true || typeof status.engine !== "string" || typeof status.version !== "string") {
+    if (!status || status.available !== true || typeof status.engine !== "string" || typeof status.version !== "string" || !validProfileCatalogs(status.profiles)) {
       return Object.freeze({ available: false, engine: status?.engine ?? null, version: status?.version ?? null, reason: String(status?.reason || "O motor não está pronto para receber um trabalho.") });
     }
     return Object.freeze({ ...status, available: true, engine: status.engine, version: status.version, reason: "" });
@@ -73,6 +92,7 @@ export async function requestRealSlice(port, request, { signal, onProgress } = {
   validateProcessAssignmentRequest(request);
   const status = await readSlicerStatus(port);
   if (!status.available) throw new Error(status.reason);
+  validateProfileSelection(request, status);
   const result = await port.slice({ ...request, signal, onProgress });
   if (signal?.aborted) throw new DOMException("Fatiamento cancelado.", "AbortError");
   if (!(result?.gcode instanceof Blob) || result.gcode.size <= 0 || result.gcode.size > MAX_GCODE_BYTES) {
@@ -104,6 +124,8 @@ export const slicerPortRequirements = Object.freeze({
   methods: ["getStatus", "slice"],
   processSchema: PROCESS_SCHEMA,
   objectTransformsSchema: OBJECT_TRANSFORM_SCHEMA,
+  profileSelectionSchema: PROFILE_SELECTION_SCHEMA,
+  profileSelection: "Cada job escolhe um ID ativo de máquina, processo e filamento dentre os catálogos que o host expôs.",
   processAssignment: "Cada objeto deve ser atribuído a exatamente um processo; cada processo carrega suas próprias configurações. Em 3MF, objetos incluem sourceObjectId e buildItemIndex para que o motor relacione a atribuição aos itens da mesa do arquivo original.",
   objectTransforms: "Cada objeto tem uma transformação validada com offsetMm aplicado sobre a posição original do item, após a transformação global do projeto; rotationDeg usa XYZ e a escala uniforme gira em torno do centro geométrico da peça.",
   result: ["gcode: Blob", "engine", "engineVersion"],

@@ -2,7 +2,7 @@ const appIds = new Set(["biblioteca-impressao", "preparacao-impressao", "operaco
 
 const INTELLIGENCE_SCHEMA = "ordax.intelligence/1";
 const INTELLIGENCE_RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SLICER_STATUS_SCHEMA = "ordax.slicer-engine-status/1";
+const SLICER_STATUS_SCHEMA = "ordax.slicer-engine-status/2";
 const SLICER_RESULT_SCHEMA = "ordax.slicer-result/1";
 
 function createDevelopmentIntelligence() {
@@ -109,9 +109,11 @@ function createDevelopmentSlicer() {
         throw new Error("O adaptador precisa receber a malha STL transformada localmente.");
       }
       const manifest = {
-        schema: "ordax.orca-slice-request/1",
+        schema: "ordax.orca-slice-request/2",
         filename: String(request.filename || "ordax-print.stl").slice(0, 180),
         settings: request.settings,
+        profileSelectionSchema: request.profileSelectionSchema,
+        profileIds: request.profileIds,
         objects: request.objects,
         processes: request.processes,
       };

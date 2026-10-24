@@ -14,6 +14,7 @@ const MAX_PREVIEW_BYTES = 64 * 1024 * 1024;
 const MAX_AI_HISTORY = 20;
 const MAX_AI_MESSAGES = 40;
 const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
+const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const DEFAULT_OBJECT_TRANSFORM = Object.freeze({ x: 0, y: 0, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scale: 1 });
 const AI_EVIDENCE_LABELS = Object.freeze({
   settings: "Configurações atuais",
@@ -34,7 +35,7 @@ const AI_EVIDENCE_LABELS = Object.freeze({
   "slicer.configuredProfiles": "Perfis carregados no motor",
 });
 const defaultDraft = Object.freeze({
-  printer: "generic", filament: "pla", quality: "standard", layerHeight: 0.2, walls: 3, infill: 15, fan: 80,
+  printer: "generic", filament: "pla", printerProfileId: "", processProfileId: "", filamentProfileId: "", quality: "standard", layerHeight: 0.2, walls: 3, infill: 15, fan: 80,
   supports: false, rotation: 0, scale: 1, stlUnit: "mm", objectTransforms: {}, selectedTab: "prepare",
 });
 
@@ -55,6 +56,9 @@ function safeDraft(value) {
   const next = { ...defaultDraft, ...(value && typeof value === "object" ? value : {}) };
   if (!printers[next.printer]) next.printer = defaultDraft.printer;
   if (!materials[next.filament]) next.filament = defaultDraft.filament;
+  for (const [kind, key] of [["machine", "printerProfileId"], ["process", "processProfileId"], ["filament", "filamentProfileId"]]) {
+    if (typeof next[key] !== "string" || (next[key] && !new RegExp(`^orca-${kind}-[a-f0-9]{24}$`).test(next[key]))) next[key] = "";
+  }
   if (!unitScales[next.stlUnit]) next.stlUnit = defaultDraft.stlUnit;
   next.layerHeight = Math.max(0.08, Math.min(0.4, Number(next.layerHeight) || defaultDraft.layerHeight));
   next.walls = Math.max(1, Math.min(8, Math.round(Number(next.walls) || defaultDraft.walls)));
@@ -255,7 +259,7 @@ export function mountFeature(host = {}) {
           <header class="ai-drawer-head"><div><span class="panel-kicker">ORDAX INTELLIGENCE</span><h2 id="ai-title">Copiloto de impressão</h2></div><button class="small-icon" type="button" data-ai-close aria-label="Fechar copiloto">${icon("close", 15)}</button></header>
           <div class="ai-connection" data-ai-connection role="status"><i></i><span data-ai-connection-label>Verificando OrdaX Intelligence</span></div>
           <div class="ai-context-note">A IA recebe metadados e verificações numéricas locais; o arquivo 3D e o G-code não são enviados. Após fatiar, também recebe estatísticas reais e o nome/versão do motor. Ela pode sugerir parâmetros; nada muda até você revisar e aplicar.</div>
-          <div class="ai-quick-prompts" aria-label="Perguntas rápidas"><button type="button" data-ai-prompt="Revise as dimensões e os riscos de preparação desta peça.">Revisar peça</button><button type="button" data-ai-prompt="Sugira um equilíbrio entre resistência e consumo de material para esta peça.">Mais resistente</button><button type="button" data-ai-prompt="Sugira ajustes para reduzir o tempo de impressão sem comprometer demais a qualidade.">Mais rápido</button><button type="button" data-ai-prompt="Avalie a posição da peça selecionada e proponha um ajuste de deslocamento XYZ se os metadados permitirem.">Ajustar posição</button><button type="button" data-ai-prompt="Proponha uma rotação segura para a peça selecionada e explique a limitação da análise sem acesso à malha.">Orientar peça</button></div>
+          <div class="ai-quick-prompts" aria-label="Perguntas rápidas"><button type="button" data-ai-prompt="Revise as dimensões e os riscos de preparação desta peça.">Revisar peça</button><button type="button" data-ai-prompt="Sugira um equilíbrio entre resistência e consumo de material para esta peça.">Mais resistente</button><button type="button" data-ai-prompt="Sugira ajustes para reduzir o tempo de impressão sem comprometer demais a qualidade.">Mais rápido</button><button type="button" data-ai-prompt="Compare os perfis de máquina, processo e filamento disponíveis para este projeto. Indique as opções mais adequadas, os critérios usados e o que ainda precisa ser confirmado no OrcaSlicer.">Comparar perfis</button><button type="button" data-ai-prompt="Avalie a posição da peça selecionada e proponha um ajuste de deslocamento XYZ se os metadados permitirem.">Ajustar posição</button><button type="button" data-ai-prompt="Proponha uma rotação segura para a peça selecionada e explique a limitação da análise sem acesso à malha.">Orientar peça</button></div>
           <div class="ai-messages" data-ai-messages aria-live="polite"><div class="ai-message assistant"><strong>Copiloto</strong><p>Posso explicar configurações e sugerir ajustes com base nos metadados do projeto. Nenhum ajuste é aplicado sem sua revisão.</p></div></div>
           <form class="ai-composer" data-ai-form><label class="sr-only" for="ai-prompt">Pergunte sobre esta impressão</label><textarea id="ai-prompt" rows="3" maxlength="4000" data-ai-input placeholder="Ex.: como reduzir o tempo sem perder tanta resistência?"></textarea><div><span data-ai-disclaimer>Resposta consultiva · revise antes de aplicar</span><button class="button primary" type="submit" data-ai-send disabled>Enviar</button><button class="button secondary" type="button" data-ai-cancel hidden>Cancelar</button></div></form>
         </aside>
@@ -270,9 +274,10 @@ export function mountFeature(host = {}) {
             <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Área triangulada</span><strong data-surface-area>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Faces degeneradas</span><strong data-degenerate-faces>—</strong></div><p class="geometry-note" data-geometry-note>Área somada das faces após escala e unidade. Não certifica topologia nem imprimibilidade.</p></div>
             <div class="draft-note" data-source-note>${icon("file", 14)}<span>O arquivo original fica nesta sessão. O rascunho guarda apenas seus parâmetros neste navegador.</span></div>
             <div class="panel-separator"></div>
-            <div class="panel-heading compact"><div><span class="panel-kicker">IMPRESSORA</span><h2 data-profile-heading>Perfil de referência</h2></div></div>
+            <div class="panel-heading compact"><div><span class="panel-kicker">PERFIS DE FATIAMENTO</span><h2 data-profile-heading>Perfis de referência</h2></div></div>
             <label class="slice-field"><span>Máquina</span><select data-printer class="dark-select"><option value="generic">FDM genérica · 256 × 256 × 256</option><option value="a1">Bambu Lab A1 · referência</option><option value="mk4">Original Prusa MK4 · referência</option><option value="ender">Creality Ender 3 V3 · referência</option></select></label>
             <div class="profile-disclaimer" data-profile-disclaimer>${icon("tool", 13)}<span>Dimensões de referência para layout. Não são perfis validados pelo fabricante.</span></div>
+            <label class="slice-field"><span>Processo do OrcaSlicer</span><select data-process-profile class="dark-select" disabled><option value="">Configure perfis no host</option></select></label>
             <label class="slice-field"><span>Filamento</span><select data-filament class="dark-select"><option value="pla">PLA · bico 190–220 °C</option><option value="petg">PETG · bico 225–250 °C</option><option value="abs">ABS · bico 240–265 °C</option></select></label>
             <div class="material-summary" data-material-summary>Faixa de mesa: 45–65 °C · valores de referência</div>
           </aside>
@@ -290,7 +295,7 @@ export function mountFeature(host = {}) {
           <aside class="slice-panel settings-panel">
             <div class="panel-heading"><div><span class="panel-kicker">PREPARAR</span><h2>Configurações do trabalho</h2></div><span class="draft-badge">RASCUNHO</span></div>
             <label class="slice-field process-editor"><span>Editar configurações de</span><select class="dark-select" data-active-process aria-label="Processo de impressão cujas configurações serão editadas"></select><small data-active-process-note>As configurações abaixo valem para os objetos atribuídos a este processo.</small></label>
-            <div class="settings-section"><div class="settings-section-title"><span>01</span><strong>Qualidade</strong></div><label class="slice-field"><span>Perfil</span><select class="dark-select" data-quality><option value="standard">Equilibrado · 0,20 mm</option><option value="fine">Detalhado · 0,12 mm</option><option value="draft">Rápido · 0,28 mm</option></select></label><div class="setting-value"><label for="layer-height">Altura de camada</label><div class="number-unit"><input id="layer-height" type="number" min="0.08" max="0.4" step="0.01" data-layer-height/><span>mm</span></div></div></div>
+            <div class="settings-section"><div class="settings-section-title"><span>01</span><strong>Qualidade</strong></div><label class="slice-field"><span>Predefinição deste app</span><select class="dark-select" data-quality><option value="standard">Equilibrado · 0,20 mm</option><option value="fine">Detalhado · 0,12 mm</option><option value="draft">Rápido · 0,28 mm</option></select></label><div class="setting-value"><label for="layer-height">Altura de camada</label><div class="number-unit"><input id="layer-height" type="number" min="0.08" max="0.4" step="0.01" data-layer-height/><span>mm</span></div></div></div>
             <div class="settings-section"><div class="settings-section-title"><span>02</span><strong>Paredes e preenchimento</strong></div><div class="setting-value"><label for="wall-count">Paredes</label><div class="number-unit"><input id="wall-count" type="number" min="1" max="8" step="1" data-walls/><span>linhas</span></div></div><div class="setting-value"><label for="infill-density">Densidade de preenchimento</label><div class="number-unit"><input id="infill-density" type="number" min="0" max="100" step="1" data-infill/><span>%</span></div></div></div>
             <div class="settings-section"><div class="settings-section-title"><span>03</span><strong>Suportes</strong></div><label class="toggle-row"><span><strong>Gerar suportes</strong><small>Áreas suspensas do modelo</small></span><input type="checkbox" data-supports/><i></i></label><p class="not-applied-note">Parâmetros salvos no rascunho; ainda não aplicados a um fatiamento.</p></div>
             <div class="settings-section"><div class="settings-section-title"><span>04</span><strong>Resfriamento</strong></div><div class="setting-value"><label for="fan-speed">Ventoinha da peça</label><div class="number-unit"><input id="fan-speed" type="number" min="0" max="100" step="5" data-fan/><span>%</span></div></div><p class="not-applied-note">Valor de referência do processo; a curva por camada depende do motor e do material.</p></div>
@@ -329,14 +334,21 @@ export function mountFeature(host = {}) {
     catch { content.querySelector("[data-save-state]").textContent = "Não foi possível salvar o rascunho"; }
   }
 
+  function selectedEngineProfile(kind) {
+    const catalog = engineStatus.profiles?.[kind]?.catalog;
+    if (!Array.isArray(catalog) || !catalog.length) return null;
+    const key = kind === "machine" ? "printerProfileId" : `${kind}ProfileId`;
+    return catalog.find(item => item.id === draft[key]) || catalog[0];
+  }
+
   function profile() {
-    const machine = engineStatus.profiles?.machine;
+    const machine = selectedEngineProfile("machine");
     return machine?.bedSizeMm?.length === 2 && Number.isFinite(machine.heightMm)
       ? { name: machine.name, bed: [...machine.bedSizeMm, machine.heightMm], reference: false }
       : printers[draft.printer] || printers.generic;
   }
   function activeMaterial() {
-    const filament = engineStatus.profiles?.filament;
+    const filament = selectedEngineProfile("filament");
     if (!filament) return materials[draft.filament];
     const range = values => Array.isArray(values) && values.length
       ? `${Math.min(...values)}–${Math.max(...values)} °C`
@@ -579,7 +591,7 @@ export function mountFeature(host = {}) {
     if (engineStatus.available) {
       title.textContent = "Motor conectado";
       const loaded = engineStatus.profiles
-        ? `Perfis: ${engineStatus.profiles.machine.name} · ${engineStatus.profiles.process.name} · ${engineStatus.profiles.filament.name}.`
+        ? `Perfis selecionados: ${selectedEngineProfile("machine")?.name || "máquina"} · ${selectedEngineProfile("process")?.name || "processo"} · ${selectedEngineProfile("filament")?.name || "filamento"}.`
         : "Os perfis ainda não foram confirmados.";
       message.textContent = blockReason || `${engineStatus.engine} ${engineStatus.version} está pronto. ${loaded} As transformações são aplicadas à malha local; o arquivo original não sai do navegador.`;
     } else {
@@ -601,22 +613,46 @@ export function mountFeature(host = {}) {
 
   function syncProfileControls() {
     const machineSelect = content.querySelector("[data-printer]");
+    const processSelect = content.querySelector("[data-process-profile]");
     const filamentSelect = content.querySelector("[data-filament]");
-    const machine = engineStatus.profiles?.machine;
-    const filament = engineStatus.profiles?.filament;
-    if (machine && filament) {
-      machineSelect.replaceChildren(new Option(`${machine.name} · OrcaSlicer`, "configured"));
-      filamentSelect.replaceChildren(new Option(`${filament.name} · OrcaSlicer`, "configured"));
-      machineSelect.value = "configured"; filamentSelect.value = "configured";
-      machineSelect.disabled = true; filamentSelect.disabled = true;
-      content.querySelector("[data-profile-heading]").textContent = "Perfis locais do OrcaSlicer";
-      content.querySelector("[data-profile-disclaimer]").lastElementChild.textContent = "Perfis JSON locais. O OrcaSlicer verifica a compatibilidade ao iniciar o fatiamento.";
-    } else {
-      machineSelect.disabled = false; filamentSelect.disabled = false;
-      machineSelect.value = draft.printer; filamentSelect.value = draft.filament;
-      content.querySelector("[data-profile-heading]").textContent = "Perfil de referência";
-      content.querySelector("[data-profile-disclaimer]").lastElementChild.textContent = "Dimensões de referência para layout. Não são perfis validados pelo fabricante.";
-    }
+    const catalogs = engineStatus.profiles || {};
+    const machineCatalog = catalogs.machine?.catalog || [];
+    const processCatalog = catalogs.process?.catalog || [];
+    const filamentCatalog = catalogs.filament?.catalog || [];
+    const fillCatalog = (select, kind, catalog, fallbackOptions = []) => {
+      const key = kind === "machine" ? "printerProfileId" : `${kind}ProfileId`;
+      if (catalog.length) {
+        const selected = catalog.some(item => item.id === draft[key]) ? draft[key] : catalog[0].id;
+        draft[key] = selected;
+        const signature = catalog.map(item => `${item.id}:${item.name}`).join("|");
+        if (select.dataset.profileCatalog !== signature) {
+          select.replaceChildren(...catalog.map(item => new Option(`${item.name} · ${item.id.slice(-6)}`, item.id)));
+          select.dataset.profileCatalog = signature;
+        }
+        select.value = selected;
+        select.disabled = false;
+        return;
+      }
+      if (fallbackOptions.length) {
+        select.dataset.profileCatalog = "";
+        select.disabled = false;
+        select.value = kind === "machine" ? draft.printer : draft.filament;
+      } else {
+        if (select.dataset.profileCatalog !== "unavailable") {
+          select.replaceChildren(new Option("Configure perfis JSON no host", ""));
+          select.dataset.profileCatalog = "unavailable";
+        }
+        select.disabled = true;
+      }
+    };
+    fillCatalog(machineSelect, "machine", machineCatalog, true);
+    fillCatalog(processSelect, "process", processCatalog);
+    fillCatalog(filamentSelect, "filament", filamentCatalog, true);
+    const configured = machineCatalog.length && processCatalog.length && filamentCatalog.length;
+    content.querySelector("[data-profile-heading]").textContent = configured ? "Catálogos locais do OrcaSlicer" : "Perfis de referência";
+    content.querySelector("[data-profile-disclaimer]").lastElementChild.textContent = configured
+      ? `${machineCatalog.length} máquina(s), ${processCatalog.length} processo(s) e ${filamentCatalog.length} filamento(s). Os perfis são carregados pelo host local.`
+      : "Dimensões e materiais abaixo são referências de interface, não perfis validados pelo fabricante.";
   }
 
   function updateAiUi() {
@@ -732,6 +768,7 @@ export function mountFeature(host = {}) {
 
   function aiContext() {
     const machine = profile(), material = activeMaterial();
+    const machineProfile = selectedEngineProfile("machine"), processProfile = selectedEngineProfile("process"), filamentProfile = selectedEngineProfile("filament");
     const settings = activeSettings(), selectedProcess = activeProcess();
     const project = {
       model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm: scaledDimensions().map(value => Number(value.toFixed(2))), triangleCount: model.triangleCount } : null,
@@ -745,8 +782,9 @@ export function mountFeature(host = {}) {
         topologyVerified: model.geometryDiagnostics.topologyVerified,
         watertightness: model.geometryDiagnostics.watertightness,
       } : null,
-      printerProfile: { id: draft.printer, name: machine.name, bedMm: machine.bed, isReference: !engineStatus.profiles?.machine, provenance: engineStatus.profiles?.machine?.source || "referência visual do protótipo" },
-      materialProfile: { id: draft.filament, name: material.name, nozzleRange: material.nozzle, bedRange: material.bed, isReference: !engineStatus.profiles?.filament, provenance: engineStatus.profiles?.filament?.source || "faixa de referência do protótipo" },
+      printerProfile: { id: machineProfile?.id || draft.printer, name: machine.name, bedMm: machine.bed, isReference: !machineProfile, provenance: machineProfile?.source || "referência visual do protótipo" },
+      processProfile: { id: processProfile?.id || null, name: processProfile?.name || null, baseLayerHeightMm: processProfile?.layerHeightMm ?? null, baseWallLoops: processProfile?.wallLoops ?? null, provenance: processProfile?.source || null },
+      materialProfile: { id: filamentProfile?.id || draft.filament, name: material.name, nozzleRange: material.nozzle, bedRange: material.bed, isReference: !filamentProfile, provenance: filamentProfile?.source || "faixa de referência do protótipo" },
       selectedObject: selectedObjectId ? {
         id: selectedObjectId, name: model?.objects.find(object => object.id === selectedObjectId)?.name || null,
         sourceDimensionsMm: model?.objects.find(object => object.id === selectedObjectId)?.bounds?.dimensions?.map(value => Number((value * (model.format === "STL" ? unitScales[draft.stlUnit] : 1)).toFixed(2))) || null,
@@ -764,7 +802,15 @@ export function mountFeature(host = {}) {
         engine: engineStatus.engine,
         version: engineStatus.version,
         processScope: engineStatus.processScope || null,
-        configuredProfiles: engineStatus.profiles ? { machine: engineStatus.profiles.machine.name, process: engineStatus.profiles.process.name, filament: engineStatus.profiles.filament.name } : null,
+        configuredProfiles: engineStatus.profiles ? {
+          selected: { machine: machineProfile?.name || null, process: processProfile?.name || null, filament: filamentProfile?.name || null },
+          catalogCounts: Object.fromEntries(["machine", "process", "filament"].map(kind => [kind, engineStatus.profiles[kind]?.catalog?.length || 0])),
+          catalogs: {
+            machines: (engineStatus.profiles.machine?.catalog || []).map(({ id, name, bedSizeMm, heightMm, nozzleDiameterMm, printerModel }) => ({ id, name, bedSizeMm, heightMm, nozzleDiameterMm, printerModel })),
+            processes: (engineStatus.profiles.process?.catalog || []).map(({ id, name, layerHeightMm, wallLoops }) => ({ id, name, layerHeightMm, wallLoops })),
+            filaments: (engineStatus.profiles.filament?.catalog || []).map(({ id, name, type, nozzleTemperatureC, bedTemperatureC }) => ({ id, name, type, nozzleTemperatureC, bedTemperatureC })),
+          },
+        } : null,
       },
       latestSlice: sliced ? {
         engine: sliced.engine, version: sliced.engineVersion, printerProfile: sliced.printerProfile,
@@ -772,7 +818,7 @@ export function mountFeature(host = {}) {
         stats: sliced.stats, diagnostics: sliced.diagnostics, gcodeBytes: sliced.gcode.size,
         previewAvailable: Boolean(preview), completedAt: sliced.completedAt,
       } : null,
-      limits: { profilesAreReferences: !engineStatus.profiles, engineConnected: engineStatus.available, sourceGeometrySent: false, gcodeSent: false },
+      limits: { profilesAreReferences: !machineProfile || !processProfile || !filamentProfile, engineConnected: engineStatus.available, sourceGeometrySent: false, gcodeSent: false },
     };
     const context = [{ id: "slicer-project-metadata", scope: "document", text: JSON.stringify(project), provenance: "ordax-apps:3d-printing:fatiamento-3d:local-metadata" }];
     if (aiHistory.length) {
@@ -852,7 +898,7 @@ export function mountFeature(host = {}) {
 
   function updateMaterial() {
     const material = activeMaterial();
-    content.querySelector("[data-material-summary]").textContent = engineStatus.profiles?.filament
+    content.querySelector("[data-material-summary]").textContent = selectedEngineProfile("filament")
       ? `${material.name} · bico ${material.nozzle} · mesa ${material.bed} · perfil ${material.profileName}`
       : `Bico ${material.nozzle} · mesa ${material.bed} · faixa de referência`;
   }
@@ -927,8 +973,8 @@ export function mountFeature(host = {}) {
   function updateInputs() {
     const settings = activeSettings();
     syncProfileControls();
-    if (!engineStatus.profiles?.machine) content.querySelector("[data-printer]").value = draft.printer;
-    if (!engineStatus.profiles?.filament) content.querySelector("[data-filament]").value = draft.filament;
+    if (!selectedEngineProfile("machine")) content.querySelector("[data-printer]").value = draft.printer;
+    if (!selectedEngineProfile("filament")) content.querySelector("[data-filament]").value = draft.filament;
     content.querySelector("[data-quality]").value = settings.quality;
     content.querySelector("[data-layer-height]").value = String(settings.layerHeight);
     content.querySelector("[data-walls]").value = String(settings.walls);
@@ -980,14 +1026,17 @@ export function mountFeature(host = {}) {
     };
     const nextDraft = safeDraft({
       ...draft,
-      printer: engineStatus.profiles?.machine ? draft.printer : content.querySelector("[data-printer]").value,
-      filament: engineStatus.profiles?.filament ? draft.filament : content.querySelector("[data-filament]").value,
+      printer: selectedEngineProfile("machine") ? draft.printer : content.querySelector("[data-printer]").value,
+      filament: selectedEngineProfile("filament") ? draft.filament : content.querySelector("[data-filament]").value,
+      printerProfileId: engineStatus.profiles?.machine?.catalog?.length ? content.querySelector("[data-printer]").value : draft.printerProfileId,
+      processProfileId: engineStatus.profiles?.process?.catalog?.length ? content.querySelector("[data-process-profile]").value : draft.processProfileId,
+      filamentProfileId: engineStatus.profiles?.filament?.catalog?.length ? content.querySelector("[data-filament]").value : draft.filamentProfileId,
       ...nextSettings,
       processes,
       rotation: numberValue("[data-rotation]"), scale: numberValue("[data-scale]") / 100,
       stlUnit: content.querySelector("[data-unit]").value, objectTransforms,
     });
-    const changed = ["printer", "filament", "rotation", "scale", "stlUnit"].some(key => nextDraft[key] !== draft[key])
+    const changed = ["printer", "filament", "printerProfileId", "processProfileId", "filamentProfileId", "rotation", "scale", "stlUnit"].some(key => nextDraft[key] !== draft[key])
       || (selectedObjectId && JSON.stringify(objectTransform(nextDraft, selectedObjectId)) !== JSON.stringify(previousObjectTransform))
       || Object.keys(nextSettings).some(key => nextDraft.processes.find(process => process.id === draft.selectedProcessId)?.settings[key] !== previousSettings[key]);
     draft = nextDraft;
@@ -1109,8 +1158,8 @@ export function mountFeature(host = {}) {
           id: process.id, name: process.name, objectIds: [...process.objectIds],
           settings: { quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls, infill: process.settings.infill, supports: process.settings.supports, fanSpeedPercent: process.settings.fan },
         })),
-        printerProfileId: requestDraft.printer,
-        filamentProfileId: requestDraft.filament,
+        profileSelectionSchema: PROFILE_SELECTION_SCHEMA,
+        profileIds: { machine: requestDraft.printerProfileId, process: requestDraft.processProfileId, filament: requestDraft.filamentProfileId },
       }, { signal: controller.signal, onProgress: progress => {
         const percent = Math.max(0, Math.min(100, Number(progress?.percent) || 0));
         content.querySelector("[data-engine-message]").textContent = `Fatiamento em andamento · ${Math.round(percent)}%${progress?.stage ? ` · ${String(progress.stage)}` : ""}`;
@@ -1184,6 +1233,7 @@ export function mountFeature(host = {}) {
   stage.addEventListener("dragleave", event => { if (!stage.contains(event.relatedTarget)) stage.classList.remove("is-over"); });
   stage.addEventListener("drop", event => { event.preventDefault(); stage.classList.remove("is-over"); openFile([...event.dataTransfer.files].find(file => /\.(?:stl|3mf)$/i.test(file.name))); });
   content.querySelector("[data-printer]").addEventListener("change", updateDraftFromInputs);
+  content.querySelector("[data-process-profile]").addEventListener("change", updateDraftFromInputs);
   content.querySelector("[data-filament]").addEventListener("change", updateDraftFromInputs);
   content.querySelector("[data-quality]").addEventListener("change", () => {
     const quality = content.querySelector("[data-quality]").value;
@@ -1254,7 +1304,7 @@ export function mountFeature(host = {}) {
       if (typeof unsubscribe === "function") unsubscribeIntelligence = unsubscribe;
     } catch { /* A falha na assinatura não deve impedir o restante do app. */ }
   }
-  readSlicerStatus(host.slicer).then(status => { engineStatus = status; updateInputs(); updateEngineUi(); })
+  readSlicerStatus(host.slicer).then(status => { engineStatus = status; updateInputs(); persist(); updateEngineUi(); })
     .catch(error => { engineStatus = { available: false, engine: "OrcaSlicer", version: null, reason: error?.message || "O host local não respondeu ao status do OrcaSlicer.", profiles: null }; updateEngineUi(); });
   host.onDestroy?.(() => { controller?.abort(); importSequence++; analysisController?.abort(); aiController?.abort(); unsubscribeIntelligence?.(); viewer?.dispose(); });
   return shell;

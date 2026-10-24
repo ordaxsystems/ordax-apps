@@ -1,15 +1,19 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, open, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, extname, join, parse, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 
 const ENGINE_NAME = "OrcaSlicer";
-const STATUS_SCHEMA = "ordax.slicer-engine-status/1";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/1";
+const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/2";
+const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
+const MAX_PROFILES_PER_KIND = 32;
+const MAX_PROFILE_CATALOG_BYTES = 16 * 1024 * 1024;
 const MAX_MESH_BYTES = 16 * 1024 * 1024;
 const MAX_TRIANGLES = 300_000;
 const MAX_GCODE_BYTES = 512 * 1024 * 1024;
@@ -55,12 +59,13 @@ function parseBedShape(profile) {
 }
 
 function parseProfile(raw, kind, fallbackName) {
+  const label = ({ machine: "máquina", process: "processo", filament: "filamento" })[kind] || kind;
   let profile;
   try { profile = JSON.parse(raw.toString("utf8")); }
-  catch { throw publicError(`O perfil ${kind} não contém JSON válido.`, 503); }
-  if (!profile || typeof profile !== "object" || Array.isArray(profile)) throw publicError(`O perfil ${kind} tem um formato inválido.`, 503);
+  catch { throw publicError(`O perfil de ${label} não contém JSON válido.`, 503); }
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) throw publicError(`O perfil de ${label} tem um formato inválido.`, 503);
   const name = displayName(profile, fallbackName);
-  if (kind === "máquina") {
+  if (kind === "machine") {
     const technology = first(profile.printer_technology);
     if (technology && !/^(?:fff|fdm)$/i.test(String(technology))) throw publicError("Esta integração inicial aceita apenas perfis FDM/FFF.", 503);
     const bedSizeMm = parseBedShape(profile);
@@ -71,9 +76,9 @@ function parseProfile(raw, kind, fallbackName) {
     const nozzle = first(profile.nozzle_diameter);
     return { name, bedSizeMm, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null, source: "JSON local configurado no host" };
   }
-  if (kind === "processo") {
+  if (kind === "process") {
     if (!profile.layer_height && !profile.layer_height_0) throw publicError("O perfil de processo não contém altura de camada.", 503);
-    return { name, layerHeightMm: numeric(profile.layer_height), wallLoops: numeric(profile.wall_loops), source: "JSON local configurado no host" };
+    return { name, layerHeightMm: numeric(profile.layer_height ?? profile.layer_height_0), wallLoops: numeric(profile.wall_loops), source: "JSON local configurado no host" };
   }
   const temperatures = [numeric(profile.nozzle_temperature_range_low ?? profile.nozzle_temperature), numeric(profile.nozzle_temperature_range_high ?? profile.nozzle_temperature)];
   const bedTemperatures = [numeric(profile.cool_plate_temp ?? profile.textured_plate_temp ?? profile.bed_temperature), numeric(profile.cool_plate_temp_initial_layer ?? profile.textured_plate_temp_initial_layer ?? profile.bed_temperature_initial_layer)];
@@ -87,9 +92,7 @@ function parseProfile(raw, kind, fallbackName) {
   };
 }
 
-async function readConfiguredProfile(envKey, kind) {
-  const configuredPath = process.env[envKey]?.trim();
-  if (!configuredPath) throw publicError(`Configure o caminho do perfil de ${kind} no host local.`, 503);
+async function readConfiguredProfile(configuredPath, kind, index) {
   let path;
   try { path = await realpath(resolve(configuredPath)); }
   catch { throw publicError(`O arquivo configurado para o perfil de ${kind} não foi encontrado.`, 503); }
@@ -102,7 +105,52 @@ async function readConfiguredProfile(envKey, kind) {
   let contents;
   try { contents = await readFile(path); }
   catch { throw publicError(`Não foi possível ler o perfil de ${kind}.`, 503); }
-  return { contents, parsed: parseProfile(contents, kind, parse(path).name || `Perfil de ${kind}`) };
+  const id = `orca-${kind}-${createHash("sha256").update(kind).update("\0").update(contents).digest("hex").slice(0, 24)}`;
+  const label = ({ machine: "Máquina", process: "Processo", filament: "Filamento" })[kind] || "Perfil";
+  return { id, contents, parsed: parseProfile(contents, kind, `${label} ${String(index + 1).padStart(2, "0")}`) };
+}
+
+function configuredProfilePaths(catalogKey, legacyKey, kind) {
+  const encoded = process.env[catalogKey]?.trim();
+  let paths;
+  if (encoded) {
+    try { paths = JSON.parse(encoded); }
+    catch { throw publicError(`A lista local de perfis de ${kind} não contém JSON válido.`, 503); }
+  } else {
+    const legacyPath = process.env[legacyKey]?.trim();
+    paths = legacyPath ? [legacyPath] : [];
+  }
+  if (!Array.isArray(paths) || paths.length < 1 || paths.length > MAX_PROFILES_PER_KIND || paths.some(path => typeof path !== "string" || !path.trim())) {
+    throw publicError(`Configure de 1 a ${MAX_PROFILES_PER_KIND} caminhos de perfil de ${kind} no host local.`, 503);
+  }
+  return [...new Set(paths.map(path => path.trim()))];
+}
+
+async function readConfiguredProfiles(catalogKey, legacyKey, kind) {
+  const paths = configuredProfilePaths(catalogKey, legacyKey, kind);
+  const profiles = await Promise.all(paths.map((path, index) => readConfiguredProfile(path, kind, index)));
+  const totalBytes = profiles.reduce((sum, profile) => sum + profile.contents.length, 0);
+  if (totalBytes > MAX_PROFILE_CATALOG_BYTES) throw publicError(`O catálogo de perfis de ${kind} excede o limite total de 16 MB.`, 503);
+  return [...new Map(profiles.map(profile => [profile.id, profile])).values()];
+}
+
+function publicProfileCatalog(profiles) {
+  return { catalog: profiles.map(({ id, parsed }) => ({ id, ...parsed })) };
+}
+
+function selectConfiguredProfiles(configuration, manifest) {
+  if (manifest?.profileSelectionSchema !== PROFILE_SELECTION_SCHEMA) throw publicError("A solicitação não corresponde ao contrato de seleção de perfis.");
+  const selections = manifest.profileIds;
+  if (!selections || typeof selections !== "object" || Array.isArray(selections)) throw publicError("Selecione os perfis de máquina, processo e filamento antes de fatiar.");
+  const selected = {};
+  for (const kind of ["machine", "process", "filament"]) {
+    const id = selections[kind];
+    if (typeof id !== "string" || !new RegExp(`^orca-${kind}-[a-f0-9]{24}$`).test(id)) throw publicError(`O perfil selecionado de ${kind} é inválido.`);
+    const profile = configuration.profileFiles[kind].find(entry => entry.id === id);
+    if (!profile) throw publicError(`O perfil selecionado de ${kind} não pertence ao catálogo carregado neste host. Atualize os perfis e tente novamente.`, 422);
+    selected[kind] = profile;
+  }
+  return selected;
 }
 
 function safeChildEnvironment() {
@@ -281,12 +329,12 @@ async function loadConfiguration() {
     if (!metadata.isFile()) throw new Error("not a file");
   } catch { return { available: false, version: null, reason: "O executável configurado do OrcaSlicer não foi encontrado.", profiles: null }; }
 
-  let machine, processProfile, filament;
+  let machines, processProfiles, filaments;
   try {
-    [machine, processProfile, filament] = await Promise.all([
-      readConfiguredProfile("ORDAX_ORCA_MACHINE_PROFILE", "máquina"),
-      readConfiguredProfile("ORDAX_ORCA_PROCESS_PROFILE", "processo"),
-      readConfiguredProfile("ORDAX_ORCA_FILAMENT_PROFILE", "filamento"),
+    [machines, processProfiles, filaments] = await Promise.all([
+      readConfiguredProfiles("ORDAX_ORCA_MACHINE_PROFILES", "ORDAX_ORCA_MACHINE_PROFILE", "machine"),
+      readConfiguredProfiles("ORDAX_ORCA_PROCESS_PROFILES", "ORDAX_ORCA_PROCESS_PROFILE", "process"),
+      readConfiguredProfiles("ORDAX_ORCA_FILAMENT_PROFILES", "ORDAX_ORCA_FILAMENT_PROFILE", "filament"),
     ]);
   } catch (error) {
     return { executable, available: false, version: null, reason: error.message.slice(0, 300), profiles: null };
@@ -296,11 +344,11 @@ async function loadConfiguration() {
   const version = readVersion(`${probe.stdout}\n${probe.stderr}`);
   if (!version) return { executable, available: false, version: null, reason: "O executável não respondeu como uma versão CLI reconhecível do OrcaSlicer.", profiles: null };
   const profiles = {
-    machine: machine.parsed,
-    process: processProfile.parsed,
-    filament: filament.parsed,
+    machine: publicProfileCatalog(machines),
+    process: publicProfileCatalog(processProfiles),
+    filament: publicProfileCatalog(filaments),
   };
-  return { executable, available: true, version, reason: "", profiles, machineBytes: machine.contents, processBytes: processProfile.contents, filamentBytes: filament.contents };
+  return { executable, available: true, version, reason: "", profiles, profileFiles: { machine: machines, process: processProfiles, filament: filaments } };
 }
 
 async function configuration() {
@@ -345,6 +393,7 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
     if (!(uploadedMesh instanceof Blob)) throw publicError("O trabalho não inclui a malha STL preparada.");
     if (uploadedMesh.size > MAX_MESH_BYTES) throw publicError("A malha excede o limite de 16 MB do host.", 413);
     const meshBytes = Buffer.from(await uploadedMesh.arrayBuffer());
+    const selectedProfiles = selectConfiguredProfiles(config, manifest);
     const validated = validateManifest(manifest, meshBytes);
     temporaryDirectory = await mkdtemp(join(tmpdir(), "ordax-orca-slice-"));
     const outputDirectory = join(temporaryDirectory, "output");
@@ -358,9 +407,9 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
     const logPath = join(temporaryDirectory, "orca.log");
     await Promise.all([
       writeFile(inputPath, meshBytes, { flag: "wx" }),
-      writeFile(machinePath, config.machineBytes, { flag: "wx" }),
-      writeFile(processPath, config.processBytes, { flag: "wx" }),
-      writeFile(filamentPath, config.filamentBytes, { flag: "wx" }),
+      writeFile(machinePath, selectedProfiles.machine.contents, { flag: "wx" }),
+      writeFile(processPath, selectedProfiles.process.contents, { flag: "wx" }),
+      writeFile(filamentPath, selectedProfiles.filament.contents, { flag: "wx" }),
     ]);
 
     const settings = validated.settings;
@@ -405,9 +454,9 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
       engine: ENGINE_NAME,
       engineVersion: config.version,
       filename,
-      printerProfile: config.profiles.machine.name,
-      processProfile: config.profiles.process.name,
-      filamentProfile: config.profiles.filament.name,
+      printerProfile: selectedProfiles.machine.parsed.name,
+      processProfile: selectedProfiles.process.parsed.name,
+      filamentProfile: selectedProfiles.filament.parsed.name,
       stats,
       diagnostics: stats ? [] : ["O motor gerou G-code, mas não forneceu estatísticas JSON legíveis."],
     };
