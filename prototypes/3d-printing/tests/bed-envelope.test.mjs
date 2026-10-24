@@ -56,12 +56,14 @@ test("avalia cada objeto separadamente sem preencher o vão entre as peças", ()
   ], space), false);
 });
 
-test("estima margem de brim automático sem depender da largura fixa do perfil", () => {
-  assert.equal(estimateBrimMarginMm({ brimType: "auto_brim", brimWidthMm: 0, brimGapMm: 0.2 }), 18.2);
+test("estima somente brim externo de largura conhecida e não inventa margem para modos automáticos", () => {
+  assert.equal(estimateBrimMarginMm({ brimType: "auto_brim", brimWidthMm: 18, brimGapMm: 0.2 }), null);
+  assert.equal(estimateBrimMarginMm({ brimType: "brim_ears", brimWidthMm: 5, brimGapMm: 0.2 }), null);
+  assert.equal(estimateBrimMarginMm({ brimType: "leading_edge_only", brimWidthMm: 5, brimGapMm: 0.2 }), null);
   assert.equal(estimateBrimMarginMm({ brimType: "outer_only", brimWidthMm: 5, brimGapMm: 0.2 }), 5.2);
+  assert.equal(estimateBrimMarginMm({ brimType: "outer_only", brimWidthMm: 0, brimGapMm: 0.2 }), 0);
   assert.equal(estimateBrimMarginMm({ brimType: "inner_only", brimWidthMm: 5, brimGapMm: 0.2 }), 0);
   assert.equal(estimateBrimMarginMm({ brimType: "no_brim", brimWidthMm: 5, brimGapMm: 0.2 }), 0);
-  assert.equal(estimateBrimMarginMm({ brimType: "brim_ears", brimWidthMm: 0, brimGapMm: 0.2 }), null);
   assert.equal(estimateBrimMarginMm({ brimType: "painted", brimWidthMm: 5, brimGapMm: 0.2 }), null);
 });
 
@@ -95,6 +97,17 @@ test("produz estado de triagem bounded para a IA e diferencia perfil real de ref
   const referenceFit = assessModelEnvelope([objects[0]], { bedSizeMm: [200, 200], heightMm: 100, reference: true });
   assert.equal(referenceFit.status, "within-reference-envelope");
   assert.equal(assessModelEnvelope([], { bedSizeMm: [200, 200], heightMm: 100 }).status, "not-assessed");
+});
+
+test("não declara encaixe quando a largura automática do brim depende do motor", () => {
+  const fit = assessModelEnvelope([{ min: [-10, -10, 0], max: [10, 10, 20] }], {
+    bedSizeMm: [200, 200],
+    heightMm: 100,
+    xyMarginMm: null,
+  });
+  assert.equal(fit.status, "not-assessed");
+  assert.equal(fit.xyMarginMm, null);
+  assert.match(fit.reason, /depende do OrcaSlicer/);
 });
 
 test("mantém a mesa retangular para perfis sem contorno e bloqueia dados de exclusão malformados", () => {
