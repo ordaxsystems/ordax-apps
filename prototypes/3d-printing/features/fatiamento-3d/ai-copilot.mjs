@@ -2,6 +2,7 @@ import { assessSlicerProfileCompatibility, PROFILE_COMPATIBILITY_SCHEMA } from "
 import { infillPatternOptions, isSupportedInfillPattern } from "../../shared/infill-patterns.mjs";
 import { isSupportedSeamPosition, seamPositionOptions } from "../../shared/seam-positions.mjs";
 import { isNozzleTemperatureInRange, nozzleTemperatureBoundsC, nozzleTemperatureLimits } from "../../shared/nozzle-temperatures.mjs";
+import { isSupportedBedType } from "../../shared/bed-types.mjs";
 
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
@@ -95,6 +96,9 @@ function profileValues(kind, profile) {
     heightMm: profileNumber(profile.heightMm),
     nozzleDiameterMm: profileNumber(profile.nozzleDiameterMm),
     nozzleMaxTemperatureC: profileNumber(profile.nozzleMaxTemperatureC),
+    supportMultiBedTypes: typeof profile.supportMultiBedTypes === "boolean" ? profile.supportMultiBedTypes : null,
+    defaultBedType: isSupportedBedType(profile.defaultBedType) ? profile.defaultBedType : null,
+    unsupportedBedTypes: Array.isArray(profile.unsupportedBedTypes) ? profile.unsupportedBedTypes.filter(isSupportedBedType).slice(0, 6) : [],
   };
   if (kind === "process") return {
     ...common,
@@ -119,8 +123,17 @@ function profileValues(kind, profile) {
       supportOnBuildPlateOnly: typeof profile.processSettings.supportOnBuildPlateOnly === "boolean" ? profile.processSettings.supportOnBuildPlateOnly : null,
       fanMinSpeedPercent: profileNumber(profile.processSettings.fanMinSpeedPercent),
       fanMaxSpeedPercent: profileNumber(profile.processSettings.fanMaxSpeedPercent),
+      defaultBedType: isSupportedBedType(profile.processSettings.defaultBedType) ? profile.processSettings.defaultBedType : null,
     } : null,
   };
+  const bedTemperatures = profile.bedTemperaturesByType && typeof profile.bedTemperaturesByType === "object" && !Array.isArray(profile.bedTemperaturesByType)
+    ? Object.fromEntries(Object.entries(profile.bedTemperaturesByType).slice(0, 6).flatMap(([bedType, values]) => {
+      if (!isSupportedBedType(bedType) || !values || typeof values !== "object") return [];
+      const otherLayerC = profileNumber(values.otherLayerC), initialLayerC = profileNumber(values.initialLayerC);
+      if (![otherLayerC, initialLayerC].every(value => Number.isFinite(value) && value > 0 && value <= 150)) return [];
+      return [[bedType, { otherLayerC, initialLayerC }]];
+    }))
+    : {};
   return {
     ...common,
     type: String(profile.type || "").slice(0, 40) || null,
@@ -129,6 +142,7 @@ function profileValues(kind, profile) {
     nozzleTemperatureTargetC: profileNumber(profile.nozzleTemperatureTargetC),
     nozzleTemperatureInitialLayerC: profileNumber(profile.nozzleTemperatureInitialLayerC),
     bedTemperatureC: Array.isArray(profile.bedTemperatureC) ? profile.bedTemperatureC.slice(0, 4).map(profileNumber) : null,
+    bedTemperaturesByType: bedTemperatures,
   };
 }
 
