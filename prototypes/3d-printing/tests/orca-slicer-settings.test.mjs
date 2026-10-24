@@ -65,6 +65,15 @@ test("mapeia a posição da costura para o Orca somente quando há override expl
   }
 });
 
+test("mapeia tipo de mesa somente quando o override é compatível com o contrato", () => {
+  const args = buildOrcaSettingArguments({ ...settings, bedType: "Textured PEI Plate" });
+  const index = args.indexOf("--curr-bed-type");
+  assert.notEqual(index, -1);
+  assert.equal(args[index + 1], "Textured PEI Plate");
+  assert.equal(buildOrcaSettingArguments(settings).includes("--curr-bed-type"), false);
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, bedType: "custom-bed-option" }), /configurações solicitadas estão fora dos limites/);
+});
+
 test("mapeia temperaturas do bico sem alterar o perfil quando estão herdadas", () => {
   const inherited = buildOrcaSettingArguments(settings);
   assert.equal(inherited.some(argument => argument.startsWith("--nozzle-temperature")), false);
