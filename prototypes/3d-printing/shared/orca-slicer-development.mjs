@@ -335,6 +335,7 @@ function publicStatus(configuration) {
     reason: configuration.reason,
     busy: slicing,
     processScope: "uniform",
+    executionTarget: "device",
     profiles: configuration.profiles ? Object.freeze(configuration.profiles) : null,
   });
 }

@@ -3,6 +3,66 @@ const PROCESS_SCHEMA = "ordax.slicer-processes/3";
 const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const PROFILE_KINDS = Object.freeze(["machine", "process", "filament"]);
+const EXECUTION_TARGETS = new Set(["device", "server"]);
+
+function executionTargetLabel(status, executionTarget) {
+  if (executionTarget === "device") return "Este dispositivo";
+  if (typeof status?.executionTargetLabel !== "string") return null;
+  const label = status.executionTargetLabel.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 120);
+  return label || null;
+}
+
+function localOutputFilename(value) {
+  const leaf = String(value || "ordax-print").split(/[\\/]/).pop();
+  const stem = leaf.replace(/\.[^.]+$/, "").replace(/[^\p{L}\p{N}._ -]/gu, "_").trim().slice(0, 120);
+  return `${stem || "ordax-print"}.gcode`;
+}
+
+function publicProcessSettings(settings) {
+  return {
+    quality: settings.quality,
+    layerHeight: settings.layerHeight,
+    walls: settings.walls,
+    infill: settings.infill,
+    supports: settings.supports,
+    supportType: settings.supportType,
+    supportThresholdAngle: settings.supportThresholdAngle,
+    supportOnBuildPlateOnly: settings.supportOnBuildPlateOnly,
+    fanMinSpeedPercent: settings.fanMinSpeedPercent,
+    fanMaxSpeedPercent: settings.fanMaxSpeedPercent,
+  };
+}
+
+function remoteSliceRequest(request) {
+  const objectIds = new Map(request.objects.map((object, index) => [object.id, `object-${index + 1}`]));
+  return {
+    filename: "ordax-print.stl",
+    format: "STL",
+    preparedModel: { file: request.preparedModel.file, triangleCount: request.preparedModel.triangleCount },
+    settings: publicProcessSettings(request.settings),
+    processesSchema: request.processesSchema,
+    objects: request.objects.map((object, index) => ({
+      id: `object-${index + 1}`,
+      sourceObjectId: `source-${index + 1}`,
+      buildItemIndex: index,
+      triangleCount: object.triangleCount,
+    })),
+    objectTransformsSchema: request.objectTransformsSchema,
+    objectTransforms: request.objectTransforms.map(transform => ({
+      objectId: objectIds.get(transform.objectId),
+      offsetMm: [...transform.offsetMm],
+      rotationDeg: [...transform.rotationDeg],
+      scale: transform.scale,
+    })),
+    processes: request.processes.map((process, index) => ({
+      id: `process-${index + 1}`,
+      objectIds: process.objectIds.map(objectId => objectIds.get(objectId)),
+      settings: publicProcessSettings(process.settings),
+    })),
+    profileSelectionSchema: request.profileSelectionSchema,
+    profileIds: Object.fromEntries(PROFILE_KINDS.map(kind => [kind, request.profileIds[kind]])),
+  };
+}
 
 function validProfileCatalogs(profiles) {
   if (!profiles || typeof profiles !== "object") return false;
@@ -65,16 +125,24 @@ function validateProcessAssignmentRequest(request) {
 
 export async function readSlicerStatus(port) {
   if (!port || typeof port.getStatus !== "function" || typeof port.slice !== "function") {
-    return Object.freeze({ available: false, engine: null, version: null, reason: "Este host ainda não conectou um motor de fatiamento." });
+    return Object.freeze({ available: false, engine: null, version: null, executionTarget: "unknown", reason: "Este host ainda não conectou um motor de fatiamento." });
   }
   try {
     const status = await port.getStatus();
+    const executionTarget = EXECUTION_TARGETS.has(status?.executionTarget) ? status.executionTarget : "unknown";
+    const targetLabel = executionTargetLabel(status, executionTarget);
     if (!status || status.available !== true || typeof status.engine !== "string" || typeof status.version !== "string" || !validProfileCatalogs(status.profiles)) {
-      return Object.freeze({ available: false, engine: status?.engine ?? null, version: status?.version ?? null, reason: String(status?.reason || "O motor não está pronto para receber um trabalho.") });
+      return Object.freeze({ available: false, engine: status?.engine ?? null, version: status?.version ?? null, executionTarget, executionTargetLabel: targetLabel, reason: String(status?.reason || "O motor não está pronto para receber um trabalho.") });
     }
-    return Object.freeze({ ...status, available: true, engine: status.engine, version: status.version, reason: "" });
+    if (executionTarget === "unknown") {
+      return Object.freeze({ available: false, engine: status.engine, version: status.version, executionTarget, executionTargetLabel: null, reason: "O host precisa informar se o motor executará neste dispositivo ou em um servidor web." });
+    }
+    if (executionTarget === "server" && !targetLabel) {
+      return Object.freeze({ available: false, engine: status.engine, version: status.version, executionTarget, executionTargetLabel: null, reason: "O host web precisa identificar o servidor de fatiamento antes de receber a malha." });
+    }
+    return Object.freeze({ ...status, available: true, engine: status.engine, version: status.version, executionTarget, executionTargetLabel: targetLabel, reason: "" });
   } catch (error) {
-    return Object.freeze({ available: false, engine: null, version: null, reason: `Não foi possível consultar o motor: ${error?.message || "falha de comunicação"}` });
+    return Object.freeze({ available: false, engine: null, version: null, executionTarget: "unknown", executionTargetLabel: null, reason: `Não foi possível consultar o motor: ${error?.message || "falha de comunicação"}` });
   }
 }
 
@@ -92,8 +160,13 @@ export async function requestRealSlice(port, request, { signal, onProgress } = {
   validateProcessAssignmentRequest(request);
   const status = await readSlicerStatus(port);
   if (!status.available) throw new Error(status.reason);
+  if (status.executionTarget === "server" && request.remoteExecutionApproved !== status.executionTargetLabel) {
+    throw new Error("Confirme o envio da malha preparada ao servidor web identificado pelo host antes de fatiar.");
+  }
   validateProfileSelection(request, status);
-  const result = await port.slice({ ...request, signal, onProgress });
+  const { remoteExecutionApproved: _remoteExecutionApproved, ...localRequest } = request;
+  const sliceRequest = status.executionTarget === "server" ? remoteSliceRequest(localRequest) : localRequest;
+  const result = await port.slice(sliceRequest, { signal, onProgress });
   if (signal?.aborted) throw new DOMException("Fatiamento cancelado.", "AbortError");
   if (!(result?.gcode instanceof Blob) || result.gcode.size <= 0 || result.gcode.size > MAX_GCODE_BYTES) {
     throw new Error("O motor não devolveu um G-code válido dentro do limite desta versão.");
@@ -107,7 +180,8 @@ export async function requestRealSlice(port, request, { signal, onProgress } = {
   }
   return Object.freeze({
     gcode: result.gcode,
-    filename: String(result.filename || "ordax-print.gcode"),
+    filename: status.executionTarget === "server" ? localOutputFilename(request.filename) : String(result.filename || localOutputFilename(request.filename)),
+    executionTarget: status.executionTarget,
     engine: status.engine,
     engineVersion: status.version,
     printerProfile: result.printerProfile ?? null,
@@ -122,12 +196,14 @@ export async function requestRealSlice(port, request, { signal, onProgress } = {
 
 export const slicerPortRequirements = Object.freeze({
   methods: ["getStatus", "slice"],
+  executionTargets: Object.freeze({ device: "O motor executa no dispositivo que hospeda o app.", server: "O motor executa em serviço web identificado por executionTargetLabel; cada job requer confirmação com esse rótulo." }),
   processSchema: PROCESS_SCHEMA,
   objectTransformsSchema: OBJECT_TRANSFORM_SCHEMA,
   profileSelectionSchema: PROFILE_SELECTION_SCHEMA,
   profileSelection: "Cada job escolhe um ID ativo de máquina, processo e filamento dentre os catálogos que o host expôs.",
   processAssignment: "Cada objeto deve ser atribuído a exatamente um processo; cada processo carrega suas próprias configurações. Em 3MF, objetos incluem sourceObjectId e buildItemIndex para que o motor relacione a atribuição aos itens da mesa do arquivo original.",
   objectTransforms: "Cada objeto tem uma transformação validada com offsetMm aplicado sobre a posição original do item, após a transformação global do projeto; rotationDeg usa XYZ e a escala uniforme gira em torno do centro geométrico da peça.",
+  remoteSubmission: "Somente a malha STL transformada, settings permitidos, IDs de objetos/processos remapeados para o job e IDs de perfil são enviados; a aprovação precisa corresponder ao rótulo atual do servidor.",
   result: ["gcode: Blob", "engine", "engineVersion"],
   maxGcodeBytes: MAX_GCODE_BYTES,
 });

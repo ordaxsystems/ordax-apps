@@ -249,8 +249,8 @@ export function mountFeature(host = {}) {
   let restoredSourceName = typeof savedDraft?.sourceName === "string" ? savedDraft.sourceName : null;
   let restoredSourceFingerprint = typeof savedDraft?.sourceFingerprint === "string" ? savedDraft.sourceFingerprint : null;
   let model = savedDraft?.sourceName ? null : createDemoModel();
-  let sliced = null, preview = null, previewLayer = 0, previewProgress = 1, controller = null, analysisController = null, revision = 0, importSequence = 0;
-  let engineStatus = { available: false, engine: null, version: null, reason: "Consultando o host…", profiles: null, processScope: null };
+  let sliced = null, preview = null, previewLayer = 0, previewProgress = 1, controller = null, remoteConsentPending = false, analysisController = null, revision = 0, importSequence = 0;
+  let engineStatus = { available: false, engine: null, version: null, executionTarget: "unknown", reason: "Consultando o host…", profiles: null, processScope: null };
   const intelligence = host.intelligence ?? null;
   let aiAvailability = intelligenceState(intelligence), aiController = null;
   const aiHistory = [];
@@ -276,6 +276,10 @@ export function mountFeature(host = {}) {
         </header>
 
         <div class="engine-notice" data-engine-notice role="status" aria-live="polite"><span class="notice-icon">i</span><div><strong data-engine-title>Motor de fatiamento não conectado</strong><p data-engine-message>Importe e prepare um modelo. A geração e a exportação serão habilitadas quando este host receber um motor e perfis compatíveis.</p></div></div>
+
+        <dialog class="remote-slice-dialog" data-remote-slice-dialog aria-labelledby="remote-slice-title">
+          <div class="remote-slice-dialog-body"><span class="panel-kicker">FATIAMENTO WEB</span><h2 id="remote-slice-title">Enviar a malha ao servidor?</h2><p>Destino informado pelo host: <strong class="remote-slice-target" data-remote-slice-target>Servidor não identificado</strong>.</p><p>A malha STL transformada, os parâmetros do trabalho e os perfis selecionados serão enviados para esse destino.</p><ul><li>O arquivo STL/3MF original e a conversa com a IA permanecem no navegador.</li><li>A retenção da malha e do G-code depende das regras do servidor.</li></ul><p>Confirme apenas se reconhece e confia nesse servidor.</p><div class="remote-slice-actions"><form method="dialog"><button class="button secondary" value="cancel">Cancelar</button></form><button class="button primary" type="button" data-remote-slice-approve>Enviar malha e fatiar</button></div></div>
+        </dialog>
 
         <div class="ai-scrim" data-ai-scrim hidden></div>
         <aside class="ai-drawer" id="ai-drawer" data-ai-drawer hidden role="dialog" aria-modal="true" aria-labelledby="ai-title">
@@ -622,11 +626,18 @@ export function mountFeature(host = {}) {
     chip.classList.toggle("is-ready", engineStatus.available);
     label.textContent = engineStatus.available ? `${engineStatus.engine} ${engineStatus.version}` : "Motor desconectado";
     if (engineStatus.available) {
-      title.textContent = "Motor conectado";
+      const runsOnDevice = engineStatus.executionTarget === "device";
+      title.textContent = runsOnDevice ? "Motor local conectado" : "Fatiamento web conectado";
+      const targetLabel = engineStatus.executionTargetLabel || (runsOnDevice ? "Este dispositivo" : "servidor não identificado");
+      const remoteTarget = content.querySelector("[data-remote-slice-target]");
+      if (remoteTarget) remoteTarget.textContent = targetLabel;
       const loaded = engineStatus.profiles
         ? `Perfis selecionados: ${selectedEngineProfile("machine")?.name || "máquina"} · ${selectedEngineProfile("process")?.name || "processo"} · ${selectedEngineProfile("filament")?.name || "filamento"}.`
         : "Os perfis ainda não foram confirmados.";
-      message.textContent = blockReason || `${engineStatus.engine} ${engineStatus.version} está pronto. ${loaded} As transformações são aplicadas à malha local; o arquivo original não sai do navegador.`;
+      const targetNote = runsOnDevice
+        ? "A malha preparada é processada neste dispositivo."
+        : `A malha preparada será enviada a ${targetLabel} após sua confirmação; a retenção depende das regras desse host.`;
+      message.textContent = blockReason || `${engineStatus.engine} ${engineStatus.version} está pronto. ${loaded} ${targetNote}`;
     } else {
       title.textContent = "Motor de fatiamento não conectado";
       message.textContent = engineStatus.reason || "Configure um motor e perfis no host. O botão de fatiar permanece bloqueado até essa validação.";
@@ -639,6 +650,7 @@ export function mountFeature(host = {}) {
 
   function sliceBlockReason() {
     if (!engineStatus.available) return engineStatus.reason || "Conecte um motor real de fatiamento ao host.";
+    if (!["device", "server"].includes(engineStatus.executionTarget)) return "O host precisa informar onde o motor será executado antes de habilitar o fatiamento.";
     if (!model?.originalFile || model.demo) return "Abra um arquivo STL ou 3MF real; a geometria de demonstração é somente visual.";
     if (!hasCompleteProcessAssignment(draft.processes, model.objects)) return "Atribua cada peça a exatamente um processo antes de fatiar.";
     return processCompatibilityReason() || modelFitReason();
@@ -901,6 +913,7 @@ export function mountFeature(host = {}) {
         connected: engineStatus.available,
         engine: engineStatus.engine,
         version: engineStatus.version,
+        executionTarget: engineStatus.executionTarget || "unknown",
         processScope: engineStatus.processScope || null,
         configuredProfiles: engineStatus.profiles ? {
           selected: { machine: machineProfile?.name || null, process: processProfile?.name || null, filament: filamentProfile?.name || null },
@@ -908,7 +921,7 @@ export function mountFeature(host = {}) {
         } : null,
       },
       latestSlice: sliced ? {
-        engine: sliced.engine, version: sliced.engineVersion, printerProfile: sliced.printerProfile,
+        engine: sliced.engine, version: sliced.engineVersion, executionTarget: sliced.executionTarget, printerProfile: sliced.printerProfile,
         processProfile: sliced.processProfile, filamentProfile: sliced.filamentProfile,
         stats: sliced.stats, diagnostics: sliced.diagnostics, gcodeBytes: sliced.gcode.size,
         previewAvailable: Boolean(preview), completedAt: sliced.completedAt,
@@ -1316,7 +1329,25 @@ export function mountFeature(host = {}) {
 
   async function runSlice() {
     const blockReason = sliceBlockReason();
-    if (blockReason || controller) { if (blockReason) toast(blockReason); return; }
+    if (blockReason || controller || remoteConsentPending) { if (blockReason) toast(blockReason); return; }
+    let approvedRemoteTarget = null;
+    if (engineStatus.executionTarget === "server") {
+      remoteConsentPending = true;
+      try {
+        const dialog = content.querySelector("[data-remote-slice-dialog]");
+        if (!dialog?.showModal) { toast("Este navegador não oferece confirmação segura para enviar a malha ao servidor."); return; }
+        const target = engineStatus.executionTargetLabel;
+        content.querySelector("[data-remote-slice-target]").textContent = target;
+        const approved = await new Promise(resolve => {
+          dialog.addEventListener("close", () => resolve(dialog.returnValue === "approve"), { once: true });
+          dialog.showModal();
+        });
+        if (!approved) return;
+        approvedRemoteTarget = target;
+      } finally {
+        remoteConsentPending = false;
+      }
+    }
     const sliceButton = content.querySelector("[data-slice]"), cancelButton = content.querySelector("[data-cancel]");
     controller = new AbortController();
     const requestRevision = revision;
@@ -1324,7 +1355,9 @@ export function mountFeature(host = {}) {
     const requestDraft = { ...draft };
     sliceButton.hidden = true; cancelButton.hidden = false;
     content.querySelector("[data-engine-title]").textContent = "Fatiando o modelo";
-    content.querySelector("[data-engine-message]").textContent = `Executando ${engineStatus.engine} ${engineStatus.version} com o perfil selecionado…`;
+    content.querySelector("[data-engine-message]").textContent = engineStatus.executionTarget === "server"
+      ? `Enviando a malha preparada ao servidor web para executar ${engineStatus.engine} ${engineStatus.version}…`
+      : `Executando ${engineStatus.engine} ${engineStatus.version} neste dispositivo com o perfil selecionado…`;
     try {
       const result = await requestRealSlice(host.slicer, {
         file: requestModel.originalFile,
@@ -1345,6 +1378,7 @@ export function mountFeature(host = {}) {
         })),
         profileSelectionSchema: PROFILE_SELECTION_SCHEMA,
         profileIds: { machine: requestDraft.printerProfileId, process: requestDraft.processProfileId, filament: requestDraft.filamentProfileId },
+        remoteExecutionApproved: approvedRemoteTarget,
       }, { signal: controller.signal, onProgress: progress => {
         const percent = Math.max(0, Math.min(100, Number(progress?.percent) || 0));
         content.querySelector("[data-engine-message]").textContent = `Fatiamento em andamento · ${Math.round(percent)}%${progress?.stage ? ` · ${String(progress.stage)}` : ""}`;
@@ -1365,7 +1399,8 @@ export function mountFeature(host = {}) {
       updateFeatureStatistics(result.stats);
       content.querySelector("[data-line-slider]").value = "100";
       content.querySelector("[data-engine-title]").textContent = "Fatiamento concluído pelo motor";
-      content.querySelector("[data-engine-message]").textContent = `${result.engine} ${result.engineVersion} gerou ${bytes(result.gcode.size)} de G-code para ${result.printerProfile || draft.printer}. Revise o preview antes de exportar.`;
+      const executionLocation = result.executionTarget === "server" ? "no servidor web" : "neste dispositivo";
+      content.querySelector("[data-engine-message]").textContent = `${result.engine} ${result.engineVersion} gerou ${bytes(result.gcode.size)} de G-code ${executionLocation} para ${result.printerProfile || draft.printer}. Revise o preview antes de exportar.`;
       host.files?.publish("gcode", { filename: result.filename, file: result.gcode });
       if (preview) updateTab("preview");
       else toast("G-code gerado. O preview foi omitido porque o arquivo excede o limite visual desta versão.");
@@ -1448,6 +1483,11 @@ export function mountFeature(host = {}) {
   content.querySelector("[data-reset-view]").addEventListener("click", () => { viewer?.reset(); });
   content.querySelector("[data-slice]").addEventListener("click", runSlice);
   content.querySelector("[data-cancel]").addEventListener("click", () => controller?.abort());
+  content.querySelector("[data-remote-slice-approve]").addEventListener("click", () => {
+    const dialog = content.querySelector("[data-remote-slice-dialog]");
+    dialog.returnValue = "approve";
+    dialog.close("approve");
+  });
   content.querySelector("[data-export]").addEventListener("click", () => { if (sliced?.gcode instanceof Blob) downloadBlob(sliced.gcode, sliced.filename); });
   content.querySelector("[data-layer-slider]").addEventListener("input", event => { previewLayer = Number(event.currentTarget.value); drawSelectedLayer(); });
   content.querySelector("[data-line-slider]").addEventListener("input", event => { previewProgress = Number(event.currentTarget.value) / 100; drawSelectedLayer(); });

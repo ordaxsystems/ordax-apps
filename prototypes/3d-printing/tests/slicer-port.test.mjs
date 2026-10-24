@@ -1,0 +1,113 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readSlicerStatus, requestRealSlice } from "../features/fatiamento-3d/slicer-port.mjs";
+
+const ids = {
+  machine: `orca-machine-${"a".repeat(24)}`,
+  process: `orca-process-${"b".repeat(24)}`,
+  filament: `orca-filament-${"c".repeat(24)}`,
+};
+
+function status(executionTarget = "device") {
+  return {
+    available: true,
+    engine: "OrcaSlicer",
+    version: "2.3.1",
+    executionTarget,
+    executionTargetLabel: executionTarget === "server" ? "https://slice.example.test" : undefined,
+    reason: "",
+    profiles: Object.fromEntries(Object.entries(ids).map(([kind, id]) => [kind, { catalog: [{ id, name: `${kind} de teste` }] }])),
+  };
+}
+
+function request() {
+  return {
+    file: new Blob(["original 3MF"], { type: "model/3mf" }),
+    filename: "Projeto confidencial.3mf",
+    format: "3MF",
+    preparedModel: { file: new Blob(["prepared STL"], { type: "model/stl" }), triangleCount: 1, internalFilename: "private-source-path.stl" },
+    settings: { quality: "standard", layerHeight: 0.2, walls: 3, infill: 15, supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-settings-note" },
+    processesSchema: "ordax.slicer-processes/3",
+    objects: [{ id: "model-object-private-79", name: "Peça cliente confidencial", sourceObjectId: "3mf-resource-private-82", buildItemIndex: 7, triangleCount: 1 }],
+    objectTransformsSchema: "ordax.object-transforms/1",
+    objectTransforms: [{ objectId: "model-object-private-79", offsetMm: [0, 0, 0], rotationDeg: [0, 0, 0], scale: 1, internalNote: "private-transform-note" }],
+    processes: [{
+      id: "process-private-34",
+      name: "Perfil de produção confidencial",
+      objectIds: ["model-object-private-79"],
+      settings: {
+        quality: "standard", layerHeight: 0.2, walls: 3, infill: 15, supports: false,
+        supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false,
+        fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-process-note",
+      },
+    }],
+    profileSelectionSchema: "ordax.slicer-profile-selection/1",
+    profileIds: { ...ids },
+  };
+}
+
+test("status bloqueia fatiamento quando o host não declara o destino do motor", async () => {
+  const result = await readSlicerStatus({ getStatus: async () => status("unknown"), slice: async () => null });
+  assert.equal(result.available, false);
+  assert.equal(result.executionTarget, "unknown");
+  assert.match(result.reason, /informar se o motor executará/);
+});
+
+test("status remoto exige um destino identificável para explicar o envio", async () => {
+  const result = await readSlicerStatus({ getStatus: async () => ({ ...status("server"), executionTargetLabel: "   " }), slice: async () => null });
+  assert.equal(result.available, false);
+  assert.equal(result.executionTarget, "server");
+  assert.match(result.reason, /identificar o servidor/);
+});
+
+test("destino remoto exige consentimento explícito antes de chamar o motor", async () => {
+  let sliceCalled = false;
+  const port = { getStatus: async () => status("server"), slice: async () => { sliceCalled = true; } };
+  await assert.rejects(requestRealSlice(port, request()), /Confirme o envio da malha preparada/);
+  assert.equal(sliceCalled, false);
+});
+
+test("aprovação remota precisa corresponder ao destino que o host informa no envio", async () => {
+  let sliceCalled = false;
+  const job = request();
+  job.remoteExecutionApproved = "https://old-slicer.example.test";
+  const port = {
+    getStatus: async () => ({ ...status("server"), executionTargetLabel: "https://current-slicer.example.test" }),
+    slice: async () => { sliceCalled = true; },
+  };
+  await assert.rejects(requestRealSlice(port, job), /servidor web identificado pelo host/);
+  assert.equal(sliceCalled, false);
+});
+
+test("envio web reduz metadados e encaminha cancelamento e progresso pela porta do host", async () => {
+  const submitted = {};
+  const controller = new AbortController();
+  const onProgress = () => {};
+  const job = request();
+  job.remoteExecutionApproved = "https://slice.example.test";
+  const port = {
+    getStatus: async () => status("server"),
+    slice: async (sliceRequest, options) => {
+      submitted.request = sliceRequest;
+      submitted.options = options;
+      return { gcode: new Blob(["G1 X0 Y0\n"], { type: "application/gcode" }), engine: "OrcaSlicer", engineVersion: "2.3.1", filename: "server-side-name.gcode" };
+    },
+  };
+
+  const result = await requestRealSlice(port, job, { signal: controller.signal, onProgress });
+  assert.equal(submitted.options.signal, controller.signal);
+  assert.equal(submitted.options.onProgress, onProgress);
+  assert.equal("file" in submitted.request, false);
+  assert.equal("remoteExecutionApproved" in submitted.request, false);
+  assert.equal(submitted.request.filename, "ordax-print.stl");
+  assert.deepEqual(submitted.request.objects, [{ id: "object-1", sourceObjectId: "source-1", buildItemIndex: 0, triangleCount: 1 }]);
+  assert.equal(submitted.request.processes[0].id, "process-1");
+  assert.deepEqual(submitted.request.processes[0].objectIds, ["object-1"]);
+  const serialized = JSON.stringify(submitted.request);
+  for (const privateValue of ["Projeto confidencial", "Peça cliente confidencial", "3mf-resource-private-82", "process-private-34", "Perfil de produção confidencial", "private-source-path", "private-settings-note", "private-transform-note", "private-process-note"]) {
+    assert.equal(serialized.includes(privateValue), false);
+  }
+  assert.equal(result.filename, "Projeto confidencial.gcode");
+  assert.equal(result.executionTarget, "server");
+  assert.match(await result.gcode.text(), /^G1 X0 Y0/);
+});
