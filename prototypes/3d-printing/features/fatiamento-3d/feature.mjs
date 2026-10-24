@@ -777,7 +777,13 @@ export function mountFeature(host = {}) {
     const blockReason = sliceBlockReason();
     syncProfileControls();
     chip.classList.toggle("is-ready", engineStatus.available);
-    label.textContent = engineStatus.available ? `${engineStatus.engine} ${engineStatus.version}` : "Motor desconectado";
+    label.textContent = engineStatus.available
+      ? `${engineStatus.engine} ${engineStatus.version}`
+      : engineStatus.executionTarget === "server"
+        ? "Servidor web indisponível"
+        : engineStatus.executionTarget === "device"
+          ? "Motor local indisponível"
+          : "Motor desconectado";
     if (engineStatus.available) {
       const runsOnDevice = engineStatus.executionTarget === "device";
       title.textContent = runsOnDevice ? "Motor local conectado" : "Fatiamento web conectado";
@@ -794,7 +800,11 @@ export function mountFeature(host = {}) {
         : `A malha preparada será enviada a ${targetLabel} após sua confirmação; a retenção depende das regras desse host.`;
       message.textContent = blockReason || `${engineStatus.engine} ${engineStatus.version} está pronto. ${loaded} ${compatibilityNote} ${targetNote}`;
     } else {
-      title.textContent = "Motor de fatiamento não conectado";
+      title.textContent = engineStatus.executionTarget === "server"
+        ? "Fatiamento web indisponível neste host"
+        : engineStatus.executionTarget === "device"
+          ? "Fatiamento local indisponível neste host"
+          : "Motor de fatiamento não conectado";
       message.textContent = engineStatus.reason || "Configure um motor e perfis no host. O botão de fatiar permanece bloqueado até essa validação.";
     }
     engineNotice.classList.toggle("is-ready", engineStatus.available);
@@ -1836,3 +1846,4 @@ export function mountFeature(host = {}) {
   host.onDestroy?.(() => { controller?.abort(); importSequence++; analysisController?.abort(); aiController?.abort(); unsubscribeIntelligence?.(); viewer?.dispose(); });
   return shell;
 }
+
