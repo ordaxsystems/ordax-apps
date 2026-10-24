@@ -23,6 +23,8 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.match(main,/await import\('\.\.\/host\/host-browser-server\.mjs'\)/);
   assert.match(main,/createTaskUiHandlers/);
   assert.match(ui,/Orchestrator • Host Node de desenvolvimento/);
+  assert.match(ui,/const observerRow=\$\('\.observer-row'\);/);
+  assert.match(ui,/observerRow\.classList\.add\('hidden'\)/);
   assert.equal(pkg.scripts.start,'node scripts/start-host.mjs');
   assert.equal(pkg.scripts['start:electron'],'electron .');
   assert.equal(bootstrap.scripts.start,'node product/scripts/start-host.mjs');

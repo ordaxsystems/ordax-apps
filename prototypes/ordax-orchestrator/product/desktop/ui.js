@@ -22,6 +22,8 @@ function applyHostProviderLimit() {
   $('#providerDetail').textContent = 'Esta página ainda não tem um transporte suportado do ChatGPT Web.';
   const sessionNote=$('.session-persistence-note');
   if(sessionNote)sessionNote.textContent='O ChatGPT Web ainda não está conectado ao Host. O chat Groq não abre conversas no ChatGPT.';
+  const observerRow=$('.observer-row');
+  if(observerRow)observerRow.classList.add('hidden');
   $('#login').hidden = true;
   $('#providerDot').className = 'dot error';
   $('#directMode').hidden = true;
