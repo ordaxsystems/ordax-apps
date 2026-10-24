@@ -941,13 +941,17 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,
     if(currentTaskId!==taskId)return false;
     return submitTaskMessage(mission);
   },
-  onScopeChange:ids=>{
-    scopedTaskIds=ids;renderTaskList();
-    void loadTasks().catch(()=>{});
+  onScopeChange:async ids=>{
+    scopedTaskIds=ids;
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
       flushDraft();currentTaskId=null;currentTask=null;navigationEpoch++;
       $('#taskPanel').classList.add('hidden');$('#empty').classList.remove('hidden');
       syncComposerAvailability();
+    }
+    try {await loadTasks();}
+    catch {
+      renderTaskList();
+      $('#orchestrationNotice').textContent='A lista de conversas não pôde ser atualizada. Confira a conexão antes de continuar.';
     }
   },
   onOpenWork:async id=>{await loadTasks();await openTask(id);},

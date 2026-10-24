@@ -178,6 +178,11 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(orchestration,/engineStatus\?\.autonomousExecution===false/);
   assert.match(orchestration,/A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado/);
   assert.match(orchestration,/call\('work_list'/);
+  assert.match(orchestration,/let refreshPending=false,refreshRequested=false/);
+  assert.match(orchestration,/while\(refreshRequested\)/);
+  assert.match(orchestration,/await onScopeChange\(new Set\(works\.map\(w=>w\.id\)\)\)/);
+  assert.match(ui,/onScopeChange:async ids=>/);
+  assert.match(ui,/try \{await loadTasks\(\);\}\s*catch/);
   assert.match(orchestration,/onOpenWork\(work\.id\)/);
   assert.match(orchestration,/executionSurface==='node_host'/);
   assert.match(orchestration,/coordinatorDraftCommitAvailable/);

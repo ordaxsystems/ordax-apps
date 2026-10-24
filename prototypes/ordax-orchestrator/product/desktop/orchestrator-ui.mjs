@@ -279,12 +279,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
-    if(!p) {workCount=0;renderWorks([]);onScopeChange(null);syncCoordinatorActions();return;}
+    if(!p) {workCount=0;renderWorks([]);await onScopeChange(null);syncCoordinatorActions();return;}
     const {works}=await call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})});
     if(generation!==epoch)return;
     workCount=works.length;
     renderWorks(works);
-    onScopeChange(new Set(works.map(w=>w.id)));
+    await onScopeChange(new Set(works.map(w=>w.id)));
     syncCoordinatorActions();
   }
   async function refreshProjects() {
@@ -622,16 +622,23 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       if(projectId)await refreshWorks();
       const items=await refreshOrchestrators();
       if(items.length)await showCoordinator();
-      let refreshPending=false;
-      api.onOrchestratorChanged?.(()=>{
+      let refreshPending=false,refreshRequested=false;
+      const refreshAfterChange=async()=>{
         if(refreshPending)return;
         refreshPending=true;
-        queueMicrotask(()=>{void(async()=>{
-          try {
+        try {
+          do {
+            refreshRequested=false;
             await refreshApiStatus();
-            await refreshProjects();await refreshOrchestrators();if(coordinatorOpen)await renderCoordinator();}
-          catch{error();}finally{refreshPending=false;}
-        })();});
+            await refreshProjects();await refreshOrchestrators();
+            if(coordinatorOpen)await renderCoordinator();
+          } while(refreshRequested);
+        } catch {error();}
+        finally {refreshPending=false;}
+      };
+      api.onOrchestratorChanged?.(()=>{
+        refreshRequested=true;
+        if(!refreshPending)void refreshAfterChange();
       });},
     createWork,hasProject:()=>Boolean(projectId),
     getProjectId:()=>projectId,
