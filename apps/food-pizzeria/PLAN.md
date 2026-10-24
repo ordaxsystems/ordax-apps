@@ -7,7 +7,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 ## Etapa concluída nesta correção
 
 - Auditoria de ownership e dos dados efetivamente persistidos.
-- Sales confirmado como owner do pedido comercial pelo roadmap e pelo `ordax.sales-book/1`; os pedidos Food visíveis no protótipo são sandbox local, não um segundo SSOT comercial.
+- Ownership do pedido alimentar comercial ainda requer reconciliação: o livro genérico `ordax.sales-book/1` existe, mas o plano ACHEGUESE-001 do owner OS designa Food Order Core quando Food é o provedor. Os pedidos visíveis no protótipo são sandbox local, não um SSOT comercial.
 - Food state v5 sem mestre, saldo ou ledger de Inventory, com migração explícita de dados v4 para os novos ajustes configuráveis.
 - Cálculo de consumo por ficha técnica separado da movimentação do estoque.
 - Migração de preview v3/v4 com arquivo local do antigo estoque v3 antes de reescrever a chave ativa.
@@ -23,7 +23,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 ## Próxima sequência
 
 1. **Contrato público Space Experience:** Platform/OS publica e versiona contratos de provider, snapshot, contexto autorizado, readiness, navegação e ciclo de vida no App SDK. Enquanto isso não existir, não montar Food dentro de Spaces por import privado.
-2. **Contrato Sales ↔ Food:** o ownership comercial está definido como Sales; falta contrato público para canal Food, referência estável, projeção de leitura autorizada, extensão de fulfillment e eventos idempotentes. Food não deve copiar o pedido comercial.
+2. **Contrato Food Order Core ↔ Sales:** resolver formalmente a divergência entre o livro genérico Sales e o Food Order Core previsto em ACHEGUESE-001. Publicar a autoridade exclusiva do pedido alimentar e o contrato de integração versionado, antes de gravar qualquer pedido real. Sem cópias mutáveis concorrentes.
 3. **Inventory consumption:** definir request/receipt de consumo, escopo autorizado do Space, idempotência, rejeição de saldo e política de retry/compensação. Food propõe quantidades; Inventory registra movimentos.
 4. **Sales, Payments e Finance:** definir sale reference, confirmação de pagamento e posting financeiro entre owners. Não concluir caixa no Food sem resultado confirmado por Payments.
 5. **Customers e People:** definir referência/consentimento do CRM e distinção entre membro com acesso ao Space e funcionário/escala.
