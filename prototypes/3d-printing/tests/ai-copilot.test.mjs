@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { assistantStructuredOutput, assistantEvidenceIds, buildAssistantMeshSummary, buildAssistantProfileContext, parseAssistantReply, assistantSuggestionSchema, assistantProfileOptionLimit, assistantMeshObjectLimit } from "../features/fatiamento-3d/ai-copilot.mjs";
+import { readProfileCompatibility } from "../features/fatiamento-3d/profile-compatibility.mjs";
 
 const machineId = `orca-machine-${"a".repeat(24)}`;
 const processId = `orca-process-${"b".repeat(24)}`;
@@ -28,9 +29,70 @@ function reply({ evidence = allowedEvidence, profiles = { machine: machineId, pr
   });
 }
 
+function profile(id, name, { printers = [], prints = [], printerCondition = "", printCondition = "", from = "system" } = {}) {
+  return {
+    id,
+    name,
+    compatibility: readProfileCompatibility({
+      from,
+      compatible_printers: printers,
+      compatible_printers_condition: printerCondition,
+      compatible_prints: prints,
+      compatible_prints_condition: printCondition,
+    }),
+  };
+}
+
 test("aceita perfis somente quando IDs e evidência pertencem ao catálogo da solicitação", () => {
   const parsed = parseAssistantReply(reply({ profiles: { machine: machineId, process: processId, filament: filamentId } }), { allowedEvidence, allowedProfiles });
   assert.deepEqual(parsed.suggestion.profiles, { machine: machineId, process: processId, filament: filamentId });
+});
+
+test("aceita sugestão de perfil somente quando a combinação final é compatível", () => {
+  const machineB = `orca-machine-${"d".repeat(24)}`;
+  const processB = `orca-process-${"e".repeat(24)}`;
+  const filamentB = `orca-filament-${"f".repeat(24)}`;
+  const profileCatalogs = {
+    machine: [profile(machineId, "Printer A"), profile(machineB, "Printer B")],
+    process: [profile(processId, "Process A", { printers: ["Printer A"] }), profile(processB, "Process B", { printers: ["Printer B"] })],
+    filament: [profile(filamentId, "PLA A", { printers: ["Printer A"], prints: ["Process A"] }), profile(filamentB, "PLA B", { printers: ["Printer B"], prints: ["Process B"] })],
+  };
+  const parsed = parseAssistantReply(reply({ profiles: { machine: machineB, process: processB, filament: filamentB } }), {
+    allowedEvidence,
+    allowedProfiles: { machine: [machineId, machineB], process: [processId, processB], filament: [filamentId, filamentB] },
+    profileCatalogs,
+    selectedProfileIds: { machine: machineId, process: processId, filament: filamentId },
+  });
+  assert.deepEqual(parsed.suggestion.profiles, { machine: machineB, process: processB, filament: filamentB });
+});
+
+test("rejeita sugestão válida por ID quando a combinação final é incompatível", () => {
+  const machineB = `orca-machine-${"d".repeat(24)}`;
+  const profileCatalogs = {
+    machine: [profile(machineId, "Printer A"), profile(machineB, "Printer B")],
+    process: [profile(processId, "Process A", { printers: ["Printer A"] })],
+    filament: [profile(filamentId, "PLA A", { printers: ["Printer A"], prints: ["Process A"] })],
+  };
+  assert.throws(() => parseAssistantReply(reply({ profiles: { machine: machineB, process: null, filament: null } }), {
+    allowedEvidence,
+    allowedProfiles: { machine: [machineId, machineB], process: [processId], filament: [filamentId] },
+    profileCatalogs,
+    selectedProfileIds: { machine: machineId, process: processId, filament: filamentId },
+  }), /combinação de perfis proposta pela IA não passou pela validação/);
+});
+
+test("rejeita sugestão de perfil que depende de expressão não avaliada", () => {
+  const profileCatalogs = {
+    machine: [profile(machineId, "Printer A")],
+    process: [profile(processId, "Process A", { printerCondition: 'printer_model == "Printer A"' })],
+    filament: [profile(filamentId, "PLA A", { printers: ["Printer A"], prints: ["Process A"] })],
+  };
+  assert.throws(() => parseAssistantReply(reply({ profiles: { machine: null, process: processId, filament: null } }), {
+    allowedEvidence,
+    allowedProfiles,
+    profileCatalogs,
+    selectedProfileIds: { machine: machineId, process: processId, filament: filamentId },
+  }), /expressão de compatibilidade com a máquina/);
 });
 
 test("rejeita ID de perfil que não está na lista permitida", () => {

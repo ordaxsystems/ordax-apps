@@ -1,3 +1,5 @@
+import { assessSlicerProfileCompatibility, PROFILE_COMPATIBILITY_SCHEMA } from "./profile-compatibility.mjs";
+
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
 const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/7";
@@ -42,8 +44,41 @@ function profileNumber(value) {
   return Number(Number(value).toFixed(2));
 }
 
+function profileCompatibilityValues(profile) {
+  const compatibility = profile?.compatibility;
+  if (compatibility?.schema !== PROFILE_COMPATIBILITY_SCHEMA) return { verifiedMetadata: false };
+  const list = entry => {
+    if (!entry || typeof entry.present !== "boolean") return { verified: false };
+    if (!entry.present) return { present: false, names: [] };
+    if (!Array.isArray(entry.names)) return { present: true, verified: false };
+    return { present: true, names: entry.names.slice(0, 3).map(name => String(name).slice(0, 100)), omitted: Math.max(0, entry.names.length - 3) };
+  };
+  const expressionPresent = entry => {
+    if (!entry || typeof entry !== "object" || typeof entry.present !== "boolean") return true;
+    if (!entry.present) return false;
+    return !Array.isArray(entry.values) || entry.values.some(value => typeof value !== "string" || value.trim());
+  };
+  const printerCondition = compatibility.compatiblePrintersCondition;
+  const processCondition = compatibility.compatiblePrintsCondition;
+  return {
+    schema: compatibility.schema,
+    inheritedFrom: compatibility.parentName || null,
+    machinePresetSource: compatibility.isSystem === true ? "system" : compatibility.isSystem === false ? "user" : "unknown",
+    compatiblePrinters: list(compatibility.compatiblePrinters),
+    printerConditionRequiresEvaluation: !printerCondition || typeof printerCondition.present !== "boolean"
+      || (printerCondition.present && typeof printerCondition.value !== "string")
+      || Boolean(printerCondition.value?.trim()),
+    compatiblePrints: list(compatibility.compatiblePrints),
+    processConditionRequiresEvaluation: !processCondition || typeof processCondition.present !== "boolean"
+      || (processCondition.present && typeof processCondition.value !== "string")
+      || Boolean(processCondition.value?.trim()),
+    machineExpressionGroupRequiresEvaluation: expressionPresent(compatibility.compatibleMachineExpressionGroup),
+    processExpressionGroupRequiresEvaluation: expressionPresent(compatibility.compatibleProcessExpressionGroup),
+  };
+}
+
 function profileValues(kind, profile) {
-  const common = { id: profile.id, name: String(profile.name || profile.id).slice(0, 80) };
+  const common = { id: profile.id, name: String(profile.name || profile.id).slice(0, 80), compatibility: profileCompatibilityValues(profile) };
   if (kind === "machine") return {
     ...common,
     bedSizeMm: Array.isArray(profile.bedSizeMm) ? profile.bedSizeMm.slice(0, 2).map(profileNumber) : null,
@@ -67,11 +102,14 @@ export function buildAssistantProfileContext(catalogs = {}, selectedIds = {}) {
   const names = { machine: "machines", process: "processes", filament: "filaments" };
   const context = [];
   const allowedProfiles = {};
+  const visibleProfiles = {};
+  const selectedProfileIds = {};
   for (const kind of Object.keys(names)) {
     const catalog = Array.isArray(catalogs?.[kind]?.catalog) ? catalogs[kind].catalog : [];
     const selected = catalog.find(profile => profile.id === selectedIds?.[kind]);
     const ordered = [...(selected ? [selected] : []), ...catalog.filter(profile => profile !== selected)];
     const profiles = [];
+    const validationProfiles = [];
     const seen = new Set();
     for (const profile of ordered) {
       if (!profile || typeof profile.id !== "string" || !new RegExp(`^orca-${kind}-[a-f0-9]{24}$`).test(profile.id) || seen.has(profile.id)) continue;
@@ -80,9 +118,12 @@ export function buildAssistantProfileContext(catalogs = {}, selectedIds = {}) {
       const text = JSON.stringify({ slicer: { configuredProfiles: { catalogs: { [names[kind]]: next } } } });
       if (profiles.length >= assistantProfileOptionLimit || text.length > MAX_PROFILE_CONTEXT_CHARS) break;
       profiles.push(summary);
+      validationProfiles.push(Object.freeze({ id: profile.id, name: String(profile.name || profile.id), compatibility: profile.compatibility }));
       seen.add(profile.id);
     }
     allowedProfiles[kind] = profiles.map(profile => profile.id);
+    visibleProfiles[kind] = validationProfiles;
+    selectedProfileIds[kind] = selected?.id && allowedProfiles[kind].includes(selected.id) ? selected.id : null;
     if (profiles.length) {
       context.push(Object.freeze({
         id: `slicer-profile-catalog-${kind}`,
@@ -92,7 +133,12 @@ export function buildAssistantProfileContext(catalogs = {}, selectedIds = {}) {
       }));
     }
   }
-  return Object.freeze({ context: Object.freeze(context), allowedProfiles: Object.freeze(allowedProfiles) });
+  return Object.freeze({
+    context: Object.freeze(context),
+    allowedProfiles: Object.freeze(allowedProfiles),
+    visibleProfiles: Object.freeze(visibleProfiles),
+    selectedProfileIds: Object.freeze(selectedProfileIds),
+  });
 }
 
 export function buildAssistantMeshSummary({ objects, geometryDiagnostics, selectedObjectId, getSurfaceAreaMm2 } = {}) {
@@ -375,7 +421,7 @@ export function parseAssistantSuggestion(text, { allowedEvidence = null, allowed
   return validateSuggestion(extractJson(text), { allowedEvidence: allowed, allowedProfiles });
 }
 
-export function parseAssistantReply(text, { allowedEvidence = null, allowedProfiles = null } = {}) {
+export function parseAssistantReply(text, { allowedEvidence = null, allowedProfiles = null, profileCatalogs = null, selectedProfileIds = null } = {}) {
   const value = extractJson(text);
   if (!value || Object.keys(value).some(key => !["schema", "answer", "suggestion"].includes(key)) || value.schema !== ASSISTANT_RESPONSE_SCHEMA || typeof value.answer !== "string" || value.answer.length > 16000) {
     throw new Error("A IA retornou uma resposta fora do formato estruturado do Copiloto. Tente novamente.");
@@ -385,6 +431,17 @@ export function parseAssistantReply(text, { allowedEvidence = null, allowedProfi
   const suggestion = value.suggestion === null ? null : validateSuggestion(value.suggestion, { allowedEvidence: allowed, allowedProfiles });
   if (value.suggestion !== null && !suggestion) {
     throw new Error("A sugestão da IA não passou pela validação do app. Nenhuma configuração foi aplicada.");
+  }
+  if (suggestion && Object.keys(suggestion.profiles).length && profileCatalogs) {
+    const selected = Object.fromEntries(["machine", "process", "filament"].map(kind => {
+      const id = suggestion.profiles[kind] ?? selectedProfileIds?.[kind];
+      const profile = Array.isArray(profileCatalogs[kind]) ? profileCatalogs[kind].find(item => item.id === id) : null;
+      return [kind, profile || null];
+    }));
+    const compatibility = assessSlicerProfileCompatibility(selected);
+    if (compatibility.status !== "compatible") {
+      throw new Error(`A combinação de perfis proposta pela IA não passou pela validação: ${compatibility.reason} Nenhuma configuração foi aplicada.`);
+    }
   }
   if (!answer && !suggestion) throw new Error("A IA retornou uma resposta vazia. Tente novamente.");
   return Object.freeze({ text: answer || suggestion.summary, suggestion });

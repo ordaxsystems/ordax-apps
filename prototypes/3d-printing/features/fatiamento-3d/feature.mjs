@@ -983,7 +983,13 @@ export function mountFeature(host = {}) {
     const evidenceIds = evidenceCandidates
       .filter(([id, value]) => knownEvidence.has(id) && value !== null && value !== undefined)
       .map(([id]) => id);
-    return { context, evidenceIds, allowedProfiles: profileContext.allowedProfiles };
+    return {
+      context,
+      evidenceIds,
+      allowedProfiles: profileContext.allowedProfiles,
+      profileCatalogs: profileContext.visibleProfiles,
+      selectedProfileIds: profileContext.selectedProfileIds,
+    };
   }
 
   function makeAiPrompt(question, evidenceIds) {
@@ -993,6 +999,7 @@ export function mountFeature(host = {}) {
       "A triagem de vértices examina o grafo de vizinhança de cada vértice: um caminho único é esperado na borda e um ciclo único no interior. Vértices com mais de uma região conectada ou graus incompatíveis são contados como não manifold. Use a contagem apenas como sinal local de revisão, não como prova de falha na peça. geometryDiagnostics.objectSummary lista até 12 peças: prioriza a peça selecionada e depois ordena por sinais locais para revisão. O campo item mantém a posição original 1-based na lista carregada, mesmo quando a lista é reordenada. Essa ordem é apenas uma triagem heurística, não mede severidade nem risco calibrado. Confira selected e omittedObjectCount antes de dizer que avaliou todas as peças.",
       "Arestas abertas, arestas com mais de duas faces, orientação compartilhada inconsistente e vizinhança não manifold são sinais para revisão, mas não explicam sozinhos a causa. A análise não detecta autointerseções ou cavidades, não faz reparos e não conclui watertightness nem imprimibilidade.",
       "model.printableSpaceFit é uma triagem geométrica por caixa envolvente individual de cada peça, contorno imprimível e regiões excluídas do perfil. outsideObjectItems contém índices 1-based na lista original; a caixa é conservadora e não representa a malha exata, brim/skirt, suportes, saliências nem colisões. Status com reference refere-se somente à mesa visual genérica; só o OrcaSlicer valida o fatiamento final.",
+      "Os resumos dos perfis incluem listas declaradas de compatibilidade. Só recomende uma troca de perfil quando os nomes exatos confirmarem compatibilidade com a máquina e entre filamento/processo; se houver expressão a avaliar, itens omitidos na lista ou herança não resolvida, diga que os dados não bastam e mantenha a seleção atual.",
       "Identifique quando os perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade.",
       "Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.",
     ];
@@ -1013,10 +1020,15 @@ export function mountFeature(host = {}) {
     aiController = requestController;
     updateAiUi();
     try {
-      const profileInstructions = "Se recomendar perfis, suggestion.profiles deve conter machine, process e filament, com o ID exato de catálogo para cada mudança e null para manter o perfil atual. Use apenas IDs apresentados em slicer.configuredProfiles.catalogs e não invente IDs. Catálogo vazio significa que não há opção recomendável daquele tipo. Cada categoria pode enviar no máximo 24 opções ao contexto, incluindo primeiro o perfil ativo; compare somente as opções recebidas e não diga que avaliou as demais. Cite slicer.configuredProfiles em evidence. A seleção não comprova compatibilidade: o OrcaSlicer valida a combinação no fatiamento. Se não houver mudança de perfil, use profiles:null.";
+      const profileInstructions = "Se recomendar perfis, suggestion.profiles deve conter machine, process e filament, com o ID exato de catálogo para cada mudança e null para manter o perfil atual. Use apenas IDs apresentados em slicer.configuredProfiles.catalogs e não invente IDs. Catálogo vazio significa que não há opção recomendável daquele tipo. Cada categoria pode enviar no máximo 24 opções ao contexto, incluindo primeiro o perfil ativo; compare somente as opções recebidas e não diga que avaliou as demais. Só recomende uma combinação se compatible_printers e compatible_prints declararem os nomes exatos da máquina e do processo. Não recomende combinações dependentes de expressões, listas truncadas ou herança que o resumo não permite resolver. Cite slicer.configuredProfiles em evidence. O app e o host verificam a combinação completa antes do fatiamento. Se não houver mudança de perfil, use profiles:null.";
       const answer = await askSliceIntelligence(intelligence, { prompt: `${makeAiPrompt(prompt, requestContext.evidenceIds)}\n\n${profileInstructions}`, context: requestContext.context, signal: requestController.signal });
       if (requestController.signal.aborted) throw new DOMException("Solicitação cancelada.", "AbortError");
-      const reply = parseAssistantReply(answer.text, { allowedEvidence: requestContext.evidenceIds, allowedProfiles: requestContext.allowedProfiles });
+      const reply = parseAssistantReply(answer.text, {
+        allowedEvidence: requestContext.evidenceIds,
+        allowedProfiles: requestContext.allowedProfiles,
+        profileCatalogs: requestContext.profileCatalogs,
+        selectedProfileIds: requestContext.selectedProfileIds,
+      });
       rememberAi("assistant", reply.text);
       appendAiMessage("assistant", reply.text, reply.suggestion, requestRevision, requestProcessId, requestObjectId);
     } catch (error) {
