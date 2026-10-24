@@ -43,8 +43,8 @@ function request() {
     filename: "Projeto confidencial.3mf",
     format: "3MF",
     preparedModel: { file: new Blob(["prepared STL"], { type: "model/stl" }), triangleCount: 1, internalFilename: "private-source-path.stl" },
-    settings: { quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0.8, bottomShellThickness: 1.2, brimType: "outer_only", brimWidth: 5, brimGap: 0.15, infill: 15, infillPattern: "gyroid", supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-settings-note" },
-    processesSchema: "ordax.slicer-processes/8",
+    settings: { quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0.8, bottomShellThickness: 1.2, brimType: "outer_only", brimWidth: 5, brimGap: 0.15, infill: 15, infillPattern: "gyroid", seamPosition: null, supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-settings-note" },
+    processesSchema: "ordax.slicer-processes/9",
     objects: [{ id: "model-object-private-79", name: "Peça cliente confidencial", sourceObjectId: "3mf-resource-private-82", buildItemIndex: 7, triangleCount: 1 }],
     objectTransformsSchema: "ordax.object-transforms/1",
     objectTransforms: [{ objectId: "model-object-private-79", offsetMm: [0, 0, 0], rotationDeg: [0, 0, 0], scale: 1, internalNote: "private-transform-note" }],
@@ -53,7 +53,7 @@ function request() {
       name: "Perfil de produção confidencial",
       objectIds: ["model-object-private-79"],
       settings: {
-        quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0.8, bottomShellThickness: 1.2, brimType: "outer_only", brimWidth: 5, brimGap: 0.15, infill: 15, infillPattern: "gyroid", supports: false,
+        quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0.8, bottomShellThickness: 1.2, brimType: "outer_only", brimWidth: 5, brimGap: 0.15, infill: 15, infillPattern: "gyroid", seamPosition: null, supports: false,
         supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false,
         fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-process-note",
       },
@@ -137,6 +137,15 @@ test("a porta rejeita um padrão de preenchimento fora da lista antes de chamar 
   assert.equal(sliceCalled, false);
 });
 
+test("a porta rejeita uma posição de costura fora das opções Orca", async () => {
+  let sliceCalled = false;
+  const job = request();
+  job.processes[0].settings.seamPosition = "aligned-back";
+  const port = { getStatus: async () => status("device"), slice: async () => { sliceCalled = true; } };
+  await assert.rejects(requestRealSlice(port, job), /configurações do Perfil de produção confidencial estão fora dos limites/);
+  assert.equal(sliceCalled, false);
+});
+
 test("a porta rejeita largura de brim acima do limite antes de chamar o host", async () => {
   let sliceCalled = false;
   const job = request();
@@ -162,6 +171,8 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
   const onProgress = progress => progressEvents.push(progress);
   const job = request();
   job.remoteExecutionApproved = "https://slice.example.test";
+  job.settings.seamPosition = "aligned_back";
+  job.processes[0].settings.seamPosition = "aligned_back";
   const port = {
     getStatus: async () => status("server"),
     slice: async (sliceRequest, options) => {
@@ -182,6 +193,8 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
   assert.equal(submitted.request.processes[0].id, "process-1");
   assert.deepEqual(submitted.request.processes[0].objectIds, ["object-1"]);
   assert.equal(submitted.request.processes[0].settings.infillPattern, "gyroid");
+  assert.equal(submitted.request.processes[0].settings.seamPosition, "aligned_back");
+  assert.equal(submitted.request.settings.seamPosition, "aligned_back");
   assert.equal(submitted.request.processes[0].settings.topShellLayers, 3);
   assert.equal(submitted.request.processes[0].settings.bottomShellLayers, 3);
   assert.equal(submitted.request.processes[0].settings.topShellThickness, 0.8);

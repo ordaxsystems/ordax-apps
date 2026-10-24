@@ -26,12 +26,13 @@ function validDraft() {
     brimGap: 0.2,
     infill: 15,
     infillPattern: "gyroid",
+    seamPosition: "aligned_back",
     selectedTab: "preview",
     processes: [{
       id: "process-1",
       name: "Processo fino",
       objectIds: ["object-1"],
-      settings: { quality: "fine", layerHeight: 0.12, walls: 4, topShellLayers: 6, bottomShellLayers: 2, topShellThickness: 0.6, bottomShellThickness: 0.4, brimType: "outer_and_inner", brimWidth: 3, brimGap: 0.15, infill: 20, infillPattern: "lightning", supports: false, fanMin: 25, fanMax: 80, privateValue: "must-not-be-saved" },
+      settings: { quality: "fine", layerHeight: 0.12, walls: 4, topShellLayers: 6, bottomShellLayers: 2, topShellThickness: 0.6, bottomShellThickness: 0.4, brimType: "outer_and_inner", brimWidth: 3, brimGap: 0.15, infill: 20, infillPattern: "lightning", seamPosition: "random", supports: false, fanMin: 25, fanMax: 80, privateValue: "must-not-be-saved" },
     }],
     objectTransforms: { "object-1": { x: 1, y: 2, z: 0, rotationX: 0, rotationY: 0, rotationZ: 90, scale: 1.2 } },
     privateValue: "must-not-be-saved",
@@ -72,6 +73,8 @@ for (const extension of ["stl", "3mf"]) {
     assert.equal(restored.draft.processes[0].settings.brimGap, 0.15);
     assert.equal(restored.draft.infillPattern, "gyroid");
     assert.equal(restored.draft.processes[0].settings.infillPattern, "lightning");
+    assert.equal(restored.draft.seamPosition, "aligned_back");
+    assert.equal(restored.draft.processes[0].settings.seamPosition, "random");
   });
 }
 
@@ -104,6 +107,18 @@ test("abre projetos /4 com campos de brim que vieram antes do gap editável", as
   const restored = await readProjectBundle(await archive.arrayBuffer());
   assert.equal(restored.draft.brimWidth, 5);
   assert.equal(restored.draft.processes[0].settings.brimWidth, 3);
+});
+
+test("abre projetos /5 preservando configurações anteriores sem override de costura", async () => {
+  const source = new Blob([1, 2, 3]);
+  const draft = validDraft();
+  delete draft.seamPosition;
+  delete draft.processes[0].settings.seamPosition;
+  const manifest = { schema: "ordax.3d-printing-project/5", projectName: "Projeto cinco", source: { path: "models/source.stl", name: "modelo.stl", format: "STL", size: source.size }, draft };
+  const archive = await createStoredZipBlob([{ name: "project.json", data: new Blob([JSON.stringify(manifest)]) }, { name: "models/source.stl", data: source }]);
+  const restored = await readProjectBundle(await archive.arrayBuffer());
+  assert.equal(restored.draft.seamPosition, undefined);
+  assert.equal(restored.draft.processes[0].settings.seamPosition, undefined);
 });
 
 test("projeto portátil rejeita extensão e nome de projeto inválidos", async () => {

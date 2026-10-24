@@ -16,6 +16,7 @@ const allowedProfiles = {
 function reply({ evidence = allowedEvidence, profiles = { machine: machineId, process: null, filament: null }, settings = null } = {}) {
   const completeSettings = settings === null ? null : {
     quality: null, layerHeight: null, walls: null, topShellLayers: null, bottomShellLayers: null, topShellThickness: null, bottomShellThickness: null, brimType: null, brimWidth: null, brimGap: null,
+    seamPosition: null,
     infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null,
     supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null,
     ...settings,
@@ -137,6 +138,18 @@ test("aceita apenas um padrão de preenchimento presente no catálogo do OrcaSli
     evidence: ["settings"],
     profiles: null,
     settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: "invented-pattern", supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+  }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
+});
+
+test("aceita somente posições de costura oficiais do OrcaSlicer", () => {
+  const parsed = parseAssistantReply(reply({
+    evidence: ["settings"], profiles: null,
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: null, seamPosition: "aligned_back", supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+  }), { allowedEvidence: ["settings"], allowedProfiles });
+  assert.deepEqual(parsed.suggestion.settings, { seamPosition: "aligned_back" });
+  assert.throws(() => parseAssistantReply(reply({
+    evidence: ["settings"], profiles: null,
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: null, seamPosition: "aligned-back", supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
   }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
 });
 

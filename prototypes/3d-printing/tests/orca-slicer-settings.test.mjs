@@ -16,6 +16,7 @@ const settings = Object.freeze({
   brimGap: null,
   infill: 15,
   infillPattern: "gyroid",
+  seamPosition: null,
   supports: true,
   supportType: "normal(auto)",
   supportThresholdAngle: 45,
@@ -52,6 +53,14 @@ test("mapeia tipo e largura de brim apenas quando há override explícito", () =
   assert.throws(() => buildOrcaSettingArguments({ ...settings, brimType: "painted" }), /configurações solicitadas estão fora dos limites/);
   assert.throws(() => buildOrcaSettingArguments({ ...settings, brimWidth: 20.1 }), /configurações solicitadas estão fora dos limites/);
   assert.throws(() => buildOrcaSettingArguments({ ...settings, brimGap: 10.1 }), /configurações solicitadas estão fora dos limites/);
+});
+
+test("mapeia a posição da costura para o Orca somente quando há override explícito", () => {
+  assert.ok(buildOrcaSettingArguments({ ...settings, seamPosition: "aligned_back" }).includes("--seam-position=aligned_back"));
+  assert.equal(buildOrcaSettingArguments(settings).some(argument => argument.startsWith("--seam-position=")), false);
+  for (const value of ["unsupported", "aligned-back"]) {
+    assert.throws(() => buildOrcaSettingArguments({ ...settings, seamPosition: value }), /configurações solicitadas estão fora dos limites/);
+  }
 });
 
 test("rejeita espessura de casca fora do intervalo suportado", () => {

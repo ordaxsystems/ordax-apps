@@ -1,9 +1,10 @@
 import { assessSlicerProfileCompatibility, PROFILE_COMPATIBILITY_SCHEMA } from "./profile-compatibility.mjs";
 import { infillPatternOptions, isSupportedInfillPattern } from "../../shared/infill-patterns.mjs";
+import { isSupportedSeamPosition, seamPositionOptions } from "../../shared/seam-positions.mjs";
 
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/12";
+const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/13";
 const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
@@ -109,6 +110,7 @@ function profileValues(kind, profile) {
       brimObjectGapMm: profileNumber(profile.processSettings.brimObjectGapMm),
       sparseInfillDensityPercent: profileNumber(profile.processSettings.sparseInfillDensityPercent),
       sparseInfillPattern: isSupportedInfillPattern(profile.processSettings.sparseInfillPattern) ? profile.processSettings.sparseInfillPattern : null,
+      seamPosition: isSupportedSeamPosition(profile.processSettings.seamPosition) ? profile.processSettings.seamPosition : null,
       supports: typeof profile.processSettings.supports === "boolean" ? profile.processSettings.supports : null,
       supportType: typeof profile.processSettings.supportType === "string" ? profile.processSettings.supportType.slice(0, 32) : null,
       supportThresholdAngle: profileNumber(profile.processSettings.supportThresholdAngle),
@@ -253,6 +255,7 @@ export const assistantStructuredOutput = Object.freeze({
               brimGap: nullable({ type: "number", minimum: 0, maximum: 10 }),
               infill: nullableInteger(0, 100),
               infillPattern: nullable({ type: "string", enum: infillPatternOptions.map(option => option.value) }),
+              seamPosition: nullable({ type: "string", enum: seamPositionOptions.map(option => option.value) }),
               supports: nullable({ type: "boolean" }),
               supportType: nullable({ type: "string", enum: ["normal(auto)", "tree(auto)"] }),
               supportThresholdAngle: nullableInteger(0, 90),
@@ -260,7 +263,7 @@ export const assistantStructuredOutput = Object.freeze({
               fanMinSpeedPercent: nullableInteger(0, 100),
               fanMaxSpeedPercent: nullableInteger(0, 100),
             },
-            required: ["quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "topShellThickness", "bottomShellThickness", "brimType", "brimWidth", "brimGap", "infill", "infillPattern", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
+            required: ["quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "topShellThickness", "bottomShellThickness", "brimType", "brimWidth", "brimGap", "infill", "infillPattern", "seamPosition", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
           }),
           transform: nullable({
             type: "object",
@@ -399,6 +402,7 @@ function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = n
     brimGap: item => Number.isFinite(item) && item >= 0 && item <= 10,
     infill: item => Number.isInteger(item) && item >= 0 && item <= 100,
     infillPattern: isSupportedInfillPattern,
+    seamPosition: isSupportedSeamPosition,
     supports: item => typeof item === "boolean",
     supportType: item => ["normal(auto)", "tree(auto)"].includes(item),
     supportThresholdAngle: item => Number.isInteger(item) && item >= 0 && item <= 90,

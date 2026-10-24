@@ -8,10 +8,11 @@ import { basename, dirname, extname, join, posix, resolve, win32 } from "node:pa
 import { pipeline } from "node:stream/promises";
 import { assessSlicerProfileCompatibility, readProfileCompatibility } from "../features/fatiamento-3d/profile-compatibility.mjs";
 import { isSupportedInfillPattern } from "./infill-patterns.mjs";
+import { isSupportedSeamPosition } from "./seam-positions.mjs";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/9";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/10";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
@@ -202,6 +203,7 @@ function parseProfile(raw, kind, fallbackName) {
         brimObjectGapMm: numeric(profile.brim_object_gap),
         sparseInfillDensityPercent: percent(profile.sparse_infill_density),
         sparseInfillPattern: isSupportedInfillPattern(profile.sparse_infill_pattern) ? profile.sparse_infill_pattern : null,
+        seamPosition: isSupportedSeamPosition(profile.seam_position) ? profile.seam_position : null,
         supports: booleanSetting(profile.enable_support),
         supportType: typeof first(profile.support_type) === "string" ? first(profile.support_type) : null,
         supportThresholdAngle: numeric(profile.support_threshold_angle),
@@ -581,6 +583,7 @@ function normalSettings(value) {
     brimGap: value.brimGap === null || value.brimGap === undefined || value.brimGap === "" ? null : Number(value.brimGap),
     infill: Number(value.infill),
     infillPattern: value.infillPattern,
+    seamPosition: value.seamPosition === null || value.seamPosition === undefined || value.seamPosition === "" ? null : value.seamPosition,
     supports: value.supports,
     supportType: value.supportType,
     supportThresholdAngle: Number(value.supportThresholdAngle),
@@ -600,6 +603,7 @@ function normalSettings(value) {
     || !(settings.brimGap === null || Number.isFinite(settings.brimGap) && settings.brimGap >= 0 && settings.brimGap <= 10)
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
     || !isSupportedInfillPattern(settings.infillPattern)
+    || !(settings.seamPosition === null || isSupportedSeamPosition(settings.seamPosition))
     || typeof settings.supports !== "boolean"
     || !["normal(auto)", "tree(auto)"].includes(settings.supportType)
     || !Number.isInteger(settings.supportThresholdAngle) || settings.supportThresholdAngle < 0 || settings.supportThresholdAngle > 90
@@ -625,6 +629,7 @@ export function buildOrcaSettingArguments(value) {
     ...(settings.brimGap === null ? [] : [`--brim-object-gap=${settings.brimGap}`]),
     "--sparse-infill-density", `${settings.infill}%`,
     `--sparse-infill-pattern=${settings.infillPattern}`,
+    ...(settings.seamPosition === null ? [] : [`--seam-position=${settings.seamPosition}`]),
     `--enable-support=${settings.supports ? 1 : 0}`,
     "--support-type", settings.supportType,
     "--support-threshold-angle", String(settings.supportThresholdAngle),
