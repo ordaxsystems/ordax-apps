@@ -26,7 +26,7 @@ function legacyV4State(state) {
       ...flavor,
       pricesCents: Object.fromEntries(["small", "medium", "large"].map((id) => [id, flavor.pricesCents[id]])),
     })),
-    orders: state.orders.map((order) => ({
+    orders: state.orders.map(({ consumptionSnapshot, ...order }) => ({
       ...order,
       channel: order.tableCommandId === null ? order.channel : "counter",
       items: order.items.map(({ sizeLabel, ...item }) => item),
@@ -62,10 +62,10 @@ function legacyV3State(state) {
   };
 }
 
-test("Food v5 keeps food operations and does not own Inventory balances or movements", () => {
+test("Food v6 keeps food operations and does not own Inventory balances or movements", () => {
   const state = createSeedFoodState();
 
-  assert.equal(state.schema, "ordax.food-pizzeria-state/5");
+  assert.equal(state.schema, "ordax.food-pizzeria-state/6");
   assert.equal(Object.hasOwn(state, "ingredients"), false);
   assert.equal(Object.hasOwn(state, "inventoryMovements"), false);
   assert.throws(() => createFoodCommand({
@@ -98,24 +98,26 @@ test("v4 migration preserves Food records, configures table service, and labels 
   const oldState = legacyV4State(state);
   const migrated = migrateFoodPizzeriaState(oldState);
 
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/5");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
   assert.equal(migrated.orders.length, oldState.orders.length);
   assert.equal(migrated.recipes.length, oldState.recipes.length);
   assert.equal(migrated.settings.tables.length, 8);
   assert.ok(migrated.orders.filter(({ tableCommandId }) => tableCommandId).every(({ channel }) => channel === "dine-in"));
   assert.ok(migrated.orders.some(({ channel, tableCommandId }) => ["pickup", "delivery"].includes(channel) && tableCommandId === null));
   assert.equal(Object.hasOwn(migrated, "inventoryMovements"), false);
+  assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
 });
 
 test("v3 migration preserves Food data and removes Inventory from active Food state", () => {
   const state = createSeedFoodState();
   const migrated = migrateFoodPizzeriaState(legacyV3State(state));
 
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/5");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
   assert.equal(migrated.orders.length, state.orders.length);
   assert.equal(migrated.recipes.length, state.recipes.length);
   assert.equal(Object.hasOwn(migrated, "ingredients"), false);
   assert.equal(Object.hasOwn(migrated, "inventoryMovements"), false);
+  assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
 });
 
 test("browser preview archives v3 inventory before rewriting the active Food state", async () => {
@@ -140,11 +142,11 @@ test("browser preview archives v3 inventory before rewriting the active Food sta
   const archive = JSON.parse(archiveRaw);
   const active = JSON.parse(storage.getItem(activeKey));
 
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/5");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
   assert.equal(archive.schema, "ordax.food-pizzeria.preview-legacy-inventory/1");
   assert.equal(archive.businessId, businessId);
   assert.equal(archive.movements[0].id, "opening-test");
-  assert.equal(active.state.schema, "ordax.food-pizzeria-state/5");
+  assert.equal(active.state.schema, "ordax.food-pizzeria-state/6");
   assert.equal(Object.hasOwn(active.state, "inventoryMovements"), false);
   store.destroy();
 });
