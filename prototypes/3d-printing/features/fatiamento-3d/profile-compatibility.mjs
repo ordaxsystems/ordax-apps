@@ -136,6 +136,11 @@ export function assessSlicerProfileCompatibility({ machine, process, filament } 
   if (!machine || !process || !filament) {
     return Object.freeze({ schema: PROFILE_COMPATIBILITY_SCHEMA, status: "unverified", reason: "Selecione os perfis reais de máquina, processo e filamento." });
   }
+  for (const [profile, label] of [[machine, "máquina"], [process, "processo"], [filament, "filamento"]]) {
+    if (profile.inheritance?.status === "unresolved") {
+      return Object.freeze({ schema: PROFILE_COMPATIBILITY_SCHEMA, status: "unverified", reason: profile.inheritance.reason || `O perfil de ${label} tem uma cadeia de herança não resolvida.` });
+    }
+  }
   for (const [profile, label] of [[process, "processo"], [filament, "filamento"]]) {
     const groupReason = expressionGroupReason(profile, label);
     if (groupReason) return Object.freeze({ schema: PROFILE_COMPATIBILITY_SCHEMA, status: "unverified", reason: groupReason });

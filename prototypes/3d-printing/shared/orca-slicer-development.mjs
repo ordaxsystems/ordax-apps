@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, open, readFile, readdir, realpath, rm, stat, writeFile 
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
-import { basename, extname, join, posix, resolve, win32 } from "node:path";
+import { basename, dirname, extname, join, posix, resolve, win32 } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { assessSlicerProfileCompatibility, readProfileCompatibility } from "../features/fatiamento-3d/profile-compatibility.mjs";
 
@@ -16,6 +16,8 @@ const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
 const MAX_PROFILES_PER_KIND = 32;
 const MAX_PROFILE_CATALOG_BYTES = 16 * 1024 * 1024;
+const MAX_SYSTEM_PROFILE_FILES = 10_000;
+const MAX_SYSTEM_PROFILE_BYTES = 64 * 1024 * 1024;
 const MAX_MESH_BYTES = 16 * 1024 * 1024;
 const MAX_TRIANGLES = 300_000;
 const MAX_GCODE_BYTES = 512 * 1024 * 1024;
@@ -32,6 +34,32 @@ function first(value) {
 function numeric(value) {
   const parsed = Number(first(value));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function percent(value) {
+  const raw = first(value);
+  if (typeof raw === "string") {
+    const match = raw.trim().match(/^(-?(?:\d+\.?\d*|\.\d+))\s*%?$/);
+    return match ? Number(match[1]) : null;
+  }
+  return numeric(raw);
+}
+
+function booleanSetting(value) {
+  const raw = first(value);
+  if (typeof raw === "boolean") return raw;
+  if (raw === 1 || raw === "1" || (typeof raw === "string" && raw.toLowerCase() === "true")) return true;
+  if (raw === 0 || raw === "0" || (typeof raw === "string" && raw.toLowerCase() === "false")) return false;
+  return null;
+}
+
+function readProfileDocument(raw, kind, fallbackName) {
+  let profile;
+  try { profile = JSON.parse(raw.toString("utf8")); }
+  catch { throw publicError(`O perfil de ${kind} não contém JSON válido.`, 503); }
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) throw publicError(`O perfil de ${kind} tem um formato inválido.`, 503);
+  if (typeof profile.name !== "string" || !profile.name.trim()) profile.name = displayName(profile, fallbackName);
+  return profile;
 }
 
 function displayName(profile, fallback) {
@@ -140,10 +168,7 @@ export { parseBedShape };
 
 function parseProfile(raw, kind, fallbackName) {
   const label = ({ machine: "máquina", process: "processo", filament: "filamento" })[kind] || kind;
-  let profile;
-  try { profile = JSON.parse(raw.toString("utf8")); }
-  catch { throw publicError(`O perfil de ${label} não contém JSON válido.`, 503); }
-  if (!profile || typeof profile !== "object" || Array.isArray(profile)) throw publicError(`O perfil de ${label} tem um formato inválido.`, 503);
+  const profile = readProfileDocument(raw, label, fallbackName);
   const name = displayName(profile, fallbackName);
   const compatibility = readProfileCompatibility(profile);
   if (kind === "machine") {
@@ -159,7 +184,24 @@ function parseProfile(raw, kind, fallbackName) {
   }
   if (kind === "process") {
     if (!profile.layer_height && !profile.layer_height_0) throw publicError("O perfil de processo não contém altura de camada.", 503);
-    return { name, compatibility, layerHeightMm: numeric(profile.layer_height ?? profile.layer_height_0), wallLoops: numeric(profile.wall_loops), source: "JSON local configurado no host" };
+    return {
+      name,
+      compatibility,
+      layerHeightMm: numeric(profile.layer_height ?? profile.layer_height_0),
+      wallLoops: numeric(profile.wall_loops),
+      processSettings: {
+        layerHeightMm: numeric(profile.layer_height ?? profile.layer_height_0),
+        wallLoops: numeric(profile.wall_loops),
+        sparseInfillDensityPercent: percent(profile.sparse_infill_density),
+        supports: booleanSetting(profile.enable_support),
+        supportType: typeof first(profile.support_type) === "string" ? first(profile.support_type) : null,
+        supportThresholdAngle: numeric(profile.support_threshold_angle),
+        supportOnBuildPlateOnly: booleanSetting(profile.support_on_build_plate_only),
+        fanMinSpeedPercent: numeric(profile.fan_min_speed),
+        fanMaxSpeedPercent: numeric(profile.fan_max_speed),
+      },
+      source: "JSON efetivo do perfil OrcaSlicer",
+    };
   }
   const temperatures = [numeric(profile.nozzle_temperature_range_low ?? profile.nozzle_temperature), numeric(profile.nozzle_temperature_range_high ?? profile.nozzle_temperature)];
   const bedTemperatures = [numeric(profile.cool_plate_temp ?? profile.textured_plate_temp ?? profile.bed_temperature), numeric(profile.cool_plate_temp_initial_layer ?? profile.textured_plate_temp_initial_layer ?? profile.bed_temperature_initial_layer)];
@@ -189,7 +231,12 @@ async function readConfiguredProfile(configuredPath, kind, index) {
   catch { throw publicError(`Não foi possível ler o perfil de ${kind}.`, 503); }
   const id = `orca-${kind}-${createHash("sha256").update(kind).update("\0").update(contents).digest("hex").slice(0, 24)}`;
   const label = ({ machine: "Máquina", process: "Processo", filament: "Filamento" })[kind] || "Perfil";
-  return { id, contents, parsed: parseProfile(contents, kind, `${label} ${String(index + 1).padStart(2, "0")}`) };
+  const profileDocument = readProfileDocument(contents, label, `${label} ${String(index + 1).padStart(2, "0")}`);
+  const selectable = String(profileDocument.instantiation ?? "true").trim().toLowerCase() !== "false";
+  const parsed = selectable
+    ? parseProfile(contents, kind, profileDocument.name)
+    : { name: displayName(profileDocument, profileDocument.name), compatibility: readProfileCompatibility(profileDocument), source: "JSON base usado para resolver herança" };
+  return { id, contents, profileDocument, parsed, selectable };
 }
 
 function configuredProfilePaths(catalogKey, legacyKey, kind) {
@@ -213,11 +260,125 @@ async function readConfiguredProfiles(catalogKey, legacyKey, kind) {
   const profiles = await Promise.all(paths.map((path, index) => readConfiguredProfile(path, kind, index)));
   const totalBytes = profiles.reduce((sum, profile) => sum + profile.contents.length, 0);
   if (totalBytes > MAX_PROFILE_CATALOG_BYTES) throw publicError(`O catálogo de perfis de ${kind} excede o limite total de 16 MB.`, 503);
-  return [...new Map(profiles.map(profile => [profile.id, profile])).values()];
+  const catalog = [...new Map(profiles.map(profile => [profile.id, profile])).values()];
+  if (!catalog.some(profile => profile.selectable)) throw publicError(`O catálogo de ${kind} precisa conter ao menos um perfil selecionável além dos perfis-base.`, 503);
+  return catalog;
 }
 
 function publicProfileCatalog(profiles) {
-  return { catalog: profiles.map(({ id, parsed }) => ({ id, ...parsed })) };
+  return { catalog: profiles.filter(profile => profile.selectable !== false).map(({ id, parsed, inheritance }) => ({ id, ...parsed, inheritance })) };
+}
+
+function profileKindFromRelativePath(path) {
+  const segments = path.split(/[\\/]+/).map(segment => segment.toLowerCase());
+  return ["machine", "process", "filament"].find(kind => segments.includes(kind)) || null;
+}
+
+function systemProfileRoots(executable) {
+  const directory = dirname(executable);
+  return [
+    process.env.ORDAX_ORCA_PROFILE_DIR?.trim(),
+    join(directory, "resources", "profiles"),
+    resolve(directory, "..", "Resources", "profiles"),
+    resolve(directory, "..", "share", "OrcaSlicer", "resources", "profiles"),
+    resolve(directory, "..", "share", "orcaslicer", "resources", "profiles"),
+    resolve(directory, "..", "share", "orca-slicer", "resources", "profiles"),
+  ].filter(Boolean);
+}
+
+async function loadInstalledProfileIndex(executable) {
+  const profiles = { machine: new Map(), process: new Map(), filament: new Map() };
+  let root = null;
+  for (const candidate of systemProfileRoots(executable)) {
+    try {
+      const canonical = await realpath(resolve(candidate));
+      if ((await stat(canonical)).isDirectory()) { root = canonical; break; }
+    } catch {}
+  }
+  if (!root) return profiles;
+
+  const pending = [{ path: root, depth: 0 }];
+  let scannedFiles = 0, totalBytes = 0;
+  while (pending.length && scannedFiles < MAX_SYSTEM_PROFILE_FILES && totalBytes < MAX_SYSTEM_PROFILE_BYTES) {
+    const directory = pending.pop();
+    if (directory.depth > 12) continue;
+    let entries;
+    try { entries = await readdir(directory.path, { withFileTypes: true }); }
+    catch { continue; }
+    for (const entry of entries) {
+      const path = join(directory.path, entry.name);
+      if (entry.isDirectory()) {
+        pending.push({ path, depth: directory.depth + 1 });
+        continue;
+      }
+      if (!entry.isFile() || extname(entry.name).toLowerCase() !== ".json") continue;
+      const kind = profileKindFromRelativePath(path.slice(root.length));
+      if (!kind) continue;
+      scannedFiles++;
+      if (scannedFiles > MAX_SYSTEM_PROFILE_FILES) break;
+      let metadata;
+      try { metadata = await stat(path); } catch { continue; }
+      if (metadata.size <= 0 || metadata.size > MAX_PROFILE_BYTES || totalBytes + metadata.size > MAX_SYSTEM_PROFILE_BYTES) continue;
+      let contents, profileDocument;
+      try {
+        contents = await readFile(path);
+        totalBytes += contents.length;
+        profileDocument = readProfileDocument(contents, kind, entry.name.slice(0, -5));
+      } catch { continue; }
+      if (profileDocument.type && profileDocument.type !== kind) continue;
+      const name = String(profileDocument.name || "").trim();
+      if (!name) continue;
+      const id = `orca-system-${kind}-${createHash("sha256").update(contents).digest("hex")}`;
+      const entryValue = { id, contents, profileDocument, name };
+      const candidates = profiles[kind].get(name) || [];
+      candidates.push(entryValue);
+      profiles[kind].set(name, candidates);
+    }
+  }
+  return profiles;
+}
+
+function unresolvedInheritance(record, parentName, detail) {
+  const reason = `O perfil “${record.parsed.name}” herda “${parentName}”, mas o host não conseguiu resolver essa cadeia. Configure ORDAX_ORCA_PROFILE_DIR para a pasta resources/profiles do OrcaSlicer ou inclua o JSON pai no catálogo local.`;
+  return { ...record, inheritance: Object.freeze({ status: "unresolved", parentName, reason: `${reason}${detail ? ` ${detail}` : ""}` }) };
+}
+
+function resolveProfileRecord(record, kind, configured, installed, cache, stack = []) {
+  if (cache.has(record.id)) return cache.get(record.id);
+  const parentName = typeof record.profileDocument?.inherits === "string" ? record.profileDocument.inherits.trim() : "";
+  if (!parentName) {
+    const resolved = { ...record, inheritance: Object.freeze({ status: "none", parents: [] }) };
+    cache.set(record.id, resolved);
+    return resolved;
+  }
+  if (stack.includes(record.id) || stack.length >= 32) return unresolvedInheritance(record, parentName, "A cadeia tem ciclo ou excede 32 níveis.");
+
+  const configuredParents = configured.filter(candidate => candidate.id !== record.id && candidate.profileDocument?.name === parentName);
+  const parentCandidates = configuredParents.length ? configuredParents : (installed.get(parentName) || []);
+  const uniqueParents = [...new Map(parentCandidates.map(candidate => [createHash("sha256").update(candidate.contents).digest("hex"), candidate])).values()];
+  if (uniqueParents.length !== 1) {
+    const reason = uniqueParents.length ? "Há mais de um perfil pai com esse nome e conteúdo diferente." : "O perfil pai não está instalado nem foi incluído no catálogo.";
+    return unresolvedInheritance(record, parentName, reason);
+  }
+
+  const parent = resolveProfileRecord(uniqueParents[0], kind, configured, installed, cache, [...stack, record.id]);
+  if (parent.inheritance?.status === "unresolved") return unresolvedInheritance(record, parent.inheritance.parentName || parentName, "A cadeia de perfil pai não foi resolvida.");
+  const profileDocument = { ...parent.profileDocument, ...record.profileDocument };
+  delete profileDocument.inherits;
+  profileDocument.name = record.profileDocument.name || record.parsed.name;
+  const contents = Buffer.from(JSON.stringify(profileDocument), "utf8");
+  let parsed;
+  try { parsed = parseProfile(contents, kind, record.parsed.name); }
+  catch (error) { return unresolvedInheritance(record, parentName, `O perfil efetivo não passou na validação: ${error.message.slice(0, 160)}`); }
+  const parents = [...(parent.inheritance?.parents || []), parentName].slice(-32);
+  const resolved = { ...record, contents, profileDocument, parsed, inheritance: Object.freeze({ status: "resolved", parents }) };
+  cache.set(record.id, resolved);
+  return resolved;
+}
+
+function resolveConfiguredProfileInheritance(kind, configured, installed) {
+  const cache = new Map();
+  return configured.map(record => resolveProfileRecord(record, kind, configured, installed[kind], cache));
 }
 
 function selectConfiguredProfiles(configuration, manifest) {
@@ -229,7 +390,8 @@ function selectConfiguredProfiles(configuration, manifest) {
     const id = selections[kind];
     if (typeof id !== "string" || !new RegExp(`^orca-${kind}-[a-f0-9]{24}$`).test(id)) throw publicError(`O perfil selecionado de ${kind} é inválido.`);
     const profile = configuration.profileFiles[kind].find(entry => entry.id === id);
-    if (!profile) throw publicError(`O perfil selecionado de ${kind} não pertence ao catálogo carregado neste host. Atualize os perfis e tente novamente.`, 422);
+    if (!profile || profile.selectable === false) throw publicError(`O perfil selecionado de ${kind} não pertence ao catálogo selecionável carregado neste host. Atualize os perfis e tente novamente.`, 422);
+    if (profile.inheritance?.status === "unresolved") throw publicError(profile.inheritance.reason, 422);
     selected[kind] = profile;
   }
   return selected;
@@ -409,7 +571,7 @@ function normalSettings(value) {
     fanMinSpeedPercent: Number(value.fanMinSpeedPercent),
     fanMaxSpeedPercent: Number(value.fanMaxSpeedPercent),
   };
-  if (!["standard", "fine", "draft"].includes(settings.quality)
+  if (!["standard", "fine", "draft", "profile", "custom"].includes(settings.quality)
     || !Number.isFinite(settings.layerHeight) || settings.layerHeight < 0.08 || settings.layerHeight > 0.4
     || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
@@ -466,10 +628,14 @@ function validateManifest(manifest, meshBytes) {
     }
   }
   if (assigned.size !== objectIds.size) throw publicError("Há peças sem processo de impressão atribuído.");
-  const uniqueSettings = new Set(settingsByProcess.map(settings => JSON.stringify(settings)));
+  const engineSettings = settings => {
+    const { quality: _qualityShortcut, ...applied } = settings;
+    return applied;
+  };
+  const uniqueSettings = new Set(settingsByProcess.map(settings => JSON.stringify(engineSettings(settings))));
   if (uniqueSettings.size !== 1) throw publicError("O OrcaSlicer CLI não aceita com segurança estes processos diferentes na mesma mesa. Use uma configuração uniforme até o suporte upstream por peça ser validado.", 422);
   const requestedSettings = normalSettings(manifest.settings);
-  if (JSON.stringify(requestedSettings) !== JSON.stringify(settingsByProcess[0])) throw publicError("As configurações gerais e do processo não correspondem.");
+  if (JSON.stringify(engineSettings(requestedSettings)) !== JSON.stringify(engineSettings(settingsByProcess[0]))) throw publicError("As configurações gerais e do processo não correspondem.");
   return { settings: requestedSettings, triangleCount: meshBytes.readUInt32LE(80) };
 }
 
@@ -549,6 +715,10 @@ async function loadConfiguration() {
       readConfiguredProfiles("ORDAX_ORCA_PROCESS_PROFILES", "ORDAX_ORCA_PROCESS_PROFILE", "process"),
       readConfiguredProfiles("ORDAX_ORCA_FILAMENT_PROFILES", "ORDAX_ORCA_FILAMENT_PROFILE", "filament"),
     ]);
+    const installed = await loadInstalledProfileIndex(executable);
+    machines = resolveConfiguredProfileInheritance("machine", machines, installed);
+    processProfiles = resolveConfiguredProfileInheritance("process", processProfiles, installed);
+    filaments = resolveConfiguredProfileInheritance("filament", filaments, installed);
   } catch (error) {
     return { executable, available: false, version: null, reason: error.message.slice(0, 300), profiles: null };
   }

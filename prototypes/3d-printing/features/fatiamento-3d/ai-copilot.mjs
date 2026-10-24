@@ -78,7 +78,14 @@ function profileCompatibilityValues(profile) {
 }
 
 function profileValues(kind, profile) {
-  const common = { id: profile.id, name: String(profile.name || profile.id).slice(0, 80), compatibility: profileCompatibilityValues(profile) };
+  const common = {
+    id: profile.id,
+    name: String(profile.name || profile.id).slice(0, 80),
+    compatibility: profileCompatibilityValues(profile),
+    inheritance: profile.inheritance?.status === "unresolved"
+      ? { status: "unresolved", parentName: String(profile.inheritance.parentName || "").slice(0, 120) }
+      : { status: profile.inheritance?.status === "resolved" ? "resolved" : "not-required", parents: Array.isArray(profile.inheritance?.parents) ? profile.inheritance.parents.slice(0, 8).map(name => String(name).slice(0, 100)) : [] },
+  };
   if (kind === "machine") return {
     ...common,
     bedSizeMm: Array.isArray(profile.bedSizeMm) ? profile.bedSizeMm.slice(0, 2).map(profileNumber) : null,
@@ -89,6 +96,17 @@ function profileValues(kind, profile) {
     ...common,
     layerHeightMm: profileNumber(profile.layerHeightMm),
     wallLoops: profileNumber(profile.wallLoops),
+    processSettings: profile.processSettings && typeof profile.processSettings === "object" ? {
+      layerHeightMm: profileNumber(profile.processSettings.layerHeightMm),
+      wallLoops: profileNumber(profile.processSettings.wallLoops),
+      sparseInfillDensityPercent: profileNumber(profile.processSettings.sparseInfillDensityPercent),
+      supports: typeof profile.processSettings.supports === "boolean" ? profile.processSettings.supports : null,
+      supportType: typeof profile.processSettings.supportType === "string" ? profile.processSettings.supportType.slice(0, 32) : null,
+      supportThresholdAngle: profileNumber(profile.processSettings.supportThresholdAngle),
+      supportOnBuildPlateOnly: typeof profile.processSettings.supportOnBuildPlateOnly === "boolean" ? profile.processSettings.supportOnBuildPlateOnly : null,
+      fanMinSpeedPercent: profileNumber(profile.processSettings.fanMinSpeedPercent),
+      fanMaxSpeedPercent: profileNumber(profile.processSettings.fanMaxSpeedPercent),
+    } : null,
   };
   return {
     ...common,
@@ -118,7 +136,7 @@ export function buildAssistantProfileContext(catalogs = {}, selectedIds = {}) {
       const text = JSON.stringify({ slicer: { configuredProfiles: { catalogs: { [names[kind]]: next } } } });
       if (profiles.length >= assistantProfileOptionLimit || text.length > MAX_PROFILE_CONTEXT_CHARS) break;
       profiles.push(summary);
-      validationProfiles.push(Object.freeze({ id: profile.id, name: String(profile.name || profile.id), compatibility: profile.compatibility }));
+      validationProfiles.push(Object.freeze({ id: profile.id, name: String(profile.name || profile.id), compatibility: profile.compatibility, inheritance: profile.inheritance }));
       seen.add(profile.id);
     }
     allowedProfiles[kind] = profiles.map(profile => profile.id);

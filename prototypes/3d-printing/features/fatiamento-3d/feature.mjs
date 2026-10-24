@@ -84,7 +84,7 @@ function safeDraft(value) {
   next.scale = Math.max(0.1, Math.min(3, Number(next.scale) || 1));
   next.supports = Boolean(next.supports);
   next.selectedTab = next.selectedTab === "preview" ? "preview" : "prepare";
-  const validQuality = quality => ["standard", "fine", "draft"].includes(quality) ? quality : "standard";
+  const validQuality = quality => ["standard", "fine", "draft", "profile", "custom"].includes(quality) ? quality : "standard";
   const validSupportType = supportType => ["normal(auto)", "tree(auto)"].includes(supportType) ? supportType : "normal(auto)";
   const normalizeProcessSettings = (source, fallback = next) => ({
     quality: validQuality(source?.quality ?? fallback.quality),
@@ -304,7 +304,7 @@ export function mountFeature(host = {}) {
             <div class="panel-heading compact"><div><span class="panel-kicker">PERFIS DE FATIAMENTO</span><h2 data-profile-heading>Perfis de referência</h2></div></div>
             <label class="slice-field"><span>Máquina</span><select data-printer class="dark-select"><option value="generic">FDM genérica · 256 × 256 × 256</option><option value="a1">Bambu Lab A1 · referência</option><option value="mk4">Original Prusa MK4 · referência</option><option value="ender">Creality Ender 3 V3 · referência</option></select></label>
             <div class="profile-disclaimer" data-profile-disclaimer>${icon("tool", 13)}<span>Dimensões de referência para layout. Não são perfis validados pelo fabricante.</span></div>
-            <label class="slice-field"><span>Processo do OrcaSlicer</span><select data-process-profile class="dark-select" disabled><option value="">Configure perfis no host</option></select></label>
+            <label class="slice-field"><span>Processo do OrcaSlicer</span><select data-process-profile class="dark-select" disabled><option value="">Configure perfis no host</option></select></label><p class="process-note" data-process-profile-note>Ao escolher um processo, o app carrega os parâmetros reconhecidos pelo perfil nos processos da mesa.</p>
             <label class="slice-field"><span>Filamento</span><select data-filament class="dark-select"><option value="pla">PLA · bico 190–220 °C</option><option value="petg">PETG · bico 225–250 °C</option><option value="abs">ABS · bico 240–265 °C</option></select></label>
             <div class="material-summary" data-material-summary>Faixa de mesa: 45–65 °C · valores de referência</div>
           </aside>
@@ -322,7 +322,7 @@ export function mountFeature(host = {}) {
           <aside class="slice-panel settings-panel">
             <div class="panel-heading"><div><span class="panel-kicker">PREPARAR</span><h2>Configurações do trabalho</h2></div><span class="draft-badge">RASCUNHO</span></div>
             <label class="slice-field process-editor"><span>Editar configurações de</span><select class="dark-select" data-active-process aria-label="Processo de impressão cujas configurações serão editadas"></select><small data-active-process-note>As configurações abaixo valem para os objetos atribuídos a este processo.</small></label>
-            <div class="settings-section"><div class="settings-section-title"><span>01</span><strong>Qualidade</strong></div><label class="slice-field"><span>Predefinição deste app</span><select class="dark-select" data-quality><option value="standard">Equilibrado · 0,20 mm</option><option value="fine">Detalhado · 0,12 mm</option><option value="draft">Rápido · 0,28 mm</option></select></label><div class="setting-value"><label for="layer-height">Altura de camada</label><div class="number-unit"><input id="layer-height" type="number" min="0.08" max="0.4" step="0.01" data-layer-height/><span>mm</span></div></div></div>
+            <div class="settings-section"><div class="settings-section-title"><span>01</span><strong>Qualidade</strong></div><label class="slice-field"><span>Atalho de altura de camada</span><select class="dark-select" data-quality><option value="profile">Definida pelo perfil selecionado</option><option value="standard">Equilibrado · 0,20 mm</option><option value="fine">Detalhado · 0,12 mm</option><option value="draft">Rápido · 0,28 mm</option><option value="custom">Personalizada</option></select></label><div class="setting-value"><label for="layer-height">Altura de camada</label><div class="number-unit"><input id="layer-height" type="number" min="0.08" max="0.4" step="0.01" data-layer-height/><span>mm</span></div></div></div>
             <div class="settings-section"><div class="settings-section-title"><span>02</span><strong>Paredes e preenchimento</strong></div><div class="setting-value"><label for="wall-count">Paredes</label><div class="number-unit"><input id="wall-count" type="number" min="1" max="8" step="1" data-walls/><span>linhas</span></div></div><div class="setting-value"><label for="infill-density">Densidade de preenchimento</label><div class="number-unit"><input id="infill-density" type="number" min="0" max="100" step="1" data-infill/><span>%</span></div></div></div>
             <div class="settings-section"><div class="settings-section-title"><span>03</span><strong>Suportes</strong></div><label class="toggle-row"><span><strong>Gerar suportes</strong><small>Áreas suspensas do modelo</small></span><input type="checkbox" data-supports/><i></i></label><label class="slice-field"><span>Estrutura automática</span><select class="dark-select" data-support-type><option value="normal(auto)">Normal · estável e contínua</option><option value="tree(auto)">Árvore · ramificada</option></select></label><div class="setting-value"><label for="support-angle">Ângulo limite</label><div class="number-unit"><input id="support-angle" type="number" min="0" max="90" step="1" data-support-angle/><span>°</span></div></div><label class="toggle-row"><span><strong>Somente sobre a mesa</strong><small>Não apoia em superfícies da peça</small></span><input type="checkbox" data-support-build-plate/><i></i></label><p class="not-applied-note">Ângulo 0 usa o limite de sobreposição do perfil para suporte normal; em árvore, o Orca usa 30°. O app não oferece colocação manual de bloqueadores/enforcers.</p></div>
             <div class="settings-section"><div class="settings-section-title"><span>04</span><strong>Resfriamento</strong></div><div class="setting-value"><label for="fan-min-speed">Ventoinha mínima</label><div class="number-unit"><input id="fan-min-speed" type="number" min="0" max="100" step="5" data-fan-min/><span>%</span></div></div><div class="setting-value"><label for="fan-max-speed">Ventoinha máxima</label><div class="number-unit"><input id="fan-max-speed" type="number" min="0" max="100" step="5" data-fan-max/><span>%</span></div></div><p class="not-applied-note">Faixa da ventoinha de peça. O Orca varia a velocidade dentro desses limites conforme o tempo da camada e as regras do perfil do material; o mínimo não é aplicado quando o perfil desativa o resfriamento.</p></div>
@@ -412,7 +412,7 @@ export function mountFeature(host = {}) {
   function processCompatibilityReason() {
     if (!engineStatus.available || engineStatus.processScope !== "uniform" || draft.processes.length < 2) return "";
     const settings = new Set(draft.processes.map(process => JSON.stringify({
-      quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls,
+      layerHeight: process.settings.layerHeight, walls: process.settings.walls,
       infill: process.settings.infill, supports: process.settings.supports, supportType: process.settings.supportType, supportThresholdAngle: process.settings.supportThresholdAngle, supportOnBuildPlateOnly: process.settings.supportOnBuildPlateOnly, fanMinSpeedPercent: process.settings.fanMin, fanMaxSpeedPercent: process.settings.fanMax,
     })));
     return settings.size > 1
@@ -425,6 +425,50 @@ export function mountFeature(host = {}) {
   }
   function activeProcess() { return draft.processes.find(process => process.id === draft.selectedProcessId) || draft.processes[0]; }
   function activeSettings() { return activeProcess()?.settings || draft; }
+  function processProfileDefaults(profile) {
+    const source = profile?.processSettings || {};
+    const bounded = (value, fallback, min, max, integer = false) => {
+      if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max || (integer && !Number.isInteger(value))) return fallback;
+      return value;
+    };
+    const supportType = ["normal(auto)", "tree(auto)"].includes(source.supportType) ? source.supportType : defaultDraft.supportType;
+    let fanMin = bounded(source.fanMinSpeedPercent, defaultDraft.fanMin, 0, 100, true);
+    let fanMax = bounded(source.fanMaxSpeedPercent, defaultDraft.fanMax, 0, 100, true);
+    if (fanMin > fanMax) { fanMin = defaultDraft.fanMin; fanMax = defaultDraft.fanMax; }
+    return {
+      quality: "profile",
+      layerHeight: bounded(source.layerHeightMm, defaultDraft.layerHeight, 0.08, 0.4),
+      walls: bounded(source.wallLoops, defaultDraft.walls, 1, 8, true),
+      infill: bounded(source.sparseInfillDensityPercent, defaultDraft.infill, 0, 100),
+      supports: typeof source.supports === "boolean" ? source.supports : defaultDraft.supports,
+      supportType,
+      supportThresholdAngle: bounded(source.supportThresholdAngle, defaultDraft.supportThresholdAngle, 0, 90, true),
+      supportOnBuildPlateOnly: typeof source.supportOnBuildPlateOnly === "boolean" ? source.supportOnBuildPlateOnly : defaultDraft.supportOnBuildPlateOnly,
+      fanMin,
+      fanMax,
+    };
+  }
+  function applyProcessProfileDefaults(profile) {
+    const settings = processProfileDefaults(profile);
+    draft = safeDraft({
+      ...draft,
+      processProfileId: profile.id,
+      ...settings,
+      processes: draft.processes.map(process => ({ ...process, settings: { ...settings } })),
+    });
+  }
+  function processSettingsAreAppDefaults(settings) {
+    return settings?.quality === defaultDraft.quality
+      && settings.layerHeight === defaultDraft.layerHeight
+      && settings.walls === defaultDraft.walls
+      && settings.infill === defaultDraft.infill
+      && settings.supports === defaultDraft.supports
+      && settings.supportType === defaultDraft.supportType
+      && settings.supportThresholdAngle === defaultDraft.supportThresholdAngle
+      && settings.supportOnBuildPlateOnly === defaultDraft.supportOnBuildPlateOnly
+      && settings.fanMin === defaultDraft.fanMin
+      && settings.fanMax === defaultDraft.fanMax;
+  }
   function processForObject(objectId) { return draft.processes.find(process => process.objectIds.includes(objectId)) || null; }
   function canSplitSelectedObject() {
     if (!model || model.demo || !selectedObjectId || draft.processes.length >= 100) return false;
@@ -680,6 +724,7 @@ export function mountFeature(host = {}) {
     const machineSelect = content.querySelector("[data-printer]");
     const processSelect = content.querySelector("[data-process-profile]");
     const filamentSelect = content.querySelector("[data-filament]");
+    const previousProcessProfileId = draft.processProfileId;
     const catalogs = engineStatus.profiles || {};
     const machineCatalog = catalogs.machine?.catalog || [];
     const processCatalog = catalogs.process?.catalog || [];
@@ -713,6 +758,20 @@ export function mountFeature(host = {}) {
     fillCatalog(machineSelect, "machine", machineCatalog, true);
     fillCatalog(processSelect, "process", processCatalog);
     fillCatalog(filamentSelect, "filament", filamentCatalog, true);
+    if (processCatalog.length && draft.processProfileId !== previousProcessProfileId) {
+      const selectedProcessProfile = processCatalog.find(item => item.id === draft.processProfileId);
+      if (selectedProcessProfile && selectedProcessProfile.inheritance?.status !== "unresolved"
+        && draft.processes.length === 1 && processSettingsAreAppDefaults(draft.processes[0].settings)) {
+        applyProcessProfileDefaults(selectedProcessProfile);
+      }
+    }
+    const selectedProcessProfile = processCatalog.find(item => item.id === draft.processProfileId);
+    const processProfileNote = content.querySelector("[data-process-profile-note]");
+    if (processProfileNote) processProfileNote.textContent = !processCatalog.length
+      ? "Configure perfis de processo JSON no host para carregar valores reais do OrcaSlicer."
+      : selectedProcessProfile?.inheritance?.status === "unresolved"
+        ? selectedProcessProfile.inheritance.reason
+        : "Ao escolher um processo, o app aplica os valores reconhecidos pelo perfil a todos os processos da mesa. Ajustes manuais continuam editáveis.";
     const configured = machineCatalog.length && processCatalog.length && filamentCatalog.length;
     content.querySelector("[data-profile-heading]").textContent = configured ? "Catálogos locais do OrcaSlicer" : "Perfis de referência";
     content.querySelector("[data-profile-disclaimer]").lastElementChild.textContent = configured
@@ -818,10 +877,6 @@ export function mountFeature(host = {}) {
           apply.disabled = true; toast("A peça ou processo não está mais disponível. Peça uma nova sugestão."); return;
         }
         const previousSettings = { ...process.settings };
-        const nextSettings = { ...previousSettings, ...suggestion.settings };
-        if (nextSettings.fanMin > nextSettings.fanMax) {
-          apply.disabled = true; toast("A faixa sugerida para a ventoinha é inválida: o mínimo passa do máximo."); return;
-        }
         const previousDraft = JSON.parse(JSON.stringify(draft));
         const profileKeys = { machine: "printerProfileId", process: "processProfileId", filament: "filamentProfileId" };
         const nextProfileIds = {};
@@ -831,9 +886,25 @@ export function mountFeature(host = {}) {
           }
           nextProfileIds[profileKeys[kind]] = id;
         }
-        const processes = Object.keys(suggestion.settings).length
-          ? draft.processes.map(item => item.id === suggestionProcessId ? { ...item, settings: nextSettings } : item)
-          : draft.processes;
+        const processProfileChanged = Boolean(nextProfileIds.processProfileId && nextProfileIds.processProfileId !== draft.processProfileId);
+        const nextProcessProfile = engineStatus.profiles?.process?.catalog?.find(item => item.id === (nextProfileIds.processProfileId || draft.processProfileId));
+        const profileDefaults = processProfileChanged && nextProcessProfile?.inheritance?.status !== "unresolved"
+          ? processProfileDefaults(nextProcessProfile)
+          : null;
+        const baseProcessSettings = profileDefaults || previousSettings;
+        const nextSettings = { ...baseProcessSettings, ...suggestion.settings };
+        if (Object.hasOwn(suggestion.settings, "quality") && !Object.hasOwn(suggestion.settings, "layerHeight")) {
+          nextSettings.layerHeight = suggestion.settings.quality === "fine" ? 0.12 : suggestion.settings.quality === "draft" ? 0.28 : 0.2;
+        } else if (Object.hasOwn(suggestion.settings, "layerHeight") && !Object.hasOwn(suggestion.settings, "quality")) {
+          nextSettings.quality = "custom";
+        }
+        if (nextSettings.fanMin > nextSettings.fanMax) {
+          apply.disabled = true; toast("A faixa sugerida para a ventoinha é inválida: o mínimo passa do máximo."); return;
+        }
+        const processes = draft.processes.map(item => {
+          if (profileDefaults) return { ...item, settings: item.id === suggestionProcessId ? nextSettings : profileDefaults };
+          return Object.keys(suggestion.settings).length && item.id === suggestionProcessId ? { ...item, settings: nextSettings } : item;
+        });
         const objectTransforms = { ...draft.objectTransforms };
         const previousTransform = objectTransform(draft, suggestionObjectId);
         if (Object.keys(suggestion.transform).length) {
@@ -1166,10 +1237,15 @@ export function mountFeature(host = {}) {
   }
 
   function updateInputs() {
-    const settings = activeSettings();
     syncProfileControls();
+    const settings = activeSettings();
     if (!selectedEngineProfile("machine")) content.querySelector("[data-printer]").value = draft.printer;
     if (!selectedEngineProfile("filament")) content.querySelector("[data-filament]").value = draft.filament;
+    const processProfile = selectedEngineProfile("process");
+    const profileQualityOption = content.querySelector('[data-quality] option[value="profile"]');
+    if (profileQualityOption) profileQualityOption.textContent = Number.isFinite(processProfile?.processSettings?.layerHeightMm)
+      ? `Do perfil · ${number(processProfile.processSettings.layerHeightMm, 2)} mm`
+      : "Definida pelo perfil selecionado";
     content.querySelector("[data-quality]").value = settings.quality;
     content.querySelector("[data-layer-height]").value = String(settings.layerHeight);
     content.querySelector("[data-walls]").value = String(settings.walls);
@@ -1495,14 +1571,35 @@ export function mountFeature(host = {}) {
   stage.addEventListener("dragleave", event => { if (!stage.contains(event.relatedTarget)) stage.classList.remove("is-over"); });
   stage.addEventListener("drop", event => { event.preventDefault(); stage.classList.remove("is-over"); openFile([...event.dataTransfer.files].find(file => /\.(?:stl|3mf|ordax3d)$/i.test(file.name))); });
   content.querySelector("[data-printer]").addEventListener("change", updateDraftFromInputs);
-  content.querySelector("[data-process-profile]").addEventListener("change", updateDraftFromInputs);
+  content.querySelector("[data-process-profile]").addEventListener("change", event => {
+    const profile = engineStatus.profiles?.process?.catalog?.find(item => item.id === event.currentTarget.value);
+    if (!profile) return;
+    draft = safeDraft({ ...draft, processProfileId: profile.id });
+    if (profile.inheritance?.status !== "unresolved") {
+      applyProcessProfileDefaults(profile);
+      toast(`Parâmetros reconhecidos de “${profile.name}” aplicados aos processos da mesa.`);
+    } else {
+      toast(profile.inheritance.reason || "Configure a pasta de perfis base do OrcaSlicer para resolver este processo.");
+    }
+    clearSlicedOutput("O perfil de processo mudou. Gere um novo fatiamento para atualizar a trajetória.");
+    updateInputs(); persist();
+  });
   content.querySelector("[data-filament]").addEventListener("change", updateDraftFromInputs);
   content.querySelector("[data-quality]").addEventListener("change", () => {
     const quality = content.querySelector("[data-quality]").value;
-    content.querySelector("[data-layer-height]").value = quality === "fine" ? "0.12" : quality === "draft" ? "0.28" : "0.20";
+    if (quality === "profile") {
+      const layerHeight = selectedEngineProfile("process")?.processSettings?.layerHeightMm;
+      if (Number.isFinite(layerHeight) && layerHeight >= 0.08 && layerHeight <= 0.4) content.querySelector("[data-layer-height]").value = String(layerHeight);
+    } else if (quality !== "custom") {
+      content.querySelector("[data-layer-height]").value = quality === "fine" ? "0.12" : quality === "draft" ? "0.28" : "0.20";
+    }
     updateDraftFromInputs();
   });
-  for (const selector of ["[data-layer-height]", "[data-walls]", "[data-infill]", "[data-supports]", "[data-support-type]", "[data-support-angle]", "[data-support-build-plate]", "[data-fan-min]", "[data-fan-max]", "[data-rotation]", "[data-scale]", "[data-unit]", "[data-object-transform]"]) {
+  content.querySelector("[data-layer-height]").addEventListener("change", () => {
+    content.querySelector("[data-quality]").value = "custom";
+    updateDraftFromInputs();
+  });
+  for (const selector of ["[data-walls]", "[data-infill]", "[data-supports]", "[data-support-type]", "[data-support-angle]", "[data-support-build-plate]", "[data-fan-min]", "[data-fan-max]", "[data-rotation]", "[data-scale]", "[data-unit]", "[data-object-transform]"]) {
     content.querySelector(selector).addEventListener("change", updateDraftFromInputs);
   }
   content.querySelector("[data-rotate]").addEventListener("click", () => { draft.rotation = (draft.rotation + 90) % 360; content.querySelector("[data-rotation]").value = String(draft.rotation); updateDraftFromInputs(); });

@@ -2,6 +2,7 @@ param(
   [int]$Port = 4241,
   [string]$Model = "openai/gpt-oss-20b",
   [string]$OrcaSlicerPath = "",
+  [string]$OrcaProfilesDirectory = "",
   [Alias("MachineProfilePath")][string[]]$MachineProfilePaths = @(),
   [Alias("ProcessProfilePath")][string[]]$ProcessProfilePaths = @(),
   [Alias("FilamentProfilePath")][string[]]$FilamentProfilePaths = @()
@@ -24,6 +25,7 @@ if ($hasAnyProfiles) {
   foreach ($path in $orcaSettings) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Arquivo de configuração do OrcaSlicer não encontrado: $path" }
   }
+  if ($OrcaProfilesDirectory -and -not (Test-Path -LiteralPath $OrcaProfilesDirectory -PathType Container)) { throw "Pasta resources/profiles do OrcaSlicer não encontrada: $OrcaProfilesDirectory" }
 }
 
 $secureKey = Read-Host "Chave Groq (entrada oculta)" -AsSecureString
@@ -38,6 +40,7 @@ try {
     $env:ORDAX_ORCA_MACHINE_PROFILES = ConvertTo-Json -InputObject ([string[]]$MachineProfilePaths) -Compress
     $env:ORDAX_ORCA_PROCESS_PROFILES = ConvertTo-Json -InputObject ([string[]]$ProcessProfilePaths) -Compress
     $env:ORDAX_ORCA_FILAMENT_PROFILES = ConvertTo-Json -InputObject ([string[]]$FilamentProfilePaths) -Compress
+    if ($OrcaProfilesDirectory) { $env:ORDAX_ORCA_PROFILE_DIR = $OrcaProfilesDirectory }
   }
   $serverPath = Join-Path $PSScriptRoot "server.mjs"
   node $serverPath "preparacao-impressao"
@@ -51,6 +54,7 @@ finally {
   Remove-Item Env:ORDAX_ORCA_MACHINE_PROFILES -ErrorAction SilentlyContinue
   Remove-Item Env:ORDAX_ORCA_PROCESS_PROFILES -ErrorAction SilentlyContinue
   Remove-Item Env:ORDAX_ORCA_FILAMENT_PROFILES -ErrorAction SilentlyContinue
+  Remove-Item Env:ORDAX_ORCA_PROFILE_DIR -ErrorAction SilentlyContinue
   Remove-Item Env:ORDAX_ORCA_MACHINE_PROFILE -ErrorAction SilentlyContinue
   Remove-Item Env:ORDAX_ORCA_PROCESS_PROFILE -ErrorAction SilentlyContinue
   Remove-Item Env:ORDAX_ORCA_FILAMENT_PROFILE -ErrorAction SilentlyContinue
