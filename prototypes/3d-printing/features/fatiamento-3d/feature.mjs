@@ -249,7 +249,7 @@ export function mountFeature(host = {}) {
             <button class="model-drop" type="button" data-open><span class="drop-glyph">${icon("upload", 20)}</span><span><strong>Solte um STL ou 3MF</strong><small>ou escolha um arquivo no computador</small></span><b>ATÉ 50 MB</b></button>
             <div class="object-card" data-object-card hidden><div class="object-thumb">${icon("cube", 22)}</div><div class="object-name"><strong data-file-name>—</strong><small data-file-details>—</small></div><button class="small-icon remove-object" type="button" data-remove aria-label="Remover modelo">${icon("close", 14)}</button></div>
             <section class="object-processes" data-object-processes hidden aria-label="Processos de impressão por objeto"><div class="processes-heading"><div><span class="panel-kicker">SIMPLIFY3D · POR OBJETO</span><strong data-process-summary>1 objeto · 1 processo</strong></div><span class="processes-count" data-process-count>1</span></div><div class="object-process-list" data-object-process-list></div><div class="process-actions"><button class="button secondary" type="button" data-process-add title="Cria um processo com os parâmetros atuais para a peça selecionada.">Separar peça</button><button class="button secondary" type="button" data-process-remove title="Move as peças deste processo para outro processo antes de removê-lo.">Remover</button></div><p class="process-note" data-process-note>Os processos são aplicados por objeto 3MF. Um arquivo STL corresponde a um único objeto.</p></section>
-            <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Áreas degeneradas</span><strong data-degenerate-faces>—</strong></div><p class="geometry-note" data-geometry-note>O diagnóstico não certifica topologia nem imprimibilidade.</p></div>
+            <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Área triangulada</span><strong data-surface-area>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Faces degeneradas</span><strong data-degenerate-faces>—</strong></div><p class="geometry-note" data-geometry-note>Área somada das faces após escala e unidade. Não certifica topologia nem imprimibilidade.</p></div>
             <div class="draft-note" data-source-note>${icon("file", 14)}<span>O arquivo original fica nesta sessão. O rascunho guarda apenas seus parâmetros neste navegador.</span></div>
             <div class="panel-separator"></div>
             <div class="panel-heading compact"><div><span class="panel-kicker">IMPRESSORA</span><h2 data-profile-heading>Perfil de referência</h2></div></div>
@@ -512,6 +512,29 @@ export function mountFeature(host = {}) {
     return transformedModelBounds(model, draft)?.dimensions || null;
   }
 
+  function transformedSurfaceAreaMm2(objectId = null) {
+    const diagnostics = model?.geometryDiagnostics;
+    if (!diagnostics || !Array.isArray(diagnostics.surfaceAreaByObject)) return null;
+    const selectedObjects = objectId ? model.objects.filter(object => object.id === objectId) : model.objects;
+    if (!selectedObjects.length) return null;
+    const areaByObject = new Map(diagnostics.surfaceAreaByObject.map(item => [item.objectId, item.surfaceAreaSquareUnits]));
+    const unitScale = model.format === "STL" ? unitScales[draft.stlUnit] : 1;
+    let total = 0;
+    for (const object of selectedObjects) {
+      const sourceArea = areaByObject.get(object.id);
+      if (!Number.isFinite(sourceArea) || sourceArea < 0) return null;
+      const transform = objectTransform(draft, object.id);
+      const scale = unitScale * draft.scale * transform.scale;
+      total += sourceArea * scale * scale;
+    }
+    return Number.isFinite(total) ? total : null;
+  }
+
+  function formatSurfaceArea(areaMm2) {
+    if (!Number.isFinite(areaMm2) || areaMm2 < 0) return "Não analisada";
+    return areaMm2 >= 10_000 ? `${number(areaMm2 / 100, 1)} cm²` : `${number(areaMm2, 1)} mm²`;
+  }
+
   function clearSlicedOutput(message = "As configurações mudaram. Gere o fatiamento novamente para criar um arquivo atualizado.") {
     revision++;
     controller?.abort();
@@ -692,6 +715,9 @@ export function mountFeature(host = {}) {
         method: model.geometryDiagnostics.method,
         triangleCount: model.geometryDiagnostics.triangleCount,
         degenerateTriangleCount: model.geometryDiagnostics.degenerateTriangleCount,
+        surfaceAreaMm2: transformedSurfaceAreaMm2(),
+        surfaceAreaBasis: "soma local das áreas triangulares em mm² após conversão da unidade de origem e escalas globais/individuais atuais",
+        surfaceAreaLimitations: "faces coincidentes ou internas não são deduplicadas; área não certifica topologia, watertightness ou consumo de filamento",
         topologyVerified: model.geometryDiagnostics.topologyVerified,
         watertightness: model.geometryDiagnostics.watertightness,
       } : null,
@@ -700,6 +726,7 @@ export function mountFeature(host = {}) {
       selectedObject: selectedObjectId ? {
         id: selectedObjectId, name: model?.objects.find(object => object.id === selectedObjectId)?.name || null,
         sourceDimensionsMm: model?.objects.find(object => object.id === selectedObjectId)?.bounds?.dimensions?.map(value => Number((value * (model.format === "STL" ? unitScales[draft.stlUnit] : 1)).toFixed(2))) || null,
+        surfaceAreaMm2: transformedSurfaceAreaMm2(selectedObjectId),
         transform: (() => {
           const current = objectTransform(draft, selectedObjectId);
           return { offsetMm: { x: current.x, y: current.y, z: current.z }, rotationDeg: { x: current.rotationX, y: current.rotationY, z: current.rotationZ }, scalePercent: Math.round(current.scale * 100) };
@@ -731,7 +758,7 @@ export function mountFeature(host = {}) {
   }
 
   function makeAiPrompt(question) {
-    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. Uma contagem local de áreas degeneradas não comprova topologia ou imprimibilidade. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se não houver base suficiente para uma recomendação, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
+    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. A contagem local de faces degeneradas e a área triangulada são medições geométricas parciais: não comprovam topologia, watertightness, orientação da malha ou imprimibilidade. A área triangulada soma as faces fornecidas após a conversão de unidades e as escalas atuais; não deduz consumo de filamento e pode incluir faces coincidentes ou internas. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se não houver base suficiente para uma recomendação, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
   }
 
   async function askAi(question = content.querySelector("[data-ai-input]").value) {
@@ -814,16 +841,17 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-file-details]").textContent = `${model.format} · ${model.triangleCount.toLocaleString("pt-BR")} faces`;
     content.querySelector("[data-triangles]").textContent = model.triangleCount.toLocaleString("pt-BR");
     const geometryCheck = content.querySelector("[data-degenerate-faces]");
+    content.querySelector("[data-surface-area]").textContent = model.demo ? "Amostra" : formatSurfaceArea(transformedSurfaceAreaMm2());
     const geometryNote = content.querySelector("[data-geometry-note]");
     if (model.demo) {
       geometryCheck.textContent = "Amostra";
       geometryCheck.className = "";
-      geometryNote.textContent = "A geometria de demonstração não foi analisada. A checagem numérica não certifica topologia nem imprimibilidade.";
+      geometryNote.textContent = "A amostra não foi analisada. A área e a checagem de faces não certificam topologia nem imprimibilidade.";
     } else if (model.geometryDiagnostics) {
       const count = model.geometryDiagnostics.degenerateTriangleCount;
       geometryCheck.textContent = count ? `${count.toLocaleString("pt-BR")} encontradas` : "Nenhuma detectada";
       geometryCheck.className = count ? "fit-warning" : "fit-ok";
-      geometryNote.textContent = "Checagem local de área dos triângulos; não verifica watertightness, manifold ou orientação.";
+      geometryNote.textContent = "Área soma faces após unidade/escala e pode incluir superfícies internas; não verifica watertightness, manifold ou orientação.";
     } else {
       geometryCheck.textContent = "Não analisada";
       geometryCheck.className = "";

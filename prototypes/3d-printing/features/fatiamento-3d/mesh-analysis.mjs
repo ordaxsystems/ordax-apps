@@ -1,4 +1,4 @@
-const ANALYSIS_SCHEMA = "ordax.mesh-diagnostics/1";
+const ANALYSIS_SCHEMA = "ordax.mesh-diagnostics/2";
 const TRIANGLES_PER_CHUNK = 20_000;
 
 function nextFrame() {
@@ -12,7 +12,8 @@ function throwIfAborted(signal) {
 export async function analyzeMeshGeometry(model, { signal } = {}) {
   if (!model || !Array.isArray(model.objects) || !model.objects.length) throw new TypeError("O modelo não contém objetos para analisar.");
 
-  let triangleCount = 0, degenerateTriangleCount = 0, processedSinceYield = 0;
+  let triangleCount = 0, degenerateTriangleCount = 0, surfaceAreaSquareUnits = 0, processedSinceYield = 0;
+  const surfaceAreaByObject = [];
 
   for (const object of model.objects) {
     const positions = object.positions;
@@ -23,6 +24,7 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
     const crossProductThreshold = diagonal * diagonal * 1e-12;
     const thresholdSquared = crossProductThreshold * crossProductThreshold;
     triangleCount += positions.length / 9;
+    let objectSurfaceAreaSquareUnits = 0;
 
     for (let offset = 0; offset < positions.length; offset += 9) {
       throwIfAborted(signal);
@@ -35,7 +37,9 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
       const crossX = aby * acz - abz * acy;
       const crossY = abz * acx - abx * acz;
       const crossZ = abx * acy - aby * acx;
-      if (crossX * crossX + crossY * crossY + crossZ * crossZ <= thresholdSquared) degenerateTriangleCount++;
+      const crossMagnitude = Math.hypot(crossX, crossY, crossZ);
+      if (crossMagnitude * crossMagnitude <= thresholdSquared) degenerateTriangleCount++;
+      objectSurfaceAreaSquareUnits += crossMagnitude / 2;
 
       processedSinceYield++;
       if (processedSinceYield >= TRIANGLES_PER_CHUNK) {
@@ -43,6 +47,8 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
         await nextFrame();
       }
     }
+    surfaceAreaSquareUnits += objectSurfaceAreaSquareUnits;
+    surfaceAreaByObject.push(Object.freeze({ objectId: object.id, triangleCount: positions.length / 9, surfaceAreaSquareUnits: objectSurfaceAreaSquareUnits }));
   }
 
   throwIfAborted(signal);
@@ -51,6 +57,8 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
     method: "local-triangle-area",
     triangleCount,
     degenerateTriangleCount,
+    surfaceAreaSquareUnits,
+    surfaceAreaByObject: Object.freeze(surfaceAreaByObject),
     threshold: "área nula ou muito próxima de zero em relação à diagonal de cada objeto",
     topologyVerified: false,
     watertightness: "not-checked",
