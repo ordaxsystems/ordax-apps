@@ -253,8 +253,11 @@ export function createBrowserLocalFoodStore({
           throw conflictError(command.expectedRevision, persisted.state.revision);
         }
         const next = validateFoodPizzeriaState(applyFoodCommand(persisted.state, command));
-        if (next.revision !== persisted.state.revision + 1) {
-          throw new Error("A operação não produziu uma revisão consecutiva da pizzaria.");
+        const noChange = next.revision === persisted.state.revision;
+        if (noChange
+          ? JSON.stringify(next) !== JSON.stringify(persisted.state)
+          : next.revision !== persisted.state.revision + 1) {
+          throw new Error("A operação produziu dados sem revisão válida da pizzaria.");
         }
         const nextCommands = [...persisted.processedCommands, { id: command.commandId, digest: commandDigest }]
           .slice(-MAX_RECORDED_COMMANDS);
