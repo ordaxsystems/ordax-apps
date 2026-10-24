@@ -24,9 +24,69 @@ const assistantEvidenceIdSet = new Set(assistantEvidenceIds);
 const MAX_CONTEXT_ITEMS = 16;
 const MAX_CONTEXT_ITEM_CHARS = 8192;
 const MAX_CONTEXT_TOTAL_CHARS = 65536;
+const MAX_PROFILE_CONTEXT_CHARS = 7800;
+export const assistantProfileOptionLimit = 24;
 
 const nullable = schema => ({ anyOf: [schema, { type: "null" }] });
 const nullableInteger = (minimum, maximum) => nullable({ type: "integer", minimum, maximum });
+
+function profileNumber(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return null;
+  return Number(Number(value).toFixed(2));
+}
+
+function profileValues(kind, profile) {
+  const common = { id: profile.id, name: String(profile.name || profile.id).slice(0, 80) };
+  if (kind === "machine") return {
+    ...common,
+    bedSizeMm: Array.isArray(profile.bedSizeMm) ? profile.bedSizeMm.slice(0, 2).map(profileNumber) : null,
+    heightMm: profileNumber(profile.heightMm),
+    nozzleDiameterMm: profileNumber(profile.nozzleDiameterMm),
+  };
+  if (kind === "process") return {
+    ...common,
+    layerHeightMm: profileNumber(profile.layerHeightMm),
+    wallLoops: profileNumber(profile.wallLoops),
+  };
+  return {
+    ...common,
+    type: String(profile.type || "").slice(0, 40) || null,
+    nozzleTemperatureC: Array.isArray(profile.nozzleTemperatureC) ? profile.nozzleTemperatureC.slice(0, 4).map(profileNumber) : null,
+    bedTemperatureC: Array.isArray(profile.bedTemperatureC) ? profile.bedTemperatureC.slice(0, 4).map(profileNumber) : null,
+  };
+}
+
+export function buildAssistantProfileContext(catalogs = {}, selectedIds = {}) {
+  const names = { machine: "machines", process: "processes", filament: "filaments" };
+  const context = [];
+  const allowedProfiles = {};
+  for (const kind of Object.keys(names)) {
+    const catalog = Array.isArray(catalogs?.[kind]?.catalog) ? catalogs[kind].catalog : [];
+    const selected = catalog.find(profile => profile.id === selectedIds?.[kind]);
+    const ordered = [...(selected ? [selected] : []), ...catalog.filter(profile => profile !== selected)];
+    const profiles = [];
+    const seen = new Set();
+    for (const profile of ordered) {
+      if (!profile || typeof profile.id !== "string" || !new RegExp(`^orca-${kind}-[a-f0-9]{24}$`).test(profile.id) || seen.has(profile.id)) continue;
+      const summary = profileValues(kind, profile);
+      const next = [...profiles, summary];
+      const text = JSON.stringify({ slicer: { configuredProfiles: { catalogs: { [names[kind]]: next } } } });
+      if (profiles.length >= assistantProfileOptionLimit || text.length > MAX_PROFILE_CONTEXT_CHARS) break;
+      profiles.push(summary);
+      seen.add(profile.id);
+    }
+    allowedProfiles[kind] = profiles.map(profile => profile.id);
+    if (profiles.length) {
+      context.push(Object.freeze({
+        id: `slicer-profile-catalog-${kind}`,
+        scope: "document",
+        text: JSON.stringify({ slicer: { configuredProfiles: { catalogs: { [names[kind]]: profiles } } } }),
+        provenance: "ordax-apps:3d-printing:fatiamento-3d:local-profile-catalog",
+      }));
+    }
+  }
+  return Object.freeze({ context: Object.freeze(context), allowedProfiles: Object.freeze(allowedProfiles) });
+}
 
 export const assistantStructuredOutput = Object.freeze({
   name: "ordax_slicer_assistant_response",

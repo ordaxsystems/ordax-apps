@@ -6,7 +6,7 @@ import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
 import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
 import { readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
-import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds } from "./ai-copilot.mjs";
+import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext } from "./ai-copilot.mjs";
 
 const { escapeHtml, number, bytes, toast, icon, button } = shared;
 const MAX_MODEL_BYTES = 50 * 1024 * 1024;
@@ -827,6 +827,11 @@ export function mountFeature(host = {}) {
   function aiContext() {
     const machine = profile(), material = activeMaterial();
     const machineProfile = selectedEngineProfile("machine"), processProfile = selectedEngineProfile("process"), filamentProfile = selectedEngineProfile("filament");
+    const profileContext = buildAssistantProfileContext(engineStatus.profiles || {}, {
+      machine: machineProfile?.id,
+      process: processProfile?.id,
+      filament: filamentProfile?.id,
+    });
     const settings = activeSettings(), selectedProcess = activeProcess();
     const project = {
       model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm: scaledDimensions().map(value => Number(value.toFixed(2))), triangleCount: model.triangleCount } : null,
@@ -863,11 +868,6 @@ export function mountFeature(host = {}) {
         configuredProfiles: engineStatus.profiles ? {
           selected: { machine: machineProfile?.name || null, process: processProfile?.name || null, filament: filamentProfile?.name || null },
           catalogCounts: Object.fromEntries(["machine", "process", "filament"].map(kind => [kind, engineStatus.profiles[kind]?.catalog?.length || 0])),
-          catalogs: {
-            machines: (engineStatus.profiles.machine?.catalog || []).map(({ id, name, bedSizeMm, heightMm, nozzleDiameterMm, printerModel }) => ({ id, name, bedSizeMm, heightMm, nozzleDiameterMm, printerModel })),
-            processes: (engineStatus.profiles.process?.catalog || []).map(({ id, name, layerHeightMm, wallLoops }) => ({ id, name, layerHeightMm, wallLoops })),
-            filaments: (engineStatus.profiles.filament?.catalog || []).map(({ id, name, type, nozzleTemperatureC, bedTemperatureC }) => ({ id, name, type, nozzleTemperatureC, bedTemperatureC })),
-          },
         } : null,
       },
       latestSlice: sliced ? {
@@ -878,7 +878,10 @@ export function mountFeature(host = {}) {
       } : null,
       limits: { profilesAreReferences: !machineProfile || !processProfile || !filamentProfile, engineConnected: engineStatus.available, sourceGeometrySent: false, gcodeSent: false },
     };
-    const context = [{ id: "slicer-project-metadata", scope: "document", text: JSON.stringify(project), provenance: "ordax-apps:3d-printing:fatiamento-3d:local-metadata" }];
+    const context = [
+      { id: "slicer-project-metadata", scope: "document", text: JSON.stringify(project), provenance: "ordax-apps:3d-printing:fatiamento-3d:local-metadata" },
+      ...profileContext.context,
+    ];
     if (aiHistory.length) {
       context.push({ id: "slicer-copilot-session", scope: "user", text: aiHistory.slice(-6).map(item => `${item.role}: ${item.text}`).join("\n").slice(-6000), provenance: "ordax-apps:3d-printing:fatiamento-3d:in-memory-session" });
     }
@@ -904,11 +907,7 @@ export function mountFeature(host = {}) {
     const evidenceIds = evidenceCandidates
       .filter(([id, value]) => knownEvidence.has(id) && value !== null && value !== undefined)
       .map(([id]) => id);
-    const allowedProfiles = Object.fromEntries(["machine", "process", "filament"].map(kind => [
-      kind,
-      (engineStatus.profiles?.[kind]?.catalog || []).map(item => item.id),
-    ]));
-    return { context, evidenceIds, allowedProfiles };
+    return { context, evidenceIds, allowedProfiles: profileContext.allowedProfiles };
   }
 
   function makeAiPrompt(question, evidenceIds) {
@@ -929,7 +928,7 @@ export function mountFeature(host = {}) {
     aiController = requestController;
     updateAiUi();
     try {
-      const profileInstructions = "Se recomendar perfis, suggestion.profiles deve conter machine, process e filament, com o ID exato de catálogo para cada mudança e null para manter o perfil atual. Use apenas IDs apresentados em slicer.configuredProfiles.catalogs e não invente IDs. Catálogo vazio significa que não há opção recomendável daquele tipo. Cite slicer.configuredProfiles em evidence. A seleção não comprova compatibilidade: o OrcaSlicer valida a combinação no fatiamento. Se não houver mudança de perfil, use profiles:null.";
+      const profileInstructions = "Se recomendar perfis, suggestion.profiles deve conter machine, process e filament, com o ID exato de catálogo para cada mudança e null para manter o perfil atual. Use apenas IDs apresentados em slicer.configuredProfiles.catalogs e não invente IDs. Catálogo vazio significa que não há opção recomendável daquele tipo. Cada categoria pode enviar no máximo 24 opções ao contexto, incluindo primeiro o perfil ativo; compare somente as opções recebidas e não diga que avaliou as demais. Cite slicer.configuredProfiles em evidence. A seleção não comprova compatibilidade: o OrcaSlicer valida a combinação no fatiamento. Se não houver mudança de perfil, use profiles:null.";
       const answer = await askSliceIntelligence(intelligence, { prompt: `${makeAiPrompt(prompt, requestContext.evidenceIds)}\n\n${profileInstructions}`, context: requestContext.context, signal: requestController.signal });
       if (requestController.signal.aborted) throw new DOMException("Solicitação cancelada.", "AbortError");
       const reply = parseAssistantReply(answer.text, { allowedEvidence: requestContext.evidenceIds, allowedProfiles: requestContext.allowedProfiles });
