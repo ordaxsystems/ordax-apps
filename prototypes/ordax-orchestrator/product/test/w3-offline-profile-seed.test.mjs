@@ -8,9 +8,11 @@ import {spawnSync} from 'node:child_process';
 import {DatabaseSync} from 'node:sqlite';
 const script=fileURLToPath(new URL('../scripts/seed-w3-unsubmitted-offline.cjs',import.meta.url));
 function seed(profile,approved='1') {
-  return spawnSync(process.execPath,[script],{encoding:'utf8',timeout:30000,
+  const result=spawnSync(process.execPath,[script],{encoding:'utf8',timeout:120000,
     env:{...process.env,ORDAX_LAB_E2E_LOCALAPPDATA:profile,
       ORDAX_LAB_E2E_APPROVED:approved,ORDAX_LAB_E2E_DEBUG_PORT:'9445'}});
+  assert.ifError(result.error);
+  return result;
 }
 test('W3 preflight seed is isolated, unsubmitted, immutable and creates no receipts',t=>{
   const temp=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-w3-seed-'));

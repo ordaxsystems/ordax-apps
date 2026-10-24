@@ -93,8 +93,8 @@ test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',
   const preload=fs.readFileSync(path.resolve(here,'../desktop/preload.cjs'),'utf8');
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   const html=fs.readFileSync(path.resolve(here,'../desktop/ui.html'),'utf8');
-  const chunk=main.split("ipcMain.handle('ordax:tasks:inspect-linked-thread'")[1]
-    .split("ipcMain.handle('ordax:tasks:resume-capsule'")[0];
+  const chunk=main.split("registerUiHandler('ordax:tasks:inspect-linked-thread'")[1]
+    .split("registerUiHandler('ordax:tasks:resume-capsule'")[0];
   assert.match(chunk,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(chunk,/workspace_session_id !== currentSession\?\.id/);
   assert.match(chunk,/liveRun/);
@@ -112,8 +112,8 @@ test('W3 success requires attributable Task user-and-assistant turn, never bare 
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   const script=fs.readFileSync(path.resolve(here,'../scripts/live-ui-linked-thread-smoke.cjs'),'utf8');
-  const chunk=main.split("ipcMain.handle('ordax:tasks:inspect-linked-thread'")[1]
-    .split("ipcMain.handle('ordax:tasks:resume-capsule'")[0];
+  const chunk=main.split("registerUiHandler('ordax:tasks:inspect-linked-thread'")[1]
+    .split("registerUiHandler('ordax:tasks:resume-capsule'")[0];
   assert.match(chunk,/assessment\.kind==='response_candidate'/);
   assert.match(chunk,/assessment\.candidates===1/);
   assert.match(chunk,/assessment\.responseCandidate===true/);

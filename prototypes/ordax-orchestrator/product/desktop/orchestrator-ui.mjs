@@ -91,7 +91,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('coordinatorApiEnable').textContent=state.enabled?'Desativar chat por API':'Ativar chat por API';
     $('coordinatorApiEnable').dataset.enabled=String(state.enabled);
     $('orchestrationConnection').textContent=!state.configured
-      ? 'Configure sua chave Groq para conversar pela API. O MCP não é necessário.'
+      ? 'A supervisão Groq opcional não está configurada. O MCP remoto ainda não está conectado a esta tela.'
       : coordinatorAvailable?'Chat por API ativo nesta sessão. Cada envio usa sua conta Groq.'
       : 'Chave configurada. Ative o chat por API para enviar uma mensagem.';
   }
@@ -150,9 +150,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function refreshContinuityStatus() {
     const p=projectId,o=orchestratorId;
     if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
-    const result=await call('continuity_status',{projectId:p,orchestratorId:o});
+    const [result,engineStatus]=await Promise.all([
+      call('continuity_status',{projectId:p,orchestratorId:o}),
+      call('status').catch(()=>null)
+    ]);
     if(p!==projectId||o!==orchestratorId)return;
-    $('continuityToggle').disabled=false;
+    const canDisable=result.enabled===true;
+    const canEnable=engineStatus?.coordinatorAvailable===true;
+    $('continuityToggle').disabled=!canDisable&&!canEnable;
+    $('continuityToggle').title=!canDisable&&!canEnable
+      ?'Configure e ative o chat opcional por API para habilitar a análise automática.'
+      :'';
     $('continuityProposalsToggle').disabled=!result.enabled;
     $('continuityProposalsToggle').dataset.enabled=String(result.nextProposals.enabled);
     $('continuityProposalsToggle').textContent=result.nextProposals.enabled?'Desativar propostas automáticas':'Propor próximas frentes automaticamente';
@@ -160,7 +168,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('continuityToggle').textContent=result.enabled?'Desativar análise automática':'Ativar análise automática';
     const messages={disabled:'Desativada',blocked_coordinator:'Bloqueada: configure e ative a API Groq',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
     const proposals=result.nextProposals.enabled?(' Próximas propostas: '+result.nextProposals.proposed+'/'+result.nextProposals.maximum+' geradas neste ciclo; exigem revisão.'):' Próximas propostas desativadas.';
-    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+' Nenhum envio automático ao GPT.';
+    const executionNotice=engineStatus?.autonomousExecution===true
+      ?' O supervisor de execução em segundo plano está ativo.'
+      :engineStatus?.autonomousExecution===false
+        ?' A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado.'
+        :' O estado de execução em segundo plano não foi confirmado; não considerar como trabalho 24 h.';
+    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+' Nenhum envio automático ao GPT.'+executionNotice;
   }
   async function refreshOrchestrators() {
     const p=projectId;
@@ -194,6 +207,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const note=document.createElement('p');
       note.textContent='Exibindo as 50 mensagens mais recentes. O histórico anterior permanece salvo.';
       box.append(note);
+    }
+    if(page.messages.length===0) {
+      const empty=document.createElement('div');empty.className='coordinator-empty';
+      const title=document.createElement('strong');title.textContent='Conversa de coordenação ainda vazia';
+      const copy=document.createElement('p');copy.textContent='O chat central depende do Groq opcional. O GPT Web é o caminho principal das frentes, mas esta aba ainda não compartilha a sessão do executor; o envio permanece bloqueado.';
+      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Configurar Groq opcional';
+      settings.addEventListener('click',()=>$('coordinatorApiSettings').click());
+      empty.append(title,copy,settings);box.append(empty);
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';

@@ -35,6 +35,15 @@ const runtimeTransportRequest=resolveOrchestratorRuntimeTransport();
 app.setName('OrdaX Orchestrator Lab');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
+const hostBrowserMode=!app.isPackaged&&(process.env.ORDAX_HOST_BROWSER_UI==='1'||process.argv.includes('--host-browser'));
+let createHostBrowserServer=null;
+if(hostBrowserMode)({createHostBrowserServer} = await import('./host-browser-server.mjs'));
+const hostStartupLog=stage=>{
+  if(!hostBrowserMode||process.env.ORDAX_HOST_BROWSER_DEBUG!=='1')return;
+  const line=JSON.stringify({stage,at:new Date().toISOString()})+'\n';
+  try { fs.appendFileSync(path.join(userRoot,'host-startup.log'),line,{encoding:'utf8'}); } catch {}
+  process.stderr.write(`[OrdaX host] ${stage}\n`);
+};
 // Capture an immutable proof VALUE at startup, before any SQLite is opened.
 // A missing manifest is legacy/unattested, never presented as a verified build.
 const runtimeBuildProof=verifyRuntimeManifest(root,
@@ -48,15 +57,19 @@ const {userRoot} = resolveLabUserRoot({
     path.join(process.env.USERPROFILE || root, 'AppData', 'Local')
 });
 fs.mkdirSync(userRoot,{recursive:true});
+hostStartupLog('profile_ready');
 app.setPath('userData', userRoot);
 const groqCredential=createLocalGroqCredential({userRoot,safeStorage});
 
 const singleInstanceLock = app.requestSingleInstanceLock();
 if (!singleInstanceLock) {
+  hostStartupLog('single_instance_lock_unavailable');
   app.exit(0);
   process.exit(0);
 } else {
+  hostStartupLog('single_instance_lock_acquired');
   app.on('second-instance', () => {
+    if(hostBrowserMode)return;
     if (!win) return;
     if (win.isMinimized()) win.restore();
     win.show();
@@ -112,6 +125,26 @@ const MIME_EXT = new Map([
 
 let win;
 let worker;
+let hostBrowserServer=null;
+const hostBrowserRequest=Symbol('authenticated-host-browser-request');
+const uiHandlers=new Map();
+function registerUiHandler(channel,handler) {
+  if(typeof channel!=='string'||typeof handler!=='function'||uiHandlers.has(channel))
+    throw new Error('ui_handler_registration_invalid');
+  uiHandlers.set(channel,handler);
+  ipcMain.handle(channel,handler);
+}
+const HOST_EVENT_BY_CHANNEL=Object.freeze({
+  'ordax:orchestrator:changed':'orchestrator-changed',
+  'ordax:task:run-started':'run-started',
+  'ordax:task:stage':'task-stage',
+  'ordax:task:stream':'task-stream'
+});
+function emitRendererEvent(channel,payload) {
+  if(win&&!win.isDestroyed())win.webContents.send(channel,payload);
+  const hostEvent=HOST_EVENT_BY_CHANNEL[channel];
+  if(hostEvent)hostBrowserServer?.publish(hostEvent,payload);
+}
 let chatVisible = false;
 let liveRun = null;
 const persistedObserverMode = store.getWorkspaceSession()?.metadata?.observer_mode;
@@ -206,7 +239,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   const provisional=createProviderProvisionalRecorder({
     save:(text,source)=>store.saveRunProvisionalOutput(taskId,runId,text,source)
   });
-  if (win && !win.isDestroyed()) win.webContents.send('ordax:task:run-started', { taskId, runId, userMessage });
+  if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
 
   try {
@@ -317,6 +350,7 @@ function layoutViews() {
 }
 
 async function createWindow() {
+  hostStartupLog('window_create_begin');
   win = new BrowserWindow({
     width: 1500,
     height: 920,
@@ -325,6 +359,7 @@ async function createWindow() {
     title: 'OrdaX Orchestrator Lab',
     backgroundColor: '#0b0e13',
     autoHideMenuBar: true,
+    show:!hostBrowserMode,
     webPreferences: {
       preload: path.join(here, 'preload.cjs'),
       contextIsolation: true,
@@ -334,21 +369,23 @@ async function createWindow() {
   });
 
   worker = new EmbeddedChatWorker();
+  hostStartupLog('worker_constructed');
   worker.setObserverMode(observerMode);
   worker.setStageSink(({ stage, at }) => {
     if (!liveRun || !win || win.isDestroyed()) return;
-    win.webContents.send('ordax:task:stage', {
+    emitRendererEvent('ordax:task:stage', {
       taskId:liveRun.taskId, runId:liveRun.runId, stage, at, runStartedAt:liveRun.startedAt
     });
   });
   worker.setFastStreamSink(delta => {
     if (!liveRun || !win || win.isDestroyed()) return;
-    win.webContents.send('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, ...delta, mirrorAt:Date.now(), runStartedAt:liveRun.startedAt });
+    emitRendererEvent('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, ...delta, mirrorAt:Date.now(), runStartedAt:liveRun.startedAt });
   });
 
   // Native WebContentsView defaults to visible. Hide the embedded provider
   // BEFORE awaiting the App renderer, or it can cover a still-loading UI.
   win.contentView.addChildView(worker.view);
+  hostStartupLog('provider_view_attached');
   layoutViews();
   win.on('resize', layoutViews);
   win.on('maximize', layoutViews);
@@ -377,14 +414,36 @@ async function createWindow() {
     if(isMainFrame && errorCode!==-3)
       reportShellFailure('ui_load_'+Number(errorCode||0));
   });
-  try {
-    await win.loadFile(path.join(here, 'ui.html'));
-  } catch {
-    reportShellFailure('ui_load_rejected');
-    return;
+  if(hostBrowserMode) {
+    hostBrowserServer=createHostBrowserServer({
+      productRoot:root,assetsRoot,
+      invoke:async(_method,channel,args,{session:hostSession}={})=>{
+        if(!hostSession)throw new Error('host_session_required');
+        const handler=uiHandlers.get(channel);
+        if(!handler)throw new Error('ui_handler_unavailable');
+        const event=Object.freeze({sender:win.webContents,[hostBrowserRequest]:true});
+        return handler(event,...args);
+      },
+      readAsset:async id=>store.getAsset(String(id)),
+      onShutdown:()=>app.quit()
+    });
+    const {url}=await hostBrowserServer.listen();
+    process.stdout.write(`ORDAX_HOST_BROWSER_URL=${url}\n`);
+    hostStartupLog('server_listening');
+    await win.loadURL('about:blank');
   }
+  else {
+    try { await win.loadFile(path.join(here, 'ui.html')); }
+    catch { reportShellFailure('ui_load_rejected'); return; }
+  }
+  hostStartupLog('app_shell_loaded');
   layoutViews();
-  await worker.load('https://chatgpt.com/');
+  if(hostBrowserMode) {
+    hostStartupLog('provider_worker_load_started');
+    void worker.load('https://chatgpt.com/').catch(()=>hostStartupLog('provider_worker_load_failed'));
+  }
+  else await worker.load('https://chatgpt.com/');
+  hostStartupLog('window_create_complete');
 }
 
 ipcMain.on('ordax:worker:preload-ready', (event, payload) => {
@@ -398,28 +457,28 @@ ipcMain.on('ordax:worker:stream', (event, snapshot) => {
   if (!delta) return;
   const mirrorAt = Date.now();
   if (!liveRun.firstDeltaAt) liveRun.firstDeltaAt = delta.firstDeltaAt || mirrorAt;
-  win.webContents.send('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, source:'beta', ...delta, mirrorAt, runStartedAt:liveRun.startedAt });
+  emitRendererEvent('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, source:'beta', ...delta, mirrorAt, runStartedAt:liveRun.startedAt });
 });
 
-ipcMain.handle('ordax:workspace:get', () => store.getWorkspaceSession());
-ipcMain.handle('ordax:tasks:list', () => {
+registerUiHandler('ordax:workspace:get', () => store.getWorkspaceSession());
+registerUiHandler('ordax:tasks:list', () => {
   const bindings=new Map(store.db.prepare('SELECT * FROM lab_task_bindings').all().map(row=>[row.task_id,row]));
   return store.listTasks().map(task=>({...task,lab_binding:bindings.get(task.id)||null}));
 });
-ipcMain.handle('ordax:tasks:create', (_event, title) => decorateTask(store.createTask(String(title || 'Nova tarefa'))));
-ipcMain.handle('ordax:tasks:get', (_event, id) => getTaskView(id));
-ipcMain.handle('ordax:tasks:messages:page', (_event, { taskId, before }) => {
+registerUiHandler('ordax:tasks:create', (_event, title) => decorateTask(store.createTask(String(title || 'Nova tarefa'))));
+registerUiHandler('ordax:tasks:get', (_event, id) => getTaskView(id));
+registerUiHandler('ordax:tasks:messages:page', (_event, { taskId, before }) => {
   if (!store.getTaskExecutionSnapshot(String(taskId))) throw new Error('task_not_found');
   const page = store.messagesPage(String(taskId), { before });
   return { ...page, messages:decorateMessages(page.messages) };
 });
-ipcMain.handle('ordax:tasks:rename', (_event, { taskId, title }) => {
+registerUiHandler('ordax:tasks:rename', (_event, { taskId, title }) => {
   store.renameTask(String(taskId), title);
   return getTaskView(taskId);
 });
-ipcMain.handle('ordax:tasks:draft:set', (_event, { taskId, content, revision }) =>
+registerUiHandler('ordax:tasks:draft:set', (_event, { taskId, content, revision }) =>
   store.setDraft(String(taskId), content, revision));
-ipcMain.handle('ordax:tasks:open', async (_event, id) => {
+registerUiHandler('ordax:tasks:open', async (_event, id) => {
   const task = getTaskView(id);
   if (chatVisible && task?.chat_url) {
     try {
@@ -439,7 +498,7 @@ ipcMain.handle('ordax:tasks:open', async (_event, id) => {
 });
 // A first-party OrdaX App action, not the ChatGPT direct-mode UI.
 // Historical inspection never sends messages or changes the SQLite ledger.
-ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) => {
+registerUiHandler('ordax:tasks:inspect-linked-thread', async (event, requestedId) => {
   requireTrustedSupervisorRenderer(event);
   if (liveRun) return {kind:'unavailable',reason:'run_active',threadRendered:false,requiresReconciliation:true};
   const taskId=String(requestedId || '');
@@ -499,40 +558,40 @@ ipcMain.handle('ordax:tasks:inspect-linked-thread', async (event, requestedId) =
     requiresReconciliation:assessment.requiresReconciliation===true
   };
 });
-ipcMain.handle('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
-ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => {
+registerUiHandler('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
+registerUiHandler('ordax:tasks:rotate-conversation', (_event, id) => {
   if (liveRun) throw new Error('conversation_rotation_during_run');
   store.rotateConversation(String(id), 'manual_ui');
   return getTaskView(id);
 });
-ipcMain.handle('ordax:tasks:memory:upsert', (_event, { taskId, item }) => {
+registerUiHandler('ordax:tasks:memory:upsert', (_event, { taskId, item }) => {
   store.upsertProjectMemory(String(taskId), { ...(item || {}), source_type:'manual' });
   return getTaskView(taskId);
 });
-ipcMain.handle('ordax:tasks:memory:archive', (_event, { taskId, memoryId }) => {
+registerUiHandler('ordax:tasks:memory:archive', (_event, { taskId, memoryId }) => {
   store.archiveProjectMemory(String(taskId), String(memoryId));
   return getTaskView(taskId);
 });
-ipcMain.handle('ordax:tasks:memory:candidates:scan', (_event, taskId) => {
+registerUiHandler('ordax:tasks:memory:candidates:scan', (_event, taskId) => {
   store.memoryCandidates.scan(String(taskId));
   return getTaskView(taskId);
 });
-ipcMain.handle('ordax:tasks:memory:candidates:review', (_event, { taskId, candidateId, action, changes }) => {
+registerUiHandler('ordax:tasks:memory:candidates:review', (_event, { taskId, candidateId, action, changes }) => {
   store.memoryCandidates.review(String(taskId), String(candidateId), String(action), changes || {});
   return getTaskView(taskId);
 });
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
-ipcMain.handle('ordax:lab:build-proof', event => {
+registerUiHandler('ordax:lab:build-proof', event => {
   requireTrustedSupervisorRenderer(event);
   return runtimeBuildProof;
 });
-ipcMain.handle('ordax:lab:profile-proof', event => {
+registerUiHandler('ordax:lab:profile-proof', event => {
   requireTrustedSupervisorRenderer(event);
   return {schema:'ordax.lab.profile-proof.v1',
     fingerprint:labProfileFingerprint(app.getPath('userData'))};
 });
-ipcMain.handle('ordax:provider:status', async () => {
+registerUiHandler('ordax:provider:status', async () => {
   const base = worker.status();
   if (base.active) {
     const cached = providerHealthCache || { composer_ready:false, verification_required:false, auth_state:'loading' };
@@ -548,8 +607,8 @@ ipcMain.handle('ordax:provider:status', async () => {
   const status = fresh || providerHealthCache || { ...base, composer_ready:false, verification_required:false, auth_state:'loading' };
   return { ...status, observer_mode:observerMode, worker_preload:workerPreload, health_pending:!fresh };
 });
-ipcMain.handle('ordax:provider:observer-mode:get', () => observerMode);
-ipcMain.handle('ordax:provider:observer-mode:set', (_event, mode) => {
+registerUiHandler('ordax:provider:observer-mode:get', () => observerMode);
+registerUiHandler('ordax:provider:observer-mode:set', (_event, mode) => {
   const next = String(mode || '').toLowerCase();
   if (!['auto','fast','beta'].includes(next)) throw new Error('invalid_observer_mode');
   observerMode = next;
@@ -557,24 +616,28 @@ ipcMain.handle('ordax:provider:observer-mode:set', (_event, mode) => {
   store.updateWorkspaceMetadata({ observer_mode: next });
   return next;
 });
-ipcMain.handle('ordax:provider:diagnostic', async event => {
+registerUiHandler('ordax:provider:diagnostic', async event => {
   requireTrustedSupervisorRenderer(event);
   // Read-only provider UI inspection; no API key, chat submission or disk write.
   return worker.inspectDiagnosticReadOnly();
 });
-ipcMain.handle('ordax:provider:login', () => worker.login());
-ipcMain.handle('ordax:provider:home', () => worker.newChat());
-ipcMain.handle('ordax:provider:reload', () => {
+registerUiHandler('ordax:provider:login', () => {
+  if(hostBrowserMode)throw new Error('provider_login_requires_app_view');
+  return worker.login();
+});
+registerUiHandler('ordax:provider:home', () => worker.newChat());
+registerUiHandler('ordax:provider:reload', () => {
   // Manual reload must never interrupt a pending/uncertain provider send.
   if (liveRun || worker.active) throw new Error('provider_reload_during_run_blocked');
   return worker.view.webContents.reload();
 });
-ipcMain.handle('ordax:chat:visible', (_event, visible) => {
+registerUiHandler('ordax:chat:visible', (_event, visible) => {
+  if(hostBrowserMode&&visible)throw new Error('provider_login_requires_app_view');
   chatVisible = Boolean(visible);
   layoutViews();
   return chatVisible;
 });
-ipcMain.handle('ordax:tasks:send', async (event, { taskId, content, newSession = false, draftRevision = null, requestId = null }) => {
+registerUiHandler('ordax:tasks:send', async (event, { taskId, content, newSession = false, draftRevision = null, requestId = null }) => {
   requireTrustedSupervisorRenderer(event);
   const prompt = String(content || '').trim();
   if (!prompt) throw new Error('content_required');
@@ -620,13 +683,25 @@ function requireLabSupervisor() {
   return labSupervisor;
 }
 
-// Only the Lab's trusted top-level local renderer can invoke supervisor IPC.
+// Only the Lab's trusted local UI or authenticated host session can invoke supervisor IPC.
 function requireTrustedSupervisorRenderer(event) {
+  const trustedHostRequest=event?.[hostBrowserRequest]===true&&hostBrowserMode&&Boolean(hostBrowserServer);
   if (!win || win.isDestroyed() || event?.sender !== win.webContents ||
-      !event.senderFrame || event.senderFrame !== win.webContents.mainFrame ||
-      event.senderFrame.url !== pathToFileURL(path.join(here, 'ui.html')).href) {
+      (!trustedHostRequest&&(
+      !event?.senderFrame || event.senderFrame !== win.webContents.mainFrame ||
+      event.senderFrame.url !== pathToFileURL(path.join(here, 'ui.html')).href))) {
     throw new Error('supervisor_ipc_sender_denied');
   }
+}
+
+async function confirmInActiveUi({title,message,detail,approveLabel='Confirmar',cancelLabel='Cancelar'}) {
+  if(hostBrowserMode) {
+    if(!hostBrowserServer)return false;
+    return hostBrowserServer.confirm({title,message,detail,approveLabel,cancelLabel});
+  }
+  const choice=await dialog.showMessageBox(win,{type:'question',title,message,detail,
+    buttons:[approveLabel,cancelLabel],defaultId:1,cancelId:1,noLink:true});
+  return choice.response===0;
 }
 
 // One App service for native UI and the MCP adapter. The fixed identity is
@@ -636,16 +711,16 @@ const localOrchestratorContext=Object.freeze({actorId:'lab-owner',clientId:'lab-
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
 const orchestratorService=new OrchestratorService({
-  confirmProposalSend:async({title,content})=>(await dialog.showMessageBox(win,{
-    type:'question',title:'Confirmar primeiro envio ao ChatGPT',message:title,
+  confirmProposalSend:async({title,content})=>confirmInActiveUi({
+    title:'Confirmar primeiro envio ao ChatGPT',message:title,
     detail:'Mensagem exata a enviar:\n\n'+content+'\n\nSerá enviada uma única mensagem pelo executor do App. Uma resposta observada não comprova alterações em arquivos ou outros efeitos.',
-    buttons:['Enviar ao ChatGPT','Cancelar'],defaultId:1,cancelId:1,noLink:true
-  })).response===0,
-  confirmProposal:async({proposal})=>(await dialog.showMessageBox(win,{
-    type:'question',title:'Revisar nova frente',message:proposal.title,
+    approveLabel:'Enviar ao ChatGPT'
+  }),
+  confirmProposal:async({proposal})=>confirmInActiveUi({
+    title:'Revisar nova frente',message:proposal.title,
     detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+'\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
-    buttons:['Criar frente com rascunho','Cancelar'],defaultId:1,cancelId:1,noLink:true
-  })).response===0,
+    approveLabel:'Criar frente com rascunho'
+  }),
   store,authorize:({context,operation})=>context===localOrchestratorContext||
     runtimeOrchestratorBridge?.allows(context,operation)===true,
   provider:{busy:()=>Boolean(liveRun||worker?.active),
@@ -671,30 +746,30 @@ if(runtimeTransportRequest) {
 }
 const localOrchestratorMcp=createOrchestratorMcp({service:orchestratorService,
   getContext:()=>localOrchestratorContext,version:app.getVersion()});
-ipcMain.handle('ordax:orchestrator:invoke',async(event,payload)=>{
+registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const result=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
   if(ORCHESTRATOR_TOOLS.some(t=>t.operation===payload?.operation&&!t.readOnly)&&win&&!win.isDestroyed())
-    win.webContents.send('ordax:orchestrator:changed');
+    emitRendererEvent('ordax:orchestrator:changed');
   return result;
 });
 // Local protocol conformance/host integration entrypoint, never arbitrary eval.
-ipcMain.handle('ordax:orchestrator:mcp',async(event,message)=>{
+registerUiHandler('ordax:orchestrator:mcp',async(event,message)=>{
   requireTrustedSupervisorRenderer(event);
   const result=await localOrchestratorMcp.handle(message);
   if(message?.method==='tools/call'&&ORCHESTRATOR_TOOLS.some(t=>t.name===message.params?.name&&!t.readOnly)&&win&&!win.isDestroyed())
-    win.webContents.send('ordax:orchestrator:changed');
+    emitRendererEvent('ordax:orchestrator:changed');
   return result;
 });
 
 function notifyOrchestratorChanged(){
-  if(win&&!win.isDestroyed())win.webContents.send('ordax:orchestrator:changed');
+  if(win&&!win.isDestroyed())emitRendererEvent('ordax:orchestrator:changed');
 }
-ipcMain.handle('ordax:orchestrator:chat-status',event=>{
+registerUiHandler('ordax:orchestrator:chat-status',event=>{
   requireTrustedSupervisorRenderer(event);
   return coordinatorChatStatus();
 });
-ipcMain.handle('ordax:orchestrator:chat-enable',(event,enabled)=>{
+registerUiHandler('ordax:orchestrator:chat-enable',(event,enabled)=>{
   requireTrustedSupervisorRenderer(event);
   if(typeof enabled!=='boolean')throw Error('orchestrator_chat_setting_invalid');
   if(enabled&&!currentGroqKey())throw Error('supervisor_api_key_missing');
@@ -703,7 +778,7 @@ ipcMain.handle('ordax:orchestrator:chat-enable',(event,enabled)=>{
   return coordinatorChatStatus();
 });
 
-ipcMain.handle('ordax:supervisor:status', (event) => {
+registerUiHandler('ordax:supervisor:status', (event) => {
   requireTrustedSupervisorRenderer(event);
   return ({
   enabled:process.env.ORDAX_LAB_SUPERVISOR_ENABLE === '1' && Boolean(currentGroqKey()),
@@ -715,36 +790,36 @@ ipcMain.handle('ordax:supervisor:status', (event) => {
 });
 // Credential operations are local-only: no validation network request and no
 // automatic activation. A key never appears in any status response or event.
-ipcMain.handle('ordax:supervisor:key:save',(event,key)=>{
+registerUiHandler('ordax:supervisor:key:save',(event,key)=>{
   requireTrustedSupervisorRenderer(event);
   const result=groqCredential.save(key);
   labSupervisor=null;
   notifyOrchestratorChanged();
   return result;
 });
-ipcMain.handle('ordax:supervisor:key:remove',(event)=>{
+registerUiHandler('ordax:supervisor:key:remove',(event)=>{
   requireTrustedSupervisorRenderer(event);
   const result=groqCredential.remove();
   labSupervisor=null;
   notifyOrchestratorChanged();
   return result;
 });
-ipcMain.handle('ordax:tasks:supervisor-role:set',(event,payload)=>{
+registerUiHandler('ordax:tasks:supervisor-role:set',(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   return store.setTaskSupervisorRole(String(payload?.taskId||''),payload?.role);
 });
-ipcMain.handle('ordax:supervisor:plan', (event,payload) => { 
+registerUiHandler('ordax:supervisor:plan', (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   return requireLabSupervisor().plan({
   taskId:payload?.taskId,requestId:payload?.requestId,objective:payload?.objective
   });
 });
-ipcMain.handle('ordax:supervisor:recoverable', (event,payload) => {
+registerUiHandler('ordax:supervisor:recoverable', (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   // Recovery must work after restart without Groq keys or enabled supervisor.
   return listLocalSupervisorRecoverable({store,taskId:payload?.taskId});
 });
-ipcMain.handle('ordax:supervisor:inspect', async (event,payload) => {
+registerUiHandler('ordax:supervisor:inspect', async (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   if (liveRun) return {kind:'unavailable',reason:'another_run_active',requiresReconciliation:true};
   // Local, manual, read-only examination; no Groq key or auto-execution required.
@@ -752,7 +827,7 @@ ipcMain.handle('ordax:supervisor:inspect', async (event,payload) => {
     store,worker,taskId:payload?.taskId,actionId:payload?.actionId
   });
 });
-ipcMain.handle('ordax:supervisor:approve', async (event,payload) => {
+registerUiHandler('ordax:supervisor:approve', async (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   const controller = requireLabSupervisor();
   // The proposed text belongs to a potentially different workspace.
@@ -764,24 +839,23 @@ ipcMain.handle('ordax:supervisor:approve', async (event,payload) => {
   if (row?.status !== 'pending_approval') throw new Error('approval_not_pending');
   const decision = JSON.parse(row.result).decision;
   if (decision?.type !== 'send_message') throw new Error('not_a_message_plan');
-  const choice = await dialog.showMessageBox(win,{
-    type:'question',buttons:['Aprovar mensagem','Cancelar'],defaultId:1,cancelId:1,
-    title:'OrdaX Lab — aprovação humana',
-    message:'Autoriza enviar esta mensagem ao ChatGPT?',
-    detail:decision.content
+  const approved=await confirmInActiveUi({
+    title:'OrdaX Lab — aprovação humana',message:'Autoriza enviar esta mensagem ao ChatGPT?',
+    detail:decision.content,approveLabel:'Aprovar mensagem'
   });
-  if (choice.response !== 0) return {approved:false};
+  if (!approved) return {approved:false};
   return { approved:true, ...(controller.approve({
     taskId:payload?.taskId,actionId:payload?.actionId,
     approvalId:payload?.approvalId,explicitOwnerApproval:true
   })) };
 });
-ipcMain.handle('ordax:supervisor:dispatch', (event,payload) => {
+registerUiHandler('ordax:supervisor:dispatch', (event,payload) => {
   requireTrustedSupervisorRenderer(event);
   return requireLabSupervisor().dispatch({taskId:payload?.taskId,actionId:payload?.actionId});
 });
 let continuationTimer=null;
 app.whenReady().then(async () => {
+  hostStartupLog('electron_ready');
   protocol.handle('ordax-asset', request => {
     try {
       const url = new URL(request.url);
@@ -801,6 +875,7 @@ app.whenReady().then(async () => {
   });
 
   await createWindow();
+  hostStartupLog('window_ready');
   // Observe completed Runs even when the coordinator chat is not selected.
   // Bound to this App lifetime; does not promise a headless 24h supervisor.
   continuationTimer=setInterval(()=>{
@@ -808,6 +883,9 @@ app.whenReady().then(async () => {
       .then(result=>{if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();})
       .catch(()=>{}); // No auto-retry of an uncertain provider/API effect.
   },10000);
+}).catch(()=>{
+  hostStartupLog('startup_failed');
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
@@ -816,6 +894,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   if(continuationTimer)clearInterval(continuationTimer);
+  void hostBrowserServer?.close();
   closeRuntimeOrchestratorPipe?.();
   store.close();
 });

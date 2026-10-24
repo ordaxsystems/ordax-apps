@@ -8,8 +8,8 @@ import {findProviderSubmissionProvenance,recordProviderSubmissionProvenance} fro
 
 const link='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';
 const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-const start=main.indexOf("ipcMain.handle('ordax:tasks:inspect-linked-thread'");
-const end=main.indexOf("ipcMain.handle('ordax:tasks:resume-capsule'",start);
+const start=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
+const end=main.indexOf("registerUiHandler('ordax:tasks:resume-capsule'",start);
 assert.ok(start>=0&&end>start,'W3 canonical handler not found');
 const handlerSource=main.slice(start,end);
 
@@ -25,7 +25,7 @@ function fixture(t) {
     available:false,reason:'thread_dom_not_ready'
   }}};
   const ctx={
-    ipcMain:{handle:(name,fn)=>registered.set(name,fn)},
+    registerUiHandler:(name,fn)=>registered.set(name,fn),
     requireTrustedSupervisorRenderer:()=>{},
     liveRun:null,store,worker,canonicalProviderChatUrl,
     findProviderSubmissionProvenance,

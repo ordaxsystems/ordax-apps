@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import {safeTaskNavigationReason} from '../src/task-navigation-status.mjs';
 
 const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-const start=main.indexOf("ipcMain.handle('ordax:tasks:open'");
+const start=main.indexOf("registerUiHandler('ordax:tasks:open'");
 const end=main.indexOf("// A first-party OrdaX App action",start);
 assert.ok(start>=0 && end>start,'task_open_handler_not_found');
 const actualHandler=main.slice(start,end);
@@ -17,7 +17,7 @@ function mount({visible=false, showConversation=async()=>({navigated:true}), tas
     getTaskView:id=>id===task?.id?task:null,
     worker:{showConversation:async url=>{navigations++;return showConversation(url);}},
     safeTaskNavigationReason,
-    ipcMain:{handle:(name,fn)=>{assert.equal(name,'ordax:tasks:open');handler=fn;}}
+    registerUiHandler:(name,fn)=>{assert.equal(name,'ordax:tasks:open');handler=fn;}
   };
   vm.runInNewContext(actualHandler,context,{timeout:1500});
   assert.equal(typeof handler,'function');

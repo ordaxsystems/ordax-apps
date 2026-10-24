@@ -71,12 +71,12 @@
             <div>
               <strong id="providerText">Inicializando…</strong>
               <small id="providerDetail">Verificando sessão…</small>
-              <small class="session-persistence-note">Sessão do navegador preservada localmente, enquanto válida. O OrdaX não salva sua senha.</small>
+              <small id="sessionPersistenceNote" class="session-persistence-note">Sessão do navegador preservada localmente, enquanto válida. O OrdaX não salva sua senha.</small>
             </div>
           </div>
         </section>
         <div class="footer-actions">
-          <button id="login" class="icon-button">Entrar</button>
+          <button id="login" class="icon-button" aria-label="Entrar no ChatGPT" title="Entrar no ChatGPT">Entrar</button>
           <button id="directMode" class="icon-button">Modo direto</button>
         </div>
         <div class="observer-row">
@@ -88,6 +88,14 @@
           </select>
           <span id="observerHint">Fast quando disponível.</span>
         </div>
+        <details id="hostBrowserControls" class="host-browser-controls" hidden>
+          <summary>Host local ativo</summary>
+          <div class="host-browser-controls-panel">
+            <span>O serviço local continua ativo se esta aba for fechada.</span>
+            <button id="hostBrowserShutdown" type="button">Encerrar serviço</button>
+            <span id="hostBrowserShutdownStatus" role="status" aria-live="polite"></span>
+          </div>
+        </details>
       </footer>
     </aside>
 
@@ -346,6 +354,22 @@
       </details>
     </aside>
   </main>
+  <section id="hostBrowserSessionNotice" class="host-browser-session-notice" role="alert" aria-live="assertive" hidden>
+    <h1 id="hostBrowserSessionTitle">Validando a sessão local…</h1>
+    <p id="hostBrowserSessionMessage">Aguarde enquanto o OrdaX valida esta aba.</p>
+  </section>
+  <dialog id="hostBrowserConfirmation" class="host-browser-confirmation">
+    <form method="dialog">
+      <h2 id="hostBrowserConfirmationTitle"></h2>
+      <p id="hostBrowserConfirmationMessage"></p>
+      <pre id="hostBrowserConfirmationDetail"></pre>
+      <div class="host-browser-confirmation-actions">
+        <button id="hostBrowserConfirmationCancel" type="submit" value="cancel">Cancelar</button>
+        <button id="hostBrowserConfirmationApprove" type="submit" value="approve">Confirmar</button>
+      </div>
+    </form>
+  </dialog>
+  <script src="./host-browser-bridge.js"></script>
   <script type="module" src="./ui.js"></script>
 </body>
 </html>

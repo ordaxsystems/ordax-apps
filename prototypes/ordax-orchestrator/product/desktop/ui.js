@@ -16,6 +16,17 @@ async function setDirectModeVisible(visible) {
   document.documentElement.dataset.ordaxView = visible ? 'provider' : 'app';
   $('#directMode').textContent = visible ? 'Voltar' : 'Modo direto';
 }
+function applyHostProviderLimit() {
+  if (window.ordaxHost?.hostMode !== true) return false;
+  $('#providerText').textContent = 'ChatGPT • login indisponível no host';
+  $('#providerDetail').textContent = 'Esta aba não autentica nem compartilha a sessão com o executor Electron.';
+  const sessionNote=$('.session-persistence-note');
+  if(sessionNote)sessionNote.textContent='Esta visualização e o executor Electron não compartilham uma sessão do ChatGPT.';
+  $('#login').hidden = true;
+  $('#providerDot').className = 'dot error';
+  $('#directMode').hidden = true;
+  return true;
+}
 let observerMode = 'auto';
 let allTasks = [];
 let scopedTaskIds = null;
@@ -25,6 +36,7 @@ let composeAvailability = { allowed:false, reason:'unverified' };
 function syncComposerAvailability() {
   // Editor stays enabled: local draft text is NOT a ChatGPT submission.
   const allowed = composeAvailability.allowed===true && Boolean(currentTaskId) && !submittingTaskId;
+  const hostMode=window.ordaxHost?.hostMode===true;
   $('#send').disabled = !allowed;
   $('#send').title = allowed ? 'Enviar ao ChatGPT' :
     (COMPOSE_STATUS_MESSAGES[composeAvailability.reason] || COMPOSE_STATUS_MESSAGES.unverified);
@@ -32,10 +44,14 @@ function syncComposerAvailability() {
   $('#composerConnection').dataset.state = composeAvailability.reason;
   $('#composerConnectionText').textContent =
     COMPOSE_STATUS_MESSAGES[composeAvailability.reason] || COMPOSE_STATUS_MESSAGES.unverified;
-  $('#composerLogin').hidden = composeAvailability.reason==='ready' || composeAvailability.reason==='busy';
+  $('#composerLogin').hidden = hostMode || composeAvailability.reason==='ready' || composeAvailability.reason==='busy';
 }
 let navigationEpoch = 0;
 let submittingTaskId = null;
+if(window.ordaxHost?.hostMode===true) {
+  composeAvailability=providerComposeAvailability(null,{hostMode:true});
+  applyHostProviderLimit();
+}
 const draftCache = new Map();
 let draftTimer = null;
 let pendingDraft = null;
@@ -627,7 +643,7 @@ async function refreshProvider() {
   providerRefreshPending = true;
   try {
     const status = await window.ordax.providerStatus();
-    composeAvailability = providerComposeAvailability(status);
+    composeAvailability = providerComposeAvailability(status,{hostMode:window.ordaxHost?.hostMode===true});
     syncComposerAvailability();
     const verification = status.verification_required;
     const authenticating = status.auth_state === 'authenticating';
@@ -645,17 +661,19 @@ async function refreshProvider() {
     } else if (status.history_unavailable === true && !backendDenied && !backendRateLimited) {
       $('#providerDetail').textContent = 'O histórico lateral do ChatGPT está indisponível. O histórico local do OrdaX continua acessível. Não será feita recarga automática.';
     }
+    applyHostProviderLimit();
     observerMode = status.observer_mode || observerMode;
     if ($('#observerMode').value !== observerMode) $('#observerMode').value = observerMode;
     $('#observerHint').textContent = observerMode === 'beta' ? 'Beta observa a interface.' : observerMode === 'fast' ? `Fast${status.fast_observer_ready ? ' • rede observada' : ' • Beta de segurança'}` : `Automático${status.fast_observer_ready ? ' • Fast + Beta' : ' • Beta ativo'}`;
     // Session heuristics must never hide the login view automatically.
     // The operator returns from direct mode explicitly after signing in.
   } catch (error) {
-    composeAvailability = { allowed:false, reason:'unverified' };
+    composeAvailability = providerComposeAvailability(null,{hostMode:window.ordaxHost?.hostMode===true});
     syncComposerAvailability();
     $('#providerText').textContent = 'ChatGPT • erro';
     $('#providerDetail').textContent = friendlyError(error);
     $('#providerDot').className = 'dot error';
+    applyHostProviderLimit();
   } finally {
     providerRefreshPending = false;
   }
@@ -714,6 +732,10 @@ window.matchMedia('(min-width:1181px)').addEventListener('change', event => {
 
 $('#composerLogin').addEventListener('click', () => $('#login').click());
 $('#login').addEventListener('click', async () => {
+  if (applyHostProviderLimit()) {
+    $('#orchestrationNotice').textContent = 'Este host não pode autenticar nem compartilhar a sessão do GPT com o executor Electron. Nenhuma mensagem foi enviada. O login precisa de uma integração de sessão suportada.';
+    return;
+  }
   const button = $('#login');
   button.disabled = true;
   button.textContent = 'Abrindo…';

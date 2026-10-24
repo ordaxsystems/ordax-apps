@@ -77,8 +77,8 @@ test('preparation IPC checks trusted renderer and does not invoke planning or Ch
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   const preload=fs.readFileSync(new URL('../desktop/preload.cjs',import.meta.url),'utf8');
   const ui=fs.readFileSync(new URL('../desktop/ui.js',import.meta.url),'utf8');
-  const setup=main.slice(main.indexOf("ipcMain.handle('ordax:supervisor:key:save'"),
-    main.indexOf("ipcMain.handle('ordax:supervisor:plan'"));
+  const setup=main.slice(main.indexOf("registerUiHandler('ordax:supervisor:key:save'"),
+    main.indexOf("registerUiHandler('ordax:supervisor:plan'"));
   assert.match(setup,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(setup,/groqCredential\.save\(key\)/);
   assert.match(setup,/groqCredential\.remove\(\)/);

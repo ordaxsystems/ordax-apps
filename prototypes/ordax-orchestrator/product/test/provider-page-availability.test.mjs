@@ -92,8 +92,8 @@ test('same-url provider navigation never implicitly calls loadURL on missing com
 });
 test('manual provider reload is rejected while a Run or worker is active',()=>{
  const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
- const start=main.indexOf("ipcMain.handle('ordax:provider:reload'");
- const end=main.indexOf("ipcMain.handle('ordax:chat:visible'",start);
+ const start=main.indexOf("registerUiHandler('ordax:provider:reload'");
+ const end=main.indexOf("registerUiHandler('ordax:chat:visible'",start);
  assert.ok(start>=0&&end>start);
  const route=main.slice(start,end);
  assert.match(route,/if \(liveRun \|\| worker\.active\) throw new Error\('provider_reload_during_run_blocked'\)/);

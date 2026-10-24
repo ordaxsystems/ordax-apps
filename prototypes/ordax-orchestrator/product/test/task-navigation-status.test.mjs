@@ -68,8 +68,8 @@ test('W3 IPC never accepts arbitrary provider text even when it resembles a code
 
 test('W3 main sanitizes before sending any navigation diagnostic over IPC', () => {
   const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-  const start=main.indexOf("ipcMain.handle('ordax:tasks:open'");
-  const end=main.indexOf("ipcMain.handle('ordax:tasks:inspect-linked-thread'",start);
+  const start=main.indexOf("registerUiHandler('ordax:tasks:open'");
+  const end=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'",start);
   assert.ok(start>=0 && end>start);
   const handler=main.slice(start,end);
   assert.match(handler,/safeTaskNavigationReason\(navigation\.reason\)/);

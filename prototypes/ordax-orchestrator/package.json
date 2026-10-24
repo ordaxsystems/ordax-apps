@@ -1,7 +1,7 @@
 {
   "name": "@ordax/orchestrator-lab-bootstrap",
   "private": true,
-  "version": "0.2.0-alpha.16",
+  "version": "0.2.0-alpha.17",
   "type": "module",
   "description": "OrdaX Orchestrator Lab — direct owned Electron source; pinned Flow retained for historical audit only.",
   "scripts": {

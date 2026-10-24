@@ -81,7 +81,7 @@ test('supervisor IPC entry points must enforce trusted local renderer identity',
   assert.match(main,/event\.senderFrame !== win\.webContents\.mainFrame/);
   assert.match(main,/pathToFileURL\(path\.join\(here, 'ui\.html'\)\)\.href/);
   for(const method of methods) {
-    const snippet=main.split("ipcMain.handle('ordax:supervisor:"+method+"'")[1];
+    const snippet=main.split("registerUiHandler('ordax:supervisor:"+method+"'")[1];
     assert.ok(snippet,method+' missing');
     assert.match(snippet.slice(0,190),/requireTrustedSupervisorRenderer\(event\)/,method);
   }
@@ -89,10 +89,10 @@ test('supervisor IPC entry points must enforce trusted local renderer identity',
 
 test('approval IPC denies foreign task before reading or displaying proposed content',()=>{
   const main=fs.readFileSync(path.resolve(current,'../desktop/main.mjs'),'utf8');
-  const approval=main.split("ipcMain.handle('ordax:supervisor:approve'")[1]
-    .split("ipcMain.handle('ordax:supervisor:dispatch'")[0];
+  const approval=main.split("registerUiHandler('ordax:supervisor:approve'")[1]
+    .split("registerUiHandler('ordax:supervisor:dispatch'")[0];
   const permission=approval.indexOf("controller.authorize(payload?.taskId, 'approve')");
   const read=approval.indexOf("SELECT result,status FROM action_ledger");
-  const show=approval.indexOf("dialog.showMessageBox(");
+  const show=approval.indexOf("confirmInActiveUi({");
   assert.ok(permission>=0 && read>permission && show>read);
 });
