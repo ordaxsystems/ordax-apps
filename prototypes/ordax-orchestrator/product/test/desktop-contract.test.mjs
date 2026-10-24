@@ -181,6 +181,7 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(orchestration,/let refreshPending=false,refreshRequested=false/);
   assert.match(orchestration,/while\(refreshRequested\)/);
   assert.match(orchestration,/await onScopeChange\(new Set\(works\.map\(w=>w\.id\)\)\)/);
+  assert.match(orchestration,/if\(item\.id===orchestratorId\)\{void showCoordinator\(\)\.catch\(\(\)=>error\(\)\);return;\}/);
   assert.match(ui,/onScopeChange:async ids=>/);
   assert.match(ui,/try \{await loadTasks\(\);\}\s*catch/);
   assert.match(orchestration,/onOpenWork\(work\.id\)/);
@@ -242,6 +243,9 @@ test('a new mission is persisted once, starts through the existing GPT executor,
   assert.match(packagedSmoke,/missionDraftPreserved/);
   assert.match(packagedSmoke,/mission_draft_not_persisted/);
   assert.match(packagedSmoke,/conversationCards!==2/);
+  assert.match(packagedSmoke,/phase='work_list_refresh'/);
+  assert.match(packagedSmoke,/phase='coordinator_reopen'/);
+  assert.match(packagedSmoke,/taskTitle'\)\.textContent==='Frente criada pelo MCP'/);
   assert.match(packagedSmoke,/phase,reason:'app_orchestration_scenario_failed'/);
   assert.match(hostFixture,/workRows\.length!==3/);
   assert.match(hostFixture,/work\.title==='Primeira frente'/);

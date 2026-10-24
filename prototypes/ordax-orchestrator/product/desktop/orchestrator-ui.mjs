@@ -140,7 +140,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       button.textContent=item.name;button.dataset.orchestratorId=item.id;
       button.setAttribute('aria-pressed',String(item.id===orchestratorId));
       if(item.id===orchestratorId)button.classList.add('active');
-      button.addEventListener('click',()=>{ $('orchestratorSelect').value=item.id;$('orchestratorSelect').dispatchEvent(new Event('change')); });
+      button.addEventListener('click',()=>{
+        if(item.id===orchestratorId){void showCoordinator().catch(()=>error());return;}
+        $('orchestratorSelect').value=item.id;$('orchestratorSelect').dispatchEvent(new Event('change'));
+      });
       list.append(button);
     }
   }
