@@ -8,6 +8,8 @@ import {
   validateFoodPizzeriaState,
   createPizzeriaOrder,
   createPizzeriaTableCommand,
+  closePizzeriaTableCommand,
+  transitionPizzeriaOrder,
   savePizzeriaFlavor,
   savePizzeriaRecipe,
   updateFoodPizzeriaSettings,
@@ -177,4 +179,66 @@ test("v5 migration does not invent historical ingredient consumption", () => {
   assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
     /consumo histórico não é verificável/);
   assert.equal(Object.hasOwn(migrated, "inventoryMovements"), false);
+});
+
+test("table commands reject orders before opening and closure before the last order update", () => {
+  const base = createSeedFoodState();
+  const openedAt = "2026-10-24T12:00:00.000Z";
+  let state = createPizzeriaTableCommand(base, {
+    id: "table-chronology-2",
+    tableId: 2,
+    customerName: "Grupo Cronologia",
+    guestCount: 2,
+    openedAt,
+  });
+  const request = {
+    id: "chronology-order-1",
+    historyId: "chronology-history-received",
+    customerName: "Grupo Cronologia",
+    channel: "dine-in",
+    tableCommandId: "table-chronology-2",
+    items: [{ id: "chronology-item-1", size: "medium", flavorIds: ["ng-calabresa"], quantity: 1 }],
+  };
+  assert.throws(() => createPizzeriaOrder(state, {
+    ...request,
+    createdAt: "2026-10-24T11:59:59.000Z",
+  }), /anteceder a abertura/);
+
+  state = createPizzeriaOrder(state, { ...request, createdAt: "2026-10-24T12:01:00.000Z" });
+  const received = state;
+  const malformed = structuredClone(received);
+  const order = malformed.orders.find(({ id }) => id === request.id);
+  order.createdAt = "2026-10-24T11:59:59.000Z";
+  order.updatedAt = order.createdAt;
+  order.statusHistory[0].changedAt = order.createdAt;
+  assert.throws(() => validateFoodPizzeriaState(malformed), /anteceder a abertura/);
+
+  const transitions = [
+    ["preparing", "2026-10-24T12:02:00.000Z"],
+    ["ready", "2026-10-24T12:03:00.000Z"],
+    ["completed", "2026-10-24T12:04:00.000Z"],
+  ];
+  for (const [nextStatus, changedAt] of transitions) {
+    state = transitionPizzeriaOrder(state, {
+      orderId: request.id,
+      nextStatus,
+      changedAt,
+      historyId: `chronology-history-${nextStatus}`,
+    });
+  }
+  assert.throws(() => closePizzeriaTableCommand(state, {
+    commandId: request.tableCommandId,
+    closedAt: "2026-10-24T12:03:30.000Z",
+  }), /última atualização/);
+  const closed = closePizzeriaTableCommand(state, {
+    commandId: request.tableCommandId,
+    closedAt: "2026-10-24T12:05:00.000Z",
+  });
+  assert.equal(closed.tableCommands.find(({ id }) => id === request.tableCommandId).closedAt,
+    "2026-10-24T12:05:00.000Z");
+
+  const invalidClose = structuredClone(closed);
+  invalidClose.tableCommands.find(({ id }) => id === request.tableCommandId).closedAt =
+    "2026-10-24T12:03:30.000Z";
+  assert.throws(() => validateFoodPizzeriaState(invalidClose), /antes da última atualização/);
 });
