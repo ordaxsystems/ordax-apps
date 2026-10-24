@@ -53,6 +53,10 @@ O host lê `printable_area` e `bed_exclude_area` dos perfis de máquina Orca. A 
 
 Antes de iniciar um job, o app e o host conferem os nomes exatos de `compatible_printers` e `compatible_prints` depois de resolver a herança. Expressões ainda não avaliadas bloqueiam a combinação em vez de presumirem compatibilidade. Selecionar um novo processo também aplica nos processos da mesa as configurações que o app reconhece no perfil resolvido; valores manuais continuam revisáveis. A validação não substitui uma execução real com a versão instalada do OrcaSlicer. Referências: [perfil e variantes compatíveis](https://github.com/OrcaSlicer/OrcaSlicer/wiki/how_to_create_profiles) e [condições de compatibilidade do material](https://github.com/OrcaSlicer/OrcaSlicer/wiki/material_dependencies).
 
+## Prévia do G-code
+
+A prévia reconhece movimentos lineares G0/G1 e arcos G2/G3 no plano XY. Os arcos são desenhados como segmentos com erro de corda máximo de 0,1 mm e limite de 512 segmentos por arco; modos de coordenadas absoluto/relativo, centros I/J absoluto/relativo e unidades G20/G21 são considerados. Arcos XZ/YZ, helicoidais ou com geometria inválida ficam fora da inspeção e são sinalizados. A exportação continua sendo o G-code original do motor, sem alterações da tesselação visual.
+
 ## Fatiamento no navegador e no servidor
 
 A mesma interface web pode trabalhar em dois modos: motor instalado no dispositivo (`executionTarget: "device"`) ou motor executado em um servidor web autorizado (`executionTarget: "server"`). O host que injeta `services.slicer` informa também um rótulo legível do destino. Para trabalhos remotos, o app mostra esse destino e exige confirmação em cada fatiamento. O contrato envia uma STL transformada, configurações validadas, IDs de peças/processos remapeados para o job e os IDs dos perfis escolhidos; não envia o arquivo original nem a conversa com a IA. O G-code e as estatísticas retornam ao navegador como resultado do trabalho.
