@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   calculatePizzaPriceCents,
+  calculatePizzeriaOrderConsumption,
+  migrateFoodPizzeriaState,
+  validateFoodPizzeriaState,
   createPizzeriaOrder,
   createPizzeriaTableCommand,
   savePizzeriaFlavor,
@@ -133,4 +136,45 @@ test("salon orders require an active table command and stay distinct from counte
   assert.equal(withOrder.orders.find(({ id }) => id === orderInput.id).channel, "dine-in");
   assert.throws(() => createPizzeriaOrder(withCommand, { ...orderInput, channel: "counter" }), /salão/);
   assert.throws(() => createPizzeriaOrder(state, { ...orderInput, tableCommandId: null }), /salão/);
+});
+
+test("changing a recipe cannot retroactively change the consumption of an existing order", () => {
+  const original = createSeedFoodState();
+  const order = original.orders.find(({ status }) => status === "received");
+  const before = calculatePizzeriaOrderConsumption(original, order.id);
+  assert.ok(before.length > 0);
+  const flavorId = order.items[0].flavors[0].id;
+  const recipe = original.recipes.find(({ flavorId: id }) => id === flavorId);
+  const changedLines = recipe.lines.map((line, index) => ({
+    ...line,
+    quantityBaseBySize: index === 0
+      ? Object.fromEntries(Object.entries(line.quantityBaseBySize).map(([size, amount]) => [size, amount + 100]))
+      : { ...line.quantityBaseBySize },
+  }));
+  const updated = savePizzeriaRecipe(original, { flavorId, lines: changedLines, at: new Date().toISOString() });
+  assert.notDeepEqual(updated.recipes.find(({ flavorId: id }) => id === flavorId).lines, recipe.lines);
+  assert.deepEqual(calculatePizzeriaOrderConsumption(updated, order.id), before);
+  assert.deepEqual(updated.orders.find(({ id }) => id === order.id).consumptionSnapshot, before);
+  assert.equal(Object.hasOwn(updated, "inventoryMovements"), false);
+
+  const changed = structuredClone(updated);
+  const idx = changed.orders.findIndex(({ id }) => id === order.id);
+  changed.orders[idx].consumptionSnapshot[0].quantityBase = 0;
+  assert.throws(() => validateFoodPizzeriaState(changed), /Proposta de consumo duplicada ou com quantidade inválida/);
+});
+
+test("v5 migration does not invent historical ingredient consumption", () => {
+  const state = createSeedFoodState();
+  const v5 = {
+    ...state,
+    schema: "ordax.food-pizzeria-state/5",
+    orders: state.orders.map(({ consumptionSnapshot, ...order }) => order),
+  };
+  const migrated = migrateFoodPizzeriaState(v5);
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.orders.length, state.orders.length);
+  assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
+  assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
+    /consumo histórico não é verificável/);
+  assert.equal(Object.hasOwn(migrated, "inventoryMovements"), false);
 });
