@@ -12,6 +12,7 @@ const COMMAND_DIGEST_RE = /^[a-f0-9]{64}$/;
 const LEGACY_INVENTORY_ARCHIVE_SCHEMA = "ordax.food-pizzeria.preview-legacy-inventory/1";
 const LEGACY_FOOD_STATE_V3 = "ordax.food-pizzeria-state/3";
 const BUSINESS_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
+const COMMAND_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const MAX_STATE_BYTES = 5 * 1024 * 1024;
 const MAX_RECORDED_COMMANDS = 1000;
 const LEGACY_KEY = [
@@ -42,7 +43,7 @@ function validateCommandHistory(entries) {
   return entries.map((entry) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)
       || Object.keys(entry).sort().join(",") !== "digest,id"
-      || typeof entry.id !== "string" || !BUSINESS_ID_RE.test(entry.id)
+      || typeof entry.id !== "string" || !COMMAND_ID_RE.test(entry.id)
       || (entry.digest !== null && (typeof entry.digest !== "string" || !COMMAND_DIGEST_RE.test(entry.digest)))
       || seen.has(entry.id)) {
       throw new TypeError("O registro de operações locais da pizzaria está inválido.");
@@ -84,7 +85,7 @@ function decodeStoredValue(raw, businessId) {
   if (parsed?.schema === LEGACY_STORAGE_SCHEMA) {
     if (!Array.isArray(parsed.processedCommandIds)
       || parsed.processedCommandIds.length > MAX_RECORDED_COMMANDS
-      || parsed.processedCommandIds.some((id) => typeof id !== "string" || !BUSINESS_ID_RE.test(id))) {
+      || parsed.processedCommandIds.some((id) => typeof id !== "string" || !COMMAND_ID_RE.test(id))) {
       throw new TypeError("O registro legado de operações da pizzaria está inválido.");
     }
     return {
