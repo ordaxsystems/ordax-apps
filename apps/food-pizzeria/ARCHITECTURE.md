@@ -15,8 +15,8 @@ Este repositório ainda não tem o contrato público de Space Experience necess�
 | Composição | Profile Pack versionado | Selecionar composição disponível; não possuir dados operacionais, métricas ou estado de domínio. |
 | Food Core | OrdaX Food | Cardápio e preços de alimentação, pedido alimentar, produção/KDS, mesas/comandas, delivery e fichas técnicas. |
 | Estoque | OrdaX Inventory | Catálogo de insumos, saldo e movimentações. Food calcula uma proposta de consumo; somente Inventory poderá registrar uma movimentação. |
-| Pedido comercial | OrdaX Sales | Fonte oficial do pedido, linhas, preços e estados comerciais, conforme o roadmap e o domínio canônico de Vendas. |
-| Produção alimentar | OrdaX Food | Projeção operacional de produção/fulfillment ligada a uma referência estável de Sales; não cria um segundo pedido comercial. |
+| Pedido alimentar/comercial | Autoridade pendente de reconciliação Food Order Core × Sales | Uma autoridade transacional por pedido; não presumir que o livro genérico Sales substitua o Food Order Core definido pelo owner OS. |
+| Produção alimentar | OrdaX Food | Estado especializado de preparo/fulfillment relacionado ao pedido canônico, sem segundo pedido mestre. |
 | Pagamentos | Owner Payments, ainda ausente neste repo | Resultado financeiro confirmado por contrato; escolher PIX/cartão no protótipo não é confirmação de pagamento. |
 | Financeiro | OrdaX Finance | Ledger de fluxo de caixa; não substitui pedidos, pagamentos ou contabilidade completa. |
 | Clientes/CRM | Owner ainda ausente neste repo | Identidade e histórico mestre do cliente. Food conserva somente o snapshot necessário no pedido até haver contrato de referência autorizado. |
@@ -26,11 +26,11 @@ Este repositório ainda não tem o contrato público de Space Experience necess�
 
 ### Autoridade do pedido e produção
 
-O pedido comercial tem um único owner: **OrdaX Sales**. O roadmap do repositório atribui pedidos a Sales, e `apps/sales/src/domain/orders.mjs` já mantém o livro `ordax.sales-book/1`, incluindo linhas, preço e transições comerciais. Food não deve criar um segundo mestre desse pedido.
+**A decisão sobre o owner do pedido alimentar real ainda não está ratificada entre os repositórios.** O `ordax-apps` implementa o domínio genérico de pedidos `ordax.sales-book/1` em Sales, mas o plano canônico `ordax-os/00-PLANOS-PRIORITARIOS/plans/ACHEGUESE-001-FIRST-PARTY-PRODUCT-INTEGRATION.md` atribui explicitamente o pedido, quando Food é escolhido como provedor, ao **Food Order Core**. O roadmap Apps não substitui esse contrato cross-product. A integração deve escolher uma única autoridade e reconciliar esses documentos/contratos antes de produzir pedidos comerciais.
 
-Food é o owner das capacidades especializadas de alimentação: cardápio, fichas técnicas e estado de produção/fulfillment. Na integração futura, a produção Food deverá referenciar um ID estável do pedido Sales; cozinha e entrega atualizam somente o agregado operacional Food, enquanto estados comerciais continuam em Sales. A composição não deve copiar o pedido inteiro nem permitir que um app escreva diretamente no estado do outro.
+Food mantém cardápio, fichas técnicas e o fluxo especializado de produção/fulfillment. O desenho definitivo do pedido comercial e da projeção de produção depende da autoridade reconciliada: um ID canônico por pedido, referências e eventos idempotentes entre owners, sem cópia mutável concorrente nem escrita direta no estado de outro domínio.
 
-O schema atual de Sales ainda é genérico e não expõe um contrato público Food para canal, mesa/comanda, referência de produção, leitura autorizada ou eventos. Essa lacuna bloqueia a integração real. Os pedidos presentes no preview são registros fictícios de sandbox local: permitem testar fluxos e layout, mas não são pedidos Sales nem um SSOT comercial.
+O schema Sales atual é genérico e não expõe contrato público homologado para o canal Food, mesa/comanda, fulfillment ou eventos; o Food Order Core ainda não foi publicado como serviço comercial. Essa divergência é um **gate bloqueante de integração**, não justificativa para manter dois masters. Os pedidos do preview são registros locais fictícios e não constituem nem pedidos Sales nem pedidos comerciais Food.
 
 ## Estado implementado
 
