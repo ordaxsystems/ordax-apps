@@ -7,10 +7,15 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 ## Etapa concluída nesta correção
 
 - Auditoria de ownership e dos dados efetivamente persistidos.
-- Estado Food v4 sem mestre, saldo ou ledger de Inventory.
+- Sales confirmado como owner do pedido comercial pelo roadmap e pelo `ordax.sales-book/1`; os pedidos Food visíveis no protótipo são sandbox local, não um segundo SSOT comercial.
+- Food state v5 sem mestre, saldo ou ledger de Inventory, com migração explícita de dados v4 para os novos ajustes configuráveis.
 - Cálculo de consumo por ficha técnica separado da movimentação do estoque.
-- Migração de preview v3 para v4 com arquivo local do antigo estoque antes de reescrever a chave ativa.
+- Migração de preview v3/v4 com arquivo local do antigo estoque v3 antes de reescrever a chave ativa.
 - Pedidos, KDS, Cardápio/fichas, Mesas/Comandas e Delivery mantidos como áreas do Food Core.
+- Renderizadores operacionais separados, consumindo o snapshot/view model único do app.
+- Tamanhos de pizza, limite de sabores e mesas configuráveis; novos tamanhos entram inativos até preços e fichas técnicas estarem prontos.
+- Salão exige comanda e tem canal próprio, separado de balcão.
+- Persistência local cobre reabertura, replay exato sem duplicação e rejeição de gravação com revisão antiga.
 - Overview tratado como responsabilidade do Space; PDV e capacidades horizontais sem provider mostram um estado explícito de integração pendente.
 - Dados e identidade de interface não conectados não são apresentados como operação ativa.
 - Remoção do `mockWorkspace` e dos handlers antigos de Caixa, Estoque, Clientes e Equipe; somente estado transitório da interface e amostras marcadas permanecem fora do domínio versionado.
@@ -18,11 +23,11 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 ## Próxima sequência
 
 1. **Contrato público Space Experience:** Platform/OS publica e versiona contratos de provider, snapshot, contexto autorizado, readiness, navegação e ciclo de vida no App SDK. Enquanto isso não existir, não montar Food dentro de Spaces por import privado.
-2. **Food/Sales order ownership:** revisar `ordax.sales-book/1` com o owner Sales e formalizar Food Order Core como autoridade operacional ou rever essa decisão. Exigir referência idempotente de origem e impedir dois pedidos mestres.
+2. **Contrato Sales ↔ Food:** o ownership comercial está definido como Sales; falta contrato público para canal Food, referência estável, projeção de leitura autorizada, extensão de fulfillment e eventos idempotentes. Food não deve copiar o pedido comercial.
 3. **Inventory consumption:** definir request/receipt de consumo, escopo autorizado do Space, idempotência, rejeição de saldo e política de retry/compensação. Food propõe quantidades; Inventory registra movimentos.
 4. **Sales, Payments e Finance:** definir sale reference, confirmação de pagamento e posting financeiro entre owners. Não concluir caixa no Food sem resultado confirmado por Payments.
 5. **Customers e People:** definir referência/consentimento do CRM e distinção entre membro com acesso ao Space e funcionário/escala.
-6. **Modularizar apresentação Food:** extrair Orders, Menu/Recipes, Kitchen, Tables/Commands e Delivery por responsabilidade mantendo um único estado e os ports internos já definidos.
+6. **Evoluir os módulos Food:** os renderizadores Orders, Menu/Recipes, Kitchen, Tables/Commands, Delivery e Settings já são arquivos separados; continuar extraindo regras do controlador sem replicar estado.
 7. **Hosts e compatibilidade:** montar a mesma fonte em Web, Windows e OrdaX OS por adapters públicos; provar isolamento por Space, grants, realtime/reconciliação e ciclo de vida em cada host.
 8. **FOOD-001, pacote e Store:** reavaliar elegibilidade e autorização no roadmap do owner OS. Só depois produzir manifests/pacote e seguir os gates canônicos de distribuição.
 

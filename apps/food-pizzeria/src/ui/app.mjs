@@ -1,6 +1,6 @@
 import {
-  PIZZA_SIZES,
-  PIZZERIA_TABLES,
+  PIZZA_SIZES as DEFAULT_PIZZA_SIZES,
+  PIZZERIA_TABLES as DEFAULT_PIZZERIA_TABLES,
   calculatePizzaPriceCents,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
@@ -8,6 +8,12 @@ import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
 import { renderSpaceCapabilityStatus } from "./space-capability-status.mjs";
+import { renderOrdersPage } from "./views/orders.mjs";
+import { renderKitchenPage } from "./views/kitchen.mjs";
+import { renderMenuPage } from "./views/menu.mjs";
+import { renderTablesPage } from "./views/tables.mjs";
+import { renderDeliveryPage } from "./views/delivery.mjs";
+import { renderSettingsPage } from "./views/settings.mjs";
 
 export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   if (!root || typeof root.querySelector !== "function" || typeof root.addEventListener !== "function") {
@@ -36,6 +42,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     delivery: "Entrega",
     pickup: "Retirada",
     counter: "Balcão",
+    "dine-in": "Salão",
   });
   const VIEW_LABELS = Object.freeze({
     overview: "Visão geral",
@@ -68,6 +75,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     Object.freeze({ id: "delivery", label: "Entrega" }),
     Object.freeze({ id: "pickup", label: "Retirada" }),
     Object.freeze({ id: "counter", label: "Balcão" }),
+    Object.freeze({ id: "dine-in", label: "Salão" }),
   ]);
   const ORDER_STAGE_ALERT_MINUTES = Object.freeze({ received: 15, preparing: 35, ready: 15, "out-for-delivery": 45 });
   const ICONS = Object.freeze({
@@ -92,8 +100,12 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   
   const store = dataPort;
   let snapshot = null;
+  let PIZZA_SIZES = DEFAULT_PIZZA_SIZES.map((size) => ({ ...size, active: true }));
+  let PIZZERIA_TABLES = DEFAULT_PIZZERIA_TABLES.map((table) => ({ ...table, active: true }));
   let recipeFlavorId = null;
   let recipeDraftLines = [];
+  let settingsSizesDraft = null;
+  let settingsTablesDraft = null;
   let unsubscribe = null;
   let activeView = "orders";
   let orderQuery = "";
@@ -300,12 +312,26 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     </section>`;
   }
   
+  function viewModel() {
+    return {
+      PIZZA_SIZES, PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS, PREVIEW_INGREDIENTS,
+      PREVIEW_DELIVERY_FEE_CENTS, STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
+      KITCHEN_CHANNEL_FILTERS, ORDER_STAGE_ALERT_MINUTES, snapshot, recipeFlavorId,
+      recipeDraftLines, orderQuery, orderStatusFilter, orderChannelFilter, kitchenChannelFilter,
+      activeCommandId, editFlavorId, cart, busy, button, iconSvg, metricCard,
+      orderItemDescription, nextStatus, nextActionLabel, orderAction, canCancel,
+      renderOrderCard, emptyState, sizeOptions, flavorOptions, cartHtml, flavorForm,
+      kitchenChannelButton, activeCommandForTable, tableCard, sectionHeader, statCard,
+      tableOrders, tableCommandTotalCents, money, escapeHtml, timeLabel, stageStartedAt,
+      elapsedMinutes, formatElapsed, orderNumber, commandById,
+    };
+  }
   function metricCard({ label, value, detail, icon, tone = "red" }) {
     return `<article class="metric-card"><div class="metric-top"><span>${escapeHtml(label)}</span><span class="metric-icon tone-${tone}">${iconSvg(icon)}</span></div><strong class="metric-value">${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></article>`;
   }
   
   function orderItemDescription(item) {
-    const size = PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
+    const size = item.sizeLabel ?? PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
     const flavors = item.flavors.map(({ name }) => name).join(" + ");
     return `${item.quantity}× ${size} · ${flavors}`;
   }
@@ -360,7 +386,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
 
 
   function sizeOptions(selected = "medium") {
-    return PIZZA_SIZES.map(({ id, label, slices }) => `<option value="${id}" ${selected === id ? "selected" : ""}>${label} · ${slices} fatias</option>`).join("");
+    return PIZZA_SIZES.filter(({ active }) => active).map(({ id, label, slices }) => `<option value="${id}" ${selected === id ? "selected" : ""}>${escapeHtml(label)} · ${slices} fatias</option>`).join("");
   }
   
   function flavorOptions(selected = "") {
@@ -375,130 +401,45 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       const flavorNames = item.flavorIds.map((id) => snapshot.flavors.find((flavor) => flavor.id === id)?.name ?? "Sabor indisponível");
       let unit = 0;
       try {
-        unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy });
+        unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
       } catch { unit = item.unitPriceCents; }
       return `<li class="cart-line"><div><strong>${item.quantity}× ${escapeHtml(size)}</strong><span>${escapeHtml(flavorNames.join(" + "))}</span></div><strong>${money(unit * item.quantity)}</strong><button class="icon-button" type="button" data-action="remove-cart-item" data-index="${index}" aria-label="Remover ${escapeHtml(flavorNames.join(" e "))}">×</button></li>`;
     }).join("")}</ul>`;
   }
   
-  function ordersPage() {
-    const activeFlavors = snapshot.flavors.filter(({ id, active }) => active && snapshot.recipes.some((recipe) => recipe.flavorId === id));
-    const activeWithoutRecipe = snapshot.flavors.some(({ id, active }) => active && !snapshot.recipes.some((recipe) => recipe.flavorId === id));
-    const selectedCommand = activeCommandId ? commandById(activeCommandId) : null;
-    const tableCommand = selectedCommand?.closedAt === null ? selectedCommand : null;
-    const commandTable = tableCommand ? PIZZERIA_TABLES.find(({ id }) => id === tableCommand.tableId) : null;
-    const query = orderQuery.trim().toLocaleLowerCase("pt-BR");
-    const allOrders = [...snapshot.orders];
-    const orders = allOrders.filter((order) => {
-      const tableNumber = order.tableCommandId ? commandById(order.tableCommandId)?.tableId : null;
-      const searchable = `${order.id} ${orderNumber(order)} ${order.customerName} ${order.phone} ${tableNumber ? `mesa ${String(tableNumber).padStart(2, "0")}` : ""} ${order.items.flatMap((item) => item.flavors.map((flavor) => flavor.name)).join(" ")}`.toLocaleLowerCase("pt-BR");
-      return (!query || searchable.includes(query))
-        && (orderStatusFilter === "all" || order.status === orderStatusFilter)
-        && (orderChannelFilter === "all" || order.channel === orderChannelFilter);
-    });
-    const hasLocalFilters = orderStatusFilter !== "all" || orderChannelFilter !== "all";
-    return `<section class="page-section">
-      <div class="page-heading"><div><p class="eyebrow">VENDAS DA CASA</p><h1>Pedidos</h1><p>Monte o pedido, confira o preço e acompanhe cada etapa.</p></div><span class="heading-counter">${orders.length} de ${allOrders.length} pedidos</span></div>
-      <div class="orders-layout"><section class="panel order-create-panel"><div class="panel-heading"><div><p class="eyebrow">NOVO ATENDIMENTO</p><h2>Montar pedido</h2></div><span class="step-number">01</span></div>
-        ${activeFlavors.length ? `<form id="add-pizza-form" class="pizza-builder">
-          <div class="builder-title"><span class="builder-icon" aria-hidden="true">✦</span><div><strong>Pizza</strong><small>Escolha tamanho e até dois sabores.</small></div></div>
-          <div class="builder-grid"><label>Tamanho<select name="size">${sizeOptions()}</select></label><label>Primeiro sabor<select name="flavor1" required>${flavorOptions()}</select></label><label class="second-flavor">Segundo sabor <span class="optional-tag">opcional</span><select name="flavor2"><option value="">Sem segundo sabor</option>${activeFlavors.map(({ id, name }) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("")}</select></label><label>Quantidade<input name="quantity" type="number" min="1" max="50" value="1" required></label></div>
-          <div class="builder-bottom"><span id="pizza-price-preview">Selecione um sabor para ver o preço.</span><button class="button button-dark" type="button" data-action="add-pizza">Adicionar pizza <span aria-hidden="true">＋</span></button></div>
-        </form>` : emptyState({ icon: "◉", title: activeWithoutRecipe ? "Fichas técnicas pendentes" : "Seu cardápio ainda está vazio", text: activeWithoutRecipe ? "Cadastre as receitas dos sabores no Cardápio antes de receber pedidos para preparo." : "Cadastre sabores e preços para começar a receber pedidos.", action: activeWithoutRecipe ? "Abrir cardápio" : "Cadastrar sabores", view: "menu" })}
-        <div class="cart-section"><div class="cart-heading"><strong>Itens do pedido</strong><span id="cart-count">${cart.length} ${cart.length === 1 ? "item" : "itens"}</span></div><div id="cart-content">${cartHtml()}</div></div>
-        <form id="create-order-form" class="customer-form">
-          <div class="cart-heading"><strong>Dados para atendimento</strong><span class="step-number step-small">02</span></div>
-          <input type="hidden" name="tableCommandId" value="${escapeHtml(tableCommand?.id ?? "")}">
-          ${tableCommand ? `<div class="table-order-context"><div><strong>Comanda da Mesa ${String(tableCommand.tableId).padStart(2, "0")}</strong><span>${escapeHtml(tableCommand.customerName)} · ${tableCommand.guestCount} pessoas</span></div><small>Este pedido entrará na mesma fila da cozinha e será somado à comanda.</small>${button("Sair da comanda", "leave-command-context", { disabled: cart.length > 0 })}</div><label>Grupo da mesa<input name="customerName" maxlength="80" value="${escapeHtml(tableCommand.customerName)}" readonly required></label><input type="hidden" name="channel" value="counter"><input type="hidden" name="phone" value="">` : `<label>Nome do cliente<input name="customerName" maxlength="80" placeholder="Nome para identificar o pedido" required></label><div class="builder-grid customer-grid"><label>Canal<select name="channel"><option value="pickup">Retirada</option><option value="delivery">Entrega</option><option value="counter">Balcão</option></select></label><label>Telefone <span class="optional-tag">opcional, exceto entrega</span><input name="phone" maxlength="32" inputmode="tel" placeholder="(11) 99999-9999"></label></div>`}
-          <div id="delivery-fields" class="delivery-fields" hidden><label>Endereço de entrega<textarea name="address" maxlength="240" rows="2" placeholder="Rua, número, bairro e referência"></textarea></label><label>Taxa de entrega<input name="deliveryFee" inputmode="decimal" placeholder="0,00" value="${new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(PREVIEW_DELIVERY_FEE_CENTS / 100)}"><small>Valor inicial fictício da prévia; não representa configuração persistente. A distância não é calculada.</small></label></div>
-          <label>Observações do pedido<textarea name="notes" maxlength="240" rows="2" placeholder="Ex.: sem cebola, tocar o interfone…"></textarea></label>
-          <div class="order-total"><div><span>Total do pedido</span><small>O valor não representa pagamento recebido.</small></div><strong id="order-total-value">${money(0)}</strong></div>
-          <button class="button button-primary button-wide" type="submit" ${busy || !activeFlavors.length ? "disabled" : ""}>Registrar pedido <span aria-hidden="true">→</span></button>
-        </form>
-      </section><section class="orders-history"><div class="panel-heading history-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h2>Histórico</h2></div></div>
-        <section class="panel orders-filter-panel" aria-label="Filtros do histórico de pedidos"><div class="orders-filter-controls"><label>Etapa<select data-order-status-filter aria-label="Filtrar pedidos por etapa">${ORDER_STATUS_FILTERS.map(({ id, label }) => `<option value="${id}" ${orderStatusFilter === id ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>Canal<select data-order-channel-filter aria-label="Filtrar pedidos por canal"><option value="all" ${orderChannelFilter === "all" ? "selected" : ""}>Todos os canais</option>${Object.entries(CHANNEL_LABELS).map(([id, label]) => `<option value="${id}" ${orderChannelFilter === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>${hasLocalFilters ? `<button class="button button-quiet clear-order-filters" type="button" data-action="reset-order-filters">Limpar filtros</button>` : ""}</div><p class="orders-filter-summary">${orders.length} ${orders.length === 1 ? "pedido encontrado" : "pedidos encontrados"}${query ? " para a busca atual" : ""}</p></section>
-        ${orders.length ? `<div class="history-list">${orders.map((order) => renderOrderCard(order)).join("")}</div>` : emptyState({ icon: "▣", title: query || hasLocalFilters ? "Nenhum pedido encontrado" : "Nenhum pedido registrado", text: query || hasLocalFilters ? "Altere a etapa, o canal ou a busca para ampliar os resultados." : "Os pedidos registrados aparecerão aqui." })}
-      </section></div>
-    </section>`;
-  }
-  
+  function ordersPage() { return renderOrdersPage(viewModel()); }
+
   function kitchenChannelButton(filter, activeOrders) {
     const count = filter.id === "all" ? activeOrders.length : activeOrders.filter(({ channel }) => channel === filter.id).length;
     return `<button class="order-filter ${kitchenChannelFilter === filter.id ? "is-active" : ""}" type="button" data-kitchen-channel="${filter.id}" aria-pressed="${kitchenChannelFilter === filter.id}">${filter.label}<span>${count}</span></button>`;
   }
   
-  function kitchenPage() {
-    const columns = [
-      { status: "received", title: "Recebidos", icon: "◉" },
-      { status: "preparing", title: "Em preparo", icon: "◷" },
-      { status: "ready", title: "Prontos", icon: "✓" },
-    ];
-    const activeStatuses = new Set(["received", "preparing", "ready", "out-for-delivery"]);
-    const activeOrders = snapshot.orders.filter(({ status }) => activeStatuses.has(status));
-    const channelMatches = ({ channel }) => kitchenChannelFilter === "all" || channel === kitchenChannelFilter;
-    const delivery = activeOrders.filter(({ status }) => status === "out-for-delivery").filter(channelMatches)
-      .sort((first, second) => Date.parse(stageStartedAt(first)) - Date.parse(stageStartedAt(second)));
-    return `<section class="page-section kitchen-page">
-      <div class="page-heading"><div><p class="eyebrow">PRODUÇÃO</p><h1>Fila da cozinha</h1><p>Pedidos organizados por etapa de preparo.</p></div><span class="live-indicator"><span></span>Turno aberto</span></div>
-      <section class="panel kitchen-toolbar" aria-label="Filtros da fila da cozinha"><div class="kitchen-toolbar-copy"><strong>Canal de atendimento</strong><span>A fila mantém primeiro os pedidos há mais tempo na etapa.</span></div><div class="order-filters" role="group" aria-label="Filtrar fila por canal">${KITCHEN_CHANNEL_FILTERS.map((filter) => kitchenChannelButton(filter, activeOrders)).join("")}</div></section>
-      <div class="kitchen-board">${columns.map(({ status, title, icon }) => {
-        const orders = activeOrders.filter((order) => order.status === status).filter(channelMatches)
-          .sort((first, second) => Date.parse(stageStartedAt(first)) - Date.parse(stageStartedAt(second)));
-        const overdueCount = orders.filter((order) => elapsedMinutes(stageStartedAt(order)) >= ORDER_STAGE_ALERT_MINUTES[status]).length;
-        return `<section class="kitchen-column kitchen-${status}"><header class="kitchen-column-head"><span class="kitchen-column-icon" aria-hidden="true">${icon}</span><h2>${title}</h2><span class="column-count">${orders.length}</span></header>${overdueCount ? `<p class="column-alert-summary">${overdueCount} ${overdueCount === 1 ? "pedido acima" : "pedidos acima"} do tempo esperado</p>` : ""}<div class="kitchen-column-body">${orders.length ? orders.map((order) => renderOrderCard(order, { kitchen: true })).join("") : `<div class="column-empty">Nenhum pedido ${status === "received" ? "aguardando" : status === "preparing" ? "em preparo" : "pronto"}.</div>`}</div></section>`;
-      }).join("")}</div>
-      ${activeOrders.some(({ status }) => status === "out-for-delivery") ? `<section class="delivery-list"><div class="panel-heading"><div><p class="eyebrow">EXPEDIÇÃO</p><h2>Na rua</h2></div><span class="column-count">${delivery.length}</span></div>${delivery.length ? `<div class="delivery-cards">${delivery.map((order) => renderOrderCard(order, { kitchen: true })).join("")}</div>` : `<div class="panel kitchen-empty-delivery">Nenhum pedido em entrega neste canal.</div>`}</section>` : ""}
-    </section>`;
-  }
-  
+  function kitchenPage() { return renderKitchenPage(viewModel()); }
+
   function flavorForm() {
     const flavor = snapshot.flavors.find(({ id }) => id === editFlavorId) ?? null;
-    const prices = flavor?.pricesCents ?? { small: "", medium: "", large: "" };
+    const prices = flavor?.pricesCents ?? {};
     return `<form id="flavor-form" class="panel flavor-form">
       <div class="panel-heading"><div><p class="eyebrow">${flavor ? "ATUALIZAR CADASTRO" : "NOVO SABOR"}</p><h2>${flavor ? "Editar sabor" : "Adicionar ao cardápio"}</h2></div><span class="step-number">${flavor ? "✎" : "＋"}</span></div>
       <label>Nome do sabor<input name="name" maxlength="60" required value="${escapeHtml(flavor?.name ?? "")}" placeholder="Ex.: Margherita"></label>
       <label>Descrição <span class="optional-tag">opcional</span><textarea name="description" maxlength="240" rows="2" placeholder="Ingredientes ou detalhes para a cozinha">${escapeHtml(flavor?.description ?? "")}</textarea></label>
-      <div class="price-fields"><span>Preço por tamanho</span><div class="price-grid">${PIZZA_SIZES.map(({ id, label }) => `<label>${label}<div class="currency-input"><span>R$</span><input name="price-${id}" inputmode="decimal" placeholder="0,00" required value="${flavor ? money(prices[id]).replace("R$ ", "").trim() : ""}"></div></label>`).join("")}</div></div>
+      <div class="price-fields"><span>Preço por tamanho</span><div class="price-grid">${PIZZA_SIZES.map(({ id, label, active }) => `<label>${escapeHtml(label)}${active ? "" : " · inativo"}<div class="currency-input"><span>R$</span><input name="price-${id}" inputmode="decimal" placeholder="${active ? "0,00" : "0,00 (inativo)"}" ${active ? "required" : ""} value="${flavor ? money(prices[id]).replace("R$ ", "").trim() : active ? "" : "0,00"}"></div></label>`).join("")}</div></div>
       <div class="flavor-form-actions">${flavor ? button("Cancelar edição", "cancel-flavor-edit") : ""}<button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>${flavor ? "Salvar alterações" : "Salvar sabor"} <span aria-hidden="true">→</span></button></div>
     </form>`;
   }
   
-  function menuPage() {
-    const sorted = [...snapshot.flavors].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, "pt-BR"));
-    const recipeFlavor = snapshot.flavors.find(({ id }) => id === recipeFlavorId) ?? null;
-    const recipeLines = recipeDraftLines;
-    const recipeEditor = recipeFlavor ? `<form id="recipe-editor" class="panel recipe-editor">
-      <div class="panel-heading"><div><p class="eyebrow">FICHA TÉCNICA</p><h2>${escapeHtml(recipeFlavor.name)}</h2><p>Quantidades por pizza; use g, ml ou unidades conforme o insumo.</p></div>${button("Fechar", "close-recipe-editor")}</div>
-      <p class="recipe-preview-note">Os insumos desta prévia são referências fictícias. O Food calcula consumo, mas não consulta nem movimenta o Inventory.</p>
-      <div class="recipe-lines">${recipeLines.map((line, index) => `<div class="recipe-line"><label>Insumo<select name="ingredient-${index}" required>${PREVIEW_INGREDIENTS.map((ingredient) => `<option value="${escapeHtml(ingredient.id)}" ${line.ingredientId === ingredient.id ? "selected" : ""}>${escapeHtml(ingredient.name)} · ${ingredient.unit}</option>`).join("")}</select></label>${PIZZA_SIZES.map(({ id, label }) => `<label data-size="${label}">${label} (${PREVIEW_INGREDIENTS.find(({ id: current }) => current === line.ingredientId)?.unit ?? "g"})<input name="quantity-${index}-${id}" type="number" min="1" step="1" value="${line.quantityBaseBySize[id] ?? ""}" required></label>`).join("")}<button class="icon-button" type="button" data-action="remove-recipe-line" data-index="${index}" aria-label="Remover insumo">×</button></div>`).join("")}</div>
-      <div class="recipe-editor-actions">${button("＋ Adicionar insumo", "add-recipe-line", { kind: "quiet", disabled: PREVIEW_INGREDIENTS.length <= recipeLines.length })}<span>Custos e saldos não são exibidos sem provider Inventory.</span><button class="button button-primary" type="submit" ${busy || !recipeLines.length ? "disabled" : ""}>Salvar ficha técnica</button></div>
-    </form>` : "";
-    return `<section class="page-section">
-      <div class="page-heading"><div><p class="eyebrow">PRODUTOS E PREÇOS</p><h1>Cardápio</h1><p>Cadastre sabores e preços; as fichas técnicas ficam registradas separadamente do saldo de estoque.</p></div><span class="heading-counter">${snapshot.flavors.filter(({ active }) => active).length} disponíveis</span></div>
-      <div class="menu-layout">${flavorForm()}<section class="menu-list"><div class="panel-heading"><div><p class="eyebrow">SABORES CADASTRADOS</p><h2>Seu cardápio</h2></div><span class="column-count">${snapshot.flavors.length}</span></div>
-        ${sorted.length ? `<div class="flavor-cards">${sorted.map((flavor) => {
-          const recipe = snapshot.recipes.find(({ flavorId }) => flavorId === flavor.id);
-          return `<article class="flavor-card ${flavor.active ? "" : "is-unavailable"}"><div class="flavor-card-top"><span class="flavor-avatar" aria-hidden="true">${escapeHtml(flavor.name.slice(0, 1).toUpperCase())}</span><div class="flavor-title"><h3>${escapeHtml(flavor.name)}</h3><span class="availability ${flavor.active ? "available" : "unavailable"}"><span></span>${flavor.active ? "Disponível" : "Indisponível"}</span></div><button class="icon-button edit-button" type="button" data-action="edit-flavor" data-flavor-id="${escapeHtml(flavor.id)}" aria-label="Editar ${escapeHtml(flavor.name)}">✎</button></div>${flavor.description ? `<p class="flavor-description">${escapeHtml(flavor.description)}</p>` : ""}<div class="flavor-prices">${PIZZA_SIZES.map(({ id, label }) => `<div><small>${label}</small><strong>${money(flavor.pricesCents[id])}</strong></div>`).join("")}</div><div class="recipe-summary"><span class="${recipe ? "recipe-ready" : "recipe-missing"}">${recipe ? "Ficha técnica cadastrada · custo sem provider Inventory" : "Ficha técnica pendente"}</span><button class="text-button" type="button" data-action="edit-recipe" data-flavor-id="${escapeHtml(flavor.id)}" aria-label="Editar ficha técnica de ${escapeHtml(flavor.name)}">${recipe ? "Editar" : "Cadastrar ficha"}</button></div><div class="flavor-card-foot"><span>Alterado ${timeLabel(flavor.updatedAt)}</span>${button(flavor.active ? "Indisponibilizar" : "Disponibilizar", "toggle-flavor", { extra: `data-flavor-id="${escapeHtml(flavor.id)}" data-active="${!flavor.active}"` })}</div></article>`;
-        }).join("")}</div>` : emptyState({ icon: "◉", title: "Nenhum sabor cadastrado", text: "Adicione sabores para começar a montar pedidos." })}
-      </section></div>
-      ${recipeEditor}
-      <section class="panel catalog-products"><div class="panel-heading"><div><p class="eyebrow">AMOSTRAS FICTÍCIAS</p><h2>Bebidas, combos e acompanhamentos</h2></div><span class="stock-status">Somente referência visual</span></div><div class="catalog-grid">${PREVIEW_CATALOG_PRODUCTS.map((product) => `<article class="catalog-row"><span class="catalog-thumb">${product.category === "Bebidas" ? "🥤" : product.category === "Sobremesas" ? "🍰" : "🧄"}</span><span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.category)}</small></span><b>${money(product.priceCents)}</b><span class="stock-status">Amostra</span></article>`).join("")}</div></section>
-    </section>`;
-  }
-  
+  function menuPage() { return renderMenuPage(viewModel()); }
+
   function settingsPage() {
-    return `<section class="page-section settings-page">
-      <div class="page-heading"><div><p class="eyebrow">CONFIGURAÇÃO DA LOJA</p><h1>Configurações</h1><p>Defina os dados da pizzaria, preços e preferências de atendimento.</p></div></div>
-      <form id="settings-form" class="panel settings-form">
-        <div class="panel-heading"><div><p class="eyebrow">PREFERÊNCIAS</p><h2>Dados da pizzaria</h2></div><span class="step-number">⚙</span></div>
-        <label>Nome da pizzaria<input name="storeName" maxlength="80" required value="${escapeHtml(snapshot.settings.storeName)}"></label>
-        <label>Regra para pizzas meio a meio<select name="halfPricePolicy"><option value="highest" ${snapshot.settings.halfPricePolicy === "highest" ? "selected" : ""}>Cobrar pelo sabor de maior preço</option><option value="average" ${snapshot.settings.halfPricePolicy === "average" ? "selected" : ""}>Usar a média dos dois sabores</option></select><small>O pedido registra a regra usada e mantém seus preços originais.</small></label>
-        <button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>Salvar ajustes <span aria-hidden="true">→</span></button>
-      </form>
-      <section class="panel capability-pending"><span class="capability-pending-mark" aria-hidden="true">${iconSvg("settings")}</span><div><strong>Preferências operacionais indisponíveis</strong><p>Horários, canais e políticas de atendimento ainda não fazem parte do estado versionado do Food. Não são exibidos como se estivessem configurados.</p></div></section>
-    </section>`;
+    settingsSizesDraft ??= snapshot.settings.pizzaSizes.map((size) => ({ ...size }));
+    settingsTablesDraft ??= snapshot.settings.tables.map((table) => ({ ...table }));
+    return renderSettingsPage({
+      ...viewModel(),
+      settingsSizesDraft,
+      settingsTablesDraft,
+    });
   }
-  
+
   function sectionHeader(eyebrow, title, description, action = "") {
     return `<div class="page-heading"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(description)}</p></div>${action}</div>`;
   }
@@ -536,7 +477,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   }
   
   function openTableCommandDialog(preselectedTableId = null) {
-    const availableTables = PIZZERIA_TABLES.filter(({ id }) => !activeCommandForTable(id));
+    const availableTables = PIZZERIA_TABLES.filter(({ active, id }) => active && !activeCommandForTable(id));
     if (!availableTables.length) {
       notice = { type: "error", text: "Todas as mesas já têm uma comanda aberta." };
       renderNotice();
@@ -553,54 +494,15 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     tableOpenForm.elements.customerName.focus();
   }
   
-  function tablesPage() {
-    const openCommands = snapshot.tableCommands.filter(({ closedAt }) => closedAt === null);
-    const occupiedTables = openCommands.length;
-    const openOrders = snapshot.orders.filter((order) => order.tableCommandId
-      && openCommands.some(({ id }) => id === order.tableCommandId)
-      && !["completed", "cancelled"].includes(order.status));
-    const freeTables = PIZZERIA_TABLES.length - occupiedTables;
-    return `<section class="page-section">${sectionHeader("SALÃO", "Mesas e Comandas", "Abra comandas, vincule pedidos da cozinha e acompanhe o consumo por mesa.", button("Abrir comanda", "open-table-command", { kind: "primary", disabled: freeTables === 0 }))}
-      <div class="metrics-grid three-metrics">${statCard("Mesas ocupadas", `${occupiedTables}/${PIZZERIA_TABLES.length}`, "Ocupação agora", "tables", "orange")}${statCard("Comandas abertas", openCommands.length, "Vinculadas às mesas ocupadas", "orders", "blue")}${statCard("Pedidos em andamento", openOrders.length, "Nas comandas do salão", "kitchen", "gold")}</div>
-      <section class="panel tables-panel"><div class="panel-heading"><div><p class="eyebrow">MAPA DO SALÃO</p><h2>Unidade principal</h2></div><div class="table-legend"><span><i class="legend-free"></i>Livre</span><span><i class="legend-occupied"></i>Comanda aberta</span></div></div><div class="table-map">${PIZZERIA_TABLES.map(tableCard).join("")}</div><p class="table-helper">O valor e os pedidos da mesa são calculados a partir do histórico compartilhado. Para encerrar, todos os pedidos precisam estar concluídos ou cancelados.</p></section>
-    </section>`;
-  }
-  
-  function deliveryPage() {
-    const deliveries = snapshot.orders.filter(({ channel, status }) => channel === "delivery" && !["completed", "cancelled"].includes(status));
-    const kitchenOrders = deliveries.filter(({ status }) => ["received", "preparing"].includes(status));
-    const readyOrders = deliveries.filter(({ status }) => status === "ready");
-    const routeOrders = deliveries
-      .filter(({ status }) => status === "out-for-delivery")
-      .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt));
-    const stagePanel = (title, eyebrow, orders, emptyTitle, emptyText) => `<section class="panel delivery-stage"><div class="panel-heading"><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div><span class="column-count">${orders.length}</span></div>${orders.length ? `<div class="history-list">${orders.map((order) => renderOrderCard(order)).join("")}</div>` : emptyState({ icon: iconSvg("delivery"), title: emptyTitle, text: emptyText })}</section>`;
-    return `<section class="page-section">${sectionHeader("ENTREGAS", "Delivery", "Organize pedidos para despacho e acompanhe o status da entrega.", `<button class="button button-quiet" type="button" data-view="settings">Configurar delivery</button>`)}
-      <div class="metrics-grid three-metrics">${statCard("Na cozinha", kitchenOrders.length, "Recebidos ou em preparo", "kitchen", "blue")}${statCard("Prontos para sair", readyOrders.length, "Aguardando despacho", "ready", "gold")}${statCard("Na rua", routeOrders.length, "Entregas não concluídas", "delivery", "green")}</div>
-      ${kitchenOrders.length ? `<div class="delivery-kds-callout"><span>${kitchenOrders.length} ${kitchenOrders.length === 1 ? "pedido está" : "pedidos estão"} na fila da cozinha.</span><button class="button button-quiet" type="button" data-view="kitchen">Abrir Cozinha (KDS) →</button></div>` : ""}
-      <div class="delivery-layout"><div class="delivery-stage-grid">${stagePanel("Prontos para despacho", "AGUARDANDO SAÍDA", readyOrders, "Nenhum pedido pronto", "Quando a cozinha liberar um pedido de entrega, ele aparecerá aqui.")}${stagePanel("Em rota", "ENTREGAS ATIVAS", routeOrders, "Nenhuma entrega na rua", "Marque um pedido pronto como saiu para entrega para acompanhar seu endereço aqui.")}</div><section class="panel route-panel"><div class="panel-heading"><div><p class="eyebrow">REGIÃO DE ATENDIMENTO</p><h2>Paradas em rota</h2></div><span class="column-count">${routeOrders.length}</span></div><div class="route-map" aria-label="Diagrama ilustrativo, sem geolocalização"><div class="route-street street-one"></div><div class="route-street street-two"></div><div class="route-street street-three"></div><span class="map-pin pin-shop">🍕</span><span class="map-label label-shop">Pizzaria</span><span class="map-route-count">${routeOrders.length} ${routeOrders.length === 1 ? "destino" : "destinos"} em rota</span></div><p class="route-note">Diagrama esquemático, sem GPS ou cálculo de trajeto. Use os endereços salvos nos pedidos para organizar a saída.</p>${routeOrders.length ? `<ol class="delivery-stops">${routeOrders.map((order, index) => `<li class="delivery-stop"><span class="delivery-stop-number">${String(index + 1).padStart(2, "0")}</span><div><strong>${orderNumber(order)} · ${escapeHtml(order.customerName)}</strong><small>${escapeHtml(order.address)}</small></div><span class="delivery-stop-time">${clockTime(order.updatedAt)}</span></li>`).join("")}</ol>` : emptyState({ icon: iconSvg("delivery"), title: "Sem paradas ativas", text: "Os endereços aparecerão após a saída para entrega." })}</section></div>
-    </section>`;
-  }
-  
+  function tablesPage() { return renderTablesPage(viewModel()); }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  function deliveryPage() { return renderDeliveryPage(viewModel()); }
 
   function render() {
     if (destroyed || !root) return;
+    PIZZA_SIZES = snapshot?.settings?.pizzaSizes ?? DEFAULT_PIZZA_SIZES.map((size) => ({ ...size, active: true }));
+    PIZZERIA_TABLES = snapshot?.settings?.tables?.filter(({ active }) => active)
+      ?? DEFAULT_PIZZERIA_TABLES.map((table) => ({ ...table, active: true }));
     if (!snapshot) {
       root.innerHTML = `<section class="fatal-state"><span class="fatal-mark">!</span><h1>Não foi possível abrir os dados da pizzaria</h1><p>${escapeHtml(notice?.text ?? "O armazenamento está indisponível.")}</p><small>Os dados existentes foram preservados.</small></section>`;
       return;
@@ -676,13 +578,13 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     if (!form) return;
     const price = root.querySelector("#pizza-price-preview");
     const button = form.querySelector('[data-action="add-pizza"]');
-    const flavorIds = [form.elements.flavor1.value, form.elements.flavor2.value].filter(Boolean);
+    const flavorIds = [...form.querySelectorAll('[name^="flavor"]')].map(({ value }) => value).filter(Boolean);
     const quantity = Number(form.elements.quantity.value);
     try {
       if (!flavorIds.length) throw new Error("Selecione ao menos um sabor.");
-      if (flavorIds.length > 1 && flavorIds[0] === flavorIds[1]) throw new Error("Escolha dois sabores diferentes.");
+      if (new Set(flavorIds).size !== flavorIds.length) throw new Error("Escolha sabores diferentes.");
       if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 50) throw new Error("Confira a quantidade.");
-      const unit = calculatePizzaPriceCents({ size: form.elements.size.value, flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy });
+      const unit = calculatePizzaPriceCents({ size: form.elements.size.value, flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
       price.textContent = `${money(unit)} por pizza · ${money(unit * quantity)} no total`;
       price.classList.remove("has-error");
       button.disabled = busy;
@@ -698,7 +600,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     if (!form) return;
     const subtotal = cart.reduce((sum, item) => {
       try {
-        const unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy });
+        const unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
         return sum + unit * item.quantity;
       } catch {
         return sum + item.unitPriceCents * item.quantity;
@@ -726,13 +628,15 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   function addPizza() {
     const form = root.querySelector("#add-pizza-form");
     if (!form) return;
-    const flavorIds = [form.elements.flavor1.value, form.elements.flavor2.value].filter(Boolean);
+    const flavorIds = [...form.querySelectorAll('[name^="flavor"]')].map(({ value }) => value).filter(Boolean);
     const quantity = Number(form.elements.quantity.value);
     const unitPriceCents = calculatePizzaPriceCents({
       size: form.elements.size.value,
       flavorIds,
       flavors: snapshot.flavors,
       halfPricePolicy: snapshot.settings.halfPricePolicy,
+      pizzaSizes: PIZZA_SIZES,
+      maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza,
     });
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 50) throw new TypeError("Quantidade inválida.");
     cart.push({ id: uid(), size: form.elements.size.value, flavorIds, quantity, unitPriceCents });
@@ -803,6 +707,22 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       orderChannelFilter = "all";
       render();
       root.querySelector("[data-order-status-filter]")?.focus({ preventScroll: true });
+    } else if (action === "add-pizza-size") {
+      settingsPage();
+      const suffix = uid().replaceAll("-", "").slice(0, 12);
+      settingsSizesDraft.push({ id: `custom-${suffix}`, label: "Novo tamanho", slices: 10, active: false, isDraft: true });
+      render();
+    } else if (action === "remove-pizza-size") {
+      settingsSizesDraft = (settingsSizesDraft ?? []).filter(({ id }) => id !== target.dataset.sizeId);
+      render();
+    } else if (action === "add-pizzeria-table") {
+      settingsPage();
+      const id = Math.max(0, ...settingsTablesDraft.map(({ id: tableId }) => tableId)) + 1;
+      settingsTablesDraft.push({ id, seats: 4, active: true, isDraft: true });
+      render();
+    } else if (action === "remove-pizzeria-table") {
+      settingsTablesDraft = (settingsTablesDraft ?? []).filter(({ id }) => String(id) !== target.dataset.tableId);
+      render();
     } else if (action === "add-pizza") {
       try { addPizza(); } catch (error) { report(error); }
     } else if (action === "remove-cart-item") {
@@ -884,7 +804,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       if (!ingredient) return;
       recipeDraftLines.push({
         ingredientId: ingredient.id,
-        quantityBaseBySize: { small: "", medium: "", large: "" },
+        quantityBaseBySize: Object.fromEntries(PIZZA_SIZES.map(({ id, active }) => [id, active ? "" : 0])),
       });
       render();
     } else if (action === "remove-recipe-line") {
@@ -931,7 +851,8 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         const values = new FormData(form);
         const pricesCents = Object.fromEntries(PIZZA_SIZES.map(({ id }) => {
           const parsed = parseMoney(values.get(`price-${id}`));
-          if (parsed === null || parsed === 0) throw new TypeError(`Informe um preço válido para pizza ${id === "small" ? "pequena" : id === "medium" ? "média" : "grande"}.`);
+          const size = PIZZA_SIZES.find((entry) => entry.id === id);
+          if (parsed === null || (size.active && parsed === 0)) throw new TypeError(`Informe um preço válido para pizza ${size.label}.`);
           return [id, parsed];
         }));
         const flavorId = editFlavorId ?? uid();
@@ -955,7 +876,8 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
           ingredientId: values.get(`ingredient-${index}`),
           quantityBaseBySize: Object.fromEntries(PIZZA_SIZES.map(({ id }) => {
             const quantity = Number(values.get(`quantity-${index}-${id}`));
-            if (!Number.isSafeInteger(quantity) || quantity < 1) throw new TypeError("Informe uma quantidade inteira e positiva para cada tamanho.");
+            const size = PIZZA_SIZES.find((entry) => entry.id === id);
+            if (!Number.isSafeInteger(quantity) || quantity < (size.active ? 1 : 0)) throw new TypeError(`Informe uma quantidade válida para o tamanho ${size.label}.`);
             return [id, quantity];
           })),
         }));
@@ -974,13 +896,37 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         }
       } else if (kind === "settings-form") {
         const values = new FormData(form);
-        await dispatch({
+        const pizzaSizes = settingsSizesDraft.map(({ id }) => ({
+          id,
+          label: values.get(`size-label-${id}`),
+          slices: Number(values.get(`size-slices-${id}`)),
+          active: values.has(`size-active-${id}`),
+        }));
+        const tables = settingsTablesDraft.map(({ id }) => ({
+          id,
+          seats: Number(values.get(`table-seats-${id}`)),
+          active: values.has(`table-active-${id}`),
+        }));
+        const activeSizeIds = new Set(pizzaSizes.filter(({ active }) => active).map(({ id }) => id));
+        const maxFlavorsPerPizza = Number(values.get("maxFlavorsPerPizza"));
+        if (cart.some(({ size, flavorIds }) => !activeSizeIds.has(size) || flavorIds.length > maxFlavorsPerPizza)) {
+          throw new Error("Atualize ou remova os itens do carrinho antes de desativar um tamanho ou reduzir o limite de sabores.");
+        }
+        const saved = await dispatch({
           type: "food.settings.update",
           payload: {
             storeName: values.get("storeName"),
             halfPricePolicy: values.get("halfPricePolicy"),
+            maxFlavorsPerPizza,
+            pizzaSizes,
+            tables,
           },
-        }, "Ajustes salvos.");
+        }, "Ajustes salvos.", { renderAfter: false });
+        if (saved) {
+          settingsSizesDraft = null;
+          settingsTablesDraft = null;
+          render();
+        }
       } else if (kind === "create-order-form") {
         await submitOrder(form);
       } else if (kind === "cancel-order-form") {

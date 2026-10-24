@@ -1,6 +1,5 @@
-import { createFoodRecipeSeed } from "../fixtures/food-recipes.mjs";
-
-export const FOOD_PIZZERIA_STATE_SCHEMA = "ordax.food-pizzeria-state/4";
+export const FOOD_PIZZERIA_STATE_SCHEMA = "ordax.food-pizzeria-state/5";
+const FOOD_PIZZERIA_STATE_SCHEMA_V4 = "ordax.food-pizzeria-state/4";
 const FOOD_PIZZERIA_STATE_SCHEMA_V3 = "ordax.food-pizzeria-state/3";
 const FOOD_PIZZERIA_STATE_SCHEMA_V2 = "ordax.food-pizzeria-state/2";
 const FOOD_PIZZERIA_STATE_SCHEMA_V1 = "ordax.food-pizzeria-state/1";
@@ -19,7 +18,7 @@ export const PIZZA_SIZES = Object.freeze([
   Object.freeze({ id: "medium", label: "Média", slices: 6 }),
   Object.freeze({ id: "large", label: "Grande", slices: 8 }),
 ]);
-export const ORDER_CHANNELS = Object.freeze(["delivery", "pickup", "counter"]);
+export const ORDER_CHANNELS = Object.freeze(["delivery", "pickup", "counter", "dine-in"]);
 export const ORDER_STATUSES = Object.freeze([
   "received", "preparing", "ready", "out-for-delivery", "completed", "cancelled",
 ]);
@@ -32,6 +31,10 @@ const MAX_RECIPE_LINES = 1000;
 const MAX_ITEMS_PER_ORDER = 50;
 const MAX_HISTORY_PER_ORDER = 16;
 const MAX_CENTS = 1_000_000_000;
+const MAX_PIZZA_SIZES = 12;
+const MAX_TABLES = 100;
+const MAX_FLAVORS_PER_PIZZA = 12;
+const FLAVOR_PORTION_SCALE = 27_720;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const SIZE_IDS = new Set(PIZZA_SIZES.map(({ id }) => id));
 const CHANNELS = new Set(ORDER_CHANNELS);
@@ -108,14 +111,76 @@ function validateSettings(value) {
   return Object.freeze({ storeName, halfPricePolicy: settings.halfPricePolicy });
 }
 
-function validatePrices(value) {
-  const prices = exactObject(value, [...SIZE_IDS], "Preços do sabor");
+function validateOperationalSettings(value) {
+  if (value === null) return null;
+  const settings = exactObject(value,
+    ["storeName", "halfPricePolicy", "pizzaSizes", "maxFlavorsPerPizza", "tables"],
+    "Ajustes da pizzaria");
+  const storeName = boundedText(settings.storeName, "Nome da pizzaria", 80);
+  if (!POLICIES.has(settings.halfPricePolicy)) throw new TypeError("Regra de preço meio a meio inválida.");
+  if (!Array.isArray(settings.pizzaSizes) || settings.pizzaSizes.length < 1 || settings.pizzaSizes.length > MAX_PIZZA_SIZES) {
+    throw new TypeError("Configure de 1 a 12 tamanhos de pizza.");
+  }
+  const pizzaSizes = settings.pizzaSizes.map((raw) => {
+    const size = exactObject(raw, ["id", "label", "slices", "active"], "Tamanho de pizza");
+    const id = identifier(size.id, "Identificador do tamanho");
+    if (!/^[a-z][a-z0-9-]{0,39}$/.test(id)) throw new TypeError("Use um identificador simples para o tamanho.");
+    if (!Number.isSafeInteger(size.slices) || size.slices < 1 || size.slices > 48) {
+      throw new TypeError("A quantidade de fatias deve ficar entre 1 e 48.");
+    }
+    if (typeof size.active !== "boolean") throw new TypeError("Disponibilidade do tamanho inválida.");
+    return Object.freeze({ id, label: boundedText(size.label, "Nome do tamanho", 32), slices: size.slices, active: size.active });
+  });
+  if (new Set(pizzaSizes.map(({ id }) => id)).size !== pizzaSizes.length || !pizzaSizes.some(({ active }) => active)) {
+    throw new TypeError("Os tamanhos devem ter IDs únicos e ao menos um disponível.");
+  }
+  if (!Number.isSafeInteger(settings.maxFlavorsPerPizza)
+      || settings.maxFlavorsPerPizza < 1 || settings.maxFlavorsPerPizza > MAX_FLAVORS_PER_PIZZA) {
+    throw new TypeError(`O limite de sabores deve ficar entre 1 e ${MAX_FLAVORS_PER_PIZZA}.`);
+  }
+  if (!Array.isArray(settings.tables) || settings.tables.length < 1 || settings.tables.length > MAX_TABLES) {
+    throw new TypeError(`Configure de 1 a ${MAX_TABLES} mesas.`);
+  }
+  const tables = settings.tables.map((raw) => {
+    const table = exactObject(raw, ["id", "seats", "active"], "Mesa da pizzaria");
+    if (!Number.isSafeInteger(table.id) || table.id < 1 || table.id > 10000) throw new TypeError("Identificador da mesa inválido.");
+    if (!Number.isSafeInteger(table.seats) || table.seats < 1 || table.seats > 100) throw new TypeError("A capacidade da mesa deve ficar entre 1 e 100 lugares.");
+    if (typeof table.active !== "boolean") throw new TypeError("Disponibilidade da mesa inválida.");
+    return Object.freeze({ id: table.id, seats: table.seats, active: table.active });
+  }).sort((left, right) => left.id - right.id);
+  if (new Set(tables.map(({ id }) => id)).size !== tables.length || !tables.some(({ active }) => active)) {
+    throw new TypeError("As mesas devem ter IDs únicos e ao menos uma disponível.");
+  }
+  return Object.freeze({
+    storeName,
+    halfPricePolicy: settings.halfPricePolicy,
+    pizzaSizes: Object.freeze(pizzaSizes),
+    maxFlavorsPerPizza: settings.maxFlavorsPerPizza,
+    tables: Object.freeze(tables),
+  });
+}
+
+function defaultOperationalSettings({ storeName, halfPricePolicy = "highest" } = {}) {
+  return validateOperationalSettings({
+    storeName,
+    halfPricePolicy,
+    pizzaSizes: PIZZA_SIZES.map((size) => ({ ...size, active: true })),
+    maxFlavorsPerPizza: 2,
+    tables: PIZZERIA_TABLES.map((table) => ({ ...table, active: true })),
+  });
+}
+
+function validatePrices(value, sizeEntries = PIZZA_SIZES) {
+  const prices = exactObject(value, sizeEntries.map(({ id }) => id), "Preços do sabor");
   return Object.freeze(Object.fromEntries(
-    PIZZA_SIZES.map(({ id }) => [id, cents(prices[id], `Preço da pizza ${id}`)]),
+    sizeEntries.map(({ id, active = true }) => [
+      id,
+      cents(prices[id], `Preço da pizza ${id}`, { allowZero: !active }),
+    ]),
   ));
 }
 
-function validateFlavor(value) {
+function validateFlavor(value, sizeEntries = PIZZA_SIZES) {
   const raw = exactObject(value,
     ["id", "name", "description", "pricesCents", "active", "createdAt", "updatedAt"],
     "Sabor do cardápio");
@@ -127,7 +192,7 @@ function validateFlavor(value) {
     id: identifier(raw.id, "Identificador do sabor"),
     name: boundedText(raw.name, "Nome do sabor", 60),
     description: raw.description === "" ? "" : boundedText(raw.description, "Descrição do sabor", 240),
-    pricesCents: validatePrices(raw.pricesCents),
+    pricesCents: validatePrices(raw.pricesCents, sizeEntries),
     active: raw.active,
     createdAt,
     updatedAt,
@@ -149,13 +214,18 @@ function validateHistoryEntry(value) {
   });
 }
 
-function validateOrderItem(value, pricingPolicy) {
+function validateOrderItem(value, pricingPolicy, {
+  sizeEntries = PIZZA_SIZES, flavorLimit = 2, requireSizeLabel = false,
+} = {}) {
+  const itemKeys = ["id", "size", "flavors", "quantity", "unitPriceCents", "lineTotalCents"];
+  if (requireSizeLabel) itemKeys.push("sizeLabel");
   const raw = exactObject(value,
-    ["id", "size", "flavors", "quantity", "unitPriceCents", "lineTotalCents"],
+    itemKeys,
     "Item do pedido");
-  if (!SIZE_IDS.has(raw.size)) throw new TypeError("Tamanho da pizza inválido.");
-  if (!Array.isArray(raw.flavors) || raw.flavors.length < 1 || raw.flavors.length > 2) {
-    throw new TypeError("Cada pizza deve ter um ou dois sabores.");
+  const size = sizeEntries.find(({ id }) => id === raw.size);
+  if (!size) throw new TypeError("Tamanho da pizza inválido.");
+  if (!Array.isArray(raw.flavors) || raw.flavors.length < 1 || raw.flavors.length > flavorLimit) {
+    throw new TypeError(`Cada pizza deve ter de um a ${flavorLimit} sabores.`);
   }
   const flavors = raw.flavors.map((value) => {
     const flavor = exactObject(value, ["id", "name", "priceCents"], "Sabor congelado no pedido");
@@ -178,7 +248,7 @@ function validateOrderItem(value, pricingPolicy) {
     ? flavorPrices[0]
     : pricingPolicy === "highest"
       ? Math.max(...flavorPrices)
-      : Math.ceil((flavorPrices[0] + flavorPrices[1]) / 2);
+      : Math.ceil(flavorPrices.reduce((sum, price) => sum + price, 0) / flavorPrices.length);
   if (unitPriceCents !== expectedPrice) throw new TypeError("O preço do item diverge da regra registrada no pedido.");
   if (BigInt(unitPriceCents) * BigInt(raw.quantity) !== BigInt(lineTotalCents)) {
     throw new TypeError("O total do item não corresponde ao preço e à quantidade.");
@@ -186,6 +256,7 @@ function validateOrderItem(value, pricingPolicy) {
   return Object.freeze({
     id: identifier(raw.id, "Identificador do item"),
     size: raw.size,
+    ...(requireSizeLabel ? { sizeLabel: boundedText(raw.sizeLabel, "Nome do tamanho no pedido", 32) } : {}),
     flavors: Object.freeze(flavors),
     quantity: raw.quantity,
     unitPriceCents,
@@ -200,13 +271,14 @@ function expectedTransition(order, status) {
   return true;
 }
 
-function validateTableCommand(value) {
+function validateTableCommand(value, { tables = PIZZERIA_TABLES, enforceCapacity = true } = {}) {
   const raw = exactObject(value,
     ["id", "tableId", "customerName", "guestCount", "openedAt", "closedAt"],
     "Comanda da mesa");
-  const table = PIZZERIA_TABLES.find(({ id }) => id === raw.tableId);
+  const table = tables.find(({ id }) => id === raw.tableId);
   if (!table) throw new TypeError("Mesa da comanda inválida.");
-  if (!Number.isSafeInteger(raw.guestCount) || raw.guestCount < 1 || raw.guestCount > table.seats) {
+  if (!Number.isSafeInteger(raw.guestCount) || raw.guestCount < 1
+      || raw.guestCount > (enforceCapacity ? table.seats : 100)) {
     throw new TypeError("Quantidade de pessoas incompatível com a mesa.");
   }
   const openedAt = utc(raw.openedAt, "Abertura da comanda");
@@ -224,7 +296,13 @@ function validateTableCommand(value) {
   });
 }
 
-function validateOrder(value) {
+function validateOrder(value, {
+  sizeEntries = PIZZA_SIZES,
+  flavorLimit = 2,
+  tableChannel = "counter",
+  requireTableCommand = false,
+  requireSizeLabel = false,
+} = {}) {
   const raw = exactObject(value, [
     "id", "createdAt", "updatedAt", "customerName", "phone", "channel", "tableCommandId", "address",
     "deliveryFeeCents", "notes", "pricingPolicy", "items", "subtotalCents", "totalCents",
@@ -232,8 +310,11 @@ function validateOrder(value) {
   ], "Pedido");
   if (!CHANNELS.has(raw.channel)) throw new TypeError("Canal do pedido inválido.");
   if (raw.tableCommandId !== null) identifier(raw.tableCommandId, "Identificador da comanda no pedido");
-  if (raw.tableCommandId !== null && raw.channel !== "counter") {
-    throw new TypeError("Pedido de mesa deve usar o canal de balcão.");
+  if (raw.tableCommandId !== null && raw.channel !== tableChannel) {
+    throw new TypeError("O canal do pedido não corresponde à mesa/comanda.");
+  }
+  if (requireTableCommand && (raw.channel === tableChannel) !== (raw.tableCommandId !== null)) {
+    throw new TypeError("Pedidos de salão precisam estar vinculados a uma comanda.");
   }
   if (!POLICIES.has(raw.pricingPolicy)) throw new TypeError("Regra de preço do pedido inválida.");
   if (!STATUSES.has(raw.status)) throw new TypeError("Estado do pedido inválido.");
@@ -243,7 +324,11 @@ function validateOrder(value) {
   if (!Array.isArray(raw.items) || raw.items.length < 1 || raw.items.length > MAX_ITEMS_PER_ORDER) {
     throw new TypeError("Pedido deve ter de 1 a 50 itens.");
   }
-  const items = raw.items.map((item) => validateOrderItem(item, raw.pricingPolicy));
+  const items = raw.items.map((item) => validateOrderItem(item, raw.pricingPolicy, {
+    sizeEntries,
+    flavorLimit,
+    requireSizeLabel,
+  }));
   if (new Set(items.map(({ id }) => id)).size !== items.length) throw new TypeError("Itens do pedido duplicados.");
   const subtotal = items.reduce((sum, item) => sum + BigInt(item.lineTotalCents), 0n);
   if (subtotal > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError("Subtotal ultrapassa o limite seguro.");
@@ -310,9 +395,9 @@ function validateFoodPizzeriaStateV2(value) {
   if (!Array.isArray(raw.flavors) || raw.flavors.length > MAX_FLAVORS) throw new TypeError("Cardápio ultrapassa o limite permitido.");
   if (!Array.isArray(raw.orders) || raw.orders.length > MAX_ORDERS) throw new TypeError("Histórico ultrapassa o limite permitido.");
   if (!Array.isArray(raw.tableCommands) || raw.tableCommands.length > MAX_TABLE_COMMANDS) throw new TypeError("Histórico de comandas ultrapassa o limite permitido.");
-  const flavors = raw.flavors.map(validateFlavor);
-  const orders = raw.orders.map(validateOrder);
-  const tableCommands = raw.tableCommands.map(validateTableCommand);
+  const flavors = raw.flavors.map((flavor) => validateFlavor(flavor));
+  const orders = raw.orders.map((order) => validateOrder(order));
+  const tableCommands = raw.tableCommands.map((command) => validateTableCommand(command));
   if (new Set(flavors.map(({ id }) => id)).size !== flavors.length) throw new TypeError("Cardápio contém identificadores duplicados.");
   if (new Set(flavors.map(({ name }) => name.normalize("NFKC").toLocaleLowerCase("pt-BR"))).size !== flavors.length) {
     throw new TypeError("Cardápio contém sabores com o mesmo nome.");
@@ -344,18 +429,18 @@ function validateFoodPizzeriaStateV2(value) {
   });
 }
 
-function validateRecipe(value) {
+function validateRecipe(value, sizeEntries = PIZZA_SIZES) {
   const raw = exactObject(value, ["flavorId", "lines", "updatedAt"], "Ficha técnica");
   if (!Array.isArray(raw.lines) || raw.lines.length < 1 || raw.lines.length > MAX_RECIPE_LINES) {
     throw new TypeError("A ficha técnica precisa de ao menos um insumo.");
   }
   const lines = raw.lines.map((line) => {
     const item = exactObject(line, ["ingredientId", "quantityBaseBySize"], "Insumo da ficha técnica");
-    const quantities = exactObject(item.quantityBaseBySize, [...SIZE_IDS], "Quantidade por tamanho");
-    const quantityBaseBySize = Object.fromEntries(PIZZA_SIZES.map(({ id }) => {
+    const quantities = exactObject(item.quantityBaseBySize, sizeEntries.map(({ id }) => id), "Quantidade por tamanho");
+    const quantityBaseBySize = Object.fromEntries(sizeEntries.map(({ id, active = true }) => {
       const quantity = quantities[id];
-      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1_000_000) {
-        throw new TypeError("Use quantidades inteiras e positivas por tamanho.");
+      if (!Number.isSafeInteger(quantity) || quantity < (active ? 1 : 0) || quantity > 1_000_000) {
+        throw new TypeError("Use quantidades inteiras e positivas para tamanhos ativos.");
       }
       return [id, quantity];
     }));
@@ -389,32 +474,21 @@ export function createEmptyFoodPizzeriaState() {
 function migrateV1ToV2(value) {
   const legacy = exactObject(value, ["schema", "revision", "settings", "flavors", "orders"], "Dados antigos da pizzaria");
   if (!Array.isArray(legacy.orders)) throw new TypeError("Histórico antigo de pedidos inválido.");
-  const legacyTableFixtures = new Map([
-    ["ng-order-1050", { commandId: "ng-command-04", tableId: 4, customerName: "Mesa 04", guestCount: 3 }],
-    ["ng-order-1055", { commandId: "ng-command-01", tableId: 1, customerName: "Fernanda Lima", guestCount: 2 }],
-  ]);
-  const tableCommands = [];
-  const orders = legacy.orders.map((order) => {
-    const fixture = legacyTableFixtures.get(order?.id);
-    if (!fixture || order.channel !== "counter" || order.customerName !== fixture.customerName) {
-      return { ...order, tableCommandId: null };
-    }
-    const openedAt = new Date(Date.parse(order.createdAt) - 60000).toISOString();
-    const closedAt = ["completed", "cancelled"].includes(order.status) ? order.updatedAt : null;
-    const { commandId, ...commandFields } = fixture;
-    tableCommands.push({ ...commandFields, id: commandId, openedAt, closedAt });
-    return { ...order, tableCommandId: fixture.commandId };
+  const orders = legacy.orders.map((order) => ({ ...order, tableCommandId: null }));
+  return validateFoodPizzeriaStateV2({
+    ...legacy,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V2,
+    orders,
+    tableCommands: [],
   });
-  return validateFoodPizzeriaStateV2({ ...legacy, schema: FOOD_PIZZERIA_STATE_SCHEMA_V2, orders, tableCommands });
 }
 
 function migrateV2ToV4(value) {
   const legacy = validateFoodPizzeriaStateV2(value);
-  const timestamp = "1970-01-01T00:00:00.000Z";
-  return validateFoodPizzeriaState({
+  return validateFoodPizzeriaStateV4({
     ...legacy,
-    schema: FOOD_PIZZERIA_STATE_SCHEMA,
-    recipes: createFoodRecipeSeed().map((recipe) => ({ ...recipe, updatedAt: timestamp })),
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V4,
+    recipes: [],
   });
 }
 
@@ -433,26 +507,18 @@ function migrateV3ToV4(value) {
     orders: raw.orders,
     tableCommands: raw.tableCommands,
   });
-  return validateFoodPizzeriaState({
+  return validateFoodPizzeriaStateV4({
     ...legacy,
-    schema: FOOD_PIZZERIA_STATE_SCHEMA,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V4,
     recipes: raw.recipes,
   });
 }
 
-export function migrateFoodPizzeriaState(value) {
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA) return validateFoodPizzeriaState(value);
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V3) return migrateV3ToV4(value);
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V2) return migrateV2ToV4(value);
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V1) return migrateV2ToV4(migrateV1ToV2(value));
-  return validateFoodPizzeriaState(value);
-}
-
-export function validateFoodPizzeriaState(value) {
+function validateFoodPizzeriaStateV4(value) {
   const raw = exactObject(value,
     ["schema", "revision", "settings", "flavors", "orders", "tableCommands", "recipes"],
     "Dados da pizzaria");
-  if (raw.schema !== FOOD_PIZZERIA_STATE_SCHEMA) throw new TypeError("Versão dos dados da pizzaria incompatível.");
+  if (raw.schema !== FOOD_PIZZERIA_STATE_SCHEMA_V4) throw new TypeError("Versão dos dados da pizzaria incompatível.");
   const legacy = validateFoodPizzeriaStateV2({
     schema: FOOD_PIZZERIA_STATE_SCHEMA_V2,
     revision: raw.revision,
@@ -462,14 +528,14 @@ export function validateFoodPizzeriaState(value) {
     tableCommands: raw.tableCommands,
   });
   if (!Array.isArray(raw.recipes) || raw.recipes.length > MAX_RECIPES) throw new TypeError("Quantidade de fichas técnicas inválida.");
-  const recipes = raw.recipes.map(validateRecipe);
+  const recipes = raw.recipes.map((recipe) => validateRecipe(recipe));
   if (new Set(recipes.map(({ flavorId }) => flavorId)).size !== recipes.length) throw new TypeError("Há mais de uma ficha técnica para o mesmo sabor.");
   const flavorIds = new Set(legacy.flavors.map(({ id }) => id));
   for (const recipe of recipes) {
     if (!flavorIds.has(recipe.flavorId)) throw new TypeError("Ficha técnica referencia um sabor inexistente.");
   }
   return Object.freeze({
-    schema: FOOD_PIZZERIA_STATE_SCHEMA,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V4,
     revision: legacy.revision,
     settings: legacy.settings,
     flavors: legacy.flavors,
@@ -479,10 +545,103 @@ export function validateFoodPizzeriaState(value) {
   });
 }
 
+function migrateV4ToV5(value) {
+  const legacy = validateFoodPizzeriaStateV4(value);
+  const settings = legacy.settings === null ? null : defaultOperationalSettings(legacy.settings);
+  const orders = legacy.orders.map((order) => ({
+    ...order,
+    channel: order.tableCommandId === null ? order.channel : "dine-in",
+    items: order.items.map((item) => ({
+      ...item,
+      sizeLabel: legacy.settings === null ? item.size : PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size,
+    })),
+  }));
+  return validateFoodPizzeriaState({
+    ...legacy,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA,
+    settings,
+    orders,
+  });
+}
+
+export function migrateFoodPizzeriaState(value) {
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA) return validateFoodPizzeriaState(value);
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V4) return migrateV4ToV5(value);
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V3) return migrateV4ToV5(migrateV3ToV4(value));
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V2) return migrateV4ToV5(migrateV2ToV4(value));
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V1) {
+    return migrateV4ToV5(migrateV2ToV4(migrateV1ToV2(value)));
+  }
+  return validateFoodPizzeriaState(value);
+}
+
+export function validateFoodPizzeriaState(value) {
+  const raw = exactObject(value,
+    ["schema", "revision", "settings", "flavors", "orders", "tableCommands", "recipes"],
+    "Dados da pizzaria");
+  if (raw.schema !== FOOD_PIZZERIA_STATE_SCHEMA) throw new TypeError("Versão dos dados da pizzaria incompatível.");
+  const revision = validateRevision(raw.revision);
+  const settings = validateOperationalSettings(raw.settings);
+  if (!Array.isArray(raw.flavors) || raw.flavors.length > MAX_FLAVORS) throw new TypeError("Cardápio ultrapassa o limite permitido.");
+  if (!Array.isArray(raw.orders) || raw.orders.length > MAX_ORDERS) throw new TypeError("Histórico ultrapassa o limite permitido.");
+  if (!Array.isArray(raw.tableCommands) || raw.tableCommands.length > MAX_TABLE_COMMANDS) throw new TypeError("Histórico de comandas ultrapassa o limite permitido.");
+  if (!Array.isArray(raw.recipes) || raw.recipes.length > MAX_RECIPES) throw new TypeError("Quantidade de fichas técnicas inválida.");
+  if (settings === null && (raw.flavors.length || raw.orders.length || raw.tableCommands.length || raw.recipes.length)) {
+    throw new TypeError("Configure a pizzaria antes de validar seus dados operacionais.");
+  }
+  const sizes = settings?.pizzaSizes ?? [];
+  const tables = settings?.tables ?? [];
+  const flavors = raw.flavors.map((flavor) => validateFlavor(flavor, sizes));
+  const orders = raw.orders.map((order) => validateOrder(order, {
+    sizeEntries: sizes,
+    flavorLimit: MAX_FLAVORS_PER_PIZZA,
+    tableChannel: "dine-in",
+    requireTableCommand: true,
+    requireSizeLabel: true,
+  }));
+  const tableCommands = raw.tableCommands.map((command) => validateTableCommand(command, {
+    tables,
+    enforceCapacity: false,
+  }));
+  const recipes = raw.recipes.map((recipe) => validateRecipe(recipe, sizes));
+  if (new Set(flavors.map(({ id }) => id)).size !== flavors.length) throw new TypeError("Cardápio contém identificadores duplicados.");
+  if (new Set(flavors.map(({ name }) => name.normalize("NFKC").toLocaleLowerCase("pt-BR"))).size !== flavors.length) {
+    throw new TypeError("Cardápio contém sabores com o mesmo nome.");
+  }
+  if (new Set(orders.map(({ id }) => id)).size !== orders.length) throw new TypeError("Pedidos contêm identificadores duplicados.");
+  const itemIds = orders.flatMap((order) => order.items.map(({ id }) => id));
+  if (new Set(itemIds).size !== itemIds.length) throw new TypeError("Pedidos contêm identificadores de itens duplicados.");
+  if (new Set(tableCommands.map(({ id }) => id)).size !== tableCommands.length) throw new TypeError("Comandas contêm identificadores duplicados.");
+  const openTableIds = tableCommands.filter(({ closedAt }) => closedAt === null).map(({ tableId }) => tableId);
+  if (new Set(openTableIds).size !== openTableIds.length) throw new TypeError("Uma mesa não pode ter duas comandas abertas.");
+  const commandsById = new Map(tableCommands.map((command) => [command.id, command]));
+  for (const order of orders) {
+    if (order.tableCommandId === null) continue;
+    const command = commandsById.get(order.tableCommandId);
+    if (!command || order.customerName !== command.customerName) throw new TypeError("Pedido referencia uma comanda incompatível.");
+    if (command.closedAt !== null && !["completed", "cancelled"].includes(order.status)) {
+      throw new TypeError("Comanda encerrada ainda contém pedido em andamento.");
+    }
+  }
+  if (new Set(recipes.map(({ flavorId }) => flavorId)).size !== recipes.length) throw new TypeError("Há mais de uma ficha técnica para o mesmo sabor.");
+  const flavorIds = new Set(flavors.map(({ id }) => id));
+  for (const recipe of recipes) if (!flavorIds.has(recipe.flavorId)) throw new TypeError("Ficha técnica referencia um sabor inexistente.");
+  return Object.freeze({
+    schema: FOOD_PIZZERIA_STATE_SCHEMA,
+    revision,
+    settings,
+    flavors: Object.freeze(flavors),
+    orders: Object.freeze(orders),
+    tableCommands: Object.freeze(tableCommands),
+    recipes: Object.freeze(recipes),
+  });
+}
+
 export function savePizzeriaRecipe(stateValue, { flavorId, lines, at } = {}) {
   const state = validateFoodPizzeriaState(stateValue);
   if (!state.flavors.some(({ id }) => id === flavorId)) throw new Error("Esse sabor não está no cardápio.");
-  const recipe = validateRecipe({ flavorId, lines, updatedAt: at });
+  if (state.settings === null) throw new Error("Configure a pizzaria antes de cadastrar fichas técnicas.");
+  const recipe = validateRecipe({ flavorId, lines, updatedAt: at }, state.settings.pizzaSizes);
   const recipes = state.recipes.some((item) => item.flavorId === flavorId)
     ? state.recipes.map((item) => item.flavorId === flavorId ? recipe : item)
     : [...state.recipes, recipe];
@@ -494,17 +653,72 @@ function nextState(current, patch) {
   return validateFoodPizzeriaState({ ...current, ...patch, revision: current.revision + 1 });
 }
 
-export function configureFoodPizzeria(stateValue, { storeName, halfPricePolicy = "highest" } = {}) {
+export function configureFoodPizzeria(stateValue, {
+  storeName, halfPricePolicy = "highest", pizzaSizes, maxFlavorsPerPizza = 2, tables,
+} = {}) {
   const state = validateFoodPizzeriaState(stateValue);
   if (state.settings !== null) throw new Error("A pizzaria já foi configurada.");
-  const settings = validateSettings({ storeName, halfPricePolicy });
+  const settings = validateOperationalSettings({
+    storeName,
+    halfPricePolicy,
+    pizzaSizes: pizzaSizes ?? PIZZA_SIZES.map((size) => ({ ...size, active: true })),
+    maxFlavorsPerPizza,
+    tables: tables ?? PIZZERIA_TABLES.map((table) => ({ ...table, active: true })),
+  });
   return nextState(state, { settings });
 }
 
-export function updateFoodPizzeriaSettings(stateValue, { storeName, halfPricePolicy } = {}) {
+export function updateFoodPizzeriaSettings(stateValue, changes = {}) {
   const state = validateFoodPizzeriaState(stateValue);
   if (state.settings === null) throw new Error("Configure a pizzaria antes de alterar os ajustes.");
-  return nextState(state, { settings: validateSettings({ storeName, halfPricePolicy }) });
+  const settings = validateOperationalSettings({ ...state.settings, ...changes });
+  const sizeIds = new Set(settings.pizzaSizes.map(({ id }) => id));
+  const tableIds = new Set(settings.tables.map(({ id }) => id));
+  if (state.settings.pizzaSizes.some(({ id }) => !sizeIds.has(id))) {
+    throw new Error("Tamanhos usados pelo histórico não podem ser removidos; desative-os.");
+  }
+  if (state.settings.tables.some(({ id }) => !tableIds.has(id))) {
+    throw new Error("Mesas usadas pelo histórico não podem ser removidas; desative-as.");
+  }
+  const previousSizeIds = new Set(state.settings.pizzaSizes.map(({ id }) => id));
+  const addedSizes = settings.pizzaSizes.filter(({ id }) => !previousSizeIds.has(id));
+  if (addedSizes.some(({ active }) => active)) {
+    throw new Error("Um tamanho novo começa desativado. Cadastre preços e fichas técnicas antes de ativá-lo.");
+  }
+  const previousActiveSizes = new Set(state.settings.pizzaSizes.filter(({ active }) => active).map(({ id }) => id));
+  for (const size of settings.pizzaSizes.filter(({ id, active }) => active && !previousActiveSizes.has(id))) {
+    for (const flavor of state.flavors.filter(({ active }) => active)) {
+      if (flavor.pricesCents[size.id] < 1) {
+        throw new Error(`Cadastre o preço de ${flavor.name} para ${size.label} antes de ativar o tamanho.`);
+      }
+      const recipe = state.recipes.find(({ flavorId }) => flavorId === flavor.id);
+      if (!recipe || recipe.lines.some((line) => line.quantityBaseBySize[size.id] < 1)) {
+        throw new Error(`Complete a ficha técnica de ${flavor.name} para ${size.label} antes de ativar o tamanho.`);
+      }
+    }
+  }
+  const activeTableIds = new Set(settings.tables.filter(({ active }) => active).map(({ id }) => id));
+  if (state.tableCommands.some(({ tableId, closedAt }) => closedAt === null && !activeTableIds.has(tableId))) {
+    throw new Error("Encerre as comandas abertas antes de desativar uma mesa.");
+  }
+  const flavors = state.flavors.map((flavor) => ({
+    ...flavor,
+    pricesCents: Object.fromEntries(settings.pizzaSizes.map(({ id }) => [
+      id,
+      flavor.pricesCents[id] ?? 0,
+    ])),
+  }));
+  const recipes = state.recipes.map((recipe) => ({
+    ...recipe,
+    lines: recipe.lines.map((line) => ({
+      ...line,
+      quantityBaseBySize: Object.fromEntries(settings.pizzaSizes.map(({ id }) => [
+        id,
+        line.quantityBaseBySize[id] ?? 0,
+      ])),
+    })),
+  }));
+  return nextState(state, { settings, flavors, recipes });
 }
 
 export function savePizzeriaFlavor(stateValue, { id = null, name, description = "", pricesCents, at } = {}) {
@@ -526,7 +740,7 @@ export function savePizzeriaFlavor(stateValue, { id = null, name, description = 
     active: existing?.active ?? true,
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp,
-  });
+  }, state.settings.pizzaSizes);
   const flavors = existing
     ? state.flavors.map((item) => item.id === flavor.id ? flavor : item)
     : [...state.flavors, flavor];
@@ -539,6 +753,9 @@ export function setPizzeriaFlavorAvailability(stateValue, { flavorId, active, at
   const flavor = state.flavors.find((item) => item.id === flavorId);
   if (!flavor) throw new Error("Esse sabor não está mais no cardápio.");
   if (flavor.active === active) return state;
+  if (active && state.settings.pizzaSizes.some(({ id, active: enabled }) => enabled && flavor.pricesCents[id] < 1)) {
+    throw new Error("Cadastre o preço para todos os tamanhos disponíveis antes de ativar o sabor.");
+  }
   const updatedAt = utc(at, "Atualização do sabor");
   return nextState(state, {
     flavors: state.flavors.map((item) => item.id === flavor.id
@@ -547,23 +764,26 @@ export function setPizzeriaFlavorAvailability(stateValue, { flavorId, active, at
   });
 }
 
-export function calculatePizzaPriceCents({ size, flavorIds, flavors, halfPricePolicy } = {}) {
-  if (!SIZE_IDS.has(size)) throw new TypeError("Tamanho de pizza inválido.");
-  if (!Array.isArray(flavorIds) || flavorIds.length < 1 || flavorIds.length > 2) {
-    throw new TypeError("Escolha um sabor ou monte uma pizza meio a meio.");
+export function calculatePizzaPriceCents({
+  size, flavorIds, flavors, halfPricePolicy, pizzaSizes = PIZZA_SIZES, maxFlavorsPerPizza = 2,
+} = {}) {
+  const sizeEntry = pizzaSizes.find((entry) => entry.id === size && entry.active !== false);
+  if (!sizeEntry) throw new TypeError("Escolha um tamanho de pizza disponível.");
+  if (!Array.isArray(flavorIds) || flavorIds.length < 1 || flavorIds.length > maxFlavorsPerPizza) {
+    throw new TypeError(`Escolha de um a ${maxFlavorsPerPizza} sabores para esta pizza.`);
   }
   if (new Set(flavorIds).size !== flavorIds.length) throw new TypeError("Escolha dois sabores diferentes.");
   if (!POLICIES.has(halfPricePolicy)) throw new TypeError("Regra de preço meio a meio inválida.");
   const selected = flavorIds.map((id) => {
     const flavor = flavors.find((item) => item.id === id && item.active);
     if (!flavor) throw new Error("Um dos sabores escolhidos não está disponível.");
-    return validateFlavor(flavor);
+    return validateFlavor(flavor, pizzaSizes);
   });
   const prices = selected.map(({ pricesCents }) => cents(pricesCents[size], "Preço do sabor"));
   if (prices.length === 1) return prices[0];
   return halfPricePolicy === "highest"
     ? Math.max(...prices)
-    : Math.ceil((prices[0] + prices[1]) / 2);
+    : Math.ceil(prices.reduce((sum, price) => sum + price, 0) / prices.length);
 }
 
 export function createPizzeriaTableCommand(stateValue, {
@@ -571,7 +791,11 @@ export function createPizzeriaTableCommand(stateValue, {
 } = {}) {
   const state = validateFoodPizzeriaState(stateValue);
   if (state.settings === null) throw new Error("Configure a pizzaria antes de abrir uma comanda.");
-  if (!TABLE_IDS.has(tableId)) throw new TypeError("Escolha uma mesa válida.");
+  const table = state.settings.tables.find((entry) => entry.id === tableId && entry.active);
+  if (!table) throw new TypeError("Escolha uma mesa disponível.");
+  if (!Number.isSafeInteger(guestCount) || guestCount < 1 || guestCount > table.seats) {
+    throw new TypeError("Quantidade de pessoas incompatível com a capacidade da mesa.");
+  }
   if (state.tableCommands.some((command) => command.tableId === tableId && command.closedAt === null)) {
     throw new Error(`A mesa ${String(tableId).padStart(2, "0")} já possui uma comanda aberta.`);
   }
@@ -582,7 +806,7 @@ export function createPizzeriaTableCommand(stateValue, {
     guestCount,
     openedAt,
     closedAt: null,
-  });
+  }, { tables: state.settings.tables, enforceCapacity: true });
   return nextState(state, { tableCommands: [command, ...state.tableCommands] });
 }
 
@@ -595,7 +819,10 @@ export function closePizzeriaTableCommand(stateValue, { commandId, closedAt } = 
   if (unfinishedOrders.length) throw new Error("Conclua ou cancele os pedidos da mesa antes de encerrar a comanda.");
   const timestamp = utc(closedAt, "Fechamento da comanda");
   if (Date.parse(timestamp) < Date.parse(command.openedAt)) throw new TypeError("O fechamento não pode anteceder a abertura da comanda.");
-  const updated = validateTableCommand({ ...command, closedAt: timestamp });
+  const updated = validateTableCommand({ ...command, closedAt: timestamp }, {
+    tables: state.settings.tables,
+    enforceCapacity: false,
+  });
   return nextState(state, {
     tableCommands: state.tableCommands.map((item) => item.id === updated.id ? updated : item),
   });
@@ -611,15 +838,15 @@ function calculateOrderConsumption(state, order, { requireRecipe = true } = {}) 
         if (requireRecipe) throw new Error(`Cadastre a ficha técnica de ${flavor.name} antes de iniciar o preparo.`);
         return [];
       }
-      const portionNumerator = item.flavors.length === 1 ? 2 : 1;
       for (const line of recipe.lines) {
-        const amount = line.quantityBaseBySize[item.size] * item.quantity * portionNumerator;
+        const portionScale = FLAVOR_PORTION_SCALE / item.flavors.length;
+        const amount = line.quantityBaseBySize[item.size] * item.quantity * portionScale;
         ingredientNumerators.set(line.ingredientId, (ingredientNumerators.get(line.ingredientId) ?? 0) + amount);
       }
     }
   }
   return [...ingredientNumerators.entries()]
-    .map(([ingredientId, numerator]) => ({ ingredientId, quantityBase: Math.ceil(numerator / 2) }))
+    .map(([ingredientId, numerator]) => ({ ingredientId, quantityBase: Math.ceil(numerator / FLAVOR_PORTION_SCALE) }))
     .filter(({ quantityBase }) => quantityBase > 0)
     .sort((left, right) => left.ingredientId.localeCompare(right.ingredientId));
 }
@@ -637,13 +864,16 @@ export function createPizzeriaOrder(stateValue, {
 } = {}) {
   const state = validateFoodPizzeriaState(stateValue);
   if (state.settings === null) throw new Error("Configure a pizzaria antes de receber pedidos.");
-  if (!CHANNELS.has(channel)) throw new TypeError("Escolha entrega, retirada ou balcão.");
+  if (!CHANNELS.has(channel)) throw new TypeError("Escolha entrega, retirada, balcão ou salão.");
   if (channel === "delivery" && !state.flavors.some(({ active }) => active)) {
     throw new Error("Cadastre ao menos um sabor disponível antes de receber pedidos.");
   }
+  if ((channel === "dine-in") !== (tableCommandId !== null)) {
+    throw new Error("Pedido de salão deve usar uma comanda; balcão e retirada não reservam mesa.");
+  }
   if (tableCommandId !== null) {
     const command = state.tableCommands.find(({ id: currentId }) => currentId === tableCommandId);
-    if (channel !== "counter" || !command || command.closedAt !== null) {
+    if (channel !== "dine-in" || !command || command.closedAt !== null) {
       throw new Error("A comanda selecionada não está aberta para receber pedidos.");
     }
     if (boundedText(customerName, "Nome do cliente", 80) !== command.customerName) {
@@ -674,6 +904,8 @@ export function createPizzeriaOrder(stateValue, {
       flavorIds: input.flavorIds,
       flavors: state.flavors,
       halfPricePolicy: state.settings.halfPricePolicy,
+      pizzaSizes: state.settings.pizzaSizes,
+      maxFlavorsPerPizza: state.settings.maxFlavorsPerPizza,
     });
     for (const flavorId of input.flavorIds) {
       if (!state.recipes.some(({ flavorId: recipeFlavorId }) => recipeFlavorId === flavorId)) {
@@ -690,6 +922,7 @@ export function createPizzeriaOrder(stateValue, {
     return {
       id: identifier(input.id, "Identificador do item"),
       size: input.size,
+      sizeLabel: state.settings.pizzaSizes.find(({ id, active }) => id === input.size && active)?.label,
       flavors: selectedFlavors,
       quantity: input.quantity,
       unitPriceCents,
@@ -719,6 +952,12 @@ export function createPizzeriaOrder(stateValue, {
     totalCents,
     status: "received",
     statusHistory: [{ id: historyId, status: "received", changedAt: timestamp, reason: null }],
+  }, {
+    sizeEntries: state.settings.pizzaSizes,
+    flavorLimit: MAX_FLAVORS_PER_PIZZA,
+    tableChannel: "dine-in",
+    requireTableCommand: true,
+    requireSizeLabel: true,
   });
   if (state.orders.length >= MAX_ORDERS) throw new RangeError("Limite de pedidos locais atingido.");
   return nextState(state, { orders: [order, ...state.orders] });
@@ -751,6 +990,12 @@ export function transitionPizzeriaOrder(stateValue, {
       ...order.statusHistory,
       { id: historyId, status: nextStatus, changedAt: timestamp, reason: cancellationReason },
     ],
+  }, {
+    sizeEntries: state.settings.pizzaSizes,
+    flavorLimit: MAX_FLAVORS_PER_PIZZA,
+    tableChannel: "dine-in",
+    requireTableCommand: true,
+    requireSizeLabel: true,
   });
   return nextState(state, {
     orders: state.orders.map((item) => item.id === updated.id ? updated : item),

@@ -6,13 +6,14 @@ Protótipo independente do domínio de alimentação, com pizzaria e registros f
 
 - Pedidos: criar, pesquisar, cancelar com motivo e avançar status.
 - Cardápio: cadastrar/editar sabores, preços e disponibilidade.
+- Configurações: definir tamanhos, fatias, mesas, capacidade e limite de sabores por pizza; novos tamanhos ficam indisponíveis até terem preços e fichas técnicas completos.
 - Fichas técnicas: manter quantidades por pizza e calcular uma proposta de consumo, sem alterar estoque.
 - Cozinha/KDS: acompanhar fila por canal e etapa.
-- Mesas/Comandas: abrir/fechar comanda e derivar consumo dos pedidos vinculados.
+- Mesas/Comandas: configurar mesas, abrir/fechar comanda e derivar consumo dos pedidos vinculados. Salão e balcão são canais diferentes.
 - Delivery: acompanhar pedidos prontos e em rota a partir do estado Food.
 - Visão geral, Caixa/PDV, Estoque, Clientes, Relatórios e Equipe mostram que o provider correspondente ainda não está conectado.
 
-O cabeçalho identifica a prévia local. Pedidos, cardápio, comandas e receitas usam o estado fictício persistido neste navegador; isso não é operação comercial nem sincronização entre dispositivos. Fichas técnicas usam referências de insumo de fixture apenas para testar a interface.
+O cabeçalho identifica a prévia local. Pedidos, cardápio, comandas e receitas usam o estado fictício persistido neste navegador; isso não é operação comercial nem sincronização entre dispositivos. Sales continua sendo o owner do pedido comercial; a integração Food ainda depende de contrato público que permita referenciar o pedido e separar produção/fulfillment. Fichas técnicas usam referências de insumo de fixture apenas para testar a interface.
 
 ## Executar
 

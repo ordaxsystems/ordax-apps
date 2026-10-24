@@ -9,14 +9,14 @@ Auditoria do código em `ordax-apps`, complementada pela leitura dos contratos a
 | Onde estavam as regras? | `src/domain/domain.mjs`, `src/application/commands.mjs`; apresentação concentrada em `src/ui/app.mjs`. | Pedidos, preços, transições, comandas, receitas e estoque eram acoplados ao mesmo estado v3. |
 | O que existia apenas em memória? | `src/fixtures/mock-data.mjs` e `createMockWorkspace()` na versão anterior de `src/ui/app.mjs`. | Vendas/turnos do PDV, equipe, cadastro de clientes, produtos auxiliares, carrinho e filtros não sobreviviam ao reload. Esses handlers e cadastros não são mais expostos pelo runtime atual. |
 | O que tinha persistência? | `src/adapters/browser-local-store.mjs`. | Um estado local por chave de preview persistia settings, sabores, pedidos, comandas, fichas e antes também estoque. Não era persistência empresarial ou multi-device. |
-| O que duplicava owners? | Inventory: antigo Food state v3 guardava `ingredients` e `inventoryMovements`, e o início de preparo baixava saldo. Sales: `apps/sales/src/domain/orders.mjs` já tem `ordax.sales-book/1`. | Food v3 duplicava Inventory; Food e Sales ainda apresentam modelos de pedidos concorrentes sem integração. |
+| O que duplicava owners? | Inventory: antigo Food state v3 guardava `ingredients` e `inventoryMovements`, e o início de preparo baixava saldo. Sales: `apps/sales/src/domain/orders.mjs` já tem `ordax.sales-book/1`, e o roadmap atribui pedidos a Sales. | O modelo antigo duplicava Inventory. Para pedidos reais, Sales é a autoridade comercial; os pedidos atuais do Food são sandbox local e não participam desse fluxo. |
 | O que integrava com Space? | `src/ports/food-data-port.mjs`, `src/adapters/browser-local-store.mjs`, `prototypes/food-pizzeria/preview.mjs`. | Nada. O port é app-owned e `preview-na-garagem` é escopo fictício local. |
 | O que era apenas demonstração? | `src/fixtures/*`, `mockWorkspace` e antigas telas de PDV/clientes/equipe/relatórios. | Os dados e ações dessas áreas não eram serviços nem registros compartilhados. No runtime atual, cadastros e handlers foram removidos; amostras do catálogo são imutáveis e rotuladas como fictícias. |
 | Quais owners já existem? | `apps/inventory/src/domain/movements.mjs`, `apps/sales/src/domain/orders.mjs`, `apps/finance/src/domain/ledger.mjs`; serviços Files/Projects/Spaces do OS. | Inventory, Sales e Finance têm fundações próprias; Finance ainda é ledger-base. CRM/Customers, People e Payments não têm owner app correspondente neste repo. |
 
 ## Correções aplicadas
 
-1. **Food state v4:** `src/domain/domain.mjs` agora contém settings, sabores/preços, pedidos, comandas e receitas. O estado não tem `ingredients` ou `inventoryMovements`.
+1. **Food state v5:** `src/domain/domain.mjs` contém configuração da pizzaria, sabores/preços, pedidos de sandbox, comandas e receitas. O estado não tem `ingredients` ou `inventoryMovements`; a migração v4→v5 preserva o histórico e adiciona configuração explícita de tamanhos/mesas.
 2. **Sem escrita cruzada em estoque:** `calculatePizzeriaOrderConsumption()` retorna proposta calculada pela ficha; `transitionPizzeriaOrder()` altera somente o agregado de pedido Food. Commands de movimentação/cadastro de Inventory foram removidos.
 3. **Migração segura do preview:** ao ler v3 no browser, o adapter grava ingredientes/movimentos antigos em uma chave de arquivo local antes de salvar o novo estado ativo. O arquivo é preservação de dados legados, não é lido como saldo atual.
 4. **Owners ausentes ficam explícitos:** Overview, PDV, Inventory, Customers, Reports e Team são áreas de status do provider em `src/ui/space-capability-status.mjs`; não apresentam listas/valores de fixtures como estado operacional. A interface mostra “Prévia local · Dados fictícios · sem sincronização”.
@@ -24,10 +24,10 @@ Auditoria do código em `ordax-apps`, complementada pela leitura dos contratos a
 6. **Sem custo de estoque inventado:** a ficha técnica não calcula custo unitário a partir da fixture de estoque.
 7. **Sem estado operacional paralelo oculto:** `createMockWorkspace()`, handlers de PDV/caixa, estoque, clientes, equipe e configurações não versionadas foram removidos do runtime. Permanecem apenas dados transitórios de interface (filtros, carrinho de pedido e rascunho da ficha) e amostras imutáveis do catálogo auxiliar.
 
-## Ownership recomendado para a próxima integração
+## Ownership da próxima integração
 
-- **Food Order Core:** único agregado de operação alimentar e fulfillment.
-- **Sales:** o schema atual também possui pedidos; revisar com o owner. A integração futura deve ser referência/evento idempotente do pedido Food ou mudar explicitamente a autoridade antes de conectar. Não copiar o pedido e seus status.
+- **Sales:** único owner transacional/comercial de pedidos, linhas, preços e estados comerciais. O fundamento é o roadmap canônico do repo e `ordax.sales-book/1` em `apps/sales/src/domain/orders.mjs`.
+- **Food:** owner de cardápio/fichas e do agregado operacional de produção/fulfillment. Quando integrado, o agregado operacional referencia o ID Sales estável e não replica o pedido comercial. O modelo local atual é somente preview/sandbox.
 - **Inventory:** fonte de saldo e movimento; recebe request de consumo autorizado a partir da proposta do Food.
 - **Payments:** única autoridade de confirmação financeira. PDV é a experiência que coordena o pedido e recebe o resultado, não uma simulação de “pagamento concluído”.
 - **Finance:** consome fatos financeiros aceitos; não recalcula ou duplica pedidos/pagamentos.
@@ -43,7 +43,7 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 ## Contratos e testes necessários antes de integrar
 
 1. Contrato público Space provider/snapshot/readiness/contexto autorizado/nav/lifecycle e projeções de métricas.
-2. Decisão e contrato Food Order ↔ Sales com exatamente um pedido mestre, referências estáveis e idempotência.
+2. Contrato público Sales ↔ Food: Sales continua owner comercial; Food recebe referência/projeção autorizada do pedido e mantém apenas o estado de produção/fulfillment, com idempotência e correlação estável. O contrato Sales atual ainda não inclui os campos/eventos necessários para Food.
 3. Contrato de consumo Food → Inventory com autorização por Space, referência de pedido, retry/idempotência, resultado e política de reversão.
 4. Contrato de tentativa/confirmação/estorno Payments → PDV e referências aceitas por Sales/Finance.
 5. Contrato CRM para referência de cliente e limites de PII; contrato People sem duplicar Identity/membership.
@@ -56,9 +56,19 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 
 Arquivo `tests/space-first-boundaries.test.mjs`:
 
-- estado v4 e recusa de comandos de estoque no Food;
+- estado v5 e recusa de comandos de estoque no Food;
 - iniciar preparo altera apenas o pedido e a proposta de consumo é somente leitura;
 - migração v3 preserva pedidos/fichas e remove estoque do estado ativo;
 - adapter arquiva estoque legado antes de persistir o novo estado.
 
-Comandos executados: `node --test apps/food-pizzeria/tests/space-first-boundaries.test.mjs` (4 aprovados) e `node --check` nos módulos alterados. O teste de interface visual e as provas de integração Space ainda dependem dos contratos/providers listados acima.
+Arquivo `tests/configurable-operations.test.mjs`:
+
+- tamanhos configuráveis, preço médio/maior preço, limite de sabores e rótulo histórico;
+- capacidade de mesa, associação obrigatória ao salão e separação do balcão.
+
+Arquivo `tests/local-store-persistence.test.mjs`:
+
+- persistência após reabrir o adapter local;
+- replay exato não duplica transição e gravação com revisão antiga é rejeitada.
+
+Comandos executados: `node --test apps/food-pizzeria/tests/*.test.mjs` (8 aprovados) e `node --check` nos 20 módulos JavaScript de Food e do host local. O verificador geral `tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown` também rodou; reportou 20 alvos, 2 bloqueados, 18 entradas não assinadas e zero instalações públicas verificadas. O teste visual e as provas cross-app reais ainda dependem dos contratos/providers listados acima.

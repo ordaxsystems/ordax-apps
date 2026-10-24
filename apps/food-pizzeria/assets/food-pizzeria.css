@@ -232,7 +232,7 @@ textarea { resize: vertical; line-height: 1.5; }
 .flavor-form .panel-heading { margin-bottom: 2px; }
 .flavor-form textarea { min-height: 58px; }
 .price-fields > span { display: block; margin-bottom: 8px; color: #706c65; font-size: 10px; font-weight: 600; }
-.price-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(95px, 1fr)); gap: 7px; }
 .price-grid label { gap: 5px; color: #938e86; font-size: 9px; }
 .currency-input { display: flex; align-items: center; min-width: 0; min-height: 36px; padding-left: 7px; border: 1px solid #e9e6df; border-radius: 8px; background: #fff; }
 .currency-input:focus-within { border-color: #d99b92; box-shadow: 0 0 0 3px #bd3e3212; }
@@ -253,7 +253,7 @@ textarea { resize: vertical; line-height: 1.5; }
 .availability.unavailable { color: #a39d94; }
 .edit-button { margin-left: auto; }
 .flavor-description { margin: 9px 0 0; color: #99948b; font-size: 9px; line-height: 1.5; }
-.flavor-prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 13px; padding: 10px 0; border-top: 1px solid #f1efea; border-bottom: 1px solid #f1efea; }
+.flavor-prices { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 7px; margin-top: 13px; padding: 10px 0; border-top: 1px solid #f1efea; border-bottom: 1px solid #f1efea; }
 .flavor-prices > div { display: grid; gap: 4px; }
 .flavor-prices small { color: #aaa49b; font-size: 8px; }
 .flavor-prices strong { font-size: 10px; }
@@ -853,10 +853,7 @@ dialog p { color: #a2a8af; }
   .kitchen-toolbar .order-filters { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
 }
 
-/* Fichas técnicas e estoque com histórico derivado no domínio */
-.inventory-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.stock-form { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
-.data-panel + .data-panel { margin-top: 14px; }
+/* Fichas técnicas do Food */
 .recipe-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; padding-top: 9px; border-top: 1px solid #30343a; }
 .recipe-summary > span { font-size: 8px; }
 .recipe-ready { color: #55ce8c; }
@@ -866,8 +863,9 @@ dialog p { color: #a2a8af; }
 .recipe-editor .panel-heading { align-items: flex-start; }
 .recipe-editor .panel-heading > div > p:last-child { margin: 5px 0 0; color: #9ba2aa; font-size: 9px; }
 .recipe-lines { display: grid; gap: 8px; }
-.recipe-line { display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(90px, .65fr)) 30px; align-items: end; gap: 8px; padding: 10px; border: 1px solid #30343a; border-radius: 9px; background: #1b1e22; }
+.recipe-line { display: grid; grid-template-columns: minmax(160px, .8fr) minmax(0, 2fr) 30px; align-items: end; gap: 8px; padding: 10px; border: 1px solid #30343a; border-radius: 9px; background: #1b1e22; }
 .recipe-line label { display: grid; min-width: 0; gap: 5px; color: #a2a8af; font-size: 9px; }
+.recipe-size-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(82px, 1fr)); gap: 8px; min-width: 0; }
 .recipe-line input, .recipe-line select { width: 100%; min-width: 0; min-height: 34px; padding: 6px 8px; border: 1px solid #343940; border-radius: 7px; background: #22262a; color: #eef0f2; font-size: 10px; }
 .recipe-line .icon-button { min-height: 32px; }
 .recipe-editor-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; }
@@ -885,21 +883,27 @@ dialog p { color: #a2a8af; }
 .capability-pending p, .capability-pending small, .recipe-preview-note { margin: 0; color: #a2a8af; font-size: 10px; line-height: 1.65; }
 .capability-pending small { color: #7f8790; }
 .recipe-preview-note { padding: 10px 12px; border: 1px solid #403226; border-radius: 8px; background: #241d17; color: #d0ab7d; }
-.inventory-actions .button { min-height: 37px; }
+.settings-config-group { display: grid; gap: 12px; padding: 16px; border: 1px solid #333840; border-radius: 12px; background: #15181c; }
+.settings-config-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(100px, .5fr) minmax(180px, 1fr) auto; align-items: end; gap: 12px; padding: 12px; border: 1px solid #30353b; border-radius: 9px; background: #1b1f24; }
+.settings-config-row label { display: grid; gap: 6px; }
+.settings-config-row input:not([type="checkbox"]) { min-width: 0; }
+.settings-config-row .settings-toggle { display: flex; align-items: center; gap: 8px; min-height: 38px; color: #c6cbd0; }
+.settings-config-row .settings-toggle input { accent-color: #ff6b2f; }
+.settings-config-group .panel-heading { margin: 0; }
 @media (max-width: 900px) {
-  .recipe-line { grid-template-columns: minmax(150px, 1.3fr) repeat(3, minmax(74px, .7fr)) 30px; gap: 6px; padding: 8px; }
+  .recipe-line { grid-template-columns: minmax(140px, .7fr) minmax(0, 2fr) 30px; gap: 6px; padding: 8px; }
+  .recipe-size-grid { grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 6px; }
 }
 @media (max-width: 680px) {
   .preview-context { padding: 6px 8px; }
   .preview-context small { max-width: 110px; }
   .capability-pending { padding: 15px; }
-  .inventory-actions { width: 100%; }
-  .inventory-actions .button { flex: 1 1 150px; }
-  .stock-form { grid-template-columns: 1fr; margin: 10px; }
   .recipe-line { grid-template-columns: minmax(0, 1fr) 30px; }
-  .recipe-line label:first-child { grid-column: 1 / -1; }
-  .recipe-line label[data-size] { grid-column: 1 / 2; }
-  .recipe-line .icon-button { grid-column: 2; grid-row: 2 / 5; align-self: center; }
+  .recipe-line .recipe-ingredient { grid-column: 1 / -1; }
+  .recipe-size-grid { grid-column: 1; grid-row: 2; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); }
+  .recipe-line .icon-button { grid-column: 2; grid-row: 2; align-self: center; }
   .recipe-editor { padding: 12px; }
   .recipe-editor .panel-heading { flex-direction: row; }
+  .settings-config-row { grid-template-columns: minmax(0, 1fr) minmax(86px, .5fr); }
+  .settings-config-row .settings-toggle { grid-column: 1 / -1; }
 }
