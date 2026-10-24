@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('ordax', {
   listTasks: () => ipcRenderer.invoke('ordax:tasks:list'),
   createTask: title => ipcRenderer.invoke('ordax:tasks:create', title),
   getTask: id => ipcRenderer.invoke('ordax:tasks:get', id),
+  getTaskDraft: id => ipcRenderer.invoke('ordax:tasks:draft:get', id),
   openTask: id => ipcRenderer.invoke('ordax:tasks:open', id),
   inspectLinkedThread: taskId => ipcRenderer.invoke('ordax:tasks:inspect-linked-thread', taskId),
   loadMessagePage: (taskId, before) => ipcRenderer.invoke('ordax:tasks:messages:page', { taskId, before }),

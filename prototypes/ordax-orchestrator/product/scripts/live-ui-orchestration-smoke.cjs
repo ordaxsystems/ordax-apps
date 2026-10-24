@@ -146,10 +146,12 @@ let phase='startup';
     if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.length||!summary.continuationAvailable||!summary.commandSucceeded||
       !summary.idempotent||summary.workCount!==2||!summary.missionDraftPreserved||summary.coordinatorMessages!==0)
       throw Error('native_mcp_state_mismatch');
-    phase='work_navigation';
+    phase='work_list_refresh';
     await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
-    await evaluate(`document.querySelector('#tasks .task').click()`);
-    await wait("!document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('orchestrationPanel').hidden");
+    phase='work_open';
+    await evaluate(`([...document.querySelectorAll('#tasks .task')].find(row=>row.querySelector('strong')?.textContent==='Frente criada pelo MCP')?.click())`);
+    await wait("!document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('orchestrationPanel').hidden && document.getElementById('taskTitle').textContent==='Frente criada pelo MCP'");
+    phase='coordinator_reopen';
     await evaluate(`document.querySelector('#orchestratorNavList button.active').click()`);
     await wait("!document.getElementById('orchestrationPanel').hidden && document.getElementById('taskPanel').classList.contains('hidden')");
     phase='scoped_work_create';

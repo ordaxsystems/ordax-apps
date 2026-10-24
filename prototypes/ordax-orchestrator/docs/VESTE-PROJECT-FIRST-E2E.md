@@ -41,6 +41,14 @@ O registro histórico `docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md` compro
 
 **Provas aceitáveis:** navegador real com ações simuladas/DOM assertions + logs/exit codes + snapshot do workspace. Uma análise textual de checklist é útil, mas **não equivale** a verificar site executando. O snapshot de workspace prova somente leitura; arquivo criado, diff e teste aprovado exigem recibos do executor autorizado além da resposta do GPT.
 
+## 3.1. Verificação de superfície Host Node — candidata alpha.19 (2026-10-24)
+
+- Host loopback Node, UI visível no navegador interno, perfil `.host-profile` e Store próprios; Electron e instalação principal não foram usados.
+- Criados pela interface projeto VESTE, orquestrador, primeira frente e missão/rascunho; reload recuperou os mesmos registros e a tela identificou `Host Node de desenvolvimento`.
+- Chat API Groq estava marcado como configurado/ativo. Uma solicitação real foi enviada, mas o recibo local terminou `uncertain`, sem resposta do assistente. Ela **não foi reenviada**; nenhum resultado do modelo é contado como prova.
+- A tela informa GPT indisponível, nenhum GitHub vinculado, workspace local indisponível e supervisor de 24 h não conectado. Nenhum arquivo foi criado/lido, nenhum site foi servido/testado e nenhuma conversa GPT foi aberta.
+- Testes da implementação: nove testes Host e 24 contratos desktop passaram; `npm run check` passou. O teste E2E completo da tabela continua bloqueado pela falta dos owners/transports reais e ainda não foi satisfeito.
+
 ## 4. Cenários negativos obrigatórios
 
 - Provider demora, página exibe “tente novamente”, histórico some, response partial ou entrega uncertain: reconciliar sem replay automático e, se necessário, continuar em frente distinta com handoff sem duplicar efeito.

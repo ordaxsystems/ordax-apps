@@ -19,8 +19,8 @@ const STATIC_FILES = new Map([
   ['/src/supervisor-role-presets.mjs',['src/supervisor-role-presets.mjs','text/javascript; charset=utf-8']]
 ]);
 
-// Presentation transport only. All operations still execute the registered
-// Electron handlers, which retain the OrchestratorService and Store SSOT.
+// Loopback presentation transport. Operations are routed to the canonical
+// Store-backed handlers, shared by the Node host and Electron shell.
 export const HOST_BROWSER_METHODS = Object.freeze({
   coordinatorChatStatus:['ordax:orchestrator:chat-status',()=>[]],
   coordinatorChatEnable:['ordax:orchestrator:chat-enable',a=>[a[0]]],
@@ -39,6 +39,7 @@ export const HOST_BROWSER_METHODS = Object.freeze({
   listTasks:['ordax:tasks:list',()=>[]],
   createTask:['ordax:tasks:create',a=>[a[0]]],
   getTask:['ordax:tasks:get',a=>[a[0]]],
+  getTaskDraft:['ordax:tasks:draft:get',a=>[a[0]]],
   openTask:['ordax:tasks:open',a=>[a[0]]],
   inspectLinkedThread:['ordax:tasks:inspect-linked-thread',a=>[a[0]]],
   loadMessagePage:['ordax:tasks:messages:page',a=>[{taskId:a[0],before:a[1]??null}]],

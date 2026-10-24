@@ -1,6 +1,6 @@
 {
   "name": "ordax-orchestrator-lab",
-  "version": "0.2.0-alpha.18",
+  "version": "0.2.0-alpha.19",
   "private": true,
   "type": "module",
   "main": "desktop/bootstrap.mjs",
@@ -9,9 +9,10 @@
   "scripts": {
     "check": "node scripts/check-source.mjs",
     "test": "node --test test/*.test.mjs",
+    "test:host": "node --test test/host-application.test.mjs test/host-browser-server.test.mjs",
     "validate": "npm run check && npm test",
-    "start": "electron .",
-    "start:host": "electron . --host-browser",
+    "start": "node scripts/start-host.mjs",
+    "start:electron": "electron .",
     "build:win": "electron-builder --win portable",
     "test:live:ready": "node scripts/live-ui-readiness.cjs",
     "test:live:build-proof": "node scripts/live-ui-build-proof-readonly.cjs",
@@ -36,13 +37,15 @@
     "electron": "^44.8.0",
     "electron-builder": "^26.15.3"
   },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "build": {
     "appId": "br.com.ordax.orchestrator.lab",
     "productName": "OrdaX Orchestrator Lab",
     "asar": true,
     "files": [
       "desktop/**/*",
-      "!desktop/host-browser-server.mjs",
       "src/*.mjs",
       "supervisor/**/*",
       "package.json"

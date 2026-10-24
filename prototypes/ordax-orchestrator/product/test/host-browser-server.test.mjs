@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {HOST_BROWSER_METHODS,createHostBrowserServer} from '../desktop/host-browser-server.mjs';
+import {HOST_BROWSER_METHODS,createHostBrowserServer} from '../host/host-browser-server.mjs';
 
 const productRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 function rawRequest(url,options={}) {
