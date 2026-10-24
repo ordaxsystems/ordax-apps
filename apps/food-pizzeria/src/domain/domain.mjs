@@ -653,6 +653,21 @@ function validateFoodPizzeriaStateForVersion(value, version) {
   if (new Set(tableCommands.map(({ id }) => id)).size !== tableCommands.length) throw new TypeError("Comandas contêm identificadores duplicados.");
   const openTableIds = tableCommands.filter(({ closedAt }) => closedAt === null).map(({ tableId }) => tableId);
   if (new Set(openTableIds).size !== openTableIds.length) throw new TypeError("Uma mesa não pode ter duas comandas abertas.");
+  const sessionsByTable = new Map();
+  for (const command of tableCommands) {
+    const sessions = sessionsByTable.get(command.tableId) ?? [];
+    sessions.push(command);
+    sessionsByTable.set(command.tableId, sessions);
+  }
+  for (const sessions of sessionsByTable.values()) {
+    sessions.sort((left, right) => Date.parse(left.openedAt) - Date.parse(right.openedAt));
+    for (let index = 1; index < sessions.length; index += 1) {
+      const prior = sessions[index - 1];
+      if (prior.closedAt === null || Date.parse(prior.closedAt) > Date.parse(sessions[index].openedAt)) {
+        throw new TypeError("O histórico contém comandas com períodos sobrepostos na mesma mesa.");
+      }
+    }
+  }
   for (const command of tableCommands.filter(({ closedAt }) => closedAt === null)) {
     const table = tables.find(({ id }) => id === command.tableId);
     if (!table.active || command.guestCount > table.seats) {
@@ -857,6 +872,11 @@ export function createPizzeriaTableCommand(stateValue, {
   }
   if (state.tableCommands.some((command) => command.tableId === tableId && command.closedAt === null)) {
     throw new Error(`A mesa ${String(tableId).padStart(2, "0")} já possui uma comanda aberta.`);
+  }
+  const opening = utc(openedAt, "Abertura da comanda");
+  if (state.tableCommands.some((command) => command.tableId === tableId
+      && (command.closedAt === null || Date.parse(opening) < Date.parse(command.closedAt)))) {
+    throw new Error("A abertura da comanda não pode sobrepor o atendimento anterior da mesa.");
   }
   const command = validateTableCommand({
     id,
