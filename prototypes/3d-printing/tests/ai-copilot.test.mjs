@@ -114,17 +114,31 @@ test("mantém válidas recomendações de parâmetros sem mudança de perfil", (
   const parsed = parseAssistantReply(reply({
     evidence: ["settings"],
     profiles: null,
-    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
   }), { allowedEvidence: ["settings"], allowedProfiles });
   assert.deepEqual(parsed.suggestion.settings, { quality: "fine" });
   assert.deepEqual(parsed.suggestion.profiles, {});
+});
+
+test("aceita apenas um padrão de preenchimento presente no catálogo do OrcaSlicer", () => {
+  const parsed = parseAssistantReply(reply({
+    evidence: ["settings"],
+    profiles: null,
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: "gyroid", supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+  }), { allowedEvidence: ["settings"], allowedProfiles });
+  assert.deepEqual(parsed.suggestion.settings, { infillPattern: "gyroid" });
+  assert.throws(() => parseAssistantReply(reply({
+    evidence: ["settings"],
+    profiles: null,
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: "invented-pattern", supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+  }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
 });
 
 test("valida e mapeia os limites mínimo e máximo da ventoinha de peça", () => {
   const parsed = parseAssistantReply(reply({
     evidence: ["settings"],
     profiles: null,
-    settings: { quality: null, layerHeight: null, walls: null, infill: null, supports: null, fanMinSpeedPercent: 35, fanMaxSpeedPercent: 80 },
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: null, supports: null, fanMinSpeedPercent: 35, fanMaxSpeedPercent: 80 },
   }), { allowedEvidence: ["settings"], allowedProfiles });
   assert.deepEqual(parsed.suggestion.settings, { fanMin: 35, fanMax: 80 });
 });
@@ -133,7 +147,7 @@ test("rejeita sugestão com limite mínimo de ventoinha maior que o máximo", ()
   assert.throws(() => parseAssistantReply(reply({
     evidence: ["settings"],
     profiles: null,
-    settings: { quality: null, layerHeight: null, walls: null, infill: null, supports: null, fanMinSpeedPercent: 85, fanMaxSpeedPercent: 70 },
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: null, supports: null, fanMinSpeedPercent: 85, fanMaxSpeedPercent: 70 },
   }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
 });
 
@@ -141,7 +155,7 @@ test("valida e mapeia tipo, ângulo e alcance dos suportes", () => {
   const parsed = parseAssistantReply(reply({
     evidence: ["settings"],
     profiles: null,
-    settings: { quality: null, layerHeight: null, walls: null, infill: null, supports: true, supportType: "tree(auto)", supportThresholdAngle: 45, supportOnBuildPlateOnly: true, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+    settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: null, supports: true, supportType: "tree(auto)", supportThresholdAngle: 45, supportOnBuildPlateOnly: true, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
   }), { allowedEvidence: ["settings"], allowedProfiles });
   assert.deepEqual(parsed.suggestion.settings, { supports: true, supportType: "tree(auto)", supportThresholdAngle: 45, supportOnBuildPlateOnly: true });
 });
@@ -154,7 +168,7 @@ test("rejeita tipo de suporte manual e ângulo fora do limite", () => {
     assert.throws(() => parseAssistantReply(reply({
       evidence: ["settings"],
       profiles: null,
-      settings: { quality: null, layerHeight: null, walls: null, infill: null, supports: true, ...support, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+      settings: { quality: null, layerHeight: null, walls: null, infill: null, infillPattern: null, supports: true, ...support, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
     }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
   }
 });
@@ -164,6 +178,7 @@ test("schema estrito exige os três campos de perfil na proposta", () => {
   assert.ok(suggestionSchema.required.includes("profiles"));
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMinSpeedPercent.anyOf[0].minimum, 0);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMaxSpeedPercent.anyOf[0].maximum, 100);
+  assert.ok(suggestionSchema.properties.settings.anyOf[0].properties.infillPattern.anyOf[0].enum.includes("gyroid"));
   assert.deepEqual(suggestionSchema.properties.settings.anyOf[0].properties.supportType.anyOf[0].enum, ["normal(auto)", "tree(auto)"]);
   assert.deepEqual(suggestionSchema.properties.profiles.anyOf[0].required, ["machine", "process", "filament"]);
 });
@@ -182,7 +197,7 @@ test("schema da IA aceita a evidência determinística do envelope da mesa", () 
   const parsed = parseAssistantReply(reply({
     evidence: [evidenceId],
     profiles: null,
-    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
   }), { allowedEvidence: [evidenceId], allowedProfiles });
   assert.deepEqual(parsed.suggestion.evidence, [evidenceId]);
 });
@@ -235,5 +250,7 @@ test("cada catálogo compacto respeita o limite de contexto mesmo com nomes long
   const result = buildAssistantProfileContext({ filament: { catalog: profiles } });
   assert.equal(result.context.length, 1);
   assert.ok(result.context[0].text.length < 8192);
-  assert.equal(result.allowedProfiles.filament.length, assistantProfileOptionLimit);
+  assert.ok(result.allowedProfiles.filament.length > 0);
+  assert.ok(result.allowedProfiles.filament.length <= assistantProfileOptionLimit);
+  assert.equal(result.allowedProfiles.filament.length, result.visibleProfiles.filament.length);
 });

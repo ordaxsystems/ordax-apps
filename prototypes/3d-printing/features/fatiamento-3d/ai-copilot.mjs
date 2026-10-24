@@ -1,8 +1,9 @@
 import { assessSlicerProfileCompatibility, PROFILE_COMPATIBILITY_SCHEMA } from "./profile-compatibility.mjs";
+import { infillPatternOptions, isSupportedInfillPattern } from "../../shared/infill-patterns.mjs";
 
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/7";
+const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/8";
 const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
@@ -100,6 +101,7 @@ function profileValues(kind, profile) {
       layerHeightMm: profileNumber(profile.processSettings.layerHeightMm),
       wallLoops: profileNumber(profile.processSettings.wallLoops),
       sparseInfillDensityPercent: profileNumber(profile.processSettings.sparseInfillDensityPercent),
+      sparseInfillPattern: isSupportedInfillPattern(profile.processSettings.sparseInfillPattern) ? profile.processSettings.sparseInfillPattern : null,
       supports: typeof profile.processSettings.supports === "boolean" ? profile.processSettings.supports : null,
       supportType: typeof profile.processSettings.supportType === "string" ? profile.processSettings.supportType.slice(0, 32) : null,
       supportThresholdAngle: profileNumber(profile.processSettings.supportThresholdAngle),
@@ -236,6 +238,7 @@ export const assistantStructuredOutput = Object.freeze({
               layerHeight: nullable({ type: "number", minimum: 0.08, maximum: 0.4 }),
               walls: nullableInteger(1, 8),
               infill: nullableInteger(0, 100),
+              infillPattern: nullable({ type: "string", enum: infillPatternOptions.map(option => option.value) }),
               supports: nullable({ type: "boolean" }),
               supportType: nullable({ type: "string", enum: ["normal(auto)", "tree(auto)"] }),
               supportThresholdAngle: nullableInteger(0, 90),
@@ -243,7 +246,7 @@ export const assistantStructuredOutput = Object.freeze({
               fanMinSpeedPercent: nullableInteger(0, 100),
               fanMaxSpeedPercent: nullableInteger(0, 100),
             },
-            required: ["quality", "layerHeight", "walls", "infill", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
+            required: ["quality", "layerHeight", "walls", "infill", "infillPattern", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
           }),
           transform: nullable({
             type: "object",
@@ -374,6 +377,7 @@ function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = n
     layerHeight: item => Number.isFinite(item) && item >= 0.08 && item <= 0.4,
     walls: item => Number.isInteger(item) && item >= 1 && item <= 8,
     infill: item => Number.isInteger(item) && item >= 0 && item <= 100,
+    infillPattern: isSupportedInfillPattern,
     supports: item => typeof item === "boolean",
     supportType: item => ["normal(auto)", "tree(auto)"].includes(item),
     supportThresholdAngle: item => Number.isInteger(item) && item >= 0 && item <= 90,

@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildOrcaSettingArguments } from "../shared/orca-slicer-development.mjs";
+import { infillPatternOptions } from "../shared/infill-patterns.mjs";
 
 const settings = Object.freeze({
   quality: "standard",
   layerHeight: 0.2,
   walls: 3,
   infill: 15,
+  infillPattern: "gyroid",
   supports: true,
   supportType: "normal(auto)",
   supportThresholdAngle: 45,
@@ -20,6 +22,7 @@ test("mapeia as configurações do projeto para argumentos explícitos do OrcaSl
     "--layer-height", "0.2",
     "--wall-loops", "3",
     "--sparse-infill-density", "15%",
+    "--sparse-infill-pattern=gyroid",
     "--enable-support=1",
     "--support-type", "normal(auto)",
     "--support-threshold-angle", "45",
@@ -39,4 +42,9 @@ test("não cria argumentos de resfriamento quando a faixa mínimo/máximo é inv
 test("rejeita suporte manual e ângulo não suportado pelo contrato", () => {
   assert.throws(() => buildOrcaSettingArguments({ ...settings, supportType: "normal(manual)" }), /configurações solicitadas estão fora dos limites/);
   assert.throws(() => buildOrcaSettingArguments({ ...settings, supportThresholdAngle: 91 }), /configurações solicitadas estão fora dos limites/);
+});
+
+test("rejeita padrões de preenchimento que não pertencem ao catálogo público", () => {
+  assert.ok(infillPatternOptions.some(pattern => pattern.value === "gyroid"));
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, infillPattern: "infill-custom-command" }), /configurações solicitadas estão fora dos limites/);
 });

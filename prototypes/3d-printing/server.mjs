@@ -38,6 +38,7 @@ const contentTypes = {
   "development-services.mjs": "text/javascript; charset=utf-8",
   "feature-registry.mjs": "text/javascript; charset=utf-8",
   "feature-surface.css": "text/css; charset=utf-8",
+  "infill-patterns.mjs": "text/javascript; charset=utf-8",
 };
 
 const appId = process.argv[2] ?? process.env.ORDAX_3D_APP;
@@ -199,6 +200,7 @@ function resolveRequest(pathname) {
     const name = pathname.slice(1);
     return [resolve(sharedRoot, name), contentTypes[name]];
   }
+  if (pathname === "/shared/infill-patterns.mjs") return [resolve(sharedRoot, "infill-patterns.mjs"), contentTypes["infill-patterns.mjs"]];
   const feature = pathname.match(/^\/features\/([a-z0-9-]+)\/(feature\.mjs|bed-envelope\.mjs|app\.css|ai-copilot\.mjs|mesh-analysis\.mjs|demo-model\.mjs|mesh-import\.mjs|mesh-viewer\.mjs|slicer-port\.mjs|profile-compatibility\.mjs|gcode-preview\.mjs|orca-geometry\.mjs|project-bundle\.mjs|zip-container\.mjs)$/);
   if (feature && features.has(feature[1])) {
     const [ , featureId, fileName ] = feature;

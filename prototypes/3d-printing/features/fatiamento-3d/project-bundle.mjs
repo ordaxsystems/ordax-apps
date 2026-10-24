@@ -9,12 +9,12 @@ export const projectBundleLimits = Object.freeze({
 
 const DRAFT_FIELDS = Object.freeze([
   "printer", "filament", "printerProfileId", "processProfileId", "filamentProfileId",
-  "quality", "layerHeight", "walls", "infill", "fanMin", "fanMax", "supports",
+  "quality", "layerHeight", "walls", "infill", "infillPattern", "fanMin", "fanMax", "supports",
   "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "rotation", "scale",
   "stlUnit", "objectTransforms", "selectedProcessId", "selectedTab", "processes",
 ]);
 const SETTING_FIELDS = Object.freeze([
-  "quality", "layerHeight", "walls", "infill", "fanMin", "fanMax", "supports",
+  "quality", "layerHeight", "walls", "infill", "infillPattern", "fanMin", "fanMax", "supports",
   "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly",
 ]);
 

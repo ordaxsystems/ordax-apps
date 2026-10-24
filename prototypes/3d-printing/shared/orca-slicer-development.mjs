@@ -7,10 +7,11 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, posix, resolve, win32 } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { assessSlicerProfileCompatibility, readProfileCompatibility } from "../features/fatiamento-3d/profile-compatibility.mjs";
+import { isSupportedInfillPattern } from "./infill-patterns.mjs";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/4";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/5";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
@@ -193,6 +194,7 @@ function parseProfile(raw, kind, fallbackName) {
         layerHeightMm: numeric(profile.layer_height ?? profile.layer_height_0),
         wallLoops: numeric(profile.wall_loops),
         sparseInfillDensityPercent: percent(profile.sparse_infill_density),
+        sparseInfillPattern: isSupportedInfillPattern(profile.sparse_infill_pattern) ? profile.sparse_infill_pattern : null,
         supports: booleanSetting(profile.enable_support),
         supportType: typeof first(profile.support_type) === "string" ? first(profile.support_type) : null,
         supportThresholdAngle: numeric(profile.support_threshold_angle),
@@ -564,6 +566,7 @@ function normalSettings(value) {
     layerHeight: Number(value.layerHeight),
     walls: Number(value.walls),
     infill: Number(value.infill),
+    infillPattern: value.infillPattern,
     supports: value.supports,
     supportType: value.supportType,
     supportThresholdAngle: Number(value.supportThresholdAngle),
@@ -575,6 +578,7 @@ function normalSettings(value) {
     || !Number.isFinite(settings.layerHeight) || settings.layerHeight < 0.08 || settings.layerHeight > 0.4
     || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
+    || !isSupportedInfillPattern(settings.infillPattern)
     || typeof settings.supports !== "boolean"
     || !["normal(auto)", "tree(auto)"].includes(settings.supportType)
     || !Number.isInteger(settings.supportThresholdAngle) || settings.supportThresholdAngle < 0 || settings.supportThresholdAngle > 90
@@ -592,6 +596,7 @@ export function buildOrcaSettingArguments(value) {
     "--layer-height", String(settings.layerHeight),
     "--wall-loops", String(settings.walls),
     "--sparse-infill-density", `${settings.infill}%`,
+    `--sparse-infill-pattern=${settings.infillPattern}`,
     `--enable-support=${settings.supports ? 1 : 0}`,
     "--support-type", settings.supportType,
     "--support-threshold-angle", String(settings.supportThresholdAngle),
