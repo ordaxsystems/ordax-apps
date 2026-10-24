@@ -81,6 +81,7 @@ export async function createProjectBundle({ sourceFile, draft, projectName }) {
 
 export async function readProjectBundle(buffer) {
   if (!(buffer instanceof ArrayBuffer) && !ArrayBuffer.isView(buffer)) throw new TypeError("O pacote OrdaX precisa ser lido como bytes.");
+  if (buffer.byteLength <= 0 || buffer.byteLength > projectBundleLimits.maxArchiveBytes) throw new Error("O pacote do projeto deve ter até 51 MB.");
   const entries = readZipDirectory(buffer, {
     maxEntries: 2,
     maxEntryBytes: projectBundleLimits.maxSourceBytes,

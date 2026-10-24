@@ -4,7 +4,7 @@ import { createDemoModel } from "./demo-model.mjs";
 import { createMeshViewer } from "./mesh-viewer.mjs";
 import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
 import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
-import { readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
+import { hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
 import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext, buildAssistantMeshSummary } from "./ai-copilot.mjs";
 import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
@@ -150,19 +150,6 @@ function modelFingerprint(model) {
     second = Math.imul(second ^ code, 2246822519);
   }
   return `metadata-${(first >>> 0).toString(16)}-${(second >>> 0).toString(16)}-${metadata.length}`;
-}
-
-function hasCompleteProcessAssignment(processes, objects) {
-  if (!Array.isArray(processes) || !processes.length || processes.length > 100 || !Array.isArray(objects) || !objects.length) return false;
-  const objectIds = new Set(objects.map(object => object.id)), assigned = new Set();
-  for (const process of processes) {
-    if (!process?.objectIds?.length) return false;
-    for (const objectId of process.objectIds) {
-      if (!objectIds.has(objectId) || assigned.has(objectId)) return false;
-      assigned.add(objectId);
-    }
-  }
-  return assigned.size === objectIds.size;
 }
 
 function objectTransform(draft, objectId) {

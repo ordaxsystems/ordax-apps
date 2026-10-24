@@ -123,6 +123,24 @@ function validateProcessAssignmentRequest(request) {
   if (assigned.size !== objectIds.size) throw new Error("Há objetos sem processo de impressão atribuído.");
 }
 
+export function hasCompleteProcessAssignment(processes, objects) {
+  if (!Array.isArray(processes) || !processes.length || processes.length > 100 || !Array.isArray(objects) || !objects.length || objects.length > 500) return false;
+  const objectIds = new Set();
+  for (const object of objects) {
+    if (typeof object?.id !== "string" || !object.id || objectIds.has(object.id)) return false;
+    objectIds.add(object.id);
+  }
+  const assigned = new Set();
+  for (const process of processes) {
+    if (!Array.isArray(process?.objectIds) || !process.objectIds.length) return false;
+    for (const objectId of process.objectIds) {
+      if (typeof objectId !== "string" || !objectIds.has(objectId) || assigned.has(objectId)) return false;
+      assigned.add(objectId);
+    }
+  }
+  return assigned.size === objectIds.size;
+}
+
 export async function readSlicerStatus(port) {
   if (!port || typeof port.getStatus !== "function" || typeof port.slice !== "function") {
     return Object.freeze({ available: false, engine: null, version: null, executionTarget: "unknown", reason: "Este host ainda não conectou um motor de fatiamento." });
