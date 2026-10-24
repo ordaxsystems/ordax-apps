@@ -21,6 +21,7 @@ test("host de desenvolvimento transmite a fase real do Orca enquanto espera o G-
         version: "2.3.1",
         reason: "",
         busy: true,
+        progress: { percent: 48, stage: "Gerando perímetros" },
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     }
     if (input === "/api/slicer/slice") return sliceResponse.promise;
@@ -40,7 +41,7 @@ test("host de desenvolvimento transmite a fase real do Orca enquanto espera o G-
     }, { onProgress: event => progress.push(event) });
 
     await new Promise(resolve => setTimeout(resolve, 1_100));
-    assert.ok(progress.some(event => event.stage === "OrcaSlicer processando o modelo"));
+    assert.ok(progress.some(event => event.stage === "Gerando perímetros" && event.percent === 48));
 
     const metadata = {
       schema: "ordax.slicer-result/1",

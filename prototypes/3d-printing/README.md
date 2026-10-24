@@ -31,6 +31,8 @@ O host usa um adaptador local de desenvolvimento com escopo por app e por identi
 
 Os cinco apps continuam em `prototypes/`, fora do inventário oficial `apps/` e da Loja. O Fatiamento 3D abre com uma geometria demonstrativa somente visual e importa STL/3MF localmente. O rascunho fica no App Data local; o botão **Salvar projeto** gera um pacote portátil `.ordax3d` quando há uma malha real aberta. A integração de desenvolvimento com OrcaSlicer pode produzir G-code real quando o executável e catálogos JSON locais de máquina, processo e filamento estiverem configurados no host. Sem essa configuração, o botão de fatiar permanece bloqueado. O app ainda não controla hardware.
 
+No Linux, o adaptador conecta o canal `--pipe` documentado pelo OrcaSlicer e repassa à interface as mensagens e percentuais JSON que o motor emitir. Windows e macOS continuam mostrando fases sem percentual; o código upstream atual restringe esse canal a Linux. A instalação local do motor ainda é necessária para validar o fluxo ponta a ponta.
+
 O processo filho do Orca recebe somente variáveis de sistema permitidas e, durante um job, diretórios `HOME`/`APPDATA`/temporários apontados para a pasta efêmera do trabalho, removida ao concluir ou falhar. Isso evita herdar chaves do Groq e outros dados de ambiente do host. O subprocesso ainda roda com o usuário e as permissões do host de desenvolvimento; esse isolamento de ambiente não substitui container, sandbox de sistema ou microVM para um worker web multiusuário.
 
 ### Projetos portáteis `.ordax3d`

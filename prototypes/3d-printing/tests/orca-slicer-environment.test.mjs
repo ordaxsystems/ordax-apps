@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createOrcaChildEnvironment } from "../shared/orca-slicer-development.mjs";
+import { createOrcaChildEnvironment, parseOrcaProgressLine } from "../shared/orca-slicer-development.mjs";
+
+test("progresso do Orca usa apenas percentuais recebidos pelo canal CLI e sanitiza a mensagem", () => {
+  assert.deepEqual(parseOrcaProgressLine(JSON.stringify({
+    plate_index: 0,
+    plate_count: 2,
+    plate_percent: 31,
+    total_percent: 47,
+    message: "Gerando perímetros\nplaca 1",
+  })), { percent: 47, stage: "Gerando perímetros placa 1" });
+  assert.deepEqual(parseOrcaProgressLine(JSON.stringify({ warning: "Malha precisa de revisão", plate_index: 1, plate_count: 2 })), {
+    percent: null,
+    stage: "Aviso do OrcaSlicer: Malha precisa de revisão",
+  });
+  assert.equal(parseOrcaProgressLine("not-json"), null);
+  assert.equal(parseOrcaProgressLine("x".repeat(4097)), null);
+  assert.deepEqual(parseOrcaProgressLine(JSON.stringify({ total_percent: 140, message: "Processando" })), {
+    percent: null,
+    stage: "Processando",
+  });
+});
 
 test("processo do Orca no Windows recebe apenas variáveis de sistema e dados temporários do job", () => {
   const environment = createOrcaChildEnvironment({

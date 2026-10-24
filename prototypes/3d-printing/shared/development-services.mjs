@@ -131,7 +131,10 @@ function createDevelopmentSlicer() {
           const response = await fetch("/api/slicer/status", { headers: { Accept: "application/json" }, cache: "no-store", credentials: "same-origin", signal: progressController.signal });
           const status = response.ok ? await response.json() : null;
           if (!pollingStopped && status?.schema === SLICER_STATUS_SCHEMA && typeof status.busy === "boolean") {
-            reportProgress({ stage: status.busy ? "OrcaSlicer processando o modelo" : "Aguardando o OrcaSlicer" });
+            const progress = status.progress;
+            reportProgress(status.busy && typeof progress?.stage === "string"
+              ? { stage: progress.stage, percent: progress.percent }
+              : { stage: status.busy ? "OrcaSlicer processando o modelo" : "Aguardando o OrcaSlicer" });
           }
         } catch {} finally { polling = false; }
       };

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, open, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
+import { createInterface } from "node:readline";
 import { tmpdir } from "node:os";
 import { basename, extname, join, posix, resolve, win32 } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -278,6 +279,81 @@ function collectText(target, chunk, maxBytes = 1024 * 1024) {
   return target;
 }
 
+function progressStage(value) {
+  return typeof value === "string"
+    ? value.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 120)
+    : "";
+}
+
+export function parseOrcaProgressLine(line) {
+  if (typeof line !== "string" || line.length > 4096) return null;
+  let value;
+  try { value = JSON.parse(line); } catch { return null; }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const rawPercent = typeof value.total_percent === "number" ? value.total_percent
+    : typeof value.plate_percent === "number" ? value.plate_percent : null;
+  const percent = Number.isFinite(rawPercent) && rawPercent >= 0 && rawPercent <= 100
+    ? Math.round(rawPercent)
+    : null;
+  const warning = progressStage(value.warning);
+  const message = progressStage(value.message);
+  const plateIndex = Number.isInteger(value.plate_index) && value.plate_index >= 0 ? value.plate_index + 1 : null;
+  const plateCount = Number.isInteger(value.plate_count) && value.plate_count > 0 ? value.plate_count : null;
+  const stage = warning ? `Aviso do OrcaSlicer: ${warning}`
+    : message || (plateIndex && plateCount ? `Processando placa ${plateIndex} de ${plateCount}` : "OrcaSlicer processando o modelo");
+  return Object.freeze({ percent, stage });
+}
+
+async function createLinuxProgressPipe(directory, onProgress) {
+  if (process.platform !== "linux") return null;
+  const pipePath = join(directory, "orca-progress.pipe");
+  const created = await new Promise(resolvePromise => {
+    let child;
+    try {
+      child = spawn("mkfifo", [pipePath], {
+        cwd: directory,
+        env: createOrcaChildEnvironment({ jobDirectory: directory }),
+        windowsHide: true,
+        shell: false,
+        stdio: "ignore",
+      });
+    } catch { resolvePromise(false); return; }
+    child.once("error", () => resolvePromise(false));
+    child.once("close", code => resolvePromise(code === 0));
+  });
+  if (!created) return null;
+
+  let anchor, reader, lines;
+  try {
+    // A read/write anchor prevents the FIFO reader from seeing EOF before Orca opens its writer.
+    anchor = await open(pipePath, "r+");
+    reader = createReadStream(pipePath, { encoding: "utf8" });
+    reader.on("error", () => {});
+    lines = createInterface({ input: reader, crlfDelay: Infinity });
+    lines.on("line", line => {
+      const progress = parseOrcaProgressLine(line);
+      if (progress) {
+        try { onProgress?.(progress); } catch {}
+      }
+    });
+    const readerClosed = new Promise(resolvePromise => lines.once("close", resolvePromise));
+    return Object.freeze({
+      path: pipePath,
+      async close() {
+        await anchor.close().catch(() => {});
+        await Promise.race([readerClosed, new Promise(resolvePromise => setTimeout(resolvePromise, 250))]);
+        lines.close();
+        reader.destroy();
+      },
+    });
+  } catch {
+    await anchor?.close().catch(() => {});
+    reader?.destroy();
+    lines?.close();
+    return null;
+  }
+}
+
 function runChild(executable, args, { cwd, signal, timeoutMs = 15_000 } = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
     if (signal?.aborted) return rejectPromise(new DOMException("Fatiamento cancelado.", "AbortError"));
@@ -445,6 +521,7 @@ function publicStatus(configuration) {
     version: configuration.version,
     reason: configuration.reason,
     busy: slicing,
+    progress: slicing ? activeProgress : null,
     processScope: "uniform",
     executionTarget: "device",
     profiles: configuration.profiles ? Object.freeze(configuration.profiles) : null,
@@ -453,6 +530,7 @@ function publicStatus(configuration) {
 
 let configurationPromise;
 let slicing = false;
+let activeProgress = null;
 
 async function loadConfiguration() {
   const executableSetting = process.env.ORDAX_ORCA_SLICER_PATH?.trim();
@@ -502,7 +580,7 @@ async function configuration() {
 
 export async function getOrcaSlicerStatus() {
   try { return publicStatus(await configuration()); }
-  catch { return Object.freeze({ schema: STATUS_SCHEMA, available: false, engine: ENGINE_NAME, version: null, reason: "Não foi possível verificar a configuração local do OrcaSlicer.", busy: slicing, processScope: "uniform", profiles: null }); }
+  catch { return Object.freeze({ schema: STATUS_SCHEMA, available: false, engine: ENGINE_NAME, version: null, reason: "Não foi possível verificar a configuração local do OrcaSlicer.", busy: slicing, progress: slicing ? activeProgress : null, processScope: "uniform", executionTarget: "device", profiles: null }); }
 }
 
 function validateCliResult(gcodeBytes) {
@@ -524,6 +602,7 @@ async function validateCliGcodeFile(path, size) {
 export async function sliceWithOrcaToResponse(formData, response, { signal } = {}) {
   if (slicing) throw publicError("O OrcaSlicer já está processando outro trabalho neste host.", 429);
   slicing = true;
+  activeProgress = Object.freeze({ percent: null, stage: "Preparando o trabalho para o OrcaSlicer" });
   let temporaryDirectory;
   try {
     const config = await configuration();
@@ -576,7 +655,12 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
       "--export-statistics",
       "--slice", "0",
     ];
-    const run = await runChild(config.executable, args, { cwd: temporaryDirectory, signal, timeoutMs: MAX_RUNTIME_MS });
+    activeProgress = Object.freeze({ percent: null, stage: "OrcaSlicer iniciando o fatiamento" });
+    const progressPipe = await createLinuxProgressPipe(temporaryDirectory, progress => { activeProgress = progress; });
+    if (progressPipe) args.push("--pipe", progressPipe.path);
+    let run;
+    try { run = await runChild(config.executable, args, { cwd: temporaryDirectory, signal, timeoutMs: MAX_RUNTIME_MS }); }
+    finally { await progressPipe?.close(); }
     if (run.code !== 0) throw publicError("OrcaSlicer não concluiu o trabalho. Confira a compatibilidade dos perfis, a área da máquina e as opções exigidas pelo motor.", 422);
 
     const outputEntries = await readdir(outputDirectory, { withFileTypes: true });
@@ -604,6 +688,7 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
       stats,
       diagnostics: stats ? [] : ["O motor gerou G-code, mas não forneceu estatísticas JSON legíveis."],
     };
+    activeProgress = Object.freeze({ percent: 100, stage: "OrcaSlicer concluiu o fatiamento; validando o G-code" });
     response.writeHead(200, {
       "Content-Type": "application/gcode",
       "Content-Disposition": `attachment; filename="${filename.replace(/["\\\r\n]/g, "_")}"`,
@@ -616,6 +701,7 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
     await pipeline(createReadStream(gcodePath), response, { signal });
   } finally {
     slicing = false;
+    activeProgress = null;
     if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => {});
   }
 }
