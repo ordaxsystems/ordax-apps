@@ -1,7 +1,8 @@
 // OrdaX App renderer-only availability. Transport remains protected by
 // assertProviderSendReadiness() in the Electron main process AND worker.
 // An editable local draft is NOT permission to submit to ChatGPT.
-export function providerComposeAvailability(status) {
+export function providerComposeAvailability(status,{hostMode=false}={}) {
+  if(hostMode===true)return {allowed:false,reason:'host_auth_unavailable'};
   const base={allowed:false,reason:'unverified'};
   if(!status || typeof status!=='object')return base;
   if(status.active===true)return {allowed:false,reason:'busy'};
@@ -19,6 +20,7 @@ export function providerComposeAvailability(status) {
 }
 
 export const COMPOSE_STATUS_MESSAGES=Object.freeze({
+  host_auth_unavailable:'Esta visualização do host não compartilha a sessão do ChatGPT com o executor. O rascunho fica salvo localmente; envio bloqueado.',
   ready:'Sessão detectada • envio disponível. A identidade não é verificada pelo Lab.',
   busy:'ChatGPT está processando uma solicitação. Aguarde a conclusão.',
   conversation_unavailable:'A conversa do ChatGPT não carregou. Envio bloqueado e histórico local preservado; nenhum reenvio.',

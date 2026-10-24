@@ -16,6 +16,8 @@ test('renderer gates submit on observed session and live composer; anything else
   const ready={active:false,health_pending:false,auth_state:'session_present',composer_ready:true,
     health_observed:true,verification_required:false,provider_access_problem:null};
   assert.deepEqual(providerComposeAvailability(ready),{allowed:true,reason:'ready'});
+  assert.deepEqual(providerComposeAvailability(ready,{hostMode:true}),{allowed:false,reason:'host_auth_unavailable'});
+  assert.match(COMPOSE_STATUS_MESSAGES.host_auth_unavailable,/sessão do ChatGPT/);
   const blocked=[
     [{...ready,auth_state:'anonymous'},'login_required'],
     [{...ready,auth_state:'authenticating'},'authenticating'],
@@ -62,11 +64,14 @@ test('App has visible login warning, optional local draft, and disabled send ini
   assert.match(html,/id="composerConnectionText"/);
   assert.match(html,/id="composerLogin"/);
   assert.match(html,/id="send"[^>]*disabled/);
-  assert.match(ui,/providerComposeAvailability\(status\)/);
+  assert.match(ui,/providerComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
   assert.match(ui,/COMPOSE_STATUS_MESSAGES/);
   assert.match(ui,/dataset\.sendReady = allowed \? 'true' : 'false'/);
   assert.match(ui,/\$\('#composerLogin'\)\.addEventListener\('click', \(\) => \$\('#login'\)\.click\(\)\)/);
   assert.match(ui,/syncComposerAvailability\(\); \/\/ no send until session observed/);
+  assert.match(ui,/\$\('#login'\)\.hidden = true/);
+  assert.match(ui,/hostMode \|\| composeAvailability\.reason==='ready'/);
+  assert.match(ui,/providerComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
 });
 
 // Exercise actual production submit callback against a minimal isolated UI.

@@ -63,8 +63,8 @@ test('diagnostic IPC is same-origin protected and never invokes the chat submit 
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
   const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const html=fs.readFileSync(path.resolve(here,'../desktop/ui.html'),'utf8');
-  const part=main.split("ipcMain.handle('ordax:provider:diagnostic'")[1]
-    .split("ipcMain.handle('ordax:provider:login'")[0];
+  const part=main.split("registerUiHandler('ordax:provider:diagnostic'")[1]
+    .split("registerUiHandler('ordax:provider:login'")[0];
   assert.match(part,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(part,/worker\.inspectDiagnosticReadOnly\(\)/);
   assert.match(html,/id="providerDiagnostic"/);

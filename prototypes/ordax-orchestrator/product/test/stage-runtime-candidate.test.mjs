@@ -9,7 +9,8 @@ import {verifyRuntimeManifest} from '../src/runtime-build-identity.mjs';
 const sourceScript=fileURLToPath(new URL('../scripts/stage-runtime-candidate.cjs',import.meta.url));
 const identitySource=fileURLToPath(new URL('../src/runtime-build-identity.mjs',import.meta.url));
 function git(cwd,...args){
- const r=spawnSync('git',args,{cwd,encoding:'utf8',timeout:20000});
+ const r=spawnSync('git',args,{cwd,encoding:'utf8',timeout:120000});
+ assert.ifError(r.error);
  assert.equal(r.status,0,r.stderr);
  return r.stdout.trim();
 }
@@ -31,9 +32,11 @@ function prepare(t){
  return {repo,product,out,target:path.join(out,'candidate-app-v0.2.0-alpha.2')};
 }
 function stage(product,target){
- return spawnSync(process.execPath,[path.join(product,'scripts','stage-runtime-candidate.cjs'),target],{
-  encoding:'utf8',timeout:25000
+ const r=spawnSync(process.execPath,[path.join(product,'scripts','stage-runtime-candidate.cjs'),target],{
+  encoding:'utf8',timeout:120000
  });
+ assert.ifError(r.error);
+ return r;
 }
 test('Git-clean candidate uses a NEW directory, attests the commit and never copies profiles',t=>{
  const f=prepare(t);

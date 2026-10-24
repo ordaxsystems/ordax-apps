@@ -1,6 +1,6 @@
 {
   "name": "ordax-orchestrator-lab",
-  "version": "0.2.0-alpha.16",
+  "version": "0.2.0-alpha.17",
   "private": true,
   "type": "module",
   "main": "desktop/bootstrap.mjs",
@@ -11,6 +11,7 @@
     "test": "node --test test/*.test.mjs",
     "validate": "npm run check && npm test",
     "start": "electron .",
+    "start:host": "electron . --host-browser",
     "build:win": "electron-builder --win portable",
     "test:live:ready": "node scripts/live-ui-readiness.cjs",
     "test:live:build-proof": "node scripts/live-ui-build-proof-readonly.cjs",
@@ -41,6 +42,7 @@
     "asar": true,
     "files": [
       "desktop/**/*",
+      "!desktop/host-browser-server.mjs",
       "src/*.mjs",
       "supervisor/**/*",
       "package.json"

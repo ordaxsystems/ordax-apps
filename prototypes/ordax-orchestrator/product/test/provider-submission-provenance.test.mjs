@@ -81,8 +81,8 @@ test('W3 provenance never binds an unrelated URL, message, or Run',()=>{
 
 test('W3 provenance changes only the evidence predicate, never retries provider submission',()=>{
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-  const inspect=main.slice(main.indexOf("ipcMain.handle('ordax:tasks:inspect-linked-thread'"),
-    main.indexOf("ipcMain.handle('ordax:tasks:resume-capsule'"));
+  const inspect=main.slice(main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'"),
+    main.indexOf("registerUiHandler('ordax:tasks:resume-capsule'"));
   assert.match(inspect,/messageId:message\?\.id/);
   assert.match(inspect,/const threadRendered=Boolean\(provenance\)/);
   assert.match(inspect,/expectedPromptSha256:provenance\?\.promptSha256/);

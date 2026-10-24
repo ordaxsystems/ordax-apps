@@ -9,8 +9,8 @@ import {providerPromptDigest} from '../src/provider-submission-provenance.mjs';
 
 const expectedUrl='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';
 const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-const start=main.indexOf("ipcMain.handle('ordax:tasks:inspect-linked-thread'");
-const end=main.indexOf("ipcMain.handle('ordax:tasks:resume-capsule'",start);
+const start=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
+const end=main.indexOf("registerUiHandler('ordax:tasks:resume-capsule'",start);
 assert.ok(start>=0 && end>start,'inspection_ipc_handler_missing');
 const actualHandler=main.slice(start,end);
 
@@ -36,7 +36,7 @@ function mount({provenance=null,observed,localText='continue',localMessageId='ms
     };}},
     assessProviderConversationEvidence,
     safeHistoricalThreadFailure,
-    ipcMain:{handle:(name,fn)=>{assert.equal(name,'ordax:tasks:inspect-linked-thread');handler=fn;}}
+    registerUiHandler:(name,fn)=>{assert.equal(name,'ordax:tasks:inspect-linked-thread');handler=fn;}
   };
   vm.runInNewContext(actualHandler,context,{timeout:1500});
   return {invoke:()=>handler({},'task-1'),inspections:()=>inspections,writes:()=>writes};

@@ -9,9 +9,9 @@ function fixture(env='0'){
   const context={process:{env:{ORDAX_LAB_SUPERVISOR_ENABLE:env}},
     currentGroqKey:()=>key,notifyOrchestratorChanged:()=>notifications++,
     requireTrustedSupervisorRenderer:event=>{if(event!==trusted)throw Error('denied');},
-    ipcMain:{handle:(name,fn)=>handlers.set(name,fn)}};
+    registerUiHandler:(name,fn)=>handlers.set(name,fn)};
   const state=source.slice(source.indexOf('let localCoordinatorChatEnabled='),source.indexOf('function requireLabSupervisor()'));
-  const ipc=source.slice(source.indexOf("ipcMain.handle('ordax:orchestrator:chat-status'"),source.indexOf("ipcMain.handle('ordax:supervisor:status'"));
+  const ipc=source.slice(source.indexOf("registerUiHandler('ordax:orchestrator:chat-status'"),source.indexOf("registerUiHandler('ordax:supervisor:status'"));
   vm.runInNewContext(state+'\n'+ipc,context);
   return {trusted,setKey:v=>key=v,get notices(){return notifications;},
     status:()=>handlers.get('ordax:orchestrator:chat-status')(trusted),

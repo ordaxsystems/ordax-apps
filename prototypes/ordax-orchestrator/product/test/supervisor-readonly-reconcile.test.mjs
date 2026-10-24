@@ -92,8 +92,8 @@ test('manual UI guards IPC; browser inspection uses no submission path',()=>{
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
   const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.html'),'utf8');
-  const chunk=main.split("ipcMain.handle('ordax:supervisor:inspect'")[1]
-    .split("ipcMain.handle('ordax:supervisor:approve'")[0];
+  const chunk=main.split("registerUiHandler('ordax:supervisor:inspect'")[1]
+    .split("registerUiHandler('ordax:supervisor:approve'")[0];
   assert.match(chunk,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(chunk,/inspectSupervisorChatReadOnly/);
   assert.match(ui,/id="labSupervisorInspect"/);
@@ -122,8 +122,8 @@ test('recovery IPC and UI allow inspection without planner API access',()=>{
   const here=path.dirname(fileURLToPath(import.meta.url));
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
-  const chunk=main.split("ipcMain.handle('ordax:supervisor:recoverable'")[1]
-    .split("ipcMain.handle('ordax:supervisor:inspect'")[0];
+  const chunk=main.split("registerUiHandler('ordax:supervisor:recoverable'")[1]
+    .split("registerUiHandler('ordax:supervisor:inspect'")[0];
   assert.match(chunk,/listLocalSupervisorRecoverable/);
   assert.doesNotMatch(chunk,/requireLabSupervisor/);
   assert.match(ui,/labRecoverButton.disabled = false;/);

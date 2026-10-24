@@ -16,7 +16,9 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.equal(pkg.main, 'desktop/bootstrap.mjs');
   // The only extra packaged file is the bounded content-integrity manifest.
   // No test, userData, cookies or arbitrary source directory may be shipped.
-  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
+  assert.deepEqual(pkg.build.files, ['desktop/**/*','!desktop/host-browser-server.mjs','src/*.mjs','supervisor/**/*','package.json']);
+  assert.match(main,/const hostBrowserMode=!app\.isPackaged&&/);
+  assert.match(main,/await import\('\.\/host-browser-server\.mjs'\)/);
   assert.equal(pkg.dependencies, undefined);
   assert.ok(!JSON.stringify(pkg).includes('playwright-core'));
   assert.ok(!JSON.stringify(pkg.build.files).includes('chrome-extension'));
@@ -133,6 +135,15 @@ test('OrdaX UI exposes responsive conversation, chat and context columns', () =>
   assert.match(css, /\.context-rail\.open/);
   assert.match(css, /@media \(max-width:1180px\)/);
   assert.match(css, /@media \(max-width:620px\)/);
+  assert.match(css, /body\.orchestrator-focus \.left-rail \.footer-actions #login/);
+  assert.match(css, /body\.orchestrator-focus #orchestrationNotice/);
+  assert.match(html, /aria-label="Entrar no ChatGPT"/);
+  assert.match(ui, /Este host não pode autenticar nem compartilhar a sessão do GPT com o executor Electron/);
+  assert.match(ui, /function applyHostProviderLimit\(\)/);
+  assert.match(ui, /#directMode'\)\.hidden = true/);
+  assert.match(ui, /#login'\)\.hidden = true/);
+  assert.match(ui, /Esta visualização e o executor Electron não compartilham uma sessão do ChatGPT/);
+  assert.match(html, /id="sessionPersistenceNote"/);
 });
 
 test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
@@ -146,11 +157,37 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(html,/id="analyzeWorks"/);
   assert.match(html,/até quatro conversas recentes e oito mensagens do chat central/);
   assert.match(orchestration,/command\('orchestrator_analyze'/);
+  assert.match(orchestration,/call\('status'\)\.catch\(\(\)=>null\)/);
+  assert.match(orchestration,/const canDisable=result\.enabled===true/);
+  assert.match(orchestration,/const canEnable=engineStatus\?\.coordinatorAvailable===true/);
+  assert.match(orchestration,/Configure e ative o chat opcional por API para habilitar a análise automática/);
+  assert.match(orchestration,/engineStatus\?\.autonomousExecution===false/);
+  assert.match(orchestration,/A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado/);
   assert.match(orchestration,/call\('work_list'/);
   assert.match(orchestration,/onOpenWork\(work\.id\)/);
   assert.match(orchestration,/orchestrator-focus/);
   assert.match(css,/body\.orchestrator-focus #contextRail/);
   assert.match(css,/\.work-card:hover/);
+});
+
+test('coordinator shows an actionable empty state and keeps mobile controls inside the panel',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(html,/id="coordinatorMessages"/);
+  assert.match(orchestration,/page\.messages\.length===0/);
+  assert.match(orchestration,/Conversa de coordenação ainda vazia/);
+  assert.match(orchestration,/O chat central depende do Groq opcional/);
+  assert.match(orchestration,/O GPT Web é o caminho principal das frentes/);
+  assert.match(orchestration,/Configurar Groq opcional/);
+  assert.match(orchestration,/settings\.addEventListener\('click',\(\)=>\$\('coordinatorApiSettings'\)\.click\(\)\)/);
+  assert.match(css,/\.coordinator-empty\{[^}]*text-align:center/);
+  assert.match(css,/body\.orchestrator-focus \.coordinator-analysis-actions\{display:grid;grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(css,/body\.orchestrator-focus \.coordinator-analysis-actions>small\{min-width:0;overflow-wrap:anywhere\}/);
+  assert.match(css,/body\.orchestrator-focus \.left-rail \.provider-main div\{display:none\}/);
+  assert.match(css,/body\.orchestrator-focus \.left-rail \.host-browser-controls>summary::after\{content:"Host"/);
+  assert.match(css,/body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-item\.active\{box-sizing:border-box;width:46px/);
+  assert.match(css,/body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-item:not\(\.active\),\s*body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-empty\{display:none\}/);
 });
 
 test('a new mission is persisted once, starts through the existing GPT executor, and labels project and conversation actions separately',()=>{
