@@ -15,7 +15,7 @@ Este repositório ainda não tem o contrato público de Space Experience necess�
 | Composição | Profile Pack versionado | Selecionar composição disponível; não possuir dados operacionais, métricas ou estado de domínio. |
 | Food Core | OrdaX Food | Cardápio e preços de alimentação, pedido alimentar, produção/KDS, mesas/comandas, delivery e fichas técnicas. |
 | Estoque | OrdaX Inventory | Catálogo de insumos, saldo e movimentações. Food calcula uma proposta de consumo; somente Inventory poderá registrar uma movimentação. |
-| Pedido alimentar/comercial | Autoridade pendente de reconciliação Food Order Core × Sales | Uma autoridade transacional por pedido; não presumir que o livro genérico Sales substitua o Food Order Core definido pelo owner OS. |
+| Pedido alimentar quando Food é o provedor | Food Order Core (direção canônica de FOOD-001/ACHEGUESE-001, ainda não publicado) | Um único pedido operacional/comercial para a pizzaria; Sales não cria outro pedido mestre. |
 | Produção alimentar | OrdaX Food | Estado especializado de preparo/fulfillment relacionado ao pedido canônico, sem segundo pedido mestre. |
 | Pagamentos | Owner Payments, ainda ausente neste repo | Resultado financeiro confirmado por contrato; escolher PIX/cartão no protótipo não é confirmação de pagamento. |
 | Financeiro | OrdaX Finance | Ledger de fluxo de caixa; não substitui pedidos, pagamentos ou contabilidade completa. |
@@ -26,11 +26,11 @@ Este repositório ainda não tem o contrato público de Space Experience necess�
 
 ### Autoridade do pedido e produção
 
-**A decisão sobre o owner do pedido alimentar real ainda não está ratificada entre os repositórios.** O `ordax-apps` implementa o domínio genérico de pedidos `ordax.sales-book/1` em Sales, mas o plano canônico `ordax-os/00-PLANOS-PRIORITARIOS/plans/ACHEGUESE-001-FIRST-PARTY-PRODUCT-INTEGRATION.md` atribui explicitamente o pedido, quando Food é escolhido como provedor, ao **Food Order Core**. O roadmap Apps não substitui esse contrato cross-product. A integração deve escolher uma única autoridade e reconciliar esses documentos/contratos antes de produzir pedidos comerciais.
+**Direção de ownership já estabelecida pelos planos do owner OS:** `FOOD-001` inclui `Order/OrderItem` entre os conceitos Food-owned, e `ACHEGUESE-001` determina que o pedido canônico pertence ao **Food Order Core quando Food é o provedor**. O livro genérico `ordax.sales-book/1` em `ordax-apps/apps/sales` continua válido para fluxos comerciais cujo owner é Sales, mas não deve virar automaticamente um segundo mestre para pedidos Food. Essa distinção é arquitetural; ainda não existe o serviço de pedidos Food homologado nem contrato público entre Food, Sales e canais.
 
-Food mantém cardápio, fichas técnicas e o fluxo especializado de produção/fulfillment. O desenho definitivo do pedido comercial e da projeção de produção depende da autoridade reconciliada: um ID canônico por pedido, referências e eventos idempotentes entre owners, sem cópia mutável concorrente nem escrita direta no estado de outro domínio.
+Food deve possuir cardápio, fichas técnicas, pedido alimentar canônico e seu ciclo de produção/fulfillment quando for o provedor autorizado. Se Sales precisar exibir métricas ou fatos comerciais Food, recebe somente uma projeção/referência autorizada, sem recriar ou transicionar outro pedido mestre. Deve haver um único `orderId`, revisões e eventos idempotentes, sem escrita direta no estado de outros owners.
 
-O schema Sales atual é genérico e não expõe contrato público homologado para o canal Food, mesa/comanda, fulfillment ou eventos; o Food Order Core ainda não foi publicado como serviço comercial. Essa divergência é um **gate bloqueante de integração**, não justificativa para manter dois masters. Os pedidos do preview são registros locais fictícios e não constituem nem pedidos Sales nem pedidos comerciais Food.
+**Gate de integração ainda fechado:** o serviço comercial Food Order Core, seu contrato público de pedido/canal/produção e os contratos de projeção para Sales e Space não foram publicados ou homologados. O livro genérico Sales não deve ser reutilizado como substituto temporário. Os pedidos do preview continuam fictícios e locais: não são pedidos comerciais nem registros transacionais reais.
 
 ## Estado implementado
 
