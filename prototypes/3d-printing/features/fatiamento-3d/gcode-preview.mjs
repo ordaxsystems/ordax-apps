@@ -3,6 +3,7 @@ const TAU = Math.PI * 2;
 const ARC_CHORD_ERROR_MM = 0.1;
 const MAX_ARC_SEGMENTS = 512;
 const WORD_PATTERN = /([A-Z])\s*([+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[Ee][+-]?\d+)?)/g;
+export const gcodePreviewLimits = Object.freeze({ xyArcChordErrorMm: ARC_CHORD_ERROR_MM, maxArcSegmentsPerArc: MAX_ARC_SEGMENTS });
 
 function typeFromComment(comment) {
   const value = comment.toLowerCase();
