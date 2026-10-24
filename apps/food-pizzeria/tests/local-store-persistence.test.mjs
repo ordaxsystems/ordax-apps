@@ -135,3 +135,48 @@ test("browser adapter transparently upgrades v5 Food records without fabricating
   assert.deepEqual(await reopened.initialize(), migrated);
   reopened.destroy();
 });
+
+test("idempotent availability no-op is durable without revision churn or bypassing replay validation", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-idempotent-noop";
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const initial = await store.initialize();
+  const flavor = initial.flavors.find(({ active }) => active);
+  assert.ok(flavor);
+  const at = new Date(Math.max(Date.now(), Date.parse(flavor.updatedAt))).toISOString();
+  const noOp = createFoodCommand({
+    type: "menu.flavor.availability",
+    payload: { flavorId: flavor.id, active: true, at },
+    expectedRevision: initial.revision,
+    commandId: "noop-availability-1",
+  });
+  const unchanged = await store.execute(noOp);
+  assert.equal(unchanged.revision, initial.revision);
+  assert.deepEqual(unchanged, initial);
+  assert.equal((await store.execute(noOp)).revision, initial.revision);
+
+  const conflictingReplay = createFoodCommand({
+    type: "menu.flavor.availability",
+    payload: { flavorId: flavor.id, active: false, at },
+    expectedRevision: initial.revision,
+    issuedAt: noOp.issuedAt,
+    commandId: noOp.commandId,
+  });
+  await assert.rejects(store.execute(conflictingReplay), /Identificador de operação reutilizado/);
+  const toggle = createFoodCommand({
+    type: "menu.flavor.availability",
+    payload: { flavorId: flavor.id, active: false, at },
+    expectedRevision: initial.revision,
+    commandId: "availability-toggle-1",
+  });
+  const changed = await store.execute(toggle);
+  assert.equal(changed.revision, initial.revision + 1);
+  assert.equal(changed.flavors.find(({ id }) => id === flavor.id).active, false);
+  store.destroy();
+
+  const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
+  assert.deepEqual(await reopened.initialize(), changed);
+  assert.equal((await reopened.execute(noOp)).revision, changed.revision);
+  await assert.rejects(reopened.execute(conflictingReplay), /Identificador de operação reutilizado/);
+  reopened.destroy();
+});
