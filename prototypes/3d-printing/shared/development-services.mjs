@@ -2,6 +2,8 @@ const appIds = new Set(["biblioteca-impressao", "preparacao-impressao", "operaco
 
 const INTELLIGENCE_SCHEMA = "ordax.intelligence/1";
 const INTELLIGENCE_RESPONSE_SCHEMA = "ordax.intelligence-response/1";
+const SLICER_STATUS_SCHEMA = "ordax.slicer-engine-status/1";
+const SLICER_RESULT_SCHEMA = "ordax.slicer-result/1";
 
 function createDevelopmentIntelligence() {
   let snapshot = Object.freeze({
@@ -77,6 +79,61 @@ function createDevelopmentIntelligence() {
   return Object.freeze(port);
 }
 
+function decodeSlicerMetadata(value) {
+  if (typeof value !== "string" || value.length > 16 * 1024) throw new Error("O motor retornou metadados inválidos.");
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const binary = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
+  const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+  const metadata = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  if (!metadata || metadata.schema !== SLICER_RESULT_SCHEMA || metadata.engine !== "OrcaSlicer" || typeof metadata.engineVersion !== "string") {
+    throw new Error("A resposta não corresponde ao contrato de resultado do motor.");
+  }
+  return metadata;
+}
+
+function createDevelopmentSlicer() {
+  return Object.freeze({
+    async getStatus() {
+      const response = await fetch("/api/slicer/status", { headers: { Accept: "application/json" }, cache: "no-store", credentials: "same-origin" });
+      let body;
+      try { body = await response.json(); } catch { throw new Error("O host retornou um status do motor inválido."); }
+      if (!response.ok || body?.schema !== SLICER_STATUS_SCHEMA || typeof body.available !== "boolean" || typeof body.reason !== "string") {
+        throw new Error("O host não forneceu um status OrcaSlicer compatível.");
+      }
+      return body;
+    },
+    async slice(request, { signal } = {}) {
+      if (signal?.aborted) throw new DOMException("Fatiamento cancelado.", "AbortError");
+      const meshFile = request?.preparedModel?.file;
+      if (!(meshFile instanceof Blob) || meshFile.size <= 0 || meshFile.size > 16 * 1024 * 1024) {
+        throw new Error("O adaptador precisa receber a malha STL transformada localmente.");
+      }
+      const manifest = {
+        schema: "ordax.orca-slice-request/1",
+        filename: String(request.filename || "ordax-print.stl").slice(0, 180),
+        settings: request.settings,
+        objects: request.objects,
+        processes: request.processes,
+      };
+      const form = new FormData();
+      form.set("manifest", JSON.stringify(manifest));
+      form.set("mesh", meshFile, "ordax-model.stl");
+      const response = await fetch("/api/slicer/slice", {
+        method: "POST", body: form, signal, cache: "no-store", credentials: "same-origin",
+      });
+      if (!response.ok) {
+        let body;
+        try { body = await response.json(); } catch { body = null; }
+        throw new Error(typeof body?.error === "string" ? body.error.slice(0, 500) : `O host respondeu com HTTP ${response.status} durante o fatiamento.`);
+      }
+      const metadata = decodeSlicerMetadata(response.headers.get("X-Ordax-Slicer-Metadata"));
+      const gcode = await response.blob();
+      if (!gcode.size || gcode.type !== "application/gcode") throw new Error("O host não devolveu um arquivo G-code válido.");
+      return Object.freeze({ ...metadata, gcode });
+    },
+  });
+}
+
 export function createDevelopmentServices(appId) {
   if (!appIds.has(appId)) throw new TypeError("Unknown 3D product app for development services");
   const ownerId = "development-owner";
@@ -95,6 +152,9 @@ export function createDevelopmentServices(appId) {
     write(collection, value) { localStorage.setItem(storageKey(collection), JSON.stringify(value)); },
   };
   const services = { appData };
-  if (appId === "preparacao-impressao") services.intelligence = createDevelopmentIntelligence();
+  if (appId === "preparacao-impressao") {
+    services.intelligence = createDevelopmentIntelligence();
+    services.slicer = createDevelopmentSlicer();
+  }
   return Object.freeze(services);
 }

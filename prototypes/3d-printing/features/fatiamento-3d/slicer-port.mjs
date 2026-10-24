@@ -53,7 +53,7 @@ export async function readSlicerStatus(port) {
     if (!status || status.available !== true || typeof status.engine !== "string" || typeof status.version !== "string") {
       return Object.freeze({ available: false, engine: status?.engine ?? null, version: status?.version ?? null, reason: String(status?.reason || "O motor não está pronto para receber um trabalho.") });
     }
-    return Object.freeze({ available: true, engine: status.engine, version: status.version, reason: "" });
+    return Object.freeze({ ...status, available: true, engine: status.engine, version: status.version, reason: "" });
   } catch (error) {
     return Object.freeze({ available: false, engine: null, version: null, reason: `Não foi possível consultar o motor: ${error?.message || "falha de comunicação"}` });
   }
@@ -62,6 +62,13 @@ export async function readSlicerStatus(port) {
 export async function requestRealSlice(port, request, { signal, onProgress } = {}) {
   if (!port || typeof port.slice !== "function") throw new Error("Este host não oferece um motor de fatiamento.");
   if (!(request?.file instanceof Blob) || request.file.size <= 0) throw new Error("Selecione um modelo antes de fatiar.");
+  if (!(request?.preparedModel?.file instanceof Blob) || request.preparedModel.file.size <= 0 || request.preparedModel.file.size > 16 * 1024 * 1024) {
+    throw new Error("A geometria transformada do trabalho não está pronta para o motor.");
+  }
+  const expectedTriangles = request.objects?.reduce((sum, object) => sum + object.triangleCount, 0);
+  if (!Number.isInteger(expectedTriangles) || request.preparedModel.triangleCount !== expectedTriangles) {
+    throw new Error("A malha enviada ao motor não corresponde às peças do projeto.");
+  }
   if (signal?.aborted) throw new DOMException("Fatiamento cancelado.", "AbortError");
   validateProcessAssignmentRequest(request);
   const status = await readSlicerStatus(port);
@@ -86,6 +93,7 @@ export async function requestRealSlice(port, request, { signal, onProgress } = {
     printerProfile: result.printerProfile ?? null,
     filamentProfile: result.filamentProfile ?? null,
     processProfile: result.processProfile ?? null,
+    profiles: status.profiles ?? null,
     stats: result.stats && typeof result.stats === "object" ? result.stats : null,
     diagnostics: Array.isArray(result.diagnostics) ? result.diagnostics.map(String).slice(0, 100) : [],
     completedAt: new Date().toISOString(),

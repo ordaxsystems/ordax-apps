@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { featureIds } from "./shared/feature-registry.mjs";
 import { getGroqStatus, handleGroqRequest } from "./shared/groq-development-api.mjs";
+import { getOrcaSlicerStatus, sliceWithOrcaToResponse } from "./shared/orca-slicer-development.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const apps = new Map([
@@ -24,6 +25,7 @@ const contentTypes = {
   "ai-copilot.mjs": "text/javascript; charset=utf-8",
   "mesh-analysis.mjs": "text/javascript; charset=utf-8",
   "gcode-preview.mjs": "text/javascript; charset=utf-8",
+  "orca-geometry.mjs": "text/javascript; charset=utf-8",
   "shared.mjs": "text/javascript; charset=utf-8",
   "shared.css": "text/css; charset=utf-8",
   "product-host.mjs": "text/javascript; charset=utf-8",
@@ -90,6 +92,19 @@ async function readJsonBody(request, maxBytes = 256 * 1024) {
   catch { throw Object.assign(new Error("O corpo precisa ser JSON válido."), { statusCode: 400 }); }
 }
 
+async function readLimitedBody(request, maxBytes) {
+  const declaredLength = Number(request.headers["content-length"] ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw Object.assign(new Error("O pedido excede o limite permitido."), { statusCode: 413 });
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > maxBytes) throw Object.assign(new Error("O pedido excede o limite permitido."), { statusCode: 413 });
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, size);
+}
+
 async function handleApi(request, response, pathname) {
   if (appId !== "preparacao-impressao") {
     sendJson(response, 404, { error: "API indisponível para este app de desenvolvimento." });
@@ -97,6 +112,45 @@ async function handleApi(request, response, pathname) {
   }
   if (!isLocalRequest(request, request.method === "POST")) {
     sendJson(response, 403, { error: "Origem local não autorizada." });
+    return;
+  }
+  if (pathname === "/api/slicer/status" && request.method === "GET") {
+    sendJson(response, 200, await getOrcaSlicerStatus());
+    return;
+  }
+  if (pathname === "/api/slicer/slice" && request.method === "POST") {
+    const contentType = request.headers["content-type"];
+    if (typeof contentType !== "string" || !/^multipart\/form-data\s*;/i.test(contentType)) {
+      sendJson(response, 415, { error: "O fatiamento espera um pedido multipart do host local." });
+      return;
+    }
+    let bytes;
+    try { bytes = await readLimitedBody(request, 17 * 1024 * 1024); }
+    catch (error) {
+      sendJson(response, error.statusCode ?? 400, { error: error.message || "Não foi possível ler a malha do trabalho." });
+      return;
+    }
+    let formData;
+    try {
+      const formRequest = new Request("http://127.0.0.1/api/slicer/slice", { method: "POST", headers: { "content-type": contentType }, body: bytes });
+      formData = await formRequest.formData();
+    } catch {
+      sendJson(response, 400, { error: "O formulário do fatiamento está incompleto ou inválido." });
+      return;
+    }
+    const controller = new AbortController();
+    const abortIfDisconnected = () => { if (!response.writableEnded) controller.abort(); };
+    request.once("aborted", abortIfDisconnected);
+    response.once("close", abortIfDisconnected);
+    try { await sliceWithOrcaToResponse(formData, response, { signal: controller.signal }); }
+    catch (error) {
+      if (controller.signal.aborted || response.destroyed) return;
+      if (!response.headersSent) sendJson(response, error.statusCode ?? 502, { error: error.message || "OrcaSlicer não conseguiu concluir o trabalho." });
+      else response.destroy();
+    } finally {
+      request.off("aborted", abortIfDisconnected);
+      response.off("close", abortIfDisconnected);
+    }
     return;
   }
   if (pathname === "/api/intelligence/status" && request.method === "GET") {
@@ -131,7 +185,7 @@ async function handleApi(request, response, pathname) {
     } finally { response.off("close", abortIfDisconnected); }
     return;
   }
-  sendJson(response, 405, { error: "Método ou rota de Intelligence não permitidos." });
+  sendJson(response, 405, { error: "Método ou rota de Intelligence/Fatiamento não permitidos." });
 }
 
 function resolveRequest(pathname) {
@@ -141,7 +195,7 @@ function resolveRequest(pathname) {
     const name = pathname.slice(1);
     return [resolve(sharedRoot, name), contentTypes[name]];
   }
-  const feature = pathname.match(/^\/features\/([a-z0-9-]+)\/(feature\.mjs|app\.css|ai-copilot\.mjs|mesh-analysis\.mjs|demo-model\.mjs|mesh-import\.mjs|mesh-viewer\.mjs|slicer-port\.mjs|gcode-preview\.mjs)$/);
+  const feature = pathname.match(/^\/features\/([a-z0-9-]+)\/(feature\.mjs|app\.css|ai-copilot\.mjs|mesh-analysis\.mjs|demo-model\.mjs|mesh-import\.mjs|mesh-viewer\.mjs|slicer-port\.mjs|gcode-preview\.mjs|orca-geometry\.mjs)$/);
   if (feature && features.has(feature[1])) {
     const [ , featureId, fileName ] = feature;
     return [resolve(root, "features", featureId, fileName), contentTypes[fileName]];

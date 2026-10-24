@@ -5,6 +5,7 @@ import { createMeshViewer } from "./mesh-viewer.mjs";
 import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
 import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
 import { readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
+import { createOrcaInputStl } from "./orca-geometry.mjs";
 import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema } from "./ai-copilot.mjs";
 
 const { escapeHtml, number, bytes, toast, icon, button } = shared;
@@ -172,10 +173,21 @@ function formatDimensions(dimensions, unitScale = 1) {
 }
 
 function formatDuration(seconds) {
+  if (seconds === null || seconds === undefined || seconds === "") return "—";
   const value = Number(seconds);
   if (!Number.isFinite(value) || value < 0) return "—";
-  const hours = Math.floor(value / 3600), minutes = Math.floor((value % 3600) / 60);
-  return hours ? `${hours}h ${String(minutes).padStart(2, "0")}m` : `${minutes} min`;
+  const total = Math.round(value), hours = Math.floor(total / 3600), minutes = Math.floor((total % 3600) / 60);
+  if (hours) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  return minutes ? `${minutes} min` : `${total} s`;
+}
+
+function formatPreciseDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const total = Math.round(seconds), hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60), remainingSeconds = total % 60;
+  if (hours) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  if (minutes) return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
+  return `${remainingSeconds}s`;
 }
 
 function downloadBlob(blob, filename) {
@@ -194,7 +206,7 @@ export function mountFeature(host = {}) {
   let restoredSourceFingerprint = typeof savedDraft?.sourceFingerprint === "string" ? savedDraft.sourceFingerprint : null;
   let model = savedDraft?.sourceName ? null : createDemoModel();
   let sliced = null, preview = null, previewLayer = 0, previewProgress = 1, controller = null, analysisController = null, revision = 0, importSequence = 0;
-  let engineStatus = { available: false, engine: null, version: null, reason: "Consultando o host…" };
+  let engineStatus = { available: false, engine: null, version: null, reason: "Consultando o host…", profiles: null, processScope: null };
   const intelligence = host.intelligence ?? null;
   let aiAvailability = intelligenceState(intelligence), aiController = null;
   const aiHistory = [];
@@ -224,7 +236,7 @@ export function mountFeature(host = {}) {
         <aside class="ai-drawer" id="ai-drawer" data-ai-drawer hidden role="dialog" aria-modal="true" aria-labelledby="ai-title">
           <header class="ai-drawer-head"><div><span class="panel-kicker">ORDAX INTELLIGENCE</span><h2 id="ai-title">Copiloto de impressão</h2></div><button class="small-icon" type="button" data-ai-close aria-label="Fechar copiloto">${icon("close", 15)}</button></header>
           <div class="ai-connection" data-ai-connection role="status"><i></i><span data-ai-connection-label>Verificando OrdaX Intelligence</span></div>
-          <div class="ai-context-note">A IA recebe metadados e verificações numéricas locais; o arquivo 3D não é enviado. Ela pode sugerir parâmetros do processo e transformações da peça. Nada muda até você revisar e aplicar.</div>
+          <div class="ai-context-note">A IA recebe metadados e verificações numéricas locais; o arquivo 3D e o G-code não são enviados. Após fatiar, também recebe estatísticas reais e o nome/versão do motor. Ela pode sugerir parâmetros; nada muda até você revisar e aplicar.</div>
           <div class="ai-quick-prompts" aria-label="Perguntas rápidas"><button type="button" data-ai-prompt="Revise as dimensões e os riscos de preparação desta peça.">Revisar peça</button><button type="button" data-ai-prompt="Sugira um equilíbrio entre resistência e consumo de material para esta peça.">Mais resistente</button><button type="button" data-ai-prompt="Sugira ajustes para reduzir o tempo de impressão sem comprometer demais a qualidade.">Mais rápido</button><button type="button" data-ai-prompt="Avalie a posição da peça selecionada e proponha um ajuste de deslocamento XYZ se os metadados permitirem.">Ajustar posição</button><button type="button" data-ai-prompt="Proponha uma rotação segura para a peça selecionada e explique a limitação da análise sem acesso à malha.">Orientar peça</button></div>
           <div class="ai-messages" data-ai-messages aria-live="polite"><div class="ai-message assistant"><strong>Copiloto</strong><p>Posso explicar configurações e sugerir ajustes com base nos metadados do projeto. Nenhum ajuste é aplicado sem sua revisão.</p></div></div>
           <form class="ai-composer" data-ai-form><label class="sr-only" for="ai-prompt">Pergunte sobre esta impressão</label><textarea id="ai-prompt" rows="3" maxlength="4000" data-ai-input placeholder="Ex.: como reduzir o tempo sem perder tanta resistência?"></textarea><div><span data-ai-disclaimer>Resposta consultiva · revise antes de aplicar</span><button class="button primary" type="submit" data-ai-send disabled>Enviar</button><button class="button secondary" type="button" data-ai-cancel hidden>Cancelar</button></div></form>
@@ -240,9 +252,9 @@ export function mountFeature(host = {}) {
             <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Áreas degeneradas</span><strong data-degenerate-faces>—</strong></div><p class="geometry-note" data-geometry-note>O diagnóstico não certifica topologia nem imprimibilidade.</p></div>
             <div class="draft-note" data-source-note>${icon("file", 14)}<span>O arquivo original fica nesta sessão. O rascunho guarda apenas seus parâmetros neste navegador.</span></div>
             <div class="panel-separator"></div>
-            <div class="panel-heading compact"><div><span class="panel-kicker">IMPRESSORA</span><h2>Perfil de referência</h2></div></div>
+            <div class="panel-heading compact"><div><span class="panel-kicker">IMPRESSORA</span><h2 data-profile-heading>Perfil de referência</h2></div></div>
             <label class="slice-field"><span>Máquina</span><select data-printer class="dark-select"><option value="generic">FDM genérica · 256 × 256 × 256</option><option value="a1">Bambu Lab A1 · referência</option><option value="mk4">Original Prusa MK4 · referência</option><option value="ender">Creality Ender 3 V3 · referência</option></select></label>
-            <div class="profile-disclaimer">${icon("tool", 13)}<span>Dimensões de referência para layout. Não são perfis validados pelo fabricante.</span></div>
+            <div class="profile-disclaimer" data-profile-disclaimer>${icon("tool", 13)}<span>Dimensões de referência para layout. Não são perfis validados pelo fabricante.</span></div>
             <label class="slice-field"><span>Filamento</span><select data-filament class="dark-select"><option value="pla">PLA · bico 190–220 °C</option><option value="petg">PETG · bico 225–250 °C</option><option value="abs">ABS · bico 240–265 °C</option></select></label>
             <div class="material-summary" data-material-summary>Faixa de mesa: 45–65 °C · valores de referência</div>
           </aside>
@@ -272,7 +284,7 @@ export function mountFeature(host = {}) {
 
         <section class="preview-view" data-preview-view hidden>
           <div class="preview-canvas-wrap"><div class="preview-stage-head"><div><span class="panel-kicker">TRAJETÓRIA REAL DO MOTOR</span><h2 data-preview-title>Preview de fatiamento</h2></div><span class="engine-chip"><i></i><span data-preview-engine>—</span></span></div><canvas data-gcode-canvas aria-label="Trajetórias G-code da camada selecionada"></canvas><div class="preview-legend"><span><i class="legend-outer"></i>Perímetro externo</span><span><i class="legend-inner"></i>Perímetro interno</span><span><i class="legend-infill"></i>Preenchimento</span><span><i class="legend-support"></i>Suporte</span><span><i class="legend-travel"></i>Deslocamento</span></div><div class="line-inspector"><span>Trajetórias da camada</span><input type="range" min="0" max="100" value="100" data-line-slider aria-label="Progresso da simulação da camada"/><strong data-line-count>—</strong></div></div>
-          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
+          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
         </section>
       </section>
     `,
@@ -299,7 +311,43 @@ export function mountFeature(host = {}) {
     catch { content.querySelector("[data-save-state]").textContent = "Não foi possível salvar o rascunho"; }
   }
 
-  function profile() { return printers[draft.printer] || printers.generic; }
+  function profile() {
+    const machine = engineStatus.profiles?.machine;
+    return machine?.bedSizeMm?.length === 2 && Number.isFinite(machine.heightMm)
+      ? { name: machine.name, bed: [...machine.bedSizeMm, machine.heightMm], reference: false }
+      : printers[draft.printer] || printers.generic;
+  }
+  function activeMaterial() {
+    const filament = engineStatus.profiles?.filament;
+    if (!filament) return materials[draft.filament];
+    const range = values => Array.isArray(values) && values.length
+      ? `${Math.min(...values)}–${Math.max(...values)} °C`
+      : "definido no perfil";
+    return {
+      name: filament.type || filament.name,
+      nozzle: range(filament.nozzleTemperatureC),
+      bed: range(filament.bedTemperatureC),
+      profileName: filament.name,
+    };
+  }
+  function processCompatibilityReason() {
+    if (!engineStatus.available || engineStatus.processScope !== "uniform" || draft.processes.length < 2) return "";
+    const settings = new Set(draft.processes.map(process => JSON.stringify({
+      quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls,
+      infill: process.settings.infill, supports: process.settings.supports, fanSpeedPercent: process.settings.fan,
+    })));
+    return settings.size > 1
+      ? "O adaptador OrcaSlicer atual fatia com uma configuração uniforme por mesa. Igualize os processos antes de fatiar."
+      : "";
+  }
+  function modelFitReason() {
+    if (!model || model.demo || !engineStatus.profiles?.machine) return "";
+    const bounds = transformedModelBounds(model, draft), machine = profile();
+    const fits = bounds.min[0] >= -machine.bed[0] / 2 && bounds.max[0] <= machine.bed[0] / 2
+      && bounds.min[1] >= -machine.bed[1] / 2 && bounds.max[1] <= machine.bed[1] / 2
+      && bounds.min[2] >= 0 && bounds.max[2] <= machine.bed[2];
+    return fits ? "" : "A peça transformada excede a área útil do perfil OrcaSlicer configurado.";
+  }
   function activeProcess() { return draft.processes.find(process => process.id === draft.selectedProcessId) || draft.processes[0]; }
   function activeSettings() { return activeProcess()?.settings || draft; }
   function processForObject(objectId) { return draft.processes.find(process => process.objectIds.includes(objectId)) || null; }
@@ -334,7 +382,9 @@ export function mountFeature(host = {}) {
       : "As configurações abaixo valem para os objetos atribuídos a este processo.";
     content.querySelector("[data-process-note]").textContent = model?.demo
       ? "A amostra não pode ser fatiada. Importe um arquivo 3MF real para separar objetos em processos."
-      : model?.format === "STL"
+      : engineStatus.available && engineStatus.processScope === "uniform"
+        ? "O motor CLI conectado aceita uma configuração uniforme por mesa nesta versão. Processos com valores diferentes ficam editáveis, mas precisam ser igualizados para fatiar."
+        : model?.format === "STL"
         ? "Um STL importado corresponde a um único objeto. Para processos por peça, use um 3MF com vários itens na mesa."
         : "Atribuição por item da mesa do 3MF. Cada objeto deve pertencer a exatamente um processo.";
     for (const button of content.querySelectorAll("[data-ai-suggestion]")) {
@@ -481,18 +531,51 @@ export function mountFeature(host = {}) {
     const title = content.querySelector("[data-engine-title]");
     const message = content.querySelector("[data-engine-message]");
     const sliceButton = content.querySelector("[data-slice]");
+    const blockReason = sliceBlockReason();
+    syncProfileControls();
     chip.classList.toggle("is-ready", engineStatus.available);
     label.textContent = engineStatus.available ? `${engineStatus.engine} ${engineStatus.version}` : "Motor desconectado";
     if (engineStatus.available) {
       title.textContent = "Motor conectado";
-      message.textContent = `${engineStatus.engine} ${engineStatus.version} está disponível no host. A compatibilidade do perfil será confirmada pelo serviço ao iniciar o trabalho.`;
+      const loaded = engineStatus.profiles
+        ? `Perfis: ${engineStatus.profiles.machine.name} · ${engineStatus.profiles.process.name} · ${engineStatus.profiles.filament.name}.`
+        : "Os perfis ainda não foram confirmados.";
+      message.textContent = blockReason || `${engineStatus.engine} ${engineStatus.version} está pronto. ${loaded} As transformações são aplicadas à malha local; o arquivo original não sai do navegador.`;
     } else {
       title.textContent = "Motor de fatiamento não conectado";
-      message.textContent = `${engineStatus.reason} Importe e prepare um modelo; o botão de fatiar fica bloqueado e nenhum G-code será inventado.`;
+      message.textContent = engineStatus.reason || "Configure um motor e perfis no host. O botão de fatiar permanece bloqueado até essa validação.";
     }
     engineNotice.classList.toggle("is-ready", engineStatus.available);
-    sliceButton.disabled = !engineStatus.available || !model?.originalFile || Boolean(controller);
-    sliceButton.title = !engineStatus.available ? "Conecte um motor real de fatiamento ao host." : !model?.originalFile ? "Abra um arquivo STL ou 3MF real; a geometria de demonstração é somente visual." : "Gerar trajetórias com o motor conectado.";
+    sliceButton.disabled = Boolean(blockReason) || Boolean(controller);
+    sliceButton.title = blockReason || "Gerar trajetórias com o motor conectado.";
+    updateProcessUi();
+  }
+
+  function sliceBlockReason() {
+    if (!engineStatus.available) return engineStatus.reason || "Conecte um motor real de fatiamento ao host.";
+    if (!model?.originalFile || model.demo) return "Abra um arquivo STL ou 3MF real; a geometria de demonstração é somente visual.";
+    if (!hasCompleteProcessAssignment(draft.processes, model.objects)) return "Atribua cada peça a exatamente um processo antes de fatiar.";
+    return processCompatibilityReason() || modelFitReason();
+  }
+
+  function syncProfileControls() {
+    const machineSelect = content.querySelector("[data-printer]");
+    const filamentSelect = content.querySelector("[data-filament]");
+    const machine = engineStatus.profiles?.machine;
+    const filament = engineStatus.profiles?.filament;
+    if (machine && filament) {
+      machineSelect.replaceChildren(new Option(`${machine.name} · OrcaSlicer`, "configured"));
+      filamentSelect.replaceChildren(new Option(`${filament.name} · OrcaSlicer`, "configured"));
+      machineSelect.value = "configured"; filamentSelect.value = "configured";
+      machineSelect.disabled = true; filamentSelect.disabled = true;
+      content.querySelector("[data-profile-heading]").textContent = "Perfis locais do OrcaSlicer";
+      content.querySelector("[data-profile-disclaimer]").lastElementChild.textContent = "Perfis JSON locais. O OrcaSlicer verifica a compatibilidade ao iniciar o fatiamento.";
+    } else {
+      machineSelect.disabled = false; filamentSelect.disabled = false;
+      machineSelect.value = draft.printer; filamentSelect.value = draft.filament;
+      content.querySelector("[data-profile-heading]").textContent = "Perfil de referência";
+      content.querySelector("[data-profile-disclaimer]").lastElementChild.textContent = "Dimensões de referência para layout. Não são perfis validados pelo fabricante.";
+    }
   }
 
   function updateAiUi() {
@@ -601,7 +684,7 @@ export function mountFeature(host = {}) {
   }
 
   function aiContext() {
-    const machine = profile(), material = materials[draft.filament];
+    const machine = profile(), material = activeMaterial();
     const settings = activeSettings(), selectedProcess = activeProcess();
     const project = {
       model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm: scaledDimensions().map(value => Number(value.toFixed(2))), triangleCount: model.triangleCount } : null,
@@ -612,8 +695,8 @@ export function mountFeature(host = {}) {
         topologyVerified: model.geometryDiagnostics.topologyVerified,
         watertightness: model.geometryDiagnostics.watertightness,
       } : null,
-      printerReference: { id: draft.printer, bedMm: machine.bed },
-      materialReference: { id: draft.filament, nozzleRange: material.nozzle, bedRange: material.bed },
+      printerProfile: { id: draft.printer, name: machine.name, bedMm: machine.bed, isReference: !engineStatus.profiles?.machine, provenance: engineStatus.profiles?.machine?.source || "referência visual do protótipo" },
+      materialProfile: { id: draft.filament, name: material.name, nozzleRange: material.nozzle, bedRange: material.bed, isReference: !engineStatus.profiles?.filament, provenance: engineStatus.profiles?.filament?.source || "faixa de referência do protótipo" },
       selectedObject: selectedObjectId ? {
         id: selectedObjectId, name: model?.objects.find(object => object.id === selectedObjectId)?.name || null,
         sourceDimensionsMm: model?.objects.find(object => object.id === selectedObjectId)?.bounds?.dimensions?.map(value => Number((value * (model.format === "STL" ? unitScales[draft.stlUnit] : 1)).toFixed(2))) || null,
@@ -625,7 +708,20 @@ export function mountFeature(host = {}) {
       selectedProcess: selectedProcess ? { id: selectedProcess.id, name: selectedProcess.name, objectCount: selectedProcess.objectIds.length } : null,
       processSummary: { count: draft.processes.length, assignedObjects: draft.processes.reduce((sum, process) => sum + process.objectIds.length, 0), selectedSettings: settings },
       settings: { quality: settings.quality, layerHeightMm: settings.layerHeight, walls: settings.walls, infillPercent: settings.infill, supports: settings.supports, fanSpeedPercent: settings.fan },
-      limits: { profilesAreReferences: true, engineConnected: engineStatus.available, sourceGeometrySent: false },
+      slicer: {
+        connected: engineStatus.available,
+        engine: engineStatus.engine,
+        version: engineStatus.version,
+        processScope: engineStatus.processScope || null,
+        configuredProfiles: engineStatus.profiles ? { machine: engineStatus.profiles.machine.name, process: engineStatus.profiles.process.name, filament: engineStatus.profiles.filament.name } : null,
+      },
+      latestSlice: sliced ? {
+        engine: sliced.engine, version: sliced.engineVersion, printerProfile: sliced.printerProfile,
+        processProfile: sliced.processProfile, filamentProfile: sliced.filamentProfile,
+        stats: sliced.stats, diagnostics: sliced.diagnostics, gcodeBytes: sliced.gcode.size,
+        previewAvailable: Boolean(preview), completedAt: sliced.completedAt,
+      } : null,
+      limits: { profilesAreReferences: !engineStatus.profiles, engineConnected: engineStatus.available, sourceGeometrySent: false, gcodeSent: false },
     };
     const context = [{ id: "slicer-project-metadata", scope: "document", text: JSON.stringify(project), provenance: "ordax-apps:3d-printing:fatiamento-3d:local-metadata" }];
     if (aiHistory.length) {
@@ -635,7 +731,7 @@ export function mountFeature(host = {}) {
   }
 
   function makeAiPrompt(question) {
-    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. Uma contagem local de áreas degeneradas não comprova topologia ou imprimibilidade. Perfis de impressora/material são referências não validadas pelo fabricante. Não afirme que executou fatiamento, verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se não houver base suficiente para uma recomendação, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
+    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. Uma contagem local de áreas degeneradas não comprova topologia ou imprimibilidade. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se não houver base suficiente para uma recomendação, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
   }
 
   async function askAi(question = content.querySelector("[data-ai-input]").value) {
@@ -682,8 +778,10 @@ export function mountFeature(host = {}) {
   }
 
   function updateMaterial() {
-    const material = materials[draft.filament];
-    content.querySelector("[data-material-summary]").textContent = `Bico ${material.nozzle} · mesa ${material.bed} · faixa de referência`;
+    const material = activeMaterial();
+    content.querySelector("[data-material-summary]").textContent = engineStatus.profiles?.filament
+      ? `${material.name} · bico ${material.nozzle} · mesa ${material.bed} · perfil ${material.profileName}`
+      : `Bico ${material.nozzle} · mesa ${material.bed} · faixa de referência`;
   }
 
   function updateModelUi() {
@@ -754,8 +852,9 @@ export function mountFeature(host = {}) {
 
   function updateInputs() {
     const settings = activeSettings();
-    content.querySelector("[data-printer]").value = draft.printer;
-    content.querySelector("[data-filament]").value = draft.filament;
+    syncProfileControls();
+    if (!engineStatus.profiles?.machine) content.querySelector("[data-printer]").value = draft.printer;
+    if (!engineStatus.profiles?.filament) content.querySelector("[data-filament]").value = draft.filament;
     content.querySelector("[data-quality]").value = settings.quality;
     content.querySelector("[data-layer-height]").value = String(settings.layerHeight);
     content.querySelector("[data-walls]").value = String(settings.walls);
@@ -807,8 +906,8 @@ export function mountFeature(host = {}) {
     };
     const nextDraft = safeDraft({
       ...draft,
-      printer: content.querySelector("[data-printer]").value,
-      filament: content.querySelector("[data-filament]").value,
+      printer: engineStatus.profiles?.machine ? draft.printer : content.querySelector("[data-printer]").value,
+      filament: engineStatus.profiles?.filament ? draft.filament : content.querySelector("[data-filament]").value,
       ...nextSettings,
       processes,
       rotation: numberValue("[data-rotation]"), scale: numberValue("[data-scale]") / 100,
@@ -875,8 +974,41 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-preview-note]").textContent = unsupported;
   }
 
+  function updateFeatureStatistics(stats) {
+    const section = content.querySelector("[data-stat-features]");
+    const list = content.querySelector("[data-stat-feature-list]");
+    const features = Array.isArray(stats?.featureBreakdown) ? stats.featureBreakdown : [];
+    list.replaceChildren();
+    section.hidden = features.length === 0;
+    if (!features.length) return;
+    const totalSeconds = Number(stats?.timeSeconds);
+    const denominator = Number.isFinite(totalSeconds) && totalSeconds > 0
+      ? totalSeconds
+      : features.reduce((sum, feature) => sum + (Number(feature.timeSeconds) || 0), 0);
+    for (const feature of features.slice(0, 6)) {
+      const row = document.createElement("div"); row.className = "preview-feature-row";
+      const heading = document.createElement("div"); heading.className = "preview-feature-heading";
+      const name = document.createElement("span"); name.textContent = String(feature.name || "Tipo sem nome");
+      const time = document.createElement("strong");
+      const share = Number(feature.timeSharePercent);
+      time.textContent = `${formatPreciseDuration(Number(feature.timeSeconds))}${Number.isFinite(share) ? ` · ${number(share, 1)}%` : ""}`;
+      heading.append(name, time);
+      const track = document.createElement("div"); track.className = "preview-feature-track";
+      const fill = document.createElement("i");
+      const seconds = Number(feature.timeSeconds);
+      fill.style.width = `${denominator > 0 && Number.isFinite(seconds) ? Math.max(0, Math.min(100, seconds / denominator * 100)) : 0}%`;
+      track.append(fill); row.append(heading, track); list.append(row);
+    }
+    if (features.length > 6) {
+      const more = document.createElement("small");
+      more.textContent = `O relatório inclui mais ${features.length - 6} tipos.`;
+      list.append(more);
+    }
+  }
+
   async function runSlice() {
-    if (!model?.originalFile || !engineStatus.available || controller) return;
+    const blockReason = sliceBlockReason();
+    if (blockReason || controller) { if (blockReason) toast(blockReason); return; }
     const sliceButton = content.querySelector("[data-slice]"), cancelButton = content.querySelector("[data-cancel]");
     controller = new AbortController();
     const requestRevision = revision;
@@ -890,6 +1022,7 @@ export function mountFeature(host = {}) {
         file: requestModel.originalFile,
         filename: requestModel.name,
         format: requestModel.format,
+        preparedModel: createOrcaInputStl(requestModel, requestDraft),
         settings: { layerHeight: requestDraft.layerHeight, walls: requestDraft.walls, infill: requestDraft.infill, supports: requestDraft.supports, fanSpeedPercent: requestDraft.fan, quality: requestDraft.quality, rotationZ: requestDraft.rotation, scale: requestDraft.scale, stlUnit: requestDraft.stlUnit },
         processesSchema: "ordax.slicer-processes/1",
         objects: requestModel.objects.map(object => ({ id: object.id, name: object.name, sourceObjectId: object.sourceObjectId || object.id, buildItemIndex: object.buildItemIndex ?? 0, triangleCount: object.triangleCount })),
@@ -918,8 +1051,10 @@ export function mountFeature(host = {}) {
       content.querySelector("[data-preview-engine]").textContent = `${result.engine} ${result.engineVersion}`;
       content.querySelector("[data-preview-title]").textContent = requestModel.name;
       content.querySelector("[data-stat-time]").textContent = formatDuration(result.stats?.timeSeconds);
-      content.querySelector("[data-stat-filament]").textContent = Number.isFinite(Number(result.stats?.filamentGrams)) ? `${number(result.stats.filamentGrams, 1)} g` : "Não informado pelo motor";
-      content.querySelector("[data-stat-layers]").textContent = Number.isFinite(Number(result.stats?.layerCount)) ? number(result.stats.layerCount) : preview?.layers.length ? number(preview.layers.length) : "Não informado";
+      content.querySelector("[data-stat-filament]").textContent = result.stats?.filamentGrams !== null && result.stats?.filamentGrams !== undefined && Number.isFinite(Number(result.stats.filamentGrams)) ? `${number(result.stats.filamentGrams, 1)} g` : "Não informado pelo motor";
+      content.querySelector("[data-stat-filament-length]").textContent = result.stats?.filamentMeters !== null && result.stats?.filamentMeters !== undefined && Number.isFinite(Number(result.stats.filamentMeters)) ? `${number(result.stats.filamentMeters, 2)} m` : "Não informado pelo motor";
+      content.querySelector("[data-stat-layers]").textContent = result.stats?.layerCount !== null && result.stats?.layerCount !== undefined && Number.isFinite(Number(result.stats.layerCount)) ? number(result.stats.layerCount) : preview?.layers.length ? number(preview.layers.length) : "Não informado";
+      updateFeatureStatistics(result.stats);
       content.querySelector("[data-line-slider]").value = "100";
       content.querySelector("[data-engine-title]").textContent = "Fatiamento concluído pelo motor";
       content.querySelector("[data-engine-message]").textContent = `${result.engine} ${result.engineVersion} gerou ${bytes(result.gcode.size)} de G-code para ${result.printerProfile || draft.printer}. Revise o preview antes de exportar.`;
@@ -1045,7 +1180,8 @@ export function mountFeature(host = {}) {
       if (typeof unsubscribe === "function") unsubscribeIntelligence = unsubscribe;
     } catch { /* A falha na assinatura não deve impedir o restante do app. */ }
   }
-  readSlicerStatus(host.slicer).then(status => { engineStatus = status; updateEngineUi(); });
+  readSlicerStatus(host.slicer).then(status => { engineStatus = status; updateInputs(); updateEngineUi(); })
+    .catch(error => { engineStatus = { available: false, engine: "OrcaSlicer", version: null, reason: error?.message || "O host local não respondeu ao status do OrcaSlicer.", profiles: null }; updateEngineUi(); });
   host.onDestroy?.(() => { controller?.abort(); importSequence++; analysisController?.abort(); aiController?.abort(); unsubscribeIntelligence?.(); viewer?.dispose(); });
   return shell;
 }
