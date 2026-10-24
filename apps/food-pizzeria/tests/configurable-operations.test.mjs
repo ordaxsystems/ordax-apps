@@ -273,3 +273,59 @@ test("reducing table capacity cannot invalidate an open command or an active sna
   assert.equal(resized.tableCommands.find(({ id }) => id === "seat-limit-session").closedAt,
     "2026-10-24T15:01:00.000Z");
 });
+
+test("one table cannot have overlapping sessions, even when the earlier command is closed", () => {
+  const base = createSeedFoodState();
+  const previous = createPizzeriaTableCommand(base, {
+    id: "history-session-a",
+    tableId: 2,
+    customerName: "Grupo A",
+    guestCount: 3,
+    openedAt: "2026-10-24T12:00:00.000Z",
+  });
+  const closed = closePizzeriaTableCommand(previous, {
+    commandId: "history-session-a",
+    closedAt: "2026-10-24T12:05:00.000Z",
+  });
+
+  assert.throws(() => createPizzeriaTableCommand(closed, {
+    id: "history-session-overlap",
+    tableId: 2,
+    customerName: "Grupo B",
+    guestCount: 2,
+    openedAt: "2026-10-24T12:04:59.000Z",
+  }), /sobrepor o atendimento anterior/);
+
+  const reopened = createPizzeriaTableCommand(closed, {
+    id: "history-session-b",
+    tableId: 2,
+    customerName: "Grupo B",
+    guestCount: 2,
+    openedAt: "2026-10-24T12:05:00.000Z",
+  });
+  const mutated = structuredClone(reopened);
+  mutated.tableCommands.find(({ id }) => id === "history-session-a").closedAt =
+    "2026-10-24T12:06:00.000Z";
+  assert.throws(() => validateFoodPizzeriaState(mutated), /períodos sobrepostos/);
+
+  const fullyClosed = closePizzeriaTableCommand(reopened, {
+    commandId: "history-session-b",
+    closedAt: "2026-10-24T12:08:00.000Z",
+  });
+  assert.throws(() => createPizzeriaTableCommand(fullyClosed, {
+    id: "history-session-backdated",
+    tableId: 2,
+    customerName: "Grupo C",
+    guestCount: 2,
+    openedAt: "2026-10-24T12:07:00.000Z",
+  }), /sobrepor o atendimento anterior/);
+  const third = createPizzeriaTableCommand(fullyClosed, {
+    id: "history-session-c",
+    tableId: 2,
+    customerName: "Grupo C",
+    guestCount: 2,
+    openedAt: "2026-10-24T12:08:00.000Z",
+  });
+  assert.equal(third.tableCommands.find(({ id }) => id === "history-session-c").closedAt, null);
+  assert.equal(third.tableCommands.filter(({ tableId }) => tableId === 2).length, 3);
+});
