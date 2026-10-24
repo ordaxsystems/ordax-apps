@@ -88,7 +88,8 @@ Arquivo `tests/space-first-boundaries.test.mjs`:
 Arquivo `tests/configurable-operations.test.mjs`:
 
 - tamanhos configuráveis, preço médio/maior preço, limite de sabores e rótulo histórico;
-- capacidade de mesa, associação obrigatória ao salão e separação do balcão.
+- capacidade de mesa, associação obrigatória ao salão e separação do balcão;
+- rejeição de diminuição de lugares abaixo de ocupantes em comanda aberta (tanto na operação quanto na validação do snapshot), preservando histórico de comandas encerradas.
 
 Arquivo `tests/local-store-persistence.test.mjs`:
 
