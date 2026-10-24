@@ -7,6 +7,8 @@ const settings = Object.freeze({
   quality: "standard",
   layerHeight: 0.2,
   walls: 3,
+  topShellLayers: 5,
+  bottomShellLayers: 4,
   infill: 15,
   infillPattern: "gyroid",
   supports: true,
@@ -21,6 +23,8 @@ test("mapeia as configurações do projeto para argumentos explícitos do OrcaSl
   assert.deepEqual(buildOrcaSettingArguments(settings), [
     "--layer-height", "0.2",
     "--wall-loops", "3",
+    "--top-shell-layers=5",
+    "--bottom-shell-layers=4",
     "--sparse-infill-density", "15%",
     "--sparse-infill-pattern=gyroid",
     "--enable-support=1",
@@ -48,3 +52,4 @@ test("rejeita padrões de preenchimento que não pertencem ao catálogo público
   assert.ok(infillPatternOptions.some(pattern => pattern.value === "gyroid"));
   assert.throws(() => buildOrcaSettingArguments({ ...settings, infillPattern: "infill-custom-command" }), /configurações solicitadas estão fora dos limites/);
 });
+

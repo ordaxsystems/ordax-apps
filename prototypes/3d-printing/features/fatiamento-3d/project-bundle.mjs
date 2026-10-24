@@ -1,6 +1,7 @@
 import { createStoredZipBlob, readZipDirectory, readZipEntry } from "./zip-container.mjs";
 
-export const projectBundleSchema = "ordax.3d-printing-project/1";
+export const projectBundleSchema = "ordax.3d-printing-project/2";
+const LEGACY_PROJECT_BUNDLE_SCHEMA = "ordax.3d-printing-project/1";
 export const projectBundleLimits = Object.freeze({
   maxSourceBytes: 50 * 1024 * 1024,
   maxArchiveBytes: 51 * 1024 * 1024,
@@ -9,12 +10,12 @@ export const projectBundleLimits = Object.freeze({
 
 const DRAFT_FIELDS = Object.freeze([
   "printer", "filament", "printerProfileId", "processProfileId", "filamentProfileId",
-  "quality", "layerHeight", "walls", "infill", "infillPattern", "fanMin", "fanMax", "supports",
+  "quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "infill", "infillPattern", "fanMin", "fanMax", "supports",
   "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "rotation", "scale",
   "stlUnit", "objectTransforms", "selectedProcessId", "selectedTab", "processes",
 ]);
 const SETTING_FIELDS = Object.freeze([
-  "quality", "layerHeight", "walls", "infill", "infillPattern", "fanMin", "fanMax", "supports",
+  "quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "infill", "infillPattern", "fanMin", "fanMax", "supports",
   "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly",
 ]);
 
@@ -96,7 +97,7 @@ export async function readProjectBundle(buffer) {
   let manifest;
   try { manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifestBytes)); }
   catch { throw new Error("O manifesto do pacote OrdaX está inválido."); }
-  if (!manifest || manifest.schema !== projectBundleSchema || typeof manifest.projectName !== "string"
+  if (!manifest || ![projectBundleSchema, LEGACY_PROJECT_BUNDLE_SCHEMA].includes(manifest.schema) || typeof manifest.projectName !== "string"
     || !manifest.projectName.trim() || manifest.projectName.length > 120 || /[\u0000-\u001f\u007f]/.test(manifest.projectName) || !manifest.source || !manifest.draft
     || typeof manifest.draft !== "object" || Array.isArray(manifest.draft)) {
     throw new Error("A versão ou os dados do pacote OrdaX não são compatíveis.");

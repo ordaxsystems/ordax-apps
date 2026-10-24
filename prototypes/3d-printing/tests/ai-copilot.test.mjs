@@ -14,6 +14,12 @@ const allowedProfiles = {
 };
 
 function reply({ evidence = allowedEvidence, profiles = { machine: machineId, process: null, filament: null }, settings = null } = {}) {
+  const completeSettings = settings === null ? null : {
+    quality: null, layerHeight: null, walls: null, topShellLayers: null, bottomShellLayers: null,
+    infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null,
+    supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null,
+    ...settings,
+  };
   return JSON.stringify({
     schema: "ordax.slicer-assistant-response/1",
     answer: "Sugestão baseada nos catálogos locais.",
@@ -22,7 +28,7 @@ function reply({ evidence = allowedEvidence, profiles = { machine: machineId, pr
       summary: "A combinação ainda precisa ser validada pelo OrcaSlicer.",
       confidence: "medium",
       evidence,
-      settings,
+      settings: completeSettings,
       transform: null,
       profiles,
     },
@@ -178,6 +184,8 @@ test("schema estrito exige os três campos de perfil na proposta", () => {
   assert.ok(suggestionSchema.required.includes("profiles"));
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMinSpeedPercent.anyOf[0].minimum, 0);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMaxSpeedPercent.anyOf[0].maximum, 100);
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.topShellLayers.anyOf[0].maximum, 20);
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.bottomShellLayers.anyOf[0].minimum, 0);
   assert.ok(suggestionSchema.properties.settings.anyOf[0].properties.infillPattern.anyOf[0].enum.includes("gyroid"));
   assert.deepEqual(suggestionSchema.properties.settings.anyOf[0].properties.supportType.anyOf[0].enum, ["normal(auto)", "tree(auto)"]);
   assert.deepEqual(suggestionSchema.properties.profiles.anyOf[0].required, ["machine", "process", "filament"]);

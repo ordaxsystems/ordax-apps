@@ -17,6 +17,8 @@ function validDraft() {
     quality: "standard",
     layerHeight: 0.2,
     walls: 3,
+    topShellLayers: 5,
+    bottomShellLayers: 4,
     infill: 15,
     infillPattern: "gyroid",
     selectedTab: "preview",
@@ -24,7 +26,7 @@ function validDraft() {
       id: "process-1",
       name: "Processo fino",
       objectIds: ["object-1"],
-      settings: { quality: "fine", layerHeight: 0.12, walls: 4, infill: 20, infillPattern: "lightning", supports: false, fanMin: 25, fanMax: 80, privateValue: "must-not-be-saved" },
+      settings: { quality: "fine", layerHeight: 0.12, walls: 4, topShellLayers: 6, bottomShellLayers: 2, infill: 20, infillPattern: "lightning", supports: false, fanMin: 25, fanMax: 80, privateValue: "must-not-be-saved" },
     }],
     objectTransforms: { "object-1": { x: 1, y: 2, z: 0, rotationX: 0, rotationY: 0, rotationZ: 90, scale: 1.2 } },
     privateValue: "must-not-be-saved",
@@ -49,6 +51,10 @@ for (const extension of ["stl", "3mf"]) {
     assert.equal(restored.draft.privateValue, undefined);
     assert.equal(restored.draft.processes[0].settings.privateValue, undefined);
     assert.equal(restored.draft.processes[0].settings.layerHeight, 0.12);
+    assert.equal(restored.draft.topShellLayers, 5);
+    assert.equal(restored.draft.bottomShellLayers, 4);
+    assert.equal(restored.draft.processes[0].settings.topShellLayers, 6);
+    assert.equal(restored.draft.processes[0].settings.bottomShellLayers, 2);
     assert.equal(restored.draft.infillPattern, "gyroid");
     assert.equal(restored.draft.processes[0].settings.infillPattern, "lightning");
   });
