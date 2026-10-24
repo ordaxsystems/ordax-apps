@@ -658,8 +658,14 @@ function validateFoodPizzeriaStateForVersion(value, version) {
     if (order.tableCommandId === null) continue;
     const command = commandsById.get(order.tableCommandId);
     if (!command || order.customerName !== command.customerName) throw new TypeError("Pedido referencia uma comanda incompatível.");
+    if (Date.parse(order.createdAt) < Date.parse(command.openedAt)) {
+      throw new TypeError("Pedido de salão não pode anteceder a abertura da comanda.");
+    }
     if (command.closedAt !== null && !["completed", "cancelled"].includes(order.status)) {
       throw new TypeError("Comanda encerrada ainda contém pedido em andamento.");
+    }
+    if (command.closedAt !== null && Date.parse(order.updatedAt) > Date.parse(command.closedAt)) {
+      throw new TypeError("Comanda não pode encerrar antes da última atualização dos pedidos.");
     }
   }
   if (new Set(recipes.map(({ flavorId }) => flavorId)).size !== recipes.length) throw new TypeError("Há mais de uma ficha técnica para o mesmo sabor.");
@@ -857,11 +863,15 @@ export function closePizzeriaTableCommand(stateValue, { commandId, closedAt } = 
   const state = validateFoodPizzeriaState(stateValue);
   const command = state.tableCommands.find(({ id }) => id === commandId);
   if (!command || command.closedAt !== null) throw new Error("Essa comanda não está aberta.");
-  const unfinishedOrders = state.orders.filter((order) => order.tableCommandId === command.id
-    && !["completed", "cancelled"].includes(order.status));
-  if (unfinishedOrders.length) throw new Error("Conclua ou cancele os pedidos da mesa antes de encerrar a comanda.");
+  const linkedOrders = state.orders.filter((order) => order.tableCommandId === command.id);
+  if (linkedOrders.some(({ status }) => !["completed", "cancelled"].includes(status))) {
+    throw new Error("Conclua ou cancele os pedidos da mesa antes de encerrar a comanda.");
+  }
   const timestamp = utc(closedAt, "Fechamento da comanda");
   if (Date.parse(timestamp) < Date.parse(command.openedAt)) throw new TypeError("O fechamento não pode anteceder a abertura da comanda.");
+  if (linkedOrders.some(({ updatedAt }) => Date.parse(updatedAt) > Date.parse(timestamp))) {
+    throw new TypeError("A comanda não pode ser encerrada antes da última atualização de seus pedidos.");
+  }
   const updated = validateTableCommand({ ...command, closedAt: timestamp }, {
     tables: state.settings.tables,
     enforceCapacity: false,
@@ -917,6 +927,7 @@ export function createPizzeriaOrder(stateValue, {
   if ((channel === "dine-in") !== (tableCommandId !== null)) {
     throw new Error("Pedido de salão deve usar uma comanda; balcão e retirada não reservam mesa.");
   }
+  const timestamp = utc(createdAt, "Criação do pedido");
   if (tableCommandId !== null) {
     const command = state.tableCommands.find(({ id: currentId }) => currentId === tableCommandId);
     if (channel !== "dine-in" || !command || command.closedAt !== null) {
@@ -924,6 +935,9 @@ export function createPizzeriaOrder(stateValue, {
     }
     if (boundedText(customerName, "Nome do cliente", 80) !== command.customerName) {
       throw new Error("O cliente do pedido precisa corresponder ao grupo da comanda.");
+    }
+    if (Date.parse(timestamp) < Date.parse(command.openedAt)) {
+      throw new TypeError("Pedido de salão não pode anteceder a abertura da comanda.");
     }
   }
   if (channel === "delivery" && !phone.trim()) throw new TypeError("Informe o telefone do cliente para pedido de entrega.");
@@ -980,7 +994,6 @@ export function createPizzeriaOrder(stateValue, {
   const subtotalCents = Number(subtotal);
   const totalCents = subtotalCents + cents(deliveryFeeCents, "Taxa de entrega", { allowZero: true });
   if (!Number.isSafeInteger(totalCents)) throw new RangeError("Total do pedido ultrapassa o limite seguro.");
-  const timestamp = utc(createdAt, "Criação do pedido");
   const order = validateOrder({
     id,
     createdAt: timestamp,
