@@ -10,6 +10,7 @@ export const assistantEvidenceIds = Object.freeze([
   "geometryDiagnostics.boundaryEdgeCount",
   "geometryDiagnostics.nonManifoldEdgeCount",
   "geometryDiagnostics.nonManifoldVertexCount",
+  "geometryDiagnostics.objectSummary",
   "geometryDiagnostics.inconsistentWindingEdgeCount",
   "geometryDiagnostics.surfaceAreaMm2",
   "selectedObject.sourceDimensionsMm",
@@ -30,6 +31,7 @@ const MAX_CONTEXT_ITEM_CHARS = 8192;
 const MAX_CONTEXT_TOTAL_CHARS = 65536;
 const MAX_PROFILE_CONTEXT_CHARS = 7800;
 export const assistantProfileOptionLimit = 24;
+export const assistantMeshObjectLimit = 12;
 
 const nullable = schema => ({ anyOf: [schema, { type: "null" }] });
 const nullableInteger = (minimum, maximum) => nullable({ type: "integer", minimum, maximum });
@@ -90,6 +92,58 @@ export function buildAssistantProfileContext(catalogs = {}, selectedIds = {}) {
     }
   }
   return Object.freeze({ context: Object.freeze(context), allowedProfiles: Object.freeze(allowedProfiles) });
+}
+
+export function buildAssistantMeshSummary({ objects, geometryDiagnostics, selectedObjectId, getSurfaceAreaMm2 } = {}) {
+  if (!Array.isArray(objects) || !geometryDiagnostics) return null;
+  const areas = new Map((geometryDiagnostics.surfaceAreaByObject || []).map(item => [item.objectId, item]));
+  const edges = new Map((geometryDiagnostics.edgeIncidenceByObject || []).map(item => [item.objectId, item]));
+  const links = new Map((geometryDiagnostics.vertexLinksByObject || []).map(item => [item.objectId, item]));
+  const candidates = objects.map((object, index) => {
+    const area = areas.get(object.id), edge = edges.get(object.id), vertexLinks = links.get(object.id);
+    const edgeCounts = edge?.checked ? {
+      checked: true,
+      boundaryEdgeCount: edge.boundaryEdgeCount,
+      nonManifoldEdgeCount: edge.nonManifoldEdgeCount,
+      inconsistentWindingEdgeCount: edge.inconsistentWindingEdgeCount,
+    } : { checked: false, boundaryEdgeCount: null, nonManifoldEdgeCount: null, inconsistentWindingEdgeCount: null };
+    const vertexCounts = vertexLinks?.checked ? {
+      checked: true,
+      checkedVertexCount: vertexLinks.checkedVertexCount,
+      boundaryVertexCount: vertexLinks.boundaryVertexCount,
+      interiorVertexCount: vertexLinks.interiorVertexCount,
+      nonManifoldVertexCount: vertexLinks.nonManifoldVertexCount,
+    } : { checked: false, checkedVertexCount: null, boundaryVertexCount: null, interiorVertexCount: null, nonManifoldVertexCount: null };
+    const degenerateTriangleCount = Number.isInteger(area?.degenerateTriangleCount) ? area.degenerateTriangleCount : null;
+    const triangleCount = Number.isInteger(area?.triangleCount) ? area.triangleCount : Math.floor((object.positions?.length || 0) / 9);
+    const areaMm2 = typeof getSurfaceAreaMm2 === "function" ? getSurfaceAreaMm2(object.id) : null;
+    const selected = object.id === selectedObjectId;
+    const issueScore = (degenerateTriangleCount || 0) * 8
+      + (edgeCounts.nonManifoldEdgeCount || 0) * 5
+      + (vertexCounts.nonManifoldVertexCount || 0) * 5
+      + (edgeCounts.inconsistentWindingEdgeCount || 0) * 3
+      + (edgeCounts.boundaryEdgeCount || 0) * 0.25;
+    return {
+      item: index + 1,
+      selected,
+      triangleCount,
+      degenerateTriangleCount,
+      surfaceAreaMm2: Number.isFinite(areaMm2) && areaMm2 >= 0 ? Number(areaMm2.toFixed(2)) : null,
+      edgeIncidence: edgeCounts,
+      vertexLinks: vertexCounts,
+      issueScore,
+    };
+  });
+  candidates.sort((a, b) => Number(b.selected) - Number(a.selected) || b.issueScore - a.issueScore || a.item - b.item);
+  const items = candidates.slice(0, assistantMeshObjectLimit).map(({ issueScore, ...item }) => Object.freeze(item));
+  return Object.freeze({
+    method: "local-per-object-mesh-summary/1",
+    itemOrder: "selected-then-review-signals; item-is-original-index",
+    totalObjectCount: objects.length,
+    includedObjectCount: items.length,
+    omittedObjectCount: Math.max(0, objects.length - items.length),
+    items: Object.freeze(items),
+  });
 }
 
 export const assistantStructuredOutput = Object.freeze({

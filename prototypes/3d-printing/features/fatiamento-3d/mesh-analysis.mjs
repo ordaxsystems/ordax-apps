@@ -162,6 +162,7 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
     const vertexLinkNeighborB = topologySupported ? new Uint32Array(vertexLinkCapacity) : null;
     let edgeCount = 0;
     let vertexLinkCount = 0;
+    let objectDegenerateTriangleCount = 0;
     let objectSurfaceAreaSquareUnits = 0;
 
     for (let offset = 0; offset < positions.length; offset += 9) {
@@ -176,7 +177,10 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
       const crossY = abz * acx - abx * acz;
       const crossZ = abx * acy - aby * acx;
       const crossMagnitude = Math.hypot(crossX, crossY, crossZ);
-      if (crossMagnitude * crossMagnitude <= thresholdSquared) degenerateTriangleCount++;
+      if (crossMagnitude * crossMagnitude <= thresholdSquared) {
+        degenerateTriangleCount++;
+        objectDegenerateTriangleCount++;
+      }
       objectSurfaceAreaSquareUnits += crossMagnitude / 2;
 
       if (topologySupported) {
@@ -201,7 +205,7 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
     }
 
     surfaceAreaSquareUnits += objectSurfaceAreaSquareUnits;
-    surfaceAreaByObject.push(Object.freeze({ objectId: object.id, triangleCount: objectTriangleCount, surfaceAreaSquareUnits: objectSurfaceAreaSquareUnits }));
+    surfaceAreaByObject.push(Object.freeze({ objectId: object.id, triangleCount: objectTriangleCount, degenerateTriangleCount: objectDegenerateTriangleCount, surfaceAreaSquareUnits: objectSurfaceAreaSquareUnits }));
     if (topologySupported) {
       const incidence = summarizeEdgeIncidence(edgeCodes, edgeCount);
       boundaryEdgeCount += incidence.boundaryEdgeCount;

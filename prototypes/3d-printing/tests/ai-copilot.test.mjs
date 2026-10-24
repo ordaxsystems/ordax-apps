@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assistantStructuredOutput, assistantEvidenceIds, buildAssistantProfileContext, parseAssistantReply, assistantSuggestionSchema, assistantProfileOptionLimit } from "../features/fatiamento-3d/ai-copilot.mjs";
+import { assistantStructuredOutput, assistantEvidenceIds, buildAssistantMeshSummary, buildAssistantProfileContext, parseAssistantReply, assistantSuggestionSchema, assistantProfileOptionLimit, assistantMeshObjectLimit } from "../features/fatiamento-3d/ai-copilot.mjs";
 
 const machineId = `orca-machine-${"a".repeat(24)}`;
 const processId = `orca-process-${"b".repeat(24)}`;
@@ -106,10 +106,29 @@ test("schema estrito exige os três campos de perfil na proposta", () => {
   assert.deepEqual(suggestionSchema.properties.profiles.anyOf[0].required, ["machine", "process", "filament"]);
 });
 
-test("schema de evidências permite citar a triagem local de vértices não manifold", () => {
-  const evidenceId = "geometryDiagnostics.nonManifoldVertexCount";
-  assert.ok(assistantEvidenceIds.includes(evidenceId));
-  assert.ok(assistantStructuredOutput.schema.properties.suggestion.anyOf[0].properties.evidence.items.enum.includes(evidenceId));
+test("schema de evidências permite citar links de vértices e resumo geométrico por peça", () => {
+  for (const evidenceId of ["geometryDiagnostics.nonManifoldVertexCount", "geometryDiagnostics.objectSummary"]) {
+    assert.ok(assistantEvidenceIds.includes(evidenceId));
+    assert.ok(assistantStructuredOutput.schema.properties.suggestion.anyOf[0].properties.evidence.items.enum.includes(evidenceId));
+  }
+});
+
+test("resumo geométrico limita peças, prioriza a selecionada e preserva a ordem como referência", () => {
+  const objects = Array.from({ length: 15 }, (_, index) => ({ id: `id-${index}`, name: `nome privado ${index}`, positions: new Float32Array(9) }));
+  const diagnostics = {
+    surfaceAreaByObject: objects.map((object, index) => ({ objectId: object.id, triangleCount: 1, degenerateTriangleCount: index === 2 ? 3 : 0 })),
+    edgeIncidenceByObject: objects.map((object, index) => ({ objectId: object.id, checked: true, boundaryEdgeCount: 3, nonManifoldEdgeCount: index === 4 ? 1 : 0, inconsistentWindingEdgeCount: 0 })),
+    vertexLinksByObject: objects.map((object, index) => ({ objectId: object.id, checked: true, checkedVertexCount: 3, boundaryVertexCount: 3, interiorVertexCount: 0, nonManifoldVertexCount: index === 7 ? 1 : 0 })),
+  };
+  const result = buildAssistantMeshSummary({ objects, geometryDiagnostics: diagnostics, selectedObjectId: "id-14", getSurfaceAreaMm2: id => Number(id.slice(3)) + 0.5 });
+  assert.equal(result.totalObjectCount, 15);
+  assert.equal(result.includedObjectCount, assistantMeshObjectLimit);
+  assert.equal(result.omittedObjectCount, 3);
+  assert.equal(result.itemOrder, "selected-then-review-signals; item-is-original-index");
+  assert.deepEqual(result.items.slice(0, 4).map(item => item.item), [15, 3, 5, 8]);
+  assert.equal(result.items[0].selected, true);
+  assert.equal(result.items[0].surfaceAreaMm2, 14.5);
+  assert.equal(result.items.some(item => "name" in item || "objectId" in item), false);
 });
 
 test("contexto da IA prioriza o perfil ativo e limita candidatos ao que foi enviado", () => {

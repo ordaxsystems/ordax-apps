@@ -65,6 +65,13 @@ test("detecta duas regiões de faces que só se tocam em um vértice", async () 
   assert.equal(result.vertexLinks.boundaryVertexCount, 4);
 });
 
+test("atribui contagens de faces degeneradas a cada objeto da mesa", async () => {
+  const clean = modelFromFaces([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]], "clean").objects[0];
+  const degenerate = modelFromFaces([[[0, 0, 0], [0, 0, 0], [1, 1, 1]]], "degenerate").objects[0];
+  const result = await analyzeMeshGeometry({ objects: [clean, degenerate] });
+  assert.deepEqual(result.surfaceAreaByObject.map(item => [item.objectId, item.degenerateTriangleCount]), [["clean", 0], ["degenerate", 1]]);
+});
+
 test("detecta aresta compartilhada por mais de duas faces", async () => {
   const faces = [
     [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
