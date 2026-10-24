@@ -381,6 +381,7 @@ body.orchestrator-focus .app-shell{grid-template-columns:250px minmax(430px,1fr)
 #coordinatorComposer:focus-within{border-color:#3e5665}
 #coordinatorComposer textarea{width:100%;min-height:30px;max-height:150px;resize:vertical;border:0;outline:0;background:transparent;color:#eef2f7;padding:6px 1px;font-size:13px;line-height:1.5}
 #coordinatorComposer textarea::placeholder{color:#758398}
+#coordinatorDraftState{display:block;min-height:16px;margin:-10px auto 12px;width:min(calc(100% - 52px),790px);color:#91a0b3;font-size:11px}
 .coordinator-send{width:40px;height:40px;border-radius:11px;background:#00d1a1;color:#06231c;font-size:22px}
 .coordinator-send:disabled{background:#26343b;color:#697883}
 .orchestration-notice{position:absolute;z-index:3;bottom:76px;left:50%;transform:translateX(-50%);border:1px solid #283747;border-radius:8px;background:#111a23;color:#aebdcb}

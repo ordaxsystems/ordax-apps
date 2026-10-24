@@ -118,8 +118,13 @@ test('host Groq coordinator accepts a session-only key, hides it from responses 
   const coordinator=(await post('orchestratorInvoke',['orchestrator_create',{
     requestId:'host-groq-orchestrator',projectId:project,name:'Coordenador',mission:'Responder ao teste.'
   }])).body.result;
+  await post('setDraft',[coordinator.chatTaskId,'Diga apenas que recebeu.',1]);
+  const savedDraft=(await post('getTaskDraft',[coordinator.chatTaskId])).body;
+  assert.equal(savedDraft.draft,'Diga apenas que recebeu.');
+  assert.equal(savedDraft.draft_revision,1);
   const result=await post('orchestratorInvoke',['orchestrator_chat',{
-    requestId:'host-groq-chat',projectId:project,orchestratorId:coordinator.orchestratorId,content:'Diga apenas que recebeu.'
+    requestId:'host-groq-chat',projectId:project,orchestratorId:coordinator.orchestratorId,
+    content:'Diga apenas que recebeu.',draftRevision:savedDraft.draft_revision
   }]);
   assert.equal(result.status,200);
   assert.equal(result.body.status,'succeeded');
@@ -127,6 +132,9 @@ test('host Groq coordinator accepts a session-only key, hides it from responses 
   assert.equal(requests[0].url,'https://api.groq.com/openai/v1/chat/completions');
   assert.equal(requests[0].headers.Authorization,'Bearer '+fakeKey);
   assert.equal(JSON.stringify(result.body).includes(fakeKey),false);
+  const clearedDraft=(await post('getTaskDraft',[coordinator.chatTaskId])).body;
+  assert.equal(clearedDraft.draft,'');
+  assert.equal(clearedDraft.draft_revision,2);
   const rejected=await post('orchestratorInvoke',['orchestrator_chat',{
     requestId:'host-groq-chat-auth-rejected',projectId:project,orchestratorId:coordinator.orchestratorId,
     content:'Solicitação cujo provedor responderá HTTP 401.'

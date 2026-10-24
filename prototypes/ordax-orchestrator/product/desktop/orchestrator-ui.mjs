@@ -4,16 +4,120 @@ import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provid
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onStartMission,canStartMission}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
-  let coordinatorOpen=false,coordinatorAvailable=false,analysisBusy=false,nodeHost=false;
+  let coordinatorOpen=false,coordinatorAvailable=false,coordinatorDraftCommitAvailable=false;
+  let analysisBusy=false,coordinatorSubmitting=false,nodeHost=false;
+  let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
+  let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
   const requestKeys=new Map();
   const status=text=>{$('orchestrationNotice').textContent=text;};
   const call=(operation,input={})=>api.orchestratorInvoke(operation,input);
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const enabled=coordinatorAvailable&&Boolean(selected)&&selected.status!=='paused';
-    $('coordinatorSend').disabled=!enabled||analysisBusy;
+    $('coordinatorSend').disabled=!enabled||analysisBusy||!coordinatorDraftCommitAvailable;
     $('analyzeWorks').disabled=!enabled||workCount===0||analysisBusy;
-    $('prepareWork').disabled=!enabled||analysisBusy;
+    $('prepareWork').disabled=!enabled||analysisBusy||!coordinatorDraftCommitAvailable;
+    $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
+  }
+  function setCoordinatorDraftState(text='') {
+    const compatibility=coordinatorDraftCommitAvailable?'':
+      'Rascunhos seguem salvos. Este Host está com backend anterior; envio seguro bloqueado até reiniciá-lo. A chave Groq desta sessão está só em memória.';
+    $('coordinatorDraftState').textContent=[text,compatibility].filter(Boolean).join(' ');
+  }
+  async function drainCoordinatorDrafts() {
+    while(pendingCoordinatorDraft) {
+      const draft=pendingCoordinatorDraft;
+      pendingCoordinatorDraft=null;
+      try {
+        const saved=await api.setDraft(draft.taskId,draft.content,draft.revision);
+        if(saved?.draft_revision!==draft.revision||saved?.draft!==draft.content)
+          throw Error('task_draft_revision_conflict');
+      } catch(error) {
+        if(!pendingCoordinatorDraft||pendingCoordinatorDraft.revision<draft.revision)
+          pendingCoordinatorDraft=draft;
+        if(coordinatorDraftTaskId===draft.taskId&&coordinatorDraftRevision===draft.revision)
+          setCoordinatorDraftState('Rascunho não salvo. Confira a conexão antes de trocar de conversa.');
+        throw error;
+      }
+      if(coordinatorDraftTaskId===draft.taskId&&coordinatorDraftRevision===draft.revision)
+        setCoordinatorDraftState(draft.content?'Rascunho local salvo':'');
+    }
+    return coordinatorDraftRevision;
+  }
+  function flushCoordinatorDraft() {
+    clearTimeout(coordinatorDraftTimer);coordinatorDraftTimer=null;
+    const write=coordinatorDraftWrite.catch(()=>{}).then(drainCoordinatorDrafts);
+    coordinatorDraftWrite=write;
+    return write;
+  }
+  function stageCoordinatorDraft() {
+    if(!chatTaskId||coordinatorDraftTaskId!==chatTaskId)return;
+    const revision=coordinatorDraftRevision+1;
+    if(!Number.isSafeInteger(revision)) {
+      setCoordinatorDraftState('O rascunho atingiu o limite de revisões; recarregue a conversa antes de editar.');
+      return;
+    }
+    coordinatorDraftRevision=revision;
+    const content=$('coordinatorPrompt').value;
+    pendingCoordinatorDraft={taskId:chatTaskId,content,revision};
+    setCoordinatorDraftState(content?'Salvando rascunho local…':'');
+    clearTimeout(coordinatorDraftTimer);
+    coordinatorDraftTimer=setTimeout(()=>{void flushCoordinatorDraft().catch(()=>{});},250);
+  }
+  async function readCoordinatorDraft(taskId) {
+    if(typeof api.getTaskDraft==='function') {
+      try{return await api.getTaskDraft(taskId);}
+      catch(error) {
+        // An already-running Host process may still expose the prior bridge map.
+        // Fall back to its existing canonical task read; never use browser storage.
+        if(error?.code!=='method_not_available')throw error;
+      }
+    }
+    const task=await api.getTask(taskId);
+    if(!task)throw Error('task_not_found');
+    return {draft:task.draft||'',draft_revision:Number(task.draft_revision||0),draft_updated_at:task.draft_updated_at||null};
+  }
+  async function activateCoordinatorDraft(taskId) {
+    if(chatTaskId===taskId&&coordinatorDraftTaskId===taskId)return;
+    await flushCoordinatorDraft();
+    const generation=++coordinatorDraftGeneration;
+    chatTaskId=taskId;
+    coordinatorDraftTaskId=taskId;
+    coordinatorDraftRevision=0;
+    pendingCoordinatorDraft=null;
+    $('coordinatorPrompt').value='';
+    setCoordinatorDraftState('');
+    if(!taskId)return;
+    const draft=await readCoordinatorDraft(taskId);
+    if(generation!==coordinatorDraftGeneration||taskId!==chatTaskId)return;
+    coordinatorDraftRevision=Number(draft.draft_revision||0);
+    $('coordinatorPrompt').value=draft.draft||'';
+    setCoordinatorDraftState(draft.draft?'Rascunho local preservado nesta conversa':'');
+  }
+  async function prepareCoordinatorDraft(taskId) {
+    await flushCoordinatorDraft();
+    if(taskId!==chatTaskId||taskId!==coordinatorDraftTaskId)return null;
+    const raw=$('coordinatorPrompt').value;
+    let draft=await readCoordinatorDraft(taskId);
+    if(draft.draft!==raw) {
+      stageCoordinatorDraft();
+      await flushCoordinatorDraft();
+      draft=await readCoordinatorDraft(taskId);
+    }
+    if(draft.draft!==raw)throw Error('task_draft_revision_conflict');
+    coordinatorDraftRevision=Number(draft.draft_revision||0);
+    return {raw,content:raw.trim(),draftRevision:coordinatorDraftRevision};
+  }
+  async function reconcileCoordinatorDraft(taskId,raw,draftRevision) {
+    const draft=await readCoordinatorDraft(taskId);
+    if(draft.draft_revision!==draftRevision+1||draft.draft!=='')return false;
+    if(chatTaskId===taskId&&coordinatorDraftTaskId===taskId) {
+      coordinatorDraftRevision=draft.draft_revision;
+      pendingCoordinatorDraft=null;
+      if($('coordinatorPrompt').value===raw)$('coordinatorPrompt').value='';
+      setCoordinatorDraftState('Mensagem registrada no histórico; rascunho removido.');
+    }
+    return true;
   }
   function renderProjectNavigation(projects) {
     const list=$('projectNavList');list.replaceChildren();
@@ -96,11 +200,23 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('saveProjectRepository').disabled=!project;
     $('renameProjectButton').disabled=!project;
     $('renameProjectInput').value=project?.name||'';
-    $('remoteRepositoryStatus').textContent=!project
-      ?'Selecione um projeto.'
-      :project.repository_url
-        ?`Destino remoto: ${project.repository_url}. A API não leu o conteúdo do repositório.`
-        :'Nenhum repositório remoto vinculado. Vincule o GitHub antes de iniciar trabalho sobre código.';
+    $('remoteRepositoryStatus').textContent=nodeHost
+      ?!project?'Selecione um projeto.'
+        :project.repository_url
+          ?`URL salva no projeto: ${project.repository_url}. Este Host não lê o GitHub nem envia trabalho ao GPT.`
+          :'Nenhum repositório vinculado. Salvar uma URL registra só metadado; a leitura autenticada do GitHub não está conectada neste Host.'
+      :!project?'Selecione um projeto.'
+        :project.repository_url
+          ?`Destino remoto: ${project.repository_url}. A API não leu o conteúdo do repositório.`
+          :'Nenhum repositório remoto vinculado. Vincular salva a URL do GitHub como destino do projeto.';
+    $('remoteRepositoryCapabilityNote').textContent=nodeHost
+      ?project?.repository_url
+        ?'O chat Groq recebe somente esta URL como contexto; não consulta arquivos, commits ou branches. Nenhuma integração GitHub está conectada ao Host.'
+        :'Nenhuma URL de repositório está vinculada. O Host não tem leitura autenticada do GitHub; nenhuma integração GitHub está conectada.'
+      :'A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.';
+    $('workspaceConnection').textContent=nodeHost
+      ?'Runtime/workspace local não conectado a esta página; nenhuma pasta ou arquivo local é lido.'
+      :'Acesso ao workspace local ainda indisponível. Nenhum arquivo local é lido nesta fase.';
   }
   async function refreshApiStatus() {
     const state=await api.coordinatorChatStatus();
@@ -114,7 +230,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('workRailNote').textContent=nodeHost
       ?'As frentes ficam salvas no projeto. Este host não abre nem envia conversas ao GPT.'
       :'Cada conversa mantém o próprio histórico dentro do projeto.';
-    coordinatorAvailable=(await call('status')).coordinatorAvailable===true;
+    const engineStatus=await call('status');
+    coordinatorAvailable=engineStatus.coordinatorAvailable===true;
+    coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
+    if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
+    else if($('coordinatorDraftState').textContent.includes('backend anterior'))
+      setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     $('coordinatorApiEnable').disabled=!state.configured;
     $('coordinatorApiEnable').textContent=state.enabled?'Desativar chat por API':'Ativar chat por API';
     $('coordinatorApiEnable').dataset.enabled=String(state.enabled);
@@ -211,7 +332,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     options($('orchestratorSelect'),orchestrators,'Selecione um orquestrador');
     $('orchestratorSelect').value=orchestratorId||'';
     const selected=orchestrators.find(o=>o.id===orchestratorId);
-    chatTaskId=selected?.chat_task_id||null;
+    await activateCoordinatorDraft(selected?.chat_task_id||null);
     $('openOrchestrator').disabled=!selected;
     $('pauseOrchestrator').disabled=!selected;
     $('pauseOrchestrator').textContent=selected?.status==='paused'?'Retomar':'Pausar';
@@ -313,7 +434,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   $('projectSelect').addEventListener('change',async()=>{
     document.body.classList.remove('orchestrator-api-settings','orchestrator-rail-open');$('contextRail').classList.remove('open');
-    projectId=$('projectSelect').value||null;orchestratorId=null;
+    const previous=projectId,next=$('projectSelect').value||null;
+    if(previous===next)return;
+    try{await flushCoordinatorDraft();}catch{$('projectSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o projeto atual foi mantido.');return;}
+    projectId=next;orchestratorId=null;
     await refreshProjects();
     $('orchestrationPanel').hidden=true;coordinatorOpen=false;
     try{
@@ -323,11 +447,15 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }catch{error();}
   });
   $('orchestratorSelect').addEventListener('change',async()=>{
-    orchestratorId=$('orchestratorSelect').value||null;
+    const previous=orchestratorId,next=$('orchestratorSelect').value||null;
+    if(previous===next)return;
+    try{await flushCoordinatorDraft();}catch{$('orchestratorSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o orquestrador atual foi mantido.');return;}
+    orchestratorId=next;
     try{await refreshOrchestrators();if(chatTaskId)await showCoordinator();}catch{error();}
   });
   $('newProjectForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
+      await flushCoordinatorDraft();
       const mission=$('projectObjective').value.trim();
       const name=$('projectName').value.trim();
       const repositoryUrl=$('projectRepositoryUrl').value.trim();
@@ -373,7 +501,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         if(receipt.status!=='succeeded'||p!==projectId)return;
         await refreshProjects();
         status(receipt.result.repositoryUrl
-          ?'Repositório remoto vinculado. As tarefas de trabalho vão receber essa URL como destino GitHub.'
+          ?nodeHost
+            ?'URL do GitHub salva como metadado do projeto. Este Host não leu o repositório nem enviou uma tarefa ao GPT.'
+            :'Repositório remoto vinculado. As tarefas de trabalho vão receber essa URL como destino GitHub.'
           :'Vínculo remoto removido.');
       } catch(error) {
         if(error?.message==='orchestrator_github_repository_invalid')
@@ -418,15 +548,20 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   $('coordinatorComposer').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
-      const p=projectId,o=orchestratorId,content=$('coordinatorPrompt').value.trim();
+      const p=projectId,o=orchestratorId,t=chatTaskId;
+      const draft=await prepareCoordinatorDraft(t),content=draft?.content;
       if(!content)return;
+      coordinatorSubmitting=true;syncCoordinatorActions();
       status('Consultando o orquestrador…');
-      const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content});
-      if(p!==projectId||o!==orchestratorId)return;
-      if(receipt.status==='succeeded') {
-        $('coordinatorPrompt').value='';status('Resposta registrada. Propostas aguardam execução autorizada.');
+      try {
+        const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
+        if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
+        await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
+        if(receipt.status==='succeeded')status('Resposta registrada. Propostas aguardam execução autorizada.');
+        await renderCoordinator();
+      } finally {
+        coordinatorSubmitting=false;syncCoordinatorActions();
       }
-      await renderCoordinator();
     });
   });
   $('analyzeWorks').addEventListener('click',async()=>{
@@ -444,17 +579,23 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   $('prepareWork').addEventListener('click',async()=>{
     if($('prepareWork').disabled||!projectId||!orchestratorId)return;
-    const p=projectId,o=orchestratorId,content=$('coordinatorPrompt').value.trim();
+    const p=projectId,o=orchestratorId,t=chatTaskId;
+    let draft;
+    try{draft=await prepareCoordinatorDraft(t);}catch{setCoordinatorDraftState('Não foi possível confirmar o rascunho salvo. Ele foi preservado e nenhuma proposta foi enviada.');return;}
+    const content=draft?.content;
     if(!content){status('Descreva no campo de mensagem a frente que o orquestrador deve preparar.');$('coordinatorPrompt').focus();return;}
-    analysisBusy=true;syncCoordinatorActions();
+    analysisBusy=true;coordinatorSubmitting=true;syncCoordinatorActions();
     status('A IA está preparando uma proposta de frente para sua revisão…');
     try {
-      const receipt=await command('orchestrator_prepare',{projectId:p,orchestratorId:o,content});
-      if(p!==projectId||o!==orchestratorId)return;
-      if(receipt.status==='succeeded'){$('coordinatorPrompt').value='';status('Proposta pronta. Confira título e mensagem antes de criar a frente.');}
+      const receipt=await command('orchestrator_prepare',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
+      if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
+      await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
+      if(receipt.status==='succeeded')status('Proposta pronta. Confira título e mensagem antes de criar a frente.');
       await renderCoordinator();
-    }catch{error();}finally{analysisBusy=false;syncCoordinatorActions();}
+    }catch{error();}finally{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions();}
   });
+  $('coordinatorPrompt').addEventListener('input',stageCoordinatorDraft);
+  $('coordinatorPrompt').addEventListener('blur',()=>{void flushCoordinatorDraft().catch(()=>{});});
   $('coordinatorPrompt').addEventListener('keydown',event=>{
     if(event.key==='Enter'&&!event.shiftKey&&!$('coordinatorSend').disabled){event.preventDefault();$('coordinatorComposer').requestSubmit();}
   });

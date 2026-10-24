@@ -98,7 +98,7 @@
     coordinatorChatStatus:[],coordinatorChatEnable:['enabled'],orchestratorInvoke:['operation','input'],orchestratorMcp:['message'],
     supervisorStatus:[],supervisorSaveKey:['key'],supervisorRemoveKey:[],setTaskSupervisorRole:['taskId','role'],
     supervisorPlan:['payload'],supervisorRecoverable:['payload'],supervisorInspect:['payload'],supervisorApprove:['payload'],supervisorDispatch:['payload'],
-    workspace:[],listTasks:[],createTask:['title'],getTask:['id'],openTask:['id'],inspectLinkedThread:['taskId'],loadMessagePage:['taskId','before'],
+    workspace:[],listTasks:[],createTask:['title'],getTask:['id'],getTaskDraft:['id'],openTask:['id'],inspectLinkedThread:['taskId'],loadMessagePage:['taskId','before'],
     renameTask:['taskId','title'],setDraft:['taskId','content','revision'],resumeCapsule:['id'],rotateConversation:['id'],
     upsertProjectMemory:['taskId','item'],archiveProjectMemory:['taskId','memoryId'],scanMemoryCandidates:['taskId'],
     reviewMemoryCandidate:['taskId','candidateId','action','changes'],send:['payload'],labProfileProof:[],labBuildProof:[],providerStatus:[],

@@ -246,6 +246,7 @@ export class OrchestratorService {
       tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
       externalTransport:'not_connected',autonomousExecution:false,
       autonomousAnalysisAvailable:true,
+      coordinatorDraftCommitAvailable:true,
       workspacePortAvailable:this.workspace.available(),
       continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
       coordinatorAvailable:this.coordinator?.available?.()===true,
@@ -586,7 +587,9 @@ export class OrchestratorService {
     if(isWorkSend&&this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(task.id))
       throw Error('orchestrator_reconciliation_required');
     const reserved=this.transaction(()=>{
+      this.requireAccess(context,operation,input.projectId);
       const reservation=this.reserve(context,operation,input);
+      if(reservation.existing)return {existing:reservation.existing};
       if(preparedSend) {
         reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',reservation.commandId,
           {actorId:context.actorId,clientId:context.clientId,sourceActionId:input.actionId,
@@ -599,12 +602,27 @@ export class OrchestratorService {
       this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
         .run(JSON.stringify({taskId:task.id,...(reservation.sendActionId?{
           sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),reservation.commandId);
+      if(!isWorkSend) {
+        const coordinatorDraft=['orchestrator_chat','orchestrator_prepare'].includes(operation)&&input.draftRevision!==undefined;
+        if(coordinatorDraft) {
+          const draft=this.store.getTaskDraft(task.id);
+          if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
+            throw Error('task_draft_revision_conflict');
+          if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
+        }
+        this.store.appendMessage(task.id,'user',content);
+        if(coordinatorDraft) {
+          const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
+          if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
+            throw Error('task_draft_revision_conflict');
+        }
+      }
       return reservation;
     });
+    if(reserved.existing)return reserved.existing;
     try {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
-      if(!isWorkSend)this.transaction(()=>this.store.appendMessage(task.id,'user',content));
       const reply=await port.send({taskId:task.id,content:isWorkSend?providerContent:content,draftRevision:sendInput.draftRevision??null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
         workspaceObservation,repositoryUrl});

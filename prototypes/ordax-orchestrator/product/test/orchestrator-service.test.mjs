@@ -151,9 +151,13 @@ test('coordinator work proposal survives restart and approval creates exactly on
     return {content:'Revisar proposta',proposal:{title:'Investigar erro',content:'Analise o erro sem alterar arquivos.',reason:'Separar a investigação'}};
   }},provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await project(f),b=await project(f,'B');
   const before=f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n;
-  const input={projectId:a.p,orchestratorId:a.o,content:'Prepare uma investigação',requestId:'prepare-once'};
+  f.store.setDraft(a.chat,'Prepare uma investigação',1);
+  const input={projectId:a.p,orchestratorId:a.o,content:'Prepare uma investigação',draftRevision:1,requestId:'prepare-once'};
   const receipt=await f.call('orchestrator_prepare',input);
   assert.equal(receipt.status,'succeeded');
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'');
+  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
+  assert.equal(f.store.messages(a.chat).filter(message=>message.role==='user').at(-1).content,input.content);
   await f.call('orchestrator_prepare',input);assert.equal(calls,1);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n,before);
   const actionId=receipt.result.proposalActionId;
@@ -491,7 +495,9 @@ test('coordinator chat is separate from GPT work; calls require a port and persi
     assert.equal(f.store.messages(taskId).at(-1).role,'user');
     return {content:'Podemos começar pelo layout.'};
   }}}),a=await project(f);
-  const input={requestId:'chat',projectId:a.p,orchestratorId:a.o,content:'Planeje o site'};
+  assert.equal((await f.call('status')).coordinatorDraftCommitAvailable,true);
+  f.store.setDraft(a.chat,'Planeje o site',1);
+  const input={requestId:'chat',projectId:a.p,orchestratorId:a.o,content:'Planeje o site',draftRevision:1};
   const reply=await f.call('orchestrator_chat',input);
   assert.equal(reply.status,'succeeded');
   assert.equal(reply.result.proposalsExecuted,0);
@@ -500,8 +506,55 @@ test('coordinator chat is separate from GPT work; calls require a port and persi
   // The immediate HTTP fixture may persist both messages in the same clock
   // tick. This test proves presence, not the Store's UUID tie-break ordering.
   assert.deepEqual(f.store.messages(a.chat).map(m=>m.role).sort(),['assistant','user']);
+  assert.deepEqual(f.store.getTaskDraft(a.chat).draft,'');
+  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
   assert.equal(f.store.messages(a.w).length,0);
   await f.call('orchestrator_chat',input);assert.equal(calls,1);
+});
+
+test('coordinator atomically converts a persisted draft to a message before an uncertain API delivery',async t=>{
+  let calls=0;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>{calls++;throw Error('transport lost');}}}),a=await project(f);
+  f.store.setDraft(a.chat,'Continue a proposta da loja.',1);
+  const input={requestId:'uncertain-draft',projectId:a.p,orchestratorId:a.o,
+    content:'Continue a proposta da loja.',draftRevision:1};
+  const result=await f.call('orchestrator_chat',input);
+  assert.equal(result.status,'uncertain');
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'');
+  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
+  assert.deepEqual(f.store.messages(a.chat).map(message=>[message.role,message.content]),[
+    ['user','Continue a proposta da loja.']
+  ]);
+  assert.deepEqual(await f.call('orchestrator_chat',input),result);
+  assert.equal(calls,1,'an uncertain request with a matching idempotency key never resends');
+});
+
+test('coordinator refuses a stale composer revision before reserving a request or calling the provider',async t=>{
+  let calls=0;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>{calls++;return {content:'Não deve ser chamada.'};}}}),a=await project(f);
+  f.store.setDraft(a.chat,'Mensagem mais recente',3);
+  await assert.rejects(f.call('orchestrator_chat',{requestId:'stale-draft',projectId:a.p,orchestratorId:a.o,
+    content:'Texto antigo',draftRevision:2}),/task_draft_revision_conflict/);
+  assert.equal(calls,0);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'Mensagem mais recente');
+  assert.equal(f.store.messages(a.chat).length,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?').get('stale-draft').n,0);
+});
+
+test('coordinator draft and user message roll back together if the atomic clear fails',async t=>{
+  let calls=0;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>{calls++;return {content:'Não deve ser chamada.'};}}}),a=await project(f);
+  f.store.setDraft(a.chat,'Mensagem que precisa sobreviver',1);
+  f.store.db.exec(`CREATE TRIGGER refuse_coordinator_draft_clear BEFORE UPDATE OF draft ON tasks
+    WHEN NEW.id='${a.chat}' AND NEW.draft='' BEGIN SELECT RAISE(ABORT,'injected_coordinator_draft_clear'); END`);
+  await assert.rejects(f.call('orchestrator_chat',{requestId:'atomic-draft-failure',projectId:a.p,
+    orchestratorId:a.o,content:'Mensagem que precisa sobreviver',draftRevision:1}),/injected_coordinator_draft_clear/);
+  assert.equal(calls,0);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'Mensagem que precisa sobreviver');
+  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,1);
+  assert.equal(f.store.messages(a.chat).length,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
+    .get('atomic-draft-failure').n,0);
 });
 
 test('project remote repository is persisted and can be changed or cleared without local workspace access',async t=>{

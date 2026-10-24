@@ -51,6 +51,8 @@ test('per-Task drafts persist across restart, reject stale saves and never enter
   const originalTimestamp = store.getTask(first.id).updated_at;
 
   assert.equal(store.setDraft(first.id, 'Ideia ainda não enviada', 1).draft_revision, 1);
+  assert.equal(store.getTaskDraft(first.id).draft,'Ideia ainda não enviada');
+  assert.equal(store.getTaskDraft(first.id).draft_revision,1);
   store.setDraft(second.id, 'Outra tarefa', 1);
   store.setDraft(first.id, 'Texto novo', 3);
   store.setDraft(first.id, 'Retorno atrasado', 2);
@@ -80,6 +82,7 @@ test('per-Task drafts persist across restart, reject stale saves and never enter
   assert.throws(() => store.setDraft(first.id, 'x', 0), /invalid_task_draft_revision/);
   assert.throws(() => store.setDraft(first.id, 'x'.repeat(20001), 6), /task_draft_too_large/);
   assert.throws(() => store.setDraft('task_missing', 'x', 1), /task_not_found/);
+  assert.throws(() => store.getTaskDraft('task_missing'), /task_not_found/);
 });
 
 test('project rename updates navigation title without touching draft or losing history', t => {

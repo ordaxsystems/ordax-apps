@@ -10,6 +10,8 @@ const taskHandlers = fs.readFileSync(path.join(root,'src','task-ui-handlers.mjs'
 const worker = fs.readFileSync(path.join(root,'desktop','embedded-worker.mjs'),'utf8');
 const workerPreload = fs.readFileSync(path.join(root,'desktop','worker-preload.cjs'),'utf8');
 const preload = fs.readFileSync(path.join(root,'desktop','preload.cjs'),'utf8');
+const hostBridge = fs.readFileSync(path.join(root,'desktop','host-browser-bridge.js'),'utf8');
+const hostServer = fs.readFileSync(path.join(root,'host','host-browser-server.mjs'),'utf8');
 const ui = fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
@@ -166,6 +168,7 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(html,/Conversas no GPT/);
   assert.match(html,/Nova conversa no GPT/);
   assert.match(html,/id="analyzeWorks"/);
+  assert.match(html,/id="remoteRepositoryCapabilityNote"/);
   assert.match(html,/até quatro conversas recentes e oito mensagens do chat central/);
   assert.match(orchestration,/command\('orchestrator_analyze'/);
   assert.match(orchestration,/call\('status'\)\.catch\(\(\)=>null\)/);
@@ -177,8 +180,14 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(orchestration,/call\('work_list'/);
   assert.match(orchestration,/onOpenWork\(work\.id\)/);
   assert.match(orchestration,/executionSurface==='node_host'/);
+  assert.match(orchestration,/coordinatorDraftCommitAvailable/);
+  assert.match(orchestration,/envio seguro bloqueado até reiniciá-lo/);
   assert.match(orchestration,/GPT indisponível/);
   assert.match(orchestration,/Este host não abre nem envia conversas ao GPT/);
+  assert.match(orchestration,/URL salva no projeto: \$\{project\.repository_url\}\. Este Host não lê o GitHub nem envia trabalho ao GPT\./);
+  assert.match(orchestration,/Nenhuma integração GitHub está conectada ao Host/);
+  assert.match(orchestration,/Runtime\/workspace local não conectado a esta página/);
+  assert.match(orchestration,/URL do GitHub salva como metadado do projeto/);
   assert.match(orchestration,/orchestrator-focus/);
   assert.match(css,/body\.orchestrator-focus #contextRail/);
   assert.match(css,/\.work-card:hover/);
@@ -236,10 +245,16 @@ test('a new mission is persisted once, starts through the existing GPT executor,
 test('drafts are scoped to a Task, revision-guarded and saved without entering provider memory', () => {
   const store = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'desktop', 'ui.html'), 'utf8');
+  const orchestration = fs.readFileSync(path.join(root, 'desktop', 'orchestrator-ui.mjs'), 'utf8');
   assert.match(store, /draft_revision<\?/);
   assert.match(preload, /setDraft/);
+  assert.match(preload, /getTaskDraft/);
+  assert.match(hostBridge,/getTaskDraft:\['id'\]/);
+  assert.match(hostServer,/getTaskDraft:\['ordax:tasks:draft:get',a=>\[a\[0\]\]\]/);
+  assert.match(hostBridge,/setDraft:\['taskId','content','revision'\]/);
   assert.match(main, /createTaskUiHandlers/);
   assert.match(taskHandlers, /ordax:tasks:draft:set/);
+  assert.match(taskHandlers, /ordax:tasks:draft:get/);
   assert.match(main, /store\.beginProviderRun\(taskId, prompt/);
   assert.match(store, /this\.setDraft\(taskId, '', draftRevision\)/);
   assert.match(ui, /draftCache/);
@@ -247,6 +262,11 @@ test('drafts are scoped to a Task, revision-guarded and saved without entering p
   assert.match(ui, /navigationEpoch/);
   assert.match(ui, /draftRevision/);
   assert.match(html, /draftState/);
+  assert.match(html, /coordinatorDraftState/);
+  assert.match(orchestration,/api\.getTaskDraft\(taskId\)/);
+  assert.match(orchestration,/api\.setDraft\(draft\.taskId,draft\.content,draft\.revision\)/);
+  assert.match(orchestration,/draftRevision:draft\.draftRevision/);
+  assert.match(orchestration,/reconcileCoordinatorDraft/);
   assert.doesNotMatch(ui, /localStorage|sessionStorage/);
 });
 

@@ -43,6 +43,7 @@ export function createTaskUiHandlers({
   });
   handlers.set('ordax:tasks:create',(_event,title)=>decorateTask(store.createTask(String(title||'Nova tarefa'))));
   handlers.set('ordax:tasks:get',(_event,id)=>getTaskView(id));
+  handlers.set('ordax:tasks:draft:get',(_event,id)=>store.getTaskDraft(String(id)));
   handlers.set('ordax:tasks:messages:page',(_event,{taskId,before})=>{
     if(!store.getTaskExecutionSnapshot(String(taskId)))throw Error('task_not_found');
     const page=store.messagesPage(String(taskId),{before});

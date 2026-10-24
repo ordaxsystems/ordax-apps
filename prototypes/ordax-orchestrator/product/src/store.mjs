@@ -326,6 +326,13 @@ export class Store {
     return this.db.prepare('SELECT draft,draft_revision,draft_updated_at FROM tasks WHERE id=?').get(taskId);
   }
 
+  getTaskDraft(taskId) {
+    const draft=this.db.prepare(`SELECT draft,draft_revision,draft_updated_at FROM tasks
+      WHERE id=? AND workspace_session_id=?`).get(taskId,this.workspaceSession.id);
+    if(!draft)throw new Error('task_not_found');
+    return draft;
+  }
+
   getTask(id, { messageLimit = null } = {}) {
     const task = this.db.prepare('SELECT * FROM tasks WHERE id=?').get(id);
     if (!task) return null;

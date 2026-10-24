@@ -120,11 +120,11 @@
             <button id="saveProjectRepository" class="mini-secondary" type="submit">Salvar repositório</button>
           </form>
           <small id="remoteRepositoryStatus" role="status">Vincule um repositório GitHub para orientar as conversas de trabalho.</small>
-          <small>A API recebe somente a URL. As tarefas pedem ao ChatGPT para usar a integração GitHub disponível na sessão. Nenhum arquivo local é lido nesta etapa.</small>
+          <small id="remoteRepositoryCapabilityNote">A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.</small>
         </section>
         <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Workspace local em etapa futura">
           <strong>Arquivos locais · etapa posterior</strong>
-          <small id="workspaceConnection" role="status">Acesso ao workspace local ainda indisponível; o fluxo GitHub remoto não depende dele.</small>
+          <small id="workspaceConnection" role="status">O workspace local ainda não está conectado. Nenhum arquivo local é lido nesta fase.</small>
           <small id="workspaceEvidence">Nenhum arquivo local é lido ou enviado nesta fase.</small>
         </section>
         <div class="coordinator-analysis-actions">
@@ -144,6 +144,7 @@
           <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Converse com o orquestrador..." required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao orquestrador" disabled>↑</button>
         </form>
+        <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
       <section id="taskPanel" class="task-panel hidden">

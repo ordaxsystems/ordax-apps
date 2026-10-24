@@ -39,6 +39,7 @@ export const HOST_BROWSER_METHODS = Object.freeze({
   listTasks:['ordax:tasks:list',()=>[]],
   createTask:['ordax:tasks:create',a=>[a[0]]],
   getTask:['ordax:tasks:get',a=>[a[0]]],
+  getTaskDraft:['ordax:tasks:draft:get',a=>[a[0]]],
   openTask:['ordax:tasks:open',a=>[a[0]]],
   inspectLinkedThread:['ordax:tasks:inspect-linked-thread',a=>[a[0]]],
   loadMessagePage:['ordax:tasks:messages:page',a=>[{taskId:a[0],before:a[1]??null}]],
