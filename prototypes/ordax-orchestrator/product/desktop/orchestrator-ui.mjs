@@ -5,12 +5,30 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let coordinatorOpen=false,coordinatorAvailable=false,coordinatorDraftCommitAvailable=false;
+  let coordinatorConfigured=false,coordinatorApiEnabled=false;
   let analysisBusy=false,coordinatorSubmitting=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
   const requestKeys=new Map();
   const status=text=>{$('orchestrationNotice').textContent=text;};
   const call=(operation,input={})=>api.orchestratorInvoke(operation,input);
+  function syncCapabilitySummary() {
+    const summary=$('orchestrationCapabilitySummary');
+    if(!summary)return;
+    summary.hidden=!nodeHost;
+    if(!nodeHost)return;
+    const project=projectsCache.find(item=>item.id===projectId);
+    const set=(id,label,state)=>{
+      const item=$(id);item.textContent=label;item.dataset.state=state;
+    };
+    set('capabilityGroq',!coordinatorConfigured?'Groq · sem chave':coordinatorAvailable?'Groq · pronto':coordinatorApiEnabled?'Groq · indisponível':'Groq · configurado e inativo',
+      coordinatorAvailable?'ready':coordinatorConfigured?'partial':'blocked');
+    set('capabilityGpt','GPT Web · sem transporte','blocked');
+    set('capabilityGitHub',project?.repository_url?'GitHub · URL salva, leitura ausente':'GitHub · sem leitura autenticada',
+      project?.repository_url?'partial':'blocked');
+    set('capabilityRuntime','Runtime · workspace sem grant','blocked');
+    set('capabilityContinuity','24 h · supervisor ausente','blocked');
+  }
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const enabled=coordinatorAvailable&&Boolean(selected)&&selected.status!=='paused';
@@ -220,9 +238,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('workspaceConnection').textContent=nodeHost
       ?'Runtime/workspace local não conectado a esta página; nenhuma pasta ou arquivo local é lido.'
       :'Acesso ao workspace local ainda indisponível. Nenhum arquivo local é lido nesta fase.';
+    syncCapabilitySummary();
   }
   async function refreshApiStatus() {
     const state=await api.coordinatorChatStatus();
+    coordinatorConfigured=state.configured===true;
+    coordinatorApiEnabled=state.enabled===true;
     nodeHost=state.executionSurface==='node_host';
     $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
     $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
@@ -246,6 +267,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       ? 'A supervisão Groq opcional não está configurada. O MCP remoto ainda não está conectado a esta tela.'
       : coordinatorAvailable?'Chat por API ativo nesta sessão. Cada envio usa sua conta Groq.'
       : 'Chave configurada. Ative o chat por API para enviar uma mensagem.';
+    syncCapabilitySummary();
+    syncCoordinatorActions();
   }
   $('coordinatorApiSettings').addEventListener('click',()=>{
     document.body.classList.add('orchestrator-api-settings');
@@ -645,6 +668,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       });},
     createWork,hasProject:()=>Boolean(projectId),
     getProjectId:()=>projectId,
+    refreshStatus:()=>refreshApiStatus(),
     hide(){coordinatorOpen=false;$('orchestrationPanel').hidden=true;},
     refresh:refreshWorks
   });

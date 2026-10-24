@@ -224,6 +224,34 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(css,/body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-item:not\(\.active\),\s*body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-empty\{display:none\}/);
 });
 
+test('Host keeps execution truth visible while collapsing project setup below the conversation',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(html,/<div id="orchestrationCapabilitySummary"[^>]*hidden>/);
+  for(const id of ['capabilityGroq','capabilityGpt','capabilityGitHub','capabilityRuntime','capabilityContinuity'])
+    assert.match(html,new RegExp(`id="${id}"`));
+  assert.match(html,/<details id="orchestrationIntegrations" class="orchestration-integrations">/);
+  assert.match(html,/Projeto, conexões e automação/);
+  assert.match(orchestration,/function syncCapabilitySummary\(\)/);
+  assert.match(orchestration,/summary\.hidden=!nodeHost/);
+  assert.match(orchestration,/GitHub · URL salva, leitura ausente/);
+  assert.match(orchestration,/Runtime · workspace sem grant/);
+  assert.match(orchestration,/24 h · supervisor ausente/);
+  assert.match(css,/\.orchestration-capabilities span\[data-state="partial"\]/);
+  assert.match(css,/\.orchestration-integrations-content\{max-height:min\(42vh,340px\);overflow:auto/);
+});
+
+test('saving or removing the Groq key refreshes Orchestrator readiness and send actions',()=>{
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(ui,/async function refreshOrchestrationProviderStatus\(\)\{\s*try\{await orchestrationUi\?\.refreshStatus\?\.\(\);\}/);
+  assert.equal((ui.match(/await refreshOrchestrationProviderStatus\(\);/g)||[]).length,2);
+  assert.match(ui,/Chave salva, mas o estado local não atualizou/);
+  assert.match(ui,/Remoção concluída, mas o estado local não atualizou/);
+  assert.match(orchestration,/async function refreshApiStatus\(\)\s*\{[\s\S]*?syncCoordinatorActions\(\);/);
+  assert.match(orchestration,/refreshStatus:\(\)=>refreshApiStatus\(\)/);
+});
+
 test('a new mission is persisted once, starts through the existing GPT executor, and labels project and conversation actions separately',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');

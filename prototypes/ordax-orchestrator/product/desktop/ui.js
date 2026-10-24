@@ -1056,14 +1056,26 @@ function showSupervisorStatus() {
         : 'Nenhuma chave cadastrada. Salvar não ativa o supervisor.';
 }
 showSupervisorStatus();
+async function refreshOrchestrationProviderStatus(){
+  try{await orchestrationUi?.refreshStatus?.();}
+  catch{
+    const connection=document.getElementById('orchestrationConnection');
+    if(connection)connection.textContent='A chave foi alterada, mas o estado do chat por API não atualizou. Recarregue a página para sincronizar.';
+  }
+}
 labKeyForm.addEventListener('submit',async event=>{
   event.preventDefault();
   labKeySave.disabled=true;
   try{
     await window.ordax.supervisorSaveKey(labKeyInput.value.trim());
     labKeyInput.value='';
-    labStatus=await window.ordax.supervisorStatus();
-    showSupervisorStatus();
+    try{
+      labStatus=await window.ordax.supervisorStatus();
+      showSupervisorStatus();
+    }catch{
+      labKeyState.textContent='Chave salva, mas o estado local não atualizou. Recarregue a página para sincronizar.';
+    }
+    await refreshOrchestrationProviderStatus();
   }catch(error){
     labKeyInput.value='';
     labKeyState.textContent=error?.message?.includes('supervisor_key_invalid_format')
@@ -1076,8 +1088,13 @@ labKeyRemove.addEventListener('click',async()=>{
   labKeyInput.value='';
   try{
     await window.ordax.supervisorRemoveKey();
-    labStatus=await window.ordax.supervisorStatus();
-    showSupervisorStatus();
+    try{
+      labStatus=await window.ordax.supervisorStatus();
+      showSupervisorStatus();
+    }catch{
+      labKeyState.textContent='Remoção concluída, mas o estado local não atualizou. Recarregue a página para sincronizar.';
+    }
+    await refreshOrchestrationProviderStatus();
   }catch{labKeyState.textContent='Não foi possível remover a chave armazenada.';}
   finally{labKeyRemove.disabled=!labStatus.keySaved;}
 });
