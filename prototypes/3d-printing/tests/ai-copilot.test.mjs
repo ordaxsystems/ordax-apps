@@ -327,15 +327,36 @@ test("contexto da IA prioriza o perfil ativo e limita candidatos ao que foi envi
     heightMm: 256,
     nozzleDiameterMm: 0.4,
     printerModel: "metadata fora do necessário para recomendar",
+    supportMultiBedTypes: true,
+    defaultBedType: "Textured PEI Plate",
+    unsupportedBedTypes: ["Engineering Plate", "untrusted-bed-name"],
   }));
   const selectedId = catalog.at(-1).id;
   const result = buildAssistantProfileContext({ machine: { catalog } }, { machine: selectedId });
   const visible = JSON.parse(result.context[0].text).slicer.configuredProfiles.catalogs.machines;
-  assert.equal(visible.length, assistantProfileOptionLimit);
+  assert.ok(visible.length > 0 && visible.length <= assistantProfileOptionLimit);
   assert.equal(visible[0].id, selectedId);
   assert.deepEqual(result.allowedProfiles.machine, visible.map(profile => profile.id));
   assert.equal(visible.some(profile => profile.id === catalog[0].id), true);
   assert.equal(visible.some(profile => profile.id === catalog[assistantProfileOptionLimit].id), false);
+  assert.equal(visible[0].supportMultiBedTypes, true);
+  assert.equal(visible[0].defaultBedType, "Textured PEI Plate");
+  assert.deepEqual(visible[0].unsupportedBedTypes, ["Engineering Plate"]);
+});
+
+test("contexto da IA leva temperaturas por superfície sem repassar campos inválidos", () => {
+  const id = `orca-filament-${"d".repeat(24)}`;
+  const result = buildAssistantProfileContext({ filament: { catalog: [{
+    id,
+    name: "PLA compatível",
+    bedTemperaturesByType: {
+      "Cool Plate": { otherLayerC: 45, initialLayerC: 50 },
+      "Textured PEI Plate": { otherLayerC: 65, initialLayerC: 151 },
+      "Untrusted Plate": { otherLayerC: 20, initialLayerC: 25 },
+    },
+  }] } }, { filament: id });
+  const visible = JSON.parse(result.context[0].text).slicer.configuredProfiles.catalogs.filaments[0];
+  assert.deepEqual(visible.bedTemperaturesByType, { "Cool Plate": { otherLayerC: 45, initialLayerC: 50 } });
 });
 
 test("cada catálogo compacto respeita o limite de contexto mesmo com nomes longos", () => {
