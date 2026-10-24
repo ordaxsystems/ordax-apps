@@ -8,8 +8,8 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 
 - Auditoria de ownership e dos dados efetivamente persistidos.
 - Ownership do pedido alimentar comercial ainda requer reconciliação: o livro genérico `ordax.sales-book/1` existe, mas o plano ACHEGUESE-001 do owner OS designa Food Order Core quando Food é o provedor. Os pedidos visíveis no protótipo são sandbox local, não um SSOT comercial.
-- Food state v5 sem mestre, saldo ou ledger de Inventory, com migração explícita de dados v4 para os novos ajustes configuráveis.
-- Cálculo de consumo por ficha técnica separado da movimentação do estoque.
+- Food state v6 sem mestre, saldo ou ledger de Inventory; migração v4→v5 mantém os ajustes configuráveis e v5→v6 preserva pedidos legados, mas não inventa snapshots históricos de consumo.
+- Proposta de consumo imutável por novo pedido, calculada da ficha técnica vigente quando criado. Mudanças futuras na ficha não afetam essa proposta; Inventory permanece a única autoridade de movimentações.
 - Migração de preview v3/v4 com arquivo local do antigo estoque v3 antes de reescrever a chave ativa.
 - Pedidos, KDS, Cardápio/fichas, Mesas/Comandas e Delivery mantidos como áreas do Food Core.
 - Renderizadores operacionais separados, consumindo o snapshot/view model único do app.
