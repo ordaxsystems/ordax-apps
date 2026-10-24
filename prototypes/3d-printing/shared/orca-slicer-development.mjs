@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, open, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, join, posix, resolve, win32 } from "node:path";
 import { pipeline } from "node:stream/promises";
 
 const ENGINE_NAME = "OrcaSlicer";
@@ -231,9 +231,39 @@ function selectConfiguredProfiles(configuration, manifest) {
   return selected;
 }
 
-function safeChildEnvironment() {
-  const secretName = /(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|COOKIE|AUTH)/i;
-  return Object.fromEntries(Object.entries(process.env).filter(([key, value]) => !secretName.test(key) && typeof value === "string"));
+export function createOrcaChildEnvironment({ source = process.env, platform = process.platform, jobDirectory = null } = {}) {
+  const path = platform === "win32" ? win32 : posix;
+  const allowed = platform === "win32"
+    ? ["PATH", "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT"]
+    : ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ"];
+  const environment = {};
+  for (const name of allowed) {
+    const key = Object.keys(source).find(candidate => candidate.toUpperCase() === name);
+    const value = key ? source[key] : undefined;
+    if (typeof value === "string" && value.length <= 32_767 && !value.includes("\0")) environment[name] = value;
+  }
+  if (jobDirectory) {
+    const privateTemp = path.join(jobDirectory, "tmp");
+    environment.HOME = jobDirectory;
+    environment.TMPDIR = privateTemp;
+    environment.TEMP = privateTemp;
+    environment.TMP = privateTemp;
+    if (platform === "win32") {
+      environment.USERPROFILE = jobDirectory;
+      environment.APPDATA = path.join(jobDirectory, "appdata");
+      environment.LOCALAPPDATA = path.join(jobDirectory, "local-appdata");
+    } else {
+      environment.XDG_CONFIG_HOME = path.join(jobDirectory, "config");
+      environment.XDG_CACHE_HOME = path.join(jobDirectory, "cache");
+      environment.XDG_DATA_HOME = path.join(jobDirectory, "data-home");
+      environment.XDG_STATE_HOME = path.join(jobDirectory, "state");
+    }
+  }
+  return Object.freeze(environment);
+}
+
+async function prepareChildDirectories(directory) {
+  await Promise.all(["tmp", "appdata", "local-appdata", "config", "cache", "data-home", "state"].map(name => mkdir(join(directory, name))));
 }
 
 function collectText(target, chunk, maxBytes = 1024 * 1024) {
@@ -249,7 +279,7 @@ function runChild(executable, args, { cwd, signal, timeoutMs = 15_000 } = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
     if (signal?.aborted) return rejectPromise(new DOMException("Fatiamento cancelado.", "AbortError"));
     let child;
-    try { child = spawn(executable, args, { cwd, env: safeChildEnvironment(), windowsHide: true, shell: false, stdio: ["ignore", "pipe", "pipe"] }); }
+    try { child = spawn(executable, args, { cwd, env: createOrcaChildEnvironment({ jobDirectory: cwd }), windowsHide: true, shell: false, stdio: ["ignore", "pipe", "pipe"] }); }
     catch { return rejectPromise(publicError("Não foi possível iniciar OrcaSlicer.", 503)); }
     const stdout = { text: "", bytes: 0 }, stderr = { text: "", bytes: 0 };
     child.stdout.on("data", chunk => collectText(stdout, chunk));
@@ -442,7 +472,16 @@ async function loadConfiguration() {
     return { executable, available: false, version: null, reason: error.message.slice(0, 300), profiles: null };
   }
 
-  const probe = await runChild(executable, ["--help"], { timeoutMs: 15_000 }).catch(error => ({ code: -1, stdout: "", stderr: error.message }));
+  let probe;
+  const probeDirectory = await mkdtemp(join(tmpdir(), "ordax-orca-probe-"));
+  try {
+    await prepareChildDirectories(probeDirectory);
+    probe = await runChild(executable, ["--help"], { cwd: probeDirectory, timeoutMs: 15_000 });
+  } catch (error) {
+    probe = { code: -1, stdout: "", stderr: error.message };
+  } finally {
+    await rm(probeDirectory, { recursive: true, force: true }).catch(() => {});
+  }
   const version = readVersion(`${probe.stdout}\n${probe.stderr}`);
   if (!version) return { executable, available: false, version: null, reason: "O executável não respondeu como uma versão CLI reconhecível do OrcaSlicer.", profiles: null };
   const profiles = {
@@ -500,8 +539,7 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
     temporaryDirectory = await mkdtemp(join(tmpdir(), "ordax-orca-slice-"));
     const outputDirectory = join(temporaryDirectory, "output");
     const dataDirectory = join(temporaryDirectory, "data");
-    await mkdir(outputDirectory);
-    await mkdir(dataDirectory);
+    await Promise.all([mkdir(outputDirectory), mkdir(dataDirectory), prepareChildDirectories(temporaryDirectory)]);
     const inputPath = join(temporaryDirectory, "ordax-model.stl");
     const machinePath = join(temporaryDirectory, "machine.json");
     const processPath = join(temporaryDirectory, "process.json");
