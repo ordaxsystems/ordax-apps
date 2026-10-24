@@ -206,6 +206,13 @@ jobs:
           node --test apps/inventory/tests/movements.test.mjs
           node --test apps/sales/tests/orders.test.mjs
 
+      - name: Prove Food preview boundaries and safe local replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          find apps/food-pizzeria/src prototypes/food-pizzeria -type f -name '*.mjs' -print0 | sort -z | xargs -0 -r -n1 node --check
+          node --test apps/food-pizzeria/tests/*.test.mjs
+
       - name: Resolve exact historical Internet source pin
         id: internet-source-pin
         shell: bash
