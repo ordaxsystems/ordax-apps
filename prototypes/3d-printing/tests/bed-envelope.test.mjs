@@ -56,6 +56,20 @@ test("avalia cada objeto separadamente sem preencher o vão entre as peças", ()
   ], space), false);
 });
 
+test("expande a caixa por margem XY de brim antes de validar bordas e zonas excluídas", () => {
+  const bed = {
+    bedSizeMm: [100, 100],
+    bedExcludeAreasMm: [[[-5, -5], [5, -5], [5, 5], [-5, 5]]],
+  };
+  const nearEdge = { min: [44, 10, 0], max: [46, 12, 1] };
+  assert.equal(boundsWithinPrintableSpace(nearEdge, bed), true);
+  assert.equal(boundsWithinPrintableSpace(nearEdge, { ...bed, xyMarginMm: 5 }), false);
+  const nearKeepout = { min: [7, -1, 0], max: [9, 1, 1] };
+  assert.equal(boundsWithinPrintableSpace(nearKeepout, bed), true);
+  assert.equal(boundsWithinPrintableSpace(nearKeepout, { ...bed, xyMarginMm: 3 }), false);
+  assert.equal(boundsWithinPrintableSpace(nearEdge, { ...bed, xyMarginMm: 50.1 }), false);
+});
+
 test("produz estado de triagem bounded para a IA e diferencia perfil real de referência", () => {
   const objects = [
     { min: [-10, -10, 0], max: [10, 10, 20] },
@@ -66,7 +80,8 @@ test("produz estado de triagem bounded para a IA e diferencia perfil real de ref
   assert.equal(profileFit.checkedObjectCount, 2);
   assert.equal(profileFit.outsideObjectCount, 1);
   assert.deepEqual(profileFit.outsideObjectItems, [2]);
-  assert.match(profileFit.method, /per-object-axis-aligned-bounds/);
+  assert.match(profileFit.method, /per-object-expanded-bounds/);
+  assert.equal(profileFit.xyMarginMm, 0);
   const referenceFit = assessModelEnvelope([objects[0]], { bedSizeMm: [200, 200], heightMm: 100, reference: true });
   assert.equal(referenceFit.status, "within-reference-envelope");
   assert.equal(assessModelEnvelope([], { bedSizeMm: [200, 200], heightMm: 100 }).status, "not-assessed");

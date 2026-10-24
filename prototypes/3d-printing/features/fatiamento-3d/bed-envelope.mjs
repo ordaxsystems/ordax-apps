@@ -98,24 +98,32 @@ function rectangularOutline(bedSizeMm) {
   return [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY]];
 }
 
-export function boundsWithinPrintableSpace(bounds, { bedSizeMm, bedOutlineMm, bedExcludeAreasMm = [] } = {}) {
-  const rectangle = rectangleFor(bounds);
+export function boundsWithinPrintableSpace(bounds, { bedSizeMm, bedOutlineMm, bedExcludeAreasMm = [], xyMarginMm = 0 } = {}) {
+  if (!Number.isFinite(xyMarginMm) || xyMarginMm < 0 || xyMarginMm > 50) return false;
+  const source = rectangleFor(bounds);
+  if (!source) return false;
+  const expandedBounds = xyMarginMm === 0 ? bounds : {
+    min: [bounds.min[0] - xyMarginMm, bounds.min[1] - xyMarginMm, bounds.min[2]],
+    max: [bounds.max[0] + xyMarginMm, bounds.max[1] + xyMarginMm, bounds.max[2]],
+  };
+  const rectangle = rectangleFor(expandedBounds);
   const outline = validPolygon(bedOutlineMm) ? bedOutlineMm : rectangularOutline(bedSizeMm);
   if (!rectangle || !validPolygon(outline) || !Array.isArray(bedExcludeAreasMm)) return false;
   if (!rectangleInside(rectangle, outline)) return false;
   return bedExcludeAreasMm.every(area => validPolygon(area) && !rectangleOverlapsPolygon(rectangle, area));
 }
 
-export function assessModelEnvelope(objectBounds, { bedSizeMm, bedOutlineMm, bedExcludeAreasMm = [], heightMm, reference = false } = {}) {
+export function assessModelEnvelope(objectBounds, { bedSizeMm, bedOutlineMm, bedExcludeAreasMm = [], heightMm, reference = false, xyMarginMm = 0 } = {}) {
   if (!Array.isArray(objectBounds) || !objectBounds.length || !Number.isFinite(heightMm) || heightMm <= 0
+    || !Number.isFinite(xyMarginMm) || xyMarginMm < 0 || xyMarginMm > 50
     || objectBounds.some(bounds => !rectangleFor(bounds) || !Array.isArray(bounds.min) || !Array.isArray(bounds.max)
       || bounds.min.length < 3 || bounds.max.length < 3 || ![bounds.min[2], bounds.max[2]].every(Number.isFinite))) {
-    return Object.freeze({ status: "not-assessed", method: "per-object-axis-aligned-bounds/1", objectCount: Array.isArray(objectBounds) ? objectBounds.length : 0, checkedObjectCount: 0, outsideObjectCount: null, outsideObjectItems: [] });
+    return Object.freeze({ status: "not-assessed", method: "per-object-expanded-bounds/2", objectCount: Array.isArray(objectBounds) ? objectBounds.length : 0, checkedObjectCount: 0, outsideObjectCount: null, outsideObjectItems: [] });
   }
   const outsideObjectItems = [];
   for (let index = 0; index < objectBounds.length; index++) {
     const bounds = objectBounds[index];
-    const insideXY = boundsWithinPrintableSpace(bounds, { bedSizeMm, bedOutlineMm, bedExcludeAreasMm });
+    const insideXY = boundsWithinPrintableSpace(bounds, { bedSizeMm, bedOutlineMm, bedExcludeAreasMm, xyMarginMm });
     const insideZ = bounds.min[2] >= 0 && bounds.max[2] <= heightMm;
     if (!insideXY || !insideZ) outsideObjectItems.push(index + 1);
   }
@@ -124,13 +132,14 @@ export function assessModelEnvelope(objectBounds, { bedSizeMm, bedOutlineMm, bed
     status: reference
       ? outsideObjectCount ? "outside-reference-envelope" : "within-reference-envelope"
       : outsideObjectCount ? "outside-profile-envelope" : "within-profile-envelope",
-    method: "per-object-axis-aligned-bounds/1",
+    method: "per-object-expanded-bounds/2",
+    xyMarginMm,
     objectCount: objectBounds.length,
     checkedObjectCount: objectBounds.length,
     outsideObjectCount,
     outsideObjectItems: Object.freeze(outsideObjectItems.slice(0, 12)),
     omittedOutsideObjectCount: Math.max(0, outsideObjectCount - 12),
-    limitations: "caixa envolvente por objeto comparada ao contorno e às zonas excluídas; não analisa colisões, saliências, margem de primeira camada nem substitui o motor",
+    limitations: "caixa envolvente conservadora por objeto expandida pela margem XY informada e comparada ao contorno e às zonas excluídas; não analisa colisões, skirt, saliências ou suporte e não substitui o motor",
   });
 }
 

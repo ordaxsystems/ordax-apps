@@ -3,7 +3,7 @@ import { infillPatternOptions, isSupportedInfillPattern } from "../../shared/inf
 
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/10";
+const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/11";
 const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
@@ -104,6 +104,9 @@ function profileValues(kind, profile) {
       bottomShellLayers: profileNumber(profile.processSettings.bottomShellLayers),
       topShellThickness: profileNumber(profile.processSettings.topShellThickness),
       bottomShellThickness: profileNumber(profile.processSettings.bottomShellThickness),
+      brimType: typeof profile.processSettings.brimType === "string" ? profile.processSettings.brimType.slice(0, 32) : null,
+      brimWidthMm: profileNumber(profile.processSettings.brimWidthMm),
+      brimObjectGapMm: profileNumber(profile.processSettings.brimObjectGapMm),
       sparseInfillDensityPercent: profileNumber(profile.processSettings.sparseInfillDensityPercent),
       sparseInfillPattern: isSupportedInfillPattern(profile.processSettings.sparseInfillPattern) ? profile.processSettings.sparseInfillPattern : null,
       supports: typeof profile.processSettings.supports === "boolean" ? profile.processSettings.supports : null,
@@ -245,6 +248,8 @@ export const assistantStructuredOutput = Object.freeze({
               bottomShellLayers: nullableInteger(0, 20),
               topShellThickness: nullable({ type: "number", minimum: 0, maximum: 10 }),
               bottomShellThickness: nullable({ type: "number", minimum: 0, maximum: 10 }),
+              brimType: nullable({ type: "string", enum: ["outer_only", "inner_only", "outer_and_inner", "no_brim"] }),
+              brimWidth: nullable({ type: "number", minimum: 0, maximum: 20 }),
               infill: nullableInteger(0, 100),
               infillPattern: nullable({ type: "string", enum: infillPatternOptions.map(option => option.value) }),
               supports: nullable({ type: "boolean" }),
@@ -254,7 +259,7 @@ export const assistantStructuredOutput = Object.freeze({
               fanMinSpeedPercent: nullableInteger(0, 100),
               fanMaxSpeedPercent: nullableInteger(0, 100),
             },
-            required: ["quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "topShellThickness", "bottomShellThickness", "infill", "infillPattern", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
+            required: ["quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "topShellThickness", "bottomShellThickness", "brimType", "brimWidth", "infill", "infillPattern", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
           }),
           transform: nullable({
             type: "object",
@@ -388,6 +393,8 @@ function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = n
     bottomShellLayers: item => Number.isInteger(item) && item >= 0 && item <= 20,
     topShellThickness: item => Number.isFinite(item) && item >= 0 && item <= 10,
     bottomShellThickness: item => Number.isFinite(item) && item >= 0 && item <= 10,
+    brimType: item => ["outer_only", "inner_only", "outer_and_inner", "no_brim"].includes(item),
+    brimWidth: item => Number.isFinite(item) && item >= 0 && item <= 20,
     infill: item => Number.isInteger(item) && item >= 0 && item <= 100,
     infillPattern: isSupportedInfillPattern,
     supports: item => typeof item === "boolean",

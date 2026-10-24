@@ -2,7 +2,7 @@ import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { isSupportedInfillPattern } from "../../shared/infill-patterns.mjs";
 
 const MAX_GCODE_BYTES = 512 * 1024 * 1024;
-const PROCESS_SCHEMA = "ordax.slicer-processes/6";
+const PROCESS_SCHEMA = "ordax.slicer-processes/7";
 const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const PROFILE_KINDS = Object.freeze(["machine", "process", "filament"]);
@@ -46,6 +46,8 @@ function publicProcessSettings(settings) {
     bottomShellLayers: settings.bottomShellLayers,
     topShellThickness: settings.topShellThickness,
     bottomShellThickness: settings.bottomShellThickness,
+    brimType: settings.brimType,
+    brimWidth: settings.brimWidth,
     infill: settings.infill,
     infillPattern: settings.infillPattern,
     supports: settings.supports,
@@ -149,7 +151,7 @@ function validateProcessAssignmentRequest(request) {
     }
     processIds.add(process.id);
     const settings = process.settings;
-    if (!["standard", "fine", "draft", "profile", "custom"].includes(settings.quality) || !Number.isFinite(settings.layerHeight) || settings.layerHeight < 0.08 || settings.layerHeight > 0.4 || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8 || !Number.isInteger(settings.topShellLayers) || settings.topShellLayers < 0 || settings.topShellLayers > 20 || !Number.isInteger(settings.bottomShellLayers) || settings.bottomShellLayers < 0 || settings.bottomShellLayers > 20 || !Number.isFinite(settings.topShellThickness) || settings.topShellThickness < 0 || settings.topShellThickness > 10 || !Number.isFinite(settings.bottomShellThickness) || settings.bottomShellThickness < 0 || settings.bottomShellThickness > 10 || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100 || !isSupportedInfillPattern(settings.infillPattern) || typeof settings.supports !== "boolean" || !["normal(auto)", "tree(auto)"].includes(settings.supportType) || !Number.isInteger(settings.supportThresholdAngle) || settings.supportThresholdAngle < 0 || settings.supportThresholdAngle > 90 || typeof settings.supportOnBuildPlateOnly !== "boolean" || !Number.isInteger(settings.fanMinSpeedPercent) || settings.fanMinSpeedPercent < 0 || settings.fanMinSpeedPercent > 100 || !Number.isInteger(settings.fanMaxSpeedPercent) || settings.fanMaxSpeedPercent < settings.fanMinSpeedPercent || settings.fanMaxSpeedPercent > 100) {
+    if (!["standard", "fine", "draft", "profile", "custom"].includes(settings.quality) || !Number.isFinite(settings.layerHeight) || settings.layerHeight < 0.08 || settings.layerHeight > 0.4 || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8 || !Number.isInteger(settings.topShellLayers) || settings.topShellLayers < 0 || settings.topShellLayers > 20 || !Number.isInteger(settings.bottomShellLayers) || settings.bottomShellLayers < 0 || settings.bottomShellLayers > 20 || !Number.isFinite(settings.topShellThickness) || settings.topShellThickness < 0 || settings.topShellThickness > 10 || !Number.isFinite(settings.bottomShellThickness) || settings.bottomShellThickness < 0 || settings.bottomShellThickness > 10 || !(settings.brimType === null || ["outer_only", "inner_only", "outer_and_inner", "no_brim"].includes(settings.brimType)) || !(settings.brimWidth === null || Number.isFinite(settings.brimWidth) && settings.brimWidth >= 0 && settings.brimWidth <= 20) || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100 || !isSupportedInfillPattern(settings.infillPattern) || typeof settings.supports !== "boolean" || !["normal(auto)", "tree(auto)"].includes(settings.supportType) || !Number.isInteger(settings.supportThresholdAngle) || settings.supportThresholdAngle < 0 || settings.supportThresholdAngle > 90 || typeof settings.supportOnBuildPlateOnly !== "boolean" || !Number.isInteger(settings.fanMinSpeedPercent) || settings.fanMinSpeedPercent < 0 || settings.fanMinSpeedPercent > 100 || !Number.isInteger(settings.fanMaxSpeedPercent) || settings.fanMaxSpeedPercent < settings.fanMinSpeedPercent || settings.fanMaxSpeedPercent > 100) {
       throw new Error(`As configurações do ${String(process.name || "processo").slice(0, 80)} estão fora dos limites deste app.`);
     }
     for (const objectId of process.objectIds) {
