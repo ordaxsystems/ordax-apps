@@ -6,7 +6,9 @@ import {
 import { createSeedFoodState } from "../fixtures/mock-data.mjs";
 import { FOOD_DATA_PORT_SCHEMA } from "../ports/food-data-port.mjs";
 
-const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/1";
+const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/2";
+const LEGACY_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/1";
+const COMMAND_DIGEST_RE = /^[a-f0-9]{64}$/;
 const LEGACY_INVENTORY_ARCHIVE_SCHEMA = "ordax.food-pizzeria.preview-legacy-inventory/1";
 const LEGACY_FOOD_STATE_V3 = "ordax.food-pizzeria-state/3";
 const BUSINESS_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
@@ -20,6 +22,34 @@ const LEGACY_KEY = [
 
 function serializedBytes(value) {
   return new TextEncoder().encode(value).byteLength;
+}
+
+async function fingerprintCommand(command) {
+  const digest = globalThis.crypto?.subtle?.digest;
+  if (typeof digest !== "function") {
+    throw new Error("WebCrypto seguro é obrigatório para gravar operações locais da prévia.");
+  }
+  const bytes = new TextEncoder().encode(JSON.stringify(command));
+  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hash)].map((part) => part.toString(16).padStart(2, "0")).join("");
+}
+
+function validateCommandHistory(entries) {
+  if (!Array.isArray(entries) || entries.length > MAX_RECORDED_COMMANDS) {
+    throw new TypeError("O registro de operações locais da pizzaria está inválido.");
+  }
+  const seen = new Set();
+  return entries.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)
+      || Object.keys(entry).sort().join(",") !== "digest,id"
+      || typeof entry.id !== "string" || !BUSINESS_ID_RE.test(entry.id)
+      || (entry.digest !== null && (typeof entry.digest !== "string" || !COMMAND_DIGEST_RE.test(entry.digest)))
+      || seen.has(entry.id)) {
+      throw new TypeError("O registro de operações locais da pizzaria está inválido.");
+    }
+    seen.add(entry.id);
+    return { id: entry.id, digest: entry.digest };
+  });
 }
 
 function legacyInventoryArchive(state, businessId) {
@@ -44,22 +74,32 @@ function decodeStoredValue(raw, businessId) {
   }
 
   if (parsed?.schema === STORAGE_SCHEMA) {
-    if (!Array.isArray(parsed.processedCommandIds)
-      || parsed.processedCommandIds.length > MAX_RECORDED_COMMANDS
-      || parsed.processedCommandIds.some((id) => typeof id !== "string")) {
-      throw new TypeError("O registro de operações locais da pizzaria está inválido.");
-    }
     return {
       state: validateFoodPizzeriaState(migrateFoodPizzeriaState(parsed.state)),
-      processedCommandIds: [...new Set(parsed.processedCommandIds)],
+      processedCommands: validateCommandHistory(parsed.processedCommands),
       legacyInventoryArchive: legacyInventoryArchive(parsed.state, businessId),
     };
   }
 
-  // Accept the previous local-state shape once, then write the versioned envelope.
+  if (parsed?.schema === LEGACY_STORAGE_SCHEMA) {
+    if (!Array.isArray(parsed.processedCommandIds)
+      || parsed.processedCommandIds.length > MAX_RECORDED_COMMANDS
+      || parsed.processedCommandIds.some((id) => typeof id !== "string" || !BUSINESS_ID_RE.test(id))) {
+      throw new TypeError("O registro legado de operações da pizzaria está inválido.");
+    }
+    return {
+      state: validateFoodPizzeriaState(migrateFoodPizzeriaState(parsed.state)),
+      // Legacy ids have no command fingerprints; refuse ambiguous replay rather than assume equivalence.
+      processedCommands: validateCommandHistory([...new Set(parsed.processedCommandIds)]
+        .map((id) => ({ id, digest: null }))),
+      legacyInventoryArchive: legacyInventoryArchive(parsed.state, businessId),
+    };
+  }
+
+  // Accept the previous raw local-state shape once, then write the versioned envelope.
   return {
     state: validateFoodPizzeriaState(migrateFoodPizzeriaState(parsed)),
-    processedCommandIds: [],
+    processedCommands: [],
     legacyInventoryArchive: legacyInventoryArchive(parsed, businessId),
   };
 }
@@ -93,7 +133,7 @@ export function createBrowserLocalFoodStore({
   const lock = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
   const context = Object.freeze({ businessId, adapter: "browser-local-preview" });
   let snapshot = null;
-  let processedCommandIds = [];
+  let processedCommands = [];
   let initialized = false;
   let destroyed = false;
   let initializing = null;
@@ -121,11 +161,11 @@ export function createBrowserLocalFoodStore({
     storage.setItem(legacyArchiveKey, serialized);
   }
 
-  function writePersisted(state, commandIds) {
+  function writePersisted(state, commands) {
     const serialized = JSON.stringify({
       schema: STORAGE_SCHEMA,
       state,
-      processedCommandIds: commandIds.slice(-MAX_RECORDED_COMMANDS),
+      processedCommands: commands.slice(-MAX_RECORDED_COMMANDS),
     });
     if (serializedBytes(serialized) > MAX_STATE_BYTES) throw new RangeError("Os dados locais da pizzaria excedem o limite seguro.");
     storage.setItem(key, serialized);
@@ -140,7 +180,7 @@ export function createBrowserLocalFoodStore({
         throw new Error("A mesma revisão local apresenta dados diferentes.");
       }
       snapshot = next.state;
-      processedCommandIds = next.processedCommandIds;
+      processedCommands = next.processedCommands;
       emit();
     } catch {
       // Keep the last verified state visible; never replace corrupt bytes.
@@ -161,13 +201,13 @@ export function createBrowserLocalFoodStore({
         if (persisted) {
           archiveLegacyInventory(persisted.legacyInventoryArchive);
           snapshot = persisted.state;
-          processedCommandIds = persisted.processedCommandIds;
+          processedCommands = persisted.processedCommands;
         } else {
           snapshot = validateFoodPizzeriaState(createSeedFoodState());
-          processedCommandIds = [];
+          processedCommands = [];
         }
         // Persist the seed or migrated value under the same lock so every tab starts from one revision.
-        writePersisted(snapshot, processedCommandIds);
+        writePersisted(snapshot, processedCommands);
         initialized = true;
         return snapshot;
       }).finally(() => {
@@ -190,19 +230,24 @@ export function createBrowserLocalFoodStore({
     async execute(commandValue) {
       if (destroyed || !initialized) throw new Error("A interface de dados da pizzaria não está pronta.");
       const command = createFoodCommand(commandValue);
+      const commandDigest = await fingerprintCommand(command);
       return locks.request(lock, { mode: "exclusive" }, async () => {
         if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
         const persisted = readPersisted();
         if (!persisted) throw new Error("O estado local da pizzaria desapareceu durante a operação.");
-        if (persisted.processedCommandIds.includes(command.commandId)) {
+        const previous = persisted.processedCommands.find(({ id }) => id === command.commandId);
+        if (previous) {
+          if (previous.digest !== commandDigest) {
+            throw new Error("Identificador de operação reutilizado com conteúdo diferente ou legado não verificável.");
+          }
           snapshot = persisted.state;
-          processedCommandIds = persisted.processedCommandIds;
+          processedCommands = persisted.processedCommands;
           emit();
           return snapshot;
         }
         if (command.expectedRevision !== persisted.state.revision) {
           snapshot = persisted.state;
-          processedCommandIds = persisted.processedCommandIds;
+          processedCommands = persisted.processedCommands;
           emit();
           throw conflictError(command.expectedRevision, persisted.state.revision);
         }
@@ -210,10 +255,11 @@ export function createBrowserLocalFoodStore({
         if (next.revision !== persisted.state.revision + 1) {
           throw new Error("A operação não produziu uma revisão consecutiva da pizzaria.");
         }
-        const nextCommandIds = [...persisted.processedCommandIds, command.commandId].slice(-MAX_RECORDED_COMMANDS);
-        writePersisted(next, nextCommandIds);
+        const nextCommands = [...persisted.processedCommands, { id: command.commandId, digest: commandDigest }]
+          .slice(-MAX_RECORDED_COMMANDS);
+        writePersisted(next, nextCommands);
         snapshot = next;
-        processedCommandIds = nextCommandIds;
+        processedCommands = nextCommands;
         emit();
         return snapshot;
       });
