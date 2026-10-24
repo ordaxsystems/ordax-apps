@@ -18,6 +18,18 @@ const recipes = [
   ["pepperoni", [...common, line("pepperoni", 55, 90, 135)]],
 ];
 
+export const FOOD_RECIPE_INGREDIENT_FIXTURES = Object.freeze([
+  ["mucarela", "Muçarela", "g"], ["calabresa", "Calabresa", "g"],
+  ["molho", "Molho de tomate", "g"], ["farinha", "Farinha", "g"],
+  ["catupiry", "Catupiry", "g"], ["refrigerante", "Refrigerante lata", "un"],
+  ["presunto", "Presunto", "g"], ["ovo", "Ovo", "g"],
+  ["azeitona", "Azeitona", "g"], ["tomate", "Tomate", "g"],
+  ["manjericao", "Manjericão", "g"], ["provolone", "Provolone", "g"],
+  ["parmesao", "Parmesão", "g"], ["gorgonzola", "Gorgonzola", "g"],
+  ["frango", "Frango desfiado", "g"], ["pepperoni", "Pepperoni", "g"],
+  ["cebola", "Cebola", "g"], ["oregano", "Orégano", "g"],
+].map(([id, name, unit]) => Object.freeze({ id, name, unit })));
+
 export function createFoodRecipeSeed() {
   return recipes.map(([flavorKey, recipeLines]) => ({
     flavorId: `ng-${flavorKey}`,

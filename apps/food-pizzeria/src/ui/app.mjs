@@ -4,8 +4,8 @@ import {
   calculatePizzaPriceCents,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
-import { createMockWorkspace } from "../fixtures/mock-data.mjs";
-import { createPizzeriaInventorySeed } from "../fixtures/inventory-fixtures.mjs";
+import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
+import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
 import { renderSpaceCapabilityStatus } from "./space-capability-status.mjs";
 
@@ -18,13 +18,9 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   const querySurface = (selector) => surface.querySelector(selector) ?? root.querySelector(selector);
   const cancelDialog = querySurface("#cancel-dialog");
   const cancelForm = querySurface("#cancel-order-form");
-  const cashCloseDialog = querySurface("#cash-close-dialog");
-  const cashCloseForm = querySurface("#cash-close-form");
-  const cashOpenDialog = querySurface("#cash-open-dialog");
-  const cashOpenForm = querySurface("#cash-open-form");
   const tableOpenDialog = querySurface("#table-open-dialog");
   const tableOpenForm = querySurface("#table-open-form");
-  if ([cancelDialog, cancelForm, cashCloseDialog, cashCloseForm, cashOpenDialog, cashOpenForm, tableOpenDialog, tableOpenForm].some((element) => !element)) {
+  if ([cancelDialog, cancelForm, tableOpenDialog, tableOpenForm].some((element) => !element)) {
     throw new TypeError("O host não forneceu a estrutura de interface necessária para o OrdaX Food.");
   }
   
@@ -55,7 +51,8 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     team: "Equipe",
     settings: "Configurações",
   });
-  const PREVIEW_INGREDIENTS = Object.freeze(createPizzeriaInventorySeed().ingredients);
+  const PREVIEW_INGREDIENTS = FOOD_RECIPE_INGREDIENT_FIXTURES;
+  const PREVIEW_DELIVERY_FEE_CENTS = 500;
   const SPACE_PENDING_VIEWS = new Set(["overview", "pos", "inventory", "customers", "reports", "team"]);
   const ORDER_STATUS_FILTERS = Object.freeze([
     Object.freeze({ id: "all", label: "Todas as etapas" }),
@@ -73,7 +70,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     Object.freeze({ id: "counter", label: "Balcão" }),
   ]);
   const ORDER_STAGE_ALERT_MINUTES = Object.freeze({ received: 15, preparing: 35, ready: 15, "out-for-delivery": 45 });
-  const POS_PAYMENT_METHODS = Object.freeze(["PIX", "Cartão", "Dinheiro"]);
   const ICONS = Object.freeze({
     pizza: '<path d="M3.5 3.5c7.7.3 13.1 3.2 17 17-8.2-1.6-14.3-7.3-17-17Z"/><circle cx="9" cy="10" r="1"/><circle cx="13.5" cy="13.5" r="1"/>',
     overview: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>',
@@ -96,7 +92,8 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   
   const store = dataPort;
   let snapshot = null;
-  let mockWorkspace = createMockWorkspace();
+  let recipeFlavorId = null;
+  let recipeDraftLines = [];
   let unsubscribe = null;
   let activeView = "orders";
   let orderQuery = "";
@@ -121,25 +118,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   
   function money(cents) {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
-  }
-  
-  function moneyInput(cents) {
-    return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100);
-  }
-  
-  function inventoryRows() {
-    return [];
-  }
-  
-  function stockAmountLabel(ingredient, amountBase) {
-    const factor = ingredient.unit === "un" ? 1 : 1000;
-    const unit = ingredient.unit === "g" ? "kg" : ingredient.unit === "ml" ? "L" : "un";
-    const amount = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: ingredient.unit === "un" ? 0 : 3 }).format(amountBase / factor);
-    return `${amount} ${unit}`;
-  }
-  
-  function recipeCostCents(recipe) {
-    return recipe ? null : null;
   }
   
   function parseMoney(raw) {
@@ -169,27 +147,8 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
   }
   
-  function isToday(value) {
-    const date = new Date(value);
-    const today = new Date();
-    return date.getFullYear() === today.getFullYear()
-      && date.getMonth() === today.getMonth()
-      && date.getDate() === today.getDate();
-  }
-  
-  function greeting() {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Bom dia";
-    if (hour < 18) return "Boa tarde";
-    return "Boa noite";
-  }
-  
   function clockTime(value) {
     return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(value));
-  }
-  
-  function normalizePhone(value) {
-    return String(value ?? "").replace(/\D/g, "");
   }
   
   function stageStartedAt(order) {
@@ -303,7 +262,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     const name = snapshot.settings?.storeName ?? "Pizzaria";
     return `<header class="topbar">
       <div class="mobile-brand"><span class="brand-mark">${iconSvg("pizza")}</span><span>OrdaX <b>Food</b></span></div>
-      <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido, cliente ou produto" placeholder="Buscar pedido, cliente ou produto..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
+      <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido ou cliente no pedido" placeholder="Buscar pedido ou cliente no pedido..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
       <div class="topbar-right"><div class="preview-context" role="status"><strong>Prévia local</strong><small>Dados fictícios · sem sincronização</small></div><button type="button" class="avatar-button" aria-label="Configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
     </header>`;
   }
@@ -451,7 +410,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
           <div class="cart-heading"><strong>Dados para atendimento</strong><span class="step-number step-small">02</span></div>
           <input type="hidden" name="tableCommandId" value="${escapeHtml(tableCommand?.id ?? "")}">
           ${tableCommand ? `<div class="table-order-context"><div><strong>Comanda da Mesa ${String(tableCommand.tableId).padStart(2, "0")}</strong><span>${escapeHtml(tableCommand.customerName)} · ${tableCommand.guestCount} pessoas</span></div><small>Este pedido entrará na mesma fila da cozinha e será somado à comanda.</small>${button("Sair da comanda", "leave-command-context", { disabled: cart.length > 0 })}</div><label>Grupo da mesa<input name="customerName" maxlength="80" value="${escapeHtml(tableCommand.customerName)}" readonly required></label><input type="hidden" name="channel" value="counter"><input type="hidden" name="phone" value="">` : `<label>Nome do cliente<input name="customerName" maxlength="80" placeholder="Nome para identificar o pedido" required></label><div class="builder-grid customer-grid"><label>Canal<select name="channel"><option value="pickup">Retirada</option><option value="delivery">Entrega</option><option value="counter">Balcão</option></select></label><label>Telefone <span class="optional-tag">opcional, exceto entrega</span><input name="phone" maxlength="32" inputmode="tel" placeholder="(11) 99999-9999"></label></div>`}
-          <div id="delivery-fields" class="delivery-fields" hidden><label>Endereço de entrega<textarea name="address" maxlength="240" rows="2" placeholder="Rua, número, bairro e referência"></textarea></label><label>Taxa de entrega<input name="deliveryFee" inputmode="decimal" placeholder="0,00" value="${moneyInput(mockWorkspace.deliveryFee)}"><small>Valor padrão da pizzaria; pode ser ajustado neste pedido. Não calcula distância.</small></label></div>
+          <div id="delivery-fields" class="delivery-fields" hidden><label>Endereço de entrega<textarea name="address" maxlength="240" rows="2" placeholder="Rua, número, bairro e referência"></textarea></label><label>Taxa de entrega<input name="deliveryFee" inputmode="decimal" placeholder="0,00" value="${new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(PREVIEW_DELIVERY_FEE_CENTS / 100)}"><small>Valor inicial fictício da prévia; não representa configuração persistente. A distância não é calculada.</small></label></div>
           <label>Observações do pedido<textarea name="notes" maxlength="240" rows="2" placeholder="Ex.: sem cebola, tocar o interfone…"></textarea></label>
           <div class="order-total"><div><span>Total do pedido</span><small>O valor não representa pagamento recebido.</small></div><strong id="order-total-value">${money(0)}</strong></div>
           <button class="button button-primary button-wide" type="submit" ${busy || !activeFlavors.length ? "disabled" : ""}>Registrar pedido <span aria-hidden="true">→</span></button>
@@ -506,8 +465,8 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   
   function menuPage() {
     const sorted = [...snapshot.flavors].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, "pt-BR"));
-    const recipeFlavor = snapshot.flavors.find(({ id }) => id === mockWorkspace.recipeFlavorId) ?? null;
-    const recipeLines = mockWorkspace.recipeDraftLines;
+    const recipeFlavor = snapshot.flavors.find(({ id }) => id === recipeFlavorId) ?? null;
+    const recipeLines = recipeDraftLines;
     const recipeEditor = recipeFlavor ? `<form id="recipe-editor" class="panel recipe-editor">
       <div class="panel-heading"><div><p class="eyebrow">FICHA TÉCNICA</p><h2>${escapeHtml(recipeFlavor.name)}</h2><p>Quantidades por pizza; use g, ml ou unidades conforme o insumo.</p></div>${button("Fechar", "close-recipe-editor")}</div>
       <p class="recipe-preview-note">Os insumos desta prévia são referências fictícias. O Food calcula consumo, mas não consulta nem movimenta o Inventory.</p>
@@ -515,7 +474,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       <div class="recipe-editor-actions">${button("＋ Adicionar insumo", "add-recipe-line", { kind: "quiet", disabled: PREVIEW_INGREDIENTS.length <= recipeLines.length })}<span>Custos e saldos não são exibidos sem provider Inventory.</span><button class="button button-primary" type="submit" ${busy || !recipeLines.length ? "disabled" : ""}>Salvar ficha técnica</button></div>
     </form>` : "";
     return `<section class="page-section">
-      <div class="page-heading"><div><p class="eyebrow">PRODUTOS E PREÇOS</p><h1>Cardápio</h1><p>Cadastre sabores, preços e os insumos usados na produção.</p></div><span class="heading-counter">${snapshot.flavors.filter(({ active }) => active).length} disponíveis</span></div>
+      <div class="page-heading"><div><p class="eyebrow">PRODUTOS E PREÇOS</p><h1>Cardápio</h1><p>Cadastre sabores e preços; as fichas técnicas ficam registradas separadamente do saldo de estoque.</p></div><span class="heading-counter">${snapshot.flavors.filter(({ active }) => active).length} disponíveis</span></div>
       <div class="menu-layout">${flavorForm()}<section class="menu-list"><div class="panel-heading"><div><p class="eyebrow">SABORES CADASTRADOS</p><h2>Seu cardápio</h2></div><span class="column-count">${snapshot.flavors.length}</span></div>
         ${sorted.length ? `<div class="flavor-cards">${sorted.map((flavor) => {
           const recipe = snapshot.recipes.find(({ flavorId }) => flavorId === flavor.id);
@@ -523,7 +482,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         }).join("")}</div>` : emptyState({ icon: "◉", title: "Nenhum sabor cadastrado", text: "Adicione sabores para começar a montar pedidos." })}
       </section></div>
       ${recipeEditor}
-      <section class="panel catalog-products"><div class="panel-heading"><div><p class="eyebrow">CONCEITO DO CATÁLOGO</p><h2>Bebidas, combos e acompanhamentos</h2></div><button type="button" class="button button-quiet" data-action="preview-disabled" disabled>Cadastro indisponível</button></div>${mockWorkspace.showProductForm ? `<form id="product-form" class="mock-inline-form product-inline-form"><label>Nome<input name="name" maxlength="80" required></label><label>Categoria<select name="category"><option>Bebidas</option><option>Combos</option><option>Entradas</option><option>Sobremesas</option></select></label><label>Preço<input name="price" inputmode="decimal" placeholder="0,00" required></label><button class="button button-primary" type="submit">Salvar produto</button></form>` : ""}<div class="catalog-grid">${mockWorkspace.products.filter(({ category }) => category !== "Pizzas").map((product) => `<article class="catalog-row"><span class="catalog-thumb">${product.category === "Bebidas" ? "🥤" : product.category === "Sobremesas" ? "🍰" : "🧄"}</span><span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.category)}</small></span><b>${money(product.price)}</b><span class="stock-status">Amostra</span></article>`).join("")}</div></section>
+      <section class="panel catalog-products"><div class="panel-heading"><div><p class="eyebrow">AMOSTRAS FICTÍCIAS</p><h2>Bebidas, combos e acompanhamentos</h2></div><span class="stock-status">Somente referência visual</span></div><div class="catalog-grid">${PREVIEW_CATALOG_PRODUCTS.map((product) => `<article class="catalog-row"><span class="catalog-thumb">${product.category === "Bebidas" ? "🥤" : product.category === "Sobremesas" ? "🍰" : "🧄"}</span><span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.category)}</small></span><b>${money(product.priceCents)}</b><span class="stock-status">Amostra</span></article>`).join("")}</div></section>
     </section>`;
   }
   
@@ -546,77 +505,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   
   function statCard(label, value, detail, icon, tone = "orange") {
     return metricCard({ label, value: String(value), detail, icon, tone });
-  }
-  
-  function currentShiftSales() {
-    const sessionId = mockWorkspace.cashRegister.sessionId;
-    return mockWorkspace.sales.filter((sale) => sale.sessionId === sessionId);
-  }
-  
-  function currentShiftSummary() {
-    const register = mockWorkspace.cashRegister;
-    const sales = currentShiftSales();
-    const totalsByMethod = Object.fromEntries(POS_PAYMENT_METHODS.map((method) => [method, 0]));
-    for (const sale of sales) {
-      if (Object.hasOwn(totalsByMethod, sale.method)) totalsByMethod[sale.method] += sale.totalCents;
-    }
-    const totalCents = sales.reduce((sum, sale) => sum + sale.totalCents, 0);
-    const expectedCashCents = register.openingCashCents + totalsByMethod.Dinheiro;
-    return { sales, totalsByMethod, totalCents, expectedCashCents };
-  }
-  
-  function cashDifferenceLabel(differenceCents) {
-    if (differenceCents > 0) return `Sobra de ${money(differenceCents)}`;
-    if (differenceCents < 0) return `Falta de ${money(Math.abs(differenceCents))}`;
-    return "Sem diferença";
-  }
-  
-  function cashRegisterPanel() {
-    const register = mockWorkspace.cashRegister;
-    const summary = currentShiftSummary();
-    const isOpen = register.status === "open";
-    const action = isOpen
-      ? button("Fechar caixa", "close-cash-shift", { kind: "primary", disabled: mockWorkspace.cart.length > 0 })
-      : button("Abrir novo turno", "open-cash-shift", { kind: "primary" });
-    const methods = POS_PAYMENT_METHODS.map((method) => `<span><small>${escapeHtml(method)}</small><strong>${money(summary.totalsByMethod[method])}</strong></span>`).join("");
-    const closure = register.closure;
-    return `<section class="panel cash-register-panel" aria-label="Resumo do caixa"><div class="cash-register-heading"><div><p class="eyebrow">TURNO DE CAIXA</p><div class="cash-register-state ${isOpen ? "is-open" : "is-closed"}"><i></i><strong>${isOpen ? "Caixa aberto" : "Caixa fechado"}</strong><span>${isOpen ? `Desde ${clockTime(register.openedAt)}` : `Fechado às ${clockTime(register.closedAt)}`}</span></div></div>${action}</div>
-      <div class="cash-summary-grid"><div><span>Fundo inicial</span><strong>${money(register.openingCashCents)}</strong></div><div><span>Vendas neste turno</span><strong>${money(summary.totalCents)}</strong><small>${summary.sales.length} ${summary.sales.length === 1 ? "venda" : "vendas"}</small></div><div><span>Dinheiro esperado</span><strong>${money(summary.expectedCashCents)}</strong></div></div>
-      <div class="cash-method-row" aria-label="Vendas por forma de pagamento">${methods}</div>
-      <p class="cash-register-note">O fechamento considera as vendas finalizadas no PDV e o fundo inicial. Pedidos em produção não entram no saldo do caixa.</p>
-      ${!isOpen && closure ? `<div class="cash-closure-result"><span>Dinheiro contado: <strong>${money(closure.countedCashCents)}</strong></span><span class="${closure.differenceCents === 0 ? "is-balanced" : closure.differenceCents > 0 ? "is-surplus" : "is-shortage"}">${cashDifferenceLabel(closure.differenceCents)}</span></div>` : ""}
-      ${isOpen && mockWorkspace.cart.length ? `<p class="cash-register-note is-warning">Finalize ou limpe a venda atual antes de fechar o caixa.</p>` : ""}
-    </section>`;
-  }
-  
-  function cashCloseSummaryHtml() {
-    const register = mockWorkspace.cashRegister;
-    const summary = currentShiftSummary();
-    return `<dl class="cash-dialog-summary-list"><div><dt>Fundo inicial</dt><dd>${money(register.openingCashCents)}</dd></div>${POS_PAYMENT_METHODS.map((method) => `<div><dt>Vendas em ${escapeHtml(method)}</dt><dd>${money(summary.totalsByMethod[method])}</dd></div>`).join("")}<div class="cash-dialog-total"><dt>Dinheiro esperado</dt><dd>${money(summary.expectedCashCents)}</dd></div></dl>`;
-  }
-  
-  function sampleProductCard(product) {
-    const canSell = mockWorkspace.cashRegister.status === "open";
-    const icon = product.category === "Pizzas" ? "🍕"
-      : product.category === "Bebidas" ? "🥤"
-        : product.category === "Sobremesas" ? "🍰" : "🧄";
-    return `<article class="product-tile"><div class="product-photo"><span aria-hidden="true">${icon}</span></div><strong>${escapeHtml(product.name)}</strong><span>${money(product.price)}</span><button type="button" class="button button-quiet" data-action="add-product" data-product-id="${escapeHtml(product.id)}" ${canSell ? "" : "disabled"}>Adicionar</button></article>`;
-  }
-  
-  function shortcutCard(view, icon, title, subtitle, content) {
-    return `<section class="panel shortcut-card"><div class="shortcut-title"><span class="shortcut-icon">${iconSvg(icon)}</span><div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(subtitle)}</small></div><button class="text-button" type="button" data-view="${view}">Abrir →</button></div>${content}</section>`;
-  }
-  
-  function posProducts() {
-    const pizzas = snapshot.flavors
-      .filter(({ active }) => active)
-      .map((flavor) => ({
-        id: `pizza:${flavor.id}`,
-        name: `Pizza ${flavor.name}`,
-        category: "Pizzas",
-        price: flavor.pricesCents.medium,
-      }));
-    return [...pizzas, ...mockWorkspace.products];
   }
   
   function activeCommandForTable(tableId) {
@@ -953,70 +841,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       cancelForm.elements.reason.focus();
     } else if (action === "close-cancel") {
       cancelDialog.close();
-    } else if (action === "product-category") {
-      mockWorkspace.productCategory = target.dataset.category;
-      render();
-    } else if (action === "add-product" || action === "quick-sale") {
-      if (mockWorkspace.cashRegister.status !== "open") {
-        notice = { type: "error", text: "Abra um turno de caixa antes de iniciar uma venda." };
-        renderNotice();
-        return;
-      }
-      const product = posProducts().find(({ id }) => id === target.dataset.productId);
-      if (!product) return;
-      const existing = mockWorkspace.cart.find(({ id }) => id === product.id);
-      if (existing) existing.quantity += 1;
-      else mockWorkspace.cart.push({ ...product, quantity: 1 });
-      if (action === "quick-sale") activeView = "pos";
-      render();
-    } else if (action === "remove-product") {
-      mockWorkspace.cart.splice(Number(target.dataset.cartIndex), 1);
-      render();
-    } else if (action === "clear-cart") {
-      mockWorkspace.cart = [];
-      render();
-    } else if (action === "payment-method") {
-      if (mockWorkspace.cashRegister.status !== "open") return;
-      if (!POS_PAYMENT_METHODS.includes(target.dataset.method)) return;
-      mockWorkspace.paymentMethod = target.dataset.method;
-      render();
-    } else if (action === "checkout") {
-      if (mockWorkspace.cashRegister.status !== "open" || !mockWorkspace.cart.length) return;
-      const totalCents = mockWorkspace.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-      mockWorkspace.sales.unshift({
-        id: `sale-${uid()}`,
-        sessionId: mockWorkspace.cashRegister.sessionId,
-        customer: mockWorkspace.posCustomer?.trim() || "Cliente balcão",
-        totalCents,
-        method: mockWorkspace.paymentMethod,
-        items: mockWorkspace.cart.map(({ id, name, price, quantity }) => ({ id, name, price, quantity })),
-        at: new Date().toISOString(),
-      });
-      mockWorkspace.cart = [];
-      mockWorkspace.posCustomer = "";
-      notice = { type: "success", text: "Venda registrada no caixa." };
-      render();
-    } else if (action === "close-cash-shift") {
-      if (mockWorkspace.cashRegister.status !== "open") return;
-      if (mockWorkspace.cart.length) {
-        notice = { type: "error", text: "Finalize ou limpe a venda atual antes de fechar o caixa." };
-        renderNotice();
-        return;
-      }
-      cashCloseForm.elements.countedCash.value = moneyInput(currentShiftSummary().expectedCashCents);
-      querySurface("#cash-close-summary").innerHTML = cashCloseSummaryHtml();
-      cashCloseDialog.showModal();
-      cashCloseForm.elements.countedCash.focus();
-      cashCloseForm.elements.countedCash.select();
-    } else if (action === "open-cash-shift") {
-      if (mockWorkspace.cashRegister.status !== "closed") return;
-      cashOpenForm.elements.openingCash.value = "0,00";
-      cashOpenDialog.showModal();
-      cashOpenForm.elements.openingCash.focus();
-      cashOpenForm.elements.openingCash.select();
-    } else if (action === "close-cash-dialog") {
-      if (cashCloseDialog.open) cashCloseDialog.close();
-      if (cashOpenDialog.open) cashOpenDialog.close();
     } else if (action === "open-table-command") {
       openTableCommandDialog(target.dataset.tableId ?? null);
     } else if (action === "close-table-dialog") {
@@ -1047,78 +871,28 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         type: "table.command.close",
         payload: { commandId: command.id, closedAt: new Date().toISOString() },
       }, `Comanda da Mesa ${String(command.tableId).padStart(2, "0")} encerrada.`);
-    } else if (action === "inventory-change") {
-      const deltaBase = Number(target.dataset.deltaBase);
-      if (!Number.isSafeInteger(deltaBase) || deltaBase === 0) return;
-      void dispatch({
-        type: "inventory.movement.record",
-        payload: {
-          id: uid(),
-          ingredientId: target.dataset.ingredientId,
-          type: "adjustment",
-          quantityBase: deltaBase,
-          occurredAt: new Date().toISOString(),
-          note: "Ajuste rápido no estoque",
-        },
-      }, deltaBase > 0 ? "Saldo de estoque atualizado." : "Retirada registrada no estoque.");
-    } else if (action === "select-customer") {
-      mockWorkspace.selectedCustomer = target.dataset.customerId;
-      render();
-    } else if (action === "customer-order") {
-      const customer = mockWorkspace.customers.find(({ id }) => id === mockWorkspace.selectedCustomer);
-      activeCommandId = null;
-      activeView = "orders";
-      orderQuery = "";
-      render();
-      if (customer) {
-        const orderForm = root.querySelector("#create-order-form");
-        orderForm.elements.customerName.value = customer.name;
-        orderForm.elements.phone.value = customer.phone;
-      }
-    } else if (action === "toggle-product-form") {
-      mockWorkspace.showProductForm = !mockWorkspace.showProductForm;
-      render();
-    } else if (action === "toggle-customer-form") {
-      mockWorkspace.showCustomerForm = !mockWorkspace.showCustomerForm;
-      render();
-    } else if (action === "toggle-team-form") {
-      mockWorkspace.showTeamForm = !mockWorkspace.showTeamForm;
-      render();
-    } else if (action === "toggle-stock-movement-form") {
-      mockWorkspace.showStockMovementForm = !mockWorkspace.showStockMovementForm;
-      render();
-    } else if (action === "toggle-new-ingredient-form") {
-      mockWorkspace.showNewIngredientForm = !mockWorkspace.showNewIngredientForm;
-      render();
     } else if (action === "edit-recipe") {
       const recipe = snapshot.recipes.find(({ flavorId }) => flavorId === target.dataset.flavorId);
-      mockWorkspace.recipeFlavorId = target.dataset.flavorId;
-      mockWorkspace.recipeDraftLines = recipe
+      recipeFlavorId = target.dataset.flavorId;
+      recipeDraftLines = recipe
         ? recipe.lines.map((line) => ({ ingredientId: line.ingredientId, quantityBaseBySize: { ...line.quantityBaseBySize } }))
         : [];
       render();
       root.querySelector("#recipe-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (action === "add-recipe-line") {
-      const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => !mockWorkspace.recipeDraftLines.some((line) => line.ingredientId === id));
+      const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => !recipeDraftLines.some((line) => line.ingredientId === id));
       if (!ingredient) return;
-      mockWorkspace.recipeDraftLines.push({
+      recipeDraftLines.push({
         ingredientId: ingredient.id,
         quantityBaseBySize: { small: "", medium: "", large: "" },
       });
       render();
     } else if (action === "remove-recipe-line") {
-      mockWorkspace.recipeDraftLines.splice(Number(target.dataset.index), 1);
+      recipeDraftLines.splice(Number(target.dataset.index), 1);
       render();
     } else if (action === "close-recipe-editor") {
-      mockWorkspace.recipeFlavorId = null;
-      mockWorkspace.recipeDraftLines = [];
-      render();
-    } else if (action === "toggle-hours-form") {
-      mockWorkspace.showHoursForm = !mockWorkspace.showHoursForm;
-      render();
-    } else if (action === "team-feedback") {
-      const member = mockWorkspace.team.find(({ id }) => id === target.dataset.memberId);
-      notice = { type: "success", text: member ? `${member.name} · ${member.role} · ${member.shift}.` : "Membro da equipe." };
+      recipeFlavorId = null;
+      recipeDraftLines = [];
       render();
     }
   }
@@ -1130,25 +904,13 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     if (kind === "global-search") {
       event.preventDefault();
       orderQuery = String(new FormData(form).get("query") ?? "");
-      const query = orderQuery.trim().toLocaleLowerCase("pt-BR");
-      const customer = mockWorkspace.customers.find((item) => `${item.name} ${item.phone} ${item.neighborhood}`.toLocaleLowerCase("pt-BR").includes(query));
-      const product = posProducts().find((item) => `${item.name} ${item.category}`.toLocaleLowerCase("pt-BR").includes(query));
-      if (product && query) {
-        activeView = "pos";
-        mockWorkspace.productCategory = product.category;
-      } else if (customer && query) {
-        activeView = "customers";
-        mockWorkspace.customerQuery = orderQuery;
-        mockWorkspace.selectedCustomer = customer.id;
-      } else {
-        activeView = "orders";
-        orderStatusFilter = "all";
-        orderChannelFilter = "all";
-      }
+      activeView = "orders";
+      orderStatusFilter = "all";
+      orderChannelFilter = "all";
       render();
       return;
     }
-    if (!["setup-form", "flavor-form", "recipe-editor", "settings-form", "create-order-form", "cancel-order-form", "product-form", "customer-form", "team-form", "ingredient-form", "stock-movement-form", "hours-form", "cash-close-form", "cash-open-form", "table-open-form"].includes(kind)) return;
+    if (!["setup-form", "flavor-form", "recipe-editor", "settings-form", "create-order-form", "cancel-order-form", "table-open-form"].includes(kind)) return;
     event.preventDefault();
     if (busy) return;
     try {
@@ -1189,7 +951,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         }
       } else if (kind === "recipe-editor") {
         const values = new FormData(form);
-        const lines = mockWorkspace.recipeDraftLines.map((line, index) => ({
+        const lines = recipeDraftLines.map((line, index) => ({
           ingredientId: values.get(`ingredient-${index}`),
           quantityBaseBySize: Object.fromEntries(PIZZA_SIZES.map(({ id }) => {
             const quantity = Number(values.get(`quantity-${index}-${id}`));
@@ -1200,14 +962,14 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         const saved = await dispatch({
           type: "menu.recipe.save",
           payload: {
-            flavorId: mockWorkspace.recipeFlavorId,
+            flavorId: recipeFlavorId,
             lines,
             at: new Date().toISOString(),
           },
         }, "Ficha técnica salva. A cozinha usará esta composição ao iniciar o preparo.", { renderAfter: false });
         if (saved) {
-          mockWorkspace.recipeFlavorId = null;
-          mockWorkspace.recipeDraftLines = [];
+          recipeFlavorId = null;
+          recipeDraftLines = [];
           render();
         }
       } else if (kind === "settings-form") {
@@ -1254,149 +1016,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
           tableOpenDialog.close();
           render();
         }
-      } else if (kind === "cash-close-form") {
-        if (mockWorkspace.cashRegister.status !== "open") throw new TypeError("Este turno já está fechado.");
-        if (mockWorkspace.cart.length) throw new TypeError("Finalize ou limpe a venda atual antes de fechar o caixa.");
-        const countedCashCents = parseMoney(new FormData(form).get("countedCash"));
-        if (countedCashCents === null) throw new TypeError("Informe um valor contado válido, como 125,50.");
-        const register = mockWorkspace.cashRegister;
-        const summary = currentShiftSummary();
-        const closedAt = new Date().toISOString();
-        const closure = {
-          sessionId: register.sessionId,
-          openedAt: register.openedAt,
-          closedAt,
-          openingCashCents: register.openingCashCents,
-          salesCount: summary.sales.length,
-          totalSalesCents: summary.totalCents,
-          totalsByMethod: { ...summary.totalsByMethod },
-          expectedCashCents: summary.expectedCashCents,
-          countedCashCents,
-          differenceCents: countedCashCents - summary.expectedCashCents,
-        };
-        register.status = "closed";
-        register.closedAt = closedAt;
-        register.closure = closure;
-        register.history.unshift(closure);
-        cashCloseDialog.close();
-        notice = { type: "success", text: `Caixa fechado. ${cashDifferenceLabel(closure.differenceCents)}.` };
-        render();
-      } else if (kind === "cash-open-form") {
-        if (mockWorkspace.cashRegister.status !== "closed") throw new TypeError("Feche o turno atual antes de abrir outro.");
-        const openingCashCents = parseMoney(new FormData(form).get("openingCash"));
-        if (openingCashCents === null) throw new TypeError("Informe um fundo de caixa válido, como 200,00.");
-        const history = mockWorkspace.cashRegister.history;
-        mockWorkspace.cashRegister = {
-          sessionId: `shift-${uid()}`,
-          status: "open",
-          openedAt: new Date().toISOString(),
-          openingCashCents,
-          closedAt: null,
-          closure: null,
-          history,
-        };
-        mockWorkspace.paymentMethod = "PIX";
-        cashOpenDialog.close();
-        notice = { type: "success", text: "Novo turno de caixa aberto." };
-        render();
-      } else if (kind === "product-form") {
-        const values = new FormData(form);
-        const price = parseMoney(values.get("price"));
-        if (price === null || price === 0) throw new TypeError("Informe um preço válido para o produto.");
-        mockWorkspace.products.push({ id: `p-${uid()}`, name: String(values.get("name")).trim(), category: values.get("category"), price });
-        mockWorkspace.showProductForm = false;
-        notice = { type: "success", text: "Produto adicionado ao cardápio." };
-        render();
-      } else if (kind === "customer-form") {
-        const values = new FormData(form);
-        const name = String(values.get("name")).trim();
-        const phone = String(values.get("phone")).trim();
-        const phoneDigits = normalizePhone(phone);
-        if (phoneDigits.length < 10 || phoneDigits.length > 13) throw new TypeError("Informe um telefone válido com DDD.");
-        if (mockWorkspace.customers.some((item) => normalizePhone(item.phone) === phoneDigits)) {
-          throw new TypeError("Já existe um cliente cadastrado com esse telefone.");
-        }
-        const customer = { id: `c-${uid()}`, name, phone, neighborhood: String(values.get("neighborhood")).trim() };
-        mockWorkspace.customers.unshift(customer);
-        mockWorkspace.selectedCustomer = customer.id;
-        mockWorkspace.customerQuery = "";
-        mockWorkspace.showCustomerForm = false;
-        notice = { type: "success", text: "Cliente cadastrado." };
-        render();
-      } else if (kind === "team-form") {
-        const values = new FormData(form);
-        const name = String(values.get("name")).trim();
-        const initials = name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toLocaleUpperCase("pt-BR");
-        mockWorkspace.team.push({ id: `t-${uid()}`, name, role: values.get("role"), shift: String(values.get("shift")).trim(), status: "Convidado", initials });
-        mockWorkspace.showTeamForm = false;
-        notice = { type: "success", text: "Pessoa adicionada à equipe." };
-        render();
-      } else if (kind === "stock-movement-form") {
-        const values = new FormData(form);
-        const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => id === values.get("ingredientId"));
-        if (!ingredient) throw new TypeError("Selecione um insumo válido.");
-        const amount = Number(values.get("amount"));
-        const factor = ingredient.unit === "un" ? 1 : 1000;
-        const scaled = amount * factor;
-        if (!Number.isFinite(amount) || amount <= 0 || !Number.isSafeInteger(Math.round(scaled)) || Math.abs(scaled - Math.round(scaled)) > 1e-7) {
-          throw new TypeError(`Informe uma quantidade válida em ${ingredient.unit === "g" ? "kg" : ingredient.unit === "ml" ? "L" : "unidades"}.`);
-        }
-        const type = values.get("type");
-        const note = String(values.get("note")).trim();
-        if (type === "adjustment" && !note) throw new TypeError("Descreva o motivo do ajuste de saldo.");
-        const quantityBase = Math.round(scaled) * (type === "adjustment" ? Number(values.get("direction")) : 1);
-        const saved = await dispatch({
-          type: "inventory.movement.record",
-          payload: {
-            id: uid(), ingredientId: ingredient.id, type, quantityBase,
-            occurredAt: new Date().toISOString(), note: note || null,
-          },
-        }, type === "receipt" ? "Entrada registrada no estoque." : "Ajuste de estoque registrado.", { renderAfter: false });
-        if (saved) {
-          mockWorkspace.showStockMovementForm = false;
-          render();
-        }
-      } else if (kind === "ingredient-form") {
-        const values = new FormData(form);
-        const displayUnit = values.get("displayUnit");
-        const unit = displayUnit === "kg" ? "g" : displayUnit === "L" ? "ml" : "un";
-        const factor = unit === "un" ? 1 : 1000;
-        const toBase = (raw, label) => {
-          const amount = Number(raw);
-          const scaled = amount * factor;
-          if (!Number.isFinite(amount) || amount < 0 || !Number.isSafeInteger(Math.round(scaled)) || Math.abs(scaled - Math.round(scaled)) > 1e-7) {
-            throw new TypeError(`Informe ${label} válido em ${displayUnit}.`);
-          }
-          return Math.round(scaled);
-        };
-        const openingBase = toBase(values.get("opening"), "saldo inicial");
-        const minimumBase = toBase(values.get("minimum"), "nível mínimo");
-        const unitCostCents = parseMoney(values.get("unitCost"));
-        if (unitCostCents === null) throw new TypeError("Informe um custo válido por unidade de controle.");
-        const saved = await dispatch({
-          type: "inventory.ingredient.add",
-          payload: {
-            id: `ingredient-${uid()}`,
-            name: values.get("name"), group: values.get("group"), unit,
-            minimumBase, unitCostCents, openingBase, openedAt: new Date().toISOString(),
-          },
-        }, "Insumo cadastrado no estoque.", { renderAfter: false });
-        if (saved) {
-          mockWorkspace.showNewIngredientForm = false;
-          render();
-        }
-      } else if (kind === "hours-form") {
-        const values = new FormData(form);
-        const fee = parseMoney(values.get("deliveryFee"));
-        const openingTime = String(values.get("openingTime"));
-        const closingTime = String(values.get("closingTime"));
-        if (fee === null || closingTime <= openingTime) throw new TypeError("Confira a taxa e o intervalo de funcionamento.");
-        mockWorkspace.openingTime = openingTime;
-        mockWorkspace.closingTime = closingTime;
-        mockWorkspace.deliveryFee = fee;
-        mockWorkspace.showHoursForm = false;
-        notice = { type: "success", text: "Horário e taxa de entrega atualizados." };
-        render();
       }
     } catch (error) {
       report(error);
@@ -1417,9 +1036,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       updateCartTotals();
     } else if (event.target.closest("#add-pizza-form")) {
       updatePizzaPricePreview();
-    } else if (event.target.id === "customer-search") {
-      mockWorkspace.customerQuery = event.target.value;
-      renderCustomerResults();
     } else if (event.type === "change" && event.target.id === "table-open-id") {
       const table = PIZZERIA_TABLES.find(({ id }) => id === Number(event.target.value));
       if (table) {
@@ -1427,31 +1043,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         if (Number(tableOpenForm.elements.guestCount.value) > table.seats) {
           tableOpenForm.elements.guestCount.value = String(table.seats);
         }
-      }
-    } else if (event.target.id === "pos-customer") {
-      mockWorkspace.posCustomer = event.target.value;
-    } else if (event.target.id === "report-range") {
-      mockWorkspace.reportRange = event.target.value;
-      render();
-    } else if (event.target.id === "inventory-filter") {
-      mockWorkspace.inventoryCategory = event.target.value;
-      render();
-    } else if (event.type === "change" && event.target.name === "type" && event.target.closest("#stock-movement-form")) {
-      const directionLabel = event.target.form.elements.direction.closest("label");
-      directionLabel.hidden = event.target.value === "receipt";
-      event.target.form.elements.direction.disabled = event.target.value === "receipt";
-    } else if (event.type === "change" && event.target.name === "ingredientId" && event.target.closest("#stock-movement-form")) {
-      const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => id === event.target.value);
-      const amount = event.target.form.elements.amount;
-      amount.step = ingredient?.unit === "un" ? "1" : "0.001";
-      amount.min = amount.step;
-      amount.value = "";
-    } else if (event.type === "change" && event.target.name === "displayUnit" && event.target.closest("#ingredient-form")) {
-      const step = event.target.value === "un" ? "1" : "0.001";
-      for (const name of ["opening", "minimum"]) {
-        event.target.form.elements[name].step = step;
-        event.target.form.elements[name].min = "0";
-        event.target.form.elements[name].value = "0";
       }
     } else if (event.type === "change" && event.target.name.startsWith("ingredient-") && event.target.closest("#recipe-editor")) {
       const unit = event.target.selectedOptions[0]?.textContent.split("·").at(-1)?.trim() ?? "g";
@@ -1482,17 +1073,11 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     root.addEventListener("input", handleInput);
     root.addEventListener("change", handleInput);
     cancelForm.addEventListener("submit", handleSubmit);
-    cashCloseForm.addEventListener("submit", handleSubmit);
-    cashOpenForm.addEventListener("submit", handleSubmit);
     tableOpenForm.addEventListener("submit", handleSubmit);
     cancelDialog.addEventListener("click", handleClick);
-    cashCloseDialog.addEventListener("click", handleClick);
-    cashOpenDialog.addEventListener("click", handleClick);
     tableOpenDialog.addEventListener("click", handleClick);
     tableOpenDialog.addEventListener("change", handleInput);
     cancelDialog.addEventListener("click", closeOnBackdrop);
-    cashCloseDialog.addEventListener("click", closeOnBackdrop);
-    cashOpenDialog.addEventListener("click", closeOnBackdrop);
     tableOpenDialog.addEventListener("click", closeOnBackdrop);
     ageRefreshTimer = setInterval(refreshElapsedIndicators, 60000);
     render();
@@ -1509,17 +1094,11 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     root.removeEventListener("input", handleInput);
     root.removeEventListener("change", handleInput);
     cancelForm.removeEventListener("submit", handleSubmit);
-    cashCloseForm.removeEventListener("submit", handleSubmit);
-    cashOpenForm.removeEventListener("submit", handleSubmit);
     tableOpenForm.removeEventListener("submit", handleSubmit);
     cancelDialog.removeEventListener("click", handleClick);
-    cashCloseDialog.removeEventListener("click", handleClick);
-    cashOpenDialog.removeEventListener("click", handleClick);
     tableOpenDialog.removeEventListener("click", handleClick);
     tableOpenDialog.removeEventListener("change", handleInput);
     cancelDialog.removeEventListener("click", closeOnBackdrop);
-    cashCloseDialog.removeEventListener("click", closeOnBackdrop);
-    cashOpenDialog.removeEventListener("click", closeOnBackdrop);
     tableOpenDialog.removeEventListener("click", closeOnBackdrop);
   }
   

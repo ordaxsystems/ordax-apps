@@ -21,7 +21,8 @@ const ingredients = [
   id, name, group, unit, openingBase, minimumBase, unitCostCents,
 }));
 
-export function createPizzeriaInventorySeed() {
+// Used only to represent schema v3 while testing the local preview migration.
+export function createLegacyV3InventoryFixture() {
   return {
     ingredients: ingredients.map(({ openingBase, ...ingredient }) => ({ ...ingredient })),
     openingBalances: ingredients.map(({ id, openingBase }) => ({ ingredientId: id, quantityBase: openingBase })),

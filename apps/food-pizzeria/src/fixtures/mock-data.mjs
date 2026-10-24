@@ -18,17 +18,6 @@ const flavors = [
   ["pepperoni", "Pepperoni", "Muçarela, pepperoni e molho da casa", 4690, 5690, 7490],
 ];
 
-const customers = [
-  { id: "c-ana", name: "Ana Paula Martins", phone: "(11) 98765-1042", neighborhood: "Vila Mariana" },
-  { id: "c-joao", name: "João Marcos Ribeiro", phone: "(11) 97654-2018", neighborhood: "Ipiranga" },
-  { id: "c-carla", name: "Carla Souza", phone: "(11) 99812-7731", neighborhood: "Aclimação" },
-  { id: "c-pedro", name: "Pedro Lima", phone: "(11) 96543-2180", neighborhood: "Cambuci" },
-  { id: "c-marcos", name: "Marcos Oliveira", phone: "(11) 99123-7780", neighborhood: "Vila Monumento" },
-  { id: "c-juliana", name: "Juliana Alves", phone: "(11) 98456-1029", neighborhood: "Liberdade" },
-  { id: "c-rafael", name: "Rafael Costa", phone: "(11) 97770-4491", neighborhood: "Mooca" },
-  { id: "c-fernanda", name: "Fernanda Lima", phone: "(11) 99333-1020", neighborhood: "Saúde" },
-];
-
 export function createSeedFoodState() {
   const now = Date.now();
   let state = configureFoodPizzeria(createEmptyFoodPizzeriaState(), {
@@ -119,49 +108,10 @@ export function createSeedFoodState() {
   return state;
 }
 
-export function createMockWorkspace() {
-  const openedAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  return {
-    customers: customers.map((customer) => ({ ...customer })),
-    products: [
-      { id: "b-cola", name: "Refrigerante 2L", category: "Bebidas", price: 1200 },
-      { id: "b-agua", name: "Água com gás", category: "Bebidas", price: 500 },
-      { id: "c-familia", name: "Combo Família", category: "Combos", price: 6990 },
-      { id: "e-bread", name: "Pão de alho", category: "Entradas", price: 1890 },
-      { id: "s-brownie", name: "Brownie da casa", category: "Sobremesas", price: 1400 },
-    ],
-    team: [
-      { id: "t-carlos", name: "Carlos Silva", role: "Administrador", shift: "Gestão", status: "Online", initials: "CS" },
-      { id: "t-fernanda", name: "Fernanda Lima", role: "Atendente", shift: "16h–23h", status: "Online", initials: "FL" },
-      { id: "t-rafael", name: "Rafael Costa", role: "Pizzaiolo", shift: "17h–00h", status: "Em serviço", initials: "RC" },
-      { id: "t-juliana", name: "Juliana Alves", role: "Caixa", shift: "17h–00h", status: "Online", initials: "JA" },
-    ],
-    sales: [],
-    cashRegister: {
-      sessionId: "shift-na-garagem-initial",
-      status: "open",
-      openedAt,
-      openingCashCents: 20000,
-      closedAt: null,
-      closure: null,
-      history: [],
-    },
-    cart: [],
-    productCategory: "Pizzas",
-    customerQuery: "",
-    selectedCustomer: "c-ana",
-    reportRange: "Hoje",
-    paymentMethod: "PIX",
-    showProductForm: false,
-    showCustomerForm: false,
-    showTeamForm: false,
-    showStockMovementForm: false,
-    showNewIngredientForm: false,
-    recipeDraftLines: [],
-    showHoursForm: false,
-    inventoryCategory: "Todas as categorias",
-    openingTime: "18:00",
-    closingTime: "23:30",
-    deliveryFee: 500,
-  };
-}
+export const PREVIEW_CATALOG_PRODUCTS = Object.freeze([
+  { id: "b-cola", name: "Refrigerante 2L", category: "Bebidas", priceCents: 1200 },
+  { id: "b-agua", name: "Água com gás", category: "Bebidas", priceCents: 500 },
+  { id: "c-familia", name: "Combo Família", category: "Combos", priceCents: 6990 },
+  { id: "e-bread", name: "Pão de alho", category: "Entradas", priceCents: 1890 },
+  { id: "s-brownie", name: "Brownie da casa", category: "Sobremesas", priceCents: 1400 },
+].map((product) => Object.freeze(product)));

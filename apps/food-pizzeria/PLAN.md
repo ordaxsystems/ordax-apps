@@ -13,6 +13,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 - Pedidos, KDS, Cardápio/fichas, Mesas/Comandas e Delivery mantidos como áreas do Food Core.
 - Overview tratado como responsabilidade do Space; PDV e capacidades horizontais sem provider mostram um estado explícito de integração pendente.
 - Dados e identidade de interface não conectados não são apresentados como operação ativa.
+- Remoção do `mockWorkspace` e dos handlers antigos de Caixa, Estoque, Clientes e Equipe; somente estado transitório da interface e amostras marcadas permanecem fora do domínio versionado.
 
 ## Próxima sequência
 

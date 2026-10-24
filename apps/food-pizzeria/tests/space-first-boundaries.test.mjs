@@ -8,7 +8,7 @@ import {
 } from "../src/domain/domain.mjs";
 import { createFoodCommand } from "../src/application/commands.mjs";
 import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
-import { createPizzeriaInventorySeed } from "../src/fixtures/inventory-fixtures.mjs";
+import { createLegacyV3InventoryFixture } from "../src/fixtures/legacy-v3-inventory-fixture.mjs";
 import { createBrowserLocalFoodStore } from "../src/adapters/browser-local-store.mjs";
 
 const v3Schema = "ordax.food-pizzeria-state/3";
@@ -17,7 +17,7 @@ function legacyV3State(state) {
   return {
     ...state,
     schema: v3Schema,
-    ingredients: createPizzeriaInventorySeed().ingredients,
+    ingredients: createLegacyV3InventoryFixture().ingredients,
     inventoryMovements: [{
       id: "opening-test",
       ingredientId: "farinha",
