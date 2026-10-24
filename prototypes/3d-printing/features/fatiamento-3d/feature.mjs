@@ -1563,7 +1563,7 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-layer-max]").textContent = String(preview.layers.length || 0);
     const slider = content.querySelector("[data-layer-slider]");
     slider.max = String(Math.max(0, preview.layers.length - 1)); slider.value = String(previewLayer);
-    const unsupported = preview.unsupported.length ? `A prévia desta versão não desenha comandos de arco ${preview.unsupported.join(" e ")}; a exportação permanece o arquivo original gerado pelo motor.` : "Prévia desenhada a partir dos comandos do G-code gerado pelo motor.";
+    const unsupported = preview.unsupported.length ? `A prévia não conseguiu representar todos os arcos ${preview.unsupported.join(" e ")} (fora do plano XY, helicoidais ou sem geometria válida); a exportação permanece o arquivo original gerado pelo motor.` : "Prévia desenhada a partir dos comandos do G-code gerado pelo motor.";
     content.querySelector("[data-preview-note]").textContent = unsupported;
   }
 
