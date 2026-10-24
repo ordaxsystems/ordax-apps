@@ -6,7 +6,7 @@ import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
 import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
 import { readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
-import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema } from "./ai-copilot.mjs";
+import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds } from "./ai-copilot.mjs";
 
 const { escapeHtml, number, bytes, toast, icon, button } = shared;
 const MAX_MODEL_BYTES = 50 * 1024 * 1024;
@@ -15,6 +15,24 @@ const MAX_AI_HISTORY = 20;
 const MAX_AI_MESSAGES = 40;
 const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
 const DEFAULT_OBJECT_TRANSFORM = Object.freeze({ x: 0, y: 0, z: 0, rotationX: 0, rotationY: 0, rotationZ: 0, scale: 1 });
+const AI_EVIDENCE_LABELS = Object.freeze({
+  settings: "Configurações atuais",
+  "model.dimensionsMm": "Dimensões do projeto",
+  "model.triangleCount": "Quantidade de faces",
+  "geometryDiagnostics.degenerateTriangleCount": "Faces degeneradas",
+  "geometryDiagnostics.surfaceAreaMm2": "Área triangulada do projeto",
+  "selectedObject.sourceDimensionsMm": "Dimensões originais da peça",
+  "selectedObject.surfaceAreaMm2": "Área triangulada da peça",
+  "selectedObject.transform": "Transformação da peça",
+  "printerProfile.bedMm": "Dimensões da mesa no perfil",
+  "materialProfile.nozzleRange": "Faixa de temperatura do bico",
+  "materialProfile.bedRange": "Faixa de temperatura da mesa",
+  "latestSlice.stats.timeSeconds": "Tempo do último fatiamento",
+  "latestSlice.stats.filamentGrams": "Filamento do último fatiamento",
+  "latestSlice.stats.filamentMeters": "Comprimento do último fatiamento",
+  "latestSlice.stats.featureBreakdown": "Tempo por tipo de extrusão",
+  "slicer.configuredProfiles": "Perfis carregados no motor",
+});
 const defaultDraft = Object.freeze({
   printer: "generic", filament: "pla", quality: "standard", layerHeight: 0.2, walls: 3, infill: 15, fan: 80,
   supports: false, rotation: 0, scale: 1, stlUnit: "mm", objectTransforms: {}, selectedTab: "prepare",
@@ -628,6 +646,12 @@ export function mountFeature(host = {}) {
       const card = document.createElement("div"); card.className = "ai-suggestion";
       const title = document.createElement("strong"); title.textContent = "Ajustes propostos";
       const summary = document.createElement("p"); summary.textContent = suggestion.summary;
+      const confidenceLabels = { low: "Baixa", medium: "Média", high: "Alta" };
+      const confidence = document.createElement("span"); confidence.className = "ai-suggestion-label";
+      confidence.textContent = `Confiança informada pela IA: ${confidenceLabels[suggestion.confidence] || "Baixa"} · não é uma validação técnica`;
+      const evidence = document.createElement("span"); evidence.className = "ai-suggestion-label";
+      evidence.textContent = `Dados citados: ${suggestion.evidence.map(id => AI_EVIDENCE_LABELS[id] || id).join(" · ")}`;
+      card.append(confidence, evidence);
       if (Object.keys(suggestion.settings).length) {
         const settingsLabel = document.createElement("span"); settingsLabel.className = "ai-suggestion-label"; settingsLabel.textContent = `Processo: ${draft.processes.find(process => process.id === suggestionProcessId)?.name || "selecionado"}`;
         const changes = document.createElement("ul");
@@ -754,11 +778,33 @@ export function mountFeature(host = {}) {
     if (aiHistory.length) {
       context.push({ id: "slicer-copilot-session", scope: "user", text: aiHistory.slice(-6).map(item => `${item.role}: ${item.text}`).join("\n").slice(-6000), provenance: "ordax-apps:3d-printing:fatiamento-3d:in-memory-session" });
     }
-    return context;
+    const evidenceCandidates = [
+      ["settings", project.settings],
+      ["model.dimensionsMm", project.model?.dimensionsMm],
+      ["model.triangleCount", project.model?.triangleCount],
+      ["geometryDiagnostics.degenerateTriangleCount", project.geometryDiagnostics?.degenerateTriangleCount],
+      ["geometryDiagnostics.surfaceAreaMm2", project.geometryDiagnostics?.surfaceAreaMm2],
+      ["selectedObject.sourceDimensionsMm", project.selectedObject?.sourceDimensionsMm],
+      ["selectedObject.surfaceAreaMm2", project.selectedObject?.surfaceAreaMm2],
+      ["selectedObject.transform", project.selectedObject?.transform],
+      ["printerProfile.bedMm", project.printerProfile?.bedMm],
+      ["materialProfile.nozzleRange", project.materialProfile?.nozzleRange],
+      ["materialProfile.bedRange", project.materialProfile?.bedRange],
+      ["latestSlice.stats.timeSeconds", project.latestSlice?.stats?.timeSeconds],
+      ["latestSlice.stats.filamentGrams", project.latestSlice?.stats?.filamentGrams],
+      ["latestSlice.stats.filamentMeters", project.latestSlice?.stats?.filamentMeters],
+      ["latestSlice.stats.featureBreakdown", project.latestSlice?.stats?.featureBreakdown],
+      ["slicer.configuredProfiles", project.slicer?.configuredProfiles],
+    ];
+    const knownEvidence = new Set(assistantEvidenceIds);
+    const evidenceIds = evidenceCandidates
+      .filter(([id, value]) => knownEvidence.has(id) && value !== null && value !== undefined)
+      .map(([id]) => id);
+    return { context, evidenceIds };
   }
 
-  function makeAiPrompt(question) {
-    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. A contagem local de faces degeneradas e a área triangulada são medições geométricas parciais: não comprovam topologia, watertightness, orientação da malha ou imprimibilidade. A área triangulada soma as faces fornecidas após a conversão de unidades e as escalas atuais; não deduz consumo de filamento e pode incluir faces coincidentes ou internas. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se não houver base suficiente para uma recomendação, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
+  function makeAiPrompt(question, evidenceIds) {
+    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. A contagem local de faces degeneradas e a área triangulada são medições geométricas parciais: não comprovam topologia, watertightness, orientação da malha ou imprimibilidade. A área triangulada soma as faces fornecidas após a conversão de unidades e as escalas atuais; não deduz consumo de filamento e pode incluir faces coincidentes ou internas. Identifique quando perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade. Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se houver uma sugestão, confidence deve ser low, medium ou high como avaliação informada pela IA, não como probabilidade medida. evidence deve citar de 1 a 5 IDs que existam nesta solicitação; use somente estes: ${evidenceIds.join(", ")}. Nunca cite um ID ausente. Se não houver base suficiente para recomendar, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
   }
 
   async function askAi(question = content.querySelector("[data-ai-input]").value) {
@@ -775,9 +821,9 @@ export function mountFeature(host = {}) {
     aiController = requestController;
     updateAiUi();
     try {
-      const answer = await askSliceIntelligence(intelligence, { prompt: makeAiPrompt(prompt), context: requestContext, signal: requestController.signal });
+      const answer = await askSliceIntelligence(intelligence, { prompt: makeAiPrompt(prompt, requestContext.evidenceIds), context: requestContext.context, signal: requestController.signal });
       if (requestController.signal.aborted) throw new DOMException("Solicitação cancelada.", "AbortError");
-      const reply = parseAssistantReply(answer.text);
+      const reply = parseAssistantReply(answer.text, { allowedEvidence: requestContext.evidenceIds });
       rememberAi("assistant", reply.text);
       appendAiMessage("assistant", reply.text, reply.suggestion, requestRevision, requestProcessId, requestObjectId);
     } catch (error) {
