@@ -242,3 +242,34 @@ test("table commands reject orders before opening and closure before the last or
     "2026-10-24T12:03:30.000Z";
   assert.throws(() => validateFoodPizzeriaState(invalidClose), /antes da última atualização/);
 });
+
+test("reducing table capacity cannot invalidate an open command or an active snapshot", () => {
+  const base = createSeedFoodState();
+  const openedAt = "2026-10-24T15:00:00.000Z";
+  const opened = createPizzeriaTableCommand(base, {
+    id: "seat-limit-session",
+    tableId: 2,
+    customerName: "Grupo do Teste",
+    guestCount: 4,
+    openedAt,
+  });
+  const fewerSeats = opened.settings.tables.map((table) =>
+    table.id === 2 ? { ...table, seats: 2 } : table);
+  assert.throws(() => updateFoodPizzeriaSettings(opened, { tables: fewerSeats }),
+    /reduzir a capacidade/);
+
+  const modified = structuredClone(opened);
+  modified.settings.tables.find(({ id }) => id === 2).seats = 2;
+  assert.throws(() => validateFoodPizzeriaState(modified),
+    /comanda aberta exige uma mesa ativa com capacidade suficiente/);
+
+  const closed = closePizzeriaTableCommand(opened, {
+    commandId: "seat-limit-session",
+    closedAt: "2026-10-24T15:01:00.000Z",
+  });
+  const resized = updateFoodPizzeriaSettings(closed, { tables: fewerSeats });
+  assert.equal(resized.settings.tables.find(({ id }) => id === 2).seats, 2);
+  assert.equal(resized.tableCommands.find(({ id }) => id === "seat-limit-session").guestCount, 4);
+  assert.equal(resized.tableCommands.find(({ id }) => id === "seat-limit-session").closedAt,
+    "2026-10-24T15:01:00.000Z");
+});
