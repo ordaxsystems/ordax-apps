@@ -7,7 +7,7 @@ Protótipo independente do domínio de alimentação, com pizzaria e registros f
 - Pedidos: criar, pesquisar, cancelar com motivo e avançar status.
 - Cardápio: cadastrar/editar sabores, preços e disponibilidade.
 - Configurações: definir tamanhos, fatias, mesas, capacidade e limite de sabores por pizza; novos tamanhos ficam indisponíveis até terem preços e fichas técnicas completos.
-- Fichas técnicas: manter quantidades por pizza e calcular uma proposta de consumo, sem alterar estoque.
+- Fichas técnicas: manter quantidades por pizza e congelar uma proposta de consumo em cada novo pedido. Alterações posteriores da ficha não reescrevem pedidos existentes nem movimentam Inventory. Pedidos migrados sem ficha histórica verificável ficam sem proposta, em vez de receber consumo inventado.
 - Cozinha/KDS: acompanhar fila por canal e etapa.
 - Mesas/Comandas: configurar mesas, abrir/fechar comanda e derivar consumo dos pedidos vinculados. Salão e balcão são canais diferentes.
 - Delivery: acompanhar pedidos prontos e em rota a partir do estado Food.
