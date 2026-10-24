@@ -1,0 +1,64 @@
+name: OrdaX Apps Version Governance
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version-policy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout canonical Apps source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Resolve fixed OS policy owner revision
+        id: policy-pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const x=require('./contracts/version-governance.lock.json'); if(x.policyOwner!=='ordaxsystems/ordax-os'||!/^[0-9a-f]{40}$/.test(x.policyCommit))process.exit(1); console.log(x.policyCommit)" > /tmp/ordax-version-policy-pin
+          echo "sha=$(cat /tmp/ordax-version-policy-pin)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout immutable OS version owner (not App SDK override)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-os
+          ref: ${{ steps.policy-pin.outputs.sha }}
+          path: .ordax-version-contract
+          persist-credentials: false
+
+      - name: Verify app-version gate tests
+        run: |
+          node --check tools/verify_app_version_governance.mjs
+          node --test tests/test_app_version_governance.mjs
+
+      - name: Check ALL existing app manifests against canonical OS SemVer contract
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "${BASE_SHA}" =~ ^[a-f0-9]{40}$ ]] && [[ ! "${BASE_SHA}" =~ ^0{40}$ ]]; then
+            node tools/verify_app_version_governance.mjs --platform-root .ordax-version-contract --base "${BASE_SHA}"
+          else
+            node tools/verify_app_version_governance.mjs --platform-root .ordax-version-contract
+          fi
+
+      - name: Guard against untracked generated packages and parallel authority
+        run: |
+          test ! -e apps/studio/VERSION
+          test ! -e apps/clock/VERSION
+          test ! -e apps/notes/VERSION
+          test ! -e .ordax-version-contract/.env
+
+# No app or OS version is mutated by this job. It does not sign, publish,
+# install, grant authority, overwrite App Data or activate a Store release.

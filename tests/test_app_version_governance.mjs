@@ -1,0 +1,187 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { productSourceAppId, validateAppVersionTransition, productSourcePrototypeId, validatePrototypeVersion, assertPrototypeVersionOwnerContinuity, assertVersionOwnerForChangedApp, listVersionedSourcePaths } from '../tools/verify_app_version_governance.mjs';
+
+const base=Object.freeze({
+  schema:'ordax.component-manifest/1',id:'studio',title:'OrdaX Studio',
+  kind:'app',version:'0.15.9',releaseMode:'component-slot',
+  criticality:'optional',failureDomain:'app',restartScope:'component',
+  healthMode:'runtime',owner:'ordaxsystems/ordax-apps',dependencies:[],
+});
+const policy={
+  productVersionChannel(version) {
+    if(!/^\d+\.\d+\.\d+(?:-(alpha|beta|rc)\.\d+)?$/.test(version)) throw new TypeError('bad version');
+    return version.includes('-') ? version.split('-')[1].split('.')[0] : 'unqualified';
+  },
+  compareComponentVersions(a,b){
+    const x=a.split(/[-.]/).slice(0,3).map(Number);
+    const y=b.split(/[-.]/).slice(0,3).map(Number);
+    for(let i=0;i<3;i++)if(x[i]!==y[i])return x[i]>y[i]?1:-1;
+    if(a===b)return 0;
+    if(!a.includes('-'))return 1;
+    if(!b.includes('-'))return -1;
+    return a>b?1:-1;
+  },
+  defineComponentManifest(value){
+    if(value.schema!=='ordax.component-manifest/1')throw new TypeError('bad manifest');
+    return value;
+  },
+};
+
+test('any app runtime or manifest modification must advance own product version',()=>{
+  assert.throws(()=>validateAppVersionTransition({
+    previous:base,current:base,runtimeChanged:true,policy,
+  }),/without version advance/);
+  assert.deepEqual(validateAppVersionTransition({
+    previous:base,current:{...base,version:'0.15.10-alpha.1'},runtimeChanged:true,policy,
+  }),{previousVersion:'0.15.9',version:'0.15.10-alpha.1',changedRuntime:true});
+});
+
+test('docs-only PR does not invent new app version, but downgrades are forbidden',()=>{
+  assert.equal(validateAppVersionTransition({
+    previous:base,current:base,runtimeChanged:false,policy,
+  }).version,'0.15.9');
+  assert.throws(()=>validateAppVersionTransition({
+    previous:base,current:{...base,version:'0.15.8'},runtimeChanged:false,policy,
+  }),/regression/);
+});
+
+test('owner and app identity cannot migrate by raising version only',()=>{
+  assert.throws(()=>validateAppVersionTransition({
+    previous:base,current:{...base,owner:'somebody/else',version:'0.16.0'},policy,
+  }),/canonical app.json identity and owner/);
+  assert.throws(()=>validateAppVersionTransition({
+    previous:base,current:{...base,id:'other',version:'0.16.0'},policy,
+  }),/identity and owner/);
+});
+
+test('new app gets independent SemVer only when actual app manifest exists',()=>{
+  assert.equal(validateAppVersionTransition({
+    current:{...base,id:'new-app',version:'0.1.0-alpha.1'},policy,
+  }).created,true);
+  assert.throws(()=>validateAppVersionTransition({
+    current:{...base,id:'new-app',version:'0.1.0-preview.1'},policy,
+  }),/bad version/);
+});
+
+test('detects source changes but excludes test and documentation-only edits',()=>{
+  assert.equal(productSourceAppId('apps/studio/src/editor.mjs'),'studio');
+  assert.equal(productSourceAppId('apps/studio/ai/manifest.json'),'studio');
+  assert.equal(productSourceAppId('apps/notes/app.json'),'notes');
+  assert.equal(productSourceAppId('apps/studio/tests/editor.test.mjs'),null);
+  assert.equal(productSourceAppId('apps/studio/README.md'),null);
+  assert.equal(productSourceAppId('apps/clock/assets/clock.png'),'clock');
+  assert.equal(productSourceAppId('tools/verify_workspace.py'),null);
+  assert.equal(productSourceAppId('apps/studio/../../../evil'),null);
+});
+
+
+test('experimental product gets alpha version through one metadata owner, not its source baseline',()=>{
+  const meta={version:'0.2.0-alpha.2',channel:'alpha',distributionEnabled:false,releaseDate:null};
+  const bootstrap={version:'0.2.0-alpha.2',private:true};
+  assert.deepEqual(validatePrototypeVersion({meta,bootstrap,policy}),{version:'0.2.0-alpha.2',channel:'alpha'});
+  assert.throws(()=>validatePrototypeVersion({meta:{...meta,channel:'stable'},bootstrap,policy}),/channel mismatch/);
+  assert.throws(()=>validatePrototypeVersion({meta:{...meta,distributionEnabled:true},bootstrap,policy}),/non-distributed/);
+  assert.throws(()=>validatePrototypeVersion({meta,bootstrap:{...bootstrap,version:'0.4.12'},policy}),/bootstrap version/);
+});
+
+test('experimental runtime improvement must increase alpha number',()=>{
+  const prev={version:'0.2.0-alpha.1',channel:'alpha',distributionEnabled:false,releaseDate:null};
+  const next={...prev,version:'0.2.0-alpha.2'};
+  assert.deepEqual(validatePrototypeVersion({meta:next,previous:prev,changedRuntime:true,policy}),{
+    version:'0.2.0-alpha.2',channel:'alpha',
+  });
+  assert.throws(()=>validatePrototypeVersion({
+    meta:prev,previous:prev,changedRuntime:true,policy,
+  }),/without version advance/);
+  assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/supervisor/coordinator.mjs'),'ordax-orchestrator');
+  assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/tests/version.test.mjs'),null);
+  assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/README.md'),null);
+  assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/product-version.json'),'ordax-orchestrator');
+});
+
+
+test('prototype version owner cannot be removed through a manifest or full-directory deletion',()=>{
+  const previous={version:'0.2.0-alpha.2',channel:'alpha',distributionEnabled:false,releaseDate:null};
+  assert.throws(()=>assertPrototypeVersionOwnerContinuity({
+    prototypeId:'ordax-orchestrator',previous,currentHasOwner:false,
+  }),/version owner removed/);
+  assert.doesNotThrow(()=>assertPrototypeVersionOwnerContinuity({
+    prototypeId:'ordax-orchestrator',previous,currentHasOwner:true,
+  }));
+  // Unowned experiments remain unreleased; the rule only protects an
+  // owner that already existed at the exact tested Git base.
+  assert.doesNotThrow(()=>assertPrototypeVersionOwnerContinuity({
+    prototypeId:'research-only',previous:null,currentHasOwner:false,
+  }));
+});
+
+test('source-only app candidates cannot silently evolve without structural version owner',()=>{
+  assert.throws(()=>assertVersionOwnerForChangedApp({
+    appId:'finance',hasManifest:false,changedRuntime:true,
+  }),/source changed without a version owner/);
+  assert.doesNotThrow(()=>assertVersionOwnerForChangedApp({
+    appId:'finance',hasManifest:false,changedRuntime:false,
+  }));
+  assert.doesNotThrow(()=>assertVersionOwnerForChangedApp({
+    appId:'clock',hasManifest:true,changedRuntime:true,
+  }));
+});
+
+test('renaming runtime into README cannot evade app or prototype SemVer policy',()=>{
+  const cwd=mkdtempSync(join(tmpdir(),'ordax-apps-rename-'));
+  const git=(...args)=>execFileSync('git',['-C',cwd,...args],{encoding:'utf8'}).trim();
+  try {
+    git('init','-q');
+    git('config','user.email','ci@example.invalid');
+    git('config','user.name','Version Fixture');
+    mkdirSync(join(cwd,'apps','studio','src'),{recursive:true});
+    mkdirSync(join(cwd,'prototypes','ordax-orchestrator','supervisor'),{recursive:true});
+    mkdirSync(join(cwd,'apps','studio','docs'),{recursive:true});
+    mkdirSync(join(cwd,'prototypes','ordax-orchestrator','docs'),{recursive:true});
+    writeFileSync(join(cwd,'apps','studio','src','start.mjs'),'export const ready = true;\n');
+    writeFileSync(join(cwd,'prototypes','ordax-orchestrator','supervisor','run.mjs'),'export const running = true;\n');
+    writeFileSync(join(cwd,'apps','studio','src','ação.mjs'),'export const local = true;\n');
+    writeFileSync(join(cwd,'prototypes','ordax-orchestrator','supervisor','ação.mjs'),'export const local = true;\n');
+    git('add','.');
+    git('commit','-qm','baseline runtime');
+    const baseSha=git('rev-parse','HEAD');
+    git('mv','apps/studio/src/start.mjs','apps/studio/README.md');
+    git('mv','prototypes/ordax-orchestrator/supervisor/run.mjs','prototypes/ordax-orchestrator/README.md');
+    git('mv','apps/studio/src/ação.mjs','apps/studio/docs/ação.md');
+    git('mv','prototypes/ordax-orchestrator/supervisor/ação.mjs','prototypes/ordax-orchestrator/docs/ação.md');
+    git('commit','-qm','move both sources into README targets');
+    const changedApps=listVersionedSourcePaths(baseSha,'apps',{cwd});
+    const changedPrototypes=listVersionedSourcePaths(baseSha,'prototypes',{cwd});
+    assert.deepEqual(changedApps.slice().sort(),[
+      'apps/studio/README.md','apps/studio/docs/ação.md',
+      'apps/studio/src/start.mjs','apps/studio/src/ação.mjs',
+    ].sort());
+    assert.deepEqual(changedPrototypes.slice().sort(),[
+      'prototypes/ordax-orchestrator/README.md',
+      'prototypes/ordax-orchestrator/docs/ação.md',
+      'prototypes/ordax-orchestrator/supervisor/run.mjs',
+      'prototypes/ordax-orchestrator/supervisor/ação.mjs',
+    ].sort());
+    assert.equal(productSourceAppId('apps/studio/README.md'),null);
+    assert.equal(productSourceAppId('apps/studio/docs/ação.md'),null);
+    assert.equal(productSourceAppId('apps/studio/src/ação.mjs'),'studio');
+    assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/docs/ação.md'),null);
+    assert.equal(productSourcePrototypeId('prototypes/ordax-orchestrator/supervisor/ação.mjs'),'ordax-orchestrator');
+    assert.throws(()=>validateAppVersionTransition({
+      previous:base,current:base,
+      runtimeChanged:changedApps.some(p=>productSourceAppId(p)==='studio'),policy,
+    }),/without version advance/);
+    const previous={version:'0.2.0-alpha.1',channel:'alpha',distributionEnabled:false,releaseDate:null};
+    assert.throws(()=>validatePrototypeVersion({
+      previous,meta:previous,
+      changedRuntime:changedPrototypes.some(p=>productSourcePrototypeId(p)==='ordax-orchestrator'),policy,
+    }),/without version advance/);
+  } finally {
+    rmSync(cwd,{recursive:true,force:true});
+  }
+});

@@ -21,6 +21,16 @@ Os apps deste repositório devem consumir esses contratos; não podem criar impl
 
 Apps first-party também expõem sua semântica ao OrdaX Intelligence por `ai/manifest.json`, usando o contrato público `ordax.app-intelligence-manifest/1`. O manifesto descreve instruções e intents, mas carrega `authority=none` e não concede execução. O padrão está documentado em [`docs/APP-INTELLIGENCE.md`](docs/APP-INTELLIGENCE.md).
 
+## Governança estrutural de versões
+
+**Não depende da memória da IA:** a workflow [OrdaX Apps Version Governance](.github/workflows/app-version-governance.yml) percorre os `apps/*/app.json` existentes e rejeita alterações de código ou recurso sem aumento de `version`. A semântica de versão, comparador SemVer e canais `alpha.N/beta.N/rc.N` vêm do [owner de versão do OrdaX OS](https://github.com/ordaxsystems/ordax-os/blob/feat/structural-product-version-policy-20261019/docs/VERSION-GOVERNANCE.md), pinado em [contracts/version-governance.lock.json](contracts/version-governance.lock.json). Não se cria outro parser canônico no repositório Apps nem outra versão por aplicativo. 
+
+O verificador analisa movimentações de arquivos com `git diff --no-renames --name-only -z` (sem escapes de nomes Unicode e com delimitador NUL) nos owners `apps/` e `prototypes/`. Mover código executável para `README.md`, documentação ou outro caminho excluído **não** suprime o incremento de versão: a origem removida continua classificada como alteração do produto. O teste de regressão usa dois commits Git reais para cada owner.
+
+Apps ainda sem `app.json` são **candidatos não versionados**, não releases: o gate reporta sua contagem e **bloqueia alterações futuras de código nesses diretórios até existir um owner de versão canônico**, sem promovê-los automaticamente à Store. Documentação e testes desses candidatos não exigem criar versões fictícias.
+
+O Orchestrator Lab pode ter `0.2.0-alpha.N` no protótipo, sem mudar o Grátis/Flow `0.4.12` usado como origem. A numeração do OS não é herdada por Studio, Clock nem outros apps; cada produto avança independentemente. Canais de SemVer, elegibilidade de assinatura e disponibilização na Loja são **controles separados**.
+
 ## Regra de arquitetura
 
 - app source/release pode evoluir independentemente;
