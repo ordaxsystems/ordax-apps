@@ -1,6 +1,6 @@
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/3";
+const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/4";
 const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
@@ -72,8 +72,18 @@ export const assistantStructuredOutput = Object.freeze({
             },
             required: ["x", "y", "z", "rotationX", "rotationY", "rotationZ", "scalePercent"],
           }),
+          profiles: nullable({
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              machine: nullable({ type: "string", maxLength: 64 }),
+              process: nullable({ type: "string", maxLength: 64 }),
+              filament: nullable({ type: "string", maxLength: 64 }),
+            },
+            required: ["machine", "process", "filament"],
+          }),
         },
-          required: ["schema", "summary", "confidence", "evidence", "settings", "transform"],
+          required: ["schema", "summary", "confidence", "evidence", "settings", "transform", "profiles"],
       }),
     },
     required: ["schema", "answer", "suggestion"],
@@ -160,9 +170,10 @@ function extractJson(text) {
   try { return JSON.parse(source); } catch { return null; }
 }
 
-function validateSuggestion(value, allowedEvidence = null) {
+function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = null } = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).some(key => !["schema", "summary", "confidence", "evidence", "settings", "transform"].includes(key))
+    || Object.keys(value).some(key => !["schema", "summary", "confidence", "evidence", "settings", "transform", "profiles"].includes(key))
+    || !Object.hasOwn(value, "profiles")
     || value.schema !== SUGGESTION_SCHEMA || typeof value.summary !== "string" || !value.summary.trim()
     || !["low", "medium", "high"].includes(value.confidence)) return null;
   if (!Array.isArray(value.evidence) || value.evidence.length < 1 || value.evidence.length > 5
@@ -203,29 +214,46 @@ function validateSuggestion(value, allowedEvidence = null) {
     if (!transformValidators[key] || !transformValidators[key](item)) return null;
     transform[key] = item;
   }
-  if (!Object.keys(settings).length && !Object.keys(transform).length) return null;
+  const profileSource = value.profiles ?? null;
+  if (profileSource !== null && (!profileSource || typeof profileSource !== "object" || Array.isArray(profileSource))) return null;
+  const profileKeys = ["machine", "process", "filament"];
+  if (profileSource && (Object.keys(profileSource).length !== profileKeys.length
+    || Object.keys(profileSource).some(key => !profileKeys.includes(key))
+    || profileKeys.some(key => !Object.hasOwn(profileSource, key)))) return null;
+  const profiles = {};
+  for (const kind of profileKeys) {
+    const id = profileSource?.[kind] ?? null;
+    if (id === null) continue;
+    if (typeof id !== "string" || !new RegExp(`^orca-${kind}-[a-f0-9]{24}$`).test(id)) return null;
+    const candidates = allowedProfiles?.[kind];
+    if (!Array.isArray(candidates) || !candidates.includes(id)) return null;
+    profiles[kind] = id;
+  }
+  if (Object.keys(profiles).length && (!allowedEvidence || !allowedEvidence.has("slicer.configuredProfiles"))) return null;
+  if (!Object.keys(settings).length && !Object.keys(transform).length && !Object.keys(profiles).length) return null;
   return Object.freeze({
     summary: value.summary.trim().slice(0, 1200),
     confidence: value.confidence,
     evidence: Object.freeze([...value.evidence]),
     settings: Object.freeze(settings),
     transform: Object.freeze(transform),
+    profiles: Object.freeze(profiles),
   });
 }
 
-export function parseAssistantSuggestion(text, { allowedEvidence = null } = {}) {
+export function parseAssistantSuggestion(text, { allowedEvidence = null, allowedProfiles = null } = {}) {
   const allowed = allowedEvidence ? new Set(allowedEvidence) : null;
-  return validateSuggestion(extractJson(text), allowed);
+  return validateSuggestion(extractJson(text), { allowedEvidence: allowed, allowedProfiles });
 }
 
-export function parseAssistantReply(text, { allowedEvidence = null } = {}) {
+export function parseAssistantReply(text, { allowedEvidence = null, allowedProfiles = null } = {}) {
   const value = extractJson(text);
   if (!value || Object.keys(value).some(key => !["schema", "answer", "suggestion"].includes(key)) || value.schema !== ASSISTANT_RESPONSE_SCHEMA || typeof value.answer !== "string" || value.answer.length > 16000) {
     throw new Error("A IA retornou uma resposta fora do formato estruturado do Copiloto. Tente novamente.");
   }
   const answer = value.answer.trim();
   const allowed = allowedEvidence ? new Set(allowedEvidence) : null;
-  const suggestion = value.suggestion === null ? null : validateSuggestion(value.suggestion, allowed);
+  const suggestion = value.suggestion === null ? null : validateSuggestion(value.suggestion, { allowedEvidence: allowed, allowedProfiles });
   if (value.suggestion !== null && !suggestion) {
     throw new Error("A sugestão da IA não passou pela validação do app. Nenhuma configuração foi aplicada.");
   }

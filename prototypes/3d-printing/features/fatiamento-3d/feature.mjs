@@ -418,12 +418,22 @@ export function mountFeature(host = {}) {
         ? "Um STL importado corresponde a um único objeto. Para processos por peça, use um 3MF com vários itens na mesa."
         : "Atribuição por item da mesa do 3MF. Cada objeto deve pertencer a exatamente um processo.";
     for (const button of content.querySelectorAll("[data-ai-suggestion]")) {
+      let suggestedProfiles = {};
+      try { suggestedProfiles = JSON.parse(button.dataset.suggestionProfiles || "{}"); } catch { suggestedProfiles = {}; }
+      const missingProfile = Object.entries(suggestedProfiles).some(([kind, id]) => id
+        && !engineStatus.profiles?.[kind]?.catalog?.some(item => item.id === id));
       const stale = Number(button.dataset.suggestionRevision) !== revision
         || button.dataset.suggestionProcess !== draft.selectedProcessId
         || (button.dataset.suggestionObject || "") !== (selectedObjectId || "")
-        || (button.dataset.suggestionHasTransform === "true" && !button.dataset.suggestionObject);
+        || (button.dataset.suggestionHasTransform === "true" && !button.dataset.suggestionObject)
+        || missingProfile;
       button.disabled = stale;
-      button.title = stale ? "O projeto, processo ou peça selecionada mudou desde a pergunta; peça uma nova sugestão." : "Aplica os ajustes propostos ao rascunho local após sua revisão.";
+      button.title = stale ? "O projeto, processo, peça ou catálogo mudou desde a pergunta; peça uma nova sugestão." : "Aplica os ajustes propostos ao rascunho local após sua revisão.";
+    }
+    for (const button of content.querySelectorAll("[data-ai-undo]")) {
+      const available = Number(button.dataset.undoRevision) === revision;
+      button.disabled = !available;
+      button.title = available ? "Desfaz a última proposta de IA antes de outra alteração no projeto." : "A proposta deixou de ser a última alteração do projeto.";
     }
 
     for (const [objectIndex, object] of objects.entries()) {
@@ -714,17 +724,38 @@ export function mountFeature(host = {}) {
         }
         card.append(transformLabel, changes);
       }
+      const suggestedProfiles = suggestion.profiles || {};
+      if (Object.keys(suggestedProfiles).length) {
+        const profileLabels = { machine: "Máquina", process: "Processo", filament: "Filamento" };
+        const changes = document.createElement("ul");
+        for (const [kind, id] of Object.entries(suggestedProfiles)) {
+          const catalog = engineStatus.profiles?.[kind]?.catalog || [];
+          const current = selectedEngineProfile(kind);
+          const proposed = catalog.find(item => item.id === id);
+          const item = document.createElement("li");
+          item.textContent = `${profileLabels[kind] || kind}: ${current?.name || "sem perfil"} → ${proposed?.name || "perfil indisponível"}`;
+          changes.append(item);
+        }
+        const caveat = document.createElement("span"); caveat.className = "ai-suggestion-label";
+        caveat.textContent = "O OrcaSlicer só confirma a compatibilidade da combinação ao fatiar.";
+        card.append(changes, caveat);
+      }
       const apply = document.createElement("button"); apply.className = "button secondary"; apply.type = "button"; apply.textContent = "Revisar e aplicar ao rascunho";
+      const undo = document.createElement("button"); undo.className = "button secondary"; undo.type = "button"; undo.textContent = "Desfazer proposta"; undo.hidden = true;
+      undo.dataset.aiUndo = "";
       apply.dataset.suggestionProcess = suggestionProcessId;
       apply.dataset.suggestionRevision = String(suggestionRevision);
       apply.dataset.suggestionObject = suggestionObjectId || "";
       apply.dataset.suggestionHasTransform = String(Object.keys(suggestion.transform).length > 0);
+      apply.dataset.suggestionHasProfile = String(Object.keys(suggestedProfiles).length > 0);
+      apply.dataset.suggestionProfiles = JSON.stringify(suggestedProfiles);
       const isStale = () => suggestionRevision !== revision || suggestionProcessId !== draft.selectedProcessId
         || (suggestionObjectId || "") !== (selectedObjectId || "")
-        || (Object.keys(suggestion.transform).length > 0 && !suggestionObjectId);
+        || (Object.keys(suggestion.transform).length > 0 && !suggestionObjectId)
+        || Object.entries(suggestedProfiles).some(([kind, id]) => !engineStatus.profiles?.[kind]?.catalog?.some(item => item.id === id));
       apply.dataset.aiSuggestion = "";
       apply.disabled = isStale();
-      apply.title = apply.disabled ? "O projeto, processo ou peça selecionada mudou desde a pergunta; peça uma nova sugestão." : "Aplica os ajustes propostos ao rascunho local após sua revisão.";
+      apply.title = apply.disabled ? "O projeto, processo, peça ou catálogo mudou desde a pergunta; peça uma nova sugestão." : "Aplica os ajustes propostos ao rascunho local após sua revisão.";
       apply.addEventListener("click", () => {
         if (isStale()) { apply.disabled = true; toast("O projeto, processo ou peça mudou; peça uma nova sugestão antes de aplicar."); return; }
         const process = draft.processes.find(item => item.id === suggestionProcessId);
@@ -733,6 +764,15 @@ export function mountFeature(host = {}) {
         }
         const previousSettings = { ...process.settings };
         const nextSettings = { ...previousSettings, ...suggestion.settings };
+        const previousDraft = JSON.parse(JSON.stringify(draft));
+        const profileKeys = { machine: "printerProfileId", process: "processProfileId", filament: "filamentProfileId" };
+        const nextProfileIds = {};
+        for (const [kind, id] of Object.entries(suggestedProfiles)) {
+          if (!engineStatus.profiles?.[kind]?.catalog?.some(item => item.id === id)) {
+            apply.disabled = true; toast(`O perfil de ${kind} não está mais disponível. Peça uma nova sugestão.`); return;
+          }
+          nextProfileIds[profileKeys[kind]] = id;
+        }
         const processes = Object.keys(suggestion.settings).length
           ? draft.processes.map(item => item.id === suggestionProcessId ? { ...item, settings: nextSettings } : item)
           : draft.processes;
@@ -744,18 +784,36 @@ export function mountFeature(host = {}) {
             ...Object.fromEntries(Object.entries(suggestion.transform).map(([key, value]) => [key === "scalePercent" ? "scale" : key, key === "scalePercent" ? value / 100 : value])),
           };
         }
-        const nextDraft = safeDraft({ ...draft, ...(Object.keys(suggestion.settings).length ? nextSettings : {}), processes, objectTransforms });
+        const nextDraft = safeDraft({ ...draft, ...nextProfileIds, ...(Object.keys(suggestion.settings).length ? nextSettings : {}), processes, objectTransforms });
         const nextProcessSettings = nextDraft.processes.find(item => item.id === suggestionProcessId)?.settings;
         const settingsChanged = Object.keys(suggestion.settings).some(key => nextProcessSettings?.[key] !== previousSettings[key]);
         const transformChanged = Object.keys(suggestion.transform).length > 0
           && JSON.stringify(objectTransform(nextDraft, suggestionObjectId)) !== JSON.stringify(previousTransform);
-        const changed = settingsChanged || transformChanged;
+        const profileChanged = Object.entries(nextProfileIds).some(([key, id]) => draft[key] !== id);
+        const changed = settingsChanged || transformChanged || profileChanged;
+        if (!changed) {
+          apply.disabled = true; apply.textContent = "Já está no rascunho";
+          toast("A sugestão já corresponde às configurações selecionadas."); return;
+        }
         draft = nextDraft;
         if (changed) clearSlicedOutput("A sugestão de IA foi aplicada ao rascunho. Gere um novo fatiamento para atualizar a trajetória.");
+        previousDraft.selectedTab = "prepare";
+        undo.dataset.undoRevision = String(revision);
+        undo.hidden = false;
+        undo.disabled = false;
+        undo.addEventListener("click", () => {
+          if (Number(undo.dataset.undoRevision) !== revision) { undo.disabled = true; toast("O rascunho mudou depois da proposta; não é mais seguro desfazê-la isoladamente."); return; }
+          draft = safeDraft(previousDraft);
+          clearSlicedOutput("A proposta foi desfeita. Gere novamente o fatiamento se precisar revisar o resultado.");
+          updateInputs(); persist();
+          undo.disabled = true; undo.textContent = "Proposta desfeita";
+          apply.disabled = true; apply.textContent = "Desfeita";
+          toast("A proposta de IA foi desfeita.");
+        }, { once: true });
         updateInputs(); persist(); apply.disabled = true; apply.textContent = "Aplicado ao rascunho";
-        toast("Sugestões aplicadas ao rascunho local.");
+        toast("Sugestão aplicada. Você pode desfazê-la antes de outra alteração.");
       });
-      card.prepend(title, summary); card.append(apply); article.append(card);
+      card.prepend(title, summary); card.append(apply, undo); article.append(card);
     }
     list.append(article); list.scrollTop = list.scrollHeight;
     while (list.querySelectorAll(":scope > .ai-message").length > MAX_AI_MESSAGES) list.firstElementChild?.remove();
@@ -846,7 +904,11 @@ export function mountFeature(host = {}) {
     const evidenceIds = evidenceCandidates
       .filter(([id, value]) => knownEvidence.has(id) && value !== null && value !== undefined)
       .map(([id]) => id);
-    return { context, evidenceIds };
+    const allowedProfiles = Object.fromEntries(["machine", "process", "filament"].map(kind => [
+      kind,
+      (engineStatus.profiles?.[kind]?.catalog || []).map(item => item.id),
+    ]));
+    return { context, evidenceIds, allowedProfiles };
   }
 
   function makeAiPrompt(question, evidenceIds) {
@@ -867,9 +929,10 @@ export function mountFeature(host = {}) {
     aiController = requestController;
     updateAiUi();
     try {
-      const answer = await askSliceIntelligence(intelligence, { prompt: makeAiPrompt(prompt, requestContext.evidenceIds), context: requestContext.context, signal: requestController.signal });
+      const profileInstructions = "Se recomendar perfis, suggestion.profiles deve conter machine, process e filament, com o ID exato de catálogo para cada mudança e null para manter o perfil atual. Use apenas IDs apresentados em slicer.configuredProfiles.catalogs e não invente IDs. Catálogo vazio significa que não há opção recomendável daquele tipo. Cite slicer.configuredProfiles em evidence. A seleção não comprova compatibilidade: o OrcaSlicer valida a combinação no fatiamento. Se não houver mudança de perfil, use profiles:null.";
+      const answer = await askSliceIntelligence(intelligence, { prompt: `${makeAiPrompt(prompt, requestContext.evidenceIds)}\n\n${profileInstructions}`, context: requestContext.context, signal: requestController.signal });
       if (requestController.signal.aborted) throw new DOMException("Solicitação cancelada.", "AbortError");
-      const reply = parseAssistantReply(answer.text, { allowedEvidence: requestContext.evidenceIds });
+      const reply = parseAssistantReply(answer.text, { allowedEvidence: requestContext.evidenceIds, allowedProfiles: requestContext.allowedProfiles });
       rememberAi("assistant", reply.text);
       appendAiMessage("assistant", reply.text, reply.suggestion, requestRevision, requestProcessId, requestObjectId);
     } catch (error) {
