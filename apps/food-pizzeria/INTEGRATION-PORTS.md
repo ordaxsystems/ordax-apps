@@ -15,8 +15,8 @@ Este documento define as responsabilidades internas que os adapters Food deverã
 | Owner | O que o port consumidor Food precisa receber/solicitar | O que Food não pode fazer | Estado |
 | --- | --- | --- | --- |
 | Space / Host | Contexto autorizado do Space, capacidades disponíveis, identidade do provider e ciclo de vida. | Inventar `spaceId`, emitir grants, manter membership, criar auth ou sincronização. | Contrato público de composição/provider não disponível para este protótipo. |
-| Sales | ID estável e projeção autorizada do pedido comercial; comandos/eventos suportados para criação e mudanças comerciais, com revisão e idempotência. O owner comercial continua Sales. | Criar pedido comercial paralelo, reprecificar pedido já aceito, confirmar/cancelar venda diretamente no estado Food ou guardar uma cópia mutável do pedido Sales. | `ordax.sales-book/1` existe, mas não define o contrato específico de integração Food, canal, mesa/comanda ou extensão de fulfillment. |
-| Food | Cardápio, ficha técnica, vínculo `salesOrderId` após a publicação do contrato e estado especializado de preparo/produção/fulfillment. | Declarar seu sandbox atual como Sales, PDV, caixa ou pedido comercial real. | O estado local atual é exclusivamente preview. |
+| Order authority (Food Order Core × Sales) | Decisão cross-repo sobre o owner de pedido alimentar, ID estável, projeções, revisão e idempotência. | Manter dois pedidos mestres mutáveis ou declarar Sales owner exclusivo antes de reconciliar ACHEGUESE-001. | Sales possui `ordax.sales-book/1`, enquanto o owner OS declara Food Order Core como autoridade quando Food for escolhido; contrato ainda ausente. |
+| Food | Cardápio, ficha técnica e produção/fulfillment referenciando o `orderId` do owner canônico escolhido, conforme contrato futuro. | Declarar seu sandbox atual como Sales, Food Order Core comercial, PDV ou caixa real. | O estado local atual é exclusivamente preview. |
 | Inventory | Resposta de operação de consumo com referência ao pedido, revisão, escopo autorizado, chave idempotente e resultado aceito/rejeitado. | Criar catálogo mestre de insumos, saldo, reserva ou movimento; interpretar a proposta local como baixa efetivada. | Food apenas calcula uma proposta pela ficha técnica. |
 | Payments | Tentativa e resultado verificado do meio de pagamento, incluindo falha, confirmação e estorno conforme contrato. | Marcar pagamento como concluído por escolha de PIX/cartão ou por estado do pedido. | Provider ausente. |
 | Finance | Referência de fato financeiro confirmado pelos owners de Sales/Payments e processamento idempotente. | Transformar total do pedido em recebimento, caixa ou lançamento contábil por inferência. | Provider ausente; o app Finance atual é uma fundação de ledger, não integração Food. |
@@ -25,13 +25,13 @@ Este documento define as responsabilidades internas que os adapters Food deverã
 ## Fluxo alvo de um pedido alimentar
 
 1. A interface do Space mostra a capability Food somente quando o host fornece contexto autorizado e provider pronto.
-2. A criação do pedido comercial passa pelo owner Sales e produz uma referência estável de Sales.
-3. Food recebe a referência/projeção autorizada e cria apenas o estado de produção necessário, com chave idempotente vinculada ao pedido Sales.
-4. KDS e Delivery atualizam o estado operacional Food. O pedido, preço e estado comercial permanecem em Sales.
+2. A criação do pedido comercial passa pelo **único owner escolhido no contrato reconciliado** (Food Order Core ou Sales integrado), produzindo um ID canônico estável.
+3. A produção Food utiliza esse ID e a projeção autorizada, com chaves idempotentes; nenhuma segunda cópia mutável do pedido é criada.
+4. KDS e Delivery alteram exclusivamente o estado permitido pelo contrato; preço, cancelamento comercial e confirmação financeira permanecem sob as autoridades canônicas definidas.
 5. Quando produção solicitar consumo, Inventory valida a autorização, deduplica a requisição e registra o movimento. Food conserva o resultado/referência operacional permitido pelo contrato, nunca um saldo.
 6. Caixa recebe resultado confirmado de Payments e os fatos aceitos por Sales/Finance. A interface não deduz sucesso de pagamento a partir de um botão ou status local.
 
-Até os contratos públicos estarem disponíveis, nenhum desses fluxos cross-app é simulado como integrado. O preview pode criar registros locais fictícios para exercitar a interface, sempre sob o indicador “Prévia local · Dados fictícios · sem sincronização”.
+**Bloqueio explícito de ownership:** `ordax-os/ACHEGUESE-001` define Food Order Core como autoridade do pedido ao selecionar Food, mas `ordax-apps` possui o livro genérico Sales. É obrigatório reconciliar a decisão com ambos os owners antes de qualquer integração. Até os contratos públicos estarem disponíveis, nenhum desses fluxos cross-app é simulado como integrado. O preview pode criar registros locais fictícios para exercitar a interface, sempre sob o indicador “Prévia local · Dados fictícios · sem sincronização”.
 
 ## Requisitos comuns dos contratos futuros
 
