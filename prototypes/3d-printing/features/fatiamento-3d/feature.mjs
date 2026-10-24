@@ -5,7 +5,7 @@ import { createMeshViewer } from "./mesh-viewer.mjs";
 import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
 import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
 import { readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
-import { askSliceIntelligence, intelligenceState, parseAssistantSuggestion, assistantSuggestionSchema } from "./ai-copilot.mjs";
+import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema } from "./ai-copilot.mjs";
 
 const { escapeHtml, number, bytes, toast, icon, button } = shared;
 const MAX_MODEL_BYTES = 50 * 1024 * 1024;
@@ -635,7 +635,7 @@ export function mountFeature(host = {}) {
   }
 
   function makeAiPrompt(question) {
-    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. Uma contagem local de áreas degeneradas não comprova topologia ou imprimibilidade. Perfis de impressora/material são referências não validadas pelo fabricante. Não afirme que executou fatiamento, verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nQuando houver uma recomendação objetiva, devolva somente JSON válido neste formato: {"schema":"${assistantSuggestionSchema}","summary":"motivo e ressalvas","settings":{"layerHeight":0.2,"walls":3,"infill":15,"supports":false,"fanSpeedPercent":80,"quality":"standard"},"transform":{"x":0,"y":0,"z":0,"rotationX":0,"rotationY":0,"rotationZ":0,"scalePercent":100}}. settings e transform são opcionais e podem aparecer juntos. Inclua apenas os campos que realmente recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando valores absolutos de deslocamento inteiro em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Campos omitidos preservam o valor atual. Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. Se não houver base suficiente, responda em texto e diga o que falta. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
+    return `Você é o copiloto consultivo do OrdaX Fatiamento 3D. Responda em português e analise somente os metadados fornecidos; o arquivo, a malha e o G-code não foram enviados. Uma contagem local de áreas degeneradas não comprova topologia ou imprimibilidade. Perfis de impressora/material são referências não validadas pelo fabricante. Não afirme que executou fatiamento, verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.\n\nRetorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se não houver base suficiente para uma recomendação, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. settings altera somente o processo selecionado: layerHeight 0.08–0.4 mm; walls 1–8; infill 0–100; supports boolean; fanSpeedPercent 0–100; quality standard, fine ou draft. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Considere dimensões e limite da mesa ao avaliar posição/rotação, mas deixe claro que não recebeu a geometria para avaliar orientação de face, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.\n\nPedido do usuário: ${question}`;
   }
 
   async function askAi(question = content.querySelector("[data-ai-input]").value) {
@@ -654,9 +654,9 @@ export function mountFeature(host = {}) {
     try {
       const answer = await askSliceIntelligence(intelligence, { prompt: makeAiPrompt(prompt), context: requestContext, signal: requestController.signal });
       if (requestController.signal.aborted) throw new DOMException("Solicitação cancelada.", "AbortError");
-      rememberAi("assistant", answer.text);
-      const suggestion = parseAssistantSuggestion(answer.text);
-      appendAiMessage("assistant", suggestion ? suggestion.summary : answer.text, suggestion, requestRevision, requestProcessId, requestObjectId);
+      const reply = parseAssistantReply(answer.text);
+      rememberAi("assistant", reply.text);
+      appendAiMessage("assistant", reply.text, reply.suggestion, requestRevision, requestProcessId, requestObjectId);
     } catch (error) {
       if (error?.name === "AbortError") appendAiMessage("assistant", "Solicitação cancelada.");
       else appendAiMessage("assistant", `Não consegui consultar o OrdaX Intelligence: ${error?.message || "falha de comunicação"}`);

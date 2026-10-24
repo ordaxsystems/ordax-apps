@@ -1,9 +1,63 @@
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
 const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/2";
+const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 const MAX_CONTEXT_ITEMS = 16;
 const MAX_CONTEXT_ITEM_CHARS = 8192;
 const MAX_CONTEXT_TOTAL_CHARS = 65536;
+
+const nullable = schema => ({ anyOf: [schema, { type: "null" }] });
+const nullableInteger = (minimum, maximum) => nullable({ type: "integer", minimum, maximum });
+
+export const assistantStructuredOutput = Object.freeze({
+  name: "ordax_slicer_assistant_response",
+  strict: true,
+  schema: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      schema: { type: "string", enum: [ASSISTANT_RESPONSE_SCHEMA] },
+      answer: { type: "string" },
+      suggestion: nullable({
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          schema: { type: "string", enum: [SUGGESTION_SCHEMA] },
+          summary: { type: "string" },
+          settings: nullable({
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              quality: nullable({ type: "string", enum: ["standard", "fine", "draft"] }),
+              layerHeight: nullable({ type: "number", minimum: 0.08, maximum: 0.4 }),
+              walls: nullableInteger(1, 8),
+              infill: nullableInteger(0, 100),
+              supports: nullable({ type: "boolean" }),
+              fanSpeedPercent: nullableInteger(0, 100),
+            },
+            required: ["quality", "layerHeight", "walls", "infill", "supports", "fanSpeedPercent"],
+          }),
+          transform: nullable({
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              x: nullableInteger(-500, 500),
+              y: nullableInteger(-500, 500),
+              z: nullableInteger(-500, 500),
+              rotationX: nullableInteger(0, 359),
+              rotationY: nullableInteger(0, 359),
+              rotationZ: nullableInteger(0, 359),
+              scalePercent: nullableInteger(10, 300),
+            },
+            required: ["x", "y", "z", "rotationX", "rotationY", "rotationZ", "scalePercent"],
+          }),
+        },
+        required: ["schema", "summary", "settings", "transform"],
+      }),
+    },
+    required: ["schema", "answer", "suggestion"],
+  },
+});
 
 function setupHint(port) {
   try {
@@ -85,8 +139,7 @@ function extractJson(text) {
   try { return JSON.parse(source); } catch { return null; }
 }
 
-export function parseAssistantSuggestion(text) {
-  const value = extractJson(text);
+function validateSuggestion(value) {
   if (!value || value.schema !== SUGGESTION_SCHEMA || typeof value.summary !== "string" || !value.summary.trim()) return null;
   const source = value.settings ?? {};
   if (!source || typeof source !== "object" || Array.isArray(source)) return null;
@@ -100,6 +153,8 @@ export function parseAssistantSuggestion(text) {
     fanSpeedPercent: item => Number.isInteger(item) && item >= 0 && item <= 100,
   };
   for (const [key, item] of Object.entries(source)) {
+    if (!Object.hasOwn(validators, key)) return null;
+    if (item === null) continue;
     if (!validators[key] || !validators[key](item)) return null;
     settings[key === "fanSpeedPercent" ? "fan" : key] = item;
   }
@@ -116,6 +171,8 @@ export function parseAssistantSuggestion(text) {
     scalePercent: item => Number.isInteger(item) && item >= 10 && item <= 300,
   };
   for (const [key, item] of Object.entries(transformSource || {})) {
+    if (!Object.hasOwn(transformValidators, key)) return null;
+    if (item === null) continue;
     if (!transformValidators[key] || !transformValidators[key](item)) return null;
     transform[key] = item;
   }
@@ -125,6 +182,24 @@ export function parseAssistantSuggestion(text) {
     settings: Object.freeze(settings),
     transform: Object.freeze(transform),
   });
+}
+
+export function parseAssistantSuggestion(text) {
+  return validateSuggestion(extractJson(text));
+}
+
+export function parseAssistantReply(text) {
+  const value = extractJson(text);
+  if (!value || Object.keys(value).some(key => !["schema", "answer", "suggestion"].includes(key)) || value.schema !== ASSISTANT_RESPONSE_SCHEMA || typeof value.answer !== "string" || value.answer.length > 16000) {
+    throw new Error("A IA retornou uma resposta fora do formato estruturado do Copiloto. Tente novamente.");
+  }
+  const answer = value.answer.trim();
+  const suggestion = value.suggestion === null ? null : validateSuggestion(value.suggestion);
+  if (value.suggestion !== null && !suggestion) {
+    throw new Error("A sugestão da IA não passou pela validação do app. Nenhuma configuração foi aplicada.");
+  }
+  if (!answer && !suggestion) throw new Error("A IA retornou uma resposta vazia. Tente novamente.");
+  return Object.freeze({ text: answer || suggestion.summary, suggestion });
 }
 
 export const assistantSuggestionSchema = SUGGESTION_SCHEMA;

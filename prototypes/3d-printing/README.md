@@ -1,5 +1,7 @@
 # Espaço Impressão 3D — hosts de desenvolvimento
 
+O plano de produto e os critérios de evolução estão em [`ROADMAP.md`](./ROADMAP.md).
+
 O Space tem cinco apps de produto e onze áreas internas. Cada host abre diretamente a entrada do app; o host não desenha uma segunda interface nem incorpora telas por `iframe`.
 
 ## Apps e hosts
@@ -38,6 +40,8 @@ O editor permite separar objetos da mesa 3MF em processos, reatribuir uma peça 
 O Copiloto consome a porta pública `services.intelligence` entregue pelo host e envia apenas metadados: dimensões, material de referência, configurações do processo e transformação da peça selecionados, contagens e a contagem local de faces com área degenerada. O arquivo STL/3MF, a malha e o G-code ficam no dispositivo. A inspeção numérica não comprova watertightness, manifold, orientação ou imprimibilidade. Respostas são consultivas; a sugestão estruturada `ordax.slicer-assistant-suggestion/2` pode propor parâmetros do processo e transformação individual (deslocamento XYZ, rotação e escala). O app valida os limites e vincula a proposta ao projeto, processo e objeto consultados; só a aplica após clique explícito do usuário. O modelo não executa ações nem controla a impressora.
 
 O plugin ORDAX MCP é uma entrada do ChatGPT externo para a Platform/Runtime, não uma API de inferência para o app. O app usa OrdaX Intelligence para conversar; ações privilegiadas futuras precisam do contrato público do host/Action Gateway e dos grants canônicos. Sem a chave Groq, o adaptador local informa Intelligence indisponível. O motor de fatiamento segue desconectado e não usa resultados simulados.
+
+As respostas do Copiloto agora usam o envelope `ordax.slicer-assistant-response/1`: resposta explicativa e proposta são campos distintos. Para os modelos Groq com suporte oficial ao modo estrito, o servidor envia JSON Schema estrito; para outros modelos usa JSON Object e o app ainda valida todos os campos e limites. Uma proposta inválida é recusada, e a aplicação continua dependendo de revisão explícita no app.
 
 ### Groq no host local (somente desenvolvimento)
 
