@@ -30,6 +30,7 @@ export const assistantEvidenceIds = Object.freeze([
   "latestSlice.stats.filamentGrams",
   "latestSlice.stats.filamentMeters",
   "latestSlice.stats.featureBreakdown",
+  "latestSlice.previewDiagnostics",
   "slicer.configuredProfiles",
 ]);
 const assistantEvidenceIdSet = new Set(assistantEvidenceIds);
