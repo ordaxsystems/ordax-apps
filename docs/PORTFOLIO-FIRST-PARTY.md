@@ -16,7 +16,7 @@ O SSOT **da política de seleção inicial** pertence ao OS e foi implementado e
 
 - **Fonte canônica com candidatos de pacote**: Notas, Calculadora, Relógio, Conversor, Visualizador de Texto, Imagens, Calendário, Cores, Mapa de Caracteres, Desenho, Mídia, PDF e Ferramentas.
 - **Distribuição especial/Windows + OS**: Studio, cujo código portátil canônico é `apps/studio`; a plataforma e o Runtime não são clonados dentro dele.
-- **Domínios empresariais em fundação, sem `app.json` e sem distribuição**: Finanças, Estoque e Vendas.
+- **Domínios empresariais em fundação, sem `app.json` e sem distribuição**: Finanças, Estoque, Vendas e OrdaX Food (`apps/food-pizzeria`; navegador primeiro, hosts/plataformas ainda sem integração).
 
 ## Transferência de fonte e distribuição
 

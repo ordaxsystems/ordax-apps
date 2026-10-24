@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="theme-color" content="#f7f5f0">
+    <title>OrdaX Food — Pizzaria</title>
+    <link rel="stylesheet" href="assets/food-pizzeria.css">
+  </head>
+  <body>
+    <div id="app" aria-live="off"></div>
+    <dialog id="cancel-dialog" aria-labelledby="cancel-title">
+      <form id="cancel-order-form">
+        <div class="dialog-icon" aria-hidden="true">!</div>
+        <h2 id="cancel-title">Cancelar pedido</h2>
+        <p>O pedido será mantido no histórico com o motivo informado.</p>
+        <input type="hidden" name="orderId">
+        <label for="cancel-reason">Motivo do cancelamento</label>
+        <textarea id="cancel-reason" name="reason" maxlength="240" required rows="3"></textarea>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-action="close-cancel">Voltar</button>
+          <button class="button button-danger" type="submit">Confirmar cancelamento</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="cash-close-dialog" aria-labelledby="cash-close-title">
+      <form id="cash-close-form">
+        <div class="dialog-icon" aria-hidden="true">R$</div>
+        <h2 id="cash-close-title">Fechar caixa</h2>
+        <p>Confira as vendas do turno e informe quanto dinheiro ficou no caixa.</p>
+        <div id="cash-close-summary" class="cash-dialog-summary"></div>
+        <label for="cash-counted">Dinheiro contado</label>
+        <input id="cash-counted" name="countedCash" inputmode="decimal" autocomplete="off" required>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-action="close-cash-dialog">Voltar</button>
+          <button class="button button-primary" type="submit">Confirmar fechamento</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="cash-open-dialog" aria-labelledby="cash-open-title">
+      <form id="cash-open-form">
+        <div class="dialog-icon" aria-hidden="true">R$</div>
+        <h2 id="cash-open-title">Abrir novo turno</h2>
+        <p>Informe o dinheiro inicial disponível no caixa.</p>
+        <label for="cash-opening">Fundo de caixa</label>
+        <input id="cash-opening" name="openingCash" inputmode="decimal" autocomplete="off" required>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-action="close-cash-dialog">Voltar</button>
+          <button class="button button-primary" type="submit">Abrir caixa</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="table-open-dialog" aria-labelledby="table-open-title">
+      <form id="table-open-form">
+        <div class="dialog-icon" aria-hidden="true">▦</div>
+        <h2 id="table-open-title">Abrir comanda</h2>
+        <p>Escolha uma mesa livre e identifique o grupo. Os pedidos serão vinculados à mesma comanda.</p>
+        <label for="table-open-id">Mesa</label>
+        <select id="table-open-id" name="tableId" required></select>
+        <label for="table-open-customer">Nome do grupo</label>
+        <input id="table-open-customer" name="customerName" maxlength="80" placeholder="Ex.: Família Oliveira" required>
+        <label for="table-open-guests">Pessoas</label>
+        <input id="table-open-guests" name="guestCount" type="number" min="1" max="6" value="2" required>
+        <div class="dialog-actions">
+          <button class="button button-quiet" type="button" data-action="close-table-dialog">Voltar</button>
+          <button class="button button-primary" type="submit">Confirmar mesa</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>
