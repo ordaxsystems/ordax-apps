@@ -10,10 +10,11 @@ import { assessSlicerProfileCompatibility, readProfileCompatibility } from "../f
 import { isSupportedInfillPattern } from "./infill-patterns.mjs";
 import { isSupportedSeamPosition } from "./seam-positions.mjs";
 import { isNozzleTemperatureInRange, nozzleTemperatureLimits } from "./nozzle-temperatures.mjs";
+import { bedTemperaturesByType, isSupportedBedType, normalizeBedType, validateBedTypeSelection } from "./bed-types.mjs";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/11";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/12";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
@@ -183,7 +184,21 @@ function parseProfile(raw, kind, fallbackName) {
       throw publicError("O perfil da máquina precisa declarar printable_area e max_print_height válidos.", 503);
     }
     const nozzle = first(profile.nozzle_diameter);
-    return { name, compatibility, ...bed, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle), nozzleMaxTemperatureC: numeric(profile.nozzle_max_temperature), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null, source: "JSON local configurado no host" };
+    const rawUnsupportedBedTypes = profile.not_support_bed_type;
+    const unsupportedBedTypeValues = Array.isArray(rawUnsupportedBedTypes)
+      ? rawUnsupportedBedTypes
+      : typeof rawUnsupportedBedTypes === "string" ? rawUnsupportedBedTypes.split(/[;,]/)
+        : rawUnsupportedBedTypes === null || rawUnsupportedBedTypes === undefined ? [] : [rawUnsupportedBedTypes];
+    const unsupportedBedTypes = unsupportedBedTypeValues
+      .map(normalizeBedType).filter(Boolean);
+    return {
+      name, compatibility, ...bed, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle),
+      nozzleMaxTemperatureC: numeric(profile.nozzle_max_temperature), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null,
+      supportMultiBedTypes: booleanSetting(profile.support_multi_bed_types),
+      defaultBedType: normalizeBedType(first(profile.curr_bed_type) ?? first(profile.default_bed_type)),
+      unsupportedBedTypes,
+      source: "JSON local configurado no host",
+    };
   }
   if (kind === "process") {
     if (!profile.layer_height && !profile.layer_height_0) throw publicError("O perfil de processo não contém altura de camada.", 503);
@@ -211,6 +226,7 @@ function parseProfile(raw, kind, fallbackName) {
         supportOnBuildPlateOnly: booleanSetting(profile.support_on_build_plate_only),
         fanMinSpeedPercent: numeric(profile.fan_min_speed),
         fanMaxSpeedPercent: numeric(profile.fan_max_speed),
+        defaultBedType: normalizeBedType(first(profile.curr_bed_type) ?? first(profile.default_bed_type)),
       },
       source: "JSON efetivo do perfil OrcaSlicer",
     };
@@ -219,6 +235,7 @@ function parseProfile(raw, kind, fallbackName) {
   const nozzleRange = [numeric(profile.nozzle_temperature_range_low), numeric(profile.nozzle_temperature_range_high)];
   const nozzleTemperatureRangeC = nozzleRange.every(Number.isInteger) && nozzleRange[0] >= 0 && nozzleRange[1] >= nozzleRange[0] ? nozzleRange : null;
   const bedTemperatures = [numeric(profile.cool_plate_temp ?? profile.textured_plate_temp ?? profile.bed_temperature), numeric(profile.cool_plate_temp_initial_layer ?? profile.textured_plate_temp_initial_layer ?? profile.bed_temperature_initial_layer)];
+  const bedTemperatureProfile = bedTemperaturesByType(profile);
   const validRange = values => values.filter(Number.isFinite).length ? values.filter(Number.isFinite) : null;
   return {
     name,
@@ -229,6 +246,7 @@ function parseProfile(raw, kind, fallbackName) {
     nozzleTemperatureTargetC: numeric(profile.nozzle_temperature),
     nozzleTemperatureInitialLayerC: numeric(profile.nozzle_temperature_initial_layer),
     bedTemperatureC: validRange(bedTemperatures),
+    bedTemperaturesByType: bedTemperatureProfile,
     source: "JSON local configurado no host",
   };
 }
@@ -587,6 +605,7 @@ function normalSettings(value) {
     brimType: value.brimType === null || value.brimType === undefined || value.brimType === "" ? null : value.brimType,
     brimWidth: value.brimWidth === null || value.brimWidth === undefined || value.brimWidth === "" ? null : Number(value.brimWidth),
     brimGap: value.brimGap === null || value.brimGap === undefined || value.brimGap === "" ? null : Number(value.brimGap),
+    bedType: value.bedType === null || value.bedType === undefined || value.bedType === "" ? null : value.bedType,
     infill: Number(value.infill),
     infillPattern: value.infillPattern,
     seamPosition: value.seamPosition === null || value.seamPosition === undefined || value.seamPosition === "" ? null : value.seamPosition,
@@ -609,6 +628,7 @@ function normalSettings(value) {
     || !(settings.brimType === null || ["outer_only", "inner_only", "outer_and_inner", "no_brim"].includes(settings.brimType))
     || !(settings.brimWidth === null || Number.isFinite(settings.brimWidth) && settings.brimWidth >= 0 && settings.brimWidth <= 20)
     || !(settings.brimGap === null || Number.isFinite(settings.brimGap) && settings.brimGap >= 0 && settings.brimGap <= 10)
+    || !(settings.bedType === null || isSupportedBedType(settings.bedType))
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
     || !isSupportedInfillPattern(settings.infillPattern)
     || !(settings.seamPosition === null || isSupportedSeamPosition(settings.seamPosition))
@@ -637,6 +657,7 @@ export function buildOrcaSettingArguments(value) {
     ...(settings.brimType === null ? [] : [`--brim-type=${settings.brimType}`]),
     ...(settings.brimWidth === null ? [] : [`--brim-width=${settings.brimWidth}`]),
     ...(settings.brimGap === null ? [] : [`--brim-object-gap=${settings.brimGap}`]),
+    ...(settings.bedType === null ? [] : ["--curr-bed-type", settings.bedType]),
     "--sparse-infill-density", `${settings.infill}%`,
     `--sparse-infill-pattern=${settings.infillPattern}`,
     ...(settings.seamPosition === null ? [] : [`--seam-position=${settings.seamPosition}`]),
@@ -691,7 +712,7 @@ function validateManifest(manifest, meshBytes) {
   }
   if (assigned.size !== objectIds.size) throw publicError("Há peças sem processo de impressão atribuído.");
   const engineSettings = settings => {
-    const { quality: _qualityShortcut, nozzleTemperatureC: _nozzleTemperature, nozzleTemperatureInitialLayerC: _nozzleTemperatureInitialLayer, ...applied } = settings;
+    const { quality: _qualityShortcut, nozzleTemperatureC: _nozzleTemperature, nozzleTemperatureInitialLayerC: _nozzleTemperatureInitialLayer, bedType: _bedType, ...applied } = settings;
     return applied;
   };
   const uniqueSettings = new Set(settingsByProcess.map(settings => JSON.stringify(engineSettings(settings))));
@@ -851,6 +872,8 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
     const selectedProfiles = selectConfiguredProfiles(config, manifest);
     const validated = validateManifest(manifest, meshBytes);
     validateNozzleTemperatureOverrides(validated.settings, selectedProfiles.machine.parsed, selectedProfiles.filament.parsed);
+    const bedTypeValidation = validateBedTypeSelection(validated.settings.bedType, selectedProfiles.machine.parsed, selectedProfiles.filament.parsed);
+    if (!bedTypeValidation.valid) throw publicError(bedTypeValidation.reason, 422);
     if (validated.settings.brimType === null && selectedProfiles.process.parsed.processSettings.brimType === "painted") throw publicError("O perfil usa brim pintado, mas o app ainda não preserva a pintura da malha. Escolha um tipo de brim automático antes de fatiar.", 422);
     const compatibility = assessSlicerProfileCompatibility({
       machine: selectedProfiles.machine.parsed,
