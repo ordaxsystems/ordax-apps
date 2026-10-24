@@ -289,6 +289,18 @@ test("schema de evidências permite citar links de vértices e resumo geométric
   }
 });
 
+test("schema da IA permite citar cobertura incompleta da prévia sem confundir com o G-code exportado", () => {
+  const evidenceId = "latestSlice.previewDiagnostics";
+  assert.ok(assistantEvidenceIds.includes(evidenceId));
+  assert.ok(assistantStructuredOutput.schema.properties.suggestion.anyOf[0].properties.evidence.items.enum.includes(evidenceId));
+  const parsed = parseAssistantReply(reply({
+    evidence: [evidenceId],
+    profiles: null,
+    settings: { quality: "fine" },
+  }), { allowedEvidence: [evidenceId], allowedProfiles });
+  assert.deepEqual(parsed.suggestion.evidence, [evidenceId]);
+});
+
 test("schema da IA aceita a evidência determinística do envelope da mesa", () => {
   const evidenceId = "model.printableSpaceFit";
   assert.ok(assistantEvidenceIds.includes(evidenceId));
