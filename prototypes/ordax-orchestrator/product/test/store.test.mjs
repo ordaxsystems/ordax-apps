@@ -47,6 +47,7 @@ test('per-Task drafts persist across restart, reject stale saves and never enter
   const first = store.createTask('Projeto A');
   const second = store.createTask('Projeto B');
   const originalOrder = store.listTasks().map(task => task.id);
+  assert.equal(store.listTasks().find(task => task.id === first.id).has_draft, 0);
   const originalTimestamp = store.getTask(first.id).updated_at;
 
   assert.equal(store.setDraft(first.id, 'Ideia ainda não enviada', 1).draft_revision, 1);
@@ -60,6 +61,8 @@ test('per-Task drafts persist across restart, reject stale saves and never enter
   assert.equal(navigation.length, 2);
   assert.ok(navigation.every(row => !('draft' in row) && !('checkpoint' in row) && !('chat_url' in row)));
   assert.ok(navigation.every(row => 'status' in row && 'title' in row && 'conversation_count' in row && 'pending_memory_count' in row));
+  assert.equal(navigation.find(row => row.id === first.id).has_draft, 1);
+  assert.equal(navigation.find(row => row.id === second.id).has_draft, 1);
   assert.equal(store.getTask(first.id).updated_at, originalTimestamp);
   assert.deepEqual(store.listTasks().map(task => task.id), originalOrder);
   assert.doesNotMatch(store.buildContinuationPrompt(first.id, 'Continue'), /Texto novo/);
@@ -72,6 +75,7 @@ test('per-Task drafts persist across restart, reject stale saves and never enter
   store.setDraft(first.id, '', 5);
   store.setDraft(first.id, 'Salvamento antigo', 4);
   assert.equal(store.getTask(first.id).draft, '');
+  assert.equal(store.listTasks().find(task => task.id === first.id).has_draft, 0);
   assert.deepEqual(store.getTask(first.id).messages.map(row => row.content), ['Texto novo']);
   assert.throws(() => store.setDraft(first.id, 'x', 0), /invalid_task_draft_revision/);
   assert.throws(() => store.setDraft(first.id, 'x'.repeat(20001), 6), /task_draft_too_large/);

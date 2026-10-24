@@ -32,6 +32,20 @@ test('host serves only the current UI allowlist with a restrictive browser polic
     assert.doesNotMatch(css,/\.host-browser-controls\{position:fixed/);
     assert.match(css,/body\.orchestrator-focus:not\(\.orchestrator-api-settings\) #contextRail>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
     assert.match(css,/body\.orchestrator-focus\.orchestrator-api-settings #labSupervisorPanel\{display:block!important/);
+    const pending=['/ui.js','/host-browser-bridge.js'];
+    const checked=new Set();
+    for(const route of pending) {
+      if(checked.has(route))continue;
+      checked.add(route);
+      const response=await fetch(`${origin}${route}`);
+      assert.equal(response.status,200,`missing host UI module ${route}`);
+      const source=await response.text();
+      for(const match of source.matchAll(/(?:from\s*|import\s*)['"]([^'"]+)['"]/g)) {
+        if(!match[1].startsWith('.'))continue;
+        const imported=new URL(match[1],`http://127.0.0.1${route}`).pathname;
+        if(!checked.has(imported))pending.push(imported);
+      }
+    }
     assert.equal((await fetch(`${origin}/api/invoke`)).status,401);
     const started=await fetch(`${origin}/api/session`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
     const cookie=started.headers.get('set-cookie').split(';',1)[0];

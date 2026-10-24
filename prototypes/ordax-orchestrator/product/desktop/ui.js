@@ -1,6 +1,6 @@
 import { renderLiveStage } from './ui-stage.mjs';
 import { providerComposeAvailability, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
-import { taskNavigationStatus } from '../src/task-navigation-status.mjs';
+import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigation-status.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
 import { mountOrchestratorUi } from './orchestrator-ui.mjs';
 const $ = selector => document.querySelector(selector);
@@ -206,10 +206,6 @@ function friendlyError(error) {
   return messages[code] || raw.replace(/^Error invoking remote method '[^']+': Error: /, '');
 }
 
-function statusLabel(status) {
-  return ({ ready:'Pronta', running:'Executando', error:'Erro', interrupted:'Interrompida', succeeded:'Concluída' })[status] || status;
-}
-
 const memoryCategoryLabels = {
   entity:'Entidade', structure:'Estrutura', fact:'Fato', decision:'Decisão',
   constraint:'Restrição', goal:'Objetivo', open_loop:'Pendência', reference:'Referência'
@@ -312,7 +308,7 @@ function renderTaskList() {
   $('#tasks').innerHTML = tasks.map(task => `
     <button class="task ${task.id === currentTaskId ? 'active' : ''}" data-id="${esc(task.id)}">
       <strong>${esc(task.title)}</strong>
-      <span class="task-sub"><span>${esc(statusLabel(task.status))}</span><span>Projeto persistente</span></span>
+      <span class="task-sub"><span>${esc(taskListStatusLabel(task))}</span><span>Projeto persistente</span></span>
     </button>`).join('');
   document.querySelectorAll('.task').forEach(button => button.addEventListener('click', () => openTask(button.dataset.id)));
 }
