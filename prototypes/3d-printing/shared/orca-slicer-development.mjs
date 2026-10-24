@@ -9,10 +9,11 @@ import { pipeline } from "node:stream/promises";
 import { assessSlicerProfileCompatibility, readProfileCompatibility } from "../features/fatiamento-3d/profile-compatibility.mjs";
 import { isSupportedInfillPattern } from "./infill-patterns.mjs";
 import { isSupportedSeamPosition } from "./seam-positions.mjs";
+import { isNozzleTemperatureInRange, nozzleTemperatureLimits } from "./nozzle-temperatures.mjs";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/10";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/11";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
@@ -182,7 +183,7 @@ function parseProfile(raw, kind, fallbackName) {
       throw publicError("O perfil da máquina precisa declarar printable_area e max_print_height válidos.", 503);
     }
     const nozzle = first(profile.nozzle_diameter);
-    return { name, compatibility, ...bed, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null, source: "JSON local configurado no host" };
+    return { name, compatibility, ...bed, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle), nozzleMaxTemperatureC: numeric(profile.nozzle_max_temperature), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null, source: "JSON local configurado no host" };
   }
   if (kind === "process") {
     if (!profile.layer_height && !profile.layer_height_0) throw publicError("O perfil de processo não contém altura de camada.", 503);
@@ -215,6 +216,8 @@ function parseProfile(raw, kind, fallbackName) {
     };
   }
   const temperatures = [numeric(profile.nozzle_temperature_range_low ?? profile.nozzle_temperature), numeric(profile.nozzle_temperature_range_high ?? profile.nozzle_temperature)];
+  const nozzleRange = [numeric(profile.nozzle_temperature_range_low), numeric(profile.nozzle_temperature_range_high)];
+  const nozzleTemperatureRangeC = nozzleRange.every(Number.isInteger) && nozzleRange[0] >= 0 && nozzleRange[1] >= nozzleRange[0] ? nozzleRange : null;
   const bedTemperatures = [numeric(profile.cool_plate_temp ?? profile.textured_plate_temp ?? profile.bed_temperature), numeric(profile.cool_plate_temp_initial_layer ?? profile.textured_plate_temp_initial_layer ?? profile.bed_temperature_initial_layer)];
   const validRange = values => values.filter(Number.isFinite).length ? values.filter(Number.isFinite) : null;
   return {
@@ -222,6 +225,9 @@ function parseProfile(raw, kind, fallbackName) {
     compatibility,
     type: String(first(profile.filament_type) || "").slice(0, 80) || null,
     nozzleTemperatureC: validRange(temperatures),
+    nozzleTemperatureRangeC,
+    nozzleTemperatureTargetC: numeric(profile.nozzle_temperature),
+    nozzleTemperatureInitialLayerC: numeric(profile.nozzle_temperature_initial_layer),
     bedTemperatureC: validRange(bedTemperatures),
     source: "JSON local configurado no host",
   };
@@ -584,6 +590,8 @@ function normalSettings(value) {
     infill: Number(value.infill),
     infillPattern: value.infillPattern,
     seamPosition: value.seamPosition === null || value.seamPosition === undefined || value.seamPosition === "" ? null : value.seamPosition,
+    nozzleTemperatureC: value.nozzleTemperatureC === null || value.nozzleTemperatureC === undefined || value.nozzleTemperatureC === "" ? null : Number(value.nozzleTemperatureC),
+    nozzleTemperatureInitialLayerC: value.nozzleTemperatureInitialLayerC === null || value.nozzleTemperatureInitialLayerC === undefined || value.nozzleTemperatureInitialLayerC === "" ? null : Number(value.nozzleTemperatureInitialLayerC),
     supports: value.supports,
     supportType: value.supportType,
     supportThresholdAngle: Number(value.supportThresholdAngle),
@@ -604,6 +612,8 @@ function normalSettings(value) {
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
     || !isSupportedInfillPattern(settings.infillPattern)
     || !(settings.seamPosition === null || isSupportedSeamPosition(settings.seamPosition))
+    || !(settings.nozzleTemperatureC === null || Number.isInteger(settings.nozzleTemperatureC) && settings.nozzleTemperatureC >= 150 && settings.nozzleTemperatureC <= 350)
+    || !(settings.nozzleTemperatureInitialLayerC === null || Number.isInteger(settings.nozzleTemperatureInitialLayerC) && settings.nozzleTemperatureInitialLayerC >= 150 && settings.nozzleTemperatureInitialLayerC <= 350)
     || typeof settings.supports !== "boolean"
     || !["normal(auto)", "tree(auto)"].includes(settings.supportType)
     || !Number.isInteger(settings.supportThresholdAngle) || settings.supportThresholdAngle < 0 || settings.supportThresholdAngle > 90
@@ -630,6 +640,8 @@ export function buildOrcaSettingArguments(value) {
     "--sparse-infill-density", `${settings.infill}%`,
     `--sparse-infill-pattern=${settings.infillPattern}`,
     ...(settings.seamPosition === null ? [] : [`--seam-position=${settings.seamPosition}`]),
+    ...(settings.nozzleTemperatureC === null ? [] : [`--nozzle-temperature=${settings.nozzleTemperatureC}`]),
+    ...(settings.nozzleTemperatureInitialLayerC === null ? [] : [`--nozzle-temperature-initial-layer=${settings.nozzleTemperatureInitialLayerC}`]),
     `--enable-support=${settings.supports ? 1 : 0}`,
     "--support-type", settings.supportType,
     "--support-threshold-angle", String(settings.supportThresholdAngle),
@@ -637,6 +649,18 @@ export function buildOrcaSettingArguments(value) {
     "--fan-min-speed", String(settings.fanMinSpeedPercent),
     "--fan-max-speed", String(settings.fanMaxSpeedPercent),
   ];
+}
+
+export function validateNozzleTemperatureOverrides(settings, machineProfile, filamentProfile) {
+  const limits = nozzleTemperatureLimits(machineProfile, filamentProfile);
+  for (const [key, label] of [["nozzleTemperatureC", "demais camadas"], ["nozzleTemperatureInitialLayerC", "primeira camada"]]) {
+    const value = settings?.[key];
+    if (value === null || value === undefined) continue;
+    if (!isNozzleTemperatureInRange(value, limits)) {
+      const allowed = limits ? `${limits.min}–${limits.max} °C` : "não declarada pelo perfil selecionado";
+      throw publicError(`A temperatura do bico para ${label} precisa ficar na faixa permitida pelo filamento e pela máquina (${allowed}).`, 422);
+    }
+  }
 }
 
 function validateManifest(manifest, meshBytes) {
@@ -667,7 +691,7 @@ function validateManifest(manifest, meshBytes) {
   }
   if (assigned.size !== objectIds.size) throw publicError("Há peças sem processo de impressão atribuído.");
   const engineSettings = settings => {
-    const { quality: _qualityShortcut, ...applied } = settings;
+    const { quality: _qualityShortcut, nozzleTemperatureC: _nozzleTemperature, nozzleTemperatureInitialLayerC: _nozzleTemperatureInitialLayer, ...applied } = settings;
     return applied;
   };
   const uniqueSettings = new Set(settingsByProcess.map(settings => JSON.stringify(engineSettings(settings))));
@@ -826,6 +850,7 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
     const meshBytes = Buffer.from(await uploadedMesh.arrayBuffer());
     const selectedProfiles = selectConfiguredProfiles(config, manifest);
     const validated = validateManifest(manifest, meshBytes);
+    validateNozzleTemperatureOverrides(validated.settings, selectedProfiles.machine.parsed, selectedProfiles.filament.parsed);
     if (validated.settings.brimType === null && selectedProfiles.process.parsed.processSettings.brimType === "painted") throw publicError("O perfil usa brim pintado, mas o app ainda não preserva a pintura da malha. Escolha um tipo de brim automático antes de fatiar.", 422);
     const compatibility = assessSlicerProfileCompatibility({
       machine: selectedProfiles.machine.parsed,

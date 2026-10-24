@@ -40,6 +40,7 @@ const contentTypes = {
   "feature-surface.css": "text/css; charset=utf-8",
   "infill-patterns.mjs": "text/javascript; charset=utf-8",
   "seam-positions.mjs": "text/javascript; charset=utf-8",
+  "nozzle-temperatures.mjs": "text/javascript; charset=utf-8",
 };
 
 const appId = process.argv[2] ?? process.env.ORDAX_3D_APP;
@@ -201,7 +202,7 @@ function resolveRequest(pathname) {
     const name = pathname.slice(1);
     return [resolve(sharedRoot, name), contentTypes[name]];
   }
-  if (["/shared/infill-patterns.mjs", "/shared/seam-positions.mjs"].includes(pathname)) {
+  if (["/shared/infill-patterns.mjs", "/shared/seam-positions.mjs", "/shared/nozzle-temperatures.mjs"].includes(pathname)) {
     const name = pathname.slice("/shared/".length);
     return [resolve(sharedRoot, name), contentTypes[name]];
   }

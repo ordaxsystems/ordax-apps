@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildOrcaSettingArguments } from "../shared/orca-slicer-development.mjs";
+import { buildOrcaSettingArguments, validateNozzleTemperatureOverrides } from "../shared/orca-slicer-development.mjs";
 import { infillPatternOptions } from "../shared/infill-patterns.mjs";
 
 const settings = Object.freeze({
@@ -17,6 +17,8 @@ const settings = Object.freeze({
   infill: 15,
   infillPattern: "gyroid",
   seamPosition: null,
+  nozzleTemperatureC: null,
+  nozzleTemperatureInitialLayerC: null,
   supports: true,
   supportType: "normal(auto)",
   supportThresholdAngle: 45,
@@ -61,6 +63,26 @@ test("mapeia a posição da costura para o Orca somente quando há override expl
   for (const value of ["unsupported", "aligned-back"]) {
     assert.throws(() => buildOrcaSettingArguments({ ...settings, seamPosition: value }), /configurações solicitadas estão fora dos limites/);
   }
+});
+
+test("mapeia temperaturas do bico sem alterar o perfil quando estão herdadas", () => {
+  const inherited = buildOrcaSettingArguments(settings);
+  assert.equal(inherited.some(argument => argument.startsWith("--nozzle-temperature")), false);
+  const overrides = buildOrcaSettingArguments({ ...settings, nozzleTemperatureC: 215, nozzleTemperatureInitialLayerC: 220 });
+  assert.ok(overrides.includes("--nozzle-temperature=215"));
+  assert.ok(overrides.includes("--nozzle-temperature-initial-layer=220"));
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, nozzleTemperatureC: 351 }), /configurações solicitadas estão fora dos limites/);
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, nozzleTemperatureInitialLayerC: 149 }), /configurações solicitadas estão fora dos limites/);
+});
+
+test("limita overrides de temperatura ao perfil do filamento e ao máximo da máquina", () => {
+  const machine = { nozzleMaxTemperatureC: 240 };
+  const filament = { nozzleTemperatureRangeC: [190, 250] };
+  assert.doesNotThrow(() => validateNozzleTemperatureOverrides({ nozzleTemperatureC: 230, nozzleTemperatureInitialLayerC: 235 }, machine, filament));
+  assert.throws(() => validateNozzleTemperatureOverrides({ nozzleTemperatureC: 245, nozzleTemperatureInitialLayerC: null }, machine, filament), /faixa permitida/);
+  assert.throws(() => validateNozzleTemperatureOverrides({ nozzleTemperatureC: 185, nozzleTemperatureInitialLayerC: null }, machine, filament), /faixa permitida/);
+  assert.throws(() => validateNozzleTemperatureOverrides({ nozzleTemperatureC: 230, nozzleTemperatureInitialLayerC: null }, {}, filament), /faixa permitida/);
+  assert.throws(() => validateNozzleTemperatureOverrides({ nozzleTemperatureC: 230, nozzleTemperatureInitialLayerC: null }, { nozzleMaxTemperatureC: 180 }, filament), /faixa permitida/);
 });
 
 test("rejeita espessura de casca fora do intervalo suportado", () => {

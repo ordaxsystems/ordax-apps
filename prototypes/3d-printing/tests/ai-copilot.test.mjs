@@ -16,7 +16,7 @@ const allowedProfiles = {
 function reply({ evidence = allowedEvidence, profiles = { machine: machineId, process: null, filament: null }, settings = null } = {}) {
   const completeSettings = settings === null ? null : {
     quality: null, layerHeight: null, walls: null, topShellLayers: null, bottomShellLayers: null, topShellThickness: null, bottomShellThickness: null, brimType: null, brimWidth: null, brimGap: null,
-    seamPosition: null,
+    seamPosition: null, nozzleTemperatureC: null, nozzleTemperatureInitialLayerC: null,
     infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null,
     supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null,
     ...settings,
@@ -153,6 +153,43 @@ test("aceita somente posições de costura oficiais do OrcaSlicer", () => {
   }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
 });
 
+test("IA pode sugerir temperaturas dentro dos limites combinados de material e máquina", () => {
+  const parsed = parseAssistantReply(reply({
+    evidence: ["settings"], profiles: null,
+    settings: { nozzleTemperatureC: 230, nozzleTemperatureInitialLayerC: 220 },
+  }), {
+    allowedEvidence: ["settings"], allowedProfiles,
+    profileCatalogs: {
+      machine: [{ id: machineId, nozzleMaxTemperatureC: 235 }],
+      filament: [{ id: filamentId, nozzleTemperatureRangeC: [190, 240] }],
+    },
+    selectedProfileIds: { machine: machineId, process: processId, filament: filamentId },
+  });
+  assert.deepEqual(parsed.suggestion.settings, { nozzleTemperatureC: 230, nozzleTemperatureInitialLayerC: 220 });
+  assert.throws(() => parseAssistantReply(reply({
+    evidence: ["settings"], profiles: null,
+    settings: { nozzleTemperatureC: 236, nozzleTemperatureInitialLayerC: null },
+  }), {
+    allowedEvidence: ["settings"], allowedProfiles,
+    profileCatalogs: {
+      machine: [{ id: machineId, nozzleMaxTemperatureC: 235 }],
+      filament: [{ id: filamentId, nozzleTemperatureRangeC: [190, 240] }],
+    },
+    selectedProfileIds: { machine: machineId, process: processId, filament: filamentId },
+  }), /não passou pela validação/);
+  assert.throws(() => parseAssistantReply(reply({
+    evidence: ["settings"], profiles: null,
+    settings: { nozzleTemperatureC: 230, nozzleTemperatureInitialLayerC: null },
+  }), {
+    allowedEvidence: ["settings"], allowedProfiles,
+    profileCatalogs: {
+      machine: [{ id: machineId }],
+      filament: [{ id: filamentId, nozzleTemperatureRangeC: [190, 240] }],
+    },
+    selectedProfileIds: { machine: machineId, process: processId, filament: filamentId },
+  }), /não passou pela validação/);
+});
+
 test("valida e mapeia os limites mínimo e máximo da ventoinha de peça", () => {
   const parsed = parseAssistantReply(reply({
     evidence: ["settings"],
@@ -235,6 +272,8 @@ test("schema estrito exige os três campos de perfil na proposta", () => {
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.topShellThickness.anyOf[0].maximum, 10);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.bottomShellThickness.anyOf[0].minimum, 0);
   assert.deepEqual(suggestionSchema.properties.settings.anyOf[0].properties.brimType.anyOf[0].enum, ["outer_only", "inner_only", "outer_and_inner", "no_brim"]);
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.nozzleTemperatureC.anyOf[0].minimum, 150);
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.nozzleTemperatureInitialLayerC.anyOf[0].maximum, 350);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.brimWidth.anyOf[0].maximum, 20);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.brimGap.anyOf[0].maximum, 10);
   assert.ok(suggestionSchema.required.includes("settings"));

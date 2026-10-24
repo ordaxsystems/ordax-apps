@@ -1,9 +1,10 @@
 import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { isSupportedInfillPattern } from "../../shared/infill-patterns.mjs";
 import { isSupportedSeamPosition } from "../../shared/seam-positions.mjs";
+import { isNozzleTemperatureInRange, nozzleTemperatureLimits } from "../../shared/nozzle-temperatures.mjs";
 
 const MAX_GCODE_BYTES = 512 * 1024 * 1024;
-const PROCESS_SCHEMA = "ordax.slicer-processes/9";
+const PROCESS_SCHEMA = "ordax.slicer-processes/10";
 const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const PROFILE_KINDS = Object.freeze(["machine", "process", "filament"]);
@@ -53,6 +54,8 @@ function publicProcessSettings(settings) {
     infill: settings.infill,
     infillPattern: settings.infillPattern,
     seamPosition: settings.seamPosition,
+    nozzleTemperatureC: settings.nozzleTemperatureC,
+    nozzleTemperatureInitialLayerC: settings.nozzleTemperatureInitialLayerC,
     supports: settings.supports,
     supportType: settings.supportType,
     supportThresholdAngle: settings.supportThresholdAngle,
@@ -121,6 +124,15 @@ function validateSelectedProfileCompatibility(request, status) {
     filament: selected.filament,
   });
   if (assessment.status !== "compatible") throw new Error(assessment.reason);
+  const limits = nozzleTemperatureLimits(selected.machine, selected.filament);
+  for (const [key, layer] of [["nozzleTemperatureC", "demais camadas"], ["nozzleTemperatureInitialLayerC", "primeira camada"]]) {
+    const value = request.settings?.[key];
+    if (value === null || value === undefined) continue;
+    if (!isNozzleTemperatureInRange(value, limits)) {
+      const allowed = limits ? `${limits.min}–${limits.max} °C` : "faixa indisponível nos perfis selecionados";
+      throw new Error(`A temperatura do bico para ${layer} precisa ficar em ${allowed}.`);
+    }
+  }
 }
 
 function validateProcessAssignmentRequest(request) {

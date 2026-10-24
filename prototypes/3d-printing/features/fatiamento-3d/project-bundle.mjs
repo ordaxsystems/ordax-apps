@@ -1,9 +1,10 @@
 import { createStoredZipBlob, readZipDirectory, readZipEntry } from "./zip-container.mjs";
 
-export const projectBundleSchema = "ordax.3d-printing-project/6";
+export const projectBundleSchema = "ordax.3d-printing-project/7";
 const LEGACY_PROJECT_BUNDLE_SCHEMA = "ordax.3d-printing-project/1";
 const LEGACY_PREVIOUS_PROJECT_BUNDLE_SCHEMA = "ordax.3d-printing-project/2";
 const PREVIOUS_PROJECT_BUNDLE_SCHEMA = "ordax.3d-printing-project/5";
+const PREVIOUS_CURRENT_PROJECT_BUNDLE_SCHEMA = "ordax.3d-printing-project/6";
 const OLDER_PROJECT_BUNDLE_SCHEMA = "ordax.3d-printing-project/4";
 const LEGACY_OLDER_PROJECT_BUNDLE_SCHEMA = "ordax.3d-printing-project/3";
 export const projectBundleLimits = Object.freeze({
@@ -14,7 +15,7 @@ export const projectBundleLimits = Object.freeze({
 
 const DRAFT_FIELDS = Object.freeze([
   "printer", "filament", "printerProfileId", "processProfileId", "filamentProfileId",
-  "quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "topShellThickness", "bottomShellThickness", "brimType", "brimWidth", "brimGap", "infill", "infillPattern", "seamPosition", "fanMin", "fanMax", "supports",
+  "quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "topShellThickness", "bottomShellThickness", "brimType", "brimWidth", "brimGap", "infill", "infillPattern", "seamPosition", "nozzleTemperatureC", "nozzleTemperatureInitialLayerC", "fanMin", "fanMax", "supports",
   "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "rotation", "scale",
   "stlUnit", "objectTransforms", "selectedProcessId", "selectedTab", "processes",
 ]);
@@ -101,7 +102,7 @@ export async function readProjectBundle(buffer) {
   let manifest;
   try { manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifestBytes)); }
   catch { throw new Error("O manifesto do pacote OrdaX está inválido."); }
-  if (!manifest || ![projectBundleSchema, PREVIOUS_PROJECT_BUNDLE_SCHEMA, OLDER_PROJECT_BUNDLE_SCHEMA, LEGACY_OLDER_PROJECT_BUNDLE_SCHEMA, LEGACY_PREVIOUS_PROJECT_BUNDLE_SCHEMA, LEGACY_PROJECT_BUNDLE_SCHEMA].includes(manifest.schema) || typeof manifest.projectName !== "string"
+  if (!manifest || ![projectBundleSchema, PREVIOUS_CURRENT_PROJECT_BUNDLE_SCHEMA, PREVIOUS_PROJECT_BUNDLE_SCHEMA, OLDER_PROJECT_BUNDLE_SCHEMA, LEGACY_OLDER_PROJECT_BUNDLE_SCHEMA, LEGACY_PREVIOUS_PROJECT_BUNDLE_SCHEMA, LEGACY_PROJECT_BUNDLE_SCHEMA].includes(manifest.schema) || typeof manifest.projectName !== "string"
     || !manifest.projectName.trim() || manifest.projectName.length > 120 || /[\u0000-\u001f\u007f]/.test(manifest.projectName) || !manifest.source || !manifest.draft
     || typeof manifest.draft !== "object" || Array.isArray(manifest.draft)) {
     throw new Error("A versão ou os dados do pacote OrdaX não são compatíveis.");

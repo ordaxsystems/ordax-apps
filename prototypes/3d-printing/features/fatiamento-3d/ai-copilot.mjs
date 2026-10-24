@@ -1,10 +1,11 @@
 import { assessSlicerProfileCompatibility, PROFILE_COMPATIBILITY_SCHEMA } from "./profile-compatibility.mjs";
 import { infillPatternOptions, isSupportedInfillPattern } from "../../shared/infill-patterns.mjs";
 import { isSupportedSeamPosition, seamPositionOptions } from "../../shared/seam-positions.mjs";
+import { isNozzleTemperatureInRange, nozzleTemperatureBoundsC, nozzleTemperatureLimits } from "../../shared/nozzle-temperatures.mjs";
 
 const PORT_SCHEMA = "ordax.intelligence/1";
 const RESPONSE_SCHEMA = "ordax.intelligence-response/1";
-const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/13";
+const SUGGESTION_SCHEMA = "ordax.slicer-assistant-suggestion/14";
 const ASSISTANT_RESPONSE_SCHEMA = "ordax.slicer-assistant-response/1";
 export const assistantEvidenceIds = Object.freeze([
   "settings",
@@ -93,6 +94,7 @@ function profileValues(kind, profile) {
     bedSizeMm: Array.isArray(profile.bedSizeMm) ? profile.bedSizeMm.slice(0, 2).map(profileNumber) : null,
     heightMm: profileNumber(profile.heightMm),
     nozzleDiameterMm: profileNumber(profile.nozzleDiameterMm),
+    nozzleMaxTemperatureC: profileNumber(profile.nozzleMaxTemperatureC),
   };
   if (kind === "process") return {
     ...common,
@@ -123,6 +125,9 @@ function profileValues(kind, profile) {
     ...common,
     type: String(profile.type || "").slice(0, 40) || null,
     nozzleTemperatureC: Array.isArray(profile.nozzleTemperatureC) ? profile.nozzleTemperatureC.slice(0, 4).map(profileNumber) : null,
+    nozzleTemperatureRangeC: Array.isArray(profile.nozzleTemperatureRangeC) ? profile.nozzleTemperatureRangeC.slice(0, 2).map(profileNumber) : null,
+    nozzleTemperatureTargetC: profileNumber(profile.nozzleTemperatureTargetC),
+    nozzleTemperatureInitialLayerC: profileNumber(profile.nozzleTemperatureInitialLayerC),
     bedTemperatureC: Array.isArray(profile.bedTemperatureC) ? profile.bedTemperatureC.slice(0, 4).map(profileNumber) : null,
   };
 }
@@ -147,7 +152,14 @@ export function buildAssistantProfileContext(catalogs = {}, selectedIds = {}) {
       const text = JSON.stringify({ slicer: { configuredProfiles: { catalogs: { [names[kind]]: next } } } });
       if (profiles.length >= assistantProfileOptionLimit || text.length > MAX_PROFILE_CONTEXT_CHARS) break;
       profiles.push(summary);
-      validationProfiles.push(Object.freeze({ id: profile.id, name: String(profile.name || profile.id), compatibility: profile.compatibility, inheritance: profile.inheritance }));
+      const validationProfile = { id: profile.id, name: String(profile.name || profile.id), compatibility: profile.compatibility, inheritance: profile.inheritance };
+      if (kind === "machine") validationProfile.nozzleMaxTemperatureC = profileNumber(profile.nozzleMaxTemperatureC);
+      if (kind === "filament") {
+        validationProfile.nozzleTemperatureRangeC = Array.isArray(profile.nozzleTemperatureRangeC) ? profile.nozzleTemperatureRangeC.slice(0, 2).map(profileNumber) : null;
+        validationProfile.nozzleTemperatureTargetC = profileNumber(profile.nozzleTemperatureTargetC);
+        validationProfile.nozzleTemperatureInitialLayerC = profileNumber(profile.nozzleTemperatureInitialLayerC);
+      }
+      validationProfiles.push(Object.freeze(validationProfile));
       seen.add(profile.id);
     }
     allowedProfiles[kind] = profiles.map(profile => profile.id);
@@ -256,6 +268,8 @@ export const assistantStructuredOutput = Object.freeze({
               infill: nullableInteger(0, 100),
               infillPattern: nullable({ type: "string", enum: infillPatternOptions.map(option => option.value) }),
               seamPosition: nullable({ type: "string", enum: seamPositionOptions.map(option => option.value) }),
+              nozzleTemperatureC: nullableInteger(nozzleTemperatureBoundsC.min, nozzleTemperatureBoundsC.max),
+              nozzleTemperatureInitialLayerC: nullableInteger(nozzleTemperatureBoundsC.min, nozzleTemperatureBoundsC.max),
               supports: nullable({ type: "boolean" }),
               supportType: nullable({ type: "string", enum: ["normal(auto)", "tree(auto)"] }),
               supportThresholdAngle: nullableInteger(0, 90),
@@ -263,7 +277,7 @@ export const assistantStructuredOutput = Object.freeze({
               fanMinSpeedPercent: nullableInteger(0, 100),
               fanMaxSpeedPercent: nullableInteger(0, 100),
             },
-            required: ["quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "topShellThickness", "bottomShellThickness", "brimType", "brimWidth", "brimGap", "infill", "infillPattern", "seamPosition", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
+            required: ["quality", "layerHeight", "walls", "topShellLayers", "bottomShellLayers", "topShellThickness", "bottomShellThickness", "brimType", "brimWidth", "brimGap", "infill", "infillPattern", "seamPosition", "nozzleTemperatureC", "nozzleTemperatureInitialLayerC", "supports", "supportType", "supportThresholdAngle", "supportOnBuildPlateOnly", "fanMinSpeedPercent", "fanMaxSpeedPercent"],
           }),
           transform: nullable({
             type: "object",
@@ -377,7 +391,7 @@ function extractJson(text) {
   try { return JSON.parse(source); } catch { return null; }
 }
 
-function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = null } = {}) {
+function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = null, allowedNozzleTemperatureRange = null } = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).some(key => !["schema", "summary", "confidence", "evidence", "settings", "transform", "profiles"].includes(key))
     || !Object.hasOwn(value, "profiles")
@@ -403,6 +417,8 @@ function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = n
     infill: item => Number.isInteger(item) && item >= 0 && item <= 100,
     infillPattern: isSupportedInfillPattern,
     seamPosition: isSupportedSeamPosition,
+    nozzleTemperatureC: item => Number.isInteger(item) && item >= nozzleTemperatureBoundsC.min && item <= nozzleTemperatureBoundsC.max,
+    nozzleTemperatureInitialLayerC: item => Number.isInteger(item) && item >= nozzleTemperatureBoundsC.min && item <= nozzleTemperatureBoundsC.max,
     supports: item => typeof item === "boolean",
     supportType: item => ["normal(auto)", "tree(auto)"].includes(item),
     supportThresholdAngle: item => Number.isInteger(item) && item >= 0 && item <= 90,
@@ -417,6 +433,8 @@ function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = n
     const settingKey = key === "fanMinSpeedPercent" ? "fanMin" : key === "fanMaxSpeedPercent" ? "fanMax" : key;
     settings[settingKey] = item;
   }
+  if (["nozzleTemperatureC", "nozzleTemperatureInitialLayerC"].some(key => settings[key] !== undefined
+    && !isNozzleTemperatureInRange(settings[key], allowedNozzleTemperatureRange))) return null;
   if (settings.fanMin !== undefined && settings.fanMax !== undefined && settings.fanMin > settings.fanMax) return null;
   const transformSource = value.transform ?? null;
   if (transformSource !== null && (!transformSource || typeof transformSource !== "object" || Array.isArray(transformSource))) return null;
@@ -463,9 +481,9 @@ function validateSuggestion(value, { allowedEvidence = null, allowedProfiles = n
   });
 }
 
-export function parseAssistantSuggestion(text, { allowedEvidence = null, allowedProfiles = null } = {}) {
+export function parseAssistantSuggestion(text, { allowedEvidence = null, allowedProfiles = null, allowedNozzleTemperatureRange = null } = {}) {
   const allowed = allowedEvidence ? new Set(allowedEvidence) : null;
-  return validateSuggestion(extractJson(text), { allowedEvidence: allowed, allowedProfiles });
+  return validateSuggestion(extractJson(text), { allowedEvidence: allowed, allowedProfiles, allowedNozzleTemperatureRange });
 }
 
 export function parseAssistantReply(text, { allowedEvidence = null, allowedProfiles = null, profileCatalogs = null, selectedProfileIds = null } = {}) {
@@ -475,7 +493,13 @@ export function parseAssistantReply(text, { allowedEvidence = null, allowedProfi
   }
   const answer = value.answer.trim();
   const allowed = allowedEvidence ? new Set(allowedEvidence) : null;
-  const suggestion = value.suggestion === null ? null : validateSuggestion(value.suggestion, { allowedEvidence: allowed, allowedProfiles });
+  const suggestedProfiles = value.suggestion?.profiles || {};
+  const selectedCatalogProfile = kind => {
+    const id = suggestedProfiles[kind] ?? selectedProfileIds?.[kind];
+    return Array.isArray(profileCatalogs?.[kind]) ? profileCatalogs[kind].find(item => item.id === id) || null : null;
+  };
+  const nozzleRange = nozzleTemperatureLimits(selectedCatalogProfile("machine"), selectedCatalogProfile("filament"));
+  const suggestion = value.suggestion === null ? null : validateSuggestion(value.suggestion, { allowedEvidence: allowed, allowedProfiles, allowedNozzleTemperatureRange: nozzleRange });
   if (value.suggestion !== null && !suggestion) {
     throw new Error("A sugestão da IA não passou pela validação do app. Nenhuma configuração foi aplicada.");
   }

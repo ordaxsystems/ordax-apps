@@ -23,9 +23,9 @@ function profileCompatibility({ printers = [], prints = [], parentName = null, i
 }
 
 function status(executionTarget = "device") {
-  const machine = { id: ids.machine, name: "Máquina de teste", compatibility: profileCompatibility({ isSystem: true }) };
+  const machine = { id: ids.machine, name: "Máquina de teste", nozzleMaxTemperatureC: 235, compatibility: profileCompatibility({ isSystem: true }) };
   const process = { id: ids.process, name: "Processo de teste", compatibility: profileCompatibility({ printers: [machine.name] }) };
-  const filament = { id: ids.filament, name: "Filamento de teste", compatibility: profileCompatibility({ printers: [machine.name], prints: [process.name] }) };
+  const filament = { id: ids.filament, name: "Filamento de teste", nozzleTemperatureRangeC: [190, 240], compatibility: profileCompatibility({ printers: [machine.name], prints: [process.name] }) };
   return {
     available: true,
     engine: "OrcaSlicer",
@@ -43,8 +43,8 @@ function request() {
     filename: "Projeto confidencial.3mf",
     format: "3MF",
     preparedModel: { file: new Blob(["prepared STL"], { type: "model/stl" }), triangleCount: 1, internalFilename: "private-source-path.stl" },
-    settings: { quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0.8, bottomShellThickness: 1.2, brimType: "outer_only", brimWidth: 5, brimGap: 0.15, infill: 15, infillPattern: "gyroid", seamPosition: null, supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-settings-note" },
-    processesSchema: "ordax.slicer-processes/9",
+    settings: { quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0.8, bottomShellThickness: 1.2, brimType: "outer_only", brimWidth: 5, brimGap: 0.15, infill: 15, infillPattern: "gyroid", seamPosition: null, nozzleTemperatureC: null, nozzleTemperatureInitialLayerC: null, supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-settings-note" },
+    processesSchema: "ordax.slicer-processes/10",
     objects: [{ id: "model-object-private-79", name: "Peça cliente confidencial", sourceObjectId: "3mf-resource-private-82", buildItemIndex: 7, triangleCount: 1 }],
     objectTransformsSchema: "ordax.object-transforms/1",
     objectTransforms: [{ objectId: "model-object-private-79", offsetMm: [0, 0, 0], rotationDeg: [0, 0, 0], scale: 1, internalNote: "private-transform-note" }],
@@ -172,6 +172,8 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
   const job = request();
   job.remoteExecutionApproved = "https://slice.example.test";
   job.settings.seamPosition = "aligned_back";
+  job.settings.nozzleTemperatureC = 230;
+  job.settings.nozzleTemperatureInitialLayerC = 225;
   job.processes[0].settings.seamPosition = "aligned_back";
   const port = {
     getStatus: async () => status("server"),
@@ -195,6 +197,8 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
   assert.equal(submitted.request.processes[0].settings.infillPattern, "gyroid");
   assert.equal(submitted.request.processes[0].settings.seamPosition, "aligned_back");
   assert.equal(submitted.request.settings.seamPosition, "aligned_back");
+  assert.equal(submitted.request.settings.nozzleTemperatureC, 230);
+  assert.equal(submitted.request.settings.nozzleTemperatureInitialLayerC, 225);
   assert.equal(submitted.request.processes[0].settings.topShellLayers, 3);
   assert.equal(submitted.request.processes[0].settings.bottomShellLayers, 3);
   assert.equal(submitted.request.processes[0].settings.topShellThickness, 0.8);
@@ -219,4 +223,13 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
     "G-code validado",
   ]);
   assert.equal(progressEvents.at(-1).percent, 100);
+});
+
+test("a porta rejeita temperatura fora do limite combinado do filamento e da máquina", async () => {
+  let sliceCalled = false;
+  const job = request();
+  job.settings.nozzleTemperatureC = 236;
+  const port = { getStatus: async () => status("device"), slice: async () => { sliceCalled = true; } };
+  await assert.rejects(requestRealSlice(port, job), /temperatura do bico para demais camadas precisa ficar em 190–235 °C/);
+  assert.equal(sliceCalled, false);
 });

@@ -27,6 +27,8 @@ function validDraft() {
     infill: 15,
     infillPattern: "gyroid",
     seamPosition: "aligned_back",
+    nozzleTemperatureC: 215,
+    nozzleTemperatureInitialLayerC: 220,
     selectedTab: "preview",
     processes: [{
       id: "process-1",
@@ -74,6 +76,8 @@ for (const extension of ["stl", "3mf"]) {
     assert.equal(restored.draft.infillPattern, "gyroid");
     assert.equal(restored.draft.processes[0].settings.infillPattern, "lightning");
     assert.equal(restored.draft.seamPosition, "aligned_back");
+    assert.equal(restored.draft.nozzleTemperatureC, 215);
+    assert.equal(restored.draft.nozzleTemperatureInitialLayerC, 220);
     assert.equal(restored.draft.processes[0].settings.seamPosition, "random");
   });
 }
@@ -119,6 +123,19 @@ test("abre projetos /5 preservando configurações anteriores sem override de co
   const restored = await readProjectBundle(await archive.arrayBuffer());
   assert.equal(restored.draft.seamPosition, undefined);
   assert.equal(restored.draft.processes[0].settings.seamPosition, undefined);
+});
+
+test("abre projetos /6 preservando costura e sem exigir overrides térmicos novos", async () => {
+  const source = new Blob([1, 2, 3]);
+  const draft = validDraft();
+  delete draft.nozzleTemperatureC;
+  delete draft.nozzleTemperatureInitialLayerC;
+  const manifest = { schema: "ordax.3d-printing-project/6", projectName: "Projeto seis", source: { path: "models/source.stl", name: "modelo.stl", format: "STL", size: source.size }, draft };
+  const archive = await createStoredZipBlob([{ name: "project.json", data: new Blob([JSON.stringify(manifest)]) }, { name: "models/source.stl", data: source }]);
+  const restored = await readProjectBundle(await archive.arrayBuffer());
+  assert.equal(restored.draft.seamPosition, "aligned_back");
+  assert.equal(restored.draft.nozzleTemperatureC, undefined);
+  assert.equal(restored.draft.nozzleTemperatureInitialLayerC, undefined);
 });
 
 test("projeto portátil rejeita extensão e nome de projeto inválidos", async () => {
