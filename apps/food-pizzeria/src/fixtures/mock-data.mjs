@@ -2,11 +2,12 @@ import {
   configureFoodPizzeria,
   createPizzeriaTableCommand,
   createEmptyFoodPizzeriaState,
-  initializePizzeriaInventory,
   createPizzeriaOrder,
   savePizzeriaFlavor,
+  savePizzeriaRecipe,
   transitionPizzeriaOrder,
 } from "../domain/domain.mjs";
+import { createFoodRecipeSeed } from "./food-recipes.mjs";
 
 const flavors = [
   ["calabresa", "Calabresa", "Molho, muçarela, calabresa, cebola e orégano", 3990, 4990, 6490],
@@ -43,7 +44,9 @@ export function createSeedFoodState() {
       at: new Date(now - 86400000).toISOString(),
     });
   }
-  state = initializePizzeriaInventory(state, { openedAt: new Date(now - 2 * 86400000).toISOString() });
+  for (const recipe of createFoodRecipeSeed()) {
+    state = savePizzeriaRecipe(state, { ...recipe, at: new Date(now - 2 * 86400000).toISOString() });
+  }
 
   state = createPizzeriaTableCommand(state, {
     id: "ng-command-01",

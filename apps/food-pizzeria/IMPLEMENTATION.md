@@ -1,102 +1,63 @@
-# Implementação atual e limite de integração
+# Auditoria e implementação Space-First
 
-## Estrutura
+Auditoria do código em `ordax-apps`, complementada pela leitura dos contratos atuais do owner `ordax-os`. O escopo desta alteração é o protótipo independente Food neste repositório. `ordax-os`, FOOD-001, Profile Packs, Store e hosts de produção não foram alterados.
 
-**OrdaX Food — Na Garagem** é um único app com 12 áreas: Visão Geral, Pedidos,
-Cardápio, Cozinha (KDS), Mesas e Comandas, Delivery, Caixa (PDV), Estoque,
-Clientes, Relatórios, Equipe e Configurações.
+## Diagnóstico do estado anterior
 
-Cardápio, Preços e Pedidos usam o domínio da pizzaria e preservam as regras já
-implementadas: preço em centavos, preço meio a meio, dados do pedido congelados
-na criação, transições permitidas e cancelamento com motivo. KDS, Delivery,
-Mesas e Comandas e Visão Geral leem os mesmos pedidos. O histórico permite
-filtrar por etapa e canal. O KDS filtra por canal, coloca primeiro o pedido há
-mais tempo na etapa e atualiza o tempo decorrido a cada minuto.
+| Pergunta | Evidência do repositório | Conclusão |
+| --- | --- | --- |
+| Onde estavam as regras? | `src/domain/domain.mjs`, `src/application/commands.mjs`; apresentação concentrada em `src/ui/app.mjs`. | Pedidos, preços, transições, comandas, receitas e estoque eram acoplados ao mesmo estado v3. |
+| O que existia apenas em memória? | `src/fixtures/mock-data.mjs` e `createMockWorkspace()` em `src/ui/app.mjs`. | Vendas/turnos do PDV, equipe, cadastro de clientes, produtos auxiliares, carrinho e filtros não sobreviviam ao reload. |
+| O que tinha persistência? | `src/adapters/browser-local-store.mjs`. | Um estado local por chave de preview persistia settings, sabores, pedidos, comandas, fichas e antes também estoque. Não era persistência empresarial ou multi-device. |
+| O que duplicava owners? | Inventory: antigo Food state v3 guardava `ingredients` e `inventoryMovements`, e o início de preparo baixava saldo. Sales: `apps/sales/src/domain/orders.mjs` já tem `ordax.sales-book/1`. | Food v3 duplicava Inventory; Food e Sales ainda apresentam modelos de pedidos concorrentes sem integração. |
+| O que integrava com Space? | `src/ports/food-data-port.mjs`, `src/adapters/browser-local-store.mjs`, `prototypes/food-pizzeria/preview.mjs`. | Nada. O port é app-owned e `preview-na-garagem` é escopo fictício local. |
+| O que era apenas demonstração? | `src/fixtures/*`, `mockWorkspace` e antigas telas de PDV/clientes/equipe/relatórios. | Os dados e ações dessas áreas não eram serviços nem registros compartilhados. |
+| Quais owners já existem? | `apps/inventory/src/domain/movements.mjs`, `apps/sales/src/domain/orders.mjs`, `apps/finance/src/domain/ledger.mjs`; serviços Files/Projects/Spaces do OS. | Inventory, Sales e Finance têm fundações próprias; Finance ainda é ledger-base. CRM/Customers, People e Payments não têm owner app correspondente neste repo. |
 
-O PDV monta suas opções de pizza a partir dos sabores ativos do mesmo
-Cardápio, usando o preço do tamanho médio. Assim, nome, disponibilidade e preço
-de uma pizza não têm uma segunda cópia no catálogo do caixa. Bebidas, combos,
-entradas e sobremesas permanecem fixtures próprias, já que ainda não existe um
-domínio de produtos gerais nesta base.
+## Correções aplicadas
 
-O cadastro de Clientes fornece os contatos fictícios. Atividade, último pedido,
-valor de compras concluídas e sabor mais pedido são derivados de `orders` e
-`items`, relacionando o telefone normalizado; os valores agregados não ficam
-duplicados no perfil. Nomes e telefones registrados no pedido continuam como
-snapshot histórico. O cadastro local impede telefones duplicados. Antes de
-integrar a um Space, o modelo deverá introduzir uma identidade de cliente
-autorizada pelo contrato de negócio, sem perder os snapshots dos pedidos.
-Pedidos de mesa que não têm telefone são associados ao contato somente se o
-nome do grupo for idêntico ao nome do cliente fictício.
+1. **Food state v4:** `src/domain/domain.mjs` agora contém settings, sabores/preços, pedidos, comandas e receitas. O estado não tem `ingredients` ou `inventoryMovements`.
+2. **Sem escrita cruzada em estoque:** `calculatePizzeriaOrderConsumption()` retorna proposta calculada pela ficha; `transitionPizzeriaOrder()` altera somente o agregado de pedido Food. Commands de movimentação/cadastro de Inventory foram removidos.
+3. **Migração segura do preview:** ao ler v3 no browser, o adapter grava ingredientes/movimentos antigos em uma chave de arquivo local antes de salvar o novo estado ativo. O arquivo é preservação de dados legados, não é lido como saldo atual.
+4. **Owners ausentes ficam explícitos:** Overview, PDV, Inventory, Customers, Reports e Team são áreas de status do provider em `src/ui/space-capability-status.mjs`; não apresentam listas/valores de fixtures como estado operacional. A interface mostra “Prévia local · Dados fictícios · sem sincronização”.
+5. **Sem dashboard Food concorrente:** o Food abre em Pedidos; a rota Visão Geral explica que a projeção agregada é do Space.
+6. **Sem custo de estoque inventado:** a ficha técnica não calcula custo unitário a partir da fixture de estoque.
 
-Relatórios usam o intervalo selecionado para filtrar pedidos não cancelados e
-vendas registradas no PDV. Valor em pedidos e vendas de caixa aparecem
-separados; ticket médio usa os pedidos do período, o gráfico conta pedidos por
-hora e o ranking agrega os itens desses mesmos pedidos e vendas, resolvendo os
-sabores pelo Cardápio. Não há multiplicadores artificiais para períodos
-maiores.
+## Ownership recomendado para a próxima integração
 
-Mesas e Comandas fazem parte do domínio compartilhado, atualmente no schema v3. A
-configuração `PIZZERIA_TABLES` é a fonte única de mesas e capacidades; o domínio
-guarda as comandas e o identificador de comanda em cada pedido relacionado.
-O mapa calcula ocupação pelas comandas abertas e calcula consumo somando os
-pedidos vinculados, excluindo os cancelados. Não há cópia de status ou total
-por mesa. O domínio impede duas comandas abertas na mesma mesa, valida a
-capacidade, mantém coerência entre pedido e comanda e bloqueia o encerramento
-enquanto houver pedido em andamento.
+- **Food Order Core:** único agregado de operação alimentar e fulfillment.
+- **Sales:** o schema atual também possui pedidos; revisar com o owner. A integração futura deve ser referência/evento idempotente do pedido Food ou mudar explicitamente a autoridade antes de conectar. Não copiar o pedido e seus status.
+- **Inventory:** fonte de saldo e movimento; recebe request de consumo autorizado a partir da proposta do Food.
+- **Payments:** única autoridade de confirmação financeira. PDV é a experiência que coordena o pedido e recebe o resultado, não uma simulação de “pagamento concluído”.
+- **Finance:** consome fatos financeiros aceitos; não recalcula ou duplica pedidos/pagamentos.
+- **Customers / People:** referência a CRM e estrutura de equipe depois que owners e contratos existirem.
+- **Space:** compõe providers prontos, identidade/contexto, autorização, Overview e navegação.
 
-O carregamento migra dados locais v1 e v2 para v3 sem descartar o histórico.
-A migração v1 associa os dois pedidos fictícios de balcão conhecidos às mesas
-de exemplo apenas quando seus identificadores, canal e nome do grupo coincidem;
-os outros pedidos são mantidos sem comanda. A migração v2 adiciona insumos,
-receitas e um saldo de abertura compatível com os pedidos que já haviam
-entrado em preparo. A atualização também é aplicada a eventos de armazenamento
-recebidos de outra aba antes de validar e publicar o snapshot.
+## Evidência do owner OS e bloqueios
 
-Delivery separa pedidos prontos para despacho (`ready`) e em rota
-(`out-for-delivery`) a partir de `orders`. Pedidos recebidos e em preparo
-permanecem na Cozinha (KDS). Despachar e concluir usam `transitionPizzeriaOrder`;
-os endereços das paradas são lidos dos próprios pedidos. O diagrama da região é
-meramente ilustrativo, sem GPS, geocodificação, roteirização ou atribuição de
-entregador. O campo da taxa do novo pedido usa a taxa padrão de Configurações,
-mas permite um ajuste individual.
+Na revisão do `ordax-os` main `47d8fc4b9ed60934689b6c18e386011d87088997`, o catálogo de tipos já descreve `food.pizzeria`, e a composição Space filtra itens de navegação e métricas pela readiness dos providers. O Profile `pizzaria-br@1` ainda compõe Files, Notes, Internet e Projects; ele não fornece Food Core nem é dono de dados operacionais.
 
-Os alertas do KDS usam referências fixas de 15 min para recebidos, 35 min para
-preparo, 15 min para prontos e 45 min para entrega. Esses valores compõem os
-dados de exploração visual; não são SLAs configuráveis nem prometem desempenho
-operacional.
+O contrato interno de Space Experience do OS não está publicado no App SDK v1.20.0. Como Apps deve consumir contratos públicos/versionados, não há hoje caminho suportado para declarar um provider Food. FOOD-001 está `DEFERRED FOR EXECUTION`, fora a fatia de Profile autorizada. Portanto, esta correção não promove Food no OS ou na Store nem afirma compatibilidade homologada com Windows.
 
-O Estoque, as fichas técnicas e suas movimentações pertencem ao mesmo estado
-versionado dos pedidos. Insumos usam unidades base inteiras (`g`, `ml`, `un`);
-saldo atual e valor estimado derivam das movimentações e do custo unitário. As
-fichas guardam quantidades por tamanho e o custo estimado da pizza média vem
-dessas quantidades. Ao iniciar o preparo, o domínio calcula o consumo de cada
-ingrediente, agrega as porções de pizzas meio a meio, verifica o saldo e grava
-uma movimentação por insumo referenciada ao pedido na mesma transição. O
-consumo não é baixado novamente e continua registrado se o pedido for cancelado
-depois do preparo começar. Pedidos sem ficha técnica e pedidos sem saldo
-suficiente não avançam para preparo. A baixa de bebidas e produtos gerais do
-PDV não faz parte desta base.
+## Contratos e testes necessários antes de integrar
 
-Vendas do PDV, contatos de clientes e equipe usam fixtures locais para montar
-uma base navegável. Relatórios agregam os pedidos do domínio e as vendas do
-PDV. Cada venda guarda itens e forma de pagamento e pertence ao turno aberto;
-o fechamento registra fundo inicial, totais por forma de pagamento, dinheiro
-contado e diferença. Essas operações ficam na memória e reiniciam ao recarregar
-o protótipo. Não há cobrança, emissão fiscal, contato com clientes ou
-sincronização empresarial.
-O plano de evolução está em [`PLAN.md`](./PLAN.md).
+1. Contrato público Space provider/snapshot/readiness/contexto autorizado/nav/lifecycle e projeções de métricas.
+2. Decisão e contrato Food Order ↔ Sales com exatamente um pedido mestre, referências estáveis e idempotência.
+3. Contrato de consumo Food → Inventory com autorização por Space, referência de pedido, retry/idempotência, resultado e política de reversão.
+4. Contrato de tentativa/confirmação/estorno Payments → PDV e referências aceitas por Sales/Finance.
+5. Contrato CRM para referência de cliente e limites de PII; contrato People sem duplicar Identity/membership.
+6. Persistência oficial com escopo account/Space autorizado, conflito/revisão, migração, backup e isolamento multi-tenant; `localStorage` não basta.
+7. Adapter público de realtime e reconciliação, sem serviço de sync paralelo.
+8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
+9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
-## Estado da fonte e fronteira de integração
+## Testes executados nesta correção
 
-A fonte canônica do produto está em `apps/food-pizzeria`. O host local de desenvolvimento está em `prototypes/food-pizzeria` e monta a fonte do app. O app ainda não tem `app.json`, pacote, entrada no catálogo de distribuição ou integração com um host de produção.
+Arquivo `tests/space-first-boundaries.test.mjs`:
 
-A interface consome `ordax.food-pizzeria-data-port/1`, um port interno do app. As alterações do domínio usam `ordax.food-pizzeria-command/1`, com comando serializável, identificador estável e revisão esperada. O adapter do navegador grava a base fictícia localmente e preserva compatibilidade com os dados de preview anteriores. Esses formatos organizam o app, não substituem ports públicos de plataforma.
+- estado v4 e recusa de comandos de estoque no Food;
+- iniciar preparo altera apenas o pedido e a proposta de consumo é somente leitura;
+- migração v3 preserva pedidos/fichas e remove estoque do estado ativo;
+- adapter arquiva estoque legado antes de persistir o novo estado.
 
-`businessId` é a identidade do negócio no modelo Food. O ID de preview `preview-na-garagem` apenas separa os dados fictícios no navegador; não representa Space, conta ou autorização. Ainda não está decidido se, quando e como um Space corresponderá a um negócio. Essa associação depende de identidade, autorização, armazenamento compartilhado, idempotência e reconciliação definidos pelos owners de Platform/OS.
-
-A base atual não é sincronizada entre dispositivos. Vendas e turnos do PDV, cadastro de clientes, equipe, produtos auxiliares e alguns ajustes permanecem no `mockWorkspace` em memória. Consolidar esses registros no domínio versionado é requisito anterior à promessa de compartilhar toda a operação. Pagamentos, impressão, WhatsApp, emissão fiscal e outros serviços externos continuam fora desta base.
-
-## Próxima etapa
-
-Consolidar clientes, equipe, catálogo auxiliar, vendas e turnos no domínio versionado do Food; definir as migrações e comandos correspondentes e eliminar estado operacional duplicado. Depois, validar o contrato público com os owners de cada host e implementar integrações separadas sobre a mesma fonte do app. Distribuição pela Loja só entra após pacote, compatibilidade e ciclo de vida passarem pelos gates oficiais.
+Comandos executados: `node --test apps/food-pizzeria/tests/space-first-boundaries.test.mjs` (4 aprovados) e `node --check` nos módulos alterados. O teste de interface visual e as provas de integração Space ainda dependem dos contratos/providers listados acima.

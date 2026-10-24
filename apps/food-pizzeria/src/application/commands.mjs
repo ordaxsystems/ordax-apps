@@ -1,10 +1,8 @@
 import {
-  addPizzeriaIngredient,
   closePizzeriaTableCommand,
   configureFoodPizzeria,
   createPizzeriaOrder,
   createPizzeriaTableCommand,
-  recordPizzeriaInventoryMovement,
   savePizzeriaFlavor,
   savePizzeriaRecipe,
   setPizzeriaFlavorAvailability,
@@ -23,8 +21,6 @@ const COMMAND_TYPES = new Set([
   "order.transition",
   "table.command.open",
   "table.command.close",
-  "inventory.ingredient.add",
-  "inventory.movement.record",
 ]);
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const MAX_COMMAND_BYTES = 256 * 1024;
@@ -95,10 +91,6 @@ export function applyFoodCommand(state, commandValue) {
       return createPizzeriaTableCommand(state, payload);
     case "table.command.close":
       return closePizzeriaTableCommand(state, payload);
-    case "inventory.ingredient.add":
-      return addPizzeriaIngredient(state, payload);
-    case "inventory.movement.record":
-      return recordPizzeriaInventoryMovement(state, payload);
     default:
       throw new TypeError("Operação da pizzaria não suportada.");
   }

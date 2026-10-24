@@ -1,6 +1,7 @@
-import { createPizzeriaInventorySeed } from "../fixtures/inventory-fixtures.mjs";
+import { createFoodRecipeSeed } from "../fixtures/food-recipes.mjs";
 
-export const FOOD_PIZZERIA_STATE_SCHEMA = "ordax.food-pizzeria-state/3";
+export const FOOD_PIZZERIA_STATE_SCHEMA = "ordax.food-pizzeria-state/4";
+const FOOD_PIZZERIA_STATE_SCHEMA_V3 = "ordax.food-pizzeria-state/3";
 const FOOD_PIZZERIA_STATE_SCHEMA_V2 = "ordax.food-pizzeria-state/2";
 const FOOD_PIZZERIA_STATE_SCHEMA_V1 = "ordax.food-pizzeria-state/1";
 export const PIZZERIA_TABLES = Object.freeze([
@@ -26,9 +27,8 @@ export const ORDER_STATUSES = Object.freeze([
 const MAX_FLAVORS = 1000;
 const MAX_ORDERS = 5000;
 const MAX_TABLE_COMMANDS = 5000;
-const MAX_INGREDIENTS = 1000;
-const MAX_INVENTORY_MOVEMENTS = 50000;
 const MAX_RECIPES = MAX_FLAVORS;
+const MAX_RECIPE_LINES = 1000;
 const MAX_ITEMS_PER_ORDER = 50;
 const MAX_HISTORY_PER_ORDER = 16;
 const MAX_CENTS = 1_000_000_000;
@@ -344,26 +344,9 @@ function validateFoodPizzeriaStateV2(value) {
   });
 }
 
-function validateIngredient(value) {
-  const raw = exactObject(value,
-    ["id", "name", "group", "unit", "minimumBase", "unitCostCents"], "Insumo");
-  if (!["g", "ml", "un"].includes(raw.unit)) throw new TypeError("Unidade base do insumo inválida.");
-  if (!Number.isSafeInteger(raw.minimumBase) || raw.minimumBase < 0 || raw.minimumBase > 1_000_000_000) {
-    throw new TypeError("Nível mínimo do insumo inválido.");
-  }
-  return Object.freeze({
-    id: identifier(raw.id, "Identificador do insumo"),
-    name: boundedText(raw.name, "Nome do insumo", 60),
-    group: boundedText(raw.group, "Categoria do insumo", 40),
-    unit: raw.unit,
-    minimumBase: raw.minimumBase,
-    unitCostCents: cents(raw.unitCostCents, "Custo unitário", { allowZero: true }),
-  });
-}
-
 function validateRecipe(value) {
   const raw = exactObject(value, ["flavorId", "lines", "updatedAt"], "Ficha técnica");
-  if (!Array.isArray(raw.lines) || raw.lines.length < 1 || raw.lines.length > MAX_INGREDIENTS) {
+  if (!Array.isArray(raw.lines) || raw.lines.length < 1 || raw.lines.length > MAX_RECIPE_LINES) {
     throw new TypeError("A ficha técnica precisa de ao menos um insumo.");
   }
   const lines = raw.lines.map((line) => {
@@ -391,36 +374,6 @@ function validateRecipe(value) {
   });
 }
 
-function validateInventoryMovement(value) {
-  const raw = exactObject(value,
-    ["id", "ingredientId", "type", "quantityBase", "occurredAt", "reference", "note"], "Movimentação de estoque");
-  if (!["opening", "receipt", "adjustment", "consumption"].includes(raw.type)) {
-    throw new TypeError("Tipo de movimentação de estoque inválido.");
-  }
-  if (!Number.isSafeInteger(raw.quantityBase) || raw.quantityBase === 0 || Math.abs(raw.quantityBase) > 1_000_000_000) {
-    throw new TypeError("Quantidade movimentada inválida.");
-  }
-  if (["opening", "receipt"].includes(raw.type) && raw.quantityBase < 1) {
-    throw new TypeError("Entrada de estoque precisa ser positiva.");
-  }
-  if (raw.type === "adjustment" && raw.note === null) throw new TypeError("Ajuste de estoque exige uma observação.");
-  if (raw.type === "consumption" && raw.quantityBase > -1) {
-    throw new TypeError("Consumo de estoque precisa ser negativo.");
-  }
-  if (raw.type === "opening" && raw.reference !== null) throw new TypeError("Saldo de abertura não pode referenciar outro registro.");
-  if (raw.type === "consumption") identifier(raw.reference, "Pedido do consumo");
-  if (raw.type !== "consumption" && raw.reference !== null) throw new TypeError("Referência só é aceita no consumo de pedido.");
-  return Object.freeze({
-    id: identifier(raw.id, "Identificador da movimentação"),
-    ingredientId: identifier(raw.ingredientId, "Identificador do insumo movimentado"),
-    type: raw.type,
-    quantityBase: raw.quantityBase,
-    occurredAt: utc(raw.occurredAt, "Data da movimentação"),
-    reference: raw.reference,
-    note: raw.note === null ? null : boundedText(raw.note, "Observação da movimentação", 160),
-  });
-}
-
 export function createEmptyFoodPizzeriaState() {
   return Object.freeze({
     schema: FOOD_PIZZERIA_STATE_SCHEMA,
@@ -429,9 +382,7 @@ export function createEmptyFoodPizzeriaState() {
     flavors: Object.freeze([]),
     orders: Object.freeze([]),
     tableCommands: Object.freeze([]),
-    ingredients: Object.freeze([]),
     recipes: Object.freeze([]),
-    inventoryMovements: Object.freeze([]),
   });
 }
 
@@ -457,58 +408,49 @@ function migrateV1ToV2(value) {
   return validateFoodPizzeriaStateV2({ ...legacy, schema: FOOD_PIZZERIA_STATE_SCHEMA_V2, orders, tableCommands });
 }
 
-function migrateV2ToV3(value) {
+function migrateV2ToV4(value) {
   const legacy = validateFoodPizzeriaStateV2(value);
-  const seed = createPizzeriaInventorySeed();
-  const legacyState = { ...legacy, recipes: seed.recipes, ingredients: seed.ingredients };
-  const consumedByIngredient = new Map();
-  const consumption = [];
-  for (const order of legacy.orders) {
-    const preparing = order.statusHistory.find(({ status }) => status === "preparing");
-    if (!preparing) continue;
-    const usage = calculateOrderConsumption(legacyState, order);
-    if (!usage.length) continue;
-    for (const item of usage) consumedByIngredient.set(item.ingredientId,
-      (consumedByIngredient.get(item.ingredientId) ?? 0) + item.quantityBase);
-    for (const item of usage) consumption.push({
-      id: movementId(order.id, item.ingredientId),
-      ingredientId: item.ingredientId,
-      type: "consumption",
-      quantityBase: -item.quantityBase,
-      occurredAt: preparing.changedAt,
-      reference: order.id,
-      note: null,
-    });
-  }
-  const openedAt = "1970-01-01T00:00:00.000Z";
-  const openings = seed.openingBalances.map(({ ingredientId, quantityBase }) => ({
-    id: `opening-${ingredientId}`,
-    ingredientId,
-    type: "opening",
-    quantityBase: quantityBase + (consumedByIngredient.get(ingredientId) ?? 0),
-    occurredAt: openedAt,
-    reference: null,
-    note: "Saldo inicial migrado",
-  }));
+  const timestamp = "1970-01-01T00:00:00.000Z";
   return validateFoodPizzeriaState({
     ...legacy,
     schema: FOOD_PIZZERIA_STATE_SCHEMA,
-    ingredients: seed.ingredients,
-    recipes: seed.recipes.map((recipe) => ({ ...recipe, updatedAt: openedAt })),
-    inventoryMovements: [...openings, ...consumption],
+    recipes: createFoodRecipeSeed().map((recipe) => ({ ...recipe, updatedAt: timestamp })),
+  });
+}
+
+function migrateV3ToV4(value) {
+  const raw = exactObject(value,
+    ["schema", "revision", "settings", "flavors", "orders", "tableCommands", "ingredients", "recipes", "inventoryMovements"],
+    "Dados antigos da pizzaria");
+  if (raw.schema !== FOOD_PIZZERIA_STATE_SCHEMA_V3 || !Array.isArray(raw.recipes)) {
+    throw new TypeError("Versão antiga dos dados da pizzaria inválida.");
+  }
+  const legacy = validateFoodPizzeriaStateV2({
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V2,
+    revision: raw.revision,
+    settings: raw.settings,
+    flavors: raw.flavors,
+    orders: raw.orders,
+    tableCommands: raw.tableCommands,
+  });
+  return validateFoodPizzeriaState({
+    ...legacy,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA,
+    recipes: raw.recipes,
   });
 }
 
 export function migrateFoodPizzeriaState(value) {
   if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA) return validateFoodPizzeriaState(value);
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V2) return migrateV2ToV3(value);
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V1) return migrateV2ToV3(migrateV1ToV2(value));
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V3) return migrateV3ToV4(value);
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V2) return migrateV2ToV4(value);
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V1) return migrateV2ToV4(migrateV1ToV2(value));
   return validateFoodPizzeriaState(value);
 }
 
 export function validateFoodPizzeriaState(value) {
   const raw = exactObject(value,
-    ["schema", "revision", "settings", "flavors", "orders", "tableCommands", "ingredients", "recipes", "inventoryMovements"],
+    ["schema", "revision", "settings", "flavors", "orders", "tableCommands", "recipes"],
     "Dados da pizzaria");
   if (raw.schema !== FOOD_PIZZERIA_STATE_SCHEMA) throw new TypeError("Versão dos dados da pizzaria incompatível.");
   const legacy = validateFoodPizzeriaStateV2({
@@ -519,43 +461,12 @@ export function validateFoodPizzeriaState(value) {
     orders: raw.orders,
     tableCommands: raw.tableCommands,
   });
-  if (!Array.isArray(raw.ingredients) || raw.ingredients.length > MAX_INGREDIENTS) throw new TypeError("Quantidade de insumos inválida.");
   if (!Array.isArray(raw.recipes) || raw.recipes.length > MAX_RECIPES) throw new TypeError("Quantidade de fichas técnicas inválida.");
-  if (!Array.isArray(raw.inventoryMovements) || raw.inventoryMovements.length > MAX_INVENTORY_MOVEMENTS) throw new TypeError("Histórico de estoque ultrapassa o limite permitido.");
-  const ingredients = raw.ingredients.map(validateIngredient);
   const recipes = raw.recipes.map(validateRecipe);
-  const inventoryMovements = raw.inventoryMovements.map(validateInventoryMovement);
-  if (new Set(ingredients.map(({ id }) => id)).size !== ingredients.length) throw new TypeError("Estoque contém identificadores de insumo duplicados.");
-  if (new Set(ingredients.map(({ name }) => name.normalize("NFKC").toLocaleLowerCase("pt-BR"))).size !== ingredients.length) {
-    throw new TypeError("Estoque contém insumos com o mesmo nome.");
-  }
   if (new Set(recipes.map(({ flavorId }) => flavorId)).size !== recipes.length) throw new TypeError("Há mais de uma ficha técnica para o mesmo sabor.");
-  if (new Set(inventoryMovements.map(({ id }) => id)).size !== inventoryMovements.length) throw new TypeError("Movimentações de estoque contêm identificadores duplicados.");
-  const ingredientById = new Map(ingredients.map((ingredient) => [ingredient.id, ingredient]));
   const flavorIds = new Set(legacy.flavors.map(({ id }) => id));
-  const orderById = new Map(legacy.orders.map((order) => [order.id, order]));
   for (const recipe of recipes) {
     if (!flavorIds.has(recipe.flavorId)) throw new TypeError("Ficha técnica referencia um sabor inexistente.");
-    for (const line of recipe.lines) if (!ingredientById.has(line.ingredientId)) throw new TypeError("Ficha técnica referencia um insumo inexistente.");
-  }
-  const consumptionKeys = new Set();
-  const balances = new Map(ingredients.map(({ id }) => [id, 0]));
-  for (const movement of inventoryMovements) {
-    if (!ingredientById.has(movement.ingredientId)) throw new TypeError("Movimentação referencia um insumo inexistente.");
-    if (movement.type === "consumption") {
-      const order = orderById.get(movement.reference);
-      if (!order || !order.statusHistory.some(({ status }) => status === "preparing")) {
-        throw new TypeError("Consumo precisa referenciar um pedido que entrou em preparo.");
-      }
-      const key = `${movement.reference}\u0000${movement.ingredientId}`;
-      if (consumptionKeys.has(key)) throw new TypeError("Um pedido não pode consumir o mesmo insumo duas vezes.");
-      consumptionKeys.add(key);
-    }
-    const nextBalance = balances.get(movement.ingredientId) + movement.quantityBase;
-    if (!Number.isSafeInteger(nextBalance) || nextBalance < 0 || nextBalance > 1_000_000_000) {
-      throw new TypeError(`O saldo de ${ingredientById.get(movement.ingredientId).name} deve ficar entre zero e o limite permitido.`);
-    }
-    balances.set(movement.ingredientId, nextBalance);
   }
   return Object.freeze({
     schema: FOOD_PIZZERIA_STATE_SCHEMA,
@@ -564,100 +475,18 @@ export function validateFoodPizzeriaState(value) {
     flavors: legacy.flavors,
     orders: legacy.orders,
     tableCommands: legacy.tableCommands,
-    ingredients: Object.freeze(ingredients),
     recipes: Object.freeze(recipes),
-    inventoryMovements: Object.freeze(inventoryMovements),
   });
-}
-
-export function inventoryBalance(stateValue, ingredientId) {
-  const state = validateFoodPizzeriaState(stateValue);
-  if (!state.ingredients.some(({ id }) => id === ingredientId)) throw new Error("Esse insumo não existe mais.");
-  return inventoryBalancesFromState(state).get(ingredientId);
-}
-
-function inventoryBalancesFromState(state) {
-  const balances = new Map(state.ingredients.map(({ id }) => [id, 0]));
-  for (const movement of state.inventoryMovements) {
-    balances.set(movement.ingredientId, balances.get(movement.ingredientId) + movement.quantityBase);
-  }
-  return balances;
-}
-
-function movementId(orderId, ingredientId) {
-  const hash = (value) => {
-    let result = 2166136261;
-    for (const char of value) result = Math.imul(result ^ char.charCodeAt(0), 16777619);
-    return (result >>> 0).toString(36);
-  };
-  return `consume-${hash(orderId)}-${hash(ingredientId)}`;
-}
-
-export function initializePizzeriaInventory(stateValue, { seed = createPizzeriaInventorySeed(), openedAt } = {}) {
-  const state = validateFoodPizzeriaState(stateValue);
-  if (state.ingredients.length || state.inventoryMovements.length || state.recipes.length) {
-    throw new Error("O estoque já foi inicializado.");
-  }
-  const timestamp = utc(openedAt, "Data do saldo inicial");
-  const ingredients = seed.ingredients.map(validateIngredient);
-  const recipes = seed.recipes.map((recipe) => validateRecipe({ ...recipe, updatedAt: timestamp }));
-  const openingBalances = seed.openingBalances.map(({ ingredientId, quantityBase }, index) => ({
-    id: `opening-${index}-${identifier(ingredientId, "Identificador do insumo")}`,
-    ingredientId,
-    type: "opening",
-    quantityBase,
-    occurredAt: timestamp,
-    reference: null,
-    note: "Saldo inicial",
-  }));
-  return nextState(state, { ingredients, recipes, inventoryMovements: openingBalances });
 }
 
 export function savePizzeriaRecipe(stateValue, { flavorId, lines, at } = {}) {
   const state = validateFoodPizzeriaState(stateValue);
   if (!state.flavors.some(({ id }) => id === flavorId)) throw new Error("Esse sabor não está no cardápio.");
   const recipe = validateRecipe({ flavorId, lines, updatedAt: at });
-  for (const line of recipe.lines) if (!state.ingredients.some(({ id }) => id === line.ingredientId)) {
-    throw new Error("Um insumo da ficha técnica não existe mais.");
-  }
   const recipes = state.recipes.some((item) => item.flavorId === flavorId)
     ? state.recipes.map((item) => item.flavorId === flavorId ? recipe : item)
     : [...state.recipes, recipe];
   return nextState(state, { recipes });
-}
-
-export function addPizzeriaIngredient(stateValue, {
-  id, name, group, unit, minimumBase = 0, unitCostCents = 0, openingBase, openedAt,
-} = {}) {
-  const state = validateFoodPizzeriaState(stateValue);
-  const ingredient = validateIngredient({ id, name, group, unit, minimumBase, unitCostCents });
-  if (state.ingredients.some(({ id: currentId }) => currentId === ingredient.id)) throw new Error("Já existe um insumo com esse identificador.");
-  if (state.ingredients.some(({ name: currentName }) => currentName.normalize("NFKC").toLocaleLowerCase("pt-BR") === ingredient.name.normalize("NFKC").toLocaleLowerCase("pt-BR"))) {
-    throw new Error("Já existe um insumo com esse nome.");
-  }
-  if (!Number.isSafeInteger(openingBase) || openingBase < 0) throw new TypeError("Informe o saldo inicial do insumo.");
-  if (state.ingredients.length >= MAX_INGREDIENTS) throw new RangeError("Limite de insumos atingido.");
-  const movements = openingBase === 0 ? state.inventoryMovements : [...state.inventoryMovements, {
-    id: `opening-${identifier(id, "Identificador do insumo")}`,
-    ingredientId: ingredient.id,
-    type: "opening",
-    quantityBase: openingBase,
-    occurredAt: utc(openedAt, "Data do saldo inicial"),
-    reference: null,
-    note: "Saldo inicial",
-  }];
-  return nextState(state, { ingredients: [...state.ingredients, ingredient], inventoryMovements: movements });
-}
-
-export function recordPizzeriaInventoryMovement(stateValue, {
-  id, ingredientId, type, quantityBase, occurredAt, note = null,
-} = {}) {
-  const state = validateFoodPizzeriaState(stateValue);
-  if (!state.ingredients.some(({ id: currentId }) => currentId === ingredientId)) throw new Error("Esse insumo não existe mais.");
-  if (!["receipt", "adjustment"].includes(type)) throw new TypeError("Escolha uma entrada ou um ajuste de estoque.");
-  const movement = validateInventoryMovement({ id, ingredientId, type, quantityBase, occurredAt, reference: null, note });
-  if (inventoryBalancesFromState(state).get(ingredientId) + movement.quantityBase < 0) throw new Error("O ajuste deixaria o saldo do insumo negativo.");
-  return nextState(state, { inventoryMovements: [...state.inventoryMovements, movement] });
 }
 
 function nextState(current, patch) {
@@ -795,6 +624,13 @@ function calculateOrderConsumption(state, order, { requireRecipe = true } = {}) 
     .sort((left, right) => left.ingredientId.localeCompare(right.ingredientId));
 }
 
+export function calculatePizzeriaOrderConsumption(stateValue, orderId) {
+  const state = validateFoodPizzeriaState(stateValue);
+  const order = state.orders.find(({ id }) => id === orderId);
+  if (!order) throw new Error("Esse pedido não existe mais.");
+  return Object.freeze(calculateOrderConsumption(state, order).map((line) => Object.freeze(line)));
+}
+
 export function createPizzeriaOrder(stateValue, {
   id, createdAt, historyId, customerName, phone = "", channel,
   tableCommandId = null, address = null, deliveryFeeCents = 0, notes = "", items,
@@ -916,35 +752,7 @@ export function transitionPizzeriaOrder(stateValue, {
       { id: historyId, status: nextStatus, changedAt: timestamp, reason: cancellationReason },
     ],
   });
-  let inventoryMovements = state.inventoryMovements;
-  if (nextStatus === "preparing") {
-    if (state.inventoryMovements.some(({ type, reference }) => type === "consumption" && reference === order.id)) {
-      throw new Error("O estoque deste pedido já foi consumido.");
-    }
-    const usage = calculateOrderConsumption(state, order);
-    const ingredientsById = new Map(state.ingredients.map((ingredient) => [ingredient.id, ingredient]));
-    const balances = inventoryBalancesFromState(state);
-    for (const item of usage) {
-      const ingredient = ingredientsById.get(item.ingredientId);
-      if (balances.get(item.ingredientId) < item.quantityBase) {
-        throw new Error(`Estoque insuficiente de ${ingredient.name}. Reponha antes de iniciar o preparo.`);
-      }
-    }
-    inventoryMovements = [
-      ...state.inventoryMovements,
-      ...usage.map((item) => ({
-        id: movementId(order.id, item.ingredientId),
-        ingredientId: item.ingredientId,
-        type: "consumption",
-        quantityBase: -item.quantityBase,
-        occurredAt: timestamp,
-        reference: order.id,
-        note: null,
-      })),
-    ];
-  }
   return nextState(state, {
     orders: state.orders.map((item) => item.id === updated.id ? updated : item),
-    inventoryMovements,
   });
 }

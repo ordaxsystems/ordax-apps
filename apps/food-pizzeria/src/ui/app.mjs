@@ -2,11 +2,12 @@ import {
   PIZZA_SIZES,
   PIZZERIA_TABLES,
   calculatePizzaPriceCents,
-  inventoryBalance,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
 import { createMockWorkspace } from "../fixtures/mock-data.mjs";
+import { createPizzeriaInventorySeed } from "../fixtures/inventory-fixtures.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
+import { renderSpaceCapabilityStatus } from "./space-capability-status.mjs";
 
 export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   if (!root || typeof root.querySelector !== "function" || typeof root.addEventListener !== "function") {
@@ -54,13 +55,8 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     team: "Equipe",
     settings: "Configurações",
   });
-  const OVERVIEW_FILTERS = Object.freeze([
-    Object.freeze({ id: "all", label: "Todos" }),
-    Object.freeze({ id: "received", label: "Recebidos" }),
-    Object.freeze({ id: "preparing", label: "Em preparo" }),
-    Object.freeze({ id: "ready", label: "Prontos" }),
-    Object.freeze({ id: "out-for-delivery", label: "Em entrega" }),
-  ]);
+  const PREVIEW_INGREDIENTS = Object.freeze(createPizzeriaInventorySeed().ingredients);
+  const SPACE_PENDING_VIEWS = new Set(["overview", "pos", "inventory", "customers", "reports", "team"]);
   const ORDER_STATUS_FILTERS = Object.freeze([
     Object.freeze({ id: "all", label: "Todas as etapas" }),
     Object.freeze({ id: "received", label: "Recebidos" }),
@@ -102,8 +98,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   let snapshot = null;
   let mockWorkspace = createMockWorkspace();
   let unsubscribe = null;
-  let activeView = "overview";
-  let overviewFilter = "all";
+  let activeView = "orders";
   let orderQuery = "";
   let orderStatusFilter = "all";
   let orderChannelFilter = "all";
@@ -133,22 +128,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   }
   
   function inventoryRows() {
-    if (!snapshot) return [];
-    return snapshot.ingredients.map((ingredient) => {
-      const amountBase = inventoryBalance(snapshot, ingredient.id);
-      const factor = ingredient.unit === "un" ? 1 : 1000;
-      const displayUnit = ingredient.unit === "g" ? "kg" : ingredient.unit === "ml" ? "L" : "un";
-      return {
-        ...ingredient,
-        amountBase,
-        amount: amountBase / factor,
-        minimum: ingredient.minimumBase / factor,
-        displayUnit,
-        low: amountBase <= ingredient.minimumBase,
-        valueCents: Math.round(amountBase * ingredient.unitCostCents / factor),
-        quickAdjustBase: factor,
-      };
-    });
+    return [];
   }
   
   function stockAmountLabel(ingredient, amountBase) {
@@ -159,13 +139,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   }
   
   function recipeCostCents(recipe) {
-    if (!recipe) return null;
-    return recipe.lines.reduce((total, line) => {
-      const ingredient = snapshot.ingredients.find(({ id }) => id === line.ingredientId);
-      if (!ingredient) return total;
-      const factor = ingredient.unit === "un" ? 1 : 1000;
-      return total + Math.round(line.quantityBaseBySize.medium * ingredient.unitCostCents / factor);
-    }, 0);
+    return recipe ? null : null;
   }
   
   function parseMoney(raw) {
@@ -318,7 +292,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   
   function navButton(view, iconName) {
     const selected = activeView === view;
-    return `<button class="nav-item ${selected ? "is-active" : ""}" type="button" data-view="${view}" aria-current="${selected ? "page" : "false"}"><span class="nav-icon">${iconSvg(iconName)}</span><span>${VIEW_LABELS[view]}</span>${view === "orders" && activeOrderCount() > 0 ? `<span class="nav-count">${activeOrderCount()}</span>` : ""}</button>`;
+    return `<button class="nav-item ${selected ? "is-active" : ""}" type="button" data-view="${view}" aria-label="${escapeHtml(VIEW_LABELS[view])}" title="${escapeHtml(VIEW_LABELS[view])}" aria-current="${selected ? "page" : "false"}"><span class="nav-icon">${iconSvg(iconName)}</span><span>${VIEW_LABELS[view]}</span>${view === "orders" && activeOrderCount() > 0 ? `<span class="nav-count">${activeOrderCount()}</span>` : ""}</button>`;
   }
   
   function activeOrderCount() {
@@ -327,12 +301,10 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   
   function header() {
     const name = snapshot.settings?.storeName ?? "Pizzaria";
-    const now = new Date();
-    const dateLabel = new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(now);
     return `<header class="topbar">
       <div class="mobile-brand"><span class="brand-mark">${iconSvg("pizza")}</span><span>OrdaX <b>Food</b></span></div>
       <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido, cliente ou produto" placeholder="Buscar pedido, cliente ou produto..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
-      <div class="topbar-right"><button type="button" class="icon-button notification-button" aria-label="Ver alertas" data-view="overview">${iconSvg("bell")}<i aria-hidden="true"></i></button><button type="button" class="user-profile" aria-label="Abrir configurações" data-view="settings"><span class="user-avatar">CS</span><span><strong>Carlos Silva</strong><small>Administrador</small></span></button><div class="shift-card"><time class="topbar-date" datetime="${now.toISOString()}">${escapeHtml(dateLabel)}</time><strong>${clockTime(now.toISOString())}</strong><small><span class="status-dot"></span> Turno aberto</small></div><button type="button" class="avatar-button" aria-label="Abrir configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
+      <div class="topbar-right"><div class="preview-context" role="status"><strong>Prévia local</strong><small>Dados fictícios · sem sincronização</small></div><button type="button" class="avatar-button" aria-label="Configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
     </header>`;
   }
   
@@ -340,7 +312,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     const name = snapshot.settings?.storeName ?? "Pizzaria";
     return `<div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" href="#" data-view="overview" aria-label="OrdaX Food — início"><span class="brand-mark">${iconSvg("pizza")}</span><span class="brand-copy"><strong>OrdaX <b>Food</b></strong><small>GESTÃO DE PIZZARIA</small></span></a>
+        <a class="brand" href="#" data-view="orders" aria-label="OrdaX Food — pedidos"><span class="brand-mark">${iconSvg("pizza")}</span><span class="brand-copy"><strong>OrdaX <b>Food</b></strong><small>PEDIDOS · PRODUÇÃO · CARDÁPIO</small></span></a>
         <div class="side-store"><span class="store-avatar">${iconSvg("pizza")}</span><span class="store-copy"><strong>${escapeHtml(name)}</strong><small>Unidade principal</small></span><button type="button" class="store-menu" data-view="settings" aria-label="Configurações da pizzaria">⌄</button></div>
         <nav class="main-nav" aria-label="Navegação principal">
           ${navButton("overview", "overview")}${navButton("orders", "orders")}${navButton("menu", "menu")}${navButton("kitchen", "kitchen")}${navButton("tables", "tables")}${navButton("delivery", "delivery")}${navButton("pos", "pos")}${navButton("inventory", "inventory")}${navButton("customers", "customers")}${navButton("reports", "reports")}${navButton("team", "team")}
@@ -377,29 +349,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     const size = PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
     const flavors = item.flavors.map(({ name }) => name).join(" + ");
     return `${item.quantity}× ${size} · ${flavors}`;
-  }
-  
-  function overviewFilterButton(filter, orders) {
-    const count = filter.id === "all"
-      ? orders.length
-      : orders.filter(({ status }) => status === filter.id).length;
-    const selected = overviewFilter === filter.id;
-    return `<button class="order-filter ${selected ? "is-active" : ""}" type="button" data-overview-filter="${filter.id}" aria-pressed="${selected}">${filter.label}<span>${count}</span></button>`;
-  }
-  
-  function overviewOrderRow(order) {
-    const itemLabels = order.items.slice(0, 2).map(orderItemDescription);
-    const remaining = order.items.length - itemLabels.length;
-    const itemSummary = `${itemLabels.join(" · ")}${remaining > 0 ? ` + ${remaining} ${remaining === 1 ? "item" : "itens"}` : ""}`;
-    return `<tr>
-      <td><span class="table-order-number">${escapeHtml(orderNumber(order))}</span></td>
-      <td><time datetime="${escapeHtml(order.createdAt)}">${clockTime(order.createdAt)}</time></td>
-      <td><strong class="table-customer">${escapeHtml(order.customerName)}</strong></td>
-      <td class="table-items" title="${escapeHtml(itemSummary)}">${escapeHtml(itemSummary)}</td>
-      <td><span class="channel-label">${CHANNEL_LABELS[order.channel]}</span></td>
-      <td><span class="status-badge status-${order.status}"><span></span>${STATUS_LABELS[order.status]}</span></td>
-      <td class="table-total">${money(order.totalCents)}</td>
-    </tr>`;
   }
   
   function nextStatus(order) {
@@ -449,63 +398,8 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     return `<div class="empty-state"><span class="empty-icon" aria-hidden="true">${icon}</span><h3>${escapeHtml(title)}</h3><p>${escapeHtml(text)}</p>${action ? `<button type="button" class="button button-primary" data-view="${view}">${escapeHtml(action)} <span aria-hidden="true">→</span></button>` : ""}</div>`;
   }
   
-  function overviewPage() {
-    const orders = snapshot.orders;
-    const open = orders.filter(({ status }) => !["completed", "cancelled"].includes(status));
-    const ordersToday = orders.filter(({ createdAt, status }) => isToday(createdAt) && status !== "cancelled");
-    const preparing = orders.filter(({ status }) => status === "preparing").length;
-    const awaitingPreparation = orders.filter(({ status }) => status === "received");
-    const readyForDelivery = orders.filter(({ status, channel }) => status === "ready" && channel === "delivery");
-    const stock = inventoryRows();
-    const lowStockItems = stock.filter(({ low }) => low);
-    const availableFlavors = snapshot.flavors.filter(({ active }) => active).length;
-    const totalTodayCents = ordersToday.reduce((sum, order) => sum + BigInt(order.totalCents), 0n);
-    const totalToday = totalTodayCents <= BigInt(Number.MAX_SAFE_INTEGER) ? money(Number(totalTodayCents)) : "—";
-    const ticketAverage = ordersToday.length ? money(Math.round(Number(totalTodayCents) / ordersToday.length)) : money(0);
-    const filtered = overviewFilter === "all" ? open : open.filter(({ status }) => status === overviewFilter);
-    const visibleOrders = filtered.slice(0, 6);
-    const attentionCount = awaitingPreparation.length + readyForDelivery.length + lowStockItems.length + (availableFlavors === 0 ? 1 : 0);
-    const attentionItems = [
-      ...(awaitingPreparation.length ? [{
-        icon: "orders", tone: "orange", title: `${awaitingPreparation.length} ${awaitingPreparation.length === 1 ? "pedido recebido" : "pedidos recebidos"}`,
-        detail: "Aguardando início do preparo.", view: "kitchen", action: "Abrir cozinha",
-      }] : []),
-      ...(readyForDelivery.length ? [{
-        icon: "delivery", tone: "blue", title: `${readyForDelivery.length} ${readyForDelivery.length === 1 ? "entrega pronta" : "entregas prontas"}`,
-        detail: "Aguardando saída para entrega.", view: "orders", action: "Ver pedidos",
-      }] : []),
-      ...(lowStockItems.length ? [{
-        icon: "inventory", tone: "gold", title: `${lowStockItems.length} insumos abaixo do mínimo`,
-        detail: `${lowStockItems[0].name}: ${stockAmountLabel(lowStockItems[0], lowStockItems[0].amountBase)} disponíveis.`, view: "inventory", action: "Ver estoque",
-      }] : []),
-      ...(availableFlavors === 0 ? [{
-        icon: "menu", tone: "gold", title: "Cardápio sem sabores ativos",
-        detail: "Cadastre sabores para começar a receber pedidos.", view: "menu", action: "Abrir cardápio",
-      }] : []),
-    ];
-    return `<section class="page-section">
-      <div class="page-heading dashboard-heading"><div><p class="eyebrow">ORDAX FOOD · VISÃO GERAL</p><h1>${greeting()}! <span class="greeting-wave" aria-hidden="true">👋</span></h1><p>Aqui está a situação de ${escapeHtml(snapshot.settings.storeName)} hoje.</p></div><button class="button button-primary" type="button" data-view="orders"><span aria-hidden="true">＋</span> Novo pedido</button></div>
-      <div class="metrics-grid">
-        ${metricCard({ label: "Pedidos hoje", value: String(ordersToday.length), detail: "Não inclui pedidos cancelados", icon: "orders", tone: "orange" })}
-        ${metricCard({ label: "Em preparo", value: String(preparing), detail: "Pedidos em produção", icon: "kitchen", tone: "blue" })}
-        ${metricCard({ label: "Tempo médio", value: "18 min", detail: "Desde o recebimento", icon: "clock", tone: "gold" })}
-        ${metricCard({ label: "Valor em pedidos", value: totalToday, detail: `Pedidos não cancelados · ticket médio ${ticketAverage}`, icon: "value", tone: "green" })}
-      </div>
-      <div class="overview-grid">
-        <section class="panel queue-panel" aria-labelledby="queue-title">
-          <div class="panel-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h2 id="queue-title">Pedidos em andamento</h2></div><button class="text-button" type="button" data-view="orders">Ver todos <span aria-hidden="true">→</span></button></div>
-          <div class="order-filters" role="group" aria-label="Filtrar pedidos em andamento">${OVERVIEW_FILTERS.map((filter) => overviewFilterButton(filter, open)).join("")}</div>
-          ${visibleOrders.length ? `<div class="overview-table-wrap"><table class="overview-table"><caption class="visually-hidden">Pedidos em andamento da pizzaria</caption><thead><tr><th scope="col">Pedido</th><th scope="col">Hora</th><th scope="col">Cliente</th><th scope="col">Itens</th><th scope="col">Canal</th><th scope="col">Status</th><th scope="col">Total</th></tr></thead><tbody>${visibleOrders.map(overviewOrderRow).join("")}</tbody></table></div>${filtered.length > visibleOrders.length ? `<p class="queue-footnote">Mostrando ${visibleOrders.length} de ${filtered.length} pedidos.</p>` : ""}` : emptyState({ icon: iconSvg("orders"), title: overviewFilter === "all" ? "Nenhum pedido em andamento" : "Nenhum pedido nesta etapa", text: overviewFilter === "all" ? "Os próximos pedidos registrados aparecerão nesta fila." : "Escolha outra etapa para acompanhar os pedidos.", action: overviewFilter === "all" ? "Criar novo pedido" : "Ver todos os pedidos", view: "orders" })}
-        </section>
-        <aside class="panel attention-panel" aria-labelledby="attention-title">
-          <div class="panel-heading"><div class="attention-heading"><span class="attention-icon">${iconSvg("orders")}</span><h2 id="attention-title">Atenção</h2></div><span class="attention-count ${attentionCount ? "has-items" : ""}" aria-label="${attentionCount} ${attentionCount === 1 ? "item" : "itens"} para acompanhar">${attentionCount}</span></div>
-          ${attentionItems.length ? `<div class="attention-list">${attentionItems.map((item) => `<article class="attention-item"><span class="attention-item-icon tone-${item.tone}">${iconSvg(item.icon)}</span><div class="attention-copy"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.detail)}</p><button class="text-button" type="button" data-view="${item.view}">${escapeHtml(item.action)} <span aria-hidden="true">→</span></button></div></article>`).join("")}</div>` : `<div class="attention-empty"><span class="attention-clear" aria-hidden="true">${iconSvg("ready")}</span><strong>Nenhuma ação pendente identificada</strong><p>Não há pedidos recebidos aguardando preparo ou entregas prontas para despacho.</p></div>`}
-        </aside>
-      </div>
-      ${overviewShortcuts()}
-    </section>`;
-  }
-  
+
+
   function sizeOptions(selected = "medium") {
     return PIZZA_SIZES.map(({ id, label, slices }) => `<option value="${id}" ${selected === id ? "selected" : ""}>${label} · ${slices} fatias</option>`).join("");
   }
@@ -616,20 +510,20 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     const recipeLines = mockWorkspace.recipeDraftLines;
     const recipeEditor = recipeFlavor ? `<form id="recipe-editor" class="panel recipe-editor">
       <div class="panel-heading"><div><p class="eyebrow">FICHA TÉCNICA</p><h2>${escapeHtml(recipeFlavor.name)}</h2><p>Quantidades por pizza; use g, ml ou unidades conforme o insumo.</p></div>${button("Fechar", "close-recipe-editor")}</div>
-      <div class="recipe-lines">${recipeLines.map((line, index) => `<div class="recipe-line"><label>Insumo<select name="ingredient-${index}" required>${snapshot.ingredients.map((ingredient) => `<option value="${escapeHtml(ingredient.id)}" ${line.ingredientId === ingredient.id ? "selected" : ""}>${escapeHtml(ingredient.name)} · ${ingredient.unit}</option>`).join("")}</select></label>${PIZZA_SIZES.map(({ id, label }) => `<label data-size="${label}">${label} (${snapshot.ingredients.find(({ id: current }) => current === line.ingredientId)?.unit ?? "g"})<input name="quantity-${index}-${id}" type="number" min="1" step="1" value="${line.quantityBaseBySize[id] ?? ""}" required></label>`).join("")}<button class="icon-button" type="button" data-action="remove-recipe-line" data-index="${index}" aria-label="Remover insumo">×</button></div>`).join("")}</div>
-      <div class="recipe-editor-actions">${button("＋ Adicionar insumo", "add-recipe-line", { kind: "quiet", disabled: snapshot.ingredients.length <= recipeLines.length })}<span>O custo médio estimado é calculado com os custos cadastrados no estoque.</span><button class="button button-primary" type="submit" ${busy || !recipeLines.length ? "disabled" : ""}>Salvar ficha técnica</button></div>
+      <p class="recipe-preview-note">Os insumos desta prévia são referências fictícias. O Food calcula consumo, mas não consulta nem movimenta o Inventory.</p>
+      <div class="recipe-lines">${recipeLines.map((line, index) => `<div class="recipe-line"><label>Insumo<select name="ingredient-${index}" required>${PREVIEW_INGREDIENTS.map((ingredient) => `<option value="${escapeHtml(ingredient.id)}" ${line.ingredientId === ingredient.id ? "selected" : ""}>${escapeHtml(ingredient.name)} · ${ingredient.unit}</option>`).join("")}</select></label>${PIZZA_SIZES.map(({ id, label }) => `<label data-size="${label}">${label} (${PREVIEW_INGREDIENTS.find(({ id: current }) => current === line.ingredientId)?.unit ?? "g"})<input name="quantity-${index}-${id}" type="number" min="1" step="1" value="${line.quantityBaseBySize[id] ?? ""}" required></label>`).join("")}<button class="icon-button" type="button" data-action="remove-recipe-line" data-index="${index}" aria-label="Remover insumo">×</button></div>`).join("")}</div>
+      <div class="recipe-editor-actions">${button("＋ Adicionar insumo", "add-recipe-line", { kind: "quiet", disabled: PREVIEW_INGREDIENTS.length <= recipeLines.length })}<span>Custos e saldos não são exibidos sem provider Inventory.</span><button class="button button-primary" type="submit" ${busy || !recipeLines.length ? "disabled" : ""}>Salvar ficha técnica</button></div>
     </form>` : "";
     return `<section class="page-section">
       <div class="page-heading"><div><p class="eyebrow">PRODUTOS E PREÇOS</p><h1>Cardápio</h1><p>Cadastre sabores, preços e os insumos usados na produção.</p></div><span class="heading-counter">${snapshot.flavors.filter(({ active }) => active).length} disponíveis</span></div>
       <div class="menu-layout">${flavorForm()}<section class="menu-list"><div class="panel-heading"><div><p class="eyebrow">SABORES CADASTRADOS</p><h2>Seu cardápio</h2></div><span class="column-count">${snapshot.flavors.length}</span></div>
         ${sorted.length ? `<div class="flavor-cards">${sorted.map((flavor) => {
           const recipe = snapshot.recipes.find(({ flavorId }) => flavorId === flavor.id);
-          const cost = recipeCostCents(recipe);
-          return `<article class="flavor-card ${flavor.active ? "" : "is-unavailable"}"><div class="flavor-card-top"><span class="flavor-avatar" aria-hidden="true">${escapeHtml(flavor.name.slice(0, 1).toUpperCase())}</span><div class="flavor-title"><h3>${escapeHtml(flavor.name)}</h3><span class="availability ${flavor.active ? "available" : "unavailable"}"><span></span>${flavor.active ? "Disponível" : "Indisponível"}</span></div><button class="icon-button edit-button" type="button" data-action="edit-flavor" data-flavor-id="${escapeHtml(flavor.id)}" aria-label="Editar ${escapeHtml(flavor.name)}">✎</button></div>${flavor.description ? `<p class="flavor-description">${escapeHtml(flavor.description)}</p>` : ""}<div class="flavor-prices">${PIZZA_SIZES.map(({ id, label }) => `<div><small>${label}</small><strong>${money(flavor.pricesCents[id])}</strong></div>`).join("")}</div><div class="recipe-summary"><span class="${recipe ? "recipe-ready" : "recipe-missing"}">${recipe ? `Ficha técnica · custo médio ${money(cost)}` : "Ficha técnica pendente"}</span><button class="text-button" type="button" data-action="edit-recipe" data-flavor-id="${escapeHtml(flavor.id)}" aria-label="Editar ficha técnica de ${escapeHtml(flavor.name)}">${recipe ? "Editar" : "Cadastrar ficha"}</button></div><div class="flavor-card-foot"><span>Alterado ${timeLabel(flavor.updatedAt)}</span>${button(flavor.active ? "Indisponibilizar" : "Disponibilizar", "toggle-flavor", { extra: `data-flavor-id="${escapeHtml(flavor.id)}" data-active="${!flavor.active}"` })}</div></article>`;
+          return `<article class="flavor-card ${flavor.active ? "" : "is-unavailable"}"><div class="flavor-card-top"><span class="flavor-avatar" aria-hidden="true">${escapeHtml(flavor.name.slice(0, 1).toUpperCase())}</span><div class="flavor-title"><h3>${escapeHtml(flavor.name)}</h3><span class="availability ${flavor.active ? "available" : "unavailable"}"><span></span>${flavor.active ? "Disponível" : "Indisponível"}</span></div><button class="icon-button edit-button" type="button" data-action="edit-flavor" data-flavor-id="${escapeHtml(flavor.id)}" aria-label="Editar ${escapeHtml(flavor.name)}">✎</button></div>${flavor.description ? `<p class="flavor-description">${escapeHtml(flavor.description)}</p>` : ""}<div class="flavor-prices">${PIZZA_SIZES.map(({ id, label }) => `<div><small>${label}</small><strong>${money(flavor.pricesCents[id])}</strong></div>`).join("")}</div><div class="recipe-summary"><span class="${recipe ? "recipe-ready" : "recipe-missing"}">${recipe ? "Ficha técnica cadastrada · custo sem provider Inventory" : "Ficha técnica pendente"}</span><button class="text-button" type="button" data-action="edit-recipe" data-flavor-id="${escapeHtml(flavor.id)}" aria-label="Editar ficha técnica de ${escapeHtml(flavor.name)}">${recipe ? "Editar" : "Cadastrar ficha"}</button></div><div class="flavor-card-foot"><span>Alterado ${timeLabel(flavor.updatedAt)}</span>${button(flavor.active ? "Indisponibilizar" : "Disponibilizar", "toggle-flavor", { extra: `data-flavor-id="${escapeHtml(flavor.id)}" data-active="${!flavor.active}"` })}</div></article>`;
         }).join("")}</div>` : emptyState({ icon: "◉", title: "Nenhum sabor cadastrado", text: "Adicione sabores para começar a montar pedidos." })}
       </section></div>
       ${recipeEditor}
-      <section class="panel catalog-products"><div class="panel-heading"><div><p class="eyebrow">OUTROS PRODUTOS</p><h2>Bebidas, combos e acompanhamentos</h2></div><button type="button" class="button button-quiet" data-action="toggle-product-form">＋ Novo produto</button></div>${mockWorkspace.showProductForm ? `<form id="product-form" class="mock-inline-form product-inline-form"><label>Nome<input name="name" maxlength="80" required></label><label>Categoria<select name="category"><option>Bebidas</option><option>Combos</option><option>Entradas</option><option>Sobremesas</option></select></label><label>Preço<input name="price" inputmode="decimal" placeholder="0,00" required></label><button class="button button-primary" type="submit">Salvar produto</button></form>` : ""}<div class="catalog-grid">${mockWorkspace.products.filter(({ category }) => category !== "Pizzas").map((product) => `<article class="catalog-row"><span class="catalog-thumb">${product.category === "Bebidas" ? "🥤" : product.category === "Sobremesas" ? "🍰" : "🧄"}</span><span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.category)}</small></span><b>${money(product.price)}</b><span class="stock-status stock-ok">Ativo</span></article>`).join("")}</div></section>
+      <section class="panel catalog-products"><div class="panel-heading"><div><p class="eyebrow">CONCEITO DO CATÁLOGO</p><h2>Bebidas, combos e acompanhamentos</h2></div><button type="button" class="button button-quiet" data-action="preview-disabled" disabled>Cadastro indisponível</button></div>${mockWorkspace.showProductForm ? `<form id="product-form" class="mock-inline-form product-inline-form"><label>Nome<input name="name" maxlength="80" required></label><label>Categoria<select name="category"><option>Bebidas</option><option>Combos</option><option>Entradas</option><option>Sobremesas</option></select></label><label>Preço<input name="price" inputmode="decimal" placeholder="0,00" required></label><button class="button button-primary" type="submit">Salvar produto</button></form>` : ""}<div class="catalog-grid">${mockWorkspace.products.filter(({ category }) => category !== "Pizzas").map((product) => `<article class="catalog-row"><span class="catalog-thumb">${product.category === "Bebidas" ? "🥤" : product.category === "Sobremesas" ? "🍰" : "🧄"}</span><span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.category)}</small></span><b>${money(product.price)}</b><span class="stock-status">Amostra</span></article>`).join("")}</div></section>
     </section>`;
   }
   
@@ -642,7 +536,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         <label>Regra para pizzas meio a meio<select name="halfPricePolicy"><option value="highest" ${snapshot.settings.halfPricePolicy === "highest" ? "selected" : ""}>Cobrar pelo sabor de maior preço</option><option value="average" ${snapshot.settings.halfPricePolicy === "average" ? "selected" : ""}>Usar a média dos dois sabores</option></select><small>O pedido registra a regra usada e mantém seus preços originais.</small></label>
         <button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>Salvar ajustes <span aria-hidden="true">→</span></button>
       </form>
-      <div class="settings-grid"><section class="panel settings-form"><div class="panel-heading"><div><p class="eyebrow">ATENDIMENTO</p><h2>Horário de funcionamento</h2></div><span class="availability available"><span></span>Aberto agora</span></div><div class="settings-row"><span>Terça a domingo</span><strong>${mockWorkspace.openingTime} – ${mockWorkspace.closingTime}</strong></div><div class="settings-row"><span>Segunda-feira</span><strong>Fechado</strong></div><div class="settings-row"><span>Taxa padrão de entrega</span><strong>${money(mockWorkspace.deliveryFee)}</strong></div>${mockWorkspace.showHoursForm ? `<form id="hours-form" class="mock-inline-form"><label>Abertura<input name="openingTime" type="time" value="${mockWorkspace.openingTime}" required></label><label>Fechamento<input name="closingTime" type="time" value="${mockWorkspace.closingTime}" required></label><label>Taxa de entrega<input name="deliveryFee" inputmode="decimal" value="${money(mockWorkspace.deliveryFee).replace("R$ ", "").trim()}" required></label><button class="button button-primary" type="submit">Salvar horário</button></form>` : ""}<button class="button button-quiet" type="button" data-action="toggle-hours-form">${mockWorkspace.showHoursForm ? "Cancelar" : "Editar horários"}</button></section><section class="panel settings-form"><div class="panel-heading"><div><p class="eyebrow">PREFERÊNCIAS</p><h2>Canais de venda</h2></div></div><label class="check-row"><span><strong>Retirada no balcão</strong><small>Pedidos com retirada na pizzaria</small></span><input type="checkbox" checked></label><label class="check-row"><span><strong>Delivery próprio</strong><small>Entrega organizada pela equipe</small></span><input type="checkbox" checked></label><label class="check-row"><span><strong>Atendimento em mesa</strong><small>Comandas no salão</small></span><input type="checkbox" checked></label></section></div>
+      <section class="panel capability-pending"><span class="capability-pending-mark" aria-hidden="true">${iconSvg("settings")}</span><div><strong>Preferências operacionais indisponíveis</strong><p>Horários, canais e políticas de atendimento ainda não fazem parte do estado versionado do Food. Não são exibidos como se estivessem configurados.</p></div></section>
     </section>`;
   }
   
@@ -799,180 +693,24 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     </section>`;
   }
   
-  function posPage() {
-    const products = posProducts().filter(({ category }) => category === mockWorkspace.productCategory);
-    const total = mockWorkspace.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const categories = ["Pizzas", "Bebidas", "Combos", "Entradas", "Sobremesas"];
-    const shiftSummary = currentShiftSummary();
-    const isOpen = mockWorkspace.cashRegister.status === "open";
-    return `<section class="page-section">${sectionHeader("ATENDIMENTO NO BALCÃO", "Caixa (PDV)", "Registre a venda, inclua itens e selecione a forma de pagamento.", `<span class="live-indicator ${isOpen ? "" : "is-offline"}"><span></span>${isOpen ? "Caixa aberto" : "Caixa fechado"}</span>`)}
-      ${cashRegisterPanel()}
-      <div class="pos-layout"><section class="panel pos-products"><div class="pos-categories" role="tablist">${categories.map((category) => `<button class="pos-category ${mockWorkspace.productCategory === category ? "is-active" : ""}" type="button" data-action="product-category" data-category="${category}">${category}</button>`).join("")}</div><div class="product-grid">${products.map(sampleProductCard).join("")}</div></section><aside class="panel pos-cart"><div class="panel-heading"><div><p class="eyebrow">VENDA ATUAL</p><h2>Comanda balcão</h2></div><button class="text-button" type="button" data-action="clear-cart" ${mockWorkspace.cart.length ? "" : "disabled"}>Limpar</button></div><label>Cliente<input id="pos-customer" placeholder="Nome do cliente" value="${escapeHtml(mockWorkspace.posCustomer ?? "")}" ${isOpen ? "" : "disabled"}></label><div class="pos-cart-items">${mockWorkspace.cart.length ? mockWorkspace.cart.map((item, index) => `<div class="pos-cart-line"><div><strong>${item.quantity}× ${escapeHtml(item.name)}</strong><small>${money(item.price)} cada</small></div><strong>${money(item.price * item.quantity)}</strong><button type="button" class="icon-button" data-action="remove-product" data-cart-index="${index}" aria-label="Remover item">×</button></div>`).join("") : `<div class="cart-empty"><span>◌</span><p>${isOpen ? "Adicione produtos à venda." : "Abra um turno para registrar vendas."}</p></div>`}</div><div class="payment-choices">${POS_PAYMENT_METHODS.map((method) => `<button type="button" class="payment-choice ${mockWorkspace.paymentMethod === method ? "is-active" : ""}" data-action="payment-method" data-method="${method}" aria-pressed="${mockWorkspace.paymentMethod === method}" ${isOpen ? "" : "disabled"}>${method}</button>`).join("")}</div><div class="pos-total"><span>Total</span><strong>${money(total)}</strong></div><button class="button button-primary button-wide" type="button" data-action="checkout" ${!mockWorkspace.cart.length || !isOpen ? "disabled" : ""}>Finalizar venda <span>→</span></button>${!isOpen ? `<small class="pos-footnote">Abra um novo turno antes de iniciar outra venda.</small>` : ""}<small class="pos-footnote">${shiftSummary.sales.length} ${shiftSummary.sales.length === 1 ? "venda" : "vendas"} registrada(s) neste turno</small>${shiftSummary.sales.length ? `<div class="recent-sales"><strong>Vendas recentes do turno</strong>${shiftSummary.sales.slice(0, 3).map((sale) => `<div><span>${escapeHtml(sale.customer)} · ${escapeHtml(sale.method)} · ${clockTime(sale.at)}</span><b>${money(sale.totalCents)}</b></div>`).join("")}</div>` : ""}</aside></div>
-    </section>`;
-  }
-  
-  function inventoryPage() {
-    const stock = inventoryRows();
-    const categories = [...new Set(stock.map(({ group }) => group))].sort((a, b) => a.localeCompare(b, "pt-BR"));
-    const visibleIngredients = stock.filter((item) => mockWorkspace.inventoryCategory === "Todas as categorias" || item.group === mockWorkspace.inventoryCategory);
-    const low = stock.filter(({ low: isLow }) => isLow).length;
-    const totalValue = stock.reduce((sum, item) => sum + item.valueCents, 0);
-    const unitOptions = [["kg", "Quilograma"], ["L", "Litro"], ["un", "Unidade"]];
-    const categoryOptions = ["Laticínios", "Frios", "Mercearia", "Bebidas", "Hortifruti", "Embalagens", "Outros"];
-    const movementForm = mockWorkspace.showStockMovementForm ? `<form id="stock-movement-form" class="mock-inline-form stock-form"><label>Insumo<select name="ingredientId" required>${stock.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} · ${item.displayUnit}</option>`).join("")}</select></label><label>Movimento<select name="type"><option value="receipt">Entrada de compra</option><option value="adjustment">Ajuste de saldo</option></select></label><label hidden>Direção<select name="direction" disabled><option value="1">Adicionar</option><option value="-1">Retirar</option></select></label><label>Quantidade<input name="amount" type="number" min="0.001" step="0.001" required></label><label>Observação<input name="note" maxlength="160" placeholder="Ex.: compra ou conferência física"></label><button class="button button-primary" type="submit">Registrar movimento</button></form>` : "";
-    const newIngredientForm = mockWorkspace.showNewIngredientForm ? `<form id="ingredient-form" class="mock-inline-form stock-form"><label>Insumo<input name="name" maxlength="60" required></label><label>Categoria<select name="group">${categoryOptions.map((group) => `<option>${group}</option>`).join("")}</select></label><label>Unidade de controle<select name="displayUnit">${unitOptions.map(([unit, label]) => `<option value="${unit}">${label} (${unit})</option>`).join("")}</select></label><label>Saldo inicial<input name="opening" type="number" min="0" step="0.001" value="0" required></label><label>Nível mínimo<input name="minimum" type="number" min="0" step="0.001" value="0" required></label><label>Custo por unidade de controle<input name="unitCost" inputmode="decimal" placeholder="0,00" value="0,00" required></label><button class="button button-primary" type="submit">Cadastrar insumo</button></form>` : "";
-    const recent = [...snapshot.inventoryMovements].sort((a, b) => Date.parse(b.occurredAt) - Date.parse(a.occurredAt)).slice(0, 10);
-    const movementLabel = (movement) => ({ opening: "Saldo inicial", receipt: "Entrada", adjustment: "Ajuste", consumption: "Consumo da cozinha" })[movement.type];
-    return `<section class="page-section">${sectionHeader("CONTROLE DE INSUMOS", "Estoque", "Saldos são derivados das movimentações. A cozinha registra o consumo ao iniciar o preparo.", `<div class="inventory-actions"><button class="button button-quiet" type="button" data-action="toggle-new-ingredient-form">＋ Novo insumo</button><button class="button button-primary" type="button" data-action="toggle-stock-movement-form">＋ Registrar entrada</button></div>`)}
-      <div class="metrics-grid three-metrics">${statCard("Insumos cadastrados", stock.length, "Matérias-primas e bebidas", "inventory", "orange")}${statCard("Abaixo do mínimo", low, "Precisam de reposição", "attention", "gold")}${statCard("Custo estimado", money(totalValue), "Saldo atual × custo cadastrado", "value", "green")}</div>
-      ${movementForm}${newIngredientForm}
-      <section class="panel data-panel"><div class="panel-heading"><div><p class="eyebrow">INVENTÁRIO ATUAL</p><h2>Insumos</h2></div><label class="compact-select">Categoria<select id="inventory-filter"><option ${mockWorkspace.inventoryCategory === "Todas as categorias" ? "selected" : ""}>Todas as categorias</option>${categories.map((category) => `<option ${mockWorkspace.inventoryCategory === category ? "selected" : ""}>${escapeHtml(category)}</option>`).join("")}</select></label></div><div class="responsive-table"><table class="data-table"><thead><tr><th>Insumo</th><th>Categoria</th><th>Saldo</th><th>Nível mínimo</th><th>Status</th><th>Ajuste rápido</th></tr></thead><tbody>${visibleIngredients.length ? visibleIngredients.map((item) => `<tr><td><strong>${escapeHtml(item.name)}</strong></td><td>${escapeHtml(item.group)}</td><td>${stockAmountLabel(item, item.amountBase)}</td><td>${stockAmountLabel(item, item.minimumBase)}</td><td><span class="stock-status ${item.low ? "stock-low" : "stock-ok"}">${item.low ? "Baixo" : "OK"}</span></td><td><div class="stepper"><button type="button" data-action="inventory-change" data-ingredient-id="${escapeHtml(item.id)}" data-delta-base="-${item.quickAdjustBase}" aria-label="Retirar ${item.displayUnit}">−</button><button type="button" data-action="inventory-change" data-ingredient-id="${escapeHtml(item.id)}" data-delta-base="${item.quickAdjustBase}" aria-label="Adicionar ${item.displayUnit}">＋</button></div></td></tr>`).join("") : `<tr><td colspan="6">${stock.length ? "Nenhum insumo nesta categoria." : "Cadastre um insumo para começar o controle de estoque."}</td></tr>`}</tbody></table></div></section>
-      <section class="panel data-panel"><div class="panel-heading"><div><p class="eyebrow">RASTREABILIDADE</p><h2>Movimentações recentes</h2></div><span class="column-count">${recent.length}</span></div>${recent.length ? `<div class="responsive-table"><table class="data-table"><thead><tr><th>Data</th><th>Insumo</th><th>Movimento</th><th>Quantidade</th><th>Observação</th></tr></thead><tbody>${recent.map((movement) => { const ingredient = snapshot.ingredients.find(({ id }) => id === movement.ingredientId); const sign = movement.quantityBase > 0 ? "+" : "−"; return `<tr><td>${timeLabel(movement.occurredAt)}</td><td>${escapeHtml(ingredient?.name ?? "Insumo removido")}</td><td>${movementLabel(movement)}</td><td>${sign}${stockAmountLabel(ingredient, Math.abs(movement.quantityBase))}</td><td>${escapeHtml(movement.note ?? (movement.reference ? `Pedido ${orderNumber({ id: movement.reference })}` : "—"))}</td></tr>`; }).join("")}</tbody></table></div>` : `<p class="table-helper">As entradas e os consumos do KDS aparecerão aqui.</p>`}</section>
-    </section>`;
-  }
-  
-  function customerDetail(customer) {
-    if (!customer) return `<div class="customer-detail empty-customer"><span class="empty-icon">${iconSvg("customers")}</span><p>Selecione um cliente para ver o perfil.</p></div>`;
-    const activity = customerActivity(customer);
-    return `<aside class="panel customer-detail"><div class="customer-profile"><span class="customer-avatar">${escapeHtml(customer.name.split(" ").map((part) => part[0]).slice(0, 2).join(""))}</span><h2>${escapeHtml(customer.name)}</h2><p>${escapeHtml(customer.phone)}</p><span class="availability available"><span></span>Cliente ativo</span></div><div class="customer-stats"><div><small>Pedidos</small><strong>${activity.orderCount}</strong></div><div><small>Total concluído</small><strong>${money(activity.completedCents)}</strong></div></div><div class="customer-facts"><div><small>Bairro</small><strong>${escapeHtml(customer.neighborhood)}</strong></div><div><small>Último pedido</small><strong>${activity.lastOrder ? timeLabel(activity.lastOrder.createdAt) : "Ainda sem pedidos"}</strong></div><div><small>Sabor mais pedido</small><strong>${escapeHtml(activity.favoriteFlavor)}</strong></div></div><button class="button button-quiet button-wide" type="button" data-action="customer-order">Novo pedido para cliente</button></aside>`;
-  }
-  
-  function customerActivity(customer) {
-    const phone = normalizePhone(customer.phone);
-    const customerName = customer.name.normalize("NFKC").toLocaleLowerCase("pt-BR");
-    const orders = phone
-      ? snapshot.orders.filter((order) => order.status !== "cancelled" && (
-        normalizePhone(order.phone) === phone
-        || (!normalizePhone(order.phone) && order.customerName.normalize("NFKC").toLocaleLowerCase("pt-BR") === customerName)
-      ))
-      : [];
-    const completedCents = orders
-      .filter(({ status }) => status === "completed")
-      .reduce((sum, order) => sum + BigInt(order.totalCents), 0n);
-    const flavorCounts = new Map();
-    for (const order of orders) {
-      for (const item of order.items) {
-        for (const flavor of item.flavors) {
-          flavorCounts.set(flavor.id, (flavorCounts.get(flavor.id) ?? 0) + item.quantity);
-        }
-      }
-    }
-    const favoriteId = [...flavorCounts.entries()]
-      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0];
-    const latestOrder = [...orders].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0] ?? null;
-    return {
-      orderCount: orders.length,
-      completedCents: Number(completedCents),
-      lastOrder: latestOrder,
-      favoriteFlavor: snapshot.flavors.find(({ id }) => id === favoriteId)?.name ?? "Ainda sem pedidos",
-    };
-  }
-  
-  function renderCustomerResults() {
-    const list = root?.querySelector("#customer-results");
-    if (!list) return;
-    const query = mockWorkspace.customerQuery.trim().toLocaleLowerCase("pt-BR");
-    const results = mockWorkspace.customers.filter((customer) => `${customer.name} ${customer.phone} ${customer.neighborhood}`.toLocaleLowerCase("pt-BR").includes(query));
-    list.innerHTML = results.map((customer) => {
-      const activity = customerActivity(customer);
-      return `<button type="button" class="customer-row ${customer.id === mockWorkspace.selectedCustomer ? "is-selected" : ""}" data-action="select-customer" data-customer-id="${escapeHtml(customer.id)}"><span class="customer-avatar small-avatar">${escapeHtml(customer.name.split(" ").map((part) => part[0]).slice(0, 2).join(""))}</span><span><strong>${escapeHtml(customer.name)}</strong><small>${activity.orderCount} ${activity.orderCount === 1 ? "pedido" : "pedidos"} · ${escapeHtml(customer.neighborhood)}</small></span><strong>${money(activity.completedCents)}</strong></button>`;
-    }).join("") || `<p class="search-empty">Nenhum cliente encontrado.</p>`;
-  }
-  
-  function customersPage() {
-    const selected = mockWorkspace.customers.find(({ id }) => id === mockWorkspace.selectedCustomer);
-    const query = mockWorkspace.customerQuery;
-    const customerActivities = mockWorkspace.customers.map(customerActivity);
-    const recurringCustomers = customerActivities.filter(({ orderCount }) => orderCount > 1).length;
-    const recurringPercent = customerActivities.length ? Math.round(recurringCustomers / customerActivities.length * 100) : 0;
-    const completedOrders = snapshot.orders.filter(({ status }) => status === "completed");
-    const completedTotal = completedOrders.reduce((sum, order) => sum + BigInt(order.totalCents), 0n);
-    const averageTicket = completedOrders.length ? money(Number(completedTotal) / completedOrders.length) : money(0);
-    return `<section class="page-section">${sectionHeader("RELACIONAMENTO", "Clientes", "Histórico de compras, preferências e dados de contato.", `<button class="button button-primary" type="button" data-action="toggle-customer-form">＋ Novo cliente</button>`)}
-      <div class="metrics-grid three-metrics">${statCard("Clientes cadastrados", mockWorkspace.customers.length, "Base da pizzaria", "customers", "orange")}${statCard("Clientes recorrentes", `${recurringPercent}%`, `${recurringCustomers} com mais de um pedido`, "reports", "green")}${statCard("Ticket médio concluído", averageTicket, "Pedidos finalizados", "value", "blue")}</div>
-      <div class="customers-layout"><section class="panel customer-list-panel">${mockWorkspace.showCustomerForm ? `<form id="customer-form" class="mock-inline-form customer-inline-form"><label>Nome<input name="name" maxlength="80" required></label><label>Telefone<input name="phone" maxlength="32" inputmode="tel" required></label><label>Bairro<input name="neighborhood" maxlength="80" required></label><button class="button button-primary" type="submit">Salvar cliente</button></form>` : ""}<div class="customer-search"><span>⌕</span><input id="customer-search" aria-label="Buscar clientes" placeholder="Buscar cliente..." value="${escapeHtml(query)}"></div><div id="customer-results" class="customer-results"></div></section>${customerDetail(selected)}</div>
-    </section>`;
-  }
-  
-  function reportsPage() {
-    const range = mockWorkspace.reportRange;
-    const now = Date.now();
-    const inRange = (value) => {
-      if (range === "Hoje") return isToday(value);
-      const timestamp = Date.parse(value);
-      const days = range === "7 dias" ? 7 : 30;
-      return Number.isFinite(timestamp) && timestamp <= now && timestamp >= now - days * 86400000;
-    };
-    const rangeOrders = snapshot.orders.filter(({ createdAt, status }) => status !== "cancelled" && inRange(createdAt));
-    const rangeSales = mockWorkspace.sales.filter(({ at }) => inRange(at));
-    const orderValueCents = rangeOrders.reduce((sum, order) => sum + BigInt(order.totalCents), 0n);
-    const posSalesCents = rangeSales.reduce((sum, sale) => sum + BigInt(sale.totalCents), 0n);
-    const averageTicket = rangeOrders.length ? money(Number(orderValueCents) / rangeOrders.length) : money(0);
-    const hourlyOrders = Array(12).fill(0);
-    for (const order of rangeOrders) {
-      const hour = new Date(order.createdAt).getHours();
-      if (hour >= 10 && hour < 22) hourlyOrders[hour - 10] += 1;
-    }
-    const busiestHour = Math.max(1, ...hourlyOrders);
-    const heights = hourlyOrders.map((count) => count ? Math.max(8, Math.round(count / busiestHour * 100)) : 0);
-    const productCounts = new Map();
-    const addProductCount = (id, name, quantity) => {
-      if (!id || !name || !Number.isSafeInteger(quantity) || quantity < 1) return;
-      const current = productCounts.get(id);
-      productCounts.set(id, { id, name, quantity: (current?.quantity ?? 0) + quantity });
-    };
-    for (const order of rangeOrders) {
-      for (const item of order.items) {
-        for (const orderFlavor of item.flavors) {
-          const flavor = snapshot.flavors.find(({ id }) => id === orderFlavor.id);
-          addProductCount(orderFlavor.id, flavor?.name ?? orderFlavor.name, item.quantity);
-        }
-      }
-    }
-    for (const sale of rangeSales) {
-      for (const item of sale.items) {
-        if (item.id.startsWith("pizza:")) {
-          const flavorId = item.id.slice("pizza:".length);
-          const flavor = snapshot.flavors.find(({ id }) => id === flavorId);
-          if (flavor) addProductCount(flavor.id, flavor.name, item.quantity);
-        } else {
-          addProductCount(item.id, item.name, item.quantity);
-        }
-      }
-    }
-    const topProducts = [...productCounts.values()]
-      .sort((left, right) => right.quantity - left.quantity || left.name.localeCompare(right.name, "pt-BR"))
-      .slice(0, 4);
-    const topCount = topProducts[0]?.quantity ?? 0;
-    return `<section class="page-section">${sectionHeader("DESEMPENHO DA LOJA", "Relatórios", "Acompanhe os pedidos e as vendas registradas no caixa.", `<label class="compact-select"><span class="visually-hidden">Período</span><select id="report-range">${["Hoje", "7 dias", "30 dias"].map((label) => `<option ${range === label ? "selected" : ""}>${label}</option>`).join("")}</select></label>`)}
-      <div class="metrics-grid">${statCard("Valor em pedidos", money(Number(orderValueCents)), `${range} · pedidos não cancelados`, "orders", "orange")}${statCard("Vendas PDV", money(Number(posSalesCents)), `${range} · registradas no caixa`, "value", "green")}${statCard("Pedidos", rangeOrders.length, "Não inclui cancelados", "orders", "blue")}${statCard("Ticket médio", averageTicket, "Por pedido não cancelado", "reports", "gold")}</div>
-      <div class="reports-layout"><section class="panel report-chart-panel"><div class="panel-heading"><div><p class="eyebrow">PEDIDOS POR HORA</p><h2>Movimento da pizzaria</h2></div><span class="chart-total">${rangeOrders.length} ${rangeOrders.length === 1 ? "pedido" : "pedidos"}</span></div><div class="bar-chart" role="img" aria-label="Pedidos criados por hora">${heights.map((height, index) => `<div class="bar-column"><span style="height:${height}%"></span><small>${10 + index}h</small></div>`).join("")}</div></section><section class="panel top-products"><div class="panel-heading"><div><p class="eyebrow">POPULARIDADE</p><h2>Itens mais movimentados</h2></div></div>${topProducts.length ? topProducts.map(({ name, quantity }, index) => `<div class="rank-row"><span class="rank-number">${String(index + 1).padStart(2, "0")}</span><div><strong>${escapeHtml(name)}</strong><div class="rank-track"><span style="width:${Math.max(8, Math.round(quantity / topCount * 100))}%"></span></div></div><b>${quantity}</b></div>`).join("") : emptyState({ icon: iconSvg("reports"), title: "Sem itens no período", text: "Os itens aparecerão após registrar pedidos ou vendas." })}</section></div>
-    </section>`;
-  }
-  
-  function teamPage() {
-    return `<section class="page-section">${sectionHeader("PESSOAS E ACESSOS", "Equipe", "Organize funções, turnos e presença da equipe.", `<button class="button button-primary" type="button" data-action="toggle-team-form">＋ Adicionar pessoa</button>`)}
-      <div class="metrics-grid three-metrics">${statCard("Pessoas na equipe", mockWorkspace.team.length, "Membros cadastrados", "team", "orange")}${statCard("Em serviço", mockWorkspace.team.filter(({ status }) => status === "Em serviço" || status === "Online").length, "Turno atual", "ready", "green")}${statCard("Funções", "4", "Acessos organizados", "settings", "blue")}</div>
-      <section class="panel data-panel"><div class="panel-heading"><div><p class="eyebrow">TURNO DE HOJE</p><h2>Equipe da Na Garagem</h2></div><span class="live-indicator"><span></span>Turno aberto</span></div>${mockWorkspace.showTeamForm ? `<form id="team-form" class="mock-inline-form product-inline-form"><label>Nome<input name="name" maxlength="80" required></label><label>Função<select name="role"><option>Atendente</option><option>Pizzaiolo</option><option>Caixa</option><option>Entregador</option></select></label><label>Turno<input name="shift" maxlength="40" value="18h–23h" required></label><button class="button button-primary" type="submit">Adicionar à equipe</button></form>` : ""}<div class="team-grid">${mockWorkspace.team.map((member) => `<article class="team-card"><div class="team-member-head"><span class="customer-avatar">${escapeHtml(member.initials)}</span><span class="team-presence"><i></i>${escapeHtml(member.status)}</span></div><h3>${escapeHtml(member.name)}</h3><p>${escapeHtml(member.role)}</p><div class="settings-row"><span>Turno</span><strong>${escapeHtml(member.shift)}</strong></div><button class="button button-quiet button-wide" type="button" data-action="team-feedback" data-member-id="${member.id}">Ver perfil</button></article>`).join("")}</div></section>
-    </section>`;
-  }
-  
-  function overviewShortcuts() {
-    const prep = snapshot.orders.filter(({ status }) => status === "preparing").length;
-    const occupiedTableIds = new Set(snapshot.tableCommands.filter(({ closedAt }) => closedAt === null).map(({ tableId }) => tableId));
-    const deliveries = snapshot.orders.filter(({ status }) => status === "out-for-delivery").length;
-    const stock = inventoryRows();
-    const low = stock.filter(({ low: isLow }) => isLow).length;
-    const customerPreview = mockWorkspace.customers.slice(0, 2).map((customer) => {
-      const activity = customerActivity(customer);
-      const name = customer.name.split(/\s+/).slice(0, 2).join(" ");
-      const countLabel = activity.orderCount === 1 ? "pedido" : "pedidos";
-      return `<span>${escapeHtml(name)}<b>${activity.orderCount} ${countLabel}</b></span>`;
-    }).join("");
-    return `<div class="shortcut-grid">${shortcutCard("pos", "pos", "PDV / Caixa", "Atendimento rápido e intuitivo", `<div class="shortcut-products">${posProducts().filter(({ category }) => category === "Pizzas").slice(0, 3).map((product) => `<button type="button" data-action="quick-sale" data-product-id="${product.id}" ${mockWorkspace.cashRegister.status === "open" ? "" : "disabled"}><span>🍕</span>${escapeHtml(product.name)}<b>${money(product.price)}</b></button>`).join("")}</div>`)}${shortcutCard("kitchen", "kitchen", "Cozinha / KDS", "Pedidos em tempo real", `<div class="mini-status-row"><span>Recebidos <b>${snapshot.orders.filter(({ status }) => status === "received").length}</b></span><span>Em preparo <b>${prep}</b></span><span>Prontos <b>${snapshot.orders.filter(({ status }) => status === "ready").length}</b></span></div>`)}${shortcutCard("tables", "tables", "Mesas e Comandas", "Mapa visual do salão", `<div class="mini-tables">${PIZZERIA_TABLES.slice(0, 6).map((table) => `<span class="mini-table mini-${occupiedTableIds.has(table.id) ? "occupied" : "free"}">${String(table.id).padStart(2, "0")}</span>`).join("")}</div>`) }${shortcutCard("delivery", "delivery", "Delivery", "Entregas da casa", `<div class="mini-delivery"><strong>${deliveries} entregas na rua</strong><span>Rota e pedidos ativos</span></div>`)}</div>
-      <div class="shortcut-grid shortcut-grid-bottom">${shortcutCard("menu", "menu", "Cardápio", `${snapshot.flavors.length} sabores cadastrados`, `<div class="mini-list">${snapshot.flavors.slice(0, 2).map((flavor) => `<span>${escapeHtml(flavor.name)}<b>${money(flavor.pricesCents.medium)}</b></span>`).join("")}</div>`)}${shortcutCard("inventory", "inventory", "Estoque", `${low} itens precisam de atenção`, `<div class="mini-list">${stock.slice(0, 2).map((item) => `<span>${escapeHtml(item.name)}<b>${stockAmountLabel(item, item.amountBase)}</b></span>`).join("")}</div>`)}${shortcutCard("customers", "customers", "Clientes", "Relacionamento e preferências", `<div class="mini-list">${customerPreview}</div>`)}${shortcutCard("reports", "reports", "Relatórios", "Vendas e desempenho", `<div class="mini-chart">${[20, 30, 22, 42, 34, 62, 48, 78, 58, 92, 72, 100].map((h) => `<i style="height:${h}%"></i>`).join("")}</div>`) }${shortcutCard("team", "team", "Equipe", "Funções e permissões", `<div class="mini-list"><span>Carlos Silva<b>Administrador</b></span><span>Fernanda Lima<b>Atendente</b></span></div>`)}</div>`;
-  }
-  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   function render() {
     if (destroyed || !root) return;
     if (!snapshot) {
@@ -983,9 +721,10 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       root.innerHTML = shell(setupPage());
       return;
     }
-    const page = ({ overview: overviewPage, orders: ordersPage, kitchen: kitchenPage, menu: menuPage, tables: tablesPage, delivery: deliveryPage, pos: posPage, inventory: inventoryPage, customers: customersPage, reports: reportsPage, team: teamPage, settings: settingsPage })[activeView]();
+    const page = SPACE_PENDING_VIEWS.has(activeView)
+      ? renderSpaceCapabilityStatus(activeView, { labels: VIEW_LABELS, iconSvg })
+      : ({ orders: ordersPage, kitchen: kitchenPage, menu: menuPage, tables: tablesPage, delivery: deliveryPage, settings: settingsPage })[activeView]();
     root.innerHTML = shell(page);
-    if (activeView === "customers") renderCustomerResults();
     if (activeView === "orders") {
       updateDeliveryVisibility();
       updateCartTotals();
@@ -1157,13 +896,6 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       kitchenChannelFilter = target.dataset.kitchenChannel;
       render();
       root.querySelector(`[data-kitchen-channel="${kitchenChannelFilter}"]`)?.focus({ preventScroll: true });
-      return;
-    }
-    if (target.dataset.overviewFilter) {
-      if (!OVERVIEW_FILTERS.some(({ id }) => id === target.dataset.overviewFilter)) return;
-      overviewFilter = target.dataset.overviewFilter;
-      render();
-      root.querySelector(`[data-overview-filter="${overviewFilter}"]`)?.focus({ preventScroll: true });
       return;
     }
     if (target.dataset.view) {
@@ -1367,7 +1099,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       render();
       root.querySelector("#recipe-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (action === "add-recipe-line") {
-      const ingredient = snapshot.ingredients.find(({ id }) => !mockWorkspace.recipeDraftLines.some((line) => line.ingredientId === id));
+      const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => !mockWorkspace.recipeDraftLines.some((line) => line.ingredientId === id));
       if (!ingredient) return;
       mockWorkspace.recipeDraftLines.push({
         ingredientId: ingredient.id,
@@ -1601,7 +1333,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
         render();
       } else if (kind === "stock-movement-form") {
         const values = new FormData(form);
-        const ingredient = snapshot.ingredients.find(({ id }) => id === values.get("ingredientId"));
+        const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => id === values.get("ingredientId"));
         if (!ingredient) throw new TypeError("Selecione um insumo válido.");
         const amount = Number(values.get("amount"));
         const factor = ingredient.unit === "un" ? 1 : 1000;
@@ -1709,7 +1441,7 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
       directionLabel.hidden = event.target.value === "receipt";
       event.target.form.elements.direction.disabled = event.target.value === "receipt";
     } else if (event.type === "change" && event.target.name === "ingredientId" && event.target.closest("#stock-movement-form")) {
-      const ingredient = snapshot.ingredients.find(({ id }) => id === event.target.value);
+      const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => id === event.target.value);
       const amount = event.target.form.elements.amount;
       amount.step = ingredient?.unit === "un" ? "1" : "0.001";
       amount.min = amount.step;

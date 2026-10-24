@@ -7,6 +7,8 @@ import { createSeedFoodState } from "../fixtures/mock-data.mjs";
 import { FOOD_DATA_PORT_SCHEMA } from "../ports/food-data-port.mjs";
 
 const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/1";
+const LEGACY_INVENTORY_ARCHIVE_SCHEMA = "ordax.food-pizzeria.preview-legacy-inventory/1";
+const LEGACY_FOOD_STATE_V3 = "ordax.food-pizzeria-state/3";
 const BUSINESS_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const MAX_STATE_BYTES = 5 * 1024 * 1024;
 const MAX_RECORDED_COMMANDS = 1000;
@@ -20,7 +22,19 @@ function serializedBytes(value) {
   return new TextEncoder().encode(value).byteLength;
 }
 
-function decodeStoredValue(raw) {
+function legacyInventoryArchive(state, businessId) {
+  if (state?.schema !== LEGACY_FOOD_STATE_V3) return null;
+  return {
+    schema: LEGACY_INVENTORY_ARCHIVE_SCHEMA,
+    businessId,
+    sourceRevision: state.revision,
+    archivedAt: new Date().toISOString(),
+    ingredients: state.ingredients,
+    movements: state.inventoryMovements,
+  };
+}
+
+function decodeStoredValue(raw, businessId) {
   if (serializedBytes(raw) > MAX_STATE_BYTES) throw new RangeError("Os dados locais da pizzaria excedem o limite seguro.");
   let parsed;
   try {
@@ -38,6 +52,7 @@ function decodeStoredValue(raw) {
     return {
       state: validateFoodPizzeriaState(migrateFoodPizzeriaState(parsed.state)),
       processedCommandIds: [...new Set(parsed.processedCommandIds)],
+      legacyInventoryArchive: legacyInventoryArchive(parsed.state, businessId),
     };
   }
 
@@ -45,6 +60,7 @@ function decodeStoredValue(raw) {
   return {
     state: validateFoodPizzeriaState(migrateFoodPizzeriaState(parsed)),
     processedCommandIds: [],
+    legacyInventoryArchive: legacyInventoryArchive(parsed, businessId),
   };
 }
 
@@ -73,6 +89,7 @@ export function createBrowserLocalFoodStore({
   }
 
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  const legacyArchiveKey = `${key}.legacy-inventory-v3`;
   const lock = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
   const context = Object.freeze({ businessId, adapter: "browser-local-preview" });
   let snapshot = null;
@@ -87,12 +104,21 @@ export function createBrowserLocalFoodStore({
 
   function readPersisted() {
     const raw = storage.getItem(key);
-    if (raw !== null) return decodeStoredValue(raw);
+    if (raw !== null) return decodeStoredValue(raw, businessId);
     if (businessId === "preview-na-garagem") {
       const legacy = storage.getItem(LEGACY_KEY);
-      if (legacy !== null) return decodeStoredValue(legacy);
+      if (legacy !== null) return decodeStoredValue(legacy, businessId);
     }
     return null;
+  }
+
+  function archiveLegacyInventory(archive) {
+    if (!archive || storage.getItem(legacyArchiveKey) !== null) return;
+    const serialized = JSON.stringify(archive);
+    if (serializedBytes(serialized) > MAX_STATE_BYTES) {
+      throw new RangeError("O arquivo local do estoque antigo excede o limite seguro; os dados originais foram preservados.");
+    }
+    storage.setItem(legacyArchiveKey, serialized);
   }
 
   function writePersisted(state, commandIds) {
@@ -108,7 +134,7 @@ export function createBrowserLocalFoodStore({
   const onStorage = (event) => {
     if (!initialized || destroyed || event.key !== key || event.newValue === null) return;
     try {
-      const next = decodeStoredValue(event.newValue);
+      const next = decodeStoredValue(event.newValue, businessId);
       if (next.state.revision < snapshot.revision) return;
       if (next.state.revision === snapshot.revision && JSON.stringify(next.state) !== JSON.stringify(snapshot)) {
         throw new Error("A mesma revisão local apresenta dados diferentes.");
@@ -133,6 +159,7 @@ export function createBrowserLocalFoodStore({
         if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
         const persisted = readPersisted();
         if (persisted) {
+          archiveLegacyInventory(persisted.legacyInventoryArchive);
           snapshot = persisted.state;
           processedCommandIds = persisted.processedCommandIds;
         } else {

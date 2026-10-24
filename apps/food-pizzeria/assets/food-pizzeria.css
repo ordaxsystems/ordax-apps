@@ -873,11 +873,26 @@ dialog p { color: #a2a8af; }
 .recipe-editor-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; }
 .recipe-editor-actions > span { flex: 1 1 260px; color: #8f969e; font-size: 9px; }
 .recipe-editor, .recipe-editor .panel-heading h2 { color: #f2f3f4; }
+.preview-context { display: grid; gap: 3px; padding: 7px 10px; border: 1px solid #34383e; border-radius: 9px; background: #191c20; }
+.preview-context strong { color: #f2f3f4; font-size: 9px; font-weight: 700; }
+.preview-context small { color: #a2a8af; font-size: 8px; }
+.capability-pending-page { min-height: 65vh; }
+.capability-pending { display: flex; align-items: flex-start; gap: 14px; max-width: 900px; padding: 22px; }
+.capability-pending-mark { display: grid; flex: 0 0 38px; width: 38px; height: 38px; place-items: center; border-radius: 11px; background: #2b211b; color: #ff783a; }
+.capability-pending-mark .ui-icon { width: 20px; height: 20px; }
+.capability-pending > div { display: grid; gap: 7px; }
+.capability-pending strong { color: #f2f3f4; font-size: 13px; }
+.capability-pending p, .capability-pending small, .recipe-preview-note { margin: 0; color: #a2a8af; font-size: 10px; line-height: 1.65; }
+.capability-pending small { color: #7f8790; }
+.recipe-preview-note { padding: 10px 12px; border: 1px solid #403226; border-radius: 8px; background: #241d17; color: #d0ab7d; }
 .inventory-actions .button { min-height: 37px; }
 @media (max-width: 900px) {
   .recipe-line { grid-template-columns: minmax(150px, 1.3fr) repeat(3, minmax(74px, .7fr)) 30px; gap: 6px; padding: 8px; }
 }
 @media (max-width: 680px) {
+  .preview-context { padding: 6px 8px; }
+  .preview-context small { max-width: 110px; }
+  .capability-pending { padding: 15px; }
   .inventory-actions { width: 100%; }
   .inventory-actions .button { flex: 1 1 150px; }
   .stock-form { grid-template-columns: 1fr; margin: 10px; }
