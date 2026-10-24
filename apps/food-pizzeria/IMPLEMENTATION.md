@@ -90,10 +90,12 @@ Arquivo `tests/configurable-operations.test.mjs`:
 - tamanhos configuráveis, preço médio/maior preço, limite de sabores e rótulo histórico;
 - capacidade de mesa, associação obrigatória ao salão e separação do balcão;
 - rejeição de diminuição de lugares abaixo de ocupantes em comanda aberta (tanto na operação quanto na validação do snapshot), preservando histórico de comandas encerradas.
+- rejeição de períodos sobrepostos entre comandas históricas da mesma mesa, inclusive abertura retroativa após outra comanda encerrada; reabertura no exato limite de horário é permitida.
 
 Arquivo `tests/local-store-persistence.test.mjs`:
 
 - persistência após reabrir o adapter local;
 - replay exato não duplica transição e gravação com revisão antiga é rejeitada.
+- comando idempotente sem alteração de estado (por exemplo, sabor já disponível) persiste o digest do comando e mantém a revisão, sem aceitar replay adulterado; reabertura mantém o histórico.
 
 Na revisão anterior, `node --test apps/food-pizzeria/tests/*.test.mjs` tinha 8 testes aprovados e `node --check` validou 20 módulos JavaScript. A execução atual é comprovada pelo job `Prove Food preview boundaries and safe local replay` do workflow Foundation, que executa os testes e a checagem de sintaxe após cada push. O verificador geral `tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown` também rodou; reportou 20 alvos, 2 bloqueados, 18 entradas não assinadas e zero instalações públicas verificadas. O teste visual e as provas cross-app reais ainda dependem dos contratos/providers listados acima.
