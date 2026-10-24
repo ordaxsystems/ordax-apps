@@ -156,7 +156,7 @@ PR #268 segue draft, sem main/release/cutover e sem tocar no Grátis/USB.
 ## P1 — Fonte própria do aplicativo concluída
 
 - [PR #273](https://github.com/ordaxsystems/ordax-apps/pull/273) integrada na branch de desenvolvimento no commit `c3d2f393945ba7c37a2acfc8e4d2490abd6ab12e`.
-- O código Electron do Lab é versionado em `prototypes/ordax-orchestrator/product/`. `npm start` usa **essa fonte própria**, não a árvore `workspace/` gerada pelo overlay.
+- O código do Lab é versionado em `prototypes/ordax-orchestrator/product/`, não na árvore `workspace/` gerada pelo overlay. Desde a alpha.19, `npm start` inicia o Host Node no navegador; o desktop Electron usa a entrada explícita `npm run start:electron`.
 - 47 arquivos rastreados no manifesto inicial, incluindo 12 arquivos de teste. O supervisor tem **uma única implementação** em `product/supervisor/`.
 - `src/relay/`, `apps/flow-client/`, `apps/flow-hub/` e migrações centrais não foram importados. Identidade do Grátis, conta, dados e perfis preservados.
 - CI Linux com **78 testes do produto direto aprovados**, e snapshot original/113 testes ainda auditável.

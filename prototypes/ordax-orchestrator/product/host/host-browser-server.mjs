@@ -19,8 +19,8 @@ const STATIC_FILES = new Map([
   ['/src/supervisor-role-presets.mjs',['src/supervisor-role-presets.mjs','text/javascript; charset=utf-8']]
 ]);
 
-// Presentation transport only. All operations still execute the registered
-// Electron handlers, which retain the OrchestratorService and Store SSOT.
+// Loopback presentation transport. Operations are routed to the canonical
+// Store-backed handlers, shared by the Node host and Electron shell.
 export const HOST_BROWSER_METHODS = Object.freeze({
   coordinatorChatStatus:['ordax:orchestrator:chat-status',()=>[]],
   coordinatorChatEnable:['ordax:orchestrator:chat-enable',a=>[a[0]]],

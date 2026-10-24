@@ -18,10 +18,10 @@ async function setDirectModeVisible(visible) {
 }
 function applyHostProviderLimit() {
   if (window.ordaxHost?.hostMode !== true) return false;
-  $('#providerText').textContent = 'ChatGPT • login indisponível no host';
-  $('#providerDetail').textContent = 'Esta aba não autentica nem compartilha a sessão com o executor Electron.';
+  $('#providerText').textContent = 'ChatGPT indisponível no Host';
+  $('#providerDetail').textContent = 'Esta página ainda não tem um transporte suportado do ChatGPT Web.';
   const sessionNote=$('.session-persistence-note');
-  if(sessionNote)sessionNote.textContent='Esta visualização e o executor Electron não compartilham uma sessão do ChatGPT.';
+  if(sessionNote)sessionNote.textContent='O ChatGPT Web ainda não está conectado ao Host. O chat Groq não abre conversas no ChatGPT.';
   $('#login').hidden = true;
   $('#providerDot').className = 'dot error';
   $('#directMode').hidden = true;
@@ -729,7 +729,7 @@ window.matchMedia('(min-width:1181px)').addEventListener('change', event => {
 $('#composerLogin').addEventListener('click', () => $('#login').click());
 $('#login').addEventListener('click', async () => {
   if (applyHostProviderLimit()) {
-    $('#orchestrationNotice').textContent = 'Este host não pode autenticar nem compartilhar a sessão do GPT com o executor Electron. Nenhuma mensagem foi enviada. O login precisa de uma integração de sessão suportada.';
+    $('#orchestrationNotice').textContent = 'O transporte suportado do ChatGPT Web não está disponível nesta página. Nenhuma mensagem foi enviada.';
     return;
   }
   const button = $('#login');
@@ -1020,17 +1020,28 @@ const labKeySave=document.getElementById('labSupervisorKeySave');
 const labKeyRemove=document.getElementById('labSupervisorKeyRemove');
 const labKeyState=document.getElementById('labSupervisorKeyState');
 let labStatus=await window.ordax.supervisorStatus().catch(()=>({enabled:false,configured:false,secureStorageAvailable:false}));
+const canConfigureLabKey=()=>labStatus.secureStorageAvailable===true||labStatus.hostEphemeralSecret===true;
 function showSupervisorStatus() {
-  document.getElementById('labVersion').textContent=labStatus.version
-    ? 'OrdaX Orchestrator Lab v'+labStatus.version : 'Versão do Lab indisponível';
+  document.getElementById('brandMode').textContent=labStatus.environment==='node_host'
+    ? 'Orchestrator • Host Node de desenvolvimento'
+    : 'Orchestrator Lab • aplicativo desktop';
+  document.getElementById('labVersion').textContent=labStatus.environment==='node_host'
+    ? 'OrdaX Orchestrator • Host Node (desenvolvimento)'
+    : labStatus.version?'OrdaX Orchestrator Lab v'+labStatus.version:'Versão do Lab indisponível';
   labState.textContent=labStatus.enabled
     ? 'Supervisor habilitado no ambiente Dev: cada mensagem proposta exige aprovação.'
     : 'Supervisor desativado. A configuração da chave não inicia comandos nem faz chamadas à API.';
   labPlanButton.disabled=!labStatus.enabled;
-  const available=labStatus.secureStorageAvailable===true;
+  const available=canConfigureLabKey();
   labKeySave.disabled=!available;
+  labKeySave.textContent=labStatus.hostEphemeralSecret===true?'Usar chave neste host':'Salvar chave no Windows';
   labKeyRemove.disabled=!labStatus.keySaved;
-  labKeyState.textContent=!available
+  labKeyRemove.textContent=labStatus.hostEphemeralSecret===true?'Remover da memória':'Remover chave';
+  labKeyState.textContent=labStatus.hostEphemeralSecret===true
+    ? labStatus.configured
+      ? 'Chave disponível somente na memória deste host. Ela será removida quando o host encerrar.'
+      : 'O host não persiste a chave. Ao configurar, ela fica somente na memória até o host encerrar.'
+    : !available
     ? 'Proteção local do Windows indisponível: a chave não será armazenada.'
     : labStatus.keySaved
       ? 'Chave Groq salva e protegida localmente; conexão ainda não testada.'
@@ -1052,7 +1063,7 @@ labKeyForm.addEventListener('submit',async event=>{
     labKeyState.textContent=error?.message?.includes('supervisor_key_invalid_format')
       ? 'Formato inválido. Use uma chave Groq iniciada por gsk_.'
       : 'Não foi possível proteger a chave neste dispositivo.';
-  }finally{labKeySave.disabled=labStatus.secureStorageAvailable!==true;}
+  }finally{labKeySave.disabled=!canConfigureLabKey();}
 });
 labKeyRemove.addEventListener('click',async()=>{
   labKeyRemove.disabled=true;

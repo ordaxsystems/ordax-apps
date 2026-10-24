@@ -11,8 +11,8 @@ import { safeHistoricalThreadFailure } from '../src/provider-observation-policy.
 import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
-import { OrchestratorService } from '../src/orchestrator-service.mjs';
-import { createOrchestratorMcp } from '../src/orchestrator-mcp.mjs';
+import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
+import { createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
@@ -37,7 +37,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const hostBrowserMode=!app.isPackaged&&(process.env.ORDAX_HOST_BROWSER_UI==='1'||process.argv.includes('--host-browser'));
 let createHostBrowserServer=null;
-if(hostBrowserMode)({createHostBrowserServer} = await import('./host-browser-server.mjs'));
+if(hostBrowserMode)({createHostBrowserServer} = await import('../host/host-browser-server.mjs'));
 const hostStartupLog=stage=>{
   if(!hostBrowserMode||process.env.ORDAX_HOST_BROWSER_DEBUG!=='1')return;
   const line=JSON.stringify({stage,at:new Date().toISOString()})+'\n';
@@ -460,26 +460,9 @@ ipcMain.on('ordax:worker:stream', (event, snapshot) => {
   emitRendererEvent('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, source:'beta', ...delta, mirrorAt, runStartedAt:liveRun.startedAt });
 });
 
-registerUiHandler('ordax:workspace:get', () => store.getWorkspaceSession());
-registerUiHandler('ordax:tasks:list', () => {
-  const bindings=new Map(store.db.prepare('SELECT * FROM lab_task_bindings').all().map(row=>[row.task_id,row]));
-  return store.listTasks().map(task=>({...task,lab_binding:bindings.get(task.id)||null}));
-});
-registerUiHandler('ordax:tasks:create', (_event, title) => decorateTask(store.createTask(String(title || 'Nova tarefa'))));
-registerUiHandler('ordax:tasks:get', (_event, id) => getTaskView(id));
-registerUiHandler('ordax:tasks:messages:page', (_event, { taskId, before }) => {
-  if (!store.getTaskExecutionSnapshot(String(taskId))) throw new Error('task_not_found');
-  const page = store.messagesPage(String(taskId), { before });
-  return { ...page, messages:decorateMessages(page.messages) };
-});
-registerUiHandler('ordax:tasks:rename', (_event, { taskId, title }) => {
-  store.renameTask(String(taskId), title);
-  return getTaskView(taskId);
-});
-registerUiHandler('ordax:tasks:draft:set', (_event, { taskId, content, revision }) =>
-  store.setDraft(String(taskId), content, revision));
-registerUiHandler('ordax:tasks:open', async (_event, id) => {
-  const task = getTaskView(id);
+const sharedTaskHandlers=createTaskUiHandlers({
+  store,decorateTask,decorateMessages,getTaskView,isRunActive:()=>Boolean(liveRun),
+  onOpenTask:async task=>{
   if (chatVisible && task?.chat_url) {
     try {
       const navigation = await worker.showConversation(task.chat_url);
@@ -495,7 +478,9 @@ registerUiHandler('ordax:tasks:open', async (_event, id) => {
     }
   }
   return task;
+  }
 });
+for(const [channel,handler] of sharedTaskHandlers)registerUiHandler(channel,handler);
 // A first-party OrdaX App action, not the ChatGPT direct-mode UI.
 // Historical inspection never sends messages or changes the SQLite ledger.
 registerUiHandler('ordax:tasks:inspect-linked-thread', async (event, requestedId) => {
@@ -557,28 +542,6 @@ registerUiHandler('ordax:tasks:inspect-linked-thread', async (event, requestedId
     responseCandidate:assessment.responseCandidate===true,
     requiresReconciliation:assessment.requiresReconciliation===true
   };
-});
-registerUiHandler('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
-registerUiHandler('ordax:tasks:rotate-conversation', (_event, id) => {
-  if (liveRun) throw new Error('conversation_rotation_during_run');
-  store.rotateConversation(String(id), 'manual_ui');
-  return getTaskView(id);
-});
-registerUiHandler('ordax:tasks:memory:upsert', (_event, { taskId, item }) => {
-  store.upsertProjectMemory(String(taskId), { ...(item || {}), source_type:'manual' });
-  return getTaskView(taskId);
-});
-registerUiHandler('ordax:tasks:memory:archive', (_event, { taskId, memoryId }) => {
-  store.archiveProjectMemory(String(taskId), String(memoryId));
-  return getTaskView(taskId);
-});
-registerUiHandler('ordax:tasks:memory:candidates:scan', (_event, taskId) => {
-  store.memoryCandidates.scan(String(taskId));
-  return getTaskView(taskId);
-});
-registerUiHandler('ordax:tasks:memory:candidates:review', (_event, { taskId, candidateId, action, changes }) => {
-  store.memoryCandidates.review(String(taskId), String(candidateId), String(action), changes || {});
-  return getTaskView(taskId);
 });
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
@@ -706,11 +669,13 @@ async function confirmInActiveUi({title,message,detail,approveLabel='Confirmar',
 
 // One App service for native UI and the MCP adapter. The fixed identity is
 // local-only; it is NOT exported as authentication for a remote MCP endpoint.
-const localOrchestratorContext=Object.freeze({actorId:'lab-owner',clientId:'lab-ui',
-  workspaceSessionId:store.getWorkspaceSession().id});
+let localOrchestratorContext=null;
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
-const orchestratorService=new OrchestratorService({
+const orchestratorKernel=createOrchestratorKernel({
+  store,version:app.getVersion(),
+  authorize:({context,operation})=>context===localOrchestratorContext||
+    runtimeOrchestratorBridge?.allows(context,operation)===true,
   confirmProposalSend:async({title,content})=>confirmInActiveUi({
     title:'Confirmar primeiro envio ao ChatGPT',message:title,
     detail:'Mensagem exata a enviar:\n\n'+content+'\n\nSerá enviada uma única mensagem pelo executor do App. Uma resposta observada não comprova alterações em arquivos ou outros efeitos.',
@@ -721,8 +686,6 @@ const orchestratorService=new OrchestratorService({
     detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+'\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
     approveLabel:'Criar frente com rascunho'
   }),
-  store,authorize:({context,operation})=>context===localOrchestratorContext||
-    runtimeOrchestratorBridge?.allows(context,operation)===true,
   provider:{busy:()=>Boolean(liveRun||worker?.active),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
     send:async({taskId,content,draftRevision})=>
@@ -730,6 +693,8 @@ const orchestratorService=new OrchestratorService({
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})
 });
+localOrchestratorContext=orchestratorKernel.context;
+const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
 orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
 // A Runtime launcher must supply the first bootstrap AFTER canonical owner
@@ -744,8 +709,6 @@ if(runtimeTransportRequest) {
   const detach=attachOrchestratorRuntimePipes({...streams,bridge:runtimeOrchestratorBridge});
   closeRuntimeOrchestratorPipe=()=>{detach();streams.close();};
 }
-const localOrchestratorMcp=createOrchestratorMcp({service:orchestratorService,
-  getContext:()=>localOrchestratorContext,version:app.getVersion()});
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const result=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});

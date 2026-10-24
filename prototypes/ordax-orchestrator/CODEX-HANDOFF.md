@@ -4,28 +4,29 @@
 coordena o projeto e conversa com GPT. GPT/ChatGPT Web com OrdaX MCP é o caminho
 principal desejado; Groq/API pode assumir quando GPT comprovadamente parar. Esse
 monitoramento, handoff automático e continuidade 24h ainda não existem. A versão
-`0.2.0-alpha.18` já tem entrada transacional de missão, persistência do rascunho,
-proteção contra replay de envio incerto e detecção de conclusão visível do GPT.
-Os testes de produto não enviam mensagens reais ao provedor nem provam leitura GitHub.
+`0.2.0-alpha.19` em desenvolvimento adiciona um host Node real para a mesma UI,
+serviços e Store, sem iniciar Electron. Isso torna a interface visível no navegador,
+mas ainda não conecta o executor GPT, o Runtime workspace ou GitHub ao Host.
 
-**Ordem atual:** provar primeiro R0 remoto: o App encaminha uma URL canônica e a
-tarefa GPT deve usar uma integração GitHub realmente autorizada na sessão. URL no
-prompt ou texto do GPT não prova leitura remota. O App não dá acesso próprio ao
-GitHub, e Groq não recebe conteúdo do repositório. Workspace local via Runtime fica
-depois dos grants e do port autenticado dos owners; não criar outro OAuth/token
-store nem acessar filesystem por fora do Runtime.
+**Ordem atual:** validar o Host Node como superfície de desenvolvimento e fechar
+o transporte suportado de modelo antes de declarar fluxo remoto funcional. O Host
+não autentica nem envia mensagens ao ChatGPT Web; o executor existente pertence ao
+shell Electron. O App não tem acesso próprio ao GitHub; a API recebe somente a URL
+do projeto e não lê conteúdo remoto. Workspace local, Git e escrita continuam no
+owner Runtime, com grants Platform. Não adicionar OAuth/token store, filesystem,
+Git, shell, fila ou executor paralelo dentro do Lab.
 
 **Objetivo de produto:** manter projetos e missões avançando sem depender de um turno ou da janela do ChatGPT. Para autonomia contínua, GPT deve ser o provedor principal autorizado pelo OrdaX Intelligence; Groq pode atuar como alternativa pelo mesmo Model Router e com o mesmo checkpoint. OrdaX MCP/Runtime continuam sendo o caminho de ferramentas e efeitos autorizados. A interface ChatGPT Web existente é uma superfície interativa, não um supervisor headless de 24 horas.
 
-**Ordem de implementação vigente:** cumprir primeiro R0 remoto — URL GitHub como referência, conversa de coordenação existente e tarefa GPT pelo executor existente, com evidência da integração GitHub real. O workspace local vem depois dos grants e do port autenticado dos owners Runtime/Platform. A composição de 24 horas é uma fase posterior, pois o Scheduler/Background Runtime do OS e o provider externo ainda estão desativados em `main`; não duplicar fila, banco, scheduler ou roteador no App.
+**Ordem de implementação vigente:** (1) Host visual/Store compartilhados e recuperação; (2) transporte de modelo suportado para coordenar e iniciar conversas sem simular GPT; (3) GitHub remoto somente pela integração autenticada real; (4) workspace local após port e grants Runtime/Platform; (5) serviço durável 24 h no owner Scheduler/Background Runtime. Groq direto é apenas uma chamada consultiva de desenvolvimento e não substitui Model Router, GPT MCP, Runtime, fila nem executor.
 
-**Base Apps `main` atualizada em 2026-10-24:** `0.2.0-alpha.18`, commit `fc299a03a099315ceb2101d2079bc2076665e808` (PR #346). A PR corrigiu os estados de navegação da tarefa e a projeção da presença de rascunho. O host de desenvolvimento serve a UI atual em loopback e reusa o mesmo serviço/Store; não é incluído no pacote Windows. No perfil VESTE isolado da alpha.17, criação da frente, rascunho e recuperação após reload foram comprovados. Isso não provou leitura GitHub nem criação/validação de site. O host não compartilha a sessão ChatGPT do executor e bloqueia envios. Workspace, snapshot e Git seguem sem port Runtime e grants Platform ativos conectados ao App. Não duplicar esses serviços no App. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de authority.
+**Bases remotas verificadas em 2026-10-24:** Apps `main` `5d033e4948d9b3f5da56e94dd7dfe242f34106c3`; Runtime `main` `d12f28da36f6520b5118691d92729fcef801c804`; Platform `main` `3ae5d914df03f8f6a677ddd18cf3337cd0bcb89a`. O candidato alpha.19 muda apenas Apps e permanece nesta branch até PR/CI. No host `.host-profile`, a UI criou VESTE, guardou missão e rascunho, e recuperou os mesmos registros depois de reload. Uma chamada real Groq foi persistida como `uncertain` sem resposta; não reenviar automaticamente. Não foram criados arquivos, site nem testes do VESTE. GitHub não foi vinculado nem lido. **Este arquivo é handoff operacional**, não comando de execução automática nem concessão de autoridade.
 
 **Incremento alpha.14 integrado pela PR #335:** a entrada `mission_create` compõe projeto, coordenador e primeira conversa/rascunho em uma transação no Store já existente; a UI envia pelo executor ChatGPT quando a sessão está pronta e mantém o rascunho quando não está. `project_rename` atualiza metadados sob o escopo de sessão. Os quatro checks de CI passaram no head `52c4cef49263de6f770a956abf7e4c2ad69a91bb`; o E2E executou o `.exe` portátil em perfil descartável e validou o fluxo App→Runtime host de teste. A sessão GPT não foi usada e nenhum provedor recebeu mensagem. Isso não comprova resposta final do GPT, uso da integração GitHub, artefato em disco/site validado ou autonomia 24h.
 
-**Bases remotas conferidas em 2026-10-24:** Apps `main` `fc299a03a099315ceb2101d2079bc2076665e808`; Runtime `main` `af5b3a306aba0381babd4f608d3accde98f3dd64`; Platform `main` `3ae5d914df03f8f6a677ddd18cf3337cd0bcb89a`; OS `main` `1192ae95b3c5a7504b09e6de043bd2c0529ba479` (PR #2210 extraiu o consumidor Go do Creator para sua origem independente fixada; o diff não altera Scheduler nem Background Runtime). Runtime #208/#205 estão fechadas sem merge e não há PR Runtime aberta. Platform #277 fornece handlers-fonte sobre a proposta SQL #276 não aplicada; #286 integrou um canal de wake não autoritativo, mas o rollout segue explicitamente desligado e não há consumidor Runtime integrado. Platform #274 segue draft e #181/#182 continuam abertas. Não há grant/workspace live no App nem continuidade MCP ativa. Antes de cada incremento, conferir main, Git status e CI; não assumir SHA antigo como HEAD.
+**Registro histórico de integração (não é baseline atual):** a alpha.18 e seu E2E antecedem a main Apps `5d033e4` registrada acima. A situação das PRs e contratos de Runtime/Platform descrita em revisões anteriores precisa ser revalidada nas respectivas `main`; não usar os hashes antigos de Apps `fc299a0` ou Runtime `af5b3a3` como HEAD atual.
 
-**Evidência VESTE e validação da alpha.18 em 2026-10-24:** o E2E visual da alpha.17 confirmou a conversa “Catálogo inicial VESTE” e a recuperação do rascunho após reload. A alpha.18 corrigiu o rótulo enganoso “Pronta” usando apenas a presença booleana do rascunho na lista. Antes da PR #346, `npm test -- --test-concurrency=4 --test-timeout=90000 --test-reporter=spec` passou 423/423; `npm run check`, verificação de versão e testes focados do host também passaram. Os workflows Windows/Linux da PR #346 passaram. A reabertura visual da alpha.18 nesta máquina não foi possível: o Electron encerrou antes de abrir o listener do host, em `install_dir_access.cc`, devido ao ACL herdado pelo runtime Chromium do ambiente Windows/Codex. O checkout, a instalação principal e o perfil principal não foram alterados; tentativas com runtimes temporários isolados também não abriram o host. Nenhum provedor recebeu a missão. A alpha.18 está integrada em `main`, mas ainda não há prova visual dessa versão.
+**Evidência histórica da alpha.18:** o E2E da alpha.17 confirmou o rascunho VESTE após reload e a alpha.18 corrigiu seu rótulo de navegação. Antes da PR #346, a suíte tinha passado 423/423 e os workflows Windows/Linux passaram. Na revisão anterior, a alpha.18 não foi aberta visualmente nesta máquina por falha do runtime Electron; a verificação visual do host Node registrada acima é separada e não valida a alpha.18 nem o fluxo GPT/GitHub.
 **Produto:** `prototypes/ordax-orchestrator/product/`, fonte própria. **Base Flow/Grátis** `ordax-flow@081a7ce989721106aaf27a0c9d09cf9d49713a65` imutável; não modificar dados/perfil do Grátis.
 **Bibliografia obrigatória na ordem:**
 1. `/AGENTS.md`, `/URGENTE-ROADMAP-ORDAX-APPS.md`, `/HANDOFF.md`, `/README.md`.
@@ -34,17 +35,17 @@ store nem acessar filesystem por fora do Runtime.
 4. [Roteiro VESTE](docs/VESTE-PROJECT-FIRST-E2E.md).
 5. `docs/audits/ORCHESTRATOR-AUTOCONTINUATION-ALPHA10-2026-10-21.md`, `docs/audits/ORCHESTRATOR-RUNTIME-HOST-2026-10-21.md`, `docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md` (evidências **históricas**, não estados novos).
 
-## Próximo ciclo — fechar R0 remoto
+## Próximo ciclo — fluxo real usando a página Host
 
-O baseline M0 e a entrada única de missão já estão registrados e integrados. Continue pelo R0 remoto com evidência real; não tente construir M1–M7 num único PR. M1 local só pode começar quando o grant e o port autenticados estiverem disponíveis e verificados.
+A UI Node loopback é a entrada padrão de desenvolvimento; Electron fica explícito e fora do fluxo normal. Isso muda a superfície de trabalho, não cria transporte GPT, acesso GitHub, Runtime workspace nem worker 24 h. Continue em incrementos pequenos; não simule essas capabilities no Host.
 
-1. **Reconciliar estado:** `git status --short --branch`, `git log -5 --oneline`, `git remote -v`, Apps PR #335/CI atuais e PRs de owner #208/#205/#274/#181/#182. Criar branch isolada se outro trabalho estiver em andamento. **Não force push**, não sobrescrever mudanças locais ou sessão GPT existente.
-2. **Checar o caminho R0:** confirmar que a URL é somente uma referência, que Groq não recebe conteúdo GitHub e que a tarefa GPT declara bloqueio quando a integração GitHub não está disponível. Um URL no prompt não é prova de leitura. Não criar OAuth/token store/conector paralelo.
-3. **Atualizar a matriz M0:** registrar commits `main` dos quatro owners (Apps, Runtime, Platform e OS), capacidade observada, lacuna, owner e gate. Não manter contagens ou commits históricos como estado atual.
-4. **M1 local apenas após autorização real:** usar o port de workspace do Runtime e resource grant do Platform; a App guarda referência opaca e estado tipado. Nunca usar `fs`, `child_process`, string raw path ou shell no Orchestrator como substituição do port.
-5. **24h sem duplicação:** antes de codificar worker, reconciliar Runtime `OrchestratorStore` com OS Scheduler/Background Runtime e OS Intelligence. Fixar um owner para cada fila/lease e exigir provider externo autorizado pelo Model Router. Timer no Electron, Groq direto e automação de UI do ChatGPT Web não satisfazem esse gate.
-6. **Testes:** R0 com evidência remota autorizada; depois fixtures de escopo, symlink/junction traversal, grant vencido, offline, reabertura e snapshot/diff; E2E VESTE só com executor e grants reais. Teste App Windows empacotado em perfil isolado depois de testes de código.
-7. **Fechamento:** registrar diff/commits, CI Linux/Windows, estado real do dispositivo, capabilities ainda não disponíveis e próximo passo; atualizar docs sem declarar projeto VESTE pronto. Preservar PR draft e instalação anterior.
+1. **Preservar a sessão atual:** `npm start` deve abrir a página Host e usar `.host-profile`; não reiniciar o processo se a chave Groq de teste só estiver na memória. Não usar `npm run start:electron` para os testes de produto via navegador.
+2. **Reconciliar owners na `main` antes do próximo port:** confirmar commits e contratos vigentes de Apps, Runtime, Platform e OS. Mapear o transporte suportado App→GPT/Model Router e a integração autenticada GitHub existente. O plugin OrdaX MCP é GPT→Runtime; não equivale a um transporte App→GPT nem App→GitHub.
+3. **R0 remoto:** ler somente o repositório vinculado por integração autenticada real; a URL no prompt ou a resposta do modelo não prova leitura. Não criar OAuth, token store, conector GitHub nem executor dentro do Lab.
+4. **M1 local só depois do owner real:** usar workspace port do Runtime e resource grant do Platform; o App guarda referência opaca e estado tipado. Nunca usar `fs`, `child_process`, caminho raw ou shell no Orchestrator como substituto.
+5. **24 h sem duplicação:** reconciliar Runtime `OrchestratorStore` com OS Scheduler/Background Runtime e OS Intelligence; fixar um owner para fila/lease e usar provedor autorizado pelo Model Router. Timer de UI, Groq direto e automação de UI do ChatGPT Web não satisfazem esse gate.
+6. **Aceite VESTE:** executar o E2E somente quando houver transport e grants reais; exigir arquivos/diff/exit codes/snapshot e navegador executando. Até lá, manter estado como bloqueado, sem declarar loja ou testes do site concluídos.
+7. **Fechamento:** registrar diff/commits, CI Linux/Windows, capabilities indisponíveis e próximo gate. Atualizar docs sem declarar VESTE pronto; preservar a instalação anterior e não alterar main diretamente.
 
 ## Arquivos e owners a inspecionar
 

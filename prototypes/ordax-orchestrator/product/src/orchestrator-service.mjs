@@ -646,12 +646,20 @@ export class OrchestratorService {
       const notSubmitted=isWorkSend&&error?.providerDeliveryState==='not_submitted';
       const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(error?.providerFailureCode||''))
         ?String(error.providerFailureCode):'provider_send_unconfirmed';
-      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':'execution_unconfirmed',
-        ...(notSubmitted?{providerStage:String(error?.providerFailureStage||'unknown'),failureCode}:{}),...(reserved.sendActionId?{
+      const coordinatorCode=!isWorkSend&&/^groq_[a-z0-9_]{1,64}$/.test(String(error?.orchestratorFailureCode||''))
+        ?String(error.orchestratorFailureCode):null;
+      const coordinatorOutcome=!isWorkSend&&['rejected','response_invalid'].includes(error?.orchestratorRequestOutcome)
+        ?error.orchestratorRequestOutcome:null;
+      const coordinatorRejected=Boolean(coordinatorCode&&coordinatorOutcome);
+      const coordinatorHttpStatus=coordinatorCode&&Number.isSafeInteger(error?.orchestratorHttpStatus)
+        ?error.orchestratorHttpStatus:null;
+      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
+        ...(notSubmitted?{providerStage:String(error?.providerFailureStage||'unknown'),failureCode}:{}),
+        ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),...(reserved.sendActionId?{
         sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
       this.transaction(()=>{
         if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,notSubmitted?'failed':'indeterminate',result);
-        this.finish(reserved.commandId,result,notSubmitted?'failed':'uncertain');
+        this.finish(reserved.commandId,result,notSubmitted||coordinatorRejected?'failed':'uncertain');
       });
       this.requireAccess(context,operation,input.projectId);
       return this.getReceipt(context,reserved.commandId);

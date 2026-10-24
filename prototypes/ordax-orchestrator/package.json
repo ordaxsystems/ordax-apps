@@ -1,13 +1,14 @@
 {
   "name": "@ordax/orchestrator-lab-bootstrap",
   "private": true,
-  "version": "0.2.0-alpha.18",
+  "version": "0.2.0-alpha.19",
   "type": "module",
-  "description": "OrdaX Orchestrator Lab — direct owned Electron source; pinned Flow retained for historical audit only.",
+  "description": "OrdaX Orchestrator Lab — Node-hosted development UI; Electron source remains an explicit desktop target.",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
     "validate": "npm run version:check && npm test",
-    "start": "node scripts/start-lab.mjs",
+    "start": "node product/scripts/start-host.mjs",
+    "start:electron": "node scripts/start-lab.mjs",
     "version:check": "node scripts/verify-version.mjs",
     "start:staged": "node scripts/start-lab.mjs --staged",
     "version:show": "node scripts/verify-version.mjs",

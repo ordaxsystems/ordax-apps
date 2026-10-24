@@ -376,6 +376,7 @@ body.orchestrator-focus .app-shell{grid-template-columns:250px minmax(430px,1fr)
 .coordinator-message{width:min(100%,790px);margin:0 auto;padding:12px 14px;border:1px solid #202c39;border-radius:12px;background:#101720}
 .coordinator-message strong{display:block;margin-bottom:6px;color:#8190a3;font-size:10px}
 .coordinator-message p{margin:0;color:#e0e6ed;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.coordinator-recovery{box-sizing:border-box;width:min(100%,790px);margin:0 auto 8px;padding:11px 14px;border:1px solid #78602d;border-radius:10px;background:#211b10;color:#e6cf8f;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 #coordinatorComposer{display:grid;grid-template-columns:minmax(0,1fr) 42px;align-items:end;gap:9px;margin:0 auto 16px;padding:10px 11px 10px 15px;width:min(calc(100% - 44px),790px);border:1px solid #2a3543;border-radius:15px;background:#111820;box-shadow:0 12px 40px rgba(0,0,0,.2)}
 #coordinatorComposer:focus-within{border-color:#3e5665}
 #coordinatorComposer textarea{width:100%;min-height:30px;max-height:150px;resize:vertical;border:0;outline:0;background:transparent;color:#eef2f7;padding:6px 1px;font-size:13px;line-height:1.5}

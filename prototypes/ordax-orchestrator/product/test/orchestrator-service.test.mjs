@@ -251,7 +251,7 @@ test('Groq work preparation parses a strictly bounded JSON proposal without invo
     }});
   const input={taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Pesquisar',prepareWork:true};
   assert.equal((await adapter.send(input)).proposal.title,'Pesquisar');
-  response='Not JSON';await assert.rejects(adapter.send(input),/proposal_invalid/);
+  response='Not JSON';await assert.rejects(adapter.send(input),/groq_invalid_work_proposal/);
 });
 
 test('projects, coordinators and work persist in the same SQLite, with bounded semantic reads',async t=>{

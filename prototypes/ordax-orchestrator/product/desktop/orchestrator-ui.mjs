@@ -4,7 +4,7 @@ import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provid
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onStartMission,canStartMission}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
-  let coordinatorOpen=false,coordinatorAvailable=false,analysisBusy=false;
+  let coordinatorOpen=false,coordinatorAvailable=false,analysisBusy=false,nodeHost=false;
   const requestKeys=new Map();
   const status=text=>{$('orchestrationNotice').textContent=text;};
   const call=(operation,input={})=>api.orchestratorInvoke(operation,input);
@@ -47,11 +47,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const list=$('orchestratorWorks');list.replaceChildren();
     if(!works.length){const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
     for(const work of works){
-      const [label,state]=labels[work.status]||labels.ready;const button=document.createElement('button');
+      const [label,state]=work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);const button=document.createElement('button');
       button.type='button';button.className='work-card';button.dataset.taskId=work.id;
       const copy=document.createElement('span');copy.className='work-card-copy';
       const title=document.createElement('strong');title.textContent=work.title;
-      const detail=document.createElement('small');detail.textContent=work.provider_segments?`${work.provider_segments} conversa${work.provider_segments===1?'':'s'} no histórico`:'Conversa pronta para iniciar';
+      const detail=document.createElement('small');detail.textContent=work.provider_segments
+        ?`${work.provider_segments} conversa${work.provider_segments===1?'':'s'} no histórico`
+        :nodeHost?'Rascunho local • envio ao GPT indisponível neste host':'Conversa pronta para iniciar';
       copy.append(title,detail);const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
       button.append(copy,badge);button.addEventListener('click',async()=>{
         try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
@@ -64,7 +66,23 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     requestKeys.set(key,requestId);
     const receipt=await call(operation,{requestId,...input});
     if(receipt.status==='succeeded')requestKeys.delete(key);
-    else status('O comando precisa de verificação. Nenhuma ação será repetida automaticamente.');
+    else if(receipt.status==='failed') {
+      requestKeys.delete(key);
+      const failures={
+        groq_auth_rejected:'Groq rejeitou a autenticação. Confira a chave nas configurações; nenhuma resposta foi registrada.',
+        groq_rate_limited:'Groq aplicou limite de requisições. Aguarde o limite resetar antes de tentar novamente.',
+        groq_service_unavailable:'Groq está indisponível no momento. A solicitação terminou sem resposta registrada.',
+        groq_request_rejected:'Groq recusou a solicitação. Confira o modelo e a configuração da API.',
+        groq_invalid_response:'Groq retornou uma resposta inválida; o app não a aceitou.',
+        groq_incomplete_response:'Groq encerrou a resposta antes de concluí-la; o app não a aceitou.',
+        groq_invalid_work_proposal:'Groq não retornou uma proposta de frente válida; nenhuma frente foi criada.'
+      };
+      status(failures[receipt.result?.failureCode]||'A solicitação falhou e não foi repetida. Confira a configuração e tente novamente quando estiver pronta.');
+    } else status(receipt.result?.failureCode==='groq_request_timeout'
+      ?'O tempo de resposta do Groq expirou sem confirmação. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.'
+      :receipt.result?.failureCode==='groq_network_unavailable'
+        ?'Não foi possível confirmar a conexão com Groq. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.'
+        :'O resultado do comando não foi confirmado. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.');
     return receipt;
   }
   function options(select,rows,label) {
@@ -86,6 +104,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   async function refreshApiStatus() {
     const state=await api.coordinatorChatStatus();
+    nodeHost=state.executionSurface==='node_host';
+    $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
+    $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
+    $('coordinatorRailToggle').textContent=nodeHost?'Frentes':'Conversas';
+    $('newScopedWorkButton').textContent=nodeHost?'＋ Nova frente':'＋ Nova conversa no GPT';
+    $('newScopedWorkDetails').querySelector('summary').textContent=nodeHost?'Configurar título da frente':'Configurar nome da conversa';
+    $('newScopedWorkForm').querySelector('button[type="submit"]').textContent=nodeHost?'Criar frente e abrir rascunho':'Criar e abrir conversa';
+    $('workRailNote').textContent=nodeHost
+      ?'As frentes ficam salvas no projeto. Este host não abre nem envia conversas ao GPT.'
+      :'Cada conversa mantém o próprio histórico dentro do projeto.';
     coordinatorAvailable=(await call('status')).coordinatorAvailable===true;
     $('coordinatorApiEnable').disabled=!state.configured;
     $('coordinatorApiEnable').textContent=state.enabled?'Desativar chat por API':'Ativar chat por API';
@@ -199,10 +227,20 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
     const p=projectId,t=chatTaskId,o=orchestratorId;
-    const page=await call('work_messages',{projectId:p,taskId:t,limit:50});
-    const {proposals}=await call('proposals_list',{projectId:p,orchestratorId:o});
+    const [page,{proposals},engineStatus]=await Promise.all([
+      call('work_messages',{projectId:p,taskId:t,limit:50}),
+      call('proposals_list',{projectId:p,orchestratorId:o}),
+      call('status').catch(()=>null)
+    ]);
     if(p!==projectId||t!==chatTaskId)return;
-    const box=$('coordinatorMessages');box.replaceChildren();
+    const box=$('coordinatorMessages'),recoveryNotice=$('coordinatorRecoveryNotice');
+    box.replaceChildren(recoveryNotice);
+    const uncertainCommands=Number.isSafeInteger(engineStatus?.uncertainCommands)
+      ?engineStatus.uncertainCommands:0;
+    recoveryNotice.classList.toggle('hidden',uncertainCommands===0);
+    recoveryNotice.textContent=uncertainCommands
+      ?`Há ${uncertainCommands} comando${uncertainCommands===1?'':'s'} com resultado incerto nesta sessão. A solicitação está registrada, mas não há resposta confirmada; nada foi reenviado automaticamente. Revise o histórico antes de decidir outro envio.`
+      :'';
     if(page.has_more) {
       const note=document.createElement('p');
       note.textContent='Exibindo as 50 mensagens mais recentes. O histórico anterior permanece salvo.';
@@ -440,6 +478,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await refreshApiStatus();
       if(!projectId&&projects.length){projectId=projects[0].id;$('projectSelect').value=projectId;renderProjectNavigation(projects);}
       syncProjectRepository();
+      if(projectId)await refreshWorks();
       const items=await refreshOrchestrators();
       if(items.length)await showCoordinator();
       let refreshPending=false;
