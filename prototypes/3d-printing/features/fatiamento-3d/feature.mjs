@@ -13,6 +13,7 @@ import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
 import { infillPatternLabel, infillPatternOptions, isSupportedInfillPattern } from "../../shared/infill-patterns.mjs";
 import { isSupportedSeamPosition, seamPositionLabel, seamPositionOptions } from "../../shared/seam-positions.mjs";
 import { isNozzleTemperatureInRange, nozzleTemperatureBoundsC, nozzleTemperatureLimits } from "../../shared/nozzle-temperatures.mjs";
+import { availableBedTypes, bedTypeLabel, isSupportedBedType, validateBedTypeSelection } from "../../shared/bed-types.mjs";
 
 const { escapeHtml, number, bytes, toast, icon, button } = shared;
 const MAX_MODEL_BYTES = 50 * 1024 * 1024;
@@ -38,8 +39,10 @@ const AI_EVIDENCE_LABELS = Object.freeze({
   "selectedObject.surfaceAreaMm2": "Área triangulada da peça",
   "selectedObject.transform": "Transformação da peça",
   "printerProfile.bedMm": "Dimensões da mesa no perfil",
+  "printerProfile.bedTypeCapability": "Tipos de mesa suportados pela impressora",
   "materialProfile.nozzleRange": "Faixa de temperatura do bico",
   "materialProfile.bedRange": "Faixa de temperatura da mesa",
+  "materialProfile.bedTemperaturesByType": "Temperaturas de mesa do perfil de material",
   "latestSlice.stats.timeSeconds": "Tempo do último fatiamento",
   "latestSlice.stats.filamentGrams": "Filamento do último fatiamento",
   "latestSlice.stats.filamentMeters": "Comprimento do último fatiamento",
@@ -47,7 +50,7 @@ const AI_EVIDENCE_LABELS = Object.freeze({
   "slicer.configuredProfiles": "Perfis carregados no motor",
 });
 const defaultDraft = Object.freeze({
-  printer: "generic", filament: "pla", printerProfileId: "", processProfileId: "", filamentProfileId: "", quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0, bottomShellThickness: 0, brimType: null, brimWidth: null, brimGap: null, infill: 15, infillPattern: "gyroid", seamPosition: null, nozzleTemperatureC: null, nozzleTemperatureInitialLayerC: null, fanMin: 80, fanMax: 80,
+  printer: "generic", filament: "pla", printerProfileId: "", processProfileId: "", filamentProfileId: "", bedType: null, quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0, bottomShellThickness: 0, brimType: null, brimWidth: null, brimGap: null, infill: 15, infillPattern: "gyroid", seamPosition: null, nozzleTemperatureC: null, nozzleTemperatureInitialLayerC: null, fanMin: 80, fanMax: 80,
   supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, rotation: 0, scale: 1, stlUnit: "mm", objectTransforms: {}, selectedTab: "prepare",
 });
 
@@ -111,6 +114,7 @@ function safeDraft(value) {
   };
   next.nozzleTemperatureC = optionalNozzleTemperature(next.nozzleTemperatureC);
   next.nozzleTemperatureInitialLayerC = optionalNozzleTemperature(next.nozzleTemperatureInitialLayerC);
+  if (next.bedType !== null && !isSupportedBedType(next.bedType)) next.bedType = null;
   const normalizeProcessSettings = (source, fallback = next) => ({
     quality: validQuality(source?.quality ?? fallback.quality),
     layerHeight: Math.max(0.08, Math.min(0.4, Number(source?.layerHeight ?? fallback.layerHeight) || 0.2)),
@@ -356,6 +360,7 @@ export function mountFeature(host = {}) {
           <aside class="slice-panel settings-panel">
             <div class="panel-heading"><div><span class="panel-kicker">PREPARAR</span><h2>Configurações do trabalho</h2></div><span class="draft-badge">RASCUNHO</span></div>
             <label class="slice-field process-editor"><span>Editar configurações de</span><select class="dark-select" data-active-process aria-label="Processo de impressão cujas configurações serão editadas"></select><small data-active-process-note>As configurações abaixo valem para os objetos atribuídos a este processo.</small></label>
+            <div class="settings-section" data-bed-type-section hidden><div class="settings-section-title"><span>00</span><strong>Mesa de impressão</strong></div><label class="slice-field"><span>Superfície selecionada</span><select class="dark-select" data-bed-type><option value="">Usar configuração do perfil</option></select><small data-bed-type-note>O perfil de material define as temperaturas por superfície.</small></label><p class="not-applied-note">A seleção altera a superfície informada ao OrcaSlicer. As temperaturas permanecem herdadas do perfil de filamento.</p></div>
             <div class="settings-section"><div class="settings-section-title"><span>01</span><strong>Qualidade</strong></div><label class="slice-field"><span>Posição da costura</span><select class="dark-select" data-seam-position><option value="">Usar configuração do perfil</option>${seamPositionOptions.map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join("")}</select></label><p class="not-applied-note">Controla onde começa e termina cada perímetro. A geometria, o perfil e as preferências de acabamento devem orientar a escolha.</p><label class="slice-field"><span>Atalho de altura de camada</span><select class="dark-select" data-quality><option value="profile">Definida pelo perfil selecionado</option><option value="standard">Equilibrado · 0,20 mm</option><option value="fine">Detalhado · 0,12 mm</option><option value="draft">Rápido · 0,28 mm</option><option value="custom">Personalizada</option></select></label><div class="setting-value"><label for="layer-height">Altura de camada</label><div class="number-unit"><input id="layer-height" type="number" min="0.08" max="0.4" step="0.01" data-layer-height/><span>mm</span></div></div></div>
             <div class="settings-section"><div class="settings-section-title"><span>02</span><strong>Paredes, casca e preenchimento</strong></div><div class="setting-value"><label for="wall-count">Paredes</label><div class="number-unit"><input id="wall-count" type="number" min="1" max="8" step="1" data-walls/><span>linhas</span></div></div><div class="setting-value"><label for="top-shell-layers">Camadas sólidas superiores</label><div class="number-unit"><input id="top-shell-layers" type="number" min="0" max="20" step="1" data-top-shell-layers/><span>camadas</span></div></div><div class="setting-value"><label for="top-shell-thickness">Espessura superior mínima</label><div class="number-unit"><input id="top-shell-thickness" type="number" min="0" max="10" step="0.1" data-top-shell-thickness/><span>mm</span></div></div><div class="setting-value"><label for="bottom-shell-layers">Camadas sólidas inferiores</label><div class="number-unit"><input id="bottom-shell-layers" type="number" min="0" max="20" step="1" data-bottom-shell-layers/><span>camadas</span></div></div><div class="setting-value"><label for="bottom-shell-thickness">Espessura inferior mínima</label><div class="number-unit"><input id="bottom-shell-thickness" type="number" min="0" max="10" step="0.1" data-bottom-shell-thickness/><span>mm</span></div></div><div class="setting-value"><label for="infill-density">Densidade de preenchimento</label><div class="number-unit"><input id="infill-density" type="number" min="0" max="100" step="1" data-infill/><span>%</span></div></div><label class="slice-field"><span>Padrão do preenchimento esparso</span><select class="dark-select" data-infill-pattern>${infillPatternOptions.map(option => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`).join("")}</select></label><p class="not-applied-note">Espessura 0 desativa esse limite e deixa as camadas determinarem a casca. Se a espessura configurada exceder as camadas, o Orca acrescentará camadas. O fatiador calcula o resultado final.</p></div>
             <div class="settings-section"><div class="settings-section-title"><span>03</span><strong>Adesão da primeira camada</strong></div><label class="slice-field"><span>Brim</span><select class="dark-select" data-brim-type><option value="">Usar configuração do perfil</option><option value="no_brim">Sem brim</option><option value="outer_only">Contorno externo</option><option value="inner_only">Contorno interno</option><option value="outer_and_inner">Contornos interno e externo</option></select></label><div class="setting-value"><label for="brim-width">Largura do brim</label><div class="number-unit"><input id="brim-width" type="number" min="0" max="20" step="0.1" placeholder="Do perfil" data-brim-width/><span>mm</span></div></div><div class="setting-value"><label for="brim-gap">Distância brim-peça</label><div class="number-unit"><input id="brim-gap" type="number" min="0" max="10" step="0.05" placeholder="Do perfil" data-brim-gap/><span>mm</span></div></div><p class="not-applied-note">Campos sem valor mantêm o perfil selecionado. Uma distância maior facilita remover o brim, mas pode reduzir a adesão; brim externo aumenta a área ocupada e a triagem considera a margem quando conhecida.</p></div><div class="settings-section"><div class="settings-section-title"><span>04</span><strong>Suportes</strong></div><label class="toggle-row"><span><strong>Gerar suportes</strong><small>Áreas suspensas do modelo</small></span><input type="checkbox" data-supports/><i></i></label><label class="slice-field"><span>Estrutura automática</span><select class="dark-select" data-support-type><option value="normal(auto)">Normal · estável e contínua</option><option value="tree(auto)">Árvore · ramificada</option></select></label><div class="setting-value"><label for="support-angle">Ângulo limite</label><div class="number-unit"><input id="support-angle" type="number" min="0" max="90" step="1" data-support-angle/><span>°</span></div></div><label class="toggle-row"><span><strong>Somente sobre a mesa</strong><small>Não apoia em superfícies da peça</small></span><input type="checkbox" data-support-build-plate/><i></i></label><p class="not-applied-note">Ângulo 0 usa o limite de sobreposição do perfil para suporte normal; em árvore, o Orca usa 30°. O app não oferece colocação manual de bloqueadores/enforcers.</p></div>
@@ -417,6 +422,11 @@ export function mountFeature(host = {}) {
       }
     }
     return "";
+  }
+
+  function bedTypeBlockReason(settings = draft) {
+    const validation = validateBedTypeSelection(settings.bedType, selectedEngineProfile("machine"), selectedEngineProfile("filament"));
+    return validation.valid ? "" : validation.reason;
   }
 
   function profileCompatibilityAssessment() {
@@ -797,7 +807,7 @@ export function mountFeature(host = {}) {
     if (!hasCompleteProcessAssignment(draft.processes, model.objects)) return "Atribua cada peça a exatamente um processo antes de fatiar.";
     const processProfileBrim = selectedEngineProfile("process")?.processSettings?.brimType;
     if (activeSettings().brimType === null && processProfileBrim === "painted") return "O perfil usa brim pintado, mas o app ainda não preserva a pintura da malha. Escolha outro tipo de brim para continuar.";
-    return nozzleTemperatureBlockReason() || processCompatibilityReason() || profileCompatibilityReason() || modelFitReason();
+    return nozzleTemperatureBlockReason() || bedTypeBlockReason() || processCompatibilityReason() || profileCompatibilityReason() || modelFitReason();
   }
 
   function syncProfileControls() {
@@ -1066,9 +1076,9 @@ export function mountFeature(host = {}) {
         topologyVerified: model.geometryDiagnostics.topologyVerified,
         watertightness: model.geometryDiagnostics.watertightness,
       } : null,
-      printerProfile: { id: machineProfile?.id || draft.printer, name: machine.name, bedMm: machine.bed, isReference: !machineProfile, provenance: machineProfile?.source || "referência visual do protótipo" },
+      printerProfile: { id: machineProfile?.id || draft.printer, name: machine.name, bedMm: machine.bed, bedTypeCapability: machineProfile ? { supportsMultipleTypes: machineProfile.supportMultiBedTypes, default: machineProfile.defaultBedType, unsupported: machineProfile.unsupportedBedTypes || [] } : null, isReference: !machineProfile, provenance: machineProfile?.source || "referência visual do protótipo" },
       processProfile: { id: processProfile?.id || null, name: processProfile?.name || null, baseLayerHeightMm: processProfile?.layerHeightMm ?? null, baseWallLoops: processProfile?.wallLoops ?? null, provenance: processProfile?.source || null },
-      materialProfile: { id: filamentProfile?.id || draft.filament, name: material.name, nozzleRange: material.nozzle, bedRange: material.bed, isReference: !filamentProfile, provenance: filamentProfile?.source || "faixa de referência do protótipo" },
+      materialProfile: { id: filamentProfile?.id || draft.filament, name: material.name, nozzleRange: material.nozzle, bedRange: material.bed, bedTemperaturesByType: filamentProfile?.bedTemperaturesByType || null, isReference: !filamentProfile, provenance: filamentProfile?.source || "faixa de referência do protótipo" },
       selectedObject: selectedObjectId ? {
         item: (model?.objects.findIndex(object => object.id === selectedObjectId) ?? -1) + 1,
         sourceDimensionsMm: model?.objects.find(object => object.id === selectedObjectId)?.bounds?.dimensions?.map(value => Number((value * (model.format === "STL" ? unitScales[draft.stlUnit] : 1)).toFixed(2))) || null,
@@ -1080,7 +1090,7 @@ export function mountFeature(host = {}) {
       } : null,
       selectedProcess: selectedProcess ? { id: selectedProcess.id, name: selectedProcess.name, objectCount: selectedProcess.objectIds.length } : null,
       processSummary: { count: draft.processes.length, assignedObjects: draft.processes.reduce((sum, process) => sum + process.objectIds.length, 0), selectedSettings: settings },
-      settings: { quality: settings.quality, layerHeightMm: settings.layerHeight, walls: settings.walls, topShellLayers: settings.topShellLayers, bottomShellLayers: settings.bottomShellLayers, topShellThickness: settings.topShellThickness, bottomShellThickness: settings.bottomShellThickness, brimType: settings.brimType, brimWidthMm: settings.brimWidth, brimGapMm: settings.brimGap, infillPercent: settings.infill, infillPattern: settings.infillPattern, seamPosition: settings.seamPosition, nozzleTemperatureC: draft.nozzleTemperatureC, nozzleTemperatureInitialLayerC: draft.nozzleTemperatureInitialLayerC, supports: settings.supports, supportType: settings.supportType, supportThresholdAngleDeg: settings.supportThresholdAngle, supportOnBuildPlateOnly: settings.supportOnBuildPlateOnly, fanMinSpeedPercent: settings.fanMin, fanMaxSpeedPercent: settings.fanMax },
+      settings: { quality: settings.quality, layerHeightMm: settings.layerHeight, walls: settings.walls, topShellLayers: settings.topShellLayers, bottomShellLayers: settings.bottomShellLayers, topShellThickness: settings.topShellThickness, bottomShellThickness: settings.bottomShellThickness, brimType: settings.brimType, brimWidthMm: settings.brimWidth, brimGapMm: settings.brimGap, infillPercent: settings.infill, infillPattern: settings.infillPattern, seamPosition: settings.seamPosition, bedType: draft.bedType, nozzleTemperatureC: draft.nozzleTemperatureC, nozzleTemperatureInitialLayerC: draft.nozzleTemperatureInitialLayerC, supports: settings.supports, supportType: settings.supportType, supportThresholdAngleDeg: settings.supportThresholdAngle, supportOnBuildPlateOnly: settings.supportOnBuildPlateOnly, fanMinSpeedPercent: settings.fanMin, fanMaxSpeedPercent: settings.fanMax },
       slicer: {
         connected: engineStatus.available,
         engine: engineStatus.engine,
@@ -1152,6 +1162,7 @@ export function mountFeature(host = {}) {
       "Arestas abertas, arestas com mais de duas faces, orientação compartilhada inconsistente e vizinhança não manifold são sinais para revisão, mas não explicam sozinhos a causa. A análise não detecta autointerseções ou cavidades, não faz reparos e não conclui watertightness nem imprimibilidade.",
       "model.printableSpaceFit é uma triagem geométrica por caixa envolvente individual de cada peça, contorno imprimível e regiões excluídas do perfil. outsideObjectItems contém índices 1-based na lista original; a caixa é conservadora e não representa a malha exata, brim/skirt, suportes, saliências nem colisões. Status com reference refere-se somente à mesa visual genérica; só o OrcaSlicer valida o fatiamento final.",
       "Os resumos dos perfis incluem listas declaradas de compatibilidade. Só recomende uma troca de perfil quando os nomes exatos confirmarem compatibilidade com a máquina e entre filamento/processo; se houver expressão a avaliar, itens omitidos na lista ou herança não resolvida, diga que os dados não bastam e mantenha a seleção atual.",
+      "A superfície selecionada aparece em settings.bedType; null significa herdar dos perfis. Use printerProfile.bedTypeCapability e materialProfile.bedTemperaturesByType para explicar suporte e temperaturas herdadas, sem inferir temperaturas ausentes nem afirmar que a superfície é ótima sem calibração.",
       "Identifique quando os perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade.",
       "Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.",
     ];
@@ -1355,6 +1366,30 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-nozzle-temperature-first]").value = draft.nozzleTemperatureInitialLayerC === null ? "" : String(draft.nozzleTemperatureInitialLayerC);
     const filamentProfile = selectedEngineProfile("filament");
     const machineProfile = selectedEngineProfile("machine");
+    if (machineProfile?.supportMultiBedTypes !== true && draft.bedType !== null) {
+      draft = safeDraft({ ...draft, bedType: null });
+      persist();
+    }
+    const bedTypeSection = content.querySelector("[data-bed-type-section]");
+    const bedTypeSelect = content.querySelector("[data-bed-type]");
+    const bedTypeNote = content.querySelector("[data-bed-type-note]");
+    bedTypeSection.hidden = machineProfile?.supportMultiBedTypes !== true;
+    const bedTypeOptions = availableBedTypes(machineProfile, filamentProfile);
+    const profileBedType = machineProfile?.defaultBedType || processProfile?.processSettings?.defaultBedType || null;
+    const bedTypeChoices = [{ value: "", label: profileBedType ? `Do perfil · ${bedTypeLabel(profileBedType)}` : "Usar a mesa padrão dos perfis" }, ...bedTypeOptions.map(item => ({ value: item.value, label: item.label }))];
+    if (draft.bedType && !bedTypeChoices.some(item => item.value === draft.bedType)) {
+      bedTypeChoices.push({ value: draft.bedType, label: `${bedTypeLabel(draft.bedType)} · verificar compatibilidade` });
+    }
+    bedTypeSelect.innerHTML = bedTypeChoices.map(item => `<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`).join("");
+    bedTypeSelect.value = draft.bedType || "";
+    const displayedBedType = draft.bedType || profileBedType;
+    const bedTemperature = displayedBedType ? filamentProfile?.bedTemperaturesByType?.[displayedBedType] : null;
+    const bedTemperatureNote = bedTemperature
+      ? `Temperaturas herdadas do perfil: ${bedTemperature.initialLayerC} °C na primeira camada · ${bedTemperature.otherLayerC} °C nas demais.`
+      : "Temperaturas não são sobrescritas aqui; o OrcaSlicer usa os valores definidos no perfil de filamento.";
+    const bedValidation = bedTypeBlockReason();
+    bedTypeNote.textContent = bedValidation || bedTemperatureNote;
+    bedTypeNote.classList.toggle("is-invalid", Boolean(bedValidation));
     const profileNozzleValues = filamentProfile
       ? `Perfil: primeira camada ${filamentProfile.nozzleTemperatureInitialLayerC ?? "—"} °C · demais ${filamentProfile.nozzleTemperatureTargetC ?? "—"} °C.`
       : "Configure um perfil real de filamento para ajustar temperaturas.";
@@ -1406,6 +1441,9 @@ export function mountFeature(host = {}) {
       supportOnBuildPlateOnly: content.querySelector("[data-support-build-plate]").checked,
       fanMin: numberValue("[data-fan-min]"), fanMax: numberValue("[data-fan-max]"),
     };
+    const selectedMachineId = engineStatus.profiles?.machine?.catalog?.length ? content.querySelector("[data-printer]").value : draft.printerProfileId;
+    const selectedMachineProfile = engineStatus.profiles?.machine?.catalog?.find(item => item.id === selectedMachineId);
+    const bedType = selectedMachineProfile?.supportMultiBedTypes === true ? content.querySelector("[data-bed-type]").value || null : null;
     const processes = draft.processes.map(process => process.id === draft.selectedProcessId ? { ...process, settings: nextSettings } : process);
     const previousObjectTransform = objectTransform(draft, selectedObjectId);
     const objectTransforms = { ...draft.objectTransforms };
@@ -1421,6 +1459,7 @@ export function mountFeature(host = {}) {
       printerProfileId: engineStatus.profiles?.machine?.catalog?.length ? content.querySelector("[data-printer]").value : draft.printerProfileId,
       processProfileId: engineStatus.profiles?.process?.catalog?.length ? content.querySelector("[data-process-profile]").value : draft.processProfileId,
       filamentProfileId: engineStatus.profiles?.filament?.catalog?.length ? content.querySelector("[data-filament]").value : draft.filamentProfileId,
+      bedType,
       nozzleTemperatureC: nullableNumberValue("[data-nozzle-temperature]"),
       nozzleTemperatureInitialLayerC: nullableNumberValue("[data-nozzle-temperature-first]"),
       ...nextSettings,
@@ -1428,7 +1467,7 @@ export function mountFeature(host = {}) {
       rotation: numberValue("[data-rotation]"), scale: numberValue("[data-scale]") / 100,
       stlUnit: content.querySelector("[data-unit]").value, objectTransforms,
     });
-    const changed = ["printer", "filament", "printerProfileId", "processProfileId", "filamentProfileId", "nozzleTemperatureC", "nozzleTemperatureInitialLayerC", "rotation", "scale", "stlUnit"].some(key => nextDraft[key] !== draft[key])
+    const changed = ["printer", "filament", "printerProfileId", "processProfileId", "filamentProfileId", "bedType", "nozzleTemperatureC", "nozzleTemperatureInitialLayerC", "rotation", "scale", "stlUnit"].some(key => nextDraft[key] !== draft[key])
       || (selectedObjectId && JSON.stringify(objectTransform(nextDraft, selectedObjectId)) !== JSON.stringify(previousObjectTransform))
       || Object.keys(nextSettings).some(key => nextDraft.processes.find(process => process.id === draft.selectedProcessId)?.settings[key] !== previousSettings[key]);
     draft = nextDraft;
@@ -1595,7 +1634,7 @@ export function mountFeature(host = {}) {
         filename: requestModel.name,
         format: requestModel.format,
         preparedModel: createOrcaInputStl(requestModel, requestDraft),
-        settings: { layerHeight: requestDraft.layerHeight, walls: requestDraft.walls, topShellLayers: requestDraft.topShellLayers, bottomShellLayers: requestDraft.bottomShellLayers, topShellThickness: requestDraft.topShellThickness, bottomShellThickness: requestDraft.bottomShellThickness, brimType: requestDraft.brimType, brimWidth: requestDraft.brimWidth, brimGap: requestDraft.brimGap, infill: requestDraft.infill, infillPattern: requestDraft.infillPattern, seamPosition: requestDraft.seamPosition, nozzleTemperatureC: requestDraft.nozzleTemperatureC, nozzleTemperatureInitialLayerC: requestDraft.nozzleTemperatureInitialLayerC, supports: requestDraft.supports, supportType: requestDraft.supportType, supportThresholdAngle: requestDraft.supportThresholdAngle, supportOnBuildPlateOnly: requestDraft.supportOnBuildPlateOnly, fanMinSpeedPercent: requestDraft.fanMin, fanMaxSpeedPercent: requestDraft.fanMax, quality: requestDraft.quality, rotationZ: requestDraft.rotation, scale: requestDraft.scale, stlUnit: requestDraft.stlUnit },
+        settings: { layerHeight: requestDraft.layerHeight, walls: requestDraft.walls, topShellLayers: requestDraft.topShellLayers, bottomShellLayers: requestDraft.bottomShellLayers, topShellThickness: requestDraft.topShellThickness, bottomShellThickness: requestDraft.bottomShellThickness, brimType: requestDraft.brimType, brimWidth: requestDraft.brimWidth, brimGap: requestDraft.brimGap, bedType: requestDraft.bedType, infill: requestDraft.infill, infillPattern: requestDraft.infillPattern, seamPosition: requestDraft.seamPosition, nozzleTemperatureC: requestDraft.nozzleTemperatureC, nozzleTemperatureInitialLayerC: requestDraft.nozzleTemperatureInitialLayerC, supports: requestDraft.supports, supportType: requestDraft.supportType, supportThresholdAngle: requestDraft.supportThresholdAngle, supportOnBuildPlateOnly: requestDraft.supportOnBuildPlateOnly, fanMinSpeedPercent: requestDraft.fanMin, fanMaxSpeedPercent: requestDraft.fanMax, quality: requestDraft.quality, rotationZ: requestDraft.rotation, scale: requestDraft.scale, stlUnit: requestDraft.stlUnit },
         processesSchema: "ordax.slicer-processes/10",
         objects: requestModel.objects.map(object => ({ id: object.id, name: object.name, sourceObjectId: object.sourceObjectId || object.id, buildItemIndex: object.buildItemIndex ?? 0, triangleCount: object.triangleCount })),
         objectTransformsSchema: OBJECT_TRANSFORM_SCHEMA,
@@ -1712,7 +1751,7 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-quality]").value = "custom";
     updateDraftFromInputs();
   });
-  for (const selector of ["[data-walls]", "[data-top-shell-layers]", "[data-bottom-shell-layers]", "[data-top-shell-thickness]", "[data-bottom-shell-thickness]", "[data-brim-type]", "[data-brim-width]", "[data-brim-gap]", "[data-infill]", "[data-infill-pattern]", "[data-seam-position]", "[data-nozzle-temperature]", "[data-nozzle-temperature-first]", "[data-supports]", "[data-support-type]", "[data-support-angle]", "[data-support-build-plate]", "[data-fan-min]", "[data-fan-max]", "[data-rotation]", "[data-scale]", "[data-unit]", "[data-object-transform]"]) {
+  for (const selector of ["[data-walls]", "[data-top-shell-layers]", "[data-bottom-shell-layers]", "[data-top-shell-thickness]", "[data-bottom-shell-thickness]", "[data-brim-type]", "[data-brim-width]", "[data-brim-gap]", "[data-infill]", "[data-infill-pattern]", "[data-seam-position]", "[data-bed-type]", "[data-nozzle-temperature]", "[data-nozzle-temperature-first]", "[data-supports]", "[data-support-type]", "[data-support-angle]", "[data-support-build-plate]", "[data-fan-min]", "[data-fan-max]", "[data-rotation]", "[data-scale]", "[data-unit]", "[data-object-transform]"]) {
     content.querySelector(selector).addEventListener("change", updateDraftFromInputs);
   }
   content.querySelector("[data-rotate]").addEventListener("click", () => { draft.rotation = (draft.rotation + 90) % 360; content.querySelector("[data-rotation]").value = String(draft.rotation); updateDraftFromInputs(); });
