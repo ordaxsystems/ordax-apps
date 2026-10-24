@@ -12,6 +12,22 @@ function executionTargetLabel(status, executionTarget) {
   return label || null;
 }
 
+export function formatSliceProgress(progress) {
+  const stage = typeof progress?.stage === "string"
+    ? progress.stage.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 120)
+    : "";
+  const rawPercent = progress?.percent;
+  const percent = rawPercent !== null && rawPercent !== undefined && rawPercent !== "" && Number.isFinite(Number(rawPercent))
+    ? Math.round(Math.max(0, Math.min(100, Number(rawPercent))))
+    : null;
+  if (percent === null) return `Fatiamento em andamento${stage ? ` · ${stage}` : ""}`;
+  return `Fatiamento em andamento · ${percent}%${stage ? ` · ${stage}` : ""}`;
+}
+
+function reportProgress(callback, progress) {
+  try { callback?.(Object.freeze(progress)); } catch {}
+}
+
 function localOutputFilename(value) {
   const leaf = String(value || "ordax-print").split(/[\\/]/).pop();
   const stem = leaf.replace(/\.[^.]+$/, "").replace(/[^\p{L}\p{N}._ -]/gu, "_").trim().slice(0, 120);
@@ -184,7 +200,8 @@ export async function requestRealSlice(port, request, { signal, onProgress } = {
   validateProfileSelection(request, status);
   const { remoteExecutionApproved: _remoteExecutionApproved, ...localRequest } = request;
   const sliceRequest = status.executionTarget === "server" ? remoteSliceRequest(localRequest) : localRequest;
-  const result = await port.slice(sliceRequest, { signal, onProgress });
+  reportProgress(onProgress, { stage: status.executionTarget === "server" ? "Enviando ao servidor identificado" : "Enviando ao motor local" });
+  const result = await port.slice(sliceRequest, { signal, onProgress: progress => reportProgress(onProgress, progress) });
   if (signal?.aborted) throw new DOMException("Fatiamento cancelado.", "AbortError");
   if (!(result?.gcode instanceof Blob) || result.gcode.size <= 0 || result.gcode.size > MAX_GCODE_BYTES) {
     throw new Error("O motor não devolveu um G-code válido dentro do limite desta versão.");
@@ -192,10 +209,12 @@ export async function requestRealSlice(port, request, { signal, onProgress } = {
   if (result.engine !== status.engine || result.engineVersion !== status.version) {
     throw new Error("A identidade ou versão do motor mudou durante o fatiamento. Gere o trabalho novamente.");
   }
+  reportProgress(onProgress, { stage: "Validando o G-code do motor" });
   const header = await result.gcode.slice(0, Math.min(result.gcode.size, 64 * 1024)).text();
   if (!/^\s*(?:;[^\r\n]*\r?\n\s*)*(?:G0?\d|M\d{2,})\b/m.test(header)) {
     throw new Error("A saída do motor não contém comandos reconhecíveis de impressão.");
   }
+  reportProgress(onProgress, { percent: 100, stage: "G-code validado" });
   return Object.freeze({
     gcode: result.gcode,
     filename: status.executionTarget === "server" ? localOutputFilename(request.filename) : String(result.filename || localOutputFilename(request.filename)),

@@ -5,7 +5,7 @@ import { createMeshViewer } from "./mesh-viewer.mjs";
 import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
 import { assessModelEnvelope } from "./bed-envelope.mjs";
 import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
-import { hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
+import { formatSliceProgress, hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
 import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext, buildAssistantMeshSummary } from "./ai-copilot.mjs";
 import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
@@ -1393,8 +1393,7 @@ export function mountFeature(host = {}) {
         profileIds: { machine: requestDraft.printerProfileId, process: requestDraft.processProfileId, filament: requestDraft.filamentProfileId },
         remoteExecutionApproved: approvedRemoteTarget,
       }, { signal: controller.signal, onProgress: progress => {
-        const percent = Math.max(0, Math.min(100, Number(progress?.percent) || 0));
-        content.querySelector("[data-engine-message]").textContent = `Fatiamento em andamento · ${Math.round(percent)}%${progress?.stage ? ` · ${String(progress.stage)}` : ""}`;
+        content.querySelector("[data-engine-message]").textContent = formatSliceProgress(progress);
       } });
       if (requestRevision !== revision || requestModel !== model) return;
       sliced = result;

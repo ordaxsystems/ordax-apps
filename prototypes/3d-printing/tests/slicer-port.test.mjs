@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readSlicerStatus, requestRealSlice } from "../features/fatiamento-3d/slicer-port.mjs";
+import { formatSliceProgress, readSlicerStatus, requestRealSlice } from "../features/fatiamento-3d/slicer-port.mjs";
 
 const ids = {
   machine: `orca-machine-${"a".repeat(24)}`,
@@ -60,6 +60,17 @@ test("status remoto exige um destino identificável para explicar o envio", asyn
   assert.match(result.reason, /identificar o servidor/);
 });
 
+test("progresso indeterminado não é apresentado como zero por cento", () => {
+  assert.equal(formatSliceProgress({ stage: "OrcaSlicer processando o modelo" }), "Fatiamento em andamento · OrcaSlicer processando o modelo");
+  assert.equal(formatSliceProgress({}), "Fatiamento em andamento");
+});
+
+test("progresso numérico é limitado e o texto de fase fica sanitizado", () => {
+  assert.equal(formatSliceProgress({ percent: 42.6, stage: "Camada\n 4" }), "Fatiamento em andamento · 43% · Camada  4");
+  assert.equal(formatSliceProgress({ percent: 140, stage: "" }), "Fatiamento em andamento · 100%");
+  assert.equal(formatSliceProgress({ percent: "sem medição", stage: "Preparando" }), "Fatiamento em andamento · Preparando");
+});
+
 test("destino remoto exige consentimento explícito antes de chamar o motor", async () => {
   let sliceCalled = false;
   const port = { getStatus: async () => status("server"), slice: async () => { sliceCalled = true; } };
@@ -82,7 +93,8 @@ test("aprovação remota precisa corresponder ao destino que o host informa no e
 test("envio web reduz metadados e encaminha cancelamento e progresso pela porta do host", async () => {
   const submitted = {};
   const controller = new AbortController();
-  const onProgress = () => {};
+  const progressEvents = [];
+  const onProgress = progress => progressEvents.push(progress);
   const job = request();
   job.remoteExecutionApproved = "https://slice.example.test";
   const port = {
@@ -90,13 +102,14 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
     slice: async (sliceRequest, options) => {
       submitted.request = sliceRequest;
       submitted.options = options;
+      options.onProgress({ stage: "Motor processando" });
       return { gcode: new Blob(["G1 X0 Y0\n"], { type: "application/gcode" }), engine: "OrcaSlicer", engineVersion: "2.3.1", filename: "server-side-name.gcode" };
     },
   };
 
   const result = await requestRealSlice(port, job, { signal: controller.signal, onProgress });
   assert.equal(submitted.options.signal, controller.signal);
-  assert.equal(submitted.options.onProgress, onProgress);
+  assert.equal(typeof submitted.options.onProgress, "function");
   assert.equal("file" in submitted.request, false);
   assert.equal("remoteExecutionApproved" in submitted.request, false);
   assert.equal(submitted.request.filename, "ordax-print.stl");
@@ -110,4 +123,11 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
   assert.equal(result.filename, "Projeto confidencial.gcode");
   assert.equal(result.executionTarget, "server");
   assert.match(await result.gcode.text(), /^G1 X0 Y0/);
+  assert.deepEqual(progressEvents.map(event => event.stage), [
+    "Enviando ao servidor identificado",
+    "Motor processando",
+    "Validando o G-code do motor",
+    "G-code validado",
+  ]);
+  assert.equal(progressEvents.at(-1).percent, 100);
 });

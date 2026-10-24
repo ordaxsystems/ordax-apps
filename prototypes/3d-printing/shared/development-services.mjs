@@ -102,8 +102,9 @@ function createDevelopmentSlicer() {
       }
       return body;
     },
-    async slice(request, { signal } = {}) {
+    async slice(request, { signal, onProgress } = {}) {
       if (signal?.aborted) throw new DOMException("Fatiamento cancelado.", "AbortError");
+      const reportProgress = progress => { try { onProgress?.(Object.freeze(progress)); } catch {} };
       const meshFile = request?.preparedModel?.file;
       if (!(meshFile instanceof Blob) || meshFile.size <= 0 || meshFile.size > 16 * 1024 * 1024) {
         throw new Error("O adaptador precisa receber a malha STL transformada localmente.");
@@ -120,18 +121,42 @@ function createDevelopmentSlicer() {
       const form = new FormData();
       form.set("manifest", JSON.stringify(manifest));
       form.set("mesh", meshFile, "ordax-model.stl");
-      const response = await fetch("/api/slicer/slice", {
-        method: "POST", body: form, signal, cache: "no-store", credentials: "same-origin",
-      });
-      if (!response.ok) {
-        let body;
-        try { body = await response.json(); } catch { body = null; }
-        throw new Error(typeof body?.error === "string" ? body.error.slice(0, 500) : `O host respondeu com HTTP ${response.status} durante o fatiamento.`);
+      let polling = false;
+      let pollingStopped = false;
+      const progressController = new AbortController();
+      const pollProgress = async () => {
+        if (polling || pollingStopped || signal?.aborted) return;
+        polling = true;
+        try {
+          const response = await fetch("/api/slicer/status", { headers: { Accept: "application/json" }, cache: "no-store", credentials: "same-origin", signal: progressController.signal });
+          const status = response.ok ? await response.json() : null;
+          if (!pollingStopped && status?.schema === SLICER_STATUS_SCHEMA && typeof status.busy === "boolean") {
+            reportProgress({ stage: status.busy ? "OrcaSlicer processando o modelo" : "Aguardando o OrcaSlicer" });
+          }
+        } catch {} finally { polling = false; }
+      };
+      reportProgress({ stage: "Enviando a malha preparada ao OrcaSlicer" });
+      const timer = setInterval(() => { void pollProgress(); }, 1_000);
+      try {
+        const response = await fetch("/api/slicer/slice", {
+          method: "POST", body: form, signal, cache: "no-store", credentials: "same-origin",
+        });
+        if (!response.ok) {
+          let body;
+          try { body = await response.json(); } catch { body = null; }
+          throw new Error(typeof body?.error === "string" ? body.error.slice(0, 500) : `O host respondeu com HTTP ${response.status} durante o fatiamento.`);
+        }
+        reportProgress({ stage: "Recebendo o G-code do motor" });
+        const metadata = decodeSlicerMetadata(response.headers.get("X-Ordax-Slicer-Metadata"));
+        const gcode = await response.blob();
+        if (!gcode.size || gcode.type !== "application/gcode") throw new Error("O host não devolveu um arquivo G-code válido.");
+        reportProgress({ stage: "G-code recebido do motor" });
+        return Object.freeze({ ...metadata, gcode });
+      } finally {
+        pollingStopped = true;
+        clearInterval(timer);
+        progressController.abort();
       }
-      const metadata = decodeSlicerMetadata(response.headers.get("X-Ordax-Slicer-Metadata"));
-      const gcode = await response.blob();
-      if (!gcode.size || gcode.type !== "application/gcode") throw new Error("O host não devolveu um arquivo G-code válido.");
-      return Object.freeze({ ...metadata, gcode });
     },
   });
 }
