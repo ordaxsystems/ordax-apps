@@ -16,8 +16,8 @@ Auditoria do código em `ordax-apps`, complementada pela leitura dos contratos a
 
 ## Correções aplicadas
 
-1. **Food state v5:** `src/domain/domain.mjs` contém configuração da pizzaria, sabores/preços, pedidos de sandbox, comandas e receitas. O estado não tem `ingredients` ou `inventoryMovements`; a migração v4→v5 preserva o histórico e adiciona configuração explícita de tamanhos/mesas.
-2. **Sem escrita cruzada em estoque:** `calculatePizzeriaOrderConsumption()` retorna proposta calculada pela ficha; `transitionPizzeriaOrder()` altera somente o agregado de pedido Food. Commands de movimentação/cadastro de Inventory foram removidos.
+1. **Food state v6:** `src/domain/domain.mjs` contém configuração da pizzaria, sabores/preços, pedidos de sandbox, comandas e receitas. Não tem `ingredients` ou `inventoryMovements`. v4→v5 preserva histórico e configuração; v5→v6 acrescenta propostas de consumo imutáveis para novos pedidos, preservando legados com `null`, sem inventar consumo histórico.
+2. **Sem escrita cruzada em estoque:** novos pedidos congelam uma proposta calculada pelas fichas vigentes. `calculatePizzeriaOrderConsumption()` lê essa proposta sem recalcular receitas editadas; recusa pedidos legados sem histórico verificável. `transitionPizzeriaOrder()` altera somente o pedido Food. Comandos Inventory estão ausentes.
 3. **Migração segura do preview:** ao ler v3 no browser, o adapter grava ingredientes/movimentos antigos em uma chave de arquivo local antes de salvar o novo estado ativo. O arquivo é preservação de dados legados, não é lido como saldo atual.
 4. **Owners ausentes ficam explícitos:** Overview, PDV, Inventory, Customers, Reports e Team são áreas de status do provider em `src/ui/space-capability-status.mjs`; não apresentam listas/valores de fixtures como estado operacional. A interface mostra “Prévia local · Dados fictícios · sem sincronização”.
 5. **Sem dashboard Food concorrente:** o Food abre em Pedidos; a rota Visão Geral explica que a projeção agregada é do Space.
@@ -59,7 +59,7 @@ Uma segunda operação com o mesmo identificador e payload diferente era aceita 
 replay, sem comparação do comando original. Isso ocultava colisões e erros de
 reenvio. O envelope de armazenamento local evoluiu de
 `ordax.food-pizzeria.browser-state/1` para `/2`, mantendo intacto o schema
-do domínio Food v5.
+do domínio Food v6.
 
 Agora cada comando gravado no preview registra `id` e digest SHA-256
 do comando normalizado. Replay idêntico devolve o resultado corrente sem
@@ -80,8 +80,8 @@ Esses testes verificam exclusivamente armazenamento local de demonstração,
 
 Arquivo `tests/space-first-boundaries.test.mjs`:
 
-- estado v5 e recusa de comandos de estoque no Food;
-- iniciar preparo altera apenas o pedido e a proposta de consumo é somente leitura;
+- estado v6 e recusa de comandos de estoque no Food;
+- iniciar preparo altera apenas o pedido e a proposta de consumo é somente leitura; migração de pedidos antigos não fabrica histórico de consumo;
 - migração v3 preserva pedidos/fichas e remove estoque do estado ativo;
 - adapter arquiva estoque legado antes de persistir o novo estado.
 
@@ -95,4 +95,4 @@ Arquivo `tests/local-store-persistence.test.mjs`:
 - persistência após reabrir o adapter local;
 - replay exato não duplica transição e gravação com revisão antiga é rejeitada.
 
-Comandos executados: `node --test apps/food-pizzeria/tests/*.test.mjs` (8 aprovados) e `node --check` nos 20 módulos JavaScript de Food e do host local. O verificador geral `tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown` também rodou; reportou 20 alvos, 2 bloqueados, 18 entradas não assinadas e zero instalações públicas verificadas. O teste visual e as provas cross-app reais ainda dependem dos contratos/providers listados acima.
+Na revisão anterior, `node --test apps/food-pizzeria/tests/*.test.mjs` tinha 8 testes aprovados e `node --check` validou 20 módulos JavaScript. A execução atual é comprovada pelo job `Prove Food preview boundaries and safe local replay` do workflow Foundation, que executa os testes e a checagem de sintaxe após cada push. O verificador geral `tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown` também rodou; reportou 20 alvos, 2 bloqueados, 18 entradas não assinadas e zero instalações públicas verificadas. O teste visual e as provas cross-app reais ainda dependem dos contratos/providers listados acima.
