@@ -9,7 +9,7 @@ Auditoria do código em `ordax-apps`, complementada pela leitura dos contratos a
 | Onde estavam as regras? | `src/domain/domain.mjs`, `src/application/commands.mjs`; apresentação concentrada em `src/ui/app.mjs`. | Pedidos, preços, transições, comandas, receitas e estoque eram acoplados ao mesmo estado v3. |
 | O que existia apenas em memória? | `src/fixtures/mock-data.mjs` e `createMockWorkspace()` na versão anterior de `src/ui/app.mjs`. | Vendas/turnos do PDV, equipe, cadastro de clientes, produtos auxiliares, carrinho e filtros não sobreviviam ao reload. Esses handlers e cadastros não são mais expostos pelo runtime atual. |
 | O que tinha persistência? | `src/adapters/browser-local-store.mjs`. | Um estado local por chave de preview persistia settings, sabores, pedidos, comandas, fichas e antes também estoque. Não era persistência empresarial ou multi-device. |
-| O que duplicava owners? | Inventory: antigo Food state v3 guardava `ingredients` e `inventoryMovements`. Sales: `ordax.sales-book/1` é livro genérico de pedidos; o plano ACHEGUESE-001 do owner OS designa o Food Order Core quando Food é o provedor. | O modelo antigo duplicava Inventory. A autoridade de pedidos alimentares comerciais precisa de reconciliação cross-repo; os pedidos Food atuais são apenas sandbox local. |
+| O que duplicava owners? | Inventory: antigo Food state v3 guardava `ingredients` e `inventoryMovements`. Sales: `ordax.sales-book/1` é livro genérico de pedidos; FOOD-001/ACHEGUESE-001 designam Food Order Core para pedidos do provedor Food. | O estoque duplicado foi removido. O Food comercial deverá possuir o pedido alimentar único, sem segundo mestre no Sales; os pedidos atuais continuam sandbox. |
 | O que integrava com Space? | `src/ports/food-data-port.mjs`, `src/adapters/browser-local-store.mjs`, `prototypes/food-pizzeria/preview.mjs`. | Nada. O port é app-owned e `preview-na-garagem` é escopo fictício local. |
 | O que era apenas demonstração? | `src/fixtures/*`, `mockWorkspace` e antigas telas de PDV/clientes/equipe/relatórios. | Os dados e ações dessas áreas não eram serviços nem registros compartilhados. No runtime atual, cadastros e handlers foram removidos; amostras do catálogo são imutáveis e rotuladas como fictícias. |
 | Quais owners já existem? | `apps/inventory/src/domain/movements.mjs`, `apps/sales/src/domain/orders.mjs`, `apps/finance/src/domain/ledger.mjs`; serviços Files/Projects/Spaces do OS. | Inventory, Sales e Finance têm fundações próprias; Finance ainda é ledger-base. CRM/Customers, People e Payments não têm owner app correspondente neste repo. |
@@ -26,8 +26,8 @@ Auditoria do código em `ordax-apps`, complementada pela leitura dos contratos a
 
 ## Ownership da próxima integração
 
-- **Sales × Food Order Core:** `apps/sales/src/domain/orders.mjs` possui `ordax.sales-book/1` (domínio genérico), mas o `ordax-os/ACHEGUESE-001` nomeia o Food Order Core como autoridade do pedido quando Food é o provedor. Essa divergência precisa de decisão explícita e contrato público único; não é seguro declarar Sales owner definitivo a partir do protótipo.
-- **Food:** mantém cardápio/fichas e a produção/fulfillment específica, vinculando-se ao ID canônico que a reconciliação definir. Pedidos Food locais não constituem pedidos comerciais.
+- **Food Order Core:** FOOD-001 e ACHEGUESE-001 definem o Food como owner do pedido alimentar quando Food é o provedor. O `ordax.sales-book/1` permanece genérico para seus próprios fluxos; não será um mestre paralelo. Faltam a publicação e a homologação dos contratos de pedido Food e projeção Sales.
+- **Food:** mantém cardápio/fichas e produção/fulfillment. Seus pedidos atuais são exclusivamente sandbox local; não equivalem ao Food Order Core comercial.
 - **Inventory:** fonte de saldo e movimento; recebe request de consumo autorizado a partir da proposta do Food.
 - **Payments:** única autoridade de confirmação financeira. PDV é a experiência que coordena o pedido e recebe o resultado, não uma simulação de “pagamento concluído”.
 - **Finance:** consome fatos financeiros aceitos; não recalcula ou duplica pedidos/pagamentos.
@@ -43,7 +43,7 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 ## Contratos e testes necessários antes de integrar
 
 1. Contrato público Space provider/snapshot/readiness/contexto autorizado/nav/lifecycle e projeções de métricas.
-2. Decisão e contrato público Food Order Core ↔ Sales: reconciliar a autoridade do pedido alimentar indicada em ACHEGUESE-001 com o livro genérico Sales. Definir um único pedido mestre e referências, projeções autorizadas, versionamento e idempotência; sem duplicar pedidos comerciais.
+2. Contratos públicos Food Order Core ↔ Space/Sales: publicar e homologar o owner Food já previsto em FOOD-001/ACHEGUESE-001, com pedido único, IDs e revisões, projeção comercial opcional read-only para Sales, versionamento e idempotência; sem duplicar pedidos comerciais.
 3. Contrato de consumo Food → Inventory com autorização por Space, referência de pedido, retry/idempotência, resultado e política de reversão.
 4. Contrato de tentativa/confirmação/estorno Payments → PDV e referências aceitas por Sales/Finance.
 5. Contrato CRM para referência de cliente e limites de PII; contrato People sem duplicar Identity/membership.
