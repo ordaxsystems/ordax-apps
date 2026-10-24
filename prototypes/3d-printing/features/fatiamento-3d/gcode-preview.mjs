@@ -1,6 +1,8 @@
-const TYPE_COLORS = Object.freeze({
-  outer: "#ff914d", inner: "#ffc857", infill: "#ff5b54", support: "#62df92", bridge: "#69b7ff", travel: "#64747b", other: "#bb9aff",
-});
+const TYPE_COLORS = Object.freeze({ outer: "#ff914d", inner: "#ffc857", infill: "#ff5b54", support: "#62df92", bridge: "#69b7ff", travel: "#64747b", other: "#bb9aff" });
+const TAU = Math.PI * 2;
+const ARC_CHORD_ERROR_MM = 0.1;
+const MAX_ARC_SEGMENTS = 512;
+const WORD_PATTERN = /([A-Z])\s*([+-]?(?:(?:\d+\.?\d*)|(?:\.\d+))(?:[Ee][+-]?\d+)?)/g;
 
 function typeFromComment(comment) {
   const value = comment.toLowerCase();
@@ -13,11 +15,99 @@ function typeFromComment(comment) {
   return "other";
 }
 
+function parseWords(command) {
+  const words = Object.create(null);
+  for (const match of command.matchAll(WORD_PATTERN)) {
+    const value = Number(match[2]);
+    if (Number.isFinite(value)) words[match[1]] = value;
+  }
+  return words;
+}
+
+function directedSweep(start, end, clockwise, fullCircle) {
+  if (fullCircle) return clockwise ? -TAU : TAU;
+  let delta = end - start;
+  if (clockwise) {
+    while (delta >= 0) delta -= TAU;
+  } else {
+    while (delta <= 0) delta += TAU;
+  }
+  return delta;
+}
+
+function arcGeometry(x1, y1, x2, y2, words, clockwise, unitScale, relativeArcCenter) {
+  let centerX, centerY;
+  if (words.I !== undefined || words.J !== undefined) {
+    if (!relativeArcCenter && (words.I === undefined || words.J === undefined)) return null;
+    centerX = relativeArcCenter ? x1 + (words.I || 0) * unitScale : words.I * unitScale;
+    centerY = relativeArcCenter ? y1 + (words.J || 0) * unitScale : words.J * unitScale;
+  } else if (words.R !== undefined) {
+    const signedRadius = words.R * unitScale;
+    const radius = Math.abs(signedRadius);
+    const dx = x2 - x1, dy = y2 - y1, chord = Math.hypot(dx, dy);
+    if (chord < 1e-7 || radius < 1e-7 || chord > radius * 2 + 1e-5) return null;
+    const midpointX = (x1 + x2) / 2, midpointY = (y1 + y2) / 2;
+    const halfHeight = Math.sqrt(Math.max(0, radius * radius - chord * chord / 4));
+    const perpendicularX = -dy / chord, perpendicularY = dx / chord;
+    const centers = [
+      [midpointX + perpendicularX * halfHeight, midpointY + perpendicularY * halfHeight],
+      [midpointX - perpendicularX * halfHeight, midpointY - perpendicularY * halfHeight],
+    ];
+    const fullCircle = false;
+    const candidates = centers.map(([cx, cy]) => {
+      const startAngle = Math.atan2(y1 - cy, x1 - cx);
+      const endAngle = Math.atan2(y2 - cy, x2 - cx);
+      return { cx, cy, sweep: directedSweep(startAngle, endAngle, clockwise, fullCircle) };
+    });
+    const wantsLongArc = signedRadius < 0;
+    const matching = candidates.find(candidate => (Math.abs(candidate.sweep) > Math.PI + 1e-6) === wantsLongArc);
+    const selected = matching || candidates[0];
+    return { centerX: selected.cx, centerY: selected.cy, radius, sweep: selected.sweep };
+  } else {
+    return null;
+  }
+
+  const radiusStart = Math.hypot(x1 - centerX, y1 - centerY);
+  const radiusEnd = Math.hypot(x2 - centerX, y2 - centerY);
+  if (!Number.isFinite(radiusStart) || radiusStart < 1e-7 || Math.abs(radiusStart - radiusEnd) > Math.max(0.05, radiusStart * 0.001)) return null;
+  const startAngle = Math.atan2(y1 - centerY, x1 - centerX);
+  const endAngle = Math.atan2(y2 - centerY, x2 - centerX);
+  const fullCircle = Math.hypot(x2 - x1, y2 - y1) < 1e-7;
+  return { centerX, centerY, radius: radiusStart, sweep: directedSweep(startAngle, endAngle, clockwise, fullCircle) };
+}
+
+function tessellateArc({ x1, y1, x2, y2, z1, z2, geometry, layer, type, extrusion }) {
+  const { centerX, centerY, radius, sweep } = geometry;
+  const maxAngle = 2 * Math.acos(Math.max(-1, Math.min(1, 1 - ARC_CHORD_ERROR_MM / radius)));
+  const segmentCount = Math.min(MAX_ARC_SEGMENTS, Math.max(2, Math.ceil(Math.abs(sweep) / Math.max(0.01, maxAngle))));
+  const startAngle = Math.atan2(y1 - centerY, x1 - centerX);
+  const segments = [];
+  for (let index = 1; index <= segmentCount; index++) {
+    const t = index / segmentCount;
+    const angle = startAngle + sweep * t;
+    segments.push({
+      x1: index === 1 ? x1 : segments[index - 2].x2,
+      y1: index === 1 ? y1 : segments[index - 2].y2,
+      x2: index === segmentCount ? x2 : centerX + radius * Math.cos(angle),
+      y2: index === segmentCount ? y2 : centerY + radius * Math.sin(angle),
+      z: z1 + (z2 - z1) * t,
+      layer,
+      type: extrusion ? type : "travel",
+      extrusion,
+      arc: true,
+    });
+  }
+  return segments;
+}
+
 export function parseGcodePreview(text) {
   const segments = [];
-  let x = 0, y = 0, z = 0, e = 0, relativeXYZ = false, relativeE = false, type = "other", layer = -1, lastLayerZ = null;
+  let x = 0, y = 0, z = 0, e = 0;
+  let relativeXYZ = false, relativeE = false, relativeArcCenter = true, unitScale = 1;
+  let plane = "XY", type = "other", layer = -1, lastLayerZ = null;
   const unsupported = new Set();
-  for (const line of text.split(/\r?\n/)) {
+
+  for (const line of String(text).split(/\r?\n/)) {
     const divider = line.indexOf(";");
     const command = (divider < 0 ? line : line.slice(0, divider)).trim().toUpperCase();
     const comment = divider < 0 ? "" : line.slice(divider + 1).trim();
@@ -25,35 +115,62 @@ export function parseGcodePreview(text) {
       if (/^TYPE\s*:/i.test(comment) || /^FEATURE\s*:/i.test(comment)) type = typeFromComment(comment.replace(/^(?:TYPE|FEATURE)\s*:/i, ""));
       if (/LAYER_CHANGE/i.test(comment) || /^LAYER\s*:/i.test(comment)) { layer++; lastLayerZ = null; }
     }
-    if (/^G90(?:\s|$)/.test(command)) { relativeXYZ = false; continue; }
-    if (/^G91(?:\s|$)/.test(command)) { relativeXYZ = true; continue; }
-    if (/^M82(?:\s|$)/.test(command)) { relativeE = false; continue; }
-    if (/^M83(?:\s|$)/.test(command)) { relativeE = true; continue; }
-    if (/^G92(?:\s|$)/.test(command)) {
-      const values = Object.fromEntries([...command.matchAll(/([XYZE])\s*(-?[\d.]+)/g)].map(match => [match[1], Number(match[2])]));
-      if (values.X !== undefined) x = values.X; if (values.Y !== undefined) y = values.Y; if (values.Z !== undefined) z = values.Z; if (values.E !== undefined) e = values.E;
+
+    const code = command.match(/^(?:N\d+\s+)?(G\d+(?:\.\d+)?)(?:\s|$)/)?.[1];
+    if (!code) continue;
+    if (code === "G90.1") { relativeArcCenter = false; continue; }
+    if (code === "G91.1") { relativeArcCenter = true; continue; }
+    if (code === "G90") { relativeXYZ = false; continue; }
+    if (code === "G91") { relativeXYZ = true; continue; }
+    if (code === "M82") { relativeE = false; continue; }
+    if (code === "M83") { relativeE = true; continue; }
+    if (code === "G17") { plane = "XY"; continue; }
+    if (code === "G18") { plane = "XZ"; continue; }
+    if (code === "G19") { plane = "YZ"; continue; }
+    if (code === "G20") { unitScale = 25.4; continue; }
+    if (code === "G21") { unitScale = 1; continue; }
+
+    const words = parseWords(command);
+    if (code === "G92") {
+      if (words.X !== undefined) x = words.X * unitScale;
+      if (words.Y !== undefined) y = words.Y * unitScale;
+      if (words.Z !== undefined) z = words.Z * unitScale;
+      if (words.E !== undefined) e = words.E * unitScale;
       continue;
     }
-    const code = command.match(/^(G\d+)/)?.[1];
-    if (!code) continue;
-    if (code === "G2" || code === "G3") { unsupported.add(code); continue; }
-    if (code !== "G0" && code !== "G00" && code !== "G1" && code !== "G01") continue;
-    const values = Object.fromEntries([...command.matchAll(/([XYZE])\s*(-?[\d.]+)/g)].map(match => [match[1], Number(match[2])]));
-    const nextX = values.X === undefined ? x : relativeXYZ ? x + values.X : values.X;
-    const nextY = values.Y === undefined ? y : relativeXYZ ? y + values.Y : values.Y;
-    const nextZ = values.Z === undefined ? z : relativeXYZ ? z + values.Z : values.Z;
-    const nextE = values.E === undefined ? e : relativeE ? e + values.E : values.E;
-    if (values.Z !== undefined && Math.abs(nextZ - z) > 0.00001 && lastLayerZ !== nextZ) {
+
+    if (code !== "G0" && code !== "G00" && code !== "G1" && code !== "G01" && code !== "G2" && code !== "G02" && code !== "G3" && code !== "G03") continue;
+    const nextX = words.X === undefined ? x : relativeXYZ ? x + words.X * unitScale : words.X * unitScale;
+    const nextY = words.Y === undefined ? y : relativeXYZ ? y + words.Y * unitScale : words.Y * unitScale;
+    const nextZ = words.Z === undefined ? z : relativeXYZ ? z + words.Z * unitScale : words.Z * unitScale;
+    const nextE = words.E === undefined ? e : relativeE ? e + words.E * unitScale : words.E * unitScale;
+    if (words.Z !== undefined && Math.abs(nextZ - z) > 0.00001 && lastLayerZ !== nextZ) {
       if (layer < 0) layer = 0;
       else if (lastLayerZ !== null) layer++;
       lastLayerZ = nextZ;
     }
-    const extrusion = values.E !== undefined && (relativeE ? values.E > 0 : nextE > e + 0.000001);
-    if (values.X !== undefined || values.Y !== undefined) {
-      segments.push({ x1: x, y1: y, x2: nextX, y2: nextY, z: nextZ, layer: Math.max(0, layer), type: extrusion ? type : "travel", extrusion });
+    const extrusion = words.E !== undefined && (relativeE ? words.E > 0 : nextE > e + 0.000001);
+    const moveLayer = Math.max(0, layer);
+
+    if (code === "G2" || code === "G02" || code === "G3" || code === "G03") {
+      const clockwise = code === "G2" || code === "G02";
+      const arcCode = clockwise ? "G2" : "G3";
+      const hasXYMotion = words.X !== undefined || words.Y !== undefined || words.I !== undefined || words.J !== undefined || words.R !== undefined;
+      const planarArc = Math.abs(nextZ - z) <= 0.00001;
+      const geometry = plane === "XY" && planarArc && hasXYMotion
+        ? arcGeometry(x, y, nextX, nextY, words, clockwise, unitScale, relativeArcCenter)
+        : null;
+      if (geometry) {
+        segments.push(...tessellateArc({ x1: x, y1: y, x2: nextX, y2: nextY, z1: z, z2: nextZ, geometry, layer: moveLayer, type, extrusion }));
+      } else {
+        unsupported.add(arcCode);
+      }
+    } else if (words.X !== undefined || words.Y !== undefined) {
+      segments.push({ x1: x, y1: y, x2: nextX, y2: nextY, z: nextZ, layer: moveLayer, type: extrusion ? type : "travel", extrusion });
     }
     x = nextX; y = nextY; z = nextZ; e = nextE;
   }
+
   const layers = [...new Set(segments.filter(segment => segment.extrusion).map(segment => segment.layer))].sort((a, b) => a - b);
   return { segments, layers, unsupported: [...unsupported], colors: TYPE_COLORS };
 }
