@@ -653,6 +653,12 @@ function validateFoodPizzeriaStateForVersion(value, version) {
   if (new Set(tableCommands.map(({ id }) => id)).size !== tableCommands.length) throw new TypeError("Comandas contêm identificadores duplicados.");
   const openTableIds = tableCommands.filter(({ closedAt }) => closedAt === null).map(({ tableId }) => tableId);
   if (new Set(openTableIds).size !== openTableIds.length) throw new TypeError("Uma mesa não pode ter duas comandas abertas.");
+  for (const command of tableCommands.filter(({ closedAt }) => closedAt === null)) {
+    const table = tables.find(({ id }) => id === command.tableId);
+    if (!table.active || command.guestCount > table.seats) {
+      throw new TypeError("Uma comanda aberta exige uma mesa ativa com capacidade suficiente.");
+    }
+  }
   const commandsById = new Map(tableCommands.map((command) => [command.id, command]));
   for (const order of orders) {
     if (order.tableCommandId === null) continue;
@@ -749,6 +755,10 @@ export function updateFoodPizzeriaSettings(stateValue, changes = {}) {
   const activeTableIds = new Set(settings.tables.filter(({ active }) => active).map(({ id }) => id));
   if (state.tableCommands.some(({ tableId, closedAt }) => closedAt === null && !activeTableIds.has(tableId))) {
     throw new Error("Encerre as comandas abertas antes de desativar uma mesa.");
+  }
+  if (state.tableCommands.some(({ tableId, guestCount, closedAt }) =>
+    closedAt === null && guestCount > settings.tables.find(({ id }) => id === tableId).seats)) {
+    throw new Error("Encerre a comanda aberta antes de reduzir a capacidade da mesa abaixo de seus ocupantes.");
   }
   const flavors = state.flavors.map((flavor) => ({
     ...flavor,
