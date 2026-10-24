@@ -6,7 +6,7 @@ import { deviceAvailable, deviceLabel, deviceStatus, assertOperationBinding } fr
 
 const resultData = op => op?.result?.data || op?.result || {};
 
-export function createProjectPanel({ host, attach, notify, onProjectConversations }) {
+export function createProjectPanel({ host, attach, notify, onProjectConversations, showConversationLayout = () => {} }) {
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
@@ -41,14 +41,26 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const task = fn => Promise.resolve().then(fn).catch(error => message(error.message));
   const workspaceVisible = () => !$('projectDialog').hidden;
   function showWorkspace(visible) {
+    // Narrow screens cannot show fullscreen preview and Workspace simultaneously.
+    // Ask the owning conversation layout controller to reveal the chat column.
+    if (visible) showConversationLayout();
     $('projectDialog').hidden = !visible;
     $('conversation').hidden = visible;
-    document.querySelector('.composer-area').hidden = visible;
+    // Keep the canonical composer available beneath Workspace instead of mounting a second chat.
+    document.querySelector('.composer-area').hidden = false;
     $('openProject').setAttribute('aria-pressed', String(visible));
+    $('sidebarWorkspace').setAttribute('aria-pressed', String(visible));
+    // Reflect the actual selected tool in both navigations, without creating a second workspace.
+    for (const shortcut of document.querySelectorAll('[data-workspace-tab]')) {
+      shortcut.setAttribute('aria-pressed', String(visible && shortcut.dataset.workspaceTab === $('projectDialog').dataset.activeTab));
+    }
     if (!visible) $('prompt').focus();
   }
   function tab(id) {
     $('projectDialog').dataset.activeTab = id;
+    for (const shortcut of document.querySelectorAll('[data-workspace-tab]')) {
+      shortcut.setAttribute('aria-pressed', String(workspaceVisible() && shortcut.dataset.workspaceTab === id));
+    }
     $('projectTitle').textContent = id === 'studioActivity' ? 'Atividade do projeto' : id === 'studioContinuity' ? 'Contexto e continuidade' : 'Espaço de trabalho';
     for (const button of document.querySelectorAll('[data-studio-tab]')) {
       const active = button.dataset.studioTab === id;
@@ -214,13 +226,15 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('localRuntimeCheck').disabled = typeof host.localRuntimeObservation !== 'function';
   if ($('localRuntimeCheck').disabled) $('localRuntimeObservation').textContent = 'Observação do serviço local não disponível neste host. Nenhuma autorização foi inferida.';
   $('localRuntimeCheck').addEventListener('click', () => { void refreshLocalObservation(); });
-  async function open({ focusAccount = false } = {}) {
+  async function open({ focusAccount = false, tabId = 'studioFiles' } = {}) {
+    if (!['studioFiles', 'studioGit', 'studioSearch', 'studioPreview', 'studioContinuity', 'studioActivity'].includes(tabId)) throw new Error('Aba do Workspace inválida.');
     showWorkspace(true);
     if (focusAccount && accountHost?.available) {
       try { accountAvailable = await accountHost.available() === true; }
       catch { accountAvailable = false; }
     }
     await refresh();
+    tab(tabId);
     void refreshLocalObservation();
     controls();
     if (focusAccount && !$('productAccountSection').hidden) requestAnimationFrame(() => {
@@ -229,8 +243,8 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
     });
   }
   $('openProject').addEventListener('click', () => task(open));
-  $('openActivity').addEventListener('click', () => task(async () => { await open(); tab('studioActivity'); $('studioTabActivity').focus(); }));
-  $('openContext').addEventListener('click', () => task(async () => { await open(); tab('studioContinuity'); $('studioTabContinuity').focus(); }));
+  $('openActivity').addEventListener('click', () => task(async () => { await open({ tabId: 'studioActivity' }); $('studioTabActivity').focus(); }));
+  $('openContext').addEventListener('click', () => task(async () => { await open({ tabId: 'studioContinuity' }); $('studioTabContinuity').focus(); }));
   $('activityScope').addEventListener('change', renderOperations);
   $('activityRefresh').addEventListener('click', () => task(() => refresh({ fresh: true })));
   $('projectClose').addEventListener('click', () => { if (dirty()) { message('Revise ou descarte a edição antes de fechar.'); return; } showWorkspace(false); });

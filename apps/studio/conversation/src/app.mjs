@@ -24,6 +24,8 @@ let streamingNode = null, renderScheduled = false, externalBusy = false, pollRun
 let recoveringStream = false, navigation;
 let projects = [], activeProjectId = null, navigationPending = false, editingProjectId = null;
 let contextBlocked = false;
+// Only after the outbound draft is consumed may the user type the next message while streaming.
+let nextDraftEditable = false;
 let home = true, supportsWebDelete = false, webDeletionRecovery = false, deleting = false, optionsChatId = null;
 let audioPanel;
 const drafts = new DraftController(host, error => { $('draftState').textContent = 'Falha ao salvar rascunho'; notify(error.message); });
@@ -110,9 +112,15 @@ function updateControls() {
   $('messageBudget').textContent = invalid || `${length.toLocaleString('pt-BR')} / ${MESSAGE_LIMIT.toLocaleString('pt-BR')} caracteres, incluindo arquivos`;
   $('messageBudget').classList.toggle('invalid', Boolean(invalid));
   const modeBlocked = connection.mode === 'chatgpt-web' && webSnapshot.chatModeRequired === true && webSnapshot.automatedSendAllowed !== true;
-  $('send').disabled = !initialized || locked() || unconfirmed || Boolean(invalid) || modeBlocked || !ready || (!$('prompt').value.trim() && !attachments.length);
+  $('send').disabled = !initialized || locked() || unconfirmed || Boolean(invalid) || modeBlocked || (!$('prompt').value.trim() && !attachments.length);
+  $('send').setAttribute('aria-label', ready ? 'Enviar mensagem' : 'Conectar para enviar mensagem');
+  $('send').title = ready ? 'Enviar mensagem' : 'Conectar ou escolher um modelo antes de enviar';
   $('send').hidden = busy || externalBusy; $('stop').hidden = !busy && !externalBusy;
-  $('prompt').disabled = !initialized || locked(); $('attach').disabled = !initialized || locked(); $('newChat').disabled = !initialized || locked(); $('model').disabled = connection.mode === 'chatgpt-web' || locked() || !models.length;
+  for (const button of document.querySelectorAll('[data-workspace-tab]')) button.disabled = !initialized || locked() || $('hostAvailability').dataset.state !== 'ready';
+  const canTypeNextDraft = busy && nextDraftEditable && !navigationPending && !contextBlocked && !deleting && !audioPanel?.active();
+  $('prompt').disabled = !initialized || (locked() && !canTypeNextDraft);
+  $('prompt').placeholder = canTypeNextDraft ? 'Escreva a próxima mensagem…' : 'Escreva uma mensagem…';
+  $('sidebarWorkspace').disabled = !initialized || locked() || $('openProject').disabled; $('attach').disabled = !initialized || locked(); $('newChat').disabled = !initialized || locked(); $('model').disabled = connection.mode === 'chatgpt-web' || locked() || !models.length;
   $('exportChat').disabled = !chat()?.messages.length;
   $('chatOptions').disabled = !chat() || locked(); $('saveTitle').disabled = locked();
   $('chooseModel').hidden = !nativeWeb; $('webAttach').hidden = !nativeWeb;
@@ -395,8 +403,14 @@ async function send(retry = false) {
   const message = projectMessage({ project: project(), messages: chat()?.messages, message: { text: $('prompt').value, attachments: [...attachments] }, enabled: $('useProjectContext').checked });
   if (!retry) composeTextMessage(message);
   if (['prepared','submitted','uncertain'].includes(chat()?.delivery?.status)) { notify('Confira o envio sem confirmação na área Web antes de continuar.'); return; }
+  // Sending from Workspace returns to the existing conversation; never discard unreviewed edits.
+  if (!$('projectDialog').hidden) {
+    if (!projectPanel.canClose()) { notify('Revise ou descarte as alterações do Workspace antes de enviar.'); return; }
+    projectPanel.showConversation();
+    navigation.go('conversation', { focus: false });
+  }
   let started = false, terminal = false;
-  busy = true; notify(''); renderSidebar(); updateControls();
+  busy = true; nextDraftEditable = false; notify(''); renderSidebar(); updateControls();
   try {
     attachments = message.attachments; home = false;
     if (!chat()) { const sourceKey = draftKey(); const value = await host.createChat(activeProjectId); updateChat(value); drafts.set(sourceKey, { text: '', attachments: [] }); activeId = value.id; saveDraft(); renderSidebar(); }
@@ -412,6 +426,7 @@ async function send(retry = false) {
         if (target) { const index = target.messages.findIndex(m => m.id === event.message.id); if (index < 0) target.messages.push(event.message); else target.messages[index] = event.message; }
       } else if (event.type === 'start') {
         started = true; if (event.chat) updateChat(event.chat); consumeDraft(chat()?.delivery); $('prompt').value = ''; attachments = []; autosize(); renderAttachments(); renderMessages(); renderSidebar(); scrollBottom();
+        nextDraftEditable = true; updateControls();
       } else if (event.type === 'sync') {
         const follow = $('conversation').scrollHeight - $('conversation').scrollTop - $('conversation').clientHeight < 120;
         if (event.chat) updateChat(event.chat); renderMessages(); if (follow) scrollBottom();
@@ -432,7 +447,7 @@ async function send(retry = false) {
     notify(error.message);
     if (!terminal && connection.mode === 'chatgpt-web') recoveringStream = true;
     else if (started) { const last = chat()?.messages.at(-1); if (last?.status === 'streaming') { last.status = 'interrupted'; last.error = error.message; } renderMessages(); }
-  } finally { busy = false; lastVersion = -1; await pollWeb(); renderSidebar(); renderMessages(); updateControls(); if (!locked()) $('prompt').focus(); }
+  } finally { busy = false; nextDraftEditable = false; lastVersion = -1; await pollWeb(); renderSidebar(); renderMessages(); updateControls(); if (!locked()) $('prompt').focus(); }
 }
 function exportConversation() {
   const current = chat(); if (!current) return;
@@ -599,6 +614,15 @@ async function pollWeb() {
   } catch (error) { notify(error.message); } finally { pollRunning = false; }
 }
 const previewPanel = createPreviewPanel({ nativePreview: window.ordaxStudioPreviewHost, nativeWeb, project, configure: openProjectOptions, openProjects: () => navigation.go('projects'), notify });
+// The preview tool shortcuts open the existing Workspace, never a second editor or executor.
+for (const button of document.querySelectorAll('[data-workspace-tab]')) {
+  button.addEventListener('click', () => run(async () => {
+    if (!initialized || locked() || $('hostAvailability').dataset.state !== 'ready') return;
+    const tabId = button.dataset.workspaceTab;
+    await projectPanel.open({ tabId });
+    document.querySelector('[data-studio-tab="' + tabId + '"]')?.focus({ preventScroll: true });
+  }));
+}
 const centralPanel = createCentralPanel({ host, openRuntime: () => projectPanel.open({ focusAccount: true }), accountHost: window.ordaxStudioAccountHost });
 navigation = createNavigation({
   state: () => ({ chats, projects, activeId, projectId: activeProjectId, disabled: locked() || !initialized, previewAvailable: Boolean(window.ordaxStudioPreviewHost) }),
@@ -623,6 +647,7 @@ for (const button of document.querySelectorAll('button[data-studio-page]')) butt
     if (button.dataset.studioPage === 'central') void centralPanel.open();
   } catch (error) { notify(error.message); }
 });
+$('sidebarWorkspace').addEventListener('click', () => $('openProject').click());
 $('contextSelect').addEventListener('click', () => navigation.go('projects'));
 $('projectsBack').addEventListener('click', () => navigation.go('projects'));
 $('projectResources').addEventListener('click', () => $('openProject').click());
@@ -677,7 +702,7 @@ const activityTimer = setInterval(() => {
   tickActivityClocks(); renderRunStatus();
   if (navigation?.current() === 'central') centralPanel.poll();
 }, 1000);
-const projectPanel = createProjectPanel({ host, notify, onProjectConversations: openWorkspaceConversations, attach: async attachment => {
+const projectPanel = createProjectPanel({ host, notify, onProjectConversations: openWorkspaceConversations, showConversationLayout: showConversationView, attach: async attachment => {
   if (locked()) throw new Error('Aguarde a resposta antes de adicionar contexto.');
   composeTextMessage({ text: $('prompt').value, attachments: [...attachments, attachment] });
   attachments.push(attachment); saveDraft(); await drafts.flush(); renderAttachments();

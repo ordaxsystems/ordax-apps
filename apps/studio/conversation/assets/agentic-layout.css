@@ -28,5 +28,76 @@ body{background:var(--ax-bg);color:var(--ax-text)}
 @media(max-width:1200px){.sidebar,.web-bridge .sidebar{width:218px}.welcome .suggestions{grid-template-columns:1fr}.studio-workspace{padding:16px 18px 22px!important}.studio-workspace .project-workspace{grid-template-columns:170px minmax(0,1fr)!important}}
 @media(max-width:1000px){.sidebar,.web-bridge .sidebar{width:min(288px,calc(100vw - 44px))}.topbar,.studio-preview .topbar,.web-bridge .topbar{min-height:58px;padding:8px 12px}.conversation-context{padding:6px 12px}.welcome,.studio-home .welcome{padding:28px 18px 24px}.welcome h1,.studio-home .welcome h1,.web-bridge .welcome h1{font-size:32px}.composer-area,.web-bridge .composer-area{padding:9px 12px 10px}.studio-directory{padding:20px 16px}.studio-workspace{padding:12px 14px 18px!important}.studio-tabs{top:52px}.studio-workspace .project-workspace{grid-template-columns:1fr!important}.project-explorer nav{height:180px}.project-editing textarea{height:300px!important}}
 @media(max-width:620px){.conversation-heading .eyebrow{display:none}.welcome .suggestions{grid-template-columns:1fr}.suggestions button{min-height:78px}.composer-toolbar{align-items:flex-end}.composer-tools{max-width:calc(100% - 44px)}.composer-web-control{font-size:9px}.messages{padding:20px 14px 10px}.studio-bottom-navigation{height:calc(68px + env(safe-area-inset-bottom));padding-top:4px}.studio-bottom-navigation button{min-height:54px;font-size:11px}.app,.web-bridge .app{height:calc(100dvh - 68px - env(safe-area-inset-bottom))}}
+/* Meridian concept: visual-only Studio shell. */
+@media(min-width:1201px){.sidebar,.web-bridge .sidebar{width:244px;padding:14px 10px 12px}}
+.sidebar,.web-bridge .sidebar{background:linear-gradient(180deg,#071422,#08101d 75%,#070c15);border-right:1px solid #1b344d}
+.brand{min-height:56px;margin-bottom:8px;font-size:16px}.brand strong{color:#8db7e9}
+.new-chat{background:#0a315d;border-color:#185b9c;color:#f7fbff}
+.studio-navigation{margin-top:5px;gap:5px}
+.studio-navigation button{min-height:43px;display:flex;align-items:center;gap:12px;font-size:13px;color:#bdcee2}
+.studio-navigation button[aria-current=page]{background:linear-gradient(90deg,#14538a,#0f3153);color:#f5fbff;box-shadow:inset 3px 0 #50adff}
+.studio-navigation button svg{height:18px;width:18px;flex:none}
+.studio-workspace-link>span{width:18px;font-size:18px;color:#7bbaff}
+.studio-navigation .studio-workspace-link[aria-pressed=true]{background:#123b60;color:#eff8ff;box-shadow:inset 3px 0 #62b5ff}
+.studio-navigation .studio-workspace-link[aria-pressed=true]>span{color:#b2dcff}
+.preview-workspace-shortcuts button[aria-pressed=true]{background:#175080;border-color:#4a9ce1;color:#f6fbff}
+
+.sidebar-projects{flex:1 1 auto;min-height:0;overflow-y:auto;margin:20px 2px 6px;padding:14px 2px 12px;border-top:1px solid #1d3045}
+.sidebar-projects-heading{padding:0 10px 12px}
+.sidebar-projects-heading h2{margin:0;color:#8ca8c7;font-size:10px;letter-spacing:1.15px}
+.sidebar-project-link{width:100%;min-height:39px;display:flex;gap:10px;align-items:center;padding:7px 9px;border:1px solid transparent;border-radius:9px;color:#b9cde6;background:transparent;text-align:left}
+.sidebar-project-link:hover,.sidebar-project-link[aria-current=true]{background:#0e2944;border-color:#244362;color:#f3f9ff}
+.sidebar-project-mark{display:grid;place-items:center;flex:none;width:25px;height:25px;border-radius:7px;background:#123c62;color:#9ed3ff;font-size:12px}
+.sidebar-project-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.sidebar-projects-empty{color:#708ba9;padding:0 10px;font-size:11px;line-height:1.5}
+.sidebar-home{margin-top:4px}.sidebar-bottom{margin-top:auto}
+.topbar,.studio-preview .topbar,.web-bridge .topbar{background:#071422ed;border-color:#1c354c}
+.conversation-heading .eyebrow{color:#75bfff;font-size:10px}.conversation-heading strong{font-size:15px}
+.top-actions .connection-badge{display:inline-flex;gap:6px;padding:6px 10px;border-radius:22px;background:#102234;color:#aac0d7;font-size:10px}
+.top-actions .connection-badge.connected{color:#7ee0b6}
+.conversation-context{background:#091725}.context-select{background:#0e2338;border-color:#234463;color:#d5e6fa}
+.conversation,.studio-home .conversation{background:radial-gradient(circle at 45% 0%,#10345b55,transparent 34rem)}
+.welcome h1,.studio-home .welcome h1{font-weight:650;letter-spacing:-1.25px}.welcome-description{color:#a8bed7}
+.welcome .suggestions{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.welcome .suggestions button{border-color:#203953;background:linear-gradient(145deg,#10253b,#0c1b2d);min-height:84px}
+.message{font-size:14px;line-height:1.6}.message.user .message-content{border-radius:13px;background:#133354;border-color:#245478}
+.composer-area,.web-bridge .composer-area{width:100%;max-width:100%;margin:0;padding:14px 18px 16px;background:linear-gradient(0deg,#071422 70%,#07142200)}
+.composer{background:#0b2035;border:1px solid #276092;border-radius:14px;padding:12px 13px 10px;box-shadow:0 15px 35px #01050d77}
+.composer:focus-within{border-color:#329eff;box-shadow:0 0 0 2px #1887ee2b,0 18px 38px #0008}
+.composer textarea{min-height:48px;color:#f2f8ff;caret-color:#71c7ff;font-size:14px}.composer textarea::placeholder{color:#91a8c4;opacity:1}
+.composer-toolbar{border-top:1px solid #25415a;padding-top:8px;gap:8px}
+.composer-web-control{background:#102b46;border-color:#284a6c;color:#bfdaed}
+.send-button{border-radius:10px;width:42px;height:42px;background:#117ced;box-shadow:0 4px 14px #0969d855}.send-button:disabled{background:#1e3956;color:#718da9;box-shadow:none}
+.composer-note{display:flex;justify-content:space-between;color:#8aa1b9}
+.studio-preview .studio-preview-panel{border-left:1px solid #244867;background:#071625}
+.studio-preview-panel .web-toolbar{background:#0b1e31}.studio-preview-panel .web-toolbar strong{font-size:13px;color:#e7f3ff}
+.preview-empty{background:radial-gradient(circle at center,#1543715e,#071625 70%)}.preview-empty h2{color:#e3f1ff}
+.preview-controls{background:#0b2035}.preview-controls button:hover,.preview-controls select:hover{border-color:#418ecb}
+.studio-project-card{border-color:#284460}
+button:focus-visible,.sidebar-project-link:focus-visible,.composer textarea:focus-visible{outline:2px solid #73bbff;outline-offset:2px}
+@media(max-width:1200px){.sidebar-projects{margin-top:12px}.welcome .suggestions{grid-template-columns:1fr}}
+@media(max-width:1000px){.composer-area,.web-bridge .composer-area{padding:10px 12px 12px}.sidebar,.web-bridge .sidebar{width:min(300px,calc(100vw - 48px))}.top-actions .connection-badge{display:none}}
+@media(max-width:620px){.composer{padding:10px}.composer-toolbar{gap:4px}.composer textarea{font-size:16px}.sidebar-projects{max-height:25dvh}}
+/* Functional preview tool rail: existing Workspace destinations only. */
+.studio-preview-panel .preview-workspace-shortcuts{position:absolute;top:54px;left:0;right:0;height:39px;z-index:2;display:flex;align-items:center;gap:5px;padding:4px 12px;background:#09182a;border-bottom:1px solid #23405d}
+.preview-workspace-shortcuts button{min-height:30px;padding:4px 12px;border:1px solid #264563;border-radius:8px;background:#0f2a46;color:#c6def6;font-size:11px;cursor:pointer}
+.preview-workspace-shortcuts button:hover:not(:disabled){background:#16416c;border-color:#458aca;color:#fff}
+.preview-workspace-shortcuts button:disabled{opacity:.48;cursor:not-allowed}
+.studio-preview .studio-preview-panel .preview-controls{top:93px}
+.studio-preview .studio-preview-panel .preview-canvas,.studio-preview .studio-preview-panel .preview-empty{top:141px}
+@media(max-width:1000px){.mobile-preview.studio-preview .studio-preview-panel .preview-controls{top:93px;height:80px}.mobile-preview.studio-preview .studio-preview-panel .preview-canvas,.mobile-preview.studio-preview .studio-preview-panel .preview-empty{top:173px}}
+@media(max-width:620px){.preview-workspace-shortcuts button{flex:1;min-width:0;font-size:10px;padding:4px}}
+/* Keep the native preview alongside Workspace, including when entered from Projects. */
+@media(min-width:1001px){
+  body.studio-preview.web-bridge:has(.studio-workspace:not([hidden])) .app{width:var(--assistant-width,60vw)}
+  body.studio-preview .main:has(.studio-workspace:not([hidden])) .studio-preview-panel{display:block}
+}
+/* The same conversation composer remains available below Workspace tools. */
+body .main:has(.studio-workspace:not([hidden])) .studio-workspace{order:1;flex:1 1 auto;min-height:0;overflow:auto}
+body .main:has(.studio-workspace:not([hidden])) .composer-area{order:2;display:block;flex:0 0 auto;width:100%;min-width:0;padding-top:8px;border-top:1px solid #233e5a;background:#081626}
+body .main:has(.studio-workspace:not([hidden])) .composer{box-shadow:0 5px 24px #0005}
+body .main:has(.studio-workspace:not([hidden])) .composer textarea{min-height:42px}
+.main:has(.studio-workspace:not([hidden])) .central-panel{display:none}
+@media(max-height:650px){body .main:has(.studio-workspace:not([hidden])) .composer-area{padding:6px 12px 8px}body .main:has(.studio-workspace:not([hidden])) .composer textarea{min-height:32px}}
 @media(prefers-reduced-motion:reduce){.suggestions button{transform:none!important}}
 }

@@ -1,3 +1,20 @@
+// One source of truth for native WebContentsView visibility and bounds.
+export function previewStatusTag({ browsing, status }) {
+  const browserLabels = { empty: 'NAVEGADOR', loading: 'CARREGANDO NAVEGADOR', ready: 'NAVEGADOR CONECTADO', error: 'NAVEGADOR INDISPONÍVEL' };
+  const previewLabels = { empty: 'AGUARDANDO PROJETO', unconfigured: 'PREVIEW NÃO CONFIGURADO', loading: 'CARREGANDO PREVIEW', ready: 'PREVIEW CONECTADO', error: 'PREVIEW INDISPONÍVEL' };
+  return (browsing ? browserLabels[status] : previewLabels[status]) || (browsing ? 'NAVEGADOR' : 'PREVIEW DO PROJETO');
+}
+
+export function previewSurfaceVisibility({ enabled, expanded, page, workspaceOpen, overlayOpen, mobilePreview }) {
+  const collection = page !== 'conversation' && !workspaceOpen;
+  const fallbackShown = Boolean(enabled && expanded && !workspaceOpen && !collection && !mobilePreview);
+  return {
+    fallbackShown,
+    fallbackBounded: fallbackShown && !overlayOpen,
+    previewBounded: Boolean(enabled && !collection && !overlayOpen),
+  };
+}
+
 export function createPreviewPanel({ nativePreview, nativeWeb, project, configure, openProjects, notify }) {
   const $ = id => document.getElementById(id);
   let enabled = false, last = { status: 'empty' }, scheduled = false, geometryStamp = '', previewStamp = '', scopeStamp='';
@@ -16,6 +33,7 @@ export function createPreviewPanel({ nativePreview, nativeWeb, project, configur
     $('previewDimensions').textContent=!browsing&&value.viewport?`${value.viewport.width} × ${value.viewport.height} · ${Math.round(value.viewport.scale*100)}%`:'';
     if(document.activeElement!==$('previewLocation'))$('previewLocation').value=visible.url||'';
     $('previewBack').disabled=visible.status==='loading'||!visible.canGoBack;$('previewForward').disabled=visible.status==='loading'||!visible.canGoForward;$('previewProjectHost').disabled=!selected?.previewUrl;
+    $('previewTag').textContent = previewStatusTag({ browsing, status: visible.status });
     $('previewStatus').textContent = browsing?({empty:'Navegador',loading:'Carregando página…',ready:'Navegador conectado',error:'Página indisponível'})[visible.status]:({ empty: 'Aguardando projeto', unconfigured: 'Endereço não configurado', loading: 'Carregando preview…', ready: 'Preview conectado', error: 'Preview indisponível' })[visible.status] || 'Aguardando preview';
     $('previewAddress').textContent = visible.url ? new URL(visible.url).host : '';
     $('previewAddress').title = visible.url || '';
@@ -29,18 +47,34 @@ export function createPreviewPanel({ nativePreview, nativeWeb, project, configur
     $('previewBrowser').disabled = !visible.url;
   }
   function measure() {
-    scheduled = false; if (!enabled || !nativeWeb?.setFallbackBounds) return;
-    const active = document.body.classList.contains('chatgpt-fallback');
-    const collection = document.body.dataset.studioPage !== 'conversation';
-    const overlay = [...document.querySelectorAll('dialog')].some(dialog => dialog.open) || !$('projectDialog').hidden || $('sidebar').classList.contains('open') || $('studioTools').open;
-    const hidden = !active || !$('projectDialog').hidden || collection || document.body.classList.contains('mobile-preview');
-    if ($('chatgptFallback').hidden !== hidden) $('chatgptFallback').hidden = hidden;
+    scheduled = false;
+    if (!enabled) {
+      // Native views exist outside the DOM: hiding CSS alone never releases their bounds.
+      if (geometryStamp !== 'null') {
+        geometryStamp = 'null';
+        if (nativeWeb?.setFallbackBounds) task(() => nativeWeb.setFallbackBounds(null));
+      }
+      if (previewStamp !== 'null') {
+        previewStamp = 'null';
+        if (nativePreview?.setBounds) task(async () => paint(await nativePreview.setBounds(null)));
+      }
+      return;
+    }
+    const visibility = previewSurfaceVisibility({
+      enabled,
+      expanded: document.body.classList.contains('chatgpt-fallback'),
+      page: document.body.dataset.studioPage,
+      workspaceOpen: !$('projectDialog').hidden,
+      overlayOpen: [...document.querySelectorAll('dialog')].some(dialog => dialog.open) || $('sidebar').classList.contains('open') || $('studioTools').open,
+      mobilePreview: document.body.classList.contains('mobile-preview'),
+    });
+    if ($('chatgptFallback').hidden === visibility.fallbackShown) $('chatgptFallback').hidden = !visibility.fallbackShown;
     const rect = $('fallbackCanvas').getBoundingClientRect();
     const bounds = value => value.width > 1 && value.height > 1 ? { x: Math.ceil(value.x), y: Math.ceil(value.y), width: Math.floor(value.width) - 1, height: Math.floor(value.height) - 1 } : null;
-    const value = !hidden && !overlay ? bounds(rect) : null;
+    const value = visibility.fallbackBounded ? bounds(rect) : null;
     const stamp = JSON.stringify(value);
-    if (stamp !== geometryStamp) { geometryStamp = stamp; task(() => nativeWeb.setFallbackBounds(value)); }
-    const preview = !overlay && !collection ? bounds($('previewCanvas').getBoundingClientRect()) : null;
+    if (stamp !== geometryStamp) { geometryStamp = stamp; if (nativeWeb?.setFallbackBounds) task(() => nativeWeb.setFallbackBounds(value)); }
+    const preview = visibility.previewBounded ? bounds($('previewCanvas').getBoundingClientRect()) : null;
     const next = JSON.stringify(preview);
     if (next !== previewStamp) { previewStamp = next; if (nativePreview?.setBounds) task(async () => paint(await nativePreview.setBounds(preview))); }
   }

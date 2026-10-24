@@ -1,0 +1,134 @@
+import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { DraftController } from '../src/drafts.mjs';
+import { previewSurfaceVisibility, previewStatusTag } from '../src/preview-panel.mjs';
+
+
+const source = relative => readFileSync(new URL(relative, import.meta.url), 'utf8');
+const html = source('../src/index.html');
+const app = source('../src/app.mjs');
+const navigation = source('../src/navigation.mjs');
+const workspace = source('../src/project-panel.mjs');
+const css = source('../assets/agentic-layout.css');
+
+test('Meridian shell keeps a real chat composer and existing project preview', () => {
+  for (const id of ['composer', 'prompt', 'send', 'stop', 'attachmentList',
+    'previewPanel', 'previewCanvas', 'sidebarWorkspace', 'sidebarRecentProjects',
+    'previewWorkspaceShortcuts', 'previewShortcutFiles', 'previewShortcutGit', 'previewShortcutActivity']) {
+    assert.match(html, new RegExp('id="' + id + '"'), id + ' must exist');
+  }
+  assert.match(html, /data-studio-page="central"/);
+  assert.match(html, /data-studio-page="projects"/);
+  assert.match(app, /for await \(const event of host\.respond\(/);
+  assert.match(app, /host\.stop\(activeId\)/);
+});
+
+test('sidebar shortcuts reuse Studio project ownership, never create new project storage', () => {
+  assert.match(app, /\$\('sidebarWorkspace'\)\.addEventListener\('click', \(\) => \$\('openProject'\)\.click\(\)\)/);
+  assert.match(navigation, /recentProjects\.replaceChildren\(\)/);
+  assert.match(navigation, /orderedProjects = \[\.\.\.projects\]/);
+  assert.match(navigation, /shortcut\.addEventListener\('click', \(\) => openProject\(value\.id\)\)/);
+});
+
+test('draft remains editable without model; sending still enforces provider and delivery state', () => {
+  assert.match(app, /\$\('prompt'\)\.disabled = !initialized \|\| \(locked\(\) && !canTypeNextDraft\)/);
+  assert.match(app, /if \(!account\(\)\?\.connected \|\| !account\(\)\?\.planEnabled\)/);
+  assert.match(app, /\['prepared','submitted','uncertain'\]/);
+  assert.match(app, /\$\('send'\)\.setAttribute\('aria-label', ready \?/);
+  assert.match(app, /drafts\.set\(draftKey\(\)/);
+  assert.match(app, /host\.respond/);
+});
+
+test('preview shortcuts use existing workspace tabs and respect unavailable host state', () => {
+  for (const tab of ['studioFiles', 'studioGit', 'studioActivity']) {
+    const matches = html.match(new RegExp('data-workspace-tab="' + tab + '"', 'g')) || [];
+    assert.equal(matches.length, 2, tab + ' must reuse one Workspace tab from the sidebar and preview');
+  }
+  assert.match(app, /projectPanel\.open\(\{ tabId \}\)/);
+  assert.match(app, /hostAvailability'\)\.dataset\.state !== 'ready'/);
+  assert.match(workspace, /tab\(tabId\)/);
+  assert.match(workspace, /'studioFiles', 'studioGit', 'studioSearch', 'studioPreview'/);
+  assert.match(css, /\.preview-workspace-shortcuts button:disabled/);
+  assert.match(css, /\.studio-preview \.studio-preview-panel \.preview-canvas/);
+});
+
+test('only the existing Workspace tab is highlighted across both surfaces', () => {
+  assert.match(workspace, /\$\('sidebarWorkspace'\)\.setAttribute\('aria-pressed', String\(visible\)\)/);
+  assert.match(workspace, /shortcut\.setAttribute\('aria-pressed', String\(visible && shortcut\.dataset\.workspaceTab === \$\('projectDialog'\)\.dataset\.activeTab\)\)/);
+  assert.match(workspace, /shortcut\.setAttribute\('aria-pressed', String\(workspaceVisible\(\) && shortcut\.dataset\.workspaceTab === id\)\)/);
+  assert.match(css, /\.studio-navigation \.studio-workspace-link\[aria-pressed=true\]/);
+  assert.match(css, /\.preview-workspace-shortcuts button\[aria-pressed=true\]/);
+});
+
+test('next-message draft stays editable only after the stream starts, without a second send', async () => {
+  assert.match(app, /busy = true; nextDraftEditable = false;/);
+  assert.match(app, /nextDraftEditable = true; updateControls\(\);/);
+  assert.match(app, /busy = false; nextDraftEditable = false;/);
+  assert.match(app, /const canTypeNextDraft = busy && nextDraftEditable/);
+  assert.match(app, /\$\('send'\)\.disabled = !initialized \|\| locked\(\)/);
+  const controller = new DraftController({ async saveDraft(_key, entry) { return entry; } });
+  const submitted = controller.set('chat', { text: 'Primeira mensagem', attachments: [] });
+  await controller.flush();
+  controller.set('chat', { text: 'Próxima mensagem', attachments: [] });
+  assert.equal(controller.consume({ draftKey: 'chat', draftRevision: submitted.revision }), false);
+  assert.equal(controller.get('chat').text, 'Próxima mensagem');
+  await controller.flush();
+});
+
+test('Workspace keeps the real composer visible and guards unsaved work on submit', () => {
+  assert.match(workspace, /document\.querySelector\('\.composer-area'\)\.hidden = false/);
+  assert.match(workspace, /\$\('conversation'\)\.hidden = visible/);
+  assert.match(css, /\.main:has\(\.studio-workspace:not\(\[hidden\]\)\) \.composer-area\{order:2/);
+  assert.match(css, /\.main:has\(\.studio-workspace:not\(\[hidden\]\)\) \.studio-workspace\{order:1/);
+  assert.match(app, /if \(!projectPanel\.canClose\(\)\)/);
+  assert.match(app, /projectPanel\.showConversation\(\);\s*navigation\.go\('conversation', \{ focus: false \}\)/);
+  assert.match(app, /if \(locked\(\)\) return;/);
+});
+
+test('native preview stays bound beside Workspace while Web fallback stays hidden', () => {
+  const base = { enabled: true, expanded: true, page: 'conversation', workspaceOpen: false, overlayOpen: false, mobilePreview: false };
+  assert.deepEqual(previewSurfaceVisibility(base), {
+    fallbackShown: true, fallbackBounded: true, previewBounded: true,
+  });
+  for (const page of ['conversation', 'projects', 'project', 'recent']) {
+    assert.deepEqual(previewSurfaceVisibility({ ...base, page, workspaceOpen: true }), {
+      fallbackShown: false, fallbackBounded: false, previewBounded: true,
+    });
+  }
+  assert.equal(previewSurfaceVisibility({ ...base, page: 'projects' }).previewBounded, false);
+  assert.equal(previewSurfaceVisibility({ ...base, overlayOpen: true }).previewBounded, false);
+  assert.equal(previewSurfaceVisibility({ ...base, overlayOpen: true }).fallbackBounded, false);
+  assert.equal(previewSurfaceVisibility({ ...base, mobilePreview: true }).fallbackShown, false);
+  assert.equal(previewSurfaceVisibility({ ...base, enabled: false }).previewBounded, false);
+});
+
+test('preview toolbar declares only observed readiness, never unconditional live output', () => {
+  assert.match(html, /id="previewTag" class="web-tag">PREVIEW DO PROJETO/);
+  assert.doesNotMatch(html, /RESULTADO EM TEMPO REAL/);
+  assert.equal(previewStatusTag({ browsing: false, status: 'empty' }), 'AGUARDANDO PROJETO');
+  assert.equal(previewStatusTag({ browsing: false, status: 'unconfigured' }), 'PREVIEW NÃO CONFIGURADO');
+  assert.equal(previewStatusTag({ browsing: false, status: 'loading' }), 'CARREGANDO PREVIEW');
+  assert.equal(previewStatusTag({ browsing: false, status: 'ready' }), 'PREVIEW CONECTADO');
+  assert.equal(previewStatusTag({ browsing: false, status: 'error' }), 'PREVIEW INDISPONÍVEL');
+  assert.equal(previewStatusTag({ browsing: true, status: 'ready' }), 'NAVEGADOR CONECTADO');
+  assert.equal(previewStatusTag({ browsing: true, status: 'error' }), 'NAVEGADOR INDISPONÍVEL');
+});
+
+test('preview native geometry is independent of Web fallback capability', () => {
+  const source = readFileSync(new URL('../src/preview-panel.mjs', import.meta.url), 'utf8');
+  assert.match(source, /scheduled = false;\s*if \(!enabled\) \{/);
+  assert.match(source, /previewStamp !== 'null'/);
+  assert.match(source, /nativePreview\?\.setBounds\) task\(async \(\) => paint\(await nativePreview\.setBounds\(null\)\)\)/);
+  assert.match(source, /nativeWeb\?\.setFallbackBounds\) task\(\(\) => nativeWeb\.setFallbackBounds\(null\)\)/);
+  assert.match(source, /if \(nativeWeb\?\.setFallbackBounds\)/);
+  assert.match(source, /visibility\.previewBounded \? bounds\(\$\('previewCanvas'\)\.getBoundingClientRect\(\)\) : null/);
+  assert.match(css, /body\.studio-preview \.main:has\(\.studio-workspace:not\(\[hidden\]\)\) \.studio-preview-panel/);
+});
+
+test('concept styling stays in the canonical layered stylesheet and adapts for mobile', () => {
+  assert.match(css, /@layer agentic-layout/);
+  assert.match(css, /\.sidebar-project-link/);
+  assert.match(css, /\.composer:focus-within/);
+  assert.match(css, /@media\(max-width:620px\)/);
+});
