@@ -14,6 +14,7 @@ function validDraft() {
   return {
     printer: "FDM",
     filament: "PLA",
+    bedType: "Textured PEI Plate",
     quality: "standard",
     layerHeight: 0.2,
     walls: 3,
@@ -78,6 +79,7 @@ for (const extension of ["stl", "3mf"]) {
     assert.equal(restored.draft.seamPosition, "aligned_back");
     assert.equal(restored.draft.nozzleTemperatureC, 215);
     assert.equal(restored.draft.nozzleTemperatureInitialLayerC, 220);
+    assert.equal(restored.draft.bedType, "Textured PEI Plate");
     assert.equal(restored.draft.processes[0].settings.seamPosition, "random");
   });
 }
