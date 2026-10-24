@@ -15,7 +15,7 @@ const allowedProfiles = {
 
 function reply({ evidence = allowedEvidence, profiles = { machine: machineId, process: null, filament: null }, settings = null } = {}) {
   const completeSettings = settings === null ? null : {
-    quality: null, layerHeight: null, walls: null, topShellLayers: null, bottomShellLayers: null,
+    quality: null, layerHeight: null, walls: null, topShellLayers: null, bottomShellLayers: null, topShellThickness: null, bottomShellThickness: null,
     infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null,
     supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null,
     ...settings,
@@ -157,6 +157,22 @@ test("rejeita sugestão com limite mínimo de ventoinha maior que o máximo", ()
   }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
 });
 
+test("valida recomendações de espessura mínima superior e inferior", () => {
+  const parsed = parseAssistantReply(reply({
+    evidence: ["settings"],
+    profiles: null,
+    settings: { quality: null, layerHeight: null, walls: null, topShellThickness: 0.8, bottomShellThickness: 1.2, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+  }), { allowedEvidence: ["settings"], allowedProfiles });
+  assert.deepEqual(parsed.suggestion.settings, { topShellThickness: 0.8, bottomShellThickness: 1.2 });
+  for (const thickness of [-0.1, 10.1]) {
+    assert.throws(() => parseAssistantReply(reply({
+      evidence: ["settings"],
+      profiles: null,
+      settings: { quality: null, layerHeight: null, walls: null, topShellThickness: thickness, bottomShellThickness: null, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+    }), { allowedEvidence: ["settings"], allowedProfiles }), /não passou pela validação/);
+  }
+});
+
 test("valida e mapeia tipo, ângulo e alcance dos suportes", () => {
   const parsed = parseAssistantReply(reply({
     evidence: ["settings"],
@@ -186,6 +202,8 @@ test("schema estrito exige os três campos de perfil na proposta", () => {
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMaxSpeedPercent.anyOf[0].maximum, 100);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.topShellLayers.anyOf[0].maximum, 20);
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.bottomShellLayers.anyOf[0].minimum, 0);
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.topShellThickness.anyOf[0].maximum, 10);
+  assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.bottomShellThickness.anyOf[0].minimum, 0);
   assert.ok(suggestionSchema.properties.settings.anyOf[0].properties.infillPattern.anyOf[0].enum.includes("gyroid"));
   assert.deepEqual(suggestionSchema.properties.settings.anyOf[0].properties.supportType.anyOf[0].enum, ["normal(auto)", "tree(auto)"]);
   assert.deepEqual(suggestionSchema.properties.profiles.anyOf[0].required, ["machine", "process", "filament"]);

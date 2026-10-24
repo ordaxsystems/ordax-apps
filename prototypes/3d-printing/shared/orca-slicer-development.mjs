@@ -11,7 +11,7 @@ import { isSupportedInfillPattern } from "./infill-patterns.mjs";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
-const REQUEST_SCHEMA = "ordax.orca-slice-request/6";
+const REQUEST_SCHEMA = "ordax.orca-slice-request/7";
 const PROFILE_SELECTION_SCHEMA = "ordax.slicer-profile-selection/1";
 const RESULT_SCHEMA = "ordax.slicer-result/1";
 const MAX_PROFILE_BYTES = 2 * 1024 * 1024;
@@ -195,6 +195,8 @@ function parseProfile(raw, kind, fallbackName) {
         wallLoops: numeric(profile.wall_loops),
         topShellLayers: numeric(profile.top_shell_layers),
         bottomShellLayers: numeric(profile.bottom_shell_layers),
+        topShellThickness: numeric(profile.top_shell_thickness),
+        bottomShellThickness: numeric(profile.bottom_shell_thickness),
         sparseInfillDensityPercent: percent(profile.sparse_infill_density),
         sparseInfillPattern: isSupportedInfillPattern(profile.sparse_infill_pattern) ? profile.sparse_infill_pattern : null,
         supports: booleanSetting(profile.enable_support),
@@ -569,6 +571,8 @@ function normalSettings(value) {
     walls: Number(value.walls),
     topShellLayers: Number(value.topShellLayers),
     bottomShellLayers: Number(value.bottomShellLayers),
+    topShellThickness: Number(value.topShellThickness),
+    bottomShellThickness: Number(value.bottomShellThickness),
     infill: Number(value.infill),
     infillPattern: value.infillPattern,
     supports: value.supports,
@@ -583,6 +587,8 @@ function normalSettings(value) {
     || !Number.isInteger(settings.walls) || settings.walls < 1 || settings.walls > 8
     || !Number.isInteger(settings.topShellLayers) || settings.topShellLayers < 0 || settings.topShellLayers > 20
     || !Number.isInteger(settings.bottomShellLayers) || settings.bottomShellLayers < 0 || settings.bottomShellLayers > 20
+    || !Number.isFinite(settings.topShellThickness) || settings.topShellThickness < 0 || settings.topShellThickness > 10
+    || !Number.isFinite(settings.bottomShellThickness) || settings.bottomShellThickness < 0 || settings.bottomShellThickness > 10
     || !Number.isFinite(settings.infill) || settings.infill < 0 || settings.infill > 100
     || !isSupportedInfillPattern(settings.infillPattern)
     || typeof settings.supports !== "boolean"
@@ -603,6 +609,8 @@ export function buildOrcaSettingArguments(value) {
     "--wall-loops", String(settings.walls),
     `--top-shell-layers=${settings.topShellLayers}`,
     `--bottom-shell-layers=${settings.bottomShellLayers}`,
+    `--top-shell-thickness=${settings.topShellThickness}`,
+    `--bottom-shell-thickness=${settings.bottomShellThickness}`,
     "--sparse-infill-density", `${settings.infill}%`,
     `--sparse-infill-pattern=${settings.infillPattern}`,
     `--enable-support=${settings.supports ? 1 : 0}`,

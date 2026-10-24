@@ -43,8 +43,8 @@ function request() {
     filename: "Projeto confidencial.3mf",
     format: "3MF",
     preparedModel: { file: new Blob(["prepared STL"], { type: "model/stl" }), triangleCount: 1, internalFilename: "private-source-path.stl" },
-    settings: { quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, infill: 15, infillPattern: "gyroid", supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-settings-note" },
-    processesSchema: "ordax.slicer-processes/5",
+    settings: { quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0.8, bottomShellThickness: 1.2, infill: 15, infillPattern: "gyroid", supports: false, supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false, fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-settings-note" },
+    processesSchema: "ordax.slicer-processes/6",
     objects: [{ id: "model-object-private-79", name: "Peça cliente confidencial", sourceObjectId: "3mf-resource-private-82", buildItemIndex: 7, triangleCount: 1 }],
     objectTransformsSchema: "ordax.object-transforms/1",
     objectTransforms: [{ objectId: "model-object-private-79", offsetMm: [0, 0, 0], rotationDeg: [0, 0, 0], scale: 1, internalNote: "private-transform-note" }],
@@ -53,7 +53,7 @@ function request() {
       name: "Perfil de produção confidencial",
       objectIds: ["model-object-private-79"],
       settings: {
-        quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, infill: 15, infillPattern: "gyroid", supports: false,
+        quality: "standard", layerHeight: 0.2, walls: 3, topShellLayers: 3, bottomShellLayers: 3, topShellThickness: 0.8, bottomShellThickness: 1.2, infill: 15, infillPattern: "gyroid", supports: false,
         supportType: "normal(auto)", supportThresholdAngle: 0, supportOnBuildPlateOnly: false,
         fanMinSpeedPercent: 0, fanMaxSpeedPercent: 100, internalNote: "private-process-note",
       },
@@ -166,6 +166,8 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
   assert.equal(submitted.request.processes[0].settings.infillPattern, "gyroid");
   assert.equal(submitted.request.processes[0].settings.topShellLayers, 3);
   assert.equal(submitted.request.processes[0].settings.bottomShellLayers, 3);
+  assert.equal(submitted.request.processes[0].settings.topShellThickness, 0.8);
+  assert.equal(submitted.request.processes[0].settings.bottomShellThickness, 1.2);
   const serialized = JSON.stringify(submitted.request);
   for (const privateValue of ["Projeto confidencial", "Peça cliente confidencial", "3mf-resource-private-82", "process-private-34", "Perfil de produção confidencial", "private-source-path", "private-settings-note", "private-transform-note", "private-process-note"]) {
     assert.equal(serialized.includes(privateValue), false);

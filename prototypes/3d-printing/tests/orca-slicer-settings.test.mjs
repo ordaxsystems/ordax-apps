@@ -9,6 +9,8 @@ const settings = Object.freeze({
   walls: 3,
   topShellLayers: 5,
   bottomShellLayers: 4,
+  topShellThickness: 0.8,
+  bottomShellThickness: 1.2,
   infill: 15,
   infillPattern: "gyroid",
   supports: true,
@@ -25,6 +27,8 @@ test("mapeia as configurações do projeto para argumentos explícitos do OrcaSl
     "--wall-loops", "3",
     "--top-shell-layers=5",
     "--bottom-shell-layers=4",
+    "--top-shell-thickness=0.8",
+    "--bottom-shell-thickness=1.2",
     "--sparse-infill-density", "15%",
     "--sparse-infill-pattern=gyroid",
     "--enable-support=1",
@@ -34,6 +38,11 @@ test("mapeia as configurações do projeto para argumentos explícitos do OrcaSl
     "--fan-min-speed", "35",
     "--fan-max-speed", "80",
   ]);
+});
+
+test("rejeita espessura de casca fora do intervalo suportado", () => {
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, topShellThickness: 10.1 }), /configurações solicitadas estão fora dos limites/);
+  assert.throws(() => buildOrcaSettingArguments({ ...settings, bottomShellThickness: -0.1 }), /configurações solicitadas estão fora dos limites/);
 });
 
 test("não cria argumentos de resfriamento quando a faixa mínimo/máximo é inválida", () => {
