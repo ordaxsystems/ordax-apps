@@ -172,11 +172,15 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
   const job = request();
   job.remoteExecutionApproved = "https://slice.example.test";
   job.settings.seamPosition = "aligned_back";
+  job.settings.bedType = "Cool Plate";
   job.settings.nozzleTemperatureC = 230;
   job.settings.nozzleTemperatureInitialLayerC = 225;
   job.processes[0].settings.seamPosition = "aligned_back";
+  const remoteStatus = status("server");
+  remoteStatus.profiles.machine.catalog[0].supportMultiBedTypes = true;
+  remoteStatus.profiles.filament.catalog[0].bedTemperaturesByType = { "Cool Plate": { otherLayerC: 45, initialLayerC: 50 } };
   const port = {
-    getStatus: async () => status("server"),
+    getStatus: async () => remoteStatus,
     slice: async (sliceRequest, options) => {
       submitted.request = sliceRequest;
       submitted.options = options;
@@ -197,6 +201,7 @@ test("envio web reduz metadados e encaminha cancelamento e progresso pela porta 
   assert.equal(submitted.request.processes[0].settings.infillPattern, "gyroid");
   assert.equal(submitted.request.processes[0].settings.seamPosition, "aligned_back");
   assert.equal(submitted.request.settings.seamPosition, "aligned_back");
+  assert.equal(submitted.request.settings.bedType, "Cool Plate");
   assert.equal(submitted.request.settings.nozzleTemperatureC, 230);
   assert.equal(submitted.request.settings.nozzleTemperatureInitialLayerC, 225);
   assert.equal(submitted.request.processes[0].settings.topShellLayers, 3);
@@ -231,5 +236,14 @@ test("a porta rejeita temperatura fora do limite combinado do filamento e da má
   job.settings.nozzleTemperatureC = 236;
   const port = { getStatus: async () => status("device"), slice: async () => { sliceCalled = true; } };
   await assert.rejects(requestRealSlice(port, job), /temperatura do bico para demais camadas precisa ficar em 190–235 °C/);
+  assert.equal(sliceCalled, false);
+});
+
+test("a porta bloqueia uma mesa que os perfis escolhidos não declaram como compatível", async () => {
+  let sliceCalled = false;
+  const job = request();
+  job.settings.bedType = "Cool Plate";
+  const port = { getStatus: async () => status("device"), slice: async () => { sliceCalled = true; } };
+  await assert.rejects(requestRealSlice(port, job), /não declara suporte a múltiplas mesas/);
   assert.equal(sliceCalled, false);
 });
