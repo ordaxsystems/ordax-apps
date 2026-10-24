@@ -34,9 +34,9 @@ O schema Sales atual é genérico e não expõe contrato público homologado par
 
 ## Estado implementado
 
-O estado Food ativo `ordax.food-pizzeria-state/5` contém ajustes configuráveis da pizzaria, sabores/preços, pedidos locais de sandbox, comandas e fichas técnicas. Não contém mestre de insumos, saldos ou movimentos de estoque. A quantidade consumida por pedido é uma proposta calculada pela ficha; ela não altera Inventory. O schema sobe para v5 porque configuração dinâmica e rótulos históricos mudam o formato persistido; a migração explícita v4→v5 preserva os registros, configura mesas/tamanhos e registra o rótulo do tamanho nos itens históricos.
+O estado Food ativo `ordax.food-pizzeria-state/6` contém ajustes configuráveis, sabores/preços, pedidos de sandbox, comandas e fichas técnicas. Não contém catálogo mestre, saldos nem movimentos de Inventory. **Novos pedidos registram uma proposta imutável de consumo calculada com a ficha no momento da criação.** Editar uma receita depois não reescreve o consumo proposto por pedidos já criados. O schema v6 acrescenta `consumptionSnapshot` ao pedido; a migração v5→v6 preserva pedidos antigos com `consumptionSnapshot: null`, pois não existe receita histórica verificável. Consultar a proposta desses pedidos falha explicitamente, sem inferir quantidades. As migrações v3/v4/v5 continuam preservando os registros legados e os rótulos históricos.
 
-O preview usa uma porta interna do app e armazenamento local no navegador, isolado pela chave fictícia `preview-na-garagem`. O ID não é `spaceId`, `businessId` autorizado, conta ou grant. Dados locais não sincronizam entre dispositivos. A migração do estado v3 arquiva o antigo estoque no próprio browser antes de gravar o estado v5; o arquivo é legado de preview, não um estoque ativo nem fonte de verdade.
+O preview usa uma porta interna do app e armazenamento local no navegador, isolado pela chave fictícia `preview-na-garagem`. O ID não é `spaceId`, `businessId` autorizado, conta ou grant. Dados locais não sincronizam entre dispositivos. A migração do estado v3 arquiva o antigo estoque no próprio browser antes de gravar o estado v6; o arquivo é legado de preview, não um estoque ativo nem fonte de verdade.
 
 ## Integração e distribuição
 
