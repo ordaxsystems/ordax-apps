@@ -7,9 +7,11 @@ import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
 import { readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
 import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext } from "./ai-copilot.mjs";
+import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
 
 const { escapeHtml, number, bytes, toast, icon, button } = shared;
 const MAX_MODEL_BYTES = 50 * 1024 * 1024;
+const MAX_PROJECT_BYTES = projectBundleLimits.maxArchiveBytes;
 const MAX_PREVIEW_BYTES = 64 * 1024 * 1024;
 const MAX_AI_HISTORY = 20;
 const MAX_AI_MESSAGES = 40;
@@ -264,6 +266,7 @@ export function mountFeature(host = {}) {
             <button class="button ai-toggle" type="button" data-ai-toggle aria-expanded="false" aria-controls="ai-drawer">✦ Copiloto IA</button>
             <span class="engine-chip" data-engine-chip><i></i><span data-engine-label>Verificando motor</span></span>
             <button class="button secondary" type="button" data-open>${icon("upload", 15)}<span>Abrir modelo</span></button>
+            <button class="button secondary" type="button" data-save-project disabled title="Abra um STL ou 3MF para salvar um projeto portátil.">${icon("file", 15)}<span>Salvar projeto</span></button>
             <button class="button primary slice-button" type="button" data-slice disabled title="Conecte um motor de fatiamento ao host.">${icon("layers", 15)}<span>Fatiar</span></button>
             <button class="button secondary" type="button" data-export hidden>${icon("arrow", 15)}<span>Exportar G-code</span></button>
             <button class="button secondary" type="button" data-cancel hidden>Cancelar</button>
@@ -285,8 +288,8 @@ export function mountFeature(host = {}) {
         <div class="prepare-view" data-prepare-view>
           <aside class="slice-panel object-panel">
             <div class="panel-heading"><div><span class="panel-kicker">PROJETO</span><h2>Objetos na mesa</h2></div><button class="small-icon" type="button" data-open aria-label="Adicionar modelo">${icon("plus", 16)}</button></div>
-            <input type="file" data-file accept=".stl,.3mf,model/stl,application/vnd.ms-3mfdocument" hidden />
-            <button class="model-drop" type="button" data-open><span class="drop-glyph">${icon("upload", 20)}</span><span><strong>Solte um STL ou 3MF</strong><small>ou escolha um arquivo no computador</small></span><b>ATÉ 50 MB</b></button>
+            <input type="file" data-file accept=".stl,.3mf,.ordax3d,model/stl,application/vnd.ms-3mfdocument,application/vnd.ordax.project+zip" hidden />
+            <button class="model-drop" type="button" data-open><span class="drop-glyph">${icon("upload", 20)}</span><span><strong>Solte um STL, 3MF ou projeto OrdaX</strong><small>ou escolha um arquivo no computador</small></span><b>MALHA 50 MB · PACOTE 51 MB</b></button>
             <div class="object-card" data-object-card hidden><div class="object-thumb">${icon("cube", 22)}</div><div class="object-name"><strong data-file-name>—</strong><small data-file-details>—</small></div><button class="small-icon remove-object" type="button" data-remove aria-label="Remover modelo">${icon("close", 14)}</button></div>
             <section class="object-processes" data-object-processes hidden aria-label="Processos de impressão por objeto"><div class="processes-heading"><div><span class="panel-kicker">SIMPLIFY3D · POR OBJETO</span><strong data-process-summary>1 objeto · 1 processo</strong></div><span class="processes-count" data-process-count>1</span></div><div class="object-process-list" data-object-process-list></div><div class="process-actions"><button class="button secondary" type="button" data-process-add title="Cria um processo com os parâmetros atuais para a peça selecionada.">Separar peça</button><button class="button secondary" type="button" data-process-remove title="Move as peças deste processo para outro processo antes de removê-lo.">Remover</button></div><p class="process-note" data-process-note>Os processos são aplicados por objeto 3MF. Um arquivo STL corresponde a um único objeto.</p></section>
             <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Área triangulada</span><strong data-surface-area>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Faces degeneradas</span><strong data-degenerate-faces>—</strong></div><div><span>Arestas abertas · análise local</span><strong data-boundary-edges>—</strong></div><div><span>Arestas com 3+ faces</span><strong data-nonmanifold-edges>—</strong></div><div><span>Orientação compartilhada</span><strong data-inconsistent-winding-edges>—</strong></div><p class="geometry-note" data-geometry-note>A análise local de arestas não detecta interseções nem certifica imprimibilidade.</p></div>
@@ -998,11 +1001,16 @@ export function mountFeature(host = {}) {
     const legend = content.querySelector("[data-model-legend]");
     const unitRow = content.querySelector("[data-stl-unit-row]");
     const objectTransformInputs = [...content.querySelectorAll("[data-object-transform]")];
+    const saveProjectButton = content.querySelector("[data-save-project]");
     empty.hidden = Boolean(model);
     card.hidden = !model;
     metrics.hidden = !model;
     legend.hidden = !model;
     unitRow.hidden = !model || model.format !== "STL";
+    saveProjectButton.disabled = !model || model.demo || !(model.originalFile instanceof Blob);
+    saveProjectButton.title = saveProjectButton.disabled
+      ? "Abra um STL ou 3MF para salvar um projeto portátil."
+      : "Baixa a malha original e as configurações deste projeto em um arquivo .ordax3d.";
     for (const input of objectTransformInputs) input.disabled = !model || !selectedObjectId;
     content.querySelector("[data-rotate-object]").disabled = !model || !selectedObjectId;
     content.querySelector("[data-reset-object-transform]").disabled = !model || !selectedObjectId;
@@ -1017,7 +1025,7 @@ export function mountFeature(host = {}) {
     }
     content.querySelector("[data-project-name]").textContent = model.name;
     content.querySelector("[data-project-meta]").textContent = model.demo ? "Modelo de demonstração · visualização apenas · não será enviado ao motor" : `${model.format} · ${bytes(model.size)} · ${model.objects.length} objeto${model.objects.length === 1 ? "" : "s"} · somente nesta sessão`;
-    content.querySelector("[data-file-name]").textContent = model.name;
+    content.querySelector("[data-file-name]").textContent = model.sourceFileName || model.name;
     content.querySelector("[data-file-details]").textContent = `${model.format} · ${model.triangleCount.toLocaleString("pt-BR")} faces`;
     content.querySelector("[data-triangles]").textContent = model.triangleCount.toLocaleString("pt-BR");
     const geometryCheck = content.querySelector("[data-degenerate-faces]");
@@ -1065,7 +1073,11 @@ export function mountFeature(host = {}) {
     fit.className = fits ? "fit-ok" : "fit-warning";
     content.querySelector("[data-stage-label]").textContent = `${machine.name.split(" · ")[0]} · mesa ${machine.bed.join(" × ")} mm`;
     content.querySelector("[data-stage-units]").textContent = model.format === "STL" ? `${draft.stlUnit} presumido` : `${model.sourceUnit} → mm`;
-    content.querySelector("[data-source-note]").lastElementChild.textContent = model.demo ? "Amostra geométrica local para explorar a interface. Não representa um modelo fabricável." : "O arquivo original fica nesta sessão. O rascunho guarda apenas seus parâmetros neste navegador.";
+    content.querySelector("[data-source-note]").lastElementChild.textContent = model.demo
+      ? "Amostra geométrica local para explorar a interface. Não representa um modelo fabricável."
+      : model.portableProject
+        ? "A malha e as configurações vieram do pacote OrdaX. O G-code e o histórico do Copiloto não fazem parte do projeto."
+        : "O arquivo original fica nesta sessão. Salve um projeto OrdaX para levar a malha e as configurações junto com você.";
     if (viewer) {
       viewer.setSettings({ bed: machine.bed, rotation: draft.rotation, scale: draft.scale, unitScale: model.format === "STL" ? unitScales[draft.stlUnit] : 1 });
       viewer.setMesh({ ...mergeModelObjects(model, selectedObjectId, draft.objectTransforms), visualBounds: bounds });
@@ -1158,7 +1170,9 @@ export function mountFeature(host = {}) {
 
   async function openFile(file) {
     if (!file) return;
-    if (file.size > MAX_MODEL_BYTES) { toast("O limite de importação desta versão é 50 MB."); return; }
+    const extension = String(file.name || "").split(".").pop().toLowerCase();
+    const maximumBytes = extension === "ordax3d" ? MAX_PROJECT_BYTES : MAX_MODEL_BYTES;
+    if (file.size > maximumBytes) { toast(extension === "ordax3d" ? "O limite de importação do projeto é 51 MB." : "O limite de importação do modelo é 50 MB."); return; }
     const currentImport = ++importSequence;
     analysisController?.abort();
     const currentAnalysisController = new AbortController();
@@ -1172,16 +1186,31 @@ export function mountFeature(host = {}) {
       if (currentImport !== importSequence) return;
       clearSlicedOutput("O modelo foi substituído. Gere um novo fatiamento para revisar o arquivo atualizado.");
       configureProcessesForModel(imported);
+      let projectRestoreWarning = "";
+      if (imported.portableProject) {
+        const validObjectIds = new Set(imported.objects.map(object => object.id));
+        const projectDraft = safeDraft({
+          ...imported.projectDraft,
+          selectedTab: "prepare",
+          objectTransforms: Object.fromEntries(Object.entries(imported.projectDraft.objectTransforms || {}).filter(([id]) => validObjectIds.has(id))),
+        });
+        if (hasCompleteProcessAssignment(projectDraft.processes, imported.objects)) {
+          draft = projectDraft;
+          selectedObjectId = projectDraft.processes.find(process => process.id === projectDraft.selectedProcessId)?.objectIds[0] || imported.objects[0]?.id || null;
+        } else projectRestoreWarning = " As configurações de processos não correspondiam às peças; usei um processo seguro padrão.";
+      }
       model = imported;
       restoredSourceName = null;
       restoredSourceFingerprint = modelFingerprint(imported);
       sliced = null; preview = null; previewLayer = 0; previewProgress = 1;
-      updateModelUi();
-      const warning = model.format === "STL" ? "A unidade do STL não é declarada. Confirme a escala antes de fabricar." : "3MF importado para inspeção da geometria; a aplicação de perfis e extensões completas depende do motor.";
-      content.querySelector("[data-project-meta]").textContent = `${model.format} · ${bytes(model.size)} · arquivo local · ${warning}`;
+      updateInputs();
+      const warning = model.portableProject
+        ? `pacote portátil · G-code não incluído.${projectRestoreWarning}`
+        : model.format === "STL" ? "A unidade do STL não é declarada. Confirme a escala antes de fabricar." : "3MF importado para inspeção da geometria; a aplicação de perfis e extensões completas depende do motor.";
+      content.querySelector("[data-project-meta]").textContent = `${model.format} · ${bytes(model.size)} · ${model.portableProject ? "projeto OrdaX" : "arquivo local"} · ${warning}`;
       content.querySelector("[data-unit]").disabled = false;
       persist();
-      toast(`${model.format} carregado e exibido localmente.`);
+      toast(model.portableProject ? `Projeto OrdaX aberto.${projectRestoreWarning}` : `${model.format} carregado e exibido localmente.`);
     } catch (error) {
       if (currentImport !== importSequence) return;
       updateModelUi();
@@ -1193,6 +1222,26 @@ export function mountFeature(host = {}) {
         content.classList.remove("is-importing");
         content.querySelector("[data-file]").value = "";
       }
+    }
+  }
+
+  async function savePortableProject() {
+    if (!model || model.demo || !(model.originalFile instanceof Blob)) return;
+    const sourceFile = model.originalFile;
+    const projectName = model.name;
+    const projectDraft = safeDraft({ ...draft, selectedTab: "prepare" });
+    const buttonNode = content.querySelector("[data-save-project]");
+    buttonNode.disabled = true;
+    buttonNode.setAttribute("aria-busy", "true");
+    try {
+      const result = await createProjectBundle({ sourceFile, projectName, draft: projectDraft });
+      downloadBlob(result.blob, result.filename);
+      toast(`Projeto portátil salvo: ${result.filename}`);
+    } catch (error) {
+      toast(error?.message || "Não foi possível montar o projeto portátil.");
+    } finally {
+      buttonNode.removeAttribute("aria-busy");
+      updateModelUi();
     }
   }
 
@@ -1311,6 +1360,7 @@ export function mountFeature(host = {}) {
   }
 
   for (const buttonNode of content.querySelectorAll("[data-open]")) buttonNode.addEventListener("click", () => content.querySelector("[data-file]").click());
+  content.querySelector("[data-save-project]").addEventListener("click", savePortableProject);
   content.querySelector("[data-file]").addEventListener("change", event => openFile(event.currentTarget.files?.[0]));
   content.querySelector("[data-object-process-list]").addEventListener("click", event => {
     const buttonNode = event.target.closest("[data-object-select]");
@@ -1343,7 +1393,7 @@ export function mountFeature(host = {}) {
   const stage = content.querySelector("[data-stage]");
   stage.addEventListener("dragover", event => { event.preventDefault(); stage.classList.add("is-over"); });
   stage.addEventListener("dragleave", event => { if (!stage.contains(event.relatedTarget)) stage.classList.remove("is-over"); });
-  stage.addEventListener("drop", event => { event.preventDefault(); stage.classList.remove("is-over"); openFile([...event.dataTransfer.files].find(file => /\.(?:stl|3mf)$/i.test(file.name))); });
+  stage.addEventListener("drop", event => { event.preventDefault(); stage.classList.remove("is-over"); openFile([...event.dataTransfer.files].find(file => /\.(?:stl|3mf|ordax3d)$/i.test(file.name))); });
   content.querySelector("[data-printer]").addEventListener("change", updateDraftFromInputs);
   content.querySelector("[data-process-profile]").addEventListener("change", updateDraftFromInputs);
   content.querySelector("[data-filament]").addEventListener("change", updateDraftFromInputs);

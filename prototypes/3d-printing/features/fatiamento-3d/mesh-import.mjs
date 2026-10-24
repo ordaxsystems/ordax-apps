@@ -1,3 +1,6 @@
+import { normalizeZipPath, readZipDirectory, readZipEntry } from "./zip-container.mjs";
+import { readProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
+
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_MODEL_XML_BYTES = 50 * 1024 * 1024;
 const MAX_TRIANGLES = 300_000;
@@ -33,7 +36,9 @@ function finalizeObject({ id, name, positions, sourceUnit = "millimeter", unitSc
 
 function parseBinaryStl(buffer) {
   if (buffer.byteLength < 84) return null;
-  const view = new DataView(buffer);
+  const view = buffer instanceof ArrayBuffer
+    ? new DataView(buffer)
+    : new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
   const triangleCount = view.getUint32(80, true);
   if (triangleCount > MAX_TRIANGLES || 84 + triangleCount * 50 !== buffer.byteLength) return null;
   const positions = new Array(triangleCount * 9);
@@ -66,70 +71,13 @@ function parseAsciiStl(buffer) {
   return finalizeObject({ id: "stl-model", name: "Modelo STL", positions, sourceUnit: "unidade não declarada", unitScale: 1 });
 }
 
-function normalizeZipPath(path) {
-  const parts = [];
-  for (const part of path.replaceAll("\\", "/").split("/")) {
-    if (!part || part === ".") continue;
-    if (part === "..") parts.pop();
-    else parts.push(part);
-  }
-  return parts.join("/");
-}
-
-function findEndOfCentralDirectory(view) {
-  const start = Math.max(0, view.byteLength - 22 - 65_535);
-  for (let offset = view.byteLength - 22; offset >= start; offset--) {
-    if (view.getUint32(offset, true) === 0x06054b50) return offset;
-  }
-  throw new Error("O contêiner 3MF está incompleto ou não é um arquivo ZIP válido.");
-}
-
-function readZipDirectory(buffer) {
-  const view = new DataView(buffer), end = findEndOfCentralDirectory(view);
-  const disk = view.getUint16(end + 4, true), directoryDisk = view.getUint16(end + 6, true);
-  const count = view.getUint16(end + 10, true), directorySize = view.getUint32(end + 12, true);
-  let offset = view.getUint32(end + 16, true);
-  if (disk !== 0 || directoryDisk !== 0 || offset + directorySize > end || count > 10_000) throw new Error("O 3MF usa um formato ZIP que este leitor não suporta.");
-  const entries = new Map();
-  for (let index = 0; index < count; index++) {
-    if (offset + 46 > view.byteLength || view.getUint32(offset, true) !== 0x02014b50) throw new Error("O índice interno do 3MF está inválido.");
-    const flags = view.getUint16(offset + 8, true), method = view.getUint16(offset + 10, true);
-    const compressedSize = view.getUint32(offset + 20, true), uncompressedSize = view.getUint32(offset + 24, true);
-    const nameLength = view.getUint16(offset + 28, true), extraLength = view.getUint16(offset + 30, true), commentLength = view.getUint16(offset + 32, true);
-    const localOffset = view.getUint32(offset + 42, true);
-    if (flags & 1) throw new Error("O 3MF está protegido por senha e não pode ser lido.");
-    if (uncompressedSize > MAX_MODEL_XML_BYTES) throw new Error("Um recurso do 3MF excede o limite de leitura desta versão.");
-    const filename = new TextDecoder("utf-8", { fatal: false }).decode(new Uint8Array(buffer, offset + 46, nameLength));
-    entries.set(normalizeZipPath(filename).toLowerCase(), { filename: normalizeZipPath(filename), method, compressedSize, uncompressedSize, localOffset });
-    offset += 46 + nameLength + extraLength + commentLength;
-  }
-  return entries;
-}
-
-async function readZipEntry(buffer, entry) {
-  const view = new DataView(buffer), offset = entry.localOffset;
-  if (offset + 30 > view.byteLength || view.getUint32(offset, true) !== 0x04034b50) throw new Error("O recurso interno do 3MF está inválido.");
-  const nameLength = view.getUint16(offset + 26, true), extraLength = view.getUint16(offset + 28, true);
-  const start = offset + 30 + nameLength + extraLength, end = start + entry.compressedSize;
-  if (end > view.byteLength) throw new Error("O recurso interno do 3MF está truncado.");
-  const compressed = new Uint8Array(buffer, start, entry.compressedSize);
-  if (entry.method === 0) return compressed.slice();
-  if (entry.method !== 8 || typeof DecompressionStream !== "function") throw new Error("O navegador não oferece o descompactador necessário para este 3MF.");
-  try {
-    const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-    const output = new Uint8Array(await new Response(stream).arrayBuffer());
-    if (output.byteLength !== entry.uncompressedSize) throw new Error("O tamanho descompactado não confere.");
-    return output;
-  } catch (error) {
-    throw new Error(`Não consegui descompactar o projeto 3MF: ${error.message}`);
-  }
-}
-
 function matrixFromAttribute(value) {
-  if (!value) return [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0];
+  if (!value) return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
   const parts = value.trim().split(/\s+/).map(Number);
   if (parts.length !== 12 || !parts.every(Number.isFinite)) throw new Error("Uma transformação do 3MF está inválida.");
-  return parts;
+  // 3MF serializes a row-major matrix with translation in the final row.
+  // Convert it to the column-vector 3×4 layout used by the mesh transforms below.
+  return [parts[0], parts[3], parts[6], parts[9], parts[1], parts[4], parts[7], parts[10], parts[2], parts[5], parts[8], parts[11]];
 }
 
 function multiply3mfMatrix(parent, child) {
@@ -209,7 +157,7 @@ function parse3mfXml(text) {
 }
 
 async function parse3mf(buffer) {
-  const entries = readZipDirectory(buffer);
+  const entries = readZipDirectory(buffer, { maxEntryBytes: MAX_MODEL_XML_BYTES, label: "3MF" });
   let modelEntry = entries.get("3d/3dmodel.model");
   const relationships = entries.get("_rels/.rels");
   if (relationships) {
@@ -233,12 +181,8 @@ function combineBounds(objects) {
   return { min, max, dimensions: min.map((value, axis) => max[axis] - value) };
 }
 
-export async function parseMeshFile(file) {
-  if (!(file instanceof Blob)) throw new TypeError("Selecione um arquivo STL ou 3MF.");
-  if (file.size <= 0 || file.size > MAX_FILE_BYTES) throw new Error("O arquivo deve ter até 50 MB.");
-  const name = String(file.name || "modelo");
+function parseSourceBuffer(buffer, name, size, originalFile) {
   const extension = name.split(".").pop().toLowerCase();
-  const buffer = await file.arrayBuffer();
   let objects, sourceUnit;
   if (extension === "stl") {
     const object = parseBinaryStl(buffer) || parseAsciiStl(buffer);
@@ -247,11 +191,44 @@ export async function parseMeshFile(file) {
     object.sourceObjectId = object.id;
     object.buildItemIndex = 0;
   } else if (extension === "3mf") {
-    const parsed = await parse3mf(buffer);
-    objects = parsed.objects; sourceUnit = parsed.sourceUnit;
-  } else throw new Error("Formato não suportado. Abra um arquivo .STL ou .3MF.");
-  const triangleCount = objects.reduce((sum, object) => sum + object.triangleCount, 0);
-  return { name, format: extension.toUpperCase(), size: file.size, objects, sourceUnit, triangleCount, bounds: combineBounds(objects), originalFile: file };
+    return parse3mf(buffer).then(parsed => makeModel(name, extension, size, parsed.objects, parsed.sourceUnit, originalFile));
+  } else throw new Error("Formato não suportado. Abra um arquivo .STL, .3MF ou projeto .ORDAX3D.");
+  return makeModel(name, extension, size, objects, sourceUnit, originalFile);
 }
 
-export const meshImportLimits = Object.freeze({ maxFileBytes: MAX_FILE_BYTES, maxTriangles: MAX_TRIANGLES });
+function makeModel(name, extension, size, objects, sourceUnit, originalFile) {
+  const triangleCount = objects.reduce((sum, object) => sum + object.triangleCount, 0);
+  return { name, sourceFileName: name, format: extension.toUpperCase(), size, objects, sourceUnit, triangleCount, bounds: combineBounds(objects), originalFile };
+}
+
+function namedSourceBlob(bytes, name) {
+  const blob = new Blob([bytes], { type: name.toLowerCase().endsWith(".3mf") ? "model/3mf" : "model/stl" });
+  Object.defineProperty(blob, "name", { value: name, enumerable: true });
+  return blob;
+}
+
+export async function parseMeshFile(file) {
+  if (!(file instanceof Blob)) throw new TypeError("Selecione um arquivo STL, 3MF ou projeto OrdaX.");
+  const name = String(file.name || "modelo");
+  const extension = name.split(".").pop().toLowerCase();
+  const maxBytes = extension === "ordax3d" ? projectBundleLimits.maxArchiveBytes : MAX_FILE_BYTES;
+  if (file.size <= 0 || file.size > maxBytes) throw new Error(extension === "ordax3d" ? "O pacote do projeto deve ter até 51 MB." : "O arquivo deve ter até 50 MB.");
+  const buffer = await file.arrayBuffer();
+  if (extension === "ordax3d") {
+    const bundled = await readProjectBundle(buffer);
+    const sourceFile = namedSourceBlob(bundled.sourceBytes, bundled.sourceName);
+    const imported = await parseSourceBuffer(bundled.sourceBytes, bundled.sourceName, bundled.sourceBytes.byteLength, sourceFile);
+    return {
+      ...imported,
+      name: bundled.projectName,
+      sourceFileName: bundled.sourceName,
+      projectDraft: bundled.draft,
+      projectArchiveSize: file.size,
+      portableProject: true,
+    };
+  }
+  if (file.size > MAX_FILE_BYTES) throw new Error("O arquivo deve ter até 50 MB.");
+  return await parseSourceBuffer(buffer, name, file.size, file);
+}
+
+export const meshImportLimits = Object.freeze({ maxFileBytes: MAX_FILE_BYTES, maxProjectBytes: projectBundleLimits.maxArchiveBytes, maxTriangles: MAX_TRIANGLES });
