@@ -28,6 +28,17 @@ test("conta arestas abertas sem declarar verificação topológica completa", as
     nonManifoldEdgeCount: 0,
     inconsistentWindingEdgeCount: 0,
   });
+  assert.deepEqual(result.vertexLinks, {
+    method: "connected-path-or-cycle-per-vertex",
+    complete: true,
+    checkedObjectCount: 1,
+    skippedObjectCount: 0,
+    triangleLimitPerObject: meshTopologyTriangleLimit,
+    checkedVertexCount: 3,
+    boundaryVertexCount: 3,
+    interiorVertexCount: 0,
+    nonManifoldVertexCount: 0,
+  });
   assert.equal(result.topologyVerified, false);
   assert.equal(result.watertightness, "not-checked");
 });
@@ -38,6 +49,20 @@ test("reconhece incidência fechada em um tetraedro com orientação consistente
   assert.equal(result.edgeIncidence.boundaryEdgeCount, 0);
   assert.equal(result.edgeIncidence.nonManifoldEdgeCount, 0);
   assert.equal(result.edgeIncidence.inconsistentWindingEdgeCount, 0);
+  assert.equal(result.vertexLinks.boundaryVertexCount, 0);
+  assert.equal(result.vertexLinks.interiorVertexCount, 4);
+  assert.equal(result.vertexLinks.nonManifoldVertexCount, 0);
+});
+
+test("detecta duas regiões de faces que só se tocam em um vértice", async () => {
+  const faces = [
+    [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+    [[0, 0, 0], [-1, 0, 0], [0, -1, 0]],
+  ];
+  const result = await analyzeMeshGeometry(modelFromFaces(faces));
+  assert.equal(result.vertexLinks.complete, true);
+  assert.equal(result.vertexLinks.nonManifoldVertexCount, 1);
+  assert.equal(result.vertexLinks.boundaryVertexCount, 4);
 });
 
 test("detecta aresta compartilhada por mais de duas faces", async () => {
@@ -49,6 +74,7 @@ test("detecta aresta compartilhada por mais de duas faces", async () => {
   const result = await analyzeMeshGeometry(modelFromFaces(faces));
   assert.equal(result.edgeIncidence.nonManifoldEdgeCount, 1);
   assert.equal(result.edgeIncidence.boundaryEdgeCount, 6);
+  assert.equal(result.vertexLinks.nonManifoldVertexCount, 2);
 });
 
 test("detecta duas faces vizinhas que percorrem a aresta comum na mesma direção", async () => {
@@ -59,6 +85,7 @@ test("detecta duas faces vizinhas que percorrem a aresta comum na mesma direçã
   const result = await analyzeMeshGeometry(modelFromFaces(faces));
   assert.equal(result.edgeIncidence.inconsistentWindingEdgeCount, 1);
   assert.equal(result.edgeIncidence.boundaryEdgeCount, 4);
+  assert.equal(result.vertexLinks.nonManifoldVertexCount, 0);
 });
 
 test("pula incidência de arestas acima do limite de memória documentado", async () => {
@@ -73,4 +100,8 @@ test("pula incidência de arestas acima do limite de memória documentado", asyn
   assert.equal(result.edgeIncidence.checkedObjectCount, 0);
   assert.equal(result.edgeIncidence.skippedObjectCount, 1);
   assert.equal(result.edgeIncidenceByObject[0].reason, "triangle-limit");
+  assert.equal(result.vertexLinks.complete, false);
+  assert.equal(result.vertexLinks.checkedObjectCount, 0);
+  assert.equal(result.vertexLinks.skippedObjectCount, 1);
+  assert.equal(result.vertexLinksByObject[0].nonManifoldVertexCount, null);
 });

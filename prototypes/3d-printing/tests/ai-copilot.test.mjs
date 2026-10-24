@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assistantStructuredOutput, buildAssistantProfileContext, parseAssistantReply, assistantSuggestionSchema, assistantProfileOptionLimit } from "../features/fatiamento-3d/ai-copilot.mjs";
+import { assistantStructuredOutput, assistantEvidenceIds, buildAssistantProfileContext, parseAssistantReply, assistantSuggestionSchema, assistantProfileOptionLimit } from "../features/fatiamento-3d/ai-copilot.mjs";
 
 const machineId = `orca-machine-${"a".repeat(24)}`;
 const processId = `orca-process-${"b".repeat(24)}`;
@@ -104,6 +104,12 @@ test("schema estrito exige os três campos de perfil na proposta", () => {
   assert.equal(suggestionSchema.properties.settings.anyOf[0].properties.fanMaxSpeedPercent.anyOf[0].maximum, 100);
   assert.deepEqual(suggestionSchema.properties.settings.anyOf[0].properties.supportType.anyOf[0].enum, ["normal(auto)", "tree(auto)"]);
   assert.deepEqual(suggestionSchema.properties.profiles.anyOf[0].required, ["machine", "process", "filament"]);
+});
+
+test("schema de evidências permite citar a triagem local de vértices não manifold", () => {
+  const evidenceId = "geometryDiagnostics.nonManifoldVertexCount";
+  assert.ok(assistantEvidenceIds.includes(evidenceId));
+  assert.ok(assistantStructuredOutput.schema.properties.suggestion.anyOf[0].properties.evidence.items.enum.includes(evidenceId));
 });
 
 test("contexto da IA prioriza o perfil ativo e limita candidatos ao que foi enviado", () => {

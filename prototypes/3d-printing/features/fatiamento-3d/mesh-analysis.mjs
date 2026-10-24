@@ -1,4 +1,4 @@
-const ANALYSIS_SCHEMA = "ordax.mesh-diagnostics/3";
+const ANALYSIS_SCHEMA = "ordax.mesh-diagnostics/4";
 const TRIANGLES_PER_CHUNK = 20_000;
 export const meshTopologyTriangleLimit = 100_000;
 
@@ -62,14 +62,84 @@ function summarizeEdgeIncidence(codes, edgeCount) {
   return Object.freeze({ boundaryEdgeCount, nonManifoldEdgeCount, inconsistentWindingEdgeCount });
 }
 
+function appendVertexLink(heads, next, neighborA, neighborB, linkCount, vertex, a, b) {
+  next[linkCount] = heads[vertex];
+  neighborA[linkCount] = a;
+  neighborB[linkCount] = b;
+  heads[vertex] = linkCount;
+  return linkCount + 1;
+}
+
+async function summarizeVertexLinks(heads, next, neighborA, neighborB, vertexCount, signal) {
+  let checkedVertexCount = 0, boundaryVertexCount = 0, interiorVertexCount = 0, nonManifoldVertexCount = 0;
+  let processed = 0;
+  const yieldIfNeeded = async () => {
+    processed++;
+    if (processed < TRIANGLES_PER_CHUNK) return;
+    processed = 0;
+    throwIfAborted(signal);
+    await nextFrame();
+  };
+  for (let vertex = 0; vertex < vertexCount; vertex++) {
+    throwIfAborted(signal);
+    if (heads[vertex] === -1) continue;
+    const adjacency = new Map();
+    for (let link = heads[vertex]; link !== -1; link = next[link]) {
+      const a = neighborA[link], b = neighborB[link];
+      if (a === b) continue;
+      let neighborsA = adjacency.get(a);
+      if (!neighborsA) adjacency.set(a, neighborsA = []);
+      let neighborsB = adjacency.get(b);
+      if (!neighborsB) adjacency.set(b, neighborsB = []);
+      neighborsA.push(b);
+      neighborsB.push(a);
+      await yieldIfNeeded();
+    }
+    if (!adjacency.size) continue;
+    checkedVertexCount++;
+
+    let boundaryNodes = 0, invalidDegree = false;
+    for (const neighbors of adjacency.values()) {
+      if (neighbors.length === 1) boundaryNodes++;
+      else if (neighbors.length !== 2) invalidDegree = true;
+      await yieldIfNeeded();
+    }
+    const visited = new Set();
+    let componentCount = 0;
+    for (const start of adjacency.keys()) {
+      if (visited.has(start)) continue;
+      componentCount++;
+      const pending = [start];
+      visited.add(start);
+      while (pending.length) {
+        const current = pending.pop();
+        for (const neighbor of adjacency.get(current) || []) {
+          if (visited.has(neighbor)) continue;
+          visited.add(neighbor);
+          pending.push(neighbor);
+          await yieldIfNeeded();
+        }
+      }
+    }
+
+    const oneRingIsManifold = componentCount === 1 && !invalidDegree && (boundaryNodes === 0 || boundaryNodes === 2);
+    if (!oneRingIsManifold) nonManifoldVertexCount++;
+    else if (boundaryNodes === 2) boundaryVertexCount++;
+    else interiorVertexCount++;
+  }
+  return Object.freeze({ checkedVertexCount, boundaryVertexCount, interiorVertexCount, nonManifoldVertexCount });
+}
+
 export async function analyzeMeshGeometry(model, { signal } = {}) {
   if (!model || !Array.isArray(model.objects) || !model.objects.length) throw new TypeError("O modelo não contém objetos para analisar.");
 
   let triangleCount = 0, degenerateTriangleCount = 0, surfaceAreaSquareUnits = 0, processedSinceYield = 0;
   let boundaryEdgeCount = 0, nonManifoldEdgeCount = 0, inconsistentWindingEdgeCount = 0;
+  let checkedVertexCount = 0, boundaryVertexCount = 0, interiorVertexCount = 0, nonManifoldVertexCount = 0;
   let checkedObjectCount = 0, skippedObjectCount = 0;
   const surfaceAreaByObject = [];
   const edgeIncidenceByObject = [];
+  const vertexLinksByObject = [];
 
   for (const object of model.objects) {
     const positions = object.positions;
@@ -85,7 +155,13 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
     const vertices = topologySupported ? new Map() : null;
     const vertexStride = objectTriangleCount * 3 + 1;
     const edgeCodes = topologySupported ? new Float64Array(objectTriangleCount * 3) : null;
+    const vertexLinkCapacity = objectTriangleCount * 3;
+    const vertexLinkHeads = topologySupported ? new Int32Array(vertexLinkCapacity).fill(-1) : null;
+    const vertexLinkNext = topologySupported ? new Int32Array(vertexLinkCapacity) : null;
+    const vertexLinkNeighborA = topologySupported ? new Uint32Array(vertexLinkCapacity) : null;
+    const vertexLinkNeighborB = topologySupported ? new Uint32Array(vertexLinkCapacity) : null;
     let edgeCount = 0;
+    let vertexLinkCount = 0;
     let objectSurfaceAreaSquareUnits = 0;
 
     for (let offset = 0; offset < positions.length; offset += 9) {
@@ -111,6 +187,9 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
           edgeCount = appendEdgeCode(edgeCodes, edgeCount, a, b, vertexStride);
           edgeCount = appendEdgeCode(edgeCodes, edgeCount, b, c, vertexStride);
           edgeCount = appendEdgeCode(edgeCodes, edgeCount, c, a, vertexStride);
+          vertexLinkCount = appendVertexLink(vertexLinkHeads, vertexLinkNext, vertexLinkNeighborA, vertexLinkNeighborB, vertexLinkCount, a, b, c);
+          vertexLinkCount = appendVertexLink(vertexLinkHeads, vertexLinkNext, vertexLinkNeighborA, vertexLinkNeighborB, vertexLinkCount, b, c, a);
+          vertexLinkCount = appendVertexLink(vertexLinkHeads, vertexLinkNext, vertexLinkNeighborA, vertexLinkNeighborB, vertexLinkCount, c, a, b);
         }
       }
 
@@ -130,9 +209,16 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
       inconsistentWindingEdgeCount += incidence.inconsistentWindingEdgeCount;
       checkedObjectCount++;
       edgeIncidenceByObject.push(Object.freeze({ objectId: object.id, checked: true, ...incidence }));
+      const links = await summarizeVertexLinks(vertexLinkHeads, vertexLinkNext, vertexLinkNeighborA, vertexLinkNeighborB, vertices.size, signal);
+      checkedVertexCount += links.checkedVertexCount;
+      boundaryVertexCount += links.boundaryVertexCount;
+      interiorVertexCount += links.interiorVertexCount;
+      nonManifoldVertexCount += links.nonManifoldVertexCount;
+      vertexLinksByObject.push(Object.freeze({ objectId: object.id, checked: true, ...links }));
     } else {
       skippedObjectCount++;
       edgeIncidenceByObject.push(Object.freeze({ objectId: object.id, checked: false, reason: "triangle-limit", boundaryEdgeCount: null, nonManifoldEdgeCount: null, inconsistentWindingEdgeCount: null }));
+      vertexLinksByObject.push(Object.freeze({ objectId: object.id, checked: false, reason: "triangle-limit", checkedVertexCount: null, boundaryVertexCount: null, interiorVertexCount: null, nonManifoldVertexCount: null }));
     }
   }
 
@@ -155,6 +241,18 @@ export async function analyzeMeshGeometry(model, { signal } = {}) {
       inconsistentWindingEdgeCount,
     }),
     edgeIncidenceByObject: Object.freeze(edgeIncidenceByObject),
+    vertexLinks: Object.freeze({
+      method: "connected-path-or-cycle-per-vertex",
+      complete: skippedObjectCount === 0,
+      checkedObjectCount,
+      skippedObjectCount,
+      triangleLimitPerObject: meshTopologyTriangleLimit,
+      checkedVertexCount,
+      boundaryVertexCount,
+      interiorVertexCount,
+      nonManifoldVertexCount,
+    }),
+    vertexLinksByObject: Object.freeze(vertexLinksByObject),
     threshold: "área nula ou muito próxima de zero em relação à diagonal de cada objeto",
     topologyVerified: false,
     watertightness: "not-checked",

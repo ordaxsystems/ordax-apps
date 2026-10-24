@@ -9,6 +9,7 @@ export const assistantEvidenceIds = Object.freeze([
   "geometryDiagnostics.degenerateTriangleCount",
   "geometryDiagnostics.boundaryEdgeCount",
   "geometryDiagnostics.nonManifoldEdgeCount",
+  "geometryDiagnostics.nonManifoldVertexCount",
   "geometryDiagnostics.inconsistentWindingEdgeCount",
   "geometryDiagnostics.surfaceAreaMm2",
   "selectedObject.sourceDimensionsMm",
