@@ -8,7 +8,24 @@ const ids = {
   filament: `orca-filament-${"c".repeat(24)}`,
 };
 
+function profileCompatibility({ printers = [], prints = [], parentName = null, isSystem = null, printerCondition = "", printCondition = "" } = {}) {
+  return {
+    schema: "ordax.slicer-profile-compatibility/1",
+    parentName,
+    isSystem,
+    compatiblePrinters: { present: true, names: printers },
+    compatiblePrintersCondition: { present: true, value: printerCondition },
+    compatiblePrints: { present: true, names: prints },
+    compatiblePrintsCondition: { present: true, value: printCondition },
+    compatibleMachineExpressionGroup: { present: false, values: null },
+    compatibleProcessExpressionGroup: { present: false, values: null },
+  };
+}
+
 function status(executionTarget = "device") {
+  const machine = { id: ids.machine, name: "Máquina de teste", compatibility: profileCompatibility({ isSystem: true }) };
+  const process = { id: ids.process, name: "Processo de teste", compatibility: profileCompatibility({ printers: [machine.name] }) };
+  const filament = { id: ids.filament, name: "Filamento de teste", compatibility: profileCompatibility({ printers: [machine.name], prints: [process.name] }) };
   return {
     available: true,
     engine: "OrcaSlicer",
@@ -16,7 +33,7 @@ function status(executionTarget = "device") {
     executionTarget,
     executionTargetLabel: executionTarget === "server" ? "https://slice.example.test" : undefined,
     reason: "",
-    profiles: Object.fromEntries(Object.entries(ids).map(([kind, id]) => [kind, { catalog: [{ id, name: `${kind} de teste` }] }])),
+    profiles: { machine: { catalog: [machine] }, process: { catalog: [process] }, filament: { catalog: [filament] } },
   };
 }
 
@@ -88,6 +105,27 @@ test("aprovação remota precisa corresponder ao destino que o host informa no e
   };
   await assert.rejects(requestRealSlice(port, job), /servidor web identificado pelo host/);
   assert.equal(sliceCalled, false);
+});
+
+test("a porta bloqueia perfis que declaram outra máquina antes de chamar o host", async () => {
+  const snapshot = status();
+  snapshot.profiles.process.catalog[0].compatibility.compatiblePrinters.names = ["Outra máquina"];
+  let sliceCalled = false;
+  const port = {
+    getStatus: async () => snapshot,
+    slice: async () => { sliceCalled = true; },
+  };
+  await assert.rejects(requestRealSlice(port, request()), /perfil de processo não declara compatibilidade/);
+  assert.equal(sliceCalled, false);
+});
+
+test("a porta bloqueia expressões de perfil que ainda não consegue avaliar", async () => {
+  const snapshot = status();
+  const processCompatibility = snapshot.profiles.process.catalog[0].compatibility;
+  processCompatibility.compatiblePrinters.names = [];
+  processCompatibility.compatiblePrintersCondition.value = 'printer_model == "Máquina de teste"';
+  const port = { getStatus: async () => snapshot, slice: async () => { throw new Error("não deveria iniciar"); } };
+  await assert.rejects(requestRealSlice(port, request()), /expressão de compatibilidade com a máquina/);
 });
 
 test("envio web reduz metadados e encaminha cancelamento e progresso pela porta do host", async () => {

@@ -6,6 +6,7 @@ import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
 import { assessModelEnvelope } from "./bed-envelope.mjs";
 import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
 import { formatSliceProgress, hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
+import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
 import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext, buildAssistantMeshSummary } from "./ai-copilot.mjs";
 import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
@@ -367,6 +368,20 @@ export function mountFeature(host = {}) {
     return catalog.find(item => item.id === draft[key]) || catalog[0];
   }
 
+  function profileCompatibilityAssessment() {
+    if (!engineStatus.available) return null;
+    return assessSlicerProfileCompatibility({
+      machine: selectedEngineProfile("machine"),
+      process: selectedEngineProfile("process"),
+      filament: selectedEngineProfile("filament"),
+    });
+  }
+
+  function profileCompatibilityReason() {
+    const assessment = profileCompatibilityAssessment();
+    return assessment?.status === "compatible" ? "" : assessment?.reason || "Não foi possível verificar a compatibilidade dos perfis selecionados.";
+  }
+
   function profile() {
     const machine = selectedEngineProfile("machine");
     return machine?.bedSizeMm?.length === 2 && Number.isFinite(machine.heightMm)
@@ -637,10 +652,12 @@ export function mountFeature(host = {}) {
       const loaded = engineStatus.profiles
         ? `Perfis selecionados: ${selectedEngineProfile("machine")?.name || "máquina"} · ${selectedEngineProfile("process")?.name || "processo"} · ${selectedEngineProfile("filament")?.name || "filamento"}.`
         : "Os perfis ainda não foram confirmados.";
+      const compatibility = profileCompatibilityAssessment();
+      const compatibilityNote = compatibility?.status === "compatible" ? compatibility.reason : "";
       const targetNote = runsOnDevice
         ? "A malha preparada é processada neste dispositivo."
         : `A malha preparada será enviada a ${targetLabel} após sua confirmação; a retenção depende das regras desse host.`;
-      message.textContent = blockReason || `${engineStatus.engine} ${engineStatus.version} está pronto. ${loaded} ${targetNote}`;
+      message.textContent = blockReason || `${engineStatus.engine} ${engineStatus.version} está pronto. ${loaded} ${compatibilityNote} ${targetNote}`;
     } else {
       title.textContent = "Motor de fatiamento não conectado";
       message.textContent = engineStatus.reason || "Configure um motor e perfis no host. O botão de fatiar permanece bloqueado até essa validação.";
@@ -656,7 +673,7 @@ export function mountFeature(host = {}) {
     if (!["device", "server"].includes(engineStatus.executionTarget)) return "O host precisa informar onde o motor será executado antes de habilitar o fatiamento.";
     if (!model?.originalFile || model.demo) return "Abra um arquivo STL ou 3MF real; a geometria de demonstração é somente visual.";
     if (!hasCompleteProcessAssignment(draft.processes, model.objects)) return "Atribua cada peça a exatamente um processo antes de fatiar.";
-    return processCompatibilityReason() || modelFitReason();
+    return processCompatibilityReason() || profileCompatibilityReason() || modelFitReason();
   }
 
   function syncProfileControls() {

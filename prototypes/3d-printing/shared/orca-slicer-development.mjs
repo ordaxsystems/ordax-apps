@@ -5,6 +5,7 @@ import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, extname, join, posix, resolve, win32 } from "node:path";
 import { pipeline } from "node:stream/promises";
+import { assessSlicerProfileCompatibility, readProfileCompatibility } from "../features/fatiamento-3d/profile-compatibility.mjs";
 
 const ENGINE_NAME = "OrcaSlicer";
 const STATUS_SCHEMA = "ordax.slicer-engine-status/2";
@@ -143,6 +144,7 @@ function parseProfile(raw, kind, fallbackName) {
   catch { throw publicError(`O perfil de ${label} não contém JSON válido.`, 503); }
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) throw publicError(`O perfil de ${label} tem um formato inválido.`, 503);
   const name = displayName(profile, fallbackName);
+  const compatibility = readProfileCompatibility(profile);
   if (kind === "machine") {
     const technology = first(profile.printer_technology);
     if (technology && !/^(?:fff|fdm)$/i.test(String(technology))) throw publicError("Esta integração inicial aceita apenas perfis FDM/FFF.", 503);
@@ -152,17 +154,18 @@ function parseProfile(raw, kind, fallbackName) {
       throw publicError("O perfil da máquina precisa declarar printable_area e max_print_height válidos.", 503);
     }
     const nozzle = first(profile.nozzle_diameter);
-    return { name, ...bed, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null, source: "JSON local configurado no host" };
+    return { name, compatibility, ...bed, heightMm: Number(height.toFixed(2)), nozzleDiameterMm: numeric(nozzle), printerModel: String(first(profile.printer_model) || "").slice(0, 120) || null, source: "JSON local configurado no host" };
   }
   if (kind === "process") {
     if (!profile.layer_height && !profile.layer_height_0) throw publicError("O perfil de processo não contém altura de camada.", 503);
-    return { name, layerHeightMm: numeric(profile.layer_height ?? profile.layer_height_0), wallLoops: numeric(profile.wall_loops), source: "JSON local configurado no host" };
+    return { name, compatibility, layerHeightMm: numeric(profile.layer_height ?? profile.layer_height_0), wallLoops: numeric(profile.wall_loops), source: "JSON local configurado no host" };
   }
   const temperatures = [numeric(profile.nozzle_temperature_range_low ?? profile.nozzle_temperature), numeric(profile.nozzle_temperature_range_high ?? profile.nozzle_temperature)];
   const bedTemperatures = [numeric(profile.cool_plate_temp ?? profile.textured_plate_temp ?? profile.bed_temperature), numeric(profile.cool_plate_temp_initial_layer ?? profile.textured_plate_temp_initial_layer ?? profile.bed_temperature_initial_layer)];
   const validRange = values => values.filter(Number.isFinite).length ? values.filter(Number.isFinite) : null;
   return {
     name,
+    compatibility,
     type: String(first(profile.filament_type) || "").slice(0, 80) || null,
     nozzleTemperatureC: validRange(temperatures),
     bedTemperatureC: validRange(bedTemperatures),
@@ -536,6 +539,12 @@ export async function sliceWithOrcaToResponse(formData, response, { signal } = {
     const meshBytes = Buffer.from(await uploadedMesh.arrayBuffer());
     const selectedProfiles = selectConfiguredProfiles(config, manifest);
     const validated = validateManifest(manifest, meshBytes);
+    const compatibility = assessSlicerProfileCompatibility({
+      machine: selectedProfiles.machine.parsed,
+      process: selectedProfiles.process.parsed,
+      filament: selectedProfiles.filament.parsed,
+    });
+    if (compatibility.status !== "compatible") throw publicError(compatibility.reason, 422);
     temporaryDirectory = await mkdtemp(join(tmpdir(), "ordax-orca-slice-"));
     const outputDirectory = join(temporaryDirectory, "output");
     const dataDirectory = join(temporaryDirectory, "data");

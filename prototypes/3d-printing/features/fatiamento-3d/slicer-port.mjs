@@ -1,3 +1,5 @@
+import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
+
 const MAX_GCODE_BYTES = 512 * 1024 * 1024;
 const PROCESS_SCHEMA = "ordax.slicer-processes/3";
 const OBJECT_TRANSFORM_SCHEMA = "ordax.object-transforms/1";
@@ -97,6 +99,19 @@ function validateProfileSelection(request, status) {
   }
 }
 
+function validateSelectedProfileCompatibility(request, status) {
+  const selected = Object.fromEntries(PROFILE_KINDS.map(kind => {
+    const catalog = status.profiles[kind].catalog;
+    return [kind, catalog.find(profile => profile.id === request.profileIds[kind])];
+  }));
+  const assessment = assessSlicerProfileCompatibility({
+    machine: selected.machine,
+    process: selected.process,
+    filament: selected.filament,
+  });
+  if (assessment.status !== "compatible") throw new Error(assessment.reason);
+}
+
 function validateProcessAssignmentRequest(request) {
   if (request.processesSchema !== PROCESS_SCHEMA || !Array.isArray(request.objects) || !request.objects.length || request.objects.length > 500 || !Array.isArray(request.processes) || !request.processes.length || request.processes.length > 100) {
     throw new Error("A solicitação não contém a lista de objetos e processos de impressão compatível com este app.");
@@ -194,10 +209,11 @@ export async function requestRealSlice(port, request, { signal, onProgress } = {
   validateProcessAssignmentRequest(request);
   const status = await readSlicerStatus(port);
   if (!status.available) throw new Error(status.reason);
+  validateProfileSelection(request, status);
+  validateSelectedProfileCompatibility(request, status);
   if (status.executionTarget === "server" && request.remoteExecutionApproved !== status.executionTargetLabel) {
     throw new Error("Confirme o envio da malha preparada ao servidor web identificado pelo host antes de fatiar.");
   }
-  validateProfileSelection(request, status);
   const { remoteExecutionApproved: _remoteExecutionApproved, ...localRequest } = request;
   const sliceRequest = status.executionTarget === "server" ? remoteSliceRequest(localRequest) : localRequest;
   reportProgress(onProgress, { stage: status.executionTarget === "server" ? "Enviando ao servidor identificado" : "Enviando ao motor local" });
@@ -237,7 +253,9 @@ export const slicerPortRequirements = Object.freeze({
   processSchema: PROCESS_SCHEMA,
   objectTransformsSchema: OBJECT_TRANSFORM_SCHEMA,
   profileSelectionSchema: PROFILE_SELECTION_SCHEMA,
+  profileCompatibilitySchema: "ordax.slicer-profile-compatibility/1",
   profileSelection: "Cada job escolhe um ID ativo de máquina, processo e filamento dentre os catálogos que o host expôs.",
+  profileCompatibility: "Cada perfil de processo e filamento expõe compatible_printers, compatible_prints e condições versionadas; o app verifica nomes exatos e bloqueia combinações incompatíveis ou expressões que ainda não avalia. O host valida novamente antes de iniciar o motor.",
   processAssignment: "Cada objeto deve ser atribuído a exatamente um processo; cada processo carrega suas próprias configurações. Em 3MF, objetos incluem sourceObjectId e buildItemIndex para que o motor relacione a atribuição aos itens da mesa do arquivo original.",
   objectTransforms: "Cada objeto tem uma transformação validada com offsetMm aplicado sobre a posição original do item, após a transformação global do projeto; rotationDeg usa XYZ e a escala uniforme gira em torno do centro geométrico da peça.",
   remoteSubmission: "Somente a malha STL transformada, settings permitidos, IDs de objetos/processos remapeados para o job e IDs de perfil são enviados; a aprovação precisa corresponder ao rótulo atual do servidor.",
