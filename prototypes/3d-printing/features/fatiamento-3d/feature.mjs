@@ -4,7 +4,7 @@ import { createDemoModel } from "./demo-model.mjs";
 import { createMeshViewer } from "./mesh-viewer.mjs";
 import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
 import { assessModelEnvelope, estimateBrimMarginMm } from "./bed-envelope.mjs";
-import { parseGcodePreview, drawGcodeLayer } from "./gcode-preview.mjs";
+import { parseGcodePreview, drawGcodeLayer, gcodePreviewLimits } from "./gcode-preview.mjs";
 import { formatSliceProgress, hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
@@ -47,6 +47,7 @@ const AI_EVIDENCE_LABELS = Object.freeze({
   "latestSlice.stats.filamentGrams": "Filamento do último fatiamento",
   "latestSlice.stats.filamentMeters": "Comprimento do último fatiamento",
   "latestSlice.stats.featureBreakdown": "Tempo por tipo de extrusão",
+  "latestSlice.previewDiagnostics": "Cobertura da prévia do G-code",
   "slicer.configuredProfiles": "Perfis carregados no motor",
 });
 const defaultDraft = Object.freeze({
@@ -1108,7 +1109,13 @@ export function mountFeature(host = {}) {
         engine: sliced.engine, version: sliced.engineVersion, executionTarget: sliced.executionTarget, printerProfile: sliced.printerProfile,
         processProfile: sliced.processProfile, filamentProfile: sliced.filamentProfile,
         stats: sliced.stats, diagnostics: sliced.diagnostics, gcodeBytes: sliced.gcode.size,
-        previewAvailable: Boolean(preview), completedAt: sliced.completedAt,
+        previewAvailable: Boolean(preview),
+        previewDiagnostics: preview ? {
+          layerCount: preview.layers.length,
+          unsupportedCommands: [...preview.unsupported],
+          arcInterpolation: gcodePreviewLimits,
+        } : null,
+        completedAt: sliced.completedAt,
       } : null,
       limits: { profilesAreReferences: !machineProfile || !processProfile || !filamentProfile, engineConnected: engineStatus.available, sourceGeometrySent: false, gcodeSent: false },
     };
@@ -1141,6 +1148,7 @@ export function mountFeature(host = {}) {
       ["latestSlice.stats.filamentGrams", project.latestSlice?.stats?.filamentGrams],
       ["latestSlice.stats.filamentMeters", project.latestSlice?.stats?.filamentMeters],
       ["latestSlice.stats.featureBreakdown", project.latestSlice?.stats?.featureBreakdown],
+      ["latestSlice.previewDiagnostics", project.latestSlice?.previewDiagnostics],
       ["slicer.configuredProfiles", project.slicer?.configuredProfiles],
     ];
     const knownEvidence = new Set(assistantEvidenceIds);
@@ -1166,6 +1174,7 @@ export function mountFeature(host = {}) {
       "Os resumos dos perfis incluem listas declaradas de compatibilidade. Só recomende uma troca de perfil quando os nomes exatos confirmarem compatibilidade com a máquina e entre filamento/processo; se houver expressão a avaliar, itens omitidos na lista ou herança não resolvida, diga que os dados não bastam e mantenha a seleção atual.",
       "A superfície selecionada aparece em settings.bedType; null significa herdar dos perfis. Use printerProfile.bedTypeCapability e materialProfile.bedTemperaturesByType para explicar suporte e temperaturas herdadas, sem inferir temperaturas ausentes nem afirmar que a superfície é ótima sem calibração.",
       "Identifique quando os perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade.",
+      "latestSlice.previewDiagnostics descreve somente o que a inspeção visual local conseguiu desenhar. Se unsupportedCommands listar G2 ou G3, explique que esses arcos não aparecem no canvas; não diga que foram removidos do G-code do motor, pois a exportação preserva o arquivo original. Arcos XY são aproximações visuais com a tolerância declarada em arcInterpolation.",
       "Não afirme que verificou a malha completa ou chamou ferramentas. Se model.demonstrationOnly for true, os dados representam uma amostra visual: não apresente recomendações como prontas para fabricação. A transformação atual da peça vem como offsetMm, rotationDeg e scalePercent.",
     ];
     const responseRules = `Retorne sempre um objeto JSON no envelope solicitado, sem Markdown. Use schema "ordax.slicer-assistant-response/1", answer para a resposta em linguagem natural e suggestion para a sugestão "${assistantSuggestionSchema}" ou null. Se houver uma sugestão, confidence deve ser low, medium ou high como avaliação informada pela IA, não como probabilidade medida. evidence deve citar de 1 a 5 IDs que existam nesta solicitação; use somente estes: ${evidenceIds.join(", ")}. Nunca cite um ID ausente. Se não houver base suficiente para recomendar, use suggestion:null e explique em answer o que falta. Se recomendar ajustes, inclua em suggestion.summary o motivo e as ressalvas. Em settings e transform, use null para todo campo que não recomenda. As configurações de processo se aplicam ao processo selecionado; nozzleTemperatureC e nozzleTemperatureInitialLayerC são overrides globais para o filamento selecionado. layerHeight 0.08–0.4 mm; walls 1–8; topShellLayers e bottomShellLayers 0–20 camadas; topShellThickness e bottomShellThickness 0–10 mm; brimType outer_only, inner_only, outer_and_inner ou no_brim e brimWidth 0–20 mm e brimGap 0–10 mm para controlar remoção; use o perfil quando não houver dados de adesão; infill 0–100; infillPattern deve ser uma das opções válidas do esquema; seamPosition é nearest, aligned, aligned_back, back ou random e deve respeitar o perfil e a preferência de acabamento; nozzleTemperatureC e nozzleTemperatureInitialLayerC são inteiros de 150–350 °C e só podem ser sugeridos dentro da interseção entre nozzleTemperatureRangeC do filamento e nozzleMaxTemperatureC da máquina; mantenha ambos null sem os dois limites reais ou quando o usuário não pedir ajuste térmico; não declare uma temperatura ótima sem resultado de calibração; supports boolean; supportType normal(auto) ou tree(auto); supportThresholdAngle 0–90°; supportOnBuildPlateOnly boolean; fanMinSpeedPercent e fanMaxSpeedPercent de 0–100, sempre com o mínimo menor ou igual ao máximo; quality standard, fine ou draft. Use o perfil selecionado como referência quando os dados estiverem disponíveis. Espessura 0 deixa a contagem de camadas determinar a casca; espessuras maiores podem acrescentar camadas e alterar tempo/consumo, sem garantir resistência sem evidência de geometria e uso. Padrões de preenchimento mudam distribuição, tempo e consumo e não são uma garantia universal de resistência; explique a troca e não os escolha como ótimo sem evidência geométrica e de uso. Os suportes automáticos podem ser propostos apenas como opção; sem receber a geometria, não afirme que sabe onde eles são necessários nem que a peça ficará imprimível. Ângulo de suporte 0 preserva as regras próprias do Orca: overlap para tipo normal e 30° para árvore. A faixa de ventoinha define os limites de resfriamento da peça; não prometa velocidade fixa nem ignore regras do perfil/material e do tempo de camada. transform altera somente a peça selecionada, usando deslocamentos absolutos inteiros em mm relativos à posição original (x/y/z: -500 a 500), rotação em graus (rotationX/Y/Z: inteiros de 0 a 359) e escala percentual inteira (scalePercent: 10 a 300). Não proponha transformação se não houver peça selecionada. Use model.printableSpaceFit para relatar a triagem da área; cite essa evidência quando avaliar a mesa e deixe claro que usa caixas envolventes, que brim automático/pintado/orelhas sem largura conhecida deixam a margem não determinada e que a triagem não avalia orientação de face, skirt, colisões, suportes ou imprimibilidade. A sugestão só será aplicada após revisão explícita do usuário.`;
