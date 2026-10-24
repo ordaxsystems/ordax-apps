@@ -9,6 +9,23 @@ const NAVIGATION_REASONS = new Set([
   'provider_health_observation_timeout', 'provider_navigation_unavailable'
 ]);
 
+const TASK_LIST_STATUS_LABELS = Object.freeze({
+  running: 'Em andamento',
+  error: 'Erro',
+  interrupted: 'Interrompida',
+  succeeded: 'Concluída'
+});
+
+export function taskListStatusLabel(task) {
+  if (!task || typeof task !== 'object') return 'Estado indisponível';
+  if (task.status === 'ready') {
+    if (Number(task.has_draft) === 1) return 'Rascunho salvo';
+    if (Number(task.conversation_count) > 0) return 'Em espera';
+    return 'Nova conversa';
+  }
+  return TASK_LIST_STATUS_LABELS[task.status] || 'Estado indisponível';
+}
+
 export function safeTaskNavigationReason(value) {
   return typeof value === 'string' && NAVIGATION_REASONS.has(value)
     ? value : 'provider_navigation_unavailable';

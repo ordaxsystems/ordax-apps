@@ -1,3 +1,19 @@
+## 0.2.0-alpha.18 — estado correto das conversas (2026-10-24)
+
+- A navegação distingue conversa nova, rascunho salvo, conversa em espera, execução e conclusão; uma missão não enviada deixa de parecer pronta ou concluída.
+- A lista recebe apenas um indicador booleano de rascunho, nunca o texto privado do composer.
+- E2E visual anterior da alpha.17 confirmou o rascunho VESTE após reload; envio permaneceu bloqueado por falta de sessão GPT compartilhada. A alpha.18 passou pela suíte de produto (423/423), mas não foi reaberta visualmente neste Windows.
+- A tentativa de reiniciar o host alpha.18 terminou antes de iniciar o listener: o sandbox do Electron não conseguiu aprovar leitura de `icudtl.dat` no runtime; instalação e perfil principal permaneceram intocados. Não contornar o sandbox nem alterar ACLs do perfil.
+- Atualiza a evidência do plano com os SHAs atuais de Apps, Runtime, Platform e OS; não altera os limites de integração nem declara autonomia 24 h.
+
+## 0.2.0-alpha.17 — host local e coordenação responsiva (2026-10-23)
+
+- Adiciona um host de desenvolvimento loopback para a interface atual do Lab, reusando o processo Electron, handlers, OrchestratorService e Store; o servidor do host não entra no pacote Windows.
+- Protege a ponte do navegador com sessão same-origin, lista fechada de métodos, CSP, confirmação visível e limites de requisição. O host não compartilha a sessão GPT do executor Electron e bloqueia login/envio nesse modo.
+- Melhora estados vazios e navegação compacta; análise automática só pode ser habilitada quando o chat API opcional está ativo.
+- E2E VESTE em perfil isolado criou uma frente e recuperou o rascunho após reload. Nenhuma mensagem foi enviada, nenhum remoto foi lido e nenhum arquivo/site foi criado.
+- Distribuição continua desativada; a supervisão Runtime de 24 h continua desconectada.
+
 ## 0.2.0-alpha.16 — confirmação visível da conclusão do GPT (2026-10-23)
 
 - A conclusão da resposta usa um único snapshot e confirma controles de geração visíveis; elementos ocultos no DOM não mantêm a execução presa como ativa.

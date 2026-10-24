@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.17",
+  "version": "0.2.0-alpha.18",
   "channel": "alpha",
-  "name": "Host local e coordenação responsiva",
+  "name": "Estados honestos de conversa",
   "distributionEnabled": false,
   "releaseDate": null
 }

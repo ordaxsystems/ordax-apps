@@ -279,6 +279,7 @@ export class Store {
         WHERE e.task_id=t.id AND e.kind='task.supervisor_role'
         ORDER BY e.rowid DESC LIMIT 1),'none') AS supervisor_role,
       (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count,
+      CASE WHEN length(trim(COALESCE(t.draft,''))) > 0 THEN 1 ELSE 0 END AS has_draft,
       (SELECT COUNT(*) FROM project_memory_candidates c WHERE c.task_id=t.id AND c.status='pending') AS pending_memory_count
       FROM tasks t ORDER BY t.updated_at DESC`).all();
   }

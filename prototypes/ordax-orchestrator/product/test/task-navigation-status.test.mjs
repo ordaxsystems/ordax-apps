@@ -1,7 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { taskNavigationStatus, safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
+import { taskNavigationStatus, safeTaskNavigationReason, taskListStatusLabel } from '../src/task-navigation-status.mjs';
+
+test('task navigation distinguishes a saved draft from completed work', () => {
+  assert.equal(taskListStatusLabel({ status:'ready', has_draft:1, conversation_count:0 }), 'Rascunho salvo');
+  assert.equal(taskListStatusLabel({ status:'ready', has_draft:0, conversation_count:0 }), 'Nova conversa');
+  assert.equal(taskListStatusLabel({ status:'ready', has_draft:0, conversation_count:2 }), 'Em espera');
+});
+
+test('task navigation keeps active and terminal states explicit', () => {
+  assert.equal(taskListStatusLabel({ status:'running' }), 'Em andamento');
+  assert.equal(taskListStatusLabel({ status:'interrupted' }), 'Interrompida');
+  assert.equal(taskListStatusLabel({ status:'succeeded' }), 'Concluída');
+  assert.equal(taskListStatusLabel({ status:'unknown' }), 'Estado indisponível');
+  assert.equal(taskListStatusLabel(null), 'Estado indisponível');
+});
 
 test('W3 navigation timeout is visible without certifying historical response', () => {
   const result = taskNavigationStatus({
@@ -44,7 +58,7 @@ test('W3 local task load and successful navigation do not assert remote answer',
 test('W3 App binds the task navigation result into its existing read-only status', () => {
   const ui=readFileSync(new URL('../desktop/ui.js',import.meta.url),'utf8');
   const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-  assert.match(ui,/import \{ taskNavigationStatus \} from '\.\.\/src\/task-navigation-status\.mjs'/);
+  assert.match(ui,/import \{[^}]*\btaskNavigationStatus\b[^}]*\} from '\.\.\/src\/task-navigation-status\.mjs'/);
   assert.match(ui,/const navigationStatus = taskNavigationStatus\(task\);/);
   assert.match(ui,/status\.dataset\.threadRendered = navigationStatus\.threadRendered/);
   assert.match(ui,/status\.textContent = navigationStatus\.message/);
