@@ -1,4 +1,4 @@
-:root {
+:root, :host {
   color-scheme: dark;
   --ink: #f2f3f4;
   --muted: #a0a5ac;
@@ -930,3 +930,7 @@ dialog p { color: #a2a8af; }
 @media (max-width: 680px) {
   .food-embedded-preview .content { padding: 18px 12px 24px; }
 }
+
+/* In embedded local preview the same stylesheet lives only in a ShadowRoot. */
+:host { display: block; min-width: 0; }
+.food-preview-content-root { min-width: 0; color: var(--ink); background: var(--canvas); }
