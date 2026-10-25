@@ -5,8 +5,9 @@ const embedded = parameters.get("presentation") === "embedded-preview";
 const view = parameters.get("view") ?? "orders";
 const browserErrors = [];
 window.addEventListener("error", (event) => {
-  browserErrors.push(`JS: ${event.message} ${event.filename}:${event.lineno}`);
-});
+  const source = event.target?.src || event.target?.href || "";
+  browserErrors.push(`JS/resource: ${event.message || event.type} ${source} ${event.filename || ""}:${event.lineno || ""}`);
+}, true);
 window.addEventListener("unhandledrejection", (event) => {
   browserErrors.push(`Promise: ${String(event.reason?.stack ?? event.reason)}`);
 });
@@ -43,7 +44,7 @@ try {
   ensure(host, "Host de prévia ausente.");
   const content = await eventually(() => (embedded ? host.shadowRoot : host)
     ?.querySelector("#main-content"),
-    () => `Prévia não montou: errors=${browserErrors.join(" | ") || "nenhum"}; host=${host.innerHTML.slice(0,500)}; shadow=${host.shadowRoot?.innerHTML.slice(0,300) ?? "ausente"}`);
+    () => `Prévia não montou: errors=${browserErrors.join(" | ") || "nenhum"}; ready=${document.readyState}; modules=${[...document.querySelectorAll("script")].map(x=>x.src).join(",")}; resources=${performance.getEntriesByType("resource").filter(x=>/food|preview/.test(x.name)).map(x=>`${x.name.split("/").slice(-2).join("/")}:${x.responseStatus || "?"}`).join(",")}; host=${host.innerHTML.slice(0,350)}`);
   const root = embedded ? host.shadowRoot : document;
   ensure(content.textContent.includes(expected[view] ?? "OrdaX"),
     `O módulo ${view} não renderizou seu conteúdo esperado.`);
@@ -89,7 +90,7 @@ try {
   }
   announce("PASS", `${embedded ? "embedded" : "standalone"}:${view}`);
 } catch (error) {
-  announce("FAIL", String(error?.stack ?? error).replaceAll("<", "(").slice(0,1000));
+  announce("FAIL", String(error?.stack ?? error).replaceAll("<", "(").slice(0,2300));
 }
 }
 
