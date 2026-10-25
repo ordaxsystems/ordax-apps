@@ -24,10 +24,11 @@ function createSessionFileBus() {
   };
 }
 
-function createFeatureSurface({ area, options, featureRoot }) {
+function createFeatureSurface({ appId, area, options, featureRoot }) {
   const panel = document.createElement("section");
   panel.className = "product-feature-panel";
   panel.hidden = true;
+  panel.dataset.productTheme = appId === "ordax-3d" ? "dark" : "default";
   panel.setAttribute("aria-label", options.title);
   const shadow = panel.attachShadow({ mode: "open" });
   const nav = options.nav?.length ? `<nav class="feature-nav app-nav" aria-label="${escapeHtml(options.title)}">${options.nav.map((item, index) => `<button class="nav-item${index === 0 ? " active" : ""}" type="button" data-nav="${escapeHtml(item.id)}">${icon(item.icon ?? "grid", 16)}<span>${escapeHtml(item.label)}</span>${item.count ? `<b>${escapeHtml(item.count)}</b>` : ""}</button>`).join("")}</nav>` : "";
@@ -51,9 +52,12 @@ export function mountProductHost({ appId, title, subtitle, mark, areas, services
   const navigation = areas.map((area, index) => {
     const group = area.group && area.group !== previousGroup ? `<span class="product-nav-group">${escapeHtml(area.group)}</span>` : "";
     previousGroup = area.group;
-    return `${group}<button class="nav-item${index === 0 ? " active" : ""}" type="button" data-product-area="${escapeHtml(area.id)}">${icon(area.icon ?? "grid", 17)}<span>${escapeHtml(area.label)}</span></button>`;
+    return `${group}<button class="nav-item${index === 0 ? " active" : ""}" type="button" data-product-area="${escapeHtml(area.id)}" title="${escapeHtml(area.label)}">${icon(area.icon ?? "grid", 17)}<span>${escapeHtml(area.label)}</span></button>`;
   }).join("");
-  root.innerHTML = `<div class="app-shell product-shell"><header class="topbar"><div class="topbar-brand"><span class="brand-mark">${escapeHtml(mark ?? "3D")}</span><span class="brand-name">${escapeHtml(title)}</span></div><span class="product-preview-badge">Prévia local · sem Space ou owners conectados</span></header><div class="app-layout product-layout${areas.length === 1 ? " product-layout--single" : ""}"><aside class="sidebar"${areas.length === 1 ? " hidden" : ""}><nav class="app-nav" data-product-nav aria-label="Módulos do app">${navigation}</nav></aside><main class="main-area"><div class="page-heading"><div><span class="eyebrow">${escapeHtml(subtitle ?? "IMPRESSÃO 3D")}</span><h1 data-area-title></h1><p class="product-area-description" data-area-description></p></div></div><section class="product-content" data-product-content></section></main></div><div class="toast" data-toast role="status" aria-live="polite"></div></div>`;
+  const brand = appId === "ordax-3d" ? icon("cube", 21) : escapeHtml(mark ?? "3D");
+  const brandClass = appId === "ordax-3d" ? "brand-mark brand-mark--3d" : "brand-mark";
+  const previewBadge = appId === "ordax-3d" ? "" : `<span class="product-preview-badge">Prévia local · sem Space ou owners conectados</span>`;
+  root.innerHTML = `<div class="app-shell product-shell"><header class="topbar"><div class="topbar-brand"><span class="${brandClass}" aria-hidden="true">${brand}</span><span class="brand-name">${escapeHtml(title)}</span></div>${previewBadge}</header><div class="app-layout product-layout${areas.length === 1 ? " product-layout--single" : ""}"><aside class="sidebar"${areas.length === 1 ? " hidden" : ""}><nav class="app-nav" data-product-nav aria-label="Módulos do app">${navigation}</nav></aside><main class="main-area"><div class="page-heading"><div><span class="eyebrow">${escapeHtml(subtitle ?? "IMPRESSÃO 3D")}</span><h1 data-area-title></h1><p class="product-area-description" data-area-description></p></div></div><section class="product-content" data-product-content></section></main></div><div class="toast" data-toast role="status" aria-live="polite"></div></div>`;
 
   const featureRoot = root.querySelector("[data-product-content]");
   const data = services.appData;
@@ -72,7 +76,7 @@ export function mountProductHost({ appId, title, subtitle, mark, areas, services
       files: { publish: (channel, payload) => files.publish(channel, payload, area.featureId), subscribe: (channel, listener) => files.subscribe(channel, area.featureId, listener) },
       onDestroy(cleanup) { if (typeof cleanup === "function") cleanups.push(cleanup); },
       mountShell(options) {
-        surface = createFeatureSurface({ area, options, featureRoot });
+        surface = createFeatureSurface({ appId, area, options, featureRoot });
         return surface.shell;
       },
     };

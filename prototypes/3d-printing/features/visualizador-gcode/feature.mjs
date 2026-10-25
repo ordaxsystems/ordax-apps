@@ -38,12 +38,15 @@ function parseGcode(text) {
 function draw() {
   const canvas = shell.content.querySelector("[data-canvas]"); const rect = canvas.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.max(1, Math.floor(rect.width*dpr)); canvas.height = Math.max(1, Math.floor(rect.height*dpr));
-  const ctx = canvas.getContext("2d"); ctx.scale(dpr,dpr); const w=rect.width,h=rect.height; ctx.fillStyle="#f7f9f5"; ctx.fillRect(0,0,w,h);
-  const bedSize=Math.min(w-70,h-55), left=(w-bedSize)/2, top=(h-bedSize)/2; ctx.fillStyle="#eef2eb"; ctx.fillRect(left,top,bedSize,bedSize); ctx.strokeStyle="#dfe6da"; ctx.lineWidth=1; ctx.strokeRect(left,top,bedSize,bedSize);
-  ctx.strokeStyle="#dce4d8"; ctx.lineWidth=.6; for(let i=1;i<10;i++){const pos=left+bedSize*i/10;ctx.beginPath();ctx.moveTo(pos,top);ctx.lineTo(pos,top+bedSize);ctx.stroke();ctx.beginPath();ctx.moveTo(left,pos);ctx.lineTo(left+bedSize,pos);ctx.stroke();}
-  const moves=parsed.moves.filter(move=>move.layer===selectedLayer); if(!moves.length){ctx.fillStyle="#879181";ctx.font="12px sans-serif";ctx.textAlign="center";ctx.fillText("Sem trajetos para esta camada",w/2,h/2);return;}
+  const ctx = canvas.getContext("2d"); ctx.scale(dpr,dpr); const w=rect.width,h=rect.height;
+  const theme = getComputedStyle(canvas);
+  const color = (name, fallback) => theme.getPropertyValue(name).trim() || fallback;
+  ctx.fillStyle=color("--gcode-canvas-bg","#f7f9f5"); ctx.fillRect(0,0,w,h);
+  const bedSize=Math.min(w-70,h-55), left=(w-bedSize)/2, top=(h-bedSize)/2; ctx.fillStyle=color("--gcode-bed-bg","#eef2eb"); ctx.fillRect(left,top,bedSize,bedSize); ctx.strokeStyle=color("--gcode-outline","#dfe6da"); ctx.lineWidth=1; ctx.strokeRect(left,top,bedSize,bedSize);
+  ctx.strokeStyle=color("--gcode-grid","#dce4d8"); ctx.lineWidth=.6; for(let i=1;i<10;i++){const pos=left+bedSize*i/10;ctx.beginPath();ctx.moveTo(pos,top);ctx.lineTo(pos,top+bedSize);ctx.stroke();ctx.beginPath();ctx.moveTo(left,pos);ctx.lineTo(left+bedSize,pos);ctx.stroke();}
+  const moves=parsed.moves.filter(move=>move.layer===selectedLayer); if(!moves.length){ctx.fillStyle=color("--gcode-label","#879181");ctx.font="12px sans-serif";ctx.textAlign="center";ctx.fillText("Sem trajetos para esta camada",w/2,h/2);return;}
   const xs=moves.flatMap(move=>[move.x1,move.x2]),ys=moves.flatMap(move=>[move.y1,move.y2]);let minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);if(maxX===minX)maxX++;if(maxY===minY)maxY++;const pad=12,scale=Math.min((bedSize-pad*2)/(maxX-minX),(bedSize-pad*2)/(maxY-minY));const ox=left+(bedSize-(maxX-minX)*scale)/2,oy=top+(bedSize-(maxY-minY)*scale)/2;
-  ctx.lineCap="round";ctx.lineWidth=2;for(const move of moves){ctx.beginPath();ctx.moveTo(ox+(move.x1-minX)*scale,oy+bedSize-(move.y1-minY)*scale);ctx.lineTo(ox+(move.x2-minX)*scale,oy+bedSize-(move.y2-minY)*scale);ctx.strokeStyle=move.extrude?"#69885d":"#bac6b4";ctx.stroke();}
+  ctx.lineCap="round";ctx.lineWidth=2;for(const move of moves){ctx.beginPath();ctx.moveTo(ox+(move.x1-minX)*scale,oy+bedSize-(move.y1-minY)*scale);ctx.lineTo(ox+(move.x2-minX)*scale,oy+bedSize-(move.y2-minY)*scale);ctx.strokeStyle=move.extrude?color("--gcode-extrusion","#69885d"):color("--gcode-travel","#bac6b4");ctx.stroke();}
 }
 function refresh() {
   parsed=parseGcode(sourceText); selectedLayer=Math.min(selectedLayer,parsed.layerCount-1);
