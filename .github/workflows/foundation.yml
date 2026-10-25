@@ -211,7 +211,14 @@ jobs:
         run: |
           set -euo pipefail
           find apps/food-pizzeria/src prototypes/food-pizzeria -type f -name '*.mjs' -print0 | sort -z | xargs -0 -r -n1 node --check
+          node --check tools/prove_food_browser_preview.mjs
           node --test apps/food-pizzeria/tests/*.test.mjs
+
+      - name: Prove Food preview mounts in real Chromium without UI dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tools/prove_food_browser_preview.mjs
 
       - name: Resolve exact historical Internet source pin
         id: internet-source-pin
