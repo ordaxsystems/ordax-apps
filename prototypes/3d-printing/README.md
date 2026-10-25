@@ -1,35 +1,38 @@
-# Espaço Impressão 3D — hosts de desenvolvimento
+# OrdaX 3D — host de desenvolvimento
 
 O plano de produto e os critérios de evolução estão em [`ROADMAP.md`](./ROADMAP.md).
 
-O Space tem cinco apps de produto e onze áreas internas. Cada host abre diretamente a entrada do app; o host não desenha uma segunda interface nem incorpora telas por `iframe`.
+OrdaX 3D é uma capacidade vertical integrada ao Space e reúne onze módulos internos em um único app. O Space continuará responsável por contexto, identidade, autorização, composição, navegação externa e visão geral. Este host serve uma prévia local do app, sem criar ou simular outro Space.
 
-## Apps e hosts
+## App e módulos
 
-| App | Áreas do produto | Host padrão |
-| --- | --- | ---: |
-| Biblioteca 3D | Biblioteca de modelos · Inspeção de malha | 4236 |
-| Preparação de Impressão | Fatiamento 3D · Visualizador G-code · Verificação pré-impressão · Calibração | 4237 |
-| Operações de Impressão | Central de impressoras · Fila de impressão | 4238 |
-| Materiais e Custos | Materiais · Orçamento de impressão | 4239 |
-| Qualidade e Manutenção | Registros de qualidade · Manutenção preventiva | 4235 |
+| Módulo | Responsabilidade de produto |
+| --- | --- |
+| Biblioteca · Inspeção de malha | Arquivos de modelo e inspeção geométrica; arquivos persistentes dependem do owner Files |
+| Fatiamento · Preview G-code · Pré-impressão · Calibração | Preparação e resultados técnicos do motor |
+| Impressoras · Fila técnica | Dispositivos e jobs técnicos, sem criar pedido comercial ou enviar comandos ao hardware nesta base |
+| Estimativa de materiais · Estimativa de fabricação | Consumo e custos calculados localmente; sem saldo, movimentação ou pedido de venda |
+| Qualidade · Manutenção | Registros técnicos locais |
 
-Inicie um host no PowerShell a partir deste diretório: `.\dev.ps1 -App biblioteca-impressao`. Troque o ID por `preparacao-impressao`, `operacoes-impressao`, `materiais-custos` ou `qualidade-manutencao` para abrir os demais produtos. O servidor usa a porta da tabela; se ela estiver ocupada, defina `$env:PORT` antes de iniciar. Também é possível executar `node .\server.mjs <id-do-produto>` diretamente.
+Inicie o host único no PowerShell a partir deste diretório: `.\dev.ps1`. A porta padrão é 4235; para outra porta, defina `$env:PORT` antes de iniciar. Também é possível executar `node .\server.mjs ordax-3d` diretamente. Para testar Groq e OrcaSlicer no host de desenvolvimento, use `.\groq-dev.ps1 -Port 4244`.
 
 ## Estrutura de execução
 
-- `apps/<id-do-produto>/index.html`, `app.mjs` e `app.css` são a entrada real de cada produto. O produto cria seu shell e sua navegação; a interface do host não acrescenta perfil, Space ou controles de desenvolvimento.
-- `features/<id>/feature.mjs` exporta `mountFeature(host)`. Cada área recebe o serviço de dados, o canal de arquivos da sessão e o ponto de montagem do próprio app. Ela não cria outro shell de produto.
+- `apps/ordax-3d/index.html` é a entrada do host de desenvolvimento; `src/ui/app.mjs` compõe o app e `src/ui/views.mjs` mapeia os módulos internos. O app cria sua navegação de módulos; o host local apenas injeta serviços de desenvolvimento.
+- A organização segue o padrão modular do Food: UI em `src/ui`, regras de domínio/casos de uso dentro do owner e portas/adaptadores explícitos. O rascunho de fatiamento e o job técnico têm regras e serviços compartilhados em `apps/ordax-3d/src`; o job tem uma única coleção e atende fila, impressoras e estimativas.
+- `features/<id>/feature.mjs` exporta `mountFeature(host)`. Cada módulo recebe serviços do app e o canal efêmero de arquivos da sessão. Módulos não criam shells independentes nem apps instaláveis.
 - `features/<id>/app.css` mantém os estilos da área encapsulados no Shadow DOM, sem sobrescrever o layout das demais áreas.
-- `server.mjs` serve somente os cinco apps e seus módulos permitidos. Não reescreve HTML e não cria rotas de app para as dez áreas internas.
+- `server.mjs` serve uma entrada de app e módulos permitidos por allowlist; módulos internos não são rotas de app nem hosts separados.
 
-Os arquivos STL/OBJ e G-code passam entre áreas por um canal explícito em memória, com limites de tamanho e sem `postMessage`. Impressoras/Fila e Materiais/Custos compartilham as respectivas coleções do app pelo serviço de dados do host.
+Veja [ARCHITECTURE.md](./ARCHITECTURE.md) e [INTEGRATION-PORTS.md](./INTEGRATION-PORTS.md) para camadas, owners/SSOT, contratos ausentes e dependências.
+
+Os arquivos STL/OBJ e G-code passam entre módulos por um canal explícito em memória, com limites de tamanho e sem `postMessage`. Fila, impressoras e consumo previsto derivam do serviço compartilhado de jobs técnicos; dados comerciais, saldos de Inventory, pagamentos e arquivos persistentes permanecem com seus owners.
 
 ## Persistência e limites
 
-O host usa um adaptador local de desenvolvimento com escopo por app e por identidade/Space locais de demonstração. Esse adaptador não é o SSOT do OrdaX e os dados não sincronizam entre hosts ou Spaces. Ao integrar o produto ao OS, o host de produção deve injetar o contrato público de App Data/Space; a UI e as áreas não precisam ser reescritas para isso.
+O host usa um adaptador local de desenvolvimento e dados fictícios rotulados como prévia. Isso não é o SSOT de produção e não há sincronização, identidade, autorização ou composição real de Space. Contratos públicos de Space e owners ainda precisam ser fornecidos antes de qualquer integração de produção.
 
-Os cinco apps continuam em `prototypes/`, fora do inventário oficial `apps/` e da Loja. O Fatiamento 3D abre com uma geometria demonstrativa somente visual e importa STL/3MF localmente. O rascunho fica no App Data local; o botão **Salvar projeto** gera um pacote portátil `.ordax3d` quando há uma malha real aberta. A integração de desenvolvimento com OrcaSlicer pode produzir G-code real quando o executável e catálogos JSON locais de máquina, processo e filamento estiverem configurados no host. Sem essa configuração, o botão de fatiar permanece bloqueado. O app ainda não controla hardware.
+OrdaX 3D permanece em `prototypes/`, fora do inventário oficial `apps/` e da Loja; esta mudança não altera sua elegibilidade de distribuição. O Fatiamento abre com geometria demonstrativa somente visual e importa STL/3MF localmente. O rascunho fica no armazenamento local de desenvolvimento; **Salvar projeto** gera um pacote portátil `.ordax3d` quando há uma malha real aberta. A integração local com OrcaSlicer pode produzir G-code real quando o executável e catálogos JSON locais de máquina, processo e filamento estiverem configurados. Sem isso, o fatiamento permanece bloqueado. O app ainda não controla hardware.
 
 No Linux, o adaptador conecta o canal `--pipe` documentado pelo OrcaSlicer e repassa à interface as mensagens e percentuais JSON que o motor emitir. Windows e macOS continuam mostrando fases sem percentual; o código upstream atual restringe esse canal a Linux. A instalação local do motor ainda é necessária para validar o fluxo ponta a ponta.
 
@@ -79,7 +82,7 @@ As respostas do Copiloto agora usam o envelope `ordax.slicer-assistant-response/
 
 ### Groq no host local (somente desenvolvimento)
 
-O host de `preparacao-impressao` injeta um adaptador local que implementa a porta pública `ordax.intelligence/1` e encaminha as consultas para Groq pelo endpoint de Chat Completions. O adaptador é exclusivo deste servidor de desenvolvimento; a aplicação não recebe a chave e a integração de produção continua sob responsabilidade do OrdaX OS/Intelligence.
+O host `ordax-3d` injeta um adaptador local que implementa a porta consultiva `ordax.intelligence/1` e encaminha as consultas para Groq pelo endpoint de Chat Completions. É exclusivo do desenvolvimento: a aplicação não recebe a chave, não executa ferramentas/MCP e não representa a integração de produção, que continua sob responsabilidade do owner OrdaX Intelligence.
 
 Para iniciar o host com entrada oculta da chave no PowerShell, execute neste diretório:
 

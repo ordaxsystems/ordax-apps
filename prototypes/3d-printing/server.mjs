@@ -7,12 +7,21 @@ import { getGroqStatus, handleGroqRequest } from "./shared/groq-development-api.
 import { getOrcaSlicerStatus, sliceWithOrcaToResponse } from "./shared/orca-slicer-development.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const apps = new Map([
-  ["qualidade-manutencao", 4235], ["biblioteca-impressao", 4236],
-  ["preparacao-impressao", 4237], ["operacoes-impressao", 4238],
-  ["materiais-custos", 4239],
-]);
+const apps = new Map([["ordax-3d", 4235]]);
 const features = new Set(featureIds);
+const appSourceModules = new Map([
+  ["ordax-3d", new Set([
+    "domain/print-draft.mjs",
+    "application/print-draft-service.mjs",
+    "ports/print-draft-repository.mjs",
+    "adapters/app-data-print-draft-repository.mjs",
+    "domain/technical-print-job.mjs",
+    "domain/technical-print-job-fixtures.mjs",
+    "application/technical-jobs-service.mjs",
+    "ports/technical-job-repository.mjs",
+    "adapters/app-data-technical-job-repository.mjs",
+  ])],
+]);
 const contentTypes = {
   "index.html": "text/html; charset=utf-8",
   "app.mjs": "text/javascript; charset=utf-8",
@@ -45,7 +54,7 @@ const contentTypes = {
 };
 
 const appId = process.argv[2] ?? process.env.ORDAX_3D_APP;
-if (!apps.has(appId)) throw new TypeError("Pass a product app ID or set ORDAX_3D_APP: qualidade-manutencao, biblioteca-impressao, preparacao-impressao, operacoes-impressao or materiais-custos");
+if (!apps.has(appId)) throw new TypeError("Pass the OrdaX 3D product ID: ordax-3d");
 const port = Number(process.env.PORT ?? apps.get(appId));
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new TypeError("PORT must be between 1024 and 65535");
 
@@ -114,7 +123,7 @@ async function readLimitedBody(request, maxBytes) {
 }
 
 async function handleApi(request, response, pathname) {
-  if (appId !== "preparacao-impressao") {
+  if (appId !== "ordax-3d") {
     sendJson(response, 404, { error: "API indisponível para este app de desenvolvimento." });
     return;
   }
@@ -198,7 +207,12 @@ async function handleApi(request, response, pathname) {
 
 function resolveRequest(pathname) {
   if (pathname === "/" || pathname === "/index.html") return [resolve(appRoot, "index.html"), contentTypes["index.html"]];
-  if (pathname === "/app.mjs" || pathname === "/app.css") return [resolve(appRoot, pathname.slice(1)), contentTypes[pathname.slice(1)]];
+  if (pathname === "/app.css") return [resolve(appRoot, "app.css"), contentTypes["app.css"]];
+  if (pathname === "/src/ui/app.mjs" || pathname === "/src/ui/views.mjs") return [resolve(appRoot, pathname.slice(1)), contentTypes["app.mjs"]];
+  const appSource = pathname.match(/^\/apps\/([a-z0-9-]+)\/src\/([a-z]+\/[a-z0-9-]+\.mjs)$/);
+  if (appSource && appSource[1] === appId && appSourceModules.get(appId)?.has(appSource[2])) {
+    return [resolve(root, "apps", appSource[1], "src", appSource[2]), contentTypes["app.mjs"]];
+  }
   if (["/shared.mjs", "/shared.css", "/product-host.mjs", "/product-host.css", "/development-entry.mjs", "/development-services.mjs", "/feature-registry.mjs", "/feature-surface.css"].includes(pathname)) {
     const name = pathname.slice(1);
     return [resolve(sharedRoot, name), contentTypes[name]];

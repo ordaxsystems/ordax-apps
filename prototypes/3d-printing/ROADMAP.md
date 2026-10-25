@@ -2,14 +2,25 @@
 
 ## Princípio do produto
 
-Construir uma estação de trabalho 3D confiável: preparação e fatiamento com resultados produzidos por um motor real, configuração rastreável, validação antes da impressão e IA que explica o que sabe, mostra suas evidências e pede revisão antes de alterar o projeto. A interface de desenvolvimento continua sendo a interface real de cada app; o host só injeta serviços pelo contrato público.
+Construir uma estação de trabalho 3D confiável: preparação e fatiamento com resultados produzidos por um motor real, configuração rastreável, validação antes da impressão e IA que explica o que sabe, mostra suas evidências e pede revisão antes de alterar o projeto. O Space é dono de contexto, identidade, autorização, composição, navegação e visão geral; OrdaX 3D é um único app vertical com módulos internos. O host atual é somente uma prévia local.
+
+## Owners e SSOT
+
+- Space/OrdaX OS: identidade, autorização, contexto, composição e visão geral. O contrato público de montagem do Space não está disponível para este protótipo.
+- OrdaX 3D: rascunho, parâmetros, resultados e jobs técnicos. O estado atual é local, não um provider de produção.
+- Vendas (`apps/sales/src/domain/orders.mjs`): pedido, cliente, itens, preço aprovado e estado comercial. OrdaX 3D não cria pedido.
+- Inventory (`apps/inventory/src/domain/movements.mjs`): bobinas, saldo, reserva e movimentações. OrdaX 3D só estima consumo e não grava estoque.
+- Files: armazenamento, compartilhamento e retenção dos arquivos. O protótipo usa File API local e transferência efêmera entre módulos.
+- Payments: cobrança/transação. Estimativa de fabricação não é pagamento.
+
+Os domínios de Vendas e Inventory neste repo ainda não oferecem providers públicos para esta integração. Contratos necessários e status por owner estão em [INTEGRATION-PORTS.md](./INTEGRATION-PORTS.md). Não criar adapters simulados como se fossem conexões prontas.
 
 ## Etapas
 
 | Etapa | Resultado verificável | Estado |
 | --- | --- | --- |
-| 0. Base de produto e host | Apps separados, contratos públicos de dados/arquivos/Intelligence e hosts diretos para desenvolver cada produto. | Feita nesta base de protótipos |
-| 1. Copiloto confiável | Saída JSON estruturada, validação de esquema e limites no cliente, contexto tipado, sugestões revisáveis, sem execução implícita. | Implementado nesta branch; reiniciar o host local ativa o modo estrito da Groq |
+| 0. Base do app vertical e host | Uma entrada OrdaX 3D, onze módulos internos, uma navegação de app, job técnico compartilhado e adapters de desenvolvimento claramente locais. | Base consolidada nesta branch; Space Experience e owners ainda dependem de contratos públicos |
+| 1. Copiloto consultivo | Saída JSON estruturada, validação de esquema e limites no cliente, contexto tipado, sugestões revisáveis, sem execução implícita. | Implementado nesta branch; Groq só é ativado no host local e MCP/grants não estão conectados |
 | 2. Motor real | Integrar OrcaSlicer como primeiro adaptador local opcional; detectar versão, executar com ambiente mínimo e arquivos efêmeros, cancelar trabalhos e só exportar G-code gerado pelo engine. | Adaptador do host implementado; subprocesso recebe apenas variáveis de sistema permitidas e diretórios privados por job, mas continua com as permissões do usuário do host. Em Linux, o host lê os eventos JSON do `--pipe` e encaminha mensagem e percentual real do Orca para a interface; em Windows/macOS, mostra fases sem percentual porque o CLI upstream só implementa esse pipe no Linux. A interface oferece ajuste validado de paredes, camadas/espessura de casca superior e inferior, tipo/largura/distância do brim e posição da costura com herança do perfil, seleção explícita de superfície da mesa quando impressora e filamento a suportam, temperaturas de mesa herdadas do perfil, overrides globais de temperatura do bico limitados pela faixa do filamento e máximo da máquina, preenchimento, suportes e faixa da ventoinha. Aguarda instalação/perfis locais e E2E real. Escopo inicial: processo uniforme por mesa. |
 | 2b. Fatiamento web remoto | Usar a mesma interface no browser, com worker servidor autorizado, fila limitada, cancelamento, isolamento e limpeza de arquivos por job. | A porta do app diferencia dispositivo/servidor, identifica o destino e exige consentimento por trabalho; o pedido remoto envia somente STL preparada, parâmetros e IDs remapeados. O host atual continua loopback local e não existe worker remoto implantado. O fluxo, owners, contratos necessários e aceite estão em [WEB-SLICER-ARCHITECTURE.md](./WEB-SLICER-ARCHITECTURE.md). |
 | 3. Perfis e compatibilidade | Catálogo de impressoras, bicos e materiais com origem/licença/versão, importação dos formatos upstream, validação de limites e combinação compatível antes de fatiar. Substituir referências visuais atuais por perfis selecionáveis com proveniência. | Parcial: o host aceita catálogos locais de até 32 JSON por tipo, produz IDs vinculados ao conteúdo, oculta caminhos locais e deixa selecionar máquina/processo/filamento. A cadeia `inherits` é resolvida a partir do `resources/profiles` instalado ou dos pais no catálogo, com mesclagem pai→filho para compatibilidade e valores do CLI; cadeias ausentes, ambíguas e cíclicas bloqueiam o perfil. App e host conferem `compatible_printers` e `compatible_prints`; expressões ainda não avaliadas bloqueiam o job. Selecionar um processo aplica aos processos da mesa os valores reconhecidos pelo app. Perfis de máquina preservam `printable_area` e `bed_exclude_area`; a interface faz uma triagem conservadora pela caixa envolvente transformada de cada objeto. Linguagem de expressões, validação E2E com diferentes versões e matriz de compatibilidade continuam pendentes. |

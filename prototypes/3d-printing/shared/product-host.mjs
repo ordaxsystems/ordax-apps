@@ -40,14 +40,20 @@ function createFeatureSurface({ area, options, featureRoot }) {
   return { panel, shell: { root: shadow, content: shadow.querySelector("[data-content]"), actions: shadow.querySelector("[data-heading-actions]") } };
 }
 
-export function mountProductHost({ appId, title, subtitle, mark, areas, services }) {
+export function mountProductHost({ appId, title, subtitle, mark, areas, services, initialAreaId }) {
   if (!Array.isArray(areas) || !areas.length) throw new TypeError("A product host needs at least one feature area");
   for (const area of areas) if (!featureIds.includes(area.featureId) || typeof area.mount !== "function") throw new TypeError(`Invalid feature module: ${area.featureId}`);
   if (typeof services?.appData?.read !== "function" || typeof services?.appData?.write !== "function") throw new TypeError("The product host requires the public App Data port");
   document.title = title;
   document.documentElement.lang = "pt-BR";
   const root = document.querySelector("#app");
-  root.innerHTML = `<div class="app-shell product-shell"><header class="topbar"><div class="topbar-brand"><span class="brand-mark">${escapeHtml(mark ?? "3D")}</span><span class="brand-name">${escapeHtml(title)}</span></div></header><div class="app-layout product-layout${areas.length === 1 ? " product-layout--single" : ""}"><aside class="sidebar"${areas.length === 1 ? " hidden" : ""}><nav class="app-nav" data-product-nav aria-label="Navegação do app">${areas.map((area, index) => `<button class="nav-item${index === 0 ? " active" : ""}" type="button" data-product-area="${escapeHtml(area.id)}">${icon(area.icon ?? "grid", 17)}<span>${escapeHtml(area.label)}</span></button>`).join("")}</nav></aside><main class="main-area"><div class="page-heading"><div><span class="eyebrow">${escapeHtml(subtitle ?? "IMPRESSÃO 3D")}</span><h1 data-area-title></h1><p class="product-area-description" data-area-description></p></div></div><section class="product-content" data-product-content></section></main></div><div class="toast" data-toast role="status" aria-live="polite"></div></div>`;
+  let previousGroup = null;
+  const navigation = areas.map((area, index) => {
+    const group = area.group && area.group !== previousGroup ? `<span class="product-nav-group">${escapeHtml(area.group)}</span>` : "";
+    previousGroup = area.group;
+    return `${group}<button class="nav-item${index === 0 ? " active" : ""}" type="button" data-product-area="${escapeHtml(area.id)}">${icon(area.icon ?? "grid", 17)}<span>${escapeHtml(area.label)}</span></button>`;
+  }).join("");
+  root.innerHTML = `<div class="app-shell product-shell"><header class="topbar"><div class="topbar-brand"><span class="brand-mark">${escapeHtml(mark ?? "3D")}</span><span class="brand-name">${escapeHtml(title)}</span></div><span class="product-preview-badge">Prévia local · sem Space ou owners conectados</span></header><div class="app-layout product-layout${areas.length === 1 ? " product-layout--single" : ""}"><aside class="sidebar"${areas.length === 1 ? " hidden" : ""}><nav class="app-nav" data-product-nav aria-label="Módulos do app">${navigation}</nav></aside><main class="main-area"><div class="page-heading"><div><span class="eyebrow">${escapeHtml(subtitle ?? "IMPRESSÃO 3D")}</span><h1 data-area-title></h1><p class="product-area-description" data-area-description></p></div></div><section class="product-content" data-product-content></section></main></div><div class="toast" data-toast role="status" aria-live="polite"></div></div>`;
 
   const featureRoot = root.querySelector("[data-product-content]");
   const data = services.appData;
@@ -62,6 +68,7 @@ export function mountProductHost({ appId, title, subtitle, mark, areas, services
       data,
       slicer: services.slicer,
       intelligence: services.intelligence,
+      technicalJobs: services.technicalJobs,
       files: { publish: (channel, payload) => files.publish(channel, payload, area.featureId), subscribe: (channel, listener) => files.subscribe(channel, area.featureId, listener) },
       onDestroy(cleanup) { if (typeof cleanup === "function") cleanups.push(cleanup); },
       mountShell(options) {
@@ -88,6 +95,6 @@ export function mountProductHost({ appId, title, subtitle, mark, areas, services
     entry.shell.root.dispatchEvent(new CustomEvent("app:activate"));
   }
   root.querySelectorAll("[data-product-area]").forEach(button => button.addEventListener("click", () => activate(button.dataset.productArea)));
-  activate(areas[0].id);
+  activate(byId.has(initialAreaId) ? initialAreaId : areas[0].id);
   return { root, activate, data, files, destroy() { for (const cleanup of cleanups.splice(0)) cleanup(); files.clear(); root.replaceChildren(); } };
 }

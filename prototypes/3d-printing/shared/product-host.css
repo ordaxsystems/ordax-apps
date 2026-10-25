@@ -8,4 +8,7 @@
 .product-shell .topbar{justify-content:flex-start}
 .product-area-description{margin:7px 0 0;color:#858d82;font-size:11px;line-height:1.5}
 .product-shell .page-heading{align-items:flex-start}
+.product-preview-badge{margin-left:auto;padding:6px 10px;border:1px solid #eee3cb;border-radius:999px;background:#fff9ed;color:#8b7142;font-size:10px;font-weight:650;white-space:nowrap}
+.product-nav-group{display:block;padding:14px 12px 5px;color:#92998f;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
 @media(max-width:680px){.product-area-description{max-width:42rem}}
+@media(max-width:680px){.product-preview-badge{white-space:normal;max-width:190px;text-align:right;font-size:9px}.product-nav-group{padding-top:10px}}

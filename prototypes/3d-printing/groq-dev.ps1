@@ -43,7 +43,7 @@ try {
     if ($OrcaProfilesDirectory) { $env:ORDAX_ORCA_PROFILE_DIR = $OrcaProfilesDirectory }
   }
   $serverPath = Join-Path $PSScriptRoot "server.mjs"
-  node $serverPath "preparacao-impressao"
+  node $serverPath "ordax-3d"
 }
 finally {
   [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($keyPointer)

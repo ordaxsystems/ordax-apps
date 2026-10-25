@@ -1,0 +1,45 @@
+import { createTechnicalPrintJob, isTechnicalPrintJobStatus, normalizeTechnicalPrintJobs } from "../domain/technical-print-job.mjs";
+import { localPreviewJobs } from "../domain/technical-print-job-fixtures.mjs";
+import { assertTechnicalJobRepository } from "../ports/technical-job-repository.mjs";
+
+export function createTechnicalJobsService(repository) {
+  assertTechnicalJobRepository(repository);
+  const loaded = repository.load();
+  let jobs = normalizeTechnicalPrintJobs(Array.isArray(loaded) ? loaded : localPreviewJobs);
+  const listeners = new Set();
+  const notify = () => { for (const listener of listeners) listener(); };
+  const persist = () => { repository.save(jobs); notify(); };
+
+  return Object.freeze({
+    list: () => jobs,
+    subscribe(listener) {
+      if (typeof listener !== "function") throw new TypeError("O listener de trabalhos técnicos precisa ser uma função.");
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    add(input) {
+      const job = createTechnicalPrintJob(input);
+      jobs = normalizeTechnicalPrintJobs([job, ...jobs]);
+      persist();
+      return job;
+    },
+    setStatus(id, status) {
+      if (!isTechnicalPrintJobStatus(status)) throw new TypeError("Estado de trabalho técnico inválido.");
+      const index = jobs.findIndex(job => job.id === id);
+      if (index < 0) return null;
+      jobs = normalizeTechnicalPrintJobs(jobs.map(job => job.id === id ? { ...job, status } : job));
+      persist();
+      return jobs.find(job => job.id === id) ?? null;
+    },
+    move(id, direction) {
+      const index = jobs.findIndex(job => job.id === id);
+      const target = index + (direction === "up" ? -1 : 1);
+      if (index < 0 || !["up", "down"].includes(direction) || target < 0 || target >= jobs.length) return false;
+      const next = [...jobs];
+      [next[index], next[target]] = [next[target], next[index]];
+      jobs = normalizeTechnicalPrintJobs(next);
+      persist();
+      return true;
+    },
+  });
+}

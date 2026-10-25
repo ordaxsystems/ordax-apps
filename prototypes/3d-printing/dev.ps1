@@ -1,7 +1,6 @@
 param(
-  [Parameter(Mandatory = $true)]
-  [ValidateSet("biblioteca-impressao", "preparacao-impressao", "operacoes-impressao", "materiais-custos", "qualidade-manutencao")]
-  [string]$App
+  [ValidateSet("ordax-3d")]
+  [string]$App = "ordax-3d"
 )
 
 $ErrorActionPreference = "Stop"

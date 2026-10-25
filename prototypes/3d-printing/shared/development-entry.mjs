@@ -2,7 +2,7 @@ import { createDevelopmentServices } from "/development-services.mjs";
 
 const appId = document.documentElement.dataset.appId;
 try {
-  const app = await import("/app.mjs");
+  const app = await import("/src/ui/app.mjs");
   if (typeof app.mountApp !== "function") throw new TypeError("App entrypoint must export mountApp(services)");
   app.mountApp(createDevelopmentServices(appId));
 } catch (error) {

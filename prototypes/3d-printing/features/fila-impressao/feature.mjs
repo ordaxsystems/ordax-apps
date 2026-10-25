@@ -1,32 +1,81 @@
 import * as shared from "/shared.mjs";
 
 export function mountFeature(host = {}) {
-  const { escapeHtml, number, money, bytes, toast, showModal, icon, button, stat, initials } = shared;
-  if (typeof host.mountShell !== "function") throw new TypeError("A 3D feature must be mounted by its product app");
-  if (typeof host.data?.read !== "function" || typeof host.data?.write !== "function") throw new TypeError("A 3D feature requires the public App Data port");
-  const mountShell = host.mountShell;
-  const readState = host.data.read.bind(host.data);
-  const writeState = host.data.write.bind(host.data);
-
-const seed=[{id:"j1",name:"Suporte articulado",model:"suporte_articulado.3mf",printer:"Bambu Lab A1",material:"PLA · cinza",time:"2h 34m",grams:28.6,status:"queued",due:"Hoje · 15:00"},{id:"j2",name:"Organizador modular",model:"organizador_modular.3mf",printer:"Prusa MK4",material:"PETG · preto",time:"4h 12m",grams:76,status:"ready",due:"Hoje · 18:00"},{id:"j3",name:"Peça de reposição A7",model:"reposicao_a7.stl",printer:"Ender 3 V3",material:"PLA · branco",time:"1h 08m",grams:18,due:"Amanhã · 10:00",status:"queued"}];
-let jobs=readState("fila-impressao",seed),filter="active";
-const nav=[{id:"queue",label:"Fila ativa",icon:"layers",count:String(jobs.filter(j=>j.status!=="done").length)},{id:"completed",label:"Concluídos",icon:"check"},{id:"planning",label:"Planejamento",icon:"clock"}];
-const shell=mountShell({title:"Fila de Impressão",subtitle:"ORGANIZAÇÃO DA PRODUÇÃO",nav,status:"Fila local de demonstração",content:`<div class="queue-overview" data-stats></div><div class="queue-layout"><section class="surface queue-panel"><div class="queue-toolbar"><div><h2>Próximos trabalhos</h2><p>Ordene trabalhos e prepare a próxima impressão</p></div><div class="toolbar"><select class="inline-select" data-filter aria-label="Filtrar fila"><option value="active">Fila ativa</option><option value="all">Todos</option><option value="done">Concluídos</option></select><button type="button" class="button primary" data-add>${icon("plus",15)}<span>Novo trabalho</span></button></div></div><div data-jobs></div></section><aside class="queue-side"><section class="surface printer-capacity" data-capacity-panel><h2>Capacidade por impressora</h2><div data-capacity></div></section><div class="queue-note">A fila organiza tarefas neste navegador. “Marcar pronto” altera somente o estado local; nenhuma ação ou G-code é enviado a uma impressora.</div></aside></div>`});
-shell.actions.innerHTML=button("Novo trabalho",'data-add',"primary","plus");
-function persist(){writeState("fila-impressao",jobs);}
-function statusLabel(status){return status==="ready"?"Preparado":status==="printing"?"Em execução (demo)":status==="done"?"Concluído":"Na fila";}
-function durationMinutes(value){const text=String(value??"").trim().toLowerCase().replace(",",".");const hours=text.match(/([\d.]+)\s*h/),minutes=text.match(/([\d.]+)\s*m/);if(hours||minutes)return Math.round((Number(hours?.[1]||0)*60)+Number(minutes?.[1]||0));const decimal=Number(text.replace(/h$/,""));return Number.isFinite(decimal)?Math.round(decimal*60):0;}
-function formatDuration(value){const mins=Math.max(0,Math.round(value));if(!mins)return "A definir";const hours=Math.floor(mins/60),remaining=mins%60;return hours?`${hours} h${remaining?` ${remaining} min`:""}`:`${remaining} min`;}
-function printerRecords(){return readState("central-impressoras",[]);}
-function printerNames(){const registered=printerRecords().map(printer=>printer.name);const used=jobs.map(job=>job.printer).filter(Boolean);return [...new Set([...registered,...used])];}
-function refreshNav(){shell.root.querySelector('[data-nav="queue"] b')?.replaceChildren(String(jobs.filter(job=>job.status!=="done").length));}
-function render(){const active=jobs.filter(j=>j.status!=="done");const plannedMinutes=active.reduce((sum,j)=>sum+durationMinutes(j.time),0);refreshNav();shell.content.querySelector("[data-stats]").innerHTML=[stat("Na fila",String(active.filter(j=>j.status==="queued").length),"Aguardando preparação"),stat("Prontos",String(active.filter(j=>j.status==="ready").length),"Revisados localmente"),stat("Tempo planejado",formatDuration(plannedMinutes),"Estimativa dos trabalhos"),stat("Concluídos",String(jobs.filter(j=>j.status==="done").length),"Neste protótipo")].join("");
-  const selected=shell.content.querySelector("[data-filter]").value;const shown=jobs.filter(job=>selected==="all"||selected==="done"?selected==="all"||job.status==="done":job.status!=="done");
-  shell.content.querySelector("[data-jobs]").innerHTML=shown.length?shown.map(job=>{const index=jobs.indexOf(job);const badge=job.status;const action=job.status==="queued"?"Preparar":job.status==="ready"?"Iniciar demo":job.status==="printing"?"Concluir demo":"Reabrir";return `<article class="queue-row"><span class="queue-index">${String(index+1).padStart(2,"0")}</span><div class="job-title"><strong>${escapeHtml(job.name)}</strong><small>${escapeHtml(job.model)} · ${escapeHtml(job.material)}</small></div><div class="job-meta">${escapeHtml(job.printer)}<small>${escapeHtml(job.time)} · ${escapeHtml(job.grams)} g</small></div><span class="status-chip ${badge}">${statusLabel(badge)}</span><div class="queue-row-actions"><button class="mini-button" data-move="up" data-id="${job.id}" aria-label="Mover para cima" ${index===0?"disabled":""}>↑</button><button class="mini-button" data-move="down" data-id="${job.id}" aria-label="Mover para baixo" ${index===jobs.length-1?"disabled":""}>↓</button><button class="button secondary stage-button" data-stage="${job.id}">${action}</button></div></article>`;}).join(""):`<div class="queue-empty"><strong>Nenhum trabalho nesta lista</strong>Adicione um trabalho para planejar a produção.</div>`;
-  const printers=printerNames();shell.content.querySelector("[data-capacity]").innerHTML=printers.length?printers.map(printer=>{const items=active.filter(job=>job.printer===printer);const minutes=items.reduce((sum,job)=>sum+durationMinutes(job.time),0);const pct=Math.min(100,minutes/(8*60)*100);return `<div class="capacity-row"><div class="capacity-head"><strong>${escapeHtml(printer)}</strong><span>${items.length} trabalho${items.length===1?"":"s"} · ${formatDuration(minutes)}</span></div><svg class="progress-visual" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="${pct.toFixed(0)}% da capacidade diária estimada"><rect class="progress-track" width="100" height="6" rx="3"/><rect class="progress-fill" width="${pct.toFixed(1)}" height="6" rx="3"/></svg></div>`;}).join(""):`<div class="queue-empty">Cadastre uma impressora na área Impressoras para ver a capacidade.</div>`;}
-function addJob(){const printers=printerNames();const printerOptions=printers.length?printers.map(name=>`<option>${escapeHtml(name)}</option>`).join(""):`<option value="A definir">A definir</option>`;const materialOptions=["PLA · cinza","PLA · branco","PETG · preto","ABS · natural","Outro · definir"].map(name=>`<option>${escapeHtml(name)}</option>`).join("");showModal({title:"Adicionar trabalho à fila",content:`<div class="field"><label for="job-name">Nome do trabalho</label><input class="input" name="name" id="job-name" placeholder="Ex.: Suporte de parede" required/></div><div class="field"><label for="job-file">Arquivo/modelo</label><input class="input" name="model" id="job-file" placeholder="arquivo.3mf" required/></div><div class="form-grid"><div class="field"><label for="job-printer">Impressora cadastrada</label><select class="select" name="printer" id="job-printer">${printerOptions}</select></div><div class="field"><label for="job-material">Material do trabalho</label><select class="select" name="material" id="job-material">${materialOptions}</select></div></div><div class="form-grid"><div class="field"><label for="job-time">Tempo estimado (h)</label><input class="input" type="number" min="0.1" step="0.1" name="time" id="job-time" value="1.5" required/></div><div class="field"><label for="job-grams">Filamento (g)</label><input class="input" type="number" min="0" step="0.1" name="grams" id="job-grams" value="25" required/></div></div>`,saveLabel:"Adicionar à fila",onSave:form=>{const name=String(form.get("name")||"").trim(),model=String(form.get("model")||"").trim();if(!name||!model)return false;const minutes=Math.round(Number(form.get("time"))*60);jobs.push({id:`j-${Date.now()}`,name,model,printer:String(form.get("printer")||"A definir"),material:String(form.get("material")||"A definir"),time:formatDuration(minutes),grams:Number(form.get("grams")),status:"queued",due:"Sem prazo"});persist();render();toast("Trabalho adicionado à fila local.");}});}
-shell.content.querySelectorAll("[data-add]").forEach(btn=>btn.addEventListener("click",addJob));shell.actions.querySelector("[data-add]").addEventListener("click",addJob);shell.content.querySelector("[data-filter]").addEventListener("change",render);shell.content.addEventListener("click",event=>{const move=event.target.closest("[data-move]");if(move){const i=jobs.findIndex(j=>j.id===move.dataset.id),n=i+(move.dataset.move==="up"?-1:1);if(n>=0&&n<jobs.length)[jobs[i],jobs[n]]=[jobs[n],jobs[i]];persist();render();return;}const stage=event.target.closest("[data-stage]");if(stage){const job=jobs.find(j=>j.id===stage.dataset.stage);if(!job)return;job.status=job.status==="queued"?"ready":job.status==="ready"?"printing":job.status==="printing"?"done":"queued";persist();render();toast(job.status==="printing"?"Estado local de demonstração iniciado; a impressora não recebeu comandos.":"Fila atualizada localmente.");}});
-shell.root.addEventListener("app:navigate",event=>{if(event.detail==="completed")shell.content.querySelector("[data-filter]").value="done";else if(event.detail==="planning"){shell.content.querySelector("[data-filter]").value="all";shell.content.querySelector("[data-capacity-panel]").scrollIntoView({behavior:"smooth",block:"center"});}else if(event.detail==="queue")shell.content.querySelector("[data-filter]").value="active";render();});render();
-
+  const { escapeHtml, toast, showModal, icon, button, stat } = shared;
+  if (typeof host.mountShell !== "function" || typeof host.technicalJobs?.list !== "function") throw new TypeError("A fila precisa do serviço compartilhado de jobs técnicos do OrdaX 3D.");
+  const jobsService = host.technicalJobs;
+  const nav = [
+    { id: "queue", label: "Fila ativa", icon: "layers" },
+    { id: "completed", label: "Concluídos", icon: "check" },
+    { id: "planning", label: "Planejamento", icon: "clock" },
+  ];
+  const shell = host.mountShell({ title: "Fila de trabalhos técnicos", subtitle: "ORDAx 3D · JOBS DE IMPRESSÃO", nav, status: "Estado local deste protótipo", content: `<div class="queue-overview" data-stats></div><div class="queue-layout"><section class="surface queue-panel"><div class="queue-toolbar"><div><h2>Jobs técnicos</h2><p>Estimativas compartilhadas entre os módulos OrdaX 3D</p></div><div class="toolbar"><select class="inline-select" data-filter aria-label="Filtrar fila"><option value="active">Fila ativa</option><option value="all">Todos</option><option value="done">Concluídos</option></select><button type="button" class="button primary" data-add>${icon("plus",15)}<span>Novo job técnico</span></button></div></div><div data-jobs></div></section><aside class="queue-side"><section class="surface printer-capacity" data-capacity-panel><h2>Capacidade local estimada</h2><div data-capacity></div></section><div class="queue-note">Os estados “Iniciar demo” e “Concluir demo” alteram somente este protótipo. Nenhuma impressora recebe comandos; pedidos comerciais pertencem ao owner Vendas.</div></aside></div>` });
+  shell.actions.innerHTML = button("Novo job técnico", "data-add", "primary", "plus");
+  const durationMinutes = value => Number.isFinite(Number(value)) ? Math.max(0, Math.round(Number(value))) : 0;
+  const formatDuration = value => { const mins = durationMinutes(value); if (!mins) return "A definir"; const hours = Math.floor(mins / 60), remaining = mins % 60; return hours ? `${hours} h${remaining ? ` ${remaining} min` : ""}` : `${remaining} min`; };
+  const printerRecords = () => host.data.read("central-impressoras", []);
+  const printerNames = jobs => [...new Set([...(Array.isArray(printerRecords()) ? printerRecords().map(printer => printer.name) : []), ...jobs.map(job => job.printer).filter(name => name && name !== "A definir")])];
+  const statusLabel = status => status === "ready" ? "Preparado localmente" : status === "printing" ? "Em execução · demo" : status === "done" ? "Concluído · demo" : status === "blocked" ? "Bloqueado" : "Na fila";
+  function render() {
+    const jobs = jobsService.list();
+    const active = jobs.filter(job => job.status !== "done");
+    shell.root.querySelector('[data-nav="queue"] b')?.replaceChildren(String(active.length));
+    shell.content.querySelector("[data-stats]").innerHTML = [
+      stat("Na fila", String(active.filter(job => job.status === "queued").length), "Jobs técnicos locais"),
+      stat("Preparados", String(active.filter(job => job.status === "ready").length), "Sem envio ao hardware"),
+      stat("Tempo estimado", formatDuration(active.reduce((sum, job) => sum + (job.estimatedMinutes ?? 0), 0)), "Resultado salvo por job"),
+      stat("Concluídos", String(jobs.filter(job => job.status === "done").length), "Estado local"),
+    ].join("");
+    const selected = shell.content.querySelector("[data-filter]").value;
+    const shown = jobs.filter(job => selected === "all" || selected === "done" ? selected === "all" || job.status === "done" : job.status !== "done");
+    shell.content.querySelector("[data-jobs]").innerHTML = shown.length ? shown.map((job, index) => {
+      const action = job.status === "queued" ? "Preparar" : job.status === "ready" ? "Iniciar demo" : job.status === "printing" ? "Concluir demo" : "Reabrir";
+      const local = job.origin === "local-preview" ? " · fictício" : " · local";
+      const detail = [formatDuration(job.estimatedMinutes), job.estimatedGrams === null ? "material a definir" : `${job.estimatedGrams.toLocaleString("pt-BR")} g`].join(" · ");
+      return `<article class="queue-row"><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="job-title"><strong>${escapeHtml(job.name)}</strong><small>${escapeHtml(job.model)} · ${escapeHtml(job.material)}${local}</small></div><div class="job-meta">${escapeHtml(job.printer)}<small>${escapeHtml(detail)}</small></div><span class="status-chip ${escapeHtml(job.status)}">${escapeHtml(statusLabel(job.status))}</span><div class="queue-row-actions"><button class="mini-button" data-move="up" data-id="${escapeHtml(job.id)}" aria-label="Mover para cima" ${index === 0 ? "disabled" : ""}>↑</button><button class="mini-button" data-move="down" data-id="${escapeHtml(job.id)}" aria-label="Mover para baixo" ${index === jobs.length - 1 ? "disabled" : ""}>↓</button><button class="button secondary stage-button" data-stage="${escapeHtml(job.id)}">${action}</button></div></article>`;
+    }).join("") : `<div class="queue-empty"><strong>Nenhum job nesta lista</strong>Fatie um modelo ou adicione um job técnico local.</div>`;
+    const printers = printerNames(jobs);
+    shell.content.querySelector("[data-capacity]").innerHTML = printers.length ? printers.map(printer => {
+      const items = active.filter(job => job.printer === printer);
+      const minutes = items.reduce((sum, job) => sum + (job.estimatedMinutes ?? 0), 0);
+      const pct = Math.min(100, minutes / (8 * 60) * 100);
+      return `<div class="capacity-row"><div class="capacity-head"><strong>${escapeHtml(printer)}</strong><span>${items.length} job${items.length === 1 ? "" : "s"} · ${formatDuration(minutes)}</span></div><svg class="progress-visual" viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label="${pct.toFixed(0)}% da capacidade diária estimada"><rect class="progress-track" width="100" height="6" rx="3"/><rect class="progress-fill" width="${pct.toFixed(1)}" height="6" rx="3"/></svg></div>`;
+    }).join("") : `<div class="queue-empty">Cadastre uma impressora neste protótipo para agrupar as estimativas.</div>`;
+  }
+  function addJob() {
+    const jobs = jobsService.list();
+    const printers = printerNames(jobs);
+    const printerOptions = [`<option value="A definir">A definir</option>`, ...printers.map(name => `<option>${escapeHtml(name)}</option>`)].join("");
+    showModal({ title: "Adicionar job técnico", content: `<div class="field"><label for="job-name">Nome do job</label><input class="input" name="name" id="job-name" placeholder="Ex.: Suporte de parede" required/></div><div class="field"><label for="job-file">Modelo</label><input class="input" name="model" id="job-file" placeholder="arquivo.3mf" required/></div><div class="form-grid"><div class="field"><label for="job-printer">Impressora de referência</label><select class="select" name="printer" id="job-printer">${printerOptions}</select></div><div class="field"><label for="job-material">Material de referência</label><input class="input" name="material" id="job-material" value="PLA · definir"/></div></div><div class="form-grid"><div class="field"><label for="job-time">Tempo estimado (h)</label><input class="input" type="number" min="0" step="0.1" name="hours" id="job-time" value="1.5" required/></div><div class="field"><label for="job-grams">Consumo estimado (g)</label><input class="input" type="number" min="0" step="0.1" name="grams" id="job-grams" value="25" required/></div></div><p class="muted">Este cadastro cria somente um job técnico local; não cria pedido de venda nem movimentação de filamento.</p>`, saveLabel: "Adicionar job", onSave: form => {
+      const name = String(form.get("name") ?? "").trim(), model = String(form.get("model") ?? "").trim();
+      const hours = Number(form.get("hours")), grams = Number(form.get("grams"));
+      if (!name || !model || !Number.isFinite(hours) || hours < 0 || !Number.isFinite(grams) || grams < 0) return false;
+      jobsService.add({ name, model, printer: String(form.get("printer") || "A definir"), material: String(form.get("material") || "A definir").trim(), estimatedMinutes: Math.round(hours * 60), estimatedGrams: grams, status: "queued", due: "Sem prazo", origin: "local-entry" });
+      toast("Job técnico salvo localmente.");
+    } });
+  }
+  shell.content.querySelectorAll("[data-add]").forEach(item => item.addEventListener("click", addJob));
+  shell.actions.querySelector("[data-add]").addEventListener("click", addJob);
+  shell.content.querySelector("[data-filter]").addEventListener("change", render);
+  shell.content.addEventListener("click", event => {
+    const move = event.target.closest("[data-move]");
+    if (move) { jobsService.move(move.dataset.id, move.dataset.move); return; }
+    const stage = event.target.closest("[data-stage]");
+    if (!stage) return;
+    const job = jobsService.list().find(item => item.id === stage.dataset.stage);
+    if (!job) return;
+    const next = job.status === "queued" ? "ready" : job.status === "ready" ? "printing" : job.status === "printing" ? "done" : "queued";
+    jobsService.setStatus(job.id, next);
+    toast(next === "printing" ? "Estado de demonstração iniciado; nenhum comando foi enviado." : "Estado do job atualizado apenas neste protótipo.");
+  });
+  shell.root.addEventListener("app:navigate", event => {
+    const filter = event.detail === "completed" ? "done" : event.detail === "planning" ? "all" : "active";
+    shell.content.querySelector("[data-filter]").value = filter;
+    if (event.detail === "planning") shell.content.querySelector("[data-capacity-panel]").scrollIntoView({ behavior: "smooth", block: "center" });
+    render();
+  });
+  const unsubscribe = jobsService.subscribe(render);
+  host.onDestroy?.(unsubscribe);
+  render();
   return { root: shell.root, content: shell.content };
 }

@@ -1,4 +1,31 @@
-const appIds = new Set(["biblioteca-impressao", "preparacao-impressao", "operacoes-impressao", "materiais-custos", "qualidade-manutencao"]);
+const appIds = new Set(["ordax-3d"]);
+const legacyCollections = Object.freeze({
+  "biblioteca-3d": [["biblioteca-impressao", "biblioteca-3d"]],
+  "biblioteca-3d-collections": [["biblioteca-impressao", "biblioteca-3d-collections"]],
+  "inspecao-malha-preferencias": [["biblioteca-impressao", "inspecao-malha-preferencias"]],
+  "inspecao-malha-recentes": [["biblioteca-impressao", "inspecao-malha-recentes"]],
+  "fatiamento-3d-draft": [["preparacao-impressao", "fatiamento-3d-draft"]],
+  "gcode-viewer": [["preparacao-impressao", "gcode-viewer"]],
+  "verificacao-impressao": [["preparacao-impressao", "verificacao-impressao"]],
+  "calibracao": [["preparacao-impressao", "calibracao"]],
+  "calibracao-sessions": [["preparacao-impressao", "calibracao-sessions"]],
+  "central-impressoras": [["operacoes-impressao", "central-impressoras"]],
+  "fila-impressao": [["operacoes-impressao", "fila-impressao"]],
+  "technical-print-jobs": [["operacoes-impressao", "fila-impressao"]],
+  "manufacturing-estimates": [["materiais-custos", "custos-impressao"]],
+  "qualidade-manutencao": [["qualidade-manutencao", "qualidade-manutencao"]],
+});
+
+function sanitizeLegacyValue(collection, value) {
+  if (!Array.isArray(value)) return value;
+  if (collection === "technical-print-jobs") return value.map(job => job && typeof job === "object" ? { ...job, origin: job.origin ?? "legacy-local" } : job);
+  if (collection !== "manufacturing-estimates") return value;
+  return value.map(item => {
+    if (!item || typeof item !== "object") return item;
+    const { spoolId, stockRemaining, stockRequired, ...estimate } = item;
+    return estimate;
+  });
+}
 
 const INTELLIGENCE_SCHEMA = "ordax.intelligence/1";
 const INTELLIGENCE_RESPONSE_SCHEMA = "ordax.intelligence-response/1";
@@ -179,18 +206,25 @@ export function createDevelopmentServices(appId) {
       try {
         const current = localStorage.getItem(storageKey(collection));
         if (current !== null) return JSON.parse(current);
-        const legacy = localStorage.getItem(`ordax.3d.${collection}`);
-        if (legacy !== null) { localStorage.setItem(storageKey(collection), legacy); return JSON.parse(legacy); }
+        for (const [legacyAppId, legacyCollection] of legacyCollections[collection] ?? []) {
+          const legacyKey = `ordax.3d.dev.${encodeURIComponent(ownerId)}.${encodeURIComponent(spaceId)}.${encodeURIComponent(legacyAppId)}.${encodeURIComponent(legacyCollection)}`;
+          const legacy = localStorage.getItem(legacyKey);
+          if (legacy !== null) {
+            const migrated = sanitizeLegacyValue(collection, JSON.parse(legacy));
+            localStorage.setItem(storageKey(collection), JSON.stringify(migrated));
+            return migrated;
+          }
+        }
+        const legacy = Object.hasOwn(legacyCollections, collection) ? localStorage.getItem(`ordax.3d.${collection}`) : null;
+        if (legacy !== null) { const migrated = sanitizeLegacyValue(collection, JSON.parse(legacy)); localStorage.setItem(storageKey(collection), JSON.stringify(migrated)); return migrated; }
         return structuredClone(fallback);
       } catch { return structuredClone(fallback); }
     },
     write(collection, value) { localStorage.setItem(storageKey(collection), JSON.stringify(value)); },
   };
   const services = { appData };
-  if (appId === "preparacao-impressao") {
-    services.intelligence = createDevelopmentIntelligence();
-    services.slicer = createDevelopmentSlicer();
-  }
+  services.intelligence = createDevelopmentIntelligence();
+  services.slicer = createDevelopmentSlicer();
   return Object.freeze(services);
 }
 
