@@ -58,6 +58,13 @@ Para não depender apenas do DOM simulado, `tools/prove_food_browser_preview.mjs
 inicia o servidor localhost existente e usa o Chrome/Chromium headless do runner
 Linux, sem novas dependências npm ou duplicação de ferramentas de apresentação.
 
+O runner usa o Chrome DevTools Protocol (CDP) pelo WebSocket nativo do
+Node.js, consultando a marca de conclusão de cada página no tempo real
+do navegador. O Chrome publica sua própria porta de depuração em
+`DevToolsActivePort`; não existe porta fixa ou relógio virtual suscetível
+a corridas. A prova não depende de Playwright, Selenium nem de screenshots
+mockadas.
+
 A prova usa a flag explícita `ORDAX_FOOD_BROWSER_SMOKE=1` no servidor e
 `?__browser_probe=1` apenas na URL local, carregando o script de teste
 `tests/browser-preview-probe.mjs` **separadamente do bootstrap de produção**.
