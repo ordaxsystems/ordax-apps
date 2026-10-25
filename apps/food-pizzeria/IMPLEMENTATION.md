@@ -52,6 +52,22 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Gate público Space Experience — PR upstream de SDK
+
+O owner OS possui uma proposta separada em
+[ordax-os PR #2245](https://github.com/ordaxsystems/ordax-os/pull/2245)
+para publicar **somente** os seis contratos canônicos de Space Experience
+no bundle `1.21.0` e adicionar `kitchen` como rota associada à
+capability `orders`. Essa PR está em rascunho e não concede autorização,
+readiness, provider de pedidos nem acesso cross-Space.
+
+**Não atualizar `platform-sdk.lock.json` para uma revisão upstream
+ainda não integrada e pinável.** Após integração e publicação no owner
+OS, consumir o SDK por pin imutável, validar provenance/compatibilidade e
+somente então construir o adapter do host **real e autorizado**.
+Este Food continua limitado a `browser-local-preview` até a etapa
+comercial ser formalmente liberada.
+
 ## Revisão — ciclo de vida seguro da apresentação Food (2026-10-24)
 
 A composição de conteúdo Food precisa suportar desmontagem durante operações
