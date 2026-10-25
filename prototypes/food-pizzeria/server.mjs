@@ -108,7 +108,12 @@ const server = createServer(async (req, res) => {
         response(res, 500, "Food app shell is missing its closing body tag");
         return;
       }
-      content = Buffer.from(html.replace("</body>", '    <script type="module" src="/preview.mjs"></script>\n  </body>'), "utf8");
+      const probeScript = process.env.ORDAX_FOOD_BROWSER_SMOKE === "1"
+        && new URL(req.url, `http://${host}:${port}`).searchParams.get("__browser_probe") === "1"
+        ? '    <script type="module" src="/apps/food-pizzeria/tests/browser-preview-probe.mjs"></script>\n'
+        : "";
+      content = Buffer.from(html.replace("</body>",
+        `    <script type="module" src="/preview.mjs"></script>\n${probeScript}  </body>`), "utf8");
     }
     res.writeHead(200, { ...securityHeaders, "Content-Type": contentType });
     res.end(req.method === "HEAD" ? undefined : content);
