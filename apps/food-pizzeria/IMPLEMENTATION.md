@@ -52,6 +52,28 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Revisão — ciclo de vida seguro da apresentação Food (2026-10-24)
+
+A composição de conteúdo Food precisa suportar desmontagem durante operações
+assíncronas, como revogação de permissão, troca de Space ou saída de página.
+A auditoria encontrou que `mount()` podia terminar `initialize()` depois
+de `destroy()` e ainda registrar listeners, subscriptions e um timer de
+atualização do KDS. Também havia possibilidade de um comando assíncrono
+terminar após a desmontagem e recriar aviso/timeout no DOM da interface encerrada.
+
+`src/ui/app.mjs` agora verifica o estado de destruição antes de assinar
+ou renderizar o snapshot após a inicialização, ignora notificações atrasadas
+de `subscribe` e suprime efeitos de interface de comandos concluídos depois
+da desmontagem. `destroy()` é idempotente, solta listeners/subscriptions,
+fecha diálogos nativos, elimina `aria-busy` e limpa o conteúdo e estado
+do rascunho para não manter dados antigos no host.
+
+`tests/lifecycle.test.mjs` cobre desmontagem com inicialização pendente,
+liberação de recursos após montagem e conclusão tardia de comando. Esta é
+uma correção do **ciclo de vida local do componente**, não publicação do
+provider de Space. O futuro host OS deve permanecer owner da revogação e
+das credenciais de acesso.
+
 ## Prova real do navegador — preview standalone e incorporável
 
 Para não depender apenas do DOM simulado, `tools/prove_food_browser_preview.mjs`
