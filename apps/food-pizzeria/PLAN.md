@@ -13,7 +13,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 - Preço do rascunho de pedido revisado antes de gravar: mudança posterior na precificação exige uma segunda confirmação, sem emitir pedido ou pagamento; revisão esperada (CAS) protege concorrência.
 - Migração de preview v3/v4 com arquivo local do antigo estoque v3 antes de reescrever a chave ativa.
 - Pedidos, KDS, Cardápio/fichas, Mesas/Comandas e Delivery mantidos como áreas do Food Core.
-- Renderizadores operacionais separados, consumindo o snapshot/view model único do app. Prévia incorporável permite renderizar conteúdo Food sem sidebar nem cabeçalho próprios, mas permanece local e explicitamente não autorizada como Space.
+- Renderizadores operacionais separados, consumindo o snapshot/view model único do app. Prévia incorporável permite renderizar conteúdo Food sem sidebar nem cabeçalho próprios, mas permanece local e explicitamente não autorizada como Space. Navegação programática e cliques internos obedecem à mesma lista restrita de módulos Food.
 - Tamanhos de pizza, limite de sabores e mesas configuráveis; novos tamanhos entram inativos até preços e fichas técnicas estarem prontos.
 - Salão exige comanda e tem canal próprio, separado de balcão; pedidos e encerramentos respeitam a cronologia da comanda. Ajustes não podem diminuir os lugares de uma mesa abaixo dos ocupantes de comanda aberta; o histórico de comandas encerradas permanece preservado.
 - Persistência local cobre reabertura, replay exato sem duplicação e rejeição de gravação com revisão antiga; o journal de IDs não é truncado silenciosamente ao atingir o limite, e eventos de outras abas sempre reconsultam o registro persistido atual.
