@@ -58,9 +58,13 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     assert.match(root.innerHTML, /Prévia local/);
     assert.match(root.innerHTML, /id="main-content"/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"|class="main-nav"|data-view="overview"/);
+    for (const view of ["orders", "menu", "tables", "delivery", "settings"]) {
+      app.navigate(view);
+      assert.match(root.innerHTML, /data-preview-only="true"/);
+      assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
+    }
     app.navigate("orders");
     assert.match(root.innerHTML, /Montar pedido/);
-    assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
   } finally {
     app.destroy();
   }
