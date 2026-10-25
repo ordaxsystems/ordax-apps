@@ -37,6 +37,7 @@ function announce(status, detail) {
   document.body.append(result);
 }
 
+async function checkAfterPageLoad() {
 try {
   const host = document.querySelector("#app");
   ensure(host, "Host de prévia ausente.");
@@ -89,4 +90,13 @@ try {
   announce("PASS", `${embedded ? "embedded" : "standalone"}:${view}`);
 } catch (error) {
   announce("FAIL", String(error?.stack ?? error).replaceAll("<", "(").slice(0,1000));
+}
+}
+
+// Module imports can still be loading while virtual time advances in headless
+// Chromium. Begin assertions after the entire preview module graph settles.
+if (document.readyState === "complete") {
+  void checkAfterPageLoad();
+} else {
+  window.addEventListener("load", () => { void checkAfterPageLoad(); }, { once: true });
 }
