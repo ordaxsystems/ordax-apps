@@ -215,6 +215,45 @@ test("COMMIT network failure is an unknown outcome and poisons its connection", 
   assert.ok(fx.calls.some(x => x.sql === "COMMIT"));
 });
 
+test("PostgreSQL explicit serialization/deadlock aborts map to typed CAS conflict without retry", async () => {
+  for (const code of ["40001", "40P01"]) {
+    for (const point of ["work", "commit"]) {
+      const statements = [];
+      let releaseArg;
+      const db = {
+        async query(sql) {
+          statements.push(sql);
+          if (sql === "COMMIT" && point === "commit") {
+            throw Object.assign(new Error("explicit PostgreSQL transaction abort"), { code });
+          }
+          return { rowCount: 0, rows: [] };
+        },
+        release(arg) { releaseArg = arg; },
+      };
+      const transactions = createFoodPostgresTransactions({
+        pool: { async connect() { return db; } },
+        authorizeAction: async () => ({
+          granted: true, spaceId: SPACE_A, subjectId: ACTOR, epoch: "session-1",
+        }),
+      });
+      let calls = 0;
+      await assert.rejects(
+        transactions.transact(async () => {
+          calls += 1;
+          if (point === "work") {
+            throw Object.assign(new Error("serialization rollback"), { code });
+          }
+          return "no-write";
+        }),
+        { name: "FoodOrderRejectedError", reason: "revision-conflict" },
+      );
+      assert.equal(calls, 1, "adapter must not replay a transaction");
+      assert.ok(statements.includes("ROLLBACK"));
+      assert.equal(releaseArg, undefined, "explicit server rollback leaves reusable connection");
+    }
+  }
+});
+
 test("invalid production Space state cannot be provisioned from a preview fallback", async () => {
   const fx = dbFixture();
   const invalid = createFoodPostgresTransactions({

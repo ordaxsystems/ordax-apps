@@ -197,11 +197,20 @@ export function createFoodPostgresTransactions({ pool, authorizeAction } = {}) {
         opened = false;
         return value;
       } catch (error) {
-        // A lost COMMIT acknowledgement is ambiguous even if a later
-        // ROLLBACK appears to succeed. Never return this client to the pool.
-        if (commitIssued) unusable = true;
+        // SQLSTATE 40001 (serialization_failure) and 40P01 (deadlock_detected)
+        // are *explicit transaction aborts* by PostgreSQL, including when
+        // returned by COMMIT. They cannot have persisted this transaction.
+        // Do not retry invisibly: return the Food CAS conflict contract.
+        const knownAbort = error?.code === "40001" || error?.code === "40P01";
+        // A lost COMMIT acknowledgement without an explicit SQL abort remains
+        // ambiguous. ROLLBACK cannot prove its outcome. Discard the connection.
+        if (commitIssued && !knownAbort) unusable = true;
         if (opened) {
           try { await db.query("ROLLBACK"); } catch { unusable = true; }
+        }
+        if (knownAbort) {
+          throw new FoodOrderRejectedError("revision-conflict",
+            "Outra transação alterou o Food. Recarregue a revisão antes de enviar outro comando.");
         }
         if (commitIssued || unusable) {
           throw new FoodOrderOutcomeUnknownError(
