@@ -334,7 +334,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       orderItemDescription, nextStatus, nextActionLabel, orderAction, canCancel,
       renderOrderCard, emptyState, sizeOptions, flavorOptions, cartHtml, flavorForm,
       kitchenChannelButton, activeCommandForTable, tableCard, sectionHeader, statCard,
-      tableOrders, tableCommandTotalCents, money, escapeHtml, timeLabel, stageStartedAt,
+      tableOrders, tableCommandTotalCents, money, escapeHtml, timeLabel, clockTime, stageStartedAt,
       elapsedMinutes, formatElapsed, orderNumber, commandById,
     };
   }
