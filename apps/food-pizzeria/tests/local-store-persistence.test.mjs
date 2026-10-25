@@ -180,3 +180,97 @@ test("idempotent availability no-op is durable without revision churn or bypassi
   await assert.rejects(reopened.execute(conflictingReplay), /Identificador de operação reutilizado/);
   reopened.destroy();
 });
+
+test("browser preview never evicts a command idempotency key at its safety limit", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-history-cap";
+  const { createSeedFoodState } = await import("../src/fixtures/mock-data.mjs");
+  const state = createSeedFoodState();
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state,
+    processedCommands: Array.from({ length: 999 }, (_, index) => ({
+      id: `earlier-${index}`,
+      digest: "a".repeat(64),
+    })),
+  }));
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const initial = await store.initialize();
+  const flavor = initial.flavors.find(({ active }) => active);
+  const noOp = createFoodCommand({
+    type: "menu.flavor.availability",
+    payload: { flavorId: flavor.id, active: true, at: new Date().toISOString() },
+    expectedRevision: initial.revision,
+    commandId: "latest-idempotency-entry",
+  });
+  assert.equal((await store.execute(noOp)).revision, initial.revision);
+  const full = JSON.parse(environment.storage.getItem(key));
+  assert.equal(full.processedCommands.length, 1000);
+  assert.equal(full.processedCommands[0].id, "earlier-0");
+  assert.equal(full.processedCommands.at(-1).id, noOp.commandId);
+  assert.equal((await store.execute(noOp)).revision, initial.revision);
+
+  const modifiedReplay = createFoodCommand({
+    type: "menu.flavor.availability",
+    payload: { ...noOp.payload, active: false },
+    expectedRevision: noOp.expectedRevision,
+    issuedAt: noOp.issuedAt,
+    commandId: noOp.commandId,
+  });
+  await assert.rejects(store.execute(modifiedReplay), /Identificador de operação reutilizado/);
+  const newCommand = createFoodCommand({
+    type: "menu.flavor.availability",
+    payload: { ...noOp.payload, active: false },
+    expectedRevision: initial.revision,
+    commandId: "after-history-cap",
+  });
+  await assert.rejects(store.execute(newCommand), /histórico local de operações atingiu o limite seguro/);
+  assert.equal(store.getSnapshot().revision, initial.revision);
+  assert.deepEqual(JSON.parse(environment.storage.getItem(key)), full);
+  store.destroy();
+
+  const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
+  assert.deepEqual(await reopened.initialize(), initial);
+  assert.equal((await reopened.execute(noOp)).revision, initial.revision);
+  await assert.rejects(reopened.execute(modifiedReplay), /Identificador de operação reutilizado/);
+  await assert.rejects(reopened.execute(newCommand), /histórico local de operações atingiu o limite seguro/);
+  reopened.destroy();
+});
+
+test("delayed cross-tab storage notifications always load the newest persisted revision", async () => {
+  const records = new Map();
+  const listeners = new Set();
+  const storage = {
+    getItem(key) { return records.get(key) ?? null; },
+    setItem(key, value) { records.set(key, String(value)); },
+  };
+  const locks = { async request(_name, _options, callback) { return callback(); } };
+  const eventTarget = {
+    addEventListener(type, callback) { if (type === "storage") listeners.add(callback); },
+    removeEventListener(type, callback) { if (type === "storage") listeners.delete(callback); },
+  };
+  const environment = { storage, locks, eventTarget };
+  const businessId = "preview-delayed-storage";
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  const first = createBrowserLocalFoodStore({ businessId, ...environment });
+  const original = await first.initialize();
+  const oldRaw = storage.getItem(key);
+  const flavor = original.flavors.find(({ active }) => active);
+  const second = createBrowserLocalFoodStore({ businessId, ...environment });
+  await second.initialize();
+  const command = createFoodCommand({
+    type: "menu.flavor.availability",
+    payload: { flavorId: flavor.id, active: false, at: new Date().toISOString() },
+    expectedRevision: original.revision,
+    commandId: "other-tab-update-1",
+  });
+  const latest = await second.execute(command);
+  assert.equal(latest.revision, original.revision + 1);
+  for (const callback of [...listeners]) callback({ key, newValue: oldRaw });
+  assert.equal(first.getSnapshot().revision, latest.revision);
+  assert.equal(first.getSnapshot().flavors.find(({ id }) => id === flavor.id).active, false);
+  first.destroy();
+  second.destroy();
+  assert.equal(listeners.size, 0);
+});
