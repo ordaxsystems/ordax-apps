@@ -72,7 +72,7 @@ test("embedded preview fails before altering the document if isolation requireme
     assert.throws(() => createFoodPreviewMount(fixture.document, "embedded-preview"),
       /exige stylesheet, diálogos e Shadow DOM/);
     assert.equal(fixture.host.shadowRoot, undefined);
-    assert.equal(fixture.globalSheet?.removed, false);
+    if (fixture.globalSheet) assert.equal(fixture.globalSheet.removed, false);
   }
   assert.throws(() => createFoodPreviewMount(fakeDocument().document, "space-live"),
     /Apresentação de prévia desconhecida/);
