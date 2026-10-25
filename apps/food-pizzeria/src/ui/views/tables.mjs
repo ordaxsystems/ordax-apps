@@ -1,6 +1,6 @@
 // Pure Food page renderer. All business state and actions are supplied by the app view model.
 export function renderTablesPage(viewModel) {
-  const { PIZZERIA_TABLES, snapshot, activeCommandForTable, tableCard, sectionHeader, statCard } = viewModel;
+  const { PIZZERIA_TABLES, snapshot, activeCommandForTable, tableCard, sectionHeader, statCard, button } = viewModel;
   const openCommands = snapshot.tableCommands.filter(({ closedAt }) => closedAt === null);
   const occupiedTables = openCommands.length;
   const openOrders = snapshot.orders.filter((order) => order.tableCommandId
