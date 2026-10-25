@@ -52,6 +52,28 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Revisão — preço conferido antes do pedido (2026-10-24)
+
+A prévia Food já calculava o preço atual de um item na renderização do
+carrinho, mas o preço originalmente escolhido pelo usuário podia ter
+mudado em outra aba, sem exigir uma nova confirmação explícita. O fluxo
+`submitOrder` agora consulta `reviewFoodCartPrices()`, que reutiliza
+`calculatePizzaPriceCents()` do domínio canônico. Se preço ou política
+de frações mudar, atualiza somente o rascunho da interface e exige que
+a pessoa confira novamente o total antes de registrar o pedido.
+Sabores/tamanhos indisponíveis falham sem criar pedido.
+
+A revisão do rascunho **não** altera preço no domínio, nem substitui
+a trava por revisão: o comando continua usando `expectedRevision`
+para que uma alteração simultânea entre revisão e escrita produza
+conflito, não aceitação silenciosa. Não há nova autoridade Sales,
+Payments ou Inventory. A prévia é fictícia; quando houver pedido
+comercial, o owner Food deverá publicar contrato formal de cotação,
+aceite e validade antes de habilitar esse fluxo em produção.
+
+Teste: `tests/cart-pricing.test.mjs` cobre preços mantidos, alteração
+posterior à seleção, troca da política de frações e produto indisponível.
+
 ## Revisão adicional — idempotência do preview (2026-10-24)
 
 A chave de idempotência do browser havia sido persistida apenas como `commandId`.
