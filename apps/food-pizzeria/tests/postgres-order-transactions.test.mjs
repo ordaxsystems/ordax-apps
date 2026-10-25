@@ -54,39 +54,32 @@ function dbFixture() {
             if (commitFailure) throw new Error("COMMIT reply lost");
             return { rowCount: null, rows: [] };
           }
-          if (sql.startsWith("select s.space_id")) {
-            return { rowCount: params[0] === SPACE_A ? 1 : 0,
-              rows: params[0] === SPACE_A ? [{ space_id: SPACE_A }] : [] };
-          }
-          if (sql.startsWith("select revision, document")) {
+           if (sql.startsWith("select revision, document from private.ordax_food_read_state_v1")) {
+            assert.deepEqual(params, [ACTOR, SPACE_A, params[2]]);
             return { rowCount: 1, rows: [{ revision: state.revision, document: structuredClone(state) }] };
           }
-          if (sql.startsWith("select space_id, command_id")) {
-            const item = journal.get(`${params[0]}:${params[1]}`);
+          if (sql.startsWith("select space_id, command_id") && sql.includes("ordax_food_find_command_v1")) {
+            const item = journal.get(`${params[1]}:${params[3]}`);
             return { rowCount: item ? 1 : 0, rows: item ? [item] : [] };
           }
-          if (sql.startsWith("update private.ordax_food_space_state")) {
-            if (params[0] !== SPACE_A || params[3] !== state.revision) {
-              return { rowCount: 0, rows: [] };
-            }
-            state = JSON.parse(params[2]);
-            return { rowCount: 1, rows: [{ revision: state.revision }] };
-          }
-          if (sql.includes("insert into private.ordax_food_command_journal")) {
-            assert.equal(params.length, 7);
-            assert.equal(params[0], SPACE_A);
-            assert.equal(params[3], ACTOR);
+          if (sql.startsWith("select private.ordax_food_commit_order_v1")) {
+            assert.equal(params.length, 9);
+            assert.equal(params[0], ACTOR);
+            assert.equal(params[1], SPACE_A);
+            assert.ok(["order.create", "order.transition"].includes(params[2]));
+            assert.equal(params[5], state.revision);
             const receipt = {
               schema: "ordax.food-order-commit-receipt/1",
-              spaceId: params[0], commandId: params[1],
-              orderId: params[4], status: params[5],
-              revision: params[6], commitId: COMMIT,
+              spaceId: params[1], commandId: params[3],
+              orderId: params[7], status: params[8],
+              revision: params[5] + 1, commitId: COMMIT,
             };
-            const key = `${params[0]}:${params[1]}`;
+            const key = `${params[1]}:${params[3]}`;
             assert.ok(!journal.has(key));
+            state = JSON.parse(params[6]);
             journal.set(key, {
-              space_id: params[0], command_id: params[1],
-              digest: params[2], receipt,
+              space_id: params[1], command_id: params[3],
+              digest: params[4], receipt,
             });
             return { rowCount: 1, rows: [{ receipt }] };
           }
@@ -131,7 +124,7 @@ test("PostgreSQL adapter requires trusted server connection and per-action autho
   assert.equal(value, null);
   assert.ok(fx.calls.some((x) => x.sql === "BEGIN ISOLATION LEVEL SERIALIZABLE"));
   assert.ok(fx.calls.some((x) => x.sql === "COMMIT"));
-  assert.ok(!fx.calls.some((x) => x.sql.startsWith("update private")));
+  assert.ok(!fx.calls.some((x) => x.sql.includes("ordax_food_commit_order_v1")));
 });
 
 test("owner core and PostgreSQL adapter commit one state and journal together", async () => {
@@ -151,7 +144,7 @@ test("owner core and PostgreSQL adapter commit one state and journal together", 
   assert.deepEqual(await fx.core.findCommandReceipt(command.commandId), receipt);
   const writes = fx.calls.filter(x => x.sql.startsWith("update private")).length;
   assert.equal(writes, 1);
-  assert.ok(fx.calls.some(x => x.sql.includes("for update")));
+  assert.ok(fx.calls.some(x => x.sql.includes("ordax_food_read_state_v1")));
   assert.ok(fx.calls.every(x => !x.sql.includes(command.commandId) || x.sql === command.commandId),
     "Order id must appear in bound parameters, not interpolated SQL");
 });
@@ -163,7 +156,7 @@ test("revoked action cannot inspect state or write the idempotency journal", asy
   await assert.rejects(fx.core.commitOrderCommand(cmd),
     { name: "FoodOrderRejectedError", reason: "permission-denied" });
   assert.equal(fx.journal.size, 0);
-  assert.ok(!fx.calls.some(x => x.sql.startsWith("select revision, document")));
+  assert.ok(!fx.calls.some(x => x.sql.includes("ordax_food_read_state_v1")));
   assert.ok(fx.calls.some(x => x.sql === "ROLLBACK"));
 });
 
@@ -259,14 +252,14 @@ test("invalid production Space state cannot be provisioned from a preview fallba
   const invalid = createFoodPostgresTransactions({
     pool: { connect: async () => ({
       query: async (sql) => {
-        if (sql.startsWith("select s.space_id")) return { rowCount: 0, rows: [] };
+        if (sql.includes("ordax_food_read_state_v1")) return { rowCount: 0, rows: [] };
         return { rowCount: 0, rows: [] };
       },
       release() {},
     }) },
     authorizeAction: async () => ({ granted: true, spaceId: SPACE_A, subjectId: ACTOR, epoch: "session" }),
   });
-  await assert.rejects(invalid.transact((tx) => tx.authorize("order.create")),
+  await assert.rejects(invalid.transact((tx) => (async () => { await tx.authorize("order.create"); await tx.readState(SPACE_A); })()),
     { name: "FoodOrderRejectedError", reason: "permission-denied" });
   assert.ok(fx.state.orders.length > 0); // Fixture never became a backend fallback.
 });
