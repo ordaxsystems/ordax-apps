@@ -41,6 +41,14 @@ function fakeRoot() {
     addEventListener(type, callback) { listeners.set(type, callback); },
     removeEventListener(type) { listeners.delete(type); },
     get listenerCount() { return listeners.size; },
+    dispatchPreviewClick(view) {
+      let prevented = false;
+      listeners.get("click")?.({
+        target: { closest() { return { dataset: { view } }; } },
+        preventDefault() { prevented = true; },
+      });
+      return prevented;
+    },
   };
 }
 
@@ -65,6 +73,14 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     }
     app.navigate("orders");
     assert.match(root.innerHTML, /Montar pedido/);
+    const beforeUnauthorizedClick = root.innerHTML;
+    assert.equal(root.dispatchPreviewClick("inventory"), true);
+    assert.equal(root.innerHTML, beforeUnauthorizedClick);
+    assert.throws(() => app.navigate("overview"), /somente módulos operacionais/);
+    assert.throws(() => app.navigate("not-a-module"), /somente módulos operacionais/);
+    assert.equal(root.dispatchPreviewClick("kitchen"), true);
+    assert.match(root.innerHTML, /Fila da cozinha/);
+    assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
   } finally {
     app.destroy();
   }
