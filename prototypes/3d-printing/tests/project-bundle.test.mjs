@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createProjectBundle, projectBundleLimits, readProjectBundle } from "../features/fatiamento-3d/project-bundle.mjs";
+import { parseMeshFile } from "../features/fatiamento-3d/mesh-import.mjs";
+import { fingerprintSourceBytes } from "../features/fatiamento-3d/source-fingerprint.mjs";
 import { readZipDirectory, createStoredZipBlob } from "../features/fatiamento-3d/zip-container.mjs";
 import { hasCompleteProcessAssignment } from "../features/fatiamento-3d/slicer-port.mjs";
 
@@ -83,6 +85,31 @@ for (const extension of ["stl", "3mf"]) {
     assert.equal(restored.draft.processes[0].settings.seamPosition, "random");
   });
 }
+
+test("a identidade do modelo usa o conteúdo original ao reabrir STL e pacote OrdaX", async () => {
+  const sourceText = "solid modelo\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid modelo\n";
+  const changedText = sourceText.replace("vertex 1 0 0", "vertex 2 0 0");
+  const originalFile = namedBlob(new TextEncoder().encode(sourceText), "modelo.stl");
+  const changedFile = namedBlob(new TextEncoder().encode(changedText), "modelo.stl");
+  const original = await parseMeshFile(originalFile);
+  const reopened = await parseMeshFile(namedBlob(new TextEncoder().encode(sourceText), "copia.stl"));
+  const changed = await parseMeshFile(changedFile);
+
+  assert.equal(original.size, changed.size);
+  assert.equal(original.triangleCount, changed.triangleCount);
+  assert.match(original.sourceFingerprint, /^sha256-[a-f0-9]{64}$/);
+  assert.equal(original.sourceFingerprint, reopened.sourceFingerprint);
+  assert.notEqual(original.sourceFingerprint, changed.sourceFingerprint);
+
+  const bundle = await createProjectBundle({ sourceFile: originalFile, draft: validDraft(), projectName: "Projeto portátil" });
+  const packedModel = await parseMeshFile(namedBlob(await bundle.blob.arrayBuffer(), bundle.filename));
+  assert.equal(packedModel.sourceFingerprint, original.sourceFingerprint);
+});
+
+test("fingerprint falha fechado sem bytes ou SHA-256 do host", async () => {
+  await assert.rejects(fingerprintSourceBytes("modelo.stl"), /bytes originais/);
+  await assert.rejects(fingerprintSourceBytes(new Uint8Array([1]), {}), /Web Crypto/);
+});
 
 test("abre projetos /2 preservando as configurações antigas de casca", async () => {
   const source = new Blob([1, 2, 3]);

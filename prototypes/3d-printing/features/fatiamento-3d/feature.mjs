@@ -54,17 +54,7 @@ const AI_EVIDENCE_LABELS = Object.freeze({
   "slicer.configuredProfiles": "Perfis carregados no motor",
 });
 function modelFingerprint(model) {
-  const metadata = JSON.stringify({
-    name: model.name, format: model.format, size: model.size,
-    objects: model.objects.map(object => [object.id, object.sourceObjectId || object.id, object.buildItemIndex ?? 0, object.name, object.triangleCount]),
-  });
-  let first = 2166136261, second = 0x9e3779b9;
-  for (let index = 0; index < metadata.length; index++) {
-    const code = metadata.charCodeAt(index);
-    first = Math.imul(first ^ code, 16777619);
-    second = Math.imul(second ^ code, 2246822519);
-  }
-  return `metadata-${(first >>> 0).toString(16)}-${(second >>> 0).toString(16)}-${metadata.length}`;
+  return typeof model?.sourceFingerprint === "string" ? model.sourceFingerprint : null;
 }
 
 function objectTransform(draft, objectId) {

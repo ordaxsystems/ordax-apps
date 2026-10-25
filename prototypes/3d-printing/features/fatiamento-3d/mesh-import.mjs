@@ -1,5 +1,6 @@
 import { normalizeZipPath, readZipDirectory, readZipEntry } from "./zip-container.mjs";
 import { readProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
+import { fingerprintSourceBytes } from "./source-fingerprint.mjs";
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_MODEL_XML_BYTES = 50 * 1024 * 1024;
@@ -218,6 +219,7 @@ export async function parseMeshFile(file) {
     const bundled = await readProjectBundle(buffer);
     const sourceFile = namedSourceBlob(bundled.sourceBytes, bundled.sourceName);
     const imported = await parseSourceBuffer(bundled.sourceBytes, bundled.sourceName, bundled.sourceBytes.byteLength, sourceFile);
+    imported.sourceFingerprint = await fingerprintSourceBytes(bundled.sourceBytes);
     return {
       ...imported,
       name: bundled.projectName,
@@ -228,7 +230,9 @@ export async function parseMeshFile(file) {
     };
   }
   if (file.size > MAX_FILE_BYTES) throw new Error("O arquivo deve ter até 50 MB.");
-  return await parseSourceBuffer(buffer, name, file.size, file);
+  const imported = await parseSourceBuffer(buffer, name, file.size, file);
+  imported.sourceFingerprint = await fingerprintSourceBytes(buffer);
+  return imported;
 }
 
 export const meshImportLimits = Object.freeze({ maxFileBytes: MAX_FILE_BYTES, maxProjectBytes: projectBundleLimits.maxArchiveBytes, maxTriangles: MAX_TRIANGLES });
