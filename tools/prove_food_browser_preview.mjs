@@ -34,6 +34,20 @@ async function freeLocalPort() {
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function stopProcess(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  const stopped = new Promise((resolve) => child.once("exit", resolve));
+  child.kill("SIGTERM");
+  await Promise.race([stopped, pause(4000)]);
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGKILL");
+    await Promise.race([stopped, pause(4000)]);
+  }
+  if (child.exitCode === null && child.signalCode === null) {
+    throw new Error(`O processo ${child.pid} não encerrou após SIGKILL.`);
+  }
+}
+
 async function waitForHttp(url, child) {
   for (let attempt = 0; attempt < 150; attempt += 1) {
     if (child.exitCode !== null) throw new Error(`Processo encerrou prematuramente: ${child.exitCode}`);
@@ -179,7 +193,6 @@ try {
   process.exitCode = 1;
 } finally {
   cdp?.close();
-  chrome.kill("SIGTERM");
-  localServer.kill("SIGTERM");
-  await rm(temporary, { recursive: true, force: true });
+  await Promise.all([stopProcess(chrome), stopProcess(localServer)]);
+  await rm(temporary, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 });
 }
