@@ -1,6 +1,6 @@
 // Pure Food page renderer. All business state and actions are supplied by the app view model.
 export function renderDeliveryPage(viewModel) {
-  const { snapshot, sectionHeader, statCard, button, ORDER_STAGE_ALERT_MINUTES, stageStartedAt, elapsedMinutes, renderOrderCard, emptyState } = viewModel;
+  const { snapshot, sectionHeader, statCard, renderOrderCard, emptyState, iconSvg, orderNumber, escapeHtml, clockTime } = viewModel;
   const deliveries = snapshot.orders.filter(({ channel, status }) => channel === "delivery" && !["completed", "cancelled"].includes(status));
   const kitchenOrders = deliveries.filter(({ status }) => ["received", "preparing"].includes(status));
   const readyOrders = deliveries.filter(({ status }) => status === "ready");
