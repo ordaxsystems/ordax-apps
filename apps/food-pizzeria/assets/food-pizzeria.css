@@ -907,3 +907,26 @@ dialog p { color: #a2a8af; }
   .settings-config-row { grid-template-columns: minmax(0, 1fr) minmax(86px, .5fr); }
   .settings-config-row .settings-toggle { grid-column: 1 / -1; }
 }
+
+
+/* Content-only Food preview: host owns the surrounding Space navigation.
+   This is a local demonstration mode, not the authorized Space Experience host. */
+.food-embedded-preview {
+  min-width: 0;
+  width: 100%;
+}
+.food-embedded-preview .content {
+  width: min(100%, 1700px);
+  margin-inline: auto;
+}
+.food-preview-disclaimer {
+  margin: 0;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+}
+.food-preview-disclaimer strong { color: var(--ink); }
+@media (max-width: 680px) {
+  .food-embedded-preview .content { padding: 18px 12px 24px; }
+}
