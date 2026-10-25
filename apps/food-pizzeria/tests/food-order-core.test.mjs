@@ -49,7 +49,10 @@ function createCommand(state, id = "create-order-1") {
 }
 
 function transactionalFixture() {
-  const state = () => createSeedFoodState();
+  // Build the seed once, so different Spaces start from identical immutable
+  // fixture bytes rather than independent wall-clock timestamps.
+  const base = createSeedFoodState();
+  const state = () => structuredClone(base);
   const bySpace = new Map([
     ["space-a", { state: state(), journal: new Map() }],
     ["space-b", { state: state(), journal: new Map() }],
