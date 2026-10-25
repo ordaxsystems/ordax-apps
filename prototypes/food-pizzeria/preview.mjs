@@ -15,6 +15,9 @@ try {
   if (presentation === "embedded-preview") app.navigate(params.get("view") ?? "orders");
   await app.mount();
 } catch (error) {
+  if (new URL(window.location.href).searchParams.get("__browser_probe") === "1") {
+    document.documentElement.dataset.foodPreviewStartupError = String(error?.stack ?? error).slice(0,1200);
+  }
   app?.destroy();
   dataPort.destroy();
   throw error;
