@@ -252,15 +252,16 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       return false;
     } finally {
       busy = false;
-      if (destroyed) return;
-      setBusyUI(false);
-      if (committed) {
-        if (renderAfter) render();
-        else renderNotice();
-      } else if (snapshot?.revision !== startingRevision) {
-        render();
-      } else {
-        renderNotice();
+      if (!destroyed) {
+        setBusyUI(false);
+        if (committed) {
+          if (renderAfter) render();
+          else renderNotice();
+        } else if (snapshot?.revision !== startingRevision) {
+          render();
+        } else {
+          renderNotice();
+        }
       }
     }
   }
