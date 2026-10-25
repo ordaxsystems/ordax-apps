@@ -53,7 +53,7 @@ async function waitForChromeDebugger(profile, child) {
     }
     try {
       const data = await readFile(join(profile, "DevToolsActivePort"), "utf8");
-      const selectedPort = Number(data.split("\\n")[0]);
+      const selectedPort = Number(data.split("\n")[0]);
       if (Number.isInteger(selectedPort) && selectedPort > 0) return selectedPort;
     } catch { /* Chrome creates this file after starting its debugger. */ }
     await pause(100);
