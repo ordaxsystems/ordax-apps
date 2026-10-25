@@ -1,4 +1,5 @@
 import { applyFoodCommand, createFoodCommand } from "../application/commands.mjs";
+import { fingerprintFoodCommand } from "../application/command-fingerprint.mjs";
 import {
   migrateFoodPizzeriaState,
   validateFoodPizzeriaState,
@@ -23,16 +24,6 @@ const LEGACY_KEY = [
 
 function serializedBytes(value) {
   return new TextEncoder().encode(value).byteLength;
-}
-
-async function fingerprintCommand(command) {
-  const digest = globalThis.crypto?.subtle?.digest;
-  if (typeof digest !== "function") {
-    throw new Error("WebCrypto seguro é obrigatório para gravar operações locais da prévia.");
-  }
-  const bytes = new TextEncoder().encode(JSON.stringify(command));
-  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(hash)].map((part) => part.toString(16).padStart(2, "0")).join("");
 }
 
 function validateCommandHistory(entries) {
@@ -236,7 +227,7 @@ export function createBrowserLocalFoodStore({
     async execute(commandValue) {
       if (destroyed || !initialized) throw new Error("A interface de dados da pizzaria não está pronta.");
       const command = createFoodCommand(commandValue);
-      const commandDigest = await fingerprintCommand(command);
+      const commandDigest = await fingerprintFoodCommand(command);
       return locks.request(lock, { mode: "exclusive" }, async () => {
         if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
         const persisted = readPersisted();
