@@ -38,7 +38,7 @@ Auditoria do código em `ordax-apps`, complementada pela leitura dos contratos a
 
 Na revisão do `ordax-os` main `47d8fc4b9ed60934689b6c18e386011d87088997`, o catálogo de tipos já descreve `food.pizzeria`, e a composição Space filtra itens de navegação e métricas pela readiness dos providers. O Profile `pizzaria-br@1` ainda compõe Files, Notes, Internet e Projects; ele não fornece Food Core nem é dono de dados operacionais.
 
-O contrato interno de Space Experience do OS não está publicado no App SDK v1.20.0. Como Apps deve consumir contratos públicos/versionados, não há hoje caminho suportado para declarar um provider Food. FOOD-001 está `DEFERRED FOR EXECUTION`, fora a fatia de Profile autorizada. Portanto, esta correção não promove Food no OS ou na Store nem afirma compatibilidade homologada com Windows.
+O OS integrou o contrato Space Experience no App SDK público `1.21.0` (merge `5ef65423` da PR #2245). O Apps agora fixa esse bundle por commit/hash imutável, sem consumir serviços privados. **Permanece ausente** o adapter autorizado de host/capabilities e o Food Order Core comercial. FOOD-001 continua `DEFERRED FOR EXECUTION`, fora a fatia de Profile autorizada. Isso não promove Food no OS ou na Store nem representa homologação de produção ou Windows.
 
 ## Contratos e testes necessários antes de integrar
 
@@ -52,21 +52,11 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
-## Gate público Space Experience — PR upstream de SDK
+## Gate público Space Experience — SDK 1.21.0 integrado
 
-O owner OS possui uma proposta separada em
-[ordax-os PR #2245](https://github.com/ordaxsystems/ordax-os/pull/2245)
-para publicar **somente** os seis contratos canônicos de Space Experience
-no bundle `1.21.0` e adicionar `kitchen` como rota associada à
-capability `orders`. Essa PR está em rascunho e não concede autorização,
-readiness, provider de pedidos nem acesso cross-Space.
+A [PR upstream #2245](https://github.com/ordaxsystems/ordax-os/pull/2245) foi integrada na `main` do OS pelo commit `5ef654236da1f2d343e3e33cd46bb747d52bc24c`, com nove verificações aprovadas. Seis schemas canônicos estão agora publicados no bundle `1.21.0`; `kitchen` é rota da capability `orders` no catálogo do OS. O pin imutável e SHA-256 do bundle foram atualizados neste repo e submetidos ao CI de compatibilidade.
 
-**Não atualizar `platform-sdk.lock.json` para uma revisão upstream
-ainda não integrada e pinável.** Após integração e publicação no owner
-OS, consumir o SDK por pin imutável, validar provenance/compatibilidade e
-somente então construir o adapter do host **real e autorizado**.
-Este Food continua limitado a `browser-local-preview` até a etapa
-comercial ser formalmente liberada.
+O SDK ainda declara `authority: none`: isso **não instala nem autoriza** um provider Food, não fornece grants, readiness, lifecycle ou acesso cross-Space. O adapter comercial só poderá consumir portas fornecidas pelo host real quando FOOD-001 for autorizado. A prévia local continua limitada a `browser-local-preview`.
 
 ## Revisão — ciclo de vida seguro da apresentação Food (2026-10-24)
 
@@ -144,13 +134,7 @@ continua dependente da publicação de contratos em
 
 ## Revisão — apresentação incorporável e App SDK Space Experience (2026-10-24)
 
-A auditoria do SDK fixado em `platform-sdk.lock.json` confirmou `1.20.0`
-(commit OS `ee2a50db334e7abb798918d99d772ebfd02f8cef`). Embora o owner OS
-já tenha `system/contracts/space-experience.mjs` com
-`ordax.space-experience/1` e `ordax.space-capability-provider/2`,
-esses schemas não foram publicados no bundle `sdk/app-sdk-v1/bundle.json`.
-A dependência de publicação e provas de host está registrada em
-[ordax-os#2244](https://github.com/ordaxsystems/ordax-os/issues/2244).
+A lacuna original no SDK `1.20.0` foi resolvida pela PR upstream #2245, agora integrada. O pin atual é `1.21.0` com schemas `ordax.space-experience/1` e `ordax.space-capability-provider/2`, sem implementação duplicada. O restante da integração — portas host autorizadas, controle de lifecycle e provider Food comercial — continua registrado em [ordax-os#2244](https://github.com/ordaxsystems/ordax-os/issues/2244).
 
 No Apps, `src/ui/presentation.mjs` introduz o modo
 `embedded-preview`, que monta apenas a página Food sem criar
