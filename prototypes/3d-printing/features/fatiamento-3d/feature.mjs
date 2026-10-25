@@ -1124,6 +1124,7 @@ export function mountFeature(host = {}) {
     legend.hidden = !model;
     unitRow.hidden = !model || model.format !== "STL";
     saveProjectButton.disabled = !model || model.demo || !(model.originalFile instanceof Blob);
+    saveProjectButton.hidden = !model || model.demo;
     saveProjectButton.title = saveProjectButton.disabled
       ? "Abra um STL ou 3MF para salvar um projeto portátil."
       : "Baixa a malha original e as configurações deste projeto em um arquivo .ordax3d.";

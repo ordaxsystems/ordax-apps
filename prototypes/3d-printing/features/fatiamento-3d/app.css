@@ -79,3 +79,44 @@
 .preview-feature-breakdown{padding:11px 0;border-bottom:1px solid #22343a}.preview-feature-breakdown>strong{display:block;margin-bottom:9px;color:#a9bbb5;font-size:8px;font-weight:650}.preview-feature-breakdown>div{display:grid;gap:8px}.preview-feature-row{display:grid;gap:4px}.preview-feature-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#849791;font-size:7px}.preview-feature-heading span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.preview-feature-heading strong{flex:none;color:#d8e5de;font:600 8px ui-monospace,monospace}.preview-feature-track{height:3px;overflow:hidden;border-radius:999px;background:#25363a}.preview-feature-track i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#21b894,#77ebca)}.preview-feature-breakdown small{color:#728680;font-size:7px}
 .remote-slice-dialog{width:min(440px,calc(100vw - 32px));padding:0;border:1px solid #30494d;border-radius:14px;background:#101a1f;color:#e5eeeb;box-shadow:0 28px 90px #0009}.remote-slice-dialog::backdrop{background:#03090bd9;backdrop-filter:blur(4px)}.remote-slice-dialog-body{padding:22px}.remote-slice-dialog h2{margin:7px 0 10px;font:650 17px/1.25 Manrope,Inter,system-ui,sans-serif;letter-spacing:-.3px}.remote-slice-dialog p,.remote-slice-dialog li{color:#aabbb6;font-size:12px;line-height:1.55}.remote-slice-target{overflow-wrap:anywhere;color:#e5eeeb}.remote-slice-dialog ul{display:grid;gap:6px;margin:12px 0;padding-left:20px}.remote-slice-dialog li::marker{color:#4de1bd}.remote-slice-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:18px}.remote-slice-actions form{margin:0}.remote-slice-actions button{min-height:36px;padding:0 13px;border-radius:8px;font-size:11px}
 @media(max-width:1180px){.slice-stage{align-self:start;height:clamp(340px,calc(100vh - 410px),560px);min-height:0}}@media(max-width:760px){.slice-stage{height:clamp(360px,58vh,520px);min-height:360px}}
+
+/* Workshop refinement: keep the build controls legible and the 3D stage central. */
+.slice-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}
+.slice-project-name{min-width:0;flex:1 1 auto}
+.slice-project-name>div{max-width:250px}
+.slice-project-name small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.slice-actions{flex-wrap:nowrap;gap:6px;min-width:0}
+.slicer-workspace .button{padding-inline:9px}
+.engine-chip{padding-inline:7px}
+.slicer-workspace .button.primary{border-color:#13c5e3;background:#13c5e3;color:#061b20;box-shadow:0 5px 16px #13c5e326}
+.slicer-workspace .button.primary:hover:not(:disabled){border-color:#52d9ed;background:#52d9ed}
+.object-panel,.settings-panel{overscroll-behavior:contain}
+.processes-heading strong{font-size:9px}
+.processes-count{font-size:9px}
+.object-process-row{padding:6px}
+.object-process-select strong{font-size:9px}
+.object-process-select small{font-size:8px}
+.object-process-assignment{font-size:8px}
+.process-actions .button{min-height:30px;padding-inline:7px;font-size:9px}
+.process-note,.not-applied-note,.model-metrics .geometry-note,.process-editor small{font-size:9px;line-height:1.5}
+.model-drop>b{font-size:9px}
+.model-metrics span,.model-metrics strong{font-size:10px}
+.slice-field>span,.setting-value>label{font-size:10px}
+.settings-section-title strong,.toggle-row strong{font-size:11px}
+.stage-indicators,.stage-button{font-size:10px}
+.stage-hint{font-size:9px}
+.selected-transform-name{font-size:9px}
+.transform-group-label{font-size:9px}
+.object-transform-grid label>span{font-size:9px}
+.object-transform-grid input{height:32px;font-size:10px}
+.preview-feature-breakdown>strong{font-size:9px}
+.preview-feature-heading{font-size:9px}
+.preview-feature-heading strong{font-size:9px}
+.preview-feature-breakdown small{font-size:8px}
+.model-drop{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:start;gap:4px 9px}
+.model-drop>.drop-glyph{grid-column:1;grid-row:1/span 2;align-self:center}
+.model-drop>span:nth-child(2){grid-column:2;grid-row:1;align-self:end}
+.model-drop>b{grid-column:2;grid-row:2;margin:0;justify-self:start;white-space:normal;font-size:8px;line-height:1.35;letter-spacing:.25px}
+@media(min-width:1181px){.object-panel{max-height:min(78vh,760px)}.settings-panel{max-height:min(78vh,760px)}}
+@media(max-width:1220px){.slice-toolbar{grid-template-columns:minmax(0,1fr)}.slice-actions{flex-wrap:wrap;justify-content:flex-start}}
+@media(max-width:760px){.slice-toolbar{gap:10px}.slice-project-name>div{max-width:none}.slice-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch}.slice-actions>*{min-width:0}.slice-actions .slice-button{grid-column:1/-1}.engine-chip{justify-content:center}.object-process-row{grid-template-columns:minmax(0,1fr) 90px}}
