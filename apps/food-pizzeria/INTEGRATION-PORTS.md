@@ -146,3 +146,22 @@ O módulo `src/ports/food-order-commit-port.mjs` introduz **somente o contrato c
 - Reconciliação de resultado desconhecido por leitura do owner; nenhuma repetição cega de efeito financeiro ou estoque.
 - Eventos/projeções versionados, sem leitura direta de bancos privados e sem dependência de módulos internos de `ordax-os`.
 - Capability indisponível permanece pendente e não habilita uma operação local paralela.
+
+## Ensaio de integração com PostgreSQL real (somente CI)
+
+`.github/workflows/food-postgres-integration.yml` executa uma prova **descartável**
+em PostgreSQL 17. O teste
+`tests/postgres-real-integration.mjs` usa o serviço de domínio Food existente,
+`createFoodPostgresTransactions` e
+`createFoodPostgresActionAuthorizer` sem mockar consultas ou commits.
+O workflow importa diretamente os SQLs de proposta e o pacote `pg` com
+lockfile **da revisão canônica da Platform fixada por commit**. Não mantém
+uma cópia de esquema, uma segunda role comercial ou dependências Node no
+produto Food.
+
+O banco de teste inclui contas e membros sintéticos; 
+`getVerifiedBinding` é exclusivamente uma fixture de contexto do test runner.
+Este ensaio **não comprova** validação de sessão real do host, executor mínimo
+de PostgreSQL nem prontidão de distribuição. Não permite publicar a proposta
+no Supabase, autenticar clientes por request body ou sair do gate FOOD-001.
+
