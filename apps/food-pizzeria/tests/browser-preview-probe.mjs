@@ -3,6 +3,13 @@
 const parameters = new URL(location.href).searchParams;
 const embedded = parameters.get("presentation") === "embedded-preview";
 const view = parameters.get("view") ?? "orders";
+const browserErrors = [];
+window.addEventListener("error", (event) => {
+  browserErrors.push(`JS: ${event.message} ${event.filename}:${event.lineno}`);
+});
+window.addEventListener("unhandledrejection", (event) => {
+  browserErrors.push(`Promise: ${String(event.reason?.stack ?? event.reason)}`);
+});
 const expected = {
   kitchen: "Fila da cozinha",
   orders: "Montar pedido",
@@ -34,7 +41,8 @@ try {
   const host = document.querySelector("#app");
   ensure(host, "Host de prévia ausente.");
   const content = await eventually(() => (embedded ? host.shadowRoot : host)
-    ?.querySelector("#main-content"), "A prévia não montou conteúdo Food no navegador.");
+    ?.querySelector("#main-content"),
+    `Prévia não montou: errors=${browserErrors.join(" | ") || "nenhum"}; host=${host.innerHTML.slice(0,500)}; shadow=${host.shadowRoot?.innerHTML.slice(0,300) ?? "ausente"}`);
   const root = embedded ? host.shadowRoot : document;
   ensure(content.textContent.includes(expected[view] ?? "OrdaX"),
     `O módulo ${view} não renderizou seu conteúdo esperado.`);
