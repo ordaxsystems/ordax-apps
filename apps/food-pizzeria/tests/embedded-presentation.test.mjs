@@ -8,12 +8,12 @@ import {
 } from "../src/ui/presentation.mjs";
 import { createFoodPizzeriaApp } from "../src/ui/app.mjs";
 import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
+import { updateFoodPizzeriaSettings } from "../src/domain/domain.mjs";
 import { FOOD_DATA_PORT_SCHEMA } from "../src/ports/food-data-port.mjs";
 
 const context = Object.freeze({ businessId: "preview-na-garagem", adapter: "browser-local-preview" });
 
-function fakePreviewPort(adapter = "browser-local-preview") {
-  const state = createSeedFoodState();
+function fakePreviewPort(adapter = "browser-local-preview", state = createSeedFoodState()) {
   return {
     schema: FOOD_DATA_PORT_SCHEMA,
     context: { ...context, adapter },
@@ -27,11 +27,22 @@ function fakePreviewPort(adapter = "browser-local-preview") {
 
 function fakeRoot() {
   const listeners = new Map();
+  const guestCount = { value: "", max: "" };
+  const customerName = { value: "", focus() {} };
+  const tableOpenForm = {
+    ...fakeElement(),
+    elements: {
+      tableId: { innerHTML: "", value: "" },
+      customerName,
+      guestCount,
+    },
+  };
+  const tableOpenDialog = { ...fakeElement(), showModal() { this.open = true; } };
   const dialogs = new Map([
     ["#cancel-dialog", fakeElement()],
     ["#cancel-order-form", fakeElement()],
-    ["#table-open-dialog", fakeElement()],
-    ["#table-open-form", fakeElement()],
+    ["#table-open-dialog", tableOpenDialog],
+    ["#table-open-form", tableOpenForm],
   ]);
   return {
     innerHTML: "",
@@ -40,6 +51,8 @@ function fakeRoot() {
     querySelectorAll() { return []; },
     addEventListener(type, callback) { listeners.set(type, callback); },
     removeEventListener(type) { listeners.delete(type); },
+    get tableOpenForm() { return tableOpenForm; },
+    get tableOpenDialog() { return tableOpenDialog; },
     get listenerCount() { return listeners.size; },
     dispatchPreviewClick(view) {
       let prevented = false;
@@ -48,6 +61,12 @@ function fakeRoot() {
         preventDefault() { prevented = true; },
       });
       return prevented;
+    },
+    dispatchPreviewAction(action, dataset = {}) {
+      listeners.get("click")?.({
+        target: { closest() { return { dataset: { action, ...dataset } }; } },
+        preventDefault() {},
+      });
     },
   };
 }
@@ -109,4 +128,29 @@ test("pure embedded frame remains explicitly marked as fictitious", () => {
   assert.match(markup, /Cardápio/);
   assert.doesNotMatch(markup, /<nav|<aside|class="topbar"/);
   assert.throws(() => renderEmbeddedFoodPreview(null), /Conteúdo Food inválido/);
+});
+
+test("a single-seat table opens with a valid default guest count", async () => {
+  const initial = createSeedFoodState();
+  const state = updateFoodPizzeriaSettings(initial, {
+    tables: initial.settings.tables.map((table) =>
+      table.id === 5 ? { ...table, seats: 1 } : table),
+  });
+  const root = fakeRoot();
+  const app = createFoodPizzeriaApp({
+    root,
+    dataPort: fakePreviewPort("browser-local-preview", state),
+    presentation: "embedded-preview",
+  });
+  try {
+    await app.mount();
+    app.navigate("tables");
+    root.dispatchPreviewAction("open-table-command", { tableId: "5" });
+    assert.equal(root.tableOpenDialog.open, true);
+    assert.equal(root.tableOpenForm.elements.tableId.value, "5");
+    assert.equal(root.tableOpenForm.elements.guestCount.max, "1");
+    assert.equal(root.tableOpenForm.elements.guestCount.value, "1");
+  } finally {
+    app.destroy();
+  }
 });
