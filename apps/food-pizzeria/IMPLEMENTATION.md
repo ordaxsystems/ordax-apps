@@ -52,6 +52,26 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Prova real do navegador — preview standalone e incorporável
+
+Para não depender apenas do DOM simulado, `tools/prove_food_browser_preview.mjs`
+inicia o servidor localhost existente e usa o Chrome/Chromium headless do runner
+Linux, sem novas dependências npm ou duplicação de ferramentas de apresentação.
+
+A prova usa a flag explícita `ORDAX_FOOD_BROWSER_SMOKE=1` no servidor e
+`?__browser_probe=1` apenas na URL local, carregando o script de teste
+`tests/browser-preview-probe.mjs` **separadamente do bootstrap de produção**.
+A checagem verifica os quatro cenários: standalone/Pedidos, embedded/Cozinha,
+embedded/Pedidos e embedded/Mesas. No navegador real, testa renderização visível,
+folha de estilos carregada no ShadowRoot, ausência de CSS global, diálogos
+isolados e abertura de diálogo nativo de uma mesa.
+
+No workflow `OrdaX Apps Foundation`, o passo
+`Prove Food preview mounts in real Chromium without UI dependencies`
+é obrigatório: Chrome ausente, inicialização incompleta ou erro no DOM
+fazem o job falhar. Isso comprova **apresentação local no navegador**,
+não autorização do Space, persistência empresarial ou fluxo de pagamento.
+
 ## Revisão — isolamento real de estilos e diálogos na prévia (2026-10-24)
 
 A primeira demonstração `embedded-preview` eliminou sidebar e topbar
