@@ -9,7 +9,7 @@ Este documento define as responsabilidades internas que os adapters Food deverã
 | `ordax.food-pizzeria-data-port/1` (`src/ports/food-data-port.mjs`) | Ciclo de vida, snapshot, inscrição e comandos do estado local Food. | É um port interno. O adapter atual grava sandbox no navegador; não é persistência de Space nem API pública. |
 | `ordax.food-pizzeria-command/1` (`src/application/commands.mjs`) | Comandos validados para setup, ajustes, cardápio/fichas, pedidos de teste e comandas. | Não é o command bus de Sales, Inventory, Payments ou Space. |
 | Renderizadores em `src/ui/views/` | Apresentação de cada área do Food. | Recebem estado do mesmo app; não têm stores independentes nem são apps instaláveis. |
-| `embedded-preview` (`src/ui/presentation.mjs`) | Conteúdo operacional puro, sem painel lateral nem cabeçalho Food; navegação limitada aos módulos Food. | **Somente com adapter `browser-local-preview`.** É uma prévia visual, sem autorização de Space, grants, readiness ou provider público. |
+| `embedded-preview` (`src/ui/presentation.mjs`) | Conteúdo operacional puro, sem painel lateral nem cabeçalho Food; API `navigate()` **e** cliques internos limitados aos módulos Food. | **Somente com adapter `browser-local-preview`.** É uma prévia visual, sem autorização de Space, grants, readiness ou provider público. |
 
 ## Owners e responsabilidades obrigatórias
 
