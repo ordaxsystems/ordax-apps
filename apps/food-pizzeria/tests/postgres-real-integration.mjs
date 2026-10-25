@@ -148,9 +148,11 @@ test("real PostgreSQL: Space-scoped role policy, revocation and session binding 
   bind(ADMIN_A, SPACE_B);
   await assert.rejects(core.commitOrderCommand(transition(await readState(SPACE_B), "pg-cross-space-denied")),
     { name: "FoodOrderRejectedError", reason: "permission-denied" });
-  assert.equal(await core.findCommandReceipt("pg-create-1"), null);
+  await assert.rejects(core.findCommandReceipt("pg-create-1"),
+    { name: "FoodOrderRejectedError", reason: "permission-denied" });
 
   bind(OWNER_B, SPACE_B);
+  assert.equal(await core.findCommandReceipt("pg-create-1"), null);
   const allowed = transition(await readState(SPACE_B), "pg-owner-b-1");
   const receipt = await core.commitOrderCommand(allowed);
   assert.equal(receipt.spaceId, SPACE_B);
