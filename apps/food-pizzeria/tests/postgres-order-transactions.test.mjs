@@ -142,7 +142,7 @@ test("owner core and PostgreSQL adapter commit one state and journal together", 
   assert.deepEqual(await fx.core.commitOrderCommand(command), receipt);
   assert.equal(fx.journal.size, 1, "Exact replay must not write again");
   assert.deepEqual(await fx.core.findCommandReceipt(command.commandId), receipt);
-  const writes = fx.calls.filter(x => x.sql.startsWith("update private")).length;
+  const writes = fx.calls.filter(x => x.sql.includes("ordax_food_commit_order_v1")).length;
   assert.equal(writes, 1);
   assert.ok(fx.calls.some(x => x.sql.includes("ordax_food_read_state_v1")));
   assert.ok(fx.calls.every(x => !x.sql.includes(command.commandId) || x.sql === command.commandId),
