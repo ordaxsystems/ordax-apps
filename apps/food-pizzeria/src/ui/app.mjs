@@ -9,6 +9,11 @@ import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
 import { renderSpaceCapabilityStatus } from "./space-capability-status.mjs";
+import {
+  assertFoodPreviewPresentation,
+  assertFoodModuleView,
+  renderEmbeddedFoodPreview,
+} from "./presentation.mjs";
 import { renderOrdersPage } from "./views/orders.mjs";
 import { renderKitchenPage } from "./views/kitchen.mjs";
 import { renderMenuPage } from "./views/menu.mjs";
@@ -16,11 +21,12 @@ import { renderTablesPage } from "./views/tables.mjs";
 import { renderDeliveryPage } from "./views/delivery.mjs";
 import { renderSettingsPage } from "./views/settings.mjs";
 
-export function createFoodPizzeriaApp({ root, dataPort } = {}) {
+export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalone-preview" } = {}) {
   if (!root || typeof root.querySelector !== "function" || typeof root.addEventListener !== "function") {
     throw new TypeError("O host precisa fornecer o elemento de montagem do OrdaX Food.");
   }
   assertFoodDataPort(dataPort);
+  assertFoodPreviewPresentation(presentation, dataPort);
   const surface = root.getRootNode();
   const querySurface = (selector) => surface.querySelector(selector) ?? root.querySelector(selector);
   const cancelDialog = querySurface("#cancel-dialog");
@@ -281,6 +287,11 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   }
   
   function shell(content) {
+    if (presentation === "embedded-preview") {
+      return renderEmbeddedFoodPreview(content, notice
+        ? `<div class="toast toast-${notice.type}" role="${notice.type === "error" ? "alert" : "status"}"><span>${notice.type === "error" ? "!" : "✓"}</span>${escapeHtml(notice.text)}<button type="button" aria-label="Fechar aviso" data-action="dismiss-notice">×</button></div>`
+        : "");
+    }
     const name = snapshot.settings?.storeName ?? "Pizzaria";
     return `<div class="app-shell">
       <aside class="sidebar">
@@ -1057,5 +1068,12 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
     tableOpenDialog.removeEventListener("click", closeOnBackdrop);
   }
   
-  return Object.freeze({ mount, destroy });
+  function navigate(view) {
+    if (destroyed) throw new Error("A interface Food já foi encerrada.");
+    assertFoodModuleView(view);
+    activeView = view;
+    if (mounted) render();
+  }
+
+  return Object.freeze({ mount, navigate, destroy });
 }
