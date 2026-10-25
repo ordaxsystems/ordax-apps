@@ -113,7 +113,7 @@ const server = createServer(async (req, res) => {
         ? '    <script type="module" src="/apps/food-pizzeria/tests/browser-preview-probe.mjs"></script>\n'
         : "";
       content = Buffer.from(html.replace("</body>",
-        `    <script type="module" src="/preview.mjs"></script>\n${probeScript}  </body>`), "utf8");
+        `${probeScript}    <script type="module" src="/preview.mjs"></script>\n  </body>`), "utf8");
     }
     res.writeHead(200, { ...securityHeaders, "Content-Type": contentType });
     res.end(req.method === "HEAD" ? undefined : content);
