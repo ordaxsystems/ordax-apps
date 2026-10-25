@@ -8,7 +8,7 @@ import { parseGcodePreview, drawGcodeLayer, gcodePreviewLimits } from "./gcode-p
 import { formatSliceProgress, hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
-import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext, buildAssistantMeshSummary } from "./ai-copilot.mjs";
+import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext, buildAssistantMeshSummary, buildAssistantBoundingRectangleCoverage } from "./ai-copilot.mjs";
 import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
 import { infillPatternLabel, infillPatternOptions } from "../../shared/infill-patterns.mjs";
 import { isSupportedSeamPosition, seamPositionLabel, seamPositionOptions } from "../../shared/seam-positions.mjs";
@@ -30,6 +30,7 @@ const DEFAULT_OBJECT_TRANSFORM = Object.freeze({ x: 0, y: 0, z: 0, rotationX: 0,
 const AI_EVIDENCE_LABELS = Object.freeze({
   settings: "Configurações atuais",
   "model.dimensionsMm": "Dimensões do projeto",
+  "model.printableSpaceFit": "Envelope geométrico e área de referência da mesa",
   "model.triangleCount": "Quantidade de faces",
   "geometryDiagnostics.degenerateTriangleCount": "Faces degeneradas",
   "geometryDiagnostics.boundaryEdgeCount": "Arestas abertas na análise local",
@@ -936,8 +937,12 @@ export function mountFeature(host = {}) {
       selectedObjectId,
       getSurfaceAreaMm2: transformedSurfaceAreaMm2,
     }) : null;
+    const dimensions = scaledDimensions();
+    const dimensionsMm = Array.isArray(dimensions) ? dimensions.map(value => Number(value.toFixed(2))) : null;
+    const printableSpaceFit = modelFitAssessment();
+    const xyBoundingRectangleCoverage = buildAssistantBoundingRectangleCoverage({ dimensionsMm, bedMm: machine.bed });
     const project = {
-      model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm: scaledDimensions().map(value => Number(value.toFixed(2))), triangleCount: model.triangleCount, printableSpaceFit: modelFitAssessment() } : null,
+      model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm, triangleCount: model.triangleCount, printableSpaceFit: { ...printableSpaceFit, xyBoundingRectangleCoverage } } : null,
       geometryDiagnostics: model?.geometryDiagnostics ? {
         method: model.geometryDiagnostics.method,
         triangleCount: model.geometryDiagnostics.triangleCount,
@@ -1045,6 +1050,8 @@ export function mountFeature(host = {}) {
       "A triagem de vértices examina o grafo de vizinhança de cada vértice: um caminho único é esperado na borda e um ciclo único no interior. Vértices com mais de uma região conectada ou graus incompatíveis são contados como não manifold. Use a contagem apenas como sinal local de revisão, não como prova de falha na peça. geometryDiagnostics.objectSummary lista até 12 peças: prioriza a peça selecionada e depois ordena por sinais locais para revisão. O campo item mantém a posição original 1-based na lista carregada, mesmo quando a lista é reordenada. Essa ordem é apenas uma triagem heurística, não mede severidade nem risco calibrado. Confira selected e omittedObjectCount antes de dizer que avaliou todas as peças.",
       "Arestas abertas, arestas com mais de duas faces, orientação compartilhada inconsistente e vizinhança não manifold são sinais para revisão, mas não explicam sozinhos a causa. A análise não detecta autointerseções ou cavidades, não faz reparos e não conclui watertightness nem imprimibilidade.",
       "model.printableSpaceFit é uma triagem geométrica por caixa envolvente individual de cada peça, contorno imprimível e regiões excluídas do perfil. outsideObjectItems contém índices 1-based na lista original; a caixa é conservadora e não representa a malha exata, brim/skirt, suportes, saliências nem colisões. Quando reason informa margem desconhecida, não declare que a peça cabe. Status com reference refere-se somente à mesa visual genérica; só o OrcaSlicer valida o fatiamento final.",
+      "model.printableSpaceFit.xyBoundingRectangleCoverage é calculado localmente como a área do retângulo envolvente XY dividido pela área retangular completa da mesa. Repita coveragePercent exatamente como fornecido e não recalcule porcentagens a partir das dimensões. Isso não mede a área real de contato, ocupação da mesa, folga, brim, obstáculos ou imprimibilidade; quando a mesa é referência, identifique o valor como referência. Se o campo estiver ausente, não estime a porcentagem.",
+      "Quando model.demonstrationOnly for true, identifique a peça como demonstração visual, não a trate como o arquivo real do usuário e diga para abrir um STL/3MF próprio no app para fazer uma avaliação local. Nunca peça que a pessoa envie a malha ou o G-code ao provedor de IA: esses arquivos não são transmitidos.",
       "Os resumos dos perfis incluem listas declaradas de compatibilidade. Só recomende uma troca de perfil quando os nomes exatos confirmarem compatibilidade com a máquina e entre filamento/processo; se houver expressão a avaliar, itens omitidos na lista ou herança não resolvida, diga que os dados não bastam e mantenha a seleção atual.",
       "A superfície selecionada aparece em settings.bedType; null significa herdar dos perfis. Use printerProfile.bedTypeCapability e materialProfile.bedTemperaturesByType para explicar suporte e temperaturas herdadas, sem inferir temperaturas ausentes nem afirmar que a superfície é ótima sem calibração.",
       "Identifique quando os perfis são referências; perfis carregados no host ainda dependem da validação do próprio motor. Se latestSlice existir, trate suas estatísticas como saída real do motor, cite a origem e separe fatos de inferências; não invente causas ou resultados ausentes. Se stats.featureBreakdown existir, explique os tipos que mais consomem tempo com base em timeSeconds e timeSharePercent; isso descreve o fatiamento e não prova defeito ou qualidade.",

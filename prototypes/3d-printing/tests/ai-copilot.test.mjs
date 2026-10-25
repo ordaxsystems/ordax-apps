@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assistantStructuredOutput, assistantEvidenceIds, buildAssistantMeshSummary, buildAssistantProfileContext, parseAssistantReply, assistantSuggestionSchema, assistantProfileOptionLimit, assistantMeshObjectLimit } from "../features/fatiamento-3d/ai-copilot.mjs";
+import { assistantStructuredOutput, assistantEvidenceIds, buildAssistantMeshSummary, buildAssistantProfileContext, buildAssistantBoundingRectangleCoverage, parseAssistantReply, assistantSuggestionSchema, assistantProfileOptionLimit, assistantMeshObjectLimit } from "../features/fatiamento-3d/ai-copilot.mjs";
 import { readProfileCompatibility } from "../features/fatiamento-3d/profile-compatibility.mjs";
 
 const machineId = `orca-machine-${"a".repeat(24)}`;
@@ -311,6 +311,18 @@ test("schema da IA aceita a evidência determinística do envelope da mesa", () 
     settings: { quality: "fine", layerHeight: null, walls: null, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
   }), { allowedEvidence: [evidenceId], allowedProfiles });
   assert.deepEqual(parsed.suggestion.evidence, [evidenceId]);
+});
+
+test("IA recebe proporção local exata do retângulo XY sem tratá-la como área de contato", () => {
+  const result = buildAssistantBoundingRectangleCoverage({ dimensionsMm: [58, 109, 55], bedMm: [256, 256, 256] });
+  assert.deepEqual(result, {
+    method: "axis-aligned-xy-bounding-rectangles/1",
+    boundingRectangleAreaMm2: 6322,
+    bedRectangleAreaMm2: 65536,
+    coveragePercent: 9.65,
+  });
+  assert.equal(buildAssistantBoundingRectangleCoverage({ dimensionsMm: [58, 0, 55], bedMm: [256, 256, 256] }), null);
+  assert.equal(buildAssistantBoundingRectangleCoverage({ dimensionsMm: [58, 109, 55], bedMm: [256] }), null);
 });
 
 test("resumo geométrico limita peças, prioriza a selecionada e preserva a ordem como referência", () => {

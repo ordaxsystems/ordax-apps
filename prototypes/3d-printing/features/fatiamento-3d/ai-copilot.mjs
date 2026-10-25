@@ -249,6 +249,20 @@ export function buildAssistantMeshSummary({ objects, geometryDiagnostics, select
   });
 }
 
+export function buildAssistantBoundingRectangleCoverage({ dimensionsMm, bedMm } = {}) {
+  if (!Array.isArray(dimensionsMm) || dimensionsMm.length < 2 || !Array.isArray(bedMm) || bedMm.length < 2) return null;
+  const [modelX, modelY, bedX, bedY] = [dimensionsMm[0], dimensionsMm[1], bedMm[0], bedMm[1]];
+  if (![modelX, modelY, bedX, bedY].every(value => typeof value === "number" && Number.isFinite(value) && value > 0)) return null;
+  const boundingRectangleAreaMm2 = modelX * modelY;
+  const bedRectangleAreaMm2 = bedX * bedY;
+  return Object.freeze({
+    method: "axis-aligned-xy-bounding-rectangles/1",
+    boundingRectangleAreaMm2: Number(boundingRectangleAreaMm2.toFixed(2)),
+    bedRectangleAreaMm2: Number(bedRectangleAreaMm2.toFixed(2)),
+    coveragePercent: Number((100 * boundingRectangleAreaMm2 / bedRectangleAreaMm2).toFixed(2)),
+  });
+}
+
 export const assistantStructuredOutput = Object.freeze({
   name: "ordax_slicer_assistant_response",
   strict: true,
