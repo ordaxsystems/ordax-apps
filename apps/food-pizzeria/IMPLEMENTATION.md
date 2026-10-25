@@ -64,7 +64,9 @@ não abre storage nem grava em Sales. Ele usa os IDs do comando Food
 existente para exigir receipt durável concordante com o Space,
 comando, pedido, estado e revisão. Revalida vínculo de usuário/Space
 após a operação assíncrona; troca de vínculo ou receipt inválido
-gera resultado desconhecido **sem repetir o efeito**.
+gera resultado desconhecido **sem repetir o efeito**. Falha genérica de
+rede também produz estado desconhecido: só rejeição explícita e
+verificável do owner (permissão, conflito, comando inválido) é definitiva.
 O backend continua obrigado a verificar grants per-action,
 transacionar/CAS e registrar idempotência antes da confirmação.
 Essas garantias não são reproduzidas por campos de contexto no
