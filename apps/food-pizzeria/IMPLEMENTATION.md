@@ -52,6 +52,22 @@ O OS integrou o contrato Space Experience no App SDK público `1.21.0` (merge `5
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Ponte de autorização por ação — não distribuída
+
+A [PR Platform #288](https://github.com/ordaxsystems/ordax-platform/pull/288)
+integrou **somente proposta** de política `order.read`,
+`order.create` e `order.transition` baseada na Identity elegível e
+nos papéis de Space já existentes. Ela não foi aplicada ao Supabase.
+
+O módulo `src/adapters/postgres-food-action-authorizer.mjs`
+usa uma sessão verificada externamente pelo servidor e a consulta
+privada ao owner SQL, com parâmetros vinculados, **por operação**.
+Ele fecha a fronteira entre `authorizeAction` da aplicação e
+a decisão do banco, sem emitir grants, armazenar chaves ou ler
+IDs do usuário a partir do comando. Sem sessão real ou acesso
+aprovado à função privada a integração não funciona; ela não foi
+ligada à prévia e não habilita pedidos comerciais.
+
 ## Preparação de transações PostgreSQL (sem deploy)
 
 Depois da PR Apps #352 (serviço de aplicação) e da proposta privada

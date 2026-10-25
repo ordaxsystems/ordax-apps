@@ -25,6 +25,14 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 ## Próxima sequência
 
 1. **Contrato público Space Experience:** o source do OS já define `ordax.space-experience/1` e `ordax.space-capability-provider/2` em `system/contracts/space-experience.mjs`. **Ambos já estão exportados no App SDK 1.21.0 publicado pelo OS e fixado por commit/hash em `platform-sdk.lock.json`**. Ainda falta o owner host fornecer contexto autenticado, autorização real, readiness e lifecycle ao adapter Food. Enquanto isso, `embedded-preview` continua apenas prova visual local: não montar Food como Space pronto nem importar serviços privados.
+**Autorização por ação:** política privada proposta no
+[ordax-platform #288](https://github.com/ordaxsystems/ordax-platform/pull/288)
+e callback server-only `postgres-food-action-authorizer.mjs` no Apps.
+Falta owner Identity/Spaces aprovar a matriz de papéis para produção,
+expor a função somente à role SQL menos privilegiada e fornecer ao
+backend o sujeito/Space de uma sessão autenticada real. O projeto
+Supabase ainda não recebeu migrações Food.
+
 **Persistência server-only:** adapter PostgreSQL proposto em
 `src/adapters/postgres-order-transactions.mjs` e esquema privado validado
 no [ordax-platform #287](https://github.com/ordaxsystems/ordax-platform/pull/287).
