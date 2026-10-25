@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ordaxsystems/ordax-platform
-          ref: 4eb2f6ba0c668af9246066424cf4e352743dc5f1
+          ref: 140b9d1fc60e502aa755845d079dc68cd47a0341
           path: .food-platform
           persist-credentials: false
 
