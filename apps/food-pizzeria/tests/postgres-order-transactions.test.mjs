@@ -180,17 +180,7 @@ test("revocation between read and commit prevents a write", async () => {
 test("session switch between reads and writes fails closed", async () => {
   const fx = dbFixture();
   const cmd = fx.command();
-  const originalCoreQuery = fx.transactions.transact;
-  // The trusted callback returns a different epoch at the second check.
-  const adapter = createFoodPostgresTransactions({
-    pool: fx.pool,
-    authorizeAction: async () => {
-      const epoch = fx.checks === 0 ? "session-1" : "session-2";
-      return { granted: true, spaceId: SPACE_A, subjectId: ACTOR, epoch };
-    },
-  });
-  const core = createFoodOrderCore({ transactions: adapter });
-  // In this test only, closure epoch is switched by a request counter.
+  // In this test only, the server authority switches epoch on recheck.
   let count = 0;
   const freshAdapter = createFoodPostgresTransactions({
     pool: fx.pool,
@@ -204,8 +194,6 @@ test("session switch between reads and writes fails closed", async () => {
     { name: "FoodOrderRejectedError", reason: "permission-denied" });
   assert.equal(fx.journal.size, 0);
   assert.ok(!fx.calls.some(x => x.sql.startsWith("update private")));
-  assert.ok(typeof originalCoreQuery === "function");
-  assert.ok(typeof core.commitOrderCommand === "function");
 });
 
 test("revoked or foreign Space never gets a private Food state read", async () => {
