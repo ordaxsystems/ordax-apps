@@ -11,6 +11,18 @@ Este documento define as responsabilidades internas que os adapters Food deverã
 | Renderizadores em `src/ui/views/` | Apresentação de cada área do Food. | Recebem estado do mesmo app; não têm stores independentes nem são apps instaláveis. |
 | `standalone-preview` / `embedded-preview` (`src/ui/presentation.mjs` + `src/ui/preview-mount.mjs`) | Modos de demonstração, o segundo sem sidebar/cabeçalho Food e com CSS/diálogos em Shadow DOM; `navigate()` e cliques internos incorporados limitados aos módulos Food. | **Ambos exigem explicitamente `browser-local-preview` e rejeitam adapters comerciais antes de montar.** Essa verificação de modo não é autenticação/grant; portas reais dependem exclusivamente do host autorizado. |
 
+## Admissão transacional futura: confirmação durável do owner
+
+O módulo `src/ports/food-order-commit-port.mjs` introduz **somente o contrato consumidor interno** `ordax.food-order-commit-port/1` e o receipt mínimo `ordax.food-order-commit-receipt/1`. Ele não é um serviço, backend, grant, store ou publicador de pedidos.
+
+- Aceita somente os comandos Food `order.create` e `order.transition`, já definidos em `src/application/commands.mjs`, sem criar outro agregado ou command bus.
+- O port injetado deve obter o vínculo do **host real** (`spaceId`, `subjectId`, `epoch`), e o backend deve revalidar membership/grants por operação. Esses campos são uma trava de consistência da UI, **não prova de autenticação**.
+- O receipt de confirmação é mínimo (`spaceId`, `commandId`, `orderId`, `status`, `revision`, `commitId`), sem nome, telefone ou endereço do cliente. O client verifica escopo, pedido, status e `expectedRevision + 1`.
+- Se o Space/usuário/epoch mudar durante a gravação ou o backend devolver resposta ambígua, a operação recebe `FoodOrderOutcomeUnknownError`; **não é automaticamente repetida**. Um futuro backend deverá expor consulta de idempotência para reconciliação.
+- O **owner Food persistente ainda não existe**. Ele deverá implementar transação atômica, CAS, idempotência durável, auditoria e controle de grant por ação. A camada acima não substitui essas garantias, não faz fallback para `browser-local-preview` ou `apps/sales` e não está conectada à UI.
+
+`tests/order-commit-boundary.test.mjs` testa esse contrato com ports simulados para cenários negativos; não declara uma operação comercial homologada.
+
 ## Owners e responsabilidades obrigatórias
 
 | Owner | O que o port consumidor Food precisa receber/solicitar | O que Food não pode fazer | Estado |
