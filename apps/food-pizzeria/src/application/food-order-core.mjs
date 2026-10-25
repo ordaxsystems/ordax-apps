@@ -64,7 +64,14 @@ function validJournal(record, expectedId, spaceId) {
     || typeof record.digest !== "string" || !HASH.test(record.digest)) {
     throw new FoodOrderOutcomeUnknownError("O histórico durável do pedido está inconsistente.");
   }
-  const receipt = validateFoodOrderCommitReceipt(record.receipt);
+  let receipt;
+  try {
+    receipt = validateFoodOrderCommitReceipt(record.receipt);
+  } catch (cause) {
+    throw new FoodOrderOutcomeUnknownError(
+      "O recibo persistido no journal Food está inválido.", { cause },
+    );
+  }
   if (receipt.commandId !== record.commandId || receipt.spaceId !== spaceId) {
     throw new FoodOrderOutcomeUnknownError("O recibo do histórico pertence a outro comando ou Space.");
   }
