@@ -204,6 +204,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   function report(error) {
+    if (destroyed) return;
     notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível concluir esta operação." };
     renderNotice();
   }
@@ -223,7 +224,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   async function dispatch(commandInput, successText, { renderAfter = true } = {}) {
-    if (busy) return false;
+    if (busy || destroyed) return false;
     const startingRevision = snapshot?.revision;
     notice = null;
     busy = true;
@@ -235,6 +236,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         expectedRevision: startingRevision,
       });
       await store.execute(command);
+      if (destroyed) return false;
       committed = true;
       notice = { type: "success", text: successText };
       clearTimeout(noticeTimer);
@@ -244,10 +246,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       }, 3600);
       return true;
     } catch (error) {
-      notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar os dados." };
+      if (!destroyed) {
+        notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar os dados." };
+      }
       return false;
     } finally {
       busy = false;
+      if (destroyed) return;
       setBusyUI(false);
       if (committed) {
         if (renderAfter) render();
@@ -551,6 +556,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   function renderNotice() {
+    if (destroyed) return;
     if (!root || !snapshot) {
       render();
       return;
@@ -1028,14 +1034,18 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     mounted = true;
     try {
       await store.initialize();
+      if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.");
       snapshot = readFoodSnapshot(store);
       unsubscribe = store.subscribe(() => {
+        if (destroyed) return;
         snapshot = readFoodSnapshot(store);
         if (!busy) render();
       });
     } catch (error) {
+      if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.", { cause: error });
       notice = { type: "error", text: error instanceof Error ? error.message : "Armazenamento local indisponível." };
     }
+    if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.");
     root.addEventListener("click", handleClick);
     root.addEventListener("submit", handleSubmit);
     root.addEventListener("input", handleInput);
