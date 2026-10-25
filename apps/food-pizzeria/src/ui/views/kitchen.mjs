@@ -1,6 +1,6 @@
 // Pure Food page renderer. All business state and actions are supplied by the app view model.
 export function renderKitchenPage(viewModel) {
-  const { KITCHEN_CHANNEL_FILTERS, kitchenChannelFilter, snapshot, ORDER_STAGE_ALERT_MINUTES, stageStartedAt, elapsedMinutes, renderOrderCard, emptyState } = viewModel;
+  const { KITCHEN_CHANNEL_FILTERS, kitchenChannelFilter, snapshot, ORDER_STAGE_ALERT_MINUTES, stageStartedAt, elapsedMinutes, renderOrderCard, kitchenChannelButton } = viewModel;
   const columns = [
     { status: "received", title: "Recebidos", icon: "◉" },
     { status: "preparing", title: "Em preparo", icon: "◷" },
