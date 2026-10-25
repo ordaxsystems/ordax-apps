@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
@@ -44,6 +44,21 @@ async function waitForHttp(url, child) {
     await pause(70);
   }
   throw new Error(`Serviço localhost não respondeu: ${url}`);
+}
+
+async function waitForChromeDebugger(profile, child) {
+  for (let attempt = 0; attempt < 160; attempt += 1) {
+    if (child.exitCode !== null) {
+      throw new Error(`Chrome encerrou antes de publicar DevTools (exit=${child.exitCode}).`);
+    }
+    try {
+      const data = await readFile(join(profile, "DevToolsActivePort"), "utf8");
+      const selectedPort = Number(data.split("\\n")[0]);
+      if (Number.isInteger(selectedPort) && selectedPort > 0) return selectedPort;
+    } catch { /* Chrome creates this file after starting its debugger. */ }
+    await pause(100);
+  }
+  throw new Error("Chrome não publicou DevToolsActivePort no perfil temporário.");
 }
 
 async function connectCdp(webSocketUrl) {
@@ -115,8 +130,9 @@ async function waitForBrowserResult(cdp, label) {
 }
 
 const browserBinary = chromeExecutable();
-const [serverPort, debuggerPort] = await Promise.all([freeLocalPort(), freeLocalPort()]);
+const serverPort = await freeLocalPort();
 const temporary = await mkdtemp(join(tmpdir(), "ordax-food-browser-"));
+const chromeProfile = join(temporary, "chrome-profile");
 const localServer = spawn(process.execPath,
   ["prototypes/food-pizzeria/server.mjs", "-Port", String(serverPort)],
   { env: { ...process.env, ORDAX_FOOD_BROWSER_SMOKE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
@@ -124,8 +140,8 @@ const chrome = spawn(browserBinary, [
   "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
   "--disable-extensions", "--no-first-run", "--no-default-browser-check",
   "--disable-background-networking", "--remote-allow-origins=*",
-  `--remote-debugging-port=${debuggerPort}`,
-  `--user-data-dir=${join(temporary, "chrome-profile")}`,
+  "--remote-debugging-port=0",
+  `--user-data-dir=${chromeProfile}`,
   "--window-size=1440,900", "about:blank",
 ], { stdio: ["ignore", "ignore", "pipe"] });
 
@@ -140,6 +156,7 @@ let cdp;
 try {
   const base = `http://127.0.0.1:${serverPort}/apps/food-pizzeria/`;
   await waitForHttp(base, localServer);
+  const debuggerPort = await waitForChromeDebugger(chromeProfile, chrome);
   const response = await waitForHttp(`http://127.0.0.1:${debuggerPort}/json`, chrome);
   const targets = await response.json();
   const page = targets.find((target) => target.type === "page" && target.webSocketDebuggerUrl);
