@@ -11,85 +11,158 @@ const scenarios = Object.freeze([
   ["embedded-preview", "tables"],
 ]);
 
-function findChrome() {
-  for (const name of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
-    const found = spawnSync("which", [name], { encoding: "utf8" });
+function chromeExecutable() {
+  for (const binary of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
+    const found = spawnSync("which", [binary], { encoding: "utf8" });
     if (found.status === 0 && found.stdout.trim()) return found.stdout.trim();
   }
-  throw new Error("Chromium/Chrome não está instalado no runner. A prova de navegador não pode ser ignorada.");
+  throw new Error("Chrome/Chromium não está instalado. A prova de navegador é obrigatória.");
 }
 
 async function freeLocalPort() {
-  const server = createServer();
+  const temporaryServer = createServer();
   try {
     await new Promise((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", resolve);
+      temporaryServer.once("error", reject);
+      temporaryServer.listen(0, "127.0.0.1", resolve);
     });
-    return server.address().port;
+    return temporaryServer.address().port;
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => temporaryServer.close(resolve));
   }
 }
 
-async function untilServing(url, server) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (server.exitCode !== null) {
-      throw new Error(`O servidor Food encerrou com código ${server.exitCode} antes da prova.`);
-    }
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitForHttp(url, child) {
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    if (child.exitCode !== null) throw new Error(`Processo encerrou prematuramente: ${child.exitCode}`);
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(1000) });
-      if (response.ok) return;
-    } catch { /* The local HTTP server is still starting. */ }
-    await new Promise((resolve) => setTimeout(resolve, 60));
+      const response = await fetch(url, { signal: AbortSignal.timeout(700) });
+      if (response.ok) return response;
+    } catch { /* Local server still starting. */ }
+    await pause(70);
   }
-  throw new Error("O servidor localhost Food não inicializou para o teste de navegador.");
+  throw new Error(`Serviço localhost não respondeu: ${url}`);
 }
 
-const browser = findChrome();
-const port = await freeLocalPort();
+async function connectCdp(webSocketUrl) {
+  if (typeof WebSocket !== "function") {
+    throw new Error("O runner requer Node.js com WebSocket nativo (Node 22+).");
+  }
+  const socket = new WebSocket(webSocketUrl);
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Chrome DevTools não aceitou o socket.")), 8000);
+    socket.addEventListener("open", () => { clearTimeout(timeout); resolve(); }, { once: true });
+    socket.addEventListener("error", () => {
+      clearTimeout(timeout);
+      reject(new Error("Erro de conexão com Chrome DevTools."));
+    }, { once: true });
+  });
+  let nextId = 0;
+  const pending = new Map();
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data);
+    if (!message.id) return;
+    const operation = pending.get(message.id);
+    if (!operation) return;
+    pending.delete(message.id);
+    clearTimeout(operation.timeout);
+    if (message.error) operation.reject(new Error(JSON.stringify(message.error)));
+    else operation.resolve(message.result);
+  });
+  function send(method, params = {}) {
+    return new Promise((resolve, reject) => {
+      const id = ++nextId;
+      const timeout = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error(`CDP expirou ao executar ${method}.`));
+      }, 8000);
+      pending.set(id, { resolve, reject, timeout });
+      socket.send(JSON.stringify({ id, method, params }));
+    });
+  }
+  return { send, close: () => socket.close() };
+}
+
+async function waitForBrowserResult(cdp, label) {
+  const deadline = Date.now() + 20000;
+  let lastState;
+  while (Date.now() < deadline) {
+    try {
+      const report = await cdp.send("Runtime.evaluate", {
+        expression: `(() => {
+          const proof = document.getElementById("food-browser-proof");
+          return {
+            status: proof?.getAttribute("data-result") ?? "PENDING",
+            text: proof?.textContent ?? "",
+            path: location.href,
+            readyState: document.readyState
+          };
+        })()`,
+        returnByValue: true,
+      });
+      lastState = report?.result?.value;
+      if (lastState?.status === "PASS") return lastState;
+      if (lastState?.status === "FAIL") throw new Error(lastState.text);
+    } catch (error) {
+      if (String(error).includes("FOOD_BROWSER_PROOF=FAIL")) throw error;
+      // Runtime execution contexts briefly disappear during Page.navigate.
+    }
+    await pause(125);
+  }
+  throw new Error(`Chrome não concluiu a prova ${label}: ${JSON.stringify(lastState)}`);
+}
+
+const browserBinary = chromeExecutable();
+const [serverPort, debuggerPort] = await Promise.all([freeLocalPort(), freeLocalPort()]);
 const temporary = await mkdtemp(join(tmpdir(), "ordax-food-browser-"));
-const server = spawn(process.execPath, ["prototypes/food-pizzeria/server.mjs", "-Port", String(port)], {
-  env: { ...process.env, ORDAX_FOOD_BROWSER_SMOKE: "1" },
-  stdio: ["ignore", "pipe", "pipe"],
-});
-let serverLogs = "";
-for (const stream of [server.stdout, server.stderr]) {
-  stream.on("data", (data) => { serverLogs = (serverLogs + data.toString()).slice(-4096); });
-}
+const localServer = spawn(process.execPath,
+  ["prototypes/food-pizzeria/server.mjs", "-Port", String(serverPort)],
+  { env: { ...process.env, ORDAX_FOOD_BROWSER_SMOKE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+const chrome = spawn(browserBinary, [
+  "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+  "--disable-extensions", "--no-first-run", "--no-default-browser-check",
+  "--disable-background-networking", "--remote-allow-origins=*",
+  `--remote-debugging-port=${debuggerPort}`,
+  `--user-data-dir=${join(temporary, "chrome-profile")}`,
+  "--window-size=1440,900", "about:blank",
+], { stdio: ["ignore", "ignore", "pipe"] });
 
+let diagnostics = "";
+for (const child of [localServer, chrome]) {
+  child.on("error", (error) => { diagnostics = (diagnostics + String(error)).slice(-5000); });
+  child.stderr?.on("data", (data) => {
+    diagnostics = (diagnostics + data.toString()).slice(-5000);
+  });
+}
+let cdp;
 try {
-  const base = `http://127.0.0.1:${port}/apps/food-pizzeria/`;
-  await untilServing(base, server);
+  const base = `http://127.0.0.1:${serverPort}/apps/food-pizzeria/`;
+  await waitForHttp(base, localServer);
+  const response = await waitForHttp(`http://127.0.0.1:${debuggerPort}/json`, chrome);
+  const targets = await response.json();
+  const page = targets.find((target) => target.type === "page" && target.webSocketDebuggerUrl);
+  if (!page) throw new Error("Chrome não publicou um target de página navegável.");
+  cdp = await connectCdp(page.webSocketDebuggerUrl);
+  await cdp.send("Page.enable");
+  await cdp.send("Runtime.enable");
+
   for (const [presentation, view] of scenarios) {
     const url = new URL(base);
     url.searchParams.set("presentation", presentation);
     url.searchParams.set("view", view);
     url.searchParams.set("__browser_probe", "1");
-    const profileDir = join(temporary, `${presentation}-${view}`);
-    const result = spawnSync(browser, [
-      "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
-      "--disable-extensions", "--no-first-run", "--no-default-browser-check",
-      "--disable-background-networking", "--window-size=1440,900",
-      "--virtual-time-budget=10000", "--dump-dom",
-      `--user-data-dir=${profileDir}`, url.toString(),
-    ], { encoding: "utf8", timeout: 45000, maxBuffer: 12 * 1024 * 1024 });
-    const marker = result.stdout?.match(/FOOD_BROWSER_PROOF=(PASS|FAIL);([^<]*)/);
-    if (result.error || result.status !== 0 || !marker || marker[1] !== "PASS") {
-      throw new Error([
-        `Prova real de navegador falhou: ${presentation}/${view}`,
-        `exit=${result.status} signal=${result.signal} error=${result.error ?? "none"}`,
-        `probe=${marker?.[0] ?? "ausente"}`,
-        `Chrome stderr: ${(result.stderr ?? "").slice(-2400)}`,
-        `HTML tail: ${(result.stdout ?? "").slice(-1200)}`,
-      ].join("\n"));
-    }
+    await cdp.send("Page.navigate", { url: url.toString() });
+    await waitForBrowserResult(cdp, `${presentation}/${view}`);
     process.stdout.write(`FOOD_BROWSER_PREVIEW=PASS ${presentation}/${view}\n`);
   }
 } catch (error) {
-  process.stderr.write(`${error.stack ?? error}\nServer log: ${serverLogs}\n`);
+  process.stderr.write(`${error.stack ?? error}\nChrome/server diagnostic tail: ${diagnostics}\n`);
   process.exitCode = 1;
 } finally {
-  server.kill("SIGTERM");
+  cdp?.close();
+  chrome.kill("SIGTERM");
+  localServer.kill("SIGTERM");
   await rm(temporary, { recursive: true, force: true });
 }
