@@ -52,6 +52,29 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Revisão — integridade do journal local e notificações entre abas (2026-10-24)
+
+O preview registra identificador e digest SHA-256 de cada comando para rejeitar
+replay divergente. O limite local é 1.000 comandos; descartar silenciosamente
+os mais antigos permitiria reutilizar um identificador expirado, sobretudo para
+operações idempotentes sem mudança de revisão.
+
+O adapter agora **falha fechado ao atingir o limite**, preservando todos os
+registros e o estado já gravado. Replays exatamente idênticos continuam
+aceitos mesmo com o histórico cheio, enquanto novas operações são rejeitadas
+com erro explícito. Não há rotação automática de journal nem exclusão silenciosa;
+a recuperação/migração empresarial exige port oficial antes do uso real.
+
+Eventos `storage` atrasados não passam mais a antiga payload diretamente
+para o snapshot. Ao receber uma notificação, o adapter lê o envelope atual
+do armazenamento, evitando regredir o estado para uma versão antiga por causa
+de eventos enfileirados. O uso do mesmo Web Locks existente continua obrigatório
+para gravar; isso **não** é sincronização entre dispositivos.
+
+Os testes `local-store-persistence.test.mjs` verificam bloqueio seguro no
+limite, preservação dos primeiros/últimos IDs, replay exato, rejeição de
+payload conflitante, reabertura do navegador e eventos antigos entre abas.
+
 ## Revisão — preço conferido antes do pedido (2026-10-24)
 
 A prévia Food já calculava o preço atual de um item na renderização do
