@@ -13,7 +13,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 - Preço do rascunho de pedido revisado antes de gravar: mudança posterior na precificação exige uma segunda confirmação, sem emitir pedido ou pagamento; revisão esperada (CAS) protege concorrência.
 - Migração de preview v3/v4 com arquivo local do antigo estoque v3 antes de reescrever a chave ativa.
 - Pedidos, KDS, Cardápio/fichas, Mesas/Comandas e Delivery mantidos como áreas do Food Core.
-- Renderizadores operacionais separados, consumindo o snapshot/view model único do app.
+- Renderizadores operacionais separados, consumindo o snapshot/view model único do app. Prévia incorporável permite renderizar conteúdo Food sem sidebar nem cabeçalho próprios, mas permanece local e explicitamente não autorizada como Space.
 - Tamanhos de pizza, limite de sabores e mesas configuráveis; novos tamanhos entram inativos até preços e fichas técnicas estarem prontos.
 - Salão exige comanda e tem canal próprio, separado de balcão; pedidos e encerramentos respeitam a cronologia da comanda. Ajustes não podem diminuir os lugares de uma mesa abaixo dos ocupantes de comanda aberta; o histórico de comandas encerradas permanece preservado.
 - Persistência local cobre reabertura, replay exato sem duplicação e rejeição de gravação com revisão antiga; o journal de IDs não é truncado silenciosamente ao atingir o limite, e eventos de outras abas sempre reconsultam o registro persistido atual.
@@ -23,7 +23,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 
 ## Próxima sequência
 
-1. **Contrato público Space Experience:** Platform/OS publica e versiona contratos de provider, snapshot, contexto autorizado, readiness, navegação e ciclo de vida no App SDK. Enquanto isso não existir, não montar Food dentro de Spaces por import privado.
+1. **Contrato público Space Experience:** o source do OS já define `ordax.space-experience/1` e `ordax.space-capability-provider/2` em `system/contracts/space-experience.mjs`. **Nenhum deles está exportado no App SDK 1.20.0 fixado por `ordax-apps/platform-sdk.lock.json`** nem há adapter Food autorizado. O owner OS precisa publicar/versionar esses contratos no bundle público, com composição, escopo autenticado, readiness e lifecycle. Até lá, o novo modo `embedded-preview` é apenas prova visual local; não montar Food no Space nem importar serviços privados.
 2. **Contratos Food Order Core ↔ Sales/Space:** implementar apenas após publicação/homologação dos contratos públicos da autoridade Food prevista em FOOD-001/ACHEGUESE-001: IDs/revisões, canais, produção, projeção opcional read-only para Sales e idempotência. Não gravar pedidos reais nem duplicar o mestre comercial.
 3. **Inventory consumption:** definir request/receipt de consumo, escopo autorizado do Space, idempotência, rejeição de saldo e política de retry/compensação. Food propõe quantidades; Inventory registra movimentos.
 4. **Sales, Payments e Finance:** definir sale reference, confirmação de pagamento e posting financeiro entre owners. Não concluir caixa no Food sem resultado confirmado por Payments.
