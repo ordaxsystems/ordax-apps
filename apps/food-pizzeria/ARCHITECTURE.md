@@ -4,7 +4,7 @@
 
 OrdaX Food é um domínio vertical em protótipo independente. A experiência de negócio pretendida é o **Space Pizzaria**, composto pelo Space e por providers autorizados de capacidades especializadas e horizontais. Food não cria um segundo Space, dashboard agregado ou sistema de permissões.
 
-Este repositório ainda não tem o contrato público de Space Experience necessário para montar Food dentro do OrdaX OS. O protótipo local não declara integração com Space, Windows, Web de produção, Store ou OrdaX OS.
+O App SDK público `1.21.0` já disponibiliza os contratos Space Experience canônicos. O OS integrou a projeção Native read-only vinculada à Identity, ao catálogo e ao Space selecionado (PR #2246), mas **isso não autoriza gravações de pedidos**. A experiência Food continua uma prévia local, sem provider comercial, sincronização real entre dispositivos, instalação ou publicação na Store.
 
 ## Responsabilidades e fonte de verdade
 
