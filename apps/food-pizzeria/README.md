@@ -13,7 +13,7 @@ Protótipo independente do domínio de alimentação, com pizzaria e registros f
 - Delivery: acompanhar pedidos prontos e em rota a partir do estado Food.
 - Visão geral, Caixa/PDV, Estoque, Clientes, Relatórios e Equipe mostram que o provider correspondente ainda não está conectado.
 
-O cabeçalho identifica a prévia local. Pedidos, cardápio, comandas e receitas usam o estado fictício persistido neste navegador; isso não é operação comercial nem sincronização entre dispositivos. Sales continua sendo o owner do pedido comercial; a integração Food ainda depende de contrato público que permita referenciar o pedido e separar produção/fulfillment. Fichas técnicas usam referências de insumo de fixture apenas para testar a interface.
+O cabeçalho identifica a prévia local. Pedidos, cardápio, comandas e receitas usam estado fictício deste navegador; não há operação comercial nem sincronização entre dispositivos. Conforme FOOD-001/ACHEGUESE-001 do owner OS, **Food Order Core será o único owner do pedido quando Food for o provedor**; o livro genérico Sales não será um segundo pedido mestre. O Food comercial ainda depende da publicação do contrato de pedidos. Fichas técnicas usam referências fictícias de insumo somente para testar a interface.
 
 ## Executar
 
@@ -24,5 +24,7 @@ node .\prototypes\food-pizzeria\server.mjs
 ```
 
 Abra `http://127.0.0.1:4240`. A porta pode ser alterada com `-Port`.
+
+Para exercitar a composição visual sem criar outra sidebar, a prévia possui também o modo local `?presentation=embedded-preview&view=kitchen` (troque `kitchen` por `orders`, `menu`, `tables`, `delivery` ou `settings`). **Esse modo não é um Space conectado**, não autentica pessoas, não expõe um provider autorizado e mantém os mesmos dados de demonstração. Na integração real, o host deverá controlar a navegação e a apresentação.
 
 Veja [ARCHITECTURE.md](./ARCHITECTURE.md), [IMPLEMENTATION.md](./IMPLEMENTATION.md) e [PLAN.md](./PLAN.md) para ownership, auditoria, contratos e gates.
