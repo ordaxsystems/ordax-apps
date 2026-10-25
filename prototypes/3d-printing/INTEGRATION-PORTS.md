@@ -15,6 +15,29 @@ Este documento registra os owners canônicos e as fronteiras que ainda precisam 
 | Impressora física e worker de fatiamento remoto | OS/Platform e owner de dispositivos/jobs | OrcaSlicer roda pelo adapter loopback local. Cadastro e status de demonstração são locais. O modo remoto está deferido. | Grant de dispositivo, admissão/job API, fila, cancelamento, progresso, transferência segura de arquivo, limites, isolamento, limpeza, telemetria e receipts. Enquanto não existir, não publicar provider ou endpoint remoto. |
 | IA/MCP | OrdaX Intelligence e owner de cada ferramenta | Consulta Groq por adapter local. A resposta informa `authority: none` e `toolExecution: false`; não executa MCP. | Porta pública de Intelligence, catálogo de ferramentas com owner, schemas/versionamento, grant por ação, consentimento, policy de dados, auditoria, idempotência e recibos. Sem esses contratos, IA só aconselha e não chama ferramentas. |
 
+## Composição da visão geral do Space para uma oficina
+
+A imagem de referência representa a visão geral do Space. O Space monta o shell, o contexto da oficina, os indicadores e os painéis agregados. OrdaX 3D contribui somente com navegação e dados técnicos tipados quando o contrato público de mount/read model existir; não cria uma segunda visão geral dentro do app. Esta tabela é um mapa de ownership para orientar a integração, não declara providers disponíveis.
+
+| Painel ou dado da referência | Owner dos dados / contribuição | Limite e dependência |
+| --- | --- | --- |
+| Contexto da oficina, busca global, conta, plano e navegação | Space / OrdaX OS | Montagem autenticada, identidade, Space selecionado, grants, capability/theme e rotas vêm do contrato de Space. |
+| KPIs e visão geral | Space compõe projeções read-only dos owners | Cada valor precisa indicar origem, atualização e estado de disponibilidade; o Space não duplica a fonte de verdade de cada domínio. |
+| Fila, progresso e resultado técnico de impressão | OrdaX 3D (`technical-print-jobs`) | Exibe estado de jobs técnicos. Pedido, preço, cliente e prazo comercial permanecem em Vendas; progresso de hardware exige confirmação do owner de dispositivos. |
+| Parque, disponibilidade e estado de impressoras | Owner de dispositivos da plataforma; OrdaX 3D associa job técnico | Não há provider de dispositivos conectado neste repo. Estado online, capacidade e controle físico não podem vir de fixtures do host. |
+| Materiais e quantidade restante | Inventory para saldo, SKU/lote e movimentações; OrdaX 3D para consumo estimado | A estimativa do app permanece separada do saldo. Inventory precisa oferecer projeção autorizada; reserva e baixa são comandos do próprio Inventory. |
+| Alertas de manutenção | Owner canônico de dispositivos/manutenção, ainda a confirmar | OrdaX 3D pode exibir eventos técnicos próprios quando o contrato existir. Não tratar lembretes locais como telemetria ou manutenção registrada. |
+| Arquivos 3D e G-code persistidos/compartilhados | Files / owner de arquivos da plataforma | Requer URI/content handle grant-scoped, política de retenção e regras de compartilhamento. O canal atual só mantém arquivos em memória durante a sessão. |
+| Clientes, pedidos e entrega no prazo | Vendas | A visão geral consome uma projeção autorizada. O job técnico guarda apenas a referência permitida e não duplica cadastro ou estado comercial. |
+| Relatórios agregados entre domínios | Space ou owner explícito do relatório | Definir autorização, escopo e proveniência por fonte; sem isso, manter relatório restrito ao domínio de origem. |
+| Visualização de um trabalho selecionado | OrdaX 3D, a partir do modelo/job autorizado | G-code e modelo seguem as permissões de Files; a imagem de demonstração do host não representa fabricação nem job real. |
+
+### Contrato mínimo para montar os painéis
+
+O contrato público deve permitir que o Space selecione contribuições de overview e rotas da capacidade, injete contexto autenticado e grants, e solicite projeções read-only versionadas aos owners. Cada projeção precisa declarar esquema, owner, escopo, carimbo de atualização, estado vazio/erro e limites de dados. A navegação deve apontar para rotas do app autorizadas pelo Space. Escritas, comandos de dispositivo e movimentos de estoque continuam nas APIs do owner correspondente, com consentimento, idempotência e recibo quando aplicável.
+
+Até esse contrato ser publicado e implementado, a tela de referência é especificação visual: a prévia local pode usar fixtures claramente rotuladas, mas não deve afirmar que indicadores, impressoras, materiais, clientes ou arquivos estão sincronizados.
+
 ## Estado técnico compartilhado
 
 `ordax.3d-technical-job-repository/1` é uma porta **interna** do OrdaX 3D, não um provider público da plataforma. A coleção `technical-print-jobs` é a única origem da lista técnica local. Fila, Materiais, Central de Impressoras e o botão de incluir resultado do slicer compartilham a mesma instância de `createTechnicalJobsService`.
