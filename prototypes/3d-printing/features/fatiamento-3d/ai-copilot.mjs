@@ -12,6 +12,7 @@ export const assistantEvidenceIds = Object.freeze([
   "settings",
   "model.dimensionsMm",
   "model.printableSpaceFit",
+  "model.objectEnvelopeOverlaps",
   "model.triangleCount",
   "geometryDiagnostics.degenerateTriangleCount",
   "geometryDiagnostics.boundaryEdgeCount",

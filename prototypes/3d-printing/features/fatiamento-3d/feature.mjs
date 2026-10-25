@@ -3,7 +3,7 @@ import { parseMeshFile } from "./mesh-import.mjs";
 import { createDemoModel } from "./demo-model.mjs";
 import { createMeshViewer } from "./mesh-viewer.mjs";
 import { analyzeMeshGeometry } from "./mesh-analysis.mjs";
-import { assessModelEnvelope, estimateBrimMarginMm } from "./bed-envelope.mjs";
+import { assessModelEnvelope, assessObjectEnvelopeOverlaps, estimateBrimMarginMm } from "./bed-envelope.mjs";
 import { parseGcodePreview, drawGcodeLayer, gcodePreviewLimits } from "./gcode-preview.mjs";
 import { formatSliceProgress, hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
@@ -31,6 +31,7 @@ const AI_EVIDENCE_LABELS = Object.freeze({
   settings: "Configurações atuais",
   "model.dimensionsMm": "Dimensões do projeto",
   "model.printableSpaceFit": "Envelope geométrico e área de referência da mesa",
+  "model.objectEnvelopeOverlaps": "Triagem de sobreposição entre caixas envolventes das peças",
   "model.triangleCount": "Quantidade de faces",
   "geometryDiagnostics.degenerateTriangleCount": "Faces degeneradas",
   "geometryDiagnostics.boundaryEdgeCount": "Arestas abertas na análise local",
@@ -203,7 +204,7 @@ export function mountFeature(host = {}) {
             <button class="model-drop" type="button" data-open><span class="drop-glyph">${icon("upload", 20)}</span><span><strong>Solte um STL, 3MF ou projeto OrdaX</strong><small>ou escolha um arquivo no computador</small></span><b>MALHA 50 MB · PACOTE 51 MB</b></button>
             <div class="object-card" data-object-card hidden><div class="object-thumb">${icon("cube", 22)}</div><div class="object-name"><strong data-file-name>—</strong><small data-file-details>—</small></div><button class="small-icon remove-object" type="button" data-remove aria-label="Remover modelo">${icon("close", 14)}</button></div>
             <section class="object-processes" data-object-processes hidden aria-label="Processos de impressão por objeto"><div class="processes-heading"><div><span class="panel-kicker">PROCESSOS POR OBJETO</span><strong data-process-summary>1 objeto · 1 processo</strong></div><span class="processes-count" data-process-count>1</span></div><div class="object-process-list" data-object-process-list></div><div class="process-actions"><button class="button secondary" type="button" data-process-add title="Cria um processo com os parâmetros atuais para a peça selecionada.">Separar peça</button><button class="button secondary" type="button" data-process-remove title="Move as peças deste processo para outro processo antes de removê-lo.">Remover</button></div><p class="process-note" data-process-note>Os processos são aplicados por objeto 3MF. Um arquivo STL corresponde a um único objeto.</p></section>
-            <div class="model-metrics" data-model-metrics hidden><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Área triangulada</span><strong data-surface-area>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Faces degeneradas</span><strong data-degenerate-faces>—</strong></div><div><span>Arestas abertas · análise local</span><strong data-boundary-edges>—</strong></div><div><span>Arestas com 3+ faces</span><strong data-nonmanifold-edges>—</strong></div><div><span>Vértices com vizinhança não manifold</span><strong data-nonmanifold-vertices>—</strong></div><div><span>Orientação compartilhada</span><strong data-inconsistent-winding-edges>—</strong></div><p class="geometry-note" data-geometry-note>A análise local de arestas e vértices é uma triagem; não certifica imprimibilidade.</p></div>
+            <div class="model-metrics" data-model-metrics hidden><div><span>Possíveis sobreposições entre peças</span><strong data-object-overlaps>—</strong></div><div><span>Dimensões</span><strong data-dimensions>—</strong></div><div><span>Faces triangulares</span><strong data-triangles>—</strong></div><div><span>Área triangulada</span><strong data-surface-area>—</strong></div><div><span>Limite da mesa</span><strong data-fit>—</strong></div><div><span>Faces degeneradas</span><strong data-degenerate-faces>—</strong></div><div><span>Arestas abertas · análise local</span><strong data-boundary-edges>—</strong></div><div><span>Arestas com 3+ faces</span><strong data-nonmanifold-edges>—</strong></div><div><span>Vértices com vizinhança não manifold</span><strong data-nonmanifold-vertices>—</strong></div><div><span>Orientação compartilhada</span><strong data-inconsistent-winding-edges>—</strong></div><p class="geometry-note" data-overlap-note hidden></p><p class="geometry-note" data-geometry-note>A análise local de arestas e vértices é uma triagem; não certifica imprimibilidade.</p></div>
             <div class="draft-note" data-source-note>${icon("file", 14)}<span>O arquivo original fica nesta sessão. O rascunho guarda apenas seus parâmetros neste navegador.</span></div>
             <div class="panel-separator"></div>
             <div class="panel-heading compact"><div><span class="panel-kicker">PERFIS DE FATIAMENTO</span><h2 data-profile-heading>Perfis de referência</h2></div></div>
@@ -942,7 +943,7 @@ export function mountFeature(host = {}) {
     const printableSpaceFit = modelFitAssessment();
     const xyBoundingRectangleCoverage = buildAssistantBoundingRectangleCoverage({ dimensionsMm, bedMm: machine.bed });
     const project = {
-      model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm, triangleCount: model.triangleCount, printableSpaceFit: { ...printableSpaceFit, xyBoundingRectangleCoverage } } : null,
+      model: model ? { format: model.format, demonstrationOnly: Boolean(model.demo), dimensionsMm, triangleCount: model.triangleCount, printableSpaceFit: { ...printableSpaceFit, xyBoundingRectangleCoverage }, objectEnvelopeOverlaps: model.demo ? null : assessObjectEnvelopeOverlaps(transformedObjectsBounds(model, draft)) } : null,
       geometryDiagnostics: model?.geometryDiagnostics ? {
         method: model.geometryDiagnostics.method,
         triangleCount: model.geometryDiagnostics.triangleCount,
@@ -1206,6 +1207,31 @@ export function mountFeature(host = {}) {
       ? "Comparação aproximada com a mesa de referência desta interface."
       : "Triagem pela caixa envolvente individual de cada peça, contorno imprimível e zonas excluídas do perfil; o OrcaSlicer continua sendo a validação final.");
     fit.className = fits ? "fit-ok" : "fit-warning";
+    const overlapAssessment = model.demo
+      ? { status: "not-assessed", objectCount: model.objects.length, overlapPairCount: null, pairs: [], limitations: "A geometria de demonstração não representa um arquivo importado." }
+      : assessObjectEnvelopeOverlaps(transformedObjectsBounds(model, draft));
+    const overlapValue = content.querySelector("[data-object-overlaps]");
+    const overlapNote = content.querySelector("[data-overlap-note]");
+    if (overlapAssessment.status === "overlap-candidates") {
+      overlapValue.textContent = `${overlapAssessment.overlapPairCount} par${overlapAssessment.overlapPairCount === 1 ? "" : "es"} candidato${overlapAssessment.overlapPairCount === 1 ? "" : "s"}`;
+      overlapValue.className = "fit-warning";
+      const examples = overlapAssessment.pairs.slice(0, 3).map(pair => `peça ${pair.firstObject} ↔ peça ${pair.secondObject} (${pair.overlapMm.map(value => `${number(value, 2)} mm`).join(" × ")})`);
+      const omittedCount = Math.max(0, overlapAssessment.overlapPairCount - examples.length);
+      const omitted = omittedCount ? ` Mais ${omittedCount} par(es) não exibido(s).` : "";
+      overlapNote.textContent = `Caixas envolventes em XYZ se cruzam: ${examples.join("; ")}.${omitted} Isso é uma triagem: pode haver sobreposição das caixas sem colisão das malhas. Confira no OrcaSlicer antes de imprimir.`;
+      overlapNote.hidden = false;
+    } else if (overlapAssessment.status === "no-overlap-candidates") {
+      overlapValue.textContent = "Nenhum par identificado";
+      overlapValue.className = "fit-ok";
+      overlapNote.textContent = "As caixas envolventes transformadas não se cruzam em XYZ. Essa verificação não inspeciona superfícies nem substitui a prévia do motor.";
+      overlapNote.hidden = false;
+    } else {
+      overlapValue.textContent = overlapAssessment.objectCount < 2 ? "Sem pares" : "Não analisado";
+      overlapValue.className = "";
+      overlapNote.textContent = overlapAssessment.reason || overlapAssessment.limitations || "A amostra local não representa peças de um arquivo importado.";
+      overlapNote.hidden = overlapAssessment.objectCount < 2;
+    }
+    overlapValue.title = overlapAssessment.limitations || "Comparação conservadora das caixas alinhadas aos eixos após as transformações atuais.";
     content.querySelector("[data-stage-label]").textContent = `${machine.name.split(" · ")[0]} · mesa ${machine.bed.join(" × ")} mm`;
     content.querySelector("[data-stage-units]").textContent = model.format === "STL" ? `${draft.stlUnit} presumido` : `${model.sourceUnit} → mm`;
     content.querySelector("[data-source-note]").lastElementChild.textContent = model.demo

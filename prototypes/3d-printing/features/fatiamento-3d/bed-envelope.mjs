@@ -166,3 +166,58 @@ export function assessModelEnvelope(objectBounds, { bedSizeMm, bedOutlineMm, bed
 export function objectsWithinPrintableSpace(objectBounds, space) {
   return ["within-profile-envelope", "within-reference-envelope"].includes(assessModelEnvelope(objectBounds, space).status);
 }
+
+export function assessObjectEnvelopeOverlaps(objectBounds, { toleranceMm = 0.01, limit = 8 } = {}) {
+  const notAssessed = {
+    status: "not-assessed",
+    method: "transformed-axis-aligned-3d-bounds-pairs/1",
+    objectCount: Array.isArray(objectBounds) ? objectBounds.length : 0,
+    checkedPairCount: 0,
+    overlapPairCount: null,
+    pairs: [],
+    omittedPairCount: 0,
+    toleranceMm: Number.isFinite(toleranceMm) ? toleranceMm : null,
+    reason: "Uma ou mais caixas são inválidas ou ultrapassam o limite de peças desta triagem.",
+    limitations: "Caixas alinhadas aos eixos são uma triagem conservadora; não confirmam interseção entre malhas nem substituem a prévia do motor.",
+  };
+  if (!Array.isArray(objectBounds) || objectBounds.length < 2 || objectBounds.length > 500
+    || !Number.isFinite(toleranceMm) || toleranceMm < 0 || toleranceMm > 1
+    || !Number.isInteger(limit) || limit < 1 || limit > 50
+    || objectBounds.some(bounds => !bounds || !Array.isArray(bounds.min) || !Array.isArray(bounds.max)
+      || bounds.min.length < 3 || bounds.max.length < 3
+      || ![...bounds.min.slice(0, 3), ...bounds.max.slice(0, 3)].every(Number.isFinite)
+      || [0, 1, 2].some(axis => bounds.min[axis] > bounds.max[axis]))) {
+    return Object.freeze(notAssessed);
+  }
+
+  const pairs = [];
+  let overlapPairCount = 0;
+  const checkedPairCount = objectBounds.length * (objectBounds.length - 1) / 2;
+  for (let first = 0; first < objectBounds.length - 1; first++) {
+    const left = objectBounds[first];
+    for (let second = first + 1; second < objectBounds.length; second++) {
+      const right = objectBounds[second];
+      const overlapMm = [0, 1, 2].map(axis => Math.min(left.max[axis], right.max[axis]) - Math.max(left.min[axis], right.min[axis]));
+      if (!overlapMm.every(Number.isFinite)) return Object.freeze(notAssessed);
+      if (overlapMm.some(value => value <= toleranceMm)) continue;
+      overlapPairCount++;
+      if (pairs.length < limit) pairs.push(Object.freeze({
+        firstObject: first + 1,
+        secondObject: second + 1,
+        overlapMm: Object.freeze(overlapMm.map(value => Number(value.toFixed(2)))),
+      }));
+    }
+  }
+
+  return Object.freeze({
+    status: overlapPairCount ? "overlap-candidates" : "no-overlap-candidates",
+    method: "transformed-axis-aligned-3d-bounds-pairs/1",
+    objectCount: objectBounds.length,
+    checkedPairCount,
+    overlapPairCount,
+    pairs: Object.freeze(pairs),
+    omittedPairCount: Math.max(0, overlapPairCount - pairs.length),
+    toleranceMm,
+    limitations: "Caixas alinhadas aos eixos são uma triagem conservadora; não confirmam interseção entre malhas nem substituem a prévia do motor.",
+  });
+}

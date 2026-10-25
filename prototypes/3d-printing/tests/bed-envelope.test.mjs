@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assessModelEnvelope, boundsWithinPrintableSpace, estimateBrimMarginMm, objectsWithinPrintableSpace } from "../features/fatiamento-3d/bed-envelope.mjs";
+import { assessModelEnvelope, assessObjectEnvelopeOverlaps, boundsWithinPrintableSpace, estimateBrimMarginMm, objectsWithinPrintableSpace } from "../features/fatiamento-3d/bed-envelope.mjs";
 import { parseBedShape } from "../shared/orca-slicer-development.mjs";
 
 test("normaliza o polígono imprimível ao centro do espaço de trabalho", () => {
@@ -54,6 +54,41 @@ test("avalia cada objeto separadamente sem preencher o vão entre as peças", ()
     { min: [-90, -5, 0], max: [-80, 5, 10] },
     { min: [-1, -1, 0], max: [1, 1, 10] },
   ], space), false);
+});
+
+test("marca pares com interseção entre caixas 3D como candidatos, sem afirmar colisão de malha", () => {
+  const assessment = assessObjectEnvelopeOverlaps([
+    { min: [0, 0, 0], max: [10, 10, 10] },
+    { min: [8, 3, 4], max: [14, 12, 16] },
+    { min: [20, 0, 0], max: [30, 10, 10] },
+  ]);
+  assert.equal(assessment.status, "overlap-candidates");
+  assert.equal(assessment.checkedPairCount, 3);
+  assert.equal(assessment.overlapPairCount, 1);
+  assert.deepEqual(assessment.pairs, [{ firstObject: 1, secondObject: 2, overlapMm: [2, 7, 6] }]);
+  assert.match(assessment.limitations, /não confirmam interseção entre malhas/);
+});
+
+test("não marca caixas separadas, apenas tocando, ou afastadas no eixo Z", () => {
+  const assessment = assessObjectEnvelopeOverlaps([
+    { min: [0, 0, 0], max: [10, 10, 10] },
+    { min: [10, 0, 0], max: [20, 10, 10] },
+    { min: [0, 0, 10], max: [10, 10, 20] },
+  ]);
+  assert.equal(assessment.status, "no-overlap-candidates");
+  assert.equal(assessment.checkedPairCount, 3);
+  assert.equal(assessment.overlapPairCount, 0);
+  assert.deepEqual(assessment.pairs, []);
+});
+
+test("limita os pares exibidos e recusa parâmetros ou caixas inválidas", () => {
+  const bounds = Array.from({ length: 6 }, () => ({ min: [0, 0, 0], max: [5, 5, 5] }));
+  const assessment = assessObjectEnvelopeOverlaps(bounds, { limit: 2 });
+  assert.equal(assessment.overlapPairCount, 15);
+  assert.equal(assessment.pairs.length, 2);
+  assert.equal(assessment.omittedPairCount, 13);
+  assert.equal(assessObjectEnvelopeOverlaps([{ min: [0, 0], max: [1, 1] }, bounds[0]]).status, "not-assessed");
+  assert.equal(assessObjectEnvelopeOverlaps(bounds, { toleranceMm: -1 }).status, "not-assessed");
 });
 
 test("estima somente brim externo de largura conhecida e não inventa margem para modos automáticos", () => {

@@ -313,6 +313,18 @@ test("schema da IA aceita a evidência determinística do envelope da mesa", () 
   assert.deepEqual(parsed.suggestion.evidence, [evidenceId]);
 });
 
+test("schema da IA permite citar triagem conservadora de sobreposição entre caixas de peças", () => {
+  const evidenceId = "model.objectEnvelopeOverlaps";
+  assert.ok(assistantEvidenceIds.includes(evidenceId));
+  assert.ok(assistantStructuredOutput.schema.properties.suggestion.anyOf[0].properties.evidence.items.enum.includes(evidenceId));
+  const parsed = parseAssistantReply(reply({
+    evidence: [evidenceId],
+    profiles: null,
+    settings: { quality: "fine", layerHeight: null, walls: null, infill: null, infillPattern: null, supports: null, supportType: null, supportThresholdAngle: null, supportOnBuildPlateOnly: null, fanMinSpeedPercent: null, fanMaxSpeedPercent: null },
+  }), { allowedEvidence: [evidenceId], allowedProfiles });
+  assert.deepEqual(parsed.suggestion.evidence, [evidenceId]);
+});
+
 test("IA recebe proporção local exata do retângulo XY sem tratá-la como área de contato", () => {
   const result = buildAssistantBoundingRectangleCoverage({ dimensionsMm: [58, 109, 55], bedMm: [256, 256, 256] });
   assert.deepEqual(result, {

@@ -120,3 +120,5 @@
 @media(min-width:1181px){.object-panel{max-height:min(78vh,760px)}.settings-panel{max-height:min(78vh,760px)}}
 @media(max-width:1220px){.slice-toolbar{grid-template-columns:minmax(0,1fr)}.slice-actions{flex-wrap:wrap;justify-content:flex-start}}
 @media(max-width:760px){.slice-toolbar{gap:10px}.slice-project-name>div{max-width:none}.slice-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));justify-content:stretch}.slice-actions>*{min-width:0}.slice-actions .slice-button{grid-column:1/-1}.engine-chip{justify-content:center}.object-process-row{grid-template-columns:minmax(0,1fr) 90px}}
+.geometry-note[data-overlap-note]:not([hidden]){padding:8px 9px;border:1px solid #4c402c;border-radius:8px;background:#191d19;color:#c9af7f}
+.slicer-workspace .button.primary:disabled{border-color:#2d4146;background:#172428;color:#7d908e;box-shadow:none;opacity:1;cursor:not-allowed}

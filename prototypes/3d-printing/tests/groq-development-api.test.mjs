@@ -28,6 +28,11 @@ test("pedido Groq protege a amostra e ancora cobertura em métricas determiníst
         text: JSON.stringify({ model: {
           demonstrationOnly: true,
           dimensionsMm: [58, 109, 55],
+          objectEnvelopeOverlaps: {
+            method: "transformed-axis-aligned-3d-bounds-pairs/1",
+            overlapPairCount: 1,
+            pairs: [{ firstObject: 1, secondObject: 2, overlapMm: [2, 7, 6] }],
+          },
           printableSpaceFit: { xyBoundingRectangleCoverage: {
             method: "axis-aligned-xy-bounding-rectangles/1",
             boundingRectangleAreaMm2: 6322,
@@ -42,8 +47,11 @@ test("pedido Groq protege a amostra e ancora cobertura em métricas determiníst
     assert.equal(response.engineId, "groq");
     assert.match(payload.messages[0].content, /amostra visual/);
     assert.match(payload.messages[0].content, /Nunca peça o envio da malha ou do G-code/);
+    assert.match(payload.messages[0].content, /não declare colisão entre malhas/);
     assert.match(payload.messages[0].content, /Não recalcule porcentagens/);
     assert.match(payload.messages[1].content, /coveragePercent\\?":9\.65/);
+    assert.match(payload.messages[1].content, /objectEnvelopeOverlaps/);
+    assert.match(payload.messages[1].content, /overlapPairCount":1/);
   } finally {
     globalThis.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.GROQ_API_KEY;
