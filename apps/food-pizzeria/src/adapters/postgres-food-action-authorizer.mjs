@@ -1,13 +1,13 @@
 import { FoodOrderRejectedError } from "../ports/food-order-commit-port.mjs";
 
 // Server-only bridge to the canonical Space role policy proposed in
-// ordax-platform. This bridge is inert until that policy is reviewed,
+// ordax-platform. This bridge is inert until that boundary is reviewed,
 // migrated and EXECUTE is granted to a dedicated least-privilege server role.
 // It MUST NOT be wired to the Food preview or invoked in a browser.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EPOCH = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const ACTIONS = new Set(["order.read", "order.create", "order.transition"]);
-const LOOKUP_SQL = "select private.ordax_food_action_eligible_v1($1::uuid,$2::uuid,$3::text) as allowed";
+const LOOKUP_SQL = "select private.ordax_food_verify_action_v1($1::uuid,$2::uuid,$3::text) as allowed";
 
 function denied() {
   return new FoodOrderRejectedError("permission-denied",
