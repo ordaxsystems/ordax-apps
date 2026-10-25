@@ -52,6 +52,29 @@ O OS integrou o contrato Space Experience no App SDK público `1.21.0` (merge `5
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Fronteira de confirmação de pedido — preparação sem provider
+
+Depois da integração do read-only Space Native pela
+[PR ordax-os#2246](https://github.com/ordaxsystems/ordax-os/pull/2246)
+(commit `7e029217`), a próxima dependência é um owner de **escrita
+transacional** para os pedidos Food.
+
+O port consumidor interno em `src/ports/food-order-commit-port.mjs`
+não abre storage nem grava em Sales. Ele usa os IDs do comando Food
+existente para exigir receipt durável concordante com o Space,
+comando, pedido, estado e revisão. Revalida vínculo de usuário/Space
+após a operação assíncrona; troca de vínculo ou receipt inválido
+gera resultado desconhecido **sem repetir o efeito**.
+O backend continua obrigado a verificar grants per-action,
+transacionar/CAS e registrar idempotência antes da confirmação.
+Essas garantias não são reproduzidas por campos de contexto no
+frontend.
+
+Os testes em `tests/order-commit-boundary.test.mjs` simulam ports
+para provar recusas e consistência. **Não existe implementação do
+port transacional nem ligação à prévia.** FOOD-001 permanece
+`DEFERRED FOR EXECUTION` no roadmap canônico.
+
 ## Gate público Space Experience — SDK 1.21.0 integrado
 
 A [PR upstream #2245](https://github.com/ordaxsystems/ordax-os/pull/2245) foi integrada na `main` do OS pelo commit `5ef654236da1f2d343e3e33cd46bb747d52bc24c`, com nove verificações aprovadas. Seis schemas canônicos estão agora publicados no bundle `1.21.0`; `kitchen` é rota da capability `orders` no catálogo do OS. O pin imutável e SHA-256 do bundle foram atualizados neste repo e submetidos ao CI de compatibilidade.
