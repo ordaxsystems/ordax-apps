@@ -48,10 +48,23 @@ class ActivityGateBTests(unittest.TestCase):
         sdk = obj(APP / "sdk-provenance.json")
         lock = obj(ROOT / "platform-sdk.lock.json")
         plan = obj(MIG / "activity.externalization.json")
-        self.assertEqual(lock["bundle_version"], plan["target_sdk"]["minimum_bundle_version"])
-        self.assertEqual(lock["commit"], plan["target_sdk"]["published_bundle_commit"])
-        self.assertEqual(sdk["source_commit"], lock["commit"])
-        self.assertEqual(sdk["sdk_bundle_version"], lock["bundle_version"])
+        # The workspace SDK is allowed to advance additively. Activity's copied
+        # contract blobs are historical, immutable Gate B provenance and must
+        # continue to match their original published source, not the new pin.
+        def version(value):
+            parts = value.split(".")
+            self.assertEqual(len(parts), 3)
+            self.assertTrue(all(part.isdecimal() for part in parts))
+            return tuple(int(part) for part in parts)
+
+        self.assertEqual(version(lock["bundle_version"])[0],
+                         version(plan["target_sdk"]["minimum_bundle_version"])[0])
+        self.assertGreaterEqual(version(lock["bundle_version"]),
+                                version(plan["target_sdk"]["minimum_bundle_version"]))
+        self.assertEqual(sdk["source_commit"], plan["target_sdk"]["published_bundle_commit"])
+        self.assertEqual(sdk["sdk_bundle_version"], plan["gate_b"]["sdk_bundle_version"])
+        self.assertEqual(sdk["sdk_bundle_version"],
+                         plan["target_sdk"]["minimum_bundle_version"])
         self.assertEqual(sdk["authority"], "none")
         self.assertEqual(len(sdk["contracts"]), 10)
         for record in sdk["contracts"]:
