@@ -26,7 +26,7 @@ async function eventually(check, message) {
     if (result) return result;
     await new Promise((resolve) => setTimeout(resolve, 35));
   }
-  throw new Error(message);
+  throw new Error(typeof message === "function" ? message() : message);
 }
 
 function announce(status, detail) {
@@ -42,7 +42,7 @@ try {
   ensure(host, "Host de prévia ausente.");
   const content = await eventually(() => (embedded ? host.shadowRoot : host)
     ?.querySelector("#main-content"),
-    `Prévia não montou: errors=${browserErrors.join(" | ") || "nenhum"}; host=${host.innerHTML.slice(0,500)}; shadow=${host.shadowRoot?.innerHTML.slice(0,300) ?? "ausente"}`);
+    () => `Prévia não montou: errors=${browserErrors.join(" | ") || "nenhum"}; host=${host.innerHTML.slice(0,500)}; shadow=${host.shadowRoot?.innerHTML.slice(0,300) ?? "ausente"}`);
   const root = embedded ? host.shadowRoot : document;
   ensure(content.textContent.includes(expected[view] ?? "OrdaX"),
     `O módulo ${view} não renderizou seu conteúdo esperado.`);
