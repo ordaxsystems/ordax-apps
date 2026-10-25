@@ -52,6 +52,31 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Revisão — isolamento real de estilos e diálogos na prévia (2026-10-24)
+
+A primeira demonstração `embedded-preview` eliminou sidebar e topbar
+duplicadas, mas ainda dependia da folha global `food-pizzeria.css` e
+dos diálogos nativos `#cancel-dialog` / `#table-open-dialog` no
+documento do host. Esses seletores e IDs não são aceitáveis como
+contrato de incorporação: poderiam afetar outras interfaces do Space.
+
+O módulo `src/ui/preview-mount.mjs` agora cria um **Shadow DOM
+específico do host de desenvolvimento** e move para ele os diálogos
+existentes, preservando apenas uma folha de estilos Food por página.
+`food-pizzeria.css` declara os mesmos tokens em `:root` (standalone)
+ou `:host` (Shadow DOM), sem segundo tema ou bundle de CSS.
+O documento global deixa de receber a folha quando a apresentação é
+incorporada. A sessão standalone permanece sem Shadow DOM.
+
+O bootstrap `prototypes/food-pizzeria/preview.mjs` limpa o adapter e a
+interface em caso de falha de montagem, inclusive rota de prévia inválida.
+`tests/preview-mount.test.mjs` prova standalone preservado, stylesheet
+e diálogos isolados, requisitos ausentes falhando antes de mutar o DOM
+e a manutenção de um único CSS. Isso é isolamento **visual/DOM**,
+não isolamento de dados nem autorização do host OS. O Space real
+continua dependente da publicação de contratos em
+[ordax-os#2244](https://github.com/ordaxsystems/ordax-os/issues/2244).
+
 ## Revisão — apresentação incorporável e App SDK Space Experience (2026-10-24)
 
 A auditoria do SDK fixado em `platform-sdk.lock.json` confirmou `1.20.0`
