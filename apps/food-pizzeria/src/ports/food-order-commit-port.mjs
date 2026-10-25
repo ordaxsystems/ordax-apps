@@ -68,6 +68,24 @@ export class FoodOrderOutcomeUnknownError extends Error {
   }
 }
 
+// Only an explicit, verifiable response from the canonical owner may be
+// presented as definitely rejected. Network errors are NEVER a rejection.
+const DEFINITE_REJECTIONS = new Set([
+  "permission-denied",
+  "revision-conflict",
+  "invalid-command",
+]);
+export class FoodOrderRejectedError extends Error {
+  constructor(reason, message = "O owner Food rejeitou a operação.") {
+    if (!DEFINITE_REJECTIONS.has(reason)) {
+      throw new TypeError("Motivo de rejeição definitiva do Food não reconhecido.");
+    }
+    super(message);
+    this.name = "FoodOrderRejectedError";
+    this.reason = reason;
+  }
+}
+
 export function validateFoodOrderCommitReceipt(value) {
   const raw = object(value, "Receipt do Food", [
     "schema", "spaceId", "commandId", "orderId", "status", "revision", "commitId",
@@ -117,7 +135,13 @@ export async function submitFoodOrderCommand(portValue, commandValue) {
         { cause: error },
       );
     }
-    throw error;
+    if (error instanceof FoodOrderRejectedError) throw error;
+    // The transport may have failed AFTER a durable commit. Never translate
+    // an unclassified exception into "not saved" or retry automatically.
+    throw new FoodOrderOutcomeUnknownError(
+      "A confirmação do pedido não chegou. Consulte o owner antes de repetir a operação.",
+      { cause: error },
+    );
   }
   let after;
   try {
