@@ -11,6 +11,37 @@ Este documento define as responsabilidades internas que os adapters Food deverã
 | Renderizadores em `src/ui/views/` | Apresentação de cada área do Food. | Recebem estado do mesmo app; não têm stores independentes nem são apps instaláveis. |
 | `standalone-preview` / `embedded-preview` (`src/ui/presentation.mjs` + `src/ui/preview-mount.mjs`) | Modos de demonstração, o segundo sem sidebar/cabeçalho Food e com CSS/diálogos em Shadow DOM; `navigate()` e cliques internos incorporados limitados aos módulos Food. | **Ambos exigem explicitamente `browser-local-preview` e rejeitam adapters comerciais antes de montar.** Essa verificação de modo não é autenticação/grant; portas reais dependem exclusivamente do host autorizado. |
 
+## Food Order Core — serviço de aplicação do owner, sem backend paralelo
+
+`src/application/food-order-core.mjs` aplica `order.create` e
+`order.transition` **pelo mesmo `applyFoodCommand` e pelo estado v6**;
+não implementa um segundo modelo de pedidos ou um segundo livro Sales.
+Uma única função `fingerprintFoodCommand` em `src/application/`
+calcula o hash tanto no preview como no owner.
+
+O serviço exige um repositório `transactions.transact(callback)`
+com atomicidade e portas **server-side**, todas operando dentro do
+mesmo contexto transacional: `tx.authorize(action)`,
+`tx.findCommand(spaceId, commandId)`, `tx.readState(spaceId)`
+e `tx.commit({spaceId,commandId,digest,expectedRevision,nextState,orderId,status})`.
+O DB adapter deve vincular essas chamadas ao sujeito autenticado real,
+validar membership/grants e RLS **na transação de escrita**, garantir
+CAS, journal/receipt durável, e não confiar no `spaceId` do cliente.
+O serviço reautoriza antes de enviar a gravação e compara a época
+da sessão, mas isso **não substitui** as garantias do banco.
+
+Replay idêntico consulta o recibo durável antes da revisão; comando
+reutilizado com payload diferente é rejeitado. Falha após solicitar o
+commit produz `FoodOrderOutcomeUnknownError` — o cliente pode consultar
+`findCommandReceipt(commandId)` com autorização renovada, **sem fazer
+retry automático**. O receipt é validado contra pedido/status/revisão.
+
+Os testes `tests/food-order-core.test.mjs` usam **somente um repositório
+transacional simulado**, não banco real, para verificar escopo, replay,
+CAS, revogação, criação/transição, concorrência e conciliação.
+**Sem adapter PostgreSQL/RLS conectado, sem dados comerciais reais,
+sem instalação ou ativação de FOOD-001.**
+
 ## Admissão transacional futura: confirmação durável do owner
 
 O módulo `src/ports/food-order-commit-port.mjs` introduz **somente o contrato consumidor interno** `ordax.food-order-commit-port/1` e o receipt mínimo `ordax.food-order-commit-receipt/1`. Ele não é um serviço, backend, grant, store ou publicador de pedidos.
