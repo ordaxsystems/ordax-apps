@@ -4,6 +4,7 @@ import {
   calculatePizzaPriceCents,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
+import { reviewFoodCartPrices } from "../application/cart-pricing.mjs";
 import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
@@ -647,6 +648,14 @@ export function createFoodPizzeriaApp({ root, dataPort } = {}) {
   
   async function submitOrder(form) {
     if (cart.length === 0) throw new Error("Adicione ao menos uma pizza antes de registrar o pedido.");
+    // Require renewed confirmation when another tab or settings change reprices the draft.
+    // dispatch() uses the same snapshot revision as a CAS guard against changes after this review.
+    const review = reviewFoodCartPrices(cart, snapshot);
+    if (review.changed) {
+      cart = [...review.items];
+      updateCartTotals();
+      throw new Error("O preço do cardápio mudou. Confira o novo total e confirme o pedido novamente.");
+    }
     const channel = form.elements.channel.value;
     const deliveryFeeCents = channel === "delivery" ? parseMoney(form.elements.deliveryFee.value) : 0;
     if (deliveryFeeCents === null) throw new TypeError("Informe uma taxa de entrega válida, como 8,00.");
