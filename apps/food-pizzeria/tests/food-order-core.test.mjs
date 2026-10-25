@@ -12,8 +12,8 @@ import {
 import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 
 function transitionCommand(state, id = "txn-1", orderId = undefined) {
-  const order = state.orders.find(({ status }) => status === "received" && (!orderId || orderId === undefined || orderId === "any"))
-    ?? state.orders.find(({ id: candidate }) => candidate === orderId);
+  const order = state.orders.find(({ id, status }) =>
+    status === "received" && (orderId === undefined || id === orderId));
   if (!order) throw new Error("Fixture lacks a received order");
   return createFoodCommand({
     type: "order.transition", commandId: id,
@@ -272,6 +272,27 @@ test("same-revision concurrent orders serialize; only one mutation can commit", 
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
   assert.equal(results.filter((result) => result.status === "rejected").length, 1);
   assert.equal(results.find((result) => result.status === "rejected").reason.reason, "revision-conflict");
+  assert.equal(fx.writes, 1);
+});
+
+test("a corrupted durable journal never produces a trusted replay or reconciliation receipt", async () => {
+  const fx = transactionalFixture();
+  const core = createFoodOrderCore({ transactions: fx.transactions });
+  const cmd = transitionCommand(fx.bySpace.get("space-a").state);
+  await core.commitOrderCommand(cmd);
+  fx.bySpace.get("space-a").journal.get(cmd.commandId).receipt = {
+    schema: "ordax.food-order-commit-receipt/1",
+    spaceId: "space-b",
+    commandId: cmd.commandId,
+    orderId: cmd.payload.orderId,
+    status: "preparing",
+    revision: 0,
+    commitId: "corrupt",
+  };
+  await assert.rejects(core.commitOrderCommand(cmd),
+    { name: "FoodOrderOutcomeUnknownError" });
+  await assert.rejects(core.findCommandReceipt(cmd.commandId),
+    { name: "FoodOrderOutcomeUnknownError" });
   assert.equal(fx.writes, 1);
 });
 
