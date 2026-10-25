@@ -51,16 +51,19 @@ function fakeElement() {
 test("content-only Food preview never includes a second sidebar, header or dashboard", async () => {
   const root = fakeRoot();
   const app = createFoodPizzeriaApp({ root, dataPort: fakePreviewPort(), presentation: "embedded-preview" });
-  app.navigate("kitchen");
-  await app.mount();
-  assert.match(root.innerHTML, /data-preview-only="true"/);
-  assert.match(root.innerHTML, /Prévia local/);
-  assert.match(root.innerHTML, /id="main-content"/);
-  assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"|class="main-nav"|data-view="overview"/);
-  app.navigate("orders");
-  assert.match(root.innerHTML, /Montar pedido/);
-  assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
-  app.destroy();
+  try {
+    app.navigate("kitchen");
+    await app.mount();
+    assert.match(root.innerHTML, /data-preview-only="true"/);
+    assert.match(root.innerHTML, /Prévia local/);
+    assert.match(root.innerHTML, /id="main-content"/);
+    assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"|class="main-nav"|data-view="overview"/);
+    app.navigate("orders");
+    assert.match(root.innerHTML, /Montar pedido/);
+    assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
+  } finally {
+    app.destroy();
+  }
   assert.equal(root.listenerCount, 0);
 });
 
