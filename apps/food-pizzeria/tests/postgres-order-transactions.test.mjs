@@ -54,7 +54,7 @@ function dbFixture() {
             if (commitFailure) throw new Error("COMMIT reply lost");
             return { rowCount: null, rows: [] };
           }
-           if (sql.startsWith("select revision, document from private.ordax_food_read_state_v1")) {
+          if (sql.startsWith("select revision, document from private.ordax_food_read_state_v1")) {
             assert.deepEqual(params, [ACTOR, SPACE_A, params[2]]);
             return { rowCount: 1, rows: [{ revision: state.revision, document: structuredClone(state) }] };
           }
@@ -259,7 +259,9 @@ test("invalid production Space state cannot be provisioned from a preview fallba
     }) },
     authorizeAction: async () => ({ granted: true, spaceId: SPACE_A, subjectId: ACTOR, epoch: "session" }),
   });
-  await assert.rejects(invalid.transact((tx) => (async () => { await tx.authorize("order.create"); await tx.readState(SPACE_A); })()),
-    { name: "FoodOrderRejectedError", reason: "permission-denied" });
+  await assert.rejects(invalid.transact(async (tx) => {
+    await tx.authorize("order.create");
+    await tx.readState(SPACE_A);
+  }), { name: "FoodOrderRejectedError", reason: "invalid-command" });
   assert.ok(fx.state.orders.length > 0); // Fixture never became a backend fallback.
 });
