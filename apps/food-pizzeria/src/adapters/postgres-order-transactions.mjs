@@ -197,6 +197,9 @@ export function createFoodPostgresTransactions({ pool, authorizeAction } = {}) {
         opened = false;
         return value;
       } catch (error) {
+        // A lost COMMIT acknowledgement is ambiguous even if a later
+        // ROLLBACK appears to succeed. Never return this client to the pool.
+        if (commitIssued) unusable = true;
         if (opened) {
           try { await db.query("ROLLBACK"); } catch { unusable = true; }
         }
