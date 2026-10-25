@@ -30,7 +30,7 @@ O App SDK público `1.21.0` já disponibiliza os contratos Space Experience can�
 
 Food deve possuir cardápio, fichas técnicas, pedido alimentar canônico e seu ciclo de produção/fulfillment quando for o provedor autorizado. Se Sales precisar exibir métricas ou fatos comerciais Food, recebe somente uma projeção/referência autorizada, sem recriar ou transicionar outro pedido mestre. Deve haver um único `orderId`, revisões e eventos idempotentes, sem escrita direta no estado de outros owners.
 
-**Gate de integração ainda fechado:** o serviço comercial Food Order Core, seu contrato público de pedido/canal/produção e os contratos de projeção para Sales e Space não foram publicados ou homologados. O livro genérico Sales não deve ser reutilizado como substituto temporário. Os pedidos do preview continuam fictícios e locais: não são pedidos comerciais nem registros transacionais reais.
+**Gate de integração ainda fechado:** existe agora um serviço de aplicação Food Order Core reutilizando o domínio e os comandos já canônicos, mas **não existe adapter persistente autorizado de produção**, nem contrato público de pedido/canal/produção ou projeção homologada para Sales/Space. O serviço requer transações ACID e grants verificados no owner de dados. O livro genérico Sales não deve ser reutilizado como substituto temporário. Os pedidos do preview continuam fictícios e locais: não são pedidos comerciais nem registros transacionais reais.
 
 ## Estado implementado
 
