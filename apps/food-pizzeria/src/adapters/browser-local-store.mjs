@@ -163,10 +163,13 @@ export function createBrowserLocalFoodStore({
   }
 
   function writePersisted(state, commands) {
+    if (commands.length > MAX_RECORDED_COMMANDS) {
+      throw new RangeError("O histórico local de operações atingiu o limite seguro. Preserve os dados antes de continuar.");
+    }
     const serialized = JSON.stringify({
       schema: STORAGE_SCHEMA,
       state,
-      processedCommands: commands.slice(-MAX_RECORDED_COMMANDS),
+      processedCommands: commands,
     });
     if (serializedBytes(serialized) > MAX_STATE_BYTES) throw new RangeError("Os dados locais da pizzaria excedem o limite seguro.");
     storage.setItem(key, serialized);
@@ -175,8 +178,10 @@ export function createBrowserLocalFoodStore({
   const onStorage = (event) => {
     if (!initialized || destroyed || event.key !== key || event.newValue === null) return;
     try {
-      const next = decodeStoredValue(event.newValue, businessId);
-      if (next.state.revision < snapshot.revision) return;
+      // A queued storage event can carry stale bytes after newer commits.
+      // Always read the currently persisted envelope, including no-op command history.
+      const next = readPersisted();
+      if (!next || next.state.revision < snapshot.revision) return;
       if (next.state.revision === snapshot.revision && JSON.stringify(next.state) !== JSON.stringify(snapshot)) {
         throw new Error("A mesma revisão local apresenta dados diferentes.");
       }
@@ -252,6 +257,11 @@ export function createBrowserLocalFoodStore({
           emit();
           throw conflictError(command.expectedRevision, persisted.state.revision);
         }
+        // Never discard an idempotency key: an evicted no-op at the current
+        // revision could otherwise be replayed with a different payload.
+        if (persisted.processedCommands.length >= MAX_RECORDED_COMMANDS) {
+          throw new RangeError("O histórico local de operações atingiu o limite seguro. Preserve os dados antes de continuar.");
+        }
         const next = validateFoodPizzeriaState(applyFoodCommand(persisted.state, command));
         const noChange = next.revision === persisted.state.revision;
         if (noChange
@@ -259,8 +269,7 @@ export function createBrowserLocalFoodStore({
           : next.revision !== persisted.state.revision + 1) {
           throw new Error("A operação produziu dados sem revisão válida da pizzaria.");
         }
-        const nextCommands = [...persisted.processedCommands, { id: command.commandId, digest: commandDigest }]
-          .slice(-MAX_RECORDED_COMMANDS);
+        const nextCommands = [...persisted.processedCommands, { id: command.commandId, digest: commandDigest }];
         writePersisted(next, nextCommands);
         snapshot = next;
         processedCommands = nextCommands;
