@@ -6,6 +6,7 @@ import {
   FOOD_ORDER_COMMIT_PORT_SCHEMA,
   FOOD_ORDER_COMMIT_RECEIPT_SCHEMA,
   FoodOrderOutcomeUnknownError,
+  FoodOrderRejectedError,
   assertFoodOrderCommitPort,
   submitFoodOrderCommand,
   validateFoodOrderCommitReceipt,
@@ -142,11 +143,19 @@ test("logout after a provider error yields unknown outcome, not a silent duplica
   assert.equal(port.writes, 1);
 });
 
-test("owner errors with an unchanged Space binding remain explicit", async () => {
-  const denied = new Error("Space grants denied by owner");
+test("explicit owner denial remains definitive, but a generic transport failure is outcome-unknown", async () => {
+  const denied = new FoodOrderRejectedError("permission-denied", "Grant ausente.");
   const port = fakePort({ commit: () => { throw denied; } });
   await assert.rejects(submitFoodOrderCommand(port, command()), (error) => error === denied);
   assert.equal(port.writes, 1);
+
+  const network = new Error("A conexão caiu depois do envio.");
+  const unreliable = fakePort({ commit: () => { throw network; } });
+  await assert.rejects(submitFoodOrderCommand(unreliable, command()), (error) =>
+    error instanceof FoodOrderOutcomeUnknownError && error.cause === network);
+  assert.equal(unreliable.writes, 1);
+  assert.throws(() => new FoodOrderRejectedError("timeout"),
+    /Motivo de rejeição definitiva/);
 });
 
 test("receipt validator requires a minimal private-data-free durable acknowledgement", () => {
