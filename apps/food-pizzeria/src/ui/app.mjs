@@ -500,7 +500,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const selected = availableTables.find(({ id }) => String(id) === String(preselectedTableId)) ?? availableTables[0];
     select.value = String(selected.id);
     tableOpenForm.elements.customerName.value = "";
-    tableOpenForm.elements.guestCount.value = "2";
+    tableOpenForm.elements.guestCount.value = String(Math.min(2, selected.seats));
     tableOpenForm.elements.guestCount.max = String(selected.seats);
     tableOpenDialog.showModal();
     tableOpenForm.elements.customerName.focus();
@@ -712,10 +712,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     if (target.dataset.view) {
       event.preventDefault();
-      activeView = target.dataset.view;
-      if (activeView !== "menu") editFlavorId = null;
-      render();
-      root.querySelector("#main-content")?.focus({ preventScroll: true });
+      try {
+        navigate(target.dataset.view);
+        root.querySelector("#main-content")?.focus({ preventScroll: true });
+      } catch (error) {
+        report(error);
+      }
       return;
     }
     const action = target.dataset.action;
@@ -1070,8 +1072,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   
   function navigate(view) {
     if (destroyed) throw new Error("A interface Food já foi encerrada.");
-    assertFoodModuleView(view);
+    if (presentation === "embedded-preview") assertFoodModuleView(view);
+    else if (!Object.hasOwn(VIEW_LABELS, view)) throw new TypeError("Área desconhecida do Food.");
     activeView = view;
+    if (activeView !== "menu") editFlavorId = null;
     if (mounted) render();
   }
 
