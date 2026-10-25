@@ -9,8 +9,10 @@ export function assertFoodPreviewPresentation(presentation, dataPort) {
   if (!FOOD_PREVIEW_PRESENTATIONS.includes(presentation)) {
     throw new TypeError("Apresentação Food desconhecida.");
   }
-  if (presentation === "embedded-preview" && dataPort?.context?.adapter !== "browser-local-preview") {
-    throw new Error("Conteúdo incorporado exige dados fictícios da prévia local; o host Space ainda não está autorizado.");
+  // Both preview shells are sandbox-only. A future Space provider must enter
+  // through its own authorized host lifecycle, not by swapping this data port.
+  if (dataPort?.context?.adapter !== "browser-local-preview") {
+    throw new Error("A prévia Food exige dados fictícios locais; o host Space ainda não está autorizado.");
   }
   return presentation;
 }
