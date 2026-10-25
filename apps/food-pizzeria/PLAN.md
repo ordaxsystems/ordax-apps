@@ -2,7 +2,7 @@
 
 ## Decisão
 
-Entregar primeiro um protótipo local do Food Core. A experiência integrada será o Space Pizzaria, não um segundo painel administrativo do Food. O plano comercial FOOD-001 permanece `DEFERRED FOR EXECUTION`; nenhum app comercial, integração OS ou promoção Store está incluído nesta etapa.
+Entregar primeiro um protótipo local do Food Core. A experiência integrada será o Space Pizzaria, não um segundo painel administrativo do Food. O catálogo `food.pizzeria` do OS já é `mvp-foundation` para o Space/Profile, mas **isso não habilita transações**: o plano comercial FOOD-001 permanece `DEFERRED FOR EXECUTION`. Nenhum app comercial, provider operacional nem promoção Store está incluído nesta etapa.
 
 ## Etapa concluída nesta correção
 
