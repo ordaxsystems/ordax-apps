@@ -74,9 +74,15 @@ A demonstração pode ser aberta por
 
 `tests/embedded-presentation.test.mjs` verifica ausência de navegação
 duplicada, rejeição de adapter que se anuncia como Space e bloqueio de
-navegação externa (Inventory/PDV/Overview). Isso prepara apenas a
-composição visual, **não** o provider, o contrato público ou a operação
-empresarial.
+navegação externa (Inventory/PDV/Overview), tanto em `navigate()` quanto
+em cliques simulados no próprio DOM. A seleção de módulo foi unificada no
+controlador Food; abertura de comandas respeita também mesas com um lugar.
+A auditoria adicional identificou que o catálogo OS `food.pizzeria`
+ainda não expõe rota KDS `kitchen`: a dependência foi documentada na
+[ordax-os#2244](https://github.com/ordaxsystems/ordax-os/issues/2244)
+para apontar `kitchen` ao provider Food já responsável por `orders`,
+sem criar novo app. Isso prepara apenas a composição visual, **não** o
+provider, o contrato público ou a operação empresarial.
 
 ## Revisão — integridade do journal local e notificações entre abas (2026-10-24)
 
