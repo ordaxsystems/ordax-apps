@@ -1079,6 +1079,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     tableOpenDialog.removeEventListener("change", handleInput);
     cancelDialog.removeEventListener("click", closeOnBackdrop);
     tableOpenDialog.removeEventListener("click", closeOnBackdrop);
+    if (cancelDialog.open) cancelDialog.close?.();
+    if (tableOpenDialog.open) tableOpenDialog.close?.();
+    root.removeAttribute?.("aria-busy");
+    root.innerHTML = "";
+    cart = [];
+    snapshot = null;
+    notice = null;
   }
   
   function navigate(view) {
