@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: ordaxsystems/ordax-platform
-          ref: 682aee770fd9ecc660ee6c3ba2bddeac659a8960
+          ref: 4eb2f6ba0c668af9246066424cf4e352743dc5f1
           path: .food-platform
           persist-credentials: false
 
@@ -66,7 +66,8 @@ jobs:
           for file in \
             control-plane/supabase/tests/food_action_policy_fixture.sql \
             control-plane/supabase/proposals/food_order_action_policy_v1.sql \
-            control-plane/supabase/proposals/food_order_core_storage_v1.sql
+            control-plane/supabase/proposals/food_order_core_storage_v1.sql \
+            control-plane/supabase/proposals/food_order_executor_boundary_v1.sql
           do
             docker exec -i "$PG_ID" psql -v ON_ERROR_STOP=1 -U postgres -d food_ci \
               < ".food-platform/$file"
