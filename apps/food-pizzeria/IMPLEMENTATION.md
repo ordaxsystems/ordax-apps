@@ -56,7 +56,7 @@ O OS integrou o contrato Space Experience no App SDK público `1.21.0` (merge `5
 
 A [PR upstream #2245](https://github.com/ordaxsystems/ordax-os/pull/2245) foi integrada na `main` do OS pelo commit `5ef654236da1f2d343e3e33cd46bb747d52bc24c`, com nove verificações aprovadas. Seis schemas canônicos estão agora publicados no bundle `1.21.0`; `kitchen` é rota da capability `orders` no catálogo do OS. O pin imutável e SHA-256 do bundle foram atualizados neste repo e submetidos ao CI de compatibilidade.
 
-O SDK ainda declara `authority: none`: isso **não instala nem autoriza** um provider Food, não fornece grants, readiness, lifecycle ou acesso cross-Space. O adapter comercial só poderá consumir portas fornecidas pelo host real quando FOOD-001 for autorizado. A prévia local continua limitada a `browser-local-preview`.
+O SDK ainda declara `authority: none`: isso **não instala nem autoriza** um provider Food, não fornece grants, readiness, lifecycle ou acesso cross-Space. A auditoria do Native confirmou que só Aura está conectada hoje ao `createSpaceExperienceSource({ providers: [...] })`, e que `food.pizzeria` tem lifecycle de **Space/Profile** `mvp-foundation`, enquanto a execução transacional FOOD-001 continua adiada. O adapter comercial só poderá consumir portas fornecidas pelo host real quando FOOD-001 for autorizado. **Ambas** as apresentações do protótipo (`standalone-preview` e `embedded-preview`) agora rejeitam data ports que aleguem ser Space real antes de inicializar, sem tratar essa marcação local como autenticação.
 
 ## Revisão — ciclo de vida seguro da apresentação Food (2026-10-24)
 
