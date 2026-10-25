@@ -11,6 +11,37 @@ Este documento define as responsabilidades internas que os adapters Food deverã
 | Renderizadores em `src/ui/views/` | Apresentação de cada área do Food. | Recebem estado do mesmo app; não têm stores independentes nem são apps instaláveis. |
 | `standalone-preview` / `embedded-preview` (`src/ui/presentation.mjs` + `src/ui/preview-mount.mjs`) | Modos de demonstração, o segundo sem sidebar/cabeçalho Food e com CSS/diálogos em Shadow DOM; `navigate()` e cliques internos incorporados limitados aos módulos Food. | **Ambos exigem explicitamente `browser-local-preview` e rejeitam adapters comerciais antes de montar.** Essa verificação de modo não é autenticação/grant; portas reais dependem exclusivamente do host autorizado. |
 
+## Adapter PostgreSQL server-only — código preparado, não ativado
+
+`src/adapters/postgres-order-transactions.mjs` implementa a interface
+`transactions.transact()` exigida pelo Food Order Core sobre **uma
+única conexão PostgreSQL por transação**. Usa `BEGIN ISOLATION LEVEL
+SERIALIZABLE`, escopo do Space tipado como UUID canônico, trava
+`SELECT ... FOR UPDATE` do estado do Space, consultas parametrizadas,
+revalidação de grant no momento da escrita, CAS de revisão, journal/receipt
+na mesma transação e `COMMIT`/rollback. COMMIT sem confirmação
+invalida a conexão e produz resultado desconhecido, nunca retry.
+
+**Dependências não fornecidas nem simuladas em produção:**
+
+- `pool.connect()`: conexão PostgreSQL confiável dentro do backend
+  server-only, nunca senha Supabase no browser ou credencial service_role;
+- `authorizeAction(db,action)`: autorização REAL do owner Identity/Spaces,
+  confirmando sujeito da sessão, membership ativo e **grant per-action**
+  dentro da mesma transação; deve manter bloqueios necessários para evitar
+  revogação entre verificação e escrita. Um callback que apenas aceita
+  `spaceId` do cliente **não é autorizado**;
+- estado Food v6 provisionado legitimamente e tabelas privadas que ainda
+  **não existem na base canônica**.
+
+O esquema correspondente está proposto em
+[ordax-platform PR #287](https://github.com/ordaxsystems/ordax-platform/pull/287),
+integrada como **proposta não aplicada**; sua prova PostgreSQL 17 ocorreu
+somente num banco efêmero. Esta etapa não executa SQL remoto, concede
+grants, cria endpoints, conecta a prévia ou publica Food na Store.
+Os testes de adapter exercitam o protocolo SQL com driver fake,
+não equivalem à homologação Postgres/RLS real da aplicação.
+
 ## Food Order Core — serviço de aplicação do owner, sem backend paralelo
 
 `src/application/food-order-core.mjs` aplica `order.create` e

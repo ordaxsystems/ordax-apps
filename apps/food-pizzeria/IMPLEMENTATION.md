@@ -52,6 +52,22 @@ O OS integrou o contrato Space Experience no App SDK público `1.21.0` (merge `5
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Preparação de transações PostgreSQL (sem deploy)
+
+Depois da PR Apps #352 (serviço de aplicação) e da proposta privada
+[ordax-platform #287](https://github.com/ordaxsystems/ordax-platform/pull/287),
+o adapter `postgres-order-transactions.mjs` implementa o protocolo
+PostgreSQL que mantém leitura, `CAS`, journal/receipt e revalidação do
+Space na mesma conexão/transaction. Usa exclusivamente comandos
+parametrizados e descarta a conexão se perder a resposta ao `COMMIT`.
+
+O schema no Platform está em `proposals/`, não em migrações aplicadas.
+Não existe grant per-action Food concedido, provider PostgreSQL
+instanciado, entrada Store ou conexão à UI. O contrato `authorizeAction`
+precisa vir do host server-side autorizado, **não** de argumentos do
+aplicativo. Os testes são do adapter fake e da prova de schema em Postgres
+isolado, não prova de operação comercial.
+
 ## Fronteira de confirmação de pedido — preparação sem provider
 
 Depois da integração do read-only Space Native pela

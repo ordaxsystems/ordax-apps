@@ -25,6 +25,13 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 ## Próxima sequência
 
 1. **Contrato público Space Experience:** o source do OS já define `ordax.space-experience/1` e `ordax.space-capability-provider/2` em `system/contracts/space-experience.mjs`. **Ambos já estão exportados no App SDK 1.21.0 publicado pelo OS e fixado por commit/hash em `platform-sdk.lock.json`**. Ainda falta o owner host fornecer contexto autenticado, autorização real, readiness e lifecycle ao adapter Food. Enquanto isso, `embedded-preview` continua apenas prova visual local: não montar Food como Space pronto nem importar serviços privados.
+**Persistência server-only:** adapter PostgreSQL proposto em
+`src/adapters/postgres-order-transactions.mjs` e esquema privado validado
+no [ordax-platform #287](https://github.com/ordaxsystems/ordax-platform/pull/287).
+O SQL não foi aplicado. A implementação não poderá operar até ser
+liberado FOOD-001, instituída autorização per-action real dentro das
+transações e concluído o rollout pelo migration registry canônico.
+
 2. **Food Order Core ↔ Sales/Space:** a interface consumidora do receipt (`src/ports/food-order-commit-port.mjs`) e o **serviço de aplicação do owner** (`src/application/food-order-core.mjs`) reaproveitam um único domínio/comando. A aplicação já exige autorização transacional, replay idempotente, revisão CAS e consulta de conciliação; falta **implementar/homologar no owner de dados** o adapter persistente ACID com grants per-action, RLS e journal durável, além de publicação dos contratos operacionais. Sem pedidos reais, sem backend paralelo e sem segundo mestre Sales.
 3. **Inventory consumption:** definir request/receipt de consumo, escopo autorizado do Space, idempotência, rejeição de saldo e política de retry/compensação. Food propõe quantidades; Inventory registra movimentos.
 4. **Sales, Payments e Finance:** definir sale reference, confirmação de pagamento e posting financeiro entre owners. Não concluir caixa no Food sem resultado confirmado por Payments.
