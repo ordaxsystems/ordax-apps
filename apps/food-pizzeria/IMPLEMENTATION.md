@@ -307,3 +307,15 @@ Arquivo `tests/local-store-persistence.test.mjs`:
 - comando idempotente sem alteração de estado (por exemplo, sabor já disponível) persiste o digest do comando e mantém a revisão, sem aceitar replay adulterado; reabertura mantém o histórico.
 
 Na revisão anterior, `node --test apps/food-pizzeria/tests/*.test.mjs` tinha 8 testes aprovados e `node --check` validou 20 módulos JavaScript. A execução atual é comprovada pelo job `Prove Food preview boundaries and safe local replay` do workflow Foundation, que executa os testes e a checagem de sintaxe após cada push. O verificador geral `tools/verify_mvp_app_minimum.py --minimum-candidates 13 --format markdown` também rodou; reportou 20 alvos, 2 bloqueados, 18 entradas não assinadas e zero instalações públicas verificadas. O teste visual e as provas cross-app reais ainda dependem dos contratos/providers listados acima.
+
+## SQL de privilégio mínimo validado (desenvolvimento)
+
+O mesmo adapter PostgreSQL usa agora apenas as quatro operações
+privadas do owner Platform; o Food conserva o único domínio de
+pedidos, CAS e histórico por Space. O teste com PostgreSQL 17
+executa as transações Node como `ordax_food_executor` via `SET LOCAL ROLE`;
+os dados da fixture são provisionados separadamente pelo runner.
+Esta prova não instala a proposta no Supabase, não cria role LOGIN
+ou grant de produção e não representa binding de sessão Web/Native
+autenticado. FOOD-001 e Store seguem bloqueados.
+
