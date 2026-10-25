@@ -52,6 +52,32 @@ O contrato interno de Space Experience do OS não está publicado no App SDK v1.
 8. Testes cross-app: provider ausente/negado não aparece operacional; dois Spaces não leem dados um do outro; replay não duplica consumo/venda/pagamento; falha de provider preserva estado e não cria registro parcial; vendas e movimentações apontam para a única autoridade do pedido.
 9. Testes de montagem/ciclo de vida em cada host alvo e, somente após gate, package, provenance, install/verify/stage/health/promote e rollback.
 
+## Revisão — apresentação incorporável e App SDK Space Experience (2026-10-24)
+
+A auditoria do SDK fixado em `platform-sdk.lock.json` confirmou `1.20.0`
+(commit OS `ee2a50db334e7abb798918d99d772ebfd02f8cef`). Embora o owner OS
+já tenha `system/contracts/space-experience.mjs` com
+`ordax.space-experience/1` e `ordax.space-capability-provider/2`,
+esses schemas não foram publicados no bundle `sdk/app-sdk-v1/bundle.json`.
+A dependência de publicação e provas de host está registrada em
+[ordax-os#2244](https://github.com/ordaxsystems/ordax-os/issues/2244).
+
+No Apps, `src/ui/presentation.mjs` introduz o modo
+`embedded-preview`, que monta apenas a página Food sem criar
+segunda sidebar, topbar ou dashboard. A apresentação é **restrita
+ao adapter `browser-local-preview`**, sempre identifica dados fictícios e
+não consome `spaceId`, membership, grants ou capabilities do host.
+`createFoodPizzeriaApp().navigate(view)` aceita somente módulos Food
+(`orders`, `kitchen`, `menu`, `tables`, `delivery`, `settings`).
+A demonstração pode ser aberta por
+`?presentation=embedded-preview&view=kitchen`, sem ativar integração.
+
+`tests/embedded-presentation.test.mjs` verifica ausência de navegação
+duplicada, rejeição de adapter que se anuncia como Space e bloqueio de
+navegação externa (Inventory/PDV/Overview). Isso prepara apenas a
+composição visual, **não** o provider, o contrato público ou a operação
+empresarial.
+
 ## Revisão — integridade do journal local e notificações entre abas (2026-10-24)
 
 O preview registra identificador e digest SHA-256 de cada comando para rejeitar
