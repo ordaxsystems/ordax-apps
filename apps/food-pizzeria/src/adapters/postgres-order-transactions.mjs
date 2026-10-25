@@ -11,10 +11,11 @@ import {
 // connection, with BEGIN / lock / writes / COMMIT on that same connection.
 //
 // The Food owner cannot manufacture authorization. A trusted host must supply
-// authorizeAction(client, action) that validates the authenticated subject,
-// active account/session, membership and PER-ACTION grants against the
-// canonical SQL owner within the current transaction. Without it we refuse to
-// initialize; no service_role/browser/preview fallback is provided.
+// authorizeAction(client, action) from a verified session. The Platform owner
+// rechecks the permission inside four narrow SECURITY DEFINER Food operations,
+// accessible only to the NOLOGIN ordax_food_executor group role. This adapter
+// NEVER reads or writes private relations directly. No browser/service_role,
+// production credential, preview or identity fallback is provided.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -82,11 +83,8 @@ export function createFoodPostgresTransactions({ pool, authorizeAction } = {}) {
           if (bound && !sameScope(scope, bound)) {
             reject("A identidade ou o Space mudou durante a transação Food.");
           }
-          const validSpace = row(await db.query(
-            "select s.space_id from public.ordax_spaces s where s.space_id = $1::uuid and s.state = 'active' and s.domain = 'food' and s.subtype = 'pizzeria' for share",
-            [scope.spaceId],
-          ), "Space autorizado");
-          if (validSpace.rowCount !== 1) reject("Space Food indisponível ou não autorizado.");
+          // The SQL policy called by authorizeAction has already checked
+          // the active typed Space. Every subsequent private RPC rechecks it.
           bound = scope;
           action = requestedAction;
           return scope;
@@ -96,8 +94,8 @@ export function createFoodPostgresTransactions({ pool, authorizeAction } = {}) {
           if (!bound || bound.spaceId !== spaceId) reject("Leitura Food fora do Space autorizado.");
           if (locked !== null) return locked;
           const result = row(await db.query(
-            "select revision, document from private.ordax_food_space_state where space_id = $1::uuid for update",
-            [spaceId],
+            "select revision, document from private.ordax_food_read_state_v1($1::uuid,$2::uuid,$3::text)",
+            [bound.subjectId, spaceId, action],
           ), "estado Food");
           if (result.rowCount !== 1) {
             throw new FoodOrderRejectedError("invalid-command",
@@ -117,8 +115,8 @@ export function createFoodPostgresTransactions({ pool, authorizeAction } = {}) {
             inputId(commandId, "Identificador de comando");
             await lockState(spaceId);
             const result = row(await db.query(
-              "select space_id, command_id, digest, receipt from private.ordax_food_command_journal where space_id = $1::uuid and command_id = $2::text",
-              [spaceId, commandId],
+              "select space_id, command_id, digest, receipt from private.ordax_food_find_command_v1($1::uuid,$2::uuid,$3::text,$4::text)",
+              [bound.subjectId, spaceId, action, commandId],
             ), "histórico Food");
             if (result.rowCount > 1) throw new FoodOrderOutcomeUnknownError("Journal Food duplicado.");
             if (!result.rowCount) return null;
@@ -156,36 +154,16 @@ export function createFoodPostgresTransactions({ pool, authorizeAction } = {}) {
             const prior = bound;
             await verify(action); // live membership/grants rechecked at write boundary
             if (!sameScope(prior, bound)) reject("Revogação durante gravação Food.");
-            const updated = row(await db.query(
-              "update private.ordax_food_space_state set revision = $2::bigint, document = $3::jsonb, updated_at = pg_catalog.clock_timestamp() where space_id = $1::uuid and revision = $4::bigint returning revision",
-              [entry.spaceId, doc.revision, JSON.stringify(doc), entry.expectedRevision],
-            ), "CAS Food");
-            if (updated.rowCount !== 1) {
-              throw new FoodOrderRejectedError("revision-conflict", "Outro pedido alterou a revisão Food.");
-            }
-
-            // The generated commit UUID appears in BOTH receipt and journal
-            // from the same SQL statement; never mint a receipt client-side.
+            // The Platform is the SQL authority: one reviewed operation
+            // atomically applies CAS + journal + server-created receipt.
+            // Browser roles and the Food executor have NO direct table DML.
             const result = row(await db.query(
-              `with commit_token as (select pg_catalog.gen_random_uuid() as id)
-               insert into private.ordax_food_command_journal (
-                 space_id, command_id, digest, actor_user_id, order_id, status,
-                 revision, commit_id, receipt
-               )
-               select $1::uuid, $2::text, $3::text, $4::uuid, $5::text,
-                 $6::text, $7::bigint, t.id,
-                 pg_catalog.jsonb_build_object(
-                   'schema','ordax.food-order-commit-receipt/1',
-                   'spaceId',$1::text, 'commandId',$2::text,
-                   'orderId',$5::text, 'status',$6::text,
-                   'revision',$7::bigint, 'commitId',t.id::text
-                 )
-               from commit_token t returning receipt`,
-              [entry.spaceId, commandId, entry.digest, bound.subjectId,
-                orderId, entry.status, doc.revision],
-            ), "journal durável Food");
+              "select private.ordax_food_commit_order_v1($1::uuid,$2::uuid,$3::text,$4::text,$5::text,$6::bigint,$7::jsonb,$8::text,$9::text) as receipt",
+              [bound.subjectId, entry.spaceId, action, commandId, entry.digest,
+                entry.expectedRevision, JSON.stringify(doc), orderId, entry.status],
+            ), "recibo Food SQL autorizado");
             if (result.rowCount !== 1) {
-              throw new FoodOrderOutcomeUnknownError("Journal Food não confirmou o comando.");
+              throw new FoodOrderOutcomeUnknownError("SQL owner não confirmou o recibo Food.");
             }
             return validateFoodOrderCommitReceipt(result.rows[0].receipt);
           },

@@ -27,7 +27,28 @@ const OWNER_A = "00000001-0000-4000-8000-000000000000";
 const ADMIN_A = "00000002-0000-4000-8000-000000000000";
 const VIEWER_A = "00000004-0000-4000-8000-000000000000";
 const OWNER_B = "00000007-0000-4000-8000-000000000000";
+// The test harness provisions the schema as postgres only. All application
+// transactions switch to the restricted NOLOGIN executor *inside* BEGIN.
+// Production must use its own authenticated server-side LOGIN role; no
+// PostgreSQL superuser credential is valid for the commercial Food host.
 const pool = new Pool({ connectionString: dbUrl, max: 8, connectionTimeoutMillis: 5000 });
+const restrictedPool = {
+  async connect() {
+    const client = await pool.connect();
+    return {
+      async query(sql, params) {
+        const result = await client.query(sql, params);
+        if (sql === "BEGIN ISOLATION LEVEL SERIALIZABLE") {
+          await client.query("SET LOCAL ROLE ordax_food_executor");
+          const effective = await client.query("select current_user as role");
+          assert.equal(effective.rows[0]?.role, "ordax_food_executor");
+        }
+        return result;
+      },
+      release(error) { client.release(error); },
+    };
+  },
+};
 let current = Object.freeze({ subjectId: ADMIN_A, spaceId: SPACE_A, epoch: "session-1" });
 let verifiedBindingCalls = 0;
 let beforeBinding = null;
@@ -43,7 +64,7 @@ const authorizeAction = createFoodPostgresActionAuthorizer({
     return current;
   },
 });
-const transactions = createFoodPostgresTransactions({ pool, authorizeAction });
+const transactions = createFoodPostgresTransactions({ pool: restrictedPool, authorizeAction });
 const core = createFoodOrderCore({ transactions });
 
 function transition(state, commandId, orderId) {
@@ -205,7 +226,7 @@ test("real PostgreSQL: commit persisted but acknowledgment lost, so reconcile ra
   const cmd = transition(before, "pg-commit-reply-lost");
   const unknownPool = {
     async connect() {
-      const client = await pool.connect();
+      const client = await restrictedPool.connect();
       return {
         async query(sql, params) {
           const result = await client.query(sql, params);

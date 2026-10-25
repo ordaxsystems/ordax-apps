@@ -22,7 +22,7 @@ pedidos: o host precisa injetar uma função
 
 Em **cada chamada**, essa camada faz uma consulta SQL parametrizada
 à função privada canônica
-`private.ordax_food_action_eligible_v1(subject,space,action)`, sem
+`private.ordax_food_verify_action_v1(subject,space,action)`, sem
 montar grants locais ou confiar em um status `ready` da apresentação.
 A consulta retorna autorização somente para `true` literal e para
 `order.read`, `order.create` ou `order.transition`. Ausência de
@@ -164,4 +164,25 @@ O banco de teste inclui contas e membros sintéticos;
 Este ensaio **não comprova** validação de sessão real do host, executor mínimo
 de PostgreSQL nem prontidão de distribuição. Não permite publicar a proposta
 no Supabase, autenticar clientes por request body ou sair do gate FOOD-001.
+
+
+## SQL canônico de privilégio mínimo (sem ativação comercial)
+
+Na [Platform #290](https://github.com/ordaxsystems/ordax-platform/pull/290)
+a proposta de quatro operações privadas Food é a **única** autoridade SQL
+de pedidos: `verify_action`, `read_state`, `find_command` e
+`commit_order`. O adapter existente foi **alterado**, não duplicado.
+Mantém `BEGIN ISOLATION LEVEL SERIALIZABLE` na mesma conexão e usa
+somente funções privadas autorizadas pelo owner da Platform, sem DML
+direto nas duas tabelas com RLS forçado. As políticas de Space são
+rechecadas dentro das funções privilegiadas e o backend ainda exige
+`getVerifiedBinding(db)` de sessão autenticada.
+
+A role `ordax_food_executor` é NOLOGIN, sem acesso direto a tabelas,
+e o ensaio Node+PostgreSQL 17 usa `SET LOCAL ROLE` para provar essa
+restrição em cada transação. O driver real `pg` e o SQL são importados
+por commit imutável do repositório Platform. Isto **não** provisiona
+LOGIN de produção, não comprova a identidade do host ou a revogação
+durante uma requisição de rede real, nem é autorização para executar
+FOOD-001. Nenhuma outra implementação de pedidos foi criada.
 

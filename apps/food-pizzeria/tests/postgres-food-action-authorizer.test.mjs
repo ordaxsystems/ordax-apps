@@ -53,7 +53,7 @@ test("each action uses a fresh canonical SQL check with bound IDs, never string 
   assert.equal(f.queries.length, 3);
   for (const [i, item] of f.queries.entries()) {
     assert.equal(item.sql,
-      "select private.ordax_food_action_eligible_v1($1::uuid,$2::uuid,$3::text) as allowed");
+      "select private.ordax_food_verify_action_v1($1::uuid,$2::uuid,$3::text) as allowed");
     assert.deepEqual(item.params, [SUBJECT, SPACE_A,
       ["order.create", "order.transition", "order.read"][i]]);
     assert.ok(!item.sql.includes(SUBJECT) && !item.sql.includes(SPACE_A));
