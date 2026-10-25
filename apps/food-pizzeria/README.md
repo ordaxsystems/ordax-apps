@@ -25,6 +25,6 @@ node .\prototypes\food-pizzeria\server.mjs
 
 Abra `http://127.0.0.1:4240`. A porta pode ser alterada com `-Port`.
 
-Para exercitar a composição visual sem criar outra sidebar, a prévia possui também o modo local `?presentation=embedded-preview&view=kitchen` (troque `kitchen` por `orders`, `menu`, `tables`, `delivery` ou `settings`). **Esse modo não é um Space conectado**, não autentica pessoas, não expõe um provider autorizado e mantém os mesmos dados de demonstração. Na integração real, o host deverá controlar a navegação e a apresentação.
+Para exercitar a composição visual sem criar outra sidebar, a prévia possui também o modo local `?presentation=embedded-preview&view=kitchen` (troque `kitchen` por `orders`, `menu`, `tables`, `delivery` ou `settings`). Nesse modo, o host de desenvolvimento move a **única folha de estilos Food e os diálogos nativos para um Shadow DOM próprio**, evitando aplicar seletores globais ao documento hospedeiro. **Esse modo não é um Space conectado**, não autentica pessoas, não expõe um provider autorizado e mantém os mesmos dados de demonstração. Na integração real, o host deverá controlar a navegação, os estilos e a apresentação por contratos públicos.
 
 Veja [ARCHITECTURE.md](./ARCHITECTURE.md), [IMPLEMENTATION.md](./IMPLEMENTATION.md) e [PLAN.md](./PLAN.md) para ownership, auditoria, contratos e gates.
