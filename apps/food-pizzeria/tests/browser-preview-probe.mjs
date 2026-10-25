@@ -44,7 +44,7 @@ try {
   ensure(host, "Host de prévia ausente.");
   const content = await eventually(() => (embedded ? host.shadowRoot : host)
     ?.querySelector("#main-content"),
-    () => `Prévia não montou: errors=${browserErrors.join(" | ") || "nenhum"}; ready=${document.readyState}; modules=${[...document.querySelectorAll("script")].map(x=>x.src).join(",")}; resources=${performance.getEntriesByType("resource").filter(x=>/food|preview/.test(x.name)).map(x=>`${x.name.split("/").slice(-2).join("/")}:${x.responseStatus || "?"}`).join(",")}; host=${host.innerHTML.slice(0,350)}`);
+    () => `Prévia não montou: errors=${browserErrors.join(" | ") || "nenhum"}; ready=${document.readyState}; modules=${[...document.querySelectorAll("script")].map(x=>x.src).join(",")}; resources=${performance.getEntriesByType("resource").filter(x=>/food|preview/.test(x.name)).map(x=>`${x.name.split("/").slice(-2).join("/")}:${x.responseStatus || "?"}`).join(",")}; host=${host.innerHTML.slice(0,350)}; shadowHost=${Boolean(host.shadowRoot)}; mount=${host.shadowRoot?.querySelector(".food-preview-content-root")?.innerHTML.slice(0,850) ?? "ausente"}; scriptErrors=${document.documentElement.dataset.foodPreviewStartupError ?? "nenhum"}`);
   const root = embedded ? host.shadowRoot : document;
   ensure(content.textContent.includes(expected[view] ?? "OrdaX"),
     `O módulo ${view} não renderizou seu conteúdo esperado.`);
