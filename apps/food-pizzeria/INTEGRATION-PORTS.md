@@ -11,6 +11,35 @@ Este documento define as responsabilidades internas que os adapters Food deverã
 | Renderizadores em `src/ui/views/` | Apresentação de cada área do Food. | Recebem estado do mesmo app; não têm stores independentes nem são apps instaláveis. |
 | `standalone-preview` / `embedded-preview` (`src/ui/presentation.mjs` + `src/ui/preview-mount.mjs`) | Modos de demonstração, o segundo sem sidebar/cabeçalho Food e com CSS/diálogos em Shadow DOM; `navigate()` e cliques internos incorporados limitados aos módulos Food. | **Ambos exigem explicitamente `browser-local-preview` e rejeitam adapters comerciais antes de montar.** Essa verificação de modo não é autenticação/grant; portas reais dependem exclusivamente do host autorizado. |
 
+## Policy bridge server-only — proposta de autorização do host
+
+`src/adapters/postgres-food-action-authorizer.mjs` oferece o callback
+`authorizeAction(db,action)` exigido pelo adapter transacional existente.
+Ele **não aceita** usuário, Space, grant ou época de sessão do payload de
+pedidos: o host precisa injetar uma função
+`getVerifiedBinding(db)` que derive `subjectId`, `spaceId` e
+`epoch` de sua sessão autenticada real.
+
+Em **cada chamada**, essa camada faz uma consulta SQL parametrizada
+à função privada canônica
+`private.ordax_food_action_eligible_v1(subject,space,action)`, sem
+montar grants locais ou confiar em um status `ready` da apresentação.
+A consulta retorna autorização somente para `true` literal e para
+`order.read`, `order.create` ou `order.transition`. Ausência de
+host, identidade inválida, ação desconhecida ou decisão negativa
+falham fechadas. A função de produção é uma **proposta não aplicada**
+integrada ao owner Platform pela
+[PR #288](https://github.com/ordaxsystems/ordax-platform/pull/288).
+Seus papéis iniciais são conservadores e ainda exigem aprovação do
+owner Identity/Spaces para uso comercial.
+
+Este callback é parte da camada **server-only**; não autentica
+sozinho a sessão, não escolhe a conexão PostgreSQL nem libera
+EXECUTE à role do processo. A migração do esquema e da política,
+a role SQL mínima, revogação e o transporte real permanecem
+bloqueados até FOOD-001 ser autorizado. Os testes usam bindings
+sintéticos somente dentro da suíte, não como provider operacional.
+
 ## Adapter PostgreSQL server-only — código preparado, não ativado
 
 `src/adapters/postgres-order-transactions.mjs` implementa a interface
