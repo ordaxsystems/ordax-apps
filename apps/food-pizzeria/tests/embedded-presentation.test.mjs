@@ -107,9 +107,19 @@ test("content-only Food preview never includes a second sidebar, header or dashb
 });
 
 test("embedded Food preview cannot impersonate a real Space provider or open horizontal apps", () => {
-  assert.equal(assertFoodPreviewPresentation("standalone-preview", fakePreviewPort("other-host")), "standalone-preview");
-  assert.throws(() => assertFoodPreviewPresentation("embedded-preview", fakePreviewPort("space-live")),
-    /host Space ainda não está autorizado/);
+  assert.equal(assertFoodPreviewPresentation("standalone-preview", fakePreviewPort()), "standalone-preview");
+  for (const presentation of ["standalone-preview", "embedded-preview"]) {
+    for (const adapter of ["other-host", "space-live"]) {
+      assert.throws(() => assertFoodPreviewPresentation(presentation, fakePreviewPort(adapter)),
+        /host Space ainda não está autorizado/);
+      const root = fakeRoot();
+      assert.throws(() => createFoodPizzeriaApp({
+        root, dataPort: fakePreviewPort(adapter), presentation,
+      }), /host Space ainda não está autorizado/);
+      assert.equal(root.listenerCount, 0);
+      assert.equal(root.innerHTML, "");
+    }
+  }
   assert.throws(() => assertFoodPreviewPresentation("space-live", fakePreviewPort()),
     /Apresentação Food desconhecida/);
   assert.equal(assertFoodModuleView("delivery"), "delivery");
@@ -153,4 +163,21 @@ test("a single-seat table opens with a valid default guest count", async () => {
   } finally {
     app.destroy();
   }
+});
+
+test("preview-only launch cannot be promoted into an operational Space by its adapter", () => {
+  let called = 0;
+  const port = {
+    ...fakePreviewPort("space-live"),
+    async initialize() { called += 1; return createSeedFoodState(); },
+    async execute() { called += 1; throw new Error("host operation must never run"); },
+  };
+  const root = fakeRoot();
+  for (const presentation of ["standalone-preview", "embedded-preview"]) {
+    assert.throws(() => createFoodPizzeriaApp({ root, dataPort: port, presentation }),
+      /host Space ainda não está autorizado/);
+  }
+  assert.equal(called, 0);
+  assert.equal(root.listenerCount, 0);
+  assert.equal(root.innerHTML, "");
 });
