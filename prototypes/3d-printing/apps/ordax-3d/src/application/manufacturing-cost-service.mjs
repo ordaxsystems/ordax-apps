@@ -1,5 +1,5 @@
 import { assertManufacturingCostRepository } from "../ports/manufacturing-cost-repository.mjs";
-import { calculateManufacturingCost, defaultManufacturingCostSettings, getMaterialPricePerKg, normalizeManufacturingCostSettings, normalizeMaterialName } from "../domain/manufacturing-cost.mjs";
+import { calculateManufacturingCost, defaultManufacturingCostSettings, getMaterialPricePerKg, getPrinterCostSettings, normalizeManufacturingCostSettings, normalizeMaterialName, printerCostProfileFields } from "../domain/manufacturing-cost.mjs";
 
 function optionalNonNegative(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -21,7 +21,11 @@ export function createManufacturingCostService(repository) {
   const notify = () => { for (const listener of listeners) listener(); };
 
   function calculate(input) {
-    return calculateManufacturingCost(input, settings);
+    return calculateManufacturingCost(input, getPrinterCostSettings(input?.printer, settings));
+  }
+
+  function settingsForPrinter(printer) {
+    return getPrinterCostSettings(printer, settings);
   }
 
   function calculateFromSlice(slice = latestSlice) {
@@ -36,6 +40,12 @@ export function createManufacturingCostService(repository) {
 
   return Object.freeze({
     settings: () => settings,
+    settingsForPrinter,
+    listPrinterCostProfiles: () => Object.freeze(Object.values(settings.printerCostProfiles).sort((left, right) => left.name.localeCompare(right.name, "pt-BR"))),
+    hasPrinterCostProfile(printer) {
+      const key = normalizeMaterialName(printer);
+      return Boolean(key && settings.printerCostProfiles[key]);
+    },
     materialPriceFor: material => getMaterialPricePerKg(material, settings),
     updateSettings(patch = {}) {
       settings = normalizeManufacturingCostSettings({ ...settings, ...(patch && typeof patch === "object" ? patch : {}) });
@@ -54,6 +64,25 @@ export function createManufacturingCostService(repository) {
       repository.saveSettings(settings);
       notify();
       return getMaterialPricePerKg(key, settings);
+    },
+    updatePrinterCostProfile(printer, patch = {}) {
+      const name = String(printer ?? "").trim().replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 120);
+      const key = normalizeMaterialName(name);
+      if (!key) throw new TypeError("Informe o nome da impressora para salvar as premissas de custo.");
+      const current = settings.printerCostProfiles[key] ?? Object.fromEntries(printerCostProfileFields.map(field => [field, settings[field]]));
+      const allowedPatch = Object.fromEntries(printerCostProfileFields
+        .filter(field => Object.hasOwn(patch && typeof patch === "object" ? patch : {}, field))
+        .map(field => [field, patch[field]]));
+      settings = normalizeManufacturingCostSettings({
+        ...settings,
+        printerCostProfiles: {
+          ...settings.printerCostProfiles,
+          [key]: { ...current, ...allowedPatch, name },
+        },
+      });
+      repository.saveSettings(settings);
+      notify();
+      return settingsForPrinter(name);
     },
     calculate,
     calculateFromSlice,

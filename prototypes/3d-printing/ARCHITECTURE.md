@@ -26,7 +26,7 @@ O app canônico de desenvolvimento fica em `apps/ordax-3d/`:
 - `features/<id>/` mantém renderizadores e interação de cada módulo, sem shell de produto próprio.
 - `shared/product-host.mjs` é o host local reutilizável que monta a entrada do app; não é um provider do Space de produção.
 
-`print-draft` é a fonte das regras puras de configuração do fatiamento. `technical-print-job` é a fonte das regras dos jobs técnicos. `manufacturing-cost` concentra a fórmula determinística; `manufacturing-cost-service` compartilha premissas, último resultado do slicer e histórico técnico entre Prepare, Preview e Custos. Uma única instância dos serviços de jobs e custos é injetada pelo host do app; o snapshot de custo do job conserva as premissas do cálculo sem se tornar pedido ou preço comercial aprovado.
+`print-draft` é a fonte das regras puras de configuração do fatiamento. `technical-print-job` é a fonte das regras dos jobs técnicos. `manufacturing-cost` concentra a fórmula determinística; `manufacturing-cost-service` compartilha premissas, último resultado do slicer e histórico técnico entre Prepare, Preview e Custos. Preços de material e perfis de potência/depreciação/manutenção por impressora ficam no mesmo armazenamento local da calculadora. Uma única instância dos serviços de jobs e custos é injetada pelo host do app; o snapshot de custo do job conserva as premissas do cálculo sem se tornar pedido ou preço comercial aprovado.
 
 ## SSOT e ownership
 
@@ -58,6 +58,6 @@ Os shells legados preservados durante esta alteração não fazem parte do host 
 - A fila contém jobs técnicos. O uso de status demonstrativos não comanda hardware.
 - O slicer armazena metadados técnicos do resultado no job; G-code continua um arquivo separado e não é persistido junto à fila.
 - Materiais agrupa gramas estimados pela fila. Inventory continua dono de todo saldo e movimentação.
-- Custos usam estatísticas do slicer quando disponíveis ou peso/tempo informados no módulo Custos; premissas, histórico e snapshots são locais. A taxa de depreciação é uma alocação técnica, não um lançamento contábil. Vendas segue como owner do pedido e preço aprovado; Finance/Payments conservam seus lançamentos e cobranças.
+- Custos usam estatísticas do slicer quando disponíveis ou peso/tempo informados no módulo Custos; taxas gerais, histórico, preços de material e perfis de custo por impressora são locais. O perfil da máquina pode separar potência, aquisição, residual, vida útil, manutenção e custo horário entre impressoras; a tarifa de energia e mão de obra continuam como premissas gerais da oficina. A taxa de depreciação é uma alocação técnica, não um lançamento contábil. Vendas segue como owner do pedido e preço aprovado; Finance/Payments conservam seus lançamentos e cobranças.
 - Biblioteca lê arquivos localmente e repassa arquivo pela sessão do app; Files ainda precisa fornecer contrato público de armazenamento/importação/compartilhamento.
 - A entrada no catálogo oficial e a elegibilidade de distribuição não são alteradas por esta base.

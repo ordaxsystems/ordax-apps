@@ -1,10 +1,20 @@
 export const manufacturingCostSettingsSchema = "ordax.3d-manufacturing-cost-settings/1";
 export const manufacturingCostEstimateSchema = "ordax.3d-manufacturing-cost-estimate/1";
 
+export const printerCostProfileFields = Object.freeze([
+  "printerPowerWatts",
+  "printerPurchasePrice",
+  "printerResidualValue",
+  "printerUsefulHours",
+  "maintenancePerHour",
+  "machineOverheadPerHour",
+]);
+
 export const defaultManufacturingCostSettings = Object.freeze({
   schema: manufacturingCostSettingsSchema,
   materialPricePerKg: 119.9,
   materialPricesPerKg: Object.freeze({}),
+  printerCostProfiles: Object.freeze({}),
   materialWastePercent: 8,
   printerPowerWatts: 120,
   energyPricePerKwh: 0.95,
@@ -53,6 +63,28 @@ export function normalizeMaterialName(value) {
   return String(value ?? "").trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").slice(0, 100);
 }
 
+function normalizePrinterCostProfiles(value, fallback) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return Object.freeze({});
+  const profiles = {};
+  for (const [profileKey, source] of Object.entries(value).slice(0, 100)) {
+    if (!source || typeof source !== "object" || Array.isArray(source)) continue;
+    const name = label(source.name ?? profileKey, "", 120);
+    const key = normalizeMaterialName(name);
+    if (!key || profiles[key]) continue;
+    const printerPurchasePrice = bounded(source.printerPurchasePrice, fallback.printerPurchasePrice, 0, 1_000_000_000);
+    profiles[key] = Object.freeze({
+      name,
+      printerPowerWatts: bounded(source.printerPowerWatts, fallback.printerPowerWatts, 0, 50_000),
+      printerPurchasePrice,
+      printerResidualValue: Math.min(bounded(source.printerResidualValue, fallback.printerResidualValue, 0, 1_000_000_000), printerPurchasePrice),
+      printerUsefulHours: bounded(source.printerUsefulHours, fallback.printerUsefulHours, 0, 1_000_000),
+      maintenancePerHour: bounded(source.maintenancePerHour, fallback.maintenancePerHour, 0, 1_000_000),
+      machineOverheadPerHour: bounded(source.machineOverheadPerHour, fallback.machineOverheadPerHour, 0, 1_000_000),
+    });
+  }
+  return Object.freeze(profiles);
+}
+
 export function normalizeManufacturingCostSettings(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const printerPurchasePrice = bounded(source.printerPurchasePrice, defaultManufacturingCostSettings.printerPurchasePrice, 0, 1_000_000_000);
@@ -63,19 +95,32 @@ export function normalizeManufacturingCostSettings(value = {}) {
     const parsed = Number(price);
     if (key && Number.isFinite(parsed) && parsed >= 0) materialPricesPerKg[key] = Math.min(1_000_000, parsed);
   }
+  const printerPowerWatts = bounded(source.printerPowerWatts, defaultManufacturingCostSettings.printerPowerWatts, 0, 50_000);
+  const printerUsefulHours = bounded(source.printerUsefulHours, defaultManufacturingCostSettings.printerUsefulHours, 0, 1_000_000);
+  const maintenancePerHour = bounded(source.maintenancePerHour, defaultManufacturingCostSettings.maintenancePerHour, 0, 1_000_000);
+  const machineOverheadPerHour = bounded(source.machineOverheadPerHour, defaultManufacturingCostSettings.machineOverheadPerHour, 0, 1_000_000);
+  const printerCostProfileFallback = {
+    printerPowerWatts,
+    printerPurchasePrice,
+    printerResidualValue: Math.min(bounded(source.printerResidualValue, defaultManufacturingCostSettings.printerResidualValue, 0, 1_000_000_000), printerPurchasePrice),
+    printerUsefulHours,
+    maintenancePerHour,
+    machineOverheadPerHour,
+  };
   return Object.freeze({
     schema: manufacturingCostSettingsSchema,
     materialPricePerKg: bounded(source.materialPricePerKg, defaultManufacturingCostSettings.materialPricePerKg, 0, 1_000_000),
     materialPricesPerKg: Object.freeze(materialPricesPerKg),
+    printerCostProfiles: normalizePrinterCostProfiles(source.printerCostProfiles, printerCostProfileFallback),
     materialWastePercent: bounded(source.materialWastePercent, defaultManufacturingCostSettings.materialWastePercent, 0, 100),
-    printerPowerWatts: bounded(source.printerPowerWatts, defaultManufacturingCostSettings.printerPowerWatts, 0, 50_000),
+    printerPowerWatts,
     energyPricePerKwh: bounded(source.energyPricePerKwh, defaultManufacturingCostSettings.energyPricePerKwh, 0, 10_000),
     laborPricePerHour: bounded(source.laborPricePerHour, defaultManufacturingCostSettings.laborPricePerHour, 0, 1_000_000),
     printerPurchasePrice,
     printerResidualValue: Math.min(bounded(source.printerResidualValue, defaultManufacturingCostSettings.printerResidualValue, 0, 1_000_000_000), printerPurchasePrice),
-    printerUsefulHours: bounded(source.printerUsefulHours, defaultManufacturingCostSettings.printerUsefulHours, 0, 1_000_000),
-    maintenancePerHour: bounded(source.maintenancePerHour, defaultManufacturingCostSettings.maintenancePerHour, 0, 1_000_000),
-    machineOverheadPerHour: bounded(source.machineOverheadPerHour, defaultManufacturingCostSettings.machineOverheadPerHour, 0, 1_000_000),
+    printerUsefulHours,
+    maintenancePerHour,
+    machineOverheadPerHour,
     laborAttentionPercent: bounded(source.laborAttentionPercent, defaultManufacturingCostSettings.laborAttentionPercent, 0, 100),
     setupMinutesPerBatch: bounded(source.setupMinutesPerBatch, defaultManufacturingCostSettings.setupMinutesPerBatch, 0, 100_000),
     finishingMinutesPerUnit: bounded(source.finishingMinutesPerUnit, defaultManufacturingCostSettings.finishingMinutesPerUnit, 0, 100_000),
@@ -96,6 +141,14 @@ export function getMaterialPricePerKg(material, sourceSettings = defaultManufact
   return key && Object.hasOwn(settings.materialPricesPerKg, key)
     ? settings.materialPricesPerKg[key]
     : settings.materialPricePerKg;
+}
+
+export function getPrinterCostSettings(printer, sourceSettings = defaultManufacturingCostSettings) {
+  const settings = normalizeManufacturingCostSettings(sourceSettings);
+  const key = normalizeMaterialName(printer);
+  const profile = key ? settings.printerCostProfiles[key] : null;
+  if (!profile) return settings;
+  return normalizeManufacturingCostSettings({ ...settings, ...profile });
 }
 
 export function calculateManufacturingCost(input = {}, sourceSettings = defaultManufacturingCostSettings) {

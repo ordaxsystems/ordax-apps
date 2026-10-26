@@ -21,6 +21,15 @@ const settingFields = [
   ["shippingAbsorbedPerOrder", "Frete absorvido no pedido", "R$/pedido", "currency"],
 ];
 
+const printerSettingKeys = Object.freeze([
+  "printerPowerWatts",
+  "printerPurchasePrice",
+  "printerResidualValue",
+  "printerUsefulHours",
+  "maintenancePerHour",
+  "machineOverheadPerHour",
+]);
+
 function readNumber(value) {
   if (value === "") return 0;
   const parsed = Number(value);
@@ -44,7 +53,7 @@ function settingField([key, label, unitName, kind], value) {
 export function mountFeature(host = {}) {
   const { escapeHtml, toast, icon, button } = shared;
   const costs = host.manufacturingCosts;
-  if (typeof host.mountShell !== "function" || typeof costs?.settings !== "function" || typeof costs?.calculate !== "function" || typeof costs?.saveEstimate !== "function" || typeof costs?.materialPriceFor !== "function" || typeof costs?.updateMaterialPrice !== "function") {
+  if (typeof host.mountShell !== "function" || typeof costs?.settings !== "function" || typeof costs?.settingsForPrinter !== "function" || typeof costs?.updatePrinterCostProfile !== "function" || typeof costs?.listPrinterCostProfiles !== "function" || typeof costs?.hasPrinterCostProfile !== "function" || typeof costs?.calculate !== "function" || typeof costs?.saveEstimate !== "function" || typeof costs?.materialPriceFor !== "function" || typeof costs?.updateMaterialPrice !== "function") {
     throw new TypeError("A estimativa precisa do serviço compartilhado de custos do OrdaX 3D.");
   }
 
@@ -67,7 +76,7 @@ export function mountFeature(host = {}) {
             <div class="form-grid">
               <div class="field"><label for="job-name">Nome do trabalho</label><input class="input" id="job-name" data-input="name" placeholder="Ex.: Suporte articulado"/></div>
               <div class="field"><label for="material-name">Material ou perfil de filamento</label><input class="input" id="material-name" data-input="material" list="material-options" value="PLA"/><datalist id="material-options"><option value="PLA"></option><option value="PETG"></option><option value="ABS"></option><option value="ASA"></option><option value="TPU"></option><option value="Nylon"></option><option value="PC"></option></datalist></div>
-              <div class="field"><label for="printer-name">Impressora de referência</label><input class="input" id="printer-name" data-input="printer" placeholder="Ex.: Bambu Lab A1"/></div>
+              <div class="field"><label for="printer-name">Impressora de referência</label><input class="input" id="printer-name" data-input="printer" list="printer-cost-options" placeholder="Ex.: Bambu Lab A1"/><datalist id="printer-cost-options" data-printer-options></datalist><small class="muted" data-printer-profile-status>Sem nome de impressora, o cálculo usa as premissas padrão da oficina.</small></div>
               <div class="field"><label for="quantity">Quantidade de peças ou lotes</label><input class="input" id="quantity" data-input="quantity" type="number" min="1" step="1" value="1"/></div>
             </div>
           </div>
@@ -88,7 +97,7 @@ export function mountFeature(host = {}) {
 
           <section class="cost-section cost-settings" data-params>
             <div class="cost-section-head">${icon("settings", 16)}<h2>Energia, impressora e operação</h2></div>
-            <p class="section-help">A depreciação é rateada pelas horas produtivas: (aquisição − valor residual) ÷ vida útil.</p>
+            <p class="section-help">A depreciação é rateada pelas horas produtivas: (aquisição − valor residual) ÷ vida útil. Potência, aquisição, residual, vida útil e manutenção são próprios da impressora selecionada; tarifa de energia e mão de obra são gerais da oficina.</p>
             <div class="form-grid">${settingFields.slice(0, 9).map(field => settingField(field, settings[field[0]])).join("")}</div>
           </section>
 
@@ -170,6 +179,30 @@ export function mountFeature(host = {}) {
     }).join("") : `<div class="empty-state">Nenhum orçamento salvo ainda.</div>`;
   }
 
+  function renderPrinterProfileControls() {
+    const name = fields.printer.value.trim();
+    const datalist = shell.content.querySelector("[data-printer-options]");
+    datalist.innerHTML = costs.listPrinterCostProfiles()
+      .map(profile => `<option value="${escapeHtml(profile.name)}"></option>`)
+      .join("");
+    const status = shell.content.querySelector("[data-printer-profile-status]");
+    if (!name) {
+      status.textContent = "Sem nome de impressora, o cálculo usa as premissas padrão da oficina.";
+    } else if (costs.hasPrinterCostProfile(name)) {
+      status.textContent = `Premissas locais de potência, aquisição, vida útil e manutenção salvas para ${name}.`;
+    } else {
+      status.textContent = "Esta impressora ainda herda as premissas padrão. Ao editar um campo da máquina, um perfil local será salvo.";
+    }
+  }
+
+  function loadPrinterCostProfile() {
+    const profile = costs.settingsForPrinter(fields.printer.value);
+    for (const key of printerSettingKeys) {
+      const input = shell.content.querySelector(`[data-setting="${key}"]`);
+      input.value = String(profile[key]);
+    }
+  }
+
   function renderLatestSlice() {
     const latest = costs.latestSlice();
     const title = shell.content.querySelector("[data-last-slice-title]");
@@ -196,6 +229,7 @@ export function mountFeature(host = {}) {
   function render() {
     renderLatestSlice();
     renderHistory();
+    renderPrinterProfileControls();
     const result = costs.calculate(estimateInput());
     const settingsNow = costs.settings();
     shell.content.querySelector("[data-estimate-status]").textContent = result.available ? !result.pricingValid ? "REVISE MARGEM E TAXAS" : result.complete ? "ESTIMATIVA TÉCNICA COMPLETA" : "CUSTO PARCIAL · DEPRECIAÇÃO PENDENTE" : "INFORME PESO E TEMPO";
@@ -283,6 +317,7 @@ export function mountFeature(host = {}) {
   }
 
   const materialPriceField = shell.content.querySelector("[data-material-price]");
+  fields.printer.addEventListener("change", () => { loadPrinterCostProfile(); render(); });
   fields.material.addEventListener("change", () => { materialPriceField.value = String(costs.materialPriceFor(fields.material.value)); });
   materialPriceField.addEventListener("input", () => {
     if (materialPriceField.value === "") return;
@@ -292,14 +327,19 @@ export function mountFeature(host = {}) {
   shell.content.querySelectorAll("[data-input]").forEach(input => input.addEventListener("input", () => { formSource = "manual"; formScope = "piece"; formEngine = ""; formEngineVersion = ""; render(); }));
   shell.content.querySelectorAll("[data-setting]").forEach(input => {
     const saveSetting = () => {
-      const value = input.dataset.setting === "pricingMode" ? input.value : readNumber(input.value);
-      const saved = costs.updateSettings({ [input.dataset.setting]: value });
-      const normalized = saved[input.dataset.setting];
+      const key = input.dataset.setting;
+      const value = key === "pricingMode" ? input.value : readNumber(input.value);
+      const isPrinterSetting = printerSettingKeys.includes(key);
+      const printer = fields.printer.value.trim();
+      const saved = isPrinterSetting && printer
+        ? costs.updatePrinterCostProfile(printer, { [key]: value })
+        : costs.updateSettings({ [key]: value });
+      const normalized = saved[key];
       if (input.tagName === "SELECT" || input.value !== "" && Number(input.value) !== normalized) input.value = String(normalized);
-      if (["printerPurchasePrice", "printerResidualValue"].includes(input.dataset.setting)) {
-        for (const key of ["printerPurchasePrice", "printerResidualValue"]) {
-          const dependent = shell.content.querySelector(`[data-setting="${key}"]`);
-          dependent.value = String(saved[key]);
+      if (isPrinterSetting) {
+        const effective = costs.settingsForPrinter(printer);
+        for (const machineKey of printerSettingKeys) {
+          shell.content.querySelector(`[data-setting="${machineKey}"]`).value = String(effective[machineKey]);
         }
       }
       render();

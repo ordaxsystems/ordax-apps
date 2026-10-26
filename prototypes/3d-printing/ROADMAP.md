@@ -1,5 +1,13 @@
 # OrdaX 3D — plano de evolução
 
+### Incremento local — premissas de custo por impressora (2026-10-26)
+
+A calculadora agora mantém perfis locais de custo para cada impressora nomeada. Potência, valor de aquisição, residual, vida útil, manutenção e custo horário da máquina podem variar por impressora; tarifa de energia, mão de obra, acabamento, perdas, embalagem, impostos e taxas continuam como premissas gerais da oficina. A estimativa automática do fatiador usa o perfil da impressora selecionada e o preço local do material, e o orçamento independente mantém os mesmos campos editáveis, histórico e exportação CSV. Isso continua sendo uma referência técnica local, não preço comercial aprovado nem integração com Inventory/Finance.
+
+O resultado de um objeto único segue exibindo custo e preço de referência por peça no Preview. Para pratos com vários objetos, o app conserva o custo/preço total do prato enquanto o motor só fornecer estatísticas agregadas; não divide peso nem duração para inventar valores unitários.
+
+`node --test prototypes/3d-printing/tests/*.test.mjs`: 142/142; `node --check` nos módulos alterados e `git diff --check` aprovados. O host local em `http://127.0.0.1:4315/` abriu Custos e orçamento com seleção de impressora e parâmetros próprios por máquina. OrcaSlicer e perfis reais continuam ausentes neste host, portanto não houve fatiamento E2E.
+
 ### Incremento local — fluxo direto de orçamento após fatiar (2026-10-26)
 
 O resultado real do último fatiamento continua alimentando o custo e o preço de referência no Preview. O botão agora abre Custos e orçamento já carregando nome, material, impressora, peso e duração, para o usuário revisar premissas, quantidade e salvar/exportar o cálculo separado. O serviço também conserva quantos objetos compunham o prato. Quando o motor só informa estatísticas agregadas, o app mantém o orçamento como total do prato e explica que não há custo individual por objeto; não divide peso/tempo nem apresenta uma média como dado do Orca. A estimativa de um objeto único segue por peça. Isso não cria pedido comercial, preço aprovado, lançamento financeiro ou movimentação de Inventory.

@@ -196,3 +196,63 @@ test("serviço guarda preço por material em premissas locais", () => {
   assert.equal(service.materialPriceFor("PLA"), defaultManufacturingCostSettings.materialPricePerKg);
   assert.equal(repository.state().settings.materialPricesPerKg["petg azul"], 189.5);
 });
+
+test("mantém custos de máquina separados por impressora e reaplica o perfil em novos cálculos", () => {
+  const repository = memoryRepository({
+    ...defaultManufacturingCostSettings,
+    materialPricePerKg: 0,
+    materialWastePercent: 0,
+    energyPricePerKwh: 1,
+    laborPricePerHour: 0,
+  });
+  const costs = createManufacturingCostService(repository);
+  costs.updatePrinterCostProfile("Bambu Lab A1", {
+    printerPowerWatts: 100,
+    printerPurchasePrice: 2000,
+    printerResidualValue: 0,
+    printerUsefulHours: 1000,
+    maintenancePerHour: 0.5,
+    machineOverheadPerHour: 0.2,
+  });
+  costs.updatePrinterCostProfile("Ender 3 V3", {
+    printerPowerWatts: 300,
+    printerPurchasePrice: 1000,
+    printerResidualValue: 0,
+    printerUsefulHours: 1000,
+    maintenancePerHour: 1,
+    machineOverheadPerHour: 0.4,
+  });
+
+  const bambu = costs.calculate({ printer: "bambu  lab a1", grams: 100, hours: 2 });
+  const ender = costs.calculate({ printer: "Ender 3 V3", grams: 100, hours: 2 });
+  closeTo(bambu.components.energy, 0.2);
+  closeTo(bambu.components.depreciation, 4);
+  closeTo(bambu.components.maintenance, 1);
+  closeTo(bambu.components.machineOverhead, 0.4);
+  closeTo(bambu.costPerUnit, 5.6);
+  closeTo(ender.components.energy, 0.6);
+  closeTo(ender.components.depreciation, 2);
+  closeTo(ender.components.maintenance, 2);
+  closeTo(ender.components.machineOverhead, 0.8);
+  closeTo(ender.costPerUnit, 5.4);
+
+  assert.deepEqual(costs.listPrinterCostProfiles().map(profile => profile.name), ["Bambu Lab A1", "Ender 3 V3"]);
+  assert.equal(costs.hasPrinterCostProfile("BAMBU LAB A1"), true);
+  assert.equal(repository.state().settings.printerCostProfiles["bambu lab a1"].printerPurchasePrice, 2000);
+  assert.equal(createManufacturingCostService(repository).settingsForPrinter("Ender 3 V3").printerPowerWatts, 300);
+});
+
+test("perfil de impressora sem configuração usa os valores da oficina e limita o residual ao preço de aquisição", () => {
+  const costs = createManufacturingCostService(memoryRepository({
+    ...defaultManufacturingCostSettings,
+    printerPowerWatts: 180,
+    printerPurchasePrice: 800,
+    printerResidualValue: 100,
+  }));
+  assert.equal(costs.settingsForPrinter("Impressora nova").printerPowerWatts, 180);
+  assert.equal(costs.hasPrinterCostProfile("Impressora nova"), false);
+  const profile = costs.updatePrinterCostProfile("Impressora nova", { printerPurchasePrice: 500, printerResidualValue: 900 });
+  assert.equal(profile.printerPowerWatts, 180);
+  assert.equal(profile.printerPurchasePrice, 500);
+  assert.equal(profile.printerResidualValue, 500);
+});
