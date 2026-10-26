@@ -349,12 +349,13 @@ export function mountFeature(host = {}) {
   shell.content.querySelectorAll("[data-save]").forEach(item => item.addEventListener("click", save));
   shell.actions.querySelector("[data-save]").addEventListener("click", save);
   shell.content.querySelector("[data-export]").addEventListener("click", exportEstimate);
-  function loadLatestSlice() {
-    const latest = costs.latestSlice();
+  function loadSlice(slice = costs.latestSlice()) {
+    const latest = slice;
     if (!latest || latest.grams === null || latest.timeSeconds === null) {
       toast("O resultado do motor precisa informar peso e tempo para preencher este orçamento.");
       return false;
     }
+    if (slice !== costs.latestSlice()) costs.setLatestSlice(latest);
     fields.name.value = latest.name;
     fields.material.value = latest.material;
     materialPriceField.value = String(costs.materialPriceFor(latest.material));
@@ -369,13 +370,15 @@ export function mountFeature(host = {}) {
     render();
     shell.content.querySelector("[data-grams-label]").scrollIntoView({ behavior: "smooth", block: "center" });
     toast(latest.scope === "plate"
-      ? `Total do prato com ${latest.objectCount} objetos carregado. O motor não dividiu peso e tempo por peça; revise antes de usar como custo unitário.`
-      : "Peso e tempo da peça carregados. Revise as premissas e a quantidade antes de salvar.");
+      ? `Total do prato com ${latest.objectCount} objetos carregado. O motor não dividiu peso e tempo por peça; o orçamento permanece por prato.`
+      : "Peso e tempo desta peça carregados a partir de um fatiamento isolado. Revise as premissas antes de salvar.");
     return true;
   }
+  const loadLatestSlice = () => loadSlice();
   shell.content.querySelector("[data-use-slice]").addEventListener("click", loadLatestSlice);
   shell.root.addEventListener("app:activate", event => {
     if (event.detail?.action === "load-latest-slice") loadLatestSlice();
+    else if (event.detail?.action === "load-slice") loadSlice(event.detail.slice);
   });
   shell.root.addEventListener("app:navigate", event => {
     if (event.detail === "history") shell.content.querySelector(".cost-history").scrollIntoView({ behavior: "smooth", block: "start" });

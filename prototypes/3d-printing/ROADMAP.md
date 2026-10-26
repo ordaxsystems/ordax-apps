@@ -1,5 +1,13 @@
 # OrdaX 3D — plano de evolução
 
+### Incremento local — custo individual de cada peça em pratos múltiplos (2026-10-26)
+
+O Preview já mostra custo total quando o motor retorna estatísticas agregadas do prato. Agora, **Calcular/recalcular peças** permite calcular cada modelo sem ratear esse total: o app envia cada geometria individual transformada ao mesmo serviço/perfil, em lotes de até 20, calcula pelo peso e duração retornados, e descarta esses G-codes auxiliares. O G-code original do prato não é alterado. Cada linha abre o orçamento técnico preenchido para revisão e salvamento; o orçamento manual/avulso continua disponível. Mudanças de perfil ou geometria invalidam resultados anteriores.
+
+No destino servidor, cada rodada apresenta uma confirmação que identifica o host e a quantidade de peças antes de enviar as malhas individuais. A lista e o histórico continuam locais; não criam pedido comercial, aprovação de preço, apuração fiscal ou movimentação de Inventory. A integração de Space, Vendas, Finance, Files e Inventory permanece pendente dos contratos públicos dos owners.
+
+Verificação desta rodada: `node --test prototypes/3d-printing/tests/*.test.mjs` (145/145), `node --check` nos módulos alterados e `git diff --check` aprovados. O host local em `http://127.0.0.1:4316/` serviu a entrada, o novo módulo de seleção e as duas telas com HTTP 200. O host precisa do OrcaSlicer/perfis para executar o fatiamento individual; sem esse serviço real, a tela de orçamento avulso continua aceitando dados manuais e a lista de peças não é simulada.
+
 ### Incremento local — premissas de custo por impressora (2026-10-26)
 
 A calculadora agora mantém perfis locais de custo para cada impressora nomeada. Potência, valor de aquisição, residual, vida útil, manutenção e custo horário da máquina podem variar por impressora; tarifa de energia, mão de obra, acabamento, perdas, embalagem, impostos e taxas continuam como premissas gerais da oficina. A estimativa automática do fatiador usa o perfil da impressora selecionada e o preço local do material, e o orçamento independente mantém os mesmos campos editáveis, histórico e exportação CSV. Isso continua sendo uma referência técnica local, não preço comercial aprovado nem integração com Inventory/Finance.

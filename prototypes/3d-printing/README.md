@@ -14,6 +14,12 @@ OrdaX 3D é uma capacidade vertical integrada ao Space e reúne onze módulos in
 | Estimativa de materiais · Estimativa de fabricação | Consumo e custos calculados localmente; sem saldo, movimentação ou pedido de venda |
 | Qualidade · Manutenção | Registros técnicos locais |
 
+### Custo por peça e orçamento avulso
+
+Depois de fatiar uma mesa com várias peças, **Calcular/recalcular peças** executa um fatiamento real isolado para cada item (até 20 por rodada) e usa o peso e a duração retornados pelo Orca para calcular material, energia, depreciação, manutenção, mão de obra e preço de referência. Os G-codes auxiliares são descartados; o G-code da mesa original permanece como resultado de impressão. Se o motor não retornar peso e tempo para um item, não é apresentado custo inventado. Cada item calculado pode abrir **Custos e orçamento técnico** já preenchido para revisão e salvamento.
+
+O orçamento avulso também aceita peso, tempo, material, impressora e quantidade informados manualmente. As premissas por material/impressora e o histórico são locais; não registram Inventory, Vendas, tributos ou Finance. Cada rodada individual pode gerar trabalho adicional no motor; no destino servidor, o app confirma explicitamente quantas peças e qual servidor receberá cada malha transformada.
+
 O host ativo aceita somente `ordax-3d`. Os cinco shells independentes que existiam como experimentos foram retirados deste produto; seus arquivos foram preservados na branch remota `archive/3d-shells-before-consolidation-20261026` para consulta histórica. Eles não são apps instaláveis nem rotas alternativas do host.
 
 Inicie o host único no PowerShell a partir deste diretório: `.\dev.ps1`. A porta padrão é 4235; para outra porta, defina `$env:PORT` antes de iniciar. Também é possível executar `node .\server.mjs ordax-3d` diretamente. Para testar Groq e OrcaSlicer no host de desenvolvimento, use `.\groq-dev.ps1 -Port 4244`.

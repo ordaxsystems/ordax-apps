@@ -8,6 +8,7 @@ import { parseGcodePreview, drawGcodeLayer, gcodePreviewLimits } from "./gcode-p
 import { formatSliceProgress, hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
+import { selectObjectsForIndependentSlice } from "./object-slice-costs.mjs";
 import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext, buildAssistantMeshSummary, buildAssistantBoundingRectangleCoverage } from "./ai-copilot.mjs";
 import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
 import { infillPatternLabel, infillPatternOptions } from "../../shared/infill-patterns.mjs";
@@ -155,7 +156,7 @@ export function mountFeature(host = {}) {
   let restoredSourceName = savedDraft.sourceName;
   let restoredSourceFingerprint = savedDraft.sourceFingerprint;
   let model = savedDraft?.sourceName ? null : createDemoModel();
-  let sliced = null, preview = null, sliceCostInput = null, sliceCostEstimate = null, previewLayer = 0, previewProgress = 1, controller = null, remoteConsentPending = false, analysisController = null, revision = 0, importSequence = 0;
+  let sliced = null, preview = null, sliceCostInput = null, sliceCostEstimate = null, objectCostResults = [], objectCostStatus = "", previewLayer = 0, previewProgress = 1, controller = null, remoteConsentPending = false, analysisController = null, revision = 0, importSequence = 0;
   let engineStatus = { available: false, engine: null, version: null, executionTarget: "unknown", reason: "Consultando o host…", profiles: null, processScope: null };
   const intelligence = host.intelligence ?? null;
   let aiAvailability = intelligenceState(intelligence), aiController = null;
@@ -185,7 +186,7 @@ export function mountFeature(host = {}) {
         <div class="engine-notice" data-engine-notice role="status" aria-live="polite"><span class="notice-icon">i</span><div><strong data-engine-title>Motor de fatiamento não conectado</strong><p data-engine-message>Importe e prepare um modelo. A geração e a exportação serão habilitadas quando este host receber um motor e perfis compatíveis.</p></div></div>
 
         <dialog class="remote-slice-dialog" data-remote-slice-dialog aria-labelledby="remote-slice-title">
-          <div class="remote-slice-dialog-body"><span class="panel-kicker">FATIAMENTO WEB</span><h2 id="remote-slice-title">Enviar a malha ao servidor?</h2><p>Destino informado pelo host: <strong class="remote-slice-target" data-remote-slice-target>Servidor não identificado</strong>.</p><p>A malha STL transformada, os parâmetros do trabalho e os perfis selecionados serão enviados para esse destino.</p><ul><li>O arquivo STL/3MF original e a conversa com a IA permanecem no navegador.</li><li>A retenção da malha e do G-code depende das regras do servidor.</li></ul><p>Confirme apenas se reconhece e confia nesse servidor.</p><div class="remote-slice-actions"><form method="dialog"><button class="button secondary" value="cancel">Cancelar</button></form><button class="button primary" type="button" data-remote-slice-approve>Enviar malha e fatiar</button></div></div>
+          <div class="remote-slice-dialog-body"><span class="panel-kicker">FATIAMENTO WEB</span><h2 id="remote-slice-title" data-remote-slice-title>Enviar a malha ao servidor?</h2><p>Destino informado pelo host: <strong class="remote-slice-target" data-remote-slice-target>Servidor não identificado</strong>.</p><p data-remote-slice-description>A malha STL transformada, os parâmetros do trabalho e os perfis selecionados serão enviados para esse destino.</p><ul><li>O arquivo STL/3MF original e a conversa com a IA permanecem no navegador.</li><li>A retenção da malha e do G-code depende das regras do servidor.</li></ul><p>Confirme apenas se reconhece e confia nesse servidor.</p><div class="remote-slice-actions"><form method="dialog"><button class="button secondary" value="cancel">Cancelar</button></form><button class="button primary" type="button" data-remote-slice-approve>Enviar malha e fatiar</button></div></div>
         </dialog>
 
         <div class="ai-scrim" data-ai-scrim hidden></div>
@@ -243,7 +244,7 @@ export function mountFeature(host = {}) {
 
         <section class="preview-view" data-preview-view hidden>
           <div class="preview-canvas-wrap"><div class="preview-stage-head"><div><span class="panel-kicker">TRAJETÓRIA REAL DO MOTOR</span><h2 data-preview-title>Preview de fatiamento</h2></div><span class="engine-chip"><i></i><span data-preview-engine>—</span></span></div><canvas data-gcode-canvas aria-label="Trajetórias G-code da camada selecionada"></canvas><div class="preview-legend"><span><i class="legend-outer"></i>Perímetro externo</span><span><i class="legend-inner"></i>Perímetro interno</span><span><i class="legend-infill"></i>Preenchimento</span><span><i class="legend-support"></i>Suporte</span><span><i class="legend-travel"></i>Deslocamento</span></div><div class="line-inspector"><span>Trajetórias da camada</span><input type="range" min="0" max="100" value="100" data-line-slider aria-label="Progresso da simulação da camada"/><strong data-line-count>—</strong></div></div>
-          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Abrir orçamento detalhado</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
+          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Abrir orçamento detalhado</button><div class="preview-object-costs" data-object-costs hidden><div class="preview-object-costs-head"><strong>Estimativa por peça</strong><small data-object-cost-status></small></div><div data-object-cost-list></div></div><button class="button secondary" type="button" data-slice-object-costs hidden>Fatiar cada peça para calcular</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
         </section>
       </section>
     `,
@@ -621,10 +622,47 @@ export function mountFeature(host = {}) {
     return areaMm2 >= 10_000 ? `${number(areaMm2 / 100, 1)} cm²` : `${number(areaMm2, 1)} mm²`;
   }
 
+  function renderObjectCostResults(canItemize) {
+    const individualButton = content.querySelector("[data-slice-object-costs]");
+    const individualPanel = content.querySelector("[data-object-costs]");
+    const individualList = content.querySelector("[data-object-cost-list]");
+    const individualStatus = content.querySelector("[data-object-cost-status]");
+    individualButton.hidden = !canItemize;
+    individualButton.disabled = Boolean(controller) || remoteConsentPending || !engineStatus.available || Boolean(sliceBlockReason());
+    individualButton.textContent = controller ? "Fatiando peças individualmente…" : objectCostResults.length ? "Calcular/recalcular peças" : "Fatiar cada peça para calcular";
+    individualPanel.hidden = !canItemize || (!objectCostStatus && !objectCostResults.length);
+    individualStatus.textContent = objectCostStatus || "Cada valor vem de um fatiamento real isolado da peça.";
+    individualList.replaceChildren();
+    for (const item of objectCostResults) {
+      const row = document.createElement("div"); row.className = "preview-object-cost-row";
+      const copy = document.createElement("div"); copy.className = "preview-object-cost-copy";
+      const name = document.createElement("strong"); name.textContent = item.name;
+      const detail = document.createElement("small");
+      detail.textContent = item.estimate?.available
+        ? `${number(item.slice.grams, 1)} g · ${formatDuration(item.slice.timeSeconds)}${item.estimate.complete ? "" : " · depreciação pendente"}`
+        : item.error || "O motor não retornou peso e tempo desta peça.";
+      copy.append(name, detail);
+      const values = document.createElement("div"); values.className = "preview-object-cost-values";
+      const cost = document.createElement("strong");
+      cost.textContent = item.estimate?.available ? shared.money(item.estimate.costPerUnit) : "Sem cálculo";
+      const price = document.createElement("small");
+      price.textContent = item.estimate?.available && item.estimate.pricingValid ? `Referência ${shared.money(item.estimate.suggestedPricePerUnit)}` : "Preço indisponível";
+      values.append(cost, price);
+      if (item.estimate?.available) {
+        const quote = document.createElement("button"); quote.type = "button"; quote.className = "preview-object-quote"; quote.textContent = "Orçar";
+        quote.setAttribute("aria-label", `Abrir orçamento individual de ${item.name}`);
+        quote.addEventListener("click", () => host.navigate?.("costs", { action: "load-slice", slice: item.slice }));
+        values.append(quote);
+      }
+      row.append(copy, values); individualList.append(row);
+    }
+  }
+
   function renderSliceCost() {
     const card = content.querySelector("[data-slice-cost]");
     if (!sliceCostInput || typeof host.manufacturingCosts?.calculateFromSlice !== "function") {
       card.hidden = true;
+      renderObjectCostResults(false);
       sliceCostEstimate = null;
       return;
     }
@@ -637,6 +675,7 @@ export function mountFeature(host = {}) {
       content.querySelector("[data-slice-price-total]").textContent = "—";
       content.querySelector("[data-slice-cost-status]").textContent = "O motor não informou peso e tempo suficientes. O cálculo automático ficará indisponível até esses dados existirem.";
       content.querySelector("[data-slice-cost-breakdown]").replaceChildren();
+      renderObjectCostResults(sliceCostInput.scope === "plate" && sliceCostInput.objectCount > 1);
       return;
     }
     content.querySelector("[data-slice-cost-total]").textContent = shared.money(estimate.totalCost);
@@ -660,6 +699,8 @@ export function mountFeature(host = {}) {
       ["Embalagem e outros", estimate.components.packaging + estimate.components.other],
     ];
     content.querySelector("[data-slice-cost-breakdown]").innerHTML = rows.map(([label, value]) => `<div><span>${label}</span><strong>${value === null ? "Não configurada" : shared.money(value)}</strong></div>`).join("");
+    const canItemize = sliceCostInput.scope === "plate" && sliceCostInput.objectCount > 1;
+    renderObjectCostResults(canItemize);
   }
 
   function clearSlicedOutput(message = "As configurações mudaram. Gere o fatiamento novamente para criar um arquivo atualizado.") {
@@ -667,7 +708,7 @@ export function mountFeature(host = {}) {
     controller?.abort();
     if (!sliced && !preview && !sliceCostInput) return;
     sliced = null; preview = null; previewLayer = 0; previewProgress = 1;
-    sliceCostInput = null; sliceCostEstimate = null;
+    sliceCostInput = null; sliceCostEstimate = null; objectCostResults = []; objectCostStatus = "";
     host.manufacturingCosts?.setLatestSlice(null);
     renderSliceCost();
     content.querySelector("[data-export]").hidden = true;
@@ -719,7 +760,7 @@ export function mountFeature(host = {}) {
       message.textContent = engineStatus.reason || "Configure um motor e perfis no host. O botão de fatiar permanece bloqueado até essa validação.";
     }
     engineNotice.classList.toggle("is-ready", engineStatus.available);
-    sliceButton.disabled = Boolean(blockReason) || Boolean(controller);
+    sliceButton.disabled = Boolean(blockReason) || Boolean(controller) || remoteConsentPending;
     sliceButton.title = blockReason || "Gerar trajetórias com o motor conectado.";
     updateProcessUi();
   }
@@ -1561,29 +1602,197 @@ export function mountFeature(host = {}) {
     }
   }
 
+  function sliceRequestForObjects(requestModel, requestDraft, selectedObjects, remoteExecutionApproved = null) {
+    const selection = selectObjectsForIndependentSlice(requestModel, requestDraft, selectedObjects.map(object => object.id));
+    const selectedProcesses = selection.processes.map(process => ({
+        id: process.id,
+        name: process.name,
+        objectIds: [...process.objectIds],
+        settings: {
+          quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls,
+          topShellLayers: process.settings.topShellLayers, bottomShellLayers: process.settings.bottomShellLayers,
+          topShellThickness: process.settings.topShellThickness, bottomShellThickness: process.settings.bottomShellThickness,
+          brimType: process.settings.brimType, brimWidth: process.settings.brimWidth, brimGap: process.settings.brimGap,
+          infill: process.settings.infill, infillPattern: process.settings.infillPattern, seamPosition: process.settings.seamPosition,
+          supports: process.settings.supports, supportType: process.settings.supportType,
+          supportThresholdAngle: process.settings.supportThresholdAngle, supportOnBuildPlateOnly: process.settings.supportOnBuildPlateOnly,
+          fanMinSpeedPercent: process.settings.fanMin, fanMaxSpeedPercent: process.settings.fanMax,
+        },
+      }));
+    return {
+      file: requestModel.originalFile,
+      filename: requestModel.name,
+      format: requestModel.format,
+      preparedModel: createOrcaInputStl(selection.model, requestDraft),
+      settings: {
+        layerHeight: requestDraft.layerHeight, walls: requestDraft.walls,
+        topShellLayers: requestDraft.topShellLayers, bottomShellLayers: requestDraft.bottomShellLayers,
+        topShellThickness: requestDraft.topShellThickness, bottomShellThickness: requestDraft.bottomShellThickness,
+        brimType: requestDraft.brimType, brimWidth: requestDraft.brimWidth, brimGap: requestDraft.brimGap,
+        bedType: requestDraft.bedType, infill: requestDraft.infill, infillPattern: requestDraft.infillPattern,
+        seamPosition: requestDraft.seamPosition, nozzleTemperatureC: requestDraft.nozzleTemperatureC,
+        nozzleTemperatureInitialLayerC: requestDraft.nozzleTemperatureInitialLayerC, supports: requestDraft.supports,
+        supportType: requestDraft.supportType, supportThresholdAngle: requestDraft.supportThresholdAngle,
+        supportOnBuildPlateOnly: requestDraft.supportOnBuildPlateOnly, fanMinSpeedPercent: requestDraft.fanMin,
+        fanMaxSpeedPercent: requestDraft.fanMax, quality: requestDraft.quality, rotationZ: requestDraft.rotation,
+        scale: requestDraft.scale, stlUnit: requestDraft.stlUnit,
+      },
+      processesSchema: "ordax.slicer-processes/10",
+      objects: selection.objects.map(object => ({ id: object.id, name: object.name, sourceObjectId: object.sourceObjectId || object.id, buildItemIndex: object.buildItemIndex ?? 0, triangleCount: object.triangleCount })),
+      objectTransformsSchema: OBJECT_TRANSFORM_SCHEMA,
+      objectTransforms: selection.objects.map(object => {
+        const transform = objectTransform(requestDraft, object.id);
+        return { objectId: object.id, offsetMm: [transform.x, transform.y, transform.z], rotationDeg: [transform.rotationX, transform.rotationY, transform.rotationZ], scale: transform.scale };
+      }),
+      processes: selectedProcesses,
+      profileSelectionSchema: PROFILE_SELECTION_SCHEMA,
+      profileIds: { machine: requestDraft.printerProfileId, process: requestDraft.processProfileId, filament: requestDraft.filamentProfileId },
+      remoteExecutionApproved,
+    };
+  }
+
+  function confirmRemoteSlice({ title, description }) {
+    if (engineStatus.executionTarget !== "server") return { approved: true, target: null };
+    const dialog = content.querySelector("[data-remote-slice-dialog]");
+    if (!dialog?.showModal) {
+      toast("Este navegador não oferece confirmação segura para enviar a malha ao servidor.");
+      return { approved: false, target: null };
+    }
+    const target = engineStatus.executionTargetLabel;
+    content.querySelector("[data-remote-slice-target]").textContent = target;
+    content.querySelector("[data-remote-slice-title]").textContent = title;
+    content.querySelector("[data-remote-slice-description]").textContent = description;
+    remoteConsentPending = true;
+    renderSliceCost();
+    updateEngineUi();
+    return new Promise(resolve => {
+      const closeConsent = () => {
+        const approved = dialog.returnValue === "approve";
+        remoteConsentPending = false;
+        renderSliceCost();
+        updateEngineUi();
+        resolve({ approved, target: approved ? target : null });
+      };
+      dialog.addEventListener("close", closeConsent, { once: true });
+      try {
+        dialog.showModal();
+      } catch {
+        dialog.removeEventListener("close", closeConsent);
+        remoteConsentPending = false;
+        renderSliceCost();
+        updateEngineUi();
+        toast("Não foi possível abrir a confirmação de envio ao servidor.");
+        resolve({ approved: false, target: null });
+      }
+    });
+  }
+
+  async function calculateIndividualObjectCosts() {
+    if (controller || remoteConsentPending || !sliced || sliceCostInput?.scope !== "plate" || !model || !host.manufacturingCosts?.calculateFromSlice) return;
+    const reason = sliceBlockReason();
+    if (reason) { toast(reason); return; }
+    const completedIds = new Set(objectCostResults.filter(item => item.estimate?.available).map(item => item.objectId));
+    let targets = model.objects.filter(object => !completedIds.has(object.id)).slice(0, 20);
+    if (!targets.length) {
+      objectCostResults = [];
+      objectCostStatus = "";
+      targets = model.objects.slice(0, 20);
+    }
+    const restCount = Math.max(0, model.objects.length - targets.length - completedIds.size);
+    const approval = confirmRemoteSlice({
+      title: `Fatiar ${targets.length} peça${targets.length === 1 ? "" : "s"} individualmente?`,
+      description: `${targets.length} novo${targets.length === 1 ? "" : "s"} fatiamento${targets.length === 1 ? "" : "s"} serão executados apenas para calcular custo por peça. Cada malha transformada desta rodada será enviada separadamente ao servidor; o G-code individual não substituirá o G-code do prato.`,
+    });
+    const approved = approval && typeof approval.then === "function" ? await approval : approval;
+    if (!approved.approved) return;
+    const requestRevision = revision;
+    const requestModel = model;
+    const requestDraft = { ...draft };
+    const material = sliceCostInput.material;
+    const fallbackPrinter = sliceCostInput.printer;
+    const baseName = sliceCostInput.name;
+    objectCostStatus = "running";
+    controller = new AbortController();
+    const cancelButton = content.querySelector("[data-cancel]");
+    cancelButton.hidden = false;
+    cancelButton.textContent = "Cancelar cálculo";
+    updateEngineUi();
+    renderSliceCost();
+    try {
+      for (let index = 0; index < targets.length; index += 1) {
+        const object = targets[index];
+        objectCostStatus = `Fatiando peça ${index + 1} de ${targets.length}: ${object.name}`;
+        renderSliceCost();
+        content.querySelector("[data-engine-title]").textContent = "Calculando custo por peça";
+        content.querySelector("[data-engine-message]").textContent = `${objectCostStatus}. O G-code deste cálculo individual será descartado; o arquivo do prato permanece intacto.`;
+        try {
+          const result = await requestRealSlice(host.slicer, sliceRequestForObjects(requestModel, requestDraft, [object], approved.target), {
+            signal: controller.signal,
+            onProgress: progress => {
+              const progressLabel = formatSliceProgress(progress);
+              content.querySelector("[data-engine-message]").textContent = `${objectCostStatus} · ${progressLabel}`;
+            },
+          });
+          if (requestRevision !== revision || requestModel !== model) return;
+          const slice = {
+            name: object.name || `${baseName} · peça ${index + 1}`,
+            material,
+            printer: result.printerProfile || fallbackPrinter,
+            engine: result.engine,
+            engineVersion: result.engineVersion,
+            grams: result.stats?.filamentGrams,
+            timeSeconds: result.stats?.timeSeconds,
+            scope: "piece",
+            objectCount: 1,
+          };
+          const estimate = host.manufacturingCosts.calculateFromSlice(slice);
+          objectCostResults = [...objectCostResults.filter(item => item.objectId !== object.id), {
+            objectId: object.id, name: slice.name, slice, estimate,
+            error: estimate.available ? "" : "O motor não retornou peso e tempo válidos para esta peça.",
+          }];
+        } catch (error) {
+          if (error?.name === "AbortError") throw error;
+          objectCostResults = [...objectCostResults.filter(item => item.objectId !== object.id), {
+            objectId: object.id, name: object.name, slice: null, estimate: null, error: error?.message || "Falha ao fatiar esta peça.",
+          }];
+        }
+      }
+      const successfulCount = objectCostResults.filter(item => item.estimate?.available).length;
+      const unresolvedCount = objectCostResults.length - successfulCount;
+      objectCostStatus = `${successfulCount} peça${successfulCount === 1 ? "" : "s"} calculada${successfulCount === 1 ? "" : "s"}${unresolvedCount ? ` · ${unresolvedCount} sem estatísticas ou com falha` : ""}${restCount ? ` · ${restCount} aguardando a próxima rodada` : ""}. Custos individuais usam fatiamentos isolados.`;
+      content.querySelector("[data-engine-title]").textContent = "Custos individuais atualizados";
+      content.querySelector("[data-engine-message]").textContent = objectCostStatus;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        objectCostStatus = "Cálculo individual cancelado; os resultados concluídos continuam disponíveis.";
+        content.querySelector("[data-engine-title]").textContent = "Cálculo individual cancelado";
+        content.querySelector("[data-engine-message]").textContent = objectCostStatus;
+      } else {
+        objectCostStatus = error?.message || "Não foi possível calcular os custos individuais.";
+        content.querySelector("[data-engine-title]").textContent = "Falha no cálculo individual";
+        content.querySelector("[data-engine-message]").textContent = objectCostStatus;
+      }
+    } finally {
+      controller = null;
+      cancelButton.hidden = true;
+      cancelButton.textContent = "Cancelar";
+      renderSliceCost();
+      updateEngineUi();
+    }
+  }
+
   async function runSlice() {
     const blockReason = sliceBlockReason();
     if (blockReason || controller || remoteConsentPending) { if (blockReason) toast(blockReason); return; }
-    let approvedRemoteTarget = null;
-    if (engineStatus.executionTarget === "server") {
-      remoteConsentPending = true;
-      try {
-        const dialog = content.querySelector("[data-remote-slice-dialog]");
-        if (!dialog?.showModal) { toast("Este navegador não oferece confirmação segura para enviar a malha ao servidor."); return; }
-        const target = engineStatus.executionTargetLabel;
-        content.querySelector("[data-remote-slice-target]").textContent = target;
-        const approved = await new Promise(resolve => {
-          dialog.addEventListener("close", () => resolve(dialog.returnValue === "approve"), { once: true });
-          dialog.showModal();
-        });
-        if (!approved) return;
-        approvedRemoteTarget = target;
-      } finally {
-        remoteConsentPending = false;
-      }
-    }
+    const consentResult = confirmRemoteSlice({
+      title: "Enviar a malha ao servidor?",
+      description: "A malha STL transformada, os parâmetros do trabalho e os perfis selecionados serão enviados para esse destino.",
+    });
+    const consent = consentResult && typeof consentResult.then === "function" ? await consentResult : consentResult;
+    if (!consent.approved) return;
+    const approvedRemoteTarget = consent.target;
     const sliceButton = content.querySelector("[data-slice]"), cancelButton = content.querySelector("[data-cancel]");
-    sliced = null; preview = null; sliceCostInput = null; sliceCostEstimate = null;
+    sliced = null; preview = null; sliceCostInput = null; sliceCostEstimate = null; objectCostResults = []; objectCostStatus = "";
     host.manufacturingCosts?.setLatestSlice(null);
     renderSliceCost();
     controller = new AbortController();
@@ -1596,27 +1805,7 @@ export function mountFeature(host = {}) {
       ? `Enviando a malha preparada ao servidor web para executar ${engineStatus.engine} ${engineStatus.version}…`
       : `Executando ${engineStatus.engine} ${engineStatus.version} neste dispositivo com o perfil selecionado…`;
     try {
-      const result = await requestRealSlice(host.slicer, {
-        file: requestModel.originalFile,
-        filename: requestModel.name,
-        format: requestModel.format,
-        preparedModel: createOrcaInputStl(requestModel, requestDraft),
-        settings: { layerHeight: requestDraft.layerHeight, walls: requestDraft.walls, topShellLayers: requestDraft.topShellLayers, bottomShellLayers: requestDraft.bottomShellLayers, topShellThickness: requestDraft.topShellThickness, bottomShellThickness: requestDraft.bottomShellThickness, brimType: requestDraft.brimType, brimWidth: requestDraft.brimWidth, brimGap: requestDraft.brimGap, bedType: requestDraft.bedType, infill: requestDraft.infill, infillPattern: requestDraft.infillPattern, seamPosition: requestDraft.seamPosition, nozzleTemperatureC: requestDraft.nozzleTemperatureC, nozzleTemperatureInitialLayerC: requestDraft.nozzleTemperatureInitialLayerC, supports: requestDraft.supports, supportType: requestDraft.supportType, supportThresholdAngle: requestDraft.supportThresholdAngle, supportOnBuildPlateOnly: requestDraft.supportOnBuildPlateOnly, fanMinSpeedPercent: requestDraft.fanMin, fanMaxSpeedPercent: requestDraft.fanMax, quality: requestDraft.quality, rotationZ: requestDraft.rotation, scale: requestDraft.scale, stlUnit: requestDraft.stlUnit },
-        processesSchema: "ordax.slicer-processes/10",
-        objects: requestModel.objects.map(object => ({ id: object.id, name: object.name, sourceObjectId: object.sourceObjectId || object.id, buildItemIndex: object.buildItemIndex ?? 0, triangleCount: object.triangleCount })),
-        objectTransformsSchema: OBJECT_TRANSFORM_SCHEMA,
-        objectTransforms: requestModel.objects.map(object => {
-          const transform = objectTransform(requestDraft, object.id);
-          return { objectId: object.id, offsetMm: [transform.x, transform.y, transform.z], rotationDeg: [transform.rotationX, transform.rotationY, transform.rotationZ], scale: transform.scale };
-        }),
-        processes: requestDraft.processes.map(process => ({
-          id: process.id, name: process.name, objectIds: [...process.objectIds],
-          settings: { quality: process.settings.quality, layerHeight: process.settings.layerHeight, walls: process.settings.walls, topShellLayers: process.settings.topShellLayers, bottomShellLayers: process.settings.bottomShellLayers, topShellThickness: process.settings.topShellThickness, bottomShellThickness: process.settings.bottomShellThickness, brimType: process.settings.brimType, brimWidth: process.settings.brimWidth, brimGap: process.settings.brimGap, infill: process.settings.infill, infillPattern: process.settings.infillPattern, seamPosition: process.settings.seamPosition, supports: process.settings.supports, supportType: process.settings.supportType, supportThresholdAngle: process.settings.supportThresholdAngle, supportOnBuildPlateOnly: process.settings.supportOnBuildPlateOnly, fanMinSpeedPercent: process.settings.fanMin, fanMaxSpeedPercent: process.settings.fanMax },
-        })),
-        profileSelectionSchema: PROFILE_SELECTION_SCHEMA,
-        profileIds: { machine: requestDraft.printerProfileId, process: requestDraft.processProfileId, filament: requestDraft.filamentProfileId },
-        remoteExecutionApproved: approvedRemoteTarget,
-      }, { signal: controller.signal, onProgress: progress => {
+      const result = await requestRealSlice(host.slicer, sliceRequestForObjects(requestModel, requestDraft, requestModel.objects, approvedRemoteTarget), { signal: controller.signal, onProgress: progress => {
         content.querySelector("[data-engine-message]").textContent = formatSliceProgress(progress);
       } });
       if (requestRevision !== revision || requestModel !== model) return;
@@ -1666,6 +1855,8 @@ export function mountFeature(host = {}) {
       }
     } finally {
       controller = null; sliceButton.hidden = false; cancelButton.hidden = true;
+      cancelButton.textContent = "Cancelar";
+      renderSliceCost();
       updateEngineUi();
     }
   }
@@ -1763,6 +1954,7 @@ export function mountFeature(host = {}) {
   });
   content.querySelector("[data-export]").addEventListener("click", () => { if (sliced?.gcode instanceof Blob) downloadBlob(sliced.gcode, sliced.filename); });
   content.querySelector("[data-open-costs]").addEventListener("click", () => host.navigate?.("costs", { action: "load-latest-slice" }));
+  content.querySelector("[data-slice-object-costs]").addEventListener("click", calculateIndividualObjectCosts);
   content.querySelector("[data-add-to-queue]").addEventListener("click", () => {
     if (!sliced || typeof host.technicalJobs?.add !== "function") { toast("A fila técnica compartilhada não está disponível neste host."); return; }
     try {
