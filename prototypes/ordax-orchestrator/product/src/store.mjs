@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { MemoryCandidateLedger } from './memory-candidates.mjs';
 import { assertSupervisorRole } from './supervisor-role-presets.mjs';
 import { canonicalProviderChatUrl } from './conversation-policy.mjs';
+import {W3_MAX_ASSISTANT_CHARS} from './provider-recovery-bounds.mjs';
 import { buildProjectContinuationPacket } from './continuation-context.mjs';
 import { buildTaskHandoffSnapshot } from './task-handoff-snapshot.mjs';
 import { searchTaskHistoricalMessages, searchTaskHistoricalMessagesWithMemoryKeys } from './task-message-search.mjs';
@@ -1066,7 +1067,7 @@ export class Store {
     runId,userMessageId,conversationId,chatUrl,promptSha256,responseSha256,text
   }={}) {
     const canonicalUrl=canonicalProviderChatUrl(chatUrl);
-    if(typeof text!=='string'||!text.trim()||text.length>12000||
+    if(typeof text!=='string'||!text.trim()||text.length>W3_MAX_ASSISTANT_CHARS||
        !/^[a-f0-9]{64}$/.test(promptSha256||'')||
        !/^[a-f0-9]{64}$/.test(responseSha256||'')||
        createHash('sha256').update(text,'utf8').digest('hex')!==responseSha256||
