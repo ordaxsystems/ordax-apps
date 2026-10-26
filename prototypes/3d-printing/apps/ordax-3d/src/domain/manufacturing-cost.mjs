@@ -151,6 +151,10 @@ export function getPrinterCostSettings(printer, sourceSettings = defaultManufact
   return normalizeManufacturingCostSettings({ ...settings, ...profile });
 }
 
+export function normalizeManufacturingQuantity(value) {
+  return Math.round(bounded(value, 1, 1, 100_000));
+}
+
 export function calculateManufacturingCost(input = {}, sourceSettings = defaultManufacturingCostSettings) {
   const settings = normalizeManufacturingCostSettings(sourceSettings);
   const gramsPerUnit = optionalPositive(input.gramsPerUnit ?? input.grams);
