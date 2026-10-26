@@ -45,7 +45,7 @@ Até esse contrato ser publicado e implementado, a tela de referência é especi
 
 Um job contém metadados técnicos (modelo, impressora de referência, perfil de material, tempo/peso estimados, estado técnico, motor e snapshot opcional da estimativa de custo). O snapshot guarda custos calculados e preço de referência com as taxas daquela revisão; ele não é um preço aprovado por Vendas. O job não contém pedido comercial, cliente, estado de venda, saldo/reserva de Inventory, dado de cobrança, credenciais, arquivo STL ou bytes G-code. O retorno do Orca é um arquivo separado que o usuário pode exportar.
 
-O Preview compartilha o resultado de uma peça única com Custos e orçamento; a ação para abrir o orçamento detalhado já carrega o snapshot em edição. Para um prato com vários objetos, o Orca entrega peso e tempo agregados neste adapter. O app preserva o total do prato e a quantidade de objetos, sem inferir divisão individual. Custos unitários por objeto dependem de estatísticas do motor por objeto ou de um fatiamento isolado confiável.
+O Preview compartilha o resultado de uma peça única com Custos e orçamento; a ação para abrir o orçamento detalhado já carrega o snapshot em edição. Para um prato com vários objetos, o Orca entrega peso e tempo agregados neste adapter. O app preserva o total do prato e não infere divisão individual: ele executa fatiamentos isolados no mesmo motor/perfis para estimar o cenário de imprimir cada peça sozinha. Esse valor não é alocação de tempo/custo de uma mesa compartilhada. O cálculo avulso recebe peso/tempo manual ou estatísticas do Orca; premissas de materiais e impressoras ficam no serviço local de custos do OrdaX 3D.
 
 ## Fixtures e migração
 
