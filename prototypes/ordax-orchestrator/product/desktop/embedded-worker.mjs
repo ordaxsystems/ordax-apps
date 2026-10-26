@@ -25,7 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const { providerMessageSelectors, providerMessageQueryBootstrap } = providerDomSelectors;
+const { providerMessageSelectors, providerMessageQueryBootstrap, providerHistoricalUserTextBootstrap } = providerDomSelectors;
 const CHAT_ORIGINS = /^https:\/\/(chatgpt\.com|auth\.openai\.com|accounts\.google\.com)\//i;
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -612,6 +612,7 @@ export class EmbeddedChatWorker {
       result=await observeWithin(() => wc.debugger.sendCommand('Runtime.evaluate', {
         expression:`(() => {
           ${providerMessageQueryBootstrap}
+          ${providerHistoricalUserTextBootstrap}
           const entries = [
             ...queryProviderMessageNodes(document,'user',providerMessageSelectors).map(node=>({node,role:'user'})),
             ...queryProviderMessageNodes(document,'assistant',providerMessageSelectors).map(node=>({node,role:'assistant'}))
