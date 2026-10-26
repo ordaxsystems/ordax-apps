@@ -100,7 +100,12 @@ test('worker health counts only HTTP 403 from first-party backend API with no UR
   const health=worker.split('  async health() {')[1].split('  enqueue(fn) {')[0];
   assert.match(health,/entry\.responseStatus !== 403 && entry\.responseStatus !== 429/);
   assert.match(health,/backendRateLimitedCount:Math\.min\(100,backendRateLimitedCount\)/);
-  assert.match(health,/rateLimitedCount:page\?\.backendRateLimitedCount/);
+  assert.match(health,/rateLimitedCount:page\?\.backendRateLimitedRecentCount/);
+  assert.match(health,/forbiddenCount:page\?\.backendForbiddenRecentCount/);
+  assert.match(health,/backendRecentWindowMs=120000/);
+  assert.match(health,/observedAtMs-start<=backendRecentWindowMs/);
+  assert.match(health,/backend_api_403_recent_count:page\?\.backendForbiddenRecentCount/);
+  assert.match(health,/backend_api_429_recent_count:page\?\.backendRateLimitedRecentCount/);
   assert.match(health,/backend_api_429_count:page\?\.backendRateLimitedCount/);
   assert.match(health,/requestUrl\.origin==='https:\/\/chatgpt\.com'/);
   assert.match(health,/pathname\.startsWith\('\/backend-api\/'\)/);
@@ -148,4 +153,21 @@ test('provider preflight blocks composing over active GPT generation or unresolv
     provider_response_failure:'chatgpt_response_retry_required'}),/chatgpt_response_retry_required/);
   assert.throws(()=>assertProviderSendReadiness({...ready,
     provider_response_failure:'chatgpt_response_error_observed'}),/chatgpt_response_error_observed/);
+});
+
+test('historical backend failures do not override missing-composer authentication gate',()=>{
+  const historical={backendForbiddenCount:14,backendRateLimitedCount:1,
+    backendForbiddenRecentCount:1,backendRateLimitedRecentCount:0};
+  assert.equal(classifyProviderAccessRestriction({
+    forbiddenCount:historical.backendForbiddenRecentCount,
+    rateLimitedCount:historical.backendRateLimitedRecentCount,
+    composerReady:false
+  }),null);
+  assert.throws(()=>assertProviderSendReadiness({
+    auth_state:'unknown',composer_ready:false,health_observed:true,
+    provider_access_problem:null
+  }),/chatgpt_session_not_observed/);
+  assert.equal(classifyProviderAccessRestriction({
+    forbiddenCount:3,rateLimitedCount:1,composerReady:false
+  }),'backend_http_429_observed');
 });

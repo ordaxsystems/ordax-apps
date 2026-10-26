@@ -1,5 +1,12 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Provider evidence after real desktop restart — 2026-10-26
+
+- On the single installed alpha.19 Electron Lab, GPT text-send/continuity/restart SQLite checks passed, but the embedded ChatGPT thread afterward had no composer and no user/assistant DOM nodes. A **read-only** CDP observation saw 14 first-party backend HTTP 403 entries and 1 HTTP 429 in this document. Of those, 0 errors were within 30s, 1 HTTP 403 within 30–120s, and 13 HTTP 403 plus 1 HTTP 429 were older than 120s. This does **not** prove an ongoing rate limit, expired login, or account-specific root cause. No requests were retried or credentials inspected.
+- Fix in `product/desktop/embedded-worker.mjs`: preserve capped lifetime counts as historical diagnostics, separately return capped counts observed within 120s, and use only recent counts when classifying provider access restrictions. Origins and paths remain restricted to `https://chatgpt.com/backend-api/` and no URL, response body or token is exported. The current session still fails closed whenever `auth_state` or composer readiness is unknown, regardless of old error ages.
+- Tests in `product/test/provider-observation-policy.test.mjs` require temporal classification and demonstrate that aging warnings cannot authorize a send. Real uncertain-delivery response reconciliation is still NOT proven; wait for a usable provider DOM before attempting it, without replay.
+
+
 
 ## Continuidade de contexto longo — integração 2026-10-26
 

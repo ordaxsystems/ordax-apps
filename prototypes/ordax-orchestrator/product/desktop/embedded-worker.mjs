@@ -364,22 +364,37 @@ export class EmbeddedChatWorker {
         );
       // Only count status codes of first-party requests. Never export URLs,
       // response payloads, query parameters, user data, or cookies.
-      let backendForbiddenCount=0;
-      let backendRateLimitedCount=0;
+      let backendForbiddenCount=0,backendRateLimitedCount=0;
+      let backendForbiddenRecentCount=0,backendRateLimitedRecentCount=0;
+      // Resource timing persists for the whole document, so total historical
+      // errors cannot certify a CURRENT restriction. Recent is two minutes.
+      const backendRecentWindowMs=120000;
+      const observedAtMs=performance.now();
       for (const entry of performance.getEntriesByType('resource')) {
         if (entry.responseStatus !== 403 && entry.responseStatus !== 429) continue;
         try {
           const requestUrl=new URL(entry.name);
           if (requestUrl.origin==='https://chatgpt.com' &&
               requestUrl.pathname.startsWith('/backend-api/')) {
-            if (entry.responseStatus===403) backendForbiddenCount++;
-            if (entry.responseStatus===429) backendRateLimitedCount++;
+            const start=entry.startTime;
+            const recent=Number.isFinite(start)&&start>=0&&start<=observedAtMs&&
+              observedAtMs-start<=backendRecentWindowMs;
+            if (entry.responseStatus===403) {
+              backendForbiddenCount++;
+              if(recent)backendForbiddenRecentCount++;
+            }
+            if (entry.responseStatus===429) {
+              backendRateLimitedCount++;
+              if(recent)backendRateLimitedRecentCount++;
+            }
           }
         } catch {}
       }
       return {
         backendForbiddenCount:Math.min(100,backendForbiddenCount),
         backendRateLimitedCount:Math.min(100,backendRateLimitedCount),
+        backendForbiddenRecentCount:Math.min(100,backendForbiddenRecentCount),
+        backendRateLimitedRecentCount:Math.min(100,backendRateLimitedRecentCount),
         body:body.slice(-5000),
         composer:Boolean(composer),
         messageNodes,
@@ -397,8 +412,8 @@ export class EmbeddedChatWorker {
       verificationAlert:page?.verification===true
     });
     const providerAccessProblem=classifyProviderAccessRestriction({
-      forbiddenCount:page?.backendForbiddenCount||0,
-      rateLimitedCount:page?.backendRateLimitedCount||0,
+      forbiddenCount:page?.backendForbiddenRecentCount||0,
+      rateLimitedCount:page?.backendRateLimitedRecentCount||0,
       composerReady:page?.composer===true
     });
     return { ...base, composer_ready:page?.composer===true,
@@ -410,7 +425,9 @@ export class EmbeddedChatWorker {
       response_generation_active:page?.generationStopVisible===true,
       provider_response_failure:classifyProviderResponseFailure(page?.responseFailureSignals),
       backend_api_403_count:page?.backendForbiddenCount||0,
-      backend_api_429_count:page?.backendRateLimitedCount||0 };
+      backend_api_429_count:page?.backendRateLimitedCount||0,
+      backend_api_403_recent_count:page?.backendForbiddenRecentCount||0,
+      backend_api_429_recent_count:page?.backendRateLimitedRecentCount||0 };
   }
 
   enqueue(fn) {
