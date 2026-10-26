@@ -742,3 +742,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Smoke no host local da branch em `http://127.0.0.1:4258/apps/food-pizzeria/`: a interface montou e a amostra exibiu horários atuais. Nenhuma transição foi executada.
 - Nenhuma autoridade comercial ou elegibilidade de distribuição foi alterada; a transformação só ocorre no adapter `browser-local-preview`.
 
+### OrdaX Food — taxa de entrega como preferência local da prévia (2026-10-26)
+
+- O estado de domínio Food permanece em `ordax.food-pizzeria-state/6`. A taxa padrão configurável pertence às preferências locais do browser (`browser-state/3`); cada pedido de entrega continua guardando a taxa explicitamente aplicada, sem reescrever pedidos antigos.
+- A migração recupera a taxa dos registros de prévia v7, remove essa preferência do documento Food e preserva pedidos, revisão, histórico e journal de idempotência. A configuração informa que é local e não calcula distância.
+- Verificação: suíte Food 79/79; `node --check` e `git diff --check` aprovados. Na PR #359, `catalog-candidate`, `mvp-app-functional-minimum`, `workspace-boundary` e `food-real-postgres` concluíram com sucesso. O host local `:4259` respondeu HTTP 200.
+- A taxa padrão ainda não é persistida por um provider Food centralizado; integração real com Space, Vendas, Inventory e Payments continua condicionada aos contratos dos owners. Nenhuma movimentação de estoque, pagamento ou elegibilidade de distribuição foi criada.
+
