@@ -104,7 +104,7 @@ test('historical CDP debugger is detached only when inspection attached it',()=>
   assert.match(body,/finally \{/);
   assert.match(body,/if\(attachedHere\)/);
   assert.match(body,/wc\.debugger\.detach\(\)/);
-  assert.match(body,/timeoutMs:1800,code:'provider_readonly_dom_evaluation_timeout'/);
+  assert.match(body,/timeoutMs:6000,code:'provider_readonly_dom_evaluation_timeout'/);
   assert.equal(safeHistoricalThreadFailure('provider_readonly_dom_evaluation_timeout'),
     'provider_readonly_dom_evaluation_timeout');
   assert.ok(body.indexOf('finally {')>body.indexOf("wc.debugger.sendCommand('Runtime.evaluate'"));
