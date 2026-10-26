@@ -1,17 +1,31 @@
 const STOP_WORDS = new Set([
   'a','ao','aos','as','com','da','das','de','dela','dele','deles','delas','do','dos','e','em','entre','era','essa','esse','esta','este','foi','for','isso','na','nas','no','nos','ou','para','pela','pelas','pelo','pelos','por','que','se','sem','ser','sua','suas','seu','seus','um','uma','umas','uns',
-  'apenas','atual','chatgpt','como','conversa','contexto','continua','continuacao','continuar','continue','desta','deste','esta','este','historico','inicio','mensagem','memoria','nova','novo','ordax','pedido','primeiro','projeto','responda','resposta','somente','tarefa','usar','use','veste'
+  'apenas','atual','chatgpt','como','conversa','contexto','continua','continuacao','continuar','continue','desta','deste','esta','este','historico','inicio','mensagem','memoria','nova','novo','ordax','pedido','primeiro','projeto','responda','resposta','somente','tarefa','usar','use'
 ]);
 
 export function taskMessageSearchExpression(value) {
-  const terms=taskMessageSearchTerms(value);
-  return terms.map(term=>'"'+term+'"').join(' OR ');
+  const normalized=String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('pt-BR');
+  // FTS5 phrase queries keep chapter/step numbers and calibrated times together.
+  // Without these anchors, a request for "Capítulo 9" can rank another chapter
+  // highly merely because both messages contain "capítulo".
+  const anchors=[
+    ...[...normalized.matchAll(/(?:^|[^\p{L}\p{N}])(capitulo|etapa|fase|turno)\s+(\d{1,3})(?=$|[^\p{L}\p{N}])/gu)]
+      .map(match=>'"'+match[1]+' '+match[2]+'"'),
+    ...[...normalized.matchAll(/(?:^|[^\p{L}\p{N}])(\d{1,2}):(\d{2})(?=$|[^\p{L}\p{N}])/gu)]
+      .map(match=>'"'+match[1]+' '+match[2]+'"')
+  ];
+  const terms=taskMessageSearchTerms(value).map(term=>'"'+term+'"');
+  return [...new Set([...anchors,...terms])].slice(0,72).join(' OR ');
 }
 
 export function taskMessageSearchTerms(value) {
   const normalized=String(value||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('pt-BR');
-  const words=normalized.match(/[\p{L}\p{N}]{4,}/gu)||[];
-  return [...new Set(words.filter(word=>!/^\d+$/.test(word)&&!STOP_WORDS.has(word)))].slice(0,64);
+  // Numeric references are project evidence: dates, prices, chapter IDs and
+  // time components must remain searchable even without a text keyword.
+  const words=normalized.match(/[\p{L}\p{N}]+/gu)||[];
+  return [...new Set(words.filter(word=>/^\d+$/.test(word)
+    ? word.length>=2 && word.length<=12
+    : word.length>=4 && !STOP_WORDS.has(word)))].slice(0,64);
 }
 
 function normalizeSearchToken(value) {
