@@ -734,3 +734,11 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A regressão prova a ordenação quando o snapshot chega fora de ordem, preserva registros sem data interpretável e confere a cronologia da fixture. Suíte Food: 71/71; `node --check` e `git diff --check` aprovados.
 - Host da PR em `http://127.0.0.1:4257/apps/food-pizzeria/` conferido sem criar pedido. Mudança somente de leitura/apresentação e dados fictícios locais; Food segue dono do pedido alimentar/produção no domínio vertical, Inventory do saldo/movimentações e os providers comerciais continuam pendentes.
 
+### OrdaX Food — linha do tempo da prévia local (2026-10-26)
+
+- Amostras de pedidos que ficavam abertas por dias no navegador agora mantêm uma linha do tempo coerente ao reabrir o host: após 12 horas, o adapter local ajusta somente timestamps de pedidos seed sem transições próprias e da comanda aberta associada.
+- Estados, histórico editado pela pessoa, diário de idempotência e dados não pertencentes à amostra são preservados. Esse ajuste é local à prévia; não atualiza pedidos reais, Sales, Inventory ou Space.
+- `node --test apps/food-pizzeria/tests/*.test.mjs`: 72/72; `node --check` e `git diff --check` aprovados.
+- Smoke no host local da branch em `http://127.0.0.1:4258/apps/food-pizzeria/`: a interface montou e a amostra exibiu horários atuais. Nenhuma transição foi executada.
+- Nenhuma autoridade comercial ou elegibilidade de distribuição foi alterada; a transformação só ocorre no adapter `browser-local-preview`.
+
