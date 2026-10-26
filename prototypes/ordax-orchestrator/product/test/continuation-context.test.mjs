@@ -230,8 +230,8 @@ test('confirmed canonical memory is either wholly delivered or explicitly omitte
   assert.ok(complete.prompt.includes(marker));
   assert.doesNotMatch(complete.prompt,/\[trecho abreviado\]/);
 
-  const constrained=buildProjectContinuationPacket({...options,maxChars:1500});
-  assert.ok(constrained.prompt.length<=1500);
+  const constrained=buildProjectContinuationPacket({...options,maxChars:2200});
+  assert.ok(constrained.prompt.length<=2200);
   assert.ok(constrained.manifest.criticalOmissions>0);
   assert.equal(constrained.manifest.partial,true);
   assert.equal(constrained.manifest.attachmentUseful,true);
