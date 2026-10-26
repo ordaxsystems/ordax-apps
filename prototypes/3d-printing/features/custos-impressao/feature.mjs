@@ -1,4 +1,5 @@
 import * as shared from "/shared.mjs";
+import { updateEstimateOriginForEdit } from "/features/custos-impressao/estimate-origin.mjs";
 
 const settingFields = [
   ["materialWastePercent", "Perda de material", "%", "number"],
@@ -276,7 +277,7 @@ export function mountFeature(host = {}) {
     const result = costs.calculate(estimateInput());
     const settingsNow = costs.settings();
     const baseUnit = formScope === "plate" ? "prato" : "peça";
-    shell.content.querySelector("[data-estimate-status]").textContent = result.available ? !result.pricingValid ? "REVISE MARGEM E TAXAS" : result.complete ? "ESTIMATIVA TÉCNICA COMPLETA" : "CUSTO PARCIAL · DEPRECIAÇÃO PENDENTE" : "INFORME PESO E TEMPO";
+    shell.content.querySelector("[data-estimate-status]").textContent = result.available ? !result.pricingValid ? "REVISE MARGEM E TAXAS" : result.complete ? "DEPRECIAÇÃO INCLUÍDA" : "CUSTO PARCIAL · DEPRECIAÇÃO PENDENTE" : "INFORME PESO E TEMPO";
     shell.content.querySelector("[data-unit-cost]").textContent = result.available ? money(result.costPerUnit) : "—";
     shell.content.querySelector("[data-unit-label]").textContent = `Custo estimado por ${baseUnit}`;
     shell.content.querySelector("[data-unit-price-label]").textContent = `Preço de referência por ${baseUnit}`;
@@ -424,7 +425,14 @@ export function mountFeature(host = {}) {
     try { costs.updateMaterialPrice(fields.material.value, readNumber(materialPriceField.value)); render(); }
     catch (error) { toast(error?.message || "Não foi possível salvar o preço do material."); }
   });
-  shell.content.querySelectorAll("[data-input]").forEach(input => input.addEventListener("input", () => { formSource = "manual"; formScope = "piece"; formEngine = ""; formEngineVersion = ""; render(); }));
+  shell.content.querySelectorAll("[data-input]").forEach(input => input.addEventListener("input", () => {
+    const origin = updateEstimateOriginForEdit({ source: formSource, scope: formScope, engine: formEngine, engineVersion: formEngineVersion }, input.dataset.input);
+    formSource = origin.source;
+    formScope = origin.scope;
+    formEngine = origin.engine;
+    formEngineVersion = origin.engineVersion;
+    render();
+  }));
   fields.quantity.addEventListener("change", () => {
     fields.quantity.value = String(costs.normalizeQuantity(fields.quantity.value));
     render();
