@@ -56,7 +56,7 @@ function settingField([key, label, unitName, kind], value) {
 export function mountFeature(host = {}) {
   const { escapeHtml, toast, icon, button } = shared;
   const costs = host.manufacturingCosts;
-  if (typeof host.mountShell !== "function" || typeof costs?.settings !== "function" || typeof costs?.settingsForPrinter !== "function" || typeof costs?.updatePrinterCostProfile !== "function" || typeof costs?.listPrinterCostProfiles !== "function" || typeof costs?.hasPrinterCostProfile !== "function" || typeof costs?.calculate !== "function" || typeof costs?.saveEstimate !== "function" || typeof costs?.materialPriceFor !== "function" || typeof costs?.updateMaterialPrice !== "function") {
+  if (typeof host.mountShell !== "function" || typeof costs?.settings !== "function" || typeof costs?.settingsForPrinter !== "function" || typeof costs?.updatePrinterCostProfile !== "function" || typeof costs?.listPrinterCostProfiles !== "function" || typeof costs?.hasPrinterCostProfile !== "function" || typeof costs?.calculate !== "function" || typeof costs?.normalizeQuantity !== "function" || typeof costs?.saveEstimate !== "function" || typeof costs?.materialPriceFor !== "function" || typeof costs?.updateMaterialPrice !== "function") {
     throw new TypeError("A estimativa precisa do serviço compartilhado de custos do OrdaX 3D.");
   }
 
@@ -80,7 +80,7 @@ export function mountFeature(host = {}) {
               <div class="field"><label for="job-name">Nome do trabalho</label><input class="input" id="job-name" data-input="name" placeholder="Ex.: Suporte articulado"/></div>
               <div class="field"><label for="material-name">Material ou perfil de filamento</label><input class="input" id="material-name" data-input="material" list="material-options" value="PLA"/><datalist id="material-options"><option value="PLA"></option><option value="PETG"></option><option value="ABS"></option><option value="ASA"></option><option value="TPU"></option><option value="Nylon"></option><option value="PC"></option></datalist></div>
               <div class="field"><label for="printer-name">Impressora de referência</label><input class="input" id="printer-name" data-input="printer" list="printer-cost-options" placeholder="Ex.: Bambu Lab A1"/><datalist id="printer-cost-options" data-printer-options></datalist><small class="muted" data-printer-profile-status>Sem nome de impressora, o cálculo usa as premissas padrão da oficina.</small></div>
-              <div class="field"><label for="quantity">Quantidade de peças ou lotes</label><input class="input" id="quantity" data-input="quantity" type="number" min="1" step="1" value="1"/></div>
+              <div class="field"><label for="quantity">Quantidade de peças ou lotes</label><input class="input" id="quantity" data-input="quantity" type="number" min="1" max="100000" step="1" value="1" required/></div>
             </div>
           </div>
 
@@ -425,6 +425,10 @@ export function mountFeature(host = {}) {
     catch (error) { toast(error?.message || "Não foi possível salvar o preço do material."); }
   });
   shell.content.querySelectorAll("[data-input]").forEach(input => input.addEventListener("input", () => { formSource = "manual"; formScope = "piece"; formEngine = ""; formEngineVersion = ""; render(); }));
+  fields.quantity.addEventListener("change", () => {
+    fields.quantity.value = String(costs.normalizeQuantity(fields.quantity.value));
+    render();
+  });
   shell.content.querySelectorAll("[data-setting]").forEach(input => {
     const saveSetting = () => {
       const key = input.dataset.setting;
