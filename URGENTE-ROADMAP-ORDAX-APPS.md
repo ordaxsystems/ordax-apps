@@ -713,6 +713,12 @@ o handoff bootstrap comprovado.
 
 ## 13. Registro de alterações
 
+### OrdaX Moda — base funcional do Space Ateliê Aurora (2026-10-26)
+
+- `apps/moda/` reúne dez módulos de varejo em uma única capacidade vertical, com produtos e variantes por tamanho/cor/SKU, PDV, estoque local, clientes, trocas/devoluções, relatórios derivados, equipe, configurações e estúdio de conteúdo. O host de desenvolvimento está em `prototypes/moda/`; a navegação e os dados compartilham um único estado local.
+- A prévia usa fixtures fictícias locais e imagens Wearly atribuídas. Não se declara Space, provider, sincronização, geração de imagem, venda ou movimentação de Inventory real. Catálogo, Sales, Inventory, Customers/CRM, Payments, Files, People, Intelligence e montagem Space continuam dependentes dos contratos públicos descritos em `apps/moda/INTEGRATION-PORTS.md`.
+- Verificação desta rodada: `node --test apps/moda/tests/*.test.mjs` passou 41/41; `node --check` nos módulos e `git diff --check` passaram; host local respondeu HTTP 200 para `/apps/moda/`. O verificador MVP manteve 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas. Moda continua fora do inventário de distribuição.
+
 ### Alinhamento local do checkout e host ChatGPT Web (2026-10-09)
 
 - Origem local alinhada a `ordaxsystems/ordax-apps` e base atualizada por fast-forward para `f3815e031181cc6b30f986c2878f60aae651acf5`, por solicitação do usuário após a transferência da organização.
