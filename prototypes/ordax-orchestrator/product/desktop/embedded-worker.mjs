@@ -599,10 +599,8 @@ export class EmbeddedChatWorker {
     });
   }
 
-  // Chromium's documented DevTools Runtime.evaluate is used here only to
-  // inspect historical DOM. Electron executeJavaScript may remain unsettled
-  // during provider SPA navigation even when the renderer itself is responsive.
-  // This performs one evaluation, never an input event, retry or network request.
+  // W3 uses the same bounded CDP evaluation contract as provider health and
+  // diagnostic. Uncertain observations never trigger retries or navigation.
   async #readHistoricalThreadDOM() {
     // One read-only evaluator shared with health; never retry an unknown CDP call.
     const snapshot=await evaluateProviderReadOnlyDom({
