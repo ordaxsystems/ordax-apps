@@ -170,3 +170,35 @@ test("conta arcos omitidos para que o Visualizador possa explicar a cobertura", 
   assert.equal(preview.unsupportedArcCount, 2);
   assert.deepEqual([preview.segments.at(-1).x1, preview.segments.at(-1).y1], [30, 10]);
 });
+test("ignora Z-hop e retração ao inferir camadas sem marcadores", () => {
+  const preview = parseGcodePreview([
+    "M82",
+    "G92 E0",
+    "G1 X10 Y0 Z0.2 E1",
+    "G1 Z0.6",
+    "G1 E0.5",
+    "G1 Z0.2",
+    "G1 X20 Y0 E2",
+    "G1 Z0.4",
+    "G1 X30 Y0 E3",
+  ].join("\n"));
+
+  assert.equal(preview.layerCount, 2);
+  assert.deepEqual(preview.segments.filter(segment => segment.extrusion).map(segment => segment.layer), [0, 0, 1]);
+});
+
+test("marcadores explícitos continuam sendo a fonte das camadas apesar de Z-hop", () => {
+  const preview = parseGcodePreview([
+    ";LAYER_CHANGE",
+    "G1 X10 Y0 Z0.2 E1",
+    "G1 Z0.6",
+    "G1 Z0.2",
+    "G1 X20 Y0 E2",
+    ";LAYER_CHANGE",
+    "G1 Z0.4",
+    "G1 X30 Y0 E3",
+  ].join("\n"));
+
+  assert.equal(preview.layerCount, 2);
+  assert.deepEqual(preview.segments.filter(segment => segment.extrusion).map(segment => segment.layer), [0, 0, 1]);
+});

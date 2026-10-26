@@ -120,6 +120,12 @@ function parseFilamentSummary(source) {
 export function parseGcodePreview(text) {
   const source = String(text ?? "");
   const segments = [];
+  const hasLayerMarkers = source.split(/\r?\n/).some(line => {
+    const divider = line.indexOf(";");
+    if (divider < 0) return false;
+    const comment = line.slice(divider + 1).trim();
+    return /LAYER_CHANGE/i.test(comment) || /^LAYER\s*:/i.test(comment);
+  });
   let x = 0, y = 0, z = 0, e = 0;
   let relativeXYZ = false, relativeE = false, relativeArcCenter = true, unitScale = 1;
   let plane = "XY", type = "other", layer = -1, lastLayerZ = null;
@@ -176,12 +182,12 @@ export function parseGcodePreview(text) {
     const nextY = words.Y === undefined ? y : relativeXYZ ? y + words.Y * unitScale : words.Y * unitScale;
     const nextZ = words.Z === undefined ? z : relativeXYZ ? z + words.Z * unitScale : words.Z * unitScale;
     const nextE = words.E === undefined ? e : relativeE ? e + words.E * unitScale : words.E * unitScale;
-    if (words.Z !== undefined && Math.abs(nextZ - z) > 0.00001 && lastLayerZ !== nextZ) {
+    const extrusion = words.E !== undefined && (relativeE ? words.E > 0 : nextE > e + 0.000001);
+    if (!hasLayerMarkers && extrusion && (lastLayerZ === null || Math.abs(nextZ - lastLayerZ) > 0.00001)) {
       if (layer < 0) layer = 0;
-      else if (lastLayerZ !== null) layer++;
+      else layer++;
       lastLayerZ = nextZ;
     }
-    const extrusion = words.E !== undefined && (relativeE ? words.E > 0 : nextE > e + 0.000001);
     const moveLayer = Math.max(0, layer);
     maxObservedLayer = Math.max(maxObservedLayer, moveLayer);
 

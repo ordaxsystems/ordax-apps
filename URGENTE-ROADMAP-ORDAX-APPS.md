@@ -739,3 +739,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O controle vertical comunica camadas em numeração humana (1 a N) e sincroniza seu aria-valuetext com a camada selecionada, preservando o índice interno do parser.
 - A suíte passou com 126/126 testes; node --check e git diff --check passaram. No host da branch da PR em http://127.0.0.1:4313/?area=visualizador-gcode, confirmei valor 1/rótulo “Camada 1 de 4”, avanço para valor 2/rótulo “Camada 2 de 4” e retorno à camada 1.
 - O arquivo permanece local e somente leitura; owners, SSOT e elegibilidade de distribuição não mudaram.
+
+### OrdaX 3D — inferência de camadas sem marcadores (2026-10-26)
+
+- O parser compartilhado do Prepare/Visualizador passa a inferir uma nova camada somente em extrusão positiva quando o G-code não contém marcadores de camada. Z-hop, travel e retração não inflam mais a contagem; marcadores explícitos continuam sendo autoridade.
+- Foram adicionados dois testes para G-code markerless e para a precedência dos marcadores. A suíte remota e o estado da PR serão conferidos após a atualização.
+- Correção local de interpretação; sem alteração de arquivos enviados, jobs técnicos, hardware, Inventory, outros owners ou elegibilidade de distribuição.

@@ -92,3 +92,7 @@ Os domínios de Vendas e Inventory neste repo ainda não oferecem providers púb
 ### Incremento — valores de camada acessíveis no Visualizador G-code (2026-10-26)
 
 O seletor vertical apresenta as camadas como 1 a N e expõe o texto acessível “Camada N de M”, enquanto converte o valor para o índice interno do parser. O controle continua sincronizado com os botões de camada, e a inspeção dos trajetos permanece somente leitura. A suíte do OrdaX 3D passou com 126/126 testes; os módulos alterados passaram em node --check e git diff --check. No host da branch da PR, confirmei que Próxima camada altera o controle para valor 2 e o rótulo para “Camada 2 de 4”, e Camada anterior retorna a ambos para 1.
+
+### Incremento — inferência de camadas sem marcadores (2026-10-26)
+
+No Visualizador G-code, arquivos sem comentários de camada agora inferem avanço somente em movimentos com extrusão positiva. Z-hop, deslocamentos e retrações não criam camadas falsas; quando há marcadores explícitos `LAYER_CHANGE` ou `LAYER:`, eles continuam dirigindo a contagem. Duas regressões cobrem os dois modos. Esta correção afeta apenas a leitura local do G-code e não altera jobs, hardware, owners ou integrações.
