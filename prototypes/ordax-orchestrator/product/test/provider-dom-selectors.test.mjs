@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 
-const {providerMessageSelectors,queryProviderMessageNodes,readProviderHistoricalUserText,providerMessageQueryBootstrap}=providerDomSelectors;
+const {providerMessageSelectors,queryProviderMessageNodes,readProviderHistoricalUserText,providerMessageQueryBootstrap,providerHistoricalUserTextBootstrap}=providerDomSelectors;
 
 test('current ChatGPT Web user bubbles and assistant Markdown use shared fallback selectors',()=>{
   const user={id:'user-bubble'},assistant={id:'assistant-markdown'};
@@ -32,6 +32,8 @@ test('semantic message attributes take precedence and do not mix fallback contai
 test('shared browser bootstrap compiles and includes the provider selectors',()=>{
   assert.match(providerMessageQueryBootstrap,/bg-user-message/);
   assert.match(providerMessageQueryBootstrap,/data-markdown-text-style/);
+  assert.doesNotMatch(providerMessageQueryBootstrap,/readProviderHistoricalUserText|return \\{text:/);
+  assert.match(providerHistoricalUserTextBootstrap,/readProviderHistoricalUserText/);
   assert.doesNotThrow(()=>new Function(providerMessageQueryBootstrap+'return queryProviderMessageNodes;'));
   assert.deepEqual(queryProviderMessageNodes(null,'user',providerMessageSelectors),[]);
   assert.deepEqual(queryProviderMessageNodes({querySelectorAll:()=>[]},'unknown',providerMessageSelectors),[]);
@@ -49,7 +51,7 @@ test('physical ChatGPT bubble extracts authored user content only, not copy-butt
   const extraction=readProviderHistoricalUserText(bubble);
   assert.deepEqual(extraction,{text:original,complete:true});
   assert.notEqual(extraction.text,bubble.innerText);
-  const browser=new Function(providerMessageQueryBootstrap+'return readProviderHistoricalUserText;')();
+  const browser=new Function(providerMessageQueryBootstrap+providerHistoricalUserTextBootstrap+'return readProviderHistoricalUserText;')();
   assert.deepEqual(browser(bubble),extraction);
 });
 
