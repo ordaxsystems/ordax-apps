@@ -1,5 +1,9 @@
 # OrdaX 3D — plano de evolução
 
+### Validação da calculadora no host e perfil ao abrir orçamento (2026-10-26)
+
+Ao carregar um orçamento de uma peça fatiada, a calculadora também atualiza os campos visíveis com as premissas da impressora vinculada, mantendo tela e fórmula no mesmo perfil. No host local isolado `:4448`, a entrada manual de 28,6 g, 2,5 h, PLA a R$ 119,90/kg e 8% de perda exibiu R$ 3,99 de custo parcial e R$ 5,38 de referência por peça. Com 3 unidades, exibiu 92,7 g, 7,50 h de máquina, R$ 11,97 de custo e R$ 16,15 de referência no lote. Não salvei o orçamento. Suíte OrdaX 3D: 149/149; `node --check` em 42 módulos e `git diff --check` aprovados. O host não tem OrcaSlicer/perfis de fatiamento reais configurados, então este aceite cobre o orçamento avulso, não o E2E de fatiamento.
+
 ### Atualização — preço de equilíbrio e recálculo por peça (2026-10-26)
 
 A calculadora técnica passou a separar o custo de fabricação, o preço mínimo sem lucro (incluindo taxas percentuais e custos fixos/frete rateados pela quantidade) e o preço de referência com markup ou margem. O Preview exibe custo, preço mínimo e referência; cada peça fatiada individualmente usa as premissas atuais compartilhadas da calculadora, sem refatiar para atualizar material, impressora ou formação de preço. O acompanhamento contínuo de mão de obra começa em 0%; preparação e acabamento continuam configuráveis. O cálculo avulso aceita peso, tempo, material, quantidade, impressora e custos operacionais; salvar/exportar segue separado da venda.
