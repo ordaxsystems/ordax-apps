@@ -654,7 +654,10 @@ export class EmbeddedChatWorker {
           };
         })()`,
         awaitPromise:false,returnByValue:true
-      }), {timeoutMs:1800,code:'provider_readonly_dom_evaluation_timeout'});
+      // Explicit read-only W3 observation may transfer up to 100k characters
+      // through Electron's debugger; allow one bounded 6-second CDP response.
+      // NO second evaluation, navigation, resend or import on a timeout.
+      }), {timeoutMs:6000,code:'provider_readonly_dom_evaluation_timeout'});
     } catch(error) {
       if(error?.message==='provider_readonly_dom_evaluation_timeout')throw error;
       throw new Error('provider_readonly_dom_evaluation_rejected');
