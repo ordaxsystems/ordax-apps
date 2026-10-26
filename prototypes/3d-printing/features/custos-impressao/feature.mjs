@@ -91,7 +91,7 @@ export function mountFeature(host = {}) {
             <div class="form-grid">
               <div class="field"><label for="grams" data-grams-label>Peso por peça</label><div class="unit-input"><input class="input" id="grams" data-input="gramsPerUnit" type="number" min="0.01" step="0.1" placeholder="Ex.: 28,6"/><span>g</span></div></div>
               <div class="field"><label for="price-kg">Preço deste material</label><div class="currency-input"><span>R$/kg</span><input class="input" id="price-kg" data-material-price type="number" min="0" step="0.01" value="${costs.materialPriceFor("PLA")}"/></div><small class="muted">Salvo como premissa local por material/perfil. O Inventory continua sendo dono de saldo e movimentações.</small></div>
-              <div class="field"><label for="hours" data-hours-label>Tempo por peça</label><div class="unit-input"><input class="input" id="hours" data-input="hoursPerUnit" type="number" min="0.01" step="0.01" placeholder="Ex.: 2,6"/><span>h</span></div></div>
+              <div class="field"><label for="hours" data-hours-label>Tempo por peça</label><div class="unit-input"><input class="input" id="hours" data-input="hoursPerUnit" type="number" min="0.01" step="0.01" placeholder="Ex.: 2,5"/><span>h</span></div><small class="muted">Informe horas decimais: 2,5 h = 2 h 30 min. O fatiador converte o tempo automaticamente.</small></div>
             </div>
           </div>
 
@@ -123,21 +123,24 @@ export function mountFeature(host = {}) {
         </section>
 
         <aside class="surface cost-result">
-          <div class="quote-hero"><span data-estimate-status>AGUARDANDO DADOS</span><strong data-unit-cost>—</strong><small data-unit-label>Custo estimado por peça</small></div>
+          <div class="quote-hero"><span data-estimate-status>AGUARDANDO DADOS</span><strong data-unit-cost>—</strong><small data-unit-label>Custo estimado por peça</small><small class="quote-source" data-estimate-source>Entrada manual · informe peso e tempo</small></div>
           <div class="quote-breakdown">
-            <div class="breakdown-row emphasis"><span>Preço de referência por unidade</span><strong data-unit-price>—</strong></div>
-            <div class="breakdown-row"><span>Material com perda</span><strong data-material>R$ 0,00</strong></div>
-            <div class="breakdown-row"><span>Energia</span><strong data-energy>R$ 0,00</strong></div>
+            <div class="breakdown-row emphasis"><span data-unit-price-label>Preço de referência por peça</span><strong data-unit-price>—</strong></div>
+            <div class="breakdown-row"><span>Material por unidade-base</span><strong data-material>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span>Filamento no total do lote</span><strong data-total-filament>—</strong></div>
+            <div class="breakdown-row"><span>Energia por unidade-base</span><strong data-energy>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span>Tempo total da impressora</span><strong data-total-print-time>—</strong></div>
             <div class="breakdown-row"><span>Depreciação da impressora</span><strong data-depreciation>Não configurada</strong></div>
-            <div class="breakdown-row"><span>Manutenção e desgaste</span><strong data-maintenance>R$ 0,00</strong></div>
-            <div class="breakdown-row"><span>Outros custos da máquina</span><strong data-machine-overhead>R$ 0,00</strong></div>
-            <div class="breakdown-row"><span>Mão de obra e acabamento</span><strong data-labor>R$ 0,00</strong></div>
-            <div class="breakdown-row"><span>Embalagem e outros</span><strong data-extra>R$ 0,00</strong></div>
-            <div class="breakdown-row total"><span>Custo do lote</span><strong data-batch-cost>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span>Manutenção e desgaste por unidade-base</span><strong data-maintenance>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span>Outros custos da máquina por unidade-base</span><strong data-machine-overhead>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span>Mão de obra e acabamento por unidade-base</span><strong data-labor>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span>Embalagem e outros por unidade-base</span><strong data-extra>R$ 0,00</strong></div>
+            <div class="breakdown-row total"><span data-batch-cost-label>Custo total do lote</span><strong data-batch-cost>R$ 0,00</strong></div>
             <div class="breakdown-row"><span>Tributos e taxa de canal/pagamento</span><strong data-variable-sales-expenses>R$ 0,00</strong></div>
             <div class="breakdown-row"><span>Taxa fixa e frete absorvido</span><strong data-fixed-sales-expenses>R$ 0,00</strong></div>
-            <div class="breakdown-row"><span>Preço de referência do lote</span><strong data-batch-price>R$ 0,00</strong></div>
-            <div class="breakdown-row"><span>Resultado estimado do lote</span><strong data-profit>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span data-batch-price-label>Preço de referência do lote</span><strong data-batch-price>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span data-unit-profit-label>Resultado estimado por peça</span><strong data-unit-profit>—</strong></div>
+            <div class="breakdown-row"><span data-batch-profit-label>Resultado estimado do lote</span><strong data-profit>R$ 0,00</strong></div>
           </div>
           <div class="quote-actions"><button class="button primary" type="button" data-save>${icon("check", 14)}<span>Salvar orçamento</span></button><button class="button secondary" type="button" data-export>${icon("file", 14)}<span>Exportar CSV</span></button></div>
           <p class="cost-note" data-cost-note>O cálculo técnico fica no OrdaX 3D. Não cria pedido, preço aprovado, cobrança ou movimentação de estoque.</p>
@@ -175,7 +178,42 @@ export function mountFeature(host = {}) {
     target.innerHTML = history.length ? history.slice(0, 12).map(item => {
       const scope = item.scope === "plate" ? "lote" : "peça";
       const completeness = item.complete === false ? " · depreciação pendente" : "";
-      return `<div class="history-row"><div><strong>${escapeHtml(item.name)}</strong><small>${item.quantity} ${scope}${item.quantity === 1 ? "" : "s"} · ${escapeHtml(item.material)} · ${escapeHtml(new Date(item.savedAt).toLocaleString("pt-BR"))}${completeness} · local</small></div><div class="history-values"><b>${money(Number(item.suggestedPriceTotal ?? item.totalEstimate ?? item.order ?? 0))}</b><small>preço de referência</small></div></div>`;
+      const quantity = Math.max(1, Number(item.quantity) || 1);
+      const settings = item.settings ?? {};
+      const components = item.components ?? {};
+      const grams = Number(item.gramsPerUnit) || 0;
+      const hours = Number(item.hoursPerUnit) || 0;
+      const totalFilament = grams * (1 + (Number(settings.materialWastePercent) || 0) / 100) * quantity;
+      const source = item.source === "slicer"
+        ? `Fatiador${item.engine ? ` · ${item.engine} ${item.engineVersion ?? ""}` : ""}`
+        : "Entrada manual";
+      const savedAt = Number.isFinite(Date.parse(item.savedAt))
+        ? new Date(item.savedAt).toLocaleString("pt-BR")
+        : "data não informada";
+      const componentRows = [
+        ["Material por unidade-base", components.material],
+        ["Energia por unidade-base", components.energy],
+        ["Depreciação por unidade-base", components.depreciation],
+        ["Manutenção e desgaste por unidade-base", components.maintenance],
+        ["Outros custos da máquina por unidade-base", components.machineOverhead],
+        ["Mão de obra e acabamento por unidade-base", components.labor],
+        ["Embalagem e outros por unidade-base", Number(components.packaging ?? 0) + Number(components.other ?? 0)],
+        ["Tributos e taxa variável por unidade-base", Number(components.taxes ?? 0) + Number(components.salesFee ?? 0)],
+        ["Taxa fixa e frete absorvido por unidade-base", Number(components.fixedSaleFee ?? 0) + Number(components.absorbedShipping ?? 0)],
+      ];
+      const assumptionRows = [
+        ["Perda de material", `${unit(Number(settings.materialWastePercent) || 0, 1)}%`],
+        ["Potência · tarifa", `${unit(Number(settings.printerPowerWatts) || 0)} W · ${money(Number(settings.energyPricePerKwh) || 0)}/kWh`],
+        ["Impressora · vida útil", `${money(Number(settings.printerPurchasePrice) || 0)} aquisição · ${money(Number(settings.printerResidualValue) || 0)} residual · ${unit(Number(settings.printerUsefulHours) || 0)} h`],
+        ["Manutenção · outros custos da máquina", `${money(Number(settings.maintenancePerHour) || 0)}/h · ${money(Number(settings.machineOverheadPerHour) || 0)}/h`],
+        ["Mão de obra · acompanhamento", `${money(Number(settings.laborPricePerHour) || 0)}/h · ${unit(Number(settings.laborAttentionPercent) || 0, 1)}%`],
+        ["Preparação · acabamento", `${unit(Number(settings.setupMinutesPerBatch) || 0, 1)} min/lote · ${unit(Number(settings.finishingMinutesPerUnit) || 0, 1)} min/un`],
+        ["Embalagem · outros custos", `${money(Number(settings.packagingPerUnit) || 0)}/un · ${money(Number(settings.otherCostPerUnit) || 0)}/un`],
+        ["Tributos · taxa variável", `${unit(Number(settings.taxPercent) || 0, 1)}% · ${unit(Number(settings.salesFeePercent) || 0, 1)}%`],
+        ["Taxa fixa · frete absorvido", `${money(Number(settings.fixedSaleFeePerOrder) || 0)}/pedido · ${money(Number(settings.shippingAbsorbedPerOrder) || 0)}/pedido`],
+      ].map(([label, value]) => `<div><span>${label}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+      const price = Number(item.suggestedPriceTotal ?? item.totalEstimate ?? item.order ?? 0);
+      return `<article class="history-item"><div class="history-row"><div><strong>${escapeHtml(item.name)}</strong><small>${item.quantity} ${scope}${item.quantity === 1 ? "" : "s"} · ${escapeHtml(item.material)} · ${escapeHtml(savedAt)}${completeness} · local</small></div><div class="history-values"><b>${money(price)}</b><small>preço de referência</small></div></div><details class="history-detail"><summary>Ver memória do orçamento</summary><div class="history-detail-grid"><div><span>Origem</span><strong>${escapeHtml(source)}</strong></div><div><span>Impressora</span><strong>${escapeHtml(item.printer ?? "Não informada")}</strong></div><div><span>Consumo por ${scope}</span><strong>${unit(grams)} g</strong></div><div><span>Tempo por ${scope}</span><strong>${unit(hours, 2)} h</strong></div><div><span>Filamento total com perda</span><strong>${unit(totalFilament)} g</strong></div><div><span>Tempo total da máquina</span><strong>${unit(hours * quantity, 2)} h</strong></div><div><span>Preço do material</span><strong>${money(Number(item.materialPricePerKg) || 0)}/kg</strong></div><div><span>Custo por unidade-base</span><strong>${money(Number(item.costPerUnit) || 0)}</strong></div><div><span>Custo do lote</span><strong>${money(Number(item.totalCost) || 0)}</strong></div>${assumptionRows}${componentRows.map(([label, value]) => `<div><span>${label}</span><strong>${money(Number(value) || 0)}</strong></div>`).join("")}<div><span>Preço de referência por ${scope}</span><strong>${money(Number(item.suggestedPricePerUnit) || 0)}</strong></div><div><span>Preço de referência do lote</span><strong>${money(price)}</strong></div><div><span>Resultado estimado por unidade</span><strong>${money(Number(item.estimatedProfitPerUnit) || 0)}</strong></div><div><span>Resultado estimado do lote</span><strong>${money(Number(item.estimatedProfitTotal) || 0)}</strong></div><div><span>Precificação</span><strong>${item.pricingMode === "margin" ? "Margem" : "Markup"} · ${unit(Number(item.pricingPercent) || 0, 1)}%</strong></div></div></details></article>`;
     }).join("") : `<div class="empty-state">Nenhum orçamento salvo ainda.</div>`;
   }
 
@@ -232,21 +270,33 @@ export function mountFeature(host = {}) {
     renderPrinterProfileControls();
     const result = costs.calculate(estimateInput());
     const settingsNow = costs.settings();
+    const baseUnit = formScope === "plate" ? "prato" : "peça";
     shell.content.querySelector("[data-estimate-status]").textContent = result.available ? !result.pricingValid ? "REVISE MARGEM E TAXAS" : result.complete ? "ESTIMATIVA TÉCNICA COMPLETA" : "CUSTO PARCIAL · DEPRECIAÇÃO PENDENTE" : "INFORME PESO E TEMPO";
     shell.content.querySelector("[data-unit-cost]").textContent = result.available ? money(result.costPerUnit) : "—";
-    shell.content.querySelector("[data-unit-label]").textContent = `Custo estimado por ${formScope === "plate" ? "lote" : "peça"}`;
+    shell.content.querySelector("[data-unit-label]").textContent = `Custo estimado por ${baseUnit}`;
+    shell.content.querySelector("[data-unit-price-label]").textContent = `Preço de referência por ${baseUnit}`;
+    shell.content.querySelector("[data-batch-cost-label]").textContent = formScope === "plate" ? "Custo total do prato" : "Custo total do lote";
+    shell.content.querySelector("[data-batch-price-label]").textContent = formScope === "plate" ? "Preço de referência do prato" : "Preço de referência do lote";
+    shell.content.querySelector("[data-unit-profit-label]").textContent = `Resultado estimado por ${baseUnit}`;
+    shell.content.querySelector("[data-batch-profit-label]").textContent = formScope === "plate" ? "Resultado estimado do prato" : "Resultado estimado do lote";
+    shell.content.querySelector("[data-estimate-source]").textContent = result.source === "slicer"
+      ? `Fatiador${result.engine ? ` · ${result.engine} ${result.engineVersion}` : ""} · ${formScope === "plate" ? "mesa inteira" : "peça individual"}`
+      : "Entrada manual · valores editáveis";
     shell.content.querySelector("[data-unit-price]").textContent = result.available ? result.pricingValid ? money(result.suggestedPricePerUnit) : "Revise margem/taxas" : "—";
     shell.content.querySelector("[data-material]").textContent = result.available ? money(result.components.material) : "—";
+    shell.content.querySelector("[data-total-filament]").textContent = result.available ? `${unit(result.gramsPerUnit * (1 + settingsNow.materialWastePercent / 100) * result.quantity)} g` : "—";
     shell.content.querySelector("[data-energy]").textContent = result.available ? money(result.components.energy) : "—";
+    shell.content.querySelector("[data-total-print-time]").textContent = result.available ? `${unit(result.hoursPerUnit * result.quantity, 2)} h` : "—";
     shell.content.querySelector("[data-depreciation]").textContent = result.available && result.components.depreciationPerHour !== null ? money(result.components.depreciation) : "Configure aquisição e vida útil";
     shell.content.querySelector("[data-maintenance]").textContent = result.available ? money(result.components.maintenance) : "—";
     shell.content.querySelector("[data-machine-overhead]").textContent = result.available ? money(result.components.machineOverhead) : "—";
     shell.content.querySelector("[data-labor]").textContent = result.available ? money(result.components.labor) : "—";
     shell.content.querySelector("[data-extra]").textContent = result.available ? money(result.components.packaging + result.components.other) : "—";
     shell.content.querySelector("[data-batch-cost]").textContent = result.available ? money(result.totalCost) : "—";
-    shell.content.querySelector("[data-variable-sales-expenses]").textContent = result.available && result.pricingValid ? money(result.components.taxes + result.components.salesFee) : result.available ? "Revise margem/taxas" : "—";
+    shell.content.querySelector("[data-variable-sales-expenses]").textContent = result.available && result.pricingValid ? money((result.components.taxes + result.components.salesFee) * result.quantity) : result.available ? "Revise margem/taxas" : "—";
     shell.content.querySelector("[data-fixed-sales-expenses]").textContent = result.available ? money(result.components.fixedSaleFee * result.quantity + result.components.absorbedShipping * result.quantity) : "—";
     shell.content.querySelector("[data-batch-price]").textContent = result.available ? result.pricingValid ? money(result.suggestedPriceTotal) : "Revise margem/taxas" : "—";
+    shell.content.querySelector("[data-unit-profit]").textContent = result.available && result.pricingValid ? money(result.estimatedProfitPerUnit) : result.available ? "Revise margem/taxas" : "—";
     shell.content.querySelector("[data-profit]").textContent = result.available && result.pricingValid ? money(result.estimatedProfitTotal) : "—";
     shell.content.querySelector("[data-grams-label]").textContent = `Peso por ${formScope === "plate" ? "lote" : "peça"}`;
     shell.content.querySelector("[data-hours-label]").textContent = `Tempo por ${formScope === "plate" ? "lote" : "peça"}`;
@@ -286,21 +336,43 @@ export function mountFeature(host = {}) {
       ["Quantidade", String(result.quantity)],
       ["Peso por unidade-base (g)", String(result.gramsPerUnit)],
       ["Tempo por unidade-base (h)", String(result.hoursPerUnit)],
-      ["Material com perdas", money(result.components.material)],
-      ["Energia", money(result.components.energy)],
-      ["Depreciação", result.components.depreciationPerHour === null ? "Não configurada" : money(result.components.depreciation)],
-      ["Manutenção e desgaste", money(result.components.maintenance)],
-      ["Outros custos da máquina", money(result.components.machineOverhead)],
-      ["Mão de obra e acabamento", money(result.components.labor)],
-      ["Embalagem e outros", money(result.components.packaging + result.components.other)],
-      ["Tributos estimados", money(result.components.taxes)],
-      ["Taxa de canal ou pagamento", money(result.components.salesFee)],
+      ["Consumo total de filamento com perda (g)", String(result.gramsPerUnit * (1 + result.settings.materialWastePercent / 100) * result.quantity)],
+      ["Tempo total de máquina (h)", String(result.hoursPerUnit * result.quantity)],
+      ["Perda de material (%)", String(result.settings.materialWastePercent)],
+      ["Potência média (W)", String(result.settings.printerPowerWatts)],
+      ["Tarifa de energia (R$/kWh)", String(result.settings.energyPricePerKwh)],
+      ["Mão de obra (R$/h)", String(result.settings.laborPricePerHour)],
+      ["Acompanhamento da impressão (%)", String(result.settings.laborAttentionPercent)],
+      ["Aquisição da impressora (R$)", String(result.settings.printerPurchasePrice)],
+      ["Valor residual (R$)", String(result.settings.printerResidualValue)],
+      ["Vida útil produtiva da impressora (h)", String(result.settings.printerUsefulHours)],
+      ["Manutenção e desgaste (R$/h)", String(result.settings.maintenancePerHour)],
+      ["Outros custos da máquina (R$/h)", String(result.settings.machineOverheadPerHour)],
+      ["Preparação do lote (min)", String(result.settings.setupMinutesPerBatch)],
+      ["Acabamento por unidade (min)", String(result.settings.finishingMinutesPerUnit)],
+      ["Embalagem por unidade (R$)", String(result.settings.packagingPerUnit)],
+      ["Outros custos por unidade (R$)", String(result.settings.otherCostPerUnit)],
+      ["Tributos estimados (%)", String(result.settings.taxPercent)],
+      ["Taxa de canal/pagamento (%)", String(result.settings.salesFeePercent)],
+      ["Material com perdas (por unidade-base)", money(result.components.material)],
+      ["Material com perdas (total do lote)", money(result.components.material * result.quantity)],
+      ["Energia (por unidade-base)", money(result.components.energy)],
+      ["Energia (total do lote)", money(result.components.energy * result.quantity)],
+      ["Depreciação (por unidade-base)", result.components.depreciationPerHour === null ? "Não configurada" : money(result.components.depreciation)],
+      ["Depreciação (total do lote)", result.components.depreciationPerHour === null ? "Não configurada" : money(result.components.depreciation * result.quantity)],
+      ["Manutenção e desgaste (total do lote)", money(result.components.maintenance * result.quantity)],
+      ["Outros custos da máquina (total do lote)", money(result.components.machineOverhead * result.quantity)],
+      ["Mão de obra e acabamento (total do lote)", money(result.components.labor * result.quantity)],
+      ["Embalagem e outros (total do lote)", money((result.components.packaging + result.components.other) * result.quantity)],
+      ["Tributos estimados (total do lote)", money(result.components.taxes * result.quantity)],
+      ["Taxa de canal ou pagamento (total do lote)", money(result.components.salesFee * result.quantity)],
       ["Taxa fixa por pedido", money(result.settings.fixedSaleFeePerOrder)],
       ["Frete absorvido por pedido", money(result.settings.shippingAbsorbedPerOrder)],
       ["Custo estimado por unidade-base", money(result.costPerUnit)],
       ["Custo estimado do lote", money(result.totalCost)],
       ["Preço de referência por unidade-base", money(result.suggestedPricePerUnit)],
       ["Preço de referência do lote", money(result.suggestedPriceTotal)],
+      ["Resultado estimado por unidade", money(result.estimatedProfitPerUnit)],
       ["Resultado estimado", money(result.estimatedProfitTotal)],
       ["Precificação", `${result.pricingMode === "margin" ? "Margem" : "Markup"} ${result.pricingPercent}%`],
       ["Depreciação configurada", result.complete ? "Sim" : "Não; custo parcial"],

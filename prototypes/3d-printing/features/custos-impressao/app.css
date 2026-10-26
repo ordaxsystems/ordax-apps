@@ -7,6 +7,7 @@
 .cost-section-head h2{font-size:13px}
 .cost-section-head{margin-bottom:12px}
 .cost-section .section-help{margin:-3px 0 12px;color:#8b9388;font-size:10px;line-height:1.5}
+.quote-source{display:block;margin-top:7px!important;color:#e1e8dc!important;font-size:9px!important;line-height:1.45}
 .cost-form .currency-input input{padding-left:52px}
 .cost-form .currency-input span{min-width:38px}
 .cost-form .currency-input--wide input{padding-left:68px}
@@ -23,5 +24,27 @@
 .history-values{text-align:right}
 .history-values b{display:block}
 .history-values small{display:block;color:#929a8e;font-size:8px;margin-top:3px}
+.history-item{border-bottom:1px solid #eff1ee}
+.history-item:last-child{border-bottom:0}
+.history-item .history-row{border:0}
+.history-detail{padding:0 16px 12px}
+.history-detail summary{width:max-content;max-width:100%;cursor:pointer;color:#687762;font-size:9px;font-weight:700;list-style-position:inside}
+.history-detail summary:hover{color:#43563d}
+.history-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.history-detail-grid>div{min-width:0;padding:9px 10px;border:1px solid #edf0ec;border-radius:8px;background:#fbfcfa}
+.history-detail-grid span,.history-detail-grid strong{display:block;overflow-wrap:anywhere}
+.history-detail-grid span{color:#929a8e;font-size:8px}
+.history-detail-grid strong{margin-top:4px;color:#475641;font-size:9px}
 .cost-note{font-size:9px}
 @media(max-width:600px){.last-slice{align-items:flex-start;flex-direction:column}.last-slice .button{width:100%}.history-row{align-items:flex-start}.history-values{flex:none}}
+@media(max-width:720px){.history-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:420px){.history-detail-grid{grid-template-columns:1fr}}
+.quote-hero span{font-size:10px}
+.quote-hero small{font-size:10px}
+.breakdown-row{font-size:11px}
+.breakdown-row strong{font-size:11px}
+.quote-actions .button{font-size:10px}
+.cost-note,.history-row{font-size:10px}
+.history-detail summary{font-size:10px}
+.history-detail-grid span{font-size:9px}
+.history-detail-grid strong{font-size:10px}
