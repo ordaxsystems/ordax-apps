@@ -19,6 +19,8 @@ function fakePreviewPort(adapter = "browser-local-preview", state = createSeedFo
     context: { ...context, adapter },
     async initialize() { return state; },
     getSnapshot() { return state; },
+    getPreviewPreferences() { return { deliveryFeeCents: 500 }; },
+    async updatePreviewPreferences(preferences) { return preferences; },
     subscribe() { return () => {}; },
     async execute() { throw new Error("Não é um provider comercial."); },
     destroy() {},

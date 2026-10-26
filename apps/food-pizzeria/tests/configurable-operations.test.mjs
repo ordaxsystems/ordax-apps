@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  DEFAULT_DELIVERY_FEE_CENTS,
   calculatePizzaPriceCents,
   calculatePizzeriaOrderConsumption,
   configureFoodPizzeria,
@@ -77,7 +76,7 @@ test("configuração inicial preserva tamanhos, mesas e limite de sabores inform
     { id: "small", label: "Individual", slices: 4, active: true },
   ]);
   assert.deepEqual(configured.settings.tables, [{ id: 22, seats: 5, active: true }]);
-  assert.equal(configured.settings.deliveryFeeCents, DEFAULT_DELIVERY_FEE_CENTS);
+  assert.equal(Object.hasOwn(configured.settings, "deliveryFeeCents"), false);
 });
 
 test("pizzeria sizes and flavor count are configurable and saved with order pricing", () => {
@@ -197,8 +196,8 @@ test("v5 migration does not invent historical ingredient consumption", () => {
     orders: state.orders.map(({ consumptionSnapshot, ...order }) => order),
   };
   const migrated = migrateFoodPizzeriaState(v5);
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
-  assert.equal(migrated.settings.deliveryFeeCents, DEFAULT_DELIVERY_FEE_CENTS);
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
   assert.equal(migrated.orders.length, state.orders.length);
   assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
   assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
@@ -206,19 +205,15 @@ test("v5 migration does not invent historical ingredient consumption", () => {
   assert.equal(Object.hasOwn(migrated, "inventoryMovements"), false);
 });
 
-test("taxa padrão pode ser configurada e fica congelada no pedido criado", () => {
+test("taxa explicitamente informada fica congelada no pedido sem alterar o estado canônico", () => {
   const initial = createSeedFoodState();
   const historicalDelivery = initial.orders.find(({ channel }) => channel === "delivery");
-  assert.equal(initial.settings.deliveryFeeCents, DEFAULT_DELIVERY_FEE_CENTS);
-
-  const configured = updateFoodPizzeriaSettings(initial, { deliveryFeeCents: 875 });
-  assert.equal(configured.settings.deliveryFeeCents, 875);
-  assert.equal(configured.orders.find(({ id }) => id === historicalDelivery.id).deliveryFeeCents, historicalDelivery.deliveryFeeCents);
-  assert.throws(() => updateFoodPizzeriaSettings(initial, { deliveryFeeCents: -1 }), /Taxa padrão de entrega/);
-  assert.throws(() => updateFoodPizzeriaSettings(initial, { deliveryFeeCents: 8.75 }), /Taxa padrão de entrega/);
+  assert.equal(initial.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(Object.hasOwn(initial.settings, "deliveryFeeCents"), false);
+  assert.equal(initial.orders.find(({ id }) => id === historicalDelivery.id).deliveryFeeCents, historicalDelivery.deliveryFeeCents);
 
   const createdAt = new Date().toISOString();
-  const next = createPizzeriaOrder(configured, {
+  const next = createPizzeriaOrder(initial, {
     id: "delivery-fee-default-order",
     historyId: "delivery-fee-default-history",
     createdAt,
@@ -226,6 +221,7 @@ test("taxa padrão pode ser configurada e fica congelada no pedido criado", () =
     phone: "(11) 99999-0000",
     channel: "delivery",
     address: "Rua da Amostra, 10 — Centro",
+    deliveryFeeCents: 875,
     items: [{ id: "delivery-fee-default-item", size: "medium", flavorIds: ["ng-calabresa"], quantity: 1 }],
   });
   const order = next.orders.find(({ id }) => id === "delivery-fee-default-order");
@@ -233,20 +229,18 @@ test("taxa padrão pode ser configurada e fica congelada no pedido criado", () =
   assert.equal(order.totalCents, order.subtotalCents + 875);
 });
 
-test("v6 migration adds the local delivery preference without changing order snapshots", () => {
+test("Food v6 valida sem incorporar preferências locais ao documento canônico", () => {
   const current = createSeedFoodState();
-  const deliveryOrder = current.orders.find(({ channel }) => channel === "delivery");
   const v6 = {
     ...current,
     schema: "ordax.food-pizzeria-state/6",
-    settings: Object.fromEntries(Object.entries(current.settings).filter(([key]) => key !== "deliveryFeeCents")),
   };
 
   const migrated = migrateFoodPizzeriaState(v6);
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
   assert.equal(migrated.revision, current.revision);
-  assert.equal(migrated.settings.deliveryFeeCents, DEFAULT_DELIVERY_FEE_CENTS);
-  assert.equal(migrated.orders.find(({ id }) => id === deliveryOrder.id).deliveryFeeCents, deliveryOrder.deliveryFeeCents);
+  assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
+  assert.deepEqual(migrated.orders, current.orders);
   assert.deepEqual(migrated.orders.map(({ consumptionSnapshot }) => consumptionSnapshot), current.orders.map(({ consumptionSnapshot }) => consumptionSnapshot));
 });
 

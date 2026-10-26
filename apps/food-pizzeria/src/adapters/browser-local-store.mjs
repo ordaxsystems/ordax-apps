@@ -1,6 +1,7 @@
 import { applyFoodCommand, createFoodCommand } from "../application/commands.mjs";
 import { fingerprintFoodCommand } from "../application/command-fingerprint.mjs";
 import {
+  DEFAULT_DELIVERY_FEE_CENTS,
   migrateFoodPizzeriaState,
   validateFoodPizzeriaState,
 } from "../domain/domain.mjs";
@@ -11,16 +12,19 @@ import {
 } from "../fixtures/mock-data.mjs";
 import { FOOD_DATA_PORT_SCHEMA } from "../ports/food-data-port.mjs";
 
-const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/2";
+const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/3";
+const PREVIOUS_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/2";
 const LEGACY_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/1";
 const COMMAND_DIGEST_RE = /^[a-f0-9]{64}$/;
 const LEGACY_INVENTORY_ARCHIVE_SCHEMA = "ordax.food-pizzeria.preview-legacy-inventory/1";
 const LEGACY_FOOD_STATE_V3 = "ordax.food-pizzeria-state/3";
+const LEGACY_PREVIEW_FOOD_STATE_V7 = "ordax.food-pizzeria-state/7";
 const BUSINESS_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const COMMAND_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const MAX_STATE_BYTES = 5 * 1024 * 1024;
 const MAX_RECORDED_COMMANDS = 1000;
 const PREVIEW_ACTIVITY_REFRESH_AFTER_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_PREVIEW_PREFERENCES = Object.freeze({ deliveryFeeCents: DEFAULT_DELIVERY_FEE_CENTS });
 const LEGACY_KEY = [
   "ordax.food-pizzeria.development.v2",
   encodeURIComponent("local-demo-owner"),
@@ -49,6 +53,16 @@ function validateCommandHistory(entries) {
   });
 }
 
+function validatePreviewPreferences(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).sort().join(",") !== "deliveryFeeCents"
+    || !Number.isSafeInteger(value.deliveryFeeCents)
+    || value.deliveryFeeCents < 0 || value.deliveryFeeCents > 1_000_000_000) {
+    throw new TypeError("A preferência local de entrega da prévia está inválida.");
+  }
+  return Object.freeze({ deliveryFeeCents: value.deliveryFeeCents });
+}
+
 function legacyInventoryArchive(state, businessId) {
   if (state?.schema !== LEGACY_FOOD_STATE_V3) return null;
   return {
@@ -58,6 +72,28 @@ function legacyInventoryArchive(state, businessId) {
     archivedAt: new Date().toISOString(),
     ingredients: state.ingredients,
     movements: state.inventoryMovements,
+  };
+}
+
+function migrateLocalFoodSnapshot(value) {
+  if (value?.schema === LEGACY_PREVIEW_FOOD_STATE_V7) {
+    const legacySettings = value.settings;
+    const previewPreferences = legacySettings === null
+      ? DEFAULT_PREVIEW_PREFERENCES
+      : validatePreviewPreferences({ deliveryFeeCents: legacySettings?.deliveryFeeCents });
+    const settings = legacySettings === null
+      ? null
+      : Object.fromEntries(Object.entries(legacySettings).filter(([key]) => key !== "deliveryFeeCents"));
+    const state = validateFoodPizzeriaState(migrateFoodPizzeriaState({
+      ...value,
+      schema: "ordax.food-pizzeria-state/6",
+      settings,
+    }));
+    return { state, previewPreferences };
+  }
+  return {
+    state: validateFoodPizzeriaState(migrateFoodPizzeriaState(value)),
+    previewPreferences: DEFAULT_PREVIEW_PREFERENCES,
   };
 }
 
@@ -71,9 +107,23 @@ function decodeStoredValue(raw, businessId) {
   }
 
   if (parsed?.schema === STORAGE_SCHEMA) {
+    const migrated = migrateLocalFoodSnapshot(parsed.state);
     return {
-      state: validateFoodPizzeriaState(migrateFoodPizzeriaState(parsed.state)),
+      state: migrated.state,
       processedCommands: validateCommandHistory(parsed.processedCommands),
+      previewPreferences: parsed.previewPreferences === undefined
+        ? migrated.previewPreferences
+        : validatePreviewPreferences(parsed.previewPreferences),
+      legacyInventoryArchive: legacyInventoryArchive(parsed.state, businessId),
+    };
+  }
+
+  if (parsed?.schema === PREVIOUS_STORAGE_SCHEMA) {
+    const migrated = migrateLocalFoodSnapshot(parsed.state);
+    return {
+      state: migrated.state,
+      processedCommands: validateCommandHistory(parsed.processedCommands),
+      previewPreferences: migrated.previewPreferences,
       legacyInventoryArchive: legacyInventoryArchive(parsed.state, businessId),
     };
   }
@@ -84,19 +134,23 @@ function decodeStoredValue(raw, businessId) {
       || parsed.processedCommandIds.some((id) => typeof id !== "string" || !COMMAND_ID_RE.test(id))) {
       throw new TypeError("O registro legado de operações da pizzaria está inválido.");
     }
+    const migrated = migrateLocalFoodSnapshot(parsed.state);
     return {
-      state: validateFoodPizzeriaState(migrateFoodPizzeriaState(parsed.state)),
+      state: migrated.state,
       // Legacy ids have no command fingerprints; refuse ambiguous replay rather than assume equivalence.
       processedCommands: validateCommandHistory([...new Set(parsed.processedCommandIds)]
         .map((id) => ({ id, digest: null }))),
+      previewPreferences: migrated.previewPreferences,
       legacyInventoryArchive: legacyInventoryArchive(parsed.state, businessId),
     };
   }
 
   // Accept the previous raw local-state shape once, then write the versioned envelope.
+  const migrated = migrateLocalFoodSnapshot(parsed);
   return {
-    state: validateFoodPizzeriaState(migrateFoodPizzeriaState(parsed)),
+    state: migrated.state,
     processedCommands: [],
+    previewPreferences: migrated.previewPreferences,
     legacyInventoryArchive: legacyInventoryArchive(parsed, businessId),
   };
 }
@@ -192,6 +246,7 @@ export function createBrowserLocalFoodStore({
   const context = Object.freeze({ businessId, adapter: "browser-local-preview" });
   let snapshot = null;
   let processedCommands = [];
+  let previewPreferences = DEFAULT_PREVIEW_PREFERENCES;
   let initialized = false;
   let destroyed = false;
   let initializing = null;
@@ -219,7 +274,7 @@ export function createBrowserLocalFoodStore({
     storage.setItem(legacyArchiveKey, serialized);
   }
 
-  function writePersisted(state, commands) {
+  function writePersisted(state, commands, preferences) {
     if (commands.length > MAX_RECORDED_COMMANDS) {
       throw new RangeError("O histórico local de operações atingiu o limite seguro. Preserve os dados antes de continuar.");
     }
@@ -227,6 +282,7 @@ export function createBrowserLocalFoodStore({
       schema: STORAGE_SCHEMA,
       state,
       processedCommands: commands,
+      previewPreferences: preferences,
     });
     if (serializedBytes(serialized) > MAX_STATE_BYTES) throw new RangeError("Os dados locais da pizzaria excedem o limite seguro.");
     storage.setItem(key, serialized);
@@ -244,6 +300,7 @@ export function createBrowserLocalFoodStore({
       }
       snapshot = next.state;
       processedCommands = next.processedCommands;
+      previewPreferences = next.previewPreferences;
       emit();
     } catch {
       // Keep the last verified state visible; never replace corrupt bytes.
@@ -266,12 +323,14 @@ export function createBrowserLocalFoodStore({
           archiveLegacyInventory(persisted.legacyInventoryArchive);
           snapshot = refreshExpiredUntouchedPreviewActivity(persisted.state, now);
           processedCommands = persisted.processedCommands;
+          previewPreferences = persisted.previewPreferences;
         } else {
           snapshot = validateFoodPizzeriaState(createSeedFoodState(now));
           processedCommands = [];
+          previewPreferences = DEFAULT_PREVIEW_PREFERENCES;
         }
         // Persist the seed or migrated value under the same lock so every tab starts from one revision.
-        writePersisted(snapshot, processedCommands);
+        writePersisted(snapshot, processedCommands, previewPreferences);
         initialized = true;
         return snapshot;
       }).finally(() => {
@@ -283,6 +342,33 @@ export function createBrowserLocalFoodStore({
       if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
       if (!initialized) throw new Error("A interface de dados da pizzaria ainda não foi inicializada.");
       return snapshot;
+    },
+    getPreviewPreferences() {
+      if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
+      if (!initialized) throw new Error("As preferências locais ainda não foram inicializadas.");
+      return previewPreferences;
+    },
+    async updatePreviewPreferences(value) {
+      if (destroyed || !initialized) throw new Error("A interface de dados da pizzaria não está pronta.");
+      const nextPreferences = validatePreviewPreferences(value);
+      return locks.request(lock, { mode: "exclusive" }, async () => {
+        if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
+        const persisted = readPersisted();
+        if (!persisted) throw new Error("O estado local da pizzaria desapareceu durante a operação.");
+        if (JSON.stringify(persisted.previewPreferences) === JSON.stringify(nextPreferences)) {
+          snapshot = persisted.state;
+          processedCommands = persisted.processedCommands;
+          previewPreferences = persisted.previewPreferences;
+          emit();
+          return previewPreferences;
+        }
+        writePersisted(persisted.state, persisted.processedCommands, nextPreferences);
+        snapshot = persisted.state;
+        processedCommands = persisted.processedCommands;
+        previewPreferences = nextPreferences;
+        emit();
+        return previewPreferences;
+      });
     },
     subscribe(listener) {
       if (destroyed || !initialized || typeof listener !== "function") {
@@ -306,12 +392,14 @@ export function createBrowserLocalFoodStore({
           }
           snapshot = persisted.state;
           processedCommands = persisted.processedCommands;
+          previewPreferences = persisted.previewPreferences;
           emit();
           return snapshot;
         }
         if (command.expectedRevision !== persisted.state.revision) {
           snapshot = persisted.state;
           processedCommands = persisted.processedCommands;
+          previewPreferences = persisted.previewPreferences;
           emit();
           throw conflictError(command.expectedRevision, persisted.state.revision);
         }
@@ -328,9 +416,10 @@ export function createBrowserLocalFoodStore({
           throw new Error("A operação produziu dados sem revisão válida da pizzaria.");
         }
         const nextCommands = [...persisted.processedCommands, { id: command.commandId, digest: commandDigest }];
-        writePersisted(next, nextCommands);
+        writePersisted(next, nextCommands, persisted.previewPreferences);
         snapshot = next;
         processedCommands = nextCommands;
+        previewPreferences = persisted.previewPreferences;
         emit();
         return snapshot;
       });

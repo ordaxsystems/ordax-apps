@@ -6,7 +6,7 @@ Protótipo independente do domínio de alimentação, com pizzaria e registros f
 
 - Pedidos: criar, pesquisar, cancelar com motivo e avançar status.
 - Cardápio: cadastrar/editar sabores, preços e disponibilidade.
-- Configurações: definir tamanhos, fatias, mesas, capacidade, limite de sabores e taxa padrão local de entrega; a taxa pode ser ajustada por pedido, e novos tamanhos ficam indisponíveis até terem preços e fichas técnicas completos.
+- Configurações: definir tamanhos, fatias, mesas, capacidade e limite de sabores; novos tamanhos ficam indisponíveis até terem preços e fichas técnicas completos. A taxa padrão de entrega é uma preferência local da prévia, separada do documento canônico Food, e pode ser ajustada por pedido.
 - Fichas técnicas: manter quantidades por pizza e congelar uma proposta de consumo em cada novo pedido. Alterações posteriores da ficha não reescrevem pedidos existentes nem movimentam Inventory. Pedidos migrados sem ficha histórica verificável ficam sem proposta, em vez de receber consumo inventado.
 - Cozinha/KDS: acompanhar fila por canal e etapa.
 - Mesas/Comandas: configurar mesas, abrir/fechar comanda e derivar consumo dos pedidos vinculados. Salão e balcão são canais diferentes.

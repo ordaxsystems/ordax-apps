@@ -28,6 +28,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   assertFoodDataPort(dataPort);
   assertFoodPreviewPresentation(presentation, dataPort);
+  if (typeof dataPort.getPreviewPreferences !== "function"
+    || typeof dataPort.updatePreviewPreferences !== "function") {
+    throw new TypeError("A prévia Food precisa do adapter de preferências locais do navegador.");
+  }
   const surface = root.getRootNode();
   const querySurface = (selector) => surface.querySelector(selector) ?? root.querySelector(selector);
   const cancelDialog = querySurface("#cancel-dialog");
@@ -107,6 +111,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   
   const store = dataPort;
   let snapshot = null;
+  let previewPreferences = { deliveryFeeCents: DEFAULT_DELIVERY_FEE_CENTS };
   let PIZZA_SIZES = DEFAULT_PIZZA_SIZES.map((size) => ({ ...size, active: true }));
   let PIZZERIA_TABLES = DEFAULT_PIZZERIA_TABLES.map((table) => ({ ...table, active: true }));
   let recipeFlavorId = null;
@@ -333,7 +338,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function viewModel() {
     return {
       PIZZA_SIZES, PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS, PREVIEW_INGREDIENTS,
-      deliveryFeeCents: snapshot?.settings?.deliveryFeeCents ?? DEFAULT_DELIVERY_FEE_CENTS,
+      deliveryFeeCents: previewPreferences.deliveryFeeCents,
       STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
       KITCHEN_CHANNEL_FILTERS, ORDER_STAGE_ALERT_MINUTES, snapshot, recipeFlavorId,
       recipeDraftLines, orderQuery, orderStatusFilter, orderChannelFilter, kitchenChannelFilter,
@@ -707,6 +712,39 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       render();
     }
   }
+
+  async function savePreviewDeliveryFee() {
+    if (busy || destroyed) return false;
+    const form = root.querySelector("#settings-form");
+    const deliveryFeeCents = parseMoney(form?.elements.deliveryFee.value);
+    if (deliveryFeeCents === null) {
+      report(new TypeError("Informe uma taxa padrão válida, como 8,00."));
+      return false;
+    }
+    busy = true;
+    setBusyUI(true);
+    try {
+      await store.updatePreviewPreferences({ deliveryFeeCents });
+      if (destroyed) return false;
+      previewPreferences = store.getPreviewPreferences();
+      notice = { type: "success", text: "Taxa padrão local salva para os próximos pedidos desta prévia." };
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => {
+        notice = null;
+        renderNotice();
+      }, 3600);
+      return true;
+    } catch (error) {
+      if (!destroyed) notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar a preferência local." };
+      return false;
+    } finally {
+      busy = false;
+      if (!destroyed) {
+        setBusyUI(false);
+        render();
+      }
+    }
+  }
   
   function handleClick(event) {
     const target = event.target.closest("button, a");
@@ -732,6 +770,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (action === "dismiss-notice") {
       notice = null;
       renderNotice();
+    } else if (action === "save-preview-delivery-fee") {
+      void savePreviewDeliveryFee();
     } else if (action === "reset-order-filters") {
       orderStatusFilter = "all";
       orderChannelFilter = "all";
@@ -926,8 +966,6 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         }
       } else if (kind === "settings-form") {
         const values = new FormData(form);
-        const deliveryFeeCents = parseMoney(values.get("deliveryFee"));
-        if (deliveryFeeCents === null) throw new TypeError("Informe uma taxa padrão de entrega válida, como 8,00.");
         const pizzaSizes = settingsSizesDraft.map(({ id }) => ({
           id,
           label: values.get(`size-label-${id}`),
@@ -949,7 +987,6 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           payload: {
             storeName: values.get("storeName"),
             halfPricePolicy: values.get("halfPricePolicy"),
-            deliveryFeeCents,
             maxFlavorsPerPizza,
             pizzaSizes,
             tables,
@@ -1041,9 +1078,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       await store.initialize();
       if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.");
       snapshot = readFoodSnapshot(store);
+      previewPreferences = store.getPreviewPreferences();
       unsubscribe = store.subscribe(() => {
         if (destroyed) return;
         snapshot = readFoodSnapshot(store);
+        previewPreferences = store.getPreviewPreferences();
         if (!busy) render();
       });
     } catch (error) {

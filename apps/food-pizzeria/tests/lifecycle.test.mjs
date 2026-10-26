@@ -78,6 +78,8 @@ function fakePort({ initialize, execute } = {}) {
     context: { businessId: "preview-lifecycle", adapter: "browser-local-preview" },
     initialize: initialize ?? (async () => state),
     getSnapshot() { return state; },
+    getPreviewPreferences() { return { deliveryFeeCents: 500 }; },
+    async updatePreviewPreferences(preferences) { return preferences; },
     subscribe(listener) {
       capturedSubscriber = listener;
       subscribers.add(listener);
