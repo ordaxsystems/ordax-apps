@@ -132,6 +132,10 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
     const selectionStart = previousSearch?.selectionStart ?? null;
     const selectionEnd = previousSearch?.selectionEnd ?? null;
     const storeName = snapshot.settings.storeName;
+    const unitName = snapshot.settings.unitName;
+    const localDataStatus = dataPort.persistence === "browser-local-preview"
+      ? '<div class="sidebar-foot local-data-scope" role="note" aria-label="Dados de prévia locais, salvos somente neste navegador. Unidade ' + escapeHtml(unitName) + '" title="Os dados desta prévia ficam somente neste navegador."><span class="local-data-dot" aria-hidden="true"></span><span>Dados locais · Unidade <strong>' + escapeHtml(unitName) + '</strong></span></div>'
+      : '<div class="sidebar-foot"><span>Unidade <strong>' + escapeHtml(unitName) + '</strong></span></div>';
     const activeModule = MODULES.find((item) => item.id === ui.view) ?? MODULES[0];
     const manager = snapshot.team.members.find((member) => member.status === "Ativa") ?? snapshot.team.members[0];
     const managerName = manager?.name ?? "Marina";
@@ -147,7 +151,7 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
           '<div class="sidebar-brand-row"><a class="brand-lockup" href="#" data-view="overview" aria-label="OrdaX Moda, visão geral"><span class="brand-symbol">' + icon("hanger") + '</span><span class="brand-type"><strong>OrdaX</strong><small>MODA</small></span></a><button type="button" class="sidebar-close" data-action="menu-close" aria-label="Fechar navegação">×</button></div>' +
           '<div class="store-switcher"><span class="store-avatar">A</span><span><small>LOJA ATUAL</small><strong>' + escapeHtml(storeName) + '</strong></span><span class="switch-chevron">⌄</span></div>' +
           '<nav class="space-nav">' + navMarkup(ui.view) + '</nav>' +
-          '<div class="sidebar-bottom"><div class="plan-card"><span class="plan-gem">' + icon("people") + '</span><div><strong>Equipe da loja</strong><small>' + activeTeamSize + (activeTeamSize === 1 ? ' pessoa ativa' : ' pessoas ativas') + '</small></div><span class="plan-arrow">↗</span></div><div class="sidebar-foot"><span class="presence-dot"></span><span>Unidade <strong>' + escapeHtml(snapshot.settings.unitName) + '</strong></span></div></div>' +
+          '<div class="sidebar-bottom"><div class="plan-card"><span class="plan-gem">' + icon("people") + '</span><div><strong>Equipe da loja</strong><small>' + activeTeamSize + (activeTeamSize === 1 ? ' pessoa ativa' : ' pessoas ativas') + '</small></div><span class="plan-arrow">↗</span></div>' + localDataStatus + '</div>' +
         '</aside>' +
         '<div class="sidebar-scrim" data-action="menu-close"></div>' +
         '<div class="space-content"' + (ui.sidebarOpen ? " inert" : "") + '>' +

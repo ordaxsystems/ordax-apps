@@ -8,6 +8,8 @@ No catálogo, a edição local permite ajustar nome, descrição e preço indivi
 
 O catálogo pode ser filtrado por roupas, calçados, bolsas e acessórios; o filtro de categoria combina com a busca por nome, SKU, cor e tamanho. As contagens mostram quantos produtos locais pertencem a cada categoria, e a tela distingue busca sem resultados de um catálogo realmente vazio.
 
+O rodapé da navegação identifica a origem atual como **Dados locais** e informa que a prévia fica somente neste navegador. Esse indicador substitui qualquer sinal de presença online; ele não declara sincronização com Space, Catálogo, Sales, Inventory ou Customers.
+
 Nos indicadores, vendas e devoluções são agrupadas pela data em que cada evento ocorreu. Unidades líquidas podem ficar negativas em um dia quando devoluções de compras anteriores superam as peças vendidas naquele dia; a visão geral também mostra os totais vendidos e devolvidos que compõem o saldo.
 
 Os mocks do Ateliê Aurora incluem 15 produtos locais: roupas, calçados, bolsas e acessórios, com variantes e saldo por SKU. Dez peças de roupa usam fotografias do catálogo Wearly como imagens de referência visual nos destaques, catálogo e PDV, além de miniaturas em vendas, estoque e devoluções; elas não representam fotos da Ateliê Aurora nem mudam de cor conforme a variante selecionada. Bolsas, calçados e acessórios mantêm ilustrações próprias para não associar uma foto incompatível. As peças de vestuário elegíveis também têm ficha própria de tecido, elasticidade, modelagem, folga planejada e medidas por tamanho. Uma migração aditiva leva essas peças, imagens e recebimentos iniciais para estados de preview antigos, sem sobrescrever alterações já feitas no catálogo local.

@@ -16,6 +16,8 @@ O host local mantém uma superfície de desenvolvimento para desenhar e operar e
 - src/ports/data-port.mjs valida o port interno usado na prévia local.
 - prototypes/moda/preview-data-port.mjs contém fixtures, perfis sintéticos e histórico de sessões exclusivamente locais; não é instalado ou apresentado como provider de produção.
 
+O rodapé da navegação deriva o rótulo **Dados locais** da propriedade `persistence: "browser-local-preview"` do port. O indicador é neutro e local; não representa presença online nem sincronização com owners de produção.
+
 Cada sessão do Estúdio persiste uma fotografia do produto, variante, perfil sintético, relatório de caimento e brief usados na criação. A tela de histórico lê esse contexto original; edição e arquivamento continuam pertencendo ao estado atual do catálogo. A migração local completa snapshots ausentes sem substituir dados editados, e os snapshots não viram uma fonte editável nem sincronizada.
 
 Relatórios com `method.id` registram a política numérica aplicada. Sessões históricas sem versão preservam o veredito e o brief existentes; a UI não lhes atribui os limites da regra atual. A equipe pode executar uma nova análise para obter relatório e brief sob a política vigente, sem reescrever a sessão anterior.

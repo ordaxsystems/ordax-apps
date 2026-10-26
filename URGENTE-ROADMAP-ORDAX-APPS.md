@@ -717,7 +717,8 @@ o handoff bootstrap comprovado.
 
 - `apps/moda/` reúne dez módulos de varejo em uma única capacidade vertical, com produtos e variantes por tamanho/cor/SKU, PDV, estoque local, clientes, trocas/devoluções, relatórios derivados, equipe, configurações e estúdio de conteúdo. O host de desenvolvimento está em `prototypes/moda/`; a navegação e os dados compartilham um único estado local.
 - A prévia usa fixtures fictícias locais e imagens Wearly atribuídas. Não se declara Space, provider, sincronização, geração de imagem, venda ou movimentação de Inventory real. Catálogo, Sales, Inventory, Customers/CRM, Payments, Files, People, Intelligence e montagem Space continuam dependentes dos contratos públicos descritos em `apps/moda/INTEGRATION-PORTS.md`.
-- Verificação desta rodada: `node --test apps/moda/tests/*.test.mjs` passou 41/41; `node --check` nos módulos e `git diff --check` passaram; host local respondeu HTTP 200 para `/apps/moda/`. O verificador MVP manteve 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas. Moda continua fora do inventário de distribuição.
+- Incremento de 2026-10-26: a navegação substitui o ponto verde de presença por “Dados locais”, derivado de `browser-local-preview`, com a unidade identificada. A indicação evita sugerir sincronização online e não cria uma faixa de ambiente de demonstração.
+- Verificação desta rodada: `node --test apps/moda/tests/*.test.mjs` passou 41/41; `node --check apps/moda/src/ui/app.mjs` e `git diff --check` passaram. O host da branch respondeu HTTP 200 e a árvore de acessibilidade confirmou o rótulo local. O verificador MVP manteve 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas. Moda continua fora do inventário de distribuição.
 
 ### Alinhamento local do checkout e host ChatGPT Web (2026-10-09)
 
