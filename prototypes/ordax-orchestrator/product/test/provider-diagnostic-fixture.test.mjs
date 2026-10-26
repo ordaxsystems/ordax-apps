@@ -71,6 +71,8 @@ test('diagnostic IPC is same-origin protected and never invokes the chat submit 
   const inspector=worker.split('async inspectDiagnosticReadOnly()')[1]
     .split('async inspectConversationReadOnly(')[0];
   assert.match(inspector,/toSafeProviderDiagnostic/);
+  assert.match(inspector,/evaluateProviderReadOnlyDom\(\{/);
+  assert.doesNotMatch(inspector,/executeJavaScript|node\.innerText/);
   assert.match(inspector,/this\.enqueue/);
   assert.doesNotMatch(inspector,/sendPrompt|setComposerAndSend|loadURL|requestSubmit|submitExactlyOnce/);
 });

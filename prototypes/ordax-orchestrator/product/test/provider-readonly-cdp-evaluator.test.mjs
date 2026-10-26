@@ -66,5 +66,9 @@ test('missing CDP value fails closed; health and W3 share no executeJavaScript a
     .split('  // Explicit, read-only inspection')[0];
   assert.match(health,/evaluateProviderReadOnlyDom\\(\\{/);
   assert.match(w3,/evaluateProviderReadOnlyDom\\(\\{/);
+  const diagnostic=code.split('  async inspectDiagnosticReadOnly() {')[1]
+    .split('  async #readHistoricalThreadDOM()')[0];
+  assert.match(diagnostic,/evaluateProviderReadOnlyDom\\(\\{/);
+  assert.doesNotMatch(diagnostic,/webContents\\.executeJavaScript|node\\.innerText/);
   assert.doesNotMatch(health+w3,/webContents\\.executeJavaScript/);
 });

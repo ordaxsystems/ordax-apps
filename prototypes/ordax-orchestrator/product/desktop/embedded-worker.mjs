@@ -575,13 +575,14 @@ export class EmbeddedChatWorker {
       const url=this.view.webContents.getURL();
       let observation={};
       try {
-        observation=await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
+        observation=await evaluateProviderReadOnlyDom({
+          debugger:this.view.webContents.debugger,expression:`(() => {
           const $ = selector => document.querySelector(selector);
           ${providerMessageQueryBootstrap}
           const userNodes=queryProviderMessageNodes(document,'user',providerMessageSelectors);
           const assistantNodes=queryProviderMessageNodes(document,'assistant',providerMessageSelectors);
           const hasContent = nodes => Array.from(nodes).some(node =>
-            Boolean(String(node.innerText || node.textContent || '').trim()));
+            Boolean(String(node.textContent || '').trim()));
           return {
             composerPresent:Boolean($('#prompt-textarea,[contenteditable="true"][role="textbox"]')),
             sendControlPresent:Boolean($('button[data-testid="send-button"],button[aria-label="Enviar"],button[aria-label="Send"]')),
@@ -591,7 +592,8 @@ export class EmbeddedChatWorker {
             assistantNodes:assistantNodes.length,
             userNodes:userNodes.length
           };
-        })()`), {timeoutMs:5000,code:'provider_diagnostic_observation_timeout'});
+        })()`,timeoutMs:5000,timeoutCode:'provider_diagnostic_observation_timeout'
+        });
       } catch { /* unavailable signals are not success */ }
       return toSafeProviderDiagnostic({url,observation});
     });
