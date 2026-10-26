@@ -10,6 +10,7 @@ import { providerUserMessageMatchesPrompt, providerUserMessageIsCollapsedPromptP
 import { providerResponseFailureSignalsExpression, classifyProviderResponseFailure } from '../src/provider-response-failure.mjs';
 import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
+import {W3_MAX_USER_CHARS,W3_MAX_ASSISTANT_CHARS} from '../src/provider-recovery-bounds.mjs';
 import { awaitHistoricalSessionPreflight, classifyHistoricalThreadPostNavigation, mayReturnFromFailedProviderConversation } from '../src/provider-historical-thread-preflight.mjs';
 import { preserveProviderWhitespace } from '../src/provider-code-format.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
@@ -618,10 +619,11 @@ export class EmbeddedChatWorker {
           const tail = entries.slice(-50);
           const messages = tail.map(({node,role}) => {
             const text=String(node.innerText || node.textContent || '');
+            const maxChars=role==='assistant' ? ${W3_MAX_ASSISTANT_CHARS} : ${W3_MAX_USER_CHARS};
             return {
               role,
-              text:text.slice(0,12001),
-              textTruncated:text.length>12000
+              text:text.slice(0,maxChars+1),
+              textTruncated:text.length>maxChars
             };
           });
           // A visible assistant bubble can still be streaming. Capture the
