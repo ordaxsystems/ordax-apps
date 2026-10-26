@@ -145,7 +145,10 @@ export function buildProjectContinuationPacket({title,checkpoint,memoryItems=[],
   const includedMemory=[],omittedMemoryItems=[];
   for(const {item} of ordered) {
     const label=LABELS[item.category] || clean(item.category).toUpperCase() || 'MEMORIA';
-    const line='['+label+'] '+short(item.key,130)+': '+short(item.content,380);
+    // Canonical memory is an indivisible SSOT record. A shortened decision or
+    // constraint is NOT equivalent to an included one: omit it explicitly and
+    // let the continuity gate require a complete handoff instead.
+    const line='['+label+'] '+clean(item.key)+': '+clean(item.content);
     if(memSize+line.length+1<=memBudget) {
       memLines.push(line); memSize += line.length+1; includedMemory.push(item);
     } else { omittedMemory++; omittedMemoryItems.push(item); }
