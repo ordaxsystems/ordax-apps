@@ -1,7 +1,7 @@
 import * as shared from "/shared.mjs";
 
 export function mountFeature(host = {}) {
-  const { escapeHtml, toast, showModal, icon, button, stat } = shared;
+  const { escapeHtml, money, toast, showModal, icon, button, stat } = shared;
   if (typeof host.mountShell !== "function" || typeof host.technicalJobs?.list !== "function") throw new TypeError("A fila precisa do serviço compartilhado de jobs técnicos do OrdaX 3D.");
   const jobsService = host.technicalJobs;
   const nav = [
@@ -31,8 +31,9 @@ export function mountFeature(host = {}) {
     shell.content.querySelector("[data-jobs]").innerHTML = shown.length ? shown.map((job, index) => {
       const action = job.status === "queued" ? "Preparar" : job.status === "ready" ? "Iniciar demo" : job.status === "printing" ? "Concluir demo" : "Reabrir";
       const local = job.origin === "local-preview" ? " · fictício" : " · local";
-      const detail = [formatDuration(job.estimatedMinutes), job.estimatedGrams === null ? "material a definir" : `${job.estimatedGrams.toLocaleString("pt-BR")} g`].join(" · ");
-      return `<article class="queue-row"><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="job-title"><strong>${escapeHtml(job.name)}</strong><small>${escapeHtml(job.model)} · ${escapeHtml(job.material)}${local}</small></div><div class="job-meta">${escapeHtml(job.printer)}<small>${escapeHtml(detail)}</small></div><span class="status-chip ${escapeHtml(job.status)}">${escapeHtml(statusLabel(job.status))}</span><div class="queue-row-actions"><button class="mini-button" data-move="up" data-id="${escapeHtml(job.id)}" aria-label="Mover para cima" ${index === 0 ? "disabled" : ""}>↑</button><button class="mini-button" data-move="down" data-id="${escapeHtml(job.id)}" aria-label="Mover para baixo" ${index === jobs.length - 1 ? "disabled" : ""}>↓</button><button class="button secondary stage-button" data-stage="${escapeHtml(job.id)}">${action}</button></div></article>`;
+      const detail = [formatDuration(job.estimatedMinutes), job.estimatedGrams === null ? "material a definir" : `${job.estimatedGrams.toLocaleString("pt-BR")} g`];
+      if (job.costEstimate) detail.push(`${money(job.costEstimate.totalCost)} custo · ${money(job.costEstimate.suggestedPriceTotal)} referência`);
+      return `<article class="queue-row"><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="job-title"><strong>${escapeHtml(job.name)}</strong><small>${escapeHtml(job.model)} · ${escapeHtml(job.material)}${local}</small></div><div class="job-meta">${escapeHtml(job.printer)}<small>${escapeHtml(detail.join(" · "))}</small></div><span class="status-chip ${escapeHtml(job.status)}">${escapeHtml(statusLabel(job.status))}</span><div class="queue-row-actions"><button class="mini-button" data-move="up" data-id="${escapeHtml(job.id)}" aria-label="Mover para cima" ${index === 0 ? "disabled" : ""}>↑</button><button class="mini-button" data-move="down" data-id="${escapeHtml(job.id)}" aria-label="Mover para baixo" ${index === jobs.length - 1 ? "disabled" : ""}>↓</button><button class="button secondary stage-button" data-stage="${escapeHtml(job.id)}">${action}</button></div></article>`;
     }).join("") : `<div class="queue-empty"><strong>Nenhum job nesta lista</strong>Fatie um modelo ou adicione um job técnico local.</div>`;
     const printers = printerNames(jobs);
     shell.content.querySelector("[data-capacity]").innerHTML = printers.length ? printers.map(printer => {

@@ -12,9 +12,13 @@ const features = new Set(featureIds);
 const appSourceModules = new Map([
   ["ordax-3d", new Set([
     "domain/print-draft.mjs",
+    "domain/manufacturing-cost.mjs",
     "application/print-draft-service.mjs",
+    "application/manufacturing-cost-service.mjs",
     "ports/print-draft-repository.mjs",
+    "ports/manufacturing-cost-repository.mjs",
     "adapters/app-data-print-draft-repository.mjs",
+    "adapters/app-data-manufacturing-cost-repository.mjs",
     "domain/technical-print-job.mjs",
     "domain/technical-print-job-fixtures.mjs",
     "application/technical-jobs-service.mjs",

@@ -8,7 +8,7 @@ function optionalNonNegativeNumber(value) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-export function technicalJobInputFromSlicerResult({ result, modelName, printer, material } = {}) {
+export function technicalJobInputFromSlicerResult({ result, modelName, printer, material, costEstimate } = {}) {
   const seconds = optionalNonNegativeNumber(result?.stats?.timeSeconds);
   const grams = optionalNonNegativeNumber(result?.stats?.filamentGrams);
   const model = String(modelName ?? "").trim();
@@ -21,6 +21,7 @@ export function technicalJobInputFromSlicerResult({ result, modelName, printer, 
     material,
     estimatedMinutes: seconds === null ? null : Math.ceil(seconds / 60),
     estimatedGrams: grams,
+    costEstimate,
     status: "queued",
     origin: "local-slice",
     engine: result?.engine,

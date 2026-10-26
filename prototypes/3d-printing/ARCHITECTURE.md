@@ -19,14 +19,14 @@ O app canônico de desenvolvimento fica em `apps/ordax-3d/`:
 
 - `src/ui/app.mjs` compõe uma única entrada e injeta os serviços compartilhados.
 - `src/ui/views.mjs` declara os onze módulos, sua navegação e os grupos de apresentação.
-- `src/domain/` valida o rascunho de fatiamento e os jobs técnicos, sem depender do DOM.
-- `src/application/` coordena persistência, fila e transições de job.
+- `src/domain/` valida o rascunho, os jobs técnicos e os cálculos/snapshots de custo, sem depender do DOM.
+- `src/application/` coordena persistência, fila, transições de job e o serviço compartilhado de estimativas.
 - `src/ports/` declara repositórios de domínio.
 - `src/adapters/` adapta os domínios ao App Data local do host de desenvolvimento.
 - `features/<id>/` mantém renderizadores e interação de cada módulo, sem shell de produto próprio.
 - `shared/product-host.mjs` é o host local reutilizável que monta a entrada do app; não é um provider do Space de produção.
 
-`print-draft` é a fonte das regras puras de configuração do fatiamento. `technical-print-job` é a fonte das regras dos jobs técnicos. Uma única instância do serviço de jobs é compartilhada pela fila, central de impressoras, previsão de materiais e pelo envio explícito do resultado do slicer. Mudanças propagam por `subscribe`; os módulos não armazenam cópias de jobs, consumo ou nomes de trabalho.
+`print-draft` é a fonte das regras puras de configuração do fatiamento. `technical-print-job` é a fonte das regras dos jobs técnicos. `manufacturing-cost` concentra a fórmula determinística; `manufacturing-cost-service` compartilha premissas, último resultado do slicer e histórico técnico entre Prepare, Preview e Custos. Uma única instância dos serviços de jobs e custos é injetada pelo host do app; o snapshot de custo do job conserva as premissas do cálculo sem se tornar pedido ou preço comercial aprovado.
 
 ## SSOT e ownership
 
@@ -58,6 +58,6 @@ Os shells legados preservados durante esta alteração não fazem parte do host 
 - A fila contém jobs técnicos. O uso de status demonstrativos não comanda hardware.
 - O slicer armazena metadados técnicos do resultado no job; G-code continua um arquivo separado e não é persistido junto à fila.
 - Materiais agrupa gramas estimados pela fila. Inventory continua dono de todo saldo e movimentação.
-- Custos são estimativas manuais locais; Vendas é dono de pedido comercial e Payments de cobrança.
+- Custos usam estatísticas do slicer quando disponíveis ou peso/tempo informados no módulo Custos; premissas, histórico e snapshots são locais. A taxa de depreciação é uma alocação técnica, não um lançamento contábil. Vendas segue como owner do pedido e preço aprovado; Finance/Payments conservam seus lançamentos e cobranças.
 - Biblioteca lê arquivos localmente e repassa arquivo pela sessão do app; Files ainda precisa fornecer contrato público de armazenamento/importação/compartilhamento.
 - A entrada no catálogo oficial e a elegibilidade de distribuição não são alteradas por esta base.

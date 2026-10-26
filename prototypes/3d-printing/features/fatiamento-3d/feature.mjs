@@ -155,7 +155,7 @@ export function mountFeature(host = {}) {
   let restoredSourceName = savedDraft.sourceName;
   let restoredSourceFingerprint = savedDraft.sourceFingerprint;
   let model = savedDraft?.sourceName ? null : createDemoModel();
-  let sliced = null, preview = null, previewLayer = 0, previewProgress = 1, controller = null, remoteConsentPending = false, analysisController = null, revision = 0, importSequence = 0;
+  let sliced = null, preview = null, sliceCostInput = null, sliceCostEstimate = null, previewLayer = 0, previewProgress = 1, controller = null, remoteConsentPending = false, analysisController = null, revision = 0, importSequence = 0;
   let engineStatus = { available: false, engine: null, version: null, executionTarget: "unknown", reason: "Consultando o host…", profiles: null, processScope: null };
   const intelligence = host.intelligence ?? null;
   let aiAvailability = intelligenceState(intelligence), aiController = null;
@@ -243,7 +243,7 @@ export function mountFeature(host = {}) {
 
         <section class="preview-view" data-preview-view hidden>
           <div class="preview-canvas-wrap"><div class="preview-stage-head"><div><span class="panel-kicker">TRAJETÓRIA REAL DO MOTOR</span><h2 data-preview-title>Preview de fatiamento</h2></div><span class="engine-chip"><i></i><span data-preview-engine>—</span></span></div><canvas data-gcode-canvas aria-label="Trajetórias G-code da camada selecionada"></canvas><div class="preview-legend"><span><i class="legend-outer"></i>Perímetro externo</span><span><i class="legend-inner"></i>Perímetro interno</span><span><i class="legend-infill"></i>Preenchimento</span><span><i class="legend-support"></i>Suporte</span><span><i class="legend-travel"></i>Deslocamento</span></div><div class="line-inspector"><span>Trajetórias da camada</span><input type="range" min="0" max="100" value="100" data-line-slider aria-label="Progresso da simulação da camada"/><strong data-line-count>—</strong></div></div>
-          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
+          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Editar premissas e calcular lote</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
         </section>
       </section>
     `,
@@ -621,11 +621,52 @@ export function mountFeature(host = {}) {
     return areaMm2 >= 10_000 ? `${number(areaMm2 / 100, 1)} cm²` : `${number(areaMm2, 1)} mm²`;
   }
 
+  function renderSliceCost() {
+    const card = content.querySelector("[data-slice-cost]");
+    if (!sliceCostInput || typeof host.manufacturingCosts?.calculateFromSlice !== "function") {
+      card.hidden = true;
+      sliceCostEstimate = null;
+      return;
+    }
+    card.hidden = false;
+    const estimate = host.manufacturingCosts.calculateFromSlice(sliceCostInput);
+    sliceCostEstimate = estimate.available && estimate.pricingValid ? estimate : null;
+    content.querySelector("[data-slice-cost-title]").textContent = sliceCostInput.scope === "plate" ? `${sliceCostInput.name} · prato completo` : `${sliceCostInput.name} · peça`;
+    if (!estimate.available) {
+      content.querySelector("[data-slice-cost-total]").textContent = "—";
+      content.querySelector("[data-slice-price-total]").textContent = "—";
+      content.querySelector("[data-slice-cost-status]").textContent = "O motor não informou peso e tempo suficientes. O cálculo automático ficará indisponível até esses dados existirem.";
+      content.querySelector("[data-slice-cost-breakdown]").replaceChildren();
+      return;
+    }
+    content.querySelector("[data-slice-cost-total]").textContent = shared.money(estimate.totalCost);
+    content.querySelector("[data-slice-price-total]").textContent = estimate.pricingValid ? shared.money(estimate.suggestedPriceTotal) : "Revise margem e taxas";
+    const scopeNote = sliceCostInput.scope === "plate" ? "As estatísticas disponíveis são do prato inteiro; o motor não forneceu divisão por peça." : "O cálculo corresponde a esta peça fatiada.";
+    content.querySelector("[data-slice-cost-status]").textContent = !estimate.pricingValid
+      ? `${estimate.pricingError} O custo técnico continua disponível. ${scopeNote}`
+      : estimate.complete
+        ? `Usa peso e duração do ${sliceCostInput.engine || "motor"}; premissas editáveis em Custos e orçamento. ${scopeNote}`
+        : `Custo parcial: configure aquisição, valor residual e vida útil da impressora para incluir depreciação. ${scopeNote}`;
+    const rows = [
+      ["Material + perda", estimate.components.material],
+      ["Energia", estimate.components.energy],
+      ["Depreciação", estimate.components.depreciationPerHour === null ? null : estimate.components.depreciation],
+      ["Manutenção e desgaste", estimate.components.maintenance],
+      ["Outros custos da máquina", estimate.components.machineOverhead],
+      ["Mão de obra e acabamento", estimate.components.labor],
+      ["Embalagem e outros", estimate.components.packaging + estimate.components.other],
+    ];
+    content.querySelector("[data-slice-cost-breakdown]").innerHTML = rows.map(([label, value]) => `<div><span>${label}</span><strong>${value === null ? "Não configurada" : shared.money(value)}</strong></div>`).join("");
+  }
+
   function clearSlicedOutput(message = "As configurações mudaram. Gere o fatiamento novamente para criar um arquivo atualizado.") {
     revision++;
     controller?.abort();
-    if (!sliced && !preview) return;
+    if (!sliced && !preview && !sliceCostInput) return;
     sliced = null; preview = null; previewLayer = 0; previewProgress = 1;
+    sliceCostInput = null; sliceCostEstimate = null;
+    host.manufacturingCosts?.setLatestSlice(null);
+    renderSliceCost();
     content.querySelector("[data-export]").hidden = true;
     content.querySelector("[data-add-to-queue]").hidden = true;
     const previewButton = shell.root.querySelector('[data-nav="preview"]');
@@ -1539,6 +1580,9 @@ export function mountFeature(host = {}) {
       }
     }
     const sliceButton = content.querySelector("[data-slice]"), cancelButton = content.querySelector("[data-cancel]");
+    sliced = null; preview = null; sliceCostInput = null; sliceCostEstimate = null;
+    host.manufacturingCosts?.setLatestSlice(null);
+    renderSliceCost();
     controller = new AbortController();
     const requestRevision = revision;
     const requestModel = model;
@@ -1587,6 +1631,20 @@ export function mountFeature(host = {}) {
       content.querySelector("[data-stat-filament-length]").textContent = result.stats?.filamentMeters !== null && result.stats?.filamentMeters !== undefined && Number.isFinite(Number(result.stats.filamentMeters)) ? `${number(result.stats.filamentMeters, 2)} m` : "Não informado pelo motor";
       content.querySelector("[data-stat-layers]").textContent = result.stats?.layerCount !== null && result.stats?.layerCount !== undefined && Number.isFinite(Number(result.stats.layerCount)) ? number(result.stats.layerCount) : preview?.layers.length ? number(preview.layers.length) : "Não informado";
       updateFeatureStatistics(result.stats);
+      const machineProfile = engineStatus.profiles?.machine?.catalog?.find(item => item.id === requestDraft.printerProfileId);
+      const filamentProfile = engineStatus.profiles?.filament?.catalog?.find(item => item.id === requestDraft.filamentProfileId);
+      sliceCostInput = {
+        name: requestModel.name,
+        material: filamentProfile?.name || materials[requestDraft.filament]?.name || requestDraft.filament,
+        printer: result.printerProfile || machineProfile?.name || printers[requestDraft.printer]?.name || requestDraft.printer,
+        engine: result.engine,
+        engineVersion: result.engineVersion,
+        grams: result.stats?.filamentGrams,
+        timeSeconds: result.stats?.timeSeconds,
+        scope: requestModel.objects.length > 1 ? "plate" : "piece",
+      };
+      host.manufacturingCosts?.setLatestSlice(sliceCostInput);
+      renderSliceCost();
       content.querySelector("[data-line-slider]").value = "100";
       content.querySelector("[data-engine-title]").textContent = "Fatiamento concluído pelo motor";
       const executionLocation = result.executionTarget === "server" ? "no servidor web" : "neste dispositivo";
@@ -1700,14 +1758,16 @@ export function mountFeature(host = {}) {
     dialog.close("approve");
   });
   content.querySelector("[data-export]").addEventListener("click", () => { if (sliced?.gcode instanceof Blob) downloadBlob(sliced.gcode, sliced.filename); });
+  content.querySelector("[data-open-costs]").addEventListener("click", () => host.navigate?.("costs"));
   content.querySelector("[data-add-to-queue]").addEventListener("click", () => {
     if (!sliced || typeof host.technicalJobs?.add !== "function") { toast("A fila técnica compartilhada não está disponível neste host."); return; }
     try {
       const job = host.technicalJobs.add(technicalJobInputFromSlicerResult({
         result: sliced,
         modelName: model.name,
-        printer: printers[draft.printer]?.name ?? draft.printer,
-        material: materials[draft.filament]?.name ?? draft.filament,
+        printer: sliceCostInput?.printer || printers[draft.printer]?.name || draft.printer,
+        material: sliceCostInput?.material || materials[draft.filament]?.name || draft.filament,
+        costEstimate: sliceCostEstimate,
       }));
       toast(`Job técnico ${job.name} adicionado à fila local.`);
     } catch (error) { toast(error?.message || "Não foi possível criar o job técnico."); }
@@ -1753,6 +1813,8 @@ export function mountFeature(host = {}) {
       if (typeof unsubscribe === "function") unsubscribeIntelligence = unsubscribe;
     } catch { /* A falha na assinatura não deve impedir o restante do app. */ }
   }
+  const unsubscribeCosts = host.manufacturingCosts?.subscribe(renderSliceCost);
+  host.onDestroy?.(unsubscribeCosts);
   readSlicerStatus(host.slicer).then(status => { engineStatus = status; updateInputs(); persist(); updateEngineUi(); })
     .catch(error => { engineStatus = { available: false, engine: "OrcaSlicer", version: null, reason: error?.message || "O host local não respondeu ao status do OrcaSlicer.", profiles: null }; updateEngineUi(); });
   host.onDestroy?.(() => { controller?.abort(); importSequence++; analysisController?.abort(); aiController?.abort(); unsubscribeIntelligence?.(); viewer?.dispose(); });

@@ -73,6 +73,8 @@ export function mountProductHost({ appId, title, subtitle, mark, areas, services
       slicer: services.slicer,
       intelligence: services.intelligence,
       technicalJobs: services.technicalJobs,
+      manufacturingCosts: services.manufacturingCosts,
+      navigate(areaId) { activate(areaId); },
       files: { publish: (channel, payload) => files.publish(channel, payload, area.featureId), subscribe: (channel, listener) => files.subscribe(channel, area.featureId, listener) },
       onDestroy(cleanup) { if (typeof cleanup === "function") cleanups.push(cleanup); },
       mountShell(options) {

@@ -1,3 +1,5 @@
+import { normalizeManufacturingCostEstimate } from "./manufacturing-cost.mjs";
+
 const allowedStatuses = new Set(["queued", "ready", "printing", "done", "blocked"]);
 export const technicalPrintJobSchema = "ordax.3d-print-job/1";
 
@@ -35,6 +37,7 @@ export function normalizeTechnicalPrintJob(value, index = 0) {
     origin: text(value.origin, "local-preview", 32),
     engine: text(value.engine, "", 48),
     engineVersion: text(value.engineVersion, "", 48),
+    costEstimate: normalizeManufacturingCostEstimate(value.costEstimate),
     notes: text(value.notes, "", 240),
   });
 }

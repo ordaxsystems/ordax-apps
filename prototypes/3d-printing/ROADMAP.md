@@ -1,5 +1,11 @@
 # OrdaX 3D — plano de evolução
 
+### Incremento local — orçamento de fabricação conectado ao fatiador (2026-10-26)
+
+O módulo Custos e orçamento aceita peso, duração, material, quantidade e impressora manualmente, ou carrega as estatísticas reais do último fatiamento. O cálculo reúne preço do material por perfil informado, perda, energia por potência/tarifa, depreciação por aquisição/residual/vida produtiva, manutenção, custo horário da máquina, tempo de operador, preparação, acabamento, embalagem e outros custos. A formação do preço permite markup ou margem alvo, tributos e taxas variáveis, taxa fixa por pedido e frete absorvido; bloqueia preços quando a margem mais as taxas tornam a fórmula inviável. Histórico, premissas por material e CSV são locais. O fatiador exibe custo/preço da peça única e grava um snapshot técnico opcional na fila; em pratos com mais de um objeto, exibe o total do prato porque o motor disponível não retorna custos por objeto.
+
+Testes de domínio cobrem fórmulas, taxas, arredondamento de premissas, preços locais por material, entradas inválidas e snapshot do job. Suíte OrdaX 3D: 139 testes aprovados; nenhuma integração de Vendas, Finance, Inventory, Space ou motor foi inventada. A instalação OrcaSlicer/perfis não está configurada neste host, então o caminho automático foi validado com dados de serviço e montagem, mas ainda depende de um fatiamento real para E2E.
+
 ### Incremento local — integridade das estimativas dos jobs (2026-10-25)
 
 Ao adicionar um resultado de fatiamento à fila técnica, `Number(null)` convertia estatísticas ausentes do motor em zero; o fallback de duração também interpretava texto ausente como zero. A aplicação agora preserva tempo e gramas ausentes ou inválidos como desconhecidos, e o domínio não atribui duração zero a jobs sem valor legado. A fila e Materiais continuam lendo o mesmo SSOT local de jobs. `node --test prototypes/3d-printing/tests/*.test.mjs`: 120 aprovados; `node --check` dos módulos alterados e `git diff --check`: aprovados. O host local em `http://127.0.0.1:4304/?area=slicing` carregou o módulo e manteve Fatiar bloqueado com aviso correto; este ambiente não tem OrcaSlicer/perfis configurados, então o fatiamento real segue sem validação nesta máquina.

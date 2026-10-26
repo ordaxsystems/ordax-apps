@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createTechnicalJobsService, technicalJobInputFromSlicerResult } from "../apps/ordax-3d/src/application/technical-jobs-service.mjs";
 import { technicalJobRepositorySchema } from "../apps/ordax-3d/src/ports/technical-job-repository.mjs";
+import { calculateManufacturingCost } from "../apps/ordax-3d/src/domain/manufacturing-cost.mjs";
 
 function memoryRepository(initial = null) {
   let value = initial;
@@ -74,4 +75,22 @@ test("estatísticas inválidas não viram estimativas nulas", () => {
 
   assert.equal(input.estimatedMinutes, null);
   assert.equal(input.estimatedGrams, null);
+});
+
+test("job técnico preserva o snapshot de custo do fatiamento sem criar pedido comercial", () => {
+  const costEstimate = calculateManufacturingCost({ name: "Suporte", material: "PLA", printer: "A1", grams: 20, hours: 1 });
+  const job = createTechnicalJobsService(memoryRepository([])).add({
+    ...technicalJobInputFromSlicerResult({
+      result: { stats: { timeSeconds: 3600, filamentGrams: 20 } },
+      modelName: "suporte.stl",
+      printer: "A1",
+      material: "PLA",
+      costEstimate,
+    }),
+  });
+
+  assert.equal(job.costEstimate.totalCost, costEstimate.totalCost);
+  assert.equal(job.costEstimate.suggestedPriceTotal, costEstimate.suggestedPriceTotal);
+  assert.equal(Object.hasOwn(job, "commercialOrderId"), false);
+  assert.equal(Object.hasOwn(job, "paymentId"), false);
 });

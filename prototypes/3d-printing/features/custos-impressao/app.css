@@ -3,3 +3,25 @@
 /* The source font can be absent on an offline host; keep headings sans-serif. */
 .cost-form h2,.cost-section-head h2{font-family:Manrope,"DM Sans",Inter,ui-sans-serif,system-ui,sans-serif}
 .quote-hero strong,.breakdown-row.total strong,.history-row b{font-family:Manrope,"DM Sans",Inter,ui-sans-serif,system-ui,sans-serif}
+
+.cost-section-head h2{font-size:13px}
+.cost-section-head{margin-bottom:12px}
+.cost-section .section-help{margin:-3px 0 12px;color:#8b9388;font-size:10px;line-height:1.5}
+.cost-form .currency-input input{padding-left:52px}
+.cost-form .currency-input span{min-width:38px}
+.cost-form .currency-input--wide input{padding-left:68px}
+.cost-form .currency-input--wide span{min-width:56px}
+.cost-form .form-grid .field{min-width:0}
+.last-slice{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:16px 0;padding:14px 15px;border:1px solid #e5eae1;border-radius:10px;background:linear-gradient(115deg,#f4f8f2,#fafbf9)}
+.last-slice-copy{display:grid;gap:5px;min-width:0}
+.last-slice-copy .panel-kicker{font-size:8px;color:#75846f;letter-spacing:.11em}
+.last-slice-copy strong{overflow:hidden;color:#465342;font:700 12px Manrope,"DM Sans",Inter,ui-sans-serif,system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
+.last-slice-copy small{color:#879083;font-size:9px;line-height:1.45}
+.last-slice .button{flex:none;font-size:9px}
+.breakdown-row.emphasis{padding-top:13px;padding-bottom:13px;color:#50634a;font-weight:700}
+.breakdown-row.emphasis strong{color:#3c4c36;font-size:12px}
+.history-values{text-align:right}
+.history-values b{display:block}
+.history-values small{display:block;color:#929a8e;font-size:8px;margin-top:3px}
+.cost-note{font-size:9px}
+@media(max-width:600px){.last-slice{align-items:flex-start;flex-direction:column}.last-slice .button{width:100%}.history-row{align-items:flex-start}.history-values{flex:none}}
