@@ -90,8 +90,7 @@ function cleanBodyCandidate(raw) {
   ];
   return String(raw || '')
     .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(line => line && !noise.some(pattern => pattern.test(line)))
+    .filter(line => !noise.some(pattern => pattern.test(line.trim())))
     .join('\n')
     .trim();
 }
@@ -814,7 +813,7 @@ export class EmbeddedChatWorker {
         const markdown = node.querySelector('[data-assistant-markdown], [data-message-content]');
         let text = String((markdown && markdown.innerText) || node.innerText || '').trim();
         text = text.replace(/^O ChatGPT disse:\\s*/i, '').replace(/^ChatGPT disse:\\s*/i, '').replace(/^ChatGPT said:\\s*/i, '').trim();
-        text = text.split(/\\r?\\n/).map(line => line.trim()).filter(line => line && !/^(Editar|Edit|Resposta concluída|Response completed|Copiar|Copy|Compartilhar|Share|Você gosta dessa personalidade\??|Do you like this personality\??|Conte-nos mais|Tell us more)$/i.test(line)).join('\\n').trim();
+        text = text.split(/\\r?\\n/).filter(line => !/^(Editar|Edit|Resposta concluída|Response completed|Copiar|Copy|Compartilhar|Share|Você gosta dessa personalidade\??|Do you like this personality\??|Conte-nos mais|Tell us more)$/i.test(line.trim())).join('\\n').trim();
         const images = Array.from(node.querySelectorAll('img')).map(imageData).filter(img => validImage(img, 64));
         return { id, text, images, complete: responseControlState.responseCompletionObserved || node.hasAttribute('data-message-complete') || Boolean(node.querySelector('[data-message-complete]')) };
       };
