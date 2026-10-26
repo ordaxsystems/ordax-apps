@@ -18,6 +18,7 @@
     "test:live:ready": "node scripts/live-ui-readiness.cjs",
     "test:live:build-proof": "node scripts/live-ui-build-proof-readonly.cjs",
     "test:live:linked-thread": "node scripts/live-ui-linked-thread-smoke.cjs",
+    "test:live:gpt-recovery-readonly": "node scripts/live-ui-gpt-interrupted-recovery-readonly.cjs",
     "test:live:w3-offline-seed": "node scripts/seed-w3-unsubmitted-offline.cjs",
     "test:live:w3-offline-preflight": "node scripts/live-ui-w3-offline-preflight.cjs",
     "test:live:w4-offline-seed": "node scripts/seed-w4-offline-recovery.cjs",
