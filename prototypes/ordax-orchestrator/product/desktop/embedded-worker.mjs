@@ -11,7 +11,7 @@ import { providerResponseFailureSignalsExpression, classifyProviderResponseFailu
 import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
 import { evaluateProviderReadOnlyDom } from '../src/provider-readonly-cdp-evaluator.mjs';
-import {W3_MAX_USER_CHARS,W3_MAX_ASSISTANT_CHARS} from '../src/provider-recovery-bounds.mjs';
+import {W3_MAX_USER_CHARS,W3_MAX_ASSISTANT_CHARS,W3_CDP_READ_TIMEOUT_MS} from '../src/provider-recovery-bounds.mjs';
 import { awaitHistoricalSessionPreflight, classifyHistoricalThreadPostNavigation, mayReturnFromFailedProviderConversation } from '../src/provider-historical-thread-preflight.mjs';
 import { preserveProviderWhitespace } from '../src/provider-code-format.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
@@ -648,7 +648,7 @@ export class EmbeddedChatWorker {
             loadFailureText, messages
           };
         })()`,
-      timeoutMs:6000,timeoutCode:'provider_readonly_dom_evaluation_timeout'
+      timeoutMs:W3_CDP_READ_TIMEOUT_MS,timeoutCode:'provider_readonly_dom_evaluation_timeout'
     });
     if(snapshot?.available!==true)
       throw new Error('provider_readonly_dom_evaluation_rejected');

@@ -101,7 +101,7 @@ test('historical W3 uses the shared single CDP evaluator with strict bounds',()=
   const body=worker.slice(start,end);
   assert.ok(body.includes('evaluateProviderReadOnlyDom({'));
   assert.ok(body.includes('debugger:this.view.webContents.debugger'));
-  assert.match(body,/timeoutMs:6000,timeoutCode:'provider_readonly_dom_evaluation_timeout'/);
+  assert.match(body,/timeoutMs:W3_CDP_READ_TIMEOUT_MS,timeoutCode:'provider_readonly_dom_evaluation_timeout'/);
   assert.equal(safeHistoricalThreadFailure('provider_readonly_dom_evaluation_timeout'),
     'provider_readonly_dom_evaluation_timeout');
   for(const forbidden of ['executeJavaScript','.loadURL','sendPrompt']) assert.ok(!body.includes(forbidden));
