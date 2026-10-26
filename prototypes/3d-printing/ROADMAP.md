@@ -137,6 +137,12 @@ Os domínios de Vendas e Inventory neste repo ainda não oferecem providers púb
 - Confiança da sugestão é uma avaliação declarada pela IA, não uma probabilidade calibrada. Os IDs citados são aceitos somente quando o dado correspondente foi incluído no contexto; isso melhora a rastreabilidade, mas não transforma uma inferência em diagnóstico do motor.
 - A integração Groq atual é apenas um adaptador local de desenvolvimento. Chaves e dados de produção pertencem ao serviço OrdaX Intelligence, não ao navegador nem ao bundle do app.
 
+### Incremento — preservar a origem das medidas do orçamento (2026-10-26)
+
+Editar nome, material, impressora ou quantidade mantém a procedência do peso/tempo importado do fatiador. Editar peso ou tempo diretamente muda a origem para manual, limpa a referência ao motor e conserva o escopo original (peça ou prato). O estado de resultado usa “Depreciação incluída” quando essa premissa está configurada, sem afirmar que os custos opcionais foram confirmados.
+
+Validação: suíte OrdaX 3D 153/153, `node --check` em 83 módulos e `git diff --check` aprovados.
+
 ## Próximas entregas
 
 1. Ampliar a E2E do pacote `.ordax3d` para a matriz de navegadores suportados, atribuições inconsistentes e migração entre versões. O host/browser atual já validou o fluxo de download e reabertura de um 3MF com dois processos, transformação individual e altura 0,21 mm restauradas; testes unitários cobrem STL/3MF, allowlist, CRC inválido, entradas extras e limite máximo.
