@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {excerptAroundBestMatch,taskMessageSearchExpression,taskMessageSearchTerms} from '../src/task-message-search.mjs';
+import {excerptAroundBestMatch,searchTaskHistoricalMessages,taskMessageSearchExpression,taskMessageSearchTerms} from '../src/task-message-search.mjs';
 import {Store} from '../src/store.mjs';
 
 test('historical search normalizes Portuguese accents, removes boilerplate and quotes every term',()=>{
@@ -115,4 +115,40 @@ test('continuation search diversifies historical evidence and isolates identical
   assert.ok(!packet.manifest.retrievedMessageIds.includes(foreignPalette.id));
   assert.ok(packet.manifest.retrievedMessageIds.length<=4);
   assert.ok(packet.manifest.historyWindowOmittedCount>0);
+});
+
+
+test('search preserves real project identifiers, chapter numbers and calibrated clock times',()=>{
+  const terms=taskMessageSearchTerms('VESTE: capítulo 9 às 04:17, R$ 42,90 e data 2026-10-26.');
+  assert.deepEqual(terms,['veste','capitulo','04','17','42','90','data','2026','10','26']);
+  const query=taskMessageSearchExpression('Recupere VESTE capítulo 9 às 04:17.');
+  assert.match(query,/"capitulo 9"/);
+  assert.match(query,/"04 17"/);
+  assert.match(query,/"veste"/);
+  assert.equal(taskMessageSearchExpression('04:17'),'"04 17" OR "04" OR "17"');
+  assert.equal(taskMessageSearchExpression('Capítulo 9'),'"capitulo 9" OR "capitulo"');
+  assert.equal(taskMessageSearchExpression('Continue a tarefa no OrdaX.'),'');
+});
+
+test('historical retrieval distinguishes requested VESTE chapter and clock time without leaking parallel task',t=>{
+  const store=new Store(':memory:');
+  t.after(()=>store.close());
+  const alpha=store.createTask('VESTE editorial');
+  const beta=store.createTask('VESTE independente');
+  const source=store.appendMessage(alpha.id,'user',
+    'VESTE Capítulo 9: a agulha de cobre foi medida às 04:17 no farol leste.');
+  for(let chapter=10;chapter<=24;chapter++){
+    store.appendMessage(alpha.id,'user',
+      'VESTE Capítulo '+chapter+': o cronômetro mostrou 04:10 no relatório provisório.');
+  }
+  const foreign=store.appendMessage(beta.id,'user',
+    'VESTE Capítulo 9: o relógio da outra missão marcou 04:17, segredo BETA_NAO_EXPORTAR.');
+  const latest=store.appendMessage(alpha.id,'user','Nova conversa. Consultar o fato antigo.');
+  const rows=searchTaskHistoricalMessages(store.db,alpha.id,
+    'Recupere VESTE Capítulo 9 às 04:17, o registro da agulha de cobre.',
+    {beforeMessage:latest,limit:4});
+  assert.ok(rows.some(row=>row.id===source.id),JSON.stringify(rows.map(row=>row.id)));
+  assert.ok(rows.every(row=>row.task_id===alpha.id));
+  assert.ok(!rows.some(row=>row.id===foreign.id));
+  assert.ok(rows.every(row=>!row.content.includes('BETA_NAO_EXPORTAR')));
 });
