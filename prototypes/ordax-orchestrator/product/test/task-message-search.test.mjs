@@ -144,9 +144,10 @@ test('historical retrieval distinguishes requested VESTE chapter and clock time 
   const foreign=store.appendMessage(beta.id,'user',
     'VESTE Capítulo 9: o relógio da outra missão marcou 04:17, segredo BETA_NAO_EXPORTAR.');
   const latest=store.appendMessage(alpha.id,'user','Nova conversa. Consultar o fato antigo.');
+  const beforeMessage=store.db.prepare('SELECT sequence FROM messages WHERE id=?').get(latest.id);
   const rows=searchTaskHistoricalMessages(store.db,alpha.id,
     'Recupere VESTE Capítulo 9 às 04:17, o registro da agulha de cobre.',
-    {beforeMessage:latest,limit:4});
+    {beforeMessage,limit:4});
   assert.ok(rows.some(row=>row.id===source.id),JSON.stringify(rows.map(row=>row.id)));
   assert.ok(rows.every(row=>row.task_id===alpha.id));
   assert.ok(!rows.some(row=>row.id===foreign.id));
