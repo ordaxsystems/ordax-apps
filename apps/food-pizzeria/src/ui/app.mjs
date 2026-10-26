@@ -713,9 +713,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
   }
 
-  async function savePreviewDeliveryFee() {
+  async function savePreviewDeliveryFee(form) {
     if (busy || destroyed) return false;
-    const form = root.querySelector("#settings-form");
     const deliveryFeeCents = parseMoney(form?.elements.deliveryFee.value);
     if (deliveryFeeCents === null) {
       report(new TypeError("Informe uma taxa padrão válida, como 8,00."));
@@ -770,8 +769,6 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (action === "dismiss-notice") {
       notice = null;
       renderNotice();
-    } else if (action === "save-preview-delivery-fee") {
-      void savePreviewDeliveryFee();
     } else if (action === "reset-order-filters") {
       orderStatusFilter = "all";
       orderChannelFilter = "all";
@@ -898,6 +895,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       orderStatusFilter = "all";
       orderChannelFilter = "all";
       render();
+      return;
+    }
+    if (kind === "preview-delivery-fee-form") {
+      event.preventDefault();
+      if (busy) return;
+      await savePreviewDeliveryFee(form);
       return;
     }
     if (!["setup-form", "flavor-form", "recipe-editor", "settings-form", "create-order-form", "cancel-order-form", "table-open-form"].includes(kind)) return;

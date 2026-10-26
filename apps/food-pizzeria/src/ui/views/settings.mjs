@@ -3,12 +3,15 @@ export function renderSettingsPage(viewModel) {
   const { snapshot, busy, iconSvg, escapeHtml, money, deliveryFeeCents, settingsSizesDraft, settingsTablesDraft } = viewModel;
   return `<section class="page-section settings-page">
     <div class="page-heading"><div><p class="eyebrow">CONFIGURAÇÃO DA LOJA</p><h1>Configurações</h1><p>Configure tamanhos, montagem, mesas e regra de preço.</p></div></div>
+    <form id="preview-delivery-fee-form" class="panel settings-form">
+      <div class="panel-heading"><div><p class="eyebrow">PREFERÊNCIA LOCAL</p><h2>Taxa padrão de entrega</h2></div><span class="step-number">↗</span></div>
+      <label>Taxa padrão local de entrega<input id="delivery-fee-default" name="deliveryFee" inputmode="decimal" autocomplete="off" value="${escapeHtml(money(deliveryFeeCents))}"><small>Preenche os próximos pedidos desta prévia e pode ser ajustada em cada pedido. Fica salva neste navegador; não calcula distância nem altera o contrato Food.</small></label>
+      <button class="button button-secondary" type="submit" ${busy ? "disabled" : ""}>Salvar taxa padrão local</button>
+    </form>
     <form id="settings-form" class="panel settings-form">
       <div class="panel-heading"><div><p class="eyebrow">OPERAÇÃO DA PIZZARIA</p><h2>Preferências e estrutura</h2></div><span class="step-number">⚙</span></div>
       <label>Nome da pizzaria<input name="storeName" maxlength="80" required value="${escapeHtml(snapshot.settings.storeName)}"></label>
       <label>Regra para pizzas com vários sabores<select name="halfPricePolicy"><option value="highest" ${snapshot.settings.halfPricePolicy === "highest" ? "selected" : ""}>Cobrar pelo sabor de maior preço</option><option value="average" ${snapshot.settings.halfPricePolicy === "average" ? "selected" : ""}>Usar a média dos sabores</option></select><small>A regra aplicada fica registrada em cada pedido.</small></label>
-      <label>Taxa padrão local de entrega<input name="deliveryFee" inputmode="decimal" autocomplete="off" value="${escapeHtml(money(deliveryFeeCents))}"><small>Preenche os próximos pedidos desta prévia e pode ser ajustada em cada pedido. Fica salva neste navegador; não calcula distância nem altera o contrato Food.</small></label>
-      <button class="button button-secondary" type="button" data-action="save-preview-delivery-fee" ${busy ? "disabled" : ""}>Salvar taxa padrão local</button>
       <label>Máximo de sabores por pizza<select name="maxFlavorsPerPizza">${Array.from({ length: 12 }, (_, index) => index + 1).map((value) => `<option value="${value}" ${snapshot.settings.maxFlavorsPerPizza === value ? "selected" : ""}>${value} ${value === 1 ? "sabor" : "sabores"}</option>`).join("")}</select></label>
       <section class="settings-config-group" aria-labelledby="pizza-sizes-heading"><div class="panel-heading"><div><p class="eyebrow">CARDÁPIO</p><h2 id="pizza-sizes-heading">Tamanhos de pizza</h2></div><button class="button button-quiet" type="button" data-action="add-pizza-size">＋ Adicionar tamanho</button></div>
         <p class="field-hint">Tamanhos novos começam desativados. Cadastre o preço e a ficha técnica de todos os sabores antes de ativá-los.</p>

@@ -16,8 +16,14 @@ test("configurações separam a preferência local de entrega do estado Food", (
     settingsTablesDraft: snapshot.settings.tables,
   });
 
+  const previewPreferenceForm = html.match(/<form id="preview-delivery-fee-form"[\s\S]*?<\/form>/)?.[0];
+  const operationalSettingsForm = html.match(/<form id="settings-form"[\s\S]*?<\/form>/)?.[0];
+  assert.ok(previewPreferenceForm, "a dedicated form contains the local preview preference");
+  assert.ok(operationalSettingsForm, "a separate form contains canonical Food settings");
+  assert.match(previewPreferenceForm, /type="submit"/);
   assert.match(html, /Taxa padrão local de entrega/);
   assert.match(html, /name="deliveryFee"[^>]*value="R\$ 5,00"/);
-  assert.match(html, /data-action="save-preview-delivery-fee"/);
+  assert.doesNotMatch(operationalSettingsForm, /name="deliveryFee"/);
+  assert.match(previewPreferenceForm, /neste navegador; não calcula distância nem altera o contrato Food/);
   assert.match(html, /nem altera o contrato Food/);
 });

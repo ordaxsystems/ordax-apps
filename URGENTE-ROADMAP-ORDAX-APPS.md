@@ -749,3 +749,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Verificação: suíte Food 79/79; `node --check` e `git diff --check` aprovados. Na PR #359, `catalog-candidate`, `mvp-app-functional-minimum`, `workspace-boundary` e `food-real-postgres` concluíram com sucesso. O host local `:4259` respondeu HTTP 200.
 - A taxa padrão ainda não é persistida por um provider Food centralizado; integração real com Space, Vendas, Inventory e Payments continua condicionada aos contratos dos owners. Nenhuma movimentação de estoque, pagamento ou elegibilidade de distribuição foi criada.
 
+### Food — separar formulário da preferência local de entrega (2026-10-26)
+
+- A taxa padrão local ganhou formulário próprio, separado das configurações operacionais Food. Enter no campo e o botão salvam a preferência deste navegador sem submeter o nome da loja, cardápio ou mesas.
+- Validação no host isolado `:4262`: Enter salvou R$ 8,25 e mostrou confirmação; em um pedido local de teste, selecionar Entrega carregou R$ 8,25 e atualizou o total de R$ 49,90 para R$ 58,15. Nenhum pedido foi registrado; o host usa armazenamento local independente.
+- Suíte Food: 79/79; `node --check` nos módulos da interface e `git diff --check` aprovados. A separação preserva Food como owner de sua configuração operacional; taxa default da prévia permanece local, e a taxa efetivamente escolhida fica congelada em cada pedido local.
+

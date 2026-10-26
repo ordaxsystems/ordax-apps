@@ -335,3 +335,9 @@ O adapter migra envelopes v1/v2 para v3 com padrão local de R$ 5,00, sem mexer 
 
 No host local da branch `http://127.0.0.1:4258/apps/food-pizzeria/`, a taxa foi alterada de R$ 5,00 para R$ 8,75 nas Configurações; o formulário de Entrega carregou R$ 8,75 e atualizou o total. Depois, o padrão foi restaurado a R$ 5,00, conferido no formulário e nenhum pedido foi criado. O teste automatizado de navegador não iniciou porque Chrome/Chromium não está instalado neste host Windows; a interação foi conferida diretamente no navegador conectado. A auditoria MVP do workspace terminou com exit 0: 20 alvos, 18 entradas de catálogo ainda não assinadas e 2 bloqueios já existentes; nenhuma publicação nem elegibilidade foi alterada.
 
+### Formulários independentes para a taxa local (2026-10-26)
+
+A taxa de entrega local agora fica em `preview-delivery-fee-form`, fora de `settings-form`. Enter e o botão submetem somente `updatePreviewPreferences`; as configurações operacionais continuam gravadas pelo comando `food.settings.update`. Assim, a preferência local não entra no snapshot/contrato Food e não é enviada junto com as mudanças de cardápio/mesas.
+
+`settings-page.test.mjs` verifica os dois formulários independentes. Suíte Food: 79/79; `node --check` dos módulos alterados e `git diff --check` aprovados. No host isolado `http://127.0.0.1:4262/apps/food-pizzeria/`, Enter salvou R$ 8,25; o formulário de pedido carregou o mesmo valor e mostrou o total de uma pizza de R$ 49,90 mais a taxa. Nenhum pedido foi registrado. O preview e as preferências permanecem locais.
+
