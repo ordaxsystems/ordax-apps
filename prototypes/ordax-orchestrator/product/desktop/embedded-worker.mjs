@@ -621,12 +621,17 @@ export class EmbeddedChatWorker {
           });
           const tail = entries.slice(-50);
           const messages = tail.map(({node,role}) => {
-            const text=String(node.innerText || node.textContent || '');
+            // Exact W3 digest applies to the authored user payload, not the
+            // surrounding copy button. A missing/ambiguous user content node
+            // is incomplete and MUST NOT create a recovery preview.
+            const user=role==='user' ? readProviderHistoricalUserText(node) : null;
+            const text=role==='user' ? user.text
+              : String(node.innerText || node.textContent || '');
             const maxChars=role==='assistant' ? ${W3_MAX_ASSISTANT_CHARS} : ${W3_MAX_USER_CHARS};
             return {
               role,
               text:text.slice(0,maxChars+1),
-              textTruncated:text.length>maxChars
+              textTruncated:(role==='user' && user.complete!==true) || text.length>maxChars
             };
           });
           // A visible assistant bubble can still be streaming. Capture the
