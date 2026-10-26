@@ -99,12 +99,12 @@ test('historical W3 uses the shared single CDP evaluator with strict bounds',()=
   const end=worker.indexOf('  async inspectConversationReadOnly(',start);
   assert.ok(start>=0&&end>start);
   const body=worker.slice(start,end);
-  assert.match(body,/evaluateProviderReadOnlyDom\\(\\{/);
-  assert.match(body,/debugger:this\\.view\\.webContents\\.debugger/);
+  assert.ok(body.includes('evaluateProviderReadOnlyDom({'));
+  assert.ok(body.includes('debugger:this.view.webContents.debugger'));
   assert.match(body,/timeoutMs:6000,timeoutCode:'provider_readonly_dom_evaluation_timeout'/);
   assert.equal(safeHistoricalThreadFailure('provider_readonly_dom_evaluation_timeout'),
     'provider_readonly_dom_evaluation_timeout');
-  assert.doesNotMatch(body,/executeJavaScript|\\.loadURL|sendPrompt/);
+  for(const forbidden of ['executeJavaScript','.loadURL','sendPrompt']) assert.ok(!body.includes(forbidden));
 });
 
 test('explicit Back can leave a proven failed linked thread with no draft',()=>{

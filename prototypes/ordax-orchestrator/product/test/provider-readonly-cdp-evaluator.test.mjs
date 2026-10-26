@@ -64,11 +64,11 @@ test('missing CDP value fails closed; health and W3 share no executeJavaScript a
   const health=code.split('  async health() {')[1].split('  enqueue(fn) {')[0];
   const w3=code.split('  async #readHistoricalThreadDOM() {')[1]
     .split('  // Explicit, read-only inspection')[0];
-  assert.match(health,/evaluateProviderReadOnlyDom\\(\\{/);
-  assert.match(w3,/evaluateProviderReadOnlyDom\\(\\{/);
+  assert.ok(health.includes('evaluateProviderReadOnlyDom({'));
+  assert.ok(w3.includes('evaluateProviderReadOnlyDom({'));
   const diagnostic=code.split('  async inspectDiagnosticReadOnly() {')[1]
     .split('  async #readHistoricalThreadDOM()')[0];
-  assert.match(diagnostic,/evaluateProviderReadOnlyDom\\(\\{/);
-  assert.doesNotMatch(diagnostic,/webContents\\.executeJavaScript|node\\.innerText/);
-  assert.doesNotMatch(health+w3,/webContents\\.executeJavaScript/);
+  assert.ok(diagnostic.includes('evaluateProviderReadOnlyDom({'));
+  assert.ok(!diagnostic.includes('webContents.executeJavaScript') && !diagnostic.includes('node.innerText'));
+  assert.ok(!(health+w3).includes('webContents.executeJavaScript'));
 });
