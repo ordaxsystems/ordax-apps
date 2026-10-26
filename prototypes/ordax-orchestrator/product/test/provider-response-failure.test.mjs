@@ -32,7 +32,7 @@ test('DOM probe is limited to visible explicit error/retry signals and returns b
   assert.doesNotMatch(JSON.stringify(observed),/Resposta normal/);
 });
 
-function observeDom({assistantText='',buttonText=null,buttonHidden=false,alertText=null}={}) {
+function observeDom({assistantText='',buttonText=null,buttonHidden=false,alertText=null,denyAssistantLayoutText=false}={}) {
   const node=(text='',attrs={})=>({
     nodeType:1,innerText:text,textContent:text,hidden:false,inert:false,parentElement:null,
     getAttribute:name=>attrs[name]??null,
@@ -40,6 +40,9 @@ function observeDom({assistantText='',buttonText=null,buttonHidden=false,alertTe
     contains(target){for(let current=target;current;current=current.parentElement)if(current===this)return true;return false;}
   });
   const assistant=node(assistantText,{'data-message-author-role':'assistant'});
+  if(denyAssistantLayoutText)Object.defineProperty(assistant,'innerText',{
+    get(){throw Error('full_assistant_layout_read_forbidden');}
+  });
   const buttons=[];
   if(buttonText!==null){
     const button=node(buttonText);button.parentElement=assistant;button.hidden=buttonHidden;buttons.push(button);
@@ -90,4 +93,26 @@ test('worker observes provider failure before treating a response as complete an
   assert.match(ui,/task\.latest_run\?\.status === 'failed'/);
   assert.match(ui,/run\.provider_delivery_state==='submitted'/);
   assert.doesNotMatch(loop,/sendPrompt\(|requestSubmit\(/);
+});
+
+test('long W3 reply health reads no assistant layout and preserves explicit retry detection',()=>{
+  // Matches physical W3 order of magnitude. An innerText getter fails this
+  // test immediately: there must be no full assistant layout or text export.
+  const longReply='function namedLongReply() {\\n'+ 'const item = 1;\\n'.repeat(5509)+'}';
+  assert.ok(longReply.length>80000 && longReply.length<100000);
+  const safe=observeDom({assistantText:longReply,denyAssistantLayoutText:true});
+  assert.deepEqual(Object.fromEntries(Object.entries(safe)),{
+    retryInLatestAssistant:false,retryWithErrorContext:false,
+    visibleErrorAlert:false,standaloneError:false
+  });
+  assert.ok(!JSON.stringify(safe).includes('namedLongReply'));
+  const failing=observeDom({
+    assistantText:'Ocorreu um erro ao gerar resposta.',
+    buttonText:'Tente novamente',denyAssistantLayoutText:true
+  });
+  assert.equal(classifyProviderResponseFailure(failing),'chatgpt_response_retry_required');
+  const onlyError=observeDom({
+    assistantText:'Something went wrong.',denyAssistantLayoutText:true
+  });
+  assert.equal(classifyProviderResponseFailure(onlyError),'chatgpt_response_error_observed');
 });

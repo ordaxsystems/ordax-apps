@@ -21,8 +21,10 @@ export const providerResponseFailureSignalsExpression = `(() => {
   const latestAssistant = assistantNodes.at(-1) || null;
   const retryLabel = /^(?:try again|retry|tente novamente|tentar novamente|tente de novo|tentar de novo|tente outra vez)$/i;
   const errorCopy = /(?:something went wrong|there was an error|an error occurred|error generating (?:the )?response|failed to generate (?:the )?response|could not generate (?:the )?response|response (?:was )?interrupted|algo deu errado|ocorreu um erro|houve um erro|erro ao gerar (?:a )?resposta|falha ao gerar (?:a )?resposta|n[aã]o foi poss[ií]vel (?:gerar|concluir|completar) (?:a )?resposta|a resposta foi interrompida|resposta interrompida)/i;
-  const textOf = element => String(element?.innerText || element?.textContent || '').trim().slice(0, 1200);
-  const labelOf = element => String(element.innerText || element.textContent ||
+  // textContent does not force a renderer layout over a 100k-character reply.
+  // Bounded copies are used only for error classification, never exported.
+  const textOf = element => String(element?.textContent || '').trim().slice(0, 1200);
+  const labelOf = element => String(element.textContent ||
     element.getAttribute('aria-label') || element.getAttribute('title') || '').trim();
   const retryControls = Array.from(document.querySelectorAll('button,[role="button"]'))
     .filter(element => visible(element) && retryLabel.test(labelOf(element)));
