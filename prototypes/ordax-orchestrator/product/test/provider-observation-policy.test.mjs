@@ -177,8 +177,9 @@ test('large already-rendered GPT thread health never forces full body layout',()
   const here=path.dirname(fileURLToPath(import.meta.url));
   const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const health=worker.split('  async health() {')[1].split('  enqueue(fn) {')[0];
-  const match=health.match(/const body=!composer && messageNodes===0\\s*\\? String\\(document\\.body\\?\\.innerText\\|\\|''\\)\\.slice\\(-5000\\) : '';/);
+  const match=health.match(/const body=!composer && messageNodes===0[^;]*;/);
   assert.ok(match,'the actual health probe must defer body text until missing chat DOM');
+  assert.match(match[0],/document\.body\?\.innerText/);
   const evaluate=new Function('composer','messageNodes','document',match[0]+'return body;');
   let bodyReads=0;
   const document={body:{get innerText(){bodyReads++;return 'historical load error';}}};
