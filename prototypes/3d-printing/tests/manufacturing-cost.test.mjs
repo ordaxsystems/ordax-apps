@@ -32,6 +32,7 @@ test("calcula material, energia, depreciação, manutenção, mão de obra e lot
     maintenancePerHour: 2,
     machineOverheadPerHour: 1,
     laborPricePerHour: 20,
+    laborAttentionPercent: 100,
     setupMinutesPerBatch: 60,
     finishingMinutesPerUnit: 30,
     packagingPerUnit: 3,
@@ -94,6 +95,31 @@ test("inclui tributos, taxas percentuais, taxa fixa e frete absorvido no preço 
   closeTo(result.components.fixedSaleFee, 1.5);
   closeTo(result.components.absorbedShipping, 3.5);
   closeTo(result.estimatedProfitTotal, 6);
+  closeTo(result.minimumPricePerUnit, 15 / 0.85);
+  closeTo(result.minimumPriceTotal, 2 * 15 / 0.85);
+});
+
+test("calcula preço mínimo sem lucro e deixa-o indisponível quando as taxas consomem toda a venda", () => {
+  const breakEven = calculateManufacturingCost({ grams: 100, hours: 1, quantity: 2 }, {
+    ...defaultManufacturingCostSettings,
+    materialPricePerKg: 100,
+    materialWastePercent: 0,
+    printerPowerWatts: 0,
+    laborPricePerHour: 0,
+    fixedSaleFeePerOrder: 10,
+    taxPercent: 10,
+    salesFeePercent: 5,
+  });
+  closeTo(breakEven.minimumPricePerUnit, 10 / 0.85 + 5 / 0.85);
+  closeTo(breakEven.minimumPriceTotal, 2 * breakEven.minimumPricePerUnit);
+
+  const impossible = calculateManufacturingCost({ grams: 100, hours: 1 }, {
+    ...defaultManufacturingCostSettings,
+    taxPercent: 50,
+    salesFeePercent: 50,
+  });
+  assert.equal(impossible.minimumPricePerUnit, null);
+  assert.equal(impossible.minimumPriceTotal, null);
 });
 
 test("bloqueia preços quando margem mais taxas alcançam 100% e não aceita dados de fatiamento iguais a zero", () => {
@@ -119,6 +145,19 @@ test("bloqueia preços quando margem mais taxas alcançam 100% e não aceita dad
 test("limita valor residual ao valor de aquisição da impressora", () => {
   const settings = normalizeManufacturingCostSettings({ printerPurchasePrice: 1000, printerResidualValue: 1400 });
   assert.equal(settings.printerResidualValue, 1000);
+});
+
+test("padrão não cobra operador por toda a impressão desacompanhada e separa preparação/acabamento", () => {
+  assert.equal(defaultManufacturingCostSettings.laborAttentionPercent, 0);
+  const result = calculateManufacturingCost({ grams: 100, hours: 2, quantity: 2 }, {
+    ...defaultManufacturingCostSettings,
+    materialPricePerKg: 0,
+    printerPowerWatts: 0,
+    laborPricePerHour: 30,
+    setupMinutesPerBatch: 30,
+    finishingMinutesPerUnit: 20,
+  });
+  closeTo(result.components.labor, 30 * (30 / 60 / 2 + 20 / 60));
 });
 
 test("usa uma referência de preço local para cada material sem substituir o Inventory", () => {

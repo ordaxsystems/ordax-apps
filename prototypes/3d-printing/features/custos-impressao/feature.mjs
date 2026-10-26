@@ -47,7 +47,10 @@ function unit(value, digits = 1) {
 function settingField([key, label, unitName, kind], value) {
   const input = `<input class="input" data-setting="${key}" type="number" min="0" step="${kind === "currency" ? "0.01" : "0.1"}" value="${value}" aria-label="${label}"/>`;
   const currency = kind === "currency" || unitName.startsWith("R$/") || unitName === "R$";
-  return `<div class="field"><label>${label}</label><div class="${currency ? `currency-input${unitName.length > 6 ? " currency-input--wide" : ""}` : "unit-input"}">${currency ? `<span>${unitName}</span>${input}` : `${input}<span>${unitName}</span>`}</div></div>`;
+  const help = key === "laborAttentionPercent"
+    ? `<small class="muted">0% cobra preparação e acabamento; 100% considera alguém acompanhando toda a impressão.</small>`
+    : "";
+  return `<div class="field"><label>${label}</label><div class="${currency ? `currency-input${unitName.length > 6 ? " currency-input--wide" : ""}` : "unit-input"}">${currency ? `<span>${unitName}</span>${input}` : `${input}<span>${unitName}</span>`}</div>${help}</div>`;
 }
 
 export function mountFeature(host = {}) {
@@ -136,6 +139,8 @@ export function mountFeature(host = {}) {
             <div class="breakdown-row"><span>Mão de obra e acabamento por unidade-base</span><strong data-labor>R$ 0,00</strong></div>
             <div class="breakdown-row"><span>Embalagem e outros por unidade-base</span><strong data-extra>R$ 0,00</strong></div>
             <div class="breakdown-row total"><span data-batch-cost-label>Custo total do lote</span><strong data-batch-cost>R$ 0,00</strong></div>
+            <div class="breakdown-row"><span data-minimum-price-label>Preço mínimo sem lucro por peça</span><strong data-minimum-price>—</strong></div>
+            <div class="breakdown-row"><span data-minimum-total-label>Preço mínimo sem lucro do lote</span><strong data-minimum-total>—</strong></div>
             <div class="breakdown-row"><span>Tributos e taxa de canal/pagamento</span><strong data-variable-sales-expenses>R$ 0,00</strong></div>
             <div class="breakdown-row"><span>Taxa fixa e frete absorvido</span><strong data-fixed-sales-expenses>R$ 0,00</strong></div>
             <div class="breakdown-row"><span data-batch-price-label>Preço de referência do lote</span><strong data-batch-price>R$ 0,00</strong></div>
@@ -276,6 +281,8 @@ export function mountFeature(host = {}) {
     shell.content.querySelector("[data-unit-label]").textContent = `Custo estimado por ${baseUnit}`;
     shell.content.querySelector("[data-unit-price-label]").textContent = `Preço de referência por ${baseUnit}`;
     shell.content.querySelector("[data-batch-cost-label]").textContent = formScope === "plate" ? "Custo total do prato" : "Custo total do lote";
+    shell.content.querySelector("[data-minimum-price-label]").textContent = `Preço mínimo sem lucro por ${baseUnit}`;
+    shell.content.querySelector("[data-minimum-total-label]").textContent = formScope === "plate" ? "Preço mínimo sem lucro do prato" : "Preço mínimo sem lucro do lote";
     shell.content.querySelector("[data-batch-price-label]").textContent = formScope === "plate" ? "Preço de referência do prato" : "Preço de referência do lote";
     shell.content.querySelector("[data-unit-profit-label]").textContent = `Resultado estimado por ${baseUnit}`;
     shell.content.querySelector("[data-batch-profit-label]").textContent = formScope === "plate" ? "Resultado estimado do prato" : "Resultado estimado do lote";
@@ -293,6 +300,8 @@ export function mountFeature(host = {}) {
     shell.content.querySelector("[data-labor]").textContent = result.available ? money(result.components.labor) : "—";
     shell.content.querySelector("[data-extra]").textContent = result.available ? money(result.components.packaging + result.components.other) : "—";
     shell.content.querySelector("[data-batch-cost]").textContent = result.available ? money(result.totalCost) : "—";
+    shell.content.querySelector("[data-minimum-price]").textContent = result.available ? result.minimumPricePerUnit === null ? "Revise taxas" : money(result.minimumPricePerUnit) : "—";
+    shell.content.querySelector("[data-minimum-total]").textContent = result.available ? result.minimumPriceTotal === null ? "Revise taxas" : money(result.minimumPriceTotal) : "—";
     shell.content.querySelector("[data-variable-sales-expenses]").textContent = result.available && result.pricingValid ? money((result.components.taxes + result.components.salesFee) * result.quantity) : result.available ? "Revise margem/taxas" : "—";
     shell.content.querySelector("[data-fixed-sales-expenses]").textContent = result.available ? money(result.components.fixedSaleFee * result.quantity + result.components.absorbedShipping * result.quantity) : "—";
     shell.content.querySelector("[data-batch-price]").textContent = result.available ? result.pricingValid ? money(result.suggestedPriceTotal) : "Revise margem/taxas" : "—";
@@ -374,6 +383,8 @@ export function mountFeature(host = {}) {
       ["Frete absorvido por pedido", money(result.settings.shippingAbsorbedPerOrder)],
       ["Custo estimado por unidade-base", money(result.costPerUnit)],
       ["Custo estimado do lote", money(result.totalCost)],
+      ["Preço mínimo sem lucro por unidade-base", result.minimumPricePerUnit === null ? "Indisponível: revise as taxas variáveis" : money(result.minimumPricePerUnit)],
+      ["Preço mínimo sem lucro do lote", result.minimumPriceTotal === null ? "Indisponível: revise as taxas variáveis" : money(result.minimumPriceTotal)],
       ["Preço de referência por unidade-base", money(result.suggestedPricePerUnit)],
       ["Preço de referência do lote", money(result.suggestedPriceTotal)],
       ["Resultado estimado por unidade", money(result.estimatedProfitPerUnit)],

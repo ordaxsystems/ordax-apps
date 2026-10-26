@@ -4,6 +4,24 @@ export function shouldCalculateIndividualCosts(slice) {
     && Number(slice.objectCount) > 1;
 }
 
+export function refreshObjectSliceCostEstimates(results, calculateFromSlice) {
+  if (!Array.isArray(results)) return [];
+  if (typeof calculateFromSlice !== "function") return results;
+  return Object.freeze(results.map(item => {
+    if (!item?.slice) return item;
+    try {
+      const estimate = calculateFromSlice(item.slice);
+      return Object.freeze({
+        ...item,
+        estimate,
+        error: estimate?.available ? "" : "O motor não retornou peso e tempo válidos para esta peça.",
+      });
+    } catch {
+      return Object.freeze({ ...item, estimate: null, error: "Não foi possível atualizar o custo desta peça." });
+    }
+  }));
+}
+
 export function selectObjectsForIndependentSlice(model, draft, objectIds) {
   if (!model || !Array.isArray(model.objects) || !Array.isArray(objectIds) || !objectIds.length) {
     throw new TypeError("Selecione ao menos uma peça para calcular os custos individualmente.");

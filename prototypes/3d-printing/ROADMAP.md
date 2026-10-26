@@ -1,5 +1,12 @@
 # OrdaX 3D — plano de evolução
 
+### Atualização — preço de equilíbrio e recálculo por peça (2026-10-26)
+
+A calculadora técnica passou a separar o custo de fabricação, o preço mínimo sem lucro (incluindo taxas percentuais e custos fixos/frete rateados pela quantidade) e o preço de referência com markup ou margem. O Preview exibe custo, preço mínimo e referência; cada peça fatiada individualmente usa as premissas atuais compartilhadas da calculadora, sem refatiar para atualizar material, impressora ou formação de preço. O acompanhamento contínuo de mão de obra começa em 0%; preparação e acabamento continuam configuráveis. O cálculo avulso aceita peso, tempo, material, quantidade, impressora e custos operacionais; salvar/exportar segue separado da venda.
+
+Validação local: 149/149 testes OrdaX 3D aprovados; node --check nos 81 módulos e git diff --check aprovados. No host isolado :4351, a amostra de 3 peças (28,6 g e 2,5 h por peça) exibiu R$ 8,76 de custo, R$ 22,07 de preço mínimo, R$ 29,79 de referência por peça e R$ 66,20/R$ 89,37 para o lote. A amostra não foi salva. OrcaSlicer e perfis reais não estão configurados aqui, portanto o fatiamento real continua sem E2E.
+
+
 ### Correção local — atualizar orçamento ao trocar material (2026-10-26)
 
 Ao escolher outro material no orçamento, o preço local por kg já era carregado no formulário, mas os custos e o preço de referência permaneciam com o cálculo anterior até outra edição. A seleção agora recalcula imediatamente a estimativa com a premissa daquele material. O preço continua sendo uma referência local informada pelo operador; Inventory segue como owner de saldo e movimentações.

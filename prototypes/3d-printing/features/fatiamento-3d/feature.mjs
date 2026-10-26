@@ -8,7 +8,7 @@ import { parseGcodePreview, drawGcodeLayer, gcodePreviewLimits } from "./gcode-p
 import { formatSliceProgress, hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
-import { selectObjectsForIndependentSlice, shouldCalculateIndividualCosts } from "./object-slice-costs.mjs";
+import { refreshObjectSliceCostEstimates, selectObjectsForIndependentSlice, shouldCalculateIndividualCosts } from "./object-slice-costs.mjs";
 import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext, buildAssistantMeshSummary, buildAssistantBoundingRectangleCoverage } from "./ai-copilot.mjs";
 import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
 import { infillPatternLabel, infillPatternOptions } from "../../shared/infill-patterns.mjs";
@@ -244,7 +244,7 @@ export function mountFeature(host = {}) {
 
         <section class="preview-view" data-preview-view hidden>
           <div class="preview-canvas-wrap"><div class="preview-stage-head"><div><span class="panel-kicker">TRAJETÓRIA REAL DO MOTOR</span><h2 data-preview-title>Preview de fatiamento</h2></div><span class="engine-chip"><i></i><span data-preview-engine>—</span></span></div><canvas data-gcode-canvas aria-label="Trajetórias G-code da camada selecionada"></canvas><div class="preview-legend"><span><i class="legend-outer"></i>Perímetro externo</span><span><i class="legend-inner"></i>Perímetro interno</span><span><i class="legend-infill"></i>Preenchimento</span><span><i class="legend-support"></i>Suporte</span><span><i class="legend-travel"></i>Deslocamento</span></div><div class="line-inspector"><span>Trajetórias da camada</span><input type="range" min="0" max="100" value="100" data-line-slider aria-label="Progresso da simulação da camada"/><strong data-line-count>—</strong></div></div>
-          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Abrir orçamento detalhado</button><div class="preview-object-costs" data-object-costs hidden><div class="preview-object-costs-head"><strong>Custo e preço por peça</strong><small data-object-cost-status></small></div><div data-object-cost-list></div></div><button class="button secondary" type="button" data-slice-object-costs hidden>Calcular custo e preço por peça</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
+          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line"><span>Preço mínimo sem lucro</span><strong data-slice-minimum-price>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Abrir orçamento detalhado</button><div class="preview-object-costs" data-object-costs hidden><div class="preview-object-costs-head"><strong>Custo e preço por peça</strong><small data-object-cost-status></small></div><div data-object-cost-list></div></div><button class="button secondary" type="button" data-slice-object-costs hidden>Calcular custo e preço por peça</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
         </section>
       </section>
     `,
@@ -632,9 +632,15 @@ export function mountFeature(host = {}) {
     individualButton.textContent = controller ? "Calculando custos individuais…" : objectCostResults.length ? "Calcular pendentes/recalcular" : "Calcular custo e preço por peça";
     individualPanel.hidden = !canItemize;
     individualList.replaceChildren();
+    const currentObjectCostResults = refreshObjectSliceCostEstimates(
+      objectCostResults,
+      typeof host.manufacturingCosts?.calculateFromSlice === "function"
+        ? slice => host.manufacturingCosts.calculateFromSlice(slice)
+        : null,
+    );
     const objects = model?.objects || [];
-    const resultsByObjectId = new Map(objectCostResults.map(item => [item.objectId, item]));
-    const calculatedCount = objectCostResults.filter(item => item.estimate?.available).length;
+    const resultsByObjectId = new Map(currentObjectCostResults.map(item => [item.objectId, item]));
+    const calculatedCount = currentObjectCostResults.filter(item => item.estimate?.available).length;
     individualStatus.textContent = objectCostStatus || `${objects.length} peças na mesa. Ao concluir o prato, o OrdaX fatiará cada peça isoladamente para calcular o custo real; peso e tempo do prato não serão rateados.`;
     for (const object of objects.slice(0, 50)) {
       const item = resultsByObjectId.get(object.id);
@@ -651,7 +657,9 @@ export function mountFeature(host = {}) {
       const cost = document.createElement("strong");
       cost.textContent = item?.estimate?.available ? shared.money(item.estimate.costPerUnit) : "Sem cálculo";
       const price = document.createElement("small");
-      price.textContent = item?.estimate?.available && item.estimate.pricingValid ? `Referência ${shared.money(item.estimate.suggestedPricePerUnit)}` : "Preço indisponível";
+      price.textContent = item?.estimate?.available && item.estimate.pricingValid
+        ? `Mín. ${item.estimate.minimumPricePerUnit === null ? "—" : shared.money(item.estimate.minimumPricePerUnit)} · Ref. ${shared.money(item.estimate.suggestedPricePerUnit)}`
+        : "Preço indisponível";
       values.append(cost, price);
       if (item?.estimate?.available) {
         const quote = document.createElement("button"); quote.type = "button"; quote.className = "preview-object-quote"; quote.textContent = "Orçar";
@@ -687,6 +695,7 @@ export function mountFeature(host = {}) {
     content.querySelector("[data-slice-cost-title]").textContent = sliceCostInput.scope === "plate" ? `${sliceCostInput.name} · prato completo` : `${sliceCostInput.name} · peça`;
     if (!estimate.available) {
       content.querySelector("[data-slice-cost-total]").textContent = "—";
+      content.querySelector("[data-slice-minimum-price]").textContent = "—";
       content.querySelector("[data-slice-price-total]").textContent = "—";
       content.querySelector("[data-slice-cost-status]").textContent = "O motor não informou peso e tempo suficientes. O cálculo automático ficará indisponível até esses dados existirem.";
       content.querySelector("[data-slice-cost-breakdown]").replaceChildren();
@@ -694,6 +703,7 @@ export function mountFeature(host = {}) {
       return;
     }
     content.querySelector("[data-slice-cost-total]").textContent = shared.money(estimate.totalCost);
+    content.querySelector("[data-slice-minimum-price]").textContent = estimate.minimumPriceTotal === null ? "Revise taxas" : shared.money(estimate.minimumPriceTotal);
     content.querySelector("[data-slice-price-total]").textContent = estimate.pricingValid ? shared.money(estimate.suggestedPriceTotal) : "Revise margem e taxas";
     const scopeNote = sliceCostInput.scope === "plate"
       ? `As estatísticas são do prato inteiro (${sliceCostInput.objectCount} objetos); o motor não forneceu divisão por peça.`

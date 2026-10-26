@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { selectObjectsForIndependentSlice, shouldCalculateIndividualCosts } from "../features/fatiamento-3d/object-slice-costs.mjs";
+import { refreshObjectSliceCostEstimates, selectObjectsForIndependentSlice, shouldCalculateIndividualCosts } from "../features/fatiamento-3d/object-slice-costs.mjs";
+import { createManufacturingCostService } from "../apps/ordax-3d/src/application/manufacturing-cost-service.mjs";
+import { manufacturingCostRepositorySchema } from "../apps/ordax-3d/src/ports/manufacturing-cost-repository.mjs";
 
 const model = {
   name: "Prato.3mf",
@@ -52,4 +54,29 @@ test("recusa peça atribuída a mais de um processo", () => {
     ],
   };
   assert.throws(() => selectObjectsForIndependentSlice(model, duplicatedAssignment, ["part-a"]), /mais de um processo/);
+});
+
+
+test("recalcula custo e preço por peça quando as premissas compartilhadas mudam", () => {
+  const repository = {
+    schema: manufacturingCostRepositorySchema,
+    loadSettings: () => null,
+    saveSettings() {},
+    loadEstimates: () => [],
+    saveEstimates() {},
+  };
+  const costs = createManufacturingCostService(repository);
+  const slice = { name: "Suporte", material: "PLA", printer: "A1", grams: 100, timeSeconds: 3600, scope: "piece", objectCount: 1 };
+  const stored = [{ objectId: "part-a", name: "Suporte", slice, estimate: costs.calculateFromSlice(slice) }];
+  const originalEstimate = stored[0].estimate;
+  const originalPrice = originalEstimate.suggestedPricePerUnit;
+
+  costs.updateMaterialPrice("PLA", 250);
+  costs.updateSettings({ pricingPercent: 50 });
+  const refreshed = refreshObjectSliceCostEstimates(stored, item => costs.calculateFromSlice(item));
+
+  assert.notEqual(refreshed[0].estimate.costPerUnit, originalEstimate.costPerUnit);
+  assert.notEqual(refreshed[0].estimate.suggestedPricePerUnit, originalPrice);
+  assert.equal(stored[0].estimate, originalEstimate, "a estimativa armazenada não deve ser mutada");
+  assert.equal(refreshed[0].estimate.source, "slicer");
 });

@@ -24,7 +24,7 @@ export const defaultManufacturingCostSettings = Object.freeze({
   printerUsefulHours: 10000,
   maintenancePerHour: 0,
   machineOverheadPerHour: 0,
-  laborAttentionPercent: 100,
+  laborAttentionPercent: 0,
   setupMinutesPerBatch: 0,
   finishingMinutesPerUnit: 0,
   packagingPerUnit: 0,
@@ -190,6 +190,9 @@ export function calculateManufacturingCost(input = {}, sourceSettings = defaultM
   const fixedSaleFeePerUnit = settings.fixedSaleFeePerOrder / quantity;
   const absorbedShippingPerUnit = settings.shippingAbsorbedPerOrder / quantity;
   const priceBasisCostPerUnit = costPerUnit + fixedSaleFeePerUnit + absorbedShippingPerUnit;
+  const breakEvenDenominator = 1 - variableSalesRate;
+  const minimumPricePerUnit = breakEvenDenominator > 0 ? priceBasisCostPerUnit / breakEvenDenominator : null;
+  const minimumPriceTotal = minimumPricePerUnit === null ? null : minimumPricePerUnit * quantity;
   const pricingDenominator = settings.pricingMode === "margin" ? 1 - rate - variableSalesRate : 1 - variableSalesRate;
   const pricingValid = pricingDenominator > 0;
   const suggestedPricePerUnit = pricingValid
@@ -240,6 +243,8 @@ export function calculateManufacturingCost(input = {}, sourceSettings = defaultM
     totalCost,
     priceBasisCostPerUnit,
     totalPriceBasisCost: priceBasisCostPerUnit * quantity,
+    minimumPricePerUnit,
+    minimumPriceTotal,
     suggestedPricePerUnit,
     suggestedPriceTotal,
     estimatedProfitPerUnit: suggestedPricePerUnit === null ? null : suggestedPricePerUnit - costPerUnit - salesExpensesPerUnit,
@@ -254,6 +259,8 @@ export function normalizeManufacturingCostEstimate(value) {
   if (!value || typeof value !== "object" || value.schema !== manufacturingCostEstimateSchema || value.available !== true) return null;
   const costPerUnit = optionalNonNegative(value.costPerUnit);
   const totalCost = optionalNonNegative(value.totalCost);
+  const minimumPricePerUnit = optionalNonNegative(value.minimumPricePerUnit);
+  const minimumPriceTotal = optionalNonNegative(value.minimumPriceTotal);
   const suggestedPricePerUnit = optionalNonNegative(value.suggestedPricePerUnit);
   const suggestedPriceTotal = optionalNonNegative(value.suggestedPriceTotal);
   if (value.pricingValid !== true || [costPerUnit, totalCost, suggestedPricePerUnit, suggestedPriceTotal].some(item => item === null)) return null;
@@ -274,6 +281,8 @@ export function normalizeManufacturingCostEstimate(value) {
     components: Object.freeze(components),
     costPerUnit,
     totalCost,
+    minimumPricePerUnit,
+    minimumPriceTotal,
     suggestedPricePerUnit,
     suggestedPriceTotal,
     complete: value.complete === true,
