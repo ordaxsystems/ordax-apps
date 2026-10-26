@@ -10,7 +10,14 @@ import {
 } from "../src/domain/domain.mjs";
 import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 
-const at = "2026-10-24T21:00:00.000Z";
+
+function timestampAfterFlavorCreation(state, flavorId) {
+  const flavor = state.flavors.find(({ id }) => id === flavorId);
+  assert.ok(flavor, `Expected seeded flavor ${flavorId}`);
+  const createdAt = Date.parse(flavor.createdAt);
+  assert.ok(Number.isFinite(createdAt), `Expected valid creation timestamp for ${flavorId}`);
+  return new Date(createdAt + 1000).toISOString();
+}
 
 function pizzaItem(state, flavorIds = ["ng-calabresa"]) {
   const size = "medium";
@@ -38,6 +45,7 @@ test("a changed price requires another review before a new Food order is accepte
   const state = createSeedFoodState();
   const item = pizzaItem(state);
   const flavor = state.flavors.find(({ id }) => id === item.flavorIds[0]);
+  const at = timestampAfterFlavorCreation(state, flavor.id);
   const updated = savePizzeriaFlavor(state, {
     id: flavor.id,
     name: flavor.name,
@@ -78,6 +86,7 @@ test("changing the half-and-half pricing policy also requires a new review", () 
 test("unavailable pizza flavors are never silently accepted at stale prices", () => {
   const state = createSeedFoodState();
   const item = pizzaItem(state);
+  const at = timestampAfterFlavorCreation(state, item.flavorIds[0]);
   const inactive = setPizzeriaFlavorAvailability(state, { flavorId: item.flavorIds[0], active: false, at });
   assert.throws(() => reviewFoodCartPrices([item], inactive), /não está disponível/);
   assert.equal(item.unitPriceCents, 4990);
