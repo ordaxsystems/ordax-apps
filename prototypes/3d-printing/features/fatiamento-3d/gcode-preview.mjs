@@ -77,7 +77,7 @@ function arcGeometry(x1, y1, x2, y2, words, clockwise, unitScale, relativeArcCen
   return { centerX, centerY, radius: radiusStart, sweep: directedSweep(startAngle, endAngle, clockwise, fullCircle) };
 }
 
-function tessellateArc({ x1, y1, x2, y2, z1, z2, geometry, layer, type, extrusion }) {
+function tessellateArc({ x1, y1, x2, y2, z1, z2, geometry, layer, type, extrusion, nozzleTemperatureC }) {
   const { centerX, centerY, radius, sweep } = geometry;
   const maxAngle = 2 * Math.acos(Math.max(-1, Math.min(1, 1 - ARC_CHORD_ERROR_MM / radius)));
   const segmentCount = Math.min(MAX_ARC_SEGMENTS, Math.max(2, Math.ceil(Math.abs(sweep) / Math.max(0.01, maxAngle))));
@@ -95,20 +95,39 @@ function tessellateArc({ x1, y1, x2, y2, z1, z2, geometry, layer, type, extrusio
       layer,
       type: extrusion ? type : "travel",
       extrusion,
+      nozzleTemperatureC,
       arc: true,
     });
   }
   return segments;
 }
 
+function formatSummaryNumber(value) {
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 }).format(value);
+}
+
+function parseFilamentSummary(source) {
+  const match = [...source.matchAll(/filament used(?:\s*\[([^\]]+)\])?\s*=\s*(-?\d+(?:[.,]\d+)?)/gi)].at(-1);
+  if (!match) return "Não informado";
+  const amount = Number(match[2].replace(",", "."));
+  if (!Number.isFinite(amount) || amount < 0) return "Não informado";
+  const unit = match[1]?.trim().toLowerCase().replace("³", "3");
+  if (unit === "g" || unit === "gram" || unit === "grams") return `${formatSummaryNumber(amount)} g`;
+  if (unit === "mm" || unit === "m" || unit === "cm3") return `${formatSummaryNumber(amount)} ${unit === "cm3" ? "cm³" : unit}`;
+  return "Não informado";
+}
+
 export function parseGcodePreview(text) {
+  const source = String(text ?? "");
   const segments = [];
   let x = 0, y = 0, z = 0, e = 0;
   let relativeXYZ = false, relativeE = false, relativeArcCenter = true, unitScale = 1;
   let plane = "XY", type = "other", layer = -1, lastLayerZ = null;
+  let nozzleTemperatureC = null, nozzle = null, bed = null, maxObservedLayer = 0;
+  let unsupportedArcCount = 0;
   const unsupported = new Set();
 
-  for (const line of String(text).split(/\r?\n/)) {
+  for (const line of source.split(/\r?\n/)) {
     const divider = line.indexOf(";");
     const command = (divider < 0 ? line : line.slice(0, divider)).trim().toUpperCase();
     const comment = divider < 0 ? "" : line.slice(divider + 1).trim();
@@ -117,21 +136,33 @@ export function parseGcodePreview(text) {
       if (/LAYER_CHANGE/i.test(comment) || /^LAYER\s*:/i.test(comment)) { layer++; lastLayerZ = null; }
     }
 
-    const code = command.match(/^(?:N\d+\s+)?(G\d+(?:\.\d+)?)(?:\s|$)/)?.[1];
+    const code = command.match(/^(?:N\d+\s+)?([GMT]\d+(?:\.\d+)?)(?:\s|$)/)?.[1];
     if (!code) continue;
+    const words = parseWords(command);
+    if (code === "M104" || code === "M109") {
+      if (words.S !== undefined && words.S >= 0) {
+        nozzleTemperatureC = words.S;
+        if (words.S > 0) nozzle = words.S;
+      }
+      continue;
+    }
+    if (code === "M140" || code === "M190") {
+      if (words.S !== undefined && words.S > 0) bed = words.S;
+      continue;
+    }
+    if (code === "M82") { relativeE = false; continue; }
+    if (code === "M83") { relativeE = true; continue; }
+    if (!code.startsWith("G")) continue;
     if (code === "G90.1") { relativeArcCenter = false; continue; }
     if (code === "G91.1") { relativeArcCenter = true; continue; }
     if (code === "G90") { relativeXYZ = false; continue; }
     if (code === "G91") { relativeXYZ = true; continue; }
-    if (code === "M82") { relativeE = false; continue; }
-    if (code === "M83") { relativeE = true; continue; }
     if (code === "G17") { plane = "XY"; continue; }
     if (code === "G18") { plane = "XZ"; continue; }
     if (code === "G19") { plane = "YZ"; continue; }
     if (code === "G20") { unitScale = 25.4; continue; }
     if (code === "G21") { unitScale = 1; continue; }
 
-    const words = parseWords(command);
     if (code === "G92") {
       if (words.X !== undefined) x = words.X * unitScale;
       if (words.Y !== undefined) y = words.Y * unitScale;
@@ -152,6 +183,7 @@ export function parseGcodePreview(text) {
     }
     const extrusion = words.E !== undefined && (relativeE ? words.E > 0 : nextE > e + 0.000001);
     const moveLayer = Math.max(0, layer);
+    maxObservedLayer = Math.max(maxObservedLayer, moveLayer);
 
     if (code === "G2" || code === "G02" || code === "G3" || code === "G03") {
       const clockwise = code === "G2" || code === "G02";
@@ -162,18 +194,37 @@ export function parseGcodePreview(text) {
         ? arcGeometry(x, y, nextX, nextY, words, clockwise, unitScale, relativeArcCenter)
         : null;
       if (geometry) {
-        segments.push(...tessellateArc({ x1: x, y1: y, x2: nextX, y2: nextY, z1: z, z2: nextZ, geometry, layer: moveLayer, type, extrusion }));
+        segments.push(...tessellateArc({ x1: x, y1: y, x2: nextX, y2: nextY, z1: z, z2: nextZ, geometry, layer: moveLayer, type, extrusion, nozzleTemperatureC }));
       } else {
         unsupported.add(arcCode);
+        unsupportedArcCount += 1;
       }
     } else if (words.X !== undefined || words.Y !== undefined) {
-      segments.push({ x1: x, y1: y, x2: nextX, y2: nextY, z: nextZ, layer: moveLayer, type: extrusion ? type : "travel", extrusion });
+      segments.push({ x1: x, y1: y, x2: nextX, y2: nextY, z: nextZ, layer: moveLayer, type: extrusion ? type : "travel", extrusion, nozzleTemperatureC });
     }
     x = nextX; y = nextY; z = nextZ; e = nextE;
   }
 
   const layers = [...new Set(segments.filter(segment => segment.extrusion).map(segment => segment.layer))].sort((a, b) => a - b);
-  return { segments, layers, unsupported: [...unsupported], colors: TYPE_COLORS };
+  const estimatedTime = source.match(/estimated printing time(?:\s*\([^)]*\))?\s*=\s*([^\r\n]+)/i)?.[1]?.trim() ?? "Não informado";
+  const filament = parseFilamentSummary(source);
+  const layerHeightValue = source.match(/layer_height\s*=\s*(\d+(?:[.,]\d+)?)/i)?.[1];
+  const layerHeight = layerHeightValue ? `${formatSummaryNumber(Number(layerHeightValue.replace(",", ".")))} mm` : "Não informado";
+  const previewLines = source.split(/\r?\n/).filter(line => /^\s*(?:N\d+\s*)?G0?[0-3]\b/i.test(line)).slice(0, 3).join("\n") || "Nenhum movimento G0–G3 encontrado";
+  return {
+    segments,
+    layers,
+    layerCount: Math.max(1, maxObservedLayer + 1),
+    unsupported: [...unsupported],
+    unsupportedArcCount,
+    colors: TYPE_COLORS,
+    printTime: estimatedTime,
+    filament,
+    layerHeight,
+    nozzle,
+    bed,
+    previewLines,
+  };
 }
 
 export function drawGcodeLayer(canvas, preview, layer, progress, bed = [256, 256]) {

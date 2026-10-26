@@ -1,4 +1,5 @@
 import * as shared from "/shared.mjs";
+import { parseGcodePreview } from "../fatiamento-3d/gcode-preview.mjs";
 import { fitMovesToBed, measureBedViewport, projectPointToBed } from "./viewport-geometry.mjs";
 
 export function mountFeature(host = {}) {
@@ -14,28 +15,9 @@ const sample = [
 ].join("\n");
 const nav = [{ id: "preview", label: "Pré-visualização", icon: "layers" }, { id: "layers", label: "Camadas", icon: "grid" }, { id: "commands", label: "Comandos", icon: "file" }];
 let sourceText = sample, fileName = "suporte_articulado.gcode", selectedLayer = 0, parsed;
-const shell = mountShell({ title: "Visualizador G-code", subtitle: "PRÉ-VISUALIZAÇÃO DE TRABALHO", nav, status: "Somente leitura", content: `<div class="gcode-layout"><section class="surface viewer-panel" data-preview-panel><div class="viewer-toolbar"><div class="row"><span class="pill">G-code</span><div class="file-label"><strong data-file-name>suporte_articulado.gcode</strong><small data-file-meta>Arquivo de demonstração · somente leitura</small></div></div><div class="toolbar"><select class="inline-select" aria-label="Visualização"><option>Extrusão</option><option>Deslocamento</option><option>Temperatura</option></select><button class="button secondary" type="button" data-open>${icon("upload",15)}<span>Abrir arquivo</span></button></div></div><div class="viewport"><span class="viewport-caption">Prévia 2D · vista superior</span><canvas data-canvas aria-label="Trajetos de impressão da camada selecionada"></canvas><div class="canvas-legend"><span class="legend-item"><i></i>Extrusão</span><span class="legend-item travel"><i></i>Deslocamento</span></div></div><div class="layer-controls" data-layer-controls><button type="button" data-prev aria-label="Camada anterior">−</button><input data-layer type="range" min="0" max="3" value="0" aria-label="Selecionar camada"/><button type="button" data-next aria-label="Próxima camada">+</button><span class="layer-current" data-layer-label>Camada 1 / 4</span></div></section><aside class="info-column"><section class="surface info-card"><h2>Resumo do trabalho</h2><div class="info-pair"><span>Tempo estimado</span><strong data-time>2h 34m</strong></div><div class="info-pair"><span>Filamento</span><strong data-filament>28,6 g</strong></div><div class="info-pair"><span>Camadas</span><strong data-layers>4</strong></div><div class="info-pair"><span>Altura de camada</span><strong data-height>0,20 mm</strong></div></section><section class="surface info-card"><h2>Temperaturas programadas</h2><div data-temperatures><span class="temp-chip">Bico · 210 °C</span><span class="temp-chip">Mesa · 60 °C</span></div></section><section class="surface info-card" data-commands-panel><h2>Sobre esta leitura</h2><p class="viewer-note">O arquivo é aberto localmente e não é enviado à impressora. Valores dependem dos comentários presentes no G-code.</p><pre class="command-preview" data-command></pre></section></aside></div><input data-file type="file" accept=".gcode,.gco,.gc" hidden/>` });
+const shell = mountShell({ title: "Visualizador G-code", subtitle: "PRÉ-VISUALIZAÇÃO DE TRABALHO", nav, status: "Somente leitura", content: `<div class="gcode-layout"><section class="surface viewer-panel" data-preview-panel><div class="viewer-toolbar"><div class="row"><span class="pill">G-code</span><div class="file-label"><strong data-file-name>suporte_articulado.gcode</strong><small data-file-meta>Arquivo de demonstração · somente leitura</small></div></div><div class="toolbar"><select class="inline-select" aria-label="Visualização dos trajetos" data-visualization><option value="extrusion">Extrusão</option><option value="travel">Deslocamento</option><option value="temperature">Temperatura programada</option></select><button class="button secondary" type="button" data-open>${icon("upload",15)}<span>Abrir arquivo</span></button></div></div><div class="viewport"><span class="viewport-caption">Prévia 2D · vista superior</span><canvas data-canvas aria-label="Trajetos de impressão da camada selecionada"></canvas><div class="canvas-legend" data-legend></div></div><div class="layer-controls" data-layer-controls><button type="button" data-prev aria-label="Camada anterior">−</button><input data-layer type="range" min="0" max="3" value="0" aria-label="Selecionar camada"/><button type="button" data-next aria-label="Próxima camada">+</button><span class="layer-current" data-layer-label>Camada 1 / 4</span></div></section><aside class="info-column"><section class="surface info-card"><h2>Resumo do trabalho</h2><div class="info-pair"><span>Tempo estimado</span><strong data-time>2h 34m</strong></div><div class="info-pair"><span>Filamento</span><strong data-filament>28,6 g</strong></div><div class="info-pair"><span>Camadas</span><strong data-layers>4</strong></div><div class="info-pair"><span>Altura de camada</span><strong data-height>0,20 mm</strong></div></section><section class="surface info-card"><h2>Temperaturas programadas</h2><div data-temperatures><span class="temp-chip">Bico · 210 °C</span><span class="temp-chip">Mesa · 60 °C</span></div></section><section class="surface info-card" data-commands-panel><h2>Sobre esta leitura</h2><p class="viewer-note">O arquivo é aberto localmente e não é enviado à impressora. Arcos G2/G3 coplanares em XY são aproximados; arcos helicoidais, outros planos ou geometrias inconsistentes ficam identificados.</p><p class="viewer-note arc-warning" data-arc-note role="status" hidden></p><pre class="command-preview" data-command></pre></section></aside></div><input data-file type="file" accept=".gcode,.gco,.gc" hidden/>` });
 shell.actions.innerHTML = button("Abrir G-code", 'data-open', "secondary", "upload");
 
-function parseGcode(text) {
-  const lines = text.split(/\r?\n/); let layer = -1, x = 0, y = 0, z = 0, lastE = 0; const moves = [], zs = [];
-  for (const line of lines) {
-    if (/^\s*;\s*(LAYER_CHANGE|LAYER\s*:?\s*\d+)/i.test(line)) layer++;
-    const command = line.split(";")[0].trim(); if (!/^(G0|G1)\b/i.test(command)) continue;
-    const values = Object.fromEntries([...command.matchAll(/([XYZEF])\s*(-?[\d.]+)/gi)].map(match => [match[1].toUpperCase(), Number(match[2])]));
-    const nextX = values.X ?? x, nextY = values.Y ?? y, nextZ = values.Z ?? z, nextE = values.E ?? lastE;
-    if (values.Z !== undefined && !zs.includes(nextZ)) zs.push(nextZ);
-    if (values.X !== undefined || values.Y !== undefined) moves.push({ x1:x, y1:y, x2:nextX, y2:nextY, layer:Math.max(0,layer), extrude:nextE > lastE });
-    x=nextX; y=nextY; z=nextZ; lastE=nextE;
-  }
-  const layerCount = Math.max(1, layer + 1, zs.length);
-  const printTime = text.match(/estimated printing time\s*=\s*([^\r\n]+)/i)?.[1]?.trim() ?? "Não informado";
-  const filament = text.match(/filament used(?:\s*\[[^\]]+\])?\s*=\s*([\d.]+)/i)?.[1];
-  const layerHeight = text.match(/layer_height\s*=\s*([\d.]+)/i)?.[1];
-  const nozzle = [...text.matchAll(/M10[49]\s+S([\d.]+)/gi)].map(match => Number(match[1])).filter(value => value > 0).at(-1);
-  const bed = [...text.matchAll(/M190\s+S([\d.]+)|M140\s+S([\d.]+)/gi)].map(match => Number(match[1] ?? match[2])).filter(value => value > 0).at(-1);
-  return { moves, layerCount, printTime, filament: filament ? `${filament.replace(".", ",")} g` : "Não informado", layerHeight: layerHeight ? `${layerHeight.replace(".", ",")} mm` : "Não informado", nozzle, bed, previewLines: lines.filter(line => /^\s*G[01]\b/i.test(line)).slice(0,3).join("\n") || "Nenhum movimento G0/G1 encontrado" };
-}
 function draw() {
   const canvas = shell.content.querySelector("[data-canvas]"); const rect = canvas.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
   const viewport = measureBedViewport(rect.width, rect.height);
@@ -47,16 +29,33 @@ function draw() {
   ctx.fillStyle=color("--gcode-canvas-bg","#f7f9f5"); ctx.fillRect(0,0,w,h);
   const {bedSize,left,top}=viewport; ctx.fillStyle=color("--gcode-bed-bg","#eef2eb"); ctx.fillRect(left,top,bedSize,bedSize); ctx.strokeStyle=color("--gcode-outline","#dfe6da"); ctx.lineWidth=1; ctx.strokeRect(left,top,bedSize,bedSize);
   ctx.strokeStyle=color("--gcode-grid","#dce4d8"); ctx.lineWidth=.6; for(let i=1;i<10;i++){const pos=left+bedSize*i/10;ctx.beginPath();ctx.moveTo(pos,top);ctx.lineTo(pos,top+bedSize);ctx.stroke();ctx.beginPath();ctx.moveTo(left,pos);ctx.lineTo(left+bedSize,pos);ctx.stroke();}
-  const moves=parsed.moves.filter(move=>move.layer===selectedLayer); if(!moves.length){ctx.fillStyle=color("--gcode-label","#879181");ctx.font="12px sans-serif";ctx.textAlign="center";ctx.fillText("Sem trajetos para esta camada",w/2,h/2);return;}
+  const moves=parsed.segments.filter(move=>move.layer===selectedLayer); if(!moves.length){ctx.fillStyle=color("--gcode-label","#879181");ctx.font="12px sans-serif";ctx.textAlign="center";ctx.fillText("Sem trajetos para esta camada",w/2,h/2);return;}
   const projection = fitMovesToBed(moves, bedSize);
-  ctx.lineCap="round";ctx.lineWidth=2;for(const move of moves){const start=projectPointToBed(projection,move.x1,move.y1);const end=projectPointToBed(projection,move.x2,move.y2);ctx.beginPath();ctx.moveTo(left+start.x,top+start.y);ctx.lineTo(left+end.x,top+end.y);ctx.strokeStyle=move.extrude?color("--gcode-extrusion","#69885d"):color("--gcode-travel","#bac6b4");ctx.stroke();}
+  const visualization = shell.content.querySelector("[data-visualization]").value;
+  ctx.lineCap="round";ctx.lineWidth=2;for(const move of moves){const start=projectPointToBed(projection,move.x1,move.y1);const end=projectPointToBed(projection,move.x2,move.y2);ctx.beginPath();ctx.moveTo(left+start.x,top+start.y);ctx.lineTo(left+end.x,top+end.y);
+    if(visualization==="temperature"){
+      const temperature=move.nozzleTemperatureC;
+      if(!Number.isFinite(temperature)||temperature<=0)ctx.strokeStyle=color("--gcode-travel","#bac6b4");
+      else {const hue=Math.round(220*(1-Math.max(0,Math.min(1,(temperature-150)/110))));ctx.strokeStyle=`hsl(${hue} 68% 47%)`;}
+    }else if(visualization==="travel")ctx.strokeStyle=move.extrusion?color("--gcode-travel","#d2dbcd"):"#3686ae";
+    else ctx.strokeStyle=move.extrusion?color("--gcode-extrusion","#69885d"):color("--gcode-travel","#bac6b4");
+    ctx.stroke();}
+}
+function updateLegend() {
+  const legend=shell.content.querySelector("[data-legend]");
+  const visualization=shell.content.querySelector("[data-visualization]").value;
+  if(visualization==="temperature")legend.innerHTML='<span class="legend-item"><i class="no-temperature"></i>Sem temperatura</span><span class="legend-item"><i class="temperature-scale"></i>150–260 °C</span>';
+  else if(visualization==="travel")legend.innerHTML='<span class="legend-item extrusion-muted"><i></i>Extrusão</span><span class="legend-item travel-active"><i></i>Deslocamento</span>';
+  else legend.innerHTML='<span class="legend-item extrusion"><i></i>Extrusão</span><span class="legend-item travel"><i></i>Deslocamento</span>';
 }
 function refresh() {
-  parsed=parseGcode(sourceText); selectedLayer=Math.min(selectedLayer,parsed.layerCount-1);
+  parsed=parseGcodePreview(sourceText); selectedLayer=Math.min(selectedLayer,parsed.layerCount-1);
   shell.content.querySelector("[data-file-name]").textContent=fileName; shell.content.querySelector("[data-file-meta]").textContent=fileName=== "suporte_articulado.gcode" ? "Arquivo de demonstração · somente leitura" : "Arquivo local · somente leitura";
   shell.content.querySelector("[data-layer]").max=String(parsed.layerCount-1); shell.content.querySelector("[data-layer]").value=String(selectedLayer); shell.content.querySelector("[data-layer-label]").textContent=`Camada ${selectedLayer+1} / ${parsed.layerCount}`;
   shell.content.querySelector("[data-time]").textContent=parsed.printTime; shell.content.querySelector("[data-filament]").textContent=parsed.filament; shell.content.querySelector("[data-layers]").textContent=String(parsed.layerCount); shell.content.querySelector("[data-height]").textContent=parsed.layerHeight; shell.content.querySelector("[data-command]").textContent=parsed.previewLines;
-  const temps=[]; if(parsed.nozzle)temps.push(`<span class="temp-chip">Bico · ${parsed.nozzle} °C</span>`); if(parsed.bed)temps.push(`<span class="temp-chip">Mesa · ${parsed.bed} °C</span>`); shell.content.querySelector("[data-temperatures]").innerHTML=temps.join("")||"<span class='muted'>Temperaturas não encontradas</span>"; draw();
+  const temps=[]; if(parsed.nozzle)temps.push(`<span class="temp-chip">Bico · ${parsed.nozzle} °C</span>`); if(parsed.bed)temps.push(`<span class="temp-chip">Mesa · ${parsed.bed} °C</span>`); shell.content.querySelector("[data-temperatures]").innerHTML=temps.join("")||"<span class='muted'>Temperaturas não encontradas</span>";
+  const arcNote=shell.content.querySelector("[data-arc-note]");arcNote.hidden=parsed.unsupportedArcCount===0;arcNote.textContent=parsed.unsupportedArcCount?`${parsed.unsupportedArcCount} arco(s) não aparecem na prévia: exigem outro plano, são helicoidais ou têm geometria inconsistente.`:"";
+  updateLegend();draw();
 }
 shell.content.querySelectorAll("[data-open]").forEach(button=>button.addEventListener("click",()=>shell.content.querySelector("[data-file]").click()));
 shell.actions.querySelector("[data-open]").addEventListener("click",()=>shell.content.querySelector("[data-file]").click());
@@ -68,6 +67,7 @@ const unsubscribeGcode = host.files?.subscribe("gcode", async ({ filename, file 
 });
 host.onDestroy?.(unsubscribeGcode);
 shell.content.querySelector("[data-layer]").addEventListener("input",event=>{selectedLayer=Number(event.target.value);refresh();});
+shell.content.querySelector("[data-visualization]").addEventListener("change",()=>{updateLegend();draw();});
 shell.content.querySelector("[data-prev]").addEventListener("click",()=>{selectedLayer=Math.max(0,selectedLayer-1);refresh();}); shell.content.querySelector("[data-next]").addEventListener("click",()=>{selectedLayer=Math.min(parsed.layerCount-1,selectedLayer+1);refresh();});
 shell.root.addEventListener("app:navigate",event=>{if(event.detail==="preview")shell.content.querySelector("[data-preview-panel]").scrollIntoView({behavior:"smooth",block:"start"});else if(event.detail==="layers"){shell.content.querySelector("[data-layer-controls]").scrollIntoView({behavior:"smooth",block:"center"});shell.content.querySelector("[data-layer]").focus();}else if(event.detail==="commands")shell.content.querySelector("[data-commands-panel]").scrollIntoView({behavior:"smooth",block:"center"});});
 shell.root.addEventListener("app:activate", () => requestAnimationFrame(() => requestAnimationFrame(draw)));

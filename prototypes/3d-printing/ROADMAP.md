@@ -8,6 +8,12 @@ Ao adicionar um resultado de fatiamento à fila técnica, `Number(null)` convert
 
 O canvas do Visualizador somava a altura completa da mesa à origem vertical já centralizada, deslocando os trajetos e podendo cortá-los. Além disso, o host montava todas as áreas enquanto ocultas, e o canvas G-code tentava calcular a mesa com dimensão zero, impedindo o shell de iniciar. O desenho agora ignora viewports ocultos/pequenos, e a projeção é um helper próprio que mantém as proporções e enquadra a peça dentro do recuo da mesa. O host permite esse módulo pela allowlist explícita; `tests/viewport-geometry.test.mjs` cobre inicialização oculta, centralização, limites, proporção, vazio e coordenadas inválidas. A correção não altera o G-code, o fatiamento, hardware ou SSOT dos owners.
 
+### Incremento local — Visualizador compartilha a leitura de G-code (2026-10-26)
+
+O Visualizador usava um parser próprio limitado a G0/G1, separado do parser já usado no Prepare. Agora ambos usam `parseGcodePreview`, que conserva modos absoluto/relativo, unidades, G92 e a aproximação limitada dos arcos G2/G3 no plano XY. Os trajetos não interpretados são contados e explicados; Extrusão, Deslocamento e Temperatura programada agora selecionam de fato os modos de cor. O resumo lê tempo, temperatura, camada e unidade de filamento do arquivo, deixando unidade ausente como “Não informado”.
+
+Dois testes cobrem o resumo e a contagem de arcos omitidos; os testes existentes de arcos continuam exercitando centros I/J, R, voltas completas, planos, unidades e limites de tesselação. Suíte 3D: 122/122; `node --check` passou no parser, renderer e servidor; `git diff --check` passou. O host de branch `http://127.0.0.1:4306/?area=visualizador-gcode` montou o módulo no shell escuro, exibiu o resumo da amostra e confirmou que o seletor Temperatura programada atualiza a legenda. A amostra é apenas visual e não veio do OrcaSlicer; não houve teste de motor, hardware ou dados dos owners.
+
 ## Princípio do produto
 
 Construir uma estação de trabalho 3D confiável: preparação e fatiamento com resultados produzidos por um motor real, configuração rastreável, validação antes da impressão e IA que explica o que sabe, mostra suas evidências e pede revisão antes de alterar o projeto. O Space é dono de contexto, identidade, autorização, composição, navegação e visão geral; OrdaX 3D é um único app vertical com módulos internos. O host atual é somente uma prévia local.

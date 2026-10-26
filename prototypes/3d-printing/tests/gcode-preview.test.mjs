@@ -99,3 +99,47 @@ test("limita a expansão de cada arco para não explodir o preview", () => {
   assert.equal(arc.length, 512);
   assert.deepEqual([arc.at(-1).x2, arc.at(-1).y2], [10000, 0]);
 });
+
+test("visualizador resume unidades e temperaturas sem inventar estatísticas", () => {
+  const preview = parseGcodePreview([
+    "; estimated printing time (normal mode) = 1h 2m",
+    "; filament used [mm] = 2500",
+    "; layer_height = 0.12",
+    "M140 S60",
+    "M104 T0 S205",
+    "M83",
+    ";LAYER_CHANGE",
+    "G1 Z0.2",
+    "G1 X0 Y0",
+    "G1 X10 Y0 E1",
+    "G1 X20 Y0 E-0.3",
+    "M109 T0 S215",
+    "G1 X30 Y0 E0.5",
+    "M104 S0",
+  ].join("\n"));
+
+  assert.equal(preview.printTime, "1h 2m");
+  assert.equal(preview.filament, "2.500 mm");
+  assert.equal(preview.layerHeight, "0,12 mm");
+  assert.equal(preview.nozzle, 215);
+  assert.equal(preview.bed, 60);
+  assert.equal(preview.layerCount, 1);
+  assert.deepEqual(preview.segments.map(segment => segment.extrusion), [false, true, false, true]);
+  assert.deepEqual(preview.segments.map(segment => segment.nozzleTemperatureC), [205, 205, 205, 215]);
+  assert.equal(parseGcodePreview("; filament used = 28.2").filament, "Não informado");
+});
+
+test("conta arcos omitidos para que o Visualizador possa explicar a cobertura", () => {
+  const preview = parseGcodePreview([
+    "G1 X10 Y0",
+    "G18",
+    "G2 X20 Z5 I1 K0",
+    "G17",
+    "G3 X30 Y10 E1",
+    "G1 X31 Y10 E2",
+  ].join("\n"));
+
+  assert.deepEqual(preview.unsupported, ["G2", "G3"]);
+  assert.equal(preview.unsupportedArcCount, 2);
+  assert.deepEqual([preview.segments.at(-1).x1, preview.segments.at(-1).y1], [30, 10]);
+});

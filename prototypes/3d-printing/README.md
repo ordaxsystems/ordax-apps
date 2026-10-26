@@ -58,7 +58,7 @@ Antes de iniciar um job, o app e o host conferem os nomes exatos de `compatible_
 
 ## Prévia do G-code
 
-A prévia reconhece movimentos lineares G0/G1 e arcos G2/G3 no plano XY. Os arcos são desenhados como segmentos com erro de corda máximo de 0,1 mm e limite de 512 segmentos por arco; modos de coordenadas absoluto/relativo, centros I/J absoluto/relativo e unidades G20/G21 são considerados. Arcos XZ/YZ, helicoidais ou com geometria inválida ficam fora da inspeção e são sinalizados. A exportação continua sendo o G-code original do motor, sem alterações da tesselação visual.
+A prévia reconhece movimentos lineares G0/G1 e arcos G2/G3 no plano XY. Os arcos são desenhados como segmentos com erro de corda máximo de 0,1 mm e limite de 512 segmentos por arco; modos de coordenadas absoluto/relativo, centros I/J absoluto/relativo e unidades G20/G21 são considerados. Arcos XZ/YZ, helicoidais ou com geometria inválida ficam fora da inspeção e são sinalizados. A exportação continua sendo o G-code original do motor, sem alterações da tesselação visual. O módulo Visualizar G-code reutiliza o mesmo parser de trajetos do Prepare para manter a interpretação modal em um só lugar; nele, Extrusão, Deslocamento e Temperatura programada controlam a visualização, enquanto o resumo preserva as unidades de filamento e deixa valores ausentes como não informados.
 
 ## Fatiamento no navegador e no servidor
 
