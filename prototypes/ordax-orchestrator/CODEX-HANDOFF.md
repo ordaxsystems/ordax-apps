@@ -1,5 +1,12 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Recovery certifier preflight backed by real SQLite — 2026-10-26
+
+- The physical `live-ui-gpt-interrupted-recovery-readonly.cjs` still requires explicit staged-profile/Task opt-in and never submits messages, imports replies or auto-retries uncertain delivery. Its **exact** latest Task/Run/receipt/active-conversation preflight now uses the canonical pure read-only helper `scripts/gpt-interrupted-recovery-preflight.cjs`, not separately copied SQL.
+- Native SQLite restart/negative tests exercise acknowledged interrupted Runs and reject missing receipts, old-run receipts, rotated conversation bindings, completed Runs, invalid digests/timestamps and invalid Task IDs. No real GPT credential, fake real-provider receipts, or OS-level forced process termination is used in these tests.
+- These tests establish **gate safety**, NOT physical GPT uncertain-delivery recovery. Only the explicit real-Electron, exact-profile, real-receipt, read-only W3 test may certify that separate product gate. The installed App need not be recompiled for script/test-only changes.
+
+
 ## Navegação de saída segura após erro da conversa GPT — 2026-10-26
 
 - Teste físico read-only da conversa vinculada mostrou página oficial **"Não foi possível carregar esta conversa"**, DOM concluído, 0 mensagens e 0 compositores. Isso é um erro da visão remota, **não** perda do Store SQLite; a causa do serviço oficial não foi certificada.
