@@ -1,6 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseGcodePreview } from "../features/fatiamento-3d/gcode-preview.mjs";
+import { parseGcodePreview, selectGcodeLayerFrame } from "../features/fatiamento-3d/gcode-preview.mjs";
+
+test("o inspetor do G-code limita os trechos à camada e posiciona o bico no último trecho visível", () => {
+  const preview = parseGcodePreview([
+    ";LAYER_CHANGE",
+    "G1 Z0.2",
+    "G1 X0 Y0",
+    "G1 X10 Y0 E1",
+    "G1 X10 Y10 E2",
+  ].join("\n"));
+  const frame = selectGcodeLayerFrame(preview.segments, 0, 2);
+
+  assert.equal(frame.totalCount, 3);
+  assert.equal(frame.visibleCount, 2);
+  assert.equal(frame.currentSegment, frame.visibleSegments[1]);
+  assert.deepEqual([frame.currentSegment.x2, frame.currentSegment.y2], [10, 0]);
+  assert.equal(frame.segments[2].layer, 0);
+});
+
+test("o inspetor do G-code limita o progresso e trata camada ou dados inválidos", () => {
+  const segments = parseGcodePreview(";LAYER_CHANGE\nG1 Z0.2\nG1 X10 Y0 E1\nG1 X20 Y0 E2").segments;
+
+  assert.equal(selectGcodeLayerFrame(segments, 0, -2).visibleCount, 0);
+  assert.equal(selectGcodeLayerFrame(segments, 0, 99).visibleCount, 2);
+  assert.equal(selectGcodeLayerFrame(segments, 0).visibleCount, 2);
+  assert.equal(selectGcodeLayerFrame(segments, 9).totalCount, 0);
+  assert.equal(selectGcodeLayerFrame(null, 0).currentSegment, null);
+});
 
 test("desenha arcos G2/G3 XY por I/J com tesselação limitada por erro de corda", () => {
   const preview = parseGcodePreview([

@@ -227,6 +227,27 @@ export function parseGcodePreview(text) {
   };
 }
 
+export function selectGcodeLayerFrame(segments, layer, requestedCount = Number.POSITIVE_INFINITY) {
+  const selectedLayer = Number(layer);
+  const layerSegments = Array.isArray(segments) && Number.isInteger(selectedLayer)
+    ? segments.filter(segment => segment?.layer === selectedLayer)
+    : [];
+  const requested = Number(requestedCount);
+  const visibleCount = requested === Number.POSITIVE_INFINITY
+    ? layerSegments.length
+    : Number.isFinite(requested)
+      ? Math.max(0, Math.min(layerSegments.length, Math.trunc(requested)))
+      : 0;
+  const visibleSegments = layerSegments.slice(0, visibleCount);
+  return {
+    segments: layerSegments,
+    visibleSegments,
+    totalCount: layerSegments.length,
+    visibleCount,
+    currentSegment: visibleSegments.at(-1) ?? null,
+  };
+}
+
 export function drawGcodeLayer(canvas, preview, layer, progress, bed = [256, 256]) {
   const bounds = canvas.getBoundingClientRect(), ratio = Math.min(window.devicePixelRatio || 1, 2);
   const width = Math.max(1, Math.floor(bounds.width * ratio)), height = Math.max(1, Math.floor(bounds.height * ratio));

@@ -728,3 +728,9 @@ A conversa sincronizada continua usando ChatGPT Web. O projeto passou de modal a
 
 O workspace avançado Studio foi preservado; sua adoção completa e o host Windows canônico exigem paridade no Runtime. Não portar informalmente pairing, grants ou execution authority. Fonte local e pacote portátil não representam publicação/ativação. Critérios de aceite, contratos, riscos e matriz de recursos em [STUDIO-CONVERSATION-REPLACEMENT.md](docs/STUDIO-CONVERSATION-REPLACEMENT.md).
 
+### OrdaX 3D — inspeção do percurso no Visualizador G-code (2026-10-26)
+
+- O Visualizador usa o parser compartilhado com Prepare para selecionar a camada verticalmente e percorrer seus trechos com um controle horizontal. O trecho atual e o bico são destacados; o caminho futuro fica esmaecido.
+- A inspeção é local e somente leitura. Nenhum job, arquivo, saldo de Inventory, owner, SSOT, integração ou elegibilidade de distribuição foi alterado.
+- Dois testes cobrem limites do progresso e localização do trecho atual; suíte 3D: 124/124. `node --check` e `git diff --check` aprovados; host da PR verificado.
+

@@ -14,6 +14,12 @@ O Visualizador usava um parser próprio limitado a G0/G1, separado do parser já
 
 Dois testes cobrem o resumo e a contagem de arcos omitidos; os testes existentes de arcos continuam exercitando centros I/J, R, voltas completas, planos, unidades e limites de tesselação. Suíte 3D: 122/122; `node --check` passou no parser, renderer e servidor; `git diff --check` passou. O host de branch `http://127.0.0.1:4306/?area=visualizador-gcode` montou o módulo no shell escuro, exibiu o resumo da amostra e confirmou que o seletor Temperatura programada atualiza a legenda. A amostra é apenas visual e não veio do OrcaSlicer; não houve teste de motor, hardware ou dados dos owners.
 
+### Incremento local — inspeção do percurso no Visualizador G-code (2026-10-26)
+
+O Visualizador agora permite escolher a camada pelo controle vertical e avançar horizontalmente pelos trechos já parseados do G-code. A posição do bico acompanha o último trecho visível e os trechos seguintes ficam esmaecidos, preservando o enquadramento completo da camada durante a inspeção. O controle usa o parser compartilhado com o Prepare e não altera o arquivo nem executa movimentos.
+
+Dois testes cobrem a seleção por camada, o ponto atual e limites do progresso. Suíte OrdaX 3D: 124/124; `node --check` nos módulos/testes alterados e `git diff --check` aprovados. A tela foi conferida no host do PR com os dois controles e o contador acessíveis. Não houve alteração de dados persistidos, owners, SSOT, motor, hardware ou elegibilidade de distribuição.
+
 ## Princípio do produto
 
 Construir uma estação de trabalho 3D confiável: preparação e fatiamento com resultados produzidos por um motor real, configuração rastreável, validação antes da impressão e IA que explica o que sabe, mostra suas evidências e pede revisão antes de alterar o projeto. O Space é dono de contexto, identidade, autorização, composição, navegação e visão geral; OrdaX 3D é um único app vertical com módulos internos. O host atual é somente uma prévia local.
