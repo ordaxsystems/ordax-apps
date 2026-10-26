@@ -83,10 +83,13 @@ test('real worker implementation stops before showConversation when W3 preflight
   assert.match(method,/return \{available:false,url:expected,reason:preflight\.reason\}/);
   assert.ok(method.indexOf('if(!preflight.allowed)') < method.indexOf('this.showConversation('));
   assert.doesNotMatch(method,/sendPrompt\(|requestSubmit\(|\.login\(/);
-  assert.match(main,/const provenance=findProviderSubmissionProvenance\(\{/);
-  assert.match(main,/messageId:message\?\.id/);
-  assert.match(main,/const threadRendered=Boolean\(provenance\)/);
-  assert.match(main,/provider_submission_provenance_missing/);
+  const recovery=fs.readFileSync(path.join(here,'../src/provider-linked-thread-recovery.mjs'),'utf8');
+  assert.match(main,/inspectProviderLinkedThread\(\{store,worker,taskId:requestedId\}\)/);
+  assert.match(recovery,/const provenance=findProviderSubmissionProvenance\(\{/);
+  assert.match(recovery,/messageId:message\?\.id/);
+  assert.match(recovery,/const threadRendered=assessment\.kind==='response_candidate'/);
+  assert.match(recovery,/provider_submission_provenance_missing/);
+  assert.ok(recovery.indexOf('if(!provenance)return')<recovery.indexOf('worker.inspectConversationReadOnly('));
   assert.match(ui,/provider_rate_limited_observed/);
   assert.match(ui,/provider_session_not_observed/);
 });
