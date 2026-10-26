@@ -171,3 +171,20 @@ test('historical backend failures do not override missing-composer authenticatio
     forbiddenCount:3,rateLimitedCount:1,composerReady:false
   }),'backend_http_429_observed');
 });
+
+
+test('large already-rendered GPT thread health never forces full body layout',()=>{
+  const here=path.dirname(fileURLToPath(import.meta.url));
+  const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
+  const health=worker.split('  async health() {')[1].split('  enqueue(fn) {')[0];
+  const match=health.match(/const body=!composer && messageNodes===0\\s*\\? String\\(document\\.body\\?\\.innerText\\|\\|''\\)\\.slice\\(-5000\\) : '';/);
+  assert.ok(match,'the actual health probe must defer body text until missing chat DOM');
+  const evaluate=new Function('composer','messageNodes','document',match[0]+'return body;');
+  let bodyReads=0;
+  const document={body:{get innerText(){bodyReads++;return 'historical load error';}}};
+  assert.equal(evaluate(true,0,document),'');
+  assert.equal(evaluate(false,1,document),'');
+  assert.equal(bodyReads,0,'no expensive full-page innerText read for a usable thread');
+  assert.equal(evaluate(false,0,document),'historical load error');
+  assert.equal(bodyReads,1,'load-failure classification still receives its error text');
+});
