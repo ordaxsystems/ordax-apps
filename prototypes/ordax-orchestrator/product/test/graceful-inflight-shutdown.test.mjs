@@ -48,7 +48,7 @@ test('normal window-close transition is one durable transaction without message 
   const actionId=f.store.beginAction(r.taskId,r.runId,'workspace.write','scratch', {});
   assert.equal(f.store.recoverInterruptedRuns('app_shutdown'),1);
   assert.equal(f.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
-  assert.deepEqual(f.db.prepare('SELECT status,error FROM runs WHERE id=?').get(r.runId),
+  assert.deepEqual({...f.db.prepare('SELECT status,error FROM runs WHERE id=?').get(r.runId)},
     {status:'interrupted',error:'app_shutdown'});
   assert.equal(f.db.prepare('SELECT status FROM tasks WHERE id=?').get(r.taskId).status,'interrupted');
   assert.equal(f.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(actionId).status,'indeterminate');
@@ -77,7 +77,7 @@ test('startup recovery keeps its canonical existing reason; invalid reasons cann
   assert.throws(()=>f.store.recoverInterruptedRuns('anything_else'),/invalid_interruption_reason/);
   assert.equal(f.db.prepare('SELECT status FROM runs WHERE id=?').get(r.runId).status,'running');
   assert.equal(f.restart(),1);
-  assert.deepEqual(f.db.prepare('SELECT status,error FROM runs WHERE id=?').get(r.runId),
+  assert.deepEqual({...f.db.prepare('SELECT status,error FROM runs WHERE id=?').get(r.runId)},
     {status:'interrupted',error:'process_interrupted'});
 });
 
