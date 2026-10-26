@@ -26,8 +26,32 @@ export async function inspectProviderLinkedThread({store,worker,taskId}={}) {
     inspectionReason:'provider_submission_provenance_missing',threadRendered:false,
     responseCandidate:false,requiresReconciliation:true
   };
+  const runBefore=store.db.prepare('SELECT id,status FROM runs WHERE id=? AND task_id=?')
+    .get(provenance.runId,task);
   const observed=await worker.inspectConversationReadOnly(expectedUrl)
     .catch(()=>({available:false,reason:'provider_inspection_unavailable'}));
+  // DOM inspection may yield while the UI switches tasks, rotates provider
+  // conversations or starts a newer Run. Never show a stale recovery preview:
+  // the final SQLite transaction validates again, but the PREVIEW must also
+  // be bound to the exact snapshot that authorized the remote observation.
+  const currentTask=store.db.prepare('SELECT chat_url,workspace_session_id FROM tasks WHERE id=?').get(task);
+  const currentMessage=store.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(task);
+  const currentConversation=store.db.prepare("SELECT id FROM task_conversations WHERE task_id=? AND chat_url=? AND status='active' ORDER BY sequence DESC LIMIT 1")
+    .get(task,expectedUrl);
+  const currentRun=store.db.prepare('SELECT id,status FROM runs WHERE id=? AND task_id=?')
+    .get(provenance.runId,task);
+  const latestRun=store.db.prepare('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(task);
+  if(currentTask?.workspace_session_id!==session.id||
+      store.getWorkspaceSession()?.id!==session.id||
+      canonicalProviderChatUrl(currentTask?.chat_url)!==expectedUrl||
+      currentMessage?.id!==message?.id||
+      currentConversation?.id!==provenance.conversationId||
+      latestRun?.id!==provenance.runId||
+      !runBefore||currentRun?.status!==runBefore.status) {
+    return {kind:'unavailable',reason:'provider_inspection_state_changed',
+      inspectionReason:'provider_inspection_state_changed',
+      threadRendered:false,responseCandidate:false,requiresReconciliation:true};
+  }
   const assessment=assessProviderConversationEvidence({
     expectedUrl,observed,expectedMessage:message?.content,
     expectedPromptSha256:provenance.promptSha256
