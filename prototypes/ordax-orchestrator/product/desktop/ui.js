@@ -988,7 +988,8 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
       chatgpt_draft_present:'Há um rascunho no ChatGPT. Ele foi preservado e a inspeção não tentou navegar nem reenviar.',
       observation_failed:'A inspeção somente leitura falhou. Nenhuma mensagem foi reenviada; tente novamente quando o ChatGPT estiver disponível.',
       provider_response_generation_active:'A resposta ainda pode estar sendo gerada. W3 não certificado; nenhum reenvio.',
-      provider_generation_state_unobserved:'Não foi possível comprovar o estado de geração da resposta. W3 não certificado; nenhum reenvio.'
+      provider_generation_state_unobserved:'Não foi possível comprovar o estado de geração da resposta. W3 não certificado; nenhum reenvio.',
+      provider_inspection_state_changed:'A tarefa, a conversa ou o Run mudou durante a inspeção. Verifique novamente antes de recuperar a resposta. Nenhuma mensagem foi reenviada.'
     };
     const inspectionReason=String(result?.inspectionReason || '');
     $('#linkedThreadStatus').textContent=attributable
