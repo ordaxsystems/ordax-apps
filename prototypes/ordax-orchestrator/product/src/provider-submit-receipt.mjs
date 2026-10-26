@@ -1,17 +1,30 @@
 // Browser-agnostic contract for observing an official provider UI.
 // A cleared composer alone is never evidence that the message was sent.
-const normalized = value => String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
-const chatPermalink = url => {
-  try { return /^\/c\/[a-z0-9-]{8,}\/?$/i.test(new URL(url).pathname); }
-  catch { return false; }
-};
+import { normalizeProviderUserMessage, providerUserMessageMatchesPrompt } from './provider-user-message.mjs';
 
+const normalized = value => String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 export function providerSubmissionConfirmed({ baseline, current, prompt }) {
-  if (!current || normalized(current.composerText)) return false;
-  const userBubble = Number(current.userCount || 0) > Number(baseline.userCount || 0)
-    && normalized(current.latestUserText) === normalized(prompt);
-  const canonicalNewUrl = current.url !== baseline.url && chatPermalink(current.url);
-  return userBubble || canonicalNewUrl;
+  if (!baseline || !current) return false;
+  const currentUserText=normalizeProviderUserMessage(current.latestUserText,{
+    expandControlPresent:Boolean(current.latestUserExpandControlPresent)
+  });
+  const baselineUserText=normalizeProviderUserMessage(baseline.latestUserText,{
+    expandControlPresent:Boolean(baseline.latestUserExpandControlPresent)
+  });
+  const exactPromptObserved=providerUserMessageMatchesPrompt(currentUserText,prompt);
+  // ChatGPT virtualizes long conversations and can evict older bubbles while
+  // adding a new one, keeping the DOM count unchanged. Confirm an exact latest
+  // prompt when either the count grew or the latest user bubble itself changed
+  // from baseline. If the prompt was already latest and identity is unclear,
+  // fail closed rather than treating a draft or an old turn as a new send.
+  const userBubble = exactPromptObserved && (
+    Number(current.userCount || 0) > Number(baseline.userCount || 0) ||
+    Boolean(currentUserText && currentUserText !== baselineUserText)
+  );
+  // URL rotation and an emptied composer are not a receipt for the exact
+  // submitted content. The worker expands collapsed long bubbles, then this
+  // policy accepts only the exact latest user message.
+  return userBubble;
 }
 
 export function unresolvedSubmitCode(state) {

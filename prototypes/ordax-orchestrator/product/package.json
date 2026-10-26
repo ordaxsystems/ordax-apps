@@ -12,7 +12,8 @@
     "test:host": "node --test test/host-application.test.mjs test/host-browser-server.test.mjs",
     "validate": "npm run check && npm test",
     "start": "node scripts/start-host.mjs",
-    "start:electron": "electron .",
+    "build:worker-preload": "node scripts/build-worker-preload.mjs",
+    "start:electron": "npm run build:worker-preload && electron .",
     "build:win": "electron-builder --win portable",
     "test:live:ready": "node scripts/live-ui-readiness.cjs",
     "test:live:build-proof": "node scripts/live-ui-build-proof-readonly.cjs",
@@ -30,12 +31,19 @@
     "test:live:restart": "node scripts/live-ui-restart-smoke.cjs",
     "test:live:image": "node scripts/live-ui-image-smoke.cjs",
     "test:live:history": "node scripts/live-ui-history-smoke.cjs",
-    "test:live:stream": "node scripts/live-ui-stream-smoke.cjs"
+    "test:live:stream": "node scripts/live-ui-stream-smoke.cjs",
+    "test:live:multiturn": "node scripts/live-ui-multiturn-smoke.cjs",
+    "test:live:context-packet": "node scripts/live-ui-context-packet-smoke.cjs",
+    "test:live:handoff-attachment": "node scripts/live-ui-handoff-attachment-smoke.cjs",
+    "test:live:persisted-mission": "node scripts/live-ui-persisted-mission-smoke.cjs",
+    "test:live:memory-proposal": "node scripts/live-ui-memory-proposal-smoke.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
+    "@github/keytar": "7.10.6",
     "electron": "^44.8.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "esbuild": "0.28.2"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -47,6 +55,7 @@
     "files": [
       "desktop/**/*",
       "src/*.mjs",
+      "src/*.cjs",
       "supervisor/**/*",
       "package.json"
     ],

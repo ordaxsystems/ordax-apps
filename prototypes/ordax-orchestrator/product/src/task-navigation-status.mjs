@@ -33,6 +33,13 @@ export function safeTaskNavigationReason(value) {
 
 export function taskNavigationStatus(task) {
   const navigation = task?.provider_navigation;
+  if (navigation === 'pending') return {
+    kind: 'navigating',
+    reason: 'provider_navigation_pending',
+    state: 'pending',
+    threadRendered: 'false',
+    message: 'Histórico e memória locais abertos. Abrindo a conversa GPT vinculada; nenhuma mensagem foi enviada.'
+  };
   if (navigation !== 'failed' && navigation !== 'not_navigated') return null;
   const raw = navigation === 'failed'
     ? (task.provider_navigation_reason || task.provider_navigation_error)

@@ -40,15 +40,17 @@ test('actual worker invokes pre-submit gate before draft, baseline and submissio
   assert.match(worker,/classifyProviderAuthObservation/);
 });
 
-test('login button uses official login navigation without auto-clicking Google',()=>{
+test('login button follows observed session state and uses official login without auto-clicking Google',()=>{
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   const handler=ui.split("$('#login').addEventListener('click'")[1]
     .split("$('#observerMode').addEventListener('change'")[0];
-  assert.match(handler,/await setDirectModeVisible\(true\)/);
-  assert.match(ui,/async function setDirectModeVisible\(visible\)/);
+  assert.match(handler,/await showProviderPane\(true\)/);
+  assert.match(handler,/action\.mode==='login'/);
+  assert.match(ui,/async function showProviderPane\(visible\)/);
   assert.match(ui,/await window\.ordax\.setChatVisible\(visible\)/);
-  assert.match(ui,/dataset\.ordaxView = visible \? 'provider' : 'app'/);
+  assert.match(ui,/dataset\.ordaxView='app'/);
   assert.match(handler,/window\.ordax\.login\(\)/);
+  assert.match(ui,/syncProviderLoginAction\(status\)/);
   assert.doesNotMatch(handler,/loginGoogle|Continue with Google|mouseDown/);
   const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
@@ -58,6 +60,7 @@ test('login button uses official login navigation without auto-clicking Google',
   assert.doesNotMatch(preload,/loginGoogle/);
   const refresh=ui.split('async function refreshProvider()')[1]
     .split('function setContextOpen(')[0];
+  assert.match(refresh,/syncProviderLoginAction\(status\)/);
   assert.doesNotMatch(refresh,/if \(loginFlowVisible && status\.auth_state/);
   assert.doesNotMatch(refresh,/Sessão persistente do OrdaX/);
   assert.match(refresh,/identidade não verificada/);

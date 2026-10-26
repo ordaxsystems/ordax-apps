@@ -1,33 +1,132 @@
 import { renderLiveStage } from './ui-stage.mjs';
-import { providerComposeAvailability, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
+import { providerComposeAvailability, canStartFreshProviderChat, COMPOSE_STATUS_MESSAGES } from '../src/provider-compose-availability.mjs';
+import { resolveProviderLoginAction } from '../src/provider-login-action.mjs';
 import { taskListStatusLabel, taskNavigationStatus } from '../src/task-navigation-status.mjs';
 import { SUPERVISOR_ROLES, supervisorRole } from '../src/supervisor-role-presets.mjs';
 import { mountOrchestratorUi } from './orchestrator-ui.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
+let pendingReplyRecovery=null;
 let workspace = null;
-let directMode = false;
-
-// Reflect the acknowledged Electron view, never inferred ChatGPT DOM state.
-async function setDirectModeVisible(visible) {
-  await window.ordax.setChatVisible(visible);
-  directMode = visible;
-  document.documentElement.dataset.ordaxView = visible ? 'provider' : 'app';
-  $('#directMode').textContent = visible ? 'Voltar' : 'Modo direto';
+let workspaceNavigationWrite=Promise.resolve();
+let activeRightPane='provider';
+let hostChatGPTPlan={connected:false,authorized:false,secureStorageAvailable:false,email:null};
+let providerBoundsRaf=0;
+const rightPaneDefinitions=[['provider','providerPaneTab','providerPanel'],['preview','previewPaneTab','previewPanel'],['context','contextPaneTab','contextPanel']];
+// Initialize this control before any startup await can restore a Task and call
+// showSupervisorRole().
+const labRoleSelect=document.getElementById('labSupervisorRole');
+const labRoleDescription=document.getElementById('labRoleDescription');
+const labObjective=document.getElementById('labSupervisorObjective');
+labRoleSelect.replaceChildren(...SUPERVISOR_ROLES.map(role=>{
+  const option=document.createElement('option');
+  option.value=role.id; option.textContent=role.name;
+  return option;
+}));
+function showSupervisorRole(task) {
+  const role=supervisorRole(task?.supervisor_role);
+  labRoleSelect.disabled=!task;
+  labRoleSelect.value=role.id;
+  labRoleDescription.textContent=task
+    ? role.description+' Papel salvo somente nesta tarefa; nenhuma IA iniciada.'
+    : 'Selecione uma tarefa antes de escolher seu papel.';
+  labObjective.value=task?role.draft:'';
 }
+labRoleSelect.addEventListener('change',async()=>{
+  const taskId=currentTaskId;
+  if(!taskId){showSupervisorRole(null);return;}
+  const role=labRoleSelect.value;
+  labRoleSelect.disabled=true;
+  try{
+    const saved=await window.ordax.setTaskSupervisorRole(taskId,role);
+    if(currentTaskId===taskId){
+      currentTask=saved;
+      showSupervisorRole(saved);
+      await loadTasks();
+    }
+  }catch{
+    if(currentTaskId===taskId){
+      showSupervisorRole(currentTask);
+      labRoleDescription.textContent='Não foi possível salvar o papel da tarefa.';
+    }
+  }finally{
+    if(currentTaskId===taskId)labRoleSelect.disabled=false;
+  }
+});
+function queueProviderBounds() {
+  if(providerBoundsRaf)cancelAnimationFrame(providerBoundsRaf);
+  providerBoundsRaf=requestAnimationFrame(()=>{
+    providerBoundsRaf=0;
+    const viewport=$('#providerViewport');
+    if(!viewport)return;
+    const rect=viewport.getBoundingClientRect();
+    const bounds=rect.width>0&&rect.height>0
+      ?{x:rect.left,y:rect.top,width:rect.width,height:rect.height}
+      :{x:0,y:0,width:0,height:0};
+    window.ordax.setProviderBounds(bounds).catch(()=>{});
+  });
+}
+async function selectRightPane(name) {
+  if(!rightPaneDefinitions.some(([pane])=>pane===name))throw new Error('right_pane_invalid');
+  activeRightPane=name;
+  for(const [pane,tabId,panelId] of rightPaneDefinitions) {
+    const selected=pane===name;
+    const tab=$('#'+tabId),panel=$('#'+panelId);
+    tab.classList.toggle('active',selected);
+    tab.setAttribute('aria-selected',String(selected));
+    panel.hidden=!selected;
+  }
+  const visible=name==='provider'&&window.ordaxHost?.hostMode!==true;
+  await window.ordax.setChatVisible(visible);
+  document.documentElement.dataset.ordaxView='app';
+  document.documentElement.dataset.ordaxRightPane=name;
+  if(window.matchMedia('(max-width:1024px)').matches)$('#contextRail').classList.add('open');
+  queueProviderBounds();
+}
+function persistWorkspaceNavigation({view,taskId=null,projectId,orchestratorId}={}) {
+  if(typeof window.ordax.setWorkspaceNavigation!=='function')return Promise.reject(new Error('workspace_navigation_unavailable'));
+  const navigation={
+    view,taskId:taskId||null,
+    projectId:projectId===undefined?(orchestrationUi?.getProjectId?.()||null):projectId,
+    orchestratorId:orchestratorId===undefined?(orchestrationUi?.getOrchestratorId?.()||null):orchestratorId
+  };
+  const write=workspaceNavigationWrite.catch(()=>{}).then(()=>window.ordax.setWorkspaceNavigation(navigation));
+  workspaceNavigationWrite=write;
+  return write;
+}
+// Provider WebContentsView and the OrdaX workspace remain side by side.
+async function showProviderPane(visible) {
+  return selectRightPane(visible?'provider':'context');
+}
+const providerViewportObserver=typeof ResizeObserver==='function'?new ResizeObserver(queueProviderBounds):null;
+providerViewportObserver?.observe($('#providerViewport'));
+window.addEventListener('resize',queueProviderBounds,{passive:true});
 function applyHostProviderLimit() {
   if (window.ordaxHost?.hostMode !== true) return false;
-  $('#providerText').textContent = 'ChatGPT indisponível no Host';
-  $('#providerDetail').textContent = 'Esta página ainda não tem um transporte suportado do ChatGPT Web.';
+  $('#providerText').textContent = hostChatGPTPlan.authorized?'ChatGPT Plan conectado':
+    hostChatGPTPlan.connected?'ChatGPT conectado; consentimento pendente':'ChatGPT não conectado ao OrdaX';
+  $('#providerDetail').textContent = hostChatGPTPlan.authorized
+    ?'O chat coordenador pode usar seu plano ChatGPT. As conversas de trabalho ainda não enviam mensagens por este Host.'
+    :hostChatGPTPlan.connected?'A conta está vinculada, mas o uso do plano não foi autorizado. Conecte novamente e aceite esse escopo.'
+    :'Abra Conectar IA e escolha Continuar com ChatGPT para autorizar o plano no navegador.';
   const sessionNote=$('.session-persistence-note');
-  if(sessionNote)sessionNote.textContent='O ChatGPT Web ainda não está conectado ao Host. O chat Groq não abre conversas no ChatGPT.';
+  if(sessionNote)sessionNote.textContent='A conta ChatGPT Plan é conectada pelo fluxo oficial do navegador; isso não vincula conversas existentes do ChatGPT Web.';
   const observerRow=$('.observer-row');
   if(observerRow)observerRow.classList.add('hidden');
   $('#login').hidden = true;
-  $('#providerDot').className = 'dot error';
-  $('#directMode').hidden = true;
+  $('#providerDot').className = hostChatGPTPlan.authorized?'dot ok':hostChatGPTPlan.connected?'dot':'dot error';
   return true;
+}
+function syncProviderLoginAction(status) {
+  const action=resolveProviderLoginAction(status,{hostMode:window.ordaxHost?.hostMode===true});
+  const button=$('#login');
+  button.hidden=action.hidden;
+  button.textContent=action.label;
+  button.setAttribute('aria-label',action.label);
+  button.title=action.label;
+  button.dataset.action=action.mode;
+  return action;
 }
 let observerMode = 'auto';
 let allTasks = [];
@@ -35,6 +134,7 @@ let scopedTaskIds = null;
 let orchestrationUi = null;
 let providerRefreshPending = false;
 let composeAvailability = { allowed:false, reason:'unverified' };
+let lastProviderStatus = null;
 function syncComposerAvailability() {
   // Editor stays enabled: local draft text is NOT a ChatGPT submission.
   const allowed = composeAvailability.allowed===true && Boolean(currentTaskId) && !submittingTaskId;
@@ -46,7 +146,12 @@ function syncComposerAvailability() {
   $('#composerConnection').dataset.state = composeAvailability.reason;
   $('#composerConnectionText').textContent =
     COMPOSE_STATUS_MESSAGES[composeAvailability.reason] || COMPOSE_STATUS_MESSAGES.unverified;
-  $('#composerLogin').hidden = hostMode || composeAvailability.reason==='ready' || composeAvailability.reason==='busy';
+  $('#composerLogin').hidden = hostMode || composeAvailability.reason==='ready' || composeAvailability.reason==='busy' ||
+    (composeAvailability.reason==='conversation_unavailable'&&lastProviderStatus?.auth_state==='session_present');
+  const canStartFresh=canStartFreshProviderChat({task:currentTask,status:lastProviderStatus,
+    availability:composeAvailability,activeRun:Boolean(submittingTaskId),hostMode});
+  $('#recoverProviderConversation').hidden=hostMode||!canStartFresh||composeAvailability.reason!=='conversation_unavailable';
+  $('#rotateConversation').disabled=!canStartFresh;
 }
 let navigationEpoch = 0;
 let submittingTaskId = null;
@@ -65,10 +170,10 @@ let historyLoading = false;
 function flushDraft() {
   clearTimeout(draftTimer);
   draftTimer = null;
-  if (!pendingDraft) return;
+  if (!pendingDraft) return Promise.resolve();
   const { taskId, content, revision } = pendingDraft;
   pendingDraft = null;
-  void window.ordax.setDraft(taskId, content, revision).then(() => {
+  return window.ordax.setDraft(taskId, content, revision).then(() => {
     if (currentTaskId === taskId && draftCache.get(taskId)?.revision === revision) {
       $('#draftState').textContent = content ? 'Rascunho local • salvo' : '';
     }
@@ -175,13 +280,23 @@ function friendlyError(error) {
     new_chat_composer_focus_failed: 'Não foi possível selecionar o editor da nova conversa do ChatGPT.',
     new_chat_composer_clear_failed: 'O ChatGPT recusou a limpeza do rascunho antigo na nova conversa. Nada foi enviado.',
     new_chat_composer_not_empty: 'O campo do ChatGPT não ficou vazio após criar a nova conversa. Nada foi enviado; verifique a página oficial.',
-    chatgpt_verification_required: 'O ChatGPT exige uma verificação oficial. Conclua-a no modo direto e tente novamente.',
+    chatgpt_verification_required: 'O ChatGPT exige uma verificação oficial. Conclua-a no painel do ChatGPT e tente novamente.',
     chatgpt_login_required: 'Entre na sua conta do ChatGPT neste Lab para continuar.',
     chatgpt_conversation_load_failed: 'A conversa do ChatGPT não carregou. Rascunho e histórico local preservados; nenhum envio ou recarga automática.',
-    chatgpt_session_not_observed: 'Não foi possível observar a sessão autenticada. Conclua o login no modo direto antes de enviar.',
+    chatgpt_session_not_observed: 'Não foi possível observar a sessão autenticada. Conclua o login no painel do ChatGPT antes de enviar.',
     chatgpt_provider_backend_access_restricted: 'O ChatGPT retornou HTTP 403 nas chamadas internas desta página. Nenhum envio foi feito; verifique o acesso pelo serviço oficial.',
     chatgpt_provider_rate_limited_observed: 'O ChatGPT apresentou ao menos uma resposta HTTP 429 nas requisições internas desta página. Não é confirmação da causa da falha. Nenhum reenvio ou nova tentativa automática.',
     task_submission_reconciliation_required: 'Envio anterior com entrega incerta. Verifique a conversa antes de enviar novamente nesta tarefa.',
+    continuation_context_unavailable_request_exceeds_budget: 'O pedido ocupa o espaço necessário para levar a memória a uma nova conversa. Nada foi enviado; reduza o pedido ou divida o trabalho para preservar a continuidade.',
+    continuation_context_critical_memory_omitted: 'Parte da memória crítica do projeto não cabe na nova conversa. Nada foi enviado; revise ou consolide os objetivos, restrições, decisões e pendências antes de continuar.',
+    task_handoff_snapshot_exceeds_limit: 'O pacote de continuidade ultrapassa o limite seguro. Nada foi enviado; reduza o material de referência sem apagar a memória canônica.',
+    task_handoff_omission_not_covered: 'O pacote não cobre todas as fontes omitidas do contexto curto. Nada foi enviado; revise o registro da tarefa.',
+    provider_context_file_input_unavailable: 'O ChatGPT não disponibilizou um campo confiável para anexar o pacote de continuidade. Nada foi enviado.',
+    provider_context_file_input_ambiguous: 'O ChatGPT apresentou mais de um campo possível para anexar o arquivo. O OrdaX interrompeu o envio por segurança.',
+    provider_context_attachment_integrity_failed: 'A integridade do pacote mudou antes do upload. Nada foi enviado.',
+    provider_context_attachment_upload_unconfirmed: 'O ChatGPT não confirmou visualmente o upload do pacote. Verifique o painel antes de continuar; nenhum reenvio automático foi feito.',
+    provider_context_attachment_upload_failed: 'O ChatGPT indicou falha ao carregar o pacote. Verifique o painel e remova qualquer anexo pendente antes de tentar novamente.',
+    provider_context_attachment_requires_new_conversation: 'O pacote de continuidade só pode ser anexado ao iniciar uma conversa GPT nova para a mesma tarefa.',
     orchestrator_provider_not_submitted: 'A mensagem não chegou ao ChatGPT. Corrija a sessão e envie novamente; nenhum reenvio automático foi feito.',
     provider_health_observation_timeout: 'Não foi possível confirmar o estado da sessão do ChatGPT. Nenhuma mensagem foi enviada; tente novamente quando a sessão estiver disponível.',
     provider_send_unconfirmed: 'Não foi possível confirmar a entrega ao ChatGPT. Confira a conversa antes de tentar novamente; não houve reenvio automático.',
@@ -191,6 +306,9 @@ function friendlyError(error) {
     send_confirmation_unknown: 'O campo do ChatGPT foi esvaziado, mas o envio não pôde ser confirmado. Confira a conversa no ChatGPT antes de tentar novamente; não houve reenvio automático.',
     send_control_unavailable: 'Não foi possível localizar um botão de envio utilizável no ChatGPT. Confira o estado da sessão oficial.',
     response_not_observed: 'O envio ocorreu, mas a resposta não pôde ser confirmada. A memória da tarefa foi preservada.',
+    chatgpt_response_retry_required: 'O envio foi confirmado, mas o ChatGPT exibiu “Tente novamente”. A resposta não foi concluída. Confira o painel e o histórico; o OrdaX não reenviará a mensagem automaticamente.',
+    chatgpt_response_error_observed: 'O envio foi confirmado, mas o ChatGPT exibiu um erro de resposta. Confira o painel e o histórico; o OrdaX não reenviará a mensagem automaticamente.',
+    chatgpt_response_in_progress: 'O ChatGPT ainda está gerando uma resposta. O rascunho permanece local e nenhum novo envio será feito.',
     google_login_button_not_found: 'O botão de login do Google não ficou disponível.',
     google_login_navigation_not_observed: 'O fluxo do Google não confirmou a navegação.',
     invalid_project_memory_category: 'Escolha uma categoria válida para a memória.',
@@ -268,7 +386,7 @@ function renderMemoryCandidates(task) {
       '<strong>' + esc(item.key) + '</strong></div>' +
       '<p>' + esc(item.content) + '</p>' +
       (item.conflict ? '<div class="memory-conflict-alert"><strong>⚠ Diverge da memória aprovada</strong><p>Atual: ' + esc(item.canonical_content) + '</p><p>Proposto: ' + esc(item.content) + '</p></div>' : '') +
-      '<small>Origem: mensagem da conversa · ' + esc(item.evidence) + '</small>' +
+      '<small>Origem: ' + (item.source_role === 'assistant' ? 'proposta do GPT, ainda não confirmada' : 'mensagem do usuário') + ' · ' + esc(item.evidence) + '</small>' +
       '<div class="memory-review-actions">' +
         (item.conflict ? '<button class="mini-primary" type="button" data-review="edit">Revisar conflito</button>' : '<button class="mini-primary" type="button" data-review="accept">Aprovar</button>') +
         '<button class="mini-secondary" type="button" data-review="edit">Editar</button>' +
@@ -464,7 +582,32 @@ function renderContext(task) {
     </div>`).join('') : '<div class="context-empty">A primeira conversa será registrada ao enviar uma mensagem.</div>';
 }
 
+function renderTaskNavigationStatus(task) {
+  const status=$('#linkedThreadStatus');
+  status.textContent='';
+  status.dataset.kind='';
+  status.dataset.reason='';
+  status.dataset.state='idle';
+  status.dataset.threadRendered='false';
+  const navigationStatus=taskNavigationStatus(task);
+  if(!navigationStatus)return;
+  status.dataset.kind=navigationStatus.kind;
+  status.dataset.reason=navigationStatus.reason;
+  status.dataset.state=navigationStatus.state;
+  status.dataset.threadRendered=navigationStatus.threadRendered;
+  status.textContent=navigationStatus.message;
+}
+
+function clearLinkedReplyRecovery() {
+  pendingReplyRecovery=null;
+  const panel=$('#linkedReplyRecovery');
+  if(panel){panel.classList.add('hidden');panel.open=false;}
+  const text=$('#linkedReplyRecoveryText');
+  if(text)text.textContent='';
+}
+
 async function openTask(id) {
+  clearLinkedReplyRecovery();
   orchestrationUi?.hide();
   document.body.classList.remove('orchestrator-focus','orchestrator-rail-open','orchestrator-api-settings');
   $('#contextRail').classList.remove('open');
@@ -491,20 +634,7 @@ async function openTask(id) {
   $('#taskCheckpoint').title = task.checkpoint || '';
   $('#taskId').textContent = task.id;
   $('#inspectLinkedThread').disabled = !task.chat_url;
-  $('#linkedThreadStatus').textContent = '';
-  $('#linkedThreadStatus').dataset.kind = '';
-  $('#linkedThreadStatus').dataset.reason = '';
-  $('#linkedThreadStatus').dataset.state = 'idle';
-  $('#linkedThreadStatus').dataset.threadRendered = 'false';
-  const navigationStatus = taskNavigationStatus(task);
-  if (navigationStatus) {
-    const status = $('#linkedThreadStatus');
-    status.dataset.kind = navigationStatus.kind;
-    status.dataset.reason = navigationStatus.reason;
-    status.dataset.state = navigationStatus.state;
-    status.dataset.threadRendered = navigationStatus.threadRendered;
-    status.textContent = navigationStatus.message;
-  }
+  renderTaskNavigationStatus(task);
   $('#workspaceId').textContent = workspace ? `sessão ${workspace.id.slice(-8)}` : '';
   renderHistory(task, { reset:true, scrollToLatest:true });
   renderContext(task);
@@ -522,11 +652,28 @@ async function openTask(id) {
     const checkpointVersion = capsule?.checkpoint?.version || 0;
     recovery.textContent = `Execução interrompida detectada. A memória v${checkpointVersion} e o histórico local foram preservados.`;
     recovery.classList.remove('hidden');
+  } else if (task.status === 'error' && task.latest_run?.status === 'failed') {
+    const run=task.latest_run;
+    if(run.context_attachment_state==='uploading'&&!run.submit_attempt_observed) {
+      recovery.textContent='O upload do pacote de continuidade não foi confirmado. Verifique o painel do ChatGPT e remova qualquer anexo pendente antes de decidir se pode reenviar.';
+    } else if(run.context_attachment_state==='confirmed'&&!run.submit_attempt_observed) {
+      recovery.textContent='O pacote foi carregado no ChatGPT, mas o pedido não teve tentativa de envio. Confira a conversa e remova o anexo pendente antes de enviar novamente.';
+    } else if(run.provider_delivery_state==='submitted') {
+      recovery.textContent=`O envio ao GPT foi confirmado, mas a resposta da última execução falhou. ${friendlyError(run.error)} Confira a conversa antes de continuar; o OrdaX não repetirá a mensagem.`;
+    } else if(run.provider_delivery_state==='uncertain' || run.submit_attempt_observed) {
+      recovery.textContent='A entrega da última mensagem não pôde ser confirmada. Verifique o ChatGPT antes de tentar novamente; o OrdaX preservou a tarefa e não repetirá o envio.';
+    } else {
+      recovery.textContent=`A última execução falhou antes de confirmar o envio. ${friendlyError(run.error)} O histórico e o rascunho local foram preservados.`;
+    }
+    recovery.classList.remove('hidden');
   } else {
     recovery.classList.add('hidden');
     recovery.textContent = '';
   }
   await loadTasks();
+  if(epoch!==navigationEpoch||currentTaskId!==id)return;
+  try {await persistWorkspaceNavigation({view:'task',taskId:id});}
+  catch {$('#orchestrationNotice').textContent='A conversa abriu, mas a seleção não pôde ser salva para o próximo início.';}
 }
 
 function toggleTaskRename(editing) {
@@ -575,23 +722,37 @@ async function createTask() {
   $('#prompt').focus();
 }
 
-async function rotateConversation() {
+async function rotateConversation(button=$('#rotateConversation')) {
   if (!currentTaskId) return;
-  const button = $('#rotateConversation');
+  if(!canStartFreshProviderChat({task:currentTask,status:lastProviderStatus,
+    availability:composeAvailability,activeRun:Boolean(submittingTaskId),hostMode:window.ordaxHost?.hostMode===true})) {
+    $('#providerDetail').textContent='A nova conversa só pode ser aberta com sessão observada e sem envio ou execução incertos.';
+    return;
+  }
   button.disabled = true;
-  button.textContent = 'Preparando…';
+  const originalLabel=button.textContent;
+  button.textContent = 'Abrindo…';
+  let rotated=false;
   try {
+    await flushDraft();
     const task = await window.ordax.rotateConversation(currentTaskId);
+    rotated=true;
     currentTask = task;
     await openTask(currentTaskId);
-    $('#recoveryBanner').textContent = 'Nova conversa interna preparada. Sua próxima mensagem abrirá um chat novo e receberá automaticamente a memória local desta tarefa.';
+    await window.ordax.home();
+    await refreshProvider();
+    $('#recoveryBanner').textContent = 'Conversa GPT nova aberta. A próxima mensagem continuará esta tarefa com o checkpoint e a memória local do OrdaX; nenhum envio foi feito nesta etapa.';
     $('#recoveryBanner').classList.remove('hidden');
     $('#prompt').focus();
   } catch (error) {
+    if(rotated) {
+      $('#recoveryBanner').textContent='A conversa GPT anterior foi arquivada. A tarefa, o rascunho e a memória local foram preservados, mas o OrdaX não confirmou a nova conversa. Verifique o painel do ChatGPT antes de enviar.';
+      $('#recoveryBanner').classList.remove('hidden');
+    }
     $('#providerDetail').textContent = friendlyError(error);
   } finally {
     button.disabled = false;
-    button.textContent = 'Preparar outra sessão interna';
+    button.textContent = originalLabel;
   }
 }
 
@@ -641,6 +802,13 @@ async function refreshProvider() {
   providerRefreshPending = true;
   try {
     const status = await window.ordax.providerStatus();
+    lastProviderStatus=status;
+    syncProviderLoginAction(status);
+    hostChatGPTPlan={connected:status.chatgpt_plan_connected===true,
+      authorized:status.chatgpt_plan_authorized===true,
+      secureStorageAvailable:status.chatgpt_plan_secure_storage===true,
+      email:status.chatgpt_plan_email||hostChatGPTPlan.email};
+    syncChatGPTPlanPanel();
     composeAvailability = providerComposeAvailability(status,{hostMode:window.ordaxHost?.hostMode===true});
     syncComposerAvailability();
     const verification = status.verification_required;
@@ -649,9 +817,19 @@ async function refreshProvider() {
     const sessionObserved = status.auth_state === 'session_present';
     const backendDenied = status.provider_access_problem === 'backend_http_403_observed';
     const backendRateLimited = status.provider_access_problem === 'backend_http_429_observed';
-    $('#providerText').textContent = verification ? 'ChatGPT • verificação necessária' : backendDenied ? 'ChatGPT • acesso recusado (403)' : backendRateLimited ? 'ChatGPT • limitação observada (429)' : status.active ? 'ChatGPT • gerando' : authenticating ? 'ChatGPT • autenticação' : sessionObserved && status.composer_ready ? 'ChatGPT • sessão detectada' : status.ready && status.composer_ready ? 'ChatGPT • tela disponível' : 'ChatGPT • aguardando';
-    $('#providerDetail').textContent = verification ? 'Conclua a verificação no modo direto' : backendDenied ? 'Requisições internas foram recusadas pelo ChatGPT (HTTP 403). O login informado não está sendo negado pelo Lab; confirme o acesso pelo serviço oficial. Nenhuma mensagem será reenviada.' : backendRateLimited ? 'Foi observado HTTP 429 em pelo menos uma requisição interna do ChatGPT. Isso não demonstra a causa da falha de conversa nem invalida o login. Não faremos novas tentativas automáticas.' : authenticating ? 'Conclua o login na própria página' : anonymous ? 'Faça login nesta sessão isolada do Lab' : sessionObserved ? 'Indicadores de sessão detectados; identidade não verificada' : 'Estado da sessão não observado; não é seguro enviar';
-    $('#providerDot').className = `dot ${verification || backendDenied || backendRateLimited ? 'error' : sessionObserved && status.composer_ready ? 'ok' : ''}`;
+    const responseFailure=status.provider_response_failure;
+    const responseGenerating=status.response_generation_active===true;
+    const responseFailed=responseFailure==='chatgpt_response_retry_required'||responseFailure==='chatgpt_response_error_observed';
+    const providerBusy=status.active===true||responseGenerating;
+    $('#providerText').textContent = responseFailure==='chatgpt_response_retry_required' ? 'ChatGPT • tente novamente' : responseFailure==='chatgpt_response_error_observed' ? 'ChatGPT • erro na resposta' : verification ? 'ChatGPT • verificação necessária' : backendDenied ? 'ChatGPT • acesso recusado (403)' : backendRateLimited ? 'ChatGPT • limitação observada (429)' : providerBusy ? 'ChatGPT • gerando' : authenticating ? 'ChatGPT • autenticação' : sessionObserved && status.composer_ready ? 'ChatGPT • sessão detectada' : status.ready && status.composer_ready ? 'ChatGPT • tela disponível' : 'ChatGPT • aguardando';
+    $('#providerDetail').textContent = responseFailure==='chatgpt_response_retry_required' ? 'O ChatGPT mostrou “Tente novamente”. O envio original foi confirmado, mas a resposta falhou. Inspecione a conversa; o OrdaX não repetirá a mensagem.' : responseFailure==='chatgpt_response_error_observed' ? 'O ChatGPT mostrou um erro explícito. O envio original foi confirmado, mas não há resposta concluída. Inspecione a conversa antes de continuar.' : responseGenerating ? 'O ChatGPT ainda está gerando uma resposta. Novos envios e navegação estão bloqueados.' : verification ? 'A página oficial exige uma verificação do navegador. Conclua ou recarregue no painel do ChatGPT; o OrdaX manterá os envios bloqueados até observar o composer.' : backendDenied ? 'Requisições internas foram recusadas pelo ChatGPT (HTTP 403). O login informado não está sendo negado pelo Lab; confirme o acesso pelo serviço oficial. Nenhuma mensagem será reenviada.' : backendRateLimited ? 'Foi observado HTTP 429 em pelo menos uma requisição interna do ChatGPT. Isso não demonstra a causa da falha de conversa nem invalida o login. Não faremos novas tentativas automáticas.' : authenticating ? 'Conclua o login na própria página' : anonymous ? 'Faça login nesta sessão isolada do Lab' : sessionObserved ? 'Indicadores de sessão detectados; identidade não verificada' : 'Estado da sessão não observado; não é seguro enviar';
+    $('#providerDot').className = `dot ${verification || backendDenied || backendRateLimited || responseFailed ? 'error' : sessionObserved && status.composer_ready ? 'ok' : ''}`;
+    $('#providerBack').disabled=status.can_go_back!==true||providerBusy;
+    $('#providerForward').disabled=status.can_go_forward!==true||providerBusy;
+    $('#providerReload').disabled=providerBusy;
+    $('#providerHome').disabled=providerBusy;
+    $('#providerViewportPlaceholder').hidden=status.connected===true&&status.ready===true;
+    $('#providerAddressText').textContent=authenticating?'ChatGPT · autenticação':sessionObserved?'ChatGPT · sessão observada':'ChatGPT · sessão isolada do OrdaX';
     if (status.page_state === 'conversation_load_failed') {
       $('#providerText').textContent = 'ChatGPT • conversa indisponível';
       $('#providerDetail').textContent = 'A página oficial não carregou a conversa. As tarefas e mensagens já salvas continuam disponíveis no OrdaX. Não houve recarga ou reenvio automático.';
@@ -663,9 +841,9 @@ async function refreshProvider() {
     observerMode = status.observer_mode || observerMode;
     if ($('#observerMode').value !== observerMode) $('#observerMode').value = observerMode;
     $('#observerHint').textContent = observerMode === 'beta' ? 'Beta observa a interface.' : observerMode === 'fast' ? `Fast${status.fast_observer_ready ? ' • rede observada' : ' • Beta de segurança'}` : `Automático${status.fast_observer_ready ? ' • Fast + Beta' : ' • Beta ativo'}`;
-    // Session heuristics must never hide the login view automatically.
-    // The operator returns from direct mode explicitly after signing in.
   } catch (error) {
+    lastProviderStatus=null;
+    syncProviderLoginAction(null);
     composeAvailability = providerComposeAvailability(null,{hostMode:window.ordaxHost?.hostMode===true});
     syncComposerAvailability();
     $('#providerText').textContent = 'ChatGPT • erro';
@@ -678,11 +856,12 @@ async function refreshProvider() {
 }
 
 function setContextOpen(open) {
-  const rail = $('#contextRail');
-  const toggle = $('#toggleContext');
-  const next = Boolean(open);
-  rail.classList.toggle('open', next);
-  toggle?.setAttribute('aria-expanded', String(next));
+  const rail=$('#contextRail');
+  const toggle=$('#toggleContext');
+  const next=Boolean(open);
+  if(next)void selectRightPane('context');
+  else rail.classList.remove('open');
+  toggle?.setAttribute('aria-expanded',String(next));
 }
 
 $('#newTask').addEventListener('click', createTask);
@@ -693,7 +872,8 @@ $('#cancelTaskRename').addEventListener('click', () => toggleTaskRename(false));
 $('#renameTaskForm').addEventListener('submit', saveTaskRename);
 document.querySelector('[data-create-task]')?.addEventListener('click', createTask);
 $('#taskSearch').addEventListener('input', renderTaskList);
-$('#rotateConversation').addEventListener('click', rotateConversation);
+$('#rotateConversation').addEventListener('click',()=>void rotateConversation());
+$('#recoverProviderConversation').addEventListener('click',()=>void rotateConversation($('#recoverProviderConversation')));
 $('#addMemoryItem').addEventListener('click', () => setMemoryEditor($('#memoryEditor').classList.contains('hidden')));
 $('#cancelMemoryItem').addEventListener('click', () => setMemoryEditor(false));
 $('#memoryEditor').addEventListener('submit', saveMemoryItem);
@@ -716,8 +896,8 @@ $('#scanMemoryCandidates').addEventListener('click', async () => {
     button.disabled = false;
   }
 });
-$('#toggleContext').addEventListener('click', () => setContextOpen(!$('#contextRail').classList.contains('open')));
-$('#closeContext').addEventListener('click', () => setContextOpen(false));
+$('#toggleContext').addEventListener('click',()=>setContextOpen(!$('#contextRail').classList.contains('open')));
+$('#closeContext').addEventListener('click',()=>void selectRightPane('provider'));
 window.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
   if (!$('#renameTaskForm').classList.contains('hidden')) { toggleTaskRename(false); return; }
@@ -738,15 +918,18 @@ $('#login').addEventListener('click', async () => {
   button.disabled = true;
   button.textContent = 'Abrindo…';
   try {
-    await setDirectModeVisible(true);
-    // Display the provider's official login page, allowing the person to
-    // choose their login method. Never click a third-party identity provider.
-    await window.ordax.login();
+    const action=resolveProviderLoginAction(await window.ordax.providerStatus(),{hostMode:false});
+    await showProviderPane(true);
+    if(action.mode==='login') {
+      // Display the official login page only when the provider reports an
+      // anonymous session. Never click a third-party identity provider.
+      await window.ordax.login();
+    }
   } catch (error) {
     $('#providerDetail').textContent = friendlyError(error);
   } finally {
     button.disabled = false;
-    button.textContent = 'Entrar';
+    button.textContent = 'Entrar no ChatGPT';
     await refreshProvider();
   }
 });
@@ -765,6 +948,7 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
   const taskId=currentTaskId;
   if (!taskId || !currentTask?.chat_url) return;
   const button=$('#inspectLinkedThread');
+  clearLinkedReplyRecovery();
   button.disabled=true;
   $('#linkedThreadStatus').dataset.state = 'pending';
   $('#linkedThreadStatus').dataset.kind = '';
@@ -786,7 +970,7 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
       provider_access_restricted_observed:'O ChatGPT apresentou restrição de acesso (HTTP 403 observado). Inspeção suspensa, sem nova navegação nem reenvio.',
       provider_login_required:'Entre no ChatGPT pela página oficial antes de verificar a conversa. Rascunho preservado.',
       provider_authentication_in_progress:'Conclua a autenticação no ChatGPT antes da inspeção. Nenhum reenvio.',
-      provider_session_not_observed:'Sessão não comprovada para abrir outra conversa. Faça login pelo modo direto.',
+      provider_session_not_observed:'Sessão não comprovada para abrir outra conversa. Faça login no painel do ChatGPT.',
       provider_verification_required:'Verificação do ChatGPT pendente. Inspeção suspensa, sem reenvio.',
       provider_conversation_load_failed:'O ChatGPT exibiu erro ao carregar esta conversa. Histórico local preservado; não será feita nova navegação nem reenvio.',
       provider_health_unavailable:'Não foi possível observar a sessão. Inspeção suspensa, sem reenvio.',
@@ -813,6 +997,14 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
         (result?.kind==='message_candidate'
           ? 'Mensagem da tarefa localizada, mas resposta ainda não comprovada. Nenhum reenvio.'
           : 'Não foi possível comprovar a conversa e a resposta da tarefa. Nenhum reenvio.');
+    if(attributable&&typeof result?.recoveryPreview?.text==='string'&&
+       /^[a-f0-9]{64}$/.test(result.recoveryPreview.responseSha256||'')) {
+      pendingReplyRecovery={taskId,responseSha256:result.recoveryPreview.responseSha256};
+      $('#linkedReplyRecoveryText').textContent=result.recoveryPreview.text;
+      $('#linkedReplyRecovery').classList.remove('hidden');
+      $('#linkedReplyRecovery').open=true;
+      $('#linkedThreadStatus').textContent='A resposta completa foi localizada após a falha local. Confira o texto abaixo; nada foi importado ainda.';
+    }
   } catch (error) {
     if (currentTaskId === taskId) {
       $('#linkedThreadStatus').dataset.kind = 'unavailable';
@@ -826,15 +1018,68 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
   }
 });
 
-$('#directMode').addEventListener('click', async () => {
-  const nextVisible = !directMode;
+$('#confirmLinkedReplyRecovery').addEventListener('click',async()=>{
+  const pending=pendingReplyRecovery;
+  if(!pending||pending.taskId!==currentTaskId)return;
+  const button=$('#confirmLinkedReplyRecovery');
+  button.disabled=true;
+  $('#linkedThreadStatus').dataset.state='pending';
+  $('#linkedThreadStatus').textContent='Revalidando a conversa do ChatGPT antes de gravar…';
   try {
-    await setDirectModeVisible(nextVisible);
-    if (nextVisible && currentTaskId) await openTask(currentTaskId);
-  } catch (error) {
-    $('#providerDetail').textContent = friendlyError(error);
+    const result=await window.ordax.reconcileLinkedReply(pending.taskId,pending.responseSha256);
+    if(currentTaskId!==pending.taskId)return;
+    if(result?.reconciled===true||result?.reason==='already_reconciled') {
+      clearLinkedReplyRecovery();
+      const task=await window.ordax.getTask(pending.taskId);
+      if(currentTaskId!==pending.taskId||!task)return;
+      currentTask=task;
+      const version=task.checkpoint_record?.version||0;
+      const total=task.continuation?.total_messages||task.messages.length;
+      $('#taskCheckpoint').textContent=version?`Memória local v${version} • ${plural(total,'mensagem','mensagens')}`:'Memória local pronta para começar.';
+      $('#taskCheckpoint').title=task.checkpoint||'';
+      renderHistory(task,{reset:true,scrollToLatest:true});
+      renderContext(task);
+      renderTaskNavigationStatus(task);
+      $('#recoveryBanner').classList.add('hidden');
+      $('#recoveryBanner').textContent='';
+      $('#linkedThreadStatus').dataset.state='complete';
+      $('#linkedThreadStatus').textContent=result?.reconciled
+        ?'Resposta revalidada e importada uma única vez no histórico local.'
+        :'Essa resposta já estava reconciliada no histórico local.';
+      await loadTasks();
+    } else {
+      $('#linkedThreadStatus').dataset.state='complete';
+      $('#linkedThreadStatus').textContent=result?.reason==='provider_reply_candidate_changed'
+        ?'A resposta mudou desde a pré-visualização. Verifique a conversa novamente antes de importar.'
+        :'A resposta já não pode ser reconciliada com segurança. O histórico local foi preservado.';
+      clearLinkedReplyRecovery();
+    }
+  } catch(error) {
+    if(currentTaskId===pending.taskId) {
+      $('#linkedThreadStatus').dataset.state='error';
+      $('#linkedThreadStatus').textContent='Não foi possível reconciliar a resposta: '+friendlyError(error);
+    }
+  } finally {
+    if(currentTaskId===pending.taskId)button.disabled=false;
   }
 });
+
+document.querySelectorAll('.right-pane-tab').forEach(tab=>tab.addEventListener('click',()=>{
+  void selectRightPane(tab.dataset.pane).catch(error=>{$('#providerDetail').textContent=friendlyError(error);});
+}));
+$('#providerPaneLogin').addEventListener('click',()=>$('#login').click());
+$('#providerClose').addEventListener('click',()=>void selectRightPane('context'));
+const providerAction=async(button,action)=>{
+  if(button.disabled)return;
+  button.disabled=true;
+  try {await action();}
+  catch(error){$('#providerDetail').textContent=friendlyError(error);}
+  finally {await refreshProvider();}
+};
+$('#providerBack').addEventListener('click',()=>void providerAction($('#providerBack'),()=>window.ordax.providerNavigate('back')));
+$('#providerForward').addEventListener('click',()=>void providerAction($('#providerForward'),()=>window.ordax.providerNavigate('forward')));
+$('#providerReload').addEventListener('click',()=>void providerAction($('#providerReload'),()=>window.ordax.reload()));
+$('#providerHome').addEventListener('click',()=>void providerAction($('#providerHome'),()=>window.ordax.home()));
 
 async function submitTaskMessage(contentOverride = null) {
   if (!currentTaskId) return false;
@@ -930,11 +1175,21 @@ window.ordax.onTaskStream(payload => {
   if (payload.taskId !== currentTaskId) return;
   updateLiveRun(payload);
 });
+window.ordax.onTaskProviderNavigation(payload=>{
+  if(!payload||payload.taskId!==currentTaskId||!currentTask)return;
+  currentTask={...currentTask,provider_navigation:payload.provider_navigation,
+    ...(payload.provider_navigation_reason?{provider_navigation_reason:payload.provider_navigation_reason}:{})};
+  renderTaskNavigationStatus(currentTask);
+});
 
-await setDirectModeVisible(false);
+await selectRightPane('provider');
 syncComposerAvailability(); // no send until session observed
 workspace = await window.ordax.workspace();
-orchestrationUi=mountOrchestratorUi({api:window.ordax,
+orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRightPane,
+  onNavigationChange:async navigation=>{
+    try {return await persistWorkspaceNavigation(navigation);}
+    catch {$('#orchestrationNotice').textContent='A navegação atual não foi salva para o próximo início.';return false;}
+  },
   canStartMission:()=>composeAvailability.allowed===true&&!submittingTaskId,
   onStartMission:async({taskId,mission})=>{
     await loadTasks();await openTask(taskId);
@@ -958,15 +1213,78 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,
   onShowCoordinator:async()=>{
     document.body.classList.add('orchestrator-focus');
     $('#orchestratorWorkRail').hidden=false;
-    flushDraft();await setDirectModeVisible(false);
+    flushDraft();await selectRightPane('provider');
     currentTaskId=null;currentTask=null;navigationEpoch++;syncComposerAvailability();
     $('#taskPanel').classList.add('hidden');$('#empty').classList.add('hidden');
   }
 });
-await orchestrationUi.start();
+const savedNavigation=workspace?.metadata?.navigation;
+await orchestrationUi.start({restoreNavigation:savedNavigation});
 await loadTasks();
+if(savedNavigation?.schema==='ordax.workspace-navigation.v1'&&savedNavigation.view==='task'&&typeof savedNavigation.taskId==='string') {
+  const task=allTasks.find(item=>item.id===savedNavigation.taskId);
+  const inScope=task&&(scopedTaskIds?scopedTaskIds.has(task.id):!task.lab_binding);
+  if(inScope)await openTask(task.id);
+  else if(orchestrationUi.hasOrchestrator?.())await orchestrationUi.showCoordinator();
+  else await persistWorkspaceNavigation({view:'home',taskId:null});
+}
 refreshProvider();
 setInterval(refreshProvider, 1500);
+
+function syncChatGPTPlanPanel() {
+  const panel=document.getElementById('chatgptPlanSettings');
+  if(window.ordaxHost?.hostMode!==true) {
+    if(panel)panel.hidden=true;
+    return;
+  }
+  if(panel)panel.hidden=false;
+  const state=document.getElementById('chatgptPlanState');
+  const connect=document.getElementById('chatgptPlanConnect');
+  const disconnect=document.getElementById('chatgptPlanDisconnect');
+  if(!state||!connect||!disconnect)return;
+  state.textContent=hostChatGPTPlan.authorized
+    ?`ChatGPT Plan autorizado${hostChatGPTPlan.email?` para ${hostChatGPTPlan.email}`:''}. A autorização fica no cofre seguro do Windows e é retomada ao reabrir enquanto continuar válida.`
+    :hostChatGPTPlan.connected
+      ?'Conta conectada, mas o uso do plano ChatGPT não foi autorizado. Reconecte e conceda a permissão de inferência.'
+      :hostChatGPTPlan.secureStorageAvailable===false
+        ?'O cofre seguro de credenciais deste dispositivo não está disponível. O app não salvará tokens em texto puro.'
+        :'Nenhuma conta ChatGPT conectada.';
+  connect.textContent=hostChatGPTPlan.connected?'Reconectar / autorizar ChatGPT':'Continuar com ChatGPT';
+  connect.disabled=hostChatGPTPlan.secureStorageAvailable===false;
+  disconnect.hidden=!hostChatGPTPlan.connected;
+}
+document.getElementById('chatgptPlanConnect').addEventListener('click',async event=>{
+  const button=event.currentTarget;
+  button.disabled=true;
+  document.getElementById('chatgptPlanState').textContent='Abrindo o login oficial do ChatGPT nesta aba…';
+  try {await window.ordax.chatgptPlanLogin();}
+  catch(error) {
+    document.getElementById('chatgptPlanState').textContent=error?.code==='chatgpt_secure_storage_unavailable'
+      ?'O cofre seguro do Windows não está disponível; o login foi bloqueado para proteger os tokens.'
+      :'Não foi possível iniciar o login oficial. Confira se o Host local ainda está ativo e tente novamente.';
+    button.disabled=false;
+  }
+});
+document.getElementById('chatgptPlanDisconnect').addEventListener('click',async event=>{
+  if(!window.confirm('Desconectar a conta ChatGPT deste perfil do OrdaX?'))return;
+  const button=event.currentTarget;button.disabled=true;
+  try {
+    await window.ordax.chatgptPlanDisconnect();
+    hostChatGPTPlan={connected:false,authorized:false,secureStorageAvailable:true,email:null};
+    syncChatGPTPlanPanel();applyHostProviderLimit();
+    await orchestrationUi?.refreshStatus?.();
+  } catch {document.getElementById('chatgptPlanState').textContent='Não foi possível remover os tokens do cofre seguro.';}
+  finally {button.disabled=false;}
+});
+const chatgptCallback=new URLSearchParams(location.search).get('chatgpt');
+if(chatgptCallback) {
+  const callbackMessages={connected:'ChatGPT Plan autorizado. Ative o chat do coordenador para começar a conversar.',
+    consent:'Conta conectada; a permissão de uso do plano ChatGPT ainda precisa ser concedida.',
+    denied:'O login foi cancelado; nenhuma credencial foi substituída.',
+    error:'O login não foi concluído. Verifique a conexão e tente novamente.'};
+  document.getElementById('orchestrationNotice').textContent=callbackMessages[chatgptCallback]||'';
+  history.replaceState(null,'',location.pathname+location.hash);
+}
 
 // LAB-ONLY supervisor UX. Browser content never supplies execution authority.
 let labProposal = null;
@@ -979,54 +1297,13 @@ const labInspectButton = document.getElementById("labSupervisorInspect");
 const labApproveButton = document.getElementById("labSupervisorApprove");
 const labSendButton = document.getElementById("labSupervisorSend");
 
-// A role is a local Task preference; changing it does NOT call a model or
-// change the embedded ChatGPT conversation. Keep the existing Task/Store.
-const labRoleSelect=document.getElementById('labSupervisorRole');
-const labRoleDescription=document.getElementById('labRoleDescription');
-const labObjective=document.getElementById('labSupervisorObjective');
-labRoleSelect.replaceChildren(...SUPERVISOR_ROLES.map(role=>{
-  const option=document.createElement('option');
-  option.value=role.id; option.textContent=role.name;
-  return option;
-}));
-function showSupervisorRole(task) {
-  const role=supervisorRole(task?.supervisor_role);
-  labRoleSelect.disabled=!task;
-  labRoleSelect.value=role.id;
-  labRoleDescription.textContent=task
-    ? role.description+' Papel salvo somente nesta tarefa; nenhuma IA iniciada.'
-    : 'Selecione uma tarefa antes de escolher seu papel.';
-  // This is a *preview objective*, not a provider message or persisted Run.
-  labObjective.value=task?role.draft:'';
-}
-labRoleSelect.addEventListener('change',async()=>{
-  const taskId=currentTaskId;
-  if(!taskId){showSupervisorRole(null);return;}
-  const role=labRoleSelect.value;
-  labRoleSelect.disabled=true;
-  try{
-    const saved=await window.ordax.setTaskSupervisorRole(taskId,role);
-    if(currentTaskId===taskId){
-      currentTask=saved;
-      showSupervisorRole(saved);
-      await loadTasks();
-    }
-  }catch{
-    if(currentTaskId===taskId){
-      showSupervisorRole(currentTask);
-      labRoleDescription.textContent='Não foi possível salvar o papel da tarefa.';
-    }
-  }finally{
-    if(currentTaskId===taskId)labRoleSelect.disabled=false;
-  }
-});
 const labKeyForm=document.getElementById('labSupervisorKeyForm');
 const labKeyInput=document.getElementById('labSupervisorKeyInput');
 const labKeySave=document.getElementById('labSupervisorKeySave');
 const labKeyRemove=document.getElementById('labSupervisorKeyRemove');
 const labKeyState=document.getElementById('labSupervisorKeyState');
 let labStatus=await window.ordax.supervisorStatus().catch(()=>({enabled:false,configured:false,secureStorageAvailable:false}));
-const canConfigureLabKey=()=>labStatus.secureStorageAvailable===true||labStatus.hostEphemeralSecret===true;
+const canConfigureLabKey=()=>labStatus.secureStorageAvailable===true;
 function showSupervisorStatus() {
   document.getElementById('brandMode').textContent=labStatus.environment==='node_host'
     ? 'Orchestrator • Host Node de desenvolvimento'
@@ -1040,19 +1317,15 @@ function showSupervisorStatus() {
   labPlanButton.disabled=!labStatus.enabled;
   const available=canConfigureLabKey();
   labKeySave.disabled=!available;
-  labKeySave.textContent=labStatus.hostEphemeralSecret===true?'Usar chave neste host':'Salvar chave no Windows';
+  labKeySave.textContent='Salvar chave no cofre do Windows';
   labKeyRemove.disabled=!labStatus.keySaved;
-  labKeyRemove.textContent=labStatus.hostEphemeralSecret===true?'Remover da memória':'Remover chave';
-  labKeyState.textContent=labStatus.hostEphemeralSecret===true
-    ? labStatus.configured
-      ? 'Chave disponível somente na memória deste host. Ela será removida quando o host encerrar.'
-      : 'O host não persiste a chave. Ao configurar, ela fica somente na memória até o host encerrar.'
-    : !available
-    ? 'Proteção local do Windows indisponível: a chave não será armazenada.'
+  labKeyRemove.textContent='Remover chave';
+  labKeyState.textContent=!available
+    ? 'Cofre seguro do Windows indisponível: a chave não será armazenada.'
     : labStatus.keySaved
-      ? 'Chave Groq salva e protegida localmente; conexão ainda não testada.'
-      : labStatus.configured
-        ? 'Chave definida pelo ambiente; não é exibida aqui. Nenhuma conexão foi testada.'
+      ? 'Chave Groq salva no cofre seguro do Windows e recuperada ao reabrir o app; conexão ainda não testada.'
+      : labStatus.credentialSource==='environment'
+        ? 'Chave definida pelo ambiente; não é exibida nem persistida pelo app. Nenhuma conexão foi testada.'
         : 'Nenhuma chave cadastrada. Salvar não ativa o supervisor.';
 }
 showSupervisorStatus();
@@ -1080,7 +1353,7 @@ labKeyForm.addEventListener('submit',async event=>{
     labKeyInput.value='';
     labKeyState.textContent=error?.message?.includes('supervisor_key_invalid_format')
       ? 'Formato inválido. Use uma chave Groq iniciada por gsk_.'
-      : 'Não foi possível proteger a chave neste dispositivo.';
+      : 'O cofre seguro do Windows não aceitou a chave; ela não foi salva.';
   }finally{labKeySave.disabled=!canConfigureLabKey();}
 });
 labKeyRemove.addEventListener('click',async()=>{

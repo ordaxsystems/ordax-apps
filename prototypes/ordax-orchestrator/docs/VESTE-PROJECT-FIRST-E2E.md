@@ -49,6 +49,34 @@ O registro histórico `docs/audits/ORCHESTRATOR-VESTE-REAL-2026-10-21.md` compro
 - A tela informa GPT indisponível, nenhum GitHub vinculado, workspace local indisponível e supervisor de 24 h não conectado. Nenhum arquivo foi criado/lido, nenhum site foi servido/testado e nenhuma conversa GPT foi aberta.
 - Testes da implementação: nove testes Host e 24 contratos desktop passaram; `npm run check` passou. O teste E2E completo da tabela continua bloqueado pela falta dos owners/transports reais e ainda não foi satisfeito.
 
+## 3.2. E2E conduzido pela UI no Host Node — 2026-10-24
+
+- Iniciado `npm start` na branch de desenvolvimento com `ORDAX_ORCHESTRATOR_HOST_PROFILE_DIR` apontando para um perfil temporário vazio. A UI abriu no navegador do Codex; nenhum `.exe`, instalação principal ou perfil anterior foi usado.
+- Pela ação **Nova missão**, a interface criou o projeto `VESTE`, o orquestrador e a primeira conversa, salvando a missão como rascunho porque o transporte GPT estava indisponível.
+- Pela UI, foi criada a frente **Catálogo VESTE** e digitado o rascunho de catálogo/carrinho. O estado passou de `Rascunho local • salvando…` para `Rascunho local • salvo`.
+- Recarregar a página recuperou a frente e o texto. Encerrar e reiniciar o processo Node com o mesmo perfil recuperou novamente projeto, frente e rascunho. O botão **Enviar** permaneceu desabilitado; nenhuma chamada foi enviada ao GPT ou Groq.
+- A tela mostrou `GPT Web · sem transporte`, `Groq · sem chave`, `GitHub · sem leitura autenticada`, `Runtime · workspace sem grant` e `24 h · supervisor ausente`. Nenhum arquivo do site foi criado ou validado; esta prova cobre somente a UI, o Store e a recuperação do Host.
+- O E2E de aceitação VESTE continua bloqueado: não houve leitura remota autenticada, execução de modelo, criação de arquivos, teste funcional do site, detecção de erros do site ou retomada de execução autônoma.
+
+## 3.3. Continuidade real ChatGPT Web no Electron staged — 2026-10-25
+
+- Prova separada do aceite VESTE: Electron de desenvolvimento da worktree, perfil candidato `candidate-userdata-v0.2.0-alpha.19`, sessão GPT Web já autenticada pelo usuário; a instalação principal e os dados Flow/Grátis ficaram fora do teste.
+- `live-ui-continuity-smoke.cjs` criou um Task sem projeto, observou uma resposta real do GPT, girou a conversa pelo controle da UI e enviou uma pergunta de recuperação em um novo segmento. O GPT respondeu com o marcador da primeira interação: `passed=true`; duas conversas no mesmo Task, uma arquivada, uma ativa, checkpoint de contexto v1 e duas mensagens de usuário + duas do assistente.
+- Após encerramento normal e reinício no mesmo perfil, `session_present` e compositor pronto foram observados. A UI reabriu o Task e mostrou os mesmos quatro registros; SQLite `quick_check=ok`, Task `ready`, nenhuma mensagem nova após o reinício, checkpoint final v2.
+- `npm run validate`: 471 testes aprovados, 0 falhas. A seleção de alvo E2E agora ignora o renderer não inicializado, escolhe o shell App inicializado/visível e rejeita mais de uma janela App visível. A criação de janela Electron é single-flight; após reabrir o candidato foi observada uma janela.
+- Limites: o diagnóstico não identifica a conta (`authenticated:not_verified`); não foi feita troca real de conta. Este teste não criou projeto VESTE, não leu GitHub, não usou Runtime/Platform, não criou nem validou arquivos/site e não comprova execução headless/24 h. O gate dos itens 1–3 e da tabela VESTE permanece bloqueado sem grants/capabilities reais.
+
+## 3.4. Recuperação multi-fonte após rotação GPT Web — 2026-10-25
+
+O smoke `scripts/live-ui-context-packet-smoke.cjs` passou no Electron de desenvolvimento `0.2.0-alpha.19`, com perfil staged isolado e sessão ChatGPT Web preservada. O cenário criou uma Task nova no domínio de texto da loja VESTE, completou nove turnos reais numa conversa e um pedido final numa segunda conversa.
+
+- Gabarito independente: 10 mensagens de usuário + 10 respostas, primeira conversa arquivada com 9 turnos, segunda ativa com 1, duas conversas reais, Task `ready`, checkpoint v9 e `PRAGMA quick_check=ok`.
+- O segredo de teste existia somente na memória canônica; o identificador aleatório estava apenas na primeira mensagem; um nonce independente estava somente no pedido final. O GPT recuperou o identificador, respondeu às contas do pedido e do estoque, usou a paleta corrigida e se absteve para a altura sem fonte. A resposta foi comparada com o gabarito por código, não aprovada por texto livre.
+- O manifesto registrou hash de prompt/contexto, IDs de memória e mensagens, checkpoint, recibo de provider e escopo da Task. De dez mensagens fora da janela recente, quatro foram recuperadas por relevância e seis foram explicitamente omitidas. Contexto enviado: 2.952 caracteres; `attachmentUseful=false`; nenhum arquivo foi anexado.
+- `npm run validate`: 508/508 testes; o smoke live retornou `passed=true`. Task: `task_d97a6491-f3be-4388-b6ea-bb8489129da9`.
+
+Este gate comprova continuidade inline multi-fonte entre conversas GPT neste perfil de desenvolvimento. Não comprova criação de projeto/arquivos/site VESTE, upload Markdown, troca de conta, GitHub, grants Runtime/Platform ou execução 24 h. O aceite da tabela principal permanece pendente.
+
 ## 4. Cenários negativos obrigatórios
 
 - Provider demora, página exibe “tente novamente”, histórico some, response partial ou entrega uncertain: reconciliar sem replay automático e, se necessário, continuar em frente distinta com handoff sem duplicar efeito.

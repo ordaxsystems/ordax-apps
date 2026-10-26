@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
+import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 
 const workerPreload = fs.readFileSync(
   fileURLToPath(new URL('../desktop/worker-preload.cjs', import.meta.url)), 'utf8'
 );
 
-function observe({ generating, previous = true, wrapped = false }) {
-  const markdown = { innerText:'RESPOSTA_NOVA_PARCIAL', querySelectorAll:() => [] };
+function observe({ generating, previous = true, wrapped = false, expandableUser = false }) {
+  const markdown = { innerText:'RESPOSTA_NOVA_PARCIAL', querySelectorAll:() => [], querySelector:() => null,
+    getAttribute:() => null, hasAttribute:() => false, contains:node=>node===markdown };
   const previousNode = {
     innerText:'RESPOSTA_ANTERIOR',
     contains:node => wrapped && node === markdown,
@@ -17,7 +19,11 @@ function observe({ generating, previous = true, wrapped = false }) {
     querySelector:() => null, querySelectorAll:() => [],
     hasAttribute:() => false
   };
-  const userNode = { innerText:'Pergunta atual' };
+  const expandButton = { innerText:'Mostrar mais', textContent:'Mostrar mais', getAttribute:() => null };
+  const userNode = {
+    innerText:expandableUser ? 'Pergunta atual\n…\nMostrar mais' : 'Pergunta atual',
+    querySelectorAll:selector => selector.includes('button') && expandableUser ? [expandButton] : []
+  };
   const document = {
     readyState:'loading',
     querySelectorAll:selector => {
@@ -33,8 +39,9 @@ function observe({ generating, previous = true, wrapped = false }) {
     location:{ href:'https://chatgpt.com/c/test' },
     window:{ addEventListener:() => {} },
     require:name => {
-      if (name !== 'electron') throw new Error('unexpected_dependency');
-      return { ipcRenderer:{ send() {} } };
+      if (name === 'electron') return { ipcRenderer:{ send() {} } };
+      if (name === '../src/provider-dom-selectors.cjs') return providerDomSelectors;
+      throw new Error('unexpected_dependency');
     },
     setTimeout:() => 0, clearTimeout() {},
     MutationObserver:class { observe() {} disconnect() {} },
@@ -75,4 +82,29 @@ test('Beta observes provisional markdown even before the first final assistant w
   assert.equal(state.assistantCount, 1);
   assert.equal(state.text, 'RESPOSTA_NOVA_PARCIAL');
   assert.equal(state.messageId, '');
+});
+
+test('Beta identifies the provider expand control without changing the submitted user text', () => {
+  const state = observe({ generating:false, expandableUser:true });
+  assert.equal(state.latestUserText, 'Pergunta atual\n…\nMostrar mais');
+  assert.equal(state.latestUserExpandControlPresent, true);
+});
+
+test('Beta observes current ChatGPT role-marked user bubbles and assistant Markdown nodes',()=>{
+  const markdown={innerText:'RESPOSTA_NOVA',querySelectorAll:()=>[],querySelector:()=>null,
+    getAttribute:()=>null,hasAttribute:()=>false,contains:node=>node===markdown};
+  const user={innerText:'PERGUNTA_ATUAL',querySelectorAll:()=>[]};
+  const document={readyState:'complete',querySelectorAll:selector=>{
+    if(selector==='[data-markdown-text-style="assistant-message"]')return [markdown];
+    if(selector==='[class~="bg-user-message"]')return [user];
+    return [];
+  },querySelector:()=>null};
+  const sandbox={document,location:{href:'https://chatgpt.com/c/current'},window:{addEventListener(){}},
+    require:name=>name==='electron'?{ipcRenderer:{send(){}}}:name==='../src/provider-dom-selectors.cjs'?providerDomSelectors:(()=>{throw new Error('unexpected_dependency')})(),
+    setTimeout:()=>0,clearTimeout(){},MutationObserver:class{observe(){}disconnect(){}},Date};
+  vm.runInNewContext(workerPreload+'\n;globalThis.testSnapshot=snapshot;',sandbox);
+  const state=sandbox.testSnapshot();
+  assert.equal(state.mode,'direct');
+  assert.equal(state.text,'RESPOSTA_NOVA');
+  assert.equal(state.latestUserText,'PERGUNTA_ATUAL');
 });

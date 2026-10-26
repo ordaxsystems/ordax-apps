@@ -641,7 +641,7 @@ export class OrchestratorService {
           this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
             ...(proposalActionId?{proposalActionId}:{}),
-            proposalsExecuted:0,provider:'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
+            proposalsExecuted:0,provider:reply.provider||'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
               messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})});
         });
       }
@@ -664,7 +664,7 @@ export class OrchestratorService {
       const notSubmitted=isWorkSend&&error?.providerDeliveryState==='not_submitted';
       const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(error?.providerFailureCode||''))
         ?String(error.providerFailureCode):'provider_send_unconfirmed';
-      const coordinatorCode=!isWorkSend&&/^groq_[a-z0-9_]{1,64}$/.test(String(error?.orchestratorFailureCode||''))
+      const coordinatorCode=!isWorkSend&&/^(?:groq|chatgpt)_[a-z0-9_]{1,64}$/.test(String(error?.orchestratorFailureCode||''))
         ?String(error.orchestratorFailureCode):null;
       const coordinatorOutcome=!isWorkSend&&['rejected','response_invalid'].includes(error?.orchestratorRequestOutcome)
         ?error.orchestratorRequestOutcome:null;

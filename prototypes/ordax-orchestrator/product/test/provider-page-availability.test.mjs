@@ -35,6 +35,16 @@ test('English unavailable conversation is recognized without guessing from gener
   assert.equal(classifyProviderPageAvailability({body:copy,messageNodes:0}).page_state,'unknown');
  }
 });
+test('browser verification challenge is explicit only when it blocks a fresh page without a composer',()=>{
+ const status=classifyProviderPageAvailability({messageNodes:0,composerPresent:false,verificationAlert:true});
+ assert.deepEqual(status,{page_state:'browser_verification_required',history_unavailable:false});
+ assert.deepEqual(classifyProviderPageAvailability({messageNodes:2,composerPresent:true,verificationAlert:true}),
+   {page_state:'unknown',history_unavailable:false});
+ assert.deepEqual(classifyProviderPageAvailability({messageNodes:0,composerPresent:true,verificationAlert:true}),
+   {page_state:'unknown',history_unavailable:false});
+ assert.deepEqual(providerComposeAvailability({...baseHealth,...status,verification_required:true}),
+   {allowed:false,reason:'verification'});
+});
 test('provider send and renderer are both blocked before creating a Run',()=>{
  const health={...baseHealth,page_state:'conversation_load_failed'};
  assert.throws(()=>assertProviderSendReadiness(health),/chatgpt_conversation_load_failed/);
@@ -77,7 +87,7 @@ test('real worker obtains only bounded diagnostic text and strips it before IPC'
 });
 
 test('same-url provider navigation never implicitly calls loadURL on missing composer',()=>{
- const worker=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8');
+ const worker=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
  const start=worker.indexOf('  async #safeLoad(');
  const end=worker.indexOf('  async #assistantSnapshot()',start);
  assert.ok(start>=0&&end>start);
@@ -91,12 +101,21 @@ test('same-url provider navigation never implicitly calls loadURL on missing com
  assert.doesNotMatch(reuse,/\.loadURL\(|\.reload\(/);
 });
 test('manual provider reload is rejected while a Run or worker is active',()=>{
- const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
+ const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+ const worker=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8').replace(/\r\n/g,'\n');
  const start=main.indexOf("registerUiHandler('ordax:provider:reload'");
  const end=main.indexOf("registerUiHandler('ordax:chat:visible'",start);
  assert.ok(start>=0&&end>start);
  const route=main.slice(start,end);
  assert.match(route,/if \(liveRun \|\| worker\.active\) throw new Error\('provider_reload_during_run_blocked'\)/);
- assert.match(route,/worker\.view\.webContents\.reload\(\)/);
- assert.ok(route.indexOf('provider_reload_during_run_blocked')<route.indexOf('webContents.reload()'));
+ assert.match(route,/worker\.reloadCurrentPage\(\)/);
+ assert.ok(route.indexOf('provider_reload_during_run_blocked')<route.indexOf('worker.reloadCurrentPage()'));
+ const reloadStart=worker.indexOf('  async reloadCurrentPage()');
+ const reloadEnd=worker.indexOf('  async health()',reloadStart);
+ assert.ok(reloadStart>=0&&reloadEnd>reloadStart);
+ const reload=worker.slice(reloadStart,reloadEnd);
+ assert.match(reload,/if\(this\.active\)throw new Error\('provider_reload_during_run_blocked'\)/);
+ assert.match(reload,/await this\.#assertManualNavigationSafe\(\)/);
+ assert.match(reload,/this\.view\.webContents\.reload\(\)/);
+ assert.ok(reload.indexOf('provider_reload_during_run_blocked')<reload.indexOf('this.view.webContents.reload()'));
 });

@@ -10,6 +10,16 @@ function processExists(pid) {
   }
 }
 
+/** Resolve the development profile without making it depend on the caller's cwd. */
+export function resolveHostProfileRoot(productRoot, configuredRoot) {
+  if(typeof productRoot!=='string'||!path.isAbsolute(productRoot))
+    throw Error('host_product_root_must_be_absolute');
+  if(configuredRoot===undefined||configuredRoot==='')return path.join(path.resolve(productRoot),'.host-profile');
+  if(typeof configuredRoot!=='string'||!path.isAbsolute(configuredRoot))
+    throw Error('host_profile_root_must_be_absolute');
+  return path.resolve(configuredRoot);
+}
+
 /** One Node-host process may own a host profile at a time. */
 export async function acquireHostProfileLock(dataRoot) {
   const root=path.resolve(dataRoot);

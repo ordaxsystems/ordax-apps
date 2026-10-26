@@ -20,12 +20,14 @@ contextBridge.exposeInMainWorld('ordax', {
   supervisorApprove: payload => ipcRenderer.invoke("ordax:supervisor:approve", payload),
   supervisorDispatch: payload => ipcRenderer.invoke("ordax:supervisor:dispatch", payload),
   workspace: () => ipcRenderer.invoke('ordax:workspace:get'),
+  setWorkspaceNavigation: navigation => ipcRenderer.invoke('ordax:workspace:navigation:set', navigation),
   listTasks: () => ipcRenderer.invoke('ordax:tasks:list'),
   createTask: title => ipcRenderer.invoke('ordax:tasks:create', title),
   getTask: id => ipcRenderer.invoke('ordax:tasks:get', id),
   getTaskDraft: id => ipcRenderer.invoke('ordax:tasks:draft:get', id),
   openTask: id => ipcRenderer.invoke('ordax:tasks:open', id),
   inspectLinkedThread: taskId => ipcRenderer.invoke('ordax:tasks:inspect-linked-thread', taskId),
+  reconcileLinkedReply: (taskId,responseSha256) => ipcRenderer.invoke('ordax:tasks:reconcile-linked-reply',{taskId,responseSha256}),
   loadMessagePage: (taskId, before) => ipcRenderer.invoke('ordax:tasks:messages:page', { taskId, before }),
   renameTask: (taskId, title) => ipcRenderer.invoke('ordax:tasks:rename', { taskId, title }),
   setDraft: (taskId, content, revision) => ipcRenderer.invoke('ordax:tasks:draft:set', { taskId, content, revision }),
@@ -40,6 +42,8 @@ contextBridge.exposeInMainWorld('ordax', {
   labBuildProof: () => ipcRenderer.invoke('ordax:lab:build-proof'),
   providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),
   providerDiagnostic: () => ipcRenderer.invoke('ordax:provider:diagnostic'),
+  providerNavigate: direction => ipcRenderer.invoke('ordax:provider:navigate',direction),
+  setProviderBounds: bounds => ipcRenderer.invoke('ordax:provider:view-bounds',bounds),
   getObserverMode: () => ipcRenderer.invoke('ordax:provider:observer-mode:get'),
   setObserverMode: mode => ipcRenderer.invoke('ordax:provider:observer-mode:set', mode),
   login: () => ipcRenderer.invoke('ordax:provider:login'),
@@ -48,6 +52,7 @@ contextBridge.exposeInMainWorld('ordax', {
   setChatVisible: visible => ipcRenderer.invoke('ordax:chat:visible', visible),
   onRunStarted: callback => ipcRenderer.on('ordax:task:run-started', (_event, payload) => callback(payload)),
   onTaskStage: callback => ipcRenderer.on('ordax:task:stage', (_event, payload) => callback(payload)),
-  onTaskStream: callback => ipcRenderer.on('ordax:task:stream', (_event, payload) => callback(payload))
+  onTaskStream: callback => ipcRenderer.on('ordax:task:stream', (_event, payload) => callback(payload)),
+  onTaskProviderNavigation: callback => ipcRenderer.on('ordax:task:provider-navigation', (_event, payload) => callback(payload))
 });
 

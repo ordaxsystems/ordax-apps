@@ -33,6 +33,47 @@ ou execução sem evidência.
 [aceite VESTE](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
 Os incrementos de chat/alpha.10 descritos abaixo são **histórico e fundação**, não conclusão dessa arquitetura.
 
+## Prova real de continuidade ChatGPT Web — 2026-10-25
+
+Em Electron de desenvolvimento da worktree e perfil staged isolado, o smoke
+`live-ui-continuity-smoke.cjs` enviou duas mensagens reais ao ChatGPT Web, girou
+para um segundo segmento e comprovou recuperação de um marcador via checkpoint
+local do mesmo Task. Após fechar/reabrir o candidato, a sessão, o Task, os dois
+segmentos e as quatro mensagens foram recuperados; `SQLite quick_check=ok`.
+`npm run validate` terminou com 471/471 testes. O ciclo também corrigiu a criação
+não serializada de janelas Electron e a seleção ambígua do alvo CDP.
+
+Limites: sessão observada como `session_present`, identidade/conta `not_verified`;
+nenhuma troca real de conta, projeto VESTE, GitHub, workspace Runtime/Platform,
+site, pacote instalável ou execução 24 h foi comprovada. Esta evidência é um gate
+do transporte Web experimental em Electron; **não** fecha R0 remoto nem o aceite
+de VESTE. Detalhes e IDs estão no [handoff](prototypes/ordax-orchestrator/CODEX-HANDOFF.md)
+e no [roteiro E2E](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
+
+## Snapshot local para handoff entre conversas — 2026-10-25
+
+O Orchestrator agora expõe `Store.buildTaskHandoffSnapshot(taskId, {request})`,
+que projeta do SQLite vigente um arquivo textual `.txt` determinístico em
+memória: checkpoint, todas as memórias ativas, até oito mensagens históricas
+selecionadas dentro da Task, IDs de origem e hash SHA-256. Memórias arquivadas,
+conteúdo do transcript completo e fontes de outra Task não são exportados; o
+limite de 1 MB falha fechado sem truncar. O manifesto contém somente IDs,
+versão, hash e tamanho, e indica `deliveryState=not_attached`.
+
+`npm run validate` passou com **511/511 testes**, incluindo três novos testes de
+determinismo, escopo de fontes, isolamento entre Tasks e limite de tamanho. O
+E2E GPT Web 9+1 registrado em [VESTE E2E 3.4](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md)
+continuou sem anexo: o contexto inline foi suficiente e não demonstrou benefício
+de arquivo.
+
+Limite: o snapshot existe apenas como valor em memória retornado pelo Store; o
+Lab ainda não grava nem anexa o arquivo, não observa upload na conversa GPT e não
+vincula uma confirmação a um Run. O próximo aceite de arquivo deve comparar
+recuperação seletiva, pacote inline e `.txt` com a mesma pergunta e gabarito;
+depois, um E2E deve comprovar upload observável e hash/version/source ligados ao
+Run. A identidade da conta GPT permanece `not_verified`; nenhuma autonomia 24 h
+foi comprovada.
+
 ---
 
 ## Teste real solicitado — loja VESTE e espera de resposta longa

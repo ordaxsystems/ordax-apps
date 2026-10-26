@@ -30,7 +30,7 @@ test('host serves only the current UI allowlist with a restrictive browser polic
     const css=await fs.readFile(path.join(productRoot,'desktop','ui.css'),'utf8');
     assert.match(ui,/<footer class="left-footer">[\s\S]*<details id="hostBrowserControls" class="host-browser-controls"[\s\S]*<\/footer>/);
     assert.doesNotMatch(css,/\.host-browser-controls\{position:fixed/);
-    assert.match(css,/body\.orchestrator-focus:not\(\.orchestrator-api-settings\) #contextRail>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
+    assert.match(css,/body\.orchestrator-focus:not\(\.orchestrator-api-settings\) #contextRail>:not\(#rightPaneTabs\):not\(#providerPanel\):not\(#previewPanel\):not\(#contextPanel\)\{display:none!important\}/);
     assert.match(css,/body\.orchestrator-focus\.orchestrator-api-settings #labSupervisorPanel\{display:block!important/);
     const pending=['/ui.js','/host-browser-bridge.js'];
     const checked=new Set();
@@ -71,6 +71,28 @@ test('host requires same-origin browser bootstrap and recovers a browser session
   } finally {await server.close();}
 });
 
+test('ChatGPT callback is bound to the host cookie and redirects without exposing its authorization code',async()=>{
+  let received=null;
+  const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async()=>null,
+    onChatGPTCallback:async(value)=>{received=value;return {connected:true,planUsageAuthorized:true};}});
+  const {origin}=await server.listen();
+  try {
+    const started=await fetch(`${origin}/api/session`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
+    const cookie=started.headers.get('set-cookie').split(';',1)[0];
+    const redirectUri=server.getAuthorizationRedirectUri();
+    assert.equal(redirectUri,`${origin}/auth/callback`);
+    const callback=new URL(redirectUri);
+    callback.searchParams.set('state','bound-state');
+    callback.searchParams.set('code','single-use-secret-code');
+    const response=await fetch(callback,{headers:{Cookie:cookie},redirect:'manual'});
+    assert.equal(response.status,303);
+    assert.equal(response.headers.get('location'),'/?chatgpt=connected');
+    assert.equal(received.session.length,43);
+    assert.equal(received.redirectUri,redirectUri);
+    assert.equal(new URL(received.callbackUrl).searchParams.get('code'),'single-use-secret-code');
+  } finally {await server.close();}
+});
+
 test('host maps only declared UI methods to existing handlers and sanitizes results',async()=>{
   const calls=[];
   const server=createHostBrowserServer({productRoot,assetsRoot:path.join(productRoot,'data','assets'),invoke:async(...args)=>{
@@ -90,9 +112,11 @@ test('host maps only declared UI methods to existing handlers and sanitizes resu
     assert.equal((await invoke({method:'arbitraryEval',args:[]})).status,404);
     const preload=await fs.readFile(path.join(productRoot,'desktop','preload.cjs'),'utf8');
     const bridge=await fs.readFile(path.join(productRoot,'desktop','host-browser-bridge.js'),'utf8');
+    const hostOnlyMethods=new Set(['chatgptPlanStatus','chatgptPlanLogin','chatgptPlanDisconnect']);
     for(const method of Object.keys(HOST_BROWSER_METHODS)) {
-      assert.match(preload,new RegExp(`^\\s{2}${method}:`,'m'),`missing native UI method ${method}`);
-      assert.match(bridge,new RegExp(`\\b${method}:`),`missing host UI method ${method}`);
+      if(hostOnlyMethods.has(method))assert.doesNotMatch(preload,new RegExp(`^\\s{2}${method}:`,'m'),`${method} is a Host-only OAuth flow`);
+      else assert.match(preload,new RegExp(`^\\s{2}${method}:`,'m'),`missing native UI method ${method}`);
+      assert.match(bridge,method==='chatgptPlanLogin'?/api\.chatgptPlanLogin\s*=/:new RegExp(`\\b${method}:`),`missing host UI method ${method}`);
     }
   } finally {await server.close();}
 });

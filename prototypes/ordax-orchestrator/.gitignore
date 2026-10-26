@@ -8,5 +8,7 @@
 /candidate-userdata/
 
 /product/node_modules/
+/product/.staged/
 /product/dist/
 /product/release/
+/product/desktop/worker-preload.bundle.cjs

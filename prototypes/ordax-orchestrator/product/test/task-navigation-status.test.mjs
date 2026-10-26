@@ -30,6 +30,15 @@ test('W3 navigation timeout is visible without certifying historical response', 
   assert.doesNotMatch(result.message,/resposta.*observada/i);
 });
 
+test('local task memory is available while provider navigation remains pending', () => {
+  const result=taskNavigationStatus({provider_navigation:'pending'});
+  assert.equal(result.kind,'navigating');
+  assert.equal(result.state,'pending');
+  assert.equal(result.threadRendered,'false');
+  assert.match(result.message,/Histórico e memória locais abertos/);
+  assert.match(result.message,/nenhuma mensagem foi enviada/);
+});
+
 test('W3 draft protection remains a navigation block, not a confirmed open', () => {
   const result=taskNavigationStatus({
     provider_navigation:'not_navigated',
@@ -59,10 +68,11 @@ test('W3 App binds the task navigation result into its existing read-only status
   const ui=readFileSync(new URL('../desktop/ui.js',import.meta.url),'utf8');
   const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   assert.match(ui,/import \{[^}]*\btaskNavigationStatus\b[^}]*\} from '\.\.\/src\/task-navigation-status\.mjs'/);
-  assert.match(ui,/const navigationStatus = taskNavigationStatus\(task\);/);
-  assert.match(ui,/status\.dataset\.threadRendered = navigationStatus\.threadRendered/);
-  assert.match(ui,/status\.textContent = navigationStatus\.message/);
-  assert.match(ui,/if \(nextVisible && currentTaskId\) await openTask\(currentTaskId\)/);
+  assert.match(ui,/function renderTaskNavigationStatus\(task\)/);
+  assert.match(ui,/status\.dataset\.threadRendered=navigationStatus\.threadRendered/);
+  assert.match(ui,/status\.textContent=navigationStatus\.message/);
+  assert.match(ui,/const task = await window\.ordax\.openTask\(id\);/);
+  assert.match(ui,/window\.ordax\.onTaskProviderNavigation\(payload=>/);
   assert.match(main,/onOpenTask:createProviderAwareTaskOpener\(/);
 });
 test('W3 IPC never accepts arbitrary provider text even when it resembles a code', () => {
@@ -83,7 +93,7 @@ test('Electron main delegates task navigation to the shared safe provider-aware 
   const main=readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   const shared=readFileSync(new URL('../src/task-ui-handlers.mjs',import.meta.url),'utf8');
   assert.match(main,/createProviderAwareTaskOpener/);
-  assert.match(main,/safeTaskNavigationReason\s*\n\s*\}\)/);
+  assert.match(main,/safeTaskNavigationReason\s*,\s*onNavigationResult:result=>emitRendererEvent\('ordax:task:provider-navigation',result\)\s*\}\)/);
   assert.doesNotMatch(shared,/provider_navigation_error|String\(error\?\.message/);
   assert.equal(safeTaskNavigationReason('provider_navigation_timeout'),'provider_navigation_timeout');
   assert.equal(safeTaskNavigationReason('visible_draft_present'),'visible_draft_present');

@@ -9,18 +9,20 @@ const main = fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
 const taskHandlers = fs.readFileSync(path.join(root,'src','task-ui-handlers.mjs'),'utf8');
 const worker = fs.readFileSync(path.join(root,'desktop','embedded-worker.mjs'),'utf8');
 const workerPreload = fs.readFileSync(path.join(root,'desktop','worker-preload.cjs'),'utf8');
+const providerDomSelectors = fs.readFileSync(path.join(root,'src','provider-dom-selectors.cjs'),'utf8');
 const preload = fs.readFileSync(path.join(root,'desktop','preload.cjs'),'utf8');
 const hostBridge = fs.readFileSync(path.join(root,'desktop','host-browser-bridge.js'),'utf8');
 const hostServer = fs.readFileSync(path.join(root,'host','host-browser-server.mjs'),'utf8');
 const ui = fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+const uiHtml = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
 const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
 const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
 test('desktop package ships only canonical desktop runtime', () => {
   assert.equal(pkg.main, 'desktop/bootstrap.mjs');
-  // The only extra packaged file is the bounded content-integrity manifest.
-  // No test, userData, cookies or arbitrary source directory may be shipped.
-  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','supervisor/**/*','package.json']);
+  // Runtime CJS helpers are shipped beside the ESM source; tests, userData
+  // and cookies remain outside the packaged file set.
+  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','src/*.cjs','supervisor/**/*','package.json']);
   assert.match(main,/const hostBrowserMode=!app\.isPackaged&&/);
   assert.match(main,/await import\('\.\.\/host\/host-browser-server\.mjs'\)/);
   assert.match(main,/createTaskUiHandlers/);
@@ -28,13 +30,20 @@ test('desktop package ships only canonical desktop runtime', () => {
   assert.match(ui,/const observerRow=\$\('\.observer-row'\);/);
   assert.match(ui,/observerRow\.classList\.add\('hidden'\)/);
   assert.equal(pkg.scripts.start,'node scripts/start-host.mjs');
-  assert.equal(pkg.scripts['start:electron'],'electron .');
+  assert.equal(pkg.scripts['build:worker-preload'],'node scripts/build-worker-preload.mjs');
+  assert.equal(pkg.scripts['start:electron'],'npm run build:worker-preload && electron .');
   assert.equal(bootstrap.scripts.start,'node product/scripts/start-host.mjs');
   assert.equal(bootstrap.scripts['start:electron'],'node scripts/start-lab.mjs');
   assert.equal(pkg.engines.node, '>=22.13.0');
   assert.equal(pkg.dependencies, undefined);
   assert.ok(!JSON.stringify(pkg).includes('playwright-core'));
   assert.ok(!JSON.stringify(pkg.build.files).includes('chrome-extension'));
+});
+
+test('empty project state promises persistence without claiming autonomous execution',()=>{
+  assert.match(uiHtml,/Um projeto, um histórico que você pode retomar/);
+  assert.match(uiHtml,/Missões e rascunhos ficam salvos no projeto/);
+  assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
 });
 
 test('desktop is single-instance with canonical durable AppData state', () => {
@@ -67,20 +76,34 @@ test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
   assert.match(worker, /pending-home-input/);
   assert.match(worker, /const scope = form \|\| document/);
   assert.match(worker, /requestSubmit/);
+  assert.match(worker,/navigationHistory\.canGoBack\(\)/);
+  assert.match(worker,/history\.goBack\(\)/);
+});
+
+test('ChatGPT text insertion focuses and verifies the embedded composer before dispatch',()=>{
+  const start=worker.indexOf('  async #setComposerAndSend(prompt) {');
+  const end=worker.indexOf('    // Wait until React renders a usable submit control',start);
+  const preparation=worker.slice(start,end);
+  assert.ok(start>=0&&end>start);
+  assert.ok(preparation.indexOf('this.view.webContents.focus()')<preparation.indexOf('Input.insertText'));
+  assert.match(preparation,/document\.activeElement === input \|\| input\.contains\(document\.activeElement\)/);
+  assert.match(preparation,/composer_focus_not_observed/);
 });
 
 
-test('ChatGPT worker is hidden by default and direct mode is explicit', () => {
+test('ChatGPT is embedded in a bounded right pane with safe browser controls', () => {
   assert.match(main, /let chatVisible = false/);
-  assert.match(ui, /directMode/);
-  assert.match(ui, /await setDirectModeVisible\(false\)/);
+  assert.match(main, /normalizeProviderViewBounds\(providerViewBounds/);
   assert.match(ui, /await window\.ordax\.setChatVisible\(visible\)/);
-  assert.match(ui, /await setDirectModeVisible\(true\)/);
-  assert.match(ui, /const nextVisible = !directMode/);
+  assert.match(ui, /window\.ordax\.setProviderBounds\(bounds\)/);
+  assert.match(ui, /providerNavigate\('back'\)/);
+  assert.match(ui, /providerNavigate\('forward'\)/);
+  assert.match(ui, /providerClose/);
+  assert.match(ui, /await showProviderPane\(true\)/);
 });
 
 test('assistant output streams into OrdaX UI through isolated worker preload', () => {
-  assert.match(worker, /worker-preload\.cjs/);
+  assert.match(worker, /worker-preload\.bundle\.cjs/);
   assert.match(workerPreload, /MutationObserver/);
   assert.match(workerPreload, /conversationRoot/);
   assert.match(workerPreload, /main,\[role=\"main\"\]/);
@@ -91,13 +114,26 @@ test('assistant output streams into OrdaX UI through isolated worker preload', (
 });
 
 test('current ChatGPT DOM identity binds each run to its own assistant message', () => {
-  assert.match(workerPreload, /data-chatgpt-selection-message-id/);
-  assert.match(workerPreload, /data-user-message-bubble/);
+  assert.match(providerDomSelectors, /data-chatgpt-selection-message-id/);
+  assert.match(providerDomSelectors, /data-user-message-bubble/);
+  assert.match(providerDomSelectors, /bg-user-message/);
+  assert.match(providerDomSelectors, /data-markdown-text-style/);
+  assert.match(workerPreload, /queryProviderMessageNodes/);
   assert.match(workerPreload, /messageId/);
+  assert.match(worker, /queryProviderMessageNodes/);
   assert.match(worker, /seenAssistantMessageIds/);
   assert.match(worker, /currentAssistantMessageId/);
   assert.match(worker, /latestUserText/);
-  assert.match(worker, /data-user-message-bubble/);
+});
+
+test('provider health executes shared DOM discovery before constructing its status object',()=>{
+  const start=worker.indexOf('const page = await observeWithin');
+  const end=worker.indexOf('const url = this.view.webContents.getURL()',start);
+  const block=worker.slice(start,end);
+  assert.ok(start>=0&&end>start);
+  assert.match(block,/const composer=\$\{composerExpression\(\)\};\s*\$\{providerMessageQueryBootstrap\}\s*const authControls=\$\{providerAuthControlProbeExpression\};\s*const messageNodes=queryProviderMessageNodes\(document,'user',providerMessageSelectors\)\.length \+\s*queryProviderMessageNodes\(document,'assistant',providerMessageSelectors\)\.length;/);
+  assert.match(block,/messageNodes,\s*hasLogin:authControls\.hasLogin,\s*hasSignup:authControls\.hasSignup/);
+  assert.doesNotMatch(block,/composer:Boolean\(composer\),\s*\$\{providerMessageQueryBootstrap\}/);
 });
 
 test('live E2E gates are exclusive and detect cross-run leaks', () => {
@@ -144,18 +180,25 @@ test('OrdaX UI exposes responsive conversation, chat and context columns', () =>
   assert.match(html, /toggleContext/);
   assert.match(html, /closeContext/);
   assert.match(ui, /setContextOpen/);
-  assert.match(css, /grid-template-columns:292px minmax\(460px,1fr\) 330px/);
+  assert.match(css,/grid-template-columns:270px minmax\(450px,1fr\) minmax\(360px,410px\)/);
   assert.match(css, /\.context-rail\.open/);
-  assert.match(css, /@media \(max-width:1180px\)/);
+  assert.match(css, /@media\(max-width:1180px\) and \(min-width:1025px\)/);
   assert.match(css, /@media \(max-width:620px\)/);
-  assert.match(css, /body\.orchestrator-focus \.left-rail \.footer-actions #login/);
+  assert.match(css, /@media\(max-width:820px\)/);
+  assert.match(css, /body\.orchestrator-focus \.app-shell\{display:grid;grid-template-columns:minmax\(0,1fr\);grid-template-rows:62px minmax\(0,1fr\)\}/);
+  assert.match(css, /body\.orchestrator-focus #projectSelect/);
+  assert.match(css, /body\.orchestrator-focus #orchestratorSelect/);
+  assert.match(css, /body\.orchestrator-focus \.left-footer #login/);
   assert.match(css, /body\.orchestrator-focus #orchestrationNotice/);
   assert.match(html, /aria-label="Entrar no ChatGPT"/);
   assert.match(ui, /O transporte suportado do ChatGPT Web não está disponível nesta página/);
   assert.match(ui, /function applyHostProviderLimit\(\)/);
-  assert.match(ui, /#directMode'\)\.hidden = true/);
+  assert.match(html, /id="providerClose"[^>]*Fechar navegador/);
+  assert.match(html, /id="previewPaneTab"/);
+  assert.match(html, /id="contextPaneTab"/);
   assert.match(ui, /#login'\)\.hidden = true/);
-  assert.match(ui, /O ChatGPT Web ainda não está conectado ao Host/);
+  assert.match(ui, /A conta ChatGPT Plan é conectada pelo fluxo oficial do navegador/);
+  assert.match(ui, /isso não vincula conversas existentes do ChatGPT Web/);
   assert.match(html, /id="sessionPersistenceNote"/);
 });
 
@@ -163,18 +206,20 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  for(const id of ['projectNavList','orchestratorNavList','orchestrationPanel','orchestratorWorkRail','orchestratorWorks','newScopedWorkForm'])
+  const coordinatorContext=fs.readFileSync(path.join(root,'supervisor','coordinator-request-context.mjs'),'utf8');
+  for(const id of ['projectNavList','orchestratorNavList','projectSelect','orchestratorSelect','orchestrationPanel','orchestratorWorkRail','orchestratorWorks','newScopedWorkForm','closeWorkRail'])
     assert.match(html,new RegExp(`id="${id}"`));
   assert.match(html,/Conversas no GPT/);
   assert.match(html,/Nova conversa no GPT/);
   assert.match(html,/id="analyzeWorks"/);
   assert.match(html,/id="remoteRepositoryCapabilityNote"/);
-  assert.match(html,/até quatro conversas recentes e oito mensagens do chat central/);
+  assert.match(coordinatorContext,/historyLimit=analysisContext===null\?12:8/);
+  assert.match(coordinatorContext,/historyMessageLimit=analysisContext===null\?4000:2000/);
   assert.match(orchestration,/command\('orchestrator_analyze'/);
   assert.match(orchestration,/call\('status'\)\.catch\(\(\)=>null\)/);
   assert.match(orchestration,/const canDisable=result\.enabled===true/);
   assert.match(orchestration,/const canEnable=engineStatus\?\.coordinatorAvailable===true/);
-  assert.match(orchestration,/Configure e ative o chat opcional por API para habilitar a análise automática/);
+  assert.match(orchestration,/Conecte e ative um modelo de coordenação para habilitar a análise automática/);
   assert.match(orchestration,/engineStatus\?\.autonomousExecution===false/);
   assert.match(orchestration,/A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado/);
   assert.match(orchestration,/call\('work_list'/);
@@ -186,11 +231,13 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(ui,/try \{await loadTasks\(\);\}\s*catch/);
   assert.match(orchestration,/onOpenWork\(work\.id\)/);
   assert.match(orchestration,/executionSurface==='node_host'/);
+  assert.match(orchestration,/const setWorkRailOpen=open=>/);
+  assert.match(orchestration,/\$\('closeWorkRail'\)\.addEventListener\('click'/);
   assert.match(orchestration,/coordinatorDraftCommitAvailable/);
   assert.match(orchestration,/envio seguro bloqueado até reiniciá-lo/);
   assert.match(orchestration,/GPT indisponível/);
-  assert.match(orchestration,/Este host não abre nem envia conversas ao GPT/);
-  assert.match(orchestration,/URL salva no projeto: \$\{project\.repository_url\}\. Este Host não lê o GitHub nem envia trabalho ao GPT\./);
+  assert.match(orchestration,/O ChatGPT conectado responde no chat coordenador; envio às conversas de trabalho ainda não está ligado neste Host/);
+  assert.match(orchestration,/URL salva no projeto: \$\{project\.repository_url\}\. Este Host não lê o GitHub nem envia mensagens às frentes de trabalho\./);
   assert.match(orchestration,/Nenhuma integração GitHub está conectada ao Host/);
   assert.match(orchestration,/Runtime\/workspace local não conectado a esta página/);
   assert.match(orchestration,/URL do GitHub salva como metadado do projeto/);
@@ -209,19 +256,29 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(orchestration,/uncertainCommands/);
   assert.match(orchestration,/nada foi reenviado automaticamente/);
   assert.match(orchestration,/Conversa de coordenação ainda vazia/);
-  assert.match(orchestration,/O chat central depende do Groq opcional/);
-  assert.match(orchestration,/O GPT Web é o caminho principal das frentes/);
-  assert.match(orchestration,/Configurar Groq opcional/);
+  assert.match(orchestration,/Conecte o ChatGPT Plan para conversar com o coordenador sem uma chave de API/);
+  assert.match(orchestration,/Conectar ChatGPT/);
+  assert.match(orchestration,/ChatGPT Plan · autorizado/);
+  assert.match(html,/id="coordinatorApiSettings"[^>]*>Conectar IA</);
+  assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
   assert.match(orchestration,/groq_auth_rejected:/);
-  assert.match(orchestration,/O tempo de resposta do Groq expirou sem confirmação/);
+  assert.match(orchestration,/O tempo de resposta do \$\{provider\} expirou sem confirmação/);
   assert.match(orchestration,/settings\.addEventListener\('click',\(\)=>\$\('coordinatorApiSettings'\)\.click\(\)\)/);
   assert.match(css,/\.coordinator-empty\{[^}]*text-align:center/);
   assert.match(css,/body\.orchestrator-focus \.coordinator-analysis-actions\{display:grid;grid-template-columns:minmax\(0,1fr\)/);
   assert.match(css,/body\.orchestrator-focus \.coordinator-analysis-actions>small\{min-width:0;overflow-wrap:anywhere\}/);
-  assert.match(css,/body\.orchestrator-focus \.left-rail \.provider-main div\{display:none\}/);
-  assert.match(css,/body\.orchestrator-focus \.left-rail \.host-browser-controls>summary::after\{content:"Host"/);
+  assert.match(css,/body\.orchestrator-focus \.orchestration-navigation\{grid-column:2;grid-row:1;display:grid/);
+  assert.match(css,/body\.orchestrator-focus \.orchestration-capabilities\{display:grid;grid-template-columns:repeat\(auto-fit/);
   assert.match(css,/body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-item\.active\{box-sizing:border-box;width:46px/);
   assert.match(css,/body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-item:not\(\.active\),\s*body:not\(\.orchestrator-focus\) \.left-rail \.orchestration-navigation \.nav-empty\{display:none\}/);
+});
+
+test('startup Task restoration initializes its controls before the first await',()=>{
+  const controls=ui.indexOf("const labRoleSelect=document.getElementById('labSupervisorRole')");
+  const listener=ui.indexOf("labRoleSelect.addEventListener('change'");
+  const startup=ui.indexOf('await orchestrationUi.start({restoreNavigation:savedNavigation})');
+  assert.ok(controls>=0&&listener>=0&&startup>controls&&startup>listener);
+  assert.match(ui,/if\(epoch!==navigationEpoch\|\|currentTaskId!==id\)return;\s*try \{await persistWorkspaceNavigation/);
 });
 
 test('Host keeps execution truth visible while collapsing project setup below the conversation',()=>{
@@ -320,13 +377,14 @@ test('project titles can be renamed from the chat header and are persisted in Ta
 
 test('SSOT projections avoid duplicate full-history reads during send and support bounded context', () => {
   const source = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
-  assert.match(source, /idx_messages_task_time/);
+  assert.match(source, /idx_messages_task_sequence/);
   assert.match(source, /SELECT t\.id,t\.title,t\.status,t\.created_at,t\.updated_at/);
   assert.doesNotMatch(source, /SELECT t\.\*, \(SELECT COUNT\(\*\) FROM task_conversations/);
   assert.match(source, /getTaskExecutionSnapshot\(taskId\)/);
   assert.match(main, /store\.getTaskExecutionSnapshot\(taskId\)/);
   assert.match(main, /conversationPlan\.newSession && task\.has_messages/);
-  assert.match(source, /recentMessages: this\.messages\(taskId, \{ limit: 8 \}\)/);
+  assert.match(source, /const recentMessages=this\.messages\(taskId,\{limit:8\}\)/);
+  assert.match(source, /totalMessageCount,/);
   assert.match(source, /snapshot\.totalMessages/);
   assert.match(source, /SELECT message_id,id,kind,mime_type,alt,width,height,sha256,created_at FROM message_assets/);
   assert.doesNotMatch(source, /this\.messages\(taskId\)\.slice\(-10\)/);
@@ -339,7 +397,7 @@ test('history paging uses one SQLite SSOT with bounded renderer pages and stale-
   const css = fs.readFileSync(path.join(root, 'desktop', 'ui.css'), 'utf8');
   assert.match(store, /messagesPage\(taskId,/);
   assert.match(store, /decodeMessageCursor/);
-  assert.match(store, /created_at < \? OR \(created_at = \? AND id < \?\)/);
+  assert.match(store, /sequence < \? ORDER BY sequence DESC LIMIT \?/);
   assert.match(main, /messageLimit:MESSAGE_PAGE_SIZE/);
   assert.match(taskHandlers, /ordax:tasks:messages:page/);
   assert.match(preload, /loadMessagePage/);
@@ -382,7 +440,9 @@ test('persistent Task memory can rotate provider conversations without losing th
   assert.match(main, /needsContinuation/);
   assert.match(main, /providerPrompt/);
   assert.match(preload, /rotateConversation/);
-  assert.match(ui, /Nova conversa interna/);
+  assert.match(ui, /Conversa GPT nova aberta/);
+  assert.match(ui, /await window\.ordax\.home\(\)/);
+  assert.match(uiHtml, /id="recoverProviderConversation"/);
 });
 
 test('a persistent project hides internal provider sessions and rotates only after completed turns', () => {
@@ -417,7 +477,7 @@ test('project memory suggestions are review-only and isolated from canon', () =>
   assert.match(schema, /source_message_id/);
   assert.match(schema, /BEGIN IMMEDIATE/);
   assert.match(schema, /candidate_reviewed/);
-  assert.match(detector, /explicit-project-v2/);
+  assert.match(detector, /explicit-project-v3/);
   assert.match(taskHandlers, /memory:candidates:review/);
   assert.match(preload, /reviewMemoryCandidate/);
   assert.match(ui, /renderMemoryCandidates/);
@@ -428,10 +488,15 @@ test('project memory suggestions are review-only and isolated from canon', () =>
 test('generic project context is assembled from approved memory without truncating requests', () => {
   const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
   const context = fs.readFileSync(path.join(root,'src','continuation-context.mjs'),'utf8');
+  const main = fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
   assert.match(store, /buildProjectContinuation/);
   assert.match(context, /MEMORIA PARCIAL/);
-  assert.match(context, /HISTORICO PARCIAL/);
+  assert.match(context, /JANELA DE HISTORICO/);
+  assert.match(context, /HISTORICO FORA DO ORCAMENTO/);
   assert.match(context, /continuation_budget_invariant_failed/);
+  assert.match(main,/assertContinuationContextReady\(continuationPacket\)/);
+  assert.match(ui,/continuation_context_unavailable_request_exceeds_budget/);
+  assert.match(ui,/continuation_context_critical_memory_omitted/);
   assert.ok(!store.includes('slice(0, 12)'));
 });
 
@@ -447,4 +512,12 @@ test('structured project memory is editable, durable and part of continuation', 
   assert.match(preload, /archiveProjectMemory/);
   assert.match(ui, /saveMemoryItem/);
   assert.match(ui, /memoryCategoryLabels/);
+});
+
+test('Electron UI document is a single well-formed tree with unique control IDs',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const ids=[...source.matchAll(/\bid=\"([^\"]+)\"/g)].map(match=>match[1]);
+  assert.equal(source.split('</html>').length,2);
+  assert.equal(new Set(ids).size,ids.length,'HTML IDs must be unique for reliable IPC-bound control lookup');
+  assert.match(source,/<div id=\"contextPanel\"[^>]*>[\s\S]*<\/div>\s*<\/aside>/);
 });

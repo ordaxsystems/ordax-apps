@@ -1,11 +1,12 @@
 // Native App UI is a client of the same command service as MCP. No DOM of
 // ChatGPT, coordinates or direct SQLite access is used to operate the Lab.
 import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
-export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onStartMission,canStartMission}) {
+export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onStartMission,canStartMission,onSelectRightPane,onNavigationChange}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let coordinatorOpen=false,coordinatorAvailable=false,coordinatorDraftCommitAvailable=false;
-  let coordinatorConfigured=false,coordinatorApiEnabled=false;
+  let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
+  let groqConfigured=false,coordinatorProvider=null;
   let analysisBusy=false,coordinatorSubmitting=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
@@ -21,9 +22,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const set=(id,label,state)=>{
       const item=$(id);item.textContent=label;item.dataset.state=state;
     };
-    set('capabilityGroq',!coordinatorConfigured?'Groq · sem chave':coordinatorAvailable?'Groq · pronto':coordinatorApiEnabled?'Groq · indisponível':'Groq · configurado e inativo',
-      coordinatorAvailable?'ready':coordinatorConfigured?'partial':'blocked');
-    set('capabilityGpt','GPT Web · sem transporte','blocked');
+    set('capabilityGroq',!groqConfigured?'Groq · opcional, sem chave':coordinatorProvider==='groq'&&coordinatorAvailable
+      ?'Groq · ativo':'Groq · alternativo inativo',
+      coordinatorProvider==='groq'&&coordinatorAvailable?'ready':groqConfigured?'partial':'blocked');
+    set('capabilityGpt',!chatgptPlanStatus.connected?'ChatGPT Plan · não conectado':
+      chatgptPlanStatus.planUsageAuthorized?'ChatGPT Plan · autorizado':'ChatGPT · uso do plano não autorizado',
+      chatgptPlanStatus.planUsageAuthorized?'ready':chatgptPlanStatus.connected?'partial':'blocked');
     set('capabilityGitHub',project?.repository_url?'GitHub · URL salva, leitura ausente':'GitHub · sem leitura autenticada',
       project?.repository_url?'partial':'blocked');
     set('capabilityRuntime','Runtime · workspace sem grant','blocked');
@@ -200,14 +204,28 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         groq_request_rejected:'Groq recusou a solicitação. Confira o modelo e a configuração da API.',
         groq_invalid_response:'Groq retornou uma resposta inválida; o app não a aceitou.',
         groq_incomplete_response:'Groq encerrou a resposta antes de concluí-la; o app não a aceitou.',
-        groq_invalid_work_proposal:'Groq não retornou uma proposta de frente válida; nenhuma frente foi criada.'
+        groq_invalid_work_proposal:'Groq não retornou uma proposta de frente válida; nenhuma frente foi criada.',
+        chatgpt_auth_rejected:'A autorização do ChatGPT Plan foi rejeitada. Reconecte a conta e tente novamente.',
+        chatgpt_access_denied:'A política de acesso ao plano ChatGPT impediu a solicitação. Nenhuma resposta foi registrada.',
+        chatgpt_rate_limited:'O limite de uso do plano ChatGPT foi atingido. Aguarde antes de iniciar outra solicitação.',
+        chatgpt_service_unavailable:'O serviço ChatGPT Plan está indisponível. A solicitação terminou sem resposta registrada.',
+        chatgpt_request_rejected:'O serviço ChatGPT Plan recusou a solicitação. Revise o modelo e as permissões concedidas.',
+        chatgpt_plan_scope_missing:'O login não concedeu permissão de uso do plano ChatGPT. Reconecte e aprove essa permissão.',
+        chatgpt_no_supported_models:'Não há modelos disponíveis para esta conta ChatGPT.',
+        chatgpt_models_unavailable:'Não foi possível consultar os modelos da conta ChatGPT; nenhuma inferência foi enviada.',
+        chatgpt_invalid_response:'O ChatGPT retornou uma resposta inválida; o app não a aceitou.',
+        chatgpt_invalid_work_proposal:'O ChatGPT não retornou uma proposta válida; nenhuma frente foi criada.'
       };
       status(failures[receipt.result?.failureCode]||'A solicitação falhou e não foi repetida. Confira a configuração e tente novamente quando estiver pronta.');
-    } else status(receipt.result?.failureCode==='groq_request_timeout'
-      ?'O tempo de resposta do Groq expirou sem confirmação. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.'
-      :receipt.result?.failureCode==='groq_network_unavailable'
-        ?'Não foi possível confirmar a conexão com Groq. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.'
-        :'O resultado do comando não foi confirmado. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.');
+    } else {
+      const failureCode=receipt.result?.failureCode||'';
+      const provider=failureCode.startsWith('chatgpt_')?'ChatGPT Plan':'Groq';
+      status(failureCode.endsWith('_request_timeout')
+        ?`O tempo de resposta do ${provider} expirou sem confirmação. Confira o histórico antes de enviar outra solicitação; nada será repetido automaticamente.`
+        :failureCode.endsWith('_network_unavailable')
+          ?`Não foi possível confirmar o resultado enviado ao ${provider}. Confira o histórico antes de enviar outra solicitação; nada será repetido automaticamente.`
+          :'O resultado do comando não foi confirmado. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.');
+    }
     return receipt;
   }
   function options(select,rows,label) {
@@ -224,7 +242,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('remoteRepositoryStatus').textContent=nodeHost
       ?!project?'Selecione um projeto.'
         :project.repository_url
-          ?`URL salva no projeto: ${project.repository_url}. Este Host não lê o GitHub nem envia trabalho ao GPT.`
+          ?`URL salva no projeto: ${project.repository_url}. Este Host não lê o GitHub nem envia mensagens às frentes de trabalho.`
           :'Nenhum repositório vinculado. Salvar uma URL registra só metadado; a leitura autenticada do GitHub não está conectada neste Host.'
       :!project?'Selecione um projeto.'
         :project.repository_url
@@ -232,7 +250,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
           :'Nenhum repositório remoto vinculado. Vincular salva a URL do GitHub como destino do projeto.';
     $('remoteRepositoryCapabilityNote').textContent=nodeHost
       ?project?.repository_url
-        ?'O chat Groq recebe somente esta URL como contexto; não consulta arquivos, commits ou branches. Nenhuma integração GitHub está conectada ao Host.'
+        ?'O chat coordenador recebe somente esta URL como contexto; não consulta arquivos, commits ou branches. Nenhuma integração GitHub está conectada ao Host.'
         :'Nenhuma URL de repositório está vinculada. O Host não tem leitura autenticada do GitHub; nenhuma integração GitHub está conectada.'
       :'A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.';
     $('workspaceConnection').textContent=nodeHost
@@ -242,8 +260,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   async function refreshApiStatus() {
     const state=await api.coordinatorChatStatus();
-    coordinatorConfigured=state.configured===true;
-    coordinatorApiEnabled=state.enabled===true;
+    chatgptPlanStatus=state.chatgpt||chatgptPlanStatus;
+    groqConfigured=state.groqConfigured===true;
+    coordinatorProvider=state.provider||null;
     nodeHost=state.executionSurface==='node_host';
     $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
     $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
@@ -252,7 +271,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('newScopedWorkDetails').querySelector('summary').textContent=nodeHost?'Configurar título da frente':'Configurar nome da conversa';
     $('newScopedWorkForm').querySelector('button[type="submit"]').textContent=nodeHost?'Criar frente e abrir rascunho':'Criar e abrir conversa';
     $('workRailNote').textContent=nodeHost
-      ?'As frentes ficam salvas no projeto. Este host não abre nem envia conversas ao GPT.'
+      ?'As frentes ficam salvas no projeto. O ChatGPT conectado responde no chat coordenador; envio às conversas de trabalho ainda não está ligado neste Host.'
       :'Cada conversa mantém o próprio histórico dentro do projeto.';
     const engineStatus=await call('status');
     coordinatorAvailable=engineStatus.coordinatorAvailable===true;
@@ -261,23 +280,34 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     $('coordinatorApiEnable').disabled=!state.configured;
-    $('coordinatorApiEnable').textContent=state.enabled?'Desativar chat por API':'Ativar chat por API';
+    const providerName=state.provider==='chatgpt_plan'?'ChatGPT Plan':state.provider==='groq'?'Groq':'IA';
+    $('coordinatorApiEnable').textContent=state.enabled?'Pausar chat':`Ativar ${providerName}`;
     $('coordinatorApiEnable').dataset.enabled=String(state.enabled);
-    $('orchestrationConnection').textContent=!state.configured
-      ? 'A supervisão Groq opcional não está configurada. O MCP remoto ainda não está conectado a esta tela.'
-      : coordinatorAvailable?'Chat por API ativo nesta sessão. Cada envio usa sua conta Groq.'
-      : 'Chave configurada. Ative o chat por API para enviar uma mensagem.';
+    $('orchestrationConnection').textContent=state.chatgpt?.connected&&!state.chatgpt?.planUsageAuthorized
+      ?'Conta ChatGPT reconhecida, mas o consentimento para uso do plano não foi concedido. Reconecte pelo botão Continuar com ChatGPT.'
+      :!state.configured
+        ?'Conecte o ChatGPT Plan ou configure o provedor Groq opcional. O MCP remoto ainda não está conectado a esta tela.'
+        :coordinatorAvailable?`Chat do coordenador ativo com ${providerName}. Respostas e histórico são persistidos no projeto.`
+        :`${providerName} conectado. Ative o chat para enviar uma mensagem.`;
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
-  $('coordinatorApiSettings').addEventListener('click',()=>{
+  $('coordinatorApiSettings').addEventListener('click',async()=>{
+    await onSelectRightPane?.('context').catch(()=>{});
     document.body.classList.add('orchestrator-api-settings');
     $('contextRail').classList.add('open');
-    $('labSupervisorPanel').open=true;$('labSupervisorKeySettings').open=true;
-    $('labSupervisorKeyInput').scrollIntoView({block:'center'});$('labSupervisorKeyInput').focus();
+    $('labSupervisorPanel').open=true;
+    if(nodeHost) {
+      $('chatgptPlanSettings').scrollIntoView({block:'center'});
+      $('chatgptPlanConnect').focus();
+    } else {
+      $('labSupervisorKeySettings').open=true;
+      $('labSupervisorKeyInput').scrollIntoView({block:'center'});$('labSupervisorKeyInput').focus();
+    }
   });
   $('closeCoordinatorApiSettings').addEventListener('click',()=>{
     document.body.classList.remove('orchestrator-api-settings');$('contextRail').classList.remove('open');
+    void onSelectRightPane?.('provider').catch(()=>{});
   });
   $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectObjective').focus(); });
   $('renameProjectButton').addEventListener('click',()=>{
@@ -292,16 +322,24 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('newScopedWorkButton').addEventListener('click',()=>{
     $('newScopedWorkDetails').open=true;$('scopedWorkTitle').focus();
   });
-  $('coordinatorRailToggle').addEventListener('click',()=>{
-    const open=document.body.classList.toggle('orchestrator-rail-open');
+  const setWorkRailOpen=open=>{
+    if(open)void onSelectRightPane?.('context').catch(()=>{});
+    document.body.classList.toggle('orchestrator-rail-open',open);
     $('contextRail').classList.toggle('open',open);
     $('coordinatorRailToggle').setAttribute('aria-expanded',String(open));
+  };
+  $('coordinatorRailToggle').addEventListener('click',()=>{
+    setWorkRailOpen(!$('contextRail').classList.contains('open'));
+  });
+  $('closeWorkRail').addEventListener('click',()=>{
+    setWorkRailOpen(false);
+    $('coordinatorRailToggle').focus();
   });
   $('coordinatorApiEnable').addEventListener('click',async()=>{
     $('coordinatorApiEnable').disabled=true;
     try {await api.coordinatorChatEnable($('coordinatorApiEnable').dataset.enabled!=='true');
       await refreshApiStatus();await refreshOrchestrators();}
-    catch {status('Não foi possível ativar o chat. Confira a configuração da API.');}
+    catch {status('Não foi possível ativar o chat. Confira a conexão do modelo.');}
   });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
@@ -334,14 +372,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const canEnable=engineStatus?.coordinatorAvailable===true;
     $('continuityToggle').disabled=!canDisable&&!canEnable;
     $('continuityToggle').title=!canDisable&&!canEnable
-      ?'Configure e ative o chat opcional por API para habilitar a análise automática.'
+      ?'Conecte e ative um modelo de coordenação para habilitar a análise automática.'
       :'';
     $('continuityProposalsToggle').disabled=!result.enabled;
     $('continuityProposalsToggle').dataset.enabled=String(result.nextProposals.enabled);
     $('continuityProposalsToggle').textContent=result.nextProposals.enabled?'Desativar propostas automáticas':'Propor próximas frentes automaticamente';
     $('continuityToggle').dataset.enabled=String(result.enabled);
     $('continuityToggle').textContent=result.enabled?'Desativar análise automática':'Ativar análise automática';
-    const messages={disabled:'Desativada',blocked_coordinator:'Bloqueada: configure e ative a API Groq',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
+    const messages={disabled:'Desativada',blocked_coordinator:'Bloqueada: conecte e ative um modelo de coordenação',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
     const proposals=result.nextProposals.enabled?(' Próximas propostas: '+result.nextProposals.proposed+'/'+result.nextProposals.maximum+' geradas neste ciclo; exigem revisão.'):' Próximas propostas desativadas.';
     const executionNotice=engineStatus?.autonomousExecution===true
       ?' O supervisor de execução em segundo plano está ativo.'
@@ -396,8 +434,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(page.messages.length===0) {
       const empty=document.createElement('div');empty.className='coordinator-empty';
       const title=document.createElement('strong');title.textContent='Conversa de coordenação ainda vazia';
-      const copy=document.createElement('p');copy.textContent='O chat central depende do Groq opcional. O GPT Web é o caminho principal das frentes, mas esta aba ainda não compartilha a sessão do executor; o envio permanece bloqueado.';
-      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Configurar Groq opcional';
+      const copy=document.createElement('p');copy.textContent='Conecte o ChatGPT Plan para conversar com o coordenador sem uma chave de API. Essa conexão não abre conversas existentes do ChatGPT Web nem envia mensagens às frentes de trabalho.';
+      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Conectar ChatGPT';
       settings.addEventListener('click',()=>$('coordinatorApiSettings').click());
       empty.append(title,copy,settings);box.append(empty);
     }
@@ -450,6 +488,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     document.body.classList.remove('orchestrator-api-settings','orchestrator-rail-open');$('contextRail').classList.remove('open');
     $('orchestrationPanel').hidden=false;$('orchestratorWorkRail').hidden=false;
     await onShowCoordinator();
+    await onNavigationChange?.({view:'coordinator',projectId,orchestratorId,taskId:null});
     await renderCoordinator();
   }
   function error() {status('Não foi possível confirmar a operação. Consulte o estado antes de repetir.');}
@@ -469,7 +508,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     try{
       const items=await refreshOrchestrators();
       if(items.length)await showCoordinator();
-      else{document.body.classList.remove('orchestrator-focus','orchestrator-rail-open','orchestrator-api-settings');$('empty').classList.remove('hidden');}
+      else{document.body.classList.remove('orchestrator-focus','orchestrator-rail-open','orchestrator-api-settings');$('empty').classList.remove('hidden');
+        await onNavigationChange?.({view:'home',projectId,orchestratorId:null,taskId:null});}
     }catch{error();}
   });
   $('orchestratorSelect').addEventListener('change',async()=>{
@@ -477,7 +517,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(previous===next)return;
     try{await flushCoordinatorDraft();}catch{$('orchestratorSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o orquestrador atual foi mantido.');return;}
     orchestratorId=next;
-    try{await refreshOrchestrators();if(chatTaskId)await showCoordinator();}catch{error();}
+    try{await refreshOrchestrators();if(chatTaskId)await showCoordinator();
+      else await onNavigationChange?.({view:'home',projectId,orchestratorId,taskId:null});}catch{error();}
   });
   $('newProjectForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
@@ -491,6 +532,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       projectId=receipt.result.projectId;orchestratorId=receipt.result.orchestratorId;
       $('newProjectForm').reset();$('projectSetup').open=false;
       await refreshProjects();await refreshOrchestrators();
+      await onNavigationChange?.({view:'coordinator',projectId,orchestratorId,taskId:null});
       const readyToStart=typeof onStartMission==='function'&&
         (typeof canStartMission!=='function'||canStartMission()===true);
       if(readyToStart) {
@@ -594,7 +636,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if($('analyzeWorks').disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
     analysisBusy=true;syncCoordinatorActions();
-    status('Enviando ao Groq somente o histórico recente limitado deste orquestrador…');
+    status(`Enviando ao ${chatgptPlanStatus.planUsageAuthorized?'ChatGPT Plan':'Groq'} somente o histórico recente limitado deste orquestrador…`);
     try {
       const receipt=await command('orchestrator_analyze',{projectId:p,orchestratorId:o});
       if(p!==projectId||o!==orchestratorId)return;
@@ -641,13 +683,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     return receipt.result.taskId;
   }
   return Object.freeze({
-    async start(){const projects=await refreshProjects();
+    async start({restoreNavigation=null}={}){const projects=await refreshProjects();
       await refreshApiStatus();
-      if(!projectId&&projects.length){projectId=projects[0].id;$('projectSelect').value=projectId;renderProjectNavigation(projects);}
+      const saved=restoreNavigation?.schema==='ordax.workspace-navigation.v1'?restoreNavigation:null;
+      projectId=projects.some(project=>project.id===saved?.projectId)
+        ?saved.projectId:projects[0]?.id||null;
+      $('projectSelect').value=projectId||'';
+      if(saved?.projectId===projectId)orchestratorId=saved.orchestratorId||null;
+      renderProjectNavigation(projects);
       syncProjectRepository();
-      if(projectId)await refreshWorks();
       const items=await refreshOrchestrators();
-      if(items.length)await showCoordinator();
+      const shouldRestoreTask=saved?.view==='task'&&typeof saved.taskId==='string'&&saved.taskId.length>0;
+      if(items.length&&!shouldRestoreTask&&saved?.view!=='home')await showCoordinator();
+      else if(!items.length)await onNavigationChange?.({view:'home',projectId,orchestratorId:null,taskId:null});
       let refreshPending=false,refreshRequested=false;
       const refreshAfterChange=async()=>{
         if(refreshPending)return;
@@ -666,8 +714,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         refreshRequested=true;
         if(!refreshPending)void refreshAfterChange();
       });},
-    createWork,hasProject:()=>Boolean(projectId),
+    createWork,hasProject:()=>Boolean(projectId),hasOrchestrator:()=>Boolean(chatTaskId),
     getProjectId:()=>projectId,
+    getOrchestratorId:()=>orchestratorId,
+    showCoordinator,
     refreshStatus:()=>refreshApiStatus(),
     hide(){coordinatorOpen=false;$('orchestrationPanel').hidden=true;},
     refresh:refreshWorks

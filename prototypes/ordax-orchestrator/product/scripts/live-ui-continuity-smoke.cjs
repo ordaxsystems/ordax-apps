@@ -13,19 +13,25 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text||'eval_failed');return r.result.value};
   await waitForLabAppMode(ev);
   const waitFor=async(fn,attempts=1200,delay=50)=>{for(let i=0;i<attempts;i++){const value=await fn();if(value)return value;await sleep(delay)}return null};
+  const projectScope=await ev(`(async()=>{const s=document.querySelector('#projectSelect');if(!s)return {available:false,selected:null};s.value='';s.dispatchEvent(new Event('change',{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));return {available:true,selected:s.value||null}})()`);
+  if(!projectScope.available||projectScope.selected!==null)throw new Error('provider_only_project_scope_not_cleared');
+  const projectScopeReady=await ev(`document.querySelector('#projectSelect')?.value===''&&document.querySelector('#orchestrationPanel')?.hidden===true`);
+  if(!projectScopeReady)throw new Error('provider_only_project_transition_not_complete');
   const providerReady=await waitFor(()=>ev(`(async()=>{const s=await window.ordax.providerStatus();return Boolean(s?.connected&&s?.composer_ready&&!s?.verification_required)})()`),600,50);
   if(!providerReady)throw new Error('provider_not_ready');
   const previousTaskId=await ev(`document.querySelector('#taskId')?.textContent||''`);
   await ev(`document.querySelector('#newTask').click();true`);
   const taskId=await waitFor(()=>ev(`(()=>{const id=document.querySelector('#taskId')?.textContent||'';return id&&id!==${JSON.stringify(previousTaskId)}&&!document.querySelector('#taskPanel').classList.contains('hidden')?id:null})()`),200,50);
   if(!taskId)throw new Error('new_task_not_ready');
+  const taskScope=await ev(`(async()=>{const tasks=await window.ordax.listTasks();const task=tasks.find(item=>item.id===${JSON.stringify(taskId)});return {found:Boolean(task),bound:Boolean(task?.lab_binding)}})()`);
+  if(!taskScope.found||taskScope.bound)throw new Error('provider_only_task_is_project_bound');
   const send=async prompt=>{
     await ev(`(()=>{const p=document.querySelector('#prompt');p.value=${JSON.stringify(prompt)};p.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#composer').requestSubmit();return true})()`);
   };
   const waitAssistant=async marker=>{
-    for(let i=0;i<1800;i++){
-      const state=await ev(`(()=>({text:[...document.querySelectorAll('#messages .message.assistant')].at(-1)?.innerText||'',error:[...document.querySelectorAll('#messages .message.error')].at(-1)?.innerText||'',sendDisabled:Boolean(document.querySelector('#send')?.disabled),live:Boolean(document.querySelector('.message.live'))}))()`);
-      if(state.error) throw new Error('ui_run_error:'+state.error);
+    for(let i=0;i<3200;i++){
+      const state=await ev(`(()=>({text:[...document.querySelectorAll('#messages .message.assistant')].at(-1)?.innerText||'',error:Boolean(document.querySelector('#messages .message.error')),sendDisabled:Boolean(document.querySelector('#send')?.disabled),live:Boolean(document.querySelector('.message.live'))}))()`);
+      if(state.error) throw new Error('provider_run_failed');
       if(state.text.includes(marker)&&!state.sendDisabled&&!state.live)return state.text;
       await sleep(75);
     }
@@ -47,6 +53,6 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const active=conversations.find(c=>c.status==='active');
   const archived=conversations.filter(c=>c.status==='archived');
   const passed=Boolean(after&&conversations.length>=2&&active&&archived.length>=1&&Number(active.context_checkpoint_version||0)>=1&&second.includes(seed));
-  const result={taskId,seed,firstChatUrl:before.chat_url,secondChatUrl:after.chat_url,conversationCount:conversations.length,archivedCount:archived.length,activeSequence:active?.sequence||null,contextCheckpointVersion:active?.context_checkpoint_version||null,secondText:second,passed};
+  const result={projectScopeCleared:projectScopeReady,taskUnbound:!taskScope.bound,firstResponseObserved:Boolean(first),conversationRotated:archived.length>=1,conversationCount:conversations.length,archivedCount:archived.length,activeSequence:active?.sequence||null,contextCheckpointVersion:active?.context_checkpoint_version||null,secondResponseContainsPriorMarker:second.includes(seed),passed};
   console.log(JSON.stringify(result,null,2));ws.close();process.exit(passed?0:2);
 })().catch(e=>{console.error(e);process.exit(1)});

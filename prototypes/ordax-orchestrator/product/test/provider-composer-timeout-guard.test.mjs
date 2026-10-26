@@ -105,7 +105,7 @@ test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',
   assert.match(preload,/inspectLinkedThread:/);
   assert.match(html,/id="inspectLinkedThread"/);
   assert.match(ui,/window\.ordax\.inspectLinkedThread\(taskId\)/);
-  assert.doesNotMatch(ui.split("$('#inspectLinkedThread').addEventListener")[1].split("$('#directMode').addEventListener")[0],/requestSubmit|sendPrompt|setChatVisible/);
+  assert.doesNotMatch(ui.split("$('#inspectLinkedThread').addEventListener")[1].split("document.querySelectorAll('.right-pane-tab')")[0],/requestSubmit|sendPrompt|setChatVisible/);
 });
 
 test('W3 success requires attributable Task user-and-assistant turn, never bare provider DOM',()=>{

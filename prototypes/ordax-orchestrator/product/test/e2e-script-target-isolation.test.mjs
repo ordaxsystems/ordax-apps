@@ -11,7 +11,7 @@ const here=path.dirname(fileURLToPath(import.meta.url));
 const scripts=path.resolve(here,'../scripts');
 const require=createRequire(import.meta.url);
 const { DEBUG_PORT,DEBUG_URL,PRODUCT_TITLE,isLabUiTarget,labStagedLocalAppData,
-  labDatabasePath,labLockPath,validLabWebSocket,waitForLabUiTarget,
+  labDatabasePath,labLockPath,validLabWebSocket,probeLabUiTarget,waitForLabUiTarget,
   LAB_APP_MODE_PROBE,assertLabAppModeState,waitForLabAppMode }=require('../scripts/e2e-lab-target.cjs');
 const stage=path.join(os.tmpdir(),'ordax-e2e-suite','candidate-userdata-v0.2.0-alpha.2');
 
@@ -86,13 +86,34 @@ test('all live smoke scripts have canonical Lab-only target and no Gratis refere
     'live-ui-restart-smoke.cjs','live-ui-image-smoke.cjs','live-ui-history-smoke.cjs',
     'live-ui-stage-smoke.cjs','live-ui-typing-smoke.mjs','live-ui-linked-thread-smoke.cjs',
     'live-ui-local-recovery-readonly.cjs','live-ui-signed-out-compose.cjs',
-    'live-ui-w3-offline-preflight.cjs']){
+    'live-ui-w3-offline-preflight.cjs','live-ui-context-packet-smoke.cjs',
+    'live-ui-handoff-attachment-smoke.cjs','live-ui-memory-proposal-smoke.cjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
     assert.match(code,/waitForLabUiTarget\(\)/);
     assert.match(code,/waitForLabAppMode\(/);
     assert.doesNotMatch(code,/getJson\(DEBUG_URL\)|get\(DEBUG_URL\)/);
     assert.doesNotMatch(code,/9444|ordax-gratis|OrdaX Gratis|['"]Gratis['"]/);
   }
+  const packet=fs.readFileSync(path.join(scripts,'live-ui-context-packet-smoke.cjs'),'utf8');
+  assert.match(packet,/randomBytes\(32\)\.toString\('hex'\)/);
+  assert.match(packet,/buildProjectContinuationPacket/);
+  assert.match(packet,/contextDigestMatches/);
+  assert.match(packet,/memorySecretWasNotInChatOrCheckpoint/);
+  assert.doesNotMatch(packet,/console\.log\((?:secret|nonce)\b/i);
+  const handoff=fs.readFileSync(path.join(scripts,'live-ui-handoff-attachment-smoke.cjs'),'utf8');
+  assert.match(handoff,/randomBytes\(32\)\.toString\('hex'\)/);
+  assert.match(handoff,/attachmentUploadEvent/);
+  assert.match(handoff,/providerReturnedFileOnlySecret/);
+  assert.match(handoff,/labDatabasePath\(\)/);
+  assert.doesNotMatch(handoff,/console\.log\((?:secret|nonce)\b/i);
+  const proposal=fs.readFileSync(path.join(scripts,'live-ui-memory-proposal-smoke.cjs'),'utf8');
+  assert.match(proposal,/project_memory_candidates/);
+  assert.match(proposal,/source_role==='assistant'/);
+  assert.match(proposal,/included_memory_ids/);
+  assert.match(proposal,/request\.includes\(secret\)/);
+  assert.match(proposal,/memory_proposal_scan_not_idempotent/);
+  assert.match(proposal,/data-review="accept"/);
+  assert.doesNotMatch(proposal,/console\.log\((?:secret|nonce)\b/i);
   for(const name of ['live-ui-history-smoke.cjs','live-ui-restart-smoke.cjs',
     'live-ui-typing-smoke.mjs']){
     const code=fs.readFileSync(path.join(scripts,name),'utf8');
@@ -101,6 +122,36 @@ test('all live smoke scripts have canonical Lab-only target and no Gratis refere
   const lock=fs.readFileSync(path.join(scripts,'e2e-lock.cjs'),'utf8');
   assert.match(lock,/labLockPath\(\)/);
   assert.doesNotMatch(lock,/['"]Gratis['"]/);
+});
+
+test('live text smoke supports long responses and reports an unfinished run without retrying',()=>{
+  const source=fs.readFileSync(path.join(scripts,'live-ui-text-smoke.cjs'),'utf8');
+  assert.match(source,/ORDAX_E2E_RESPONSE_TIMEOUT_MS\|\|300000/);
+  assert.match(source,/responseTimeoutMs<30000\|\|responseTimeoutMs>900000/);
+  assert.match(source,/maxResponseChecks=Math\.ceil\(responseTimeoutMs\/50\)/);
+  assert.match(source,/taskId:createdTaskId/);
+  assert.match(source,/awaitingResponse:Boolean\(newUserObserved&&!finalAt&&finalUi\.composerState==='busy'\)/);
+  assert.match(source,/live-text-smoke-progress\.v1/);
+  assert.doesNotMatch(source,/for\(let i=0;i<1200;i\+\+\)/);
+});
+
+test('long live multiturn observes durable totals and tests memory without leaking the answer',()=>{
+  const source=fs.readFileSync(path.join(scripts,'live-ui-multiturn-smoke.cjs'),'utf8');
+  const scenario=fs.readFileSync(path.join(scripts,'long-horizon-book-eval.cjs'),'utf8');
+  assert.match(source,/priorTotalMessages=Number\(before\.continuation\?\.total_messages\?\?before\.messages\.length\)/);
+  assert.match(source,/totalMessages===priorTotalMessages\+2/);
+  assert.match(source,/randomBytes\(32\)\.toString\('hex'\)/);
+  assert.match(source,/scenario\.sealedSecret/);
+  assert.match(source,/gradeContinuityAnswer\(answer,scenario\)/);
+  assert.match(source,/gradeLedgerAnswer\(answer\)/);
+  assert.match(source,/distinctProviderChats===2/);
+  assert.doesNotMatch(source,/firstMarker|currentMarker|TURN_01|memoryRecallPassed/);
+  assert.match(scenario,/Fato Segredo do selo/);
+  assert.match(scenario,/vendas_liquidas_brl:1519\.30/);
+  assert.match(scenario,/resultado_final_brl:-32\.24/);
+  assert.match(scenario,/function gradeContinuityAnswer/);
+  assert.match(scenario,/height_not_observed/);
+  assert.match(scenario,/memoriesToAccept/);
 });
 
 test('smoke script refuses launch without staged profile before any UI network call',()=>{
@@ -145,6 +196,8 @@ test('portable two-stage launch waits for the real Lab window, not a timer or a 
         if(calls===3)return [{...valid,title:'OrdaX Gratis'}];
         return [valid];
       },
+      inspectTarget:async()=>({view:'app',providerPane:'TABLIST',composer:'FORM',
+        prompt:'TEXTAREA',newTask:'BUTTON',visibility:'visible'}),
       maxWaitMs:2500,pollMs:500
     });
     assert.equal(found.webSocketDebuggerUrl,valid.webSocketDebuggerUrl);
@@ -155,6 +208,58 @@ test('portable two-stage launch waits for the real Lab window, not a timer or a 
       readTargets:async()=>{throw Error('still extracting');},
       maxWaitMs:1200,pollMs:500
     }),/lab_ui_not_ready:endpoint_not_ready/);
+  }finally{
+    if(previousStage==null)delete process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
+    else process.env.ORDAX_LAB_E2E_LOCALAPPDATA=previousStage;
+    if(previousApproval==null)delete process.env.ORDAX_LAB_E2E_APPROVED;
+    else process.env.ORDAX_LAB_E2E_APPROVED=previousApproval;
+  }
+});
+
+test('CDP mode probing tolerates a busy Windows renderer within its bounded five-second budget',async()=>{
+  const target={type:'page',title:PRODUCT_TITLE,
+    url:'file:///C:/temporary/desktop/ui.html',
+    webSocketDebuggerUrl:'ws://127.0.0.1:9445/devtools/page/slow'};
+  class DelayedWebSocket {
+    constructor(){setImmediate(()=>this.onopen?.());}
+    send(raw){
+      const request=JSON.parse(raw);
+      setTimeout(()=>this.onmessage?.({data:JSON.stringify({id:request.id,
+        result:{result:{value:{view:'app',providerPane:'TABLIST',composer:'FORM',
+          prompt:'TEXTAREA',newTask:'BUTTON',visibility:'visible'}}}})}),1700);
+    }
+    close(){}
+  }
+  const state=await probeLabUiTarget(target,{WebSocketImpl:DelayedWebSocket});
+  assert.equal(state.view,'app');
+  assert.equal(state.visibility,'visible');
+});
+
+test('Lab target discovery skips stale hidden renderer and selects initialized visible App',async()=>{
+  const previousStage=process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
+  const previousApproval=process.env.ORDAX_LAB_E2E_APPROVED;
+  process.env.ORDAX_LAB_E2E_LOCALAPPDATA=stage;
+  process.env.ORDAX_LAB_E2E_APPROVED='1';
+  const stale={type:'page',title:PRODUCT_TITLE,url:'file:///C:/lab/desktop/ui.html',
+    webSocketDebuggerUrl:'ws://127.0.0.1:9445/devtools/page/stale'};
+  const active={...stale,webSocketDebuggerUrl:'ws://127.0.0.1:9445/devtools/page/active'};
+  try{
+    const found=await waitForLabUiTarget({
+      readTargets:async()=>[stale,active],
+      inspectTarget:async target=>target===stale
+        ?{view:null,visibility:'hidden'}
+        :{view:'app',providerPane:'TABLIST',composer:'FORM',prompt:'TEXTAREA',
+          newTask:'BUTTON',visibility:'visible'},
+      maxWaitMs:1000,pollMs:100
+    });
+    assert.equal(found.webSocketDebuggerUrl,active.webSocketDebuggerUrl);
+    await assert.rejects(waitForLabUiTarget({
+      readTargets:async()=>[active,{...active,webSocketDebuggerUrl:
+        'ws://127.0.0.1:9445/devtools/page/another'}],
+      inspectTarget:async()=>({view:'app',providerPane:'TABLIST',composer:'FORM',
+        prompt:'TEXTAREA',newTask:'BUTTON',visibility:'visible'}),
+      maxWaitMs:1000,pollMs:100
+    }),/lab_e2e_multiple_visible_app_windows/);
   }finally{
     if(previousStage==null)delete process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
     else process.env.ORDAX_LAB_E2E_LOCALAPPDATA=previousStage;
@@ -229,8 +334,8 @@ test('provider-frame diagnostic is explicitly not certification and accesses onl
   assert.doesNotMatch(source,/requestSubmit|sendPrompt|loadURL|Input\.insertText|9444|ordax-gratis|cookie/i);
 });
 
-test('app-mode certification is isolated from the usable direct ChatGPT fallback',async()=>{
-  const app={view:'app',directButton:'Modo direto',composer:'FORM',prompt:'TEXTAREA',newTask:'BUTTON'};
+test('app-mode certification validates the OrdaX shell and embedded ChatGPT pane',async()=>{
+  const app={view:'app',providerPane:'TABLIST',composer:'FORM',prompt:'TEXTAREA',newTask:'BUTTON'};
   assert.match(LAB_APP_MODE_PROBE,/ordaxView/);
   assert.equal(assertLabAppModeState(app),app);
   assert.throws(()=>assertLabAppModeState({...app,view:'provider'}),/lab_e2e_app_mode_required/);
@@ -248,15 +353,15 @@ test('app-mode certification is isolated from the usable direct ChatGPT fallback
     clock:()=>clock,sleep:async ms=>{clock+=ms;},maxWaitMs:200,pollMs:100,requireProfileProof:false
   }),/lab_e2e_app_mode_not_ready/);
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
-  assert.match(ui,/await setDirectModeVisible\(true\)/);
-  assert.match(ui,/const nextVisible = !directMode/);
-  assert.match(ui,/dataset\.ordaxView = visible \? 'provider' : 'app'/);
+  assert.match(ui,/await showProviderPane\(true\)/);
+  assert.match(ui,/setProviderBounds\(bounds\)/);
+  assert.match(ui,/dataset\.ordaxView='app'/);
 });
 
 test('all live App gates reject a Lab with correct title but a different SQLite profile',async()=>{
   const expectedProfile=path.join(stage,'OrdaX','OrchestratorLab');
   const {labProfileFingerprint}=await import('../src/lab-profile-binding.mjs');
-  const app={view:'app',directButton:'Modo direto',composer:'FORM',prompt:'TEXTAREA',newTask:'BUTTON'};
+  const app={view:'app',providerPane:'TABLIST',composer:'FORM',prompt:'TEXTAREA',newTask:'BUTTON'};
   const priorLocal=process.env.ORDAX_LAB_E2E_LOCALAPPDATA;
   const priorApproval=process.env.ORDAX_LAB_E2E_APPROVED;
   process.env.ORDAX_LAB_E2E_LOCALAPPDATA=stage;

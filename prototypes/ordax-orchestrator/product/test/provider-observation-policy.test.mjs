@@ -16,6 +16,15 @@ test('provider failure exposes a safe retry disposition only before submit was a
   assert.equal(uncertain.message,'await-response:provider_send_unconfirmed');
   assert.equal(uncertain.providerDeliveryState,'uncertain');
   assert.equal(uncertain.providerFailureCode,'provider_send_unconfirmed');
+  const submitted=normalizeProviderFailure(new Error('await-response:chatgpt_response_retry_required'),{
+    stage:'await-response',submitAttemptAt:123,submissionConfirmedAt:456
+  });
+  assert.equal(submitted.message,'await-response:chatgpt_response_retry_required');
+  assert.equal(submitted.providerDeliveryState,'submitted');
+  assert.equal(submitted.providerFailureCode,'chatgpt_response_retry_required');
+  assert.equal(normalizeProviderFailure(new Error('provider_error'),{
+    submitAttemptAt:123,submissionConfirmedAt:'456'
+  }).providerDeliveryState,'uncertain');
 });
 
 test('DOM unavailable on ChatGPT home is UNKNOWN, not logged in',()=>{
@@ -129,4 +138,14 @@ test('429 is surfaced only through sanitized first-party status counts, not priv
   assert.match(ui,/ChatGPT • limitação observada \(429\)/);
   assert.match(ui,/chatgpt_provider_rate_limited_observed:/);
   assert.doesNotMatch(ui,/429.*(?:setTimeout|retry|reload)/i);
+});
+
+test('provider preflight blocks composing over active GPT generation or unresolved response failure',()=>{
+  const ready={auth_state:'session_present',composer_ready:true,health_observed:true};
+  assert.throws(()=>assertProviderSendReadiness({...ready,response_generation_active:true}),
+    /chatgpt_response_in_progress/);
+  assert.throws(()=>assertProviderSendReadiness({...ready,
+    provider_response_failure:'chatgpt_response_retry_required'}),/chatgpt_response_retry_required/);
+  assert.throws(()=>assertProviderSendReadiness({...ready,
+    provider_response_failure:'chatgpt_response_error_observed'}),/chatgpt_response_error_observed/);
 });

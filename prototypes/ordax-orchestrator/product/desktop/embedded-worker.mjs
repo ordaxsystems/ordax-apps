@@ -2,19 +2,28 @@ import { WebContentsView, session } from 'electron';
 import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
 import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
 import { createResponseObservationBudget, responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
-import { providerGenerationStopProbeExpression } from '../src/provider-generation-stop-probe.mjs';
+import { providerGenerationStopProbeExpression, providerResponseControlStateExpression } from '../src/provider-generation-stop-probe.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { createProviderDeliveryRecorder } from '../src/provider-delivery-recorder.mjs';
+import { providerUserMessageMatchesPrompt, providerUserMessageIsCollapsedPromptPrefix, shouldExpandCollapsedProviderPromptForResponse } from '../src/provider-user-message.mjs';
+import { providerResponseFailureSignalsExpression, classifyProviderResponseFailure } from '../src/provider-response-failure.mjs';
+import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
 import { assessHistoricalThreadPreflight, classifyHistoricalThreadPostNavigation } from '../src/provider-historical-thread-preflight.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import { classifyProviderPageAvailability } from '../src/provider-page-availability.mjs';
+import { providerAuthControlProbeExpression } from '../src/provider-auth-control-probe.mjs';
+import { providerVerificationNoticeProbeBootstrap } from '../src/provider-verification-notice.mjs';
 import path from 'node:path';
+import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { classifyProviderContextAttachmentObservation, selectProviderContextFileInput, PROVIDER_CONTEXT_FILE_INPUT_SELECTOR, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const { providerMessageSelectors, providerMessageQueryBootstrap } = providerDomSelectors;
 const CHAT_ORIGINS = /^https:\/\/(chatgpt\.com|auth\.openai\.com|accounts\.google\.com)\//i;
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,7 +51,7 @@ function createView(partition) {
   return new WebContentsView({
     webPreferences: {
       partition,
-      preload: path.join(here, 'worker-preload.cjs'),
+      preload: path.join(here, 'worker-preload.bundle.cjs'),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false
@@ -264,7 +273,19 @@ export class EmbeddedChatWorker {
   }
 
   async load(url = 'https://chatgpt.com/') {
-    await this.#safeLoad(url, { requireComposer: false });
+    try {
+      await this.#safeLoad(url, { requireComposer: false });
+    } catch (error) {
+      // Preserve a bounded, local diagnostic when the provider navigation
+      // times out before Chromium emits did-fail-load. Never store page text.
+      if (!this.lastError) {
+        const code = String(error?.message || '');
+        this.lastError = code === 'provider_navigation_timeout'
+          ? code
+          : 'provider_initial_load_failed';
+      }
+      throw error;
+    }
   }
 
   status() {
@@ -283,8 +304,42 @@ export class EmbeddedChatWorker {
       stage: this.stage,
       observer_mode: this.observerMode,
       fast_observer_ready: this.fastNetwork.enabled,
-      fast_stream_capable: this.fastNetwork.streamCapable
+      fast_stream_capable: this.fastNetwork.streamCapable,
+      can_go_back:!this.view.webContents.isDestroyed()&&this.view.webContents.navigationHistory.canGoBack(),
+      can_go_forward:!this.view.webContents.isDestroyed()&&this.view.webContents.navigationHistory.canGoForward()
     };
+  }
+
+  async #assertManualNavigationSafe() {
+    const wc=this.view.webContents;
+    const state=await this.#composerState().catch(()=>null);
+    if(!state)throw new Error('provider_navigation_state_unknown');
+    if(state.text?.trim())throw new Error('chatgpt_draft_present');
+    if(!state.found) {
+      const url=wc.getURL();
+      const authPage=url.startsWith('https://chatgpt.com/auth/login')||
+        url.startsWith('https://auth.openai.com/')||url.startsWith('https://accounts.google.com/');
+      if(!authPage)throw new Error('provider_navigation_state_unknown');
+    }
+  }
+
+  async navigateHistory(direction) {
+    if(!['back','forward'].includes(direction))throw new Error('provider_navigation_invalid');
+    if(this.active)throw new Error('provider_navigation_during_run_blocked');
+    await this.#assertManualNavigationSafe();
+    const wc=this.view.webContents;
+    const history=wc.navigationHistory;
+    const canNavigate=direction==='back'?history.canGoBack():history.canGoForward();
+    if(!canNavigate)return {started:false,canGoBack:history.canGoBack(),canGoForward:history.canGoForward()};
+    if(direction==='back')history.goBack();else history.goForward();
+    return {started:true,canGoBack:history.canGoBack(),canGoForward:history.canGoForward()};
+  }
+
+  async reloadCurrentPage() {
+    if(this.active)throw new Error('provider_reload_during_run_blocked');
+    await this.#assertManualNavigationSafe();
+    this.view.webContents.reload();
+    return {started:true};
   }
 
   async health() {
@@ -293,6 +348,20 @@ export class EmbeddedChatWorker {
     const page = await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
       const body=document.body?.innerText||'';
       const composer=${composerExpression()};
+      ${providerMessageQueryBootstrap}
+      ${providerVerificationNoticeProbeBootstrap}
+      const authControls=${providerAuthControlProbeExpression};
+      const messageNodes=queryProviderMessageNodes(document,'user',providerMessageSelectors).length +
+        queryProviderMessageNodes(document,'assistant',providerMessageSelectors).length;
+      const visibleNotice=node=>{
+        if(!node)return false;
+        const style=getComputedStyle(node),rect=node.getBoundingClientRect();
+        return style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0;
+      };
+      const verificationAlert=!composer&&messageNodes===0&&
+        Array.from(document.querySelectorAll('[role="alert"],h1,h2')).filter(visibleNotice).some(node=>
+          isProviderVerificationNotice(String(node.innerText||node.textContent||''))
+        );
       // Only count status codes of first-party requests. Never export URLs,
       // response payloads, query parameters, user data, or cookies.
       let backendForbiddenCount=0;
@@ -313,16 +382,19 @@ export class EmbeddedChatWorker {
         backendRateLimitedCount:Math.min(100,backendRateLimitedCount),
         body:body.slice(-5000),
         composer:Boolean(composer),
-        messageNodes:document.querySelectorAll('[data-message-author-role="user"],[data-message-author-role="assistant"],[data-message-role="user"],[data-message-role="assistant"]').length,
-        hasLogin:/Entrar|Log in|Sign in/i.test(body),
-        hasSignup:/Cadastre-se|Sign up/i.test(body),
-        verification:/Ocorreu um erro durante a verificação|verification.*(?:failed|error)|verificação.*erro/i.test(body)
+        messageNodes,
+        hasLogin:authControls.hasLogin,
+        hasSignup:authControls.hasSignup,
+        verification:verificationAlert,
+        generationStopVisible:${providerGenerationStopProbeExpression},
+        responseFailureSignals:${providerResponseFailureSignalsExpression}
       };
     })()`), { timeoutMs:5000, code:'provider_health_observation_timeout' }).catch(() => null);
     const url = this.view.webContents.getURL();
     const authState=classifyProviderAuthObservation({url,page});
     const availability=classifyProviderPageAvailability({
-      body:page?.body,messageNodes:page?.messageNodes,composerPresent:page?.composer
+      body:page?.body,messageNodes:page?.messageNodes,composerPresent:page?.composer,
+      verificationAlert:page?.verification===true
     });
     const providerAccessProblem=classifyProviderAccessRestriction({
       forbiddenCount:page?.backendForbiddenCount||0,
@@ -335,6 +407,8 @@ export class EmbeddedChatWorker {
       page_state:availability.page_state,
       history_unavailable:availability.history_unavailable,
       provider_access_problem:providerAccessProblem,
+      response_generation_active:page?.generationStopVisible===true,
+      provider_response_failure:classifyProviderResponseFailure(page?.responseFailureSignals),
       backend_api_403_count:page?.backendForbiddenCount||0,
       backend_api_429_count:page?.backendRateLimitedCount||0 };
   }
@@ -473,9 +547,9 @@ export class EmbeddedChatWorker {
       try {
         observation=await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
           const $ = selector => document.querySelector(selector);
-          const all = selector => document.querySelectorAll(selector);
-          const userNodes=all('[data-message-role="user"],[data-message-author-role="user"],[data-message-author="user"]');
-          const assistantNodes=all('[data-message-role="assistant"],[data-message-author-role="assistant"],[data-message-author="assistant"]');
+          ${providerMessageQueryBootstrap}
+          const userNodes=queryProviderMessageNodes(document,'user',providerMessageSelectors);
+          const assistantNodes=queryProviderMessageNodes(document,'assistant',providerMessageSelectors);
           const hasContent = nodes => Array.from(nodes).some(node =>
             Boolean(String(node.innerText || node.textContent || '').trim()));
           return {
@@ -510,25 +584,26 @@ export class EmbeddedChatWorker {
     try {
       result=await observeWithin(() => wc.debugger.sendCommand('Runtime.evaluate', {
         expression:`(() => {
-          const entries = Array.from(document.querySelectorAll(
-            '[data-message-author-role="user"],[data-message-author-role="assistant"],' +
-            '[data-message-role="user"],[data-message-role="assistant"],' +
-            '[data-message-author="user"],[data-message-author="assistant"]'
-          ));
+          ${providerMessageQueryBootstrap}
+          const entries = [
+            ...queryProviderMessageNodes(document,'user',providerMessageSelectors).map(node=>({node,role:'user'})),
+            ...queryProviderMessageNodes(document,'assistant',providerMessageSelectors).map(node=>({node,role:'assistant'}))
+          ].sort((left,right)=>{
+            const position=left.node.compareDocumentPosition(right.node);
+            return position & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : position & Node.DOCUMENT_POSITION_PRECEDING ? 1 : 0;
+          });
           const tail = entries.slice(-50);
-          const messages = tail.map(node => {
-            const roleValue=node.getAttribute('data-message-author-role') ||
-              node.getAttribute('data-message-role') || node.getAttribute('data-message-author');
+          const messages = tail.map(({node,role}) => {
             const text=String(node.innerText || node.textContent || '');
             return {
-              role:roleValue === 'user' ? 'user' : 'assistant',
+              role,
               text:text.slice(0,12001),
               textTruncated:text.length>12000
             };
           });
           // A visible assistant bubble can still be streaming. Capture the
           // first-party stop control in the same bounded read-only snapshot.
-          const generationStopVisible=${providerGenerationStopProbeExpression};
+          const responseControlState=${providerResponseControlStateExpression};
           const hasComposer=Boolean(document.querySelector(
             '#prompt-textarea,[contenteditable="true"][role="textbox"]'
           ));
@@ -538,7 +613,9 @@ export class EmbeddedChatWorker {
             ? String(document.body?.innerText||'').slice(-5000) : '';
           return {
             available:true, url:location.href, domReliable:entries.length>0,
-            truncated:entries.length>50, generationStopVisible,
+            truncated:entries.length>50,
+            generationStopVisible:responseControlState.generationStopVisible,
+            responseCompletionObserved:responseControlState.responseCompletionObserved,
             loadFailureText, messages
           };
         })()`,
@@ -691,13 +768,20 @@ export class EmbeddedChatWorker {
 
   async #assistantSnapshot() {
     return this.view.webContents.executeJavaScript(`(() => {
-      const nodes = Array.from(document.querySelectorAll('[data-message-role="assistant"], [data-message-author-role="assistant"], [data-message-author="assistant"], [data-chatgpt-selection-message-id]'));
-      const userNodes = Array.from(document.querySelectorAll('[data-message-role="user"], [data-message-author-role="user"], [data-message-author="user"], [data-user-message-bubble="true"]'));
-      const latestUserText = String(userNodes.at(-1)?.innerText || userNodes.at(-1)?.textContent || '').trim();
+      ${providerMessageQueryBootstrap}
+      const nodes = queryProviderMessageNodes(document,'assistant',providerMessageSelectors);
+      const userNodes = queryProviderMessageNodes(document,'user',providerMessageSelectors);
+      const latestUserNode = userNodes.at(-1) || null;
+      const latestUserExpandControlPresent = Boolean(latestUserNode && Array.from(latestUserNode.querySelectorAll('button,[role="button"]')).some(control =>
+        /^(Mostrar mais|Show more|Mostrar menos|Show less)$/i.test(String(control.innerText || control.textContent || control.getAttribute('aria-label') || '').trim())
+      ));
+      const latestUserText = String(latestUserNode?.innerText || latestUserNode?.textContent || '').trim();
       const imageData = img => ({ src: img.currentSrc || img.src || '', alt: img.alt || '', width: img.naturalWidth || 0, height: img.naturalHeight || 0 });
       const validImage = (img, min) => Boolean(img.src) && (img.width >= min || img.height >= min || img.src.includes('images.openai.com'));
       const generatedImages = Array.from(document.querySelectorAll('[data-testid="generated-image-preview"] img')).map(imageData).filter(img => validImage(img, 64));
-      const generationStopVisible = ${providerGenerationStopProbeExpression};
+      const responseControlState = ${providerResponseControlStateExpression};
+      const generationStopVisible = responseControlState.generationStopVisible;
+      const responseFailureSignals = ${providerResponseFailureSignalsExpression};
       const readNode = node => {
         const id = node.getAttribute('data-chatgpt-selection-message-id') || node.getAttribute('data-message-id') || '';
         const markdown = node.querySelector('[data-assistant-markdown], [data-message-content]');
@@ -705,13 +789,13 @@ export class EmbeddedChatWorker {
         text = text.replace(/^O ChatGPT disse:\\s*/i, '').replace(/^ChatGPT disse:\\s*/i, '').replace(/^ChatGPT said:\\s*/i, '').trim();
         text = text.split(/\\r?\\n/).map(line => line.trim()).filter(line => line && !/^(Editar|Edit|Resposta concluída|Response completed|Copiar|Copy|Compartilhar|Share|Você gosta dessa personalidade\??|Do you like this personality\??|Conte-nos mais|Tell us more)$/i.test(line)).join('\\n').trim();
         const images = Array.from(node.querySelectorAll('img')).map(imageData).filter(img => validImage(img, 64));
-        return { id, text, images, complete: !generationStopVisible || node.hasAttribute('data-message-complete') || Boolean(node.querySelector('[data-message-complete]')) };
+        return { id, text, images, complete: responseControlState.responseCompletionObserved || node.hasAttribute('data-message-complete') || Boolean(node.querySelector('[data-message-complete]')) };
       };
-      if (nodes.length) return { mode:'direct', messages:nodes.map(readNode), rawBody:'', images:generatedImages, latestUserText, generationStopVisible };
+      if (nodes.length) return { mode:'direct', messages:nodes.map(readNode), rawBody:'', images:generatedImages, latestUserText, latestUserExpandControlPresent, generationStopVisible, responseCompletionObserved:responseControlState.responseCompletionObserved, responseFailureSignals };
       const conversationRoot = document.querySelector('main,[role="main"]');
       const body = (conversationRoot && conversationRoot.innerText) || '';
       const images = Array.from((conversationRoot || document).querySelectorAll('img')).map(imageData).filter(img => validImage(img, 128));
-      return { mode:'body', messages:[], rawBody:body, images:[...images, ...generatedImages].filter((image,index,all) => all.findIndex(other => other.src === image.src) === index), latestUserText, generationStopVisible };
+      return { mode:'body', messages:[], rawBody:body, images:[...images, ...generatedImages].filter((image,index,all) => all.findIndex(other => other.src === image.src) === index), latestUserText, latestUserExpandControlPresent, generationStopVisible, responseCompletionObserved:responseControlState.responseCompletionObserved, responseFailureSignals };
     })()`);
   }
 
@@ -721,14 +805,19 @@ export class EmbeddedChatWorker {
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
 
     const baseline = await this.#submissionState();
+    // A web editor can remain mounted and visible after the app loses native
+    // page focus. Focus the existing embedded WebContents before routing the
+    // single CDP text insertion, then require the intended composer itself to
+    // own DOM focus. This prevents a silent insertion into the page body.
+    this.view.webContents.focus();
     const prepared = await wc.executeJavaScript(`(() => {
       const sels = ${JSON.stringify(selectors.composer)};
       const input = ${composerExpression()};
-      if (!input) return false;
+      if (!input || typeof input.focus !== 'function') return false;
       input.focus();
-      return true;
+      return document.activeElement === input || input.contains(document.activeElement);
     })()`).catch(() => false);
-    if (!prepared) throw new Error('composer_not_found');
+    if (!prepared) throw new Error('composer_focus_not_observed');
 
     try {
       if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
@@ -788,10 +877,21 @@ export class EmbeddedChatWorker {
       if (!submitted) throw new Error('send_control_unavailable');
     };
 
+    let promptExpansionAttempted=false;
     try {
       await submitExactlyOnce({
         fire,
-        readState: () => this.#submissionState(),
+        readState: async () => {
+          let state=await this.#submissionState();
+          if (!promptExpansionAttempted&&providerUserMessageIsCollapsedPromptPrefix(state.latestUserText,prompt,{
+            expandControlPresent:Boolean(state.latestUserExpandControlPresent)
+          })) {
+            promptExpansionAttempted=true;
+            const expanded=await this.#expandLatestUserMessageForVerification();
+            if(expanded)state=await this.#submissionState();
+          }
+          return state;
+        },
         wait: () => sleep(250),
         baseline,
         prompt,
@@ -813,14 +913,38 @@ export class EmbeddedChatWorker {
     return this.view.webContents.executeJavaScript(`(() => {
       const composer = ${composerExpression()};
       const text = composer ? ('value' in composer ? composer.value : (composer.innerText || composer.textContent || '')) : '';
-      const userNodes = [...document.querySelectorAll('[data-message-role="user"],[data-message-author-role="user"],[data-message-author="user"],[data-user-message-bubble="true"]')];
+      ${providerMessageQueryBootstrap}
+      const userNodes = queryProviderMessageNodes(document,'user',providerMessageSelectors);
+      const latestUserNode = userNodes.at(-1) || null;
+      const latestUserExpandControlPresent = Boolean(latestUserNode && [...latestUserNode.querySelectorAll('button,[role="button"]')].some(control =>
+        /^(Mostrar mais|Show more|Mostrar menos|Show less)$/i.test(String(control.innerText || control.textContent || control.getAttribute('aria-label') || '').trim())
+      ));
       return {
         composerText:String(text || ''),
         userCount:userNodes.length,
-        latestUserText:String(userNodes.at(-1)?.innerText || userNodes.at(-1)?.textContent || ''),
+        latestUserText:String(latestUserNode?.innerText || latestUserNode?.textContent || ''),
+        latestUserExpandControlPresent,
         url:location.href
       };
     })()`);
+  }
+
+  async #expandLatestUserMessageForVerification() {
+    return this.view.webContents.executeJavaScript(`(() => {
+      ${providerMessageQueryBootstrap}
+      const user=queryProviderMessageNodes(document,'user',providerMessageSelectors).at(-1)||null;
+      if(!user)return false;
+      const control=Array.from(user.querySelectorAll('button,[role="button"]')).find(node=>{
+        const label=String(node.innerText||node.textContent||node.getAttribute('aria-label')||'').trim();
+        if(!/^(Mostrar mais|Show more)$/i.test(label))return false;
+        const style=getComputedStyle(node),rect=node.getBoundingClientRect();
+        return style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0&&
+          node.getAttribute('aria-disabled')!=='true'&&!node.disabled;
+      });
+      if(!control)return false;
+      control.click();
+      return true;
+    })()`).catch(()=>false);
   }
 
   async #fetchImages(images = []) {
@@ -843,7 +967,10 @@ export class EmbeddedChatWorker {
     const ctx = this.streamContext;
     if (!ctx || !snapshot) return null;
     const latestUserText = String(snapshot.latestUserText || '').trim();
-    if (snapshot.mode === 'direct' && latestUserText && latestUserText !== ctx.promptText) return null;
+    if (snapshot.mode === 'direct' && latestUserText && !providerUserMessageMatchesPrompt(
+      latestUserText, ctx.promptText,
+      { expandControlPresent:Boolean(snapshot.latestUserExpandControlPresent) }
+    )) return null;
     const messageId = String(snapshot.messageId || '').trim();
     const freshVisualImages = (snapshot.images || []).filter(image => image?.src && !ctx.beforeImageSources.has(image.src));
     let staleAssistantMessage = false;
@@ -916,8 +1043,147 @@ export class EmbeddedChatWorker {
     };
   }
 
-  async sendPrompt({ prompt, chatUrl = null, newSession = false, onDeliveryObserved = null,
-    onProvisionalProgress = null }) {
+  async #observeContextAttachment(filename) {
+    const expected=JSON.stringify(filename);
+    return this.view.webContents.executeJavaScript(`(() => {
+      const expected=${expected};
+      const visible=element=>{
+        if(!element)return false;
+        const style=getComputedStyle(element),rect=element.getBoundingClientRect();
+        return style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0;
+      };
+      const composer=${composerExpression()};
+      const activeForm=composer?.closest('form')||null;
+      const fileInputs=Array.from(activeForm?.querySelectorAll('input[type="file"]')||[]);
+      const selectedFileNames=fileInputs.flatMap(input=>Array.from(input.files||[]).map(file=>String(file.name||'')));
+      const expectedInputFileSelected=selectedFileNames.includes(expected);
+      let filenameTextVisible=false;
+      const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+      while(walker.nextNode()){
+        if(!String(walker.currentNode.nodeValue||'').includes(expected))continue;
+        if(visible(walker.currentNode.parentElement)){filenameTextVisible=true;break;}
+      }
+      const filenameAttributeVisible=Array.from(document.querySelectorAll('[aria-label],[title]'))
+        .some(element=>visible(element)&&[
+          element.getAttribute('aria-label'),element.getAttribute('title')
+        ].some(value=>String(value||'').includes(expected)));
+      const filenameVisible=filenameTextVisible||filenameAttributeVisible;
+      const progressVisible=Array.from(document.querySelectorAll('progress,[role="progressbar"],[aria-busy="true"]'))
+        .some(element=>visible(element));
+      const uploadErrorVisible=Array.from(document.querySelectorAll('[role="alert"]'))
+        .filter(visible).some(element=>/upload|anex|arquivo|file/i.test(String(element.innerText||'')));
+      return {filenameVisible,filenameTextVisible,filenameAttributeVisible,progressVisible,uploadErrorVisible,
+        fileInputCount:fileInputs.length,selectedFileCount:selectedFileNames.length,expectedInputFileSelected};
+    })()`).catch(()=>({filenameVisible:false,filenameTextVisible:false,filenameAttributeVisible:false,
+      progressVisible:false,uploadErrorVisible:false,fileInputCount:0,selectedFileCount:0,expectedInputFileSelected:false}));
+  }
+
+  async #attachContextFile(rawAttachment,onContextAttachmentObserved) {
+    const attachment=validateProviderContextAttachment(rawAttachment);
+    const bytes=fs.readFileSync(attachment.filePath);
+    if(bytes.byteLength!==attachment.byteLength||
+       createHash('sha256').update(bytes).digest('hex')!==attachment.sha256)
+      throw new Error('provider_context_attachment_integrity_failed');
+    const wc=this.view.webContents;
+    try { if(!wc.debugger.isAttached())wc.debugger.attach('1.3'); }
+    catch { if(!wc.debugger.isAttached())throw new Error('provider_context_file_input_unavailable'); }
+    this.#setStage('context-attachment');
+    let activeFormNodeId;
+    let activeFormObjectId;
+    try {
+      await wc.debugger.sendCommand('DOM.enable');
+      const document=await wc.debugger.sendCommand('DOM.getDocument',{depth:-1,pierce:true});
+      if(!Number.isSafeInteger(document?.root?.nodeId)||document.root.nodeId<1)
+        throw new Error('provider_context_file_input_unavailable');
+      const activeFormResult=await wc.debugger.sendCommand('Runtime.evaluate',{
+        expression:`(() => { const composer=${composerExpression()}; return composer?.closest('form')||null; })()`,
+        returnByValue:false,awaitPromise:false
+      });
+      activeFormObjectId=activeFormResult?.result?.objectId;
+      if(!activeFormObjectId||activeFormResult?.result?.subtype==='null')
+        throw new Error('provider_context_file_input_unavailable');
+      const requested=await wc.debugger.sendCommand('DOM.requestNode',{objectId:activeFormObjectId});
+      activeFormNodeId=requested?.nodeId;
+      if(!Number.isSafeInteger(activeFormNodeId)||activeFormNodeId<1)
+        throw new Error('provider_context_file_input_unavailable');
+    } catch { throw new Error('provider_context_file_input_unavailable'); }
+    finally {
+      if(activeFormObjectId)await wc.debugger.sendCommand('Runtime.releaseObject',{objectId:activeFormObjectId}).catch(()=>{});
+    }
+    const matches=await wc.debugger.sendCommand('DOM.querySelectorAll',{
+      nodeId:activeFormNodeId,selector:'input[type="file"]'
+    }).catch(()=>null);
+    const nodeIds=matches?.nodeIds;
+    if(!Array.isArray(nodeIds))throw new Error('provider_context_file_input_unavailable');
+    const inputs=[];
+    for(let index=0;index<nodeIds.length;index++){
+      const described=await wc.debugger.sendCommand('DOM.describeNode',{nodeId:nodeIds[index],depth:0}).catch(()=>null);
+      const attributes=described?.node?.attributes;
+      if(!Array.isArray(attributes)||attributes.length%2!==0)
+        throw new Error('provider_context_file_input_unavailable');
+      const pairs=[];
+      for(let offset=0;offset<attributes.length;offset+=2)pairs.push([attributes[offset],attributes[offset+1]]);
+      const attrs=new Map(pairs);
+      inputs.push({index,type:attrs.get('type')||'',ariaLabel:attrs.get('aria-label')||null,
+        accept:attrs.has('accept')?attrs.get('accept'):null,multiple:attrs.has('multiple')});
+    }
+    const selected=selectProviderContextFileInput(inputs);
+    if(!nodeIds[selected.index])
+      throw new Error('provider_context_file_input_ambiguous');
+    this.streamContext.contextAttachmentAttemptAt=Date.now();
+    this.streamContext.contextAttachmentSha256=attachment.sha256;
+    this.streamContext.contextAttachmentFilename=attachment.filename;
+    this.streamContext.contextAttachmentByteLength=attachment.byteLength;
+    this.streamContext.contextAttachmentState='uploading';
+    try {
+      await wc.debugger.sendCommand('DOM.setFileInputFiles',{files:[attachment.filePath],nodeId:nodeIds[selected.index]});
+    } catch { throw new Error('provider_context_attachment_start_failed'); }
+    this.streamContext.contextAttachmentSelectionConfirmed=true;
+    // ChatGPT may clear or replace its file input as soon as the selected file
+    // enters its upload queue. The successful CDP assignment confirms selection;
+    // durable upload confirmation still requires the exact generated filename
+    // to be visible and stable in the provider UI.
+    let stable=0;
+    const started=Date.now();
+    while(Date.now()-started<45000){
+      const observation=await this.#observeContextAttachment(attachment.filename);
+      this.streamContext.contextAttachmentObservationCount=(this.streamContext.contextAttachmentObservationCount||0)+1;
+      this.streamContext.contextAttachmentFileInputCount=observation.fileInputCount;
+      this.streamContext.contextAttachmentSelectedFileCount=observation.selectedFileCount;
+      this.streamContext.contextAttachmentExpectedFileSelected=observation.expectedInputFileSelected;
+      this.streamContext.contextAttachmentFilenameTextVisible=observation.filenameTextVisible;
+      this.streamContext.contextAttachmentFilenameAttributeVisible=observation.filenameAttributeVisible;
+      this.streamContext.contextAttachmentProgressVisible=observation.progressVisible;
+      this.streamContext.contextAttachmentErrorVisible=observation.uploadErrorVisible;
+      if(observation.filenameVisible&&!observation.progressVisible)
+        this.streamContext.contextAttachmentVisibleStableObservations=
+          (this.streamContext.contextAttachmentVisibleStableObservations||0)+1;
+      else this.streamContext.contextAttachmentVisibleStableObservations=0;
+      if(observation.filenameVisible&&!observation.progressVisible)stable++;
+      else stable=0;
+      const uploadState=classifyProviderContextAttachmentObservation({
+        filename:attachment.filename,selectionConfirmed:true,
+        visibleFilename:observation.filenameVisible,progressVisible:observation.progressVisible,
+        uploadErrorVisible:observation.uploadErrorVisible,stableObservations:stable
+      });
+      if(uploadState.state==='failed')throw new Error('provider_context_attachment_upload_failed');
+      if(uploadState.state==='confirmed'){
+        const uploadedAt=Date.now();
+        const receipt={filename:attachment.filename,sha256:attachment.sha256,
+          byteLength:attachment.byteLength,taskId:attachment.taskId,
+          checkpointVersion:attachment.checkpointVersion,uploadedAt};
+        this.streamContext.contextAttachmentState='confirmed';
+        this.streamContext.contextAttachmentUploadedAt=uploadedAt;
+        if(typeof onContextAttachmentObserved==='function')await onContextAttachmentObserved(receipt);
+        return receipt;
+      }
+      await sleep(400);
+    }
+    throw new Error('provider_context_attachment_upload_unconfirmed');
+  }
+
+  async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
+    onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -947,6 +1213,9 @@ export class EmbeddedChatWorker {
       }
       const conversationReadyAt = Date.now();
 
+      if(contextAttachment&&!startsFresh)
+        throw new Error('provider_context_attachment_requires_new_conversation');
+
       this.#setStage('baseline');
       this.fastNetwork.firstByteAt = null;
       this.fastNetwork.activeRequestId = null;
@@ -964,6 +1233,7 @@ export class EmbeddedChatWorker {
       const promptText = String(prompt || '').trim();
       this.streamContext = { beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
 
+      if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
       await this.#setComposerAndSend(promptText);
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
@@ -981,13 +1251,36 @@ export class EmbeddedChatWorker {
 
       this.#setStage('await-response');
       const responseBudget = createResponseObservationBudget();
+      let responsePromptExpansionAttempted = false;
+      let responsePromptExpanded = false;
       let latest = null, latestSignature = '', stable = 0, completionConfirmed = false;
       while (responseBudget.active()) {
         await sleep(300);
         await retainSubmittedConversation();
         const snap = await this.#assistantSnapshot().catch(() => ({ mode:'unknown', messages:[], rawBody:'', images:[] }));
+        const responseFailure=classifyProviderResponseFailure(snap.responseFailureSignals);
+        if(responseFailure)throw new Error(responseFailure);
+        if (snap.mode === 'direct' && snap.latestUserText && !providerUserMessageMatchesPrompt(
+          snap.latestUserText, promptText,
+          { expandControlPresent:Boolean(snap.latestUserExpandControlPresent) }
+        )) {
+          // ChatGPT can collapse a long user bubble again while rendering the
+          // answer. Expand only when the visible text is a substantial prefix
+          // of this exact submitted prompt; never click a neighboring message
+          // or treat the prefix itself as proof of delivery.
+          if (shouldExpandCollapsedProviderPromptForResponse({
+            observed:snap.latestUserText,prompt:promptText,
+            expandControlPresent:Boolean(snap.latestUserExpandControlPresent),
+            alreadyAttempted:responsePromptExpansionAttempted
+          })) {
+            responsePromptExpansionAttempted = true;
+            if (this.streamContext) this.streamContext.responsePromptExpansionAttempted = true;
+            responsePromptExpanded = await this.#expandLatestUserMessageForVerification();
+            if (this.streamContext) this.streamContext.responsePromptExpanded = responsePromptExpanded;
+          }
+          continue;
+        }
         let candidate = snap.messages.at(-1) || null;
-        if (snap.mode === 'direct' && snap.latestUserText && String(snap.latestUserText).trim() !== promptText) continue;
         const freshVisualImages = (snap.images || []).filter(image => image?.src && !beforeImages.has(image.src));
         if (snap.mode === 'direct' && candidate?.id) {
           const messageId = String(candidate.id);
@@ -1025,7 +1318,8 @@ export class EmbeddedChatWorker {
         if (signature === latestSignature) stable++; else stable = 0;
         latest = candidate; latestSignature = signature;
         const transient = /^(criando|gerando)\s+imagem/i.test(candidate.text||'') || /^(creating|generating)\s+image/i.test(candidate.text||'');
-        const generating = snap.generationStopVisible;
+        const generating = snap.generationStopVisible === true ? true :
+          snap.responseCompletionObserved === true ? false : null;
         if (responseObservationComplete({ candidate, stable, transient, generating })) {
           completionConfirmed = true;
           break;
@@ -1039,7 +1333,45 @@ export class EmbeddedChatWorker {
       const images = await this.#fetchImages(latest.images || []);
       this.lastError = null;
       if (this.streamContext?.currentAssistantMessageId) this.seenAssistantMessageIds.add(this.streamContext.currentAssistantMessageId);
-      const metrics = this.streamContext ? { prepareStartedAt:this.streamContext.prepareStartedAt, healthCompletedAt:this.streamContext.healthCompletedAt, draftCheckedAt:this.streamContext.draftCheckedAt, conversationReadyAt:this.streamContext.conversationReadyAt, observerReadyAt:this.streamContext.observerReadyAt, baselineReadyAt:this.streamContext.baselineReadyAt, submitAttemptAt:this.streamContext.submitAttemptAt, providerRequestSeenAt:this.streamContext.providerRequestSeenAt, submittedAt:this.streamContext.submittedAt, firstActivityAt:this.streamContext.firstActivityAt, firstDeltaAt:this.streamContext.firstDeltaAt, fastFirstDeltaAt:this.streamContext.fastFirstDeltaAt, betaFirstDeltaAt:this.streamContext.betaFirstDeltaAt, networkFirstByteAt:this.streamContext.networkFirstByteAt, completedAt:Date.now(), providerDeliveryState:'submitted', observerUsed:this.streamContext.firstObserver || (this.streamContext.fastDelivered ? 'fast' : 'beta'), firstObserver:this.streamContext.firstObserver || null, fastSeen:Boolean(this.streamContext.fastSeen), betaSeen:Boolean(this.streamContext.betaSeen), fastDelivered:Boolean(this.streamContext.fastDelivered), fastSuppressed:Boolean(this.streamContext.fastSuppressed), fastSuppressionReason:this.streamContext.fastSuppressionReason || null } : null;
+      const metrics=this.streamContext?{
+        prepareStartedAt:this.streamContext.prepareStartedAt,
+        healthCompletedAt:this.streamContext.healthCompletedAt,
+        draftCheckedAt:this.streamContext.draftCheckedAt,
+        conversationReadyAt:this.streamContext.conversationReadyAt,
+        observerReadyAt:this.streamContext.observerReadyAt,
+        baselineReadyAt:this.streamContext.baselineReadyAt,
+        submitAttemptAt:this.streamContext.submitAttemptAt,
+        providerRequestSeenAt:this.streamContext.providerRequestSeenAt,
+        submittedAt:this.streamContext.submittedAt,
+        firstActivityAt:this.streamContext.firstActivityAt,
+        firstDeltaAt:this.streamContext.firstDeltaAt,
+        fastFirstDeltaAt:this.streamContext.fastFirstDeltaAt,
+        betaFirstDeltaAt:this.streamContext.betaFirstDeltaAt,
+        networkFirstByteAt:this.streamContext.networkFirstByteAt,
+        completedAt:Date.now(),providerDeliveryState:'submitted',
+        contextAttachmentState:this.streamContext.contextAttachmentState||null,
+        contextAttachmentSha256:this.streamContext.contextAttachmentSha256||null,
+        contextAttachmentFilename:this.streamContext.contextAttachmentFilename||null,
+        contextAttachmentByteLength:this.streamContext.contextAttachmentByteLength||null,
+        contextAttachmentUploadedAt:this.streamContext.contextAttachmentUploadedAt||null,
+        contextAttachmentSelectionConfirmed:Boolean(this.streamContext.contextAttachmentSelectionConfirmed),
+        contextAttachmentObservationCount:this.streamContext.contextAttachmentObservationCount||0,
+        contextAttachmentFileInputCount:this.streamContext.contextAttachmentFileInputCount||0,
+        contextAttachmentSelectedFileCount:this.streamContext.contextAttachmentSelectedFileCount||0,
+        contextAttachmentExpectedFileSelected:Boolean(this.streamContext.contextAttachmentExpectedFileSelected),
+        contextAttachmentFilenameTextVisible:Boolean(this.streamContext.contextAttachmentFilenameTextVisible),
+        contextAttachmentFilenameAttributeVisible:Boolean(this.streamContext.contextAttachmentFilenameAttributeVisible),
+        contextAttachmentProgressVisible:Boolean(this.streamContext.contextAttachmentProgressVisible),
+        contextAttachmentErrorVisible:Boolean(this.streamContext.contextAttachmentErrorVisible),
+        contextAttachmentVisibleStableObservations:this.streamContext.contextAttachmentVisibleStableObservations||0,
+        observerUsed:this.streamContext.firstObserver||(this.streamContext.fastDelivered?'fast':'beta'),
+        firstObserver:this.streamContext.firstObserver||null,
+        fastSeen:Boolean(this.streamContext.fastSeen),betaSeen:Boolean(this.streamContext.betaSeen),
+        fastDelivered:Boolean(this.streamContext.fastDelivered),
+        fastSuppressed:Boolean(this.streamContext.fastSuppressed),
+        fastSuppressionReason:this.streamContext.fastSuppressionReason||null,
+        responsePromptExpansionAttempted,responsePromptExpanded
+      }:null;
       this.streamContext = null;
       this.#setStage('idle');
       return { text:String(latest.text||'').trim(), images, chatUrl:wc.getURL(), observedAt:new Date().toISOString(), metrics };
@@ -1061,11 +1393,31 @@ export class EmbeddedChatWorker {
         firstDeltaAt:ctx.firstDeltaAt,
         completedAt:Date.now(),
         failedStage:stage,
-        providerDeliveryState:ctx.submitAttemptAt?'uncertain':'not_submitted'
+        responsePromptExpansionAttempted:Boolean(ctx.responsePromptExpansionAttempted),
+        responsePromptExpanded:Boolean(ctx.responsePromptExpanded),
+        providerDeliveryState:ctx.submittedAt?'submitted':ctx.submitAttemptAt||ctx.contextAttachmentAttemptAt?'uncertain':'not_submitted',
+        contextAttachmentState:ctx.contextAttachmentState||null,
+        contextAttachmentSha256:ctx.contextAttachmentSha256||null,
+        contextAttachmentFilename:ctx.contextAttachmentFilename||null,
+        contextAttachmentByteLength:ctx.contextAttachmentByteLength||null,
+        contextAttachmentUploadedAt:ctx.contextAttachmentUploadedAt||null,
+        contextAttachmentSelectionConfirmed:Boolean(ctx.contextAttachmentSelectionConfirmed),
+        contextAttachmentObservationCount:ctx.contextAttachmentObservationCount||0,
+        contextAttachmentFileInputCount:ctx.contextAttachmentFileInputCount||0,
+        contextAttachmentSelectedFileCount:ctx.contextAttachmentSelectedFileCount||0,
+        contextAttachmentExpectedFileSelected:Boolean(ctx.contextAttachmentExpectedFileSelected),
+        contextAttachmentFilenameTextVisible:Boolean(ctx.contextAttachmentFilenameTextVisible),
+        contextAttachmentFilenameAttributeVisible:Boolean(ctx.contextAttachmentFilenameAttributeVisible),
+        contextAttachmentProgressVisible:Boolean(ctx.contextAttachmentProgressVisible),
+        contextAttachmentErrorVisible:Boolean(ctx.contextAttachmentErrorVisible),
+        contextAttachmentVisibleStableObservations:ctx.contextAttachmentVisibleStableObservations||0
       } : { prepareStartedAt:Date.now(), completedAt:Date.now(), failedStage:stage, providerDeliveryState:'not_submitted' };
       this.streamContext = null;
       this.#setStage('idle');
-      const failure=normalizeProviderFailure(error,{stage,submitAttemptAt:ctx?.submitAttemptAt||null});
+      const failure=normalizeProviderFailure(error,{
+        stage,submitAttemptAt:ctx?.submitAttemptAt||null,
+        submissionConfirmedAt:ctx?.submittedAt??null
+      });
       this.lastError = failure.message;
       throw failure;
     });

@@ -9,6 +9,15 @@ import {acquireHostProfileLock} from '../host/host-profile-lock.mjs';
 
 const productRoot=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
+function credentialStore(){
+  const values=new Map();
+  return {values,
+    async getPassword(service,account){return values.get(`${service}:${account}`)??null;},
+    async setPassword(service,account,value){values.set(`${service}:${account}`,value);},
+    async deletePassword(service,account){return values.delete(`${service}:${account}`);}
+  };
+}
+
 test('Node host runs the shared project and task services over its authenticated browser bridge and recovers the same Store',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'ordax-node-host-'));
   const dataRoot=path.join(root,'profile');
@@ -79,10 +88,25 @@ test('Node host profile lock prevents concurrent owners and releases for restart
   await recovered();
 });
 
-test('host Groq coordinator accepts a session-only key, hides it from responses and persists only conversation records',async t=>{
+test('Node Host refuses to keep a Groq key in memory when the OS vault is unavailable',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'ordax-host-no-vault-'));
+  const application=createHostApplication({productRoot,dataRoot:path.join(root,'profile'),environment:{},credentialStore:null});
+  t.after(async()=>{application.close();await fs.rm(root,{recursive:true,force:true});});
+  const invoke=(channel,args=[])=>application.invoke('test',channel,args,{session:'test-host-session'});
+  const initial=await invoke('ordax:supervisor:status');
+  assert.equal(initial.secureStorageAvailable,false);
+  assert.equal(initial.configured,false);
+  await assert.rejects(invoke('ordax:supervisor:key:save',['gsk_'+('d'.repeat(40))]),/supervisor_secure_storage_unavailable/);
+  const after=await invoke('ordax:supervisor:status');
+  assert.equal(after.configured,false);
+  assert.equal(after.keySaved,false);
+});
+
+test('host Groq coordinator saves its API key in the OS credential vault and restores it after process restart',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'ordax-host-groq-'));
   const dataRoot=path.join(root,'profile');
   const fakeKey='gsk_aaaaaaaaaaaaaaaaaaaaaaaa';
+  const credentials=credentialStore();
   const requests=[];
   const fetchImpl=async(url,options)=>{
     requests.push({url,headers:options.headers,body:JSON.parse(options.body)});
@@ -91,7 +115,7 @@ test('host Groq coordinator accepts a session-only key, hides it from responses 
     return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:'Resposta do provedor de teste.'}}]}),
       {status:200,headers:{'content-type':'application/json'}});
   };
-  let application=createHostApplication({productRoot,dataRoot,environment:{},fetchImpl});
+  let application=createHostApplication({productRoot,dataRoot,environment:{},fetchImpl,credentialStore:credentials});
   let server=application.createServer();
   let {origin}=await server.listen();
   t.after(async()=>{
@@ -107,11 +131,12 @@ test('host Groq coordinator accepts a session-only key, hides it from responses 
   };
 
   const initial=(await post('supervisorStatus')).body;
-  assert.equal(initial.hostEphemeralSecret,true);
-  assert.equal(initial.secureStorageAvailable,false);
+  assert.equal(initial.hostEphemeralSecret,undefined);
+  assert.equal(initial.secureStorageAvailable,true);
+  assert.equal(initial.credentialPersistence,'os_credential_vault');
   const saved=await post('supervisorSaveKey',[fakeKey]);
   assert.equal(saved.status,200);
-  assert.equal(saved.body.saved,true);
+  assert.deepEqual(saved.body,{saved:true,persistence:'os_credential_vault'});
   assert.equal(JSON.stringify(saved.body).includes(fakeKey),false);
   await post('coordinatorChatEnable',[true]);
   const project=(await post('orchestratorInvoke',['project_create',{requestId:'host-groq-project',name:'Teste Groq',objective:'Teste isolado'}])).body.result.projectId;
@@ -164,7 +189,7 @@ test('host Groq coordinator accepts a session-only key, hides it from responses 
 
   await server.close();server=null;
   application.close();application=null;
-  application=createHostApplication({productRoot,dataRoot,environment:{},fetchImpl});
+  application=createHostApplication({productRoot,dataRoot,environment:{},fetchImpl,credentialStore:credentials});
   server=application.createServer();
   ({origin}=await server.listen());
   const reopened=await fetch(`${origin}/api/session`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:'{}'});
@@ -172,8 +197,21 @@ test('host Groq coordinator accepts a session-only key, hides it from responses 
   const statusResponse=await fetch(`${origin}/api/invoke`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:reopenedCookie},
     body:JSON.stringify({method:'supervisorStatus',args:[]})});
   const status=await statusResponse.json();
-  assert.equal(status.configured,false);
-  assert.equal(status.keySaved,false);
+  assert.equal(status.configured,true);
+  assert.equal(status.keySaved,true);
+  assert.equal(status.secureStorageAvailable,true);
+  assert.equal(status.credentialPersistence,'os_credential_vault');
+  assert.equal(JSON.stringify(status).includes(fakeKey),false);
+  const reopenedChatStatus=await fetch(`${origin}/api/invoke`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:reopenedCookie},
+    body:JSON.stringify({method:'coordinatorChatEnable',args:[true]})});
+  assert.equal(reopenedChatStatus.status,200);
+  const continued=await fetch(`${origin}/api/invoke`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:reopenedCookie},
+    body:JSON.stringify({method:'orchestratorInvoke',args:['orchestrator_chat',{requestId:'host-groq-chat-after-restart',projectId:project,
+      orchestratorId:coordinator.orchestratorId,content:'Confirme que a API persistiu após reiniciar.'}]})});
+  assert.equal(continued.status,200);
+  assert.equal((await continued.json()).status,'succeeded');
+  assert.equal(requests.length,4);
+  assert.equal(requests[3].headers.Authorization,'Bearer '+fakeKey);
   const recoveredStatus=await fetch(`${origin}/api/invoke`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Cookie:reopenedCookie},
     body:JSON.stringify({method:'orchestratorInvoke',args:['status',{}]})});
   assert.equal((await recoveredStatus.json()).uncertainCommands,1);
@@ -181,6 +219,7 @@ test('host Groq coordinator accepts a session-only key, hides it from responses 
     body:JSON.stringify({method:'orchestratorInvoke',args:['work_messages',{projectId:project,taskId:coordinator.chatTaskId,limit:50}]})});
   assert.deepEqual((await persisted.json()).messages.map(message=>message.content),[
     'Diga apenas que recebeu.','Resposta do provedor de teste.','Solicitação cujo provedor responderá HTTP 401.',
-    'Solicitação cujo transporte expirará antes de confirmar resposta.'
+    'Solicitação cujo transporte expirará antes de confirmar resposta.',
+    'Confirme que a API persistiu após reiniciar.','Resposta do provedor de teste.'
   ]);
 });

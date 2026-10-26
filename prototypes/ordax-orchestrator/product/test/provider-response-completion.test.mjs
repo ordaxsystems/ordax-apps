@@ -52,14 +52,19 @@ test('unknown DOM/stop-state does not prove generation stopped',()=>{
   }),false);
 });
 
-test('stable response and observed stopped generation pass the conservative UI policy',()=>{
+test('stable partial text cannot pass solely because the Stop control is absent',()=>{
+  assert.equal(responseObservationComplete({candidate,stable:100,transient:false,generating:false}),false);
+});
+
+test('the current assistant must have a positive completion marker before success',()=>{
+  assert.equal(responseObservationComplete({
+    candidate:{...candidate,complete:true},stable:1,transient:false,generating:false
+  }),false);
   assert.equal(responseObservationComplete({
     candidate:{...candidate,complete:true},stable:2,transient:false,generating:false
   }),true);
-  assert.equal(responseObservationComplete({
-    candidate,stable:4,transient:false,generating:false
-  }),true);
-  assert.doesNotThrow(()=>requireObservedCompletion({candidate,completed:true}));
+  assert.throws(()=>requireObservedCompletion({candidate,completed:true}),/response_completion_unconfirmed/);
+  assert.doesNotThrow(()=>requireObservedCompletion({candidate:{...candidate,complete:true},completed:true}));
 });
 
 test('image-generation placeholder cannot be mistaken for a final answer',()=>{
@@ -82,6 +87,7 @@ test('worker gates observedAt behind an explicit completion confirmation',()=>{
   assert.match(loop,/completionConfirmed = true;/);
   assert.match(loop,/requireObservedCompletion\(\{ candidate:latest, completed:completionConfirmed \}\)/);
   assert.ok(loop.indexOf('requireObservedCompletion')<loop.indexOf('const images ='));
-  assert.match(loop,/const generating = snap\.generationStopVisible/);
-  assert.match(worker,/generationStopVisible = \$\{providerGenerationStopProbeExpression\}/);
+  assert.match(loop,/const generating = snap\.generationStopVisible === true/);
+  assert.match(loop,/snap\.responseCompletionObserved === true \? false : null/);
+  assert.match(worker,/responseControlState = \$\{providerResponseControlStateExpression\}/);
 });

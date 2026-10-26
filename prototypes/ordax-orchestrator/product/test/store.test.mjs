@@ -40,6 +40,68 @@ test('Task, workspace session and versioned checkpoint survive reopen', t => {
   assert.deepEqual(restored.messages.map(m => [m.role, m.content]), [['user', 'ping'], ['assistant', 'pong']]);
 });
 
+test('last GPT Run delivery state remains inspectable after failure and app restart',t=>{
+  const {dir,dbPath}=tempStore();
+  let store=new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task=store.createTask('GPT retry state');
+  const runId=store.startRun(task.id);
+  store.recordRunMetrics(task.id,runId,'auto',{
+    submitAttemptAt:100,submittedAt:120,completedAt:140,
+    providerDeliveryState:'submitted',failedStage:'await-response',
+    responsePromptExpansionAttempted:true,responsePromptExpanded:true
+  });
+  store.finishRun(task.id,runId,'await-response:chatgpt_response_retry_required');
+  store.close();
+  store=new Store(dbPath);
+  const restored=store.getTask(task.id);
+  assert.equal(restored.status,'error');
+  assert.deepEqual(restored.latest_run,{
+    id:runId,status:'failed',error:'await-response:chatgpt_response_retry_required',
+    provider_delivery_state:'submitted',context_attachment_state:null,
+    context_attachment_filename:null,context_attachment_sha256:null,submit_attempt_observed:true,
+    submission_confirmed:true,started_at:restored.latest_run.started_at,
+    completed_at:restored.latest_run.completed_at
+  });
+  const metrics=JSON.parse(store.db.prepare('SELECT metrics FROM runs WHERE id=?').get(runId).metrics);
+  assert.equal(metrics.response_prompt_expansion_attempted,true);
+  assert.equal(metrics.response_prompt_expanded,true);
+});
+
+test('context attachment receipt summary survives Store reopen without file content',t=>{
+  const {dir,dbPath}=tempStore();
+  let store=new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task=store.createTask('Context attachment receipt');
+  const runId=store.startRun(task.id);
+  store.recordRunMetrics(task.id,runId,'auto',{
+    submittedAt:120,completedAt:140,providerDeliveryState:'submitted',
+    contextAttachmentState:'confirmed',contextAttachmentFilename:'ordax-handoff-task_12345678-c3-0123456789ab.txt',
+    contextAttachmentSha256:'a'.repeat(64),contextAttachmentByteLength:32768,contextAttachmentUploadedAt:110,
+    contextAttachmentSelectionConfirmed:true,contextAttachmentObservationCount:5,
+    contextAttachmentFileInputCount:0,contextAttachmentSelectedFileCount:0,
+    contextAttachmentExpectedFileSelected:false,contextAttachmentFilenameTextVisible:true,
+    contextAttachmentFilenameAttributeVisible:false,contextAttachmentProgressVisible:false,
+    contextAttachmentErrorVisible:false,contextAttachmentVisibleStableObservations:2
+  });
+  store.finishRun(task.id,runId,'');
+  store.close();
+  store=new Store(dbPath);
+  const latest=store.getTask(task.id).latest_run;
+  assert.equal(latest.context_attachment_state,'confirmed');
+  assert.equal(latest.context_attachment_filename,'ordax-handoff-task_12345678-c3-0123456789ab.txt');
+  assert.equal(latest.context_attachment_sha256,'a'.repeat(64));
+  const metrics=JSON.parse(store.db.prepare('SELECT metrics FROM runs WHERE id=?').get(runId).metrics);
+  assert.equal(metrics.context_attachment_byte_length,32768);
+  assert.equal(metrics.context_attachment_uploaded_at,110);
+  assert.equal(metrics.context_attachment_selection_confirmed,true);
+  assert.equal(metrics.context_attachment_observation_count,5);
+  assert.equal(metrics.context_attachment_file_input_count,0);
+  assert.equal(metrics.context_attachment_filename_text_visible,true);
+  assert.equal(metrics.context_attachment_visible_stable_observations,2);
+  assert.doesNotMatch(JSON.stringify(metrics),/file contents|secret/i);
+});
+
 test('per-Task drafts persist across restart, reject stale saves and never enter provider context', t => {
   const { dir, dbPath } = tempStore();
   let store = new Store(dbPath);
@@ -113,9 +175,9 @@ test('bounded continuity uses the canonical message order and keeps image refere
   const image = store.db.prepare('INSERT INTO message_assets(id,task_id,message_id,kind,mime_type,local_path,alt,created_at) VALUES(?,?,?,?,?,?,?,?)');
   store.db.exec('BEGIN');
   try {
-    // Deliberate timestamp ties exercise the existing (created_at,id) contract.
+    // Deliberate timestamp ties and reverse-ordered IDs prove chronology is stored explicitly.
     for (let i = 0; i < 320; i++) {
-      const messageId = `msg_${String(i).padStart(4, '0')}`;
+      const messageId = `msg_${String(319-i).padStart(4, '0')}`;
       insert.run(messageId, task.id, i % 2 ? 'assistant' : 'user', `Marcador ${i}`, '2026-10-17T20:00:00.000Z');
       if (i === 314 || i === 319) {
         image.run(`asset_${i}`, task.id, messageId, 'image', 'image/png', `image_${i}.png`, `Imagem ${i}`, '2026-10-17T20:00:00.000Z');
@@ -145,8 +207,8 @@ test('bounded continuity uses the canonical message order and keeps image refere
   assert.equal(store.continuationSummary(task.id).total_messages, 320);
   assert.equal(store.continuationSummary(task.id).recent_message_count, 10);
   assert.equal(store.buildContinuationPrompt('task_missing', 'Inalterado'), 'Inalterado');
-  const queryPlan = store.db.prepare('EXPLAIN QUERY PLAN SELECT id FROM messages WHERE task_id=? ORDER BY created_at DESC,id DESC LIMIT 8').all(task.id);
-  assert.ok(queryPlan.some(row => String(row.detail).includes('idx_messages_task_time')));
+  const queryPlan = store.db.prepare('EXPLAIN QUERY PLAN SELECT id FROM messages WHERE task_id=? ORDER BY sequence DESC LIMIT 8').all(task.id);
+  assert.ok(queryPlan.some(row => String(row.detail).includes('idx_messages_task_sequence')));
 });
 
 test('execution snapshot reflects the same SQLite rotation policy without hydrating a full Task', t => {
@@ -192,7 +254,7 @@ test('message pages follow canonical keyset order without duplicating history or
   store.db.exec('BEGIN');
   try {
     for (let i = 0; i < 125; i++) {
-      // All timestamps collide intentionally: id must be a stable tie-breaker.
+      // All timestamps collide intentionally; task-local sequence must define insertion order.
       insert.run('msg_' + String(i).padStart(4, '0'), task.id, i % 2 ? 'assistant' : 'user',
         'Passagem ' + i, '2026-10-01T00:00:00.000Z');
     }
@@ -420,6 +482,41 @@ test('Task memory survives provider conversation rotation and seeds the next cha
   assert.equal(capsule.conversations.length, 2);
 });
 
+test('OrdaX project memory survives a GPT account change and resumes in a fresh provider chat', t => {
+  const { dir, dbPath } = tempStore();
+  let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const task = store.createTask('Loja VESTE');
+  store.appendMessage(task.id, 'user', 'A marca usa tons areia e verde-escuro.');
+  store.appendMessage(task.id, 'assistant', 'A identidade visual e as decisões ficam registradas no OrdaX.');
+  store.upsertProjectMemory(task.id, {
+    category:'constraint', key:'Paleta da marca', content:'Areia e verde-escuro.', source_type:'manual'
+  });
+  store.checkpoint(task.id, 'Catálogo pendente; paleta areia e verde-escuro aprovada.', { stage:'catalog' });
+  store.setChatUrl(task.id, 'https://chatgpt.com/c/previous-account-chat');
+
+  // Provider login/account identity is intentionally not the owner of the task.
+  // Treat the next account's empty conversation as a new segment of this Task.
+  store.rotateConversation(task.id, 'provider_account_changed');
+  store.setChatUrl(task.id, 'https://chatgpt.com/c/new-account-chat', 1);
+  store.close();
+
+  store = new Store(dbPath);
+  const restored = store.getTask(task.id);
+  assert.equal(restored.title, 'Loja VESTE');
+  assert.equal(restored.conversations.length, 2);
+  assert.equal(restored.conversations[0].status, 'active');
+  assert.equal(restored.conversations[0].chat_url, 'https://chatgpt.com/c/new-account-chat');
+  assert.equal(restored.checkpoint_record.summary, 'Catálogo pendente; paleta areia e verde-escuro aprovada.');
+  assert.equal(restored.project_memory.items.find(item => item.key === 'Paleta da marca').content,
+    'Areia e verde-escuro.');
+  const continuation = store.buildContinuationPrompt(task.id, 'Continue o catálogo de produtos.');
+  assert.match(continuation, /Loja VESTE/);
+  assert.match(continuation, /Paleta da marca: Areia e verde-escuro/);
+  assert.match(continuation, /Catálogo pendente/);
+  assert.match(continuation, /Continue o catálogo de produtos/);
+});
+
 test('Structured project memory is canonical, durable and injected into continuation', t => {
   const { dir, dbPath } = tempStore();
   let store = new Store(dbPath);
@@ -510,6 +607,35 @@ test('memory proposals remain pending through restart and require explicit revie
   assert.match(store.buildContinuationPrompt(task.id, 'Avance.'), /\[ENTIDADE\] Caio Mendes/);
   assert.doesNotMatch(store.buildContinuationPrompt(task.id, 'Avance.'), /\[RESTRICAO\]/);
   assert.ok(store.getTask(task.id).events.some(event => event.kind === 'project_memory.candidate_reviewed'));
+});
+
+test('GPT-authored proposals remain noncanonical and retain assistant provenance until reviewed', t => {
+  const { dir, dbPath } = tempStore();
+  const store = new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task = store.createTask('Livro - Continuidade assistida');
+  const assistant = store.appendMessage(task.id,'assistant',[
+    'A cena desenvolve a travessia sem fixar fatos fora do texto.',
+    '[[ORDAX_MEMORY_PROPOSALS_V1]]',
+    'Fato Embarcação: A caravela se chama Aurora e leva os mapas da expedição.',
+    'Decisão Travessia: a partida ocorre ao amanhecer.',
+    '[[/ORDAX_MEMORY_PROPOSALS_V1]]'
+  ].join('\n'));
+  const candidates = store.memoryCandidates.list(task.id);
+  assert.equal(candidates.length,2);
+  assert.ok(candidates.every(candidate=>candidate.source_role==='assistant'));
+  assert.ok(candidates.every(candidate=>candidate.source_message_id===assistant.id));
+  assert.equal(store.getTask(task.id).project_memory.summary.total,0);
+  assert.equal(store.memoryCandidates.pendingCount(task.id),2);
+  assert.doesNotMatch(store.buildContinuationPrompt(task.id,'Continue a missão.'),/\[FATO\] Embarcação/);
+
+  const accepted=candidates.find(candidate=>candidate.key==='Embarcação');
+  const item=store.memoryCandidates.review(task.id,accepted.id,'accept');
+  assert.equal(item.source_type,'message');
+  assert.equal(item.source_ref,assistant.id);
+  assert.match(store.buildContinuationPrompt(task.id,'Continue a missão.'),/\[FATO\] Embarcação: A caravela se chama Aurora/);
+  assert.equal(store.memoryCandidates.pendingCount(task.id),1);
+  assert.equal(store.memoryCandidates.scan(task.id).added,0);
 });
 
 test('candidate review rollback preserves pending proposal when canon validation fails', t => {
@@ -706,4 +832,90 @@ test('multiple planned provider rotations preserve a single Task and do not reco
   assert.equal(current.project_memory.items.length,1);
   assert.equal(current.conversations.reduce((total,item)=>total+item.completed_turns,0),72);
   assert.ok(store.buildContinuationPrompt(task.id,'Continuar.').includes('Concluir produto modular.'));
+});
+
+test('continuation provenance counts old messages excluded by the bounded SQLite projection',t=>{
+  const store=new Store(':memory:');
+  t.after(()=>store.close());
+  const task=store.createTask('Histórico além da janela');
+  store.upsertProjectMemory(task.id,{category:'goal',key:'Missão',content:'Manter continuidade pela memória canônica.'});
+  for(let index=1;index<=24;index++)
+    store.appendMessage(task.id,index%2?'user':'assistant',`Turno ${index}`);
+
+  const packet=store.buildContinuationPacket(task.id,'Continue a tarefa.');
+  assert.equal(packet.manifest.historyWindowOmittedCount,16);
+  assert.deepEqual(packet.manifest.historyWindowOmittedIds,[]);
+  assert.deepEqual(packet.manifest.omissionReasons,['history_window']);
+  assert.equal(packet.manifest.partial,true);
+  assert.equal(packet.manifest.attachmentUseful,false);
+  assert.match(packet.prompt,/\[JANELA DE HISTORICO\]/);
+  assert.doesNotMatch(packet.prompt,/Turno 1(?:\D|$)/);
+  assert.match(packet.prompt,/Turno 24/);
+});
+
+test('task-scoped full-text retrieval injects a relevant old message with a source id and useful excerpt',t=>{
+  const store=new Store(':memory:');
+  t.after(()=>store.close());
+  const task=store.createTask('VESTE historical retrieval');
+  const otherTask=store.createTask('Other isolated task');
+  const old=store.appendMessage(task.id,'user',
+    'A referência antiga da VESTE é VESTE_REF_7391. Guarde esse identificador para consulta futura.');
+  store.appendMessage(task.id,'assistant','VESTE_INICIO_OK');
+  for(let index=1;index<=4;index++){
+    store.appendMessage(task.id,'user',`Detalhe recente da VESTE ${index}.`);
+    store.appendMessage(task.id,'assistant',`Confirmação recente ${index}.`);
+  }
+  store.appendMessage(otherTask.id,'user','A referência antiga da VESTE é OTHER_REF_2840.');
+  store.appendMessage(otherTask.id,'assistant','Registro da outra tarefa.');
+
+  const boundary=store.messages(task.id,{limit:8})[0];
+  const matches=store.searchHistoricalMessages(task.id,
+    'Recupere o código da referência antiga citado no início desta tarefa.',{beforeMessage:boundary});
+  assert.equal(matches.length,1);
+  assert.equal(matches[0].id,old.id);
+  assert.match(matches[0].excerpt,/VESTE_REF_7391/);
+  assert.doesNotMatch(matches.map(message=>message.content).join('\n'),/OTHER_REF_2840/);
+
+  const packet=store.buildContinuationPacket(task.id,
+    'Recupere o código da referência antiga citado no início desta tarefa.');
+  assert.ok(packet.manifest.retrievedMessageIds.includes(old.id));
+  assert.match(packet.prompt,/VESTE_REF_7391/);
+  assert.doesNotMatch(packet.prompt,/OTHER_REF_2840/);
+  assert.equal(packet.manifest.historyWindowMessageCount,2);
+  assert.equal(packet.manifest.historyWindowRetrievedCount,1);
+  assert.equal(packet.manifest.historyWindowOmittedCount,1);
+  assert.equal(packet.manifest.attachmentUseful,false);
+});
+
+test('historical search migration backfills an existing canonical SQLite without replacing message rows',t=>{
+  const {dir,dbPath}=tempStore();
+  let store=new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task=store.createTask('Legacy history index');
+  const old=store.appendMessage(task.id,'user','Marcador pesquisável legado: LEGACY_REF_6620.');
+  store.appendMessage(task.id,'assistant','Recebido.');
+  store.appendMessage(task.id,'user','Mensagem recente não relacionada.');
+
+  // Recreate the database state from before the derived search index existed.
+  store.db.exec(`DROP TRIGGER task_message_search_insert;
+    DROP TRIGGER task_message_search_update;
+    DROP TRIGGER task_message_search_delete;
+    DROP TABLE task_message_search;
+    DELETE FROM store_migrations WHERE name='task-message-search-fts-v1';`);
+  const canonicalBefore=store.db.prepare('SELECT id,task_id,role,content,created_at,sequence FROM messages WHERE task_id=? ORDER BY sequence').all(task.id);
+  store.close();
+
+  store=new Store(dbPath);
+  const canonicalAfter=store.db.prepare('SELECT id,task_id,role,content,created_at,sequence FROM messages WHERE task_id=? ORDER BY sequence').all(task.id);
+  assert.deepEqual(canonicalAfter,canonicalBefore);
+  const boundary=store.messages(task.id,{limit:1})[0];
+  const matches=store.searchHistoricalMessages(task.id,'Localize o marcador pesquisável legado.',{beforeMessage:boundary});
+  assert.equal(matches.length,1);
+  assert.equal(matches[0].id,old.id);
+  assert.match(matches[0].excerpt,/LEGACY_REF_6620/);
+
+  store.appendMessage(task.id,'assistant','Outro texto indexado após a migração.');
+  store.appendMessage(task.id,'user','Mensagem delimitadora posterior.');
+  assert.equal(store.searchHistoricalMessages(task.id,'Localize o texto indexado após a migração.',
+    {beforeMessage:store.messages(task.id,{limit:1})[0]}).length,1);
 });

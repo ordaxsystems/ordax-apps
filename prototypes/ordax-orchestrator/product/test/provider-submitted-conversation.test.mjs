@@ -101,9 +101,13 @@ test('worker retains permalink only after exactly-one submit receipt',()=>{
   const receiptAt=segment.indexOf('await this.#setComposerAndSend(promptText)');
   const durableAt=segment.indexOf('await retainSubmittedConversation()');
   const responseAt=segment.indexOf("this.#setStage('await-response')");
+  const responseLoop=segment.slice(responseAt);
   assert.ok(receiptAt>=0&&durableAt>receiptAt&&responseAt>durableAt);
   assert.match(segment,/createProviderDeliveryRecorder\(\{/);
   assert.match(segment,/currentUrl:wc\.getURL\(\)/);
+  assert.match(responseLoop,/shouldExpandCollapsedProviderPromptForResponse/);
+  assert.match(responseLoop,/responsePromptExpansionAttempted = true/);
+  assert.match(responseLoop,/this\.#expandLatestUserMessageForVerification\(\)/);
   assert.match(main,/bindObservedSubmittedConversation/);
   assert.match(main,/submission_run_context_changed/);
   // P280's manual, private-safe diagnostic must survive the P281 cutover.

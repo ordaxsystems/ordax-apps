@@ -15,6 +15,7 @@ const STATIC_FILES = new Map([
   ['/orchestrator-ui.mjs',['desktop/orchestrator-ui.mjs','text/javascript; charset=utf-8']],
   ['/host-browser-bridge.js',['desktop/host-browser-bridge.js','text/javascript; charset=utf-8']],
   ['/src/provider-compose-availability.mjs',['src/provider-compose-availability.mjs','text/javascript; charset=utf-8']],
+  ['/src/provider-login-action.mjs',['src/provider-login-action.mjs','text/javascript; charset=utf-8']],
   ['/src/task-navigation-status.mjs',['src/task-navigation-status.mjs','text/javascript; charset=utf-8']],
   ['/src/supervisor-role-presets.mjs',['src/supervisor-role-presets.mjs','text/javascript; charset=utf-8']]
 ]);
@@ -24,6 +25,9 @@ const STATIC_FILES = new Map([
 export const HOST_BROWSER_METHODS = Object.freeze({
   coordinatorChatStatus:['ordax:orchestrator:chat-status',()=>[]],
   coordinatorChatEnable:['ordax:orchestrator:chat-enable',a=>[a[0]]],
+  chatgptPlanStatus:['ordax:chatgpt-plan:status',()=>[]],
+  chatgptPlanLogin:['ordax:chatgpt-plan:login',()=>[]],
+  chatgptPlanDisconnect:['ordax:chatgpt-plan:disconnect',()=>[]],
   orchestratorInvoke:['ordax:orchestrator:invoke',a=>[{operation:a[0],input:a[1]??{}}]],
   orchestratorMcp:['ordax:orchestrator:mcp',a=>[a[0]]],
   supervisorStatus:['ordax:supervisor:status',()=>[]],
@@ -36,6 +40,7 @@ export const HOST_BROWSER_METHODS = Object.freeze({
   supervisorApprove:['ordax:supervisor:approve',a=>[a[0]]],
   supervisorDispatch:['ordax:supervisor:dispatch',a=>[a[0]]],
   workspace:['ordax:workspace:get',()=>[]],
+  setWorkspaceNavigation:['ordax:workspace:navigation:set',a=>[a[0]]],
   listTasks:['ordax:tasks:list',()=>[]],
   createTask:['ordax:tasks:create',a=>[a[0]]],
   getTask:['ordax:tasks:get',a=>[a[0]]],
@@ -64,7 +69,7 @@ export const HOST_BROWSER_METHODS = Object.freeze({
   setChatVisible:['ordax:chat:visible',a=>[a[0]]]
 });
 
-const EVENT_NAMES=new Set(['orchestrator-changed','run-started','task-stage','task-stream','confirm']);
+const EVENT_NAMES=new Set(['orchestrator-changed','run-started','task-stage','task-stream','task-provider-navigation','confirm']);
 const MIME=new Map([['.css','text/css; charset=utf-8'],['.gif','image/gif'],['.jpeg','image/jpeg'],['.jpg','image/jpeg'],['.png','image/png'],['.svg','image/svg+xml'],['.webp','image/webp'],['.avif','image/avif']]);
 
 function json(res,status,value,headers={}) {
@@ -110,7 +115,7 @@ function sanitizeResult(value) {
   return result;
 }
 
-export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset,onShutdown=()=>{}}) {
+export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset,onChatGPTCallback=async()=>{},onShutdown=()=>{}}) {
   if(typeof invoke!=='function')throw new TypeError('host_browser_invoke_required');
   const root=path.resolve(productRoot);
   const sessions=new Map();
@@ -163,6 +168,20 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
 
     const session=authenticated(req);
     if(!session)return json(res,401,{error:'host_session_required'});
+
+    if(req.method==='GET'&&url.pathname==='/auth/callback') {
+      const redirectUri=`${origin}/auth/callback`;
+      let destination='error';
+      try {
+        const result=await onChatGPTCallback({session,callbackUrl:url.href,redirectUri});
+        destination=result?.planUsageAuthorized===true?'connected':'consent';
+      } catch(error) {
+        destination=error?.message==='chatgpt_authorization_denied'?'denied':'error';
+      }
+      res.writeHead(303,{'Location':`/?chatgpt=${destination}`,'Cache-Control':'no-store',
+        'Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});
+      return res.end();
+    }
 
     if(req.method==='GET'&&url.pathname==='/api/events') {
       res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-store','Connection':'keep-alive',
@@ -219,6 +238,10 @@ export function createHostBrowserServer({productRoot,assetsRoot,invoke,readAsset
       await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>{server.removeListener('error',reject);resolve();});});
       origin=`http://127.0.0.1:${server.address().port}`;
       return {origin,url:origin+'/'};
+    },
+    getAuthorizationRedirectUri() {
+      if(!origin)throw new Error('host_browser_not_listening');
+      return `${origin}/auth/callback`;
     },
     publish(name,payload) {
       if(!EVENT_NAMES.has(name))return;
