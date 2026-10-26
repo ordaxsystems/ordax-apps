@@ -1,5 +1,6 @@
 import { canonicalProviderChatUrl } from './conversation-policy.mjs';
 import { providerPromptDigest } from './provider-submission-provenance.mjs';
+import {W3_MAX_USER_CHARS,W3_MAX_ASSISTANT_CHARS} from './provider-recovery-bounds.mjs';
 
 // A DOM observation is only a candidate, never attributable proof of delivery.
 // Absence in a bounded, potentially virtualized page is NOT proof of non-delivery.
@@ -25,7 +26,7 @@ export function assessProviderConversationEvidence({expectedUrl, observed, expec
     const item=messages[i];
     if (!item || typeof item.text !== 'string' ||
         !['user','assistant'].includes(item.role) ||
-        item.text.length > 12000 || item.textTruncated === true) {
+        item.text.length > (item.role==='assistant' ? W3_MAX_ASSISTANT_CHARS : W3_MAX_USER_CHARS) || item.textTruncated === true) {
       return {kind:'unavailable',reason:'message_observation_incomplete',requiresReconciliation:true};
     }
     if (item.role === 'user' && (hasDigest
