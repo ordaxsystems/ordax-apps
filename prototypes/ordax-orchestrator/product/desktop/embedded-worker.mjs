@@ -353,13 +353,16 @@ export class EmbeddedChatWorker {
     const base = this.status();
     if (!base.connected) return { ...base, verification_required:false, auth_state:'unavailable' };
     const page = await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
-      const body=document.body?.innerText||'';
       const composer=${composerExpression()};
       ${providerMessageQueryBootstrap}
       ${providerVerificationNoticeProbeBootstrap}
       const authControls=${providerAuthControlProbeExpression};
       const messageNodes=queryProviderMessageNodes(document,'user',providerMessageSelectors).length +
         queryProviderMessageNodes(document,'assistant',providerMessageSelectors).length;
+      // Reading full document.innerText forces layout on huge code replies.
+      // Page-error text matters only when neither composer nor chat turns exist.
+      const body=!composer && messageNodes===0
+        ? String(document.body?.innerText||'').slice(-5000) : '';
       const visibleNotice=node=>{
         if(!node)return false;
         const style=getComputedStyle(node),rect=node.getBoundingClientRect();
