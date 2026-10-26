@@ -1,5 +1,11 @@
 # OrdaX 3D — plano de evolução
 
+### Correção local — atualizar orçamento ao trocar material (2026-10-26)
+
+Ao escolher outro material no orçamento, o preço local por kg já era carregado no formulário, mas os custos e o preço de referência permaneciam com o cálculo anterior até outra edição. A seleção agora recalcula imediatamente a estimativa com a premissa daquele material. O preço continua sendo uma referência local informada pelo operador; Inventory segue como owner de saldo e movimentações.
+
+Validação: suíte OrdaX 3D 146/146; `node --check` e `git diff --check` aprovados. No host temporário isolado `:4338`, 100 g e 1 h com PETG a R$ 250/kg exibiram R$ 27,00 de material; ao trocar para PLA a R$ 119,90/kg, sem editar outro campo, o painel passou imediatamente a R$ 12,95 de material e R$ 38,06 de custo. Não salvei orçamento; fechei a aba e encerrei o host de teste. O fatiador real ainda depende de OrcaSlicer e perfis locais.
+
 ### Incremento local — orçamento claro por peça, prato e lote (2026-10-26)
 
 O orçamento avulso passa a mostrar a origem dos dados, o custo e resultado por unidade-base, o total de filamento com a perda configurada, as horas totais de máquina, as taxas variáveis somadas para o lote e o lucro estimado por unidade e no lote. Os rótulos acompanham o escopo (peça ou prato), e o tempo manual explica o uso de horas decimais. O histórico local pode ser expandido para revisar material, impressora, parâmetros, composição, preço e resultado usados naquele orçamento; o CSV inclui premissas e separa valores unitários e do lote. A prévia do fatiador continua calculando custo/preço por peça a partir dos fatiamentos individuais reais, sem ratear o total da mesa.

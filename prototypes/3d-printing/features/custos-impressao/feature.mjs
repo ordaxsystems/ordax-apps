@@ -390,7 +390,10 @@ export function mountFeature(host = {}) {
 
   const materialPriceField = shell.content.querySelector("[data-material-price]");
   fields.printer.addEventListener("change", () => { loadPrinterCostProfile(); render(); });
-  fields.material.addEventListener("change", () => { materialPriceField.value = String(costs.materialPriceFor(fields.material.value)); });
+  fields.material.addEventListener("change", () => {
+    materialPriceField.value = String(costs.materialPriceFor(fields.material.value));
+    render();
+  });
   materialPriceField.addEventListener("input", () => {
     if (materialPriceField.value === "") return;
     try { costs.updateMaterialPrice(fields.material.value, readNumber(materialPriceField.value)); render(); }
