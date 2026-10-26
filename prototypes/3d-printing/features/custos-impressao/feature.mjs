@@ -330,6 +330,10 @@ export function mountFeature(host = {}) {
     const rows = [
       ["Campo", "Valor"],
       ["Trabalho técnico", result.name],
+      ["Origem do peso e tempo", result.source === "slicer" ? "Estatísticas do fatiador" : "Entrada manual"],
+      ["Escopo do peso e tempo", result.scope === "plate" ? "Prato completo" : "Peça individual"],
+      ["Motor de fatiamento", result.source === "slicer" ? result.engine || "Não informado" : "Não se aplica"],
+      ["Versão do motor", result.source === "slicer" ? result.engineVersion || "Não informada" : "Não se aplica"],
       ["Material", result.material],
       ["Preço informado do material (R$/kg)", String(result.materialPricePerKg)],
       ["Impressora", result.printer],

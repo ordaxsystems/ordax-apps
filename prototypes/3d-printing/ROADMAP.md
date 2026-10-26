@@ -6,6 +6,12 @@ Ao escolher outro material no orçamento, o preço local por kg já era carregad
 
 Validação: suíte OrdaX 3D 146/146; `node --check` e `git diff --check` aprovados. No host temporário isolado `:4338`, 100 g e 1 h com PETG a R$ 250/kg exibiram R$ 27,00 de material; ao trocar para PLA a R$ 119,90/kg, sem editar outro campo, o painel passou imediatamente a R$ 12,95 de material e R$ 38,06 de custo. Não salvei orçamento; fechei a aba e encerrei o host de teste. O fatiador real ainda depende de OrcaSlicer e perfis locais.
 
+### Correção local — preservar proveniência na exportação do orçamento (2026-10-26)
+
+O CSV agora registra se peso e tempo vieram de entrada manual ou de estatísticas do fatiador, se o cálculo representa uma peça ou um prato completo e, quando houver, o motor e sua versão. Isso mantém a origem do orçamento visível quando o arquivo é revisado fora do app.
+
+Validação: suíte OrdaX 3D 146/146; `node --check` e `git diff --check` aprovados. OrcaSlicer não está configurado neste host; o caminho de fatiamento real permanece pendente de E2E.
+
 ### Incremento local — orçamento claro por peça, prato e lote (2026-10-26)
 
 O orçamento avulso passa a mostrar a origem dos dados, o custo e resultado por unidade-base, o total de filamento com a perda configurada, as horas totais de máquina, as taxas variáveis somadas para o lote e o lucro estimado por unidade e no lote. Os rótulos acompanham o escopo (peça ou prato), e o tempo manual explica o uso de horas decimais. O histórico local pode ser expandido para revisar material, impressora, parâmetros, composição, preço e resultado usados naquele orçamento; o CSV inclui premissas e separa valores unitários e do lote. A prévia do fatiador continua calculando custo/preço por peça a partir dos fatiamentos individuais reais, sem ratear o total da mesa.
