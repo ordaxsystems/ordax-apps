@@ -460,6 +460,7 @@ export function mountFeature(host = {}) {
     fields.material.value = latest.material;
     materialPriceField.value = String(costs.materialPriceFor(latest.material));
     fields.printer.value = latest.printer;
+    loadPrinterCostProfile();
     fields.quantity.value = "1";
     fields.gramsPerUnit.value = String(latest.grams);
     fields.hoursPerUnit.value = String(latest.timeSeconds / 3600);
