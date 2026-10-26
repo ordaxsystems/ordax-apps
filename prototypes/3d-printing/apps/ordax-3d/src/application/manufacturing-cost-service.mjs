@@ -1,5 +1,5 @@
 import { assertManufacturingCostRepository } from "../ports/manufacturing-cost-repository.mjs";
-import { calculateManufacturingCost, defaultManufacturingCostSettings, getMaterialPricePerKg, getPrinterCostSettings, normalizeManufacturingCostSettings, normalizeMaterialName, printerCostProfileFields } from "../domain/manufacturing-cost.mjs";
+import { calculateManufacturingCost, defaultManufacturingCostSettings, getMaterialPricePerKg, getPrinterCostSettings, normalizeManufacturingCostSettings, normalizeManufacturingQuantity, normalizeMaterialName, printerCostProfileFields } from "../domain/manufacturing-cost.mjs";
 
 function optionalNonNegative(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -40,6 +40,7 @@ export function createManufacturingCostService(repository) {
 
   return Object.freeze({
     settings: () => settings,
+    normalizeQuantity: normalizeManufacturingQuantity,
     settingsForPrinter,
     listPrinterCostProfiles: () => Object.freeze(Object.values(settings.printerCostProfiles).sort((left, right) => left.name.localeCompare(right.name, "pt-BR"))),
     hasPrinterCostProfile(printer) {
