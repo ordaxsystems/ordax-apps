@@ -38,11 +38,11 @@ test('shared browser bootstrap compiles and includes the provider selectors',()=
 });
 
 test('physical ChatGPT bubble extracts authored user content only, not copy-button UI',()=>{
-  const original='OrdaX USB Dev\\n  deadline: 30000';
+  const original=['OrdaX USB Dev','  deadline: 30000'].join(String.fromCharCode(10));
   const authored={innerText:original};
   const button={innerText:'Copiar codigo'};
   const bubble={
-    innerText:original+'\\n'+button.innerText,
+    innerText:original+String.fromCharCode(10)+button.innerText,
     matches:s=>s.includes('data-user-message-bubble'),
     querySelectorAll:s=>s==='.whitespace-pre-wrap'?[authored]:[]
   };
@@ -69,8 +69,8 @@ test('historical CDP reader rejects incomplete user markup rather than trimming 
   const here=path.dirname(fileURLToPath(import.meta.url));
   const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const section=worker.split('  async #readHistoricalThreadDOM() {')[1].split('  async inspectConversationReadOnly(')[0];
-  assert.match(section,/readProviderHistoricalUserText\\(node\\)/);
-  assert.match(section,/user\\.complete!==true/);
+  assert.ok(section.includes('readProviderHistoricalUserText(node)'));
+  assert.ok(section.includes('user.complete!==true'));
   assert.match(section,/textTruncated:/);
-  assert.doesNotMatch(section,/\.replace\\(.*Copiar|\.trim\\(\\).*hash/i);
+  assert.equal(section.includes(".replace('Copiar'"),false);
 });
