@@ -210,3 +210,46 @@ test('an oversized request is preserved but its missing continuity context is ex
   assert.equal(packet.manifest.attachmentUseful,true);
   assert.throws(()=>assertContinuationContextReady(packet),/continuation_context_unavailable_request_exceeds_budget/);
 });
+
+
+test('confirmed canonical memory is either wholly delivered or explicitly omitted, never silently abbreviated',()=>{
+  const marker='DECISAO_VERIFICADA_NO_FINAL_927a1b';
+  const key='Arquitetura SSOT e decisão vigente do projeto';
+  const content='Acesso exclusivamente via Runtime autorizado. '+('Contrato confirmado permanece vigente em todos os projetos. '.repeat(12))+marker;
+  assert.ok(content.length>380);
+  const options={
+    title:'Missão longa',checkpoint:'Revisão dos contratos aprovada.',
+    memoryItems:[{id:'long_decision_1',category:'decision',key,content,status:'active'}],
+    request:'Recupere a decisão vigente exatamente, incluindo o identificador final.'
+  };
+  const complete=buildProjectContinuationPacket(options);
+  assert.equal(complete.manifest.criticalOmissions,0);
+  assert.equal(complete.manifest.partial,false);
+  assert.deepEqual(complete.manifest.includedMemoryIds,['long_decision_1']);
+  assert.ok(complete.prompt.includes('['+'DECISAO'+'] '+key+': '+content));
+  assert.ok(complete.prompt.includes(marker));
+  assert.doesNotMatch(complete.prompt,/\[trecho abreviado\]/);
+
+  const constrained=buildProjectContinuationPacket({...options,maxChars:1500});
+  assert.ok(constrained.prompt.length<=1500);
+  assert.ok(constrained.manifest.criticalOmissions>0);
+  assert.equal(constrained.manifest.partial,true);
+  assert.equal(constrained.manifest.attachmentUseful,true);
+  assert.deepEqual(constrained.manifest.omittedMemoryIds,['long_decision_1']);
+  assert.deepEqual(constrained.manifest.includedMemoryIds,[]);
+  assert.doesNotMatch(constrained.prompt,new RegExp(marker));
+  assert.throws(()=>assertContinuationContextReady(constrained),/continuation_context_critical_memory_omitted/);
+});
+
+test('long canonical key with critical scope remains intact when included',()=>{
+  const key='Decisão arquitetural: '+'s'.repeat(130)+'_END';
+  const packet=buildProjectContinuationPacket({
+    title:'Auditoria de decisões',
+    checkpoint:'Contrato canônico confirmado.',
+    memoryItems:[{id:'long_key',category:'constraint',key,content:'Sem bypass do Runtime.',status:'active'}],
+    request:'Conserve o nome exato da decisão.'
+  });
+  assert.ok(packet.manifest.includedMemoryIds.includes('long_key'));
+  assert.ok(packet.prompt.includes(key));
+  assert.doesNotMatch(packet.prompt,/\[trecho abreviado\]/);
+});
