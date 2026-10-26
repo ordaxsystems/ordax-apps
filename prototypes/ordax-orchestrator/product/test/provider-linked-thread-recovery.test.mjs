@@ -167,7 +167,7 @@ test('async inspection refuses a preview when a newer Run starts while observing
 
 test('88k technical W3 reply requires explicit preview and one transactional import',async()=>{
   await fixture(async({store,task,worker,providerPrompt,setObservation,sends})=>{
-    const answer='Line 0123456789\\n'.repeat(5500);
+    const answer='0123456789'.repeat(8800);
     setObservation({available:true,url,domReliable:true,truncated:false,
       generationStopVisible:false,responseCompletionObserved:true,
       messages:[{role:'user',text:providerPrompt},{role:'assistant',text:answer}]});
