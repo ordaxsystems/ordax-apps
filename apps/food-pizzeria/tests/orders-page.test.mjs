@@ -3,10 +3,10 @@ import test from "node:test";
 import { renderOrdersPage } from "../src/ui/views/orders.mjs";
 import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 
-function renderOrders(orders) {
+function renderOrders(orders, deliveryFeeCents = 500) {
   return renderOrdersPage({
     PIZZERIA_TABLES: [],
-    PREVIEW_DELIVERY_FEE_CENTS: 500,
+    deliveryFeeCents,
     STATUS_LABELS: {},
     CHANNEL_LABELS: {},
     ORDER_STATUS_FILTERS: [],
@@ -29,6 +29,14 @@ function renderOrders(orders) {
     escapeHtml: (value) => value,
   });
 }
+
+test("formulário de entrega inicia com a taxa configurada e comunica que pode ser ajustada", () => {
+  const html = renderOrders([], 875);
+
+  assert.match(html, /name="deliveryFee"[^>]*value="8,75"/);
+  assert.match(html, /Taxa padrão configurada para a prévia; ajuste neste pedido se necessário/);
+  assert.doesNotMatch(html, /Valor inicial fictício/);
+});
 
 test("histórico de pedidos prioriza o horário de criação mesmo se a lista vier fora de ordem", () => {
   const earlier = {

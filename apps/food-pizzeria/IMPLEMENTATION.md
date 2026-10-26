@@ -325,3 +325,13 @@ O histórico de Pedidos agora ordena os registros por `createdAt` decrescente em
 
 `tests/orders-page.test.mjs` cobre lista fora de ordem, timestamp inválido e coerência cronológica da fixture. Suíte Food: 71/71; `node --check` nos três arquivos JavaScript alterados e `git diff --check` aprovados. No host de PR `http://127.0.0.1:4257/apps/food-pizzeria/`, o histórico mostra #1058–#1047 com horários decrescentes; não criei pedido nem alterei uma comanda. A mudança afeta a apresentação e os dados fictícios locais; não altera pedidos reais, Food Order Core, Sales, Inventory, pagamentos ou os contratos pendentes.
 
+## Revisão — taxa padrão de entrega configurável (2026-10-26)
+
+A configuração de pedidos agora mantém `deliveryFeeCents` no estado local Food v7. A tela Configurações edita o valor padrão; o formulário de entrega o carrega e permite substituí-lo para aquele pedido. O domínio aplica o padrão quando a criação de pedido não envia substituição, valida centavos e congela o valor no pedido. Atualizar a preferência não reescreve taxas de pedidos existentes.
+
+A migração v6→v7 insere R$ 5,00 como preferência inicial sem alterar comandas, revisões, histórico, preços ou propostas de consumo. As migrações v1→v6 passam pela mesma etapa e seguem preservando a ausência de snapshots de consumo legados. Essa preferência é armazenada apenas no adapter de preview e não declara tarifa comercial sincronizada.
+
+`tests/configurable-operations.test.mjs`, `tests/local-store-persistence.test.mjs`, `tests/orders-page.test.mjs` e `tests/settings-page.test.mjs` cobrem valor padrão, substituição, imutabilidade histórica, validação, renderização, migração e preservação de tamanhos/mesas personalizados na configuração inicial. Suíte Food: 78/78; verificações `node --check` e `git diff --check` aprovadas.
+
+No host local da branch `http://127.0.0.1:4258/apps/food-pizzeria/`, a taxa foi alterada de R$ 5,00 para R$ 8,75 nas Configurações; o formulário de Entrega carregou R$ 8,75 e atualizou o total. Depois, o padrão foi restaurado a R$ 5,00, conferido no formulário e nenhum pedido foi criado. O teste automatizado de navegador não iniciou porque Chrome/Chromium não está instalado neste host Windows; a interação foi conferida diretamente no navegador conectado. A auditoria MVP do workspace terminou com exit 0: 20 alvos, 18 entradas de catálogo ainda não assinadas e 2 bloqueios já existentes; nenhuma publicação nem elegibilidade foi alterada.
+

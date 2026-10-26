@@ -2,8 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DEFAULT_DELIVERY_FEE_CENTS,
   calculatePizzaPriceCents,
   calculatePizzeriaOrderConsumption,
+  configureFoodPizzeria,
+  createEmptyFoodPizzeriaState,
   migrateFoodPizzeriaState,
   validateFoodPizzeriaState,
   createPizzeriaOrder,
@@ -56,6 +59,26 @@ function completeFamilySize(source) {
     pizzaSizes: state.settings.pizzaSizes.map((size) => size.id === "family" ? { ...size, active: true } : size),
   });
 }
+
+test("configuração inicial preserva tamanhos, mesas e limite de sabores informados", () => {
+  const configured = configureFoodPizzeria(createEmptyFoodPizzeriaState(), {
+    storeName: "Pizzaria de teste",
+    halfPricePolicy: "average",
+    maxFlavorsPerPizza: 3,
+    pizzaSizes: [
+      { id: "small", label: "Individual", slices: 4, active: true },
+    ],
+    tables: [{ id: 22, seats: 5, active: true }],
+  });
+
+  assert.equal(configured.settings.halfPricePolicy, "average");
+  assert.equal(configured.settings.maxFlavorsPerPizza, 3);
+  assert.deepEqual(configured.settings.pizzaSizes, [
+    { id: "small", label: "Individual", slices: 4, active: true },
+  ]);
+  assert.deepEqual(configured.settings.tables, [{ id: 22, seats: 5, active: true }]);
+  assert.equal(configured.settings.deliveryFeeCents, DEFAULT_DELIVERY_FEE_CENTS);
+});
 
 test("pizzeria sizes and flavor count are configurable and saved with order pricing", () => {
   let state = addConfigurableSizeAndTable(createSeedFoodState());
@@ -170,15 +193,61 @@ test("v5 migration does not invent historical ingredient consumption", () => {
   const v5 = {
     ...state,
     schema: "ordax.food-pizzeria-state/5",
+    settings: Object.fromEntries(Object.entries(state.settings).filter(([key]) => key !== "deliveryFeeCents")),
     orders: state.orders.map(({ consumptionSnapshot, ...order }) => order),
   };
   const migrated = migrateFoodPizzeriaState(v5);
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
+  assert.equal(migrated.settings.deliveryFeeCents, DEFAULT_DELIVERY_FEE_CENTS);
   assert.equal(migrated.orders.length, state.orders.length);
   assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
   assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
     /consumo histórico não é verificável/);
   assert.equal(Object.hasOwn(migrated, "inventoryMovements"), false);
+});
+
+test("taxa padrão pode ser configurada e fica congelada no pedido criado", () => {
+  const initial = createSeedFoodState();
+  const historicalDelivery = initial.orders.find(({ channel }) => channel === "delivery");
+  assert.equal(initial.settings.deliveryFeeCents, DEFAULT_DELIVERY_FEE_CENTS);
+
+  const configured = updateFoodPizzeriaSettings(initial, { deliveryFeeCents: 875 });
+  assert.equal(configured.settings.deliveryFeeCents, 875);
+  assert.equal(configured.orders.find(({ id }) => id === historicalDelivery.id).deliveryFeeCents, historicalDelivery.deliveryFeeCents);
+  assert.throws(() => updateFoodPizzeriaSettings(initial, { deliveryFeeCents: -1 }), /Taxa padrão de entrega/);
+  assert.throws(() => updateFoodPizzeriaSettings(initial, { deliveryFeeCents: 8.75 }), /Taxa padrão de entrega/);
+
+  const createdAt = new Date().toISOString();
+  const next = createPizzeriaOrder(configured, {
+    id: "delivery-fee-default-order",
+    historyId: "delivery-fee-default-history",
+    createdAt,
+    customerName: "Cliente da prévia",
+    phone: "(11) 99999-0000",
+    channel: "delivery",
+    address: "Rua da Amostra, 10 — Centro",
+    items: [{ id: "delivery-fee-default-item", size: "medium", flavorIds: ["ng-calabresa"], quantity: 1 }],
+  });
+  const order = next.orders.find(({ id }) => id === "delivery-fee-default-order");
+  assert.equal(order.deliveryFeeCents, 875);
+  assert.equal(order.totalCents, order.subtotalCents + 875);
+});
+
+test("v6 migration adds the local delivery preference without changing order snapshots", () => {
+  const current = createSeedFoodState();
+  const deliveryOrder = current.orders.find(({ channel }) => channel === "delivery");
+  const v6 = {
+    ...current,
+    schema: "ordax.food-pizzeria-state/6",
+    settings: Object.fromEntries(Object.entries(current.settings).filter(([key]) => key !== "deliveryFeeCents")),
+  };
+
+  const migrated = migrateFoodPizzeriaState(v6);
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
+  assert.equal(migrated.revision, current.revision);
+  assert.equal(migrated.settings.deliveryFeeCents, DEFAULT_DELIVERY_FEE_CENTS);
+  assert.equal(migrated.orders.find(({ id }) => id === deliveryOrder.id).deliveryFeeCents, deliveryOrder.deliveryFeeCents);
+  assert.deepEqual(migrated.orders.map(({ consumptionSnapshot }) => consumptionSnapshot), current.orders.map(({ consumptionSnapshot }) => consumptionSnapshot));
 });
 
 test("table commands reject orders before opening and closure before the last order update", () => {

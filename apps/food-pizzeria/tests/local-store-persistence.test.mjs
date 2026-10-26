@@ -151,6 +151,7 @@ test("browser adapter transparently upgrades v5 Food records without fabricating
   const historicalState = {
     ...source,
     schema: "ordax.food-pizzeria-state/5",
+    settings: Object.fromEntries(Object.entries(source.settings).filter(([key]) => key !== "deliveryFeeCents")),
     orders: source.orders.map(({ consumptionSnapshot, ...order }) => order),
   };
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
@@ -162,20 +163,47 @@ test("browser adapter transparently upgrades v5 Food records without fabricating
 
   const store = createBrowserLocalFoodStore({ businessId, ...environment });
   const migrated = await store.initialize();
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
+  assert.equal(migrated.settings.deliveryFeeCents, 500);
   assert.equal(migrated.revision, source.revision);
   assert.equal(migrated.orders.length, source.orders.length);
   assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
   assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
     /consumo histórico não é verificável/);
   const persisted = JSON.parse(environment.storage.getItem(key));
-  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/7");
   assert.equal(Object.hasOwn(persisted.state, "inventoryMovements"), false);
   store.destroy();
 
   const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
   assert.deepEqual(await reopened.initialize(), migrated);
   reopened.destroy();
+});
+
+test("browser adapter upgrades v6 delivery settings while preserving every historical order", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-upgrade-food-v6-delivery-fee";
+  const source = createSeedFoodState();
+  const historicalState = {
+    ...source,
+    schema: "ordax.food-pizzeria-state/6",
+    settings: Object.fromEntries(Object.entries(source.settings).filter(([key]) => key !== "deliveryFeeCents")),
+  };
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state: historicalState,
+    processedCommands: [],
+  }));
+
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const migrated = await store.initialize();
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
+  assert.equal(migrated.settings.deliveryFeeCents, 500);
+  assert.deepEqual(migrated.orders, historicalState.orders);
+  const persisted = JSON.parse(environment.storage.getItem(key));
+  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/7");
+  store.destroy();
 });
 
 test("idempotent availability no-op is durable without revision churn or bypassing replay validation", async () => {

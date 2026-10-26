@@ -1,6 +1,7 @@
 import {
   PIZZA_SIZES as DEFAULT_PIZZA_SIZES,
   PIZZERIA_TABLES as DEFAULT_PIZZERIA_TABLES,
+  DEFAULT_DELIVERY_FEE_CENTS,
   calculatePizzaPriceCents,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
@@ -66,7 +67,6 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     settings: "Configurações",
   });
   const PREVIEW_INGREDIENTS = FOOD_RECIPE_INGREDIENT_FIXTURES;
-  const PREVIEW_DELIVERY_FEE_CENTS = 500;
   const SPACE_PENDING_VIEWS = new Set(["overview", "pos", "inventory", "customers", "reports", "team"]);
   const ORDER_STATUS_FILTERS = Object.freeze([
     Object.freeze({ id: "all", label: "Todas as etapas" }),
@@ -333,7 +333,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function viewModel() {
     return {
       PIZZA_SIZES, PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS, PREVIEW_INGREDIENTS,
-      PREVIEW_DELIVERY_FEE_CENTS, STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
+      deliveryFeeCents: snapshot?.settings?.deliveryFeeCents ?? DEFAULT_DELIVERY_FEE_CENTS,
+      STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
       KITCHEN_CHANNEL_FILTERS, ORDER_STAGE_ALERT_MINUTES, snapshot, recipeFlavorId,
       recipeDraftLines, orderQuery, orderStatusFilter, orderChannelFilter, kitchenChannelFilter,
       activeCommandId, editFlavorId, cart, busy, button, iconSvg, metricCard,
@@ -638,7 +639,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (feeHelp) {
       const valid = parseMoney(form.elements.deliveryFee.value) !== null;
       feeHelp.textContent = valid
-        ? "Valor padrão da pizzaria; pode ser ajustado neste pedido. Não calcula distância."
+        ? "Taxa padrão configurada para a prévia; ajuste neste pedido se necessário. Sem cálculo por distância."
         : "Informe um valor válido, como 8,00.";
       feeHelp.classList.toggle("field-error", !valid && form.elements.channel.value === "delivery");
     }
@@ -925,6 +926,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         }
       } else if (kind === "settings-form") {
         const values = new FormData(form);
+        const deliveryFeeCents = parseMoney(values.get("deliveryFee"));
+        if (deliveryFeeCents === null) throw new TypeError("Informe uma taxa padrão de entrega válida, como 8,00.");
         const pizzaSizes = settingsSizesDraft.map(({ id }) => ({
           id,
           label: values.get(`size-label-${id}`),
@@ -946,6 +949,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           payload: {
             storeName: values.get("storeName"),
             halfPricePolicy: values.get("halfPricePolicy"),
+            deliveryFeeCents,
             maxFlavorsPerPizza,
             pizzaSizes,
             tables,

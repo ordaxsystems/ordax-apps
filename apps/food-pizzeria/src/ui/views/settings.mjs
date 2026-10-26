@@ -1,12 +1,13 @@
 // Settings page renderer. Draft rows belong to the app's transient view state until saved.
 export function renderSettingsPage(viewModel) {
-  const { snapshot, busy, iconSvg, escapeHtml, settingsSizesDraft, settingsTablesDraft } = viewModel;
+  const { snapshot, busy, iconSvg, escapeHtml, money, settingsSizesDraft, settingsTablesDraft } = viewModel;
   return `<section class="page-section settings-page">
-    <div class="page-heading"><div><p class="eyebrow">CONFIGURAÇÃO DA LOJA</p><h1>Configurações</h1><p>Configure os tamanhos de pizza, a montagem, as mesas e a regra de preço.</p></div></div>
+    <div class="page-heading"><div><p class="eyebrow">CONFIGURAÇÃO DA LOJA</p><h1>Configurações</h1><p>Configure tamanhos, montagem, mesas, regra de preço e taxa padrão de entrega.</p></div></div>
     <form id="settings-form" class="panel settings-form">
       <div class="panel-heading"><div><p class="eyebrow">OPERAÇÃO DA PIZZARIA</p><h2>Preferências e estrutura</h2></div><span class="step-number">⚙</span></div>
       <label>Nome da pizzaria<input name="storeName" maxlength="80" required value="${escapeHtml(snapshot.settings.storeName)}"></label>
       <label>Regra para pizzas com vários sabores<select name="halfPricePolicy"><option value="highest" ${snapshot.settings.halfPricePolicy === "highest" ? "selected" : ""}>Cobrar pelo sabor de maior preço</option><option value="average" ${snapshot.settings.halfPricePolicy === "average" ? "selected" : ""}>Usar a média dos sabores</option></select><small>A regra aplicada fica registrada em cada pedido.</small></label>
+      <label>Taxa padrão de entrega<input name="deliveryFee" inputmode="decimal" autocomplete="off" required value="${escapeHtml(money(snapshot.settings.deliveryFeeCents))}"><small>Preenche os próximos pedidos de entrega e pode ser ajustada em cada pedido. A prévia guarda essa preferência neste navegador; não calcula distância.</small></label>
       <label>Máximo de sabores por pizza<select name="maxFlavorsPerPizza">${Array.from({ length: 12 }, (_, index) => index + 1).map((value) => `<option value="${value}" ${snapshot.settings.maxFlavorsPerPizza === value ? "selected" : ""}>${value} ${value === 1 ? "sabor" : "sabores"}</option>`).join("")}</select></label>
       <section class="settings-config-group" aria-labelledby="pizza-sizes-heading"><div class="panel-heading"><div><p class="eyebrow">CARDÁPIO</p><h2 id="pizza-sizes-heading">Tamanhos de pizza</h2></div><button class="button button-quiet" type="button" data-action="add-pizza-size">＋ Adicionar tamanho</button></div>
         <p class="field-hint">Tamanhos novos começam desativados. Cadastre o preço e a ficha técnica de todos os sabores antes de ativá-los.</p>
