@@ -111,3 +111,56 @@ test('receipt mismatch and stale task references fail closed with no partial led
     assert.ok(promptSha256);
   });
 });
+
+
+test('async inspection refuses a preview when a newer local user turn appears while GPT is observed',async()=>{
+  await fixture(async({store,task,worker})=>{
+    const observed=await worker.inspectConversationReadOnly(url);
+    let reads=0,sends=0;
+    const racingWorker={
+      inspectConversationReadOnly:async()=>{
+        reads++;
+        store.appendMessage(task.id,'user','Novo turno local antes da conclusão da inspeção.');
+        return observed;
+      },
+      sendPrompt:async()=>{sends++;}
+    };
+    const result=await inspectProviderLinkedThread({store,worker:racingWorker,taskId:task.id});
+    assert.equal(result.kind,'unavailable');
+    assert.equal(result.reason,'provider_inspection_state_changed');
+    assert.equal(result.threadRendered,false);
+    assert.equal(result.recoveryPreview,undefined);
+    assert.equal(reads,1);
+    assert.equal(sends,0);
+    assert.equal(store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,0);
+  });
+});
+
+test('async inspection refuses a preview when the task rotates its active GPT conversation',async()=>{
+  await fixture(async({store,task,worker})=>{
+    const observed=await worker.inspectConversationReadOnly(url);
+    const racingWorker={inspectConversationReadOnly:async()=>{
+      store.setChatUrl(task.id,'https://chatgpt.com/c/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
+      return observed;
+    }};
+    const result=await inspectProviderLinkedThread({store,worker:racingWorker,taskId:task.id});
+    assert.equal(result.kind,'unavailable');
+    assert.equal(result.inspectionReason,'provider_inspection_state_changed');
+    assert.equal(result.recoveryPreview,undefined);
+    assert.equal(store.db.prepare("SELECT COUNT(*) n FROM checkpoints WHERE task_id=?").get(task.id).n,0);
+  });
+});
+
+test('async inspection refuses a preview when a newer Run starts while observing the previous response',async()=>{
+  await fixture(async({store,task,worker})=>{
+    const observed=await worker.inspectConversationReadOnly(url);
+    const racingWorker={inspectConversationReadOnly:async()=>{
+      store.startRun(task.id);
+      return observed;
+    }};
+    const result=await inspectProviderLinkedThread({store,worker:racingWorker,taskId:task.id});
+    assert.equal(result.kind,'unavailable');
+    assert.equal(result.reason,'provider_inspection_state_changed');
+    assert.equal(result.recoveryPreview,undefined);
+  });
+});
