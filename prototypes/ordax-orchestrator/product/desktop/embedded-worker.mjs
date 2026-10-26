@@ -11,6 +11,7 @@ import { providerResponseFailureSignalsExpression, classifyProviderResponseFailu
 import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
 import { assessHistoricalThreadPreflight, classifyHistoricalThreadPostNavigation, mayReturnFromFailedProviderConversation } from '../src/provider-historical-thread-preflight.mjs';
+import { preserveProviderWhitespace } from '../src/provider-code-format.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import { classifyProviderPageAvailability } from '../src/provider-page-availability.mjs';
@@ -88,11 +89,7 @@ function cleanBodyCandidate(raw) {
     /^(?:Você gosta dessa personalidade\??|Do you like this personality\??)$/i,
     /^(?:Conte-nos mais|Tell us more)$/i
   ];
-  return String(raw || '')
-    .split(/\r?\n/)
-    .filter(line => !noise.some(pattern => pattern.test(line.trim())))
-    .join('\n')
-    .trim();
+  return preserveProviderWhitespace(raw,noise);
 }
 
 export class EmbeddedChatWorker {
@@ -808,12 +805,13 @@ export class EmbeddedChatWorker {
       const responseControlState = ${providerResponseControlStateExpression};
       const generationStopVisible = responseControlState.generationStopVisible;
       const responseFailureSignals = ${providerResponseFailureSignalsExpression};
+      const preserveWhitespace = ${preserveProviderWhitespace.toString()};
       const readNode = node => {
         const id = node.getAttribute('data-chatgpt-selection-message-id') || node.getAttribute('data-message-id') || '';
         const markdown = node.querySelector('[data-assistant-markdown], [data-message-content]');
         let text = String((markdown && markdown.innerText) || node.innerText || '').trim();
         text = text.replace(/^O ChatGPT disse:\\s*/i, '').replace(/^ChatGPT disse:\\s*/i, '').replace(/^ChatGPT said:\\s*/i, '').trim();
-        text = text.split(/\\r?\\n/).filter(line => !/^(Editar|Edit|Resposta concluída|Response completed|Copiar|Copy|Compartilhar|Share|Você gosta dessa personalidade\??|Do you like this personality\??|Conte-nos mais|Tell us more)$/i.test(line.trim())).join('\\n').trim();
+        text = preserveWhitespace(text, [/^(Editar|Edit|Resposta concluída|Response completed|Copiar|Copy|Compartilhar|Share|Você gosta dessa personalidade\??|Do you like this personality\??|Conte-nos mais|Tell us more)$/i]);
         const images = Array.from(node.querySelectorAll('img')).map(imageData).filter(img => validImage(img, 64));
         return { id, text, images, complete: responseControlState.responseCompletionObserved || node.hasAttribute('data-message-complete') || Boolean(node.querySelector('[data-message-complete]')) };
       };
