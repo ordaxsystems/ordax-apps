@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {canonicalProviderChatUrl} from './conversation-policy.mjs';
 import {providerPromptDigest} from './provider-submission-provenance.mjs';
 import {assessProviderConversationEvidence} from './provider-conversation-reconciliation.mjs';
+import {W3_MAX_ASSISTANT_CHARS} from './provider-recovery-bounds.mjs';
 
 const sha256=value=>createHash('sha256').update(value,'utf8').digest('hex');
 
@@ -31,6 +32,6 @@ export function selectCompletedProviderReply({expectedUrl,observed,expectedPromp
   const replies=sameTurn.filter(message=>message.role==='assistant'&&typeof message.text==='string'&&message.text.trim());
   if(replies.length!==1)return unavailable(replies.length?'assistant_response_ambiguous':'assistant_response_missing');
   const text=replies[0].text;
-  if(text.length>12000||replies[0].textTruncated===true)return unavailable('assistant_response_incomplete');
+  if(text.length>W3_MAX_ASSISTANT_CHARS||replies[0].textTruncated===true)return unavailable('assistant_response_incomplete');
   return {recoverable:true,text,responseSha256:sha256(text),assessment};
 }
