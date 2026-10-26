@@ -69,7 +69,7 @@ test('diagnostic IPC is same-origin protected and never invokes the chat submit 
   assert.match(part,/worker\.inspectDiagnosticReadOnly\(\)/);
   assert.match(html,/id="providerDiagnostic"/);
   const inspector=worker.split('async inspectDiagnosticReadOnly()')[1]
-    .split('async inspectConversationReadOnly(')[0];
+    .split('  async #readHistoricalThreadDOM()')[0];
   assert.match(inspector,/toSafeProviderDiagnostic/);
   assert.ok(inspector.includes('evaluateProviderReadOnlyDom({'));
   assert.ok(!inspector.includes('executeJavaScript') && !inspector.includes('node.innerText'));

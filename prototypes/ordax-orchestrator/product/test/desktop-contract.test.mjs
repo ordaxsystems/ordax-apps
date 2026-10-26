@@ -127,7 +127,7 @@ test('current ChatGPT DOM identity binds each run to its own assistant message',
 });
 
 test('provider health executes shared DOM discovery before constructing its status object',()=>{
-  const start=worker.indexOf('const page = await observeWithin');
+  const start=worker.indexOf('const page = await evaluateProviderReadOnlyDom({');
   const end=worker.indexOf('const url = this.view.webContents.getURL()',start);
   const block=worker.slice(start,end);
   assert.ok(start>=0&&end>start);

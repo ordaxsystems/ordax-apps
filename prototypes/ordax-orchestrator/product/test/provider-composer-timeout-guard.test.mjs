@@ -79,8 +79,10 @@ test('historical thread uses one bounded CDP Runtime.evaluate without input or n
   const inspector=section('  async #readHistoricalThreadDOM() {',
     '  // Explicit, read-only inspection of an existing, canonical conversation.');
   const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
-  assert.match(inspector,/wc\.debugger\.sendCommand\('Runtime\.evaluate'/);
-  assert.match(inspector,/awaitPromise:false,returnByValue:true/);
+  assert.ok(inspector.includes('evaluateProviderReadOnlyDom({'));
+  const evaluator=fs.readFileSync(path.resolve(here,'../src/provider-readonly-cdp-evaluator.mjs'),'utf8');
+  assert.ok(evaluator.includes("devtools.sendCommand('Runtime.evaluate'"));
+  assert.ok(evaluator.includes('awaitPromise:false,returnByValue:true'));
   assert.match(read,/read:\(\)=>this\.#readHistoricalThreadDOM\(\)/);
   assert.doesNotMatch(inspector,/Input\.insertText|requestSubmit|loadURL|sendPrompt|\.click\(/);
   assert.doesNotMatch(read,/executeJavaScript/);

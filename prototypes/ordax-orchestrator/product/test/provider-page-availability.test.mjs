@@ -77,7 +77,7 @@ test('real worker obtains only bounded diagnostic text and strips it before IPC'
  const end=worker.indexOf('  async inspectConversationReadOnly(',start);
  const method=worker.slice(start,end);
  assert.match(method,/loadFailureText=entries\.length===0 && !hasComposer/);
- assert.match(method,/const \{loadFailureText, \.\.\.safeSnapshot\}=result\.result\.value/);
+ assert.ok(method.includes('const {loadFailureText,...safeSnapshot}=snapshot;'));
  assert.match(method,/classifyProviderPageAvailability\(/);
  assert.match(method,/return \{\.\.\.safeSnapshot,page_state:availability\.page_state\}/);
  assert.doesNotMatch(method,/sendPrompt\(|requestSubmit\(|\.reload\(/);
