@@ -38,3 +38,24 @@ export function assessHistoricalThreadPreflight({expectedUrl,health}={}) {
     return {allowed:false,reason:'provider_session_not_observed'};
   return {allowed:true,reason:alreadyAtTarget?'already_at_linked_thread':'session_observed_for_navigation'};
 }
+
+// Only an explicit Back action may leave a proven failed, empty ChatGPT
+// conversation without a composer. It must NEVER be used to authorize reload,
+// forward navigation, new message delivery or automatic provider recovery.
+// URL, observed health and draft probe must all refer to the SAME page.
+export function mayReturnFromFailedProviderConversation({
+  url,health,composerState
+}={}) {
+  const current=canonicalProviderChatUrl(url);
+  return Boolean(current &&
+    canonicalProviderChatUrl(health?.url)===current &&
+    health?.connected===true &&
+    health?.health_observed===true &&
+    health?.page_state==='conversation_load_failed' &&
+    health?.composer_ready===false &&
+    health?.response_generation_active!==true &&
+    health?.verification_required!==true &&
+    composerState?.found===false &&
+    typeof composerState.text==='string' &&
+    composerState.text.trim()==='');
+}

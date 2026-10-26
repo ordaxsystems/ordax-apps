@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessHistoricalThreadPreflight} from '../src/provider-historical-thread-preflight.mjs';
+import {assessHistoricalThreadPreflight,mayReturnFromFailedProviderConversation} from '../src/provider-historical-thread-preflight.mjs';
 import {safeHistoricalThreadFailure} from '../src/provider-observation-policy.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -108,4 +108,60 @@ test('historical CDP debugger is detached only when inspection attached it',()=>
   assert.equal(safeHistoricalThreadFailure('provider_readonly_dom_evaluation_timeout'),
     'provider_readonly_dom_evaluation_timeout');
   assert.ok(body.indexOf('finally {')>body.indexOf("wc.debugger.sendCommand('Runtime.evaluate'"));
+});
+
+test('explicit Back can leave a proven failed linked thread with no draft',()=>{
+  const url=expectedUrl;
+  const health={...base,url,composer_ready:false,auth_state:'unknown',
+    page_state:'conversation_load_failed',health_observed:true,
+    response_generation_active:false};
+  const empty={found:false,text:''};
+  assert.equal(mayReturnFromFailedProviderConversation({
+    url,health,composerState:empty
+  }),true);
+  // Resource restrictions cannot justify a message send, but cannot trap the
+  // operator on an already-failed empty document either.
+  assert.equal(mayReturnFromFailedProviderConversation({
+    url,health:{...health,provider_access_problem:'backend_http_403_observed'},
+    composerState:empty
+  }),true);
+});
+
+test('Back exception never accepts unknown pages, drafts, generation or wrong URL',()=>{
+  const url=expectedUrl;
+  const health={...base,url,composer_ready:false,
+    page_state:'conversation_load_failed',response_generation_active:false};
+  const empty={found:false,text:''};
+  const cases=[
+    {url:anotherUrl,health,composerState:empty},
+    {url,health:{...health,url:anotherUrl},composerState:empty},
+    {url,health:{...health,page_state:'unknown'},composerState:empty},
+    {url,health:{...health,composer_ready:true},composerState:empty},
+    {url,health:{...health,health_observed:false},composerState:empty},
+    {url,health:{...health,connected:false},composerState:empty},
+    {url,health:{...health,response_generation_active:true},composerState:empty},
+    {url,health:{...health,verification_required:true},composerState:empty},
+    {url,health,composerState:{found:true,text:''}},
+    {url,health,composerState:{found:false,text:'Rascunho'}},
+    {url,health,composerState:null},
+    {url,health:null,composerState:empty},
+    {url:'https://evil.example/c/11111111-2222-4333-8444-555555555555',health,composerState:empty}
+  ];
+  for(const state of cases)
+    assert.equal(mayReturnFromFailedProviderConversation(state),false,JSON.stringify(state));
+});
+
+test('only manual Back can use failed-thread exception: never Reload or Forward',()=>{
+  const guard=worker.slice(worker.indexOf('  async #assertManualNavigationSafe('),
+    worker.indexOf('  async health()'));
+  assert.match(guard,/mayReturnFromFailedProviderConversation/);
+  assert.match(guard,/allowReturnFromFailedThread:direction==='back'/);
+  const back=guard.slice(guard.indexOf('  async navigateHistory('),
+    guard.indexOf('  async reloadCurrentPage('));
+  assert.match(back,/if\(this\.active\)/);
+  assert.match(back,/history\.goBack\(\)/);
+  assert.doesNotMatch(back,/loadURL\(|sendPrompt\(|requestSubmit\(/);
+  const reload=guard.slice(guard.indexOf('  async reloadCurrentPage('));
+  assert.match(reload,/await this\.#assertManualNavigationSafe\(\);/);
+  assert.doesNotMatch(reload,/allowReturnFromFailedThread/);
 });

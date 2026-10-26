@@ -10,7 +10,7 @@ import { providerUserMessageMatchesPrompt, providerUserMessageIsCollapsedPromptP
 import { providerResponseFailureSignalsExpression, classifyProviderResponseFailure } from '../src/provider-response-failure.mjs';
 import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
-import { assessHistoricalThreadPreflight, classifyHistoricalThreadPostNavigation } from '../src/provider-historical-thread-preflight.mjs';
+import { assessHistoricalThreadPreflight, classifyHistoricalThreadPostNavigation, mayReturnFromFailedProviderConversation } from '../src/provider-historical-thread-preflight.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
 import { classifyProviderPageAvailability } from '../src/provider-page-availability.mjs';
@@ -310,13 +310,21 @@ export class EmbeddedChatWorker {
     };
   }
 
-  async #assertManualNavigationSafe() {
+  async #assertManualNavigationSafe({allowReturnFromFailedThread=false}={}) {
     const wc=this.view.webContents;
     const state=await this.#composerState().catch(()=>null);
     if(!state)throw new Error('provider_navigation_state_unknown');
     if(state.text?.trim())throw new Error('chatgpt_draft_present');
     if(!state.found) {
       const url=wc.getURL();
+      // Manual Back may leave an explicitly failed, empty linked thread.
+      // This never authorizes Reload, Forward, login, or a provider send.
+      if(allowReturnFromFailedThread) {
+        const health=await this.health().catch(()=>null);
+        if(mayReturnFromFailedProviderConversation({
+          url,health,composerState:state
+        })) return;
+      }
       const authPage=url.startsWith('https://chatgpt.com/auth/login')||
         url.startsWith('https://auth.openai.com/')||url.startsWith('https://accounts.google.com/');
       if(!authPage)throw new Error('provider_navigation_state_unknown');
@@ -326,7 +334,9 @@ export class EmbeddedChatWorker {
   async navigateHistory(direction) {
     if(!['back','forward'].includes(direction))throw new Error('provider_navigation_invalid');
     if(this.active)throw new Error('provider_navigation_during_run_blocked');
-    await this.#assertManualNavigationSafe();
+    await this.#assertManualNavigationSafe({
+      allowReturnFromFailedThread:direction==='back'
+    });
     const wc=this.view.webContents;
     const history=wc.navigationHistory;
     const canNavigate=direction==='back'?history.canGoBack():history.canGoForward();

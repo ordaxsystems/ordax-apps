@@ -1,5 +1,13 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Navegação de saída segura após erro da conversa GPT — 2026-10-26
+
+- Teste físico read-only da conversa vinculada mostrou página oficial **"Não foi possível carregar esta conversa"**, DOM concluído, 0 mensagens e 0 compositores. Isso é um erro da visão remota, **não** perda do Store SQLite; a causa do serviço oficial não foi certificada.
+- A ação explícita **Início** do App conseguiu abrir a home uma única vez, restaurando `session_present`/`composer_ready=true`, sem novo login, sem envio, sem recarregar a conversa defeituosa.
+- Guard de navegação corrigido no mesmo worker: **somente** o botão manual **Voltar** pode sair de uma conversa canônica com falha oficialmente observada, sem composer, sem mensagem em geração, sem verificação pendente, com URL e health congruentes e com probe de rascunho vazio. `Avançar`, `Recarregar` e todo envio permanecem sob as mesmas restrições anteriores; nada de fallback automático.
+- Não confundir o êxito na home com recuperação do histórico da conversa remota ou teste W3 de Run incerto. Nenhum dado de credenciais, URLs ou corpo do chat é exportado.
+
+
 ## Provider evidence after real desktop restart — 2026-10-26
 
 - On the single installed alpha.19 Electron Lab, GPT text-send/continuity/restart SQLite checks passed, but the embedded ChatGPT thread afterward had no composer and no user/assistant DOM nodes. A **read-only** CDP observation saw 14 first-party backend HTTP 403 entries and 1 HTTP 429 in this document. Of those, 0 errors were within 30s, 1 HTTP 403 within 30–120s, and 13 HTTP 403 plus 1 HTTP 429 were older than 120s. This does **not** prove an ongoing rate limit, expired login, or account-specific root cause. No requests were retried or credentials inspected.
