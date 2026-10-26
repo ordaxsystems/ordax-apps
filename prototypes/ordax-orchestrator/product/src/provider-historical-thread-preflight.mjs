@@ -39,6 +39,29 @@ export function assessHistoricalThreadPreflight({expectedUrl,health}={}) {
   return {allowed:true,reason:alreadyAtTarget?'already_at_linked_thread':'session_observed_for_navigation'};
 }
 
+// Cold/hydrating ChatGPT may briefly lack a usable composer. Only repeat
+// health checks that completed normally; never retry navigation, login,
+// submission or a hung DOM evaluation. Every hard safety blocker is terminal.
+export async function awaitHistoricalSessionPreflight({
+  expectedUrl,readHealth,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+}={}) {
+  if(typeof readHealth!=='function'||typeof sleep!=='function')
+    throw Error('provider_readonly_health_probe_required');
+  let health=await readHealth();
+  let decision=assessHistoricalThreadPreflight({expectedUrl,health});
+  for(let attempt=0;attempt<8;attempt++) {
+    if(decision.allowed||decision.reason!=='provider_session_not_observed'||
+       health?.connected!==true||health?.health_observed!==true||
+       health?.verification_required===true||health?.provider_access_problem||
+       health?.response_generation_active===true||
+       !['unknown','session_present'].includes(health?.auth_state))break;
+    await sleep(250);
+    health=await readHealth();
+    decision=assessHistoricalThreadPreflight({expectedUrl,health});
+  }
+  return decision;
+}
+
 // Only an explicit Back action may leave a proven failed, empty ChatGPT
 // conversation without a composer. It must NEVER be used to authorize reload,
 // forward navigation, new message delivery or automatic provider recovery.
