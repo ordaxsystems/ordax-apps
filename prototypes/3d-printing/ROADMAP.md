@@ -1,5 +1,11 @@
 # OrdaX 3D — plano de evolução
 
+### Calculadora técnica e orçamento por peça — validação local (2026-10-26)
+
+O orçamento avulso calcula peso, tempo, material, quantidade e impressora, incluindo perdas, energia, depreciação, manutenção, custos da máquina, mão de obra, preparação/acabamento, embalagem, taxas e frete informados. Mostra custo, preço mínimo sem lucro e preço de referência por markup ou margem; o histórico e o CSV mantêm a origem dos dados. No Preview, uma peça única recebe custo direto das estatísticas do fatiador. Em mesas com vários objetos, cada linha usa um fatiamento isolado para estimar o cenário de imprimir aquela peça sozinha; o tempo/custo do prato compartilhado não é rateado. Os G-codes auxiliares são descartados e o G-code original do prato permanece intacto.
+
+No host local `:4235`, conferi sem salvar um orçamento de 28,6 g, 2,5 h, PLA, aquisição de R$ 3.000, residual de R$ 500 e vida útil de 6.000 h: custo R$ 5,03, referência R$ 6,79 e resultado estimado R$ 1,76. Restaurei as premissas iniciais e deixei o formulário sem esses valores. Suíte OrdaX 3D: 153/153; `node --check` e `git diff --check` aprovados. Este host não tem OrcaSlicer/perfis reais configurados; não há validação E2E de fatiamento nesta rodada. Custos, preços de material e histórico continuam locais; Vendas, Inventory e Finance mantêm seus owners.
+
 ### Integridade da quantidade no orçamento técnico (2026-10-26)
 
 O campo de quantidade agora usa a mesma normalização do domínio de custos e retorna para um inteiro entre 1 e 100.000 ao sair do campo. Isso evita que o orçamento calcule uma quantidade diferente da exibida, inclusive enquanto peso e tempo ainda estão em branco. Verificação: 150/150 testes OrdaX 3D, `node --check` em 81 módulos e `git diff --check` aprovados. No host isolado `:4448`, confirmei 2,6 → 3 e 0 → 1 na tela; nenhum orçamento foi salvo. O fatiamento real segue condicionado ao OrcaSlicer e aos perfis locais disponíveis.
@@ -66,7 +72,7 @@ O resultado de um objeto único segue exibindo custo e preço de referência por
 
 O resultado real do último fatiamento continua alimentando o custo e o preço de referência no Preview. O botão agora abre Custos e orçamento já carregando nome, material, impressora, peso e duração, para o usuário revisar premissas, quantidade e salvar/exportar o cálculo separado. O serviço também conserva quantos objetos compunham o prato. Quando o motor só informa estatísticas agregadas, o app mantém o orçamento como total do prato e explica que não há custo individual por objeto; não divide peso/tempo nem apresenta uma média como dado do Orca. A estimativa de um objeto único segue por peça. Isso não cria pedido comercial, preço aprovado, lançamento financeiro ou movimentação de Inventory.
 
-`node --test prototypes/3d-printing/tests/*.test.mjs`: 140 testes aprovados; `node --check` nos quatro módulos alterados e `git diff --check` aprovados. A instalação do OrcaSlicer/perfis não está configurada neste host, então o fatiamento com motor real segue sem validação local. Preservar a limitação de custos individuais até o motor expor estatísticas por objeto ou existir um fluxo de fatiamento isolado por peça.
+`node --test prototypes/3d-printing/tests/*.test.mjs`: 140 testes aprovados; `node --check` nos quatro módulos alterados e `git diff --check` aprovados. A instalação do OrcaSlicer/perfis não está configurada neste host, então o fatiamento com motor real segue sem validação local. O adapter ainda recebe estatísticas agregadas do prato; quando o OrcaSlicer e perfis reais estiverem configurados, o fluxo de fatiamentos isolados estima cada peça impressa sozinha e mantém o total do prato sem rateio.
 
 ### Incremento local — orçamento de fabricação conectado ao fatiador (2026-10-26)
 
