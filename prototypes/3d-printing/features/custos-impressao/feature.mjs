@@ -320,7 +320,17 @@ export function mountFeature(host = {}) {
       : result.complete
         ? "Estimativa técnica local. O preço mínimo considera custos e taxas informadas, sem lucro; o preço de referência inclui markup ou margem. Não cria pedido comercial, preço aprovado, cobrança, lançamento contábil nem movimentação de estoque."
         : "O custo inclui os itens preenchidos, mas não inclui depreciação até informar aquisição, residual e vida útil da impressora. Tributos e taxas são apenas premissas informadas, não apuração fiscal.";
-    shell.content.querySelectorAll("[data-save], [data-export]").forEach(item => { item.disabled = !result.available || !result.pricingValid; });
+    const canSaveEstimate = result.available && result.pricingValid;
+    shell.content.querySelectorAll("[data-save], [data-export]").forEach(item => { item.disabled = !canSaveEstimate; });
+    const headerSave = shell.actions.querySelector("[data-save]");
+    if (headerSave) {
+      headerSave.disabled = !canSaveEstimate;
+      headerSave.title = !result.available
+        ? "Informe o peso e o tempo para salvar o orçamento."
+        : !result.pricingValid
+          ? result.pricingError
+          : "Salvar orçamento técnico local";
+    }
   }
 
   function save() {
