@@ -10,7 +10,7 @@ import { providerUserMessageMatchesPrompt, providerUserMessageIsCollapsedPromptP
 import { providerResponseFailureSignalsExpression, classifyProviderResponseFailure } from '../src/provider-response-failure.mjs';
 import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
-import { assessHistoricalThreadPreflight, classifyHistoricalThreadPostNavigation, mayReturnFromFailedProviderConversation } from '../src/provider-historical-thread-preflight.mjs';
+import { awaitHistoricalSessionPreflight, classifyHistoricalThreadPostNavigation, mayReturnFromFailedProviderConversation } from '../src/provider-historical-thread-preflight.mjs';
 import { preserveProviderWhitespace } from '../src/provider-code-format.mjs';
 import { observeWithin, classifyProviderAuthObservation, assertProviderSendReadiness, canAcceptObservedNavigationAfterTimeout, classifyProviderAccessRestriction, canInspectHistoricalThreadAfterNavigationTimeout, safeHistoricalThreadFailure, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { toSafeProviderDiagnostic } from '../src/provider-diagnostic-fixture.mjs';
@@ -677,8 +677,9 @@ export class EmbeddedChatWorker {
       // Read-only health first. Never navigate if no usable session, verified
       // login is required, verification is pending or 429/403 is observed.
       // The already-open linked thread can be read despite absent composer.
-      const health=await this.health().catch(() => null);
-      const preflight=assessHistoricalThreadPreflight({expectedUrl:expected,health});
+      const preflight=await awaitHistoricalSessionPreflight({
+        expectedUrl:expected,readHealth:()=>this.health().catch(()=>null)
+      });
       if(!preflight.allowed)
         return {available:false,url:expected,reason:preflight.reason};
       // Historical read-only inspection is not an attempt to send. The provider
