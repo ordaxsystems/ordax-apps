@@ -14,6 +14,8 @@ OrdaX 3D é uma capacidade vertical integrada ao Space e reúne onze módulos in
 | Estimativa de materiais · Estimativa de fabricação | Consumo e custos calculados localmente; sem saldo, movimentação ou pedido de venda |
 | Qualidade · Manutenção | Registros técnicos locais |
 
+O host ativo aceita somente `ordax-3d`. Os cinco shells independentes que existiam como experimentos foram retirados deste produto; seus arquivos foram preservados na branch remota `archive/3d-shells-before-consolidation-20261026` para consulta histórica. Eles não são apps instaláveis nem rotas alternativas do host.
+
 Inicie o host único no PowerShell a partir deste diretório: `.\dev.ps1`. A porta padrão é 4235; para outra porta, defina `$env:PORT` antes de iniciar. Também é possível executar `node .\server.mjs ordax-3d` diretamente. Para testar Groq e OrcaSlicer no host de desenvolvimento, use `.\groq-dev.ps1 -Port 4244`.
 
 ## Estrutura de execução
