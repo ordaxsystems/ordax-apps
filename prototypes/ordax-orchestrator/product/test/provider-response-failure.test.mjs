@@ -25,7 +25,11 @@ test('DOM probe is limited to visible explicit error/retry signals and returns b
   assert.match(providerResponseFailureSignalsExpression,/something went wrong/);
   assert.match(providerResponseFailureSignalsExpression,/visibleErrorAlert/);
   assert.match(providerResponseFailureSignalsExpression,/return \{ retryInLatestAssistant, retryWithErrorContext, visibleErrorAlert, standaloneError \}/);
-  assert.doesNotMatch(providerResponseFailureSignalsExpression,/return \{[^}]*text:/s);
+  const observed=observeDom({assistantText:'Resposta normal.'});
+  assert.deepEqual(Object.keys(observed).sort(),
+    ['retryInLatestAssistant','retryWithErrorContext','visibleErrorAlert','standaloneError'].sort());
+  assert.ok(Object.values(observed).every(value=>typeof value==='boolean'));
+  assert.doesNotMatch(JSON.stringify(observed),/Resposta normal/);
 });
 
 function observeDom({assistantText='',buttonText=null,buttonHidden=false,alertText=null}={}) {
