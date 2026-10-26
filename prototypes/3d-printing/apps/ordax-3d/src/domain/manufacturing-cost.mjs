@@ -159,7 +159,7 @@ export function calculateManufacturingCost(input = {}, sourceSettings = defaultM
   const settings = normalizeManufacturingCostSettings(sourceSettings);
   const gramsPerUnit = optionalPositive(input.gramsPerUnit ?? input.grams);
   const hoursPerUnit = optionalPositive(input.hoursPerUnit ?? input.hours);
-  const quantity = Math.round(bounded(input.quantity, 1, 1, 100_000));
+  const quantity = normalizeManufacturingQuantity(input.quantity);
   const missingInputs = [];
   if (gramsPerUnit === null) missingInputs.push("peso");
   if (hoursPerUnit === null) missingInputs.push("tempo");
