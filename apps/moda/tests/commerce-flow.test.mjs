@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { stockForSku } from "../src/domain/derived.mjs";
-import { MAX_CHECKOUT_LINES, MAX_CHECKOUT_LINE_QUANTITY, normalizeCheckoutLines } from "../src/domain/checkout.mjs";
+import { MAX_CHECKOUT_LINES, MAX_CHECKOUT_LINE_QUANTITY, normalizeCheckoutLines, resolveActiveVariantSku } from "../src/domain/checkout.mjs";
 import { validateSalesBook } from "../../sales/src/domain/orders.mjs";
 import { createModaPreviewDataPort, MAX_LOCAL_PREVIEW_MOVEMENTS } from "../../../prototypes/moda/preview-data-port.mjs";
 
@@ -204,4 +204,27 @@ test("a damaged return uses the sale allowance but does not add stock", async ()
   }), /saldo não devolvido/);
   assert.equal(stockForSku(port.getSnapshot(), sku), stockBefore);
   port.destroy();
+});
+
+test("SKU scan resolves one active variant case-insensitively and ignores surrounding whitespace", () => {
+  const result = resolveActiveVariantSku({
+    products: [{ id: "shirt", active: true, variants: [{ sku: "AUR-SHIRT-M-SAND", active: true }] }],
+  }, "  aur-shirt-m-sand  ");
+
+  assert.deepEqual(result, { status: "found", productId: "shirt", sku: "AUR-SHIRT-M-SAND" });
+});
+
+test("SKU scan fails closed for inactive, missing, or ambiguous variants", () => {
+  const catalog = { products: [
+    { id: "archived", active: false, variants: [{ sku: "AUR-ONE", active: true }] },
+    { id: "inactive-variant", active: true, variants: [{ sku: "AUR-TWO", active: false }] },
+    { id: "active-a", active: true, variants: [{ sku: "AUR-THREE", active: true }] },
+    { id: "active-b", active: true, variants: [{ sku: "aur-three", active: true }] },
+  ] };
+
+  assert.deepEqual(resolveActiveVariantSku(catalog, "AUR-ONE"), { status: "not-found" });
+  assert.deepEqual(resolveActiveVariantSku(catalog, "AUR-TWO"), { status: "not-found" });
+  assert.deepEqual(resolveActiveVariantSku(catalog, "AUR-MISSING"), { status: "not-found" });
+  assert.deepEqual(resolveActiveVariantSku(catalog, "AUR-THREE"), { status: "ambiguous" });
+  assert.deepEqual(resolveActiveVariantSku(catalog, "   "), { status: "empty" });
 });

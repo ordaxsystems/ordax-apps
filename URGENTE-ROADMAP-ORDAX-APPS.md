@@ -720,6 +720,20 @@ o handoff bootstrap comprovado.
 - Incremento de 2026-10-26: a navegação substitui o ponto verde de presença por “Dados locais”, derivado de `browser-local-preview`, com a unidade identificada. A indicação evita sugerir sincronização online e não cria uma faixa de ambiente de demonstração.
 - Verificação desta rodada: `node --test apps/moda/tests/*.test.mjs` passou 41/41; `node --check apps/moda/src/ui/app.mjs` e `git diff --check` passaram. O host da branch respondeu HTTP 200 e a árvore de acessibilidade confirmou o rótulo local. O verificador MVP manteve 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas. Moda continua fora do inventário de distribuição.
 
+### OrdaX Moda — leitura de SKU no PDV (2026-10-26)
+
+- Busca de catálogo e campo de leitura ficam separados. Um scanner teclado que envia o SKU da variante com Enter adiciona uma unidade pelo fluxo de carrinho existente; a resolução ignora caixa e espaços externos, mas exige exatamente uma variante ativa.
+- SKU ausente, duplicado ou inativo é recusado sem perder o texto digitado ou o foco. A leitura respeita os limites atuais de estoque/quantidade e não finaliza a venda. EAN/GTIN ainda depende de identificadores publicados pelo owner Catálogo.
+- Verificação: suíte Moda `node --test apps/moda/tests/*.test.mjs` passou 44/44; `node --check` dos módulos alterados e `git diff --check` aprovados. No host isolado `:4341`, SKU válido adicionou a Camisa Brisa de Linho M / Areia ao carrinho sem concluir a venda; SKU inexistente preservou carrinho, campo e foco. O validador MVP manteve 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas.
+- O fluxo usa o catálogo e o serviço de checkout da prévia local, sem provider real. Catálogo e estoque continuam sob seus owners/SSOT; o checkout não altera a distribuição do app Moda.
+
+### Moda — feedback visual após leitura do SKU (2026-10-26)
+
+- Quando o SKU identifica uma variante, o PDV limpa um filtro textual anterior e seleciona a categoria da peça para que a leitura apareça no catálogo; depois de adicionar, o foco retorna ao campo do leitor. SKU inválido, inativo ou ambíguo mantém busca, texto e carrinho sem alterações.
+- Verificação local: suíte Moda 44/44; `node --check` dos módulos do fluxo e `git diff --check` aprovados. No host `:4352`, com “Bolsa” filtrada, ler `AUR-CAMISA-BRISA-M-AREIA` mostrou Camisa Brisa M/Areia, limpou a busca e adicionou uma unidade ao carrinho, com foco de volta ao leitor. `AUR-INVALID-SKU` preservou a busca, a unidade já no carrinho e o foco; nenhuma venda foi concluída.
+- Correção de atomicidade: o scanner agora passa a variante lida ao mesmo fluxo de adição do carrinho e só muda busca/categoria depois da aceitação. Sem saldo ou diante de limites do carrinho, preserva busca, categoria, texto lido, carrinho e foco. Validado no host `:4353` com 5 unidades disponíveis: cinco leituras entraram no carrinho; a sexta foi recusada mantendo “bolsa”, categoria “Bolsas”, SKU, quantidade e foco. Nenhuma venda foi concluída.
+- O fluxo permanece na prévia local e não chama Catálogo, Inventory ou Sales reais.
+
 ### Alinhamento local do checkout e host ChatGPT Web (2026-10-09)
 
 - Origem local alinhada a `ordaxsystems/ordax-apps` e base atualizada por fast-forward para `f3815e031181cc6b30f986c2878f60aae651acf5`, por solicitação do usuário após a transferência da organização.

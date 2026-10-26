@@ -225,7 +225,7 @@ export function renderOverviewPage(state) {
   "</section>";
 }
 
-export function renderPosPage(state, { query = "", category = "Todas", cart = [], selectedVariants = {} } = {}) {
+export function renderPosPage(state, { query = "", category = "Todas", cart = [], selectedVariants = {}, scanSku = "" } = {}) {
   const categories = ["Todas", "Roupas", "Calçados", "Bolsas", "Acessórios"];
   const categoryChips = categories.map((item) =>
     '<button type="button" class="filter-chip ' + (category === item ? "is-active" : "") + '" data-pos-category="' + escapeHtml(item) + '">' + escapeHtml(item) + "</button>").join("");
@@ -268,7 +268,7 @@ export function renderPosPage(state, { query = "", category = "Todas", cart = []
   const customerOptions = state.customers.records.map((customer) => '<option value="' + escapeHtml(customer.id) + '">' + escapeHtml(customer.name) + "</option>").join("");
   return '<section class="page-section pos-page' + (cart.length ? ' has-cart' : '') + '">' +
     pageHeading("PONTO DE VENDA", "Nova venda", "Monte o pedido por variante e confira o saldo por SKU antes de concluir.", '<span class="heading-counter">' + countLabel(state.sales.orders.length, "venda registrada", "vendas registradas") + "</span>") +
-    '<div class="pos-layout"><div class="pos-catalog"><div class="pos-toolbar"><label class="search-field"><span>' + icon("search") + '</span><input type="search" data-pos-search placeholder="Buscar peça, cor, tamanho ou SKU" value="' + escapeHtml(query) + '"></label><div class="category-filters">' + categoryChips + "</div></div>" +
+    '<div class="pos-layout"><div class="pos-catalog"><div class="pos-toolbar"><div class="pos-toolbar-fields"><label class="search-field"><span>' + icon("search") + '</span><input type="search" data-pos-search placeholder="Buscar peça, cor, tamanho ou SKU" value="' + escapeHtml(query) + '"></label><label class="pos-sku-scan"><span class="pos-sku-scan-mark" aria-hidden="true">SKU</span><input type="text" data-pos-scan-sku aria-label="Escanear SKU da variante" aria-describedby="pos-scan-help" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Escanear variante" value="' + escapeHtml(scanSku) + '"><kbd>Enter</kbd></label></div><small class="pos-scan-help" id="pos-scan-help">Escaneie ou digite o SKU e pressione Enter para adicionar a variante ao carrinho.</small><div class="category-filters">' + categoryChips + "</div></div>" +
     '<div class="pos-product-grid">' + (cards || '<div class="empty-state"><span class="empty-icon">' + icon("hanger") + '</span><h3>Nenhuma peça encontrada</h3><p>Ajuste a busca ou escolha outra categoria.</p></div>') + "</div></div>" +
     '<aside class="panel cart-panel"><div class="cart-heading"><div><p class="eyebrow">VENDA ATUAL</p><h2>Carrinho</h2></div><span class="cart-count">' + itemCount + "</span></div>" +
     (cartRows ? '<ul class="cart-list">' + cartRows + "</ul>" : '<div class="cart-empty"><span>' + icon("bag") + '</span><strong>Seu carrinho está leve.</strong><small>Escolha uma peça para iniciar a venda.</small></div>') +

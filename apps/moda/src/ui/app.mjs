@@ -3,7 +3,7 @@ import { escapeHtml, icon, renderCustomersPage, renderInventoryPage, renderOverv
 import { deriveReturnValuePreview, money, productForSku, searchMatches, stockForSku } from "../domain/derived.mjs";
 import { evaluateGarmentFit, fitDimensionsForKind } from "../domain/fit-engine.mjs";
 import { buildTryOnBrief } from "../domain/fit-brief.mjs";
-import { MAX_CHECKOUT_LINES, MAX_CHECKOUT_LINE_QUANTITY } from "../domain/checkout.mjs";
+import { MAX_CHECKOUT_LINES, MAX_CHECKOUT_LINE_QUANTITY, resolveActiveVariantSku } from "../domain/checkout.mjs";
 
 const MODULES = Object.freeze([
   { id: "overview", label: "Visão geral", icon: "grid", group: "LOJA" },
@@ -20,7 +20,7 @@ const MODULES = Object.freeze([
 
 const PAGE_RENDERERS = Object.freeze({
   overview: (state, ui) => renderOverviewPage(state),
-  pos: (state, ui) => renderPosPage(state, { query: ui.query, category: ui.category, cart: ui.cart, selectedVariants: ui.selectedVariants }),
+  pos: (state, ui) => renderPosPage(state, { query: ui.query, category: ui.category, cart: ui.cart, selectedVariants: ui.selectedVariants, scanSku: ui.scanSku }),
   products: (state, ui) => renderProductsPage(state, ui.query, ui),
   studio: (state, ui) => renderProductStudioPage(state, { ...ui.productStudio, editFitProfileId: ui.editFitProfileId, reviewJobId: ui.reviewJobId }),
   inventory: (state, ui) => renderInventoryPage(state, ui.query),
@@ -95,6 +95,7 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
   const ui = {
     view: "overview",
     query: "",
+    scanSku: "",
     category: "Todas",
     catalogCategory: "Todas",
     cart: [],
@@ -117,7 +118,7 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
   let snapshot = null;
   let unsubscribe = () => {};
 
-  function render({ preserveSearch = false } = {}) {
+  function render({ preserveSearch = false, preservePosScan = false } = {}) {
     if (!snapshot || ui.disposed) return;
     if (ui.view === "studio" && !ui.productStudio) {
       const product = snapshot.catalog.products.find((item) => item.active && item.fitProfile && fitDimensionsForKind(item.kind).length);
@@ -131,6 +132,8 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
     const searchSelector = previousSearch?.matches("[data-pos-search]") ? "[data-pos-search]" : "[data-global-search]";
     const selectionStart = previousSearch?.selectionStart ?? null;
     const selectionEnd = previousSearch?.selectionEnd ?? null;
+    const preservePosScanFocus = preservePosScan
+      && root.querySelector("[data-pos-scan-sku]") === root.ownerDocument?.activeElement;
     const storeName = snapshot.settings.storeName;
     const unitName = snapshot.settings.unitName;
     const localDataStatus = dataPort.persistence === "browser-local-preview"
@@ -166,6 +169,7 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
       next?.focus();
       if (typeof next?.setSelectionRange === "function") next.setSelectionRange(selectionStart, selectionEnd);
     }
+    if (preservePosScanFocus) root.querySelector("[data-pos-scan-sku]")?.focus({ preventScroll: true });
     if (ui.toast) {
       clearTimeout(ui.toastTimer);
       ui.toastTimer = setTimeout(() => {
@@ -176,9 +180,9 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
     }
   }
 
-  function notify(message) {
+  function notify(message, { preservePosScan = false } = {}) {
     ui.toast = message;
-    render();
+    render({ preservePosScan });
   }
 
   function syncReturnForm() {
@@ -248,6 +252,7 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
     ui.editProductId = null;
     ui.view = view;
     ui.query = "";
+    ui.scanSku = "";
     ui.sidebarOpen = false;
     render();
     root.querySelector("#main-content")?.focus({ preventScroll: true });
@@ -345,21 +350,50 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
     }
   }
 
-  function cartAdd(productId) {
+  function cartAdd(productId, { sku: requestedSku, preservePosScan = false, deferRender = false } = {}) {
     const product = snapshot.catalog.products.find((item) => item.id === productId);
-    if (!product) return;
-    const sku = ui.selectedVariants[productId] ?? product.variants.find((variant) => stockForSku(snapshot, variant.sku) > 0)?.sku;
+    if (!product) return false;
+    const sku = requestedSku ?? ui.selectedVariants[productId] ?? product.variants.find((variant) => stockForSku(snapshot, variant.sku) > 0)?.sku;
     const found = sku ? productForSku(snapshot, sku) : null;
     if (!found || stockForSku(snapshot, sku) <= ui.cart.filter((line) => line.sku === sku).reduce((sum, line) => sum + line.quantity, 0)) {
-      notify("Não há saldo disponível para esta variante.");
-      return;
+      notify("Não há saldo disponível para esta variante.", { preservePosScan });
+      return false;
     }
     const line = ui.cart.find((item) => item.sku === sku);
-    if (line && line.quantity >= MAX_CHECKOUT_LINE_QUANTITY) { notify("Cada variante aceita até 10.000 unidades por venda."); return; }
-    if (!line && ui.cart.length >= MAX_CHECKOUT_LINES) { notify("O carrinho aceita até 64 variantes diferentes por venda."); return; }
+    if (line && line.quantity >= MAX_CHECKOUT_LINE_QUANTITY) { notify("Cada variante aceita até 10.000 unidades por venda.", { preservePosScan }); return false; }
+    if (!line && ui.cart.length >= MAX_CHECKOUT_LINES) { notify("O carrinho aceita até 64 variantes diferentes por venda.", { preservePosScan }); return false; }
     if (line) line.quantity += 1;
     else ui.cart.push({ sku, quantity: 1 });
-    render();
+    if (!deferRender) render({ preservePosScan });
+    return true;
+  }
+
+  function scanPosSku() {
+    const resolved = resolveActiveVariantSku(snapshot.catalog, ui.scanSku);
+    if (resolved.status === "empty") return;
+    if (resolved.status === "ambiguous") {
+      notify("Este SKU corresponde a mais de uma variante. Revise o catálogo antes de registrar a venda.", { preservePosScan: true });
+      return;
+    }
+    if (resolved.status !== "found") {
+      notify("SKU não encontrado em uma variante ativa do catálogo.", { preservePosScan: true });
+      return;
+    }
+
+    const product = snapshot.catalog.products.find((item) => item.id === resolved.productId);
+    const variant = product?.variants.find((item) => item.sku === resolved.sku && item.active);
+    if (!product || !variant) {
+      notify("A variante do SKU não está disponível no catálogo.", { preservePosScan: true });
+      return;
+    }
+
+    if (!cartAdd(product.id, { sku: variant.sku, preservePosScan: true, deferRender: true })) return;
+
+    ui.selectedVariants[product.id] = variant.sku;
+    ui.category = product.category;
+    ui.query = "";
+    ui.scanSku = "";
+    notify("Adicionado ao carrinho: " + product.name + " · " + variant.color + " / " + variant.size + ".", { preservePosScan: true });
   }
 
   rootEvents.add("click", async (event) => {
@@ -535,6 +569,10 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
   }, true);
 
   rootEvents.add("input", (event) => {
+    if (event.target.matches("[data-pos-scan-sku]")) {
+      ui.scanSku = event.target.value;
+      return;
+    }
     if (event.target.matches("[data-return-quantity]")) {
       syncReturnForm();
       return;
@@ -545,6 +583,12 @@ export function mountModaApp({ port, root = document.querySelector("#app") } = {
       render({ preserveSearch: true });
       return;
     }
+  });
+
+  rootEvents.add("keydown", (event) => {
+    if (!event.target.matches("[data-pos-scan-sku]") || event.key !== "Enter") return;
+    event.preventDefault();
+    scanPosSku();
   });
 
   rootEvents.add("change", (event) => {

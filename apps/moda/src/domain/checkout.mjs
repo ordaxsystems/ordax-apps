@@ -2,6 +2,24 @@
 export const MAX_CHECKOUT_LINES = 64;
 export const MAX_CHECKOUT_LINE_QUANTITY = 10_000;
 
+export function resolveActiveVariantSku(catalog, value) {
+  const query = String(value ?? "").trim().toLocaleUpperCase("pt-BR");
+  if (!query) return Object.freeze({ status: "empty" });
+
+  const matches = [];
+  for (const product of Array.isArray(catalog?.products) ? catalog.products : []) {
+    if (!product?.active || !Array.isArray(product.variants)) continue;
+    for (const variant of product.variants) {
+      if (!variant?.active || String(variant.sku ?? "").trim().toLocaleUpperCase("pt-BR") !== query) continue;
+      matches.push({ productId: product.id, sku: variant.sku });
+    }
+  }
+
+  if (!matches.length) return Object.freeze({ status: "not-found" });
+  if (matches.length !== 1) return Object.freeze({ status: "ambiguous" });
+  return Object.freeze({ status: "found", ...matches[0] });
+}
+
 export function normalizeCheckoutLines(lines) {
   if (!Array.isArray(lines) || lines.length < 1 || lines.length > MAX_CHECKOUT_LINES) {
     throw new Error("Adicione de 1 a 64 variantes ao carrinho.");
