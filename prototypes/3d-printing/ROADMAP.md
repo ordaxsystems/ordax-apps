@@ -1,5 +1,10 @@
 # OrdaX 3D — plano de evolução
 
+### Integridade da quantidade no orçamento técnico (2026-10-26)
+
+O campo de quantidade agora usa a mesma normalização do domínio de custos e retorna para um inteiro entre 1 e 100.000 ao sair do campo. Isso evita que o orçamento calcule uma quantidade diferente da exibida, inclusive enquanto peso e tempo ainda estão em branco. Verificação: 150/150 testes OrdaX 3D, `node --check` em 81 módulos e `git diff --check` aprovados. No host isolado `:4448`, confirmei 2,6 → 3 e 0 → 1 na tela; nenhum orçamento foi salvo. O fatiamento real segue condicionado ao OrcaSlicer e aos perfis locais disponíveis.
+
+
 ### Validação da calculadora no host e perfil ao abrir orçamento (2026-10-26)
 
 Ao carregar um orçamento de uma peça fatiada, a calculadora também atualiza os campos visíveis com as premissas da impressora vinculada, mantendo tela e fórmula no mesmo perfil. No host local isolado `:4448`, a entrada manual de 28,6 g, 2,5 h, PLA a R$ 119,90/kg e 8% de perda exibiu R$ 3,99 de custo parcial e R$ 5,38 de referência por peça. Com 3 unidades, exibiu 92,7 g, 7,50 h de máquina, R$ 11,97 de custo e R$ 16,15 de referência no lote. Não salvei o orçamento. Suíte OrdaX 3D: 149/149; `node --check` em 42 módulos e `git diff --check` aprovados. O host não tem OrcaSlicer/perfis de fatiamento reais configurados, então este aceite cobre o orçamento avulso, não o E2E de fatiamento.
