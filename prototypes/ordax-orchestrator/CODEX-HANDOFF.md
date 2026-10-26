@@ -1,5 +1,14 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Linha de integração consolidada — 2026-10-26
+
+- **Uma PR ativa de produto:** Apps [#348](https://github.com/ordaxsystems/ordax-apps/pull/348), branch `codex/orchestrator-host-runtime-architecture`, base `main`. Alterar essa branch por fast-forward; não abrir outro PR do Orchestrator para as mesmas mudanças.
+- Os checkpoints [`bdd8f36`](https://github.com/ordaxsystems/ordax-apps/commit/bdd8f36d110552bc72076744512f2bebe7d09a08) (Host/GPT) e [`01c4498`](https://github.com/ordaxsystems/ordax-apps/commit/01c4498daaef841f7ba4d1fdea437972737ec4a2) (24h) foram inspecionados. A branch 24h mais antiga contém alterações de bounded response e supervisor que já existem na candidata Host; conflitos foram reconciliados preservando o Host refatorado. **Não apagar nenhuma branch antes de encerrar a verificação remota.**
+- A PR #310 tem uma regra útil de ignore `candidate-userdata-v*/` incorporada à branch principal de integração. O PR histórico pode ser fechado como substituído depois que o push desta integração estiver confirmado.
+- Erros identificados na CI anterior da #348: nove testes ligados a localizações antigas dos guards/handlers após extração de `provider-linked-thread-recovery.mjs`; os testes devem validar o handler real, sua implementação canônica e a proibição de replay. O workflow Foundation também falhou em testes Food/Pizzaria independentes; não misturar esse owner na correção do Orchestrator.
+- Evidências desta revisão: 9/9 testes focados de reconciliação passaram; 47/47 testes direcionados dos contratos de desktop, recibos, inspeção e proveniência passaram. **A suíte completa, a nova CI e E2E real de recuperação de GPT interrompido são gates separados; não declará-los aprovados sem resultado.**
+- Autonomia headless 24h, acesso GitHub autenticado no Host e execução de workspace permanecem ausentes até integração real nos owners Runtime/Platform/OS. O E2E editorial com GPT Web documentado em `product/test/evals/README.md` não prova esses gates. Não converter status de branch, mock ou docs em entrega real.
+
 **Objetivo do proprietário:** o usuário informa uma missão uma vez; o Orchestrator
 coordena o projeto e conversa com GPT. GPT/ChatGPT Web com OrdaX MCP é o caminho
 principal desejado; Groq/API pode assumir quando GPT comprovadamente parar. Esse

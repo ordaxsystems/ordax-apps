@@ -95,13 +95,15 @@ test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',
   const html=fs.readFileSync(path.resolve(here,'../desktop/ui.html'),'utf8');
   const chunk=main.split("registerUiHandler('ordax:tasks:inspect-linked-thread'")[1]
     .split('// Exact-profile attestation for Lab E2E')[0];
+  const core=fs.readFileSync(path.resolve(here,'../src/provider-linked-thread-recovery.mjs'),'utf8');
   assert.match(chunk,/requireTrustedSupervisorRenderer\(event\)/);
-  assert.match(chunk,/workspace_session_id !== currentSession\?\.id/);
+  assert.match(chunk,/inspectProviderLinkedThread\(\{store,worker,taskId:requestedId\}\)/);
+  assert.match(core,/workspace_session_id!==session\?\.id/);
   assert.match(chunk,/liveRun/);
-  assert.match(chunk,/canonicalProviderChatUrl\(row\.chat_url\)/);
-  assert.match(chunk,/assessProviderConversationEvidence/);
-  assert.match(chunk,/worker\.inspectConversationReadOnly/);
-  assert.doesNotMatch(chunk,/appendMessage|startRun|finishRun|sendPrompt|requestSubmit|insert into|update tasks/i);
+  assert.match(core,/canonicalProviderChatUrl\(row\.chat_url\)/);
+  assert.match(core,/assessProviderConversationEvidence/);
+  assert.match(core,/worker\.inspectConversationReadOnly/);
+  assert.doesNotMatch(chunk+core,/appendMessage\(|startRun\(|finishRun\(|sendPrompt\(|requestSubmit\(|INSERT INTO|UPDATE tasks/i);
   assert.match(preload,/inspectLinkedThread:/);
   assert.match(html,/id="inspectLinkedThread"/);
   assert.match(ui,/window\.ordax\.inspectLinkedThread\(taskId\)/);
@@ -114,11 +116,13 @@ test('W3 success requires attributable Task user-and-assistant turn, never bare 
   const script=fs.readFileSync(path.resolve(here,'../scripts/live-ui-linked-thread-smoke.cjs'),'utf8');
   const chunk=main.split("registerUiHandler('ordax:tasks:inspect-linked-thread'")[1]
     .split('// Exact-profile attestation for Lab E2E')[0];
-  assert.match(chunk,/assessment\.kind==='response_candidate'/);
-  assert.match(chunk,/assessment\.candidates===1/);
-  assert.match(chunk,/assessment\.responseCandidate===true/);
-  assert.match(chunk,/observed\?\.truncated!==true/);
-  assert.doesNotMatch(chunk,/threadRendered=observed\?\.available===true/);
+  const core=fs.readFileSync(path.resolve(here,'../src/provider-linked-thread-recovery.mjs'),'utf8');
+  assert.match(chunk,/inspectProviderLinkedThread/);
+  assert.match(core,/assessment\.kind==='response_candidate'/);
+  assert.match(core,/assessment\.candidates===1/);
+  assert.match(core,/assessment\.responseCandidate===true/);
+  assert.match(core,/observed\?\.truncated!==true/);
+  assert.doesNotMatch(core,/threadRendered=observed\?\.available===true/);
   assert.match(ui,/Conversa e resposta da tarefa observadas/);
   assert.match(ui,/dataset\.state = 'pending'/);
   assert.match(ui,/dataset\.state = 'complete'/);

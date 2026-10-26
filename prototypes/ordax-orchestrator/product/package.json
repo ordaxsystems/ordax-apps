@@ -8,7 +8,7 @@
   "author": "OrdaX Systems",
   "scripts": {
     "check": "node scripts/check-source.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-concurrency=4 --test-timeout=90000 test/*.test.mjs",
     "test:host": "node --test test/host-application.test.mjs test/host-browser-server.test.mjs",
     "validate": "npm run check && npm test",
     "start": "node scripts/start-host.mjs",

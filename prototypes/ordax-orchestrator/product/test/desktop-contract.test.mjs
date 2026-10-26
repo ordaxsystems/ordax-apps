@@ -131,7 +131,7 @@ test('provider health executes shared DOM discovery before constructing its stat
   const end=worker.indexOf('const url = this.view.webContents.getURL()',start);
   const block=worker.slice(start,end);
   assert.ok(start>=0&&end>start);
-  assert.match(block,/const composer=\$\{composerExpression\(\)\};\s*\$\{providerMessageQueryBootstrap\}\s*const authControls=\$\{providerAuthControlProbeExpression\};\s*const messageNodes=queryProviderMessageNodes\(document,'user',providerMessageSelectors\)\.length \+\s*queryProviderMessageNodes\(document,'assistant',providerMessageSelectors\)\.length;/);
+  assert.match(block,/const composer=\$\{composerExpression\(\)\};\s*\$\{providerMessageQueryBootstrap\}\s*\$\{providerVerificationNoticeProbeBootstrap\}\s*const authControls=\$\{providerAuthControlProbeExpression\};\s*const messageNodes=queryProviderMessageNodes\(document,'user',providerMessageSelectors\)\.length \+\s*queryProviderMessageNodes\(document,'assistant',providerMessageSelectors\)\.length;/);
   assert.match(block,/messageNodes,\s*hasLogin:authControls\.hasLogin,\s*hasSignup:authControls\.hasSignup/);
   assert.doesNotMatch(block,/composer:Boolean\(composer\),\s*\$\{providerMessageQueryBootstrap\}/);
 });
