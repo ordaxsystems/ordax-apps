@@ -67,7 +67,7 @@ export function createSeedFoodState() {
     ["Bruno Almeida", "delivery", "(11) 97001-8834", "Rua do Oratório, 740 — Ipiranga"],
   ];
   const stages = ["received", "received", "received", "preparing", "preparing", "preparing", "preparing", "preparing", "ready", "ready", "out-for-delivery", "out-for-delivery"];
-  const ageMinutes = [70, 18, 8, 52, 34, 24, 17, 12, 25, 15, 30, 20];
+  const ageMinutes = [70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15];
   const flavorIds = ["ng-calabresa", "ng-portuguesa", "ng-marguerita", "ng-portuguesa", "ng-frango-catupiry", "ng-calabresa", "ng-quatro-queijos", "ng-pepperoni", "ng-marguerita", "ng-frango-catupiry", "ng-calabresa", "ng-portuguesa"];
   for (let index = 0; index < people.length; index += 1) {
     const [customerName, channel, phone, address] = people[index];

@@ -728,3 +728,9 @@ A conversa sincronizada continua usando ChatGPT Web. O projeto passou de modal a
 
 O workspace avançado Studio foi preservado; sua adoção completa e o host Windows canônico exigem paridade no Runtime. Não portar informalmente pairing, grants ou execution authority. Fonte local e pacote portátil não representam publicação/ativação. Critérios de aceite, contratos, riscos e matriz de recursos em [STUDIO-CONVERSATION-REPLACEMENT.md](docs/STUDIO-CONVERSATION-REPLACEMENT.md).
 
+### OrdaX Food — cronologia do histórico de pedidos (2026-10-26)
+
+- O histórico de Pedidos ordena uma cópia dos registros por `createdAt` decrescente, sem depender da ordem de append do estado. Datas válidas ficam à frente de datas ausentes/inválidas; empates preservam a ordem estável. A fixture local agora alinha horários à sequência dos números de pedido.
+- A regressão prova a ordenação quando o snapshot chega fora de ordem, preserva registros sem data interpretável e confere a cronologia da fixture. Suíte Food: 71/71; `node --check` e `git diff --check` aprovados.
+- Host da PR em `http://127.0.0.1:4257/apps/food-pizzeria/` conferido sem criar pedido. Mudança somente de leitura/apresentação e dados fictícios locais; Food segue dono do pedido alimentar/produção no domínio vertical, Inventory do saldo/movimentações e os providers comerciais continuam pendentes.
+
