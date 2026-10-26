@@ -54,6 +54,18 @@ test("calcula material, energia, depreciação, manutenção, mão de obra e lot
   closeTo(result.suggestedPriceTotal, 217.5);
 });
 
+test("normaliza quantidade para inteiros entre um e cem mil unidades", () => {
+  const input = { grams: 10, hours: 1, quantity: 2.6 };
+  const rounded = calculateManufacturingCost(input);
+  const minimum = calculateManufacturingCost({ ...input, quantity: 0 });
+  const maximum = calculateManufacturingCost({ ...input, quantity: 100001 });
+
+  assert.equal(rounded.quantity, 3);
+  assert.equal(minimum.quantity, 1);
+  assert.equal(maximum.quantity, 100000);
+  closeTo(rounded.totalCost, rounded.costPerUnit * rounded.quantity);
+});
+
 test("margem alvo divide pelo preço final e depreciação não configurada marca o custo parcial", () => {
   const result = calculateManufacturingCost({ grams: 10, hours: 1 }, {
     ...defaultManufacturingCostSettings,
