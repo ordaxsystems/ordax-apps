@@ -29,7 +29,7 @@ export async function inspectProviderLinkedThread({store,worker,taskId}={}) {
   const runBefore=store.db.prepare('SELECT id,status FROM runs WHERE id=? AND task_id=?')
     .get(provenance.runId,task);
   const observed=await worker.inspectConversationReadOnly(expectedUrl)
-    .catch(()=>({available:false,reason:'provider_inspection_unavailable'}));
+    .catch(error=>({available:false,reason:safeHistoricalThreadFailure(error?.message)}));
   // DOM inspection may yield while the UI switches tasks, rotates provider
   // conversations or starts a newer Run. Never show a stale recovery preview:
   // the final SQLite transaction validates again, but the PREVIEW must also

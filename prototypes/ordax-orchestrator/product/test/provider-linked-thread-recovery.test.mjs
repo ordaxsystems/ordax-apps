@@ -196,3 +196,28 @@ test('100001-character reply cannot be previewed or committed, even with an exac
     assert.equal(store.db.prepare('SELECT status FROM runs WHERE id=?').get(runId).status,'interrupted');
   },{interrupted:true});
 });
+
+test('W3 preserves allowlisted historical read-only inspection errors without reply import',async()=>{
+  await fixture(async({store,task,worker,runId,sends})=>{
+    worker.inspectConversationReadOnly=async()=>{throw new Error('provider_readonly_dom_evaluation_timeout');};
+    const result=await inspectProviderLinkedThread({store,worker,taskId:task.id});
+    assert.equal(result.kind,'unavailable');
+    assert.equal(result.inspectionReason,'provider_readonly_dom_evaluation_timeout');
+    assert.equal(result.threadRendered,false);
+    assert.equal(result.recoveryPreview,undefined);
+    assert.equal(store.db.prepare("SELECT status FROM runs WHERE id=?").get(runId).status,'interrupted');
+    assert.equal(store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,0);
+    assert.equal(sends(),0);
+  },{interrupted:true});
+});
+
+test('W3 redacts unknown provider failure details in its operator-facing status',async()=>{
+  await fixture(async({store,task,worker,sends})=>{
+    worker.inspectConversationReadOnly=async()=>{throw new Error('untrusted_provider_context_secret=abc123');};
+    const result=await inspectProviderLinkedThread({store,worker,taskId:task.id});
+    assert.equal(result.inspectionReason,'provider_inspection_unavailable');
+    assert.equal(result.recoveryPreview,undefined);
+    assert.doesNotMatch(JSON.stringify(result),/abc123/);
+    assert.equal(sends(),0);
+  },{interrupted:true});
+});
