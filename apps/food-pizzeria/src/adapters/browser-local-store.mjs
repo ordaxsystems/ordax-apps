@@ -4,7 +4,11 @@ import {
   migrateFoodPizzeriaState,
   validateFoodPizzeriaState,
 } from "../domain/domain.mjs";
-import { createSeedFoodState } from "../fixtures/mock-data.mjs";
+import {
+  createSeedFoodState,
+  PREVIEW_SEED_ORDER_AGES_MINUTES,
+  PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES,
+} from "../fixtures/mock-data.mjs";
 import { FOOD_DATA_PORT_SCHEMA } from "../ports/food-data-port.mjs";
 
 const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/2";
@@ -16,6 +20,7 @@ const BUSINESS_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const COMMAND_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const MAX_STATE_BYTES = 5 * 1024 * 1024;
 const MAX_RECORDED_COMMANDS = 1000;
+const PREVIEW_ACTIVITY_REFRESH_AFTER_MS = 12 * 60 * 60 * 1000;
 const LEGACY_KEY = [
   "ordax.food-pizzeria.development.v2",
   encodeURIComponent("local-demo-owner"),
@@ -96,6 +101,66 @@ function decodeStoredValue(raw, businessId) {
   };
 }
 
+function refreshExpiredUntouchedPreviewActivity(state, nowValue) {
+  const now = nowValue instanceof Date ? nowValue.getTime() : Number(nowValue);
+  if (!Number.isFinite(now)) throw new TypeError("O relógio local da prévia Food está inválido.");
+
+  const candidates = new Map();
+  for (const order of state.orders) {
+    const match = /^ng-order-(10(?:4[7-9]|5[0-8]))$/.exec(order.id);
+    if (!match) continue;
+    const orderNumber = Number(match[1]);
+    const ageMinutes = PREVIEW_SEED_ORDER_AGES_MINUTES[orderNumber - 1047];
+    const latestAt = Date.parse(order.updatedAt);
+    const seedHistoryPrefix = `ng-history-${orderNumber}-`;
+    if (!Number.isFinite(ageMinutes)
+      || now - latestAt <= PREVIEW_ACTIVITY_REFRESH_AFTER_MS
+      || order.statusHistory.some(({ id }) => !id.startsWith(seedHistoryPrefix))) continue;
+
+    const targetCreatedAt = now - ageMinutes * 60000;
+    candidates.set(order.id, {
+      delta: targetCreatedAt - Date.parse(order.createdAt),
+      targetCreatedAt,
+      tableCommandId: order.tableCommandId,
+    });
+  }
+
+  const eligibleOrderIds = new Set(candidates.keys());
+  const tableCommandTargets = new Map();
+  for (const order of state.orders) {
+    const candidate = candidates.get(order.id);
+    if (!candidate?.tableCommandId) continue;
+
+    const command = state.tableCommands.find(({ id }) => id === candidate.tableCommandId);
+    const linkedOrders = state.orders.filter(({ tableCommandId }) => tableCommandId === candidate.tableCommandId);
+    const openingAge = PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES[candidate.tableCommandId];
+    if (!command || command.closedAt !== null || !Number.isFinite(openingAge)
+      || linkedOrders.length !== 1 || !eligibleOrderIds.has(order.id)) {
+      eligibleOrderIds.delete(order.id);
+      continue;
+    }
+    tableCommandTargets.set(command.id, now - openingAge * 60000);
+  }
+
+  if (eligibleOrderIds.size === 0) return state;
+  const orders = state.orders.map((order) => {
+    if (!eligibleOrderIds.has(order.id)) return order;
+    const candidate = candidates.get(order.id);
+    const shift = (value) => new Date(Date.parse(value) + candidate.delta).toISOString();
+    return {
+      ...order,
+      createdAt: new Date(candidate.targetCreatedAt).toISOString(),
+      updatedAt: shift(order.updatedAt),
+      statusHistory: order.statusHistory.map((entry) => ({ ...entry, changedAt: shift(entry.changedAt) })),
+    };
+  });
+  const tableCommands = state.tableCommands.map((command) => {
+    const openedAt = tableCommandTargets.get(command.id);
+    return openedAt === undefined ? command : { ...command, openedAt: new Date(openedAt).toISOString() };
+  });
+  return validateFoodPizzeriaState({ ...state, revision: state.revision + 1, orders, tableCommands });
+}
+
 function conflictError(expectedRevision, actualRevision) {
   const error = new Error("A pizzaria foi atualizada em outra aba. Confira os dados e tente novamente.");
   error.name = "FoodRevisionConflictError";
@@ -109,6 +174,7 @@ export function createBrowserLocalFoodStore({
   storage = globalThis.localStorage,
   locks = globalThis.navigator?.locks,
   eventTarget = globalThis,
+  clock = () => new Date(),
 } = {}) {
   if (typeof businessId !== "string" || !BUSINESS_ID_RE.test(businessId)) {
     throw new TypeError("Identificador local do negócio inválido.");
@@ -194,13 +260,14 @@ export function createBrowserLocalFoodStore({
       if (initializing) return initializing;
       initializing = locks.request(lock, { mode: "exclusive" }, async () => {
         if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
+        const now = clock();
         const persisted = readPersisted();
         if (persisted) {
           archiveLegacyInventory(persisted.legacyInventoryArchive);
-          snapshot = persisted.state;
+          snapshot = refreshExpiredUntouchedPreviewActivity(persisted.state, now);
           processedCommands = persisted.processedCommands;
         } else {
-          snapshot = validateFoodPizzeriaState(createSeedFoodState());
+          snapshot = validateFoodPizzeriaState(createSeedFoodState(now));
           processedCommands = [];
         }
         // Persist the seed or migrated value under the same lock so every tab starts from one revision.

@@ -1,4 +1,18 @@
 // Pure Food page renderer. All business state and actions are supplied by the app view model.
+function compareOrdersByCreationTime(first, second) {
+  const firstCreatedAt = Date.parse(first.createdAt);
+  const secondCreatedAt = Date.parse(second.createdAt);
+  const firstIsValid = Number.isFinite(firstCreatedAt);
+  const secondIsValid = Number.isFinite(secondCreatedAt);
+
+  if (!firstIsValid || !secondIsValid) {
+    if (firstIsValid === secondIsValid) return 0;
+    return firstIsValid ? -1 : 1;
+  }
+
+  return secondCreatedAt - firstCreatedAt;
+}
+
 export function renderOrdersPage(viewModel) {
   const { PIZZERIA_TABLES, PREVIEW_DELIVERY_FEE_CENTS, STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS, snapshot, orderQuery, orderStatusFilter, orderChannelFilter, activeCommandId, cart, busy, commandById, orderNumber, sizeOptions, flavorOptions, cartHtml, renderOrderCard, emptyState, button, money, escapeHtml } = viewModel;
   const activeFlavors = snapshot.flavors.filter(({ id, active }) => active && snapshot.recipes.some((recipe) => recipe.flavorId === id));
@@ -7,7 +21,7 @@ export function renderOrdersPage(viewModel) {
   const tableCommand = selectedCommand?.closedAt === null ? selectedCommand : null;
   const commandTable = tableCommand ? PIZZERIA_TABLES.find(({ id }) => id === tableCommand.tableId) : null;
   const query = orderQuery.trim().toLocaleLowerCase("pt-BR");
-  const allOrders = [...snapshot.orders];
+  const allOrders = [...snapshot.orders].sort(compareOrdersByCreationTime);
   const orders = allOrders.filter((order) => {
     const tableNumber = order.tableCommandId ? commandById(order.tableCommandId)?.tableId : null;
     const searchable = `${order.id} ${orderNumber(order)} ${order.customerName} ${order.phone} ${tableNumber ? `mesa ${String(tableNumber).padStart(2, "0")}` : ""} ${order.items.flatMap((item) => item.flavors.map((flavor) => flavor.name)).join(" ")}`.toLocaleLowerCase("pt-BR");
