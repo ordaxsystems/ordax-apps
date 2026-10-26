@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createTechnicalJobsService, technicalJobInputFromSlicerResult } from "../apps/ordax-3d/src/application/technical-jobs-service.mjs";
+import { createTechnicalJobsService, summarizeTechnicalJobCost, technicalJobInputFromSlicerResult } from "../apps/ordax-3d/src/application/technical-jobs-service.mjs";
+import { localPreviewJobs } from "../apps/ordax-3d/src/domain/technical-print-job-fixtures.mjs";
 import { technicalJobRepositorySchema } from "../apps/ordax-3d/src/ports/technical-job-repository.mjs";
 import { calculateManufacturingCost } from "../apps/ordax-3d/src/domain/manufacturing-cost.mjs";
 
@@ -30,6 +31,16 @@ test("jobs de preview são fictícios e explícitos; mutations compartilham uma 
   assert.equal(service.list()[0].status, "ready");
   assert.equal(snapshots.length, 2);
   unsubscribe();
+});
+
+test("a prévia local inclui snapshot fictício de custo por peça e origem local", () => {
+  const job = localPreviewJobs.find(item => item.id === "preview-job-1");
+
+  assert.ok(job);
+  assert.equal(job.origin, "local-preview");
+  assert.equal(job.costEstimate.scope, "piece");
+  assert.equal(job.costEstimate.source, "manual");
+  assert.equal(job.costEstimate.complete, false);
 });
 
 test("jobs técnicos rejeitam estados fora do domínio", () => {
@@ -93,4 +104,15 @@ test("job técnico preserva o snapshot de custo do fatiamento sem criar pedido c
   assert.equal(job.costEstimate.suggestedPriceTotal, costEstimate.suggestedPriceTotal);
   assert.equal(Object.hasOwn(job, "commercialOrderId"), false);
   assert.equal(Object.hasOwn(job, "paymentId"), false);
+});
+
+test("resumo de custo preserva escopo, completude e totais do orçamento", () => {
+  const piece = summarizeTechnicalJobCost({ scope: "piece", quantity: 3, costPerUnit: 4.5, suggestedPricePerUnit: 6.25, totalCost: 13.5, suggestedPriceTotal: 18.75, complete: true });
+  const plate = summarizeTechnicalJobCost({ scope: "plate", quantity: 1, costPerUnit: 12, suggestedPricePerUnit: 16.2, totalCost: 12, suggestedPriceTotal: 16.2 });
+
+  assert.deepEqual(piece, { scope: "piece", quantity: 3, complete: true, costPerUnit: 4.5, suggestedPricePerUnit: 6.25, totalCost: 13.5, suggestedPriceTotal: 18.75 });
+  assert.equal(plate.scope, "plate");
+  assert.equal(plate.complete, false);
+  assert.equal(summarizeTechnicalJobCost(null), null);
+  assert.equal(summarizeTechnicalJobCost({ scope: "piece", costPerUnit: -1, suggestedPricePerUnit: 2, totalCost: 1, suggestedPriceTotal: 2 }), null);
 });

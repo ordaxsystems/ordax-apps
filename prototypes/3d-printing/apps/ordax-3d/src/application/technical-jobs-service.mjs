@@ -8,6 +8,23 @@ function optionalNonNegativeNumber(value) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+export function summarizeTechnicalJobCost(estimate) {
+  if (!estimate || typeof estimate !== "object") return null;
+  const values = {
+    costPerUnit: optionalNonNegativeNumber(estimate.costPerUnit),
+    suggestedPricePerUnit: optionalNonNegativeNumber(estimate.suggestedPricePerUnit),
+    totalCost: optionalNonNegativeNumber(estimate.totalCost),
+    suggestedPriceTotal: optionalNonNegativeNumber(estimate.suggestedPriceTotal),
+  };
+  if (Object.values(values).some(value => value === null)) return null;
+  return Object.freeze({
+    scope: estimate.scope === "plate" ? "plate" : "piece",
+    quantity: Math.max(1, Math.round(Number(estimate.quantity) || 1)),
+    complete: estimate.complete === true,
+    ...values,
+  });
+}
+
 export function technicalJobInputFromSlicerResult({ result, modelName, printer, material, costEstimate } = {}) {
   const seconds = optionalNonNegativeNumber(result?.stats?.timeSeconds);
   const grams = optionalNonNegativeNumber(result?.stats?.filamentGrams);

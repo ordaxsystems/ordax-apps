@@ -1,5 +1,5 @@
 import * as shared from "/shared.mjs";
-import { updateEstimateOriginForEdit } from "/features/custos-impressao/estimate-origin.mjs";
+import { canChangeEstimateScope, updateEstimateOriginForEdit } from "/features/custos-impressao/estimate-origin.mjs";
 
 const settingFields = [
   ["materialWastePercent", "Perda de material", "%", "number"],
@@ -81,7 +81,8 @@ export function mountFeature(host = {}) {
               <div class="field"><label for="job-name">Nome do trabalho</label><input class="input" id="job-name" data-input="name" placeholder="Ex.: Suporte articulado"/></div>
               <div class="field"><label for="material-name">Material ou perfil de filamento</label><input class="input" id="material-name" data-input="material" list="material-options" value="PLA"/><datalist id="material-options"><option value="PLA"></option><option value="PETG"></option><option value="ABS"></option><option value="ASA"></option><option value="TPU"></option><option value="Nylon"></option><option value="PC"></option></datalist></div>
               <div class="field"><label for="printer-name">Impressora de referência</label><input class="input" id="printer-name" data-input="printer" list="printer-cost-options" placeholder="Ex.: Bambu Lab A1"/><datalist id="printer-cost-options" data-printer-options></datalist><small class="muted" data-printer-profile-status>Sem nome de impressora, o cálculo usa as premissas padrão da oficina.</small></div>
-              <div class="field"><label for="quantity">Quantidade de peças ou lotes</label><input class="input" id="quantity" data-input="quantity" type="number" min="1" max="100000" step="1" value="1" required/></div>
+              <div class="field"><label for="calculation-scope">Base do peso e do tempo</label><select class="input" id="calculation-scope" data-scope><option value="piece">Uma peça individual</option><option value="plate">Um lote ou prato completo</option></select><small class="muted" data-scope-help>Use os dados de uma unidade. Para orçamento de lote, selecione o lote/prato e informe o consumo e o tempo totais dele.</small></div>
+              <div class="field"><label for="quantity" data-quantity-label>Quantidade de peças</label><input class="input" id="quantity" data-input="quantity" type="number" min="1" max="100000" step="1" value="1" required/><small class="muted" data-quantity-help>Quantas unidades com o mesmo peso e tempo serão produzidas.</small></div>
             </div>
           </div>
 
@@ -162,6 +163,8 @@ export function mountFeature(host = {}) {
   let formScope = "piece";
   let formEngine = "";
   let formEngineVersion = "";
+  let importedSliceScopePending = false;
+  const reviewedMeasurements = new Set();
 
   function estimateInput() {
     return {
@@ -276,17 +279,31 @@ export function mountFeature(host = {}) {
     renderPrinterProfileControls();
     const result = costs.calculate(estimateInput());
     const settingsNow = costs.settings();
-    const baseUnit = formScope === "plate" ? "prato" : "peça";
+    const isPlateScope = formScope === "plate";
+    const isSlicerResult = formSource === "slicer";
+    const baseUnit = isPlateScope ? (isSlicerResult ? "prato" : "lote/prato") : "peça";
+    const aggregateName = isPlateScope && isSlicerResult ? "prato" : "lote";
+    const baseQuantityLabel = isPlateScope ? (isSlicerResult ? "Quantidade de pratos" : "Quantidade de lotes/pratos") : "Quantidade de peças";
+    shell.content.querySelector("[data-scope]").value = formScope;
+    const scopeCanChange = canChangeEstimateScope({ importedSlice: importedSliceScopePending, reviewedFields: reviewedMeasurements });
+    shell.content.querySelector("[data-scope]").disabled = !scopeCanChange;
+    shell.content.querySelector("[data-quantity-label]").textContent = baseQuantityLabel;
+    shell.content.querySelector("[data-quantity-help]").textContent = formScope === "plate"
+      ? "Quantos lotes/pratos completos com o mesmo peso e tempo serão produzidos."
+      : "Quantas peças com o mesmo peso e tempo serão produzidas.";
+    shell.content.querySelector("[data-scope-help]").textContent = !scopeCanChange
+      ? "Escopo trazido pelo fatiador. Revise manualmente peso e tempo para escolher outra base; assim o total do prato não vira custo por peça por engano."
+      : "Use os dados de uma unidade. Para orçamento de lote, selecione o lote/prato e informe o consumo e o tempo totais dele.";
     shell.content.querySelector("[data-estimate-status]").textContent = result.available ? !result.pricingValid ? "REVISE MARGEM E TAXAS" : result.complete ? "DEPRECIAÇÃO INCLUÍDA" : "CUSTO PARCIAL · DEPRECIAÇÃO PENDENTE" : "INFORME PESO E TEMPO";
     shell.content.querySelector("[data-unit-cost]").textContent = result.available ? money(result.costPerUnit) : "—";
     shell.content.querySelector("[data-unit-label]").textContent = `Custo estimado por ${baseUnit}`;
     shell.content.querySelector("[data-unit-price-label]").textContent = `Preço de referência por ${baseUnit}`;
-    shell.content.querySelector("[data-batch-cost-label]").textContent = formScope === "plate" ? "Custo total do prato" : "Custo total do lote";
+    shell.content.querySelector("[data-batch-cost-label]").textContent = `Custo total do ${aggregateName}`;
     shell.content.querySelector("[data-minimum-price-label]").textContent = `Preço mínimo sem lucro por ${baseUnit}`;
-    shell.content.querySelector("[data-minimum-total-label]").textContent = formScope === "plate" ? "Preço mínimo sem lucro do prato" : "Preço mínimo sem lucro do lote";
-    shell.content.querySelector("[data-batch-price-label]").textContent = formScope === "plate" ? "Preço de referência do prato" : "Preço de referência do lote";
+    shell.content.querySelector("[data-minimum-total-label]").textContent = `Preço mínimo sem lucro do ${aggregateName}`;
+    shell.content.querySelector("[data-batch-price-label]").textContent = `Preço de referência do ${aggregateName}`;
     shell.content.querySelector("[data-unit-profit-label]").textContent = `Resultado estimado por ${baseUnit}`;
-    shell.content.querySelector("[data-batch-profit-label]").textContent = formScope === "plate" ? "Resultado estimado do prato" : "Resultado estimado do lote";
+    shell.content.querySelector("[data-batch-profit-label]").textContent = `Resultado estimado do ${aggregateName}`;
     shell.content.querySelector("[data-estimate-source]").textContent = result.source === "slicer"
       ? `Fatiador${result.engine ? ` · ${result.engine} ${result.engineVersion}` : ""} · ${formScope === "plate" ? "mesa inteira" : "peça individual"}`
       : "Entrada manual · valores editáveis";
@@ -351,7 +368,7 @@ export function mountFeature(host = {}) {
       ["Campo", "Valor"],
       ["Trabalho técnico", result.name],
       ["Origem do peso e tempo", result.source === "slicer" ? "Estatísticas do fatiador" : "Entrada manual"],
-      ["Escopo do peso e tempo", result.scope === "plate" ? "Prato completo" : "Peça individual"],
+      ["Escopo do peso e tempo", result.scope === "plate" ? result.source === "slicer" ? "Prato completo" : "Lote/prato completo" : "Peça individual"],
       ["Motor de fatiamento", result.source === "slicer" ? result.engine || "Não informado" : "Não se aplica"],
       ["Versão do motor", result.source === "slicer" ? result.engineVersion || "Não informada" : "Não se aplica"],
       ["Material", result.material],
@@ -426,6 +443,7 @@ export function mountFeature(host = {}) {
     catch (error) { toast(error?.message || "Não foi possível salvar o preço do material."); }
   });
   shell.content.querySelectorAll("[data-input]").forEach(input => input.addEventListener("input", () => {
+    if (input.dataset.input === "gramsPerUnit" || input.dataset.input === "hoursPerUnit") reviewedMeasurements.add(input.dataset.input);
     const origin = updateEstimateOriginForEdit({ source: formSource, scope: formScope, engine: formEngine, engineVersion: formEngineVersion }, input.dataset.input);
     formSource = origin.source;
     formScope = origin.scope;
@@ -435,6 +453,10 @@ export function mountFeature(host = {}) {
   }));
   fields.quantity.addEventListener("change", () => {
     fields.quantity.value = String(costs.normalizeQuantity(fields.quantity.value));
+    render();
+  });
+  shell.content.querySelector("[data-scope]").addEventListener("change", event => {
+    formScope = event.currentTarget.value === "plate" ? "plate" : "piece";
     render();
   });
   shell.content.querySelectorAll("[data-setting]").forEach(input => {
@@ -480,6 +502,8 @@ export function mountFeature(host = {}) {
     formScope = latest.scope;
     formEngine = latest.engine;
     formEngineVersion = latest.engineVersion;
+    importedSliceScopePending = true;
+    reviewedMeasurements.clear();
     render();
     shell.content.querySelector("[data-grams-label]").scrollIntoView({ behavior: "smooth", block: "center" });
     toast(latest.scope === "plate"

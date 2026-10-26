@@ -1,5 +1,17 @@
 # OrdaX 3D — plano de evolução
 
+### Escopo explícito do orçamento avulso (2026-10-26)
+
+Custos e orçamento permite selecionar se o peso e o tempo informados pertencem a uma peça ou ao lote/prato completo. A quantidade repete a base escolhida: não transforma o total do lote em custo unitário nem reparte automaticamente estatísticas agregadas. Ao importar um resultado do fatiador, a base fica vinculada à origem; para escolher outra, é preciso revisar manualmente peso e tempo, evitando reinterpretar silenciosamente uma estatística agregada. No fatiador, a peça única mantém custo e preço por peça; mesas com várias peças usam fatiamentos isolados para mostrar cada valor sem alterar o custo do prato original. A área avulsa permanece acessível separadamente e compartilha as mesmas premissas, histórico e exportação local.
+
+Verificação desta rodada: suíte OrdaX 3D 157/157; `node --check` e `git diff --check` aprovados. O host `:4263` serviu a calculadora atualizada e confirmou os controles de escopo/revisão por HTTP 200. O host não tem OrcaSlicer/perfis reais configurados; a fórmula por peça/lote foi coberta localmente, sem alegar fatiamento real ponta a ponta.
+
+### Visibilidade do orçamento técnico na fila (2026-10-26)
+
+A fila mantém o resumo do snapshot do job ao lado do nome, inclusive no layout móvel, onde os metadados de impressora/tempo ficam recolhidos. O texto distingue estimativa por peça, lote ou prato e identifica cálculos parciais quando a depreciação ainda não está configurada. Um dos registros de prévia local inclui um custo calculado a partir das premissas fictícias padrão, marcado como fictício pela própria origem do job. A fila só apresenta o snapshot salvo; não altera Vendas nem refaz a estimativa.
+
+Validação: suíte OrdaX 3D 155/155; `node --check` dos módulos alterados e `git diff --check` aprovados. No host `:4263`, a fila carregou sem erros; o navegador já tinha jobs locais persistidos sem snapshots de custo e estes foram preservados. Os testes unitários cobrem escopo, valores unitários/totais e estimativa parcial. O OrcaSlicer não está configurado neste host, então não houve fatiamento real.
+
 ### Calculadora técnica e orçamento por peça — validação local (2026-10-26)
 
 O orçamento avulso calcula peso, tempo, material, quantidade e impressora, incluindo perdas, energia, depreciação, manutenção, custos da máquina, mão de obra, preparação/acabamento, embalagem, taxas e frete informados. Mostra custo, preço mínimo sem lucro e preço de referência por markup ou margem; o histórico e o CSV mantêm a origem dos dados. No Preview, uma peça única recebe custo direto das estatísticas do fatiador. Em mesas com vários objetos, cada linha usa um fatiamento isolado para estimar o cenário de imprimir aquela peça sozinha; o tempo/custo do prato compartilhado não é rateado. Os G-codes auxiliares são descartados e o G-code original do prato permanece intacto.

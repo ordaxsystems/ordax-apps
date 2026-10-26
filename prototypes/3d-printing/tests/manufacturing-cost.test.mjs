@@ -239,6 +239,31 @@ test("mantém o escopo e a quantidade de objetos do resultado do prato sem ratea
   assert.equal(estimate.hoursPerUnit, 4);
 });
 
+test("calcula um orçamento manual usando peso e tempo totais por lote sem tratar esses totais como por peça", () => {
+  const estimate = calculateManufacturingCost({
+    name: "Lote de suportes",
+    material: "PLA",
+    gramsPerUnit: 400,
+    hoursPerUnit: 6,
+    quantity: 3,
+    scope: "plate",
+  }, {
+    ...defaultManufacturingCostSettings,
+    materialPricePerKg: 100,
+    materialWastePercent: 0,
+    printerPowerWatts: 1000,
+    energyPricePerKwh: 0.5,
+    laborPricePerHour: 0,
+  });
+
+  assert.equal(estimate.scope, "plate");
+  assert.equal(estimate.quantity, 3);
+  closeTo(estimate.costPerUnit, 43);
+  closeTo(estimate.totalCost, 129);
+  closeTo(estimate.gramsPerUnit * estimate.quantity, 1200);
+  closeTo(estimate.hoursPerUnit * estimate.quantity, 18);
+});
+
 test("serviço guarda preço por material em premissas locais", () => {
   const repository = memoryRepository();
   const service = createManufacturingCostService(repository);

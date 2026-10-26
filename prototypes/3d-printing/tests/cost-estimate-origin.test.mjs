@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { updateEstimateOriginForEdit } from "../features/custos-impressao/estimate-origin.mjs";
+import { canChangeEstimateScope, updateEstimateOriginForEdit } from "../features/custos-impressao/estimate-origin.mjs";
 
 const fromSlicer = Object.freeze({
   source: "slicer",
@@ -30,4 +30,11 @@ test("entrada manual e escopo individual continuam estáveis em outras edições
   const manual = { source: "manual", scope: "piece", engine: "", engineVersion: "" };
   assert.deepEqual(updateEstimateOriginForEdit(manual, "quantity"), manual);
   assert.deepEqual(updateEstimateOriginForEdit(manual, "gramsPerUnit"), manual);
+});
+
+test("escopo importado só pode mudar depois de revisar peso e tempo", () => {
+  assert.equal(canChangeEstimateScope({ importedSlice: false }), true);
+  assert.equal(canChangeEstimateScope({ importedSlice: true }), false);
+  assert.equal(canChangeEstimateScope({ importedSlice: true, reviewedFields: ["gramsPerUnit"] }), false);
+  assert.equal(canChangeEstimateScope({ importedSlice: true, reviewedFields: ["gramsPerUnit", "hoursPerUnit"] }), true);
 });

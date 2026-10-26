@@ -1,4 +1,5 @@
 import * as shared from "/shared.mjs";
+import { summarizeTechnicalJobCost } from "/apps/ordax-3d/src/application/technical-jobs-service.mjs";
 
 export function mountFeature(host = {}) {
   const { escapeHtml, money, toast, showModal, icon, button, stat } = shared;
@@ -16,6 +17,14 @@ export function mountFeature(host = {}) {
   const printerRecords = () => host.data.read("central-impressoras", []);
   const printerNames = jobs => [...new Set([...(Array.isArray(printerRecords()) ? printerRecords().map(printer => printer.name) : []), ...jobs.map(job => job.printer).filter(name => name && name !== "A definir")])];
   const statusLabel = status => status === "ready" ? "Preparado localmente" : status === "printing" ? "Em execução · demo" : status === "done" ? "Concluído · demo" : status === "blocked" ? "Bloqueado" : "Na fila";
+  const formatCostSummary = estimate => {
+    const summary = summarizeTechnicalJobCost(estimate);
+    if (!summary) return "";
+    const qualification = summary.complete ? "" : "estimativa parcial · ";
+    if (summary.scope === "plate") return `Prato · ${qualification}custo ${money(summary.totalCost)} · referência ${money(summary.suggestedPriceTotal)}`;
+    const unitSummary = `Por peça · ${qualification}custo ${money(summary.costPerUnit)} · referência ${money(summary.suggestedPricePerUnit)}`;
+    return summary.quantity === 1 ? unitSummary : `${unitSummary} · lote de ${summary.quantity}: custo ${money(summary.totalCost)} · referência ${money(summary.suggestedPriceTotal)}`;
+  };
   function render() {
     const jobs = jobsService.list();
     const active = jobs.filter(job => job.status !== "done");
@@ -32,8 +41,8 @@ export function mountFeature(host = {}) {
       const action = job.status === "queued" ? "Preparar" : job.status === "ready" ? "Iniciar demo" : job.status === "printing" ? "Concluir demo" : "Reabrir";
       const local = job.origin === "local-preview" ? " · fictício" : " · local";
       const detail = [formatDuration(job.estimatedMinutes), job.estimatedGrams === null ? "material a definir" : `${job.estimatedGrams.toLocaleString("pt-BR")} g`];
-      if (job.costEstimate) detail.push(`${money(job.costEstimate.totalCost)} custo · ${money(job.costEstimate.suggestedPriceTotal)} referência`);
-      return `<article class="queue-row"><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="job-title"><strong>${escapeHtml(job.name)}</strong><small>${escapeHtml(job.model)} · ${escapeHtml(job.material)}${local}</small></div><div class="job-meta">${escapeHtml(job.printer)}<small>${escapeHtml(detail.join(" · "))}</small></div><span class="status-chip ${escapeHtml(job.status)}">${escapeHtml(statusLabel(job.status))}</span><div class="queue-row-actions"><button class="mini-button" data-move="up" data-id="${escapeHtml(job.id)}" aria-label="Mover para cima" ${index === 0 ? "disabled" : ""}>↑</button><button class="mini-button" data-move="down" data-id="${escapeHtml(job.id)}" aria-label="Mover para baixo" ${index === jobs.length - 1 ? "disabled" : ""}>↓</button><button class="button secondary stage-button" data-stage="${escapeHtml(job.id)}">${action}</button></div></article>`;
+      const costSummary = formatCostSummary(job.costEstimate);
+      return `<article class="queue-row"><span class="queue-index">${String(index + 1).padStart(2, "0")}</span><div class="job-title"><strong>${escapeHtml(job.name)}</strong><small>${escapeHtml(job.model)} · ${escapeHtml(job.material)}${local}</small>${costSummary ? `<small class="job-cost-summary">${escapeHtml(costSummary)}</small>` : ""}</div><div class="job-meta">${escapeHtml(job.printer)}<small>${escapeHtml(detail.join(" · "))}</small></div><span class="status-chip ${escapeHtml(job.status)}">${escapeHtml(statusLabel(job.status))}</span><div class="queue-row-actions"><button class="mini-button" data-move="up" data-id="${escapeHtml(job.id)}" aria-label="Mover para cima" ${index === 0 ? "disabled" : ""}>↑</button><button class="mini-button" data-move="down" data-id="${escapeHtml(job.id)}" aria-label="Mover para baixo" ${index === jobs.length - 1 ? "disabled" : ""}>↓</button><button class="button secondary stage-button" data-stage="${escapeHtml(job.id)}">${action}</button></div></article>`;
     }).join("") : `<div class="queue-empty"><strong>Nenhum job nesta lista</strong>Fatie um modelo ou adicione um job técnico local.</div>`;
     const printers = printerNames(jobs);
     shell.content.querySelector("[data-capacity]").innerHTML = printers.length ? printers.map(printer => {
