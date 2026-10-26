@@ -50,7 +50,10 @@ test('read-only provider inspectors have deadlines and remain no-send',()=>{
   assert.match(conversation,/waitForHistoricalThreadDom/);
   const observation=fs.readFileSync(path.resolve(here,'../src/provider-historical-thread-observation.mjs'),'utf8');
   assert.match(observation,/provider_conversation_observation_timeout/);
-  assert.match(observation,/timeoutMs:Math\.min\(2000,remaining\)/);
+  assert.ok(observation.includes('timeoutMs:Math.min(W3_OBSERVER_READ_TIMEOUT_MS,remaining)'));
+  const bounds=fs.readFileSync(path.resolve(here,'../src/provider-recovery-bounds.mjs'),'utf8');
+  assert.ok(bounds.includes('W3_OBSERVER_READ_TIMEOUT_MS=7000'));
+  assert.ok(bounds.includes('W3_CDP_READ_TIMEOUT_MS=6000'));
   for(const area of [diagnostic,conversation]){
     assert.doesNotMatch(area,/submitExactlyOnce|requestSubmit|setComposerAndSend|sendPrompt/);
   }
