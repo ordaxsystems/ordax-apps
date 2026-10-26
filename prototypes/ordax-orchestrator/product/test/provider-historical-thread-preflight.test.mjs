@@ -94,20 +94,17 @@ test('real worker implementation stops before showConversation when W3 preflight
   assert.match(ui,/provider_session_not_observed/);
 });
 
-test('historical CDP debugger is detached only when inspection attached it',()=>{
+test('historical W3 uses the shared single CDP evaluator with strict bounds',()=>{
   const start=worker.indexOf('  async #readHistoricalThreadDOM()');
   const end=worker.indexOf('  async inspectConversationReadOnly(',start);
   assert.ok(start>=0&&end>start);
   const body=worker.slice(start,end);
-  assert.match(body,/let attachedHere=false/);
-  assert.match(body,/attachedHere=true/);
-  assert.match(body,/finally \{/);
-  assert.match(body,/if\(attachedHere\)/);
-  assert.match(body,/wc\.debugger\.detach\(\)/);
-  assert.match(body,/timeoutMs:6000,code:'provider_readonly_dom_evaluation_timeout'/);
+  assert.match(body,/evaluateProviderReadOnlyDom\\(\\{/);
+  assert.match(body,/debugger:this\\.view\\.webContents\\.debugger/);
+  assert.match(body,/timeoutMs:6000,timeoutCode:'provider_readonly_dom_evaluation_timeout'/);
   assert.equal(safeHistoricalThreadFailure('provider_readonly_dom_evaluation_timeout'),
     'provider_readonly_dom_evaluation_timeout');
-  assert.ok(body.indexOf('finally {')>body.indexOf("wc.debugger.sendCommand('Runtime.evaluate'"));
+  assert.doesNotMatch(body,/executeJavaScript|\\.loadURL|sendPrompt/);
 });
 
 test('explicit Back can leave a proven failed linked thread with no draft',()=>{

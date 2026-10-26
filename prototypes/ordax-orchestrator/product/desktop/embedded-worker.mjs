@@ -10,6 +10,7 @@ import { providerUserMessageMatchesPrompt, providerUserMessageIsCollapsedPromptP
 import { providerResponseFailureSignalsExpression, classifyProviderResponseFailure } from '../src/provider-response-failure.mjs';
 import providerDomSelectors from '../src/provider-dom-selectors.cjs';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
+import { evaluateProviderReadOnlyDom } from '../src/provider-readonly-cdp-evaluator.mjs';
 import {W3_MAX_USER_CHARS,W3_MAX_ASSISTANT_CHARS} from '../src/provider-recovery-bounds.mjs';
 import { awaitHistoricalSessionPreflight, classifyHistoricalThreadPostNavigation, mayReturnFromFailedProviderConversation } from '../src/provider-historical-thread-preflight.mjs';
 import { preserveProviderWhitespace } from '../src/provider-code-format.mjs';
@@ -352,7 +353,8 @@ export class EmbeddedChatWorker {
   async health() {
     const base = this.status();
     if (!base.connected) return { ...base, verification_required:false, auth_state:'unavailable' };
-    const page = await observeWithin(() => this.view.webContents.executeJavaScript(`(() => {
+    const page = await evaluateProviderReadOnlyDom({
+      debugger:this.view.webContents.debugger,expression:`(() => {
       const composer=${composerExpression()};
       ${providerMessageQueryBootstrap}
       ${providerVerificationNoticeProbeBootstrap}
@@ -414,7 +416,8 @@ export class EmbeddedChatWorker {
         generationStopVisible:${providerGenerationStopProbeExpression},
         responseFailureSignals:${providerResponseFailureSignalsExpression}
       };
-    })()`), { timeoutMs:5000, code:'provider_health_observation_timeout' }).catch(() => null);
+    })()`,timeoutMs:5000,timeoutCode:'provider_health_observation_timeout'
+    }).catch(() => null);
     const url = this.view.webContents.getURL();
     const authState=classifyProviderAuthObservation({url,page});
     const availability=classifyProviderPageAvailability({
@@ -599,18 +602,10 @@ export class EmbeddedChatWorker {
   // during provider SPA navigation even when the renderer itself is responsive.
   // This performs one evaluation, never an input event, retry or network request.
   async #readHistoricalThreadDOM() {
-    const wc=this.view.webContents;
-    let attachedHere=false;
-    try {
-      if (!wc.debugger.isAttached()) {
-        wc.debugger.attach('1.3');
-        attachedHere=true;
-      }
-    } catch { throw new Error('provider_readonly_debugger_unavailable'); }
-    let result;
-    try {
-      result=await observeWithin(() => wc.debugger.sendCommand('Runtime.evaluate', {
-        expression:`(() => {
+    // One read-only evaluator shared with health; never retry an unknown CDP call.
+    const snapshot=await evaluateProviderReadOnlyDom({
+      debugger:this.view.webContents.debugger,
+      expression:`(() => {
           ${providerMessageQueryBootstrap}
           ${providerHistoricalUserTextBootstrap}
           const entries = [
@@ -653,27 +648,11 @@ export class EmbeddedChatWorker {
             loadFailureText, messages
           };
         })()`,
-        awaitPromise:false,returnByValue:true
-      // Explicit read-only W3 observation may transfer up to 100k characters
-      // through Electron's debugger; allow one bounded 6-second CDP response.
-      // NO second evaluation, navigation, resend or import on a timeout.
-      }), {timeoutMs:6000,code:'provider_readonly_dom_evaluation_timeout'});
-    } catch(error) {
-      if(error?.message==='provider_readonly_dom_evaluation_timeout')throw error;
+      timeoutMs:6000,timeoutCode:'provider_readonly_dom_evaluation_timeout'
+    });
+    if(snapshot?.available!==true)
       throw new Error('provider_readonly_dom_evaluation_rejected');
-    }
-    finally {
-      // A read-only inspection must not leave DevTools attached to the
-      // authenticated provider view after success OR failed evaluation.
-      // Never detach a debugger that belonged to another observer.
-      if(attachedHere) {
-        try { if(wc.debugger.isAttached()) wc.debugger.detach(); }
-        catch { /* teardown errors cannot certify inspection */ }
-      }
-    }
-    if (result?.exceptionDetails || result?.result?.value?.available!==true)
-      throw new Error('provider_readonly_dom_evaluation_rejected');
-    const {loadFailureText, ...safeSnapshot}=result.result.value;
+    const {loadFailureText,...safeSnapshot}=snapshot;
     const availability=classifyProviderPageAvailability({
       body:loadFailureText,messageNodes:safeSnapshot.messages.length,
       composerPresent:false

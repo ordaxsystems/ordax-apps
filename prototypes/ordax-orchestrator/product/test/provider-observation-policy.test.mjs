@@ -70,7 +70,9 @@ test('worker health is bounded and can never turn missing DOM into confirmed ses
   const here=path.dirname(fileURLToPath(import.meta.url));
   const code=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const health=code.split('  async health() {')[1].split('  enqueue(fn) {')[0];
-  assert.match(health,/observeWithin\(\(\) => this\.view\.webContents\.executeJavaScript/);
+  assert.match(health,/evaluateProviderReadOnlyDom\(\{/);
+  assert.match(health,/debugger:this\.view\.webContents\.debugger/);
+  assert.match(health,/timeoutCode:'provider_health_observation_timeout'/);
   assert.match(health,/timeoutMs:5000/);
   assert.match(health,/\.catch\(\(\) => null\)/);
   assert.match(health,/classifyProviderAuthObservation/);
