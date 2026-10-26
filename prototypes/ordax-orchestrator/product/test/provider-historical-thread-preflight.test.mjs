@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {assessHistoricalThreadPreflight,mayReturnFromFailedProviderConversation} from '../src/provider-historical-thread-preflight.mjs';
+import {assessHistoricalThreadPreflight,awaitHistoricalSessionPreflight,mayReturnFromFailedProviderConversation} from '../src/provider-historical-thread-preflight.mjs';
 import {safeHistoricalThreadFailure} from '../src/provider-observation-policy.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -77,8 +77,8 @@ test('invalid target never initiates observation',()=>{
 test('real worker implementation stops before showConversation when W3 preflight fails',()=>{
   const method=worker.slice(worker.indexOf('  async inspectConversationReadOnly('),
     worker.indexOf('  async #composerState(',worker.indexOf('  async inspectConversationReadOnly(')));
-  assert.match(method,/const health=await this\.health\(\)\.catch/);
-  assert.match(method,/assessHistoricalThreadPreflight\(\{expectedUrl:expected,health\}\)/);
+  assert.match(method,/const preflight=await awaitHistoricalSessionPreflight/);
+  assert.match(method,/readHealth:/);
   assert.match(method,/if\(!preflight\.allowed\)/);
   assert.match(method,/return \{available:false,url:expected,reason:preflight\.reason\}/);
   assert.ok(method.indexOf('if(!preflight.allowed)') < method.indexOf('this.showConversation('));
@@ -164,4 +164,58 @@ test('only manual Back can use failed-thread exception: never Reload or Forward'
   const reload=guard.slice(guard.indexOf('  async reloadCurrentPage('));
   assert.match(reload,/await this\.#assertManualNavigationSafe\(\);/);
   assert.doesNotMatch(reload,/allowReturnFromFailedThread/);
+});
+
+test('W3 waits for transient settled health observations only',async()=>{
+  const loading={...base,auth_state:'unknown',composer_ready:false,page_state:'unknown'};
+  const values=[loading,loading,base];let reads=0,waits=0;
+  const result=await awaitHistoricalSessionPreflight({
+    expectedUrl,readHealth:async()=>values[Math.min(reads++,2)],
+    sleep:async ms=>{assert.equal(ms,250);waits++;}
+  });
+  assert.deepEqual(result,{allowed:true,reason:'session_observed_for_navigation'});
+  assert.equal(reads,3);assert.equal(waits,2);
+});
+
+test('W3 never delays hard denial for login, verification or backend errors',async()=>{
+  for(const health of [
+    {...base,auth_state:'anonymous',composer_ready:false},
+    {...base,auth_state:'authenticating',composer_ready:false},
+    {...base,verification_required:true},
+    {...base,provider_access_problem:'backend_http_403_observed'},
+    {...base,provider_access_problem:'backend_http_429_observed'},
+    {...base,page_state:'conversation_load_failed',composer_ready:false}
+  ]) {
+    let reads=0,waits=0;
+    const result=await awaitHistoricalSessionPreflight({
+      expectedUrl,readHealth:async()=>{reads++;return health;},
+      sleep:async()=>{waits++;}
+    });
+    assert.equal(result.allowed,false);assert.equal(reads,1);assert.equal(waits,0);
+  }
+});
+
+test('W3 stops reading if a later health observation is unavailable',async()=>{
+  const loading={...base,auth_state:'unknown',composer_ready:false,page_state:'unknown'};
+  let reads=0,waits=0;
+  const result=await awaitHistoricalSessionPreflight({
+    expectedUrl,readHealth:async()=>++reads===1?loading:null,
+    sleep:async()=>{waits++;}
+  });
+  assert.deepEqual(result,{allowed:false,reason:'provider_health_unavailable'});
+  assert.equal(reads,2);assert.equal(waits,1);
+});
+
+test('W3 uses a bounded maximum of eight additional read-only health observations',async()=>{
+  const loading={...base,auth_state:'unknown',composer_ready:false,page_state:'unknown'};
+  let reads=0,waits=0;
+  const result=await awaitHistoricalSessionPreflight({
+    expectedUrl,readHealth:async()=>{reads++;return loading;},
+    sleep:async()=>{waits++;}
+  });
+  assert.deepEqual(result,{allowed:false,reason:'provider_session_not_observed'});
+  assert.equal(reads,9);assert.equal(waits,8);
+  assert.deepEqual(await awaitHistoricalSessionPreflight({
+    expectedUrl,readHealth:async()=>({...loading,url:expectedUrl})
+  }),{allowed:true,reason:'already_at_linked_thread'});
 });
