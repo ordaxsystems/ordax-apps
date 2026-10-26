@@ -1,5 +1,16 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+
+## Continuidade de contexto longo — integração 2026-10-26
+
+- **Uma PR de produto ativa:** seguir somente a [#348](https://github.com/ordaxsystems/ordax-apps/pull/348), branch codex/orchestrator-host-runtime-architecture. Não desenvolver correções concorrentes nas branches antigas; preservar os checkpoints de 24h e Host até o encerramento seguro da integração.
+- **Correção real no source:** product/src/task-message-search.mjs deixou de descartar a identificação de projeto VESTE e números relevantes. Consultas estruturadas como Capítulo 9 e 04:17 agora usam frases FTS5, além de termos seguros e limitados, sem criar uma memória paralela.
+- **Provas de regressão:** product/test/task-message-search.test.mjs verifica nomes, números, horas e exclusão de resultados de outra Task. product/test/long-horizon-task-retrieval.test.mjs usa 120 mensagens por projeto, referências aleatórias independentes, reinício real de SQLite temporário e recuperação da primeira mensagem sem vazamento entre projetos.
+- **Evidência Linux:** workflow OrdaX Orchestrator Lab Isolation [run 40277727314](https://github.com/ordaxsystems/ordax-apps/actions/runs/40277727314) passou 558/558 no commit de código e48f9c9; os três testes novos constam nominalmente nos logs. O job Windows precisa ser confirmado à parte. OrdaX Apps Foundation falhou em Food preview, cujo owner tem PR independente #357; não corrigir Food dentro da #348.
+- **Limites dos resultados:** as 120 mensagens verificam Store/FTS/SQLite, não provam 24 horas nem GPT Web autenticado. Permanece aberto o E2E de interrupção no envio real GPT, atribuição exata de resposta após recuperação, concorrência entre projetos reais, uso dos grants Runtime/Platform e worker 24h pelo scheduler/Model Router canônicos.
+- **Próxima prioridade:** comprovar no Electron staged com sessão autorizada um envio incerto e recuperação read-only sem replay, com recibo/URL/Run e estado após restart. Não reenviar ações incertas da VESTE existente, não tocar na instalação principal e não contornar o provider/Runtime.
+
+
 ## Linha de integração consolidada — 2026-10-26
 
 - **Uma PR ativa de produto:** Apps [#348](https://github.com/ordaxsystems/ordax-apps/pull/348), branch `codex/orchestrator-host-runtime-architecture`, base `main`. Alterar essa branch por fast-forward; não abrir outro PR do Orchestrator para as mesmas mudanças.
