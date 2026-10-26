@@ -164,3 +164,35 @@ test('async inspection refuses a preview when a newer Run starts while observing
     assert.equal(result.recoveryPreview,undefined);
   });
 });
+
+test('88k technical W3 reply requires explicit preview and one transactional import',async()=>{
+  await fixture(async({store,task,worker,providerPrompt,setObservation,sends})=>{
+    const answer='Line 0123456789\\n'.repeat(5500);
+    setObservation({available:true,url,domReliable:true,truncated:false,
+      generationStopVisible:false,responseCompletionObserved:true,
+      messages:[{role:'user',text:providerPrompt},{role:'assistant',text:answer}]});
+    const preview=await inspectProviderLinkedThread({store,worker,taskId:task.id});
+    assert.equal(preview.threadRendered,true);
+    assert.equal(preview.recoveryPreview.text.length,answer.length);
+    assert.equal(store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,0);
+    const done=await reconcileProviderLinkedReply({store,worker,taskId:task.id,
+      responseSha256:preview.recoveryPreview.responseSha256});
+    assert.equal(done.reconciled,true);
+    assert.equal(store.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='assistant'").get(task.id).content,answer);
+    assert.equal((await reconcileProviderLinkedReply({store,worker,taskId:task.id,
+      responseSha256:preview.recoveryPreview.responseSha256})).reason,'already_reconciled');
+    assert.equal(sends(),0);
+  },{interrupted:true});
+});
+
+test('100001-character reply cannot be previewed or committed, even with an exact receipt',async()=>{
+  await fixture(async({store,task,worker,providerPrompt,setObservation,runId})=>{
+    setObservation({available:true,url,domReliable:true,truncated:false,
+      generationStopVisible:false,responseCompletionObserved:true,
+      messages:[{role:'user',text:providerPrompt},{role:'assistant',text:'x'.repeat(100001)}]});
+    const preview=await inspectProviderLinkedThread({store,worker,taskId:task.id});
+    assert.equal(preview.threadRendered,false);
+    assert.equal(preview.recoveryPreview,undefined);
+    assert.equal(store.db.prepare('SELECT status FROM runs WHERE id=?').get(runId).status,'interrupted');
+  },{interrupted:true});
+});
