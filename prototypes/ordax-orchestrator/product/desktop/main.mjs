@@ -483,6 +483,22 @@ async function createWindowOnce() {
   win.on('resize', layoutViews);
   win.on('maximize', layoutViews);
   win.on('unmaximize', layoutViews);
+  // The user can close Electron while a provider request was accepted but
+  // its reply is unknown. Persist the SAME interruption transaction used on
+  // startup before destroying the window. No provider retry/cancel/API call.
+  // A late response cannot be committed: finishRun requires status=running.
+  win.on('close', event => {
+    if (!liveRun) return;
+    try {
+      const interrupted = store.recoverInterruptedRuns('app_shutdown');
+      liveRun = null;
+      if (interrupted) hostStartupLog('inflight_run_interrupted_on_close');
+    } catch {
+      // Never let a failed SQLite transition silently discard an in-flight Run.
+      event.preventDefault();
+      hostStartupLog('inflight_shutdown_recovery_failed');
+    }
+  });
 
   // A dead App renderer must never look like a successfully started product.
   // Report only local, sanitized shell failure codes, never provider content.
