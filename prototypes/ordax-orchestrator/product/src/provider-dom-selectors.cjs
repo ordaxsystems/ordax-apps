@@ -38,12 +38,16 @@ function readProviderHistoricalUserText(node) {
 
 const providerMessageQueryBootstrap =
   `const providerMessageSelectors=${JSON.stringify(providerMessageSelectors)};` +
-  `const queryProviderMessageNodes=(${queryProviderMessageNodes.toString()});` +
+  `const queryProviderMessageNodes=(${queryProviderMessageNodes.toString()});`;
+
+// Separate from health/failure probes: those must NEVER embed user-text code.
+const providerHistoricalUserTextBootstrap =
   `const readProviderHistoricalUserText=(${readProviderHistoricalUserText.toString()});`;
 
 module.exports = {
   providerMessageSelectors,
   queryProviderMessageNodes,
   readProviderHistoricalUserText,
-  providerMessageQueryBootstrap
+  providerMessageQueryBootstrap,
+  providerHistoricalUserTextBootstrap
 };
