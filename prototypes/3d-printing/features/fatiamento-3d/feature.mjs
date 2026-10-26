@@ -244,7 +244,7 @@ export function mountFeature(host = {}) {
 
         <section class="preview-view" data-preview-view hidden>
           <div class="preview-canvas-wrap"><div class="preview-stage-head"><div><span class="panel-kicker">TRAJETÓRIA REAL DO MOTOR</span><h2 data-preview-title>Preview de fatiamento</h2></div><span class="engine-chip"><i></i><span data-preview-engine>—</span></span></div><canvas data-gcode-canvas aria-label="Trajetórias G-code da camada selecionada"></canvas><div class="preview-legend"><span><i class="legend-outer"></i>Perímetro externo</span><span><i class="legend-inner"></i>Perímetro interno</span><span><i class="legend-infill"></i>Preenchimento</span><span><i class="legend-support"></i>Suporte</span><span><i class="legend-travel"></i>Deslocamento</span></div><div class="line-inspector"><span>Trajetórias da camada</span><input type="range" min="0" max="100" value="100" data-line-slider aria-label="Progresso da simulação da camada"/><strong data-line-count>—</strong></div></div>
-          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Abrir orçamento detalhado</button><div class="preview-object-costs" data-object-costs hidden><div class="preview-object-costs-head"><strong>Estimativa por peça</strong><small data-object-cost-status></small></div><div data-object-cost-list></div></div><button class="button secondary" type="button" data-slice-object-costs hidden>Fatiar cada peça para calcular</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
+          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Abrir orçamento detalhado</button><div class="preview-object-costs" data-object-costs hidden><div class="preview-object-costs-head"><strong>Custo e preço por peça</strong><small data-object-cost-status></small></div><div data-object-cost-list></div></div><button class="button secondary" type="button" data-slice-object-costs hidden>Calcular custo e preço por peça</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
         </section>
       </section>
     `,
@@ -629,32 +629,47 @@ export function mountFeature(host = {}) {
     const individualStatus = content.querySelector("[data-object-cost-status]");
     individualButton.hidden = !canItemize;
     individualButton.disabled = Boolean(controller) || remoteConsentPending || !engineStatus.available || Boolean(sliceBlockReason());
-    individualButton.textContent = controller ? "Fatiando peças individualmente…" : objectCostResults.length ? "Calcular/recalcular peças" : "Fatiar cada peça para calcular";
-    individualPanel.hidden = !canItemize || (!objectCostStatus && !objectCostResults.length);
-    individualStatus.textContent = objectCostStatus || "Cada valor vem de um fatiamento real isolado da peça.";
+    individualButton.textContent = controller ? "Calculando custos individuais…" : objectCostResults.length ? "Calcular pendentes/recalcular" : "Calcular custo e preço por peça";
+    individualPanel.hidden = !canItemize;
     individualList.replaceChildren();
-    for (const item of objectCostResults) {
+    const objects = model?.objects || [];
+    const resultsByObjectId = new Map(objectCostResults.map(item => [item.objectId, item]));
+    const calculatedCount = objectCostResults.filter(item => item.estimate?.available).length;
+    individualStatus.textContent = objectCostStatus || `${objects.length} peças na mesa. Peso e tempo combinados não são divididos por igual; cada linha usa um fatiamento real isolado.`;
+    for (const object of objects.slice(0, 50)) {
+      const item = resultsByObjectId.get(object.id);
       const row = document.createElement("div"); row.className = "preview-object-cost-row";
+      row.dataset.state = item?.estimate?.available ? "calculated" : item ? "unavailable" : "pending";
       const copy = document.createElement("div"); copy.className = "preview-object-cost-copy";
-      const name = document.createElement("strong"); name.textContent = item.name;
+      const name = document.createElement("strong"); name.textContent = item?.name || object.name || "Peça sem nome";
       const detail = document.createElement("small");
-      detail.textContent = item.estimate?.available
+      detail.textContent = item?.estimate?.available
         ? `${number(item.slice.grams, 1)} g · ${formatDuration(item.slice.timeSeconds)}${item.estimate.complete ? "" : " · depreciação pendente"}`
-        : item.error || "O motor não retornou peso e tempo desta peça.";
+        : item?.error || "Aguardando fatiamento isolado desta peça.";
       copy.append(name, detail);
       const values = document.createElement("div"); values.className = "preview-object-cost-values";
       const cost = document.createElement("strong");
-      cost.textContent = item.estimate?.available ? shared.money(item.estimate.costPerUnit) : "Sem cálculo";
+      cost.textContent = item?.estimate?.available ? shared.money(item.estimate.costPerUnit) : "Sem cálculo";
       const price = document.createElement("small");
-      price.textContent = item.estimate?.available && item.estimate.pricingValid ? `Referência ${shared.money(item.estimate.suggestedPricePerUnit)}` : "Preço indisponível";
+      price.textContent = item?.estimate?.available && item.estimate.pricingValid ? `Referência ${shared.money(item.estimate.suggestedPricePerUnit)}` : "Preço indisponível";
       values.append(cost, price);
-      if (item.estimate?.available) {
+      if (item?.estimate?.available) {
         const quote = document.createElement("button"); quote.type = "button"; quote.className = "preview-object-quote"; quote.textContent = "Orçar";
         quote.setAttribute("aria-label", `Abrir orçamento individual de ${item.name}`);
         quote.addEventListener("click", () => host.navigate?.("costs", { action: "load-slice", slice: item.slice }));
         values.append(quote);
       }
       row.append(copy, values); individualList.append(row);
+    }
+    const omitted = objects.length - Math.min(objects.length, 50);
+    if (omitted > 0) {
+      const note = document.createElement("small");
+      note.className = "preview-object-costs-omitted";
+      note.textContent = `Mais ${omitted} peças não exibidas nesta lista.`;
+      individualList.append(note);
+    }
+    if (canItemize && calculatedCount > 0 && objects.length > 1) {
+      individualStatus.textContent = objectCostStatus || `${calculatedCount} de ${objects.length} peças com resultado real; ${objects.length - calculatedCount} aguardando cálculo ou revisão.`;
     }
   }
 
@@ -1759,7 +1774,7 @@ export function mountFeature(host = {}) {
       }
       const successfulCount = objectCostResults.filter(item => item.estimate?.available).length;
       const unresolvedCount = objectCostResults.length - successfulCount;
-      objectCostStatus = `${successfulCount} peça${successfulCount === 1 ? "" : "s"} calculada${successfulCount === 1 ? "" : "s"}${unresolvedCount ? ` · ${unresolvedCount} sem estatísticas ou com falha` : ""}${restCount ? ` · ${restCount} aguardando a próxima rodada` : ""}. Custos individuais usam fatiamentos isolados.`;
+      objectCostStatus = `${successfulCount} de ${model.objects.length} peça${model.objects.length === 1 ? "" : "s"} com custo${unresolvedCount ? ` · ${unresolvedCount} sem estatísticas ou com falha` : ""}${restCount ? ` · ${restCount} aguardando a próxima rodada` : ""}. Cada valor usa o peso e o tempo de um fatiamento isolado.`;
       content.querySelector("[data-engine-title]").textContent = "Custos individuais atualizados";
       content.querySelector("[data-engine-message]").textContent = objectCostStatus;
     } catch (error) {

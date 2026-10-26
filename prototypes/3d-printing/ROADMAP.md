@@ -1,5 +1,11 @@
 # OrdaX 3D — plano de evolução
 
+### Incremento local — visibilidade de custo por peça no Preview (2026-10-26)
+
+Depois do fatiamento de uma mesa múltipla, o Preview agora deixa visível a lista de objetos e o estado individual de cada peça, mesmo antes do cálculo. A ação explicita que executará fatiamentos isolados; cada linha passa de pendente para calculada ou sem estatísticas, mostrando custo e preço de referência por unidade quando o Orca informar peso e duração válidos. O total agregado do prato continua identificado como total, sem rateio artificial. O orçamento avulso segue separado no módulo Custos e orçamento, preenchido manualmente ou com estatísticas de um fatiamento real.
+
+Validação: suíte OrdaX 3D 145/145; `node --check` e `git diff --check` aprovados. No host local `:4324`, o formulário avulso calculou uma amostra digitada de 28,6 g e 2,6 h, exibindo custo técnico de R$ 69,00 e preço de referência de R$ 93,15; não salvei o orçamento. O host não tem OrcaSlicer/perfis configurados, então não houve fatiamento real nem prova de custo por objeto nesta rodada. Os dados de custos continuam locais; Inventory, Vendas e Finance não foram alterados.
+
 ### Incremento local — custo individual de cada peça em pratos múltiplos (2026-10-26)
 
 O Preview já mostra custo total quando o motor retorna estatísticas agregadas do prato. Agora, **Calcular/recalcular peças** permite calcular cada modelo sem ratear esse total: o app envia cada geometria individual transformada ao mesmo serviço/perfil, em lotes de até 20, calcula pelo peso e duração retornados, e descarta esses G-codes auxiliares. O G-code original do prato não é alterado. Cada linha abre o orçamento técnico preenchido para revisão e salvamento; o orçamento manual/avulso continua disponível. Mudanças de perfil ou geometria invalidam resultados anteriores.

@@ -142,6 +142,9 @@
 .preview-object-costs-head>strong{color:#dce8dd;font-size:9px}
 .preview-object-costs-head>small{color:#94a598;font-size:8px;line-height:1.45}
 .preview-object-cost-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px;border:1px solid #ffffff12;border-radius:8px;background:#ffffff05}
+.preview-object-cost-row[data-state="pending"]{border-style:dashed;background:#ffffff03}
+.preview-object-cost-row[data-state="calculated"]{border-color:#43cf9a36;background:#35c98908}
+.preview-object-cost-row[data-state="unavailable"]{border-color:#ffad6b35;background:#d96b3510}
 .preview-object-cost-copy{display:grid;gap:3px;min-width:0}
 .preview-object-cost-copy>strong{overflow:hidden;color:#dce5dc;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
 .preview-object-cost-copy>small,.preview-object-cost-values>small{color:#94a598;font-size:8px;line-height:1.4}
@@ -149,4 +152,5 @@
 .preview-object-cost-values>strong{color:#e3ede4;font-size:9px}
 .preview-object-quote{padding:1px 0;border:0;background:none;color:#65d4ab;font-size:8px;font-weight:700;cursor:pointer}
 .preview-object-quote:hover{text-decoration:underline}
+.preview-object-costs-omitted{color:#94a598;font-size:8px;line-height:1.4}
 .preview-cost-card>[data-slice-object-costs]:disabled{opacity:.62;cursor:wait}
