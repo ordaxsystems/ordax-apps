@@ -743,5 +743,5 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 ### OrdaX 3D — inferência de camadas sem marcadores (2026-10-26)
 
 - O parser compartilhado do Prepare/Visualizador passa a inferir uma nova camada somente em extrusão positiva quando o G-code não contém marcadores de camada. Z-hop, travel e retração não inflam mais a contagem; marcadores explícitos continuam sendo autoridade.
-- Foram adicionados dois testes para G-code markerless e para a precedência dos marcadores. A suíte remota e o estado da PR serão conferidos após a atualização.
+- Dois testes cobrem G-code sem marcadores e precedência dos marcadores explícitos. Suíte completa do OrdaX 3D no worktree da PR: 128/128; `node --check` e `git diff --check` aprovados. O workflow 40274456096 passou no gate MVP e falhou no workspace-boundary por dois testes de Food (`apps/food-pizzeria/tests/cart-pricing.test.mjs`, erro “Atualização do sabor antecede sua criação”), fora da mudança 3D.
 - Correção local de interpretação; sem alteração de arquivos enviados, jobs técnicos, hardware, Inventory, outros owners ou elegibilidade de distribuição.
