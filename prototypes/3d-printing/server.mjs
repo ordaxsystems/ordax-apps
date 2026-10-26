@@ -37,6 +37,7 @@ const contentTypes = {
   "ai-copilot.mjs": "text/javascript; charset=utf-8",
   "mesh-analysis.mjs": "text/javascript; charset=utf-8",
   "gcode-preview.mjs": "text/javascript; charset=utf-8",
+  "viewport-geometry.mjs": "text/javascript; charset=utf-8",
   "orca-geometry.mjs": "text/javascript; charset=utf-8",
   "project-bundle.mjs": "text/javascript; charset=utf-8",
   "zip-container.mjs": "text/javascript; charset=utf-8",
@@ -222,7 +223,7 @@ function resolveRequest(pathname) {
     const name = pathname.slice("/shared/".length);
     return [resolve(sharedRoot, name), contentTypes[name]];
   }
-  const feature = pathname.match(/^\/features\/([a-z0-9-]+)\/(feature\.mjs|bed-envelope\.mjs|app\.css|ai-copilot\.mjs|mesh-analysis\.mjs|demo-model\.mjs|mesh-import\.mjs|mesh-viewer\.mjs|slicer-port\.mjs|profile-compatibility\.mjs|gcode-preview\.mjs|orca-geometry\.mjs|project-bundle\.mjs|source-fingerprint\.mjs|zip-container\.mjs)$/);
+  const feature = pathname.match(/^\/features\/([a-z0-9-]+)\/(feature\.mjs|bed-envelope\.mjs|app\.css|ai-copilot\.mjs|mesh-analysis\.mjs|demo-model\.mjs|mesh-import\.mjs|mesh-viewer\.mjs|slicer-port\.mjs|profile-compatibility\.mjs|gcode-preview\.mjs|viewport-geometry\.mjs|orca-geometry\.mjs|project-bundle\.mjs|source-fingerprint\.mjs|zip-container\.mjs)$/);
   if (feature && features.has(feature[1])) {
     const [ , featureId, fileName ] = feature;
     return [resolve(root, "features", featureId, fileName), contentTypes[fileName]];

@@ -1,5 +1,9 @@
 # OrdaX 3D — plano de evolução
 
+### Incremento local — enquadramento do Visualizador G-code (2026-10-26)
+
+O canvas do Visualizador somava a altura completa da mesa à origem vertical já centralizada, deslocando os trajetos e podendo cortá-los. Além disso, o host montava todas as áreas enquanto ocultas, e o canvas G-code tentava calcular a mesa com dimensão zero, impedindo o shell de iniciar. O desenho agora ignora viewports ocultos/pequenos, e a projeção é um helper próprio que mantém as proporções e enquadra a peça dentro do recuo da mesa. O host permite esse módulo pela allowlist explícita; `tests/viewport-geometry.test.mjs` cobre inicialização oculta, centralização, limites, proporção, vazio e coordenadas inválidas. A correção não altera o G-code, o fatiamento, hardware ou SSOT dos owners.
+
 ## Princípio do produto
 
 Construir uma estação de trabalho 3D confiável: preparação e fatiamento com resultados produzidos por um motor real, configuração rastreável, validação antes da impressão e IA que explica o que sabe, mostra suas evidências e pede revisão antes de alterar o projeto. O Space é dono de contexto, identidade, autorização, composição, navegação e visão geral; OrdaX 3D é um único app vertical com módulos internos. O host atual é somente uma prévia local.
