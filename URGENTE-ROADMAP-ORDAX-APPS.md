@@ -734,3 +734,8 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A inspeção é local e somente leitura. Nenhum job, arquivo, saldo de Inventory, owner, SSOT, integração ou elegibilidade de distribuição foi alterado.
 - Dois testes cobrem limites do progresso e localização do trecho atual; suíte 3D: 124/124. `node --check` e `git diff --check` aprovados; host da PR verificado.
 
+### OrdaX 3D — seletor acessível de camadas G-code (2026-10-26)
+
+- O controle vertical comunica camadas em numeração humana (1 a N) e sincroniza seu aria-valuetext com a camada selecionada, preservando o índice interno do parser.
+- A suíte passou com 126/126 testes; node --check e git diff --check passaram. No host da branch da PR em http://127.0.0.1:4313/?area=visualizador-gcode, confirmei valor 1/rótulo “Camada 1 de 4”, avanço para valor 2/rótulo “Camada 2 de 4” e retorno à camada 1.
+- O arquivo permanece local e somente leitura; owners, SSOT e elegibilidade de distribuição não mudaram.

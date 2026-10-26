@@ -88,3 +88,7 @@ Os domínios de Vendas e Inventory neste repo ainda não oferecem providers púb
 - [OrcaSlicer CLI assemble-list report #6611](https://github.com/OrcaSlicer/OrcaSlicer/issues/6611)
 - [OrcaSlicer Import/Export and statistics](https://github.com/OrcaSlicer/OrcaSlicer/wiki/import_export)
 - [Repositório e licença do OrcaSlicer](https://github.com/OrcaSlicer/OrcaSlicer)
+
+### Incremento — valores de camada acessíveis no Visualizador G-code (2026-10-26)
+
+O seletor vertical apresenta as camadas como 1 a N e expõe o texto acessível “Camada N de M”, enquanto converte o valor para o índice interno do parser. O controle continua sincronizado com os botões de camada, e a inspeção dos trajetos permanece somente leitura. A suíte do OrdaX 3D passou com 126/126 testes; os módulos alterados passaram em node --check e git diff --check. No host da branch da PR, confirmei que Próxima camada altera o controle para valor 2 e o rótulo para “Camada 2 de 4”, e Camada anterior retorna a ambos para 1.
