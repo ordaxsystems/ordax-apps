@@ -41,6 +41,7 @@ export function normalizeTechnicalPrintJob(value, index = 0) {
 
 function legacyMinutes(value) {
   const raw = String(value ?? "").trim().toLowerCase().replace(",", ".");
+  if (!raw) return null;
   const hours = raw.match(/([\d.]+)\s*h/);
   const minutes = raw.match(/([\d.]+)\s*m/);
   if (hours || minutes) return Math.round(Number(hours?.[1] || 0) * 60 + Number(minutes?.[1] || 0));

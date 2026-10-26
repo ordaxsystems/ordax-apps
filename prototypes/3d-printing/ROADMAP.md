@@ -1,5 +1,9 @@
 # OrdaX 3D — plano de evolução
 
+### Incremento local — integridade das estimativas dos jobs (2026-10-25)
+
+Ao adicionar um resultado de fatiamento à fila técnica, `Number(null)` convertia estatísticas ausentes do motor em zero; o fallback de duração também interpretava texto ausente como zero. A aplicação agora preserva tempo e gramas ausentes ou inválidos como desconhecidos, e o domínio não atribui duração zero a jobs sem valor legado. A fila e Materiais continuam lendo o mesmo SSOT local de jobs. `node --test prototypes/3d-printing/tests/*.test.mjs`: 120 aprovados; `node --check` dos módulos alterados e `git diff --check`: aprovados. O host local em `http://127.0.0.1:4304/?area=slicing` carregou o módulo e manteve Fatiar bloqueado com aviso correto; este ambiente não tem OrcaSlicer/perfis configurados, então o fatiamento real segue sem validação nesta máquina.
+
 ### Incremento local — enquadramento do Visualizador G-code (2026-10-26)
 
 O canvas do Visualizador somava a altura completa da mesa à origem vertical já centralizada, deslocando os trajetos e podendo cortá-los. Além disso, o host montava todas as áreas enquanto ocultas, e o canvas G-code tentava calcular a mesa com dimensão zero, impedindo o shell de iniciar. O desenho agora ignora viewports ocultos/pequenos, e a projeção é um helper próprio que mantém as proporções e enquadra a peça dentro do recuo da mesa. O host permite esse módulo pela allowlist explícita; `tests/viewport-geometry.test.mjs` cobre inicialização oculta, centralização, limites, proporção, vazio e coordenadas inválidas. A correção não altera o G-code, o fatiamento, hardware ou SSOT dos owners.

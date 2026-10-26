@@ -2,6 +2,33 @@ import { createTechnicalPrintJob, isTechnicalPrintJobStatus, normalizeTechnicalP
 import { localPreviewJobs } from "../domain/technical-print-job-fixtures.mjs";
 import { assertTechnicalJobRepository } from "../ports/technical-job-repository.mjs";
 
+function optionalNonNegativeNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+export function technicalJobInputFromSlicerResult({ result, modelName, printer, material } = {}) {
+  const seconds = optionalNonNegativeNumber(result?.stats?.timeSeconds);
+  const grams = optionalNonNegativeNumber(result?.stats?.filamentGrams);
+  const model = String(modelName ?? "").trim();
+  const name = model.replace(/\.(stl|3mf)$/i, "") || model;
+
+  return {
+    name,
+    model,
+    printer,
+    material,
+    estimatedMinutes: seconds === null ? null : Math.ceil(seconds / 60),
+    estimatedGrams: grams,
+    status: "queued",
+    origin: "local-slice",
+    engine: result?.engine,
+    engineVersion: result?.engineVersion,
+    notes: "Criado a partir do resultado do motor de fatiamento; o G-code permanece como arquivo exportável separado.",
+  };
+}
+
 export function createTechnicalJobsService(repository) {
   assertTechnicalJobRepository(repository);
   const loaded = repository.load();

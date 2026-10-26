@@ -17,6 +17,7 @@ import { availableBedTypes, bedTypeLabel, validateBedTypeSelection } from "../..
 import { defaultDraft, printers, materials, unitScales, safeDraft } from "../../apps/ordax-3d/src/domain/print-draft.mjs";
 import { createAppDataPrintDraftRepository } from "../../apps/ordax-3d/src/adapters/app-data-print-draft-repository.mjs";
 import { createPrintDraftService } from "../../apps/ordax-3d/src/application/print-draft-service.mjs";
+import { technicalJobInputFromSlicerResult } from "../../apps/ordax-3d/src/application/technical-jobs-service.mjs";
 
 const { escapeHtml, number, bytes, toast, icon, button } = shared;
 const MAX_MODEL_BYTES = 50 * 1024 * 1024;
@@ -1702,21 +1703,12 @@ export function mountFeature(host = {}) {
   content.querySelector("[data-add-to-queue]").addEventListener("click", () => {
     if (!sliced || typeof host.technicalJobs?.add !== "function") { toast("A fila técnica compartilhada não está disponível neste host."); return; }
     try {
-      const grams = Number(sliced.stats?.filamentGrams);
-      const seconds = Number(sliced.stats?.timeSeconds);
-      const job = host.technicalJobs.add({
-        name: model.name.replace(/\.(stl|3mf)$/i, ""),
-        model: model.name,
+      const job = host.technicalJobs.add(technicalJobInputFromSlicerResult({
+        result: sliced,
+        modelName: model.name,
         printer: printers[draft.printer]?.name ?? draft.printer,
         material: materials[draft.filament]?.name ?? draft.filament,
-        estimatedMinutes: Number.isFinite(seconds) && seconds >= 0 ? Math.ceil(seconds / 60) : null,
-        estimatedGrams: Number.isFinite(grams) && grams >= 0 ? grams : null,
-        status: "queued",
-        origin: "local-slice",
-        engine: sliced.engine,
-        engineVersion: sliced.engineVersion,
-        notes: "Criado a partir de resultado OrcaSlicer; G-code continua como arquivo exportável separado.",
-      });
+      }));
       toast(`Job técnico ${job.name} adicionado à fila local.`);
     } catch (error) { toast(error?.message || "Não foi possível criar o job técnico."); }
   });
