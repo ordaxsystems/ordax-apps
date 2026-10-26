@@ -319,3 +319,9 @@ Esta prova não instala a proposta no Supabase, não cria role LOGIN
 ou grant de produção e não representa binding de sessão Web/Native
 autenticado. FOOD-001 e Store seguem bloqueados.
 
+## Correção — cronologia do histórico de pedidos (2026-10-26)
+
+O histórico de Pedidos agora ordena os registros por `createdAt` decrescente em uma cópia da lista, sem depender da ordem de persistência/append. Timestamps válidos aparecem antes de timestamps ausentes ou inválidos; empates preservam a ordem estável recebida. Os horários da fixture local foram alinhados à sequência dos números para que a amostra represente a mesma cronologia.
+
+`tests/orders-page.test.mjs` cobre lista fora de ordem, timestamp inválido e coerência cronológica da fixture. Suíte Food: 71/71; `node --check` nos três arquivos JavaScript alterados e `git diff --check` aprovados. No host de PR `http://127.0.0.1:4257/apps/food-pizzeria/`, o histórico mostra #1058–#1047 com horários decrescentes; não criei pedido nem alterei uma comanda. A mudança afeta a apresentação e os dados fictícios locais; não altera pedidos reais, Food Order Core, Sales, Inventory, pagamentos ou os contratos pendentes.
+

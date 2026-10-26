@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import { createFoodCommand } from "../src/application/commands.mjs";
 import { createBrowserLocalFoodStore } from "../src/adapters/browser-local-store.mjs";
+import { transitionPizzeriaOrder } from "../src/domain/domain.mjs";
+import { PREVIEW_SEED_ORDER_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 
 function createMemoryEnvironment() {
   const records = new Map();
@@ -14,6 +16,48 @@ function createMemoryEnvironment() {
   const eventTarget = { addEventListener() {}, removeEventListener() {} };
   return { storage, locks, eventTarget };
 }
+
+test("reopening an old preview refreshes untouched sample timelines and preserves worked orders", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-refresh-seed-timeline";
+  const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
+  const now = Date.parse("2026-10-26T12:00:00.000Z");
+  const seeded = createSeedFoodState(storedAt);
+  const workedState = transitionPizzeriaOrder(seeded, {
+    orderId: "ng-order-1047",
+    nextStatus: "preparing",
+    historyId: "local-work-1047-preparing",
+    changedAt: new Date(storedAt + 120 * 60000).toISOString(),
+  });
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  const journal = [{ id: "preserved-local-command", digest: "a".repeat(64) }];
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state: workedState,
+    processedCommands: journal,
+  }));
+
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+  const refreshed = await store.initialize();
+
+  const untouched = refreshed.orders.find(({ id }) => id === "ng-order-1048");
+  const worked = refreshed.orders.find(({ id }) => id === "ng-order-1047");
+  assert.equal(untouched.createdAt, new Date(now - PREVIEW_SEED_ORDER_AGES_MINUTES[1] * 60000).toISOString());
+  assert.equal(untouched.status, "received");
+  assert.equal(untouched.statusHistory[0].changedAt, untouched.createdAt);
+  assert.equal(worked.status, "preparing");
+  assert.equal(worked.createdAt, workedState.orders.find(({ id }) => id === worked.id).createdAt);
+  assert.equal(worked.updatedAt, workedState.orders.find(({ id }) => id === worked.id).updatedAt);
+  assert.equal(refreshed.revision, workedState.revision + 1);
+  assert.equal(refreshed.tableCommands.find(({ id }) => id === "ng-command-04").openedAt,
+    new Date(now - 58 * 60000).toISOString());
+  assert.deepEqual(JSON.parse(environment.storage.getItem(key)).processedCommands, journal);
+  store.destroy();
+});
 
 test("browser preview persists revisions, accepts an exact command replay once, and rejects stale writes", async () => {
   const environment = createMemoryEnvironment();
@@ -74,7 +118,6 @@ test("browser preview persists revisions, accepts an exact command replay once, 
 test("legacy command ids without fingerprints are migrated but cannot authorize ambiguous replays", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-legacy-replay";
-  const { createSeedFoodState } = await import("../src/fixtures/mock-data.mjs");
   const source = createSeedFoodState();
   const commandId = "legacy-command-1";
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
@@ -103,7 +146,6 @@ test("legacy command ids without fingerprints are migrated but cannot authorize 
 test("browser adapter transparently upgrades v5 Food records without fabricating historical consumption", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-upgrade-food-v5";
-  const { createSeedFoodState } = await import("../src/fixtures/mock-data.mjs");
   const { calculatePizzeriaOrderConsumption } = await import("../src/domain/domain.mjs");
   const source = createSeedFoodState();
   const historicalState = {
@@ -184,7 +226,6 @@ test("idempotent availability no-op is durable without revision churn or bypassi
 test("browser preview never evicts a command idempotency key at its safety limit", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-history-cap";
-  const { createSeedFoodState } = await import("../src/fixtures/mock-data.mjs");
   const state = createSeedFoodState();
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
   environment.storage.setItem(key, JSON.stringify({
