@@ -73,7 +73,7 @@ export function mountFeature(host = {}) {
           </div>
 
           <section class="last-slice" aria-live="polite">
-            <div class="last-slice-copy"><span class="panel-kicker">INTEGRAÇÃO COM O FATIADOR</span><strong data-last-slice-title>Nenhum fatiamento nesta sessão</strong><small data-last-slice-detail>Depois de fatiar, traga peso e tempo reais do Orca para este orçamento.</small></div>
+            <div class="last-slice-copy"><span class="panel-kicker">INTEGRAÇÃO COM O FATIADOR</span><strong data-last-slice-title>Nenhum fatiamento nesta sessão</strong><small data-last-slice-detail>Depois de fatiar, traga peso e tempo reais do Orca para este orçamento.</small><small class="muted" data-last-slice-scope></small></div>
             <button class="button secondary" type="button" data-use-slice disabled>${icon("layers", 14)}<span>Usar resultado</span></button>
           </section>
 
@@ -174,10 +174,12 @@ export function mountFeature(host = {}) {
     const latest = costs.latestSlice();
     const title = shell.content.querySelector("[data-last-slice-title]");
     const detail = shell.content.querySelector("[data-last-slice-detail]");
+    const scopeNote = shell.content.querySelector("[data-last-slice-scope]");
     const useButton = shell.content.querySelector("[data-use-slice]");
     if (!latest) {
       title.textContent = "Nenhum fatiamento nesta sessão";
       detail.textContent = "Depois de fatiar, traga peso e tempo reais do Orca para este orçamento.";
+      scopeNote.textContent = "";
       useButton.disabled = true;
       return;
     }
@@ -185,6 +187,9 @@ export function mountFeature(host = {}) {
     const grams = latest.grams === null ? "peso não informado" : `${unit(latest.grams)} g`;
     const time = latest.timeSeconds === null ? "tempo não informado" : `${unit(latest.timeSeconds / 3600, 2)} h`;
     detail.textContent = `${latest.material} · ${latest.printer} · ${grams} · ${time}${latest.engine ? ` · ${latest.engine} ${latest.engineVersion}` : ""}`;
+    scopeNote.textContent = latest.scope === "plate"
+      ? `Total do prato com ${latest.objectCount} objetos; o motor não informa o custo individual de cada objeto.`
+      : "Resultado de uma peça individual; o orçamento usará o peso e tempo do motor.";
     useButton.disabled = latest.grams === null || latest.timeSeconds === null;
   }
 
@@ -304,9 +309,12 @@ export function mountFeature(host = {}) {
   shell.content.querySelectorAll("[data-save]").forEach(item => item.addEventListener("click", save));
   shell.actions.querySelector("[data-save]").addEventListener("click", save);
   shell.content.querySelector("[data-export]").addEventListener("click", exportEstimate);
-  shell.content.querySelector("[data-use-slice]").addEventListener("click", () => {
+  function loadLatestSlice() {
     const latest = costs.latestSlice();
-    if (!latest || latest.grams === null || latest.timeSeconds === null) return;
+    if (!latest || latest.grams === null || latest.timeSeconds === null) {
+      toast("O resultado do motor precisa informar peso e tempo para preencher este orçamento.");
+      return false;
+    }
     fields.name.value = latest.name;
     fields.material.value = latest.material;
     materialPriceField.value = String(costs.materialPriceFor(latest.material));
@@ -320,7 +328,14 @@ export function mountFeature(host = {}) {
     formEngineVersion = latest.engineVersion;
     render();
     shell.content.querySelector("[data-grams-label]").scrollIntoView({ behavior: "smooth", block: "center" });
-    toast("Peso e tempo do fatiador carregados; revise a quantidade e as premissas.");
+    toast(latest.scope === "plate"
+      ? `Total do prato com ${latest.objectCount} objetos carregado. O motor não dividiu peso e tempo por peça; revise antes de usar como custo unitário.`
+      : "Peso e tempo da peça carregados. Revise as premissas e a quantidade antes de salvar.");
+    return true;
+  }
+  shell.content.querySelector("[data-use-slice]").addEventListener("click", loadLatestSlice);
+  shell.root.addEventListener("app:activate", event => {
+    if (event.detail?.action === "load-latest-slice") loadLatestSlice();
   });
   shell.root.addEventListener("app:navigate", event => {
     if (event.detail === "history") shell.content.querySelector(".cost-history").scrollIntoView({ behavior: "smooth", block: "start" });

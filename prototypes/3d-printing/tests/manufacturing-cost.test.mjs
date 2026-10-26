@@ -175,6 +175,19 @@ test("serviço persiste parâmetros e histórico, e compartilha o resultado rece
   unsubscribe();
 });
 
+test("mantém o escopo e a quantidade de objetos do resultado do prato sem ratear custos", () => {
+  const service = createManufacturingCostService(memoryRepository());
+  service.setLatestSlice({ name: "Prato.3mf", material: "PLA", printer: "Bambu A1", grams: 80, timeSeconds: 14400, scope: "plate", objectCount: 4 });
+  assert.deepEqual(service.latestSlice(), {
+    name: "Prato.3mf", material: "PLA", printer: "Bambu A1", engine: "", engineVersion: "",
+    grams: 80, timeSeconds: 14400, scope: "plate", objectCount: 4,
+  });
+  const estimate = service.calculateFromSlice();
+  assert.equal(estimate.scope, "plate");
+  assert.equal(estimate.gramsPerUnit, 80);
+  assert.equal(estimate.hoursPerUnit, 4);
+});
+
 test("serviço guarda preço por material em premissas locais", () => {
   const repository = memoryRepository();
   const service = createManufacturingCostService(repository);

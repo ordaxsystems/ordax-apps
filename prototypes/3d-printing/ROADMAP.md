@@ -1,5 +1,11 @@
 # OrdaX 3D — plano de evolução
 
+### Incremento local — fluxo direto de orçamento após fatiar (2026-10-26)
+
+O resultado real do último fatiamento continua alimentando o custo e o preço de referência no Preview. O botão agora abre Custos e orçamento já carregando nome, material, impressora, peso e duração, para o usuário revisar premissas, quantidade e salvar/exportar o cálculo separado. O serviço também conserva quantos objetos compunham o prato. Quando o motor só informa estatísticas agregadas, o app mantém o orçamento como total do prato e explica que não há custo individual por objeto; não divide peso/tempo nem apresenta uma média como dado do Orca. A estimativa de um objeto único segue por peça. Isso não cria pedido comercial, preço aprovado, lançamento financeiro ou movimentação de Inventory.
+
+`node --test prototypes/3d-printing/tests/*.test.mjs`: 140 testes aprovados; `node --check` nos quatro módulos alterados e `git diff --check` aprovados. A instalação do OrcaSlicer/perfis não está configurada neste host, então o fatiamento com motor real segue sem validação local. Preservar a limitação de custos individuais até o motor expor estatísticas por objeto ou existir um fluxo de fatiamento isolado por peça.
+
 ### Incremento local — orçamento de fabricação conectado ao fatiador (2026-10-26)
 
 O módulo Custos e orçamento aceita peso, duração, material, quantidade e impressora manualmente, ou carrega as estatísticas reais do último fatiamento. O cálculo reúne preço do material por perfil informado, perda, energia por potência/tarifa, depreciação por aquisição/residual/vida produtiva, manutenção, custo horário da máquina, tempo de operador, preparação, acabamento, embalagem e outros custos. A formação do preço permite markup ou margem alvo, tributos e taxas variáveis, taxa fixa por pedido e frete absorvido; bloqueia preços quando a margem mais as taxas tornam a fórmula inviável. Histórico, premissas por material e CSV são locais. O fatiador exibe custo/preço da peça única e grava um snapshot técnico opcional na fila; em pratos com mais de um objeto, exibe o total do prato porque o motor disponível não retorna custos por objeto.

@@ -74,7 +74,7 @@ export function mountProductHost({ appId, title, subtitle, mark, areas, services
       intelligence: services.intelligence,
       technicalJobs: services.technicalJobs,
       manufacturingCosts: services.manufacturingCosts,
-      navigate(areaId) { activate(areaId); },
+      navigate(areaId, activationDetail = null) { activate(areaId, activationDetail); },
       files: { publish: (channel, payload) => files.publish(channel, payload, area.featureId), subscribe: (channel, listener) => files.subscribe(channel, area.featureId, listener) },
       onDestroy(cleanup) { if (typeof cleanup === "function") cleanups.push(cleanup); },
       mountShell(options) {
@@ -87,7 +87,7 @@ export function mountProductHost({ appId, title, subtitle, mark, areas, services
     mounted.set(area.id, { area, panel: surface.panel, shell });
   }
 
-  function activate(areaId) {
+  function activate(areaId, activationDetail = null) {
     const entry = mounted.get(areaId);
     if (!entry) return;
     for (const [id, item] of mounted) item.panel.hidden = id !== areaId;
@@ -98,7 +98,7 @@ export function mountProductHost({ appId, title, subtitle, mark, areas, services
     });
     root.querySelector("[data-area-title]").textContent = entry.area.pageTitle ?? entry.area.label;
     root.querySelector("[data-area-description]").textContent = entry.area.description ?? "";
-    entry.shell.root.dispatchEvent(new CustomEvent("app:activate"));
+    entry.shell.root.dispatchEvent(new CustomEvent("app:activate", { detail: activationDetail }));
   }
   root.querySelectorAll("[data-product-area]").forEach(button => button.addEventListener("click", () => activate(button.dataset.productArea)));
   activate(byId.has(initialAreaId) ? initialAreaId : areas[0].id);

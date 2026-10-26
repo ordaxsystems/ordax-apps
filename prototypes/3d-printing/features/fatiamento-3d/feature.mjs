@@ -243,7 +243,7 @@ export function mountFeature(host = {}) {
 
         <section class="preview-view" data-preview-view hidden>
           <div class="preview-canvas-wrap"><div class="preview-stage-head"><div><span class="panel-kicker">TRAJETÓRIA REAL DO MOTOR</span><h2 data-preview-title>Preview de fatiamento</h2></div><span class="engine-chip"><i></i><span data-preview-engine>—</span></span></div><canvas data-gcode-canvas aria-label="Trajetórias G-code da camada selecionada"></canvas><div class="preview-legend"><span><i class="legend-outer"></i>Perímetro externo</span><span><i class="legend-inner"></i>Perímetro interno</span><span><i class="legend-infill"></i>Preenchimento</span><span><i class="legend-support"></i>Suporte</span><span><i class="legend-travel"></i>Deslocamento</span></div><div class="line-inspector"><span>Trajetórias da camada</span><input type="range" min="0" max="100" value="100" data-line-slider aria-label="Progresso da simulação da camada"/><strong data-line-count>—</strong></div></div>
-          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Editar premissas e calcular lote</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
+          <aside class="preview-side"><div class="preview-side-title"><span class="panel-kicker">INSPEÇÃO</span><h2>Camadas</h2></div><div class="layer-slider-wrap"><span data-layer-max>—</span><input type="range" min="0" max="0" value="0" data-layer-slider aria-label="Selecionar camada"/><span>1</span></div><div class="layer-current"><small>CAMADA ATUAL</small><strong data-layer-current>—</strong></div><div class="preview-stat"><span>Tempo estimado</span><strong data-stat-time>—</strong></div><div class="preview-stat"><span>Filamento</span><strong data-stat-filament>—</strong></div><div class="preview-stat"><span>Comprimento</span><strong data-stat-filament-length>—</strong></div><div class="preview-stat"><span>Camadas no total</span><strong data-stat-layers>—</strong></div><section class="preview-feature-breakdown" data-stat-features hidden aria-label="Tempo estimado por tipo de extrusão"><strong>Tempo por tipo</strong><div data-stat-feature-list></div></section><section class="preview-cost-card" data-slice-cost hidden aria-label="Estimativa técnica do resultado fatiado"><div class="preview-cost-head"><span class="panel-kicker">CUSTO AUTOMÁTICO DO FATIAMENTO</span><strong data-slice-cost-title>—</strong></div><div class="preview-cost-line"><span>Custo estimado</span><strong data-slice-cost-total>—</strong></div><div class="preview-cost-line preview-cost-line--price"><span>Preço de referência</span><strong data-slice-price-total>—</strong></div><small data-slice-cost-status></small><details><summary>Composição do custo</summary><div class="preview-cost-breakdown" data-slice-cost-breakdown></div></details><button class="button secondary" type="button" data-open-costs>Abrir orçamento detalhado</button></section><div class="preview-engine-note" data-preview-note></div><button class="button secondary preview-back" type="button" data-back-prepare>Voltar para Prepare</button></aside>
         </section>
       </section>
     `,
@@ -641,7 +641,10 @@ export function mountFeature(host = {}) {
     }
     content.querySelector("[data-slice-cost-total]").textContent = shared.money(estimate.totalCost);
     content.querySelector("[data-slice-price-total]").textContent = estimate.pricingValid ? shared.money(estimate.suggestedPriceTotal) : "Revise margem e taxas";
-    const scopeNote = sliceCostInput.scope === "plate" ? "As estatísticas disponíveis são do prato inteiro; o motor não forneceu divisão por peça." : "O cálculo corresponde a esta peça fatiada.";
+    const scopeNote = sliceCostInput.scope === "plate"
+      ? `As estatísticas são do prato inteiro (${sliceCostInput.objectCount} objetos); o motor não forneceu divisão por peça.`
+      : "O cálculo corresponde a esta peça fatiada.";
+    content.querySelector("[data-open-costs]").textContent = sliceCostInput.scope === "plate" ? "Abrir orçamento do prato" : "Abrir orçamento desta peça";
     content.querySelector("[data-slice-cost-status]").textContent = !estimate.pricingValid
       ? `${estimate.pricingError} O custo técnico continua disponível. ${scopeNote}`
       : estimate.complete
@@ -1642,6 +1645,7 @@ export function mountFeature(host = {}) {
         grams: result.stats?.filamentGrams,
         timeSeconds: result.stats?.timeSeconds,
         scope: requestModel.objects.length > 1 ? "plate" : "piece",
+        objectCount: requestModel.objects.length,
       };
       host.manufacturingCosts?.setLatestSlice(sliceCostInput);
       renderSliceCost();
@@ -1758,7 +1762,7 @@ export function mountFeature(host = {}) {
     dialog.close("approve");
   });
   content.querySelector("[data-export]").addEventListener("click", () => { if (sliced?.gcode instanceof Blob) downloadBlob(sliced.gcode, sliced.filename); });
-  content.querySelector("[data-open-costs]").addEventListener("click", () => host.navigate?.("costs"));
+  content.querySelector("[data-open-costs]").addEventListener("click", () => host.navigate?.("costs", { action: "load-latest-slice" }));
   content.querySelector("[data-add-to-queue]").addEventListener("click", () => {
     if (!sliced || typeof host.technicalJobs?.add !== "function") { toast("A fila técnica compartilhada não está disponível neste host."); return; }
     try {

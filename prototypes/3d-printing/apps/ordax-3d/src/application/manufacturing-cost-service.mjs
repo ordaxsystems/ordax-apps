@@ -86,6 +86,9 @@ export function createManufacturingCostService(repository) {
           grams: optionalPositive(value.grams),
           timeSeconds: optionalPositive(value.timeSeconds),
           scope: value.scope === "plate" ? "plate" : "piece",
+          objectCount: Number.isInteger(Number(value.objectCount)) && Number(value.objectCount) >= 1
+            ? Math.min(500, Number(value.objectCount))
+            : 1,
         });
       }
       notify();
