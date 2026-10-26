@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { selectObjectsForIndependentSlice } from "../features/fatiamento-3d/object-slice-costs.mjs";
+import { selectObjectsForIndependentSlice, shouldCalculateIndividualCosts } from "../features/fatiamento-3d/object-slice-costs.mjs";
 
 const model = {
   name: "Prato.3mf",
@@ -17,6 +17,15 @@ const draft = {
     { id: "process-b", name: "Acabamento fino", objectIds: ["part-b"], settings: { infill: 15 } },
   ],
 };
+
+test("ativa cálculo por peça automaticamente somente para pratos com várias peças", () => {
+  assert.equal(shouldCalculateIndividualCosts({ scope: "plate", objectCount: 2 }), true);
+  assert.equal(shouldCalculateIndividualCosts({ scope: "plate", objectCount: 1 }), false);
+  assert.equal(shouldCalculateIndividualCosts({ scope: "piece", objectCount: 4 }), false);
+  assert.equal(shouldCalculateIndividualCosts({ scope: "plate", objectCount: "2" }), true);
+  assert.equal(shouldCalculateIndividualCosts({ scope: "plate", objectCount: "invalid" }), false);
+  assert.equal(shouldCalculateIndividualCosts(null), false);
+});
 
 test("prepara somente a peça escolhida e preserva bounds e processo originais", () => {
   const selected = selectObjectsForIndependentSlice(model, draft, ["part-b"]);

@@ -1,5 +1,11 @@
 # OrdaX 3D — plano de evolução
 
+### Incremento local — orçamento individual automático após fatiar (2026-10-26)
+
+Quando um fatiamento real contém mais de uma peça, o Preview agora inicia os fatiamentos individuais necessários para mostrar custo e preço de referência por objeto. O cálculo usa peso e duração reais de cada execução isolada; o resultado agregado do prato permanece separado, e os G-codes auxiliares são descartados. O servidor remoto continua exigindo confirmação específica antes de receber cada lote. O app processa até 20 peças por rodada, mantém o cancelamento disponível e deixa as demais ou as peças sem estatísticas para uma nova rodada manual. A calculadora independente segue aceitando peso e tempo manuais ou dados do último fatiamento, com material, energia, depreciação, manutenção, mão de obra, taxas e markup/margem.
+
+Validação desta rodada: suíte OrdaX 3D 146/146; `node --check` nos módulos alterados e `git diff --check` aprovados. No host local `http://127.0.0.1:4324/?area=costs`, conferi o formulário e o cálculo com 28,6 g, 2,6 h, aquisição de R$ 2.000 e residual de R$ 500: custo R$ 69,39 e preço de referência R$ 93,68. Restaurei as premissas originais e não salvei orçamento. O OrcaSlicer/perfis não estão configurados, portanto a execução automática de custos por peça ainda depende de validação com o motor real. Dados de custo seguem locais e não criam pedido, movimento de Inventory, lançamento financeiro ou preço comercial aprovado.
+
 ### Incremento local — visibilidade de custo por peça no Preview (2026-10-26)
 
 Depois do fatiamento de uma mesa múltipla, o Preview agora deixa visível a lista de objetos e o estado individual de cada peça, mesmo antes do cálculo. A ação explicita que executará fatiamentos isolados; cada linha passa de pendente para calculada ou sem estatísticas, mostrando custo e preço de referência por unidade quando o Orca informar peso e duração válidos. O total agregado do prato continua identificado como total, sem rateio artificial. O orçamento avulso segue separado no módulo Custos e orçamento, preenchido manualmente ou com estatísticas de um fatiamento real.

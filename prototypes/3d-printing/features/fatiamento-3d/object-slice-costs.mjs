@@ -1,3 +1,9 @@
+export function shouldCalculateIndividualCosts(slice) {
+  return slice?.scope === "plate"
+    && Number.isInteger(Number(slice.objectCount))
+    && Number(slice.objectCount) > 1;
+}
+
 export function selectObjectsForIndependentSlice(model, draft, objectIds) {
   if (!model || !Array.isArray(model.objects) || !Array.isArray(objectIds) || !objectIds.length) {
     throw new TypeError("Selecione ao menos uma peça para calcular os custos individualmente.");

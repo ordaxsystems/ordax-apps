@@ -8,7 +8,7 @@ import { parseGcodePreview, drawGcodeLayer, gcodePreviewLimits } from "./gcode-p
 import { formatSliceProgress, hasCompleteProcessAssignment, readSlicerStatus, requestRealSlice } from "./slicer-port.mjs";
 import { assessSlicerProfileCompatibility } from "./profile-compatibility.mjs";
 import { createOrcaInputStl } from "./orca-geometry.mjs";
-import { selectObjectsForIndependentSlice } from "./object-slice-costs.mjs";
+import { selectObjectsForIndependentSlice, shouldCalculateIndividualCosts } from "./object-slice-costs.mjs";
 import { askSliceIntelligence, intelligenceState, parseAssistantReply, assistantSuggestionSchema, assistantEvidenceIds, buildAssistantProfileContext, buildAssistantMeshSummary, buildAssistantBoundingRectangleCoverage } from "./ai-copilot.mjs";
 import { createProjectBundle, projectBundleLimits } from "./project-bundle.mjs";
 import { infillPatternLabel, infillPatternOptions } from "../../shared/infill-patterns.mjs";
@@ -635,7 +635,7 @@ export function mountFeature(host = {}) {
     const objects = model?.objects || [];
     const resultsByObjectId = new Map(objectCostResults.map(item => [item.objectId, item]));
     const calculatedCount = objectCostResults.filter(item => item.estimate?.available).length;
-    individualStatus.textContent = objectCostStatus || `${objects.length} peças na mesa. Peso e tempo combinados não são divididos por igual; cada linha usa um fatiamento real isolado.`;
+    individualStatus.textContent = objectCostStatus || `${objects.length} peças na mesa. Ao concluir o prato, o OrdaX fatiará cada peça isoladamente para calcular o custo real; peso e tempo do prato não serão rateados.`;
     for (const object of objects.slice(0, 50)) {
       const item = resultsByObjectId.get(object.id);
       const row = document.createElement("div"); row.className = "preview-object-cost-row";
@@ -1706,6 +1706,10 @@ export function mountFeature(host = {}) {
     if (controller || remoteConsentPending || !sliced || sliceCostInput?.scope !== "plate" || !model || !host.manufacturingCosts?.calculateFromSlice) return;
     const reason = sliceBlockReason();
     if (reason) { toast(reason); return; }
+    const requestRevision = revision;
+    const requestModel = model;
+    const requestDraft = { ...draft };
+    const currentSlice = sliceCostInput;
     const completedIds = new Set(objectCostResults.filter(item => item.estimate?.available).map(item => item.objectId));
     let targets = model.objects.filter(object => !completedIds.has(object.id)).slice(0, 20);
     if (!targets.length) {
@@ -1719,13 +1723,15 @@ export function mountFeature(host = {}) {
       description: `${targets.length} novo${targets.length === 1 ? "" : "s"} fatiamento${targets.length === 1 ? "" : "s"} serão executados apenas para calcular custo por peça. Cada malha transformada desta rodada será enviada separadamente ao servidor; o G-code individual não substituirá o G-code do prato.`,
     });
     const approved = approval && typeof approval.then === "function" ? await approval : approval;
-    if (!approved.approved) return;
-    const requestRevision = revision;
-    const requestModel = model;
-    const requestDraft = { ...draft };
-    const material = sliceCostInput.material;
-    const fallbackPrinter = sliceCostInput.printer;
-    const baseName = sliceCostInput.name;
+    if (!approved.approved) {
+      objectCostStatus = "Cálculo individual não iniciado. Use o botão abaixo quando quiser calcular custo por peça.";
+      renderSliceCost();
+      return;
+    }
+    if (requestRevision !== revision || requestModel !== model || currentSlice !== sliceCostInput || !sliced) return;
+    const material = currentSlice.material;
+    const fallbackPrinter = currentSlice.printer;
+    const baseName = currentSlice.name;
     objectCostStatus = "running";
     controller = new AbortController();
     const cancelButton = content.querySelector("[data-cancel]");
@@ -1814,6 +1820,7 @@ export function mountFeature(host = {}) {
     const requestRevision = revision;
     const requestModel = model;
     const requestDraft = { ...draft };
+    let calculatePieceCostsAfterSlice = false;
     sliceButton.hidden = true; cancelButton.hidden = false;
     content.querySelector("[data-engine-title]").textContent = "Fatiando o modelo";
     content.querySelector("[data-engine-message]").textContent = engineStatus.executionTarget === "server"
@@ -1851,6 +1858,7 @@ export function mountFeature(host = {}) {
         scope: requestModel.objects.length > 1 ? "plate" : "piece",
         objectCount: requestModel.objects.length,
       };
+      calculatePieceCostsAfterSlice = shouldCalculateIndividualCosts(sliceCostInput);
       host.manufacturingCosts?.setLatestSlice(sliceCostInput);
       renderSliceCost();
       content.querySelector("[data-line-slider]").value = "100";
@@ -1873,6 +1881,11 @@ export function mountFeature(host = {}) {
       cancelButton.textContent = "Cancelar";
       renderSliceCost();
       updateEngineUi();
+      if (calculatePieceCostsAfterSlice && requestRevision === revision && requestModel === model) {
+        objectCostStatus = "Prato fatiado. Iniciando fatiamentos individuais para calcular cada peça sem rateio.";
+        renderSliceCost();
+        void calculateIndividualObjectCosts();
+      }
     }
   }
 
