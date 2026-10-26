@@ -59,7 +59,7 @@ test('malformed or oversized observations cannot create a receipt',()=>{
 });
 
 test('long technical assistant response stays a candidate only for exact unique prompt',()=>{
-  const long={role:'assistant',text:'CODE\\n'.repeat(17600)};
+  const long={role:'assistant',text:'CODE'.repeat(22000)};
   const accepted=assessProviderConversationEvidence(inspect({messages:[user,long]}));
   assert.equal(accepted.kind,'response_candidate');
   assert.equal(accepted.requiresReconciliation,true);
