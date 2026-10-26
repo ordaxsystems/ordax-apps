@@ -195,9 +195,9 @@ test('Groq adapter calls official endpoint, with bounded JSON proposal',async()=
   let seen;
   const p=createGroqSupervisorPlanner({apiKey:'test-not-a-secret',fetchImpl:async(url,opts)=>{
     seen={url,opts};
-    return {ok:true,text:async()=>JSON.stringify({choices:[{message:{content:JSON.stringify({
+    return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify({
       type:'hold',taskId:'task_test',reason:'Needs clarification'
-    })}}]})};
+    })}}]}),{status:200,headers:{'Content-Type':'application/json'}});
   }});
   const d=await p.decide({taskId:'task_test',objective:'Review one issue',environment:'internal'});
   assert.equal(d.type,'hold');

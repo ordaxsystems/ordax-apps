@@ -63,6 +63,7 @@
     },
     "compression": "normal",
     "npmRebuild": false,
+    "beforePack": "./scripts/attest-packaged-asar.cjs",
     "afterPack": "./scripts/attest-packaged-asar.cjs"
   }
 }

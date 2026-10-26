@@ -69,6 +69,16 @@ test('W3 UI never certifies mere DOM, missing response or contradictory IPC',asy
   }
 });
 
+test('W3 UI explains a missing conversation DOM without replaying the request',async()=>{
+  const form=mount(async()=>({kind:'unavailable',inspectionReason:'thread_dom_not_ready',threadRendered:false}));
+  await form.click();
+  assert.equal(form.status.dataset.threadRendered,'false');
+  assert.equal(form.status.dataset.reason,'thread_dom_not_ready');
+  assert.match(form.status.textContent,/estrutura da conversa vinculada ainda não ficou disponível/);
+  assert.match(form.status.textContent,/Nenhuma mensagem foi reenviada/);
+  assert.equal(form.button.disabled,false);
+});
+
 test('W3 UI reports rejected inspection with terminal error, never stale success',async()=>{
   const form=mount(async()=>{throw Error('untrusted_provider_error_details');});
   await form.click();
