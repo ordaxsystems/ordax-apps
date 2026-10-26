@@ -1137,9 +1137,11 @@ export class Store {
     }
   }
 
-  recoverInterruptedRuns() {
-    // Startup recovery is one durable SQLite transaction: a power loss must
-    // never leave an interrupted Run with its Task still marked as running.
+  recoverInterruptedRuns(reason='process_interrupted') {
+    if (!['process_interrupted','app_shutdown'].includes(reason))
+      throw new Error('invalid_interruption_reason');
+    // Shared startup and graceful-window-close transaction: a crash or normal
+    // close must never leave a submitted Run running after the app disappears.
     // In-flight run-linked actions have uncertain external side effects.
     // Mark them indeterminate; NEVER retry or dispatch them on boot.
     this.db.exec('BEGIN IMMEDIATE');
@@ -1155,7 +1157,7 @@ export class Store {
         "AND run_id=? AND status IN ('pending','planning','approved','dispatching')"
       );
       const stopRun = this.db.prepare(
-        "UPDATE runs SET status='interrupted',completed_at=?,heartbeat_at=?,error='process_interrupted' " +
+        "UPDATE runs SET status='interrupted',completed_at=?,heartbeat_at=?,error=? " +
         "WHERE id=? AND status='running'"
       );
       const stopTask = this.db.prepare(
@@ -1165,13 +1167,13 @@ export class Store {
         for (const action of actions.all(run.id,run.task_id)) {
           if (stopAction.run(now,action.id,run.id).changes===1)
             this.event(run.task_id,'action.indeterminate',{
-              action_id:action.id,run_id:run.id,reason:'process_interrupted'
+              action_id:action.id,run_id:run.id,reason
             });
         }
-        if (stopRun.run(now,now,run.id).changes!==1) throw new Error('run_recovery_state_changed');
+        if (stopRun.run(now,now,reason,run.id).changes!==1) throw new Error('run_recovery_state_changed');
         stopTask.run(now,run.task_id);
         this.event(run.task_id,'run.interrupted',{
-          run_id:run.id,reason:'process_interrupted'
+          run_id:run.id,reason
         });
       }
       this.db.exec('COMMIT');
