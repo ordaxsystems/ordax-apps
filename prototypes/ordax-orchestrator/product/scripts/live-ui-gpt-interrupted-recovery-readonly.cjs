@@ -5,12 +5,13 @@
 const assert=require('node:assert/strict');
 const {DatabaseSync}=require('node:sqlite');
 const {waitForLabUiTarget,waitForLabAppMode,labDatabasePath}=require('./e2e-lab-target.cjs');
-const {acquireE2ELock}=require('./e2e-lock.cjs');
 
 const expectedTaskId=String(process.env.ORDAX_LAB_E2E_TASK_ID||'').trim();
 if(process.env.ORDAX_LAB_E2E_RECOVERY_READONLY!=='1'||
    !/^task_[0-9a-f-]{20,80}$/i.test(expectedTaskId))
   throw Error('lab_recovery_explicit_task_approval_required');
+// Validate explicit task scope before loading the lock's profile-specific path.
+const {acquireE2ELock}=require('./e2e-lock.cjs');
 // E2E lock also checks the approved, isolated alpha profile before CDP.
 acquireE2ELock('gpt-interrupted-recovery-readonly');
 
