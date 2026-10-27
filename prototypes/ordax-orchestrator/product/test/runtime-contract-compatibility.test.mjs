@@ -48,4 +48,3 @@ test('Runtime contract drift, missing App operation, and newly writable operatio
   assert.throws(()=>validateRuntimeContract({...base,compatibilityPin:pin,runtimeLock,runtimeContract:writable,contractBytes:bytes}),
     /runtime_app_read_operation_not_readonly/);
 });
-

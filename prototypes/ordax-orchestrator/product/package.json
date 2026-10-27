@@ -83,4 +83,3 @@
     "afterPack": "./scripts/attest-packaged-asar.cjs"
   }
 }
-
