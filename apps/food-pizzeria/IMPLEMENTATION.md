@@ -409,3 +409,9 @@ A tela Mesas/Comandas agora descreve o total como consumo derivado dos pedidos n
 
 Validação: `tests/tables-page.test.mjs`, 1/1; suíte Food completa, 135/135; `node --check` da view e `git diff --check` aprovados.
 
+## Planejamento de pré-preparo por lote (2026-10-27)
+
+O Cardápio oferece um cálculo de lote por tamanho e quantidade de cada sabor. A regra reaproveita o mesmo cálculo de consumo das receitas usado nos pedidos, agrega insumos em unidades-base e recusa tamanho inativo, sabor indisponível, ficha ausente, quantidades inválidas ou lote acima de 10.000 pizzas. Os valores permanecem derivados e transitórios; o recurso não consulta saldo nem escreve em Inventory.
+
+Validação: `tests/batch-planning.test.mjs`, 3/3; suíte Food completa, 138/138; `node --check` dos módulos alterados e `git diff --check` aprovados.
+
