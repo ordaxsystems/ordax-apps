@@ -1,50 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderOrdersPage } from "../src/ui/views/orders.mjs";
-import { createSeedFoodState, PREVIEW_CATALOG_PRODUCTS } from "../src/fixtures/mock-data.mjs";
+import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 
-function renderOrders(orders, deliveryFeeCents = 500, products = []) {
+function renderOrders(orders) {
   return renderOrdersPage({
-    PIZZERIA_TABLES: [],
-    PREVIEW_CATALOG_PRODUCTS: products,
-    deliveryFeeCents,
     STATUS_LABELS: {},
-    CHANNEL_LABELS: {},
-    ORDER_STATUS_FILTERS: [],
-    snapshot: { orders, flavors: [], recipes: [], settings: { maxFlavorsPerPizza: 2 } },
+    CHANNEL_LABELS: { pickup: "Retirada" },
+    ORDER_STATUS_FILTERS: [{ id: "all", label: "Todas as etapas" }],
+    snapshot: { orders, settings: {}, flavors: [], recipes: [], tableCommands: [] },
     orderQuery: "",
     orderStatusFilter: "all",
     orderChannelFilter: "all",
-    activeCommandId: null,
-    cart: [],
-    busy: false,
     commandById: () => null,
     orderNumber: ({ id }) => id,
-    sizeOptions: () => "",
-    flavorOptions: () => "",
-    cartHtml: () => "",
     renderOrderCard: ({ id }) => `<article data-order-id="${id}"></article>`,
-    emptyState: () => "",
-    button: () => "",
-    money: () => "R$ 0,00",
-    escapeHtml: (value) => value,
+    emptyState: () => `<div class="empty-state"></div>`,
   });
 }
 
-test("formulário de entrega inicia com a taxa configurada e comunica que pode ser ajustada", () => {
-  const html = renderOrders([], 875);
+test("Pedidos mostra histórico e encaminha a criação para o PDV", () => {
+  const html = renderOrders([]);
 
-  assert.match(html, /name="deliveryFee"[^>]*value="8,75"/);
-  assert.match(html, /Taxa padrão; ajuste neste pedido se necessário/);
-  assert.doesNotMatch(html, /Valor inicial fictício/);
-});
-
-test("PDV mostra ações para adicionar bebidas e acompanhamentos ao mesmo pedido", () => {
-  const html = renderOrders([], 500, PREVIEW_CATALOG_PRODUCTS);
-
-  assert.match(html, /Mais itens/);
-  assert.match(html, /Refrigerante 2L/);
-  assert.match(html, /data-action="add-catalog-product" data-product-id="b-cola"/);
+  assert.match(html, /<h1>Pedidos<\/h1>/);
+  assert.match(html, /data-view="pos">Novo pedido/);
+  assert.doesNotMatch(html, /id="create-order-form"|id="add-pizza-form"|Montar pedido/);
 });
 
 test("histórico de pedidos prioriza o horário de criação mesmo se a lista vier fora de ordem", () => {

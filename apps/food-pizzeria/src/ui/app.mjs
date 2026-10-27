@@ -28,6 +28,7 @@ import {
   renderEmbeddedFoodPreview,
 } from "./presentation.mjs";
 import { renderOrdersPage } from "./views/orders.mjs";
+import { renderPosPage } from "./views/pos.mjs";
 import { renderKitchenPage } from "./views/kitchen.mjs";
 import { renderKitchenItemLine } from "./views/kitchen-item.mjs";
 import { formatFoodOrderNumber } from "./order-number.mjs";
@@ -102,7 +103,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   const kitchenScreenCountFromRoute = Number.isSafeInteger(routeScreenCountValue)
     && routeScreenCountValue >= (activeKitchenScreenFromRoute ?? 1)
     && routeScreenCountValue <= 8 ? routeScreenCountValue : null;
-  const SPACE_PENDING_VIEWS = new Set(["overview", "pos", "inventory", "customers", "reports", "team"]);
+  const SPACE_PENDING_VIEWS = new Set(["overview", "inventory", "customers", "reports", "team"]);
   const ORDER_STATUS_FILTERS = Object.freeze([
     Object.freeze({ id: "all", label: "Todas as etapas" }),
     Object.freeze({ id: "received", label: "Recebidos" }),
@@ -558,6 +559,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   
   function ordersPage() { return renderOrdersPage(viewModel()); }
 
+  function posPage() { return renderPosPage(viewModel()); }
+
   function kitchenChannelButton(filter, activeOrders) {
     const count = filter.id === "all" ? activeOrders.length : activeOrders.filter(({ channel }) => channel === filter.id).length;
     return `<button class="order-filter ${kitchenChannelFilter === filter.id ? "is-active" : ""}" type="button" data-kitchen-channel="${filter.id}" aria-pressed="${kitchenChannelFilter === filter.id}">${filter.label}<span>${count}</span></button>`;
@@ -662,9 +665,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     const page = SPACE_PENDING_VIEWS.has(activeView)
       ? renderSpaceCapabilityStatus(activeView, { labels: VIEW_LABELS, iconSvg })
-      : ({ orders: ordersPage, kitchen: kitchenPage, menu: menuPage, tables: tablesPage, delivery: deliveryPage, settings: settingsPage })[activeView]();
+      : ({ orders: ordersPage, pos: posPage, kitchen: kitchenPage, menu: menuPage, tables: tablesPage, delivery: deliveryPage, settings: settingsPage })[activeView]();
     root.innerHTML = shell(page);
-    if (activeView === "orders") {
+    if (activeView === "orders" || activeView === "pos") {
       updateDeliveryVisibility();
       updateCartTotals();
       updatePizzaPricePreview();
@@ -1232,7 +1235,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         return;
       }
       activeCommandId = command.id;
-      activeView = "orders";
+      activeView = "pos";
       render();
     } else if (action === "leave-command-context") {
       if (cart.length) return;

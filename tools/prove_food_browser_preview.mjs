@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 const scenarios = Object.freeze([
   { presentation: "standalone-preview", view: "orders" },
   { presentation: "embedded-preview", view: "kitchen" },
+  { presentation: "embedded-preview", view: "pos" },
   { presentation: "embedded-preview", view: "kitchen", extra: { __configure_workflow: "single-pizzaiolo", __expected_preset_title: "1 pizzaiolo" }, resetPreviewStorage: true },
   { presentation: "embedded-preview", view: "kitchen", extra: {
     station: "1", stationStage: "prepare-order", screenCount: "1",

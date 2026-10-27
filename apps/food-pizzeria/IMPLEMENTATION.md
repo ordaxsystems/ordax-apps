@@ -381,3 +381,11 @@ Como o owner SQL fixado ainda valida Food v6, o estado local avança para v7 e o
 
 Validação: `node --test apps/food-pizzeria/tests/*.test.mjs` passou com 130/130 testes; `git diff --check` passou. A verificação inclui preço atual e removido, quantidade, snapshot do pedido, pesquisa, KDS, consumo de receita, migração e rejeição do estado v7 pelo owner SQL v6. O preview continua local ao navegador.
 
+## PDV e histórico em módulos próprios (2026-10-27)
+
+O módulo `PDV` agora concentra a montagem e o registro local de pedidos. `Pedidos` fica dedicado ao histórico, busca, filtros por etapa/canal e acompanhamento, com uma ação que leva ao PDV para iniciar outro pedido. O formulário de entrada é um único renderizador compartilhado também com o contexto de comanda; carrinho e comandos continuam no mesmo controlador/estado Food, sem segunda loja nem domínio paralelo. Após registrar, o operador volta ao histórico.
+
+A prévia incorporada permite abrir diretamente `view=pos`, sem header nem navegação duplicados do Food, e usa o mesmo CSS isolado em Shadow DOM. O valor do pedido continua sem significar pagamento recebido. Itens adicionais vêm da fixture local; provider de Catálogo e schema Food persistente v7 continuam pendentes, e o core SQL v6 recusa esse estado antes de gravar.
+
+Validação: suíte Food completa, 131/131; `git diff --check` e verificações de sintaxe aprovados. A renderização do PDV foi conferida no host local incorporado, incluindo catálogo, carrinho vazio, campos de atendimento e total. O runner automatizado de navegador não iniciou porque Chrome/Chromium não está instalado neste host; CI da PR executará a verificação de navegador.
+

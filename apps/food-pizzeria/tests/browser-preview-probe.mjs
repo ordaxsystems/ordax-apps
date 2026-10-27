@@ -15,7 +15,8 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 const expected = {
   kitchen: "Produção",
-  orders: "Montar pedido",
+  orders: "Pedidos",
+  pos: "PDV",
   tables: "Mesas",
 };
 

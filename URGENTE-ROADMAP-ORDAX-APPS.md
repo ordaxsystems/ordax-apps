@@ -788,3 +788,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Falta publicar/homologar Catálogo e atualizar o contrato Food SQL antes de integrar pedidos com produtos. Nenhuma integração com Sales, Payments, Inventory ou Space foi declarada.
 - Suíte Food: 130/130; `git diff --check` aprovado. Estado remoto e CI serão atualizados nesta rodada pela PR #359, mantida em rascunho.
 
+### Space Pizzaria / OrdaX Food — PDV separado do histórico (2026-10-27)
+
+- A criação de pedidos tem módulo `PDV`; `Pedidos` foca em histórico, pesquisa e filtros. Ambos usam o mesmo estado/carrinho e os comandos Food; o formulário também é reutilizado no fluxo de comanda. O preview incorporado abre `view=pos` diretamente e mantém apresentação sem o shell duplicado.
+- A UI e as interações estruturais do PDV foram conferidas no host local. Suíte Food: 131/131; `git diff --check` e sintaxe aprovados. O runner Chrome local não encontrou Chrome/Chromium instalado; a PR #359 continua em rascunho e será atualizada para CI remoto.
+- Catálogo adicional segue fixture local; owner Catálogo e persistência Food v7 ainda não publicados. Totais não confirmam pagamento e não foram simuladas integrações com Space, Payments ou Inventory.
+

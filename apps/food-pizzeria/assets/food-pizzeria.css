@@ -126,6 +126,10 @@ button:disabled { opacity: .48; cursor: not-allowed; }
 
 /* Pedidos */
 .orders-layout { display: grid; grid-template-columns: minmax(330px, .82fr) minmax(0, 1.18fr); align-items: start; gap: 17px; }
+.orders-heading-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+.pos-page-layout { display: grid; grid-template-columns: minmax(0, 1fr); width: min(100%, 1120px); margin: 0 auto; }
+.pos-page-layout .order-create-panel { padding: 24px; }
+.pos-page-layout .order-products-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 .order-create-panel { padding: 20px; }
 .step-number { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid #f0e2dd; border-radius: 9px; background: #fbf0ed; color: var(--red); font-size: 12px; font-weight: 700; }
 .step-small { width: 24px; height: 24px; font-size: 10px; }
