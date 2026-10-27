@@ -880,5 +880,5 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 - A tela Relatórios baixa resumo UTF-8 dos indicadores do período, canais, itens, sabores e até cinco pedidos por referência. Não exporta nomes, telefones, endereços, pagamentos nem dados de Inventory.
 - O CSV protege células com escape e prefixo neutro para conteúdo que poderia ser interpretado como fórmula. O Blob usa URL temporária revogada após o download ou ao desmontar a interface.
-- Suíte Food completa: 163/163; verificador do mínimo MVP: 20 alvos, 18 não assinados e 2 bloqueados; host incorporado mostra o botão e os relatórios; CI remoto será registrado depois que a PR receber este commit.
+- Suíte Food completa: 163/163; verificador do mínimo MVP: 20 alvos, 18 não assinados e 2 bloqueados; host incorporado mostra o botão e os relatórios. No head `1b19d60`, os quatro checks da PR #359 passaram; a PR permanece em rascunho.
 
