@@ -857,5 +857,5 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 - Cada parada ativa agora permite ligar para o cliente pelo discador do aparelho e copiar o endereço salvo para colá-lo no app de navegação. Número de telefone é normalizado na URL `tel:`; pedidos legados sem telefone não recebem link quebrado.
 - O desenho decorativo foi removido. A lista se chama Fila de entrega e é ordenada pelo horário de saída, da mais antiga para a mais recente; não apresenta mapa, GPS, geocodificação ou otimização que não existam. As ações não gravam nem sincronizam dados externos.
-- Suíte Food completa: 150/150; teste direcionado cobre ligação, endereço copiado, exclusão de pedidos de retirada, ordem de saída e ausência de mapa/GPS fictícios. Host local confirmou as paradas e os controles; `git diff --check` aprovado. A PR #359 segue em rascunho.
+- Suíte Food completa: 151/151; testes cobrem ligação, endereço copiado, exclusão de pedidos de retirada, ordem de saída, ausência de mapa/GPS fictícios e quebra do cabeçalho em telefone estreito. Host local conferido em 320 px: sem overflow horizontal na área de Delivery. `git diff --check` aprovado. A PR #359 segue em rascunho.
 

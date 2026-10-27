@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { renderDeliveryPage } from "../src/ui/views/delivery.mjs";
 
@@ -51,4 +52,14 @@ test("fila de entrega informa a ordem de saída sem apresentar mapa ou GPS", () 
   assert.match(html, /Da saída mais antiga à mais recente/);
   assert.ok(html.indexOf("#saída-anterior") < html.indexOf("#saída-posterior"));
   assert.doesNotMatch(html, /route-map|Diagrama esquemático|geolocalização|GPS|map-pin/);
+});
+
+
+test("cartões de delivery quebram o cabeçalho em telefones estreitos", async () => {
+  const css = await readFile(new URL("../assets/food-pizzeria.css", import.meta.url), "utf8");
+  const mobileRules = css.match(/@media\s*\(max-width:\s*380px\)\s*\{([^}]+(?:\}[^}]*)*)\}/)?.[1] ?? "";
+
+  assert.match(mobileRules, /\.delivery-stage \.order-card-head\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(mobileRules, /\.delivery-stage \.order-card-head > div\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(mobileRules, /\.delivery-stage \.status-badge\s*\{[^}]*white-space:\s*normal/);
 });

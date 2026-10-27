@@ -1420,3 +1420,9 @@ dialog p { color: #a2a8af; }
   .pos-checkout-column .cart-line > strong { grid-column: 2; grid-row: 1; }
   .pos-checkout-column .cart-line-controls { grid-column: 1 / -1; justify-content: flex-end; }
 }
+
+@media (max-width: 380px) {
+  .delivery-stage .order-card-head { align-items: flex-start; flex-wrap: wrap; }
+  .delivery-stage .order-card-head > div { min-width: 0; flex-wrap: wrap; }
+  .delivery-stage .status-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
