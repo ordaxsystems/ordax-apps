@@ -865,3 +865,8 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O limite segue ajustável. Estados existentes e pedidos históricos são preservados; testes cobrem preço, snapshot de sabores/fatias e os quatro seletores iniciais do PDV.
 - Suíte Food: 152/152; `node --check` dos módulos alterados e `git diff --check` aprovados. O incremento atua sobre o preview Food e não muda o owner dos pedidos nem integra Sales, Catálogo, Payments ou Inventory.
 
+### Space Pizzaria / OrdaX Food — referência mais distinta para pedidos (2026-10-27)
+
+- A referência exibida em pedidos identificados por UUID passou de seis para dez caracteres hexadecimais. IDs sequenciais continuam mostrando a sequência; o identificador persistido não muda.
+- A suíte Food completa passou com 152/152, incluindo UUIDs diferentes com o mesmo sufixo antigo; `node --check` e `git diff --check` aprovados. A mudança é somente de apresentação e não altera contratos nem owners.
+

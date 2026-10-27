@@ -463,3 +463,9 @@ Uma pizzaria nova agora começa com limite de quatro sabores por pizza. O PDV cr
 
 Validação: testes de domínio confirmam o limite inicial, preço pela regra vigente e snapshot de quatro sabores; teste do PDV confirma quatro seletores na configuração inicial. Suíte Food: 152/152; `node --check` e `git diff --check` aprovados. Estado local de preview existente permanece intacto. A mudança não cria catálogo paralelo nem afeta Sales, Payments ou Inventory.
 
+## Referência visível dos pedidos (2026-10-27)
+
+Pedidos com UUID agora exibem os últimos dez caracteres hexadecimais como referência estável; isso reduz colisões visíveis mantendo a mesma fonte do identificador do pedido. IDs sequenciais seed continuam exibindo a sequência original. Nenhum ID persistido, contrato, transação ou histórico foi alterado.
+
+Validação: teste prova estabilidade, compatibilidade com sequência seed e distinção entre dois UUIDs que compartilham os seis caracteres finais. Suíte Food: 152/152; `node --check` e `git diff --check` aprovados. A mudança não altera o owner do pedido nem cria integração.
+
