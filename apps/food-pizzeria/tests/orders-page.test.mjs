@@ -67,7 +67,7 @@ test("host incorporado oferece busca local e permite limpar uma consulta ativa",
 
   assert.match(html, /<form id="orders-search-form"/);
   assert.match(html, /id="orders-search" type="search" name="query" value="1050"/);
-  assert.match(html, /aria-label="Buscar pedido, cliente, telefone, mesa ou item"/);
+  assert.match(html, /aria-label="Buscar pedido, cliente, telefone, endereço, mesa ou item"/);
   assert.match(html, /data-action="reset-order-filters">Limpar filtros/);
   assert.doesNotMatch(renderOrders([]), /id="orders-search-form"/);
   const unsafe = renderOrders([], { showLocalSearch: true, orderQuery: '"><img src=x onerror=alert(1)>' });
@@ -94,6 +94,27 @@ test("busca textual combina etapa e canal sem criar uma segunda lista de pedidos
 
   assert.match(html, /data-order-id="ng-order-1050"/);
   assert.doesNotMatch(html, /data-order-id="ng-order-1049"/);
+  assert.match(html, /1 de 2 pedidos/);
+});
+
+test("busca de pedidos combina termos em campos diferentes, ignora acentos e pontuação do telefone", () => {
+  const matching = {
+    id: "ng-order-1049",
+    createdAt: "2026-10-27T10:00:00.000Z",
+    customerName: "Carla Souza",
+    phone: "(11) 99812-7731",
+    address: "Av. Central, 456 — Aclimação",
+    channel: "pickup",
+    status: "received",
+    items: [{ type: "pizza", flavors: [{ name: "Calabresa" }] }],
+  };
+  const distractor = { ...matching, id: "ng-order-1050", address: "Rua Augusta, 10 — Consolação" };
+  const html = renderOrders([matching, distractor], {
+    orderQuery: "  CARLA aclimacao 998127731 calabresa  ",
+  });
+
+  assert.match(html, /data-order-id="ng-order-1049"/);
+  assert.doesNotMatch(html, /data-order-id="ng-order-1050"/);
   assert.match(html, /1 de 2 pedidos/);
 });
 

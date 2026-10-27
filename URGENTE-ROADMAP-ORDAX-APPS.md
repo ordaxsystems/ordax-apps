@@ -992,3 +992,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O histórico no host incorporado passa a expor a busca que antes só existia no cabeçalho standalone. Busca por referência, cliente, telefone, mesa e item compõe com etapa/canal. Limpar filtros restaura a consulta e a lista completa; standalone preserva seu único campo global.
 - O valor consultado é escaped, não cria estado de pedidos paralelo e não muda ownership/integrações.
 - Verificação: Food **193/193**; Chrome **27/27** cobrindo busca, combinação, limpeza e standalone; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**.
+
+### Space Pizzaria / OrdaX Food — busca tolerante a termos e endereço (2026-10-27)
+
+- Pedidos aceita termos em qualquer ordem e cruza cliente, endereço, telefone, referência, mesa e itens sem diferenciar acentos; telefones formatados também são encontrados por dígitos. Etapa/canal continuam sendo filtros cumulativos da mesma projeção do histórico Food.
+- A busca continua sendo estado de apresentação, sem store ou pedido paralelo; os rótulos indicam endereço tanto no host incorporado quanto no standalone.
+- Verificação: Food **194/194**; Chrome **27/27**, incluindo busca composta, limpar filtros e standalone; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.

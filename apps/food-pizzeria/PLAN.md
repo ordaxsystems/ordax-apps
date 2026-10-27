@@ -117,3 +117,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - O módulo incorporado agora oferece busca por referência, cliente, telefone, mesa e item. A consulta combina com os filtros existentes de etapa/canal; limpar remove a consulta e ambos os filtros. No modo standalone, a busca permanece no cabeçalho sem duplicação.
 - A busca usa a projeção já existente do histórico Food e só altera estado de apresentação; não cria cópia de pedidos. Campo e botão são acessíveis e a entrada permanece legível no telefone.
 - Verificação: suíte Food **193/193**; smoke Chrome **27/27**, incluindo busca e limpeza em Pedidos incorporado e busca única no standalone; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações verificadas**; sintaxe e diff-check aprovados.
+
+### Pedidos — busca tolerante a termos e endereço (2026-10-27)
+
+- A busca aceita termos em qualquer ordem e combina campos do mesmo pedido; ignora acentos, inclui endereço e encontra telefone mesmo com pontuação diferente. Continua compondo com etapa/canal no mesmo histórico Food; filtros e pesquisa só alteram a apresentação.
+- Busca incorporada e busca global standalone agora identificam endereço, mantendo um único campo por superfície.
+- Verificação: suíte Food **194/194**; Chrome **27/27**, incluindo cliente + endereço sem acento + telefone só com dígitos e busca por referência; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações verificadas**; `node --check` e `git diff --check` aprovados.

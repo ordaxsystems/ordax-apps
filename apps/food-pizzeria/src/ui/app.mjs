@@ -378,7 +378,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const name = snapshot.settings?.storeName ?? "Pizzaria";
     return `<header class="topbar">
       <div class="mobile-brand"><span class="brand-mark">${iconSvg("pizza")}</span><span>OrdaX <b>Food</b></span></div>
-      <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido, cliente, telefone, mesa ou item" placeholder="Buscar pedido, cliente, telefone, mesa ou item..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
+      <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido, cliente, telefone, endereço, mesa ou item" placeholder="Buscar pedido, cliente ou endereço..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
       <div class="topbar-right"><button type="button" class="avatar-button" aria-label="Configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
     </header>`;
   }

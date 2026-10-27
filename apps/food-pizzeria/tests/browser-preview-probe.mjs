@@ -101,8 +101,13 @@ try {
     ensure(searchForm && root.querySelector("#orders-search"),
       "O host incorporado precisa oferecer busca dentro do módulo Pedidos.");
     const search = root.querySelector("#orders-search");
-    search.value = "1050";
+    search.value = "carla aclimacao 998127731";
     searchForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    ensure(root.querySelectorAll(".history-list .order-card").length === 1
+      && root.querySelector(".history-list .order-card")?.textContent.includes("#1049"),
+    "A busca com termos, endereço sem acento e telefone sem pontuação não filtrou o histórico.");
+    root.querySelector("#orders-search").value = "1050";
+    root.querySelector("#orders-search-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     ensure(root.querySelectorAll(".history-list .order-card").length === 1
       && root.querySelector(".history-list .order-card")?.textContent.includes("#1050"),
     "Buscar a referência do pedido não filtrou o histórico.");
