@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderKitchenPage } from "../src/ui/views/kitchen.mjs";
+import { DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, resizeKitchenDisplayConfiguration } from "../src/application/kitchen-display-configuration.mjs";
 
 const now = Date.parse("2026-10-26T13:00:00.000Z");
 
@@ -95,4 +96,47 @@ test("KDS exposes touch-ready filters and stage navigation affordances", () => {
   assert.match(page, /data-action="toggle-kitchen-late-filter"/);
   assert.match(page, /data-action="reset-kitchen-filters"/);
   assert.match(page, /tabindex="0" aria-label="Etapas da produção/);
+});
+
+test("KDS exposes screen count, operating mode, per-display assignments, and local preview boundaries", () => {
+  const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
+  const page = render({ kitchenDisplayConfiguration: layout });
+
+  assert.match(page, /id="kitchen-layout-form"/);
+  assert.match(page, /name="screenCount"/);
+  assert.match(page, /value="by-stage" selected/);
+  assert.match(page, /name="display-4"/);
+  assert.match(page, /Abrir tela 4/);
+  assert.match(page, /abertura de massa, montagem e forno por pizza dependem do contrato Food de produção/);
+  assert.match(page, /Distribuição por pessoa/);
+  assert.match(page, /People\/Identity/);
+});
+
+test("dedicated display shows only its assigned order stage with fullscreen controls", () => {
+  const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
+  const page = render({
+    kitchenDisplayConfiguration: layout,
+    activeKitchenScreen: 2,
+    kitchenScreenStage: "preparing",
+    kitchenScreenCount: 4,
+  });
+
+  assert.match(page, /TELA 2 DE 4/);
+  assert.match(page, /data-kitchen-station-screen="2"/);
+  assert.match(page, /data-action="fullscreen-kitchen"/);
+  assert.match(page, /data-kitchen-stage="preparing"/);
+  assert.match(page, /data-order="order-1002"/);
+  assert.doesNotMatch(page, /data-order="order-1001"|data-order="order-1003"/);
+  assert.doesNotMatch(page, /kitchen-summary|kitchen-toolbar|kitchen-display-setup/);
+  assert.match(page, /Sem sincronização entre aparelhos/);
+});
+
+test("a station link may carry its display role without relying on another device's local preferences", () => {
+  const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 3, "by-stage");
+  const page = render({
+    kitchenDisplayConfiguration: layout,
+    kitchenScreenHref: (screenNumber, stage, screenCount) => `/?station=${screenNumber}&stationStage=${stage}&screenCount=${screenCount}`,
+  });
+
+  assert.match(page, /href="[^"]*station=2&amp;stationStage=preparing&amp;screenCount=3"/);
 });

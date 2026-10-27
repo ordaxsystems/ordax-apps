@@ -5,6 +5,12 @@ import { createFoodCommand } from "../src/application/commands.mjs";
 import { createBrowserLocalFoodStore } from "../src/adapters/browser-local-store.mjs";
 import { transitionPizzeriaOrder } from "../src/domain/domain.mjs";
 import { PREVIEW_SEED_ORDER_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
+import { DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, resizeKitchenDisplayConfiguration } from "../src/application/kitchen-display-configuration.mjs";
+
+const defaultPreviewPreferences = (deliveryFeeCents = 500) => ({
+  deliveryFeeCents,
+  kitchenDisplays: DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+});
 
 function createMemoryEnvironment() {
   const records = new Map();
@@ -113,7 +119,7 @@ test("reopening an old preview refreshes untouched sample timelines and preserve
   assert.equal(refreshed.tableCommands.find(({ id }) => id === "ng-command-04").openedAt,
     new Date(now - 58 * 60000).toISOString());
   const refreshedEnvelope = JSON.parse(environment.storage.getItem(key));
-  assert.equal(refreshedEnvelope.schema, "ordax.food-pizzeria.browser-state/3");
+  assert.equal(refreshedEnvelope.schema, "ordax.food-pizzeria.browser-state/4");
   assert.deepEqual(refreshedEnvelope.processedCommands, journal);
   assert.equal(refreshedEnvelope.previewPreferences.deliveryFeeCents, 500);
   store.destroy();
@@ -175,6 +181,26 @@ test("browser preview persists revisions, accepts an exact command replay once, 
   reopened.destroy();
 });
 
+test("browser-state v3 migrates to v4 while retaining the delivery preference and adding default KDS layout", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-migrate-browser-envelope-v3";
+  const state = createSeedFoodState();
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/3",
+    state,
+    processedCommands: [],
+    previewPreferences: { deliveryFeeCents: 875 },
+  }));
+
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  await store.initialize();
+
+  assert.deepEqual(store.getPreviewPreferences(), defaultPreviewPreferences(875));
+  assert.equal(JSON.parse(environment.storage.getItem(key)).schema, "ordax.food-pizzeria.browser-state/4");
+  store.destroy();
+});
+
 test("legacy command ids without fingerprints are migrated but cannot authorize ambiguous replays", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-legacy-replay";
@@ -190,9 +216,9 @@ test("legacy command ids without fingerprints are migrated but cannot authorize 
   const restored = await store.initialize();
   assert.equal(restored.revision, source.revision);
   const upgraded = JSON.parse(environment.storage.getItem(key));
-  assert.equal(upgraded.schema, "ordax.food-pizzeria.browser-state/3");
+  assert.equal(upgraded.schema, "ordax.food-pizzeria.browser-state/4");
   assert.deepEqual(upgraded.processedCommands, [{ id: commandId, digest: null }]);
-  assert.deepEqual(upgraded.previewPreferences, { deliveryFeeCents: 500 });
+  assert.deepEqual(upgraded.previewPreferences, defaultPreviewPreferences());
   const blocked = createFoodCommand({
     type: "food.settings.update",
     payload: { halfPricePolicy: "average" },
@@ -231,7 +257,7 @@ test("browser adapter transparently upgrades v5 Food records without fabricating
   assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
     /consumo histórico não é verificável/);
   const persisted = JSON.parse(environment.storage.getItem(key));
-  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/3");
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/4");
   assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/6");
   assert.equal(persisted.previewPreferences.deliveryFeeCents, 500);
   assert.equal(Object.hasOwn(persisted.state, "inventoryMovements"), false);
@@ -249,22 +275,23 @@ test("browser adapter stores local delivery preference outside the canonical Foo
   const store = createBrowserLocalFoodStore({ businessId, ...environment });
   const state = await store.initialize();
   assert.equal(state.schema, "ordax.food-pizzeria-state/6");
-  assert.deepEqual(store.getPreviewPreferences(), { deliveryFeeCents: 500 });
-  const saved = await store.updatePreviewPreferences({ deliveryFeeCents: 875 });
-  assert.deepEqual(saved, { deliveryFeeCents: 875 });
+  assert.deepEqual(store.getPreviewPreferences(), defaultPreviewPreferences());
+  const kitchenDisplays = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
+  const saved = await store.updatePreviewPreferences({ deliveryFeeCents: 875, kitchenDisplays });
+  assert.deepEqual(saved, { deliveryFeeCents: 875, kitchenDisplays });
   assert.deepEqual(store.getSnapshot(), state);
   assert.equal(Object.hasOwn(store.getSnapshot().settings, "deliveryFeeCents"), false);
 
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
   const persisted = JSON.parse(environment.storage.getItem(key));
-  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/3");
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/4");
   assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/6");
   assert.equal(persisted.previewPreferences.deliveryFeeCents, 875);
   store.destroy();
 
   const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
   assert.deepEqual(await reopened.initialize(), state);
-  assert.deepEqual(reopened.getPreviewPreferences(), { deliveryFeeCents: 875 });
+  assert.deepEqual(reopened.getPreviewPreferences(), { deliveryFeeCents: 875, kitchenDisplays });
   reopened.destroy();
 });
 
@@ -291,9 +318,9 @@ test("browser adapter salvages the earlier local v7 preview into v6 and preserve
   assert.equal(migrated.revision, legacyPreview.revision);
   assert.deepEqual(migrated.orders, legacyPreview.orders);
   assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
-  assert.deepEqual(store.getPreviewPreferences(), { deliveryFeeCents: 875 });
+  assert.deepEqual(store.getPreviewPreferences(), defaultPreviewPreferences(875));
   const persisted = JSON.parse(environment.storage.getItem(key));
-  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/3");
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/4");
   assert.equal(persisted.previewPreferences.deliveryFeeCents, 875);
   store.destroy();
 });

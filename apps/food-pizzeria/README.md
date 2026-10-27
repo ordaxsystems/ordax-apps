@@ -8,12 +8,14 @@ Protótipo independente do domínio de alimentação, com pizzaria e registros f
 - Cardápio: cadastrar/editar sabores, preços e disponibilidade.
 - Configurações: definir tamanhos, fatias, mesas, capacidade e limite de sabores; novos tamanhos ficam indisponíveis até terem preços e fichas técnicas completos. A taxa padrão de entrega é uma preferência local da prévia, separada do documento canônico Food, e pode ser ajustada por pedido.
 - Fichas técnicas: manter quantidades por pizza e congelar uma proposta de consumo em cada novo pedido. Alterações posteriores da ficha não reescrevem pedidos existentes nem movimentam Inventory. Pedidos migrados sem ficha histórica verificável ficam sem proposta, em vez de receber consumo inventado.
-- Cozinha/KDS: acompanhar fila por canal e etapa.
+- Cozinha/KDS: acompanhar fila por canal e macroetapa; configurar de 1 a 8 telas locais, escolher quadro completo ou uma macroetapa por tela e abrir cada tela em modo dedicado/tela cheia. O avanço entre telas usa os estados atuais do pedido, não tarefas por pizza.
 - Mesas/Comandas: configurar mesas, abrir/fechar comanda e derivar consumo dos pedidos vinculados. Salão e balcão são canais diferentes.
 - Delivery: acompanhar pedidos prontos e em rota a partir do estado Food.
 - Visão geral, Caixa/PDV, Estoque, Clientes, Relatórios e Equipe mostram que o provider correspondente ainda não está conectado.
 
-O cabeçalho identifica a prévia local. Pedidos, cardápio, comandas e receitas usam estado fictício deste navegador; não há operação comercial nem sincronização entre dispositivos. Conforme FOOD-001/ACHEGUESE-001 do owner OS, **Food Order Core será o único owner do pedido quando Food for o provedor**; o livro genérico Sales não será um segundo pedido mestre. O Food comercial ainda depende da publicação do contrato de pedidos. Fichas técnicas usam referências fictícias de insumo somente para testar a interface.
+O cabeçalho identifica a prévia local. Pedidos, cardápio, comandas, receitas e configuração de telas usam estado fictício deste navegador; não há operação comercial nem sincronização entre dispositivos. Conforme FOOD-001/ACHEGUESE-001 do owner OS, **Food Order Core será o único owner do pedido quando Food for o provedor**; o livro genérico Sales não será um segundo pedido mestre. O Food comercial ainda depende da publicação do contrato de pedidos. Fichas técnicas usam referências fictícias de insumo somente para testar a interface.
+
+O KDS encaminha pedidos inteiros entre os estados atuais Recebido, Em preparo e Pronto. Progresso por item/pizza — como abertura, montagem e forno — e atribuição a cada trabalhador exigem contratos Food de produção e People/Identity; a prévia não os simula nem sincroniza celulares.
 
 ## Executar
 

@@ -1037,3 +1037,69 @@ dialog p { color: #a2a8af; }
 /* In embedded local preview the same stylesheet lives only in a ShadowRoot. */
 :host { display: block; min-width: 0; }
 .food-preview-content-root { min-width: 0; color: var(--ink); background: var(--canvas); }
+
+/* Configuração de displays do KDS: preferências locais, separadas do estado Food. */
+.kitchen-display-setup { margin: 0 0 13px; padding: 0; overflow: hidden; border-color: var(--kitchen-line); background: var(--kitchen-surface); }
+.kitchen-display-setup > summary { display: flex; min-height: 61px; align-items: center; gap: 12px; padding: 11px 15px; color: #e8eaec; cursor: pointer; list-style: none; }
+.kitchen-display-setup > summary::-webkit-details-marker { display: none; }
+.kitchen-setup-icon { display: grid; width: 35px; height: 35px; flex: 0 0 auto; place-items: center; border: 1px solid #394149; border-radius: 10px; background: #22272c; color: #8cd5e2; font-size: 18px; }
+.kitchen-setup-summary { display: grid; gap: 3px; }
+.kitchen-setup-summary strong { font: 750 12px "Manrope", sans-serif; }
+.kitchen-setup-summary small { color: #9ba2aa; font-size: 9px; }
+.kitchen-setup-chevron { margin-left: auto; color: #9ba2aa; font-size: 18px; transition: transform .18s ease; }
+.kitchen-display-setup[open] > summary { border-bottom: 1px solid var(--kitchen-line); }
+.kitchen-display-setup[open] .kitchen-setup-chevron { transform: rotate(180deg); }
+.kitchen-display-setup-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, .32fr); gap: 16px; padding: 15px; }
+.kitchen-layout-form { display: grid; min-width: 0; gap: 11px; }
+.kitchen-layout-controls { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(150px, .8fr); gap: 10px; }
+.kitchen-layout-controls label { display: grid; gap: 6px; color: #bac0c6; font-size: 9px; font-weight: 700; }
+.kitchen-layout-controls select, .kitchen-display-row select { min-width: 0; min-height: 39px; padding: 8px 10px; border: 1px solid #394149; border-radius: 8px; background: #111417; color: #eef0f2; font: 600 10px "Segoe UI", sans-serif; }
+.kitchen-layout-mode-note { margin: 0; color: #adb4bb; font-size: 9px; line-height: 1.5; }
+.kitchen-display-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.kitchen-display-row { display: flex; min-width: 0; align-items: center; gap: 7px; padding: 7px; border: 1px solid #30363d; border-radius: 9px; background: #15181b; }
+.kitchen-display-row > label { display: grid; min-width: 0; flex: 1; grid-template-columns: minmax(75px, .55fr) minmax(115px, 1fr); align-items: center; gap: 7px; }
+.kitchen-display-row > label > span { display: grid; gap: 3px; }
+.kitchen-display-row > label strong { color: #e8eaec; font-size: 9px; }
+.kitchen-display-row > label small { color: #8e969e; font-size: 8px; }
+.kitchen-display-row select { min-height: 34px; padding: 6px 8px; font-size: 9px; }
+.kitchen-display-row select:disabled { opacity: .72; }
+.kitchen-open-display { min-height: 34px; flex: 0 0 auto; gap: 5px; padding: 0 8px; font-size: 8px; text-decoration: none; }
+.kitchen-layout-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid #2b3036; }
+.kitchen-layout-footer > p { max-width: 650px; margin: 0; color: #929aa2; font-size: 8px; line-height: 1.5; }
+.kitchen-layout-footer .button { min-height: 39px; flex: 0 0 auto; padding-inline: 13px; font-size: 9px; }
+.kitchen-assignment-pending { display: grid; align-content: start; gap: 7px; padding: 12px; border: 1px solid #3b3830; border-radius: 10px; background: #211f1a; }
+.kitchen-assignment-pending strong { color: #e3c991; font: 750 10px "Manrope", sans-serif; }
+.kitchen-assignment-pending span { color: #aaa397; font-size: 8px; line-height: 1.55; }
+
+.kitchen-station-screen { min-height: calc(100vh - 120px); padding: clamp(10px, 2vw, 24px); border: 1px solid #2e343a; border-radius: 14px; background: #111417; }
+.kitchen-station-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 17px; }
+.kitchen-station-header h1 { margin: 4px 0 5px; color: #f2f3f4; font: 800 clamp(24px, 3vw, 38px)/1.1 "Manrope", sans-serif; letter-spacing: -1px; }
+.kitchen-station-header > div:first-child > p:last-child { margin: 0; color: #9ca4ac; font-size: 10px; }
+.kitchen-station-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; }
+.kitchen-local-chip { padding: 7px 9px; border: 1px solid #4b4030; border-radius: 7px; background: #252118; color: #d2b77c; font-size: 8px; }
+.kitchen-station-controls .button { min-height: 40px; padding-inline: 11px; font-size: 9px; text-decoration: none; }
+.kitchen-board-station { grid-template-columns: minmax(0, 900px); justify-content: center; overflow: visible; }
+.kitchen-station-screen .kitchen-column { min-height: calc(100vh - 225px); padding: clamp(12px, 2vw, 22px); }
+.kitchen-station-screen .kitchen-column-head { min-height: 58px; }
+.kitchen-station-screen .kitchen-column-head h2 { font-size: 17px; }
+.kitchen-station-screen .kitchen-column-body { gap: 12px; }
+.kitchen-station-screen .order-card-kitchen { padding: 17px; }
+.kitchen-station-screen:fullscreen { width: 100vw; height: 100vh; min-height: 100vh; overflow: auto; padding: clamp(14px, 2.5vw, 32px); border: 0; border-radius: 0; background: #111417; }
+.kitchen-station-screen:fullscreen .kitchen-column { min-height: calc(100vh - 190px); }
+.kitchen-station-controls :focus-visible, .kitchen-display-setup :focus-visible { outline: 2px solid #ff9867; outline-offset: 3px; }
+
+@media (max-width: 860px) {
+  .kitchen-display-setup-body { grid-template-columns: 1fr; }
+  .kitchen-assignment-pending { grid-row: 1; }
+}
+@media (max-width: 640px) {
+  .kitchen-display-setup-body { padding: 11px; }
+  .kitchen-layout-controls { grid-template-columns: 1fr; }
+  .kitchen-display-list { grid-template-columns: 1fr; }
+  .kitchen-layout-footer { align-items: stretch; flex-direction: column; }
+  .kitchen-layout-footer .button { width: 100%; justify-content: center; }
+  .kitchen-station-header { align-items: flex-start; flex-direction: column; }
+  .kitchen-station-controls { width: 100%; justify-content: flex-start; }
+  .kitchen-local-chip { flex-basis: 100%; }
+  .kitchen-station-screen .kitchen-column { min-height: calc(100vh - 210px); }
+}

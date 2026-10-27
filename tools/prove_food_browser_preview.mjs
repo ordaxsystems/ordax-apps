@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 const scenarios = Object.freeze([
   ["standalone-preview", "orders"],
   ["embedded-preview", "kitchen"],
+  ["embedded-preview", "kitchen", { station: "2", stationStage: "preparing", screenCount: "3" }],
   ["embedded-preview", "orders"],
   ["embedded-preview", "tables"],
 ]);
@@ -179,11 +180,12 @@ try {
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
 
-  for (const [presentation, view] of scenarios) {
+  for (const [presentation, view, extraParameters = {}] of scenarios) {
     const url = new URL(base);
     url.searchParams.set("presentation", presentation);
     url.searchParams.set("view", view);
     url.searchParams.set("__browser_probe", "1");
+    for (const [key, value] of Object.entries(extraParameters)) url.searchParams.set(key, value);
     await cdp.send("Page.navigate", { url: url.toString() });
     await waitForBrowserResult(cdp, `${presentation}/${view}`);
     process.stdout.write(`FOOD_BROWSER_PREVIEW=PASS ${presentation}/${view}\n`);

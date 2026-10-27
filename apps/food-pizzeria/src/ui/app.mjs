@@ -5,6 +5,12 @@ import {
   calculatePizzaPriceCents,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
+import {
+  DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+  KITCHEN_DISPLAY_STAGES,
+  resizeKitchenDisplayConfiguration,
+  validateKitchenDisplayConfiguration,
+} from "../application/kitchen-display-configuration.mjs";
 import { reviewFoodCartPrices } from "../application/cart-pricing.mjs";
 import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
@@ -71,6 +77,18 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     settings: "Configurações",
   });
   const PREVIEW_INGREDIENTS = FOOD_RECIPE_INGREDIENT_FIXTURES;
+  const routeParams = new URLSearchParams(globalThis.location?.search ?? "");
+  const routeStationValue = Number(routeParams.get("station"));
+  const routeScreenCountValue = Number(routeParams.get("screenCount"));
+  const routeStageValue = routeParams.get("stationStage");
+  const activeKitchenScreenFromRoute = Number.isSafeInteger(routeStationValue)
+    && routeStationValue >= 1 && routeStationValue <= 8 ? routeStationValue : null;
+  const kitchenScreenStageFromRoute = KITCHEN_DISPLAY_STAGES.some(({ id }) => id === routeStageValue)
+    ? routeStageValue
+    : null;
+  const kitchenScreenCountFromRoute = Number.isSafeInteger(routeScreenCountValue)
+    && routeScreenCountValue >= (activeKitchenScreenFromRoute ?? 1)
+    && routeScreenCountValue <= 8 ? routeScreenCountValue : null;
   const SPACE_PENDING_VIEWS = new Set(["overview", "pos", "inventory", "customers", "reports", "team"]);
   const ORDER_STATUS_FILTERS = Object.freeze([
     Object.freeze({ id: "all", label: "Todas as etapas" }),
@@ -119,13 +137,16 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let settingsSizesDraft = null;
   let settingsTablesDraft = null;
   let unsubscribe = null;
-  let activeView = "orders";
+  let activeView = activeKitchenScreenFromRoute === null ? "orders" : "kitchen";
   let orderQuery = "";
   let orderStatusFilter = "all";
   let orderChannelFilter = "all";
   let kitchenChannelFilter = "all";
   let kitchenOrderQuery = "";
   let kitchenLateOnly = false;
+  let kitchenLayoutDraft = null;
+  let kitchenSetupExpanded = false;
+  const activeKitchenScreen = activeKitchenScreenFromRoute;
   let activeCommandId = null;
   let editFlavorId = null;
   let cart = [];
@@ -208,6 +229,36 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       if (command) return `Mesa ${String(command.tableId).padStart(2, "0")}`;
     }
     return CHANNEL_LABELS[order.channel];
+  }
+
+  function kitchenDisplayConfiguration() {
+    return validateKitchenDisplayConfiguration(
+      kitchenLayoutDraft ?? previewPreferences?.kitchenDisplays ?? DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+    );
+  }
+
+  function kitchenScreenHref(screenNumber, stage, screenCount) {
+    const currentHref = globalThis.location?.href;
+    if (!currentHref) {
+      return `?presentation=embedded-preview&view=kitchen&station=${screenNumber}&stationStage=${encodeURIComponent(stage)}&screenCount=${screenCount}`;
+    }
+    const url = new URL(currentHref);
+    url.searchParams.set("view", "kitchen");
+    url.searchParams.set("station", String(screenNumber));
+    url.searchParams.set("stationStage", stage);
+    url.searchParams.set("screenCount", String(screenCount));
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function kitchenOverviewHref() {
+    const currentHref = globalThis.location?.href;
+    if (!currentHref) return "?presentation=embedded-preview&view=kitchen";
+    const url = new URL(currentHref);
+    url.searchParams.set("view", "kitchen");
+    url.searchParams.delete("station");
+    url.searchParams.delete("stationStage");
+    url.searchParams.delete("screenCount");
+    return `${url.pathname}${url.search}${url.hash}`;
   }
   
   function report(error) {
@@ -341,6 +392,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return {
       PIZZA_SIZES, PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS, PREVIEW_INGREDIENTS,
       deliveryFeeCents: previewPreferences.deliveryFeeCents,
+      kitchenDisplayConfiguration: kitchenDisplayConfiguration(),
+      activeKitchenScreen,
+      kitchenScreenStage: kitchenScreenStageFromRoute,
+      kitchenScreenCount: kitchenScreenCountFromRoute,
+      kitchenScreenHref,
+      kitchenOverviewHref,
+      kitchenSetupExpanded,
       STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
       KITCHEN_CHANNEL_FILTERS, ORDER_STAGE_ALERT_MINUTES, snapshot, recipeFlavorId,
       recipeDraftLines, orderQuery, orderStatusFilter, orderChannelFilter, kitchenChannelFilter,
@@ -767,7 +825,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     busy = true;
     setBusyUI(true);
     try {
-      await store.updatePreviewPreferences({ deliveryFeeCents });
+      await store.updatePreviewPreferences({ ...previewPreferences, deliveryFeeCents });
       if (destroyed) return false;
       previewPreferences = store.getPreviewPreferences();
       notice = { type: "success", text: "Taxa padrão local salva para os próximos pedidos desta prévia." };
@@ -788,10 +846,86 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       }
     }
   }
+
+  function kitchenLayoutFromForm(form) {
+    const values = new FormData(form);
+    const mode = String(values.get("mode") ?? "complete-cycle");
+    const screenCount = Number(values.get("screenCount"));
+    const resized = resizeKitchenDisplayConfiguration(kitchenDisplayConfiguration(), screenCount, mode);
+    if (mode === "complete-cycle") return resized;
+    const assignments = Array.from({ length: screenCount }, (_, index) => {
+      const value = values.get(`display-${index + 1}`);
+      return typeof value === "string" ? value : resized.assignments[index];
+    });
+    return validateKitchenDisplayConfiguration({ mode, screenCount, assignments });
+  }
+
+  async function saveKitchenDisplayConfiguration(form) {
+    if (busy || destroyed) return false;
+    kitchenSetupExpanded = root.querySelector(".kitchen-display-setup")?.open ?? kitchenSetupExpanded;
+    let kitchenDisplays;
+    try {
+      kitchenDisplays = kitchenLayoutFromForm(form);
+    } catch (error) {
+      report(error);
+      return false;
+    }
+    busy = true;
+    setBusyUI(true);
+    try {
+      await store.updatePreviewPreferences({ ...previewPreferences, kitchenDisplays });
+      if (destroyed) return false;
+      previewPreferences = store.getPreviewPreferences();
+      kitchenLayoutDraft = null;
+      notice = { type: "success", text: "Distribuição local das telas salva." };
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => {
+        notice = null;
+        renderNotice();
+      }, 3600);
+      return true;
+    } catch (error) {
+      if (!destroyed) notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar a configuração local das telas." };
+      return false;
+    } finally {
+      busy = false;
+      if (!destroyed) {
+        setBusyUI(false);
+        render();
+      }
+    }
+  }
   
   function handleClick(event) {
+    const kitchenSetupSummary = event.target.closest("summary");
+    if (kitchenSetupSummary?.parentElement?.classList.contains("kitchen-display-setup")) {
+      kitchenSetupExpanded = !kitchenSetupExpanded;
+      return;
+    }
     const target = event.target.closest("button, a");
     if (!target) return;
+    if (target.dataset.action === "fullscreen-kitchen") {
+      const display = root.querySelector("[data-kitchen-station-screen]");
+      if (typeof display?.requestFullscreen !== "function") {
+        report(new Error("Tela cheia não está disponível neste navegador."));
+        return;
+      }
+      display.requestFullscreen().catch(report);
+      return;
+    }
+    if (target.dataset.action === "exit-kitchen-station") {
+      activeView = "kitchen";
+      const currentHref = globalThis.location?.href;
+      if (currentHref && globalThis.history?.replaceState) {
+        const url = new URL(currentHref);
+        url.searchParams.delete("station");
+        url.searchParams.delete("stationStage");
+        url.searchParams.delete("screenCount");
+        globalThis.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      }
+      render();
+      return;
+    }
     if (target.dataset.kitchenChannel) {
       if (!KITCHEN_CHANNEL_FILTERS.some(({ id }) => id === target.dataset.kitchenChannel)) return;
       kitchenChannelFilter = target.dataset.kitchenChannel;
@@ -974,6 +1108,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       await savePreviewDeliveryFee(form);
       return;
     }
+    if (kind === "kitchen-layout-form") {
+      event.preventDefault();
+      await saveKitchenDisplayConfiguration(form);
+      return;
+    }
     if (!["setup-form", "flavor-form", "recipe-editor", "settings-form", "create-order-form", "cancel-order-form", "table-open-form"].includes(kind)) return;
     event.preventDefault();
     if (busy) return;
@@ -1113,7 +1252,17 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   function handleInput(event) {
-    if (event.type === "change" && event.target.matches("[data-order-status-filter]")) {
+    if (event.type === "change" && event.target.closest("#kitchen-layout-form")) {
+      const form = event.target.closest("#kitchen-layout-form");
+      try {
+        kitchenSetupExpanded = root.querySelector(".kitchen-display-setup")?.open ?? kitchenSetupExpanded;
+        kitchenLayoutDraft = kitchenLayoutFromForm(form);
+        render();
+        root.querySelector(`#${CSS.escape(event.target.id)}`)?.focus({ preventScroll: true });
+      } catch (error) {
+        report(error);
+      }
+    } else if (event.type === "change" && event.target.matches("[data-order-status-filter]")) {
       orderStatusFilter = event.target.value;
       render();
       root.querySelector("[data-order-status-filter]")?.focus({ preventScroll: true });

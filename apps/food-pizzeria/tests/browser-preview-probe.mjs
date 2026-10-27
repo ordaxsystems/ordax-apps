@@ -52,6 +52,18 @@ try {
     "O conteúdo Food não recebeu largura visível.");
   ensure(!root.querySelector(".fatal-state"), "A montagem do Food reportou falha fatal.");
 
+  if (parameters.has("station")) {
+    const station = parameters.get("station");
+    ensure(root.querySelector(`[data-kitchen-station-screen="${station}"]`),
+      "A tela dedicada da estação não foi montada.");
+    ensure(root.querySelectorAll("[data-kitchen-stage]").length === 1,
+      "A tela dedicada exibe mais de uma macroetapa.");
+    ensure(root.querySelector('[data-action="fullscreen-kitchen"]'),
+      "A tela dedicada não oferece o controle de tela cheia.");
+    ensure(!root.querySelector(".kitchen-summary, .kitchen-toolbar, .kitchen-display-setup"),
+      "A tela dedicada mantém controles do quadro geral.");
+  }
+
   if (embedded) {
     ensure(root.querySelector(".food-embedded-preview")?.dataset.previewOnly === "true",
       "A apresentação incorporável não foi marcada como prévia local.");

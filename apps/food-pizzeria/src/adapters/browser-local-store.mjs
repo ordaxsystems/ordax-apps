@@ -11,9 +11,14 @@ import {
   PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES,
 } from "../fixtures/mock-data.mjs";
 import { FOOD_DATA_PORT_SCHEMA } from "../ports/food-data-port.mjs";
+import {
+  DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+  validateKitchenDisplayConfiguration,
+} from "../application/kitchen-display-configuration.mjs";
 
-const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/3";
-const PREVIOUS_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/2";
+const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/4";
+const PREVIOUS_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/3";
+const LEGACY_ENVELOPE_SCHEMA = "ordax.food-pizzeria.browser-state/2";
 const LEGACY_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/1";
 const COMMAND_DIGEST_RE = /^[a-f0-9]{64}$/;
 const LEGACY_INVENTORY_ARCHIVE_SCHEMA = "ordax.food-pizzeria.preview-legacy-inventory/1";
@@ -24,7 +29,10 @@ const COMMAND_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const MAX_STATE_BYTES = 5 * 1024 * 1024;
 const MAX_RECORDED_COMMANDS = 1000;
 const PREVIEW_ACTIVITY_REFRESH_AFTER_MS = 2 * 60 * 60 * 1000;
-const DEFAULT_PREVIEW_PREFERENCES = Object.freeze({ deliveryFeeCents: DEFAULT_DELIVERY_FEE_CENTS });
+const DEFAULT_PREVIEW_PREFERENCES = Object.freeze({
+  deliveryFeeCents: DEFAULT_DELIVERY_FEE_CENTS,
+  kitchenDisplays: DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+});
 const LEGACY_KEY = [
   "ordax.food-pizzeria.development.v2",
   encodeURIComponent("local-demo-owner"),
@@ -54,13 +62,20 @@ function validateCommandHistory(entries) {
 }
 
 function validatePreviewPreferences(value) {
+  const keys = value && typeof value === "object" && !Array.isArray(value)
+    ? Object.keys(value).sort().join(",")
+    : "";
   if (!value || typeof value !== "object" || Array.isArray(value)
-    || Object.keys(value).sort().join(",") !== "deliveryFeeCents"
+    || !["deliveryFeeCents", "deliveryFeeCents,kitchenDisplays"].includes(keys)
     || !Number.isSafeInteger(value.deliveryFeeCents)
     || value.deliveryFeeCents < 0 || value.deliveryFeeCents > 1_000_000_000) {
-    throw new TypeError("A preferência local de entrega da prévia está inválida.");
+    throw new TypeError("As preferências locais da prévia estão inválidas.");
   }
-  return Object.freeze({ deliveryFeeCents: value.deliveryFeeCents });
+  return Object.freeze({
+    deliveryFeeCents: value.deliveryFeeCents,
+    kitchenDisplays: validateKitchenDisplayConfiguration(value.kitchenDisplays
+      ?? DEFAULT_KITCHEN_DISPLAY_CONFIGURATION),
+  });
 }
 
 function legacyInventoryArchive(state, businessId) {
@@ -119,6 +134,18 @@ function decodeStoredValue(raw, businessId) {
   }
 
   if (parsed?.schema === PREVIOUS_STORAGE_SCHEMA) {
+    const migrated = migrateLocalFoodSnapshot(parsed.state);
+    return {
+      state: migrated.state,
+      processedCommands: validateCommandHistory(parsed.processedCommands),
+      previewPreferences: parsed.previewPreferences === undefined
+        ? migrated.previewPreferences
+        : validatePreviewPreferences(parsed.previewPreferences),
+      legacyInventoryArchive: legacyInventoryArchive(parsed.state, businessId),
+    };
+  }
+
+  if (parsed?.schema === LEGACY_ENVELOPE_SCHEMA) {
     const migrated = migrateLocalFoodSnapshot(parsed.state);
     return {
       state: migrated.state,

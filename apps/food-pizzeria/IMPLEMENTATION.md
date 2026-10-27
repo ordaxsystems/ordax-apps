@@ -355,3 +355,11 @@ Os indicadores derivam do snapshot Food existente e continuam agrupados por stat
 
 `tests/kitchen-page.test.mjs` cobre contagem de pizzas/pedidos, pesquisa, proteção de dados de cliente na cozinha e filtro de atraso. `tests/embedded-presentation.test.mjs` e `tests/browser-preview-probe.mjs` cobrem o novo título e o cartão sem dados de cliente. Suíte Food: 85/85; `node --check` nos módulos alterados e `git diff --check` aprovados.
 
+## Distribuição local de telas do KDS (2026-10-27)
+
+O KDS agora permite configurar de 1 a 8 telas na preferência local do adapter, sem alterar o schema Food v6. O operador pode manter o ciclo completo ou distribuir entre telas os estados de pedido já existentes (Recebido, Em preparo e Pronto), ajustar a macroetapa exibida em cada tela e abrir o respectivo URL em um aparelho/aba. A tela dedicada oculta busca, resumo e as outras filas, e pode entrar em tela cheia pelo navegador. A configuração sobrevive à reabertura do mesmo perfil local.
+
+Ao avançar um pedido pelos comandos Food existentes, ele sai da fila daquela macroetapa e passa para o estado seguinte. No preview, a persistência e os eventos entre abas existentes podem refletir a alteração no mesmo perfil/origem; um celular separado não recebe esses dados. A interface o identifica como prévia sem sincronização entre aparelhos. O fluxo é por pedido inteiro: abrir massa, montar, assar e finalizar cada pizza ainda precisa de tarefas e progresso por item no contrato Food de produção. A atribuição por trabalhador precisa também do owner People/Identity e não é apresentada como concluída.
+
+`application/kitchen-display-configuration.mjs` valida modos, quantidade, atribuições, migração do envelope antigo e persistência da configuração local. `tests/kitchen-display-configuration.test.mjs`, `tests/kitchen-page.test.mjs` e `tests/local-store-persistence.test.mjs` cobrem validação, layout dedicado, transição de macroetapa e preservação após reabertura. O smoke de navegador ganhou uma tela de estação. Suíte Food: 92/92; verificações `node --check` e `git diff --check` aprovadas. O smoke real de navegador permanece a ser confirmado neste Windows; o workflow CI Linux já executará o cenário dedicado.
+
