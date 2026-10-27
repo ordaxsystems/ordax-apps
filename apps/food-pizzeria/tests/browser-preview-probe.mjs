@@ -66,8 +66,10 @@ try {
     ensure(root.querySelectorAll("[data-kitchen-upcoming-order]").length <= 5,
       "A lista da estação exibe mais de cinco próximos pedidos.");
     const stationContent = root.querySelector(`[data-kitchen-station-screen="${station}"]`);
-    ensure(stationContent?.textContent.includes("Inicie a etapa"),
-      "A estação não mostra as ações disponíveis para trabalhar a etapa.");
+    ensure(stationContent?.querySelector('button[data-task-action="start"], button[data-task-action="complete"]'),
+      "A estação não mostra como iniciar ou concluir a etapa atual.");
+    ensure(stationContent?.querySelector('button[data-task-action="pass-next"]')?.textContent.includes("Próximo"),
+      "A estação não mostra a ação para passar ao próximo pedido.");
     if (root.querySelector("[data-kitchen-current-order]")) {
       const focusedTicket = root.querySelector("[data-kitchen-current-order]");
       ensure(focusedTicket.querySelectorAll(".kitchen-item-line").length > 0,
