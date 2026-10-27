@@ -7,7 +7,7 @@ function renderDelivery(orders) {
     snapshot: { orders },
     sectionHeader: (_eyebrow, title, description, actions = "") => `<header><h1>${title}</h1><p>${description}</p>${actions}</header>`,
     statCard: (title, count) => `<div>${title}: ${count}</div>`,
-    renderOrderCard: (order, { allowCancel = false } = {}) => `<article data-order-id="${order.id}" data-can-cancel="${allowCancel}">${allowCancel ? "Cancelar" : ""}</article>`,
+    renderOrderCard: (order, { allowCancel = false, allowAdvance = false } = {}) => `<article data-order-id="${order.id}" data-can-cancel="${allowCancel}" data-can-advance="${allowAdvance}">${allowCancel ? "Cancelar" : allowAdvance ? "Avançar entrega" : ""}</article>`,
     emptyState: ({ title }) => `<div>${title}</div>`,
     iconSvg: () => "icon",
     orderNumber: ({ id }) => `#${id}`,
@@ -23,8 +23,8 @@ test("Delivery exibe pedidos de despacho sem disponibilizar cancelamento", () =>
     { id: "pickup", channel: "pickup", status: "ready", customerName: "Caio", address: "", updatedAt: "2026-10-27T10:20:00.000Z" },
   ]);
 
-  assert.match(html, /data-order-id="ready" data-can-cancel="false"/);
-  assert.match(html, /data-order-id="route" data-can-cancel="false"/);
+  assert.match(html, /data-order-id="ready" data-can-cancel="false" data-can-advance="true"/);
+  assert.match(html, /data-order-id="route" data-can-cancel="false" data-can-advance="true"/);
   assert.doesNotMatch(html, /Cancelar|data-can-cancel="true"/);
   assert.doesNotMatch(html, /data-order-id="pickup"/);
 });

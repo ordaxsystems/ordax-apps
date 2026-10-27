@@ -397,3 +397,9 @@ A interface limita o local de gestão, mas não finge que sabe quem é admin. O 
 
 Validação: pedidos, Delivery e fronteiras SSOT, 10/10 testes direcionados; suíte completa Food, 133/133; `node --check` dos módulos alterados e `git diff --check` aprovados.
 
+## Ações do ciclo de pedido por área (2026-10-27)
+
+O renderizador compartilhado agora exige permissão explícita de contexto para controles de estado. Pedidos exibe histórico e filtros, além de cancelamento elegível com motivo, mas não avança preparo ou expedição. Cozinha/KDS mantém as transições de produção. Delivery habilita somente os controles de saída e conclusão para pedidos que já estão prontos ou em rota; nunca habilita cancelamento.
+
+Validação: views Pedidos/Delivery, 6/6 testes direcionados; suíte Food completa, 134/134; `node --check` e `git diff --check` aprovados.
+

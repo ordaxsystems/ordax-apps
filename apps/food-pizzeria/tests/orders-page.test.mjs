@@ -14,7 +14,7 @@ function renderOrders(orders) {
     orderChannelFilter: "all",
     commandById: () => null,
     orderNumber: ({ id }) => id,
-    renderOrderCard: ({ id }, { allowCancel = false } = {}) => `<article data-order-id="${id}" data-can-cancel="${allowCancel}"></article>`,
+    renderOrderCard: ({ id }, { allowCancel = false, allowAdvance = false } = {}) => `<article data-order-id="${id}" data-can-cancel="${allowCancel}" data-can-advance="${allowAdvance}"></article>`,
     emptyState: () => `<div class="empty-state"></div>`,
   });
 }
@@ -39,6 +39,20 @@ test("Pedidos é a área de gestão que expõe a ação de cancelamento", () => 
   };
 
   assert.match(renderOrders([order]), /data-can-cancel="true"/);
+});
+
+test("histórico acompanha pedidos sem avançar etapas de cozinha ou entrega", () => {
+  const order = {
+    id: "pedido-acompanhado",
+    createdAt: "2026-10-27T10:00:00.000Z",
+    customerName: "Cliente",
+    phone: "",
+    channel: "pickup",
+    status: "received",
+    items: [],
+  };
+
+  assert.match(renderOrders([order]), /data-can-advance="false"/);
 });
 
 test("histórico de pedidos prioriza o horário de criação mesmo se a lista vier fora de ordem", () => {

@@ -471,7 +471,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return ["received", "preparing", "ready"].includes(order.status);
   }
   
-  function renderOrderCard(order, { kitchen = false, allowCancel = false } = {}) {
+  function renderOrderCard(order, { kitchen = false, allowCancel = false, allowAdvance = false } = {}) {
     const items = order.items.map((item) => `<li><span>${escapeHtml(orderItemDescription(item))}</span><strong>${money(item.lineTotalCents)}</strong></li>`).join("");
     const lastChange = order.statusHistory.at(-1);
     const startedAt = stageStartedAt(order);
@@ -490,7 +490,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       <ul class="order-items">${items}</ul>
       ${order.notes ? `<p class="order-note"><span>Observação</span>${escapeHtml(order.notes)}</p>` : ""}
       ${order.status === "cancelled" ? `<p class="cancel-reason">Cancelado: ${escapeHtml(lastChange.reason)}</p>` : ""}
-      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${orderAction(order)}</div></div>
+      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${allowAdvance ? orderAction(order) : ""}</div></div>
     </article>`;
   }
 

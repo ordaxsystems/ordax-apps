@@ -4,14 +4,14 @@ Protótipo independente do domínio de alimentação, com pizzaria e registros f
 
 ## Funcionalidade atual do preview
 
-- Pedidos: consultar e pesquisar o histórico, filtrar por etapa e canal, acompanhar o andamento e cancelar pedidos elegíveis com motivo. A criação fica no PDV.
+- Pedidos: consultar e pesquisar o histórico, filtrar por etapa e canal, acompanhar o andamento e cancelar pedidos elegíveis com motivo. A tela não avança preparo nem expedição; criação fica no PDV.
 - PDV local: registrar pedidos de retirada, balcão, salão ou entrega com pizza, bebidas, combos e acompanhamentos. Nome, categoria, quantidade e preço dos itens ficam congelados no pedido Food local e aparecem no histórico e no KDS; produtos adicionais não entram na proposta de consumo da ficha de pizza. O total não confirma recebimento.
 - Cardápio: cadastrar/editar sabores, preços e disponibilidade.
 - Configurações: definir tamanhos, fatias, mesas, capacidade e limite de sabores; novos tamanhos ficam indisponíveis até terem preços e fichas técnicas completos. A taxa padrão de entrega é uma preferência local da prévia, separada do documento canônico Food, e pode ser ajustada por pedido.
 - Fichas técnicas: manter quantidades por pizza e congelar uma proposta de consumo em cada novo pedido. Alterações posteriores da ficha não reescrevem pedidos existentes nem movimentam Inventory. Pedidos migrados sem ficha histórica verificável ficam sem proposta, em vez de receber consumo inventado.
 - Cozinha/KDS: configura de 1 a 8 etapas com nomes, ordem e tela atribuída; o padrão da pizzaria é Abrir massa → Montagem → Forno → Finalização e embalagem. Cada estação abre por link direto, destaca um pedido e lista até cinco próximos. Iniciar ocupa a etapa; concluir transfere o mesmo pedido à etapa seguinte; **Próximo** coloca em foco o pedido seguinte e move o atual à 3ª posição quando há fila suficiente (ou logo após o único próximo), mantendo a etapa pendente. O KDS não manda o pedido para o fim de uma fila longa e não cancela: cancelamento continua em Pedidos. Os cartões mostram tamanho, fatias, sabores, observações e progresso; a apresentação de itens continua separada para permitir outros segmentos Food.
 - Mesas/Comandas: configurar mesas, abrir/fechar comanda e derivar consumo dos pedidos vinculados. Salão e balcão são canais diferentes.
-- Delivery: acompanhar pedidos prontos e em rota a partir do estado Food.
+- Delivery: acompanhar pedidos prontos e em rota e registrar saída/conclusão da entrega a partir do estado Food.
 - Visão geral, Estoque, Clientes, Relatórios e Equipe mostram que o provider correspondente ainda não está conectado.
 
 Pedidos, cardápio, comandas, receitas, configuração de telas e o catálogo adicional usam estado fictício deste navegador; não há operação comercial nem sincronização entre dispositivos. A ação visual de cancelamento fica em Pedidos; autorização por papel administrativo ainda depende do contrato oficial Identity/Space e não é simulada. Conforme FOOD-001/ACHEGUESE-001 do owner OS, **Food Order Core será o único owner do pedido quando Food for o provedor**; o livro genérico Sales não será um segundo pedido mestre. O Food comercial ainda depende da publicação do contrato de pedidos. Fichas técnicas usam referências fictícias de insumo somente para testar a interface.

@@ -800,3 +800,8 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A interface não cria papel admin local. Grant por ação e identidade do operador seguem dependentes do host Identity/Space; visibilidade de botão não é autorização.
 - Testes direcionados: 10/10; suíte completa: 133/133; `node --check` e `git diff --check` aprovados. A PR #359 será atualizada nesta rodada e permanece em rascunho.
 
+### Space Pizzaria / OrdaX Food — autoridade dos botões por módulo (2026-10-27)
+
+- Pedidos fica como histórico/gestão e cancelamento elegível, sem transicionar preparo ou expedição. KDS controla etapas de produção; Delivery recebe controles apenas para saída e conclusão de pedidos em entrega.
+- Regressão no renderizador compartilhado exige permissão explícita para mostrar ações de status; Delivery e Pedidos têm testes independentes. Suíte Food: 134/134; `node --check` e `git diff --check` aprovados. PR #359 será atualizada nesta rodada.
+
