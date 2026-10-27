@@ -23,6 +23,13 @@ import {
 } from "./presentation.mjs";
 import { renderOrdersPage } from "./views/orders.mjs";
 import { renderKitchenPage } from "./views/kitchen.mjs";
+import { renderKitchenItemLine } from "./views/kitchen-item.mjs";
+import { formatFoodOrderNumber } from "./order-number.mjs";
+import {
+  PIZZERIA_KITCHEN_ITEM_LABEL,
+  PIZZERIA_KITCHEN_STAGE_GUIDANCE,
+  presentPizzeriaKitchenItem,
+} from "./pizzeria-kitchen-presentation.mjs";
 import { renderMenuPage } from "./views/menu.mjs";
 import { renderTablesPage } from "./views/tables.mjs";
 import { renderDeliveryPage } from "./views/delivery.mjs";
@@ -215,8 +222,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   function orderNumber(order) {
-    const numericSuffix = order.id.match(/(\d+)$/)?.[1];
-    return `#${(numericSuffix ?? order.id.replaceAll("-", "").slice(-6)).toUpperCase()}`;
+    return formatFoodOrderNumber(order.id);
   }
   
   function commandById(commandId) {
@@ -393,6 +399,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       PIZZA_SIZES, PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS, PREVIEW_INGREDIENTS,
       deliveryFeeCents: previewPreferences.deliveryFeeCents,
       kitchenDisplayConfiguration: kitchenDisplayConfiguration(),
+      kitchenItemPresentation,
+      kitchenItemLabel: PIZZERIA_KITCHEN_ITEM_LABEL,
+      kitchenStageGuidance: PIZZERIA_KITCHEN_STAGE_GUIDANCE,
+      kitchenSearchPlaceholder: "Buscar pedido, mesa ou sabor",
+      kitchenSearchLabel: "Buscar pedido, mesa ou sabor",
       activeKitchenScreen,
       kitchenScreenStage: kitchenScreenStageFromRoute,
       kitchenScreenCount: kitchenScreenCountFromRoute,
@@ -419,6 +430,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const size = item.sizeLabel ?? PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
     const flavors = item.flavors.map(({ name }) => name).join(" + ");
     return `${item.quantity}× ${size} · ${flavors}`;
+  }
+
+  function kitchenItemPresentation(item) {
+    return presentPizzeriaKitchenItem(item, PIZZA_SIZES);
   }
   
   function nextStatus(order) {
@@ -471,17 +486,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
 
   function renderKitchenOrderCard(order, { deliveryDetails = false } = {}) {
     const totalPizzas = order.items.reduce((sum, item) => sum + item.quantity, 0);
-    const items = order.items.map((item) => {
-      const configuredSize = PIZZA_SIZES.find(({ id }) => id === item.size);
-      const size = item.sizeLabel ?? configuredSize?.label ?? item.size;
-      const flavorNames = item.flavors.map(({ name }) => name);
-      const flavors = flavorNames.length === 2
-        ? `Meio a meio · ${flavorNames.join(" / ")}`
-        : flavorNames.join(" + ");
-      const flavorLabel = item.flavors.length === 2 ? `Meio a meio · ${flavors}` : flavors;
-      const slices = configuredSize?.slices ? ` · ${configuredSize.slices} fatias` : "";
-      return `<li class="kitchen-pizza-line"><span class="kitchen-pizza-quantity">${item.quantity}×</span><div><strong>${escapeHtml(size)}${slices}</strong><span><small class="kitchen-pizza-flavor-label">Sabores</small> · ${escapeHtml(flavorLabel)}</span></div></li>`;
-    }).join("");
+    const items = order.items.map((item) => renderKitchenItemLine(item, kitchenItemPresentation(item), escapeHtml)).join("");
     const startedAt = stageStartedAt(order);
     const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];
     const age = alertAfter
@@ -494,7 +499,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       <header class="kitchen-ticket-head"><div class="kitchen-ticket-identity"><strong>${orderNumber(order)}</strong><span class="kitchen-channel-chip">${escapeHtml(orderChannelLabel(order))}</span></div><span class="status-badge status-${order.status}"><span></span>${escapeHtml(STATUS_LABELS[order.status])}</span></header>
       <div class="kitchen-ticket-meta"><span>Pedido às ${clockTime(order.createdAt)}</span><strong>${totalPizzas} ${totalPizzas === 1 ? "pizza" : "pizzas"}</strong></div>
       ${age}
-      <ul class="kitchen-pizza-lines">${items}</ul>
+      <ul class="kitchen-item-lines">${items}</ul>
       ${order.notes ? `<div class="kitchen-production-note"><span>INSTRUÇÃO DE PREPARO</span><p>${escapeHtml(order.notes)}</p></div>` : ""}
       ${dispatchDetails}
       <footer class="kitchen-ticket-actions">${canCancel(order) ? button("Cancelar", "cancel-order", { kind: "quiet", extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${orderAction(order)}</footer>

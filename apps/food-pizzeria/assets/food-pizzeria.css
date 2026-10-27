@@ -884,13 +884,25 @@ dialog p { color: #a2a8af; }
 .kitchen-ticket-age > strong { font-size: 11px; }
 .kitchen-ticket-age.is-overdue { background: #2b201f; }
 .kitchen-sla-target { margin-left: auto; color: #8a929a; font-size: 8px; }
-.kitchen-pizza-lines { display: grid; gap: 7px; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid #32373e; list-style: none; }
-.kitchen-pizza-line { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; }
-.kitchen-pizza-quantity { display: grid; min-height: 24px; place-items: center; border: 1px solid #514032; border-radius: 7px; background: #30261f; color: #ffb078; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.kitchen-pizza-line > div { display: grid; gap: 2px; }
-.kitchen-pizza-line strong { color: #dfe2e5; font-size: 9px; }
-.kitchen-pizza-line > div > span { color: #a8afb7; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
-.kitchen-pizza-flavor-label { color: #929aa2; font-size: 7px; font-weight: 800; letter-spacing: .35px; text-transform: uppercase; }
+.kitchen-item-lines { display: grid; gap: 8px; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid #32373e; list-style: none; }
+.kitchen-item-line { display: grid; min-width: 0; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; }
+.kitchen-item-quantity { display: grid; min-height: 24px; place-items: center; border: 1px solid #514032; border-radius: 7px; background: #30261f; color: #ffb078; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.kitchen-item-content { display: grid; min-width: 0; justify-items: start; gap: 4px; }
+.kitchen-item-content > strong { color: #dfe2e5; font-size: 10px; }
+.kitchen-item-detail { color: #a8afb7; font-size: 9px; line-height: 1.35; }
+.kitchen-item-modifiers { display: grid; min-width: 0; gap: 4px; }
+.kitchen-item-modifier-label { color: #aab1b8; font-size: 8px; font-weight: 750; letter-spacing: .25px; }
+.kitchen-item-modifiers ul { display: flex; min-width: 0; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.kitchen-item-modifiers li { max-width: 100%; padding: 4px 7px; border: 1px solid #604732; border-radius: 999px; background: #33271f; color: #ffd0a6; font-size: 9px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+.kitchen-item-line-compact { grid-template-columns: 24px minmax(0, 1fr); gap: 6px; }
+.kitchen-item-line-compact .kitchen-item-quantity { min-height: 21px; font-size: 8px; }
+.kitchen-item-line-compact .kitchen-item-content { gap: 2px; }
+.kitchen-item-line-compact .kitchen-item-content > strong { font-size: 8px; }
+.kitchen-item-line-compact .kitchen-item-detail { font-size: 7px; }
+.kitchen-item-line-compact .kitchen-item-modifiers { gap: 2px; }
+.kitchen-item-line-compact .kitchen-item-modifier-label { font-size: 7px; }
+.kitchen-item-line-compact .kitchen-item-modifiers ul { gap: 3px; }
+.kitchen-item-line-compact .kitchen-item-modifiers li { padding: 3px 5px; font-size: 7px; }
 .kitchen-production-note, .kitchen-delivery-details { margin-top: 9px; padding: 9px 10px; border: 1px solid #49362b; border-radius: 8px; background: #29211d; }
 .kitchen-production-note > span, .kitchen-delivery-details > span { color: #e9a16f; font-size: 7px; font-weight: 800; letter-spacing: .7px; }
 .kitchen-production-note p { margin: 4px 0 0; color: #f0d7c6; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
@@ -1076,12 +1088,13 @@ dialog p { color: #a2a8af; }
 .kitchen-current-order > [data-kitchen-current-order] { max-width: 900px; margin-inline: auto; }
 .kitchen-current-order .order-card-kitchen { padding: clamp(12px, 1.6vw, 20px); border-color: #3c4148; background: #202328; }
 .kitchen-current-order .kitchen-ticket-identity > strong { font-size: clamp(20px, 2.3vw, 30px); }
-.kitchen-current-order .kitchen-pizza-lines { gap: 10px; margin-top: 13px; padding-top: 13px; }
-.kitchen-current-order .kitchen-pizza-line { grid-template-columns: 38px minmax(0, 1fr); gap: 10px; }
-.kitchen-current-order .kitchen-pizza-quantity { min-height: 34px; font-size: 13px; }
-.kitchen-current-order .kitchen-pizza-line strong { font-size: clamp(13px, 1.2vw, 16px); }
-.kitchen-current-order .kitchen-pizza-line > div > span { color: #e2e5e8; font-size: clamp(12px, 1.05vw, 14px); }
-.kitchen-current-order .kitchen-pizza-flavor-label { color: #929aa2; font-size: 8px; }
+.kitchen-current-order .kitchen-item-lines { gap: 12px; margin-top: 13px; padding-top: 13px; }
+.kitchen-current-order .kitchen-item-line { grid-template-columns: 38px minmax(0, 1fr); gap: 10px; }
+.kitchen-current-order .kitchen-item-quantity { min-height: 34px; font-size: 13px; }
+.kitchen-current-order .kitchen-item-content > strong { font-size: clamp(14px, 1.25vw, 17px); }
+.kitchen-current-order .kitchen-item-detail { color: #b6bdc4; font-size: clamp(11px, .95vw, 13px); }
+.kitchen-current-order .kitchen-item-modifier-label { color: #aeb6be; font-size: clamp(10px, .82vw, 12px); }
+.kitchen-current-order .kitchen-item-modifiers li { padding: 5px 9px; font-size: clamp(10px, .82vw, 12px); }
 .kitchen-current-order .kitchen-production-note { padding: 11px 12px; }
 .kitchen-current-order .kitchen-production-note p { font-size: 12px; }
 .kitchen-current-order .kitchen-ticket-actions .button { min-height: 48px; font-size: 11px; }
@@ -1096,8 +1109,7 @@ dialog p { color: #a2a8af; }
 .kitchen-up-next-head strong { color: #f2f3f4; font: 750 11px "Manrope", sans-serif; }
 .kitchen-up-next-head > span { overflow: hidden; color: #a9b0b7; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .kitchen-up-next-head small { margin-left: auto; color: #a9b0b7; font-size: 8px; white-space: nowrap; }
-.kitchen-up-next-pizzas { display: grid; gap: 3px; margin: 6px 0; padding: 0; color: #d0d4d8; font-size: 9px; line-height: 1.35; list-style: none; }
-.kitchen-up-next-pizzas li { overflow-wrap: anywhere; }
+.kitchen-up-next-items { gap: 4px; margin: 6px 0; padding: 0; border: 0; }
 .kitchen-up-next-position { color: #ffad7a; font-size: 8px; font-weight: 700; }
 .kitchen-up-next-empty, .kitchen-up-next-more { margin: 12px 0 0; color: #929aa2; font-size: 9px; line-height: 1.45; }
 .kitchen-up-next-more { flex: 0 0 auto; padding-top: 8px; border-top: 1px solid #30363d; }
@@ -1170,12 +1182,13 @@ dialog p { color: #a2a8af; }
   .kitchen-current-order .kitchen-ticket-meta { margin-top: 5px; }
   .kitchen-current-order .kitchen-ticket-age { min-height: 19px; margin: 3px 0 0; padding: 2px 5px; }
   .kitchen-current-order .kitchen-ticket-age > span:first-child, .kitchen-current-order .kitchen-sla-target { display: none; }
-  .kitchen-current-order .kitchen-pizza-lines { gap: 4px; margin-top: 4px; padding-top: 4px; }
-  .kitchen-current-order .kitchen-pizza-line { grid-template-columns: 30px minmax(0, 1fr); gap: 6px; }
-  .kitchen-current-order .kitchen-pizza-quantity { min-height: 27px; }
-  .kitchen-current-order .kitchen-pizza-line strong { font-size: 11px; }
-  .kitchen-current-order .kitchen-pizza-line > div > span { font-size: 10px; }
-  .kitchen-current-order .kitchen-pizza-flavor-label { font-size: 7px; }
+  .kitchen-current-order .kitchen-item-lines { gap: 5px; margin-top: 4px; padding-top: 4px; }
+  .kitchen-current-order .kitchen-item-line { grid-template-columns: 30px minmax(0, 1fr); gap: 6px; }
+  .kitchen-current-order .kitchen-item-quantity { min-height: 27px; }
+  .kitchen-current-order .kitchen-item-content > strong { font-size: 11px; }
+  .kitchen-current-order .kitchen-item-detail { font-size: 9px; }
+  .kitchen-current-order .kitchen-item-modifier-label { font-size: 8px; }
+  .kitchen-current-order .kitchen-item-modifiers li { padding: 3px 6px; font-size: 8px; }
   .kitchen-current-order .kitchen-production-note { margin-top: 3px; padding: 4px 6px; }
   .kitchen-current-order .kitchen-production-note p { margin-top: 2px; font-size: 10px; }
   .kitchen-current-order .kitchen-ticket-actions { margin-top: 6px; }
@@ -1183,7 +1196,7 @@ dialog p { color: #a2a8af; }
   .kitchen-up-next > header { padding-bottom: 6px; }
   .kitchen-up-next-list { gap: 4px; padding: 5px 1px; }
   .kitchen-up-next-item { padding: 5px 6px; }
-  .kitchen-up-next-pizzas { gap: 1px; margin: 3px 0; font-size: 8px; }
+  .kitchen-up-next-items { gap: 2px; margin: 3px 0; }
   .kitchen-up-next-position { font-size: 7px; }
   .kitchen-up-next-more { margin-top: 5px; padding-top: 5px; }
 }
