@@ -118,7 +118,6 @@ export function renderKitchenPage(viewModel) {
         <section class="kitchen-current-order" data-kitchen-stage="${escapeHtml(stageForScreen)}" aria-label="Pedido atual em ${escapeHtml(screenStageLabel)}">
           <div class="kitchen-current-order-heading"><div><p class="eyebrow">PEDIDO EM FOCO</p>${currentStationOrder ? "" : "<h2>Fila vazia</h2>"}</div></div>
           ${currentStationOrder ? `<div data-kitchen-current-order="${escapeHtml(currentStationOrder.id)}">${renderKitchenOrderCard(currentStationOrder)}</div>` : `<div class="kitchen-station-empty">Nenhum pedido nesta etapa. O próximo pedido aparecerá aqui.</div>`}
-          ${currentStationOrder && PIZZA_SIZES.some(({ slices }) => Number.isSafeInteger(slices) && slices > 0) ? `<p class="kitchen-slice-source">Fatias exibidas conforme o cadastro atual do tamanho.</p>` : ""}
         </section>
         <aside class="kitchen-up-next" aria-labelledby="kitchen-up-next-title">
           <header><div><p class="eyebrow">ORDEM DE CHEGADA</p><h2 id="kitchen-up-next-title">Próximos pedidos</h2></div><span>${upcomingStationOrders.length} / 5</span></header>

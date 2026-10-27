@@ -1085,7 +1085,6 @@ dialog p { color: #a2a8af; }
 .kitchen-current-order .kitchen-production-note { padding: 11px 12px; }
 .kitchen-current-order .kitchen-production-note p { font-size: 12px; }
 .kitchen-current-order .kitchen-ticket-actions .button { min-height: 48px; font-size: 11px; }
-.kitchen-slice-source { margin: 8px 2px 0; color: #858d95; font-size: 9px; line-height: 1.45; }
 .kitchen-up-next { display: flex; flex-direction: column; overflow: hidden; padding: clamp(10px, 1.3vw, 16px); }
 .kitchen-up-next > header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid #30363d; }
 .kitchen-up-next .eyebrow { margin: 0 0 3px; color: #8e969e; font-size: 7px; font-weight: 800; letter-spacing: .8px; }
@@ -1181,7 +1180,6 @@ dialog p { color: #a2a8af; }
   .kitchen-current-order .kitchen-production-note p { margin-top: 2px; font-size: 10px; }
   .kitchen-current-order .kitchen-ticket-actions { margin-top: 6px; }
   .kitchen-current-order .kitchen-ticket-actions .button { min-height: 44px; }
-  .kitchen-slice-source { margin-top: 4px; font-size: 7px; }
   .kitchen-up-next > header { padding-bottom: 6px; }
   .kitchen-up-next-list { gap: 4px; padding: 5px 1px; }
   .kitchen-up-next-item { padding: 5px 6px; }

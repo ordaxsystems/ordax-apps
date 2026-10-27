@@ -131,7 +131,7 @@ test("dedicated display shows only its assigned order stage with fullscreen cont
   assert.equal((page.match(/#1002/g) ?? []).length, 1,
     "O identificador do pedido em foco não deve ser repetido na tela.");
   assert.match(page, /Grande · 8 fatias/);
-  assert.match(page, /Fatias exibidas conforme o cadastro atual do tamanho/);
+  assert.doesNotMatch(page, /Fatias exibidas conforme o cadastro atual do tamanho/);
   assert.doesNotMatch(page, /data-order="order-1001"|data-order="order-1003"/);
   assert.doesNotMatch(page, /kitchen-summary|kitchen-toolbar|kitchen-display-setup/);
   assert.doesNotMatch(page, /PRÉVIA LOCAL|Sem sincronização entre aparelhos|dados fictícios/i);
