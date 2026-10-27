@@ -353,3 +353,10 @@ Parser, integração SQLite de origem/revisão/contexto, e seleção de contexto
 - O commit `9944adc` já foi publicado no PR #348; a tentativa anterior de CI passou na suíte completa, mas falhou na finalização do runner, não nas asserções do App. A correção de cleanup ainda precisa de nova repetição Windows.
 - Próximo gate: publicar este segundo ajuste, repetir os workflows Windows e revisar o recibo de cleanup. O envio/recepção/importação GPT do head atual, VESTE remoto e execução Runtime com UI fechada seguem sem aceite integral.
 
+## Regressão de fase no encerramento do E2E empacotado — 2026-10-27
+
+- No head remoto `b7ec40a39ad81d3e4b0df70b6f7ac21ef34062e0`, Apps Foundation passou e o job Windows completou a validação do produto (**619 aprovados, 0 falhas, 1 skip**) e o build portátil. O E2E nativo falhou depois com `phase=cleanup`; os logs não expõem a exceção interna, então a causa exata ainda não está certificada. A fase localizada confirma que o problema está na finalização do runner, depois da validação do App.
+- A correção local separa `pending_request_cleanup` de `cdp_websocket_cleanup`. A chamada de fechamento agora tolera uma corrida somente quando o WebSocket já transitou para `CLOSING`/`CLOSED`; continua falhando com `app_websocket_close_failed` se permanecer `OPEN`. Isso conserva o sinal de falha sem transformar erro real em sucesso.
+- Provas neste source: `node --test test/e2e-script-target-isolation.test.mjs` passou **21/21**, `npm run check` passou (`Lab-owned source syntax OK`) e `git diff --check` passou. O CI da correção ainda não foi executado; nenhum aceite do E2E empacotado ou do produto completo é inferido.
+- Próximo gate: publicar o commit por fast-forward apenas se o head remoto da PR #348 continuar em `b7ec40a`; consultar os dois workflows no SHA publicado e, em caso de falha, usar a subfase e os logs novos para corrigir a causa antes de avançar. GPT Web com envio/importação real, execução VESTE sob grant, continuidade Runtime sem janela e operação 24 h continuam pendentes.
+

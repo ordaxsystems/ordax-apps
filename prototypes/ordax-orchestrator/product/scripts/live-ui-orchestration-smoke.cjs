@@ -184,7 +184,6 @@ let phase='startup';
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
       externalMcpConnected:false,autonomousExecution:false};
   }finally{
-    phase='cleanup';
     try {
       if(disposableApiKeyCleanupRequired) {
         phase='test_credential_cleanup';
@@ -193,8 +192,18 @@ let phase='startup';
         if(status?.keySaved!==false)throw Error('test_api_key_cleanup_failed');
       }
     } finally {
+      phase='pending_request_cleanup';
       for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
-      if(ws.readyState===WebSocket.OPEN)ws.close();
+      phase='cdp_websocket_cleanup';
+      if(ws.readyState===WebSocket.OPEN) {
+        try{ws.close();}
+        catch{
+          // CDP may close the target concurrently after the last observation.
+          // A close that already transitioned is complete; an OPEN socket is not.
+          if(ws.readyState!==WebSocket.CLOSING&&ws.readyState!==WebSocket.CLOSED)
+            throw Error('app_websocket_close_failed');
+        }
+      }
     }
   }
   console.log(JSON.stringify(successReport));
