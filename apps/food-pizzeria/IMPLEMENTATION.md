@@ -341,3 +341,9 @@ A taxa de entrega local agora fica em `preview-delivery-fee-form`, fora de `sett
 
 `settings-page.test.mjs` verifica os dois formulários independentes. Suíte Food: 79/79; `node --check` dos módulos alterados e `git diff --check` aprovados. No host isolado `http://127.0.0.1:4262/apps/food-pizzeria/`, Enter salvou R$ 8,25; o formulário de pedido carregou o mesmo valor e mostrou o total de uma pizza de R$ 49,90 mais a taxa. Nenhum pedido foi registrado. O preview e as preferências permanecem locais.
 
+## Correção — estado explícito no KDS local (2026-10-26)
+
+A fila da cozinha substitui o indicador fictício “Turno aberto” por uma contagem calculada do snapshot (`pedidos ativos`). O preview não recebe estado de turno nem eventos de realtime; o indicador anterior sugeria capacidades indisponíveis. Nenhuma transição, configuração ou persistência de pedido foi alterada.
+
+`tests/kitchen-page.test.mjs` cobre a contagem incluindo pedidos em expedição e impede que o KDS volte a declarar turno aberto ou presença ao vivo sem provider. A suíte Food passou com 82/82 testes em ambos os worktrees; `node --check` da view e `git diff --check` também passaram. A prévia segue local e fictícia, sem sincronização com Space.
+

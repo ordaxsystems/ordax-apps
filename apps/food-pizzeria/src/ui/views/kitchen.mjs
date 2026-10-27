@@ -12,7 +12,7 @@ export function renderKitchenPage(viewModel) {
   const delivery = activeOrders.filter(({ status }) => status === "out-for-delivery").filter(channelMatches)
     .sort((first, second) => Date.parse(stageStartedAt(first)) - Date.parse(stageStartedAt(second)));
   return `<section class="page-section kitchen-page">
-    <div class="page-heading"><div><p class="eyebrow">PRODUÇÃO</p><h1>Fila da cozinha</h1><p>Pedidos organizados por etapa de preparo.</p></div><span class="live-indicator"><span></span>Turno aberto</span></div>
+    <div class="page-heading"><div><p class="eyebrow">PRODUÇÃO</p><h1>Fila da cozinha</h1><p>Pedidos organizados por etapa de preparo.</p></div><span class="kitchen-active-count">${activeOrders.length} ${activeOrders.length === 1 ? "pedido ativo" : "pedidos ativos"}</span></div>
     <section class="panel kitchen-toolbar" aria-label="Filtros da fila da cozinha"><div class="kitchen-toolbar-copy"><strong>Canal de atendimento</strong><span>A fila mantém primeiro os pedidos há mais tempo na etapa.</span></div><div class="order-filters" role="group" aria-label="Filtrar fila por canal">${KITCHEN_CHANNEL_FILTERS.map((filter) => kitchenChannelButton(filter, activeOrders)).join("")}</div></section>
     <div class="kitchen-board">${columns.map(({ status, title, icon }) => {
       const orders = activeOrders.filter((order) => order.status === status).filter(channelMatches)

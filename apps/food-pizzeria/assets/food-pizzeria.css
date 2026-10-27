@@ -205,8 +205,7 @@ textarea { resize: vertical; line-height: 1.5; }
 .order-actions .button { min-height: 31px; padding: 0 10px; font-size: 9px; }
 
 /* Cozinha */
-.live-indicator { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 5px; color: #928d84; font-size: 9px; }
-.live-indicator span { width: 6px; height: 6px; border-radius: 50%; background: #74a578; box-shadow: 0 0 0 3px #74a57821; }
+.kitchen-active-count { display: inline-flex; align-items: center; min-height: 27px; margin-bottom: 5px; padding: 0 10px; border: 1px solid #e8e5de; border-radius: 999px; background: #fff; color: #716d66; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .kitchen-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
 .kitchen-column { min-height: 250px; padding: 11px; border: 1px solid #ece9e2; border-radius: 15px; background: #f1efea; }
 .kitchen-column-head { display: flex; align-items: center; gap: 8px; padding: 3px 2px 11px; }
@@ -351,7 +350,7 @@ dialog form { display: grid; gap: 10px; }
   .page-heading { align-items: start; flex-direction: column; gap: 13px; margin-bottom: 19px; }
   .page-heading h1 { font-size: 26px; }
   .page-heading > .button { align-self: stretch; }
-  .heading-counter, .live-indicator { margin: 0; }
+  .heading-counter, .kitchen-active-count { margin: 0; }
   .metrics-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .metric-card { min-height: 109px; padding: 12px; }
   .metric-card:first-child { grid-column: 1 / -1; }
@@ -431,7 +430,7 @@ body { color: var(--ink); background: var(--canvas); }
 .mobile-brand .brand-mark { background: transparent; color: var(--red); box-shadow: none; }
 .content { padding-top: 34px; }
 .page-heading h1, .setup-page h1, .metric-value, .panel-heading h2, .empty-state h3, .order-customer strong, .order-total > strong, .flavor-title h3, .flavor-prices strong, .boundary-card strong, .fatal-state h1, dialog h2 { color: #f2f3f4; }
-.page-heading p:not(.eyebrow), .eyebrow, .heading-counter, .metric-top, .metric-card small, .compact-order-main small, .compact-order-number, .quick-panel > p, .quick-stat, .empty-state p, .builder-title small, label, .optional-tag, .builder-bottom > span, .cart-heading > span:not(.step-number), .cart-empty, .cart-line > div span, .order-total small, .order-time, .order-customer > span, .order-address, .order-items li, .order-note, .order-note span, .order-card-foot > div:first-child span, .order-card-foot > div:first-child small, .live-indicator, .column-empty, .price-fields > span, .price-grid label, .currency-input > span, .availability, .flavor-description, .flavor-prices small, .flavor-card-foot > span, .settings-form small, .boundary-card p, .setup-description, .field-hint, .setup-footnote, .fatal-state p, .fatal-state small, dialog p { color: #a2a8af; }
+.page-heading p:not(.eyebrow), .eyebrow, .heading-counter, .metric-top, .metric-card small, .compact-order-main small, .compact-order-number, .quick-panel > p, .quick-stat, .empty-state p, .builder-title small, label, .optional-tag, .builder-bottom > span, .cart-heading > span:not(.step-number), .cart-empty, .cart-line > div span, .order-total small, .order-time, .order-customer > span, .order-address, .order-items li, .order-note, .order-note span, .order-card-foot > div:first-child span, .order-card-foot > div:first-child small, .kitchen-active-count, .column-empty, .price-fields > span, .price-grid label, .currency-input > span, .availability, .flavor-description, .flavor-prices small, .flavor-card-foot > span, .settings-form small, .boundary-card p, .setup-description, .field-hint, .setup-footnote, .fatal-state p, .fatal-state small, dialog p { color: #a2a8af; }
 .heading-counter, .button-quiet, .metric-card, .panel, .order-card, .kitchen-column, .flavor-card, .form-card, .local-note, .side-store, .flavor-form, .settings-form, dialog { border-color: #2c3035; background: var(--paper); color: var(--ink); }
 .button-primary { border-color: var(--red); background: var(--red); color: #fff; box-shadow: 0 5px 15px #ff5a1f28; }
 .button-primary:hover:not(:disabled) { border-color: #ff713b; background: #ff713b; }
@@ -511,7 +510,7 @@ input:focus, select:focus, textarea:focus, .currency-input:focus-within { border
 .order-items, .flavor-prices { border-color: #30343a; }
 .order-number, .order-items li strong, .quick-stat strong { color: #f0f1f2; }
 .kitchen-column { background: #1b1e22; }
-.column-count { border: 1px solid #34393f; background: #25292e; color: #d5d8dc; }
+.column-count, .kitchen-active-count { border-color: #34393f; background: #25292e; color: #d5d8dc; }
 .status-received { background: #292538; color: #b5a2fa; }
 .status-preparing { background: #382b17; color: #f5c15b; }
 .status-ready { background: #193327; color: #61d495; }
@@ -719,7 +718,6 @@ dialog p { color: #a2a8af; }
 .settings-form .mock-inline-form { grid-template-columns: 1fr; margin: 0; }
 .check-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #30343a; }.check-row > span { display: grid; gap: 3px; }.check-row strong { color: #e7e9eb; font-size: 9px; }.check-row small { color: #9299a1; font-size: 8px; }.check-row input { width: 16px; min-height: 16px; accent-color: #ff5a1f; }
 .catalog-products { margin-top: 16px; padding: 17px; }.catalog-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }.catalog-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px; border: 1px solid #30343a; border-radius: 8px; background: #1e2125; }.catalog-thumb { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 8px; background: #282a27; font-size: 17px; }.catalog-row > span:nth-child(2) { display: grid; gap: 3px; }.catalog-row strong, .catalog-row b { color: #e8eaec; font-size: 9px; }.catalog-row small { color: #9da4ab; font-size: 8px; }
-.live-indicator { display: inline-flex; align-items: center; gap: 7px; color: #9da4ab; font-size: 9px; }.live-indicator > span { width: 7px; height: 7px; border-radius: 50%; background: #43d18a; box-shadow: 0 0 0 3px #43d18a20; }
 
 @media (max-width: 1200px) {
   .shortcut-grid, .shortcut-grid-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -768,3 +768,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Regressões cobrem as duas formas de identidade de mesa e o refresh em lote. Suíte Food: 81/81; `node --check` dos módulos alterados e `git diff --check` aprovados.
 - Conferência visual no host `:4259` confirmou o nome da mesa sem duplicação no modo incorporado. Nenhuma transição de pedido ou preferência foi feita durante a conferência; os dados continuam locais e fictícios.
 
+### Space Pizzaria / OrdaX Food — presença explícita na fila KDS (2026-10-26)
+
+- A tela KDS troca “Turno aberto” por uma contagem derivada do snapshot local. O preview não possui provider de turnos nem feed realtime; a interface não sugere esses estados.
+- Regressão em `tests/kitchen-page.test.mjs` cobre o total de pedidos em andamento, inclusive os que estão na expedição. Suíte Food: 82/82 nos worktrees da PR e do host; sintaxe e `git diff --check` aprovados.
+- A prévia continua com dados fictícios do browser. Nenhuma alteração em pedidos, Payments, Inventory, contratos do Space ou elegibilidade de distribuição.
+
