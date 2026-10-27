@@ -1,5 +1,14 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## CI incremental — compilação Windows somente com delta de código (27/10/2026)
+
+- **Causa raiz eliminada no workflow original**, sem runner alternativo nem segundo pipeline: `.github/workflows/orchestrator-lab-isolation.yml` passa pelo job `package_scope`, usando o classificador versionado `scripts/ci-scope.mjs` (e `tests/ci-scope.test.mjs`). Apenas `CODEX-HANDOFF.md`, `README.md` e `docs/**` do Orchestrator são documentação; qualquer mudança de código, contratos, locks, scripts, workflow, caminho inesperado ou entrada incompleta exige **build completo**.
+- Para evento `pull_request.synchronize` com **somente documentação**, o job compara os SHAs `before..after` reais do evento GitHub e consulta por API, em leitura, uma **execução anterior bem-sucedida do mesmo workflow e head anterior**. Sem prova, erro de rede ou última CI cancelada, **compila novamente**; nunca usa o sucesso de outra revisão como atestado. `workflow_dispatch` sempre compila e `push main` compara `before..after`. `git diff --check` protege a verificação. A mudança de código do próprio classificador sempre recompila.
+- **Prova de fonte:** commit `9d7e58dd760c954dc6b241a08699c5700ac7d2e9`, [Lab Isolation #40431079950](https://github.com/ordaxsystems/ordax-apps/actions/runs/40431079950): `package_scope=success` com 3/3 testes, `isolation=success`, `owned-windows=success` e candidato Windows validado; [Foundation #40431080104](https://github.com/ordaxsystems/ordax-apps/actions/runs/40431080104) `success`. Teste complementar: **este commit apenas documental** deve retornar `windows_required=false` e `owned-windows=skipped`, sem publicar artefato redundante. Até observar essa execução, não declarar a economia fisicamente homologada.
+- Isto NÃO altera o candidato instalado `a56101ae…a842906`, o perfil, a Task W3 nem os grants. A PR Apps #348 permanece draft. O SSR é no repositório e workflow, não nesta conversa.
+
+---
+
 ## Gate canônico de cliente/dispositivo OAuth — verificação SQL e Runtime merge (26/10/2026)
 
 - **Fonte SQL ativa verificada no Supabase**, não inferida de migração antiga: `private.ordax_central_device_grant_eligible_v1` exclui `mcp-discovery` e `product.target.read`, exige owner/client/device/scope/grant vigentes; `public.ordax_open_central_device_session_v1` utiliza essa função SSOT para escolher **exatamente um** dispositivo de execução e exige presença e digest Native antes do challenge. Consulta read-only com o cliente conectado B resultou em **1 elegível, Notebook offline**; Desktop online tem apenas discovery. Se se conceder `computer-observe` ao Desktop sem resolver a elegibilidade do Notebook, haverá **2 candidatos, sessão ambígua**. Isso é bloqueio intencional, não autorização para alterar SQL ou escolher dispositivo pelos argumentos da ferramenta.
