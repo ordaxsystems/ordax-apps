@@ -2,6 +2,7 @@
 // ChatGPT DOM, screenshots, a paid API, or an installed user profile.
 const {waitForLabUiTarget,waitForLabAppMode}=require('./e2e-lab-target.cjs');
 const {acquireE2ELock}=require('./e2e-lock.cjs');
+const {closeCdpWebSocket}=require('./cdp-websocket-close.cjs');
 acquireE2ELock('orchestration-native-mcp');
 if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
   throw Error('lab_orchestration_e2e_approval_required');
@@ -195,18 +196,16 @@ let phase='startup';
       phase='pending_request_cleanup';
       for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
       phase='cdp_websocket_cleanup';
-      if(ws.readyState===WebSocket.OPEN) {
-        try{ws.close();}
-        catch{
-          // CDP may close the target concurrently after the last observation.
-          // A close that already transitioned is complete; an OPEN socket is not.
-          if(ws.readyState!==WebSocket.CLOSING&&ws.readyState!==WebSocket.CLOSED)
-            throw Error('app_websocket_close_failed');
-        }
-      }
+      await closeCdpWebSocket(ws);
     }
   }
   console.log(JSON.stringify(successReport));
-})().catch(()=>{console.error(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,
-  phase,reason:'app_orchestration_scenario_failed'}));process.exitCode=2;});
+})().catch(error=>{
+  const cleanupReasons=new Set(['cdp_websocket_close_unavailable','cdp_websocket_close_timeout_invalid',
+    'cdp_websocket_close_invalid_state','cdp_websocket_close_timeout','cdp_websocket_close_failed']);
+  const reason=phase==='cdp_websocket_cleanup'&&cleanupReasons.has(error?.message)
+    ?error.message:'app_orchestration_scenario_failed';
+  console.error(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,phase,reason}));
+  process.exitCode=2;
+});
 

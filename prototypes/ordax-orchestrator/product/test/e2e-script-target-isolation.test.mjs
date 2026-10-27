@@ -13,6 +13,7 @@ const require=createRequire(import.meta.url);
 const { DEBUG_PORT,DEBUG_URL,PRODUCT_TITLE,isLabUiTarget,labStagedLocalAppData,
   labDatabasePath,labLockPath,validLabWebSocket,probeLabUiTarget,waitForLabUiTarget,
   LAB_APP_MODE_PROBE,assertLabAppModeState,waitForLabAppMode }=require('../scripts/e2e-lab-target.cjs');
+const {closeCdpWebSocket}=require('../scripts/cdp-websocket-close.cjs');
 const stage=path.join(os.tmpdir(),'ordax-e2e-suite','candidate-userdata-v0.2.0-alpha.2');
 
 function withStagedEnv(stagedRoot,approved,fn) {
@@ -140,10 +141,53 @@ test('packaged orchestration smoke waits for the newly created work to open befo
   const successLog=source.indexOf('console.log(JSON.stringify(successReport))');
   assert.ok(cleanupPhase>=0&&websocketCleanupPhase>cleanupPhase&&successLog>websocketCleanupPhase,
     'success is emitted only after cleanup completes');
-  assert.match(source,/if\(ws\.readyState===WebSocket\.OPEN\)\s*\{\s*try\{ws\.close\(\);\}/,
-    'a WebSocket already closing or closed cannot turn a passing App scenario into failure');
-  assert.match(source,/if\(ws\.readyState!==WebSocket\.CLOSING&&ws\.readyState!==WebSocket\.CLOSED\)\s*throw Error\('app_websocket_close_failed'\)/,
-    'a close race is accepted only after the socket actually leaves OPEN');
+  assert.match(source,/await closeCdpWebSocket\(ws\)/,
+    'the runner awaits observed CDP closure rather than assuming close is synchronous');
+  assert.doesNotMatch(source,/ws\.close\(\)/,
+    'the runner has one owner for the asynchronous CDP close lifecycle');
+});
+
+test('CDP shutdown observes a peer close racing the local close call',async()=>{
+  class PeerClosingSocket extends EventTarget {
+    readyState=1;
+    closeCalls=0;
+    close() {
+      this.closeCalls++;
+      throw new DOMException('peer already ended the transport','NetworkError');
+    }
+    peerClosed() {
+      this.readyState=3;
+      this.dispatchEvent(new Event('close'));
+    }
+  }
+  const socket=new PeerClosingSocket();
+  setImmediate(()=>socket.peerClosed());
+  await closeCdpWebSocket(socket,{timeoutMs:100});
+  assert.equal(socket.closeCalls,1);
+  assert.equal(socket.readyState,3);
+});
+
+test('CDP shutdown fails when the socket never reaches CLOSED',async()=>{
+  class StuckSocket extends EventTarget {
+    readyState=1;
+    closeCalls=0;
+    close(){this.closeCalls++;}
+  }
+  const socket=new StuckSocket();
+  await assert.rejects(closeCdpWebSocket(socket,{timeoutMs:10}),/cdp_websocket_close_timeout/);
+  assert.equal(socket.closeCalls,1);
+  assert.equal(socket.readyState,1);
+});
+
+test('CDP shutdown accepts an already closed socket without another close request',async()=>{
+  class ClosedSocket extends EventTarget {
+    readyState=3;
+    closeCalls=0;
+    close(){this.closeCalls++;}
+  }
+  const socket=new ClosedSocket();
+  await closeCdpWebSocket(socket);
+  assert.equal(socket.closeCalls,0);
 });
 
 test('live text smoke supports long responses and reports an unfinished run without retrying',()=>{
