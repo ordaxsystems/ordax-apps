@@ -22,6 +22,30 @@ export const DEFAULT_KITCHEN_WORKFLOW = Object.freeze({
   ]),
 });
 
+export const KITCHEN_WORKFLOW_PRESETS = Object.freeze({
+  SINGLE_PIZZAIOLO: "single-pizzaiolo",
+  PIZZERIA_LINE: "pizzeria-line",
+});
+
+const PRESET_STEPS = Object.freeze({
+  [KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO]: Object.freeze({
+    screenCount: 1,
+    steps: Object.freeze([
+      Object.freeze({ id: "prepare-order", label: "Preparar pedido", screen: 1 }),
+      Object.freeze({ id: "oven", label: "Forno", screen: 1 }),
+    ]),
+  }),
+  [KITCHEN_WORKFLOW_PRESETS.PIZZERIA_LINE]: Object.freeze({
+    screenCount: 4,
+    steps: Object.freeze([
+      Object.freeze({ id: "open-dough", label: "Abrir massa", screen: 1 }),
+      Object.freeze({ id: "assembly", label: "Montagem", screen: 2 }),
+      Object.freeze({ id: "oven", label: "Forno", screen: 3 }),
+      Object.freeze({ id: "finish-pack", label: "Finalização e embalagem", screen: 4 }),
+    ]),
+  }),
+});
+
 export const DEFAULT_KITCHEN_TASKS = Object.freeze({
   schema: KITCHEN_TASKS_SCHEMA,
   revision: 0,
@@ -108,6 +132,13 @@ export function saveKitchenWorkflow(currentValue, draftValue) {
   });
   if (current.revision >= Number.MAX_SAFE_INTEGER) throw new RangeError("Revisão do fluxo da cozinha esgotada.");
   return freezeWorkflow(current.revision + 1, draft.screenCount, draft.steps);
+}
+
+export function createKitchenWorkflowPreset(currentValue, presetId) {
+  const current = validateKitchenWorkflow(currentValue ?? DEFAULT_KITCHEN_WORKFLOW);
+  if (!Object.hasOwn(PRESET_STEPS, presetId)) throw new TypeError("Modelo de produção desconhecido.");
+  const preset = PRESET_STEPS[presetId];
+  return freezeWorkflow(current.revision, preset.screenCount, preset.steps);
 }
 
 function validateTaskStep(value) {
@@ -315,6 +346,26 @@ export function reconcileKitchenTasks(tasksValue, orders, workflowValue) {
     const position = terminal ? null : nextQueuePosition([...byOrder.values()], firstScreen);
     byOrder.set(order.id, validateTicket(taskForOrder(workflow, order, position, terminal)));
     changed = true;
+  }
+  const queuedForReassignment = [...byOrder.values()]
+    .filter((ticket) => ticket.workflowRevision !== workflow.revision
+      && currentKitchenStep(ticket)?.status === "queued"
+      && ticket.steps.every(({ status }) => status === "queued" || status === "pending"))
+    .sort(compareStationTickets);
+  if (queuedForReassignment.length) {
+    const reassignedIds = new Set(queuedForReassignment.map(({ orderId }) => orderId));
+    const firstScreen = workflow.steps[0].screen;
+    let queuePosition = nextQueuePosition(
+      [...byOrder.values()].filter(({ orderId }) => !reassignedIds.has(orderId)),
+      firstScreen,
+    );
+    for (const ticket of queuedForReassignment) {
+      const order = orders.find(({ id }) => id === ticket.orderId);
+      if (!order) continue;
+      const reassigned = taskForOrder(workflow, order, queuePosition++);
+      byOrder.set(ticket.orderId, validateTicket({ ...reassigned, cycleQueuedAt: ticket.cycleQueuedAt }));
+      changed = true;
+    }
   }
   for (const order of orders) {
     const existing = byOrder.get(order.id);

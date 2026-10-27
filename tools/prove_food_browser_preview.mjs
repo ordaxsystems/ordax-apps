@@ -5,12 +5,34 @@ import { join } from "node:path";
 import { createServer } from "node:net";
 
 const scenarios = Object.freeze([
-  ["standalone-preview", "orders"],
-  ["embedded-preview", "kitchen"],
-  ["embedded-preview", "kitchen", { station: "2", stationStage: "assembly", screenCount: "4" }],
-  ["embedded-preview", "kitchen", { station: "1", stationStage: "open-dough", screenCount: "1" }],
-  ["embedded-preview", "orders"],
-  ["embedded-preview", "tables"],
+  { presentation: "standalone-preview", view: "orders" },
+  { presentation: "embedded-preview", view: "kitchen" },
+  { presentation: "embedded-preview", view: "kitchen", extra: { __configure_workflow: "single-pizzaiolo", __expected_preset_title: "1 pizzaiolo" }, resetPreviewStorage: true },
+  { presentation: "embedded-preview", view: "kitchen", extra: {
+    station: "1", stationStage: "prepare-order", screenCount: "1",
+    __expected_station_title: "Preparar pedido", __viewport: "portrait", __exercise_solo: "1",
+  }, viewport: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } },
+  { presentation: "embedded-preview", view: "kitchen", extra: {
+    station: "1", stationStage: "prepare-order", screenCount: "1", __viewport: "small-portrait",
+  }, viewport: { width: 320, height: 568, deviceScaleFactor: 1, mobile: true } },
+  { presentation: "embedded-preview", view: "kitchen", extra: {
+    station: "1", stationStage: "prepare-order", screenCount: "1", __viewport: "landscape",
+  }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true } },
+  { presentation: "embedded-preview", view: "kitchen", extra: { __configure_workflow: "pizzeria-line", __expected_preset_title: "Linha por etapas" }, resetPreviewStorage: true },
+  ...[
+    ["1", "open-dough", "Abrir massa"],
+    ["2", "assembly", "Montagem"],
+    ["3", "oven", "Forno"],
+    ["4", "finish-pack", "Finalização e embalagem"],
+  ].map(([station, stationStage, expectedTitle]) => ({
+    presentation: "embedded-preview", view: "kitchen",
+    extra: { station, stationStage, screenCount: "4", __expected_station_title: expectedTitle },
+  })),
+  { presentation: "embedded-preview", view: "kitchen", extra: {
+    station: "2", stationStage: "assembly", screenCount: "4", __viewport: "landscape",
+  }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true } },
+  { presentation: "embedded-preview", view: "orders" },
+  { presentation: "embedded-preview", view: "tables" },
 ]);
 
 function chromeExecutable() {
@@ -181,7 +203,15 @@ try {
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
 
-  for (const [presentation, view, extraParameters = {}] of scenarios) {
+  for (const { presentation, view, extra: extraParameters = {}, viewport, resetPreviewStorage } of scenarios) {
+    if (viewport) await cdp.send("Emulation.setDeviceMetricsOverride", viewport);
+    else await cdp.send("Emulation.clearDeviceMetricsOverride");
+    if (resetPreviewStorage) {
+      await cdp.send("Runtime.evaluate", {
+        expression: "localStorage.clear(); sessionStorage.clear()",
+        returnByValue: true,
+      });
+    }
     const url = new URL(base);
     url.searchParams.set("presentation", presentation);
     url.searchParams.set("view", view);

@@ -1,6 +1,7 @@
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
+  KITCHEN_WORKFLOW_PRESETS,
   currentKitchenStep,
   reconcileKitchenTasks,
   sortKitchenTickets,
@@ -77,8 +78,9 @@ export function renderKitchenPage(viewModel) {
   const configuration = `<details class="panel kitchen-display-setup" ${viewModel.kitchenSetupExpanded ? "open" : ""}>
     <summary><span class="kitchen-setup-icon" aria-hidden="true">▦</span><span class="kitchen-setup-summary"><strong>Fluxo e telas da cozinha</strong><small>${workflow.steps.length} etapas · ${workflow.screenCount} ${workflow.screenCount === 1 ? "tela" : "telas"}</small></span><span class="kitchen-setup-chevron" aria-hidden="true">⌄</span></summary>
     <div class="kitchen-display-setup-body"><form id="kitchen-layout-form" class="kitchen-layout-form">
+      <fieldset class="kitchen-workflow-presets"><legend>Começar com um fluxo pronto</legend><button class="button button-quiet" type="button" data-action="apply-kitchen-preset" data-preset="${KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO}"><strong>1 pizzaiolo</strong><span>Prepara o pedido e envia ao forno · 1 tela</span></button><button class="button button-quiet" type="button" data-action="apply-kitchen-preset" data-preset="${KITCHEN_WORKFLOW_PRESETS.PIZZERIA_LINE}"><strong>Linha por etapas</strong><span>Abrir massa → montagem → forno → finalização · 4 telas</span></button></fieldset>
       <div class="kitchen-layout-controls"><label for="kitchen-workflow-step-count">Etapas do fluxo<select id="kitchen-workflow-step-count" name="stepCount">${Array.from({ length: 8 }, (_, index) => `<option value="${index + 1}" ${workflow.steps.length === index + 1 ? "selected" : ""}>${index + 1} ${index === 0 ? "etapa" : "etapas"}</option>`).join("")}</select></label><label for="kitchen-display-count">Quantidade de telas<select id="kitchen-display-count" name="screenCount">${Array.from({ length: workflow.steps.length }, (_, index) => `<option value="${index + 1}" ${workflow.screenCount === index + 1 ? "selected" : ""}>${index + 1} ${index === 0 ? "tela" : "telas"}</option>`).join("")}</select></label></div>
-      <p class="kitchen-layout-mode-note">Concluir move o pedido à etapa seguinte. Próximo coloca o pedido seguinte em foco e leva o atual à 3ª posição quando há fila suficiente, sem saltar sua etapa. Ao reduzir etapas, pedidos em andamento preservam o fluxo com que começaram.</p>
+      <p class="kitchen-layout-mode-note">Iniciar reserva o pedido em foco para o operador. Concluir avança uma etapa; no fluxo de 1 pizzaiolo, o botão envia o pedido preparado ao forno. Próximo coloca outro pedido em foco e retorna o atual à 3ª posição quando há fila suficiente. Ao salvar outro fluxo, pedidos ainda não iniciados são reorganizados; os que já começaram mantêm suas etapas.</p>
       <div class="kitchen-workflow-step-list" aria-label="Etapas configuradas">${stepRows}</div>
       <div class="kitchen-layout-footer"><p>As etapas e ações ficam salvas neste navegador. Para compartilhar a fila entre aparelhos, falta a integração Food de produção em tempo real.</p><button class="button button-primary" type="submit">Salvar fluxo</button></div>
     </form><section class="kitchen-screen-links" aria-label="Links diretos das telas"><h3>Abrir cada tela em um aparelho</h3>${screenLinks}</section>
@@ -98,20 +100,23 @@ export function renderKitchenPage(viewModel) {
     activeTickets.filter((ticket) => currentKitchenStep(ticket)?.id === step.id).sort(ticketSort)]));
   const activeAssignedLabels = activeKitchenScreen === null ? []
     : workflow.steps.filter(({ screen }) => screen === activeKitchenScreen).map(({ label }) => label);
-  const stationTitle = activeAssignedLabels.length === 1
+  const stationQueue = activeKitchenScreen === null ? [] : sortKitchenTickets(tasks.tickets, workflow, activeKitchenScreen);
+  const focusedStationStep = stationQueue[0] ? currentKitchenStep(stationQueue[0]) : null;
+  const stationTitle = focusedStationStep?.label ?? (activeAssignedLabels.length === 1
     ? activeAssignedLabels[0]
     : activeAssignedLabels.length === 2
       ? `${activeAssignedLabels[0]} + ${activeAssignedLabels[1]}`
       : activeKitchenScreen === 1 && workflow.screenCount === 1
         ? "Produção completa"
-        : activeAssignedLabels.join(" · ") || "Posto multi-etapa";
-  const stationDescription = activeAssignedLabels.length > 1
+        : activeAssignedLabels.join(" · ") || "Posto multi-etapa");
+  const stationDescription = workflow.steps.length === 2 && workflow.screenCount === 1
+    ? "Uma pessoa · um pedido por vez · enviar ao forno ao concluir o preparo."
+    : activeAssignedLabels.length > 1
     ? `${activeAssignedLabels.length} etapas nesta tela · cada pedido avança uma etapa por vez.`
     : "Conclua esta etapa para liberar o pedido seguinte.";
 
   const stationContent = activeKitchenScreen !== null
     ? (() => {
-      const stationQueue = sortKitchenTickets(tasks.tickets, workflow, activeKitchenScreen);
       const currentTicket = stationQueue[0] ?? null;
       const currentOrder = currentTicket ? ordersById.get(currentTicket.orderId) : null;
       const nextTickets = stationQueue.slice(1, 6);
@@ -124,7 +129,7 @@ export function renderKitchenPage(viewModel) {
         if (!order || !task) return "";
         return `<li class="kitchen-up-next-item" data-kitchen-upcoming-order="${escapeHtml(order.id)}"><div class="kitchen-up-next-head"><strong>${escapeHtml(orderNumber(order))}</strong><span>${escapeHtml(orderChannelLabel(order))} · ${escapeHtml(task.label)}</span><small>${elapsedMinutes(stageStartedAt(order))} min</small></div><ul class="kitchen-item-lines kitchen-up-next-items">${kitchenItemLines(order, true)}</ul><small class="kitchen-up-next-position">${index + 2}º da fila</small></li>`;
       }).join("");
-      return `<div class="kitchen-station-workspace"><section class="kitchen-current-order" data-kitchen-stage="${activeKitchenScreen}" aria-label="Pedido atual na tela ${activeKitchenScreen}"><div class="kitchen-current-order-heading"><div><p class="eyebrow">PEDIDO EM FOCO</p>${currentOrder ? `<h2>${escapeHtml(currentKitchenStep(currentTicket).label)}</h2>` : "<h2>Fila vazia</h2>"}</div></div>${currentOrder ? `<div data-kitchen-current-order="${escapeHtml(currentOrder.id)}">${renderKitchenOrderCard(currentOrder, { task: currentTicket, screenNumber: activeKitchenScreen, canPassNext: stationQueue.length > 1, passBehindCount: stationQueue.length > 2 ? 2 : 1 })}</div>` : `<div class="kitchen-station-empty">Nenhum pedido aguardando nesta tela.</div>`}</section><aside class="kitchen-up-next" aria-labelledby="kitchen-up-next-title"><header><div><p class="eyebrow">${escapeHtml(screenLabel)}</p><h2 id="kitchen-up-next-title">Próximos pedidos</h2></div><span>${nextTickets.length} / 5</span></header>${nextTickets.length ? `<ol class="kitchen-up-next-list">${upcomingRows}</ol>` : `<p class="kitchen-up-next-empty">Sem outros pedidos aguardando.</p>`}${remaining ? `<p class="kitchen-up-next-more">+ ${remaining} ${remaining === 1 ? "pedido" : "pedidos"} depois dos próximos cinco.</p>` : ""}</aside></div>`;
+      return `<div class="kitchen-station-workspace"><section class="kitchen-current-order" data-kitchen-stage="${activeKitchenScreen}" aria-label="Pedido atual na tela ${activeKitchenScreen}"><div class="kitchen-current-order-heading"><div><p class="eyebrow">PEDIDO EM FOCO</p><h2>${currentOrder ? "Pedido atual" : "Fila vazia"}</h2></div></div>${currentOrder ? `<div data-kitchen-current-order="${escapeHtml(currentOrder.id)}">${renderKitchenOrderCard(currentOrder, { task: currentTicket, screenNumber: activeKitchenScreen, canPassNext: stationQueue.length > 1, passBehindCount: stationQueue.length > 2 ? 2 : 1 })}</div>` : `<div class="kitchen-station-empty">Nenhum pedido aguardando nesta tela.</div>`}</section><aside class="kitchen-up-next" aria-labelledby="kitchen-up-next-title"><header><div><p class="eyebrow">${escapeHtml(screenLabel)}</p><h2 id="kitchen-up-next-title">Próximos pedidos</h2></div><span>${nextTickets.length} / 5</span></header>${nextTickets.length ? `<ol class="kitchen-up-next-list">${upcomingRows}</ol>` : `<p class="kitchen-up-next-empty">Sem outros pedidos aguardando.</p>`}${remaining ? `<p class="kitchen-up-next-more">+ ${remaining} ${remaining === 1 ? "pedido" : "pedidos"} depois dos próximos cinco.</p>` : ""}</aside></div>`;
     })()
     : `<div class="kitchen-board" tabindex="0" aria-label="Etapas configuradas da produção">${ORDER_COLUMNS.map((step) => {
       const queue = stageQueues.get(step.id) ?? [];
@@ -140,7 +145,7 @@ export function renderKitchenPage(viewModel) {
     ? `<section class="kitchen-handoff-grid"><article class="panel kitchen-handoff-panel"><header><div><p class="eyebrow">PRÓXIMO PASSO</p><h2>Prontos para retirada ou entrega</h2></div><span class="column-count">${readyOrders.length}</span></header>${readyOrders.length ? `<div class="delivery-cards">${readyOrders.map((order) => renderKitchenOrderCard(order)).join("")}</div>` : `<p class="kitchen-up-next-empty">Nenhum pedido aguardando a liberação final.</p>`}</article><article class="panel kitchen-handoff-panel"><header><div><p class="eyebrow">DELIVERY</p><h2>Em entrega</h2></div><span class="column-count">${deliveryOrders.length}</span></header>${deliveryOrders.length ? `<div class="delivery-cards">${deliveryOrders.map((order) => renderKitchenOrderCard(order, { deliveryDetails: true })).join("")}</div>` : `<p class="kitchen-up-next-empty">Nenhum pedido em entrega.</p>`}</article></section>`
     : "";
   const stationHeader = activeKitchenScreen !== null
-    ? `<div class="kitchen-station-header"><div><p class="eyebrow">TELA ${activeKitchenScreen} DE ${screenCount}</p><h1>${escapeHtml(stationTitle)}</h1><p>${escapeHtml(stationDescription)}</p></div><div class="kitchen-station-controls"><a class="button button-quiet" href="${escapeHtml(kitchenOverviewHref())}">Voltar ao quadro</a><button class="button button-primary" type="button" data-action="fullscreen-kitchen">Tela cheia <span aria-hidden="true">⛶</span></button></div></div>`
+    ? `<div class="kitchen-station-header"><div><p class="eyebrow">TELA ${activeKitchenScreen} DE ${screenCount}</p><h1>${escapeHtml(stationTitle)}</h1><p>${escapeHtml(stationDescription)}</p></div><div class="kitchen-station-controls"><a class="button button-quiet" href="${escapeHtml(kitchenOverviewHref())}" aria-label="Voltar ao quadro"><span class="kitchen-overview-label-full">Voltar ao quadro</span><span class="kitchen-overview-label-compact" aria-hidden="true">Quadro</span></a><button class="button button-primary" type="button" data-action="fullscreen-kitchen">Tela cheia <span aria-hidden="true">⛶</span></button></div></div>`
     : `<div class="page-heading kitchen-page-heading"><div><p class="eyebrow">OPERAÇÃO · COZINHA</p><h1>Produção</h1><p>${workflow.steps.map(({ label }) => escapeHtml(label)).join(" → ")}</p></div><span class="kitchen-active-count">${countLabel}</span></div>`;
 
   return `<section class="page-section kitchen-page ${activeKitchenScreen !== null ? "kitchen-station-screen" : ""}" ${activeKitchenScreen !== null ? `data-kitchen-station-screen="${activeKitchenScreen}"` : ""}>

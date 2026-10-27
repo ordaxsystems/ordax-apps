@@ -3,6 +3,7 @@
 const parameters = new URL(location.href).searchParams;
 const embedded = parameters.get("presentation") === "embedded-preview";
 const view = parameters.get("view") ?? "orders";
+const configureWorkflow = parameters.get("__configure_workflow");
 const browserErrors = [];
 window.addEventListener("error", (event) => {
   const source = event.target?.src || event.target?.href || "";
@@ -82,6 +83,27 @@ try {
       "A tela dedicada não ativou o layout compacto do preview.");
     ensure(root.querySelector('[data-action="fullscreen-kitchen"]'),
       "A tela dedicada não oferece o controle de tela cheia.");
+    const expectedStationTitle = parameters.get("__expected_station_title");
+    if (expectedStationTitle) {
+      ensure(stationContent?.querySelector(".kitchen-station-header h1")?.textContent.trim() === expectedStationTitle,
+        `A tela ${station} não mostra a função configurada: ${expectedStationTitle}.`);
+    }
+    const viewport = parameters.get("__viewport");
+    if (viewport) {
+      const current = stationContent?.querySelector(".kitchen-current-order");
+      const scrolling = [...stationContent.querySelectorAll("*")].filter((element) => {
+        const style = getComputedStyle(element);
+        return ["auto", "scroll"].includes(style.overflowY) && element.scrollHeight > element.clientHeight + 1;
+      });
+      ensure(document.documentElement.scrollHeight <= innerHeight + 1 && document.body.scrollHeight <= innerHeight + 1,
+        `O layout ${viewport} excede o viewport do aparelho (${document.documentElement.scrollHeight}x${innerHeight}).`);
+      ensure(stationContent.scrollHeight <= stationContent.clientHeight + 1,
+        `A tela ${station} está maior que o viewport (${stationContent.scrollHeight}x${stationContent.clientHeight}).`);
+      ensure(current?.scrollHeight <= current?.clientHeight + 1,
+        `O pedido em foco está cortado e precisaria rolar (${current?.scrollHeight}x${current?.clientHeight}).`);
+      ensure(scrolling.every((element) => element.matches(".kitchen-up-next-list")) && scrolling.length <= 1,
+        `Há rolagem fora da lista de pedidos seguintes: ${scrolling.map((element) => element.className).join(", ")}.`);
+    }
     ensure(!root.querySelector(".kitchen-summary, .kitchen-toolbar, .kitchen-display-setup"),
       "A tela dedicada mantém controles do quadro geral.");
     const display = root.querySelector(`[data-kitchen-station-screen="${station}"]`);
@@ -96,6 +118,42 @@ try {
     fullscreenButton.click();
     ensure(!mount.classList.contains("kitchen-display-fullscreen-fallback"),
       "O modo alternativo de tela cheia não pode ser encerrado pelo mesmo controle.");
+    if (parameters.has("__exercise_solo")) {
+      const start = stationContent.querySelector('button[data-task-action="start"]');
+      ensure(start?.textContent.trim() === "Iniciar", "O fluxo solo deve usar a ação curta Iniciar.");
+      start.click();
+      const sendToOven = await eventually(() => root.querySelector(
+        `[data-kitchen-station-screen="${station}"] button[data-task-action="complete"]`),
+      "Iniciar não ativou a preparação do pedido.");
+      ensure(sendToOven.textContent.includes("Enviar para o forno"),
+        "Ao terminar o preparo, a ação deve enviar o pedido ao forno.");
+      sendToOven.click();
+      await eventually(() => root.querySelector(
+        `[data-kitchen-station-screen="${station}"] .kitchen-task-progress > div > strong`)?.textContent.trim() === "Forno",
+      "Concluir o preparo não encaminhou o pedido à etapa Forno.");
+    }
+  }
+
+  if (configureWorkflow) {
+    const setup = root.querySelector(".kitchen-display-setup");
+    if (setup && !setup.open) setup.querySelector("summary")?.click();
+    const preset = root.querySelector(`[data-action="apply-kitchen-preset"][data-preset="${configureWorkflow}"]`);
+    ensure(preset, `O modelo de produção ${configureWorkflow} não está disponível.`);
+    const expectedPresetTitle = parameters.get("__expected_preset_title");
+    if (expectedPresetTitle) ensure(preset.querySelector("strong")?.textContent.trim() === expectedPresetTitle,
+      `O botão de preset não identifica o fluxo ${expectedPresetTitle}.`);
+    preset.click();
+    const form = root.querySelector("#kitchen-layout-form");
+    const expected = configureWorkflow === "single-pizzaiolo"
+      ? { steps: "2", screens: "1", labels: ["Preparar pedido", "Forno"] }
+      : { steps: "4", screens: "4", labels: ["Abrir massa", "Montagem", "Forno", "Finalização e embalagem"] };
+    ensure(form?.elements.stepCount.value === expected.steps && form?.elements.screenCount.value === expected.screens,
+      `O modelo ${configureWorkflow} configurou quantidade de etapas ou telas incorreta.`);
+    expected.labels.forEach((label, index) => ensure(form.elements[`step-label-${index + 1}`].value === label,
+      `O modelo ${configureWorkflow} não aplicou a etapa ${label}.`));
+    form.requestSubmit();
+    await eventually(() => root.textContent.includes("Fluxo e telas da cozinha salvos."),
+      `O modelo ${configureWorkflow} não foi salvo.`);
   }
 
   if (embedded) {

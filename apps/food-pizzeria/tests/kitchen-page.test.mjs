@@ -5,7 +5,9 @@ import { renderKitchenItemLine } from "../src/ui/views/kitchen-item.mjs";
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
+  KITCHEN_WORKFLOW_PRESETS,
   applyKitchenTaskAction,
+  createKitchenWorkflowPreset,
   distributeKitchenSteps,
   reconcileKitchenTasks,
   validateKitchenWorkflow,
@@ -166,8 +168,70 @@ test("single-screen flow keeps every step in sequence on one focused ticket", ()
   assert.match(page, /Concluir Abrir massa/);
   assert.match(page, /Próximo/);
   assert.equal((page.match(/#1002/g) ?? []).length, 1);
-  assert.match(page, /<h1>Produção completa<\/h1>/);
+  assert.match(page, /<h1>Abrir massa<\/h1>/);
   assert.doesNotMatch(page, /<h1>Abrir massa · Montagem · Forno/);
+});
+
+test("solo pizzaiolo preset names the preparation-and-oven flow as one station", () => {
+  const soloWorkflow = createKitchenWorkflowPreset(DEFAULT_KITCHEN_WORKFLOW, KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO);
+  const page = render({
+    kitchenWorkflow: soloWorkflow,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, soloWorkflow),
+    activeKitchenScreen: 1,
+    kitchenScreenCount: 1,
+  });
+  assert.match(page, /<h1>Preparar pedido<\/h1>/);
+  assert.match(page, /Uma pessoa · um pedido por vez · enviar ao forno ao concluir o preparo/);
+  assert.match(page, /data-kitchen-stage="1"/);
+  assert.match(page, /<h2>Pedido atual<\/h2>/);
+  assert.match(page, /<h1>Preparar pedido<\/h1>/);
+  const setupPage = render({ kitchenWorkflow: soloWorkflow });
+  assert.match(setupPage, /data-action="apply-kitchen-preset" data-preset="single-pizzaiolo"/);
+  assert.match(setupPage, /data-action="apply-kitchen-preset" data-preset="pizzeria-line"/);
+});
+
+test("each of the four production screens renders only its own assigned stage", () => {
+  const stationOrders = Array.from({ length: 4 }, (_, index) => order({
+    id: `station-order-${index + 1}`,
+    status: "received",
+    channel: "counter",
+    startedAt: new Date(Date.parse("2026-10-26T12:00:00.000Z") + index * 60_000).toISOString(),
+  }));
+  let tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, stationOrders, workflow);
+  const stageOrder = workflow.steps.map(({ id }) => id);
+  for (let targetScreen = 2; targetScreen <= 4; targetScreen += 1) {
+    const orderId = `station-order-${targetScreen}`;
+    for (let stageIndex = 0; stageIndex < targetScreen - 1; stageIndex += 1) {
+      const stepId = stageOrder[stageIndex];
+      const actionMinute = String(6 + stageIndex * 2).padStart(2, "0");
+      const completeMinute = String(Number(actionMinute) + 1).padStart(2, "0");
+      tasks = applyKitchenTaskAction(tasks, {
+        action: "start", orderId, stepId, screenNumber: stageIndex + 1,
+        at: `2026-10-26T12:${actionMinute}:00Z`, commandId: `screen-${targetScreen}-start-${stageIndex}`, digest,
+      });
+      tasks = applyKitchenTaskAction(tasks, {
+        action: "complete", orderId, stepId, screenNumber: stageIndex + 1,
+        at: `2026-10-26T12:${completeMinute}:00Z`, commandId: `screen-${targetScreen}-complete-${stageIndex}`, digest,
+      });
+    }
+  }
+
+  const labels = ["Abrir massa", "Montagem", "Forno", "Finalização e embalagem"];
+  for (let screenNumber = 1; screenNumber <= 4; screenNumber += 1) {
+    const page = render({
+      snapshot: { tableCommands: [], orders: stationOrders },
+      kitchenWorkflow: workflow,
+      kitchenTasks: tasks,
+      activeKitchenScreen: screenNumber,
+      kitchenScreenCount: 4,
+    });
+    assert.match(page, new RegExp(`TELA ${screenNumber} DE 4`));
+    assert.match(page, new RegExp(`<h1>${labels[screenNumber - 1]}<\\/h1>`));
+    assert.match(page, new RegExp(`data-kitchen-stage="${screenNumber}"`));
+    assert.equal((page.match(/data-kitchen-stage=/g) ?? []).length, 1);
+    assert.match(page, /data-kitchen-current-order=/);
+    assert.doesNotMatch(page, /data-action="cancel-order"|Cancelar pedido/);
+  }
 });
 
 test("station heading names only the functions assigned to a shared two-function screen", () => {
@@ -182,7 +246,8 @@ test("station heading names only the functions assigned to a shared two-function
     activeKitchenScreen: 1,
     kitchenScreenCount: 2,
   });
-  assert.match(page, /<h1>Abrir massa \+ Montagem<\/h1>/);
+  assert.match(page, /<h1>Abrir massa<\/h1>/);
+  assert.match(page, /2 etapas nesta tela/);
   assert.doesNotMatch(page, /<h1>[^<]*(?:Forno|Finalização e embalagem)/);
 });
 
@@ -198,7 +263,8 @@ test("shared stations name all three functions assigned to them", () => {
     activeKitchenScreen: 1,
     kitchenScreenCount: 2,
   });
-  assert.match(page, /<h1>Abrir massa · Montagem · Forno<\/h1>/);
+  assert.match(page, /<h1>Abrir massa<\/h1>/);
+  assert.match(page, /3 etapas nesta tela/);
   assert.doesNotMatch(page, /<h1>[^<]*Finalização e embalagem/);
 });
 

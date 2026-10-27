@@ -8,6 +8,7 @@ import { createFoodCommand } from "../application/commands.mjs";
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
+  createKitchenWorkflowPreset,
   KITCHEN_WORKFLOW_SCHEMA,
   currentKitchenStep,
   distributeKitchenSteps,
@@ -508,8 +509,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       : "";
     const taskActions = task && currentTask && Number.isSafeInteger(screenNumber)
       ? `<footer class="kitchen-ticket-actions kitchen-task-actions">${currentTask.status === "queued"
-        ? button(`Iniciar ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="start" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })
-        : button(`Concluir ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="complete" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}${button("Próximo", "kitchen-task-action", { kind: "quiet", disabled: typeof store.recordKitchenTaskAction !== "function" || !canPassNext, extra: `title="${canPassNext ? `O pedido atual volta na ${passBehindCount === 2 ? "terceira posição" : "segunda posição"}.` : "Não há outro pedido nesta etapa."}" aria-label="${canPassNext ? `Passar para o próximo; o atual volta na ${passBehindCount === 2 ? "terceira" : "segunda"} posição` : "Não há outro pedido nesta etapa"}" data-task-action="pass-next" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}" data-pass-behind="${passBehindCount}"` })}</footer>`
+        ? button("Iniciar", "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `aria-label="Iniciar ${escapeHtml(currentTask.label)}" data-task-action="start" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })
+        : button(currentTask.id === "prepare-order" ? "Enviar para o forno" : `Concluir ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `aria-label="${currentTask.id === "prepare-order" ? "Concluir preparo e enviar para o forno" : `Concluir ${escapeHtml(currentTask.label)}`}" data-task-action="complete" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}${button("Próximo", "kitchen-task-action", { kind: "quiet", disabled: typeof store.recordKitchenTaskAction !== "function" || !canPassNext, extra: `title="${canPassNext ? `O pedido atual volta na ${passBehindCount === 2 ? "terceira posição" : "segunda posição"}.` : "Não há outro pedido nesta etapa."}" aria-label="${canPassNext ? `Passar para o próximo; o atual volta na ${passBehindCount === 2 ? "terceira" : "segunda"} posição` : "Não há outro pedido nesta etapa"}" data-task-action="pass-next" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}" data-pass-behind="${passBehindCount}"` })}</footer>`
       : "";
     return `<article class="order-card order-card-kitchen" data-status="${order.status}">
       <header class="kitchen-ticket-head"><div class="kitchen-ticket-identity"><strong>${orderNumber(order)}</strong><span class="kitchen-channel-chip">${escapeHtml(orderChannelLabel(order))}</span></div><span class="status-badge status-${order.status}"><span></span>${escapeHtml(STATUS_LABELS[order.status])}</span></header>
@@ -1015,6 +1016,17 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     const target = event.target.closest("button, a");
     if (!target) return;
+    if (target.dataset.action === "apply-kitchen-preset") {
+      try {
+        kitchenWorkflowDraft = createKitchenWorkflowPreset(kitchenWorkflowConfiguration(), target.dataset.preset);
+        kitchenSetupExpanded = true;
+        render();
+        root.querySelector(`[data-action="apply-kitchen-preset"][data-preset="${CSS.escape(target.dataset.preset)}"]`)?.focus({ preventScroll: true });
+      } catch (error) {
+        report(error);
+      }
+      return;
+    }
     if (target.dataset.action === "move-kitchen-step") {
       const form = target.closest("#kitchen-layout-form");
       if (!form) return;

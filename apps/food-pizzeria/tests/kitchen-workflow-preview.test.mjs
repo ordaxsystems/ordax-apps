@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
+  KITCHEN_WORKFLOW_PRESETS,
   applyKitchenTaskAction,
   currentKitchenStep,
+  createKitchenWorkflowPreset,
   distributeKitchenSteps,
   reconcileKitchenTasks,
   saveKitchenWorkflow,
@@ -35,6 +37,22 @@ function action(tasks, actionName, orderId, stepId, screenNumber, commandId, at)
     at,
   });
 }
+
+test("production presets cover a solo pizzaiolo and a four-station pizza line", () => {
+  const solo = createKitchenWorkflowPreset(DEFAULT_KITCHEN_WORKFLOW, KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO);
+  assert.equal(solo.screenCount, 1);
+  assert.deepEqual(solo.steps.map(({ id, label, screen }) => [id, label, screen]), [
+    ["prepare-order", "Preparar pedido", 1], ["oven", "Forno", 1],
+  ]);
+
+  const line = createKitchenWorkflowPreset(solo, KITCHEN_WORKFLOW_PRESETS.PIZZERIA_LINE);
+  assert.equal(line.revision, solo.revision);
+  assert.equal(line.screenCount, 4);
+  assert.deepEqual(line.steps.map(({ label, screen }) => [label, screen]), [
+    ["Abrir massa", 1], ["Montagem", 2], ["Forno", 3], ["Finalização e embalagem", 4],
+  ]);
+  assert.throws(() => createKitchenWorkflowPreset(line, "toString"), /Modelo de produção desconhecido/);
+});
 
 test("pizza workflow distributes four sequential stations across four screens", () => {
   const distributed = distributeKitchenSteps(DEFAULT_KITCHEN_WORKFLOW, 4);
@@ -170,8 +188,11 @@ test("cancelling in the Food owner removes a ticket from production without addi
   assert.equal(sortKitchenTickets(cancelled.tickets, workflow, 1).length, 0);
 });
 
-test("workflow revisions change future tickets while existing tickets retain their original steps", () => {
-  const oldTasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [order("order-1", "2026-10-27T10:00:00.000Z")], DEFAULT_KITCHEN_WORKFLOW);
+test("workflow revisions preserve a ticket after work has started and use the new flow for new tickets", () => {
+  const oldTasks = action(
+    reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [order("order-1", "2026-10-27T10:00:00.000Z")], DEFAULT_KITCHEN_WORKFLOW),
+    "start", "order-1", "open-dough", 1, "revision-start-order-1", "2026-10-27T10:00:30.000Z",
+  );
   const saved = saveKitchenWorkflow(DEFAULT_KITCHEN_WORKFLOW, {
     ...DEFAULT_KITCHEN_WORKFLOW,
     steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({
@@ -186,6 +207,29 @@ test("workflow revisions change future tickets while existing tickets retain the
   assert.equal(saved.revision, 2);
   assert.equal(nextTasks.tickets.find(({ orderId }) => orderId === "order-1").workflowRevision, 1);
   assert.equal(nextTasks.tickets.find(({ orderId }) => orderId === "order-1").steps[1].label, "Montagem");
+  assert.equal(currentKitchenStep(nextTasks.tickets.find(({ orderId }) => orderId === "order-1")).status, "active");
   assert.equal(nextTasks.tickets.find(({ orderId }) => orderId === "order-2").workflowRevision, 2);
   assert.equal(nextTasks.tickets.find(({ orderId }) => orderId === "order-2").steps[1].label, "Cobertura");
+});
+
+test("changing configuration moves untouched queued tickets onto the selected screens", () => {
+  const orderSet = [
+    order("order-1", "2026-10-27T10:00:00.000Z"),
+    order("order-2", "2026-10-27T10:01:00.000Z"),
+    order("order-3", "2026-10-27T10:02:00.000Z"),
+  ];
+  const queued = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orderSet, DEFAULT_KITCHEN_WORKFLOW);
+  const soloDraft = createKitchenWorkflowPreset(DEFAULT_KITCHEN_WORKFLOW, KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO);
+  const soloWorkflow = saveKitchenWorkflow(DEFAULT_KITCHEN_WORKFLOW, soloDraft);
+  const reassigned = reconcileKitchenTasks(queued, orderSet, soloWorkflow);
+  assert.deepEqual(reassigned.tickets.map(({ orderId, workflowRevision, steps }) => ({
+    orderId,
+    workflowRevision,
+    stages: steps.map(({ id, screen, status }) => [id, screen, status]),
+  })), [
+    { orderId: "order-1", workflowRevision: 2, stages: [["prepare-order", 1, "queued"], ["oven", 1, "pending"]] },
+    { orderId: "order-2", workflowRevision: 2, stages: [["prepare-order", 1, "queued"], ["oven", 1, "pending"]] },
+    { orderId: "order-3", workflowRevision: 2, stages: [["prepare-order", 1, "queued"], ["oven", 1, "pending"]] },
+  ]);
+  assert.deepEqual(sortKitchenTickets(reassigned.tickets, soloWorkflow, 1).map(({ orderId }) => orderId), ["order-1", "order-2", "order-3"]);
 });
