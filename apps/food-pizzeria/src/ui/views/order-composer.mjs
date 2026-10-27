@@ -53,4 +53,3 @@ export function renderOrderComposer(viewModel) {
     </div>
   </section>`;
 }
-

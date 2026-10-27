@@ -63,4 +63,3 @@ test("CSS do PDV muda para uma coluna no telefone e mantém a área de fechament
   assert.match(css, /\.pos-checkout-column\s*\{[^}]*position:\s*sticky/);
   assert.match(css, /\.pos-checkout-column\s*\{\s*position:\s*static/);
 });
-

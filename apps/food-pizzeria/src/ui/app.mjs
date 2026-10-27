@@ -1644,4 +1644,3 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
 
   return Object.freeze({ mount, navigate, destroy });
 }
-
