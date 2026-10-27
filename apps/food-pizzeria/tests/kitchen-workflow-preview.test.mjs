@@ -68,6 +68,38 @@ test("every configured screen has a stage and each stage has a unique readable n
   assert.throws(() => validateKitchenWorkflow({ ...workflow, steps: workflow.steps.map((step) => ({ ...step, label: "Montagem" })) }), /nome diferente/);
 });
 
+test("a screen can run two consecutive stages before routing the same order to the next screen", () => {
+  const sharedScreenWorkflow = validateKitchenWorkflow({
+    ...DEFAULT_KITCHEN_WORKFLOW,
+    screenCount: 2,
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({
+      ...step,
+      screen: index < 2 ? 1 : 2,
+    })),
+  });
+  let tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [
+    order("shared-screen-order", "2026-10-27T10:00:00.000Z"),
+  ], sharedScreenWorkflow);
+
+  tasks = action(tasks, "start", "shared-screen-order", "open-dough", 1,
+    "shared-screen-start-dough", "2026-10-27T10:01:00.000Z");
+  tasks = action(tasks, "complete", "shared-screen-order", "open-dough", 1,
+    "shared-screen-complete-dough", "2026-10-27T10:02:00.000Z");
+  assert.deepEqual(
+    [currentKitchenStep(tasks.tickets[0]).id, currentKitchenStep(tasks.tickets[0]).screen],
+    ["assembly", 1],
+  );
+
+  tasks = action(tasks, "start", "shared-screen-order", "assembly", 1,
+    "shared-screen-start-assembly", "2026-10-27T10:03:00.000Z");
+  tasks = action(tasks, "complete", "shared-screen-order", "assembly", 1,
+    "shared-screen-complete-assembly", "2026-10-27T10:04:00.000Z");
+  assert.deepEqual(
+    [currentKitchenStep(tasks.tickets[0]).id, currentKitchenStep(tasks.tickets[0]).screen],
+    ["oven", 2],
+  );
+});
+
 test("starting a stage claims one ticket and blocks a second ticket on that station", () => {
   const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [
     order("order-1", "2026-10-27T10:00:00.000Z"),

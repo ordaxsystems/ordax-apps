@@ -4,6 +4,7 @@ const parameters = new URL(location.href).searchParams;
 const embedded = parameters.get("presentation") === "embedded-preview";
 const view = parameters.get("view") ?? "orders";
 const configureWorkflow = parameters.get("__configure_workflow");
+const configureScreenCount = parameters.get("__configure_screen_count");
 const browserErrors = [];
 window.addEventListener("error", (event) => {
   const source = event.target?.src || event.target?.href || "";
@@ -88,6 +89,12 @@ try {
       ensure(stationContent?.querySelector(".kitchen-station-header h1")?.textContent.trim() === expectedStationTitle,
         `A tela ${station} não mostra a função configurada: ${expectedStationTitle}.`);
     }
+    const expectedAssignedStepCount = Number(parameters.get("__expected_assigned_step_count") ?? 0);
+    if (expectedAssignedStepCount > 1) {
+      ensure(stationContent?.querySelector(".kitchen-station-header")?.textContent.includes(
+        expectedAssignedStepCount + " etapas nesta tela"),
+      "A tela não informa quantas etapas foram agrupadas neste posto.");
+    }
     const viewport = parameters.get("__viewport");
     if (viewport) {
       const current = stationContent?.querySelector(".kitchen-current-order");
@@ -154,6 +161,30 @@ try {
     form.requestSubmit();
     await eventually(() => root.textContent.includes("Fluxo e telas da cozinha salvos."),
       `O modelo ${configureWorkflow} não foi salvo.`);
+  }
+
+  if (configureScreenCount) {
+    const setup = root.querySelector(".kitchen-display-setup");
+    if (setup && !setup.open) setup.querySelector("summary")?.click();
+    const form = root.querySelector("#kitchen-layout-form");
+    ensure(form, "O formulário para configurar as telas não está disponível.");
+    form.elements.screenCount.value = configureScreenCount;
+    form.elements.screenCount.dispatchEvent(new Event("change", { bubbles: true }));
+    const updatedForm = await eventually(() => root.querySelector("#kitchen-layout-form"),
+      "A configuração não redesenhou as etapas para a quantidade de telas selecionada.");
+    const assignments = Array.from({ length: Number(updatedForm.elements.stepCount.value) }, (_, index) =>
+      Number(updatedForm.elements["step-screen-" + (index + 1)].value));
+    ensure(updatedForm.elements.screenCount.value === configureScreenCount
+      && assignments.join(",") === "1,1,2,2",
+    "Quatro etapas em duas telas devem agrupar as etapas em sequência: " + assignments.join(",") + ".");
+    const screenLabels = [...root.querySelectorAll(".kitchen-screen-assignment span")]
+      .map((element) => element.textContent.trim());
+    ensure(screenLabels[0] === "Abrir massa · Montagem"
+      && screenLabels[1] === "Forno · Finalização e embalagem",
+    "Os links não refletem as funções agrupadas por tela: " + screenLabels.join(" / ") + ".");
+    updatedForm.requestSubmit();
+    await eventually(() => root.textContent.includes("Fluxo e telas da cozinha salvos."),
+      "O fluxo de duas telas não foi salvo.");
   }
 
   if (embedded) {

@@ -28,6 +28,15 @@ const scenarios = Object.freeze([
     presentation: "embedded-preview", view: "kitchen",
     extra: { station, stationStage, screenCount: "4", __expected_station_title: expectedTitle },
   })),
+  { presentation: "embedded-preview", view: "kitchen", extra: { __configure_screen_count: "2" } },
+  { presentation: "embedded-preview", view: "kitchen", extra: {
+    station: "1", stationStage: "open-dough", screenCount: "2",
+    __expected_station_title: "Abrir massa", __expected_assigned_step_count: "2",
+  } },
+  { presentation: "embedded-preview", view: "kitchen", extra: {
+    station: "2", stationStage: "oven", screenCount: "2",
+    __expected_station_title: "Forno + Finalização e embalagem", __expected_assigned_step_count: "2",
+  } },
   { presentation: "embedded-preview", view: "kitchen", extra: {
     station: "1", stationStage: "open-dough", screenCount: "4", __viewport: "notebook",
   }, viewport: { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false } },
