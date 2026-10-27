@@ -32,7 +32,7 @@ import {
 } from "./presentation.mjs";
 import { renderOrdersPage } from "./views/orders.mjs";
 import { renderPosPage } from "./views/pos.mjs";
-import { renderKitchenPage } from "./views/kitchen.mjs";
+import { kitchenStepClock, renderKitchenPage } from "./views/kitchen.mjs";
 import { renderKitchenItemLine } from "./views/kitchen-item.mjs";
 import { formatFoodOrderNumber } from "./order-number.mjs";
 import {
@@ -509,15 +509,23 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function renderKitchenOrderCard(order, { deliveryDetails = false, task = null, screenNumber = null, canPassNext = false, passBehindCount = 1 } = {}) {
     const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
     const items = order.items.map((item) => renderKitchenItemLine(item, kitchenItemPresentation(item), escapeHtml)).join("");
-    const startedAt = stageStartedAt(order);
+    const currentTask = task ? currentKitchenStep(task) : null;
+    const taskClock = task ? kitchenStepClock(task) : null;
+    const startedAt = taskClock?.startedAt ?? stageStartedAt(order);
     const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];
-    const age = alertAfter
-      ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}" data-target-minutes="${alertAfter}"><span>Na etapa há</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong><span class="kitchen-sla-target">Meta ${alertAfter} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></div>`
+    const orderSlaStartedAt = stageStartedAt(order);
+    const slaLabel = order.status === "preparing" ? "Preparo total" : "Tempo do pedido";
+    const orderSla = taskClock && Number.isFinite(alertAfter)
+      ? `<span class="kitchen-sla-target" data-order-sla data-started-at="${escapeHtml(orderSlaStartedAt)}" data-target-minutes="${alertAfter}" data-sla-label="${slaLabel}"><span data-sla-value>${slaLabel} ${formatElapsed(elapsedMinutes(orderSlaStartedAt))} / meta ${alertAfter} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></span>`
       : "";
+    const age = taskClock
+      ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}"><span>${taskClock.label}</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong>${orderSla}</div>`
+      : alertAfter
+        ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}" data-target-minutes="${alertAfter}"><span>Pedido nesta etapa há</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong><span class="kitchen-sla-target">Meta ${alertAfter} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></div>`
+        : "";
     const dispatchDetails = deliveryDetails && order.channel === "delivery"
       ? `<div class="kitchen-delivery-details"><span>DESTINO</span><strong>${escapeHtml(order.customerName)}</strong><p>${escapeHtml(order.address)}</p>${order.phone ? `<small>${escapeHtml(order.phone)}</small>` : ""}</div>`
       : "";
-    const currentTask = task ? currentKitchenStep(task) : null;
     const taskProgress = task && currentTask
       ? `<section class="kitchen-task-progress" aria-label="Etapa ${task.steps.filter(({ status }) => status === "completed").length + 1} de ${task.steps.length}"><div><span>ETAPA ${task.steps.filter(({ status }) => status === "completed").length + 1} DE ${task.steps.length}</span><strong>${escapeHtml(currentTask.label)}</strong></div><ol aria-label="Progresso do pedido">${task.steps.map((step) => `<li class="is-${step.status}" aria-label="${escapeHtml(step.label)}: ${({ completed: "concluída", active: "em andamento", queued: "aguardando", pending: "próxima" })[step.status]}"></li>`).join("")}</ol></section>`
       : "";
@@ -792,6 +800,17 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       if (value) value.textContent = formatElapsed(minutes);
       if (alert) alert.hidden = !overdue;
       indicator.classList.toggle("is-overdue", overdue);
+    }
+    for (const indicator of root.querySelectorAll("[data-order-sla]")) {
+      const minutes = elapsedMinutes(indicator.dataset.startedAt, now);
+      const target = Number(indicator.dataset.targetMinutes);
+      const overdue = Number.isFinite(target) && minutes >= target;
+      const label = indicator.dataset.slaLabel ?? "Tempo do pedido";
+      const value = indicator.querySelector("[data-sla-value]");
+      const alert = indicator.querySelector("[data-age-alert]");
+      if (value) value.textContent = `${label} ${formatElapsed(minutes)} / meta ${target} min`;
+      if (alert) alert.hidden = !overdue;
+      indicator.closest(".kitchen-ticket-age")?.classList.toggle("is-overdue", overdue);
     }
     const visibleOverdueCount = indicators.filter((indicator) => indicator.classList.contains("is-overdue")).length;
     const visibleOverdueValue = root.querySelector("[data-kitchen-overdue-count]");

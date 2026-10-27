@@ -251,7 +251,9 @@ test("a single operator keeps the same ticket in focus while consecutive steps b
   tasks = action(tasks, "start", "order-1", "open-dough", 1, "single-start-1", "2026-10-27T10:02:00.000Z");
   tasks = action(tasks, "complete", "order-1", "open-dough", 1, "single-complete-1", "2026-10-27T10:03:00.000Z");
   assert.deepEqual(sortKitchenTickets(tasks.tickets, oneScreen, 1).map(({ orderId }) => orderId), ["order-1", "order-2"]);
-  assert.equal(currentKitchenStep(tasks.tickets.find(({ orderId }) => orderId === "order-1")).label, "Montagem");
+  const nextStep = currentKitchenStep(tasks.tickets.find(({ orderId }) => orderId === "order-1"));
+  assert.equal(nextStep.label, "Montagem");
+  assert.equal(nextStep.queuedAt, "2026-10-27T10:03:00.000Z");
 });
 
 test("task commands are idempotent and one action id cannot be reused with new content", () => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderKitchenPage } from "../src/ui/views/kitchen.mjs";
+import { kitchenStepClock, renderKitchenPage } from "../src/ui/views/kitchen.mjs";
 import { renderKitchenItemLine } from "../src/ui/views/kitchen-item.mjs";
 import {
   DEFAULT_KITCHEN_TASKS,
@@ -72,6 +72,24 @@ function makeTasks() {
     at: "2026-10-26T12:43:00.000Z", commandId: "open-complete-1001", digest: "d".repeat(64),
   });
 }
+
+test("ticket clock follows the active step or its latest queue entry", () => {
+  const queuedTasks = makeTasks();
+  const queuedTicket = queuedTasks.tickets.find(({ orderId }) => orderId === "order-1001");
+  assert.deepEqual(kitchenStepClock(queuedTicket), {
+    label: "Na fila da etapa há",
+    startedAt: "2026-10-26T12:43:00.000Z",
+  });
+
+  const activeTasks = applyKitchenTaskAction(queuedTasks, {
+    action: "start", orderId: "order-1001", stepId: "assembly", screenNumber: 2,
+    at: "2026-10-26T12:44:00.000Z", commandId: "start-assembly-1001", digest: "e".repeat(64),
+  });
+  assert.deepEqual(kitchenStepClock(activeTasks.tickets.find(({ orderId }) => orderId === "order-1001")), {
+    label: "Etapa em andamento há",
+    startedAt: "2026-10-26T12:44:00.000Z",
+  });
+});
 
 function render(overrides = {}) {
   const snapshot = {

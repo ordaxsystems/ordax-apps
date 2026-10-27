@@ -507,7 +507,7 @@ export function applyKitchenTaskAction(tasksValue, {
       steps[stepIndex + 1] = {
         ...nextStep,
         status: "queued",
-        queuedAt: nextStep.screen === currentStep.screen ? currentStep.queuedAt : changedAt,
+        queuedAt: changedAt,
         queuePosition: nextStep.screen === currentStep.screen && queueMode === KITCHEN_QUEUE_MODES.BY_ORDER
           ? currentStep.queuePosition
           : nextQueuePosition(tasks.tickets, nextStep.screen),

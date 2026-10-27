@@ -499,3 +499,11 @@ O smoke do navegador ganhou uma asserção para comprovar que, no cenário verti
 
 Validação: suíte Food completa 164/164; smoke Chrome 23/23 cenários, incluindo telefone vertical e horizontal e os fluxos solo e em quatro estações; `node --check` nos scripts modificados e `git diff --check` aprovados. Inspeção visual e de medidas no host confirmou 390 × 844 sem rolagem externa e lista de pedidos seguinte com 348 px de área interna, além de 844 × 390 com as duas colunas no viewport e a rolagem dentro da fila. Os dados continuam locais ao navegador; não há sincronização entre aparelhos.
 
+## Iteração — relógio operacional por etapa no KDS (2026-10-27)
+
+O ticket agora separa o tempo na etapa atual do SLA total do pedido. Uma etapa em andamento conta desde `startedAt`; uma etapa aguardando conta desde seu `queuedAt`. A meta do pedido continua baseada no histórico canônico Food e aparece separadamente como tempo total do pedido/preparo. A lista dos próximos pedidos usa o relógio de sua etapa e é atualizada pelo mesmo ticker da interface. Ao concluir uma etapa, a seguinte entra na fila no horário da conclusão mesmo quando o operador continua na mesma tela; sua posição de fila continua independente desse horário.
+
+Ownership e integrações não mudaram: as etapas e seus horários continuam na preferência local de produção; o status e seu SLA continuam no pedido Food local. Nenhum contrato de produção ou sincronização entre aparelhos é alegado.
+
+Validação: suíte Food completa 165/165; smoke Chrome 23/23 cenários, incluindo fila, telas individuais, configuração de pizzaiolo solo e layouts de telefone/notebook. Testes cobrem relógio em espera/execução e a nova entrada na etapa seguinte. `node --check` e `git diff --check` aprovados.
+

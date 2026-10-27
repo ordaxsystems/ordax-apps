@@ -959,7 +959,7 @@ dialog p { color: #a2a8af; }
 .kitchen-ticket-age { min-height: 30px; margin: 8px 0 3px; padding: 6px 8px; border-radius: 7px; background: #191c20; font-size: 9px; }
 .kitchen-ticket-age > strong { font-size: 11px; }
 .kitchen-ticket-age.is-overdue { background: #2b201f; }
-.kitchen-sla-target { margin-left: auto; color: #8a929a; font-size: 8px; }
+.kitchen-sla-target { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; margin-left: auto; color: #8a929a; font-size: 8px; }
 .kitchen-item-lines { display: grid; gap: 8px; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid #32373e; list-style: none; }
 .kitchen-item-line { display: grid; min-width: 0; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; }
 .kitchen-item-quantity { display: grid; min-height: 24px; place-items: center; border: 1px solid #514032; border-radius: 7px; background: #30261f; color: #ffb078; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }

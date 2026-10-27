@@ -10,6 +10,15 @@ import {
 } from "../../application/kitchen-workflow-preview.mjs";
 import { defaultKitchenItemPresentation, renderKitchenItemLine } from "./kitchen-item.mjs";
 
+export function kitchenStepClock(taskValue) {
+  const step = currentKitchenStep(taskValue);
+  if (!step) return null;
+  return Object.freeze({
+    label: step.status === "active" ? "Etapa em andamento há" : "Na fila da etapa há",
+    startedAt: step.status === "active" ? step.startedAt : step.queuedAt,
+  });
+}
+
 export function renderKitchenPage(viewModel) {
   const {
     KITCHEN_CHANNEL_FILTERS, kitchenChannelFilter, kitchenOrderQuery = "", kitchenLateOnly = false,
@@ -154,7 +163,8 @@ export function renderKitchenPage(viewModel) {
         const order = ordersById.get(ticket.orderId);
         const task = currentKitchenStep(ticket);
         if (!order || !task) return "";
-        return `<li class="kitchen-up-next-item" data-kitchen-upcoming-order="${escapeHtml(order.id)}"><div class="kitchen-up-next-head"><strong>${escapeHtml(orderNumber(order))}</strong><span>${escapeHtml(orderChannelLabel(order))} · ${escapeHtml(task.label)}</span><small>${elapsedMinutes(stageStartedAt(order))} min</small></div><ul class="kitchen-item-lines kitchen-up-next-items">${kitchenItemLines(order, true)}</ul><small class="kitchen-up-next-position">${index + 2}º da fila</small></li>`;
+        const clock = kitchenStepClock(ticket);
+        return `<li class="kitchen-up-next-item" data-kitchen-upcoming-order="${escapeHtml(order.id)}"><div class="kitchen-up-next-head"><strong>${escapeHtml(orderNumber(order))}</strong><span>${escapeHtml(orderChannelLabel(order))} · ${escapeHtml(task.label)}</span><small class="kitchen-up-next-age" data-order-age data-started-at="${escapeHtml(clock.startedAt)}"><span data-age-value>${elapsedMinutes(clock.startedAt)} min</span></small></div><ul class="kitchen-item-lines kitchen-up-next-items">${kitchenItemLines(order, true)}</ul><small class="kitchen-up-next-position">${index + 2}º da fila</small></li>`;
       }).join("");
       return `<div class="kitchen-station-workspace"><section class="kitchen-current-order" data-kitchen-stage="${activeKitchenScreen}" aria-label="Pedido atual na tela ${activeKitchenScreen}"><div class="kitchen-current-order-heading"><div><p class="eyebrow">PEDIDO EM FOCO</p><h2>${currentOrder ? "Pedido atual" : "Fila vazia"}</h2></div></div>${currentOrder ? `<div data-kitchen-current-order="${escapeHtml(currentOrder.id)}">${renderKitchenOrderCard(currentOrder, { task: currentTicket, screenNumber: activeKitchenScreen, canPassNext: passableStationQueue.length > 1, passBehindCount: passableStationQueue.length > 2 ? 2 : 1 })}</div>` : `<div class="kitchen-station-empty">Nenhum pedido aguardando nesta tela.</div>`}</section><aside class="kitchen-up-next" aria-labelledby="kitchen-up-next-title"><header><div><p class="eyebrow">${escapeHtml(screenLabel)}</p><h2 id="kitchen-up-next-title">Próximos pedidos</h2></div><span>${nextTickets.length} / 5</span></header>${nextTickets.length ? `<ol class="kitchen-up-next-list">${upcomingRows}</ol>` : `<p class="kitchen-up-next-empty">Sem outros pedidos aguardando.</p>`}${remaining ? `<p class="kitchen-up-next-more">+ ${remaining} ${remaining === 1 ? "pedido" : "pedidos"} depois dos próximos cinco.</p>` : ""}</aside></div>`;
     })()
