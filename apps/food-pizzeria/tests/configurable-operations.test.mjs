@@ -59,6 +59,20 @@ function completeFamilySize(source) {
   });
 }
 
+function withoutSliceCount(source) {
+  return {
+    ...source,
+    orders: source.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
+  };
+}
+
 test("configuração inicial preserva tamanhos, mesas e limite de sabores informados", () => {
   const configured = configureFoodPizzeria(createEmptyFoodPizzeriaState(), {
     storeName: "Pizzaria de teste",
@@ -119,6 +133,7 @@ test("pizzeria sizes and flavor count are configurable and saved with order pric
   assert.equal(order.items[0].flavors.length, 3);
   assert.equal(order.items[0].unitPriceCents, 10_500);
   assert.equal(order.items[0].sizeLabel, "Família");
+  assert.equal(order.items[0].sliceCount, 12);
   assert.equal(order.channel, "pickup");
 
   const relabelled = updateFoodPizzeriaSettings(state, {
@@ -126,6 +141,21 @@ test("pizzeria sizes and flavor count are configurable and saved with order pric
   });
   assert.equal(relabelled.settings.pizzaSizes.find(({ id }) => id === "family").label, "Família Grande");
   assert.equal(relabelled.orders.find(({ id }) => id === "family-order-1").items[0].sizeLabel, "Família");
+
+  const resized = updateFoodPizzeriaSettings(relabelled, {
+    pizzaSizes: relabelled.settings.pizzaSizes.map((size) => size.id === "family" ? { ...size, slices: 10 } : size),
+  });
+  assert.equal(resized.orders.find(({ id }) => id === "family-order-1").items[0].sliceCount, 12);
+  const nextOrderAt = new Date(Math.max(Date.now(), Date.parse(createdAt)) + 1000).toISOString();
+  const withNextOrder = createPizzeriaOrder(resized, {
+    id: "family-order-2",
+    historyId: "family-order-history-2",
+    createdAt: nextOrderAt,
+    customerName: "Cliente seguinte",
+    channel: "pickup",
+    items: [{ id: "family-item-2", size: "family", flavorIds: ["ng-calabresa"], quantity: 1 }],
+  });
+  assert.equal(withNextOrder.orders.find(({ id }) => id === "family-order-2").items[0].sliceCount, 10);
 });
 
 test("salon orders require an active table command and stay distinct from counter orders", () => {
@@ -189,17 +219,19 @@ test("changing a recipe cannot retroactively change the consumption of an existi
 
 test("v5 migration does not invent historical ingredient consumption", () => {
   const state = createSeedFoodState();
+  const legacySource = withoutSliceCount(state);
   const v5 = {
-    ...state,
+    ...legacySource,
     schema: "ordax.food-pizzeria-state/5",
     settings: Object.fromEntries(Object.entries(state.settings).filter(([key]) => key !== "deliveryFeeCents")),
-    orders: state.orders.map(({ consumptionSnapshot, ...order }) => order),
+    orders: legacySource.orders.map(({ consumptionSnapshot, ...order }) => order),
   };
   const migrated = migrateFoodPizzeriaState(v5);
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/8");
   assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
   assert.equal(migrated.orders.length, state.orders.length);
   assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
+  assert.ok(migrated.orders.every(({ items }) => items.filter(({ type }) => type !== "catalog-product").every(({ sliceCount }) => sliceCount === null)));
   assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
     /consumo histórico não é verificável/);
   assert.equal(Object.hasOwn(migrated, "inventoryMovements"), false);
@@ -208,7 +240,7 @@ test("v5 migration does not invent historical ingredient consumption", () => {
 test("taxa explicitamente informada fica congelada no pedido sem alterar o estado canônico", () => {
   const initial = createSeedFoodState();
   const historicalDelivery = initial.orders.find(({ channel }) => channel === "delivery");
-  assert.equal(initial.schema, "ordax.food-pizzeria-state/7");
+  assert.equal(initial.schema, "ordax.food-pizzeria-state/8");
   assert.equal(Object.hasOwn(initial.settings, "deliveryFeeCents"), false);
   assert.equal(initial.orders.find(({ id }) => id === historicalDelivery.id).deliveryFeeCents, historicalDelivery.deliveryFeeCents);
 
@@ -229,19 +261,43 @@ test("taxa explicitamente informada fica congelada no pedido sem alterar o estad
   assert.equal(order.totalCents, order.subtotalCents + 875);
 });
 
-test("Food v6 migra ao schema v7 sem incorporar preferências locais ao documento canônico", () => {
+test("Food v6 migra ao schema v8 sem inventar fatias históricas nem incorporar preferências locais", () => {
   const current = createSeedFoodState();
+  const legacySource = withoutSliceCount(current);
   const v6 = {
-    ...current,
+    ...legacySource,
     schema: "ordax.food-pizzeria-state/6",
   };
 
   const migrated = migrateFoodPizzeriaState(v6);
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/8");
   assert.equal(migrated.revision, current.revision);
   assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
-  assert.deepEqual(migrated.orders, current.orders);
-  assert.deepEqual(migrated.orders.map(({ consumptionSnapshot }) => consumptionSnapshot), current.orders.map(({ consumptionSnapshot }) => consumptionSnapshot));
+  assert.deepEqual(migrated.orders, v6.orders.map((order) => ({
+    ...order,
+    items: order.items.map((item) => item.type === "catalog-product" ? item : { ...item, sliceCount: null }),
+  })));
+});
+
+test("Food v7 migration preserves legacy orders and leaves historical slice count unknown", () => {
+  const current = createSeedFoodState();
+  const legacy = {
+    ...withoutSliceCount(current),
+    schema: "ordax.food-pizzeria-state/7",
+  };
+  const migrated = migrateFoodPizzeriaState(legacy);
+
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/8");
+  assert.equal(migrated.revision, legacy.revision);
+  assert.deepEqual(migrated.orders, legacy.orders.map((order) => ({
+    ...order,
+    items: order.items.map((item) => item.type === "catalog-product" ? item : { ...item, sliceCount: null }),
+  })));
+  for (const order of migrated.orders) {
+    for (const item of order.items.filter(({ type }) => type !== "catalog-product")) {
+      assert.equal(item.sliceCount, null);
+    }
+  }
 });
 
 test("table commands reject orders before opening and closure before the last order update", () => {

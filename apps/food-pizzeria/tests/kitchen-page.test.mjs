@@ -35,7 +35,7 @@ function order({ id, status, channel, startedAt, quantity = 1, flavors = null, t
     phone: "11999990000",
     address: "Rua confidencial, 123",
     notes: "Sem cebola",
-    items: [{ quantity, size: "large", sizeLabel: "Grande", flavors: flavors ?? [{ name: "Margherita" }] }],
+    items: [{ quantity, size: "large", sizeLabel: "Grande", sliceCount: 8, flavors: flavors ?? [{ name: "Margherita" }] }],
   };
 }
 
@@ -91,7 +91,7 @@ function render(overrides = {}) {
     snapshot,
     kitchenWorkflow: DEFAULT_KITCHEN_WORKFLOW,
     kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, DEFAULT_KITCHEN_WORKFLOW),
-    kitchenItemPresentation: (item) => presentPizzeriaKitchenItem(item, [{ id: "large", label: "Grande", slices: 8 }]),
+    kitchenItemPresentation: (item) => presentPizzeriaKitchenItem(item),
     kitchenItemLabel: PIZZERIA_KITCHEN_ITEM_LABEL,
     kitchenStageGuidance: PIZZERIA_KITCHEN_STAGE_GUIDANCE,
     ORDER_STAGE_ALERT_MINUTES: { received: 15, preparing: 35, ready: 15, "out-for-delivery": 45 },
@@ -398,9 +398,23 @@ test("Pizzeria item presenter keeps four flavor chips distinct without inventing
     quantity: 1,
     size: "large",
     sizeLabel: "Grande",
+    sliceCount: 8,
     flavors: ["Calabresa", "Margherita", "Quatro queijos", "Frango"].map((name) => ({ name })),
-  }, [{ id: "large", label: "Grande", slices: 8 }]);
+  });
   assert.equal(presentation.modifiers.length, 4);
   assert.deepEqual(presentation.modifiers, ["Calabresa", "Margherita", "Quatro queijos", "Frango"]);
   assert.equal(presentation.detail, "8 fatias");
+});
+
+test("Pizzeria item presenter never infers historical slices from current size settings", () => {
+  const presentation = presentPizzeriaKitchenItem({
+    quantity: 1,
+    size: "large",
+    sizeLabel: "Grande",
+    sliceCount: null,
+    flavors: [{ name: "Calabresa" }],
+  });
+
+  assert.equal(presentation.title, "Grande");
+  assert.equal(presentation.detail, "Fatias não registradas");
 });

@@ -128,7 +128,7 @@ export function createFoodOrderCore({ transactions } = {}) {
           const state = validateFoodPizzeriaState(await tx.readState(scope.spaceId));
           if (state.schema !== FOOD_PIZZERIA_STATE_SCHEMA_V6) {
             throw new FoodOrderRejectedError("invalid-command",
-              "O owner SQL Food suporta somente o estado v6; a prévia v7 não pode ser enviada.");
+              "O owner SQL Food suporta somente o estado v6; a prévia local mais recente não pode ser enviada.");
           }
           if (state.revision !== command.expectedRevision) {
             throw new FoodOrderRejectedError("revision-conflict",

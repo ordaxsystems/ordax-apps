@@ -30,8 +30,23 @@ function transition(state, commandId = "order-transaction-1") {
   });
 }
 
+function asFoodV6(value) {
+  return {
+    ...value,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V6,
+    orders: value.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
+  };
+}
+
 function dbFixture() {
-  let state = { ...createSeedFoodState(), schema: FOOD_PIZZERIA_STATE_SCHEMA_V6 };
+  let state = asFoodV6(createSeedFoodState());
   const journal = new Map();
   const calls = [];
   let releaseArgument;

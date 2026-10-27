@@ -1,6 +1,7 @@
 import { applyFoodCommand, createFoodCommand } from "../application/commands.mjs";
 import {
   DEFAULT_DELIVERY_FEE_CENTS,
+  FOOD_PIZZERIA_STATE_SCHEMA_V7,
   migrateFoodPizzeriaState,
   validateFoodPizzeriaState,
 } from "../domain/domain.mjs";
@@ -35,7 +36,7 @@ const LEGACY_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/1";
 const COMMAND_DIGEST_RE = /^[a-f0-9]{64}$/;
 const LEGACY_INVENTORY_ARCHIVE_SCHEMA = "ordax.food-pizzeria.preview-legacy-inventory/1";
 const LEGACY_FOOD_STATE_V3 = "ordax.food-pizzeria-state/3";
-const LEGACY_PREVIEW_FOOD_STATE_V7 = "ordax.food-pizzeria-state/7";
+const LEGACY_PREVIEW_FOOD_STATE_V7 = FOOD_PIZZERIA_STATE_SCHEMA_V7;
 const BUSINESS_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/;
 const COMMAND_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const MAX_STATE_BYTES = 5 * 1024 * 1024;

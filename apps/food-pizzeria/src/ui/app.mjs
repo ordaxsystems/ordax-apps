@@ -450,7 +450,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
 
   function kitchenItemPresentation(item) {
-    return presentPizzeriaKitchenItem(item, PIZZA_SIZES);
+    return presentPizzeriaKitchenItem(item);
   }
   
   function nextStatus(order) {

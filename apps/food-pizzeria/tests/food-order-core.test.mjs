@@ -49,10 +49,25 @@ function createCommand(state, id = "create-order-1") {
   });
 }
 
+function asFoodV6(value) {
+  return {
+    ...value,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V6,
+    orders: value.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
+  };
+}
+
 function transactionalFixture() {
   // Build the seed once, so different Spaces start from identical immutable
   // fixture bytes rather than independent wall-clock timestamps.
-  const base = { ...createSeedFoodState(), schema: FOOD_PIZZERIA_STATE_SCHEMA_V6 };
+  const base = asFoodV6(createSeedFoodState());
   const state = () => structuredClone(base);
   const bySpace = new Map([
     ["space-a", { state: state(), journal: new Map() }],
@@ -156,7 +171,7 @@ test("Food Core rejects unavailable ACID repository and non-order commands", asy
   assert.equal(fx.writes, 0);
 });
 
-test("Food Core refuses local v7 preview state while the SQL owner contract is v6", async () => {
+test("Food Core refuses local v8 preview state while the SQL owner contract is v6", async () => {
   const state = createSeedFoodState();
   let commitCalls = 0;
   const transactions = {

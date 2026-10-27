@@ -1,4 +1,5 @@
-export const FOOD_PIZZERIA_STATE_SCHEMA = "ordax.food-pizzeria-state/7";
+export const FOOD_PIZZERIA_STATE_SCHEMA = "ordax.food-pizzeria-state/8";
+export const FOOD_PIZZERIA_STATE_SCHEMA_V7 = "ordax.food-pizzeria-state/7";
 export const FOOD_PIZZERIA_STATE_SCHEMA_V6 = "ordax.food-pizzeria-state/6";
 const FOOD_PIZZERIA_STATE_SCHEMA_V5 = "ordax.food-pizzeria-state/5";
 const FOOD_PIZZERIA_STATE_SCHEMA_V4 = "ordax.food-pizzeria-state/4";
@@ -227,10 +228,11 @@ function validateHistoryEntry(value) {
 }
 
 function validateOrderItem(value, pricingPolicy, {
-  sizeEntries = PIZZA_SIZES, flavorLimit = 2, requireSizeLabel = false, allowCatalogProducts = false,
+  sizeEntries = PIZZA_SIZES, flavorLimit = 2, requireSizeLabel = false,
+  requireSliceCount = false, allowCatalogProducts = false,
 } = {}) {
   if (value?.type === "catalog-product") {
-    if (!allowCatalogProducts) throw new TypeError("Itens do catálogo exigem Food v7 e só são aceitos na prévia local.");
+    if (!allowCatalogProducts) throw new TypeError("Itens do catálogo exigem Food v7 ou superior e só são aceitos na prévia local.");
     const raw = exactObject(value,
       ["id", "type", "productId", "name", "category", "quantity", "unitPriceCents", "lineTotalCents"],
       "Produto do pedido");
@@ -255,6 +257,7 @@ function validateOrderItem(value, pricingPolicy, {
   }
   const itemKeys = ["id", "size", "flavors", "quantity", "unitPriceCents", "lineTotalCents"];
   if (requireSizeLabel) itemKeys.push("sizeLabel");
+  if (requireSliceCount) itemKeys.push("sliceCount");
   const raw = exactObject(value,
     itemKeys,
     "Item do pedido");
@@ -277,6 +280,10 @@ function validateOrderItem(value, pricingPolicy, {
   if (!Number.isSafeInteger(raw.quantity) || raw.quantity < 1 || raw.quantity > MAX_ORDER_ITEM_QUANTITY) {
     throw new TypeError("Quantidade de pizzas inválida.");
   }
+  if (requireSliceCount && raw.sliceCount !== null
+    && (!Number.isSafeInteger(raw.sliceCount) || raw.sliceCount < 1 || raw.sliceCount > 48)) {
+    throw new TypeError("A quantidade de fatias congelada no pedido é inválida.");
+  }
   const unitPriceCents = cents(raw.unitPriceCents, "Preço unitário");
   const lineTotalCents = cents(raw.lineTotalCents, "Total do item");
   const flavorPrices = flavors.map(({ priceCents }) => priceCents);
@@ -293,6 +300,7 @@ function validateOrderItem(value, pricingPolicy, {
     id: identifier(raw.id, "Identificador do item"),
     size: raw.size,
     ...(requireSizeLabel ? { sizeLabel: boundedText(raw.sizeLabel, "Nome do tamanho no pedido", 32) } : {}),
+    ...(requireSliceCount ? { sliceCount: raw.sliceCount } : {}),
     flavors: Object.freeze(flavors),
     quantity: raw.quantity,
     unitPriceCents,
@@ -357,6 +365,7 @@ function validateOrder(value, {
   tableChannel = "counter",
   requireTableCommand = false,
   requireSizeLabel = false,
+  requireSliceCount = false,
   requireConsumptionSnapshot = false,
   allowCatalogProducts = false,
 } = {}) {
@@ -387,6 +396,7 @@ function validateOrder(value, {
     sizeEntries,
     flavorLimit,
     requireSizeLabel,
+    requireSliceCount,
     allowCatalogProducts,
   }));
   if (new Set(items.map(({ id }) => id)).size !== items.length) throw new TypeError("Itens do pedido duplicados.");
@@ -645,7 +655,22 @@ function migrateV6ToV7(value) {
   const legacy = validateFoodPizzeriaStateForVersion(value, FOOD_PIZZERIA_STATE_SCHEMA_V6);
   return validateFoodPizzeriaStateForVersion({
     ...legacy,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V7,
+  }, FOOD_PIZZERIA_STATE_SCHEMA_V7);
+}
+
+function migrateV7ToV8(value) {
+  const legacy = validateFoodPizzeriaStateForVersion(value, FOOD_PIZZERIA_STATE_SCHEMA_V7);
+  const orders = legacy.orders.map((order) => ({
+    ...order,
+    items: order.items.map((item) => item.type === "catalog-product"
+      ? item
+      : { ...item, sliceCount: null }),
+  }));
+  return validateFoodPizzeriaStateForVersion({
+    ...legacy,
     schema: FOOD_PIZZERIA_STATE_SCHEMA,
+    orders,
   }, FOOD_PIZZERIA_STATE_SCHEMA);
 }
 
@@ -653,19 +678,20 @@ export function migrateFoodPizzeriaState(value) {
   // A pre-v6 browser preview briefly used `/7` for a document that included
   // a local delivery preference. Keep that historical envelope readable even
   // though `/7` is now the versioned catalog-item order schema.
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V7
     && value.settings !== null && Object.hasOwn(value.settings, "deliveryFeeCents")) {
     const { deliveryFeeCents: _localDeliveryFee, ...settings } = value.settings;
-    return migrateV6ToV7({ ...value, schema: FOOD_PIZZERIA_STATE_SCHEMA_V6, settings });
+    return migrateV7ToV8(migrateV6ToV7({ ...value, schema: FOOD_PIZZERIA_STATE_SCHEMA_V6, settings }));
   }
   if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA) return validateFoodPizzeriaState(value);
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V6) return migrateV6ToV7(value);
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V5) return migrateV6ToV7(migrateV5ToV6(value));
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V4) return migrateV6ToV7(migrateV5ToV6(migrateV4ToV5(value)));
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V3) return migrateV6ToV7(migrateV5ToV6(migrateV4ToV5(migrateV3ToV4(value))));
-  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V2) return migrateV6ToV7(migrateV5ToV6(migrateV4ToV5(migrateV2ToV4(value))));
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V7) return migrateV7ToV8(value);
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V6) return migrateV7ToV8(migrateV6ToV7(value));
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V5) return migrateV7ToV8(migrateV6ToV7(migrateV5ToV6(value)));
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V4) return migrateV7ToV8(migrateV6ToV7(migrateV5ToV6(migrateV4ToV5(value))));
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V3) return migrateV7ToV8(migrateV6ToV7(migrateV5ToV6(migrateV4ToV5(migrateV3ToV4(value)))));
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V2) return migrateV7ToV8(migrateV6ToV7(migrateV5ToV6(migrateV4ToV5(migrateV2ToV4(value)))));
   if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V1) {
-    return migrateV6ToV7(migrateV5ToV6(migrateV4ToV5(migrateV2ToV4(migrateV1ToV2(value)))));
+    return migrateV7ToV8(migrateV6ToV7(migrateV5ToV6(migrateV4ToV5(migrateV2ToV4(migrateV1ToV2(value))))));
   }
   return validateFoodPizzeriaState(value);
 }
@@ -693,8 +719,9 @@ function validateFoodPizzeriaStateForVersion(value, version) {
     tableChannel: "dine-in",
     requireTableCommand: true,
     requireSizeLabel: true,
+    requireSliceCount: version === FOOD_PIZZERIA_STATE_SCHEMA,
     requireConsumptionSnapshot: version !== FOOD_PIZZERIA_STATE_SCHEMA_V5,
-    allowCatalogProducts: version === FOOD_PIZZERIA_STATE_SCHEMA,
+    allowCatalogProducts: version === FOOD_PIZZERIA_STATE_SCHEMA_V7 || version === FOOD_PIZZERIA_STATE_SCHEMA,
   }));
   const tableCommands = raw.tableCommands.map((command) => validateTableCommand(command, {
     tables,
@@ -764,6 +791,9 @@ function validateFoodPizzeriaStateForVersion(value, version) {
 export function validateFoodPizzeriaState(value) {
   if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V6) {
     return validateFoodPizzeriaStateForVersion(value, FOOD_PIZZERIA_STATE_SCHEMA_V6);
+  }
+  if (value?.schema === FOOD_PIZZERIA_STATE_SCHEMA_V7) {
+    return validateFoodPizzeriaStateForVersion(value, FOOD_PIZZERIA_STATE_SCHEMA_V7);
   }
   return validateFoodPizzeriaStateForVersion(value, FOOD_PIZZERIA_STATE_SCHEMA);
 }
@@ -1141,12 +1171,14 @@ export function createPizzeriaOrder(stateValue, {
       const flavor = state.flavors.find((item) => item.id === flavorId && item.active);
       return { id: flavor.id, name: flavor.name, priceCents: flavor.pricesCents[input.size] };
     });
+    const selectedSize = state.settings.pizzaSizes.find(({ id, active }) => id === input.size && active);
     const lineTotalCents = Number(BigInt(unitPriceCents) * BigInt(input.quantity));
     cents(lineTotalCents, "Total do item");
     return {
       id: identifier(input.id, "Identificador do item"),
       size: input.size,
-      sizeLabel: state.settings.pizzaSizes.find(({ id, active }) => id === input.size && active)?.label,
+      sizeLabel: selectedSize.label,
+      ...(state.schema === FOOD_PIZZERIA_STATE_SCHEMA ? { sliceCount: selectedSize.slices } : {}),
       flavors: selectedFlavors,
       quantity: input.quantity,
       unitPriceCents,
@@ -1182,6 +1214,7 @@ export function createPizzeriaOrder(stateValue, {
     tableChannel: "dine-in",
     requireTableCommand: true,
     requireSizeLabel: true,
+    requireSliceCount: state.schema === FOOD_PIZZERIA_STATE_SCHEMA,
     requireConsumptionSnapshot: true,
     allowCatalogProducts: state.schema === FOOD_PIZZERIA_STATE_SCHEMA,
   });
@@ -1222,7 +1255,9 @@ export function transitionPizzeriaOrder(stateValue, {
     tableChannel: "dine-in",
     requireTableCommand: true,
     requireSizeLabel: true,
+    requireSliceCount: state.schema === FOOD_PIZZERIA_STATE_SCHEMA,
     requireConsumptionSnapshot: true,
+    allowCatalogProducts: state.schema === FOOD_PIZZERIA_STATE_SCHEMA,
   });
   return nextState(state, {
     orders: state.orders.map((item) => item.id === updated.id ? updated : item),

@@ -118,10 +118,25 @@ async function journal(spaceId) {
   return res.rows;
 }
 
+function asFoodV6(value) {
+  return {
+    ...value,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V6,
+    orders: value.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
+  };
+}
+
 test("real PostgreSQL: one Food domain, durable creation, exact replay and receipt reconciliation", async () => {
   // The pinned Platform SQL proposal constrains the persisted owner document
-  // to v6; the browser-only v7 preview must never reach this transaction.
-  const baseline = { ...createSeedFoodState(), schema: FOOD_PIZZERIA_STATE_SCHEMA_V6 };
+  // to v6; the browser-only v8 preview must never reach this transaction.
+  const baseline = asFoodV6(createSeedFoodState());
   validateFoodPizzeriaState(baseline);
   for (const spaceId of [SPACE_A, SPACE_B]) {
     await pool.query(

@@ -847,4 +847,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A prévia de preço/validação é anunciada por leitores de tela. Prova real no host confirmou combinação distinta válida e bloqueio da repetição; suíte Food: 146/146.
 - Alteração restrita à interação do PDV; preços, receitas, snapshots e owners não mudaram. PR #359 segue em rascunho.
 
+### Space Pizzaria / OrdaX Food — congelar fatias de cada pedido (2026-10-27)
+
+- Novos pedidos registram o total de fatias do tamanho escolhido. O KDS lê o snapshot do pedido e não muda o número quando a configuração da loja é alterada.
+- A migração para Food v8 mantém o histórico sem inventar dados: fatias de pedidos antigos ficam desconhecidas e o KDS informa que não foram registradas. O owner SQL ainda aceita v6 e rejeita v8 antes de persistir; nenhuma integração de Catálogo ou sincronização foi simulada.
+- Suíte Food completa: 148/148; inspeção do host confirmou as fatias no ticket; `git diff --check` aprovado. A PR #359 segue em rascunho e será atualizada com este incremento.
 

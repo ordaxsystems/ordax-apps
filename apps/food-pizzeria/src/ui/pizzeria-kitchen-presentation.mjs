@@ -1,4 +1,4 @@
-export function presentPizzeriaKitchenItem(item, pizzaSizes = []) {
+export function presentPizzeriaKitchenItem(item) {
   if (item.type === "catalog-product") {
     return {
       title: item.name,
@@ -7,11 +7,10 @@ export function presentPizzeriaKitchenItem(item, pizzaSizes = []) {
       modifiers: [],
     };
   }
-  const configuredSize = pizzaSizes.find(({ id }) => id === item.size);
   const flavorNames = item.flavors.map(({ name }) => name);
   return {
-    title: item.sizeLabel ?? configuredSize?.label ?? item.size,
-    detail: configuredSize?.slices ? `${configuredSize.slices} fatias` : "",
+    title: item.sizeLabel ?? item.size,
+    detail: Number.isSafeInteger(item.sliceCount) ? `${item.sliceCount} fatias` : "Fatias não registradas",
     modifierLabel: `${flavorNames.length} ${flavorNames.length === 1 ? "sabor" : "sabores"}`,
     modifiers: flavorNames,
   };

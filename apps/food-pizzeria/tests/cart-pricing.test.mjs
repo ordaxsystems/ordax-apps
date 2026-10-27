@@ -159,12 +159,23 @@ test("Food order keeps a product price snapshot and excludes products from recip
     catalogProducts: PREVIEW_CATALOG_PRODUCTS,
     items: [{ id: "unknown-food-product-item", type: "catalog-product", productId: "unknown-item", quantity: 1 }],
   }), /não está disponível no catálogo/);
-  const ownerV6 = { ...state, schema: FOOD_PIZZERIA_STATE_SCHEMA_V6 };
+  const ownerV6 = {
+    ...state,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V6,
+    orders: state.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
+  };
   assert.throws(() => createPizzeriaOrder(ownerV6, {
     ...shared,
     id: "owner-v6-catalog-order",
     historyId: "owner-v6-catalog-history",
     catalogProducts: PREVIEW_CATALOG_PRODUCTS,
     items: [{ id: "owner-v6-catalog-item", type: "catalog-product", productId: product.id, quantity: 1 }],
-  }), /Food v7 e só são aceitos na prévia local/);
+  }), /Food v7 ou superior e só são aceitos na prévia local/);
 });

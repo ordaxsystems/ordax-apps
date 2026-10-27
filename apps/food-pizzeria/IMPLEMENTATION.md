@@ -443,4 +443,11 @@ Ao escolher um sabor, os demais campos da mesma pizza desabilitam essa opção; 
 
 Validação: suíte Food 146/146; prova real no host verificou sabor repetido indisponível, opção distinta disponível e pizza válida adicionada. Mudança de apresentação apenas: não altera preços, receitas, snapshots, owners ou integrações.
 
+## Snapshot histórico das fatias no pedido (2026-10-27)
+
+Novos pedidos de pizza agora congelam `sliceCount` junto ao tamanho e aos sabores. O KDS usa somente esse valor do pedido; alterar o cadastro de tamanhos depois não reinterpreta tickets antigos. A migração v7→v8 conserva os itens e registra `sliceCount: null` para pizzas históricas, e a tela informa que as fatias não foram registradas em vez de estimá-las pela configuração atual. O snapshot não se aplica a bebidas, combos ou acompanhamentos.
+
+O Food local avança para v8. O owner SQL continua validando v6, então o Food Order Core rejeita v8 antes de qualquer gravação persistente. A fixture de catálogo e a prévia permanecem locais; Catálogo precisa publicar seu contrato e o owner Food/SQL precisa homologar a nova versão antes de integração real.
+
+Validação: suíte Food completa passou com 148/148; testes cobrem criação, alteração posterior das configurações, migração v7, apresentação do KDS e recusa do owner SQL v6. Inspeção do host KDS confirmou o número congelado no ticket. `git diff --check` aprovado.
 
