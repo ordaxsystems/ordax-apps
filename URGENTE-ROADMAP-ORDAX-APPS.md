@@ -894,3 +894,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O smoke Chrome agora verifica a distribuição no viewport 390 × 844 e consegue localizar/abrir o Chrome instalado no Windows com uma porta DevTools local fixa, além do caminho já usado no CI Linux.
 - Suíte Food: 164/164; smoke de navegador: 23/23; `node --check` e `git diff --check` aprovados. A fila continua sendo prévia local, sem sincronização entre aparelhos; PR #359 permanece em rascunho.
 
+### Space Pizzaria / OrdaX Food — preservar rascunhos das fichas técnicas (2026-10-27)
+
+- O editor de receitas desabilita em cada seletor os ingredientes já escolhidos por outras linhas, sem bloquear a escolha atual. Ao trocar o ingrediente, os demais seletores e unidades acompanham a nova composição.
+- Quantidades e ingredientes digitados continuam no rascunho ao adicionar ou remover uma linha. O fluxo Chrome cobre a edição completa sem salvar e sem tocar no estado persistido.
+- Suíte Food: 166/166; smoke Chrome: 24/24; `node --check` e `git diff --check` aprovados. A alteração permanece no preview local e não escreve no Inventory nem cria integração/contrato novo.
+

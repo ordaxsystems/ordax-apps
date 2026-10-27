@@ -1421,6 +1421,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       render();
       root.querySelector("#recipe-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (action === "add-recipe-line") {
+      captureRecipeDraftFromForm(root.querySelector("#recipe-editor"));
       const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => !recipeDraftLines.some((line) => line.ingredientId === id));
       if (!ingredient) return;
       recipeDraftLines.push({
@@ -1429,6 +1430,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       });
       render();
     } else if (action === "remove-recipe-line") {
+      captureRecipeDraftFromForm(root.querySelector("#recipe-editor"));
       recipeDraftLines.splice(Number(target.dataset.index), 1);
       render();
     } else if (action === "clear-batch-plan") {
@@ -1623,7 +1625,32 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
   }
   
+  function captureRecipeDraftFromForm(form) {
+    if (!form || recipeDraftLines.length === 0) return;
+    const values = new FormData(form);
+    recipeDraftLines = recipeDraftLines.map((line, index) => ({
+      ingredientId: String(values.get(`ingredient-${index}`) ?? line.ingredientId),
+      quantityBaseBySize: Object.fromEntries(PIZZA_SIZES.map(({ id }) => {
+        const value = values.get(`quantity-${index}-${id}`);
+        if (value === null) return [id, line.quantityBaseBySize[id]];
+        if (value === "") return [id, ""];
+        const quantity = Number(value);
+        return [id, Number.isFinite(quantity) ? quantity : line.quantityBaseBySize[id]];
+      })),
+    }));
+  }
+
   function handleInput(event) {
+    const recipeForm = event.target.closest("#recipe-editor");
+    if (recipeForm) {
+      captureRecipeDraftFromForm(recipeForm);
+      if (event.type === "change" && event.target.name.startsWith("ingredient-")) {
+        const lineIndex = Number(event.target.name.slice("ingredient-".length));
+        render();
+        root.querySelector(`[name="ingredient-${lineIndex}"]`)?.focus({ preventScroll: true });
+      }
+      return;
+    }
     if (event.target.closest("#batch-plan-form")) {
       const form = event.target.closest("#batch-plan-form");
       const values = new FormData(form);
@@ -1666,10 +1693,6 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           tableOpenForm.elements.guestCount.value = String(table.seats);
         }
       }
-    } else if (event.type === "change" && event.target.name.startsWith("ingredient-") && event.target.closest("#recipe-editor")) {
-      const unit = event.target.selectedOptions[0]?.textContent.split("·").at(-1)?.trim() ?? "g";
-      const line = event.target.closest(".recipe-line");
-      for (const label of line.querySelectorAll("label[data-size]") ) label.firstChild.textContent = `${label.dataset.size} (${unit})`;
     }
   }
   

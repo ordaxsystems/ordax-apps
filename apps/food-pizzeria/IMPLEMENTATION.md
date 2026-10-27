@@ -507,3 +507,9 @@ Ownership e integrações não mudaram: as etapas e seus horários continuam na 
 
 Validação: suíte Food completa 165/165; smoke Chrome 23/23 cenários, incluindo fila, telas individuais, configuração de pizzaiolo solo e layouts de telefone/notebook. Testes cobrem relógio em espera/execução e a nova entrada na etapa seguinte. `node --check` e `git diff --check` aprovados.
 
+## Iteração — integridade do editor de fichas técnicas (2026-10-27)
+
+O Cardápio agora desabilita em cada linha os ingredientes já usados nas outras linhas, mantendo disponível a escolha atual daquela linha. Trocar um ingrediente atualiza as opções e a unidade exibida nas demais áreas da ficha. Quantidades e escolhas não salvas são capturadas antes de adicionar ou remover linhas e durante a edição; os rerenders deixam de descartar o rascunho.
+
+Validação: teste de render confirma as opções bloqueadas e a escolha preservada; prova Chrome exercita editar a ficha Calabresa, alterar uma quantidade, adicionar, remover e trocar ingrediente sem salvar nem alterar o estado persistido. Suíte Food: 166/166; smoke Chrome: 24/24; `node --check` e `git diff --check` aprovados. A mudança atua na interface local de prévia Food: não grava saldo/movimentação de Inventory, não cria contrato e não altera o owner da ficha técnica.
+

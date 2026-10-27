@@ -15,6 +15,7 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 const expected = {
   kitchen: "Produção",
+  menu: "Cardápio",
   orders: "Pedidos",
   pos: "PDV",
   tables: "Mesas",
@@ -148,6 +149,46 @@ try {
       "Remover a linha deve devolver o carrinho ao estado vazio.");
     ensure(root.querySelector('#create-order-form [type="submit"]')?.disabled === true,
       "O pedido não pode ser registrado depois de remover seu único item.");
+  }
+
+  if (view === "menu" && parameters.has("__exercise_recipe")) {
+    root.querySelector('[data-action="edit-recipe"][data-flavor-id="ng-calabresa"]')?.click();
+    await eventually(() => root.querySelector("#recipe-editor .recipe-line"),
+      "A ficha técnica da Calabresa não abriu.");
+
+    const quantityInput = () => root.querySelector('[name="quantity-0-small"]');
+    quantityInput().value = "137";
+    quantityInput().dispatchEvent(new Event("input", { bubbles: true }));
+
+    root.querySelector('[data-action="add-recipe-line"]')?.click();
+    await eventually(() => root.querySelectorAll("#recipe-editor .recipe-line").length === 7,
+      "Adicionar insumo não criou a nova linha da ficha.");
+    ensure(quantityInput()?.value === "137",
+      "Adicionar uma linha descartou a quantidade já digitada.");
+
+    root.querySelector('[data-action="remove-recipe-line"][data-index="6"]')?.click();
+    await eventually(() => root.querySelectorAll("#recipe-editor .recipe-line").length === 6,
+      "Remover insumo não atualizou as linhas da ficha.");
+    ensure(quantityInput()?.value === "137",
+      "Remover uma linha descartou a quantidade já digitada.");
+
+    const firstIngredient = root.querySelector('[name="ingredient-0"]');
+    ensure(firstIngredient?.selectedOptions[0]?.value === "farinha"
+      && firstIngredient.selectedOptions[0].disabled === false,
+    "A ficha deve manter selecionável o ingrediente já usado pela própria linha.");
+    const duplicateOption = [...firstIngredient.options].find(({ value }) => value === "molho");
+    ensure(duplicateOption?.disabled === true && duplicateOption.textContent.includes("já usado"),
+      "Um ingrediente usado em outra linha ainda pode ser escolhido novamente.");
+
+    firstIngredient.value = "tomate";
+    firstIngredient.dispatchEvent(new Event("change", { bubbles: true }));
+    await eventually(() => root.querySelector('[name="ingredient-0"]')?.value === "tomate",
+      "Trocar o ingrediente não atualizou a ficha.");
+    ensure(quantityInput()?.value === "137",
+      "Trocar o ingrediente descartou a quantidade já digitada.");
+    const secondIngredient = root.querySelector('[name="ingredient-1"]');
+    ensure([...secondIngredient.options].find(({ value }) => value === "tomate")?.disabled === true,
+      "O ingrediente recém-escolhido deve ficar indisponível nas outras linhas.");
   }
 
   if (parameters.has("station")) {

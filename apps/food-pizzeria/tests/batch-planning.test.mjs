@@ -13,6 +13,30 @@ function quantitiesByIngredient(plan) {
   return Object.fromEntries(plan.ingredients.map(({ ingredientId, quantityBase }) => [ingredientId, quantityBase]));
 }
 
+function renderMenu(snapshot, overrides = {}) {
+  return renderMenuPage({
+    PIZZA_SIZES: snapshot.settings.pizzaSizes,
+    PREVIEW_CATALOG_PRODUCTS: [],
+    PREVIEW_INGREDIENTS: FOOD_RECIPE_INGREDIENT_FIXTURES,
+    snapshot,
+    recipeFlavorId: "ng-calabresa",
+    recipeDraftLines: [],
+    editFlavorId: null,
+    busy: false,
+    button: (label, action) => `<button data-action="${action}">${label}</button>`,
+    money: (cents) => `R$ ${(cents / 100).toFixed(2)}`,
+    escapeHtml: (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]),
+    timeLabel: () => "agora",
+    flavorForm: () => "<form id=flavor-form></form>",
+    emptyState: () => "",
+    batchPlanSize: "small",
+    batchPlanQuantities: {},
+    batchPlanResult: null,
+    batchPlanError: null,
+    ...overrides,
+  });
+}
+
 test("batch planner consolidates ingredient quantities from the current recipes", () => {
   const state = createSeedFoodState(Date.parse("2026-10-27T12:00:00.000Z"));
   const plan = calculatePizzeriaBatchConsumption(state, {
@@ -65,25 +89,10 @@ test("menu displays the batch plan using recipe units without implying inventory
     size: "small",
     flavorQuantities: [{ flavorId: "ng-calabresa", quantity: 2 }],
   });
-  const html = renderMenuPage({
-    PIZZA_SIZES: snapshot.settings.pizzaSizes,
-    PREVIEW_CATALOG_PRODUCTS: [],
-    PREVIEW_INGREDIENTS: FOOD_RECIPE_INGREDIENT_FIXTURES,
-    snapshot,
+  const html = renderMenu(snapshot, {
     recipeFlavorId: null,
-    recipeDraftLines: [],
-    editFlavorId: null,
-    busy: false,
-    button: (label, action) => `<button data-action="${action}">${label}</button>`,
-    money: (cents) => `R$ ${(cents / 100).toFixed(2)}`,
-    escapeHtml: (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]),
-    timeLabel: () => "agora",
-    flavorForm: () => "<form id=flavor-form></form>",
-    emptyState: () => "",
-    batchPlanSize: "small",
     batchPlanQuantities: { "ng-calabresa": 2 },
     batchPlanResult,
-    batchPlanError: null,
   });
 
   assert.match(html, /id="batch-plan-form"/);
@@ -92,4 +101,21 @@ test("menu displays the batch plan using recipe units without implying inventory
   assert.match(html, /Farinha/);
   assert.match(html, /240 g/);
   assert.match(html, /não altera o estoque/);
+});
+
+test("recipe editor disables duplicate ingredients but preserves each row's current choice", () => {
+  const snapshot = createSeedFoodState(Date.parse("2026-10-27T12:00:00.000Z"));
+  const html = renderMenu(snapshot, {
+    recipeDraftLines: [
+      { ingredientId: "farinha", quantityBaseBySize: { small: 137, medium: 180, large: 260 } },
+      { ingredientId: "molho", quantityBaseBySize: { small: 60, medium: 90, large: 130 } },
+    ],
+  });
+  const selectors = [...html.matchAll(/<select name="ingredient-\d+"[\s\S]*?<\/select>/g)].map(([markup]) => markup);
+  assert.equal(selectors.length, 2);
+  assert.match(selectors[0], /value="farinha" selected\s*>Farinha · g/);
+  assert.match(selectors[0], /value="molho"\s+disabled\s*>Molho de tomate · g · já usado/);
+  assert.match(selectors[1], /value="molho" selected\s*>Molho de tomate · g/);
+  assert.match(selectors[1], /value="farinha"\s+disabled\s*>Farinha · g · já usado/);
+  assert.match(html, new RegExp(`name="quantity-0-small" type="number" min="1" step="1" value="137"`));
 });
