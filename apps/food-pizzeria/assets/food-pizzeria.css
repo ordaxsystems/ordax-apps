@@ -1513,3 +1513,19 @@ dialog p { color: #a2a8af; }
   .delivery-stage .order-card-head > div { min-width: 0; flex-wrap: wrap; }
   .delivery-stage .status-badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* Orders exposes the immutable Food status journal without expanding every card. */
+.order-history-timeline { margin-top: 10px; border-top: 1px solid var(--line); }
+.order-history-timeline > summary { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; list-style: none; }
+.order-history-timeline > summary::-webkit-details-marker { display: none; }
+.order-history-timeline > summary::after { color: var(--muted); content: "⌄"; font-size: 14px; transition: transform .16s ease; }
+.order-history-timeline[open] > summary::after { transform: rotate(180deg); }
+.order-history-timeline > summary:focus-visible { border-radius: 5px; outline: 2px solid var(--accent); outline-offset: 2px; }
+.order-history-timeline > summary > span { color: var(--ink); font-size: 10px; font-weight: 650; }
+.order-history-timeline > summary > small { margin-left: auto; color: var(--muted); font-size: 9px; }
+.order-history-timeline > ol { display: grid; gap: 9px; margin: 0 0 2px; padding: 2px 0 4px 2px; list-style: none; }
+.order-history-timeline > ol > li { display: grid; grid-template-columns: 9px minmax(0, 1fr); align-items: start; gap: 9px; }
+.order-history-marker { width: 7px; height: 7px; margin-top: 4px; border: 2px solid var(--accent); border-radius: 50%; background: var(--paper-raised); }
+.order-history-timeline > ol > li > div { display: grid; min-width: 0; gap: 2px; }
+.order-history-timeline > ol strong { color: var(--ink); font-size: 9px; font-weight: 650; }
+.order-history-timeline time { color: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }

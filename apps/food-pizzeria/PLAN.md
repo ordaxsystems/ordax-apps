@@ -105,3 +105,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - O resumo fixo em telas estreitas aparece somente enquanto há itens no carrinho. Ele espelha a contagem de unidades e o total calculados pelo fechamento existente; não guarda estado próprio.
 - “Ir para fechamento” leva foco e rolagem ao painel real. O resumo se recolhe enquanto o painel está visível e reaparece ao sair da área, sem cobrir campos nem o botão de registrar.
 - Verificação: Food **187/187**; Chrome **27/27**, incluindo carrinho preenchido em 390 × 844, valores iguais ao checkout, foco na área e recolhimento do resumo; sintaxe JavaScript, verificador MVP e git diff --check aprovados. Nenhum pedido, owner, pagamento ou contrato foi duplicado.
+
+### Pedidos — linha do tempo de status (2026-10-27)
+
+- O histórico de Pedidos oferece uma linha do tempo recolhida, derivada dos eventos Food já gravados. A consulta mostra etapas e horários sem adicionar comandos, copiar dados de cliente ou inventar transições.
+- Verificação: suíte Food **191/191**; smoke Chrome **27/27**, incluindo expansão da linha do tempo; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações verificadas**; sintaxe e diff-check aprovados.
+- Food continua owner do histórico do pedido; nenhuma integração externa ou sincronização foi declarada.

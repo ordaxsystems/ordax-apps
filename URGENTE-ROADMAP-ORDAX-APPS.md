@@ -981,3 +981,8 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O PDV oferece uma barra inferior compacta em telas estreitas quando há itens no carrinho, para conferir unidades e total já calculados pelo formulário. Um único comando leva o foco ao fechamento e a barra se oculta quando ele fica visível.
 - A rolagem não cobre campos, o carrinho continua sendo o único estado do pedido e “Ir para fechamento” não registra venda nem confirma pagamento.
 - Food: **187/187** testes; Chrome **27/27** configurações, incluindo a revisão do pedido preenchido em 390 × 844; verificador MVP: **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**. Integrações reais e owners permanecem inalterados.
+
+### Space Pizzaria / OrdaX Food — consultar histórico de status dos pedidos (2026-10-27)
+
+- A tela Pedidos agora permite expandir uma linha do tempo recolhida, montada a partir do journal/statusHistory imutável do pedido Food. Cada evento mostra somente o estado e o horário já registrados; a consulta não altera pedidos nem duplica dados pessoais ou cancelamentos.
+- Verificação: suíte Food **191/191**, smoke Chrome **27/27** com abertura da linha do tempo, verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**. Owners, contratos e integrações permanecem iguais.

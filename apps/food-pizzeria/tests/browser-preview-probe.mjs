@@ -96,6 +96,20 @@ try {
     }
   }
 
+  if (view === "orders") {
+    const timeline = [...root.querySelectorAll(".order-history-timeline")]
+      .find((details) => details.querySelectorAll("li").length > 1);
+    ensure(timeline && !timeline.open,
+      "O histórico deve oferecer linha do tempo recolhida nos pedidos que têm transições.");
+    const summary = timeline.querySelector("summary");
+    ensure(summary?.textContent.includes("registros")
+      || summary?.textContent.includes("registro"),
+    "A linha do tempo precisa indicar quantos registros podem ser consultados.");
+    summary.click();
+    ensure(timeline.open && timeline.querySelectorAll("time[datetime]").length > 1,
+      "Expandir o histórico não apresentou as datas dos eventos Food.");
+  }
+
   if (view === "delivery" && parameters.has("__verify_pickup_handoff")) {
     const readyDeliveryCall = root.querySelector('.delivery-call-link[href="tel:11988113020"]');
     ensure(readyDeliveryCall?.getAttribute("aria-label")
