@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildFoodOperationalReport } from "../src/application/food-order-reporting.mjs";
+import { buildFoodOperationalReport, serializeFoodOperationalReportCsv } from "../src/application/food-order-reporting.mjs";
 
 const NOW = Date.parse("2026-10-27T16:00:00.000Z");
 
@@ -100,4 +100,32 @@ test("report rejects missing Food order data, unsupported ranges and invalid clo
   assert.throws(() => buildFoodOperationalReport({}, { now: NOW }), /snapshot de pedidos/);
   assert.throws(() => buildFoodOperationalReport(snapshot, { range: "year", now: NOW }), /Período/);
   assert.throws(() => buildFoodOperationalReport(snapshot, { now: Number.NaN }), /horário/);
+});
+
+test("operational report CSV exports only Food-owned metrics and recent order references", () => {
+  const report = buildFoodOperationalReport(snapshot, { range: "24h", now: NOW });
+  const csv = serializeFoodOperationalReportCsv(report, {
+    channelLabels: { delivery: "Entrega", pickup: "Retirada", counter: "Balcão", "dine-in": "Salão" },
+    statusLabels: { ready: "Pronto", cancelled: "Cancelado", completed: "Concluído" },
+    orderNumber: ({ id }) => `#${id}`,
+  });
+  assert.ok(csv.startsWith("\uFEFF"));
+  assert.match(csv, /"Pedidos";"Total";"3";"pedidos"/);
+  assert.match(csv, /"Canais";"Entrega";"1";"pedidos"/);
+  assert.match(csv, /"Itens";"Produtos adicionais";"4";"unidades";"Sem baixa de Inventory"/);
+  assert.match(csv, /"Pedidos recentes";"#ready-now";"Pronto"/);
+  assert.doesNotMatch(csv, /R\$|lucro|cliente|telefone/i);
+});
+
+test("CSV quotes cells and neutralizes spreadsheet formula prefixes", () => {
+  const report = buildFoodOperationalReport(snapshot, { range: "24h", now: NOW });
+  const csv = serializeFoodOperationalReportCsv(report, {
+    channelLabels: { delivery: '=IMPORTXML("https://invalid.example","//secret")' },
+    statusLabels: { ready: "@SUM(A1:A2)" },
+    orderNumber: () => "+CMD('x')",
+  });
+  assert.match(csv, /"'=IMPORTXML\(""https:\/\/invalid\.example"",""\/\/secret""\)"/);
+  assert.match(csv, /"'\+CMD\('x'\)"/);
+  assert.doesNotMatch(csv, /"=IMPORTXML|"@SUM|"\+CMD/);
+  assert.match(csv, /\r\n/);
 });

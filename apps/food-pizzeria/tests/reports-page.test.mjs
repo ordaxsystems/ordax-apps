@@ -43,6 +43,7 @@ test("Food reports render operational metrics, period controls and navigation ac
   assert.match(page, /data-view="kitchen"/);
   assert.match(page, /data-view="pos"/);
   assert.match(page, /data-view="orders"/);
+  assert.match(page, /data-action="export-food-report"[\s\S]*?Baixar CSV/);
   assert.match(page, /#1048/);
   assert.match(page, /<progress class="food-report-progress" max="100" value="100"/);
   assert.doesNotMatch(page, /style=/);

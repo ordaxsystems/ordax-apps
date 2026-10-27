@@ -876,3 +876,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O overview segue no Space; relatório não calcula receita, lucro, pagamento ou saldo/movimentação de Inventory. Itens adicionais e sabores são derivados das quantidades congeladas em cada pedido; pizza combinada conta cada sabor selecionado, sem frações.
 - Suíte Food completa: 160/160; sintaxe e `git diff --check` aprovados. Host incorporado inspecionado: proporções dos gráficos e filtros visíveis; provider de produção não existe neste caminho e os dados continuam locais. PR #359 segue como rascunho.
 
+### Space Pizzaria / OrdaX Food — exportação dos relatórios em CSV (2026-10-27)
+
+- A tela Relatórios baixa resumo UTF-8 dos indicadores do período, canais, itens, sabores e até cinco pedidos por referência. Não exporta nomes, telefones, endereços, pagamentos nem dados de Inventory.
+- O CSV protege células com escape e prefixo neutro para conteúdo que poderia ser interpretado como fórmula. O Blob usa URL temporária revogada após o download ou ao desmontar a interface.
+- Suíte Food completa: 163/163; verificador do mínimo MVP: 20 alvos, 18 não assinados e 2 bloqueados; host incorporado mostra o botão e os relatórios; CI remoto será registrado depois que a PR receber este commit.
+

@@ -139,6 +139,81 @@ test("content-only Food preview never includes a second sidebar, header or dashb
   assert.equal(root.listenerCount, 0);
 });
 
+test("Food operational reports download an aggregate CSV and release the object URL on teardown", async () => {
+  const originalCreateObjectURL = globalThis.URL.createObjectURL;
+  const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+  const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  let exportedBlob = null;
+  const revokedUrls = [];
+  const links = [];
+  const toasts = [];
+  globalThis.URL.createObjectURL = (blob) => {
+    exportedBlob = blob;
+    return "blob:food-report";
+  };
+  globalThis.URL.revokeObjectURL = (url) => revokedUrls.push(url);
+
+  const root = fakeRoot();
+  const reportContent = { querySelector() { return null; }, prepend(toast) { toasts.push(toast); } };
+  const rootQuerySelector = root.querySelector.bind(root);
+  root.querySelector = (selector) => selector === "#main-content" ? reportContent : rootQuerySelector(selector);
+  const document = {
+    body: { appendChild(link) { links.push(link); } },
+    createElement(tagName) {
+      if (tagName === "a") {
+        return { remove() { this.removed = true; }, click() { this.clicked = true; } };
+      }
+      return {
+        dataset: {},
+        append(...children) { this.textContent = children.map((child) => child.textContent).join(""); },
+        setAttribute() {},
+      };
+    },
+    createTextNode(text) { return { textContent: text }; },
+  };
+  globalThis.document = document;
+  root.ownerDocument = {
+    body: { appendChild(link) { links.push(link); } },
+    createElement(tagName) {
+      assert.equal(tagName, "a");
+      return {
+        remove() { this.removed = true; },
+        click() { this.clicked = true; },
+      };
+    },
+  };
+  const app = createFoodPizzeriaApp({ root, dataPort: fakePreviewPort(), presentation: "embedded-preview" });
+  try {
+    await app.mount();
+    app.navigate("reports");
+    root.dispatchReportRange("24h");
+    root.dispatchPreviewAction("export-food-report");
+
+    assert.equal(links.length, 1, toasts.map(({ textContent }) => textContent).join(" | "));
+    assert.equal(links[0].href, "blob:food-report");
+    assert.match(links[0].download, /ordax-food-relatorio-24h-\d{4}-\d{2}-\d{2}\.csv/);
+    assert.equal(links[0].clicked, true);
+    assert.equal(links[0].removed, true);
+    assert.match(toasts.at(-1)?.textContent ?? "", /Relatório CSV baixado/);
+    const bytes = new Uint8Array(await exportedBlob.arrayBuffer());
+    assert.deepEqual([...bytes.slice(0, 3)], [0xEF, 0xBB, 0xBF]);
+    const csv = await exportedBlob.text();
+    assert.match(csv, /"seção";"indicador";"valor"/);
+    assert.match(csv, /"Pedidos por canal"|"Canais"/);
+    assert.doesNotMatch(csv, /Fernanda Lima|Marina Alves|telefone/i);
+    app.destroy();
+    assert.deepEqual(revokedUrls, ["blob:food-report"]);
+  } finally {
+    app.destroy();
+    if (originalCreateObjectURL) globalThis.URL.createObjectURL = originalCreateObjectURL;
+    else delete globalThis.URL.createObjectURL;
+    if (originalRevokeObjectURL) globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    else delete globalThis.URL.revokeObjectURL;
+    if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
+    else delete globalThis.document;
+  }
+});
+
 test("standalone Food header does not spend space on demo-data notices", async () => {
   const root = fakeRoot();
   const app = createFoodPizzeriaApp({ root, dataPort: fakePreviewPort(), presentation: "standalone-preview" });

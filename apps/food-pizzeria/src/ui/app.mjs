@@ -45,6 +45,7 @@ import { renderTablesPage } from "./views/tables.mjs";
 import { renderDeliveryPage } from "./views/delivery.mjs";
 import { renderSettingsPage } from "./views/settings.mjs";
 import { renderFoodReportsPage } from "./views/reports.mjs";
+import { buildFoodOperationalReport, serializeFoodOperationalReportCsv } from "../application/food-order-reporting.mjs";
 
 export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalone-preview" } = {}) {
   if (!root || typeof root.querySelector !== "function" || typeof root.addEventListener !== "function") {
@@ -175,6 +176,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let busy = false;
   let notice = null;
   let noticeTimer = null;
+  const reportDownloadTimers = new Map();
   let ageRefreshTimer = null;
   let destroyed = false;
   let mounted = false;
@@ -704,6 +706,53 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function deliveryPage() { return renderDeliveryPage(viewModel()); }
 
   function reportsPage() { return renderFoodReportsPage(viewModel()); }
+
+  function exportFoodReport() {
+    const reportData = buildFoodOperationalReport(snapshot, { range: reportRange });
+    const csv = serializeFoodOperationalReportCsv(reportData, {
+      channelLabels: CHANNEL_LABELS,
+      statusLabels: STATUS_LABELS,
+      orderNumber: ({ id }) => formatFoodOrderNumber(id),
+    });
+    const document = root.ownerDocument ?? globalThis.document;
+    const urlApi = globalThis.URL;
+    const downloadContainer = document?.body ?? document?.documentElement;
+    if (typeof globalThis.Blob !== "function" || typeof urlApi?.createObjectURL !== "function"
+      || typeof urlApi?.revokeObjectURL !== "function" || !document?.createElement
+      || !downloadContainer?.appendChild) {
+      throw new Error("Este navegador não oferece exportação de arquivos.");
+    }
+
+    const url = urlApi.createObjectURL(new globalThis.Blob([csv], { type: "text/csv;charset=utf-8" }));
+    let link = null;
+    try {
+      link = document.createElement("a");
+      link.href = url;
+      link.download = `ordax-food-relatorio-${reportRange}-${new Date(reportData.end).toISOString().slice(0, 10)}.csv`;
+      link.hidden = true;
+      downloadContainer.appendChild(link);
+      link.click();
+    } catch (error) {
+      urlApi.revokeObjectURL(url);
+      throw error;
+    } finally {
+      link?.remove?.();
+    }
+
+    let timer = null;
+    timer = globalThis.setTimeout(() => {
+      reportDownloadTimers.delete(timer);
+      urlApi.revokeObjectURL(url);
+    }, 1000);
+    reportDownloadTimers.set(timer, { url, urlApi });
+    notice = { type: "success", text: "Relatório CSV baixado." };
+    clearTimeout(noticeTimer);
+    noticeTimer = globalThis.setTimeout(() => {
+      notice = null;
+      renderNotice();
+    }, 3600);
+    renderNotice();
+  }
 
   function render() {
     if (destroyed || !root) return;
@@ -1236,7 +1285,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       return;
     }
     const action = target.dataset.action;
-    if (action === "dismiss-notice") {
+    if (action === "export-food-report") {
+      try { exportFoodReport(); } catch (error) { report(error); }
+    } else if (action === "dismiss-notice") {
       notice = null;
       renderNotice();
     } else if (action === "reset-order-filters") {
@@ -1646,6 +1697,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     destroyed = true;
     clearTimeout(noticeTimer);
     clearInterval(ageRefreshTimer);
+    for (const [timer, { url, urlApi }] of reportDownloadTimers) {
+      clearTimeout(timer);
+      urlApi.revokeObjectURL(url);
+    }
+    reportDownloadTimers.clear();
     unsubscribe?.();
     root.removeEventListener("click", handleClick);
     root.removeEventListener("submit", handleSubmit);

@@ -41,8 +41,8 @@ O preview usa uma porta interna do app e armazenamento local no navegador, isola
 ## Integração e distribuição
 
 - O host local é apenas um harness de desenvolvimento e injeta fixtures de preview.
-- A navegação mantém áreas do conceito para exploração. Overview, Inventory, Customers, Reports e Team exibem status sem provider e não leem/gravam seus domínios. O PDV cria pedidos Food apenas na prévia local; não confirma pagamentos.
-- As áreas Food mantidas no protótipo são Pedidos/histórico, PDV/entrada de pedidos, Cardápio/fichas, Cozinha/KDS, Mesas/Comandas e Delivery.
+- A navegação mantém áreas do conceito para exploração. Overview, Inventory, Customers e Team exibem status sem provider e não leem/gravam seus domínios. Relatórios é read-only e deriva seus indicadores e CSV do snapshot Food local. O PDV cria pedidos Food apenas na prévia local; não confirma pagamentos.
+- As áreas Food mantidas no protótipo são Pedidos/histórico, PDV/entrada de pedidos, Cardápio/fichas, Cozinha/KDS, Mesas/Comandas, Delivery e Relatórios operacionais.
 - `ordax.food-pizzeria-data-port/1` e `ordax.food-pizzeria-command/2` são formatos internos do protótipo, não contratos públicos da plataforma.
 - Os limites internos e as dependências futuras por owner estão descritos em `INTEGRATION-PORTS.md`; esse documento não declara providers implementados nem substitui os contratos públicos ausentes.
 - Não importar contratos internos do `ordax-os` nem criar auth, permissões, sync, realtime, storage compartilhado, instalação ou updater paralelos.
