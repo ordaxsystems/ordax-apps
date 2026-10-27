@@ -810,3 +810,8 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A tela de salão deixa explícito que o total é consumo calculado dos pedidos não cancelados e que encerrar a comanda libera a mesa sem registrar recebimento.
 - Food continua sem estado de pagamento paralelo; confirmação fica com Payments. Suíte Food: 135/135; a PR #359 foi atualizada nesta rodada e segue em rascunho.
 
+### Space Pizzaria / OrdaX Food — pré-preparo calculado pelas fichas (2026-10-27)
+
+- O Cardápio consolida os insumos necessários por tamanho e quantidade de cada sabor, reutilizando o cálculo de consumo já adotado pelos pedidos. A projeção não consulta saldos nem grava movimentações no Inventory.
+- Suíte Food: 138/138; o planejador valida tamanhos, sabores, fichas e limite do lote. A PR #359 permanece em rascunho.
+
