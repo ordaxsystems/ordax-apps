@@ -7,6 +7,8 @@ acquireE2ELock('orchestration-native-mcp');
 if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
   throw Error('lab_orchestration_e2e_approval_required');
 let phase='startup';
+let scenarioFailurePhase=null;
+let cleanupFailurePhase=null;
 (async()=>{
   const {ORCHESTRATOR_TOOLS}=await import('../src/orchestrator-contract.mjs');
   phase='app_start';
@@ -184,6 +186,9 @@ let phase='startup';
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
       externalMcpConnected:false,autonomousExecution:false};
+  }catch(error){
+    scenarioFailurePhase=phase;
+    throw error;
   }finally{
     try {
       if(disposableApiKeyCleanupRequired) {
@@ -192,20 +197,34 @@ let phase='startup';
         const status=await evaluate(`window.ordax.supervisorStatus()`);
         if(status?.keySaved!==false)throw Error('test_api_key_cleanup_failed');
       }
+    } catch(error) {
+      cleanupFailurePhase=phase;
+      throw error;
     } finally {
-      phase='pending_request_cleanup';
-      for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
-      phase='cdp_websocket_cleanup';
-      await closeCdpWebSocket(ws);
+      try {
+        phase='pending_request_cleanup';
+        for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
+      } catch(error) {
+        cleanupFailurePhase=phase;
+        throw error;
+      } finally {
+        phase='cdp_websocket_cleanup';
+        try{await closeCdpWebSocket(ws);}
+        catch(error){cleanupFailurePhase=phase;throw error;}
+      }
     }
   }
   console.log(JSON.stringify(successReport));
 })().catch(error=>{
   const cleanupReasons=new Set(['cdp_websocket_close_unavailable','cdp_websocket_close_timeout_invalid',
     'cdp_websocket_close_invalid_state','cdp_websocket_close_timeout','cdp_websocket_close_failed']);
-  const reason=phase==='cdp_websocket_cleanup'&&cleanupReasons.has(error?.message)
-    ?error.message:'app_orchestration_scenario_failed';
-  console.error(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,phase,reason}));
+  const reportedPhase=scenarioFailurePhase||cleanupFailurePhase||phase;
+  const reason=scenarioFailurePhase?'app_orchestration_scenario_failed'
+    :cleanupFailurePhase?(cleanupReasons.has(error?.message)?error.message:'app_orchestration_cleanup_failed')
+    :'app_orchestration_scenario_failed';
+  const report={schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,phase:reportedPhase,reason};
+  if(cleanupFailurePhase)report.cleanupPhase=cleanupFailurePhase;
+  console.error(JSON.stringify(report));
   process.exitCode=2;
 });
 

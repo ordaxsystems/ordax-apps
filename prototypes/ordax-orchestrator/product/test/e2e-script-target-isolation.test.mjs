@@ -145,6 +145,10 @@ test('packaged orchestration smoke waits for the newly created work to open befo
     'the runner awaits observed CDP closure rather than assuming close is synchronous');
   assert.doesNotMatch(source,/ws\.close\(\)/,
     'the runner has one owner for the asynchronous CDP close lifecycle');
+  assert.match(source,/catch\(error\)\{\s*scenarioFailurePhase=phase;\s*throw error;\s*\}finally/,
+    'entering finally cannot overwrite the phase where the App scenario failed');
+  assert.match(source,/const reportedPhase=scenarioFailurePhase\|\|cleanupFailurePhase\|\|phase/,
+    'failure reports preserve scenario and cleanup phases independently');
 });
 
 test('CDP shutdown observes a peer close racing the local close call',async()=>{

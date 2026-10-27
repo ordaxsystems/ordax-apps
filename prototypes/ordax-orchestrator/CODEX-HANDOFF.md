@@ -362,8 +362,8 @@ Parser, integração SQLite de origem/revisão/contexto, e seleção de contexto
 
 ## Fechamento assíncrono da sessão CDP — 2026-10-27
 
-- CI no head `57a198ee00006c4e4b64000a663ef2226dff78f4`: Apps Foundation **success**; o Orchestrator Lab Isolation passou os contratos, a suíte Windows (**619 aprovados, 0 falhas, 1 skip**) e o portable build, mas o E2E empacotado falhou em `phase=cdp_websocket_cleanup`.
-- Isso localiza a falha no ciclo de vida da conexão, não nas asserções do App. O fechamento anterior presumiu que chamar `WebSocket.close()` e inspecionar o estado imediatamente capturaria o encerramento remoto; o E2E mostra que a conclusão é assíncrona e pode chegar depois da última resposta CDP. A versão anterior não é suficiente.
+- CI no head `57a198ee00006c4e4b64000a663ef2226dff78f4`: Apps Foundation **success**; o Orchestrator Lab Isolation passou os contratos, a suíte Windows (**619 aprovados, 0 falhas, 1 skip**) e o portable build, mas o E2E retornou `phase=cdp_websocket_cleanup`.
+- A fase não localiza a causa: o runner a sobrescrevia ao entrar no `finally`, então uma falha anterior do cenário podia ser reportada como cleanup. A hipótese de corrida no fechamento CDP foi prematura; o recibo não prova que as asserções do App passaram.
 - A alteração local move o fechamento para `closeCdpWebSocket`: registra o evento `close` antes da chamada, aguarda a conexão atingir o evento terminal dentro de três segundos e preserva falha explícita se o socket não fechar. Exceção síncrona na corrida remota só é aceita se o fechamento terminal for observado; caso contrário, o gate expira com razão específica.
 - Testes focados após a correção: `node --test test/e2e-script-target-isolation.test.mjs` **24/24** (corrida de fechamento remoto, socket preso e socket já fechado); `npm run check` passou (`Lab-owned source syntax OK`); `git diff --check` passou. A correção ainda não foi publicada nem certificada no Electron Windows; aguardar novo CI antes de atualizar o PR para verde.
 - Próximo gate: commit pequeno na branch da PR somente se o head ainda for `57a198e`, acompanhar Foundation e Lab Isolation até o fim e ler a subfase/razão do recibo. Os gates GPT Web com efeito/importação, VESTE com grants, continuidade Runtime com UI fechada e operação 24 h continuam pendentes.
@@ -373,4 +373,11 @@ Parser, integração SQLite de origem/revisão/contexto, e seleção de contexto
 - CI no head `6af2ed7089c821ad53df20a7a021aa23e81f3574`: Apps Foundation passou. Lab Isolation interrompeu antes do E2E porque `desktop-contract.test.mjs` ainda exigia o formato literal antigo de erro; **622 testes passaram e 1 falhou**. O teste refletia uma implementação já substituída, não uma falha funcional do App ou do novo helper CDP.
 - A asserção foi atualizada para verificar o allowlist das razões CDP, o fallback genérico e a estrutura segura do recibo. Os dois arquivos direcionados passaram **55/55** (`desktop-contract` + `e2e-script-target-isolation`). Um `npm run validate` local completo está em andamento; não há resultado final declarado ainda.
 - Próximo gate: publicar essa sincronização entre teste e implementação somente se o remoto continuar em `6af2ed7`; executar de novo a validação Windows, build e E2E empacotado. Se o E2E falhar, usar o motivo seguro específico e reparar a causa antes do próximo gate.
+
+## Preservação da causa original no runner — 2026-10-27
+
+- CI no head `9ec33247fe94a200d21822c1df0ebc3832667d12`: Apps Foundation **success**; Lab Isolation passou validação Windows e build portátil. O E2E emitiu `phase=cdp_websocket_cleanup`, `reason=app_orchestration_scenario_failed`.
+- Essa fase ainda não identifica o defeito: o `finally` mudava `phase` antes da captura global, inclusive se o cenário tivesse falhado antes de começar a limpeza. Portanto, os resultados `b7ec40a`, `57a198e` e `6af2ed7` não provaram que as asserções do App passaram nem que CDP era a causa; a conclusão anterior foi corrigida nos documentos e no PR.
+- O source local captura `scenarioFailurePhase` antes do `finally`, registra `cleanupFailurePhase` quando uma operação de limpeza falha e inclui a fase de cleanup no recibo, mantendo detalhes arbitrários ocultos. O contrato direcionado passou **55/55** após essa mudança; `npm run check` ainda estava em execução no momento do registro.
+- Próximo gate: publicar somente se o remoto continuar no head `9ec3324`; confirmar o resumo final de `npm run check`, executar CI de novo e usar a fase realmente preservada para corrigir o cenário ou cleanup proprietário. Nenhum aceite E2E foi concedido.
 
