@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { reviewFoodCartPrices } from "../src/application/cart-pricing.mjs";
+import {
+  foodCartItemLineTotalCents,
+  foodCartSubtotalCents,
+  reviewFoodCartPrices,
+} from "../src/application/cart-pricing.mjs";
 import { PREVIEW_CATALOG_PRODUCTS } from "../src/fixtures/mock-data.mjs";
 import {
   FOOD_PIZZERIA_STATE_SCHEMA_V6,
@@ -31,6 +35,36 @@ function pizzaItem(state, flavorIds = ["ng-calabresa"]) {
     : Math.ceil(prices.reduce((sum, price) => sum + price, 0) / prices.length);
   return { id: "draft-pizza-1", size, flavorIds, quantity: 2, unitPriceCents };
 }
+
+test("cart rows and checkout subtotal share the Food menu price calculation", () => {
+  const state = createSeedFoodState();
+  const pizza = pizzaItem(state);
+  const product = PREVIEW_CATALOG_PRODUCTS[0];
+  const catalogItem = {
+    id: "draft-product-line",
+    type: "catalog-product",
+    productId: product.id,
+    name: product.name,
+    category: product.category,
+    quantity: 3,
+    unitPriceCents: product.priceCents,
+  };
+
+  assert.equal(foodCartItemLineTotalCents(pizza, state), pizza.unitPriceCents * pizza.quantity);
+  assert.equal(foodCartItemLineTotalCents(catalogItem, state), product.priceCents * 3);
+  assert.equal(foodCartSubtotalCents([pizza, catalogItem], state),
+    pizza.unitPriceCents * pizza.quantity + product.priceCents * 3);
+  assert.throws(() => foodCartItemLineTotalCents({ ...pizza, quantity: 51 }, state), /quantidade do item/);
+});
+
+test("cart summary keeps its frozen pizza price if the current menu cannot price the draft", () => {
+  const state = createSeedFoodState();
+  const pizza = pizzaItem(state);
+  const removedFlavor = { ...state, flavors: state.flavors.filter(({ id }) => id !== pizza.flavorIds[0]) };
+
+  assert.equal(foodCartItemLineTotalCents(pizza, removedFlavor), pizza.unitPriceCents * pizza.quantity);
+  assert.throws(() => reviewFoodCartPrices([pizza], removedFlavor), /não está disponível/);
+});
 
 test("unchanged menu prices preserve the draft without mutation", () => {
   const state = createSeedFoodState();

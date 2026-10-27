@@ -957,3 +957,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Em pedidos de entrega, telefone inválido/ausente e endereço vazio são sinalizados inline em tamanho legível enquanto o formulário é preenchido; o botão fica indisponível até ambos estarem corretos. O rótulo do telefone muda para obrigatório na entrega e opcional nos demais canais. Regras e acessibilidade vêm do domínio/formulário Food; balcão e retirada removem a exigência de entrega.
 - Verificação: suíte Food **183/183**, prova completa de navegador Chrome aprovada nas 26 configurações atuais, node --check dos módulos/testes alterados e git diff --check aprovados.
 - Nenhuma identidade de cliente ou endereço passa a ter owner local: os valores só compõem o pedido Food da prévia. Contratos, Spaces e sincronização entre aparelhos não foram alterados.
+
+### Space Pizzaria / OrdaX Food — unificar preços do carrinho no PDV (2026-10-27)
+
+- A UI não recalcula preço de linha e subtotal em blocos independentes: o módulo de aplicação cart-pricing agora fornece as funções puras usadas pelo carrinho e pelo fechamento. Isso mantém o preço apresentado alinhado ao total do pedido.
+- Pizzas continuam usando a regra/snapshot Food e itens adicionais preservam o preço congelado da fixture local. Uma linha cuja precificação atual ficou inválida permanece visível pelo preço do rascunho; a revisão estrita ainda bloqueia envio para exigir correção.
+- Verificação: suíte Food **185/185**, smoke Chrome aprovado nas 26 configurações, sintaxe e git diff --check aprovados. Nenhum contrato, owner, pagamento ou saldo de Inventory foi alterado.

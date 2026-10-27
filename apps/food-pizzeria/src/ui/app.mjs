@@ -22,7 +22,11 @@ import {
   validateKitchenTasks,
   validateKitchenWorkflow,
 } from "../application/kitchen-workflow-preview.mjs";
-import { reviewFoodCartPrices } from "../application/cart-pricing.mjs";
+import {
+  foodCartItemLineTotalCents,
+  foodCartSubtotalCents,
+  reviewFoodCartPrices,
+} from "../application/cart-pricing.mjs";
 import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
@@ -577,16 +581,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return '<ul class="cart-list">' + cart.map((item, index) => {
       if (item.type === "catalog-product") {
         const label = String(item.name);
-        return '<li class="cart-line"><div><strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(item.category) + '</span></div><strong>' + money(item.unitPriceCents * item.quantity) + '</strong>' + cartQuantityControls(item, index, label) + '</li>';
+        return '<li class="cart-line"><div><strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(item.category) + '</span></div><strong>' + money(foodCartItemLineTotalCents(item, snapshot)) + '</strong>' + cartQuantityControls(item, index, label) + '</li>';
       }
       const size = PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
       const flavorNames = item.flavorIds.map((id) => snapshot.flavors.find((flavor) => flavor.id === id)?.name ?? "Sabor indisponível");
       const label = size + " · " + flavorNames.join(" + ");
-      let unit = 0;
-      try {
-        unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
-      } catch { unit = item.unitPriceCents; }
-      return '<li class="cart-line"><div><strong>' + escapeHtml(size) + '</strong><span>' + escapeHtml(flavorNames.join(" + ")) + '</span></div><strong>' + money(unit * item.quantity) + '</strong>' + cartQuantityControls(item, index, label) + '</li>';
+      return '<li class="cart-line"><div><strong>' + escapeHtml(size) + '</strong><span>' + escapeHtml(flavorNames.join(" + ")) + '</span></div><strong>' + money(foodCartItemLineTotalCents(item, snapshot)) + '</strong>' + cartQuantityControls(item, index, label) + '</li>';
     }).join("") + '</ul>';
   }
   
@@ -889,15 +889,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function updateCartTotals() {
     const form = root.querySelector("#create-order-form");
     if (!form) return;
-    const subtotal = cart.reduce((sum, item) => {
-      if (item.type === "catalog-product") return sum + item.unitPriceCents * item.quantity;
-      try {
-        const unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
-        return sum + unit * item.quantity;
-      } catch {
-        return sum + item.unitPriceCents * item.quantity;
-      }
-    }, 0);
+    const subtotal = foodCartSubtotalCents(cart, snapshot);
     const isDelivery = form.elements.channel.value === "delivery";
     const phoneRequirementHint = root.querySelector("#phone-requirement-hint");
     if (phoneRequirementHint) {

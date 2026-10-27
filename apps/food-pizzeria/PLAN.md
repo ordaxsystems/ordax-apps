@@ -81,3 +81,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - Estados inválidos recebem orientação inline em tamanho legível (11 px), aria-invalid e impedem registrar o pedido. O rótulo do telefone alterna entre obrigatório na entrega e opcional nos demais canais; ao trocar para balcão ou retirada, os requisitos de entrega são removidos.
 - Testes cobrem limites e dados inválidos no domínio, marcação acessível do formulário e o ciclo entrega → dados válidos → balcão. Suíte: 183/183; prova Chrome completa; sintaxe e git diff --check aprovados.
 - O PDV continua usando os dados do pedido Food; a mudança não cria cadastro de cliente, sincronização, provider ou contrato novo.
+
+### PDV — centralizar preços do rascunho Food (2026-10-27)
+
+- O cálculo de preço por linha e subtotal saiu do controlador de interface para o módulo de aplicação cart-pricing. A linha exibida e o fechamento do pedido agora consultam as mesmas funções puras.
+- Pizzas usam a regra e o snapshot atual do domínio Food; produtos adicionais mantêm o preço congelado no item local. Se uma edição do cardápio tornar uma pizza impossível de precificar, o rascunho continua visível pelo preço congelado, enquanto a revisão estrita continua bloqueando o envio.
+- Testes cobrem pizza, item de catálogo, subtotal misto, limites de quantidade e preservação do rascunho inválido. Suíte Food: 185/185; prova Chrome nas 26 configurações; sintaxe e git diff --check aprovados. Sem novos dados ou owners.
