@@ -937,3 +937,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A Expedição permite ligar para o cliente enquanto o pedido de entrega ainda aguarda despacho. O link `tel:` é montado apenas para telefones válidos e inclui nome e número do pedido no rótulo acessível; pedidos de retirada, atendimento local e entregas já em rota não recebem uma segunda ação no cartão.
 - O telefone é usado somente como dado já presente no pedido Food. Não há chamada de API, cópia de dados, integração ou mudança de owner.
 - Suíte Food: 178/178; smoke Chrome: 26/26 com verificação do link pré-despacho no cartão. `node --check` e `git diff --check` aprovados.
+
+### Space Pizzaria / OrdaX Food — KDS com fila de alto volume (2026-10-27)
+
+- Regressão de 100 pedidos confirma que **Próximo** muda o foco para o segundo ticket e devolve o atual à 3ª posição, preservando 100 pedidos e a ordem da cauda.
+- A estação dedicada renderiza um pedido em foco, os cinco seguintes e informa os 94 que permanecem atrás. Isso valida o fluxo de tela do operador sem alongar o cartão atual com a fila inteira.
+- Suíte Food: 180/180; testes KDS: 39/39; smoke Chrome: 26/26; verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas. Sintaxe e `git diff --check` aprovados.
+- A prova cobre a fila local de prévia; não cria sync, persistência compartilhada, owner ou contrato de Food Production.

@@ -180,6 +180,25 @@ test("next focuses the following ticket and moves the current ticket to third pl
   assert.equal(deferred.tickets.find(({ orderId }) => orderId === "order-1").cycleQueuedAt, "2026-10-27T10:00:00.000Z");
 });
 
+test("next keeps a 100-ticket queue ordered and puts the skipped order in third place", () => {
+  const oneScreen = distributeKitchenSteps(DEFAULT_KITCHEN_WORKFLOW, 1);
+  const orders = Array.from({ length: 100 }, (_, index) => order(
+    `order-${String(index + 1).padStart(4, "0")}`,
+    "2026-10-27T10:00:00.000Z",
+  ));
+  const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, oneScreen);
+
+  const deferred = action(tasks, "pass-next", "order-0001", "open-dough", 1, "command-pass-100", "2026-10-27T10:02:00.000Z");
+  const queue = sortKitchenTickets(deferred.tickets, oneScreen, 1);
+
+  assert.equal(queue.length, 100);
+  assert.deepEqual(queue.slice(0, 5).map(({ orderId }) => orderId), [
+    "order-0002", "order-0003", "order-0001", "order-0004", "order-0005",
+  ]);
+  assert.equal(currentKitchenStep(queue[2]).queuePosition, 3);
+  assert.equal(queue.at(-1).orderId, "order-0100");
+});
+
 test("passing next pauses an active step so the next order can take focus", () => {
   const oneScreen = { ...DEFAULT_KITCHEN_WORKFLOW, screenCount: 1 };
   const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [

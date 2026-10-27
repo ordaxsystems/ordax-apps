@@ -190,6 +190,28 @@ test("station focuses a single ticket, exposes start/complete/next and lists fiv
   assert.doesNotMatch(page, /kitchen-summary|kitchen-toolbar|kitchen-display-setup/);
 });
 
+test("a dedicated station keeps a 100-order queue readable as one focus, five next and a remaining count", () => {
+  const highVolumeWorkflow = distributeKitchenSteps(DEFAULT_KITCHEN_WORKFLOW, 1);
+  const highVolumeOrders = Array.from({ length: 100 }, (_, index) => order({
+    id: `order-${String(index + 1).padStart(4, "0")}`,
+    status: "received",
+    channel: "counter",
+    startedAt: "2026-10-26T12:00:00.000Z",
+  }));
+  const page = render({
+    snapshot: { tableCommands: [], orders: highVolumeOrders },
+    kitchenWorkflow: highVolumeWorkflow,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, highVolumeOrders, highVolumeWorkflow),
+    activeKitchenScreen: 1,
+    kitchenScreenCount: 1,
+  });
+  const upcomingOrderIds = [...page.matchAll(/data-kitchen-upcoming-order="([^"]+)"/g)].map(([, id]) => id);
+
+  assert.match(page, /data-kitchen-current-order="order-0001"/);
+  assert.deepEqual(upcomingOrderIds, ["order-0002", "order-0003", "order-0004", "order-0005", "order-0006"]);
+  assert.match(page, /\+ 94 pedidos depois dos próximos cinco/);
+});
+
 test("single-screen flow keeps every step in sequence on one focused ticket", () => {
   const page = render({
     kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, DEFAULT_KITCHEN_WORKFLOW),
