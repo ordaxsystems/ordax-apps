@@ -14,7 +14,7 @@ function renderOrders(orders) {
     orderChannelFilter: "all",
     commandById: () => null,
     orderNumber: ({ id }) => id,
-    renderOrderCard: ({ id }) => `<article data-order-id="${id}"></article>`,
+    renderOrderCard: ({ id }, { allowCancel = false } = {}) => `<article data-order-id="${id}" data-can-cancel="${allowCancel}"></article>`,
     emptyState: () => `<div class="empty-state"></div>`,
   });
 }
@@ -25,6 +25,20 @@ test("Pedidos mostra histórico e encaminha a criação para o PDV", () => {
   assert.match(html, /<h1>Pedidos<\/h1>/);
   assert.match(html, /data-view="pos">Novo pedido/);
   assert.doesNotMatch(html, /id="create-order-form"|id="add-pizza-form"|Montar pedido/);
+});
+
+test("Pedidos é a área de gestão que expõe a ação de cancelamento", () => {
+  const order = {
+    id: "pedido-ativo",
+    createdAt: "2026-10-27T10:00:00.000Z",
+    customerName: "Cliente",
+    phone: "",
+    channel: "pickup",
+    status: "received",
+    items: [],
+  };
+
+  assert.match(renderOrders([order]), /data-can-cancel="true"/);
 });
 
 test("histórico de pedidos prioriza o horário de criação mesmo se a lista vier fora de ordem", () => {

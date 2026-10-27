@@ -794,3 +794,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A UI e as interações estruturais do PDV foram conferidas no host local. Suíte Food: 131/131; `git diff --check` e sintaxe aprovados. O runner Chrome local não encontrou Chrome/Chromium instalado; a PR #359 continua em rascunho e será atualizada para CI remoto.
 - Catálogo adicional segue fixture local; owner Catálogo e persistência Food v7 ainda não publicados. Totais não confirmam pagamento e não foram simuladas integrações com Space, Payments ou Inventory.
 
+### Space Pizzaria / OrdaX Food — cancelar somente na gestão de Pedidos (2026-10-27)
+
+- O cartão compartilhado agora recebe permissão explícita para expor cancelamento: Pedidos habilita para pedidos elegíveis; Delivery e KDS não mostram a ação. Cancelar continua exigindo motivo e é uma transição do domínio Food.
+- A interface não cria papel admin local. Grant por ação e identidade do operador seguem dependentes do host Identity/Space; visibilidade de botão não é autorização.
+- Testes direcionados: 10/10; suíte completa: 133/133; `node --check` e `git diff --check` aprovados. A PR #359 será atualizada nesta rodada e permanece em rascunho.
+

@@ -389,3 +389,11 @@ A prévia incorporada permite abrir diretamente `view=pos`, sem header nem naveg
 
 Validação: suíte Food completa, 131/131; `git diff --check` e verificações de sintaxe aprovados. A renderização do PDV foi conferida no host local incorporado, incluindo catálogo, carrinho vazio, campos de atendimento e total. O runner automatizado de navegador não iniciou porque Chrome/Chromium não está instalado neste host; CI da PR executará a verificação de navegador.
 
+## Ação de cancelamento no módulo correto (2026-10-27)
+
+O cartão de pedido compartilhado não oferece mais Cancelar por padrão. O histórico de Pedidos habilita explicitamente a ação para pedidos elegíveis; Delivery desabilita a ação nos cartões de despacho e rota, e o KDS continua sem cancelamento. O fluxo pede motivo e registra a transição no mesmo domínio Food.
+
+A interface limita o local de gestão, mas não finge que sabe quem é admin. O adapter de preview não autentica operadores; autorização por papel depende de grants por ação e identidade fornecidos pelo host Identity/Space. A aplicação deve manter esse gate no owner quando houver contrato.
+
+Validação: pedidos, Delivery e fronteiras SSOT, 10/10 testes direcionados; suíte completa Food, 133/133; `node --check` dos módulos alterados e `git diff --check` aprovados.
+
