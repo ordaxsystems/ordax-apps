@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
@@ -56,11 +57,25 @@ const scenarios = Object.freeze([
 ]);
 
 function chromeExecutable() {
-  for (const binary of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"]) {
-    const found = spawnSync("which", [binary], { encoding: "utf8" });
+  const windowsCandidates = process.platform === "win32" ? [
+    process.env.ProgramFiles && join(process.env.ProgramFiles, "Google/Chrome/Application/chrome.exe"),
+    process.env["ProgramFiles(x86)"] && join(process.env["ProgramFiles(x86)"], "Google/Chrome/Application/chrome.exe"),
+    process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Google/Chrome/Application/chrome.exe"),
+    process.env.ProgramFiles && join(process.env.ProgramFiles, "Chromium/Application/chrome.exe"),
+    process.env["ProgramFiles(x86)"] && join(process.env["ProgramFiles(x86)"], "Chromium/Application/chrome.exe"),
+  ] : [];
+  for (const candidate of [process.env.CHROME_PATH, process.env.CHROME_BIN, ...windowsCandidates]) {
+    if (candidate && existsSync(candidate)) return candidate;
+  }
+  const lookup = process.platform === "win32" ? "where.exe" : "which";
+  const binaries = process.platform === "win32"
+    ? ["chrome.exe", "chromium.exe"]
+    : ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"];
+  for (const binary of binaries) {
+    const found = spawnSync(lookup, [binary], { encoding: "utf8" });
     if (found.status === 0 && found.stdout.trim()) return found.stdout.trim();
   }
-  throw new Error("Chrome/Chromium não está instalado. A prova de navegador é obrigatória.");
+  throw new Error("Chrome/Chromium não foi localizado. Defina CHROME_PATH para executar a prova de navegador.");
 }
 
 async function freeLocalPort() {
@@ -104,19 +119,23 @@ async function waitForHttp(url, child) {
   throw new Error(`Serviço localhost não respondeu: ${url}`);
 }
 
-async function waitForChromeDebugger(profile, child) {
+async function waitForChromeDebugger(port, child) {
   for (let attempt = 0; attempt < 160; attempt += 1) {
     if (child.exitCode !== null) {
       throw new Error(`Chrome encerrou antes de publicar DevTools (exit=${child.exitCode}).`);
     }
     try {
-      const data = await readFile(join(profile, "DevToolsActivePort"), "utf8");
-      const selectedPort = Number(data.split("\n")[0]);
-      if (Number.isInteger(selectedPort) && selectedPort > 0) return selectedPort;
-    } catch { /* Chrome creates this file after starting its debugger. */ }
+      const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
+        signal: AbortSignal.timeout(400),
+      });
+      if (response.ok) {
+        const version = await response.json();
+        if (typeof version.webSocketDebuggerUrl === "string") return version;
+      }
+    } catch { /* Chrome starts the DevTools endpoint after its process opens. */ }
     await pause(100);
   }
-  throw new Error("Chrome não publicou DevToolsActivePort no perfil temporário.");
+  throw new Error(`Chrome não publicou o endpoint DevTools na porta ${port}.`);
 }
 
 async function connectCdp(webSocketUrl) {
@@ -134,6 +153,7 @@ async function connectCdp(webSocketUrl) {
   });
   let nextId = 0;
   const pending = new Map();
+  const commandTimeoutMs = process.platform === "win32" ? 30000 : 8000;
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     if (!message.id) return;
@@ -150,7 +170,7 @@ async function connectCdp(webSocketUrl) {
       const timeout = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`CDP expirou ao executar ${method}.`));
-      }, 8000);
+      }, commandTimeoutMs);
       pending.set(id, { resolve, reject, timeout });
       socket.send(JSON.stringify({ id, method, params }));
     });
@@ -194,17 +214,9 @@ const chromeProfile = join(temporary, "chrome-profile");
 const localServer = spawn(process.execPath,
   ["prototypes/food-pizzeria/server.mjs", "-Port", String(serverPort)],
   { env: { ...process.env, ORDAX_FOOD_BROWSER_SMOKE: "1" }, stdio: ["ignore", "pipe", "pipe"] });
-const chrome = spawn(browserBinary, [
-  "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
-  "--disable-extensions", "--no-first-run", "--no-default-browser-check",
-  "--disable-background-networking", "--remote-allow-origins=*",
-  "--remote-debugging-port=0",
-  `--user-data-dir=${chromeProfile}`,
-  "--window-size=1440,900", "about:blank",
-], { stdio: ["ignore", "ignore", "pipe"] });
-
+let chrome;
 let diagnostics = "";
-for (const child of [localServer, chrome]) {
+for (const child of [localServer]) {
   child.on("error", (error) => { diagnostics = (diagnostics + String(error)).slice(-5000); });
   child.stderr?.on("data", (data) => {
     diagnostics = (diagnostics + data.toString()).slice(-5000);
@@ -214,7 +226,20 @@ let cdp;
 try {
   const base = `http://127.0.0.1:${serverPort}/apps/food-pizzeria/`;
   await waitForHttp(base, localServer);
-  const debuggerPort = await waitForChromeDebugger(chromeProfile, chrome);
+  const debuggerPort = await freeLocalPort();
+  chrome = spawn(browserBinary, [
+    "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+    "--disable-extensions", "--no-first-run", "--no-default-browser-check",
+    "--disable-background-networking", "--remote-allow-origins=*",
+    `--remote-debugging-port=${debuggerPort}`,
+    `--user-data-dir=${chromeProfile}`,
+    "--window-size=1440,900", "about:blank",
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  chrome.on("error", (error) => { diagnostics = (diagnostics + String(error)).slice(-5000); });
+  chrome.stderr?.on("data", (data) => {
+    diagnostics = (diagnostics + data.toString()).slice(-5000);
+  });
+  await waitForChromeDebugger(debuggerPort, chrome);
   const response = await waitForHttp(`http://127.0.0.1:${debuggerPort}/json`, chrome);
   const targets = await response.json();
   const page = targets.find((target) => target.type === "page" && target.webSocketDebuggerUrl);

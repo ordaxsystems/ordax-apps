@@ -888,3 +888,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Ao reabrir, atividade seed não operada que excede 35 minutos é rebaseada junto das comandas abertas associadas. Pedidos trabalhados, estados, histórico e journal permanecem intactos.
 - A mudança afeta somente dados locais de prévia; não adiciona sincronização nem altera o owner Food. Suíte Food: 164/164; `node --check` e `git diff --check` aprovados. Host local recarregado: pedido em foco a 18 minutos e próximos entre 15 e 5 minutos. No head `32fa7f0`, os quatro checks passaram após a reexecução do job de prova de navegador.
 
+### Space Pizzaria / OrdaX Food — KDS mais equilibrado em telefone vertical (2026-10-27)
+
+- Em telas verticais altas, o ticket atual usa sua altura de conteúdo e a fila seguinte passa a ocupar o restante do viewport; a rolagem fica somente na lista dos próximos pedidos. Em telefone horizontal, as duas colunas continuam visíveis dentro do viewport.
+- O smoke Chrome agora verifica a distribuição no viewport 390 × 844 e consegue localizar/abrir o Chrome instalado no Windows com uma porta DevTools local fixa, além do caminho já usado no CI Linux.
+- Suíte Food: 164/164; smoke de navegador: 23/23; `node --check` e `git diff --check` aprovados. A fila continua sendo prévia local, sem sincronização entre aparelhos; PR #359 permanece em rascunho.
+

@@ -491,3 +491,11 @@ A amostra da pizzaria agora começa com pedidos de 3 a 18 minutos. Os horários 
 
 Validação: testes cobrem sequência e janela de idade da fixture, transições não futuras, preservação dentro da janela, rebase após expiração e conservação do pedido operado. Suíte Food completa: 164/164; `node --check` e `git diff --check` aprovados. Host local recarregado: o ticket em foco caiu de 70 para 18 minutos e os próximos ficaram entre 15 e 5 minutos. No head `32fa7f0`, os quatro checks remotos passaram; o job de prova Chrome precisou ser reexecutado após falha de inicialização do runner, sem alteração de código. A integração permanece browser-local e não representa sincronização ou produção Food.
 
+## Iteração — KDS: fila mais visível no telefone vertical (2026-10-27)
+
+Em telefones verticais com pelo menos 700 px de altura, a área do pedido em foco agora acompanha o conteúdo do ticket; a fila dos próximos pedidos usa o restante da tela. Isso remove o espaço vazio que antes reduzia a lista a pouco mais de um ticket. A rolagem continua restrita à lista dos próximos; o pedido atual permanece totalmente visível. O layout horizontal mantém o pedido e a fila lado a lado, sem rolagem de página.
+
+O smoke do navegador ganhou uma asserção para comprovar que, no cenário vertical de 390 × 844, a fila recebe mais espaço que o ticket individual. O runner também localiza Chrome no Windows por `CHROME_PATH`, `CHROME_BIN` ou caminhos instalados comuns e usa uma porta DevTools fixa escolhida em execução; assim não depende de `DevToolsActivePort`, que não foi criado neste ambiente Windows. O timeout de comando CDP é ampliado no Windows para permitir o primeiro carregamento frio.
+
+Validação: suíte Food completa 164/164; smoke Chrome 23/23 cenários, incluindo telefone vertical e horizontal e os fluxos solo e em quatro estações; `node --check` nos scripts modificados e `git diff --check` aprovados. Inspeção visual e de medidas no host confirmou 390 × 844 sem rolagem externa e lista de pedidos seguinte com 348 px de área interna, além de 844 × 390 com as duas colunas no viewport e a rolagem dentro da fila. Os dados continuam locais ao navegador; não há sincronização entre aparelhos.
+

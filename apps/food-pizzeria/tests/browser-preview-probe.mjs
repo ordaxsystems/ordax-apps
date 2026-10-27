@@ -211,6 +211,13 @@ try {
         `O pedido em foco está cortado e precisaria rolar (${current?.scrollHeight}x${current?.clientHeight}).`);
       ensure(scrolling.every((element) => element.matches(".kitchen-up-next-list")) && scrolling.length <= 1,
         `Há rolagem fora da lista de pedidos seguintes: ${scrolling.map((element) => element.className).join(", ")}.`);
+      if (viewport === "portrait" && focusedTicket) {
+        const ticketCard = focusedTicket.querySelector(".order-card-kitchen");
+        const upcoming = stationContent.querySelector(".kitchen-up-next");
+        ensure(ticketCard && upcoming
+          && upcoming.getBoundingClientRect().height >= ticketCard.getBoundingClientRect().height,
+        "No telefone vertical, a lista dos próximos pedidos deve aproveitar o espaço abaixo do ticket atual.");
+      }
     }
     ensure(!root.querySelector(".kitchen-summary, .kitchen-toolbar, .kitchen-display-setup"),
       "A tela dedicada mantém controles do quadro geral.");

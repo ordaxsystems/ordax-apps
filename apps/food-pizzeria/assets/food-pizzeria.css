@@ -1390,6 +1390,11 @@ dialog p { color: #a2a8af; }
   .kitchen-station-screen:fullscreen .kitchen-station-workspace { flex: 1 1 auto; }
 }
 
+/* Em telefones altos, a fila usa o espaço que sobra após o ticket atual. */
+@media (max-width: 640px) and (min-height: 700px) {
+  .kitchen-station-workspace { grid-template-rows: max-content minmax(108px, 1fr); }
+}
+
 @media (orientation: landscape) and (max-height: 560px) {
   .food-preview-content-root:has(.food-embedded-preview-kitchen) { position: fixed; inset: 0; z-index: 1000; width: 100vw; height: 100dvh; overflow: hidden; }
   .food-embedded-preview-kitchen { display: flex; height: 100dvh; flex-direction: column; overflow: hidden; }
