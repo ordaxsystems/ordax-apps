@@ -3,6 +3,7 @@ import {
   PIZZERIA_TABLES as DEFAULT_PIZZERIA_TABLES,
   DEFAULT_DELIVERY_FEE_CENTS,
   calculatePizzaPriceCents,
+  calculatePizzeriaBatchConsumption,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
 import {
@@ -148,6 +149,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let PIZZERIA_TABLES = DEFAULT_PIZZERIA_TABLES.map((table) => ({ ...table, active: true }));
   let recipeFlavorId = null;
   let recipeDraftLines = [];
+  let batchPlanSize = null;
+  let batchPlanQuantities = {};
+  let batchPlanRequested = false;
   let settingsSizesDraft = null;
   let settingsTablesDraft = null;
   let unsubscribe = null;
@@ -580,7 +584,35 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     </form>`;
   }
   
-  function menuPage() { return renderMenuPage(viewModel()); }
+  function menuPage() {
+    const activeSizes = PIZZA_SIZES.filter(({ active }) => active);
+    if (!activeSizes.some(({ id }) => id === batchPlanSize)) batchPlanSize = activeSizes[0]?.id ?? null;
+    let batchPlanResult = null;
+    let batchPlanError = null;
+    if (batchPlanRequested) {
+      try {
+        batchPlanResult = calculatePizzeriaBatchConsumption(snapshot, {
+          size: batchPlanSize,
+          flavorQuantities: snapshot.flavors.filter(({ active }) => active).map(({ id }) => ({
+            flavorId: id,
+            quantity: batchPlanQuantities[id] ?? 0,
+          })),
+        });
+        const unknownIngredient = batchPlanResult.ingredients.find(({ ingredientId }) =>
+          !PREVIEW_INGREDIENTS.some(({ id }) => id === ingredientId));
+        if (unknownIngredient) throw new Error(`O insumo ${unknownIngredient.ingredientId} não tem unidade cadastrada no catálogo disponível.`);
+      } catch (error) {
+        batchPlanError = error instanceof Error ? error.message : "Não foi possível calcular este lote.";
+      }
+    }
+    return renderMenuPage({
+      ...viewModel(),
+      batchPlanSize,
+      batchPlanQuantities,
+      batchPlanResult,
+      batchPlanError,
+    });
+  }
 
   function settingsPage() {
     settingsSizesDraft ??= snapshot.settings.pizzaSizes.map((size) => ({ ...size }));
@@ -1267,6 +1299,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     } else if (action === "remove-recipe-line") {
       recipeDraftLines.splice(Number(target.dataset.index), 1);
       render();
+    } else if (action === "clear-batch-plan") {
+      batchPlanQuantities = {};
+      batchPlanRequested = false;
+      render();
     } else if (action === "close-recipe-editor") {
       recipeFlavorId = null;
       recipeDraftLines = [];
@@ -1303,6 +1339,18 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (kind === "kitchen-layout-form") {
       event.preventDefault();
       await saveKitchenWorkflowConfiguration(form);
+      return;
+    }
+    if (kind === "batch-plan-form") {
+      event.preventDefault();
+      const values = new FormData(form);
+      batchPlanSize = String(values.get("size") ?? batchPlanSize ?? "");
+      batchPlanQuantities = Object.fromEntries(snapshot.flavors.map(({ id }) => [
+        id,
+        Number(values.get(`batch-${id}`) ?? 0),
+      ]));
+      batchPlanRequested = true;
+      render();
       return;
     }
     if (!["setup-form", "flavor-form", "recipe-editor", "settings-form", "create-order-form", "cancel-order-form", "table-open-form"].includes(kind)) return;
@@ -1444,7 +1492,17 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   function handleInput(event) {
-    if (event.type === "change" && event.target.closest("#kitchen-layout-form")
+    if (event.target.closest("#batch-plan-form")) {
+      const form = event.target.closest("#batch-plan-form");
+      const values = new FormData(form);
+      batchPlanSize = String(values.get("size") ?? batchPlanSize ?? "");
+      batchPlanQuantities = Object.fromEntries(snapshot.flavors.map(({ id }) => [
+        id,
+        Number(values.get(`batch-${id}`) ?? 0),
+      ]));
+      batchPlanRequested = false;
+      root.querySelector("#batch-plan-result")?.remove();
+    } else if (event.type === "change" && event.target.closest("#kitchen-layout-form")
       && ["screenCount", "stepCount"].includes(event.target.name)) {
       const form = event.target.closest("#kitchen-layout-form");
       try {
