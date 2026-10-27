@@ -368,3 +368,9 @@ Parser, integração SQLite de origem/revisão/contexto, e seleção de contexto
 - Testes focados após a correção: `node --test test/e2e-script-target-isolation.test.mjs` **24/24** (corrida de fechamento remoto, socket preso e socket já fechado); `npm run check` passou (`Lab-owned source syntax OK`); `git diff --check` passou. A correção ainda não foi publicada nem certificada no Electron Windows; aguardar novo CI antes de atualizar o PR para verde.
 - Próximo gate: commit pequeno na branch da PR somente se o head ainda for `57a198e`, acompanhar Foundation e Lab Isolation até o fim e ler a subfase/razão do recibo. Os gates GPT Web com efeito/importação, VESTE com grants, continuidade Runtime com UI fechada e operação 24 h continuam pendentes.
 
+## Contrato de falha do E2E após fechamento assíncrono — 2026-10-27
+
+- CI no head `6af2ed7089c821ad53df20a7a021aa23e81f3574`: Apps Foundation passou. Lab Isolation interrompeu antes do E2E porque `desktop-contract.test.mjs` ainda exigia o formato literal antigo de erro; **622 testes passaram e 1 falhou**. O teste refletia uma implementação já substituída, não uma falha funcional do App ou do novo helper CDP.
+- A asserção foi atualizada para verificar o allowlist das razões CDP, o fallback genérico e a estrutura segura do recibo. Os dois arquivos direcionados passaram **55/55** (`desktop-contract` + `e2e-script-target-isolation`). Um `npm run validate` local completo está em andamento; não há resultado final declarado ainda.
+- Próximo gate: publicar essa sincronização entre teste e implementação somente se o remoto continuar em `6af2ed7`; executar de novo a validação Windows, build e E2E empacotado. Se o E2E falhar, usar o motivo seguro específico e reparar a causa antes do próximo gate.
+
