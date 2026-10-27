@@ -152,3 +152,5 @@ O próprio Runtime, porém, qualifica o bridge como privado e **ainda não regis
 
 O plano mestre foi ajustado para reaproveitar esse bridge existente, testar paridade do contrato entre os dois owners e exigir prova de quem mantém a sessão GPT Web e quem envia/atribui a resposta quando o worker continua sem a janela. Até essa evidência, 24h e execução GPT Web pós-fechamento permanecem sem aceite.
 
+Comparação direta de `RUNTIME_READ_OPERATIONS` + `ORCHESTRATOR_TOOLS` no Apps contra o asset Runtime `ordax_dev_agent/assets/orchestrator_app_contract.json` (blob `b57f3263a54ee708857c542e6e89ea0dfbf0bc7a`) confirmou paridade exata dos sete nomes e schemas read-only: `status`, `projects_list`, `orchestrators_list`, `work_list`, `work_get`, `work_messages` e `command_get`. É uma inspeção de fonte repetível, mas ainda não um gate de CI; não comprova autorização de produção nem caminho de escrita.
+
