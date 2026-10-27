@@ -1,5 +1,14 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Dependência Platform #293 — elegibilidade Owner read-only com CI validada (27/10/2026)
+
+- O owner da autorização `ordax-platform` implementou a candidata [PR #293](https://github.com/ordaxsystems/ordax-platform/pull/293) (branch `feat/owner-central-device-target-preflight-20261027`, último source `7a67167a4cb4321ab2281d9585336098c6d5b807`). Não duplicar em Apps, Runtime ou num segundo PostgreSQL.
+- `GET /v3/owner/central-session-targets?client_id=<UUID>` usa JWT Owner e um cliente OAuth explicitamente consentido; a proposta SQL reutiliza **`private.ordax_central_device_grant_eligible_v1`** SSOT em vez de espelhar regras de elegibilidade. Expõe somente diagnóstico bounded de 0/1/múltiplos devices, presença e `runtime_ready`; **nenhuma seleção, grant ou ação**. `attested=false`, `dispatch_authorized=false`. `CENTRAL_OWNER_TARGET_PREFLIGHT_ENABLED` **OFF**, SQL permanece somente em `proposals/`, sem deploy.
+- Testes de autenticação HTTP e prova **PGlite com a própria função SQL canônica**: Notebook offline + Desktop online com grants no mesmo cliente => `owner_selection_required` sem escolher desktop. Também discovery-only, grants revogados, owner/client errado, consentimento revogado, falta de heartbeat e ACL. **Três CI aprovadas no head final**: [Control Plane #40447707180](https://github.com/ordaxsystems/ordax-platform/actions/runs/40447707180), [MCP Canary #40447707170](https://github.com/ordaxsystems/ordax-platform/actions/runs/40447707170) e [Canonical Candidate #40447707178](https://github.com/ordaxsystems/ordax-platform/actions/runs/40447707178). A regressão de bloco SQL duplicado foi corrigida no próprio branch antes dessas provas.
+- **Não é conclusão da #291:** seleção transacional pelo Owner, vínculo challenge/client/session, confirmação criptográfica pelo Runtime, gates de revogação e ação read-only com receipt ainda pendem. Grants A/B e Notebook intocados; W3 preview 88.150 chars permanece sem import. Apps PR #348 ainda draft, sem recompilação nem reinstalação Windows por esse trabalho Platform.
+
+---
+
 ## CI incremental — compilação Windows somente com delta de código (27/10/2026)
 
 - **Causa raiz eliminada no workflow original**, sem runner alternativo nem segundo pipeline: `.github/workflows/orchestrator-lab-isolation.yml` passa pelo job `package_scope`, usando o classificador versionado `scripts/ci-scope.mjs` (e `tests/ci-scope.test.mjs`). Apenas `CODEX-HANDOFF.md`, `README.md` e `docs/**` do Orchestrator são documentação; qualquer mudança de código, contratos, locks, scripts, workflow, caminho inesperado ou entrada incompleta exige **build completo**.
