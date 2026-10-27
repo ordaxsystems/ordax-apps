@@ -85,6 +85,17 @@ test('W3 UI explains a missing conversation DOM without replaying the request',a
   assert.equal(form.button.disabled,false);
 });
 
+test('W3 UI explains inconclusive evidence without labeling it a provider inspection failure',async()=>{
+  const form=mount(async()=>({kind:'unresolved',inspectionReason:'message_not_observed',threadRendered:false}));
+  await form.click();
+  assert.equal(form.status.dataset.state,'complete');
+  assert.equal(form.status.dataset.reason,'message_not_observed');
+  assert.match(form.status.textContent,/Isso não prova falha de entrega/);
+  assert.match(form.status.textContent,/nenhum reenvio/);
+  assert.equal(form.status.dataset.threadRendered,'false');
+  assert.equal(form.button.disabled,false);
+});
+
 test('W3 UI reports rejected inspection with terminal error, never stale success',async()=>{
   const form=mount(async()=>{throw Error('untrusted_provider_error_details');});
   await form.click();

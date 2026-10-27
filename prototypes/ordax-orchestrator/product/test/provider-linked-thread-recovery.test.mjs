@@ -221,3 +221,25 @@ test('W3 redacts unknown provider failure details in its operator-facing status'
     assert.equal(sends(),0);
   },{interrupted:true});
 });
+
+test('successful but inconclusive DOM inspection preserves the exact safe evidence reason',async()=>{
+  await fixture(async({store,task,worker,providerPrompt,setObservation,runId,sends})=>{
+    const base=await worker.inspectConversationReadOnly(url);
+    setObservation({...base,messages:[{role:'user',text:providerPrompt}]});
+    const missingReply=await inspectProviderLinkedThread({store,worker,taskId:task.id});
+    assert.equal(missingReply.kind,'message_candidate');
+    assert.equal(missingReply.inspectionReason,'dom_match_not_attributable');
+    assert.equal(missingReply.threadRendered,false);
+    assert.equal(missingReply.recoveryPreview,undefined);
+
+    setObservation({...base,messages:[{role:'user',text:'other turn'}]});
+    const missingPrompt=await inspectProviderLinkedThread({store,worker,taskId:task.id});
+    assert.equal(missingPrompt.kind,'unresolved');
+    assert.equal(missingPrompt.inspectionReason,'message_not_observed');
+    assert.equal(missingPrompt.threadRendered,false);
+    assert.equal(missingPrompt.recoveryPreview,undefined);
+    assert.equal(store.db.prepare('SELECT status FROM runs WHERE id=?').get(runId).status,'failed');
+    assert.equal(store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,0);
+    assert.equal(sends(),0);
+  });
+});

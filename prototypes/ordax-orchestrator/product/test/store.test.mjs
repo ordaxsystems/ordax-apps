@@ -18,6 +18,28 @@ function cleanup(t, dir, getStore) {
   });
 }
 
+test('standalone message append commits its ledger and memory effects atomically',t=>{
+  const {dir,dbPath}=tempStore();
+  const store=new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task=store.createTask('Atomic message append');
+  const original=store.memoryCandidates.suggestFromMessage;
+  store.memoryCandidates.suggestFromMessage=()=>{throw new Error('injected_memory_candidate_failure');};
+  assert.throws(()=>store.appendMessage(task.id,'user','Fato Projeto: teste transacional.'),
+    /injected_memory_candidate_failure/);
+  store.memoryCandidates.suggestFromMessage=original;
+  assert.equal(store.db.isTransaction,false);
+  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM messages WHERE task_id=?').get(task.id).n,0);
+  assert.equal(store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='message.appended'").get(task.id).n,0);
+  assert.equal(store.memoryCandidates.list(task.id).length,0);
+
+  store.db.exec('BEGIN IMMEDIATE');
+  store.appendMessage(task.id,'user','Esta escrita pertence à transação externa.');
+  assert.equal(store.db.isTransaction,true);
+  store.db.exec('ROLLBACK');
+  assert.equal(store.db.prepare('SELECT COUNT(*) n FROM messages WHERE task_id=?').get(task.id).n,0);
+});
+
 test('Task, workspace session and versioned checkpoint survive reopen', t => {
   const { dir, dbPath } = tempStore();
   let store = new Store(dbPath);

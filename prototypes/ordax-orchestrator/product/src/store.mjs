@@ -608,16 +608,24 @@ export class Store {
   }
 
   appendMessage(taskId, role, content) {
-    const id = `msg_${randomUUID()}`;
-    const now = this.now();
-    this.db.prepare('INSERT INTO messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)')
-      .run(id, taskId, role, content, now);
-    this.touch(taskId);
-    this.event(taskId, 'message.appended', { id, role });
-    const message={ id, role, content };
-    if (role === 'user') this.memoryCandidates.suggestFromMessage(taskId,message);
-    else if (role === 'assistant') this.memoryCandidates.suggestFromAssistantMessage(taskId,message);
-    return { id, role, content, created_at: now, assets: [] };
+    const ownsTransaction=!this.db.isTransaction;
+    if(ownsTransaction)this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const id = `msg_${randomUUID()}`;
+      const now = this.now();
+      this.db.prepare('INSERT INTO messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)')
+        .run(id, taskId, role, content, now);
+      this.touch(taskId);
+      this.event(taskId, 'message.appended', { id, role });
+      const message={ id, role, content };
+      if (role === 'user') this.memoryCandidates.suggestFromMessage(taskId,message);
+      else if (role === 'assistant') this.memoryCandidates.suggestFromAssistantMessage(taskId,message);
+      if(ownsTransaction)this.db.exec('COMMIT');
+      return { id, role, content, created_at: now, assets: [] };
+    } catch(error) {
+      if(ownsTransaction&&this.db.isTransaction)this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   touch(id) { this.db.prepare('UPDATE tasks SET updated_at=? WHERE id=?').run(this.now(), id); }

@@ -145,7 +145,13 @@ const READONLY_FAILURES=new Set([
   'provider_health_unavailable','provider_verification_required',
   'provider_rate_limited_observed','provider_access_restricted_observed',
   'provider_login_required','provider_authentication_in_progress',
-  'provider_session_not_observed'
+  'provider_session_not_observed',
+  // Closed-set reasons emitted by assessProviderConversationEvidence().
+  // These explain an inconclusive read; none authorizes a resend or import.
+  'missing_canonical_reference','dom_not_reliable','observation_unbounded',
+  'message_observation_incomplete','duplicate_message_candidates',
+  'message_not_visible_in_partial_dom','message_not_observed',
+  'partial_dom_match_not_attributable','dom_match_not_attributable'
 ]);
 export function safeHistoricalThreadFailure(reason) {
   const name=typeof reason==='string' ? reason : '';

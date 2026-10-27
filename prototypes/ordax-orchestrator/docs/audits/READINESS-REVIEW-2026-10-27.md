@@ -122,3 +122,14 @@ Uma estimativa de calendário exige primeiro medir P0 e confirmar disponibilidad
 - `product/src/conversation-policy.mjs`: rotação por 24 turnos.
 - `product/test/evals/README.md`: resultados, limites e problemas metodológicos.
 - `CODEX-HANDOFF.md`: evidências físicas e estados de integração registrados.
+
+## Aditivo de verificação e correções — 27/10/2026
+
+Após a auditoria, duas causas no fluxo de chat/recovery foram corrigidas na branch de trabalho `codex/orchestrator-host-runtime-architecture`:
+
+1. A inspeção read-only podia ler a conversa sem erro e ainda assim não achar a mensagem exata ou uma resposta atribuível; a ausência de `observed.reason` era reduzida a `provider_inspection_unavailable`. O Orchestrator agora preserva motivos estáticos e seguros como `message_not_observed` e `dom_match_not_attributable`, e a UI explica que isso deixa a entrega incerta, sem sugerir reenvio. Isso melhora diagnóstico; **não certifica recuperação física nem transforma evidência inconclusiva em sucesso**.
+2. `Store.appendMessage` emitia vários autocommits fora das transações de envio. Inserção da mensagem, atualização da Task, evento e proposta de memória agora são atômicos por `BEGIN IMMEDIATE`, sem reduzir `synchronous=FULL` e sem iniciar transação aninhada quando o chamador já possui uma. A alteração também elimina gravações parciais se a extração de memória falhar.
+
+Evidências locais pós-correção: os 43 testes focados de atribuição/recuperação/UI passaram antes e depois da mudança de atomicidade; o teste específico de append atômico passou; a prova de dois projetos e restart SQLite passou e caiu de 152,3 s para 43,4 s nesta máquina. O `npm run check` passou após as mudanças de produção. A suíte completa executada antes da otimização terminou com 606 pass, 1 skip e 1 falha ambiental no esbuild; a falha foi reproduzida e o teste de bundle passou em execução isolada com acesso local elevado. Não houve suíte completa pós-otimização.
+
+O teste físico W3 não foi repetido: o Desktop remoto estava online, mas o conector reportou limite mensal de chamadas e pausou operações. Nenhuma resposta GPT foi importada ou reenviada nesta etapa. A prontidão global continua conforme o parecer e os gates acima.

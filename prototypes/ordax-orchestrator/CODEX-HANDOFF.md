@@ -1,5 +1,14 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Incremento de recuperação GPT e consistência SQLite — 27/10/2026
+
+- Branch `codex/orchestrator-host-runtime-architecture`, base de auditoria `9e62e9054bd7cc6954cfe1ae06911d9eac6df5a0` (relatório de prontidão).
+- **Correção de diagnóstico W3:** `inspectProviderLinkedThread` preserva o motivo fechado emitido pela evidência de conversa quando o DOM foi lido, mas a mensagem/resposta não pôde ser atribuída. Antes, um resultado válido porém inconclusivo sem `observed.reason` caía em `provider_inspection_unavailable`; agora a UI pode distinguir mensagem não observada, DOM parcial/inconfiável, duplicidade e resposta não atribuível. Todos continuam fail-closed; não autorizam replay nem import.
+- **Correção de consistência/performance do Store:** `appendMessage` agora mantém inserção, atualização da Task, evento e sugestão de memória na mesma transação `BEGIN IMMEDIATE` quando chamada fora de uma transação; dentro da operação maior, respeita a transação do chamador. `synchronous=FULL` permanece. O teste de falha injetada prova rollback do conjunto; o teste de transação externa prova que o método não comita antes do dono.
+- **Validação local:** 43 testes focados de recuperação, UI, observação e atribuição passaram antes e depois da mudança SQLite; o teste de histórico longo com dois projetos e reinício SQLite passou depois, medindo 43,4 s nesta máquina contra 152,3 s da execução anterior da mesma prova. O teste de append atômico passou isoladamente. `npm run check` passou após as mudanças de produção.
+- **Suíte completa pré-otimização:** 608 testes, 606 passaram, 1 foi ignorado e 1 falhou porque o sandbox impediu o esbuild de ler diretório acima do workspace; o mesmo teste de bundle passou isoladamente fora do sandbox, sem alterar fonte. Portanto não há falha de código demonstrada nesse caso. A suíte completa ainda precisa ser repetida em ambiente autorizado após as mudanças SQLite.
+- **Teste físico:** não repetido nesta etapa. O Desktop estava online, porém Desktop Commander informou limite mensal de chamadas e pausou as operações. Não houve reenvio, import, instalação, alteração de grants ou mudança na instalação principal. Não declarar W3 físico completo com base apenas nos testes locais.
+
 ## Estado canônico de integração Owner multi-PC — 27/10/2026
 
 **Platform #293 e Runtime #270 integrados à main e CI green; seleção física ainda bloqueada.** Esta seção substitui estados transitórios acima da trilha cronológica. Os owners continuam independentes: Platform autoriza e mantém SQL, Runtime possui cliente Native/CLI, Apps somente consome contratos.

@@ -74,7 +74,11 @@ export async function inspectProviderLinkedThread({store,worker,taskId}={}) {
     assessment.candidates===1&&assessment.responseCandidate===true;
   const inspectionReason=threadRendered?'thread_rendered':possibleAnswer&&observed?.generationStopVisible===true
     ?'provider_response_generation_active':possibleAnswer&&!generationNotActive
-      ?'provider_generation_state_unobserved':safeHistoricalThreadFailure(observed?.reason);
+      ?'provider_generation_state_unobserved'
+      // A successful DOM read can still be inconclusive. Preserve the
+      // reconciliation policy's closed-set reason instead of collapsing a
+      // missing/ambiguous exact prompt match into a transport failure.
+      :safeHistoricalThreadFailure(observed?.reason || assessment.reason);
   return {
     kind:assessment.kind,reason:assessment.reason,threadRendered,
     inspectionReason,responseCandidate:assessment.responseCandidate===true,

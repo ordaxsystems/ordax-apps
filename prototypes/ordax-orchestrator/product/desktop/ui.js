@@ -989,6 +989,15 @@ $('#inspectLinkedThread').addEventListener('click', async () => {
       observation_failed:'A inspeção somente leitura falhou. Nenhuma mensagem foi reenviada; tente novamente quando o ChatGPT estiver disponível.',
       provider_response_generation_active:'A resposta ainda pode estar sendo gerada. W3 não certificado; nenhum reenvio.',
       provider_generation_state_unobserved:'Não foi possível comprovar o estado de geração da resposta. W3 não certificado; nenhum reenvio.',
+      missing_canonical_reference:'A inspeção não tem uma referência canônica suficiente para atribuir a conversa à tarefa. Histórico local preservado; nenhum reenvio.',
+      dom_not_reliable:'A página do ChatGPT não forneceu uma leitura confiável da conversa. Isso não comprova falha de entrega; nenhum reenvio foi feito.',
+      observation_unbounded:'A conversa excedeu o limite seguro de leitura. A resposta não foi importada nem reenviada.',
+      message_observation_incomplete:'A mensagem da tarefa apareceu incompleta na página do ChatGPT. Entrega e resposta continuam incertas; nenhum reenvio foi feito.',
+      duplicate_message_candidates:'A mensagem da tarefa aparece mais de uma vez na conversa. O OrdaX não consegue atribuir a resposta com segurança; nada foi importado ou reenviado.',
+      message_not_visible_in_partial_dom:'A mensagem exata não apareceu no trecho visível da conversa, que estava parcial. Isso não prova que ela não foi entregue; nenhum reenvio foi feito.',
+      message_not_observed:'A mensagem exata da tarefa não apareceu na leitura da conversa. Isso não prova falha de entrega; histórico local preservado e nenhum reenvio.',
+      partial_dom_match_not_attributable:'A conversa estava parcial e não permitiu atribuir a resposta à tarefa. Nenhum reenvio ou importação foi feito.',
+      dom_match_not_attributable:'A leitura não permitiu atribuir uma resposta completa à mensagem da tarefa. Entrega permanece incerta; nenhum reenvio foi feito.',
       provider_inspection_state_changed:'A tarefa, a conversa ou o Run mudou durante a inspeção. Verifique novamente antes de recuperar a resposta. Nenhuma mensagem foi reenviada.'
     };
     const inspectionReason=String(result?.inspectionReason || '');
