@@ -437,3 +437,10 @@ Validação: testes unitários cobrem soma de unidades, imutabilidade, limites i
 
 Ao adicionar pizzas repetidas, a aplicação agora acumula a quantidade na linha existente quando tamanho, sequência de sabores e preço unitário são iguais. Bebidas e acompanhamentos usam a mesma regra, incluindo nome/categoria/preço do snapshot. Linhas com outra configuração ou cotação permanecem separadas para preservar o valor que o operador já viu; quando a soma ultrapassaria 50, a próxima quantidade abre uma nova linha. Suíte Food: 146/146; prova de navegador no host validou agrupamento, subtotal e limites.
 
+## Seletores de sabores no PDV (2026-10-27)
+
+Ao escolher um sabor, os demais campos da mesma pizza desabilitam essa opção; ao trocar ou limpar a escolha, o sabor volta a ficar disponível. Isso previne a combinação duplicada antes de calcular o preço, enquanto a validação do domínio continua como última proteção. A mensagem de preço/erro agora usa `role="status"` e anúncio `polite` para leitores de tela.
+
+Validação: suíte Food 146/146; prova real no host verificou sabor repetido indisponível, opção distinta disponível e pizza válida adicionada. Mudança de apresentação apenas: não altera preços, receitas, snapshots, owners ou integrações.
+
+

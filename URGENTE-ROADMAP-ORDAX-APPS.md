@@ -841,3 +841,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Suíte Food: 146/146; sintaxe e `git diff --check` aprovados. Prova real no host validou adição repetida, total, contador e limite do carrinho.
 - Os valores seguem locais no preview; os contratos e owners de Catálogo, pedidos comerciais e Payments permanecem inalterados.
 
+### Space Pizzaria / OrdaX Food — evitar sabor duplicado no PDV (2026-10-27)
+
+- Ao selecionar um sabor, os outros campos da mesma pizza desabilitam essa escolha; trocar ou limpar libera a opção novamente. A validação do domínio continua protegendo entradas inválidas.
+- A prévia de preço/validação é anunciada por leitores de tela. Prova real no host confirmou combinação distinta válida e bloqueio da repetição; suíte Food: 146/146.
+- Alteração restrita à interação do PDV; preços, receitas, snapshots e owners não mudaram. PR #359 segue em rascunho.
+
+

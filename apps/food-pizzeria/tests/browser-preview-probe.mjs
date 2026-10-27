@@ -94,6 +94,21 @@ try {
     ensure(firstAvailableFlavor, "A prévia não tem sabor disponível para o teste do carrinho.");
     flavor.value = firstAvailableFlavor.value;
     flavor.dispatchEvent(new Event("change", { bubbles: true }));
+    const secondFlavor = root.querySelector('#add-pizza-form [name="flavor2"]');
+    if (secondFlavor) {
+      const matchingFlavor = [...secondFlavor.options].find((option) => option.value === firstAvailableFlavor.value);
+      ensure(matchingFlavor?.disabled === true,
+        "Um sabor já escolhido não deve continuar disponível em outro campo.");
+      const distinctFlavor = [...secondFlavor.options].find((option) => option.value && option.value !== firstAvailableFlavor.value);
+      ensure(distinctFlavor && !distinctFlavor.disabled,
+        "Sabores diferentes devem continuar disponíveis para pizza meio a meio.");
+      secondFlavor.value = distinctFlavor.value;
+      secondFlavor.dispatchEvent(new Event("change", { bubbles: true }));
+      ensure(root.querySelector("#pizza-price-preview")?.getAttribute("aria-live") === "polite",
+        "A prévia de preço e validação deve ser anunciada de forma acessível.");
+      ensure(root.querySelector('[data-action="add-pizza"]')?.disabled === false,
+        "Uma combinação válida de sabores não deve bloquear a inclusão da pizza.");
+    }
     root.querySelector('[data-action="add-pizza"]')?.click();
     await eventually(
       () => root.querySelector(".cart-quantity-stepper"),
@@ -330,3 +345,4 @@ if (document.readyState === "complete") {
 } else {
   window.addEventListener("load", () => { void checkAfterPageLoad(); }, { once: true });
 }
+

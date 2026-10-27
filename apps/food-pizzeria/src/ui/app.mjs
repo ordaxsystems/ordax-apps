@@ -789,6 +789,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function updatePizzaPricePreview() {
     const form = root.querySelector("#add-pizza-form");
     if (!form) return;
+    const flavorSelects = [...form.querySelectorAll('select[name^="flavor"]')];
+    for (const select of flavorSelects) {
+      for (const option of select.options) {
+        if (!option.value) continue;
+        option.disabled = flavorSelects.some((other) => other !== select && other.value === option.value);
+      }
+    }
     const price = root.querySelector("#pizza-price-preview");
     const button = form.querySelector('[data-action="add-pizza"]');
     const flavorIds = [...form.querySelectorAll('[name^="flavor"]')].map(({ value }) => value).filter(Boolean);
@@ -1637,3 +1644,4 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
 
   return Object.freeze({ mount, navigate, destroy });
 }
+

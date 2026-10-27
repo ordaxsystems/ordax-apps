@@ -35,6 +35,7 @@ test("PDV reúne criação de pedido e itens adicionais numa tela própria", () 
   assert.match(html, /class="pos-builder-column" aria-label="Escolha os itens do pedido"/);
   assert.match(html, /class="pos-checkout-column" aria-label="Carrinho e fechamento do pedido"/);
   assert.match(html, /id="add-pizza-form"/);
+  assert.match(html, /id="pizza-price-preview" role="status" aria-live="polite"/);
   assert.match(html, /id="create-order-form"/);
   assert.match(html, /pos-checkout-column[\s\S]*?class="cart-section"[\s\S]*?id="create-order-form"/);
   assert.match(html, /data-action="add-catalog-product" data-product-id="b-cola"/);
@@ -62,3 +63,4 @@ test("CSS do PDV muda para uma coluna no telefone e mantém a área de fechament
   assert.match(css, /\.pos-checkout-column\s*\{[^}]*position:\s*sticky/);
   assert.match(css, /\.pos-checkout-column\s*\{\s*position:\s*static/);
 });
+
