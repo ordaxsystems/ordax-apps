@@ -15,10 +15,6 @@ const CAPABILITY_OWNERS = Object.freeze({
     owner: "Customers / CRM",
     text: "O Food não mantém cadastro mestre de clientes nem histórico de relacionamento.",
   }),
-  reports: Object.freeze({
-    owner: "Owners dos domínios reportados",
-    text: "Relatórios integrados só podem combinar dados depois que os owners de pedidos, vendas, pagamentos e finanças publicarem seus contratos.",
-  }),
   team: Object.freeze({
     owner: "People + Identity / Spaces",
     text: "Equipe, membros e permissões não são cadastrados pelo Food. A associação de pessoas e o acesso pertencem aos owners de People e da plataforma.",

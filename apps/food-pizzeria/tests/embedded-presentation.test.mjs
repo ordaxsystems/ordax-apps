@@ -70,6 +70,12 @@ function fakeRoot() {
         preventDefault() {},
       });
     },
+    dispatchReportRange(range) {
+      listeners.get("click")?.({
+        target: { closest() { return { dataset: { reportRange: range } }; } },
+        preventDefault() {},
+      });
+    },
   };
 }
 
@@ -95,7 +101,7 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     assert.doesNotMatch(root.innerHTML.replace(/<[^>]*>/g, " "), /prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i);
     assert.match(root.innerHTML, /id="main-content"/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"|class="main-nav"|data-view="overview"/);
-    for (const view of ["orders", "pos", "menu", "tables", "delivery", "settings"]) {
+    for (const view of ["orders", "pos", "menu", "tables", "delivery", "reports", "settings"]) {
       app.navigate(view);
       assert.match(root.innerHTML, /data-preview-only="true"/);
       assert.doesNotMatch(root.innerHTML.replace(/<[^>]*>/g, " "), /prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i);
@@ -108,6 +114,12 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     assert.match(root.innerHTML, /<h1>PDV<\/h1>/);
     assert.match(root.innerHTML, /id="create-order-form"/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
+    app.navigate("reports");
+    assert.match(root.innerHTML, /<h1>Relatórios<\/h1>/);
+    assert.match(root.innerHTML, /Pedidos por canal/);
+    assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
+    root.dispatchReportRange("24h");
+    assert.match(root.innerHTML, /data-report-range="24h" aria-pressed="true"/);
     const beforeUnauthorizedClick = root.innerHTML;
     assert.equal(root.dispatchPreviewClick("inventory"), true);
     assert.equal(root.innerHTML, beforeUnauthorizedClick);
@@ -158,6 +170,7 @@ test("embedded Food preview cannot impersonate a real Space provider or open hor
     /Apresentação Food desconhecida/);
   assert.equal(assertFoodModuleView("delivery"), "delivery");
   assert.equal(assertFoodModuleView("pos"), "pos");
+  assert.equal(assertFoodModuleView("reports"), "reports");
   for (const view of ["overview", "inventory", "finance", "team"]) {
     assert.throws(() => assertFoodModuleView(view), /somente módulos operacionais/);
   }

@@ -469,3 +469,11 @@ Pedidos com UUID agora exibem os últimos dez caracteres hexadecimais como refer
 
 Validação: teste prova estabilidade, compatibilidade com sequência seed e distinção entre dois UUIDs que compartilham os seis caracteres finais. Suíte Food: 152/152; `node --check` e `git diff --check` aprovados. A mudança não altera o owner do pedido nem cria integração.
 
+## Relatórios operacionais do Food (2026-10-27)
+
+O módulo Relatórios agora transforma o histórico de pedidos Food em indicadores para 24 h, 7 dias ou 30 dias: volume, pedidos em cozinha, prontos, mediana do tempo até Pronto, canais, itens, sabores mais presentes, cancelamentos e pedidos recentes. O cálculo fica em um módulo de aplicação sem escrita; a tela oferece rotas diretas para Cozinha, PDV e histórico. Barras usam `<progress>` semântico e estilos próprios do Food, com layout em uma ou duas colunas conforme a largura.
+
+Ownership permanece separado: o relatório só lê snapshots Food. Cada sabor de uma pizza combinada aparece na contagem de sabores; itens adicionais são contados pela quantidade congelada e não implicam movimentação de estoque. Pagamentos, saldo de Inventory, lucro e o dashboard do Space não são inferidos. O overview continua sob composição do Space; o relatório é um módulo operacional Food. Os dados vistos no host seguem sendo a prévia local já existente, sem provider, persistência entre aparelhos ou integração de produção.
+
+Validação: `node --test` passou com 160/160 testes; `node --check` dos módulos de relatório e controlador, `git diff --check` e inspeção visual do host incorporado aprovados. A conferência no host confirmou as proporções das barras e a troca de período. Nenhum owner, contrato ou estado comercial foi alterado.
+

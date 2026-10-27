@@ -44,6 +44,7 @@ import { renderMenuPage } from "./views/menu.mjs";
 import { renderTablesPage } from "./views/tables.mjs";
 import { renderDeliveryPage } from "./views/delivery.mjs";
 import { renderSettingsPage } from "./views/settings.mjs";
+import { renderFoodReportsPage } from "./views/reports.mjs";
 
 export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalone-preview" } = {}) {
   if (!root || typeof root.querySelector !== "function" || typeof root.addEventListener !== "function") {
@@ -106,7 +107,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   const kitchenScreenCountFromRoute = Number.isSafeInteger(routeScreenCountValue)
     && routeScreenCountValue >= (activeKitchenScreenFromRoute ?? 1)
     && routeScreenCountValue <= 8 ? routeScreenCountValue : null;
-  const SPACE_PENDING_VIEWS = new Set(["overview", "inventory", "customers", "reports", "team"]);
+  const SPACE_PENDING_VIEWS = new Set(["overview", "inventory", "customers", "team"]);
   const ORDER_STATUS_FILTERS = Object.freeze([
     Object.freeze({ id: "all", label: "Todas as etapas" }),
     Object.freeze({ id: "received", label: "Recebidos" }),
@@ -158,6 +159,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let settingsTablesDraft = null;
   let unsubscribe = null;
   let activeView = activeKitchenScreenFromRoute === null ? "orders" : "kitchen";
+  let reportRange = "7d";
   let orderQuery = "";
   let orderStatusFilter = "all";
   let orderChannelFilter = "all";
@@ -420,6 +422,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       kitchenStageGuidance: PIZZERIA_KITCHEN_STAGE_GUIDANCE,
       kitchenSearchPlaceholder: "Buscar pedido, mesa ou sabor",
       kitchenSearchLabel: "Buscar pedido, mesa ou sabor",
+      reportRange,
       activeKitchenScreen,
       kitchenScreenStage: kitchenScreenStageFromRoute,
       kitchenScreenCount: kitchenScreenCountFromRoute,
@@ -700,6 +703,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
 
   function deliveryPage() { return renderDeliveryPage(viewModel()); }
 
+  function reportsPage() { return renderFoodReportsPage(viewModel()); }
+
   function render() {
     if (destroyed || !root) return;
     PIZZA_SIZES = snapshot?.settings?.pizzaSizes ?? DEFAULT_PIZZA_SIZES.map((size) => ({ ...size, active: true }));
@@ -715,7 +720,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     const page = SPACE_PENDING_VIEWS.has(activeView)
       ? renderSpaceCapabilityStatus(activeView, { labels: VIEW_LABELS, iconSvg })
-      : ({ orders: ordersPage, pos: posPage, kitchen: kitchenPage, menu: menuPage, tables: tablesPage, delivery: deliveryPage, settings: settingsPage })[activeView]();
+      : ({ orders: ordersPage, pos: posPage, kitchen: kitchenPage, menu: menuPage, tables: tablesPage, delivery: deliveryPage, reports: reportsPage, settings: settingsPage })[activeView]();
     root.innerHTML = shell(page);
     if (activeView === "orders" || activeView === "pos") {
       updateDeliveryVisibility();
@@ -1221,6 +1226,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       } catch (error) {
         report(error);
       }
+      return;
+    }
+    if (target.dataset.reportRange) {
+      if (!["24h", "7d", "30d"].includes(target.dataset.reportRange)) return;
+      reportRange = target.dataset.reportRange;
+      render();
+      root.querySelector(`[data-report-range="${reportRange}"]`)?.focus({ preventScroll: true });
       return;
     }
     const action = target.dataset.action;

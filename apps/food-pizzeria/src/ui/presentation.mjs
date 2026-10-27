@@ -2,7 +2,7 @@
 // context, capabilities, grants, and readiness; this file does not implement their port.
 export const FOOD_PREVIEW_PRESENTATIONS = Object.freeze(["standalone-preview", "embedded-preview"]);
 export const FOOD_MODULE_VIEWS = Object.freeze([
-  "orders", "pos", "kitchen", "menu", "tables", "delivery", "settings",
+  "orders", "pos", "kitchen", "menu", "tables", "delivery", "reports", "settings",
 ]);
 
 export function assertFoodPreviewPresentation(presentation, dataPort) {

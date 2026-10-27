@@ -870,3 +870,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A referência exibida em pedidos identificados por UUID passou de seis para dez caracteres hexadecimais. IDs sequenciais continuam mostrando a sequência; o identificador persistido não muda.
 - A suíte Food completa passou com 152/152, incluindo UUIDs diferentes com o mesmo sufixo antigo; `node --check` e `git diff --check` aprovados. A mudança é somente de apresentação e não altera contratos nem owners.
 
+### Space Pizzaria / OrdaX Food — relatórios operacionais por período (2026-10-27)
+
+- Relatórios agora consulta os snapshots Food nos períodos de 24 horas, 7 dias e 30 dias e apresenta pedidos, operação de cozinha, prontos, mediana até Pronto, canais, itens, sabores, cancelamentos e pedidos recentes. A tela permite navegar para Cozinha, PDV e histórico.
+- O overview segue no Space; relatório não calcula receita, lucro, pagamento ou saldo/movimentação de Inventory. Itens adicionais e sabores são derivados das quantidades congeladas em cada pedido; pizza combinada conta cada sabor selecionado, sem frações.
+- Suíte Food completa: 160/160; sintaxe e `git diff --check` aprovados. Host incorporado inspecionado: proporções dos gráficos e filtros visíveis; provider de produção não existe neste caminho e os dados continuam locais. PR #359 segue como rascunho.
+
