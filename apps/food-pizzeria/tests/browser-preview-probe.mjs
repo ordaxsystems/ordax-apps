@@ -145,6 +145,8 @@ try {
     const deliveryFeeRow = root.querySelector("#order-delivery-fee-row");
     const deliveryFeeInput = root.querySelector('#create-order-form [name="deliveryFee"]');
     const channelInput = root.querySelector('#create-order-form [name="channel"]');
+    const phoneInput = root.querySelector('#create-order-form [name="phone"]');
+    const addressInput = root.querySelector('#create-order-form [name="address"]');
     ensure(deliveryFeeRow?.hidden === true
       && amountInCents(subtotalValue()) === amountInCents(totalValue()),
     "Retirada deve mostrar o subtotal sem acrescentar taxa de entrega.");
@@ -154,6 +156,31 @@ try {
       && amountInCents(root.querySelector("#order-delivery-fee-value")?.textContent) === 500
       && amountInCents(totalValue()) === amountInCents(subtotalValue()) + 500,
     "Entrega deve mostrar a taxa e somá-la ao subtotal no total do pedido.");
+    ensure(phoneInput.required && addressInput.required
+      && phoneInput.getAttribute("aria-invalid") === "true"
+      && addressInput.getAttribute("aria-invalid") === "true"
+      && !root.querySelector("#delivery-phone-hint")?.hidden
+      && !root.querySelector("#delivery-address-hint")?.hidden,
+    "Entrega deve sinalizar contato e endereço incompletos antes do registro.");
+    phoneInput.value = "119876543";
+    phoneInput.dispatchEvent(new Event("input", { bubbles: true }));
+    ensure(phoneInput.getAttribute("aria-invalid") === "true",
+      "Telefone sem DDD e número completos deve continuar inválido.");
+    phoneInput.value = "(11) 98888-7766";
+    phoneInput.dispatchEvent(new Event("input", { bubbles: true }));
+    ensure(!phoneInput.hasAttribute("aria-invalid") && root.querySelector("#delivery-phone-hint")?.hidden,
+      "Telefone válido deve remover o erro e a orientação de correção.");
+    addressInput.value = "   ";
+    addressInput.dispatchEvent(new Event("input", { bubbles: true }));
+    ensure(addressInput.getAttribute("aria-invalid") === "true"
+      && !root.querySelector("#delivery-address-hint")?.hidden,
+    "Endereço em branco deve continuar inválido mesmo com espaços.");
+    addressInput.value = "Rua das Flores, 10 — Centro";
+    addressInput.dispatchEvent(new Event("input", { bubbles: true }));
+    ensure(!addressInput.hasAttribute("aria-invalid") && root.querySelector("#delivery-address-hint")?.hidden,
+      "Endereço preenchido deve remover o erro inline.");
+    ensure(root.querySelector('#create-order-form [type="submit"]')?.disabled === false,
+      "Contato e endereço válidos devem liberar o registro quando os demais campos estão prontos.");
     deliveryFeeInput.value = "valor inválido";
     deliveryFeeInput.dispatchEvent(new Event("input", { bubbles: true }));
     ensure(totalValue() === "Revise a taxa"
@@ -167,7 +194,11 @@ try {
     channelInput.value = "counter";
     channelInput.dispatchEvent(new Event("change", { bubbles: true }));
     ensure(deliveryFeeRow?.hidden === true
-      && amountInCents(totalValue()) === amountInCents(subtotalValue()),
+      && amountInCents(totalValue()) === amountInCents(subtotalValue())
+      && !phoneInput.required && !addressInput.required
+      && !phoneInput.hasAttribute("aria-invalid") && !addressInput.hasAttribute("aria-invalid")
+      && root.querySelector("#delivery-phone-hint")?.hidden
+      && root.querySelector("#delivery-address-hint")?.hidden,
     "Balcão deve ocultar a taxa de entrega e totalizar apenas os itens.");
     const quantityControls = root.querySelector(".cart-line-controls");
     const quantityStepper = root.querySelector(".cart-quantity-stepper");

@@ -5,6 +5,8 @@ import {
   MAX_ORDER_ITEM_QUANTITY,
   calculatePizzaPriceCents,
   calculatePizzeriaBatchConsumption,
+  isValidPizzeriaDeliveryAddress,
+  isValidPizzeriaDeliveryPhone,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
 import { addFoodCartItem, adjustFoodCartItemQuantity, countFoodCartUnits } from "../application/cart-quantity.mjs";
@@ -897,6 +899,16 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       }
     }, 0);
     const isDelivery = form.elements.channel.value === "delivery";
+    const deliveryPhoneValid = !isDelivery || isValidPizzeriaDeliveryPhone(form.elements.phone.value);
+    const deliveryAddressValid = !isDelivery || isValidPizzeriaDeliveryAddress(form.elements.address.value);
+    const phoneHint = root.querySelector("#delivery-phone-hint");
+    if (phoneHint) phoneHint.hidden = !isDelivery || deliveryPhoneValid;
+    const addressHint = root.querySelector("#delivery-address-hint");
+    if (addressHint) addressHint.hidden = !isDelivery || deliveryAddressValid;
+    for (const [field, valid] of [[form.elements.phone, deliveryPhoneValid], [form.elements.address, deliveryAddressValid]]) {
+      if (isDelivery && !valid) field.setAttribute("aria-invalid", "true");
+      else field.removeAttribute("aria-invalid");
+    }
     const parsedDeliveryFeeCents = parseMoney(form.elements.deliveryFee.value);
     const deliveryFeeCents = isDelivery ? parsedDeliveryFeeCents : 0;
     const subtotalValue = root.querySelector("#order-subtotal-value");
@@ -921,7 +933,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const content = root.querySelector("#cart-content");
     if (content) content.innerHTML = cartHtml();
     const createButton = form.querySelector('[type="submit"]');
-    if (createButton) createButton.disabled = busy || cart.length === 0 || (isDelivery && deliveryFeeCents === null);
+    if (createButton) createButton.disabled = busy || cart.length === 0
+      || !deliveryPhoneValid || !deliveryAddressValid
+      || (isDelivery && deliveryFeeCents === null);
     const feeHelp = form.querySelector('[name="deliveryFee"]')?.parentElement?.querySelector("small");
     if (feeHelp) {
       const valid = parseMoney(form.elements.deliveryFee.value) !== null;

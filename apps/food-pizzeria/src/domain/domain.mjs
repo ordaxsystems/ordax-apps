@@ -78,6 +78,25 @@ function boundedText(value, label, max, { optional = false } = {}) {
   return normalized;
 }
 
+export function isValidPizzeriaDeliveryPhone(value) {
+  try {
+    const phone = boundedText(value, "Telefone", 32);
+    const digits = phone.replace(/\D/g, "");
+    return digits.length >= 10 && digits.length <= 13;
+  } catch {
+    return false;
+  }
+}
+
+export function isValidPizzeriaDeliveryAddress(value) {
+  try {
+    boundedText(value, "Endereço de entrega", 240);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function identifier(value, label) {
   if (typeof value !== "string" || !ID_RE.test(value)) throw new TypeError(`${label} inválido.`);
   return value;
@@ -1115,14 +1134,15 @@ export function createPizzeriaOrder(stateValue, {
       throw new TypeError("Pedido de salão não pode anteceder a abertura da comanda.");
     }
   }
-  if (channel === "delivery" && !phone.trim()) throw new TypeError("Informe o telefone do cliente para pedido de entrega.");
-  if (channel === "delivery") {
-    const phoneDigits = phone.replace(/\D/g, "");
-    if (phoneDigits.length < 10 || phoneDigits.length > 13) {
-      throw new TypeError("Confira o telefone de entrega; informe DDD e número.");
+  if (channel === "delivery" && !isValidPizzeriaDeliveryPhone(phone)) {
+    if (typeof phone === "string" && phone.trim() === "") {
+      throw new TypeError("Informe o telefone do cliente para pedido de entrega.");
     }
+    throw new TypeError("Confira o telefone de entrega; informe DDD e número.");
   }
-  if (channel === "delivery" && !address) throw new TypeError("Informe o endereço para pedido de entrega.");
+  if (channel === "delivery" && !isValidPizzeriaDeliveryAddress(address)) {
+    throw new TypeError("Informe o endereço para pedido de entrega.");
+  }
   if (channel !== "delivery" && (address !== null || deliveryFeeCents !== 0)) {
     throw new TypeError("Endereço e taxa só podem ser informados para entrega.");
   }

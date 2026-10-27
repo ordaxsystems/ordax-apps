@@ -74,3 +74,10 @@ transações e concluído o rollout pelo migration registry canônico.
 - Testes comprovam isolamento entre Spaces, idempotência, revisão/conflito, replay, falha e nenhuma escrita em owner não autorizado.
 - A área só aparece como operacional quando o provider retorna pronto.
 - Prévia KDS da pizzaria inclui um pedido local de quatro sabores para validar a leitura integrada de sabores, tamanho e fatias sem inventar proporções.
+
+### PDV — validação de contato e endereço de entrega (2026-10-27)
+
+- Telefone e endereço são validados durante a edição com as mesmas regras já aplicadas na criação do pedido Food. O telefone exige DDD e 10–13 dígitos; o endereço não pode ficar vazio.
+- Estados inválidos recebem orientação inline, aria-invalid e impedem registrar o pedido. Ao trocar para balcão ou retirada, os requisitos de entrega são removidos.
+- Testes cobrem limites e dados inválidos no domínio, marcação acessível do formulário e o ciclo entrega → dados válidos → balcão. Suíte: 183/183; prova Chrome completa; sintaxe e git diff --check aprovados.
+- O PDV continua usando os dados do pedido Food; a mudança não cria cadastro de cliente, sincronização, provider ou contrato novo.
