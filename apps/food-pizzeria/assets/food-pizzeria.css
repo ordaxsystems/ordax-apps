@@ -261,6 +261,10 @@ textarea { resize: vertical; line-height: 1.5; }
 .flavor-card-foot > span { color: #b0aaa1; font-size: 8px; }
 .flavor-card-foot .button { min-height: 29px; padding: 0 8px; font-size: 8px; }
 .settings-form { display: grid; max-width: 600px; gap: 14px; padding: 21px; }
+.settings-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, .85fr); align-items: start; gap: 16px; }
+.settings-layout > .settings-form { max-width: none; min-width: 0; }
+.settings-side-column { display: grid; min-width: 0; gap: 14px; }
+.settings-side-column .capability-pending { max-width: none; margin-top: 0; }
 .settings-form small { color: #a39e95; font-size: 9px; font-weight: 400; line-height: 1.5; }
 .settings-form > button { justify-self: start; min-width: 145px; margin-top: 4px; }
 .boundary-card { display: flex; gap: 12px; max-width: 600px; margin-top: 14px; padding: 15px; border: 1px solid #ece8df; border-radius: 13px; background: #fbf9f4; }
@@ -891,6 +895,8 @@ dialog p { color: #a2a8af; }
 .settings-config-row .settings-toggle input { accent-color: #ff6b2f; }
 .settings-config-group .panel-heading { margin: 0; }
 @media (max-width: 900px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); }
+  .settings-layout > .settings-form { width: 100%; }
   .recipe-line { grid-template-columns: minmax(140px, .7fr) minmax(0, 2fr) 30px; gap: 6px; padding: 8px; }
   .recipe-size-grid { grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 6px; }
 }

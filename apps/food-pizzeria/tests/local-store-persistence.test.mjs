@@ -17,6 +17,32 @@ function createMemoryEnvironment() {
   return { storage, locks, eventTarget };
 }
 
+test("reopening within two hours preserves the untouched sample timeline", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-refresh-under-two-hours";
+  const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
+  const now = storedAt + 30 * 60000;
+  const seeded = createSeedFoodState(storedAt);
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state: seeded,
+    processedCommands: [],
+  }));
+
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+  const reopened = await store.initialize();
+
+  assert.equal(reopened.revision, seeded.revision);
+  assert.deepEqual(reopened.orders, seeded.orders);
+  assert.deepEqual(reopened.tableCommands, seeded.tableCommands);
+  store.destroy();
+});
+
 test("reopening an old preview refreshes untouched sample timelines and preserves worked orders", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-refresh-seed-timeline";

@@ -736,7 +736,7 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 ### OrdaX Food — linha do tempo da prévia local (2026-10-26)
 
-- Amostras de pedidos que ficavam abertas por dias no navegador agora mantêm uma linha do tempo coerente ao reabrir o host: após 12 horas, o adapter local ajusta somente timestamps de pedidos seed sem transições próprias e da comanda aberta associada.
+- Amostras de pedidos que ficavam abertas por dias no navegador agora mantêm uma linha do tempo coerente ao reabrir o host: após duas horas sem atividade, o adapter local ajusta somente timestamps de pedidos seed sem transições próprias e da comanda aberta associada.
 - Estados, histórico editado pela pessoa, diário de idempotência e dados não pertencentes à amostra são preservados. Esse ajuste é local à prévia; não atualiza pedidos reais, Sales, Inventory ou Space.
 - `node --test apps/food-pizzeria/tests/*.test.mjs`: 72/72; `node --check` e `git diff --check` aprovados.
 - Smoke no host local da branch em `http://127.0.0.1:4258/apps/food-pizzeria/`: a interface montou e a amostra exibiu horários atuais. Nenhuma transição foi executada.
@@ -754,4 +754,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A taxa padrão local ganhou formulário próprio, separado das configurações operacionais Food. Enter no campo e o botão salvam a preferência deste navegador sem submeter o nome da loja, cardápio ou mesas.
 - Validação no host isolado `:4262`: Enter salvou R$ 8,25 e mostrou confirmação; em um pedido local de teste, selecionar Entrega carregou R$ 8,25 e atualizou o total de R$ 49,90 para R$ 58,15. Nenhum pedido foi registrado; o host usa armazenamento local independente.
 - Suíte Food: 79/79; `node --check` nos módulos da interface e `git diff --check` aprovados. A separação preserva Food como owner de sua configuração operacional; taxa default da prévia permanece local, e a taxa efetivamente escolhida fica congelada em cada pedido local.
+
+### Space Pizzaria / OrdaX Food — composição das configurações (2026-10-26)
+
+- A tela de Configurações usa o espaço horizontal do host: regras operacionais do Food no painel principal; preferência local de entrega e capacidades externas pendentes numa coluna lateral. Em telas menores, os painéis voltam a uma coluna, mantendo a ordem acessível.
+- Não cria outro Space, dashboard ou provider. A prévia continua usando dados locais; o Space real conserva navegação, contexto e autorização pelos contratos do host.
+- Validação: suíte Food 79/79; `node --check` dos arquivos alterados e `git diff --check` aprovados. No host local, confirmei a disposição em duas colunas e o formulário separado da taxa local; nenhuma preferência ou pedido foi alterado durante a conferência.
 
