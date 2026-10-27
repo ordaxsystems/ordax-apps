@@ -69,3 +69,8 @@ transações e concluído o rollout pelo migration registry canônico.
 - Readiness, identidade, grants e erros são expostos sem bypass.
 - Testes comprovam isolamento entre Spaces, idempotência, revisão/conflito, replay, falha e nenhuma escrita em owner não autorizado.
 - A área só aparece como operacional quando o provider retorna pronto.
+
+## Atualização do PDV — 2026-10-27
+
+No notebook, a seleção de itens e o fechamento compartilham a tela em duas colunas; em telas menores, o mesmo formulário e carrinho empilham em uma coluna. O caixa continua em estado único do domínio Food e não duplica pedido ou registro de pagamento.
+

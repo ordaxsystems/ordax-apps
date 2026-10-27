@@ -423,3 +423,10 @@ O quadro de telas agora mantém uma rota direta para cada estação que ainda te
 O ticket conserva sua sequência, posição e tela original até terminar; tarefas ainda não iniciadas continuam podendo ser reorganizadas para a nova configuração. Assim, a alteração do layout não descarta nem oculta trabalho já iniciado. O link antigo ainda é um recurso local do mesmo navegador; não cria sincronização entre aparelhos.
 
 `tests/kitchen-page.test.mjs` cobre a redução de quatro telas para uma, a existência do link de compatibilidade da estação 4 e a renderização do pedido em foco nessa rota. Suíte Food: 139/139; `node --check` da view e `git diff --check` aprovados.
+
+## Layout responsivo de montagem e fechamento no PDV (2026-10-27)
+
+O PDV posiciona seleção de itens e fechamento lado a lado em notebooks, mantendo o carrinho acessível durante a montagem. Até 980 px, o conteúdo empilha e o fechamento deixa de ser fixo; em telefone, as duas áreas cabem sem rolagem horizontal. A view mantém um único formulário de montagem e um único formulário de pedido.
+
+Validação: suíte Food completa, 140/140; sintaxe dos módulos editados e `git diff --check` aprovados. No host, a apresentação foi conferida em 1280×800, 390×844 e 844×390: duas colunas no notebook, uma nos dois formatos de telefone e nenhum overflow horizontal. O runner Chrome local não pôde iniciar por falta de Chrome/Chromium; a CI executa a prova automatizada.
+

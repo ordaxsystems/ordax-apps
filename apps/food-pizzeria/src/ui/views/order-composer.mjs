@@ -26,6 +26,8 @@ export function renderOrderComposer(viewModel) {
   const tableCommand = selectedCommand?.closedAt === null ? selectedCommand : null;
 
   return `<section class="panel order-create-panel"><div class="panel-heading"><div><p class="eyebrow">NOVO ATENDIMENTO</p><h2>Montar pedido</h2></div><span class="step-number">01</span></div>
+    <div class="pos-composer-grid">
+      <div class="pos-builder-column" aria-label="Escolha os itens do pedido">
     ${activeFlavors.length ? `<form id="add-pizza-form" class="pizza-builder">
     <div class="builder-title"><span class="builder-icon" aria-hidden="true">✦</span><div><strong>Pizza</strong><small>Escolha tamanho e até ${snapshot.settings.maxFlavorsPerPizza} sabores.</small></div></div>
     <div class="builder-grid"><label>Tamanho<select name="size">${sizeOptions()}</select></label>${Array.from({ length: snapshot.settings.maxFlavorsPerPizza }, (_, index) => `<label class="${index ? "second-flavor" : ""}">${index ? `Sabor ${index + 1} <span class="optional-tag">opcional</span>` : "Primeiro sabor"}<select name="flavor${index + 1}" ${index === 0 ? "required" : ""}>${index ? `<option value="">Sem sabor adicional</option>` : ""}${flavorOptions()}</select></label>`).join("")}<label>Quantidade<input name="quantity" type="number" min="1" max="50" value="1" required></label></div>
@@ -34,6 +36,8 @@ export function renderOrderComposer(viewModel) {
       ? `<div class="catalog-only-note">${activeWithoutRecipe ? "As pizzas aguardam ficha técnica. Bebidas e acompanhamentos continuam disponíveis abaixo." : "Nenhum sabor de pizza está disponível. Você ainda pode registrar outros produtos."}</div>`
       : emptyState({ icon: "◉", title: activeWithoutRecipe ? "Fichas técnicas pendentes" : "Seu cardápio ainda está vazio", text: activeWithoutRecipe ? "Cadastre as receitas dos sabores no Cardápio antes de receber pedidos para preparo." : "Cadastre sabores e preços para começar a receber pedidos.", action: activeWithoutRecipe ? "Abrir cardápio" : "Cadastrar sabores", view: "menu" })}
     ${PREVIEW_CATALOG_PRODUCTS.length ? `<section class="order-products" aria-label="Bebidas e acompanhamentos"><div class="order-products-heading"><div><strong>Mais itens</strong><span>Bebidas, combos e acompanhamentos</span></div><span>${PREVIEW_CATALOG_PRODUCTS.length} opções</span></div><div class="order-products-grid">${PREVIEW_CATALOG_PRODUCTS.map((product) => `<article class="order-product"><div class="order-product-copy"><strong>${escapeHtml(product.name)}</strong><span>${escapeHtml(product.category)} · ${money(product.priceCents)}</span></div><button class="button button-quiet" type="button" data-action="add-catalog-product" data-product-id="${escapeHtml(product.id)}" aria-label="Adicionar ${escapeHtml(product.name)} ao pedido">Adicionar <span aria-hidden="true">＋</span></button></article>`).join("")}</div></section>` : ""}
+      </div>
+      <div class="pos-checkout-column" aria-label="Carrinho e fechamento do pedido">
     <div class="cart-section"><div class="cart-heading"><strong>Itens do pedido</strong><span id="cart-count">${cart.length} ${cart.length === 1 ? "item" : "itens"}</span></div><div id="cart-content">${cartHtml()}</div></div>
     <form id="create-order-form" class="customer-form">
       <div class="cart-heading"><strong>Dados para atendimento</strong><span class="step-number step-small">02</span></div>
@@ -44,5 +48,8 @@ export function renderOrderComposer(viewModel) {
       <div class="order-total"><div><span>Total do pedido</span><small>O valor não representa pagamento recebido.</small></div><strong id="order-total-value">${money(0)}</strong></div>
       <button class="button button-primary button-wide" type="submit" ${busy || cart.length === 0 ? "disabled" : ""}>Registrar pedido <span aria-hidden="true">→</span></button>
     </form>
+      </div>
+    </div>
   </section>`;
 }
+

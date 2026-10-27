@@ -58,6 +58,35 @@ try {
     "O conteúdo Food não recebeu largura visível.");
   ensure(!root.querySelector(".fatal-state"), "A montagem do Food reportou falha fatal.");
 
+  if (view === "pos") {
+    const composer = root.querySelector(".pos-composer-grid");
+    const builder = root.querySelector(".pos-builder-column");
+    const checkout = root.querySelector(".pos-checkout-column");
+    ensure(composer && builder && checkout,
+      "O PDV precisa separar seleção de produtos e fechamento do mesmo pedido.");
+    ensure(root.querySelectorAll("#add-pizza-form").length === 1
+      && root.querySelectorAll("#create-order-form").length === 1,
+    "O layout responsivo duplicou um formulário ou o estado do pedido.");
+    const viewport = parameters.get("__viewport");
+    const tracks = getComputedStyle(composer).gridTemplateColumns.trim().split(/\s+/);
+    if (viewport === "notebook") {
+      ensure(tracks.length === 2,
+        `O PDV deveria mostrar montagem e fechamento lado a lado no notebook: ${tracks.join(" / ")}.`);
+      ensure(getComputedStyle(checkout).position === "sticky",
+        "O resumo e fechamento deveriam permanecer acessíveis durante a montagem no notebook.");
+    } else if (viewport === "phone-portrait" || viewport === "phone-landscape") {
+      ensure(tracks.length === 1,
+        `O PDV deveria empilhar as áreas no telefone: ${tracks.join(" / ")}.`);
+      ensure(getComputedStyle(checkout).position === "static",
+        "O fechamento do PDV não deve ficar sobre o conteúdo no telefone.");
+      ensure(document.documentElement.scrollWidth <= window.innerWidth + 1,
+        "O PDV criou rolagem horizontal no telefone.");
+      ensure(builder.scrollWidth <= builder.clientWidth + 1
+        && checkout.scrollWidth <= checkout.clientWidth + 1,
+      "Uma das áreas do PDV transbordou a largura do telefone.");
+    }
+  }
+
   if (parameters.has("station")) {
     const station = parameters.get("station");
     ensure(root.querySelector(`[data-kitchen-station-screen="${station}"]`),
@@ -253,3 +282,4 @@ if (document.readyState === "complete") {
 } else {
   window.addEventListener("load", () => { void checkAfterPageLoad(); }, { once: true });
 }
+

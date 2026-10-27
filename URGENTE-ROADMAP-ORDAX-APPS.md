@@ -821,3 +821,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Reconfigurar a linha da cozinha não esconde mais tickets já iniciados em telas removidas. O quadro conserva links às estações antigas necessárias até os pedidos terminarem e marca quantos pedidos seguem no fluxo anterior; posições vazias não recebem links.
 - O ticket continua com sua etapa e atribuição originais; novos e ainda não iniciados seguem a configuração atual. Não foi criada sincronização entre aparelhos nem integração com Food Production.
 - Regressão cobre reduzir quatro telas para uma e reabrir o pedido pela estação antiga. Suíte Food: 139/139; a PR #359 segue como rascunho.
+
+### Space Pizzaria / OrdaX Food — layout responsivo do PDV (2026-10-27)
+
+- A montagem do pedido e o fechamento agora ficam lado a lado em notebooks, com o resumo acessível durante a seleção. Em telefones, as mesmas áreas empilham e o checkout deixa o fluxo normal; não há formulário duplicado nem rolagem horizontal.
+- A estrutura é só de apresentação: PDV, carrinho e comando usam o mesmo estado Food. Pagamento e outros owners não foram integrados.
+- Suíte Food: 140/140; sintaxe e `git diff --check` aprovados. Host conferido em 1280×800, 390×844 e 844×390; duas colunas no notebook e uma nos dois formatos de telefone, sem overflow. Runner automatizado local não iniciou porque Chrome/Chromium não está instalado; a prova automatizada fica para a CI da PR #359.

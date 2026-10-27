@@ -29,8 +29,12 @@ test("PDV reúne criação de pedido e itens adicionais numa tela própria", () 
 
   assert.match(html, /<h1>PDV<\/h1>/);
   assert.match(html, /data-view="orders">Ver pedidos/);
+  assert.match(html, /class="pos-composer-grid"/);
+  assert.match(html, /class="pos-builder-column" aria-label="Escolha os itens do pedido"/);
+  assert.match(html, /class="pos-checkout-column" aria-label="Carrinho e fechamento do pedido"/);
   assert.match(html, /id="add-pizza-form"/);
   assert.match(html, /id="create-order-form"/);
+  assert.match(html, /pos-checkout-column[\s\S]*?class="cart-section"[\s\S]*?id="create-order-form"/);
   assert.match(html, /data-action="add-catalog-product" data-product-id="b-cola"/);
   assert.match(html, /Refrigerante 2L/);
   assert.match(html, /id="order-total-value"/);
@@ -45,3 +49,14 @@ test("taxa de entrega local entra no formulário do PDV sem sugerir pagamento re
   assert.match(html, /O valor não representa pagamento recebido/);
   assert.doesNotMatch(html, /Valor inicial fictício/);
 });
+
+test("CSS do PDV muda para uma coluna no telefone e mantém a área de fechamento acessível", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const css = await readFile(new URL("../assets/food-pizzeria.css", import.meta.url), "utf8");
+
+  assert.match(css, /\.pos-composer-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.16fr\)\s+minmax\(340px,\s*\.84fr\)/);
+  assert.match(css, /@media\s*\(max-width:\s*980px\)\s*\{[^}]*\.pos-composer-grid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
+  assert.match(css, /\.pos-checkout-column\s*\{[^}]*position:\s*sticky/);
+  assert.match(css, /\.pos-checkout-column\s*\{\s*position:\s*static/);
+});
+

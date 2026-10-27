@@ -1377,3 +1377,28 @@ dialog p { color: #a2a8af; }
   .kitchen-station-header { flex-direction: row; }
   .kitchen-station-controls { width: auto; justify-content: flex-end; }
 }
+
+/* PDV: produto e fechamento ficam lado a lado sem duplicar o fluxo do pedido. */
+.pos-page-layout { width: min(100%, 1280px); }
+.pos-page-layout .order-create-panel { padding: 22px; }
+.pos-page-layout .order-create-panel > .panel-heading { margin-bottom: 16px; }
+.pos-composer-grid { display: grid; grid-template-columns: minmax(0, 1.16fr) minmax(340px, .84fr); align-items: start; gap: 16px; }
+.pos-builder-column { display: grid; min-width: 0; align-content: start; gap: 10px; }
+.pos-builder-column > .pizza-builder { margin: 0; }
+.pos-builder-column > .order-products { margin-top: 0; }
+.pos-checkout-column { position: sticky; top: 16px; display: grid; min-width: 0; align-content: start; gap: 8px; padding: 14px; border: 1px solid #34393f; border-radius: 13px; background: var(--paper-raised); }
+.pos-checkout-column .cart-section { padding-top: 0; }
+.pos-checkout-column .customer-form { padding-top: 8px; }
+
+@media (max-width: 980px) {
+  .pos-composer-grid { grid-template-columns: minmax(0, 1fr); }
+  .pos-checkout-column { position: static; }
+}
+
+@media (max-width: 680px) {
+  .pos-page-layout .order-create-panel { padding: 14px; }
+  .pos-composer-grid { gap: 12px; }
+  .pos-checkout-column { padding: 12px; }
+  .pos-page-layout .order-products-grid { grid-template-columns: 1fr; }
+}
+
