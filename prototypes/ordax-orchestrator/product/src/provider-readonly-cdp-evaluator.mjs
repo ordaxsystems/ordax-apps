@@ -2,12 +2,25 @@
 // Preserve Runtime-owned debugger sessions and never issue retries.
 import {observeWithin} from './provider-observation-policy.mjs';
 
+// Electron exposes one Debugger session per WebContents. Health polling, W3
+// recovery and diagnostics all use it; concurrent evaluators must not let one
+// caller detach a session while another command is still in flight.
+const debuggerTails=new WeakMap();
+
+function serializeDebugger(debuggerApi,operation) {
+  const previous=debuggerTails.get(debuggerApi)||Promise.resolve();
+  const current=previous.then(operation,operation);
+  debuggerTails.set(debuggerApi,current.then(()=>undefined,()=>undefined));
+  return current;
+}
+
 export async function evaluateProviderReadOnlyDom({
   debugger:devtools,expression,timeoutMs,timeoutCode
 }={}) {
   if(!devtools||typeof expression!=='string'||!expression.length||
      typeof timeoutCode!=='string'||!/^provider_[a-z0-9_]+$/.test(timeoutCode))
     throw new Error('provider_readonly_observation_invalid');
+  return serializeDebugger(devtools,async()=>{
   let attachedHere=false;
   try {
     if(!devtools.isAttached()) {
@@ -35,4 +48,5 @@ export async function evaluateProviderReadOnlyDom({
       catch { /* do not detach another observer */ }
     }
   }
+  });
 }

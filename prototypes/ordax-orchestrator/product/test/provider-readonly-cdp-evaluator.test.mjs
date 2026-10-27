@@ -56,6 +56,41 @@ test('a hung read never retries, claims success, or leaves its own debugger atta
   assert.equal(d.state.detaches,1);
 });
 
+test('shared Electron debugger evaluations are serialized before detach ownership changes',async()=>{
+  const deferred=()=>{
+    let resolve;
+    const promise=new Promise(done=>{resolve=done;});
+    return {promise,resolve};
+  };
+  const first=deferred(),second=deferred();
+  const state={attached:false,attaches:0,detaches:0,calls:[]};
+  const debuggerApi={
+    isAttached:()=>state.attached,
+    attach(){state.attaches++;state.attached=true;},
+    detach(){state.detaches++;state.attached=false;},
+    sendCommand(method){
+      state.calls.push(method);
+      return state.calls.length===1?first.promise:second.promise;
+    }
+  };
+  const a=evaluateProviderReadOnlyDom(input(debuggerApi));
+  await new Promise(resolve=>setImmediate(resolve));
+  const b=evaluateProviderReadOnlyDom(input(debuggerApi));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.calls.length,1,'second command must wait for the shared CDP read');
+  assert.equal(state.detaches,0,'first observer must not detach under the second');
+  first.resolve({result:{value:{turn:1}}});
+  assert.deepEqual(await a,{turn:1});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(state.calls.length,2);
+  assert.equal(state.attaches,2,'each serialized owner attaches only after the prior one detaches');
+  assert.equal(state.detaches,1);
+  second.resolve({result:{value:{turn:2}}});
+  assert.deepEqual(await b,{turn:2});
+  assert.equal(state.detaches,2);
+  assert.equal(state.attached,false);
+});
+
 test('missing CDP value fails closed; health and W3 share no executeJavaScript alternate',async()=>{
   const d=fakeDebugger({reply:{result:{}}});
   await assert.rejects(evaluateProviderReadOnlyDom(input(d.debuggerApi)),
