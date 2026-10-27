@@ -4,7 +4,8 @@ import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provid
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onStartMission,canStartMission,onSelectRightPane,onNavigationChange}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
-  let coordinatorOpen=false,coordinatorAvailable=false,coordinatorDraftCommitAvailable=false;
+  let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
+  let gptWebTransportAvailable=false;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
   let groqConfigured=false,coordinatorProvider=null;
   let analysisBusy=false,coordinatorSubmitting=false,nodeHost=false;
@@ -35,10 +36,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
-    const enabled=coordinatorAvailable&&Boolean(selected)&&selected.status!=='paused';
-    $('coordinatorSend').disabled=!enabled||analysisBusy||!coordinatorDraftCommitAvailable;
-    $('analyzeWorks').disabled=!enabled||workCount===0||analysisBusy;
-    $('prepareWork').disabled=!enabled||analysisBusy||!coordinatorDraftCommitAvailable;
+    const selectedReady=Boolean(selected)&&selected.status!=='paused';
+    $('coordinatorSend').disabled=!(orchestratorChatAvailable||coordinatorAvailable)||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
+    $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy;
+    $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
   }
   function setCoordinatorDraftState(text='') {
@@ -275,20 +276,22 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :'Cada conversa mantém o próprio histórico dentro do projeto.';
     const engineStatus=await call('status');
     coordinatorAvailable=engineStatus.coordinatorAvailable===true;
+    gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
+    orchestratorChatAvailable=gptWebTransportAvailable||coordinatorAvailable;
     coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     $('coordinatorApiEnable').disabled=!state.configured;
-    const providerName=state.provider==='chatgpt_plan'?'ChatGPT Plan':state.provider==='groq'?'Groq':'IA';
-    $('coordinatorApiEnable').textContent=state.enabled?'Pausar chat':`Ativar ${providerName}`;
+    $('coordinatorApiEnable').textContent=state.enabled?'Desativar Groq':'Ativar Groq fallback';
     $('coordinatorApiEnable').dataset.enabled=String(state.enabled);
-    $('orchestrationConnection').textContent=state.chatgpt?.connected&&!state.chatgpt?.planUsageAuthorized
-      ?'Conta ChatGPT reconhecida, mas o consentimento para uso do plano não foi concedido. Reconecte pelo botão Continuar com ChatGPT.'
-      :!state.configured
-        ?'Conecte o ChatGPT Plan ou configure o provedor Groq opcional. O MCP remoto ainda não está conectado a esta tela.'
-        :coordinatorAvailable?`Chat do coordenador ativo com ${providerName}. Respostas e histórico são persistidos no projeto.`
-        :`${providerName} conectado. Ative o chat para enviar uma mensagem.`;
+    $('orchestrationConnection').textContent=gptWebTransportAvailable
+      ?`ChatGPT Web é o canal principal; a sessão é validada antes de cada envio.${coordinatorAvailable?' Groq está ativo como alternativa segura ou análise opcional.':' Groq está desligado.'}`
+      :coordinatorAvailable
+        ?'Chat do coordenador via Groq está ativo nesta superfície; o transporte ChatGPT Web não está disponível aqui.'
+        :!state.configured
+          ?'O transporte ChatGPT Web não está disponível nesta superfície. Configure Groq somente para análise ou alternativa opcional.'
+          :'Groq está configurado. Ative-o para análise opcional e alternativa após bloqueio confirmado do ChatGPT Web.';
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
@@ -636,7 +639,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if($('analyzeWorks').disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
     analysisBusy=true;syncCoordinatorActions();
-    status(`Enviando ao ${chatgptPlanStatus.planUsageAuthorized?'ChatGPT Plan':'Groq'} somente o histórico recente limitado deste orquestrador…`);
+    status(nodeHost
+      ?'Enviando ao coordenador disponível nesta superfície, com histórico local limitado…'
+      :'Analisando as frentes pelo Groq configurado, com histórico recente limitado…');
     try {
       const receipt=await command('orchestrator_analyze',{projectId:p,orchestratorId:o});
       if(p!==projectId||o!==orchestratorId)return;

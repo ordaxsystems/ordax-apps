@@ -472,6 +472,7 @@ test('in-flight requests do not run twice; pause and a second work cannot bypass
   await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
   assert.throws(()=>f.service.assertProviderTaskAvailable(a.w),/paused/);
   assert.throws(()=>f.service.assertProviderTaskAvailable(a.chat),/coordinator_channel/);
+  assert.throws(()=>f.service.assertProviderTaskAvailable(a.chat,{allowCoordinator:true}),/paused/);
   resolve();await pending;assert.equal(calls,1);
   await assert.rejects(f.call('work_send',{...input,requestId:'paused'}),/paused/);
 });
@@ -510,6 +511,91 @@ test('coordinator chat is separate from GPT work; calls require a port and persi
   assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
   assert.equal(f.store.messages(a.w).length,0);
   await f.call('orchestrator_chat',input);assert.equal(calls,1);
+});
+
+test('central project conversation uses GPT Web as primary and commits exactly one Store-owned message pair',async t=>{
+  let providerCalls=0,groqCalls=0,received;
+  const f=fixture(t,{provider:{send:async args=>{
+    providerCalls++;received=args;
+    const begun=f.store.beginProviderRun(args.taskId,args.content,{draftRevision:args.draftRevision});
+    f.store.appendMessage(args.taskId,'assistant','Resposta observada do ChatGPT Web.');
+    f.store.finishRun(args.taskId,begun.runId);
+    return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId:begun.runId};
+  }},coordinator:{available:()=>true,send:async()=>{groqCalls++;throw Error('must_not_fallback');}}}),a=await project(f);
+  f.store.setDraft(a.chat,'Quero criar a loja VESTE.',1);
+  const input={requestId:'gpt-primary',projectId:a.p,orchestratorId:a.o,
+    content:'Quero criar a loja VESTE.',draftRevision:1};
+  const reply=await f.call('orchestrator_chat',input);
+  assert.equal(reply.status,'succeeded');
+  assert.equal(reply.result.provider,'chatgpt_web');
+  assert.equal(providerCalls,1);assert.equal(groqCalls,0);
+  assert.equal(received.taskKind,'orchestrator');
+  assert.equal(received.draftRevision,2);
+  assert.equal(received.content,input.content);
+  assert.deepEqual(f.store.messages(a.chat).map(message=>[message.role,message.content]),[
+    ['user',input.content],['assistant','Resposta observada do ChatGPT Web.']
+  ]);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'');
+  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=? AND status=\'succeeded\'').get(a.chat).n,1);
+  assert.deepEqual(await f.call('orchestrator_chat',input),reply);
+  assert.equal(providerCalls,1,'same request receipt never resubmits to GPT Web');
+});
+
+test('Groq fallback runs only after an allowlisted GPT health failure proves no submission',async t=>{
+  let providerCalls=0,groqCalls=0,received;
+  const f=fixture(t,{provider:{send:async()=>{
+    providerCalls++;
+    const error=Error('health:chatgpt_login_required');
+    Object.assign(error,{providerDeliveryState:'not_submitted',providerFailureStage:'health',providerFailureCode:'chatgpt_login_required'});
+    throw error;
+  }},coordinator:{available:()=>true,send:async args=>{
+    groqCalls++;received=args;
+    assert.deepEqual(f.store.messages(args.taskId).map(message=>message.role),['user']);
+    assert.equal(f.store.getTaskDraft(args.taskId).draft,'');
+    return {content:'Resposta de contingência registrada como Groq.'};
+  }}}),a=await project(f);
+  f.store.setDraft(a.chat,'Crie a loja VESTE.',3);
+  const input={requestId:'gpt-health-fallback',projectId:a.p,orchestratorId:a.o,
+    content:'Crie a loja VESTE.',draftRevision:3};
+  const receipt=await f.call('orchestrator_chat',input);
+  assert.equal(receipt.status,'succeeded');
+  assert.deepEqual(receipt.result.fallback,{provider:'groq',after:'chatgpt_not_submitted',reason:'chatgpt_login_required'});
+  assert.equal(providerCalls,1);assert.equal(groqCalls,1);
+  assert.equal(received.taskId,a.chat);
+  assert.deepEqual(f.store.messages(a.chat).map(message=>message.role),['user','assistant']);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(a.chat).n,0,
+    'health rejection creates no GPT run or delivery claim');
+  assert.equal(f.store.events(a.chat).some(event=>event.kind==='orchestrator.chat.fallback'),true);
+  assert.deepEqual(await f.call('orchestrator_chat',input),receipt);
+  assert.equal(providerCalls,1);assert.equal(groqCalls,1,'accepted fallback is idempotent');
+});
+
+test('GPT uncertain delivery and active generation never invoke Groq fallback',async t=>{
+  for(const scenario of ['uncertain','generation-active']) {
+    let providerCalls=0,groqCalls=0;
+    const f=fixture(t,{provider:{send:async({taskId,content})=>{
+      providerCalls++;
+      const error=scenario==='uncertain'
+        ?(()=>{
+          const begun=f.store.beginProviderRun(taskId,content);
+          f.store.finishRun(taskId,begun.runId,'send_confirmation_unknown');
+          return Error('submission:send_confirmation_unknown');
+        })()
+        :Error('health:chatgpt_response_in_progress');
+      Object.assign(error,scenario==='uncertain'
+        ?{providerDeliveryState:'uncertain',providerFailureStage:'submit',providerFailureCode:'send_confirmation_unknown'}
+        :{providerDeliveryState:'not_submitted',providerFailureStage:'health',providerFailureCode:'chatgpt_response_in_progress'});
+      throw error;
+    }},coordinator:{available:()=>true,send:async()=>{groqCalls++;return {content:'must_not_fallback'};}}}),a=await project(f);
+    const input={requestId:`gpt-${scenario}`,projectId:a.p,orchestratorId:a.o,content:'Responda à missão.'};
+    const receipt=await f.call('orchestrator_chat',input);
+    assert.equal(receipt.status,scenario==='uncertain'?'uncertain':'failed');
+    assert.equal(providerCalls,1);assert.equal(groqCalls,0);
+    assert.deepEqual(f.store.messages(a.chat).map(message=>message.role),scenario==='uncertain'?['user']:[]);
+    assert.deepEqual(await f.call('orchestrator_chat',input),receipt);
+    assert.equal(providerCalls,1);assert.equal(groqCalls,0,'uncertain/active GPT state is never replayed or replaced');
+  }
 });
 
 test('coordinator atomically converts a persisted draft to a message before an uncertain API delivery',async t=>{

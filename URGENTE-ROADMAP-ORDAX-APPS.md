@@ -7,14 +7,20 @@ O produto deve retomar etapas limitadas sem depender de um turno ou da janela do
 ### Prioridade revisada: GitHub remoto antes de workspace local (2026-10-22)
 
 O proprietário definiu que a primeira etapa de uso deve começar por um projeto
-vinculado a um repositório GitHub remoto. A conversa do coordenador continua
-usando a API já existente; as conversas de trabalho continuam usando o executor
-ChatGPT já existente. O App pode guardar e encaminhar a URL canônica como
-referência, mas a API Groq não consulta arquivos GitHub e a URL não é evidência
-de leitura ou alteração. A tarefa enviada ao ChatGPT deve identificar o remoto
-e usar somente a integração GitHub realmente disponível naquela sessão; se ela
-não estiver conectada ou não tiver permissão, o trabalho deve parar e informar o
-bloqueio. Arquivos locais, Git local e Runtime passam para uma etapa posterior.
+vinculado a um repositório GitHub remoto. A conversa lógica principal do projeto
+usa o executor real do ChatGPT Web já pertencente ao Apps/Electron; várias
+conversas físicas do GPT continuam sendo uma única conversa lógica persistida no
+App. Groq/API é opcional: pode atuar em análise consultiva e só pode substituir
+uma mensagem GPT quando a checagem de saúde permitida prova que o envio não
+ocorreu. Entrega `submitted` ou `uncertain` nunca aciona fallback nem replay.
+
+O App pode guardar e encaminhar a URL canônica como referência, mas URL ou
+resposta textual não comprovam leitura/alteração. A tarefa enviada ao ChatGPT
+deve identificar o remoto e usar somente a integração GitHub realmente
+disponível naquela sessão; se ela não estiver conectada ou não tiver permissão,
+o trabalho deve parar e informar o bloqueio. O Host Node não possui o transporte
+GPT Web e não pode ser apresentado como prova desse fluxo. Arquivos locais, Git
+local e Runtime continuam na etapa posterior, pelos owners e grants existentes.
 
 Esta prioridade não autoriza criar OAuth, token store ou conector GitHub paralelo:
 acesso autenticado da aplicação precisa reutilizar um contrato público do owner
@@ -26,7 +32,7 @@ ou execução sem evidência.
 
 **Arquitetura final autorizada:** o OrdaX Orchestrator gerencia projetos reais, acompanha Git/alterações/testes e usa o GPT como ferramenta, sem duplicar Runtime. Para acesso local, consome capacidades tipadas do owner **ordax-runtime** e grants dos owners **ordax-platform/OS**. A ordem atual é remota primeiro, conforme a decisão de 2026-10-22 acima; binding local, watcher, executor de missão e autonomia permanecem fases posteriores, ainda não concluídas.
 
-**Primeiro gate atual:** criar/vincular URL GitHub remota, manter conversa pela API existente e encaminhar o destino às tarefas GPT sem inventar acesso ou efeito. A URL é só referência: Groq não lê GitHub. Integração GitHub autenticada do App depende do contrato público do Platform, sem OAuth ou token store duplicado. PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) foi mesclada; preservar Flow/Grátis e envio VESTE incerto. Fontes:
+**Primeiro gate atual:** criar/vincular URL GitHub remota, manter a conversa principal no executor GPT Web já existente e encaminhar o destino remoto sem inventar acesso ou efeito. Groq permanece opcional e não lê GitHub. Integração GitHub autenticada do App depende do contrato público do Platform, sem OAuth ou token store duplicado. PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) foi mesclada; preservar Flow/Grátis e envio VESTE incerto. Fontes:
 [RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md),
 [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md),
 [handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md),

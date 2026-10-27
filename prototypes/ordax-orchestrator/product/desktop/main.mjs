@@ -231,8 +231,8 @@ function persistImages(taskId, messageId, images = [], writtenPaths = null) {
   return out;
 }
 
-async function runTask(taskId, prompt, { newSession = false, draftRevision = null } = {}) {
-  orchestratorService.assertProviderTaskAvailable(taskId);
+async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false } = {}) {
+  orchestratorService.assertProviderTaskAvailable(taskId,{allowCoordinator:allowCoordinatorTask});
   // Before appending another user message or starting another Run, require
   // reconciliation of any earlier uncertain transport effect on this Task.
   // The single existing Store is authoritative; this performs no replay.
@@ -736,7 +736,8 @@ const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
 // supervisor, provider automation, remote grants or an external MCP endpoint.
 let localCoordinatorChatEnabled=null;
 const coordinatorChatEnabled=()=>localCoordinatorChatEnabled??(process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1');
-const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey())});
+const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey()),
+  groqConfigured:Boolean(currentGroqKey()),provider:'groq',executionSurface:'electron'});
 function requireLabSupervisor() {
   if (process.env.ORDAX_LAB_SUPERVISOR_ENABLE !== '1') throw new Error('supervisor_disabled');
   const apiKey=currentGroqKey();
@@ -797,8 +798,9 @@ const orchestratorKernel=createOrchestratorKernel({
   }),
   provider:{busy:()=>Boolean(liveRun||worker?.active),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
-    send:async({taskId,content,draftRevision})=>
-    chatReceiptFromRunTask(await enqueueExecution(()=>runTask(taskId,content,{newSession:false,draftRevision})))},
+    send:async({taskId,content,draftRevision,taskKind})=>
+    chatReceiptFromRunTask(await enqueueExecution(()=>runTask(taskId,content,{newSession:false,draftRevision,
+      allowCoordinatorTask:taskKind==='orchestrator'})))},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})
 });
