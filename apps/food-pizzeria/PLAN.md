@@ -99,3 +99,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - A tipografia do pedido em foco e dos próximos pedidos deixa de cair para 7 px nos detalhes e sabores. No telefone, o item principal usa título de 12 px, detalhes e sabores de 9 px; a lista seguinte usa título de 9 px e sabores de 8 px. Os títulos da função continuam compactos.
 - A prova Chrome verifica os tamanhos computados junto com o ticket inteiro no viewport e a rolagem restrita à lista. A inspeção visual cobriu telefone vertical e horizontal.
 - Verificação: Food **187/187**, prova de navegador **26/26**, `node --check` do probe e `git diff --check` aprovados. Nenhum estado de pedido, owner ou contrato mudou.
+
+### PDV — acesso rápido ao fechamento no celular (2026-10-27)
+
+- O resumo fixo em telas estreitas aparece somente enquanto há itens no carrinho. Ele espelha a contagem de unidades e o total calculados pelo fechamento existente; não guarda estado próprio.
+- “Ir para fechamento” leva foco e rolagem ao painel real. O resumo se recolhe enquanto o painel está visível e reaparece ao sair da área, sem cobrir campos nem o botão de registrar.
+- Verificação: Food **187/187**; Chrome **27/27**, incluindo carrinho preenchido em 390 × 844, valores iguais ao checkout, foco na área e recolhimento do resumo; sintaxe JavaScript, verificador MVP e git diff --check aprovados. Nenhum pedido, owner, pagamento ou contrato foi duplicado.

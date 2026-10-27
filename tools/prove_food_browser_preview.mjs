@@ -14,6 +14,7 @@ const scenarios = Object.freeze([
   { presentation: "embedded-preview", view: "pos", extra: { __exercise_cart: "1", __viewport: "phone-landscape" }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true }, resetPreviewStorage: true },
   { presentation: "embedded-preview", view: "pos", extra: { __viewport: "notebook" }, viewport: { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } },
   { presentation: "embedded-preview", view: "pos", extra: { __viewport: "phone-portrait" }, viewport: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } },
+  { presentation: "embedded-preview", view: "pos", extra: { __exercise_cart: "1", __viewport: "phone-portrait" }, viewport: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }, resetPreviewStorage: true },
   { presentation: "embedded-preview", view: "pos", extra: { __viewport: "phone-landscape" }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true } },
   { presentation: "embedded-preview", view: "kitchen", extra: { __configure_workflow: "single-pizzaiolo", __expected_preset_title: "1 pizzaiolo" }, resetPreviewStorage: true },
   { presentation: "embedded-preview", view: "kitchen", extra: {

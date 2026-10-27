@@ -975,3 +975,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Títulos dos itens, tamanhos/fatias e sabores na estação e na lista de próximos pedidos passam a ter tamanho mínimo legível, preservando a prioridade do pedido atual e mantendo a rolagem somente na fila seguinte.
 - O smoke verifica fonte computada, ticket sem corte e ausência de rolagem da página nos tamanhos configurados. Inspeção visual em 390 × 844 e 844 × 390 confirmou a hierarquia e o fluxo anterior.
 - Food **187/187**; Chrome **26/26**; `node --check` do probe e `git diff --check` aprovados. A mudança é de apresentação; nenhum pedido, contrato, owner ou integração foi alterado.
+
+### Space Pizzaria / OrdaX Food — revisão rápida do pedido no telefone (2026-10-27)
+
+- O PDV oferece uma barra inferior compacta em telas estreitas quando há itens no carrinho, para conferir unidades e total já calculados pelo formulário. Um único comando leva o foco ao fechamento e a barra se oculta quando ele fica visível.
+- A rolagem não cobre campos, o carrinho continua sendo o único estado do pedido e “Ir para fechamento” não registra venda nem confirma pagamento.
+- Food: **187/187** testes; Chrome **27/27** configurações, incluindo a revisão do pedido preenchido em 390 × 844; verificador MVP: **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**. Integrações reais e owners permanecem inalterados.

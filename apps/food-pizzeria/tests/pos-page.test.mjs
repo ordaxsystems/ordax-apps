@@ -32,8 +32,10 @@ test("PDV reúne criação de pedido e itens adicionais numa tela própria", () 
   assert.match(html, /<h1>PDV<\/h1>/);
   assert.match(html, /data-view="orders">Ver pedidos/);
   assert.match(html, /class="pos-composer-grid"/);
+  assert.match(html, /id="pos-mobile-order-access"[^>]*hidden/);
+  assert.match(html, /data-action="review-pos-order"[^>]*aria-controls="pos-checkout-column"/);
   assert.match(html, /class="pos-builder-column" aria-label="Escolha os itens do pedido"/);
-  assert.match(html, /class="pos-checkout-column" aria-label="Carrinho e fechamento do pedido"/);
+  assert.match(html, /id="pos-checkout-column" class="pos-checkout-column" tabindex="-1" aria-label="Carrinho e fechamento do pedido"/);
   assert.match(html, /id="add-pizza-form"/);
   assert.equal((html.match(/name="flavor\d+"/g) ?? []).length, 4, "A nova configuração oferece quatro seletores de sabor no PDV.");
   assert.match(html, /id="pizza-price-preview" role="status" aria-live="polite"/);
@@ -72,4 +74,6 @@ test("CSS do PDV muda para uma coluna no telefone e mantém a área de fechament
   assert.match(css, /@media\s*\(max-width:\s*980px\)\s*\{[^}]*\.pos-composer-grid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
   assert.match(css, /\.pos-checkout-column\s*\{[^}]*position:\s*sticky/);
   assert.match(css, /\.pos-checkout-column\s*\{\s*position:\s*static/);
+  assert.match(css, /\.pos-mobile-order-access:not\(\[hidden\]\):not\(\[data-checkout-visible\]\)\s*\{[^}]*position:\s*fixed/);
+  assert.match(css, /\.pos-mobile-order-access\[data-checkout-visible\]\s*\{\s*display:\s*none\s*!important/);
 });

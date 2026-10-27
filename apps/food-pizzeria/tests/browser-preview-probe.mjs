@@ -64,8 +64,11 @@ try {
     const composer = root.querySelector(".pos-composer-grid");
     const builder = root.querySelector(".pos-builder-column");
     const checkout = root.querySelector(".pos-checkout-column");
+    const mobileAccess = root.querySelector("#pos-mobile-order-access");
     ensure(composer && builder && checkout,
       "O PDV precisa separar seleção de produtos e fechamento do mesmo pedido.");
+    ensure(mobileAccess?.hidden === true,
+      "O acesso rápido do telefone deve começar oculto enquanto o carrinho está vazio.");
     ensure(root.querySelectorAll("#add-pizza-form").length === 1
       && root.querySelectorAll("#create-order-form").length === 1,
     "O layout responsivo duplicou um formulário ou o estado do pedido.");
@@ -86,6 +89,10 @@ try {
       ensure(builder.scrollWidth <= builder.clientWidth + 1
         && checkout.scrollWidth <= checkout.clientWidth + 1,
       "Uma das áreas do PDV transbordou a largura do telefone.");
+      if (viewport === "phone-portrait" || viewport === "phone-landscape") {
+        ensure(getComputedStyle(mobileAccess).display === "none",
+          "O acesso rápido não pode ocupar a tela do telefone sem itens no carrinho.");
+      }
     }
   }
 
@@ -136,6 +143,25 @@ try {
       () => root.querySelector(".cart-quantity-stepper"),
       "O carrinho não mostrou os controles de quantidade depois de adicionar a pizza.",
     );
+    if (parameters.get("__viewport") === "phone-portrait" || parameters.get("__viewport") === "phone-landscape") {
+      const mobileAccess = root.querySelector("#pos-mobile-order-access");
+      ensure(mobileAccess && !mobileAccess.hidden,
+        "O acesso rápido do PDV deve aparecer no telefone depois de adicionar uma pizza.");
+      ensure(root.querySelector("#pos-mobile-order-count")?.textContent === root.querySelector("#cart-count")?.textContent,
+        "O acesso rápido deve reutilizar a contagem de unidades do carrinho.");
+      ensure(root.querySelector("#pos-mobile-order-total")?.textContent === root.querySelector("#order-total-value")?.textContent,
+        "O acesso rápido deve reutilizar o total calculado no fechamento.");
+      ensure(getComputedStyle(mobileAccess).position === "fixed",
+        "O acesso rápido deve acompanhar a rolagem sem empurrar a lista do cardápio.");
+      mobileAccess.querySelector('[data-action="review-pos-order"]')?.click();
+      await eventually(
+        () => root.activeElement === root.querySelector("#pos-checkout-column")
+          && root.querySelector("#pos-mobile-order-access")?.hasAttribute("data-checkout-visible"),
+        "Ir para fechamento não levou o foco ao checkout nem recolheu o acesso rápido sobre os campos.",
+      );
+      ensure(getComputedStyle(root.querySelector("#pos-mobile-order-access")).display === "none",
+        "O acesso rápido deve desaparecer enquanto o fechamento estiver visível.");
+    }
     const amountInCents = (value) => {
       const digits = String(value ?? "").replace(/\D/g, "");
       return digits ? Number(digits) : null;

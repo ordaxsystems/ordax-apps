@@ -186,6 +186,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let noticeTimer = null;
   const reportDownloadTimers = new Map();
   let ageRefreshTimer = null;
+  let posCheckoutObserver = null;
   let destroyed = false;
   let mounted = false;
   
@@ -762,6 +763,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
 
   function render() {
     if (destroyed || !root) return;
+    posCheckoutObserver?.disconnect();
+    posCheckoutObserver = null;
     PIZZA_SIZES = snapshot?.settings?.pizzaSizes ?? DEFAULT_PIZZA_SIZES.map((size) => ({ ...size, active: true }));
     PIZZERIA_TABLES = snapshot?.settings?.tables?.filter(({ active }) => active)
       ?? DEFAULT_PIZZERIA_TABLES.map((table) => ({ ...table, active: true }));
@@ -782,7 +785,20 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       updateCartTotals();
       updatePizzaPricePreview();
     }
+    observePosCheckout();
     refreshElapsedIndicators();
+  }
+
+  function observePosCheckout() {
+    const access = root.querySelector("#pos-mobile-order-access");
+    const checkout = root.querySelector("#pos-checkout-column");
+    if (!access || !checkout || typeof globalThis.IntersectionObserver !== "function") return;
+    posCheckoutObserver = new globalThis.IntersectionObserver(([entry]) => {
+      const visible = Boolean(entry?.isIntersecting && entry.intersectionRatio > 0.02);
+      access.toggleAttribute("data-checkout-visible", visible);
+      root.querySelector(".pos-page")?.classList.toggle("has-mobile-order-access", cart.length > 0 && !visible);
+    }, { threshold: [0, 0.02] });
+    posCheckoutObserver.observe(checkout);
   }
   
   function refreshElapsedIndicators() {
@@ -923,9 +939,19 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           : money(subtotal + deliveryFeeCents);
     }
     const count = root.querySelector("#cart-count");
+    const units = countFoodCartUnits(cart);
     if (count) {
-      const units = countFoodCartUnits(cart);
       count.textContent = units + " " + (units === 1 ? "item" : "itens");
+    }
+    const mobileAccess = root.querySelector("#pos-mobile-order-access");
+    if (mobileAccess) {
+      mobileAccess.hidden = cart.length === 0;
+      const mobileCount = root.querySelector("#pos-mobile-order-count");
+      if (mobileCount) mobileCount.textContent = units + " " + (units === 1 ? "item" : "itens");
+      const mobileTotal = root.querySelector("#pos-mobile-order-total");
+      if (mobileTotal) mobileTotal.textContent = total?.textContent ?? money(0);
+      const checkoutVisible = mobileAccess.hasAttribute("data-checkout-visible");
+      root.querySelector(".pos-page")?.classList.toggle("has-mobile-order-access", cart.length > 0 && !checkoutVisible);
     }
     const content = root.querySelector("#cart-content");
     if (content) content.innerHTML = cartHtml();
@@ -1314,7 +1340,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       return;
     }
     const action = target.dataset.action;
-    if (action === "export-food-report") {
+    if (action === "review-pos-order") {
+      const checkout = root.querySelector("#pos-checkout-column");
+      if (checkout) {
+        checkout.scrollIntoView({ behavior: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+        checkout.focus({ preventScroll: true });
+      }
+    } else if (action === "export-food-report") {
       try { exportFoodReport(); } catch (error) { report(error); }
     } else if (action === "dismiss-notice") {
       notice = null;
@@ -1749,6 +1781,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     destroyed = true;
     clearTimeout(noticeTimer);
     clearInterval(ageRefreshTimer);
+    posCheckoutObserver?.disconnect();
+    posCheckoutObserver = null;
     for (const [timer, { url, urlApi }] of reportDownloadTimers) {
       clearTimeout(timer);
       urlApi.revokeObjectURL(url);
