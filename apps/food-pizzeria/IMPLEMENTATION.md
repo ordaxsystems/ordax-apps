@@ -485,3 +485,9 @@ A exportação é gerada no navegador, no mesmo snapshot local Food do relatóri
 
 Validação: suíte Food completa 163/163; `node --check` dos módulos alterados e `git diff --check` aprovados. O verificador MVP mantém 20 alvos, 18 entradas não assinadas e 2 bloqueados. Host incorporado conferido após atualizar a página: botão Baixar CSV, métricas e proporções visíveis; testes cobrem o conteúdo agregado, ausência de nomes de clientes, escape/neutralização de fórmulas, ação do botão e revogação da URL. No head `1b19d60`, os quatro checks remotos passaram: workspace-boundary, food-real-postgres, catalog-candidate e mvp-app-functional-minimum.
 
+## Fila de prévia com tempos operacionais recentes (2026-10-27)
+
+A amostra da pizzaria agora começa com pedidos de 3 a 18 minutos. Os horários de cada mudança de status são distribuídos dentro da idade do próprio pedido; assim, nenhuma transição fictícia fica no futuro. Uma única espera mais longa continua presente para demonstrar a meta de preparo sem sinalizar a fila inteira como atrasada. Ao reabrir o preview, pedidos seed e comandas abertas não operados são rebaseados quando sua atividade mais antiga passa de 35 minutos. Operações locais, status, histórico e journal permanecem preservados.
+
+Validação: testes cobrem sequência e janela de idade da fixture, transições não futuras, preservação dentro da janela, rebase após expiração e conservação do pedido operado. Suíte Food completa: 164/164; `node --check` e `git diff --check` aprovados. Host local recarregado: o ticket em foco caiu de 70 para 18 minutos e os próximos ficaram entre 15 e 5 minutos. A integração permanece browser-local e não representa sincronização ou produção Food.
+

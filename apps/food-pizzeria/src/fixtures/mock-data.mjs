@@ -18,10 +18,10 @@ const flavors = [
   ["pepperoni", "Pepperoni", "Muçarela, pepperoni e molho da casa", 4690, 5690, 7490],
 ];
 
-export const PREVIEW_SEED_ORDER_AGES_MINUTES = Object.freeze([70, 65, 60, 55, 50, 45, 40, 35, 30, 25, 20, 15]);
+export const PREVIEW_SEED_ORDER_AGES_MINUTES = Object.freeze([18, 15, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
 export const PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES = Object.freeze({
-  "ng-command-01": 30,
-  "ng-command-04": 58,
+  "ng-command-01": 16,
+  "ng-command-04": 20,
 });
 
 export function createSeedFoodState(nowValue = Date.now()) {
@@ -100,15 +100,14 @@ export function createSeedFoodState(nowValue = Date.now()) {
         : desired === "out-for-delivery" ? ["preparing", "ready", "out-for-delivery"]
           : desired === "completed" ? ["preparing", "ready", channel === "delivery" ? "out-for-delivery" : "completed", ...(channel === "delivery" ? ["completed"] : [])]
             : [];
-    let minute = 4;
-    for (const nextStatus of transitions) {
+    const transitionIntervalMs = (PREVIEW_SEED_ORDER_AGES_MINUTES[index] * 60000) / (transitions.length + 1);
+    for (const [transitionIndex, nextStatus] of transitions.entries()) {
       state = transitionPizzeriaOrder(state, {
         orderId: `ng-order-${number}`,
         nextStatus,
         historyId: `ng-history-${number}-${nextStatus}`,
-        changedAt: new Date(Date.parse(createdAt) + minute * 60000).toISOString(),
+        changedAt: new Date(Date.parse(createdAt) + Math.round(transitionIntervalMs * (transitionIndex + 1))).toISOString(),
       });
-      minute += 5;
     }
   }
   return state;

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createFoodCommand } from "../src/application/commands.mjs";
 import { createBrowserLocalFoodStore } from "../src/adapters/browser-local-store.mjs";
 import { transitionPizzeriaOrder } from "../src/domain/domain.mjs";
-import { PREVIEW_CATALOG_PRODUCTS, PREVIEW_SEED_ORDER_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
+import { PREVIEW_CATALOG_PRODUCTS, PREVIEW_SEED_ORDER_AGES_MINUTES, PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 import { DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, resizeKitchenDisplayConfiguration } from "../src/application/kitchen-display-configuration.mjs";
 import { KITCHEN_QUEUE_MODES } from "../src/application/kitchen-workflow-preview.mjs";
 
@@ -37,11 +37,11 @@ function createMemoryEnvironment() {
   return { storage, locks, eventTarget };
 }
 
-test("reopening within two hours preserves the untouched sample timeline", async () => {
+test("reopening while the sample activity is fresh preserves its timeline", async () => {
   const environment = createMemoryEnvironment();
-  const businessId = "preview-refresh-under-two-hours";
+  const businessId = "preview-refresh-fresh-window";
   const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
-  const now = storedAt + 30 * 60000;
+  const now = storedAt + 16 * 60000;
   const seeded = createSeedFoodState(storedAt);
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
   environment.storage.setItem(key, JSON.stringify({
@@ -63,11 +63,28 @@ test("reopening within two hours preserves the untouched sample timeline", async
   store.destroy();
 });
 
+test("preview seed activity is recent and all order transitions stay in the past", () => {
+  const now = Date.parse("2026-10-27T12:00:00.000Z");
+  const state = createSeedFoodState(now);
+
+  assert.deepEqual(PREVIEW_SEED_ORDER_AGES_MINUTES.map((_, index) => {
+    const order = state.orders.find(({ id }) => id === `ng-order-${1047 + index}`);
+    return Math.round((now - Date.parse(order.createdAt)) / 60000);
+  }), PREVIEW_SEED_ORDER_AGES_MINUTES);
+  assert.equal(Math.max(...PREVIEW_SEED_ORDER_AGES_MINUTES), 18);
+  for (const order of state.orders) {
+    const historyTimes = order.statusHistory.map(({ changedAt }) => Date.parse(changedAt));
+    assert.ok(historyTimes.every((changedAt, index) => changedAt <= now
+      && changedAt >= Date.parse(order.createdAt)
+      && (index === 0 || historyTimes[index - 1] <= changedAt)));
+  }
+});
+
 test("reopening refreshes the untouched sample queue in one batch after its oldest activity expires", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-refresh-seed-batch";
   const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
-  const now = storedAt + 51 * 60000;
+  const now = storedAt + 18 * 60000;
   const seeded = createSeedFoodState(storedAt);
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
   environment.storage.setItem(key, JSON.stringify({
@@ -90,7 +107,7 @@ test("reopening refreshes the untouched sample queue in one batch after its olde
   }
   assert.equal(refreshed.revision, seeded.revision + 1);
   assert.equal(refreshed.tableCommands.find(({ id }) => id === "ng-command-04").openedAt,
-    new Date(now - 58 * 60000).toISOString());
+    new Date(now - PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES["ng-command-04"] * 60000).toISOString());
   store.destroy();
 });
 
@@ -131,7 +148,7 @@ test("reopening an old preview refreshes untouched sample timelines and preserve
   assert.equal(worked.updatedAt, workedState.orders.find(({ id }) => id === worked.id).updatedAt);
   assert.equal(refreshed.revision, workedState.revision + 1);
   assert.equal(refreshed.tableCommands.find(({ id }) => id === "ng-command-04").openedAt,
-    new Date(now - 58 * 60000).toISOString());
+    new Date(now - PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES["ng-command-04"] * 60000).toISOString());
   const refreshedEnvelope = JSON.parse(environment.storage.getItem(key));
   assert.equal(refreshedEnvelope.schema, "ordax.food-pizzeria.browser-state/6");
   assert.deepEqual(refreshedEnvelope.processedCommands, journal);
