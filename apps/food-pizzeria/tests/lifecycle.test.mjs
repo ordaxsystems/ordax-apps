@@ -26,6 +26,15 @@ function fakeElement() {
   };
 }
 
+function fakeClassList() {
+  const names = new Set();
+  return {
+    add(name) { names.add(name); },
+    remove(name) { names.delete(name); },
+    contains(name) { return names.has(name); },
+  };
+}
+
 function fakeMountRoot() {
   const listeners = new Map();
   const attrs = new Map();
@@ -33,14 +42,17 @@ function fakeMountRoot() {
   const tableOpenDialog = fakeElement();
   const cancelForm = fakeElement();
   const tableOpenForm = fakeElement();
+  const kitchenStation = { classList: fakeClassList() };
   const dialogs = new Map([
     ["#cancel-dialog", cancelDialog],
     ["#table-open-dialog", tableOpenDialog],
     ["#cancel-order-form", cancelForm],
     ["#table-open-form", tableOpenForm],
+    ["[data-kitchen-station-screen]", kitchenStation],
   ]);
   const root = {
     innerHTML: "",
+    classList: fakeClassList(),
     setAttribute(name, value) { attrs.set(name, value); },
     removeAttribute(name) { attrs.delete(name); },
     getAttribute(name) { return attrs.get(name) ?? null; },
@@ -52,8 +64,14 @@ function fakeMountRoot() {
     emitClick(dataset) {
       const callback = listeners.get("click");
       if (!callback) return false;
+      const target = {
+        dataset,
+        innerHTML: "",
+        setAttribute(name, value) { attrs.set(name, value); },
+      };
+      this.lastClickedTarget = target;
       callback({
-        target: { closest: () => ({ dataset }) },
+        target: { closest: () => target },
         preventDefault() {},
       });
       return true;
@@ -64,6 +82,7 @@ function fakeMountRoot() {
         + cancelForm.listenerCount + tableOpenForm.listenerCount;
     },
     get dialogs() { return { cancelDialog, tableOpenDialog }; },
+    get kitchenStation() { return kitchenStation; },
   };
   return root;
 }
@@ -109,6 +128,21 @@ test("unmount while initialize is pending must not register listeners or timers 
   assert.equal(root.getAttribute("aria-busy"), null);
   assert.throws(() => app.navigate("orders"), /já foi encerrada/);
   await assert.rejects(app.mount(), /não pode ser montada novamente/);
+});
+
+test("browsers without the Fullscreen API use a reversible viewport mode", async () => {
+  const root = fakeMountRoot();
+  const app = createFoodPizzeriaApp({ root, dataPort: fakePort(), presentation: "embedded-preview" });
+  await app.mount();
+
+  root.emitClick({ action: "fullscreen-kitchen" });
+  assert.equal(root.classList.contains("kitchen-display-fullscreen-fallback"), true);
+  assert.match(root.lastClickedTarget.innerHTML, /Sair da tela cheia/);
+
+  root.emitClick({ action: "fullscreen-kitchen" });
+  assert.equal(root.classList.contains("kitchen-display-fullscreen-fallback"), false);
+  assert.match(root.lastClickedTarget.innerHTML, /Tela cheia/);
+  app.destroy();
 });
 
 test("unmount after mounting releases listeners, subscription, dialogs and rendered data", async () => {

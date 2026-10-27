@@ -906,8 +906,24 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (!target) return;
     if (target.dataset.action === "fullscreen-kitchen") {
       const display = root.querySelector("[data-kitchen-station-screen]");
-      if (typeof display?.requestFullscreen !== "function") {
-        report(new Error("Tela cheia não está disponível neste navegador."));
+      if (!display) {
+        report(new Error("A tela da estação não está disponível."));
+        return;
+      }
+      const fallbackClass = "kitchen-display-fullscreen-fallback";
+      if (root.classList?.contains(fallbackClass)) {
+        root.classList.remove(fallbackClass);
+        target.innerHTML = 'Tela cheia <span aria-hidden="true">⛶</span>';
+        return;
+      }
+      if (typeof display.requestFullscreen !== "function") {
+        root.classList?.add(fallbackClass);
+        target.innerHTML = 'Sair da tela cheia <span aria-hidden="true">⛶</span>';
+        return;
+      }
+      if (globalThis.document?.fullscreenElement === display
+        && typeof globalThis.document.exitFullscreen === "function") {
+        globalThis.document.exitFullscreen().catch(report);
         return;
       }
       display.requestFullscreen().catch(report);

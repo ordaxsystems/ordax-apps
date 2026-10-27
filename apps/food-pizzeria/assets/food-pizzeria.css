@@ -1072,6 +1072,9 @@ dialog p { color: #a2a8af; }
 .kitchen-assignment-pending span { color: #aaa397; font-size: 8px; line-height: 1.55; }
 
 .kitchen-station-screen { min-height: calc(100vh - 120px); padding: clamp(10px, 2vw, 24px); border: 1px solid #2e343a; border-radius: 14px; background: #111417; }
+.kitchen-display-fullscreen-fallback { position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; width: 100vw !important; height: 100vh !important; max-width: none !important; max-height: none !important; overflow: auto !important; background: #111417 !important; }
+.kitchen-display-fullscreen-fallback .food-preview-disclaimer { display: none !important; }
+.kitchen-display-fullscreen-fallback .kitchen-station-screen { min-height: 100vh; margin: 0; padding: clamp(14px, 2.5vw, 32px); border: 0; border-radius: 0; }
 .kitchen-station-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 17px; }
 .kitchen-station-header h1 { margin: 4px 0 5px; color: #f2f3f4; font: 800 clamp(24px, 3vw, 38px)/1.1 "Manrope", sans-serif; letter-spacing: -1px; }
 .kitchen-station-header > div:first-child > p:last-child { margin: 0; color: #9ca4ac; font-size: 10px; }
