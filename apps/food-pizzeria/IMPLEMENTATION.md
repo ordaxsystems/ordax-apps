@@ -415,7 +415,6 @@ O Cardápio oferece um cálculo de lote por tamanho e quantidade de cada sabor. 
 
 Validação: `tests/batch-planning.test.mjs`, 3/3; suíte Food completa, 138/138; `node --check` dos módulos alterados e `git diff --check` aprovados.
 
-
 ## Acesso a pedidos em andamento após reconfigurar a cozinha (2026-10-27)
 
 O quadro de telas agora mantém uma rota direta para cada estação que ainda tem pedido iniciado no fluxo anterior, mesmo quando a configuração nova reduz a quantidade de telas. A linha informa a etapa preservada e quantos pedidos continuam nela. As telas configuradas sem trabalho anterior seguem mostrando apenas as etapas do fluxo atual; posições sem etapa e sem pedido não geram links vazios.
@@ -426,7 +425,13 @@ O ticket conserva sua sequência, posição e tela original até terminar; taref
 
 ## Layout responsivo de montagem e fechamento no PDV (2026-10-27)
 
-O PDV posiciona seleção de itens e fechamento lado a lado em notebooks, mantendo o carrinho acessível durante a montagem. Até 980 px, o conteúdo empilha e o fechamento deixa de ser fixo; em telefone, as duas áreas cabem sem rolagem horizontal. A view mantém um único formulário de montagem e um único formulário de pedido.
+O PDV agora organiza o catálogo e a montagem do lado do carrinho e fechamento em notebooks. O resumo permanece acessível durante a seleção. Até 980 px, o mesmo conteúdo passa a uma coluna; em telefones, a área de fechamento volta ao fluxo normal para evitar sobreposição e rolagem horizontal. O composer continua sendo uma única apresentação do carrinho/comando Food, sem duplicar formulário ou pedido.
 
-Validação: suíte Food completa, 140/140; sintaxe dos módulos editados e `git diff --check` aprovados. No host, a apresentação foi conferida em 1280×800, 390×844 e 844×390: duas colunas no notebook, uma nos dois formatos de telefone e nenhum overflow horizontal. O runner Chrome local não pôde iniciar por falta de Chrome/Chromium; a CI executa a prova automatizada.
+A prova de navegador cobre notebook (1280 px), telefone vertical (390 px) e horizontal (844 px), verificando colunas, posicionamento do fechamento, unicidade dos formulários e ausência de overflow horizontal. Suíte Food e CI serão atualizados com o head desta PR.
+
+## Edição de quantidades no carrinho do PDV (2026-10-27)
+
+Cada linha do carrinho oferece controles para diminuir, aumentar e remover. A quantidade mínima é 1 e o teto de 50 vem de uma constante única no domínio; o formulário inicial e o ajuste do carrinho usam esse mesmo valor. O contador mostra unidades totais, e os subtotais e o total são recalculados sem recriar a linha nem perder os demais itens.
+
+Validação: testes unitários cobrem soma de unidades, imutabilidade, limites inferior/superior e delta permitido; a prova de navegador percorre adicionar, aumentar, atingir o máximo, diminuir e remover no notebook e no telefone horizontal, incluindo alinhamento dos controles. Suíte Food: 143/143; `node --check` nos módulos alterados e `git diff --check` aprovados. Host conferido em notebook, telefone vertical e horizontal, sem overflow horizontal.
 

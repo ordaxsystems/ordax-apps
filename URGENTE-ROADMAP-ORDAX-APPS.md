@@ -815,7 +815,6 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O Cardápio consolida os insumos necessários por tamanho e quantidade de cada sabor, reutilizando o cálculo de consumo já adotado pelos pedidos. A projeção não consulta saldos nem grava movimentações no Inventory.
 - Suíte Food: 138/138; o planejador valida tamanhos, sabores, fichas e limite do lote. A PR #359 permanece em rascunho.
 
-
 ### Space Pizzaria / OrdaX Food — preservar pedidos durante reconfiguração do KDS (2026-10-27)
 
 - Reconfigurar a linha da cozinha não esconde mais tickets já iniciados em telas removidas. O quadro conserva links às estações antigas necessárias até os pedidos terminarem e marca quantos pedidos seguem no fluxo anterior; posições vazias não recebem links.
@@ -824,6 +823,14 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 ### Space Pizzaria / OrdaX Food — layout responsivo do PDV (2026-10-27)
 
-- A montagem do pedido e o fechamento agora ficam lado a lado em notebooks, com o resumo acessível durante a seleção. Em telefones, as mesmas áreas empilham e o checkout deixa o fluxo normal; não há formulário duplicado nem rolagem horizontal.
-- A estrutura é só de apresentação: PDV, carrinho e comando usam o mesmo estado Food. Pagamento e outros owners não foram integrados.
-- Suíte Food: 140/140; sintaxe e `git diff --check` aprovados. Host conferido em 1280×800, 390×844 e 844×390; duas colunas no notebook e uma nos dois formatos de telefone, sem overflow. Runner automatizado local não iniciou porque Chrome/Chromium não está instalado; a prova automatizada fica para a CI da PR #359.
+- O PDV organiza montagem e fechamento em áreas paralelas no notebook; em telefone, empilha as mesmas áreas sem sobrepor o carrinho nem criar rolagem horizontal.
+- A criação continua no módulo PDV e o histórico em Pedidos. Carrinho e formulário usam o mesmo estado/comando Food, sem duplicar pedido ou integrar pagamentos.
+- Prova de navegador verifica notebook, telefone vertical e horizontal; suíte e CI serão registrados após a validação do commit.
+
+### Space Pizzaria / OrdaX Food — quantidades editáveis no carrinho do PDV (2026-10-27)
+
+- O caixa permite aumentar, diminuir e remover cada item do carrinho. O contador soma unidades, não linhas; subtotal e total acompanham a quantidade editada.
+- Mínimo de uma e máximo de 50 unidades são compartilhados pelo domínio, pelo formulário e pelos controles; ajustes preservam os demais itens.
+- Suíte Food: 143/143; `node --check` e `git diff --check` aprovados. O fluxo foi conferido no host em notebook, telefone vertical e horizontal, sem overflow horizontal.
+- Itens adicionais continuam na fixture local da prévia; registro, pagamento, catálogo mestre e Inventory mantêm seus owners e limites atuais.
+

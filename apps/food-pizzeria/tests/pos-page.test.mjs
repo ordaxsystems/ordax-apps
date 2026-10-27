@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderPosPage } from "../src/ui/views/pos.mjs";
 import { createSeedFoodState, PREVIEW_CATALOG_PRODUCTS } from "../src/fixtures/mock-data.mjs";
+import { MAX_ORDER_ITEM_QUANTITY } from "../src/domain/domain.mjs";
 
 function renderPos({ deliveryFeeCents = 500, products = PREVIEW_CATALOG_PRODUCTS } = {}) {
   const snapshot = createSeedFoodState();
   return renderPosPage({
     PIZZERIA_TABLES: snapshot.settings.tables,
     PREVIEW_CATALOG_PRODUCTS: products,
+    MAX_ORDER_ITEM_QUANTITY,
     deliveryFeeCents,
     snapshot,
     activeCommandId: null,
@@ -39,6 +41,7 @@ test("PDV reúne criação de pedido e itens adicionais numa tela própria", () 
   assert.match(html, /Refrigerante 2L/);
   assert.match(html, /id="order-total-value"/);
   assert.match(html, /Registrar pedido/);
+  assert.ok(html.includes('max="' + MAX_ORDER_ITEM_QUANTITY + '"'), "A quantidade usa o limite do domínio Food.");
   assert.doesNotMatch(html, /data-order-id=/);
 });
 
@@ -59,4 +62,3 @@ test("CSS do PDV muda para uma coluna no telefone e mantém a área de fechament
   assert.match(css, /\.pos-checkout-column\s*\{[^}]*position:\s*sticky/);
   assert.match(css, /\.pos-checkout-column\s*\{\s*position:\s*static/);
 });
-

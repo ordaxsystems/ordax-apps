@@ -87,6 +87,50 @@ try {
     }
   }
 
+  if (view === "pos" && parameters.has("__exercise_cart")) {
+    const flavor = root.querySelector('#add-pizza-form [name="flavor1"]');
+    ensure(flavor, "O teste do carrinho precisa do seletor de sabor.");
+    const firstAvailableFlavor = [...flavor.options].find((option) => option.value);
+    ensure(firstAvailableFlavor, "A prévia não tem sabor disponível para o teste do carrinho.");
+    flavor.value = firstAvailableFlavor.value;
+    flavor.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector('[data-action="add-pizza"]')?.click();
+    await eventually(
+      () => root.querySelector(".cart-quantity-stepper"),
+      "O carrinho não mostrou os controles de quantidade depois de adicionar a pizza.",
+    );
+    const quantityControls = root.querySelector(".cart-line-controls");
+    const quantityStepper = root.querySelector(".cart-quantity-stepper");
+    const removeButton = root.querySelector('[data-action="remove-cart-item"]');
+    ensure(getComputedStyle(quantityControls).display === "flex"
+      && Math.abs(quantityStepper.getBoundingClientRect().top - removeButton.getBoundingClientRect().top) < 2,
+    "Ajuste e remoção devem ficar alinhados numa única linha.");
+    const cartCount = () => root.querySelector("#cart-count")?.textContent.trim();
+    const quantity = () => root.querySelector(".cart-quantity-value")?.textContent.trim();
+    const increase = () => root.querySelector('[data-action="increase-cart-item"]');
+    ensure(cartCount() === "1 item" && quantity() === "1",
+      "O carrinho deve contar a unidade da pizza recém-adicionada.");
+    const totalBeforeIncrease = root.querySelector("#order-total-value")?.textContent;
+    increase()?.click();
+    ensure(cartCount() === "2 itens" && quantity() === "2",
+      "Aumentar a quantidade deve atualizar a unidade e o contador do pedido.");
+    ensure(root.querySelector("#order-total-value")?.textContent !== totalBeforeIncrease,
+      "Aumentar a quantidade não atualizou o total.");
+    for (let index = 0; index < 48; index += 1) increase()?.click();
+    ensure(quantity() === "50" && cartCount() === "50 itens",
+      "O carrinho deve aceitar o limite de 50 unidades definido pelo domínio.");
+    ensure(increase()?.disabled === true,
+      "O botão de aumentar deve bloquear a quantidade acima do limite.");
+    root.querySelector('[data-action="decrease-cart-item"]')?.click();
+    ensure(quantity() === "49" && cartCount() === "49 itens",
+      "Diminuir a quantidade deve atualizar o total de unidades.");
+    root.querySelector('[data-action="remove-cart-item"]')?.click();
+    ensure(cartCount() === "0 itens" && root.querySelector("#cart-empty"),
+      "Remover a linha deve devolver o carrinho ao estado vazio.");
+    ensure(root.querySelector('#create-order-form [type="submit"]')?.disabled === true,
+      "O pedido não pode ser registrado depois de remover seu único item.");
+  }
+
   if (parameters.has("station")) {
     const station = parameters.get("station");
     ensure(root.querySelector(`[data-kitchen-station-screen="${station}"]`),
@@ -282,4 +326,3 @@ if (document.readyState === "complete") {
 } else {
   window.addEventListener("load", () => { void checkAfterPageLoad(); }, { once: true });
 }
-

@@ -4,6 +4,7 @@ export function renderOrderComposer(viewModel) {
   const {
     PIZZERIA_TABLES,
     PREVIEW_CATALOG_PRODUCTS = [],
+    MAX_ORDER_ITEM_QUANTITY = 50,
     deliveryFeeCents,
     snapshot,
     activeCommandId,
@@ -30,7 +31,7 @@ export function renderOrderComposer(viewModel) {
       <div class="pos-builder-column" aria-label="Escolha os itens do pedido">
     ${activeFlavors.length ? `<form id="add-pizza-form" class="pizza-builder">
     <div class="builder-title"><span class="builder-icon" aria-hidden="true">✦</span><div><strong>Pizza</strong><small>Escolha tamanho e até ${snapshot.settings.maxFlavorsPerPizza} sabores.</small></div></div>
-    <div class="builder-grid"><label>Tamanho<select name="size">${sizeOptions()}</select></label>${Array.from({ length: snapshot.settings.maxFlavorsPerPizza }, (_, index) => `<label class="${index ? "second-flavor" : ""}">${index ? `Sabor ${index + 1} <span class="optional-tag">opcional</span>` : "Primeiro sabor"}<select name="flavor${index + 1}" ${index === 0 ? "required" : ""}>${index ? `<option value="">Sem sabor adicional</option>` : ""}${flavorOptions()}</select></label>`).join("")}<label>Quantidade<input name="quantity" type="number" min="1" max="50" value="1" required></label></div>
+    <div class="builder-grid"><label>Tamanho<select name="size">${sizeOptions()}</select></label>${Array.from({ length: snapshot.settings.maxFlavorsPerPizza }, (_, index) => `<label class="${index ? "second-flavor" : ""}">${index ? `Sabor ${index + 1} <span class="optional-tag">opcional</span>` : "Primeiro sabor"}<select name="flavor${index + 1}" ${index === 0 ? "required" : ""}>${index ? `<option value="">Sem sabor adicional</option>` : ""}${flavorOptions()}</select></label>`).join("")}<label>Quantidade<input name="quantity" type="number" min="1" max="${MAX_ORDER_ITEM_QUANTITY}" value="1" required></label></div>
       <div class="builder-bottom"><span id="pizza-price-preview">Selecione um sabor para ver o preço.</span><button class="button button-dark" type="button" data-action="add-pizza">Adicionar pizza <span aria-hidden="true">＋</span></button></div>
     </form>` : PREVIEW_CATALOG_PRODUCTS.length
       ? `<div class="catalog-only-note">${activeWithoutRecipe ? "As pizzas aguardam ficha técnica. Bebidas e acompanhamentos continuam disponíveis abaixo." : "Nenhum sabor de pizza está disponível. Você ainda pode registrar outros produtos."}</div>`
@@ -52,4 +53,3 @@ export function renderOrderComposer(viewModel) {
     </div>
   </section>`;
 }
-

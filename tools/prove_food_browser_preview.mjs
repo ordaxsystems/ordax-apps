@@ -8,6 +8,8 @@ const scenarios = Object.freeze([
   { presentation: "standalone-preview", view: "orders" },
   { presentation: "embedded-preview", view: "kitchen" },
   { presentation: "embedded-preview", view: "pos" },
+  { presentation: "embedded-preview", view: "pos", extra: { __exercise_cart: "1" }, resetPreviewStorage: true },
+  { presentation: "embedded-preview", view: "pos", extra: { __exercise_cart: "1", __viewport: "phone-landscape" }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true }, resetPreviewStorage: true },
   { presentation: "embedded-preview", view: "pos", extra: { __viewport: "notebook" }, viewport: { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false } },
   { presentation: "embedded-preview", view: "pos", extra: { __viewport: "phone-portrait" }, viewport: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } },
   { presentation: "embedded-preview", view: "pos", extra: { __viewport: "phone-landscape" }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true } },
@@ -247,4 +249,3 @@ try {
   await Promise.all([stopProcess(chrome), stopProcess(localServer)]);
   await rm(temporary, { recursive: true, force: true, maxRetries: 6, retryDelay: 200 });
 }
-

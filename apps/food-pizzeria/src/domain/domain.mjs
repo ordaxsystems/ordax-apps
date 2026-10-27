@@ -31,6 +31,7 @@ const MAX_TABLE_COMMANDS = 5000;
 const MAX_RECIPES = MAX_FLAVORS;
 const MAX_RECIPE_LINES = 1000;
 const MAX_BATCH_PIZZAS = 10_000;
+export const MAX_ORDER_ITEM_QUANTITY = 50;
 const MAX_ITEMS_PER_ORDER = 50;
 const MAX_HISTORY_PER_ORDER = 16;
 const MAX_CENTS = 1_000_000_000;
@@ -233,7 +234,7 @@ function validateOrderItem(value, pricingPolicy, {
     const raw = exactObject(value,
       ["id", "type", "productId", "name", "category", "quantity", "unitPriceCents", "lineTotalCents"],
       "Produto do pedido");
-    if (!Number.isSafeInteger(raw.quantity) || raw.quantity < 1 || raw.quantity > 50) {
+    if (!Number.isSafeInteger(raw.quantity) || raw.quantity < 1 || raw.quantity > MAX_ORDER_ITEM_QUANTITY) {
       throw new TypeError("Quantidade do produto inválida.");
     }
     const unitPriceCents = cents(raw.unitPriceCents, "Preço unitário");
@@ -273,7 +274,7 @@ function validateOrderItem(value, pricingPolicy, {
   if (new Set(flavors.map(({ id }) => id)).size !== flavors.length) {
     throw new TypeError("Os sabores de uma pizza devem ser diferentes.");
   }
-  if (!Number.isSafeInteger(raw.quantity) || raw.quantity < 1 || raw.quantity > 50) {
+  if (!Number.isSafeInteger(raw.quantity) || raw.quantity < 1 || raw.quantity > MAX_ORDER_ITEM_QUANTITY) {
     throw new TypeError("Quantidade de pizzas inválida.");
   }
   const unitPriceCents = cents(raw.unitPriceCents, "Preço unitário");
@@ -1098,7 +1099,7 @@ export function createPizzeriaOrder(stateValue, {
   const normalizedItems = items.map((item) => {
     if (item?.type === "catalog-product") {
       const input = exactObject(item, ["id", "type", "productId", "quantity"], "Produto do pedido");
-      if (!Number.isSafeInteger(input.quantity) || input.quantity < 1 || input.quantity > 50) {
+      if (!Number.isSafeInteger(input.quantity) || input.quantity < 1 || input.quantity > MAX_ORDER_ITEM_QUANTITY) {
         throw new TypeError("Quantidade do produto inválida.");
       }
       const product = catalogProducts.find(({ id: productId }) => productId === input.productId);
@@ -1119,7 +1120,7 @@ export function createPizzeriaOrder(stateValue, {
       };
     }
     const input = exactObject(item, ["id", "size", "flavorIds", "quantity"], "Pizza do pedido");
-    if (!Number.isSafeInteger(input.quantity) || input.quantity < 1 || input.quantity > 50) {
+    if (!Number.isSafeInteger(input.quantity) || input.quantity < 1 || input.quantity > MAX_ORDER_ITEM_QUANTITY) {
       throw new TypeError("Quantidade de pizzas inválida.");
     }
     const unitPriceCents = calculatePizzaPriceCents({

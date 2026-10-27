@@ -2,10 +2,12 @@ import {
   PIZZA_SIZES as DEFAULT_PIZZA_SIZES,
   PIZZERIA_TABLES as DEFAULT_PIZZERIA_TABLES,
   DEFAULT_DELIVERY_FEE_CENTS,
+  MAX_ORDER_ITEM_QUANTITY,
   calculatePizzaPriceCents,
   calculatePizzeriaBatchConsumption,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
+import { adjustFoodCartItemQuantity, countFoodCartUnits } from "../application/cart-quantity.mjs";
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
@@ -408,6 +410,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function viewModel() {
     return {
       PIZZA_SIZES, PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS, PREVIEW_INGREDIENTS,
+      MAX_ORDER_ITEM_QUANTITY,
       deliveryFeeCents: previewPreferences.deliveryFeeCents,
       kitchenWorkflow: kitchenWorkflowConfiguration(),
       kitchenTasks: validateKitchenTasks(previewPreferences?.kitchenTasks ?? DEFAULT_KITCHEN_TASKS),
@@ -545,20 +548,35 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return `<option value="">Escolha um sabor</option>${active.map(({ id, name }) => `<option value="${escapeHtml(id)}" ${id === selected ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}`;
   }
   
+  function cartQuantityControls(item, index, label) {
+    const safeLabel = escapeHtml(label);
+    const itemIndex = String(index);
+    const decreaseDisabled = item.quantity <= 1 ? " disabled" : "";
+    const increaseDisabled = item.quantity >= MAX_ORDER_ITEM_QUANTITY ? " disabled" : "";
+    return '<div class="cart-line-controls" role="group" aria-label="Quantidade de ' + safeLabel + '">'
+      + '<div class="cart-quantity-stepper">'
+      + '<button class="cart-quantity-button" type="button" data-action="decrease-cart-item" data-index="' + itemIndex + '" aria-label="Diminuir quantidade de ' + safeLabel + '"' + decreaseDisabled + '>−</button>'
+      + '<span class="cart-quantity-value" aria-live="polite" aria-atomic="true">' + item.quantity + '</span>'
+      + '<button class="cart-quantity-button" type="button" data-action="increase-cart-item" data-index="' + itemIndex + '" aria-label="Aumentar quantidade de ' + safeLabel + '"' + increaseDisabled + '>+</button>'
+      + '</div><button class="icon-button" type="button" data-action="remove-cart-item" data-index="' + itemIndex + '" aria-label="Remover ' + safeLabel + '">×</button></div>';
+  }
+
   function cartHtml() {
-    if (!cart.length) return `<div class="cart-empty" id="cart-empty"><span aria-hidden="true">◌</span><p>Adicione uma pizza ou outro produto ao pedido.</p></div>`;
-    return `<ul class="cart-list">${cart.map((item, index) => {
+    if (!cart.length) return '<div class="cart-empty" id="cart-empty"><span aria-hidden="true">◌</span><p>Adicione uma pizza ou outro produto ao pedido.</p></div>';
+    return '<ul class="cart-list">' + cart.map((item, index) => {
       if (item.type === "catalog-product") {
-        return `<li class="cart-line"><div><strong>${item.quantity}× ${escapeHtml(item.name)}</strong><span>${escapeHtml(item.category)}</span></div><strong>${money(item.unitPriceCents * item.quantity)}</strong><button class="icon-button" type="button" data-action="remove-cart-item" data-index="${index}" aria-label="Remover ${escapeHtml(item.name)}">×</button></li>`;
+        const label = String(item.name);
+        return '<li class="cart-line"><div><strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(item.category) + '</span></div><strong>' + money(item.unitPriceCents * item.quantity) + '</strong>' + cartQuantityControls(item, index, label) + '</li>';
       }
-      const size = PIZZA_SIZES.find(({ id }) => id === item.size)?.label;
+      const size = PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
       const flavorNames = item.flavorIds.map((id) => snapshot.flavors.find((flavor) => flavor.id === id)?.name ?? "Sabor indisponível");
+      const label = size + " · " + flavorNames.join(" + ");
       let unit = 0;
       try {
         unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
       } catch { unit = item.unitPriceCents; }
-      return `<li class="cart-line"><div><strong>${item.quantity}× ${escapeHtml(size)}</strong><span>${escapeHtml(flavorNames.join(" + "))}</span></div><strong>${money(unit * item.quantity)}</strong><button class="icon-button" type="button" data-action="remove-cart-item" data-index="${index}" aria-label="Remover ${escapeHtml(flavorNames.join(" e "))}">×</button></li>`;
-    }).join("")}</ul>`;
+      return '<li class="cart-line"><div><strong>' + escapeHtml(size) + '</strong><span>' + escapeHtml(flavorNames.join(" + ")) + '</span></div><strong>' + money(unit * item.quantity) + '</strong>' + cartQuantityControls(item, index, label) + '</li>';
+    }).join("") + '</ul>';
   }
   
   function ordersPage() { return renderOrdersPage(viewModel()); }
@@ -778,7 +796,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     try {
       if (!flavorIds.length) throw new Error("Selecione ao menos um sabor.");
       if (new Set(flavorIds).size !== flavorIds.length) throw new Error("Escolha sabores diferentes.");
-      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 50) throw new Error("Confira a quantidade.");
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_ORDER_ITEM_QUANTITY) throw new Error("Confira a quantidade.");
       const unit = calculatePizzaPriceCents({ size: form.elements.size.value, flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
       price.textContent = `${money(unit)} por pizza · ${money(unit * quantity)} no total`;
       price.classList.remove("has-error");
@@ -806,7 +824,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const total = root.querySelector("#order-total-value");
     if (total) total.textContent = money(subtotal + delivery);
     const count = root.querySelector("#cart-count");
-    if (count) count.textContent = `${cart.length} ${cart.length === 1 ? "item" : "itens"}`;
+    if (count) {
+      const units = countFoodCartUnits(cart);
+      count.textContent = units + " " + (units === 1 ? "item" : "itens");
+    }
     const content = root.querySelector("#cart-content");
     if (content) content.innerHTML = cartHtml();
     const createButton = form.querySelector('[type="submit"]');
@@ -834,7 +855,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       pizzaSizes: PIZZA_SIZES,
       maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza,
     });
-    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 50) throw new TypeError("Quantidade inválida.");
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_ORDER_ITEM_QUANTITY) throw new TypeError("Quantidade inválida.");
     cart.push({ id: uid(), size: form.elements.size.value, flavorIds, quantity, unitPriceCents });
     form.elements.quantity.value = "1";
     updatePizzaPricePreview();
@@ -846,7 +867,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (!product) throw new Error("Este produto não está disponível no catálogo da prévia.");
     const existing = cart.find((item) => item.type === "catalog-product" && item.productId === product.id);
     if (existing) {
-      if (existing.quantity >= 50) throw new TypeError("O pedido permite até 50 unidades por produto.");
+      if (existing.quantity >= MAX_ORDER_ITEM_QUANTITY) throw new TypeError("O pedido permite até " + MAX_ORDER_ITEM_QUANTITY + " unidades por produto.");
       existing.quantity += 1;
     } else {
       cart.push({
@@ -1210,6 +1231,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       try { addPizza(); } catch (error) { report(error); }
     } else if (action === "add-catalog-product") {
       try { addCatalogProduct(target.dataset.productId); } catch (error) { report(error); }
+    } else if (action === "increase-cart-item" || action === "decrease-cart-item") {
+      try {
+        const change = action === "increase-cart-item" ? 1 : -1;
+        cart = adjustFoodCartItemQuantity(cart, Number(target.dataset.index), change);
+        updateCartTotals();
+      } catch (error) { report(error); }
     } else if (action === "remove-cart-item") {
       cart.splice(Number(target.dataset.index), 1);
       updateCartTotals();

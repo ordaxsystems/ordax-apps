@@ -13,6 +13,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 - Planejamento manual de pré-preparo por lote, derivado diretamente das fichas e do tamanho/quantidade escolhidos. Consolida insumos sem salvar um plano paralelo, consultar saldo ou gravar movimentações no Inventory.
 - Preço do rascunho de pedido revisado antes de gravar: mudança posterior na precificação exige uma segunda confirmação, sem emitir pedido ou pagamento; revisão esperada (CAS) protege concorrência.
 - PDV local da prévia inclui pizzas, bebidas, combos e acompanhamentos no mesmo pedido. Itens adicionais guardam nome, categoria e preço; não criam consumo de receita nem movimentação de Inventory. A lista vem da fixture local até existir contrato autorizado com o owner Catálogo.
+- Layout do PDV separa montagem e fechamento em notebook e empilha as mesmas áreas no telefone; carrinho, dados do cliente e ação de registrar continuam ligados ao único pedido Food. Quantidades por linha são editáveis antes do registro, com limite compartilhado no domínio e contador derivado das unidades.
 - Migração de preview v3/v4 com arquivo local do antigo estoque v3 antes de reescrever a chave ativa.
 - Pedidos/histórico, PDV/entrada de pedidos, KDS, Cardápio/fichas, Mesas/Comandas e Delivery mantidos como áreas do Food Core. O formulário é compartilhado entre o PDV e comandas de salão; pagamento continua pendente do owner Payments.
 - A ação de cancelamento com motivo fica somente no módulo de gestão de Pedidos; o histórico não avança etapas, o KDS conduz a produção e Delivery conduz apenas saída/conclusão de entregas. Cozinha/KDS e Delivery não oferecem cancelar. O protótipo não simula um papel admin: o host Identity/Space precisa fornecer o grant por ação antes da autorização administrativa real.
@@ -21,6 +22,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 - Cards de comanda no KDS evitam repetir o número da mesa quando o nome fictício do cliente é o mesmo rótulo; quando há cliente identificado, preservam cliente e mesa como informações distintas. Correção somente de apresentação, sem alterar estado ou regra de pedidos.
 - O KDS informa a contagem de pedidos em andamento sem indicar turno aberto ou conexão em tempo real, que não são capacidades fornecidas pelo preview local.
 - Configuração local de 1–8 etapas e telas, com rótulo, ordem e atribuição de cada etapa. Padrão Pizzaria: abrir massa → montagem → forno → finalização/embalagem. Cada estação tem rota direta, um ticket em foco e até cinco seguintes. Iniciar bloqueia outro ticket ativo no mesmo posto; concluir encerra a etapa e encaminha o mesmo pedido à próxima; adiar preserva a etapa e reposiciona o ticket atrás dos demais da fila. A última etapa move Food para Pronto; Delivery permanece dono da saída e a liberação para retirada continua como pedido pronto. O KDS não cancela pedidos. Cada pedido mantém o snapshot do fluxo com que começou; mudar a configuração só vale para novos pedidos. As tarefas persistem somente no envelope local do browser v6, e não no estado Food v7. Atualização entre aparelhos, autorização por usuário e claims compartilhados seguem pendentes dos contratos Food Production e People/Identity.
+- Reconfigurar a linha não pode esconder um pedido que já começou. O quadro mantém links diretos das telas antigas que ainda têm tarefas em andamento e identifica quantos pedidos precisam terminar no fluxo anterior; a sequência e o posto do trabalho já iniciado permanecem intactos. O link usa a rota da estação antiga, enquanto pedidos sem início continuam sendo reorganizados para o fluxo novo.
 - Renderização do KDS separada da apresentação do segmento: o quadro compartilhado usa itens/modificadores e orientações injetadas no view model; a Pizzaria apresenta tamanho, fatias e cada sabor como etiqueta individual. A vertical Pizzaria é a única implementada aqui; outras verticais Food ainda precisam fornecer seus próprios presenters e ser verificadas ao entrarem neste source.
 - Lifecycle da UI suporta teardown durante carregamento de dados ou gravação pendente: sem listeners, timers, diálogos ou conteúdo residual após `destroy()`, com testes de regressão assíncronos.
 - Tamanhos de pizza, limite de sabores e mesas configuráveis; novos tamanhos entram inativos até preços e fichas técnicas estarem prontos.
@@ -32,8 +34,6 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 - Overview tratado como responsabilidade do Space; PDV e capacidades horizontais sem provider mostram um estado explícito de integração pendente.
 - Dados e identidade de interface não conectados não são apresentados como operação ativa.
 - Remoção do `mockWorkspace` e dos handlers antigos de Caixa, Estoque, Clientes e Equipe; somente estado transitório da interface e amostras marcadas permanecem fora do domínio versionado.
-
-- **Preservação de tarefas em andamento:** reduzir o número de telas mantém links diretos para as estações do fluxo anterior que ainda têm trabalho iniciado. A etapa e a atribuição do ticket são preservadas; vagas sem etapa não aparecem como telas configuradas.
 
 ## Próxima sequência
 
@@ -69,8 +69,3 @@ transações e concluído o rollout pelo migration registry canônico.
 - Readiness, identidade, grants e erros são expostos sem bypass.
 - Testes comprovam isolamento entre Spaces, idempotência, revisão/conflito, replay, falha e nenhuma escrita em owner não autorizado.
 - A área só aparece como operacional quando o provider retorna pronto.
-
-## Atualização do PDV — 2026-10-27
-
-No notebook, a seleção de itens e o fechamento compartilham a tela em duas colunas; em telas menores, o mesmo formulário e carrinho empilham em uma coluna. O caixa continua em estado único do domínio Food e não duplica pedido ou registro de pagamento.
-
