@@ -70,6 +70,18 @@ try {
       "A tela dedicada não oferece o controle de tela cheia.");
     ensure(!root.querySelector(".kitchen-summary, .kitchen-toolbar, .kitchen-display-setup"),
       "A tela dedicada mantém controles do quadro geral.");
+    const display = root.querySelector(`[data-kitchen-station-screen="${station}"]`);
+    const fullscreenButton = root.querySelector('[data-action="fullscreen-kitchen"]');
+    Object.defineProperty(display, "requestFullscreen", { configurable: true, value: undefined });
+    fullscreenButton.click();
+    const mount = host.shadowRoot.querySelector(".food-preview-content-root");
+    ensure(mount.classList.contains("kitchen-display-fullscreen-fallback"),
+      "A tela dedicada não ativou o modo de viewport quando a Fullscreen API não está disponível.");
+    ensure(fullscreenButton.textContent.includes("Sair da tela cheia"),
+      "O controle de tela cheia não oferece uma ação para sair do modo alternativo.");
+    fullscreenButton.click();
+    ensure(!mount.classList.contains("kitchen-display-fullscreen-fallback"),
+      "O modo alternativo de tela cheia não pode ser encerrado pelo mesmo controle.");
   }
 
   if (embedded) {
