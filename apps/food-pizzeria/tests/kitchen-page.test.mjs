@@ -49,7 +49,7 @@ function render(overrides = {}) {
     orderNumber: (record) => `#${record.id.slice(-4)}`,
     orderChannelLabel: (record) => record.tableCommandId ? "Mesa 03" : ({ delivery: "Entrega", pickup: "Retirada", counter: "Balcão", "dine-in": "Salão" })[record.channel],
     escapeHtml: (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"),
-    renderKitchenOrderCard: (record, { deliveryDetails = false } = {}) => `<article data-order="${record.id}"><span class="status-badge status-${record.status}"></span><ul>${record.items.map((item) => `<li class="kitchen-pizza-line">${item.quantity}× ${item.sizeLabel} · 8 fatias · Sabores: ${item.flavors.length === 2 ? "Meio a meio · " : ""}${item.flavors.map(({ name }) => name).join(" / ")}</li>`).join("")}</ul>${deliveryDetails ? record.address : ""}</article>`,
+    renderKitchenOrderCard: (record, { deliveryDetails = false } = {}) => `<article data-order="${record.id}"><header><strong>#${record.id.slice(-4)}</strong></header><span class="status-badge status-${record.status}"></span><ul>${record.items.map((item) => `<li class="kitchen-pizza-line">${item.quantity}× ${item.sizeLabel} · 8 fatias · Sabores: ${item.flavors.length === 2 ? "Meio a meio · " : ""}${item.flavors.map(({ name }) => name).join(" / ")}</li>`).join("")}</ul>${deliveryDetails ? record.address : ""}</article>`,
     kitchenChannelButton: (filter) => `<button data-channel="${filter.id}">${filter.label}</button>`,
     ...overrides,
   };
@@ -99,7 +99,7 @@ test("KDS exposes touch-ready filters and stage navigation affordances", () => {
   assert.match(page, /tabindex="0" aria-label="Etapas da produção/);
 });
 
-test("KDS exposes screen count, operating mode, per-display assignments, and local preview boundaries", () => {
+test("KDS exposes screen assignments and states the real production boundary", () => {
   const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
   const page = render({ kitchenDisplayConfiguration: layout });
 
@@ -108,7 +108,7 @@ test("KDS exposes screen count, operating mode, per-display assignments, and loc
   assert.match(page, /value="by-stage" selected/);
   assert.match(page, /name="display-4"/);
   assert.match(page, /Abrir tela 4/);
-  assert.match(page, /abertura de massa, montagem e forno por pizza dependem do contrato Food de produção/);
+  assert.match(page, /abrir massa, montagem e forno dependem do contrato Food de produção/);
   assert.match(page, /Distribuição por pessoa/);
   assert.match(page, /People\/Identity/);
 });
@@ -128,11 +128,13 @@ test("dedicated display shows only its assigned order stage with fullscreen cont
   assert.match(page, /data-kitchen-stage="preparing"/);
   assert.match(page, /data-order="order-1002"/);
   assert.match(page, /data-kitchen-current-order="order-1002"/);
+  assert.equal((page.match(/#1002/g) ?? []).length, 1,
+    "O identificador do pedido em foco não deve ser repetido na tela.");
   assert.match(page, /Grande · 8 fatias/);
   assert.match(page, /Fatias exibidas conforme o cadastro atual do tamanho/);
   assert.doesNotMatch(page, /data-order="order-1001"|data-order="order-1003"/);
   assert.doesNotMatch(page, /kitchen-summary|kitchen-toolbar|kitchen-display-setup/);
-  assert.match(page, /Sem sincronização entre aparelhos/);
+  assert.doesNotMatch(page, /PRÉVIA LOCAL|Sem sincronização entre aparelhos|dados fictícios/i);
 });
 
 test("station guidance maps existing order states to dough, assembly, and dispatch instructions", () => {

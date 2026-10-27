@@ -22,10 +22,10 @@ export function renderSettingsPage(viewModel) {
       <aside class="settings-side-column" aria-label="Preferências locais e integrações pendentes">
         <form id="preview-delivery-fee-form" class="panel settings-form">
           <div class="panel-heading"><div><p class="eyebrow">PREFERÊNCIA LOCAL</p><h2>Taxa padrão de entrega</h2></div><span class="step-number">↗</span></div>
-          <label>Taxa padrão local de entrega<input id="delivery-fee-default" name="deliveryFee" inputmode="decimal" autocomplete="off" value="${escapeHtml(money(deliveryFeeCents))}"><small>Preenche os próximos pedidos desta prévia e pode ser ajustada em cada pedido. Fica salva neste navegador; não calcula distância nem altera o contrato Food.</small></label>
-          <button class="button button-secondary" type="submit" ${busy ? "disabled" : ""}>Salvar taxa padrão local</button>
+          <label>Taxa padrão de entrega<input id="delivery-fee-default" name="deliveryFee" inputmode="decimal" autocomplete="off" value="${escapeHtml(money(deliveryFeeCents))}"><small>Preenche os próximos pedidos e pode ser ajustada em cada pedido. Fica salva neste navegador; não calcula distância nem altera o estado dos pedidos.</small></label>
+          <button class="button button-secondary" type="submit" ${busy ? "disabled" : ""}>Salvar taxa padrão</button>
         </form>
-        <section class="panel capability-pending"><span class="capability-pending-mark" aria-hidden="true">${iconSvg("settings")}</span><div><strong>Horários e políticas externas ainda não estão integrados</strong><p>Este preview configura somente os dados operacionais que pertencem ao Food. Não conecta pagamentos, estoque ou providers do Space.</p></div></section>
+        <section class="panel capability-pending"><span class="capability-pending-mark" aria-hidden="true">${iconSvg("settings")}</span><div><strong>Horários e políticas externas ainda não estão integrados</strong><p>Esta área configura os dados operacionais do Food. Pagamentos, estoque e providers do Space dependem de suas integrações próprias.</p></div></section>
       </aside>
     </div>
   </section>`;

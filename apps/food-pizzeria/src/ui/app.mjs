@@ -346,7 +346,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return `<header class="topbar">
       <div class="mobile-brand"><span class="brand-mark">${iconSvg("pizza")}</span><span>OrdaX <b>Food</b></span></div>
       <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido ou cliente no pedido" placeholder="Buscar pedido ou cliente no pedido..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
-      <div class="topbar-right"><div class="preview-context" role="status"><strong>Prévia local</strong><small>Dados fictícios · sem sincronização</small></div><button type="button" class="avatar-button" aria-label="Configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
+      <div class="topbar-right"><button type="button" class="avatar-button" aria-label="Configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
     </header>`;
   }
   
@@ -752,7 +752,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (feeHelp) {
       const valid = parseMoney(form.elements.deliveryFee.value) !== null;
       feeHelp.textContent = valid
-        ? "Taxa padrão configurada para a prévia; ajuste neste pedido se necessário. Sem cálculo por distância."
+        ? "Taxa padrão; ajuste neste pedido se necessário. Sem cálculo por distância."
         : "Informe um valor válido, como 8,00.";
       feeHelp.classList.toggle("field-error", !valid && form.elements.channel.value === "delivery");
     }
@@ -834,7 +834,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       await store.updatePreviewPreferences({ ...previewPreferences, deliveryFeeCents });
       if (destroyed) return false;
       previewPreferences = store.getPreviewPreferences();
-      notice = { type: "success", text: "Taxa padrão local salva para os próximos pedidos desta prévia." };
+      notice = { type: "success", text: "Taxa padrão salva para os próximos pedidos." };
       clearTimeout(noticeTimer);
       noticeTimer = setTimeout(() => {
         notice = null;

@@ -34,7 +34,7 @@ test("formulário de entrega inicia com a taxa configurada e comunica que pode s
   const html = renderOrders([], 875);
 
   assert.match(html, /name="deliveryFee"[^>]*value="8,75"/);
-  assert.match(html, /Taxa padrão configurada para a prévia; ajuste neste pedido se necessário/);
+  assert.match(html, /Taxa padrão; ajuste neste pedido se necessário/);
   assert.doesNotMatch(html, /Valor inicial fictício/);
 });
 

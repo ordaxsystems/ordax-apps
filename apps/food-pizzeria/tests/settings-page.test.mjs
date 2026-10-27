@@ -27,9 +27,9 @@ test("configurações separam a preferência local de entrega do estado Food", (
     "canonical operational settings precede local preferences in reading order");
   assert.match(settingsSideColumn, /id="preview-delivery-fee-form"[\s\S]*?class="panel capability-pending"/);
   assert.match(previewPreferenceForm, /type="submit"/);
-  assert.match(html, /Taxa padrão local de entrega/);
+  assert.match(html, /Taxa padrão de entrega/);
   assert.match(html, /name="deliveryFee"[^>]*value="R\$ 5,00"/);
   assert.doesNotMatch(operationalSettingsForm, /name="deliveryFee"/);
-  assert.match(previewPreferenceForm, /neste navegador; não calcula distância nem altera o contrato Food/);
-  assert.match(html, /nem altera o contrato Food/);
+  assert.match(previewPreferenceForm, /neste navegador; não calcula distância nem altera o estado dos pedidos/);
+  assert.match(html, /nem altera o estado dos pedidos/);
 });

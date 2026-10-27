@@ -92,12 +92,13 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     app.navigate("kitchen");
     await app.mount();
     assert.match(root.innerHTML, /data-preview-only="true"/);
-    assert.match(root.innerHTML, /Prévia local/);
+    assert.doesNotMatch(root.innerHTML.replace(/<[^>]*>/g, " "), /prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i);
     assert.match(root.innerHTML, /id="main-content"/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"|class="main-nav"|data-view="overview"/);
     for (const view of ["orders", "menu", "tables", "delivery", "settings"]) {
       app.navigate(view);
       assert.match(root.innerHTML, /data-preview-only="true"/);
+      assert.doesNotMatch(root.innerHTML.replace(/<[^>]*>/g, " "), /prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i);
       assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
     }
     app.navigate("orders");
@@ -111,8 +112,23 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     assert.match(root.innerHTML, /<h1>Produção<\/h1>/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
     assert.match(root.innerHTML, /#1050[\s\S]*?<span class="kitchen-channel-chip">Mesa 04<\/span>/);
+    assert.equal((root.innerHTML.match(/#1050/g) ?? []).length, 1,
+      "O número do pedido deve aparecer uma vez no cartão da cozinha.");
     assert.match(root.innerHTML, /#1055[\s\S]*?<span class="kitchen-channel-chip">Mesa 01<\/span>/);
     assert.doesNotMatch(root.innerHTML, /class="order-customer"|Fernanda Lima/);
+  } finally {
+    app.destroy();
+  }
+  assert.equal(root.listenerCount, 0);
+});
+
+test("standalone Food header does not spend space on demo-data notices", async () => {
+  const root = fakeRoot();
+  const app = createFoodPizzeriaApp({ root, dataPort: fakePreviewPort(), presentation: "standalone-preview" });
+  try {
+    await app.mount();
+    assert.match(root.innerHTML, /class="topbar"/);
+    assert.doesNotMatch(root.innerHTML.replace(/<[^>]*>/g, " "), /preview-context|prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem sincronização/i);
   } finally {
     app.destroy();
   }
@@ -144,10 +160,9 @@ test("embedded Food preview cannot impersonate a real Space provider or open hor
     /host Space ainda não está autorizado/);
 });
 
-test("pure embedded frame remains explicitly marked as fictitious", () => {
+test("pure embedded frame adds no visible preview or fictitious-data banner", () => {
   const markup = renderEmbeddedFoodPreview("<section>Cardápio</section>");
-  assert.match(markup, /Prévia local/);
-  assert.match(markup, /dados fictícios/);
+  assert.doesNotMatch(markup.replace(/<[^>]*>/g, " "), /prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i);
   assert.match(markup, /Cardápio/);
   assert.doesNotMatch(markup, /<nav|<aside|class="topbar"/);
   assert.throws(() => renderEmbeddedFoodPreview(null), /Conteúdo Food inválido/);

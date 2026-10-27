@@ -12,7 +12,7 @@ export function assertFoodPreviewPresentation(presentation, dataPort) {
   // Both preview shells are sandbox-only. A future Space provider must enter
   // through its own authorized host lifecycle, not by swapping this data port.
   if (dataPort?.context?.adapter !== "browser-local-preview") {
-    throw new Error("A prévia Food exige dados fictícios locais; o host Space ainda não está autorizado.");
+    throw new Error("O Food incorporado exige seu adapter local; o host Space ainda não está autorizado.");
   }
   return presentation;
 }
@@ -30,7 +30,6 @@ export function renderEmbeddedFoodPreview(content, noticeHtml = "", { kitchenSta
     throw new TypeError("Conteúdo Food inválido.");
   }
   return `<div class="food-embedded-preview${kitchenStation ? " food-embedded-preview-kitchen" : ""}" data-preview-only="true">
-    <p class="food-preview-disclaimer" role="status"><strong>Prévia local</strong> · dados fictícios, sem autenticação ou sincronização com Space</p>
     <main id="main-content" class="content" tabindex="-1">${noticeHtml}${content}</main>
   </div>`;
 }

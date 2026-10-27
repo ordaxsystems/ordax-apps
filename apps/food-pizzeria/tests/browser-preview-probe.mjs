@@ -108,7 +108,9 @@ try {
 
   if (embedded) {
     ensure(root.querySelector(".food-embedded-preview")?.dataset.previewOnly === "true",
-      "A apresentação incorporável não foi marcada como prévia local.");
+      "A apresentação incorporável perdeu sua marcação interna de segurança.");
+    ensure(!/prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i.test(root.textContent ?? ""),
+      "A interface incorporável exibe um aviso de demonstração desnecessário.");
     ensure(!root.querySelector(".sidebar") && !root.querySelector(".topbar"),
       "A incorporação duplicou a navegação do Space.");
     ensure(document.querySelector('link[data-food-preview-stylesheet]') === null,
