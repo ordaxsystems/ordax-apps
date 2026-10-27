@@ -81,13 +81,15 @@ test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
 });
 
 test('ChatGPT text insertion focuses and verifies the embedded composer before dispatch',()=>{
-  const start=worker.indexOf('  async #setComposerAndSend(prompt) {');
+  const start=worker.indexOf('  async #setComposerAndSend(prompt,{onSubmissionIntent=null}={}) {');
   const end=worker.indexOf('    // Wait until React renders a usable submit control',start);
   const preparation=worker.slice(start,end);
   assert.ok(start>=0&&end>start);
   assert.ok(preparation.indexOf('this.view.webContents.focus()')<preparation.indexOf('Input.insertText'));
   assert.match(preparation,/document\.activeElement === input \|\| input\.contains\(document\.activeElement\)/);
   assert.match(preparation,/composer_focus_not_observed/);
+  const send=worker.slice(start,worker.indexOf('  async #submissionState()',start));
+  assert.ok(send.indexOf('await onSubmissionIntent({')<send.indexOf('form.requestSubmit(button)'));
 });
 
 
@@ -521,3 +523,4 @@ test('Electron UI document is a single well-formed tree with unique control IDs'
   assert.equal(new Set(ids).size,ids.length,'HTML IDs must be unique for reliable IPC-bound control lookup');
   assert.match(source,/<div id=\"contextPanel\"[^>]*>[\s\S]*<\/div>\s*<\/aside>/);
 });
+

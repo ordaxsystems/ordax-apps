@@ -35,7 +35,7 @@ test('actual worker invokes pre-submit gate before draft, baseline and submissio
   assert.ok(send);
   const auth=send.indexOf('assertProviderSendReadiness(health)');
   const draft=send.indexOf('const currentDraft =');
-  const submit=send.indexOf('await this.#setComposerAndSend(promptText)');
+  const submit=send.indexOf('await this.#setComposerAndSend(promptText,{onSubmissionIntent})');
   assert.ok(auth>0&&auth<draft&&draft<submit);
   assert.match(worker,/classifyProviderAuthObservation/);
 });
@@ -68,3 +68,4 @@ test('login button follows observed session state and uses official login withou
   assert.match(ui,/ChatGPT • acesso recusado \(403\)/);
   assert.match(ui,/chatgpt_provider_backend_access_restricted/);
 });
+

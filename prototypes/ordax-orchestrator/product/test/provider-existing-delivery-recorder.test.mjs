@@ -120,12 +120,13 @@ test('W3 worker invokes only the original callback after one UI submission, for 
   const end=src.indexOf('      const snap = await this.#assistantSnapshot()',start);
   assert.ok(start>=0 && end>start);
   const run=src.slice(start,end);
-  const submitted=run.indexOf('await this.#setComposerAndSend(promptText)');
+  const submitted=run.indexOf('await this.#setComposerAndSend(promptText,{onSubmissionIntent})');
   const recorder=run.indexOf('createProviderDeliveryRecorder({');
   const firstReceipt=run.indexOf('await retainSubmittedConversation()');
   assert.ok(submitted>=0 && recorder>submitted && firstReceipt>recorder);
   assert.match(run,/startsFresh,expectedChatUrl:chatUrl,onDeliveryObserved/);
   assert.doesNotMatch(run,/!newSession\s*\|\|\s*typeof onDeliveryObserved/);
   assert.match(run,/const retainSubmittedConversation=\(\)=>recordDelivery/);
-  assert.equal((run.match(/await this\.#setComposerAndSend\(promptText\)/g)||[]).length,1);
+  assert.equal((run.match(/await this\.#setComposerAndSend\(promptText,\{onSubmissionIntent\}\)/g)||[]).length,1);
 });
+

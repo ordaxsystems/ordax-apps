@@ -3,8 +3,8 @@ import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSuper
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
-import { recordProviderSubmissionProvenance, findProviderSubmissionProvenance, providerPromptDigest } from '../src/provider-submission-provenance.mjs';
-import { inspectProviderLinkedThread, reconcileProviderLinkedReply } from '../src/provider-linked-thread-recovery.mjs';
+import { recordProviderSubmissionProvenance, recordProviderSubmissionIntent, findProviderSubmissionProvenance, providerPromptDigest } from '../src/provider-submission-provenance.mjs';
+import { inspectProviderLinkedThread, reconcileProviderLinkedReply, recoverFailedProviderSubmission } from '../src/provider-linked-thread-recovery.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
 import { assertProviderSendReadiness, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { assertContinuationContextReady } from '../src/continuation-context.mjs';
@@ -331,6 +331,33 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       onProvisionalProgress:({text,source})=>{
         if(liveRun?.runId===runId)provisional.capture(text,source);
       },
+      onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
+        if(liveRun?.runId!==runId)throw new Error('submission_run_context_changed');
+        if(conversationPlan.newSession) {
+          // A fresh GPT chat has no permalink before its first accepted send.
+          // Persist the exact dispatch intent against the official empty home
+          // and the previous task link; recovery can bind a new URL only after
+          // the unique prompt and one complete response are observed twice.
+          const intent=recordProviderSubmissionIntent({
+            store,taskId,runId,messageId:userMessage.id,providerPrompt,
+            chatUrl,intentAt,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches,
+            newSession:true,previousConversationId:conversationPlan.previousConversationId,
+            previousChatUrl:task.chat_url,
+            contextCheckpointVersion:needsContinuation?checkpointVersion:null
+          });
+          if(!intent.recorded)throw new Error('provider_submission_intent_not_recorded');
+          return intent;
+        }
+        const expected=canonicalProviderChatUrl(task.chat_url);
+        if(!expected||canonicalProviderChatUrl(chatUrl)!==expected)
+          throw new Error('provider_submission_intent_target_mismatch');
+        const intent=recordProviderSubmissionIntent({
+          store,taskId,runId,messageId:userMessage.id,providerPrompt,
+          chatUrl:expected,intentAt,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches
+        });
+        if(!intent.recorded)throw new Error('provider_submission_intent_not_recorded');
+        return intent;
+      },
       onDeliveryObserved:({chatUrl,submittedAt}) => {
         if (liveRun?.runId !== runId) throw new Error('submission_run_context_changed');
         const binding=bindObservedSubmittedConversation({
@@ -415,6 +442,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       }); } catch { /* preserve original failure */ }
     }
     store.finishRun(taskId, runId, String(error?.message || error));
+    if(error?.providerFailureCode==='send_confirmation_unknown'&&error?.providerDeliveryState==='uncertain') {
+      const recovered=await recoverFailedProviderSubmission({store,worker,taskId,runId}).catch(()=>null);
+      if(recovered?.reconciled===true||recovered?.reason==='already_reconciled')
+        return {result:{runId,recovered:true},task:getTaskView(taskId)};
+    }
     throw error;
   } finally {
     if (liveRun?.runId === runId) liveRun = null;
@@ -942,4 +974,5 @@ app.on('will-quit', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
+
 

@@ -556,9 +556,11 @@ export class EmbeddedChatWorker {
     });
   }
 
-  async showConversation(url, { force = false, requireComposer = true, readOnlyThread = false } = {}) {
+  async showConversation(url, { force = false, requireComposer = true, readOnlyThread = false, allowNavigation = true } = {}) {
     if (!/^https:\/\/chatgpt\.com\//i.test(String(url || ''))) throw new Error('invalid_chat_url');
     const current = this.view.webContents.getURL();
+    if (!allowNavigation && current !== url)
+      return { ...this.status(), navigated:false, reason:'provider_url_mismatch' };
     if (!force && current !== url) {
       // If the composer is unreadable, its draft state is unknown.
       const state = await this.#composerState();
@@ -626,6 +628,7 @@ export class EmbeddedChatWorker {
             const maxChars=role==='assistant' ? ${W3_MAX_ASSISTANT_CHARS} : ${W3_MAX_USER_CHARS};
             return {
               role,
+              id:String(node.getAttribute('data-chatgpt-selection-message-id')||node.getAttribute('data-message-id')||''),
               text:text.slice(0,maxChars+1),
               textTruncated:(role==='user' && user.complete!==true) || text.length>maxChars
             };
@@ -663,7 +666,7 @@ export class EmbeddedChatWorker {
   // Explicit, read-only inspection of an existing, canonical conversation.
   // The only navigation is an ordinary authorized GET to the linked thread.
   // This never types, submits, retries, creates a chat or writes any Task.
-  async inspectConversationReadOnly(chatUrl) {
+  async inspectConversationReadOnly(chatUrl,{allowNavigation=true}={}) {
     const expected=canonicalProviderChatUrl(chatUrl);
     if (!expected) throw new Error('invalid_chat_url');
     return this.enqueue(async () => {
@@ -680,7 +683,9 @@ export class EmbeddedChatWorker {
       // protection and canonical URL verification still apply.
       let result;
       try {
-        result=await this.showConversation(expected, {force:false,requireComposer:false,readOnlyThread:true});
+        result=await this.showConversation(expected, {
+          force:false,requireComposer:false,readOnlyThread:true,allowNavigation
+        });
       } catch (error) {
         return {available:false,url:expected,reason:safeHistoricalThreadFailure(error?.message)};
       }
@@ -817,7 +822,7 @@ export class EmbeddedChatWorker {
     })()`);
   }
 
-  async #setComposerAndSend(prompt) {
+  async #setComposerAndSend(prompt,{onSubmissionIntent=null}={}) {
     const wc = this.view.webContents;
     const initial = await this.#waitForComposer();
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
@@ -871,7 +876,15 @@ export class EmbeddedChatWorker {
     });
 
     const fire = async () => {
-      if (this.streamContext) this.streamContext.submitAttemptAt = Date.now();
+      const intentAt=Date.now();
+      if (this.streamContext) this.streamContext.submitAttemptAt = intentAt;
+      if(typeof onSubmissionIntent==='function') await onSubmissionIntent({
+        intentAt,chatUrl:wc.getURL(),
+        baselineUserMessageId:typeof baseline.latestUserMessageId==='string'&&baseline.latestUserMessageId.length<=180
+          ?baseline.latestUserMessageId:null,
+        baselineUserMessagePresent:Number.isSafeInteger(baseline.userCount)&&baseline.userCount>0,
+        baselinePromptMatches:providerUserMessageMatchesPrompt(baseline.latestUserText,prompt)
+      });
       // The hidden Chromium view can accept text while discarding synthetic
       // pointer events. Use the browser's standardized form-submission API
       // instead of a simulated click. Exactly one requestSubmit invocation
@@ -941,6 +954,7 @@ export class EmbeddedChatWorker {
         composerText:String(text || ''),
         userCount:userNodes.length,
         latestUserText:String(latestUserNode?.innerText || latestUserNode?.textContent || ''),
+        latestUserMessageId:String(latestUserNode?.getAttribute('data-chatgpt-selection-message-id')||latestUserNode?.getAttribute('data-message-id')||''),
         latestUserExpandControlPresent,
         url:location.href
       };
@@ -1201,7 +1215,8 @@ export class EmbeddedChatWorker {
   }
 
   async sendPrompt({ prompt, chatUrl = null, newSession = false, contextAttachment = null,
-    onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null }) {
+    onContextAttachmentObserved = null, onDeliveryObserved = null, onProvisionalProgress = null,
+    onSubmissionIntent = null }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
       this.lastFailureMetrics = null;
@@ -1253,7 +1268,7 @@ export class EmbeddedChatWorker {
 
       if(contextAttachment)await this.#attachContextFile(contextAttachment,onContextAttachmentObserved);
       this.#setStage('submit');
-      await this.#setComposerAndSend(promptText);
+      await this.#setComposerAndSend(promptText,{onSubmissionIntent});
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
 
       // New chats may need time to acquire a canonical permalink. Existing
@@ -1441,3 +1456,4 @@ export class EmbeddedChatWorker {
     });
   }
 }
+

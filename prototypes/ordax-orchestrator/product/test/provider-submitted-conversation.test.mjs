@@ -98,7 +98,7 @@ test('worker retains permalink only after exactly-one submit receipt',()=>{
   const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const main=fs.readFileSync(path.resolve(here,'../desktop/main.mjs'),'utf8');
   const segment=worker.split('async sendPrompt({')[1];
-  const receiptAt=segment.indexOf('await this.#setComposerAndSend(promptText)');
+  const receiptAt=segment.indexOf('await this.#setComposerAndSend(promptText,{onSubmissionIntent})');
   const durableAt=segment.indexOf('await retainSubmittedConversation()');
   const responseAt=segment.indexOf("this.#setStage('await-response')");
   const responseLoop=segment.slice(responseAt);
@@ -114,3 +114,4 @@ test('worker retains permalink only after exactly-one submit receipt',()=>{
   assert.match(worker,/async inspectDiagnosticReadOnly\(\)/);
   assert.match(main,/ordax:provider:diagnostic/);
 });
+

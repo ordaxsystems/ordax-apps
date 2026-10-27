@@ -1079,7 +1079,8 @@ export class Store {
        !/^[a-f0-9]{64}$/.test(promptSha256||'')||
        !/^[a-f0-9]{64}$/.test(responseSha256||'')||
        createHash('sha256').update(text,'utf8').digest('hex')!==responseSha256||
-       typeof runId!=='string'||typeof userMessageId!=='string'||typeof conversationId!=='string'||!canonicalUrl)
+       typeof runId!=='string'||typeof userMessageId!=='string'||
+       (conversationId!==null&&typeof conversationId!=='string')||!canonicalUrl)
       throw new Error('invalid_provider_reply_reconciliation');
 
     this.db.exec('BEGIN IMMEDIATE');
@@ -1107,18 +1108,73 @@ export class Store {
       const latestUser=this.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(taskId);
       if(latestUser?.id!==userMessageId)
         throw new Error('provider_reply_user_message_changed');
-      const conversation=this.db.prepare(`SELECT c.id FROM task_conversations c JOIN tasks t
-        ON t.id=c.task_id AND t.chat_url=c.chat_url
-        WHERE c.id=? AND c.task_id=? AND c.chat_url=? AND c.status='active'`).get(conversationId,taskId,canonicalUrl);
-      if(!conversation||canonicalProviderChatUrl(task.chat_url)!==canonicalUrl)
-        throw new Error('provider_reply_conversation_changed');
       const receiptRow=this.db.prepare(`SELECT payload FROM events WHERE task_id=?
         AND kind='provider.submission.provenance' AND json_extract(payload,'$.run_id')=?
         AND json_extract(payload,'$.message_id')=? ORDER BY seq DESC LIMIT 1`).get(taskId,runId,userMessageId);
       let receipt=null;
       try {receipt=receiptRow?JSON.parse(receiptRow.payload):null;} catch {}
-      if(!receipt||receipt.conversation_id!==conversationId||receipt.prompt_sha256!==promptSha256||
-         receipt.response_observed!==false||receipt.effect_verified!==false)
+      const intentRow=this.db.prepare(`SELECT payload FROM events WHERE task_id=?
+        AND kind='provider.submission.intent' AND json_extract(payload,'$.run_id')=?
+        AND json_extract(payload,'$.message_id')=? ORDER BY seq DESC LIMIT 1`).get(taskId,runId,userMessageId);
+      let intent=null;
+      try {intent=intentRow?JSON.parse(intentRow.payload):null;} catch {}
+      const intentBaselineValid=Boolean(intent&&
+        (intent.baseline_user_message_id===null||
+          (typeof intent.baseline_user_message_id==='string'&&intent.baseline_user_message_id.length>0&&intent.baseline_user_message_id.length<=180))&&
+        typeof intent.baseline_user_message_present==='boolean'&&
+        (intent.baseline_user_message_id===null||intent.baseline_user_message_present)&&
+        typeof intent.baseline_prompt_matches==='boolean');
+      const linkedDispatchIntentValid=Boolean(intent&&intent.new_session!==true&&
+        intent.conversation_id===conversationId&&intentBaselineValid&&
+        intent.prompt_sha256===promptSha256&&Number.isSafeInteger(intent.intent_at)&&intent.intent_at>0&&
+        intent.new_session===false);
+      const acknowledgedReceiptValid=Boolean(receipt&&receipt.conversation_id===conversationId&&
+        receipt.prompt_sha256===promptSha256&&receipt.response_observed===false&&receipt.effect_verified===false);
+      let effectiveConversationId=conversationId;
+      let freshDispatchIntentValid=false;
+      if(intent&&intent.new_session===true&&conversationId===null&&intentBaselineValid&&
+         intent.baseline_user_message_id===null&&intent.baseline_user_message_present===false&&
+         intent.baseline_prompt_matches===false&&intent.prompt_sha256===promptSha256&&
+         Number.isSafeInteger(intent.intent_at)&&intent.intent_at>0&&
+         intent.conversation_id===null&&
+         (intent.context_checkpoint_version===null||
+           (Number.isSafeInteger(intent.context_checkpoint_version)&&intent.context_checkpoint_version>=0))) {
+        const previousUrl=canonicalProviderChatUrl(intent.previous_chat_url);
+        const previousReferenceMatches=intent.previous_conversation_id===null
+          ?(!previousUrl&&!canonicalProviderChatUrl(task.chat_url)&&
+            !this.db.prepare("SELECT 1 FROM task_conversations WHERE task_id=? AND status='active' LIMIT 1").get(taskId))
+          :(typeof intent.previous_conversation_id==='string'&&previousUrl&&
+            canonicalProviderChatUrl(task.chat_url)===previousUrl&&
+            Boolean(this.db.prepare(`SELECT 1 FROM task_conversations WHERE id=? AND task_id=? AND chat_url=? AND status='active'`)
+              .get(intent.previous_conversation_id,taskId,previousUrl)));
+        const freshUrlUnused=!this.db.prepare('SELECT 1 FROM task_conversations WHERE task_id=? AND chat_url=? LIMIT 1')
+          .get(taskId,canonicalUrl);
+        if(!previousReferenceMatches||previousUrl===canonicalUrl||!freshUrlUnused)
+          throw new Error('provider_reply_new_conversation_reference_changed');
+        const now=this.now();
+        this.db.prepare("UPDATE task_conversations SET status='archived',ended_at=COALESCE(ended_at,?),updated_at=? WHERE task_id=? AND status='active'")
+          .run(now,now,taskId);
+        const sequence=Number(this.db.prepare('SELECT COALESCE(MAX(sequence),0)+1 AS sequence FROM task_conversations WHERE task_id=?')
+          .get(taskId)?.sequence||1);
+        effectiveConversationId=`conversation_${randomUUID()}`;
+        this.db.prepare(`INSERT INTO task_conversations
+          (id,task_id,sequence,chat_url,status,context_checkpoint_version,created_at,updated_at)
+          VALUES(?,?,?,?,?,?,?,?)`).run(effectiveConversationId,taskId,sequence,canonicalUrl,'active',
+            intent.context_checkpoint_version,now,now);
+        this.db.prepare('UPDATE tasks SET chat_url=?,updated_at=? WHERE id=?').run(canonicalUrl,now,taskId);
+        this.event(taskId,'provider.conversation.bound',{
+          conversation_id:effectiveConversationId,sequence,url:canonicalUrl,
+          context_checkpoint_version:intent.context_checkpoint_version
+        });
+        freshDispatchIntentValid=true;
+      }
+      const dispatchIntentValid=linkedDispatchIntentValid||freshDispatchIntentValid;
+      const conversation=this.db.prepare(`SELECT c.id FROM task_conversations c JOIN tasks t
+        ON t.id=c.task_id AND t.chat_url=c.chat_url
+        WHERE c.id=? AND c.task_id=? AND c.chat_url=? AND c.status='active'`).get(effectiveConversationId,taskId,canonicalUrl);
+      if(!conversation||canonicalProviderChatUrl(this.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(taskId)?.chat_url)!==canonicalUrl)
+        throw new Error('provider_reply_conversation_changed');
+      if(!acknowledgedReceiptValid&&!dispatchIntentValid)
         throw new Error('provider_reply_submission_receipt_invalid');
 
       const now=this.now();
@@ -1133,9 +1189,11 @@ export class Store {
       });
       this.db.prepare('DELETE FROM run_provisional_outputs WHERE run_id=? AND task_id=?').run(runId,taskId);
       this.event(taskId,'provider.response.reconciled',{
-        run_id:runId,user_message_id:userMessageId,conversation_id:conversationId,
+        run_id:runId,user_message_id:userMessageId,conversation_id:effectiveConversationId,
         prompt_sha256:promptSha256,response_sha256:responseSha256,
-        evidence:'unique_exact_prompt_completed_provider_reply',reconciled_at:now
+        evidence:'unique_exact_prompt_completed_provider_reply',
+        submission_evidence:acknowledgedReceiptValid?'delivery_receipt':'dispatch_intent',
+        reconciled_at:now
       });
       this.recordConversationCompletion(taskId,runId);
       this.db.exec('COMMIT');
@@ -1256,3 +1314,4 @@ export class Store {
     };
   }
 }
+

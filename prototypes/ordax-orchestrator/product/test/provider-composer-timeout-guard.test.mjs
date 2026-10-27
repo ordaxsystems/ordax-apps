@@ -65,7 +65,7 @@ test('historical read-only thread can render without a composer; sending still r
   const load=section('  async #safeLoad(', '  async #assistantSnapshot()');
   assert.match(show,/requireComposer = true/);
   assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force, readOnlyThread \}\)/);
-  assert.match(read,/this\.showConversation\(expected, \{force:false,requireComposer:false,readOnlyThread:true\}\)/);
+  assert.match(read,/this\.showConversation\(expected, \{\s*force:false,requireComposer:false,readOnlyThread:true,allowNavigation\s*\}\)/);
   assert.match(read,/canonicalProviderChatUrl\(this\.view\.webContents\.getURL\(\)\) !== expected/);
   assert.match(load,/if \(protectDraft\) \{\s*const state = await this\.#composerState\(\)/);
   assert.match(load,/if \(requireComposer\) await this\.#waitForComposer\(\)/);
@@ -148,3 +148,4 @@ test('safe observation timeout does not turn absence into session or success',as
   await assert.rejects(observeWithin(()=>new Promise(()=>{}),{timeoutMs:20,code}),/test_observation_expired/);
   assert.deepEqual(await observeWithin(()=>Promise.resolve({found:false}),{timeoutMs:40}),{found:false});
 });
+
