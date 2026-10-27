@@ -35,6 +35,7 @@ test("PDV reúne criação de pedido e itens adicionais numa tela própria", () 
   assert.match(html, /class="pos-builder-column" aria-label="Escolha os itens do pedido"/);
   assert.match(html, /class="pos-checkout-column" aria-label="Carrinho e fechamento do pedido"/);
   assert.match(html, /id="add-pizza-form"/);
+  assert.equal((html.match(/name="flavor\d+"/g) ?? []).length, 4, "A nova configuração oferece quatro seletores de sabor no PDV.");
   assert.match(html, /id="pizza-price-preview" role="status" aria-live="polite"/);
   assert.match(html, /id="create-order-form"/);
   assert.match(html, /pos-checkout-column[\s\S]*?class="cart-section"[\s\S]*?id="create-order-form"/);

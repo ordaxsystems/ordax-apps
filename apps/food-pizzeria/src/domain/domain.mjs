@@ -40,6 +40,7 @@ export const DEFAULT_DELIVERY_FEE_CENTS = 500;
 const MAX_PIZZA_SIZES = 12;
 const MAX_TABLES = 100;
 const MAX_FLAVORS_PER_PIZZA = 12;
+const DEFAULT_MAX_FLAVORS_PER_PIZZA = 4;
 const MAX_CONSUMPTION_LINES = MAX_RECIPE_LINES * MAX_FLAVORS_PER_PIZZA;
 const FLAVOR_PORTION_SCALE = 27_720;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
@@ -171,7 +172,7 @@ function defaultOperationalSettings({
   storeName,
   halfPricePolicy = "highest",
   pizzaSizes = PIZZA_SIZES.map((size) => ({ ...size, active: true })),
-  maxFlavorsPerPizza = 2,
+  maxFlavorsPerPizza = DEFAULT_MAX_FLAVORS_PER_PIZZA,
   tables = PIZZERIA_TABLES.map((table) => ({ ...table, active: true })),
 } = {}) {
   return validateOperationalSettings({
@@ -815,7 +816,8 @@ function nextState(current, patch) {
 }
 
 export function configureFoodPizzeria(stateValue, {
-  storeName, halfPricePolicy = "highest", pizzaSizes, maxFlavorsPerPizza = 2, tables,
+  storeName, halfPricePolicy = "highest", pizzaSizes,
+  maxFlavorsPerPizza = DEFAULT_MAX_FLAVORS_PER_PIZZA, tables,
 } = {}) {
   const state = validateFoodPizzeriaState(stateValue);
   if (state.settings !== null) throw new Error("A pizzaria já foi configurada.");
@@ -930,7 +932,8 @@ export function setPizzeriaFlavorAvailability(stateValue, { flavorId, active, at
 }
 
 export function calculatePizzaPriceCents({
-  size, flavorIds, flavors, halfPricePolicy, pizzaSizes = PIZZA_SIZES, maxFlavorsPerPizza = 2,
+  size, flavorIds, flavors, halfPricePolicy, pizzaSizes = PIZZA_SIZES,
+  maxFlavorsPerPizza = DEFAULT_MAX_FLAVORS_PER_PIZZA,
 } = {}) {
   const sizeEntry = pizzaSizes.find((entry) => entry.id === size && entry.active !== false);
   if (!sizeEntry) throw new TypeError("Escolha um tamanho de pizza disponível.");

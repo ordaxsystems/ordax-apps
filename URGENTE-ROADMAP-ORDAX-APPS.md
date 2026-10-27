@@ -859,3 +859,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O desenho decorativo foi removido. A lista se chama Fila de entrega e é ordenada pelo horário de saída, da mais antiga para a mais recente; não apresenta mapa, GPS, geocodificação ou otimização que não existam. As ações não gravam nem sincronizam dados externos.
 - Suíte Food completa: 151/151; testes cobrem ligação, endereço copiado, exclusão de pedidos de retirada, ordem de saída, ausência de mapa/GPS fictícios e quebra do cabeçalho em telefone estreito. Host local conferido em 320 px: sem overflow horizontal na área de Delivery. `git diff --check` aprovado. A PR #359 segue em rascunho.
 
+### Space Pizzaria / OrdaX Food — quatro sabores disponíveis por padrão (2026-10-27)
+
+- Uma pizzaria nova começa aceitando até quatro sabores por pizza. O PDV renderiza seletores conforme o limite configurado; preços continuam usando a política de múltiplos sabores definida pelo estabelecimento.
+- O limite segue ajustável. Estados existentes e pedidos históricos são preservados; testes cobrem preço, snapshot de sabores/fatias e os quatro seletores iniciais do PDV.
+- Suíte Food: 152/152; `node --check` dos módulos alterados e `git diff --check` aprovados. O incremento atua sobre o preview Food e não muda o owner dos pedidos nem integra Sales, Catálogo, Payments ou Inventory.
+

@@ -93,6 +93,37 @@ test("configuração inicial preserva tamanhos, mesas e limite de sabores inform
   assert.equal(Object.hasOwn(configured.settings, "deliveryFeeCents"), false);
 });
 
+test("nova pizzaria inicia com quatro sabores e aplica a regra de preço configurada", () => {
+  let state = createSeedFoodState();
+  const flavorIds = ["ng-calabresa", "ng-portuguesa", "ng-marguerita", "ng-frango-catupiry"];
+
+  assert.equal(state.settings.maxFlavorsPerPizza, 4);
+  const unitPriceCents = calculatePizzaPriceCents({
+    size: "medium",
+    flavorIds,
+    flavors: state.flavors,
+    halfPricePolicy: state.settings.halfPricePolicy,
+    pizzaSizes: state.settings.pizzaSizes,
+    maxFlavorsPerPizza: state.settings.maxFlavorsPerPizza,
+  });
+  assert.equal(unitPriceCents, Math.max(...flavorIds.map((id) =>
+    state.flavors.find(({ id: flavorId }) => flavorId === id).pricesCents.medium)));
+
+  state = createPizzeriaOrder(state, {
+    id: "four-flavor-order",
+    historyId: "four-flavor-order-received",
+    createdAt: new Date().toISOString(),
+    customerName: "Cliente Quatro Sabores",
+    channel: "pickup",
+    items: [{ id: "four-flavor-pizza", size: "medium", flavorIds, quantity: 1 }],
+  });
+
+  const item = state.orders.find(({ id }) => id === "four-flavor-order").items[0];
+  assert.deepEqual(item.flavors.map(({ id }) => id), flavorIds);
+  assert.equal(item.unitPriceCents, unitPriceCents);
+  assert.equal(item.sliceCount, 6);
+});
+
 test("pizzeria sizes and flavor count are configurable and saved with order pricing", () => {
   let state = addConfigurableSizeAndTable(createSeedFoodState());
   assert.equal(state.flavors.every(({ pricesCents }) => pricesCents.family === 0), true);

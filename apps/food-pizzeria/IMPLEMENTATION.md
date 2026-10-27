@@ -455,5 +455,11 @@ Validação: suíte Food completa passou com 148/148; testes cobrem criação, a
 
 Cada entrega ativa agora oferece uma ligação `tel:` que normaliza o número para dígitos e preserva apenas o prefixo internacional inicial, além de um botão para copiar o endereço da parada. A cópia usa a Clipboard API do navegador e confirma o pedido no aviso existente; aparelhos sem suporte recebem uma mensagem de erro compreensível. Pedidos legados sem telefone continuam exibindo somente a cópia de endereço. O antigo desenho decorativo sem coordenadas foi removido; a fila é apresentada como ordem de saída, da mais antiga para a mais recente, sem alegar geocodificação, roteirização ou gravação externa.
 
-Validação: `tests/delivery-page.test.mjs` cobre URL de ligação, cópia do endereço, separação de pedidos de retirada, ordenação de saída e ausência de mapa/GPS fictícios. A tela Delivery incorporada foi aberta no host local e conferida com fila, paradas, links e botões. Suíte Food: 150/150; `node --check` e `git diff --check` aprovados.
+Validação: `tests/delivery-page.test.mjs` cobre URL de ligação, cópia do endereço, separação de pedidos de retirada, ordenação de saída e ausência de mapa/GPS fictícios. A tela Delivery incorporada foi aberta no host local e conferida com fila, paradas, links e botões. Suíte Food: 151/151; host local conferido em 320 px sem overflow horizontal na área de Delivery; `node --check` e `git diff --check` aprovados.
+
+## PDV de quatro sabores por padrão (2026-10-27)
+
+Uma pizzaria nova agora começa com limite de quatro sabores por pizza. O PDV cria um seletor para cada sabor permitido e os pedidos congelam a seleção, preço conforme a regra configurada e total de fatias. O limite continua ajustável em Configurações; validar ou carregar uma pizzaria já configurada não substitui o valor escolhido pelo estabelecimento nem altera pedidos históricos.
+
+Validação: testes de domínio confirmam o limite inicial, preço pela regra vigente e snapshot de quatro sabores; teste do PDV confirma quatro seletores na configuração inicial. Suíte Food: 152/152; `node --check` e `git diff --check` aprovados. Estado local de preview existente permanece intacto. A mudança não cria catálogo paralelo nem afeta Sales, Payments ou Inventory.
 
