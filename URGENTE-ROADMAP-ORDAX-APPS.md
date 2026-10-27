@@ -834,3 +834,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Suíte Food: 143/143; `node --check` e `git diff --check` aprovados. O fluxo foi conferido no host em notebook, telefone vertical e horizontal, sem overflow horizontal.
 - Itens adicionais continuam na fixture local da prévia; registro, pagamento, catálogo mestre e Inventory mantêm seus owners e limites atuais.
 
+### Space Pizzaria / OrdaX Food — agrupar itens iguais no carrinho (2026-10-27)
+
+- Adicionar novamente a mesma pizza agora aumenta sua quantidade na linha atual quando tamanho, ordem dos sabores e preço unitário coincidem. Bebidas e acompanhamentos usam a mesma regra por produto e snapshot.
+- Configurações ou preços diferentes continuam em linhas separadas. Se a soma passar de 50, o item seguinte abre outra linha para respeitar o limite sem descartar unidades.
+- Suíte Food: 146/146; sintaxe e `git diff --check` aprovados. Prova real no host validou adição repetida, total, contador e limite do carrinho.
+- Os valores seguem locais no preview; os contratos e owners de Catálogo, pedidos comerciais e Payments permanecem inalterados.
+

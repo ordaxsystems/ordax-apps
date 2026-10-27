@@ -8,6 +8,38 @@ function assertCartQuantity(item) {
   }
 }
 
+function sameCartItem(left, right) {
+  if (left?.type !== right?.type) return false;
+  if (right.type === "catalog-product") {
+    return left.productId === right.productId
+      && left.name === right.name
+      && left.category === right.category
+      && left.unitPriceCents === right.unitPriceCents;
+  }
+  if (right.type !== undefined) return false;
+  return left.size === right.size
+    && left.unitPriceCents === right.unitPriceCents
+    && Array.isArray(left.flavorIds)
+    && Array.isArray(right.flavorIds)
+    && left.flavorIds.length === right.flavorIds.length
+    && left.flavorIds.every((flavorId, index) => flavorId === right.flavorIds[index]);
+}
+
+export function addFoodCartItem(items, item) {
+  if (!Array.isArray(items)) throw new TypeError("O carrinho precisa ser uma lista.");
+  assertCartQuantity(item);
+  const matchingIndex = items.findIndex((entry) => sameCartItem(entry, item));
+  if (matchingIndex === -1) return [...items, { ...item }];
+
+  const matchingItem = items[matchingIndex];
+  assertCartQuantity(matchingItem);
+  const combinedQuantity = matchingItem.quantity + item.quantity;
+  if (combinedQuantity > MAX_ORDER_ITEM_QUANTITY) return [...items, { ...item }];
+  return items.map((entry, index) => index === matchingIndex
+    ? { ...entry, quantity: combinedQuantity }
+    : entry);
+}
+
 export function countFoodCartUnits(items) {
   if (!Array.isArray(items)) throw new TypeError("O carrinho precisa ser uma lista.");
   const count = items.reduce((total, item) => {

@@ -435,3 +435,5 @@ Cada linha do carrinho oferece controles para diminuir, aumentar e remover. A qu
 
 Validação: testes unitários cobrem soma de unidades, imutabilidade, limites inferior/superior e delta permitido; a prova de navegador percorre adicionar, aumentar, atingir o máximo, diminuir e remover no notebook e no telefone horizontal, incluindo alinhamento dos controles. Suíte Food: 143/143; `node --check` nos módulos alterados e `git diff --check` aprovados. Host conferido em notebook, telefone vertical e horizontal, sem overflow horizontal.
 
+Ao adicionar pizzas repetidas, a aplicação agora acumula a quantidade na linha existente quando tamanho, sequência de sabores e preço unitário são iguais. Bebidas e acompanhamentos usam a mesma regra, incluindo nome/categoria/preço do snapshot. Linhas com outra configuração ou cotação permanecem separadas para preservar o valor que o operador já viu; quando a soma ultrapassaria 50, a próxima quantidade abre uma nova linha. Suíte Food: 146/146; prova de navegador no host validou agrupamento, subtotal e limites.
+

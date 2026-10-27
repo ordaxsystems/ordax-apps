@@ -7,7 +7,7 @@ import {
   calculatePizzeriaBatchConsumption,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
-import { adjustFoodCartItemQuantity, countFoodCartUnits } from "../application/cart-quantity.mjs";
+import { addFoodCartItem, adjustFoodCartItemQuantity, countFoodCartUnits } from "../application/cart-quantity.mjs";
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
@@ -856,7 +856,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza,
     });
     if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_ORDER_ITEM_QUANTITY) throw new TypeError("Quantidade inválida.");
-    cart.push({ id: uid(), size: form.elements.size.value, flavorIds, quantity, unitPriceCents });
+    cart = addFoodCartItem(cart, { id: uid(), size: form.elements.size.value, flavorIds, quantity, unitPriceCents });
     form.elements.quantity.value = "1";
     updatePizzaPricePreview();
     updateCartTotals();
@@ -865,21 +865,15 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function addCatalogProduct(productId) {
     const product = PREVIEW_CATALOG_PRODUCTS.find(({ id }) => id === productId);
     if (!product) throw new Error("Este produto não está disponível no catálogo da prévia.");
-    const existing = cart.find((item) => item.type === "catalog-product" && item.productId === product.id);
-    if (existing) {
-      if (existing.quantity >= MAX_ORDER_ITEM_QUANTITY) throw new TypeError("O pedido permite até " + MAX_ORDER_ITEM_QUANTITY + " unidades por produto.");
-      existing.quantity += 1;
-    } else {
-      cart.push({
-        id: uid(),
-        type: "catalog-product",
-        productId: product.id,
-        name: product.name,
-        category: product.category,
-        quantity: 1,
-        unitPriceCents: product.priceCents,
-      });
-    }
+    cart = addFoodCartItem(cart, {
+      id: uid(),
+      type: "catalog-product",
+      productId: product.id,
+      name: product.name,
+      category: product.category,
+      quantity: 1,
+      unitPriceCents: product.priceCents,
+    });
     updateCartTotals();
   }
   

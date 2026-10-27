@@ -116,7 +116,11 @@ try {
       "Aumentar a quantidade deve atualizar a unidade e o contador do pedido.");
     ensure(root.querySelector("#order-total-value")?.textContent !== totalBeforeIncrease,
       "Aumentar a quantidade não atualizou o total.");
-    for (let index = 0; index < 48; index += 1) increase()?.click();
+    root.querySelector('[data-action="add-pizza"]')?.click();
+    ensure(root.querySelectorAll(".cart-line").length === 1
+      && cartCount() === "3 itens" && quantity() === "3",
+    "Adicionar novamente a mesma pizza deve agrupar suas unidades na linha existente.");
+    for (let index = 0; index < 47; index += 1) increase()?.click();
     ensure(quantity() === "50" && cartCount() === "50 itens",
       "O carrinho deve aceitar o limite de 50 unidades definido pelo domínio.");
     ensure(increase()?.disabled === true,
