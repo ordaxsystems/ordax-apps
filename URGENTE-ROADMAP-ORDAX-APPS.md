@@ -969,3 +969,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A camada de aplicação `createKitchenWorkflowDraft` passa a montar e validar etapas, número de telas, modo da fila, atribuições manuais ou distribuição equilibrada e IDs de novas etapas. A UI fica responsável somente por adaptar os campos do formulário.
 - Testes preservam a atribuição manual, verificam a distribuição, rejeitam número de telas inválido, payload malformado e confirmam ID para nova etapa. Não muda o estado persistido nem simula sincronização.
 - Verificação: Food **187/187**; prova Chrome **26/26**; verificador MVP **20 alvos, 18 candidatos não assinados e 2 bloqueados**; `node --check` e `git diff --check` aprovados. Food continua owner dos pedidos; nenhuma integração, contrato ou owner foi alterado.
+
+### Space Pizzaria / OrdaX Food — legibilidade da estação KDS em telefone (2026-10-27)
+
+- Títulos dos itens, tamanhos/fatias e sabores na estação e na lista de próximos pedidos passam a ter tamanho mínimo legível, preservando a prioridade do pedido atual e mantendo a rolagem somente na fila seguinte.
+- O smoke verifica fonte computada, ticket sem corte e ausência de rolagem da página nos tamanhos configurados. Inspeção visual em 390 × 844 e 844 × 390 confirmou a hierarquia e o fluxo anterior.
+- Food **187/187**; Chrome **26/26**; `node --check` do probe e `git diff --check` aprovados. A mudança é de apresentação; nenhum pedido, contrato, owner ou integração foi alterado.

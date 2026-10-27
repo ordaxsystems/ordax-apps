@@ -982,12 +982,12 @@ dialog p { color: #a2a8af; }
 .kitchen-item-line-compact { grid-template-columns: 24px minmax(0, 1fr); gap: 6px; }
 .kitchen-item-line-compact .kitchen-item-quantity { min-height: 21px; font-size: 8px; }
 .kitchen-item-line-compact .kitchen-item-content { gap: 2px; }
-.kitchen-item-line-compact .kitchen-item-content > strong { font-size: 8px; }
-.kitchen-item-line-compact .kitchen-item-detail { font-size: 7px; }
+.kitchen-item-line-compact .kitchen-item-content > strong { font-size: 9px; }
+.kitchen-item-line-compact .kitchen-item-detail { font-size: 8px; }
 .kitchen-item-line-compact .kitchen-item-modifiers { gap: 2px; }
-.kitchen-item-line-compact .kitchen-item-modifier-label { font-size: 7px; }
+.kitchen-item-line-compact .kitchen-item-modifier-label { font-size: 8px; }
 .kitchen-item-line-compact .kitchen-item-modifiers ul { gap: 3px; }
-.kitchen-item-line-compact .kitchen-item-modifiers li { padding: 3px 5px; font-size: 7px; }
+.kitchen-item-line-compact .kitchen-item-modifiers li { padding: 3px 5px; font-size: 8px; }
 .kitchen-production-note, .kitchen-delivery-details { margin-top: 9px; padding: 9px 10px; border: 1px solid #49362b; border-radius: 8px; background: #29211d; }
 .kitchen-production-note > span, .kitchen-delivery-details > span { color: #e9a16f; font-size: 7px; font-weight: 800; letter-spacing: .7px; }
 .kitchen-production-note p { margin: 4px 0 0; color: #f0d7c6; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
@@ -1234,10 +1234,10 @@ dialog p { color: #a2a8af; }
 .kitchen-up-next-item { min-width: 0; padding: 8px; border: 1px solid #30363d; border-radius: 9px; background: #1d2024; }
 .kitchen-up-next-head { display: flex; min-width: 0; align-items: center; gap: 6px; }
 .kitchen-up-next-head strong { color: #f2f3f4; font: 750 11px "Manrope", sans-serif; }
-.kitchen-up-next-head > span { overflow: hidden; color: #a9b0b7; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.kitchen-up-next-head small { margin-left: auto; color: #a9b0b7; font-size: 8px; white-space: nowrap; }
+.kitchen-up-next-head > span { overflow: hidden; color: #a9b0b7; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.kitchen-up-next-head small { margin-left: auto; color: #a9b0b7; font-size: 9px; white-space: nowrap; }
 .kitchen-up-next-items { gap: 4px; margin: 6px 0; padding: 0; border: 0; }
-.kitchen-up-next-position { color: #ffad7a; font-size: 8px; font-weight: 700; }
+.kitchen-up-next-position { color: #ffad7a; font-size: 9px; font-weight: 700; }
 .kitchen-up-next-empty, .kitchen-up-next-more { margin: 12px 0 0; color: #929aa2; font-size: 9px; line-height: 1.45; }
 .kitchen-up-next-more { flex: 0 0 auto; padding-top: 8px; border-top: 1px solid #30363d; }
 
@@ -1371,13 +1371,13 @@ dialog p { color: #a2a8af; }
   .kitchen-current-order .kitchen-item-lines { gap: 5px; margin-top: 6px; padding-top: 6px; }
   .kitchen-current-order .kitchen-item-line { grid-template-columns: 28px minmax(0, 1fr); gap: 6px; }
   .kitchen-current-order .kitchen-item-quantity { min-height: 25px; font-size: 10px; }
-  .kitchen-current-order .kitchen-item-content > strong { font-size: 10px; }
-  .kitchen-current-order .kitchen-item-detail { font-size: 8px; }
-  .kitchen-current-order .kitchen-item-modifier-label { font-size: 8px; }
+  .kitchen-current-order .kitchen-item-content > strong { font-size: 12px; }
+  .kitchen-current-order .kitchen-item-detail { font-size: 9px; }
+  .kitchen-current-order .kitchen-item-modifier-label { font-size: 9px; }
   .kitchen-current-order .kitchen-item-modifiers { gap: 3px; margin-top: 3px; }
-  .kitchen-current-order .kitchen-item-modifiers li { padding: 2px 5px; font-size: 8px; }
+  .kitchen-current-order .kitchen-item-modifiers li { padding: 2px 5px; font-size: 9px; }
   .kitchen-current-order .kitchen-production-note { margin-top: 5px; padding: 5px 7px; }
-  .kitchen-current-order .kitchen-production-note > span { font-size: 7px; }
+  .kitchen-current-order .kitchen-production-note > span { font-size: 8px; }
   .kitchen-current-order .kitchen-production-note p { margin-top: 2px; font-size: 9px; line-height: 1.3; }
   .kitchen-current-order .kitchen-task-actions { grid-template-columns: minmax(0, 1fr) minmax(78px, .38fr); gap: 5px; margin-top: 7px; }
   .kitchen-current-order .kitchen-task-actions .button { min-width: 0; min-height: 40px; padding-inline: 6px; font-size: 10px; }
@@ -1385,11 +1385,11 @@ dialog p { color: #a2a8af; }
   .kitchen-up-next { min-height: 0; max-height: none; overflow: hidden; padding: 6px 8px; }
   .kitchen-up-next > header { padding-bottom: 5px; }
   .kitchen-up-next .eyebrow { display: none; }
-  .kitchen-up-next h2 { font-size: 12px; }
+  .kitchen-up-next h2 { font-size: 13px; }
   .kitchen-up-next-list { min-height: 0; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr); gap: 4px; overflow-y: auto; padding: 5px 1px; overscroll-behavior: contain; }
   .kitchen-up-next-item { padding: 5px 6px; }
   .kitchen-up-next-items { gap: 2px; margin: 3px 0; }
-  .kitchen-up-next-position { font-size: 7px; }
+  .kitchen-up-next-position { font-size: 9px; }
   .kitchen-up-next-empty, .kitchen-up-next-more { margin-top: 5px; font-size: 8px; }
   .kitchen-up-next-more { padding-top: 5px; }
   .kitchen-display-fullscreen-fallback { overflow: hidden !important; }
@@ -1417,7 +1417,7 @@ dialog p { color: #a2a8af; }
   .kitchen-station-header h1 { max-width: 28ch; margin: 2px 0; font-size: clamp(18px, 4.8vh, 26px); line-height: 1.05; }
   .kitchen-station-header > div:first-child > p:last-child { font-size: 8px; }
   .kitchen-station-controls { gap: 5px; }
-  .kitchen-station-controls .button { min-height: 38px; padding-inline: 8px; font-size: 8px; }
+  .kitchen-station-controls .button { min-height: 38px; padding-inline: 8px; font-size: 9px; }
   .kitchen-station-workspace { min-height: 0; grid-template-columns: minmax(0, 1.55fr) minmax(220px, .82fr); gap: 8px; }
   .kitchen-current-order, .kitchen-up-next { overflow: hidden; padding: 8px; }
   .kitchen-current-order-heading { display: none; }
@@ -1433,12 +1433,12 @@ dialog p { color: #a2a8af; }
   .kitchen-current-order .kitchen-item-lines { gap: 5px; margin-top: 4px; padding-top: 4px; }
   .kitchen-current-order .kitchen-item-line { grid-template-columns: 30px minmax(0, 1fr); gap: 6px; }
   .kitchen-current-order .kitchen-item-quantity { min-height: 27px; }
-  .kitchen-current-order .kitchen-item-content > strong { font-size: 11px; }
-  .kitchen-current-order .kitchen-item-detail { font-size: 9px; }
-  .kitchen-current-order .kitchen-item-modifier-label { font-size: 8px; }
-  .kitchen-current-order .kitchen-item-modifiers li { padding: 3px 6px; font-size: 8px; }
+  .kitchen-current-order .kitchen-item-content > strong { font-size: 12px; }
+  .kitchen-current-order .kitchen-item-detail { font-size: 10px; }
+  .kitchen-current-order .kitchen-item-modifier-label { font-size: 9px; }
+  .kitchen-current-order .kitchen-item-modifiers li { padding: 3px 6px; font-size: 9px; }
   .kitchen-current-order .kitchen-production-note { margin-top: 3px; padding: 4px 6px; }
-  .kitchen-current-order .kitchen-production-note > span { font-size: 7px; }
+  .kitchen-current-order .kitchen-production-note > span { font-size: 8px; }
   .kitchen-current-order .kitchen-production-note p { margin-top: 2px; font-size: 10px; }
   .kitchen-current-order .kitchen-ticket-actions { margin-top: 6px; }
   .kitchen-current-order .kitchen-ticket-actions .button { min-height: 38px; }
@@ -1446,7 +1446,7 @@ dialog p { color: #a2a8af; }
   .kitchen-up-next-list { min-height: 0; flex: 1 1 auto; gap: 4px; overflow-y: auto; padding: 5px 1px; overscroll-behavior: contain; }
   .kitchen-up-next-item { padding: 5px 6px; }
   .kitchen-up-next-items { gap: 2px; margin: 3px 0; }
-  .kitchen-up-next-position { font-size: 7px; }
+  .kitchen-up-next-position { font-size: 9px; }
   .kitchen-up-next-more { margin-top: 5px; padding-top: 5px; }
 }
 

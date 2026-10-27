@@ -93,3 +93,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - `createKitchenWorkflowDraft` agora monta e valida o rascunho de etapas na camada de aplicação: limites, atribuição manual de telas, redistribuição equilibrada, preservação de IDs/rótulos e geração injetável de IDs para novas etapas. O controlador traduz apenas `FormData` para a entrada tipada.
 - A função rejeita payloads sem lista de etapas sem lançar erro incidental. Não muda o formato persistido, fila de produção, pedido Food nem sincronização entre aparelhos.
 - Verificação: suíte Food **187/187**, prova Chrome **26/26**, verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados**, sintaxe JavaScript e `git diff --check` aprovados.
+
+### KDS — melhorar leitura da estação no telefone (2026-10-27)
+
+- A tipografia do pedido em foco e dos próximos pedidos deixa de cair para 7 px nos detalhes e sabores. No telefone, o item principal usa título de 12 px, detalhes e sabores de 9 px; a lista seguinte usa título de 9 px e sabores de 8 px. Os títulos da função continuam compactos.
+- A prova Chrome verifica os tamanhos computados junto com o ticket inteiro no viewport e a rolagem restrita à lista. A inspeção visual cobriu telefone vertical e horizontal.
+- Verificação: Food **187/187**, prova de navegador **26/26**, `node --check` do probe e `git diff --check` aprovados. Nenhum estado de pedido, owner ou contrato mudou.

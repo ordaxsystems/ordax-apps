@@ -352,6 +352,27 @@ try {
         `O pedido em foco está cortado e precisaria rolar (${current?.scrollHeight}x${current?.clientHeight}).`);
       ensure(scrolling.every((element) => element.matches(".kitchen-up-next-list")) && scrolling.length <= 1,
         `Há rolagem fora da lista de pedidos seguintes: ${scrolling.map((element) => element.className).join(", ")}.`);
+      const focusedTitle = focusedTicket?.querySelector(".kitchen-item-content > strong");
+      const focusedDetail = focusedTicket?.querySelector(".kitchen-item-detail");
+      const focusedModifier = focusedTicket?.querySelector(".kitchen-item-modifiers li");
+      const upcomingTitle = stationContent.querySelector(".kitchen-up-next-items .kitchen-item-content > strong");
+      const upcomingModifier = stationContent.querySelector(".kitchen-up-next-items .kitchen-item-modifiers li");
+      if (focusedTicket) {
+        ensure(focusedTitle && Number.parseFloat(getComputedStyle(focusedTitle).fontSize) >= 12,
+          `O nome do item em foco está pequeno demais para leitura rápida (${focusedTitle && getComputedStyle(focusedTitle).fontSize}).`);
+        ensure(focusedDetail && Number.parseFloat(getComputedStyle(focusedDetail).fontSize) >= 9,
+          `Os detalhes do item em foco precisam ter pelo menos 9 px (${focusedDetail && getComputedStyle(focusedDetail).fontSize}).`);
+        ensure(focusedModifier && Number.parseFloat(getComputedStyle(focusedModifier).fontSize) >= 9,
+          `Os sabores do pedido atual precisam ter pelo menos 9 px (${focusedModifier && getComputedStyle(focusedModifier).fontSize}).`);
+      }
+      if (upcomingTitle) {
+        ensure(Number.parseFloat(getComputedStyle(upcomingTitle).fontSize) >= 9,
+          `Os itens dos próximos pedidos precisam ter pelo menos 9 px (${getComputedStyle(upcomingTitle).fontSize}).`);
+      }
+      if (upcomingModifier) {
+        ensure(Number.parseFloat(getComputedStyle(upcomingModifier).fontSize) >= 8,
+          `Os sabores dos próximos pedidos precisam ter pelo menos 8 px (${getComputedStyle(upcomingModifier).fontSize}).`);
+      }
       if (viewport === "portrait" && focusedTicket) {
         const ticketCard = focusedTicket.querySelector(".order-card-kitchen");
         const upcoming = stationContent.querySelector(".kitchen-up-next");
