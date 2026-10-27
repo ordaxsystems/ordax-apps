@@ -6,6 +6,18 @@ const {closeCdpWebSocket}=require('./cdp-websocket-close.cjs');
 acquireE2ELock('orchestration-native-mcp');
 if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
   throw Error('lab_orchestration_e2e_approval_required');
+const scenarioReasons=new Set([
+  'app_evaluation_failed','app_evaluation_timeout','socket_unavailable',
+  'runtime_identity_mismatch','fresh_disabled_profile_required','project_navigation_not_selected',
+  'mission_draft_not_persisted','workspace_grant_absence_not_visible','coordinator_workspace_layout_missing',
+  'api_key_not_persisted_securely','prepare_action_unavailable','mcp_initialization_failed',
+  'native_mcp_state_mismatch','work_conversation_layout_failed',
+  'lab_e2e_multiple_visible_app_windows','lab_e2e_multiple_app_windows',
+  'lab_e2e_provider_fallback_not_app_test','lab_e2e_profile_proof_unavailable','lab_e2e_profile_mismatch',
+  'lab_e2e_app_mode_not_ready','lab_e2e_app_mode_required',
+  'lab_ui_not_ready:endpoint_not_ready','lab_ui_not_ready:ui_target_not_ready',
+  'lab_ui_not_ready:app_mode_not_ready'
+]);
 let phase='startup';
 let scenarioFailurePhase=null;
 let cleanupFailurePhase=null;
@@ -16,6 +28,14 @@ let cleanupFailurePhase=null;
   const ws=new WebSocket(tab.webSocketDebuggerUrl);
   let sequence=0;
   const pending=new Map();
+  let disposableApiKeyCleanupRequired=false;
+  let successReport=null;
+  const evaluate=expression=>new Promise((resolve,reject)=>{
+    const id=++sequence;
+    const timer=setTimeout(()=>{pending.delete(id);reject(Error('app_evaluation_timeout'));},20000);
+    pending.set(id,{resolve,reject,timer});
+    ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
+  });
   try {
     await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=()=>reject(Error('socket_unavailable'));});
     ws.onmessage=event=>{
@@ -25,14 +45,6 @@ let cleanupFailurePhase=null;
       if(message.error||message.result?.exceptionDetails)waiter.reject(Error('app_evaluation_failed'));
       else waiter.resolve(message.result?.result?.value);
     };
-    const evaluate=expression=>new Promise((resolve,reject)=>{
-      const id=++sequence;
-      const timer=setTimeout(()=>{pending.delete(id);reject(Error('app_evaluation_timeout'));},20000);
-      pending.set(id,{resolve,reject,timer});
-      ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
-    });
-    let disposableApiKeyCleanupRequired=false;
-    let successReport=null;
     phase='app_ready';
     await waitForLabAppMode(evaluate);
     const proof=await evaluate('window.ordax.labBuildProof()');
@@ -219,7 +231,7 @@ let cleanupFailurePhase=null;
   const cleanupReasons=new Set(['cdp_websocket_close_unavailable','cdp_websocket_close_timeout_invalid',
     'cdp_websocket_close_invalid_state','cdp_websocket_close_timeout','cdp_websocket_close_failed']);
   const reportedPhase=scenarioFailurePhase||cleanupFailurePhase||phase;
-  const reason=scenarioFailurePhase?'app_orchestration_scenario_failed'
+  const reason=scenarioFailurePhase?(scenarioReasons.has(error?.message)?error.message:'app_orchestration_scenario_failed')
     :cleanupFailurePhase?(cleanupReasons.has(error?.message)?error.message:'app_orchestration_cleanup_failed')
     :'app_orchestration_scenario_failed';
   const report={schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,phase:reportedPhase,reason};

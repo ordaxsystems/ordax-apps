@@ -1,5 +1,12 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Estado mais recente — correção de escopo no E2E nativo — 27/10/2026
+
+- Apps PR #348 está no head remoto `9f2330583ad9629974247df9615f1e0914599e6e`. O CI deste head passou Apps Foundation e a validação Windows (**622 testes aprovados, 0 falhas, 1 skip**) e produziu o pacote portátil verificado (`sourceCommit` do merge de CI `f5ecc4e06501ad2573070ae5b5109c49b8c4e813`, digest `9991dd736fc4e8ded96e1c2b51a543cd9fc83607f3d3e454b80d92f8cf328e05`). O E2E nativo chegou à última fase de layout; o recibo `app_orchestration_cleanup_failed` com `cleanupPhase=final_layout_verify` é explicado pelo escopo lexical: `evaluate`, `disposableApiKeyCleanupRequired` e `successReport` eram declarados dentro do bloco `try`, embora fossem lidos pelo `finally` ou depois dele. Isso gerava `ReferenceError` durante a limpeza, após as asserções de layout.
+- Correção local: os três recursos usados pelo cleanup/resultado foram movidos para o escopo do runner. O contrato E2E verifica que essas declarações precedem o `try`; razões sintéticas estáveis são permitidas no recibo para diagnosticar falhas, enquanto erros arbitrários continuam ocultos. Provas locais: `desktop-contract` + `e2e-script-target-isolation` **55/55**, `npm run check` passou e `git diff --check` passou.
+- Repetição do pacote na máquina local não pôde certificar o cenário: as portas loopback 9445 e 9446 já pertenciam a candidatos E2E de execuções anteriores. O perfil diferente foi rejeitado corretamente como `lab_e2e_profile_mismatch`; os processos existentes não foram encerrados nem manipulados. O Remote Desktop Commander não está disponível nesta sessão. O novo CI em runner limpo deve confirmar a correção do `finally`.
+- O objetivo permanece aberto. A falha aqui não é prova de falha das conversas GPT; o smoke não envia mensagem ao provedor. GPT Web com confirmação de envio/importação, VESTE/grants, recuperação Runtime com a janela fechada e continuidade 24 h continuam sem aceite.
+
 ## Incremento de recuperação GPT e consistência SQLite — 27/10/2026
 
 - Branch `codex/orchestrator-host-runtime-architecture`, base de auditoria `9e62e9054bd7cc6954cfe1ae06911d9eac6df5a0` (relatório de prontidão).

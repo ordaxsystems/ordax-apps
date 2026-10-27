@@ -127,6 +127,21 @@ test('all live smoke scripts have canonical Lab-only target and no Gratis refere
 
 test('packaged orchestration smoke waits for the newly created work to open before checking layout',()=>{
   const source=fs.readFileSync(path.join(scripts,'live-ui-orchestration-smoke.cjs'),'utf8');
+  const normalizedSource=source.replace(/\r\n/g,'\n');
+  const scenarioTry=normalizedSource.indexOf("  try {\n    await new Promise((resolve,reject)=>{ws.onopen=resolve;");
+  assert.ok(scenarioTry>0,'the guarded native scenario is present');
+  for(const declaration of [
+    'let disposableApiKeyCleanupRequired=false;',
+    'let successReport=null;',
+    'const evaluate=expression=>new Promise('
+  ]) {
+    assert.ok(normalizedSource.indexOf(declaration)>=0&&normalizedSource.indexOf(declaration)<scenarioTry,
+      `${declaration} is available to the scenario finally block`);
+  }
+  assert.match(normalizedSource,/const scenarioReasons=new Set\(/,
+    'live diagnostics use an allowlist of stable synthetic failure codes');
+  assert.match(normalizedSource,/scenarioReasons\.has\(error\?\.message\)\?error\.message:'app_orchestration_scenario_failed'/,
+    'arbitrary process errors are not printed into the E2E receipt');
   const scopedCreate=source.match(/phase='scoped_work_create';([\s\S]*?)phase='final_layout_verify';/);
   assert.ok(scopedCreate,'the scoped-work creation phase is present');
   const wait=[...scopedCreate[1].matchAll(/await wait\("([^"]+)"\)/g)]
