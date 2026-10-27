@@ -136,6 +136,39 @@ try {
       () => root.querySelector(".cart-quantity-stepper"),
       "O carrinho não mostrou os controles de quantidade depois de adicionar a pizza.",
     );
+    const amountInCents = (value) => {
+      const digits = String(value ?? "").replace(/\D/g, "");
+      return digits ? Number(digits) : null;
+    };
+    const subtotalValue = () => root.querySelector("#order-subtotal-value")?.textContent;
+    const totalValue = () => root.querySelector("#order-total-value")?.textContent;
+    const deliveryFeeRow = root.querySelector("#order-delivery-fee-row");
+    const deliveryFeeInput = root.querySelector('#create-order-form [name="deliveryFee"]');
+    const channelInput = root.querySelector('#create-order-form [name="channel"]');
+    ensure(deliveryFeeRow?.hidden === true
+      && amountInCents(subtotalValue()) === amountInCents(totalValue()),
+    "Retirada deve mostrar o subtotal sem acrescentar taxa de entrega.");
+    channelInput.value = "delivery";
+    channelInput.dispatchEvent(new Event("change", { bubbles: true }));
+    ensure(deliveryFeeRow?.hidden === false
+      && amountInCents(root.querySelector("#order-delivery-fee-value")?.textContent) === 500
+      && amountInCents(totalValue()) === amountInCents(subtotalValue()) + 500,
+    "Entrega deve mostrar a taxa e somá-la ao subtotal no total do pedido.");
+    deliveryFeeInput.value = "valor inválido";
+    deliveryFeeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    ensure(totalValue() === "Revise a taxa"
+      && root.querySelector('#create-order-form [type="submit"]')?.disabled === true,
+    "Uma taxa inválida não pode mostrar total parcial nem permitir registrar o pedido.");
+    deliveryFeeInput.value = "0,00";
+    deliveryFeeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    ensure(amountInCents(root.querySelector("#order-delivery-fee-value")?.textContent) === 0
+      && amountInCents(totalValue()) === amountInCents(subtotalValue()),
+    "Uma entrega gratuita deve aparecer como zero sem alterar o subtotal.");
+    channelInput.value = "counter";
+    channelInput.dispatchEvent(new Event("change", { bubbles: true }));
+    ensure(deliveryFeeRow?.hidden === true
+      && amountInCents(totalValue()) === amountInCents(subtotalValue()),
+    "Balcão deve ocultar a taxa de entrega e totalizar apenas os itens.");
     const quantityControls = root.querySelector(".cart-line-controls");
     const quantityStepper = root.querySelector(".cart-quantity-stepper");
     const removeButton = root.querySelector('[data-action="remove-cart-item"]');

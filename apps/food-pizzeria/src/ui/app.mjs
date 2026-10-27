@@ -896,9 +896,23 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         return sum + item.unitPriceCents * item.quantity;
       }
     }, 0);
-    const delivery = form.elements.channel.value === "delivery" ? parseMoney(form.elements.deliveryFee.value) ?? 0 : 0;
+    const isDelivery = form.elements.channel.value === "delivery";
+    const parsedDeliveryFeeCents = parseMoney(form.elements.deliveryFee.value);
+    const deliveryFeeCents = isDelivery ? parsedDeliveryFeeCents : 0;
+    const subtotalValue = root.querySelector("#order-subtotal-value");
+    if (subtotalValue) subtotalValue.textContent = money(subtotal);
+    const deliveryFeeRow = root.querySelector("#order-delivery-fee-row");
+    if (deliveryFeeRow) deliveryFeeRow.hidden = !isDelivery || cart.length === 0;
+    const deliveryFeeValue = root.querySelector("#order-delivery-fee-value");
+    if (deliveryFeeValue) deliveryFeeValue.textContent = parsedDeliveryFeeCents === null ? "—" : money(parsedDeliveryFeeCents);
     const total = root.querySelector("#order-total-value");
-    if (total) total.textContent = money(subtotal + delivery);
+    if (total) {
+      total.textContent = cart.length === 0
+        ? money(0)
+        : isDelivery && deliveryFeeCents === null
+          ? "Revise a taxa"
+          : money(subtotal + deliveryFeeCents);
+    }
     const count = root.querySelector("#cart-count");
     if (count) {
       const units = countFoodCartUnits(cart);
@@ -907,7 +921,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const content = root.querySelector("#cart-content");
     if (content) content.innerHTML = cartHtml();
     const createButton = form.querySelector('[type="submit"]');
-    if (createButton) createButton.disabled = busy || cart.length === 0;
+    if (createButton) createButton.disabled = busy || cart.length === 0 || (isDelivery && deliveryFeeCents === null);
     const feeHelp = form.querySelector('[name="deliveryFee"]')?.parentElement?.querySelector("small");
     if (feeHelp) {
       const valid = parseMoney(form.elements.deliveryFee.value) !== null;

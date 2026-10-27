@@ -51,6 +51,10 @@ test("taxa de entrega local entra no formulário do PDV sem sugerir pagamento re
   const html = renderPos({ deliveryFeeCents: 875, products: [] });
 
   assert.match(html, /name="deliveryFee"[^>]*value="8,75"/);
+  assert.match(html, /id="order-subtotal-value">R\$ 0,00/);
+  assert.match(html, /id="order-delivery-fee-row" hidden/);
+  assert.match(html, /id="order-delivery-fee-value">R\$ 8,75/);
+  assert.match(html, /id="order-total-value" aria-live="polite" aria-atomic="true">R\$ 0,00/);
   assert.match(html, /O valor não representa pagamento recebido/);
   assert.doesNotMatch(html, /Valor inicial fictício/);
 });

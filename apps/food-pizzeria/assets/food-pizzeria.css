@@ -177,6 +177,10 @@ textarea { resize: vertical; line-height: 1.5; }
 .delivery-fields { display: grid; grid-template-columns: 1.3fr .7fr; gap: 10px; }
 .delivery-fields small { color: #aaa49b; font-size: 9px; font-weight: 400; }
 .field-error { color: var(--red) !important; }
+.order-summary-breakdown { display: grid; gap: 7px; padding-top: 10px; border-top: 1px solid var(--line); }
+.order-summary-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 10px; }
+.order-summary-row strong { color: var(--ink); font-size: 10px; font-weight: 650; }
+.order-summary-breakdown .order-total { padding-top: 3px; border-top: 0; }
 .order-total { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0 2px; border-top: 1px solid #eeeae4; }
 .order-total > div { display: grid; gap: 4px; }
 .order-total span { font-size: 11px; font-weight: 700; }

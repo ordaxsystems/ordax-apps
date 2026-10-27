@@ -944,3 +944,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A estação dedicada renderiza um pedido em foco, os cinco seguintes e informa os 94 que permanecem atrás. Isso valida o fluxo de tela do operador sem alongar o cartão atual com a fila inteira.
 - Suíte Food: 180/180; testes KDS: 39/39; smoke Chrome: 26/26; verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas. Sintaxe e `git diff --check` aprovados.
 - A prova cobre a fila local de prévia; não cria sync, persistência compartilhada, owner ou contrato de Food Production.
+
+### Space Pizzaria / OrdaX Food — detalhar o fechamento do PDV por canal (2026-10-27)
+
+- O fechamento mostra o subtotal dos itens e discrimina a taxa somente em pedidos de entrega. O total atualiza enquanto o operador muda o canal, os itens ou a taxa; entrega com taxa zero fica explícita.
+- Taxa inválida não vira valor zero silencioso: o total pede revisão e o botão de registro permanece bloqueado até corrigir o valor. Os canais retirada e balcão não incluem taxa de entrega.
+- Suíte Food: 180/180; smoke Chrome: 26/26, incluindo retirada, balcão, entrega, entrega gratuita e bloqueio de taxa inválida. Sintaxe JavaScript, `git diff --check` e verificador MVP (20 alvos, 18 candidatos não assinados, 2 bloqueados, 0 instalações públicas) aprovados.
+- A alteração só muda apresentação e validação do rascunho Food local. Não registra pagamento, muda owner, lê Inventory nem altera contratos pendentes.
