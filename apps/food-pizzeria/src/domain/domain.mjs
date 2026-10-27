@@ -30,6 +30,7 @@ const MAX_ORDERS = 5000;
 const MAX_TABLE_COMMANDS = 5000;
 const MAX_RECIPES = MAX_FLAVORS;
 const MAX_RECIPE_LINES = 1000;
+const MAX_BATCH_PIZZAS = 10_000;
 const MAX_ITEMS_PER_ORDER = 50;
 const MAX_HISTORY_PER_ORDER = 16;
 const MAX_CENTS = 1_000_000_000;
@@ -1002,6 +1003,54 @@ export function calculatePizzeriaOrderConsumption(stateValue, orderId) {
     throw new Error("Pedido anterior ao congelamento das fichas técnicas: consumo histórico não é verificável.");
   }
   return order.consumptionSnapshot;
+}
+
+export function calculatePizzeriaBatchConsumption(stateValue, { size, flavorQuantities } = {}) {
+  const state = validateFoodPizzeriaState(stateValue);
+  if (!state.settings) throw new Error("Configure a pizzaria antes de planejar um lote.");
+  const selectedSize = state.settings.pizzaSizes.find((entry) => entry.id === size && entry.active);
+  if (!selectedSize) throw new TypeError("Escolha um tamanho ativo para planejar o lote.");
+  if (!Array.isArray(flavorQuantities) || flavorQuantities.length > state.flavors.length) {
+    throw new TypeError("Informe quantidades válidas por sabor.");
+  }
+
+  const seenFlavorIds = new Set();
+  const items = [];
+  let totalPizzas = 0;
+  for (const raw of flavorQuantities) {
+    const selection = exactObject(raw, ["flavorId", "quantity"], "Quantidade do lote");
+    const flavorId = identifier(selection.flavorId, "Sabor do lote");
+    if (seenFlavorIds.has(flavorId)) throw new TypeError("Cada sabor pode aparecer uma única vez no planejamento.");
+    seenFlavorIds.add(flavorId);
+    if (!Number.isSafeInteger(selection.quantity) || selection.quantity < 0 || selection.quantity > MAX_BATCH_PIZZAS) {
+      throw new TypeError(`Use quantidades inteiras entre 0 e ${MAX_BATCH_PIZZAS.toLocaleString("pt-BR")} pizzas.`);
+    }
+    const flavor = state.flavors.find((entry) => entry.id === flavorId);
+    if (!flavor) throw new Error("O sabor selecionado não existe mais no cardápio.");
+    if (selection.quantity === 0) continue;
+    if (!flavor.active) throw new Error(`${flavor.name} está indisponível no cardápio.`);
+    if (!state.recipes.some((recipe) => recipe.flavorId === flavorId)) {
+      throw new Error(`Cadastre a ficha técnica de ${flavor.name} antes de planejar esse lote.`);
+    }
+    totalPizzas += selection.quantity;
+    if (totalPizzas > MAX_BATCH_PIZZAS) {
+      throw new TypeError(`O lote pode ter no máximo ${MAX_BATCH_PIZZAS.toLocaleString("pt-BR")} pizzas.`);
+    }
+    items.push({
+      type: "pizza",
+      size: selectedSize.id,
+      quantity: selection.quantity,
+      flavors: [{ id: flavor.id, name: flavor.name }],
+    });
+  }
+
+  if (totalPizzas === 0) throw new TypeError("Informe ao menos uma pizza para calcular os insumos do lote.");
+  const ingredients = calculateOrderConsumption(state, { items });
+  return Object.freeze({
+    sizeId: selectedSize.id,
+    totalPizzas,
+    ingredients: Object.freeze(ingredients.map((ingredient) => Object.freeze({ ...ingredient }))),
+  });
 }
 
 export function createPizzeriaOrder(stateValue, {
