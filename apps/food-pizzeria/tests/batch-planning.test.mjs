@@ -101,6 +101,19 @@ test("menu displays the batch plan using recipe units without implying inventory
   assert.match(html, /Farinha/);
   assert.match(html, /240 g/);
   assert.match(html, /não altera o estoque/);
+  assert.equal((html.match(/data-action="clear-batch-plan"/g) ?? []).length, 1,
+    "the displayed result has only one clear action");
+  assert.match(html, /aria-label="Limpar resultado do pré-preparo">Limpar lote/);
+  assert.doesNotMatch(html, /Limpar quantidades/);
+});
+
+test("batch planner keeps one contextual clear action before a result exists", () => {
+  const snapshot = createSeedFoodState(Date.parse("2026-10-27T12:00:00.000Z"));
+  const html = renderMenu(snapshot);
+
+  assert.equal((html.match(/data-action="clear-batch-plan"/g) ?? []).length, 1);
+  assert.match(html, /aria-label="Limpar quantidades do pré-preparo">Limpar quantidades/);
+  assert.doesNotMatch(html, /Limpar lote/);
 });
 
 test("recipe editor disables duplicate ingredients but preserves each row's current choice", () => {

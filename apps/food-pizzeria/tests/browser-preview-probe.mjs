@@ -313,6 +313,23 @@ try {
   }
 
   if (view === "menu" && parameters.has("__exercise_recipe")) {
+    const batchInput = root.querySelector('[name="batch-ng-calabresa"]');
+    ensure(batchInput && root.querySelectorAll('[data-action="clear-batch-plan"]').length === 1,
+      "O pré-preparo deve oferecer somente uma ação para limpar quantidades.");
+    batchInput.value = "2";
+    batchInput.dispatchEvent(new Event("input", { bubbles: true }));
+    root.querySelector("#batch-plan-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await eventually(() => root.querySelector("#batch-plan-result"),
+      "Calcular insumos não apresentou o resultado do lote.");
+    ensure(root.querySelectorAll('[data-action="clear-batch-plan"]').length === 1
+      && root.querySelector('[data-action="clear-batch-plan"]')?.getAttribute("aria-label")
+        === "Limpar resultado do pré-preparo",
+    "O resultado não deve duplicar a ação de limpar e deve descrevê-la para leitores de tela.");
+    root.querySelector('[data-action="clear-batch-plan"]').click();
+    await eventually(() => !root.querySelector("#batch-plan-result")
+      && root.querySelector('[name="batch-ng-calabresa"]')?.value === "0",
+    "Limpar o lote não restaurou os campos do pré-preparo.");
+
     root.querySelector('[data-action="edit-recipe"][data-flavor-id="ng-calabresa"]')?.click();
     await eventually(() => root.querySelector("#recipe-editor .recipe-line"),
       "A ficha técnica da Calabresa não abriu.");

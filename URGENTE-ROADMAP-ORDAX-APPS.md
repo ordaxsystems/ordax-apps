@@ -998,3 +998,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Pedidos aceita termos em qualquer ordem e cruza cliente, endereço, telefone, referência, mesa e itens sem diferenciar acentos; telefones formatados também são encontrados por dígitos. Etapa/canal continuam sendo filtros cumulativos da mesma projeção do histórico Food.
 - A busca continua sendo estado de apresentação, sem store ou pedido paralelo; os rótulos indicam endereço tanto no host incorporado quanto no standalone.
 - Verificação: Food **194/194**; Chrome **27/27**, incluindo busca composta, limpar filtros e standalone; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.
+
+### Space Pizzaria / OrdaX Food — remover ação duplicada no pré-preparo (2026-10-27)
+
+- O planejador de lote deixa de renderizar dois botões “Limpar” para a mesma operação. Antes do cálculo, a ação diz “Limpar quantidades”; no resultado, “Limpar lote”. Ambas são nomeadas para leitores de tela e limpam o mesmo rascunho, sem tocar em pedidos ou Inventory.
+- Smoke Chrome cobre cálculo dos insumos, exclusão do resultado e restauração dos campos; a suíte também verifica a existência de uma única ação nos dois estados.
+- Verificação: Food **195/195**; Chrome **27/27**; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.

@@ -123,3 +123,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - A busca aceita termos em qualquer ordem e combina campos do mesmo pedido; ignora acentos, inclui endereço e encontra telefone mesmo com pontuação diferente. Continua compondo com etapa/canal no mesmo histórico Food; filtros e pesquisa só alteram a apresentação.
 - Busca incorporada e busca global standalone agora identificam endereço, mantendo um único campo por superfície.
 - Verificação: suíte Food **194/194**; Chrome **27/27**, incluindo cliente + endereço sem acento + telefone só com dígitos e busca por referência; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações verificadas**; `node --check` e `git diff --check` aprovados.
+
+### Cardápio — ação única para limpar o lote (2026-10-27)
+
+- O pré-preparo mostra um único controle de limpeza: “Limpar quantidades” antes do cálculo e “Limpar lote” junto do resultado. Os nomes deixam claro o efeito, e a ação no resultado também tem nome acessível.
+- A limpeza apaga apenas o rascunho e o resultado do planejador local; não altera pedido nem estoque.
+- Verificação: Food **195/195**; Chrome **27/27**, incluindo cálculo, limpeza e restauração dos campos; verificador MVP, sintaxe e `git diff --check` aprovados.
