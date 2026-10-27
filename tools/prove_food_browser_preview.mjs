@@ -57,6 +57,7 @@ const scenarios = Object.freeze([
     station: "2", stationStage: "assembly", screenCount: "4", __viewport: "landscape",
   }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true } },
   { presentation: "embedded-preview", view: "orders" },
+  { presentation: "embedded-preview", view: "delivery", extra: { __verify_pickup_handoff: "1" }, resetPreviewStorage: true },
   { presentation: "embedded-preview", view: "tables" },
 ]);
 

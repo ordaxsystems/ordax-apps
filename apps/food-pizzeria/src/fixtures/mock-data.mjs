@@ -24,7 +24,7 @@ export const PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES = Object.freeze({
   "ng-command-04": 20,
 });
 
-export function createSeedFoodState(nowValue = Date.now(), { includeFourFlavorSample = false } = {}) {
+export function createSeedFoodState(nowValue = Date.now(), { includeFourFlavorSample = false, includePickupHandoffSample = false } = {}) {
   const now = nowValue instanceof Date ? nowValue.getTime() : Number(nowValue);
   if (!Number.isFinite(now)) throw new TypeError("O horário da prévia Food precisa ser válido.");
   let state = configureFoodPizzeria(createEmptyFoodPizzeriaState(), {
@@ -74,6 +74,7 @@ export function createSeedFoodState(nowValue = Date.now(), { includeFourFlavorSa
     ["Bruno Almeida", "delivery", "(11) 97001-8834", "Rua do Oratório, 740 — Ipiranga"],
   ];
   const stages = ["received", "received", "received", "preparing", "preparing", "preparing", "preparing", "preparing", "ready", "ready", "out-for-delivery", "out-for-delivery"];
+  if (includePickupHandoffSample) stages[5] = "ready";
   const flavorIds = ["ng-calabresa", "ng-portuguesa", "ng-marguerita", "ng-portuguesa", "ng-frango-catupiry", "ng-calabresa", "ng-quatro-queijos", "ng-pepperoni", "ng-marguerita", "ng-frango-catupiry", "ng-calabresa", "ng-portuguesa"];
   for (let index = 0; index < people.length; index += 1) {
     const [customerName, channel, phone, address] = people[index];

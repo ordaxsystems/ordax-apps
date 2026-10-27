@@ -913,3 +913,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Teste integrado renderiza o pedido seed na primeira estação e confere os quatro sabores e as seis fatias; fixture comum de migração continua válida para o limite histórico de dois sabores. Suíte Food: 170/170; smoke de navegador: 25/25; verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas.
 - Mudança restrita à prévia local, sem alterar schemas, owners, pedidos persistidos ou contratos.
 
+### Space Pizzaria / OrdaX Food — concluir expedição por canal (2026-10-27)
+
+- A área Delivery passa a se chamar Expedição e atende o ciclo completo do mesmo pedido Food: entrega pronta/na rua e handoff de retirada, balcão ou salão. O operador vê ações próprias ao canal, como “Confirmar retirada”, “Entregar ao cliente”, “Marcar como servido”, “Despachar para entrega” e “Concluir entrega”; cancelamento segue somente em Pedidos.
+- Fixtures de uma nova prévia incluem uma retirada pronta e um pedido de quatro sabores. O estado fica no adapter local do Food; não cria owner, estado paralelo, integração ou alegação de sincronização.
+- Cobertura confirma classificação dos três canais, rótulos e transições; smoke Chrome clica e confirma a retirada, verificando sua saída da fila. Suíte Food: 173/173; smoke: 26/26; `node --check`, `git diff --check` e verificador MVP aprovados (20 alvos, 18 não assinados, 2 bloqueados, 0 instalações públicas verificadas).
+

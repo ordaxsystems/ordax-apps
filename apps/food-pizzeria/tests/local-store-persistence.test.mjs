@@ -63,7 +63,7 @@ test("reopening while the sample activity is fresh preserves its timeline", asyn
   store.destroy();
 });
 
-test("a new browser preview includes a four-flavor sample without changing migration fixtures", async () => {
+test("a new browser preview includes pickup handoff and four-flavor samples without changing migration fixtures", async () => {
   const environment = createMemoryEnvironment();
   const now = Date.parse("2026-10-27T12:00:00.000Z");
   const store = createBrowserLocalFoodStore({
@@ -74,10 +74,14 @@ test("a new browser preview includes a four-flavor sample without changing migra
 
   const preview = await store.initialize();
   const previewOrder = preview.orders.find(({ id }) => id === "ng-order-1049");
+  const pickupHandoffOrder = preview.orders.find(({ id }) => id === "ng-order-1052");
   const migrationFixtureOrder = createSeedFoodState(now).orders.find(({ id }) => id === "ng-order-1049");
+  const defaultPickupOrder = createSeedFoodState(now).orders.find(({ id }) => id === "ng-order-1052");
 
   assert.equal(previewOrder.items[0].flavors.length, 4);
+  assert.equal(pickupHandoffOrder.status, "ready");
   assert.equal(migrationFixtureOrder.items[0].flavors.length, 1);
+  assert.equal(defaultPickupOrder.status, "preparing");
   store.destroy();
 });
 

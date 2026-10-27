@@ -19,6 +19,7 @@ const expected = {
   orders: "Pedidos",
   pos: "PDV",
   tables: "Mesas",
+  delivery: "Expedição",
 };
 
 function ensure(ok, message) {
@@ -86,6 +87,20 @@ try {
         && checkout.scrollWidth <= checkout.clientWidth + 1,
       "Uma das áreas do PDV transbordou a largura do telefone.");
     }
+  }
+
+  if (view === "delivery" && parameters.has("__verify_pickup_handoff")) {
+    const handoff = root.querySelector('[data-action="advance-order"][data-order-id="ng-order-1052"]');
+    ensure(handoff?.textContent.trim() === "Confirmar retirada"
+      && handoff.getAttribute("data-next-status") === "completed",
+    "Pedido de retirada pronto não oferece a confirmação de entrega ao cliente.");
+    ensure(!root.querySelector('[data-action="cancel-order"][data-order-id="ng-order-1052"]'),
+      "A expedição não deve disponibilizar cancelamento ao operador.");
+    handoff.click();
+    await eventually(
+      () => !root.querySelector('[data-action="advance-order"][data-order-id="ng-order-1052"]'),
+      "Confirmar a retirada não concluiu o pedido nem o removeu da fila de expedição.",
+    );
   }
 
   if (view === "pos" && parameters.has("__exercise_cart")) {

@@ -8,7 +8,7 @@ function renderDelivery(orders) {
     snapshot: { orders },
     sectionHeader: (_eyebrow, title, description, actions = "") => `<header><h1>${title}</h1><p>${description}</p>${actions}</header>`,
     statCard: (title, count) => `<div>${title}: ${count}</div>`,
-    renderOrderCard: (order, { allowCancel = false, allowAdvance = false } = {}) => `<article data-order-id="${order.id}" data-can-cancel="${allowCancel}" data-can-advance="${allowAdvance}">${allowCancel ? "Cancelar" : allowAdvance ? "Avançar entrega" : ""}</article>`,
+    renderOrderCard: (order, { allowCancel = false, allowAdvance = false } = {}) => `<article data-order-id="${order.id}" data-can-cancel="${allowCancel}" data-can-advance="${allowAdvance}">${allowCancel ? "Cancelar" : allowAdvance ? "Avançar pedido" : ""}</article>`,
     emptyState: ({ title }) => `<div>${title}</div>`,
     iconSvg: () => "icon",
     orderNumber: ({ id }) => `#${id}`,
@@ -17,20 +17,28 @@ function renderDelivery(orders) {
   });
 }
 
-test("Delivery exibe pedidos de despacho sem disponibilizar cancelamento", () => {
+test("Expedição separa despacho de entrega e entrega ao cliente em retirada, balcão e salão", () => {
   const html = renderDelivery([
-    { id: "ready", channel: "delivery", status: "ready", customerName: "Ana", address: "Rua A", updatedAt: "2026-10-27T10:00:00.000Z" },
+    { id: "delivery-ready", channel: "delivery", status: "ready", customerName: "Ana", address: "Rua A", updatedAt: "2026-10-27T10:00:00.000Z" },
     { id: "route", channel: "delivery", status: "out-for-delivery", customerName: "Bia", address: "Rua B", updatedAt: "2026-10-27T10:10:00.000Z" },
     { id: "pickup", channel: "pickup", status: "ready", customerName: "Caio", address: "", updatedAt: "2026-10-27T10:20:00.000Z" },
+    { id: "counter", channel: "counter", status: "ready", customerName: "Dani", address: "", updatedAt: "2026-10-27T10:30:00.000Z" },
+    { id: "dine-in", channel: "dine-in", status: "ready", customerName: "Mesa 2", address: "", updatedAt: "2026-10-27T10:40:00.000Z" },
+    { id: "still-in-kitchen", channel: "pickup", status: "preparing", customerName: "Eli", address: "", updatedAt: "2026-10-27T10:50:00.000Z" },
   ]);
 
-  assert.match(html, /data-order-id="ready" data-can-cancel="false" data-can-advance="true"/);
-  assert.match(html, /data-order-id="route" data-can-cancel="false" data-can-advance="true"/);
+  assert.match(html, /<h1>Expedição<\/h1>/);
+  assert.match(html, /Prontos para despacho/);
+  assert.match(html, /Retirada e atendimento/);
+  assert.match(html, /Aguardando cliente: 3/);
+  for (const id of ["delivery-ready", "pickup", "counter", "dine-in", "route"]) {
+    assert.match(html, new RegExp(`data-order-id="${id}" data-can-cancel="false" data-can-advance="true"`));
+  }
+  assert.doesNotMatch(html, /data-order-id="still-in-kitchen"/);
   assert.doesNotMatch(html, /Cancelar|data-can-cancel="true"/);
-  assert.doesNotMatch(html, /data-order-id="pickup"/);
 });
 
-test("parada em rota oferece ligação e cópia do endereço sem expor ações em pedido de retirada", () => {
+test("parada em rota oferece ligação e cópia do endereço", () => {
   const html = renderDelivery([
     { id: "route", channel: "delivery", status: "out-for-delivery", customerName: "Bia", phone: "+55 (11) 99999-0000", address: "Rua B, 10", updatedAt: "2026-10-27T10:10:00.000Z" },
     { id: "pickup", channel: "pickup", status: "ready", customerName: "Caio", phone: "", address: "", updatedAt: "2026-10-27T10:20:00.000Z" },
@@ -54,8 +62,7 @@ test("fila de entrega informa a ordem de saída sem apresentar mapa ou GPS", () 
   assert.doesNotMatch(html, /route-map|Diagrama esquemático|geolocalização|GPS|map-pin/);
 });
 
-
-test("cartões de delivery quebram o cabeçalho em telefones estreitos", async () => {
+test("cartões de expedição quebram o cabeçalho em telefones estreitos", async () => {
   const css = await readFile(new URL("../assets/food-pizzeria.css", import.meta.url), "utf8");
   const mobileRules = css.match(/@media\s*\(max-width:\s*380px\)\s*\{([^}]+(?:\}[^}]*)*)\}/)?.[1] ?? "";
 

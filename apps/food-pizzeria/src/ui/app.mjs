@@ -35,6 +35,7 @@ import { renderPosPage } from "./views/pos.mjs";
 import { kitchenStepClock, renderKitchenPage } from "./views/kitchen.mjs";
 import { renderKitchenItemLine } from "./views/kitchen-item.mjs";
 import { formatFoodOrderNumber } from "./order-number.mjs";
+import { foodOrderActionLabel, nextFoodOrderStatus } from "./order-actions.mjs";
 import {
   PIZZERIA_KITCHEN_ITEM_LABEL,
   PIZZERIA_KITCHEN_STAGE_GUIDANCE,
@@ -87,7 +88,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     menu: "Cardápio",
     kitchen: "Cozinha (KDS)",
     tables: "Mesas e Comandas",
-    delivery: "Delivery",
+    delivery: "Expedição",
     pos: "Caixa (PDV)",
     inventory: "Estoque",
     customers: "Clientes",
@@ -436,7 +437,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       recipeDraftLines, orderQuery, orderStatusFilter, orderChannelFilter, kitchenChannelFilter,
       kitchenOrderQuery, kitchenLateOnly,
       activeCommandId, editFlavorId, cart, busy, button, iconSvg, metricCard,
-      orderItemDescription, nextStatus, nextActionLabel, orderAction, canCancel,
+      orderItemDescription, orderAction, canCancel,
       renderOrderCard, renderKitchenOrderCard, emptyState, sizeOptions, flavorOptions, cartHtml, flavorForm,
       kitchenChannelButton, activeCommandForTable, tableCard, sectionHeader, statCard,
       tableOrders, tableCommandTotalCents, money, escapeHtml, timeLabel, clockTime, stageStartedAt,
@@ -458,22 +459,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return presentPizzeriaKitchenItem(item);
   }
   
-  function nextStatus(order) {
-    if (order.status === "received") return "preparing";
-    if (order.status === "preparing") return "ready";
-    if (order.status === "ready") return order.channel === "delivery" ? "out-for-delivery" : "completed";
-    if (order.status === "out-for-delivery") return "completed";
-    return null;
-  }
-  
-  function nextActionLabel(status) {
-    return ({ preparing: "Iniciar preparo", ready: "Marcar como pronto", "out-for-delivery": "Saiu para entrega", completed: "Concluir pedido" })[status] ?? "";
-  }
-  
   function orderAction(order) {
-    const status = nextStatus(order);
+    const status = nextFoodOrderStatus(order);
     if (!status) return "";
-    return button(nextActionLabel(status), "advance-order", {
+    return button(foodOrderActionLabel(order, status), "advance-order", {
       kind: status === "ready" ? "primary" : "quiet",
       extra: `data-order-id="${escapeHtml(order.id)}" data-next-status="${status}"`,
     });
