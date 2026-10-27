@@ -1016,3 +1016,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O controle de remoção do editor de receitas anuncia o ingrediente e o sabor da ficha, preservando rótulos visuais compactos e o mesmo fluxo de edição. O smoke cobre etiquetas após adicionar uma linha e antes de removê-la.
 - Mudança somente de apresentação/acessibilidade: não altera ficha, consumo proposto, pedidos nem Inventory.
 - Verificação: suíte Food **195/195**; Chrome **27/27**; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.
+
+### Space Pizzaria / OrdaX Food — manter a edição da ficha ao fechar ou alternar (2026-10-27)
+
+- A edição não salva da ficha técnica agora permanece em memória, por sabor, se o operador fechar ou abrir outra ficha; ao reabrir, o editor restaura ingredientes e quantidades. O foco acompanha abertura, inclusão/remoção de linhas e retorno ao cardápio. O rascunho é descartado ao salvar com sucesso ou ao encerrar a instância; ele não é persistência de domínio.
+- Smoke cobre mudança para Marguerita, fechamento, retorno à Calabresa com insumo/quantidade alterados e foco contextual. O helper de rolagem consulta a preferência de movimento reduzido. Nenhum pedido, ficha persistida, saldo ou movimento de Inventory é alterado por fechar o editor.
+- Verificação: Food **195/195**; Chrome **27/27**; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.

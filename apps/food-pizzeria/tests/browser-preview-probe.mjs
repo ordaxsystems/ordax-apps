@@ -346,6 +346,8 @@ try {
     root.querySelector('[data-action="edit-recipe"][data-flavor-id="ng-calabresa"]')?.click();
     await eventually(() => root.querySelector("#recipe-editor .recipe-line"),
       "A ficha técnica da Calabresa não abriu.");
+    ensure(root.activeElement?.id === "recipe-editor-title",
+      "Abrir uma ficha deve levar o foco ao título do editor.");
 
     const quantityInput = () => root.querySelector('[name="quantity-0-small"]');
     quantityInput().value = "137";
@@ -354,6 +356,8 @@ try {
     root.querySelector('[data-action="add-recipe-line"]')?.click();
     await eventually(() => root.querySelectorAll("#recipe-editor .recipe-line").length === 7,
       "Adicionar insumo não criou a nova linha da ficha.");
+    ensure(root.activeElement?.name === "ingredient-6",
+      "Adicionar um insumo deve levar o foco à nova linha.");
     ensure(quantityInput()?.value === "137",
       "Adicionar uma linha descartou a quantidade já digitada.");
     const recipeRemovalButtons = [...root.querySelectorAll('#recipe-editor .recipe-line [data-action="remove-recipe-line"]')];
@@ -367,6 +371,8 @@ try {
     root.querySelector('[data-action="remove-recipe-line"][data-index="6"]')?.click();
     await eventually(() => root.querySelectorAll("#recipe-editor .recipe-line").length === 6,
       "Remover insumo não atualizou as linhas da ficha.");
+    ensure(root.activeElement?.name === "ingredient-5",
+      "Remover um insumo deve manter o foco numa linha próxima do editor.");
     ensure(quantityInput()?.value === "137",
       "Remover uma linha descartou a quantidade já digitada.");
 
@@ -387,6 +393,23 @@ try {
     const secondIngredient = root.querySelector('[name="ingredient-1"]');
     ensure([...secondIngredient.options].find(({ value }) => value === "tomate")?.disabled === true,
       "O ingrediente recém-escolhido deve ficar indisponível nas outras linhas.");
+
+    root.querySelector('[data-action="edit-recipe"][data-flavor-id="ng-marguerita"]')?.click();
+    await eventually(() => root.querySelector("#recipe-editor h2")?.textContent.trim() === "Marguerita",
+      "A ficha técnica da Marguerita não abriu ao trocar de sabor.");
+    ensure(root.activeElement?.id === "recipe-editor-title",
+      "Ao trocar de ficha, o foco deve acompanhar o título do novo editor.");
+    root.querySelector('[data-action="close-recipe-editor"]')?.click();
+    await eventually(() => !root.querySelector("#recipe-editor"),
+      "Fechar a ficha técnica não recolheu o editor.");
+    ensure(root.activeElement?.dataset.flavorId === "ng-marguerita",
+      "Fechar o editor deve devolver o foco ao acionador da ficha.");
+    root.querySelector('[data-action="edit-recipe"][data-flavor-id="ng-calabresa"]')?.click();
+    await eventually(() => root.querySelector("#recipe-editor h2")?.textContent.trim() === "Calabresa",
+      "Reabrir a ficha técnica da Calabresa falhou.");
+    ensure(root.querySelector('[name="ingredient-0"]')?.value === "tomate"
+      && root.querySelector('[name="quantity-0-small"]')?.value === "137",
+    "Fechar ou trocar de sabor descartou o rascunho da Calabresa.");
   }
 
   if (parameters.has("station")) {

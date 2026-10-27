@@ -141,3 +141,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - Cada botão de remover insumo anuncia agora o nome do ingrediente e da ficha técnica correspondente, mantendo o ícone e o texto visual compacto. A etiqueta é derivada da linha atual do rascunho, então continua correta depois de adicionar ou reorganizar ingredientes.
 - A alteração não muda cálculo, recipe state, pedido ou Inventory; fichas e insumos continuam no preview local sem integração de saldo/custo.
 - Verificação: Food **195/195**; Chrome **27/27**, incluindo adição e remoção de linha com nome acessível; `node --check` e `git diff --check` aprovados.
+
+### Cardápio — preservar rascunhos e foco do editor de fichas (2026-10-27)
+
+- Rascunhos de ficha técnica permanecem associados ao sabor enquanto a instância do app está aberta: fechar o editor ou alternar para outra ficha não apaga quantidades/insumos; reabrir restaura a edição. Salvar remove o rascunho temporário. O estado não é gravado no domínio Food nem persiste após encerrar a instância.
+- O foco vai ao título quando a ficha abre, à linha após adicionar/remover insumo e ao acionador do sabor ao fechar/salvar. A rolagem respeita a preferência de movimento reduzido.
+- Verificação: Food **195/195**; Chrome **27/27**, incluindo alternância, fechamento, restauração do rascunho e foco; `node --check` e `git diff --check` aprovados. Catálogo e Inventory continuam sem novas escritas/integradores.

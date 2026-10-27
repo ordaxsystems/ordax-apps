@@ -162,6 +162,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let PIZZERIA_TABLES = DEFAULT_PIZZERIA_TABLES.map((table) => ({ ...table, active: true }));
   let recipeFlavorId = null;
   let recipeDraftLines = [];
+  const recipeDraftsByFlavorId = new Map();
   let batchPlanSize = null;
   let batchPlanQuantities = {};
   let batchPlanRequested = false;
@@ -1462,34 +1463,42 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         payload: { commandId: command.id, closedAt: new Date().toISOString() },
       }, `Comanda da Mesa ${String(command.tableId).padStart(2, "0")} encerrada.`);
     } else if (action === "edit-recipe") {
-      const recipe = snapshot.recipes.find(({ flavorId }) => flavorId === target.dataset.flavorId);
+      rememberRecipeDraft(recipeFlavorId);
       recipeFlavorId = target.dataset.flavorId;
-      recipeDraftLines = recipe
-        ? recipe.lines.map((line) => ({ ingredientId: line.ingredientId, quantityBaseBySize: { ...line.quantityBaseBySize } }))
-        : [];
+      recipeDraftLines = recipeDraftForFlavor(recipeFlavorId);
       render();
-      root.querySelector("#recipe-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      root.querySelector("#recipe-editor-title")?.focus({ preventScroll: true });
+      scrollToFoodElement(root.querySelector("#recipe-editor"), "start");
     } else if (action === "add-recipe-line") {
       captureRecipeDraftFromForm(root.querySelector("#recipe-editor"));
       const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => !recipeDraftLines.some((line) => line.ingredientId === id));
       if (!ingredient) return;
+      const newLineIndex = recipeDraftLines.length;
       recipeDraftLines.push({
         ingredientId: ingredient.id,
         quantityBaseBySize: Object.fromEntries(PIZZA_SIZES.map(({ id, active }) => [id, active ? "" : 0])),
       });
       render();
+      focusRecipeLine(newLineIndex);
     } else if (action === "remove-recipe-line") {
       captureRecipeDraftFromForm(root.querySelector("#recipe-editor"));
-      recipeDraftLines.splice(Number(target.dataset.index), 1);
+      const removedIndex = Number(target.dataset.index);
+      recipeDraftLines.splice(removedIndex, 1);
       render();
+      const nextIndex = Math.min(removedIndex, recipeDraftLines.length - 1);
+      if (nextIndex >= 0) focusRecipeLine(nextIndex);
+      else root.querySelector('[data-action="add-recipe-line"]')?.focus({ preventScroll: true });
     } else if (action === "clear-batch-plan") {
       batchPlanQuantities = {};
       batchPlanRequested = false;
       render();
     } else if (action === "close-recipe-editor") {
+      const closedFlavorId = recipeFlavorId;
+      rememberRecipeDraft(closedFlavorId);
       recipeFlavorId = null;
       recipeDraftLines = [];
       render();
+      focusRecipeTrigger(closedFlavorId);
     }
   }
   
@@ -1603,9 +1612,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           },
         }, "Ficha técnica salva. A nova composição será aplicada aos próximos pedidos; os pedidos existentes preservam sua proposta de consumo.", { renderAfter: false });
         if (saved) {
+          const savedFlavorId = recipeFlavorId;
+          recipeDraftsByFlavorId.delete(savedFlavorId);
           recipeFlavorId = null;
           recipeDraftLines = [];
           render();
+          focusRecipeTrigger(savedFlavorId);
         }
       } else if (kind === "settings-form") {
         const values = new FormData(form);
@@ -1694,6 +1706,48 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         return [id, Number.isFinite(quantity) ? quantity : line.quantityBaseBySize[id]];
       })),
     }));
+  }
+
+  function recipeDraftForFlavor(flavorId) {
+    const pendingDraft = recipeDraftsByFlavorId.get(flavorId);
+    if (pendingDraft) return cloneRecipeDraftLines(pendingDraft);
+    const recipe = snapshot.recipes.find(({ flavorId: current }) => current === flavorId);
+    return recipe ? cloneRecipeDraftLines(recipe.lines) : [];
+  }
+
+  function rememberRecipeDraft(flavorId) {
+    if (!flavorId) return;
+    captureRecipeDraftFromForm(root.querySelector("#recipe-editor"));
+    recipeDraftsByFlavorId.set(flavorId, cloneRecipeDraftLines(recipeDraftLines));
+  }
+
+  function cloneRecipeDraftLines(lines) {
+    return lines.map((line) => ({
+      ingredientId: line.ingredientId,
+      quantityBaseBySize: { ...line.quantityBaseBySize },
+    }));
+  }
+
+  function focusRecipeTrigger(flavorId) {
+    if (!flavorId) return;
+    const trigger = [...root.querySelectorAll('[data-action="edit-recipe"]')]
+      .find((button) => button.dataset.flavorId === flavorId);
+    if (!trigger) return;
+    trigger.focus({ preventScroll: true });
+    scrollToFoodElement(trigger, "center");
+  }
+
+  function focusRecipeLine(index) {
+    const ingredient = root.querySelector(`[name="ingredient-${index}"]`);
+    if (!ingredient) return;
+    ingredient.focus({ preventScroll: true });
+    scrollToFoodElement(ingredient, "center");
+  }
+
+  function scrollToFoodElement(element, block = "nearest") {
+    if (!element) return;
+    const behavior = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    element.scrollIntoView({ behavior, block });
   }
 
   function handleInput(event) {
@@ -1819,6 +1873,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     root.removeAttribute?.("aria-busy");
     root.innerHTML = "";
     cart = [];
+    recipeDraftsByFlavorId.clear();
     snapshot = null;
     notice = null;
   }
