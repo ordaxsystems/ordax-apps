@@ -135,6 +135,12 @@ test('packaged orchestration smoke waits for the newly created work to open befo
   assert.match(wait,/getElementById\('taskTitle'\)\.textContent==='Frente criada pela interface'/,
     'the existing task panel cannot satisfy readiness for a different work');
   assert.match(source,/layoutResult\.openedWork!=='Frente criada pela interface'/);
+  const cleanupPhase=source.indexOf("phase='cleanup';");
+  const successLog=source.indexOf('console.log(JSON.stringify(successReport))');
+  assert.ok(cleanupPhase>=0&&successLog>cleanupPhase,
+    'success is emitted only after cleanup completes');
+  assert.match(source,/if\(ws\.readyState===WebSocket\.OPEN\)ws\.close\(\)/,
+    'a WebSocket already closing or closed cannot turn a passing App scenario into failure');
 });
 
 test('live text smoke supports long responses and reports an unfinished run without retrying',()=>{

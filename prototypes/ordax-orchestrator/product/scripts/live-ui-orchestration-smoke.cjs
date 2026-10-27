@@ -29,6 +29,7 @@ let phase='startup';
       ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
     });
     let disposableApiKeyCleanupRequired=false;
+    let successReport=null;
     phase='app_ready';
     await waitForLabAppMode(evaluate);
     const proof=await evaluate('window.ordax.labBuildProof()');
@@ -173,7 +174,7 @@ let phase='startup';
     if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==2||
       layoutResult.analysisDisabled!==true)
       throw Error('work_conversation_layout_failed');
-    console.log(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
+    successReport={schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
       appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
       projectFormVerified:true,missionDraftPersisted:true,missionStartBlockedWithoutSession:true,
       coordinatorFormVerified:true,workVisibleInApp:true,
@@ -181,8 +182,9 @@ let phase='startup';
       projectWorkspaceFailClosedVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
-      externalMcpConnected:false,autonomousExecution:false}));
+      externalMcpConnected:false,autonomousExecution:false};
   }finally{
+    phase='cleanup';
     try {
       if(disposableApiKeyCleanupRequired) {
         phase='test_credential_cleanup';
@@ -192,9 +194,10 @@ let phase='startup';
       }
     } finally {
       for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
-      ws.close();
+      if(ws.readyState===WebSocket.OPEN)ws.close();
     }
   }
+  console.log(JSON.stringify(successReport));
 })().catch(()=>{console.error(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,
   phase,reason:'app_orchestration_scenario_failed'}));process.exitCode=2;});
 
