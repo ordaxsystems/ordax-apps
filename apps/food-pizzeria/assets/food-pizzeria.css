@@ -175,7 +175,8 @@ textarea { resize: vertical; line-height: 1.5; }
 .customer-form > .cart-heading { margin-bottom: 0; }
 .customer-grid { grid-template-columns: .78fr 1.22fr; }
 .delivery-phone-field, .delivery-address-field { display: grid; align-content: start; gap: 6px; min-width: 0; }
-.delivery-validation-hint { color: var(--red); font-size: 9px; font-weight: 500; line-height: 1.4; }
+.delivery-validation-hint { color: var(--red); font-size: 11px; font-weight: 500; line-height: 1.4; }
+.optional-tag.is-required { color: var(--red); font-size: 10px; font-weight: 600; }
 .customer-form [aria-invalid="true"] { border-color: var(--red); }
 .delivery-fields { display: grid; grid-template-columns: 1.3fr .7fr; gap: 10px; }
 .delivery-fields small { color: #aaa49b; font-size: 9px; font-weight: 400; }

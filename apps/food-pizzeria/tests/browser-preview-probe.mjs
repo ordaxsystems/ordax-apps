@@ -147,6 +147,7 @@ try {
     const channelInput = root.querySelector('#create-order-form [name="channel"]');
     const phoneInput = root.querySelector('#create-order-form [name="phone"]');
     const addressInput = root.querySelector('#create-order-form [name="address"]');
+    const phoneRequirementHint = root.querySelector("#phone-requirement-hint");
     ensure(deliveryFeeRow?.hidden === true
       && amountInCents(subtotalValue()) === amountInCents(totalValue()),
     "Retirada deve mostrar o subtotal sem acrescentar taxa de entrega.");
@@ -157,11 +158,15 @@ try {
       && amountInCents(totalValue()) === amountInCents(subtotalValue()) + 500,
     "Entrega deve mostrar a taxa e somá-la ao subtotal no total do pedido.");
     ensure(phoneInput.required && addressInput.required
+      && phoneRequirementHint?.textContent === "obrigatório na entrega"
+      && phoneRequirementHint.classList.contains("is-required")
       && phoneInput.getAttribute("aria-invalid") === "true"
       && addressInput.getAttribute("aria-invalid") === "true"
       && !root.querySelector("#delivery-phone-hint")?.hidden
       && !root.querySelector("#delivery-address-hint")?.hidden,
-    "Entrega deve sinalizar contato e endereço incompletos antes do registro.");
+    "Entrega deve identificar telefone obrigatório e sinalizar contato/endereço incompletos.");
+    ensure(getComputedStyle(root.querySelector("#delivery-phone-hint")).fontSize === "11px",
+      "A orientação do telefone deve permanecer legível na escala de texto do formulário.");
     phoneInput.value = "119876543";
     phoneInput.dispatchEvent(new Event("input", { bubbles: true }));
     ensure(phoneInput.getAttribute("aria-invalid") === "true",
@@ -195,6 +200,8 @@ try {
     channelInput.dispatchEvent(new Event("change", { bubbles: true }));
     ensure(deliveryFeeRow?.hidden === true
       && amountInCents(totalValue()) === amountInCents(subtotalValue())
+      && phoneRequirementHint?.textContent === "opcional, exceto entrega"
+      && !phoneRequirementHint.classList.contains("is-required")
       && !phoneInput.required && !addressInput.required
       && !phoneInput.hasAttribute("aria-invalid") && !addressInput.hasAttribute("aria-invalid")
       && root.querySelector("#delivery-phone-hint")?.hidden

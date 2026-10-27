@@ -899,6 +899,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       }
     }, 0);
     const isDelivery = form.elements.channel.value === "delivery";
+    const phoneRequirementHint = root.querySelector("#phone-requirement-hint");
+    if (phoneRequirementHint) {
+      phoneRequirementHint.textContent = isDelivery ? "obrigatório na entrega" : "opcional, exceto entrega";
+      phoneRequirementHint.classList.toggle("is-required", isDelivery);
+    }
     const deliveryPhoneValid = !isDelivery || isValidPizzeriaDeliveryPhone(form.elements.phone.value);
     const deliveryAddressValid = !isDelivery || isValidPizzeriaDeliveryAddress(form.elements.address.value);
     const phoneHint = root.querySelector("#delivery-phone-hint");

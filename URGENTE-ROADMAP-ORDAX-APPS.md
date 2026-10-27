@@ -954,6 +954,6 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 ### Space Pizzaria / OrdaX Food — validar contato e endereço no PDV (2026-10-27)
 
-- Em pedidos de entrega, telefone inválido/ausente e endereço vazio são sinalizados inline enquanto o formulário é preenchido; o botão de registro fica indisponível até ambos estarem corretos. As regras vêm do próprio domínio Food e a acessibilidade associa cada ajuda ao seu campo. Os demais canais limpam a exigência de dados de entrega.
+- Em pedidos de entrega, telefone inválido/ausente e endereço vazio são sinalizados inline em tamanho legível enquanto o formulário é preenchido; o botão fica indisponível até ambos estarem corretos. O rótulo do telefone muda para obrigatório na entrega e opcional nos demais canais. Regras e acessibilidade vêm do domínio/formulário Food; balcão e retirada removem a exigência de entrega.
 - Verificação: suíte Food **183/183**, prova completa de navegador Chrome aprovada nas 26 configurações atuais, node --check dos módulos/testes alterados e git diff --check aprovados.
 - Nenhuma identidade de cliente ou endereço passa a ter owner local: os valores só compõem o pedido Food da prévia. Contratos, Spaces e sincronização entre aparelhos não foram alterados.
