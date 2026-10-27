@@ -846,6 +846,10 @@ dialog p { color: #a2a8af; }
 .orders-filter-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; }
 .orders-filter-controls label { display: grid; min-width: 165px; gap: 5px; color: #a2a8af; font-size: 9px; }
 .orders-filter-controls select { min-height: 34px; padding: 6px 9px; font-size: 10px; }
+.orders-search-form { display: grid; flex: 1 1 260px; min-width: 200px; gap: 5px; color: #a2a8af; font-size: 9px; }
+.orders-search-field { display: flex; min-width: 0; gap: 7px; }
+.orders-search-field input { flex: 1; min-width: 0; min-height: 34px; padding: 6px 9px; font-size: 10px; }
+.orders-search-field .button { min-height: 34px; }
 .clear-order-filters { min-height: 34px; }
 .orders-filter-summary { margin: 0; color: #8f969e; font-size: 9px; }
 .kitchen-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; margin-bottom: 13px; padding: 12px 14px; border-color: #2c3035; background: #191c20; }
@@ -862,7 +866,7 @@ dialog p { color: #a2a8af; }
 .age-alert { padding: 3px 6px; border: 1px solid #63342e; border-radius: 5px; background: #3a211f; color: #ff9b91; font-size: 7px; font-weight: 700; }
 .age-alert[hidden] { display: none; }
 .kitchen-empty-delivery { padding: 17px; color: #969da5; font-size: 9px; text-align: center; }
-.kitchen-toolbar .order-filter:focus-visible, .clear-order-filters:focus-visible, .orders-filter-controls select:focus-visible { outline: 2px solid #ff986a; outline-offset: 2px; }
+.kitchen-toolbar .order-filter:focus-visible, .clear-order-filters:focus-visible, .orders-filter-controls select:focus-visible, .orders-search-field input:focus-visible { outline: 2px solid #ff986a; outline-offset: 2px; }
 
 /* Caixa do turno e conferência do fechamento */
 .cash-register-panel { display: grid; gap: 15px; margin-bottom: 14px; padding: 17px; }
@@ -1047,6 +1051,9 @@ dialog p { color: #a2a8af; }
   .orders-filter-panel { padding: 11px; }
   .orders-filter-controls { align-items: stretch; }
   .orders-filter-controls label { flex: 1 1 130px; min-width: 0; }
+  .orders-search-form { flex-basis: 100%; min-width: 0; }
+  .orders-search-field input { min-height: 40px; font-size: 16px; }
+  .orders-search-field .button { min-height: 40px; }
   .clear-order-filters { align-self: end; }
   .kitchen-toolbar { padding: 11px; }
   .kitchen-toolbar .order-filters { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }

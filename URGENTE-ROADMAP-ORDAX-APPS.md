@@ -986,3 +986,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 - A tela Pedidos agora permite expandir uma linha do tempo recolhida, montada a partir do journal/statusHistory imutável do pedido Food. Cada evento mostra somente o estado e o horário já registrados; a consulta não altera pedidos nem duplica dados pessoais ou cancelamentos.
 - Verificação: suíte Food **191/191**, smoke Chrome **27/27** com abertura da linha do tempo, verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**. Owners, contratos e integrações permanecem iguais.
+
+### Space Pizzaria / OrdaX Food — buscar pedidos no Space incorporado (2026-10-27)
+
+- O histórico no host incorporado passa a expor a busca que antes só existia no cabeçalho standalone. Busca por referência, cliente, telefone, mesa e item compõe com etapa/canal. Limpar filtros restaura a consulta e a lista completa; standalone preserva seu único campo global.
+- O valor consultado é escaped, não cria estado de pedidos paralelo e não muda ownership/integrações.
+- Verificação: Food **193/193**; Chrome **27/27** cobrindo busca, combinação, limpeza e standalone; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**.

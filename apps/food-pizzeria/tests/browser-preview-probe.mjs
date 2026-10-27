@@ -96,6 +96,30 @@ try {
     }
   }
 
+  if (view === "orders" && embedded) {
+    const searchForm = root.querySelector("#orders-search-form");
+    ensure(searchForm && root.querySelector("#orders-search"),
+      "O host incorporado precisa oferecer busca dentro do módulo Pedidos.");
+    const search = root.querySelector("#orders-search");
+    search.value = "1050";
+    searchForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    ensure(root.querySelectorAll(".history-list .order-card").length === 1
+      && root.querySelector(".history-list .order-card")?.textContent.includes("#1050"),
+    "Buscar a referência do pedido não filtrou o histórico.");
+    const clearFilters = root.querySelector('[data-action="reset-order-filters"]');
+    ensure(clearFilters, "A busca ativa precisa oferecer limpeza dos filtros.");
+    clearFilters.click();
+    ensure(root.querySelector("#orders-search")?.value === ""
+      && root.querySelectorAll(".history-list .order-card").length === 12,
+    "Limpar filtros não restaurou a lista completa nem removeu a busca.");
+  }
+
+  if (view === "orders" && !embedded) {
+    ensure(root.querySelector("#global-search input")
+      && !root.querySelector("#orders-search-form"),
+    "A busca do modo standalone deve permanecer no cabeçalho sem duplicação.");
+  }
+
   if (view === "orders") {
     const timeline = [...root.querySelectorAll(".order-history-timeline")]
       .find((details) => details.querySelectorAll("li").length > 1);

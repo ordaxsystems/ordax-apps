@@ -378,7 +378,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const name = snapshot.settings?.storeName ?? "Pizzaria";
     return `<header class="topbar">
       <div class="mobile-brand"><span class="brand-mark">${iconSvg("pizza")}</span><span>OrdaX <b>Food</b></span></div>
-      <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido ou cliente no pedido" placeholder="Buscar pedido ou cliente no pedido..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
+      <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido, cliente, telefone, mesa ou item" placeholder="Buscar pedido, cliente, telefone, mesa ou item..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
       <div class="topbar-right"><button type="button" class="avatar-button" aria-label="Configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
     </header>`;
   }
@@ -444,6 +444,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
       KITCHEN_CHANNEL_FILTERS, ORDER_STAGE_ALERT_MINUTES, snapshot, recipeFlavorId,
       recipeDraftLines, orderQuery, orderStatusFilter, orderChannelFilter, kitchenChannelFilter,
+      showLocalSearch: presentation === "embedded-preview",
       kitchenOrderQuery, kitchenLateOnly,
       activeCommandId, editFlavorId, cart, busy, button, iconSvg, metricCard,
       orderItemDescription, orderAction, canCancel,
@@ -1356,8 +1357,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     } else if (action === "reset-order-filters") {
       orderStatusFilter = "all";
       orderChannelFilter = "all";
+      orderQuery = "";
       render();
-      root.querySelector("[data-order-status-filter]")?.focus({ preventScroll: true });
+      const search = root.querySelector("#orders-search") ?? root.querySelector("#global-search input");
+      (search ?? root.querySelector("[data-order-status-filter]"))?.focus({ preventScroll: true });
     } else if (action === "add-pizza-size") {
       settingsPage();
       const suffix = uid().replaceAll("-", "").slice(0, 12);
@@ -1501,11 +1504,18 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     if (kind === "global-search") {
       event.preventDefault();
-      orderQuery = String(new FormData(form).get("query") ?? "");
+      orderQuery = String(new FormData(form).get("query") ?? "").trim();
       activeView = "orders";
       orderStatusFilter = "all";
       orderChannelFilter = "all";
       render();
+      return;
+    }
+    if (kind === "orders-search-form") {
+      event.preventDefault();
+      orderQuery = String(new FormData(form).get("query") ?? "").trim();
+      render();
+      root.querySelector("#orders-search")?.focus({ preventScroll: true });
       return;
     }
     if (kind === "preview-delivery-fee-form") {
