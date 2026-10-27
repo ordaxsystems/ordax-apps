@@ -963,3 +963,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A UI não recalcula preço de linha e subtotal em blocos independentes: o módulo de aplicação cart-pricing agora fornece as funções puras usadas pelo carrinho e pelo fechamento. Isso mantém o preço apresentado alinhado ao total do pedido.
 - Pizzas continuam usando a regra/snapshot Food e itens adicionais preservam o preço congelado da fixture local. Uma linha cuja precificação atual ficou inválida permanece visível pelo preço do rascunho; a revisão estrita ainda bloqueia envio para exigir correção.
 - Verificação: suíte Food **185/185**, smoke Chrome aprovado nas 26 configurações, sintaxe e git diff --check aprovados. Nenhum contrato, owner, pagamento ou saldo de Inventory foi alterado.
+
+### Space Pizzaria / OrdaX Food — extrair rascunho do fluxo de cozinha (2026-10-27)
+
+- A camada de aplicação `createKitchenWorkflowDraft` passa a montar e validar etapas, número de telas, modo da fila, atribuições manuais ou distribuição equilibrada e IDs de novas etapas. A UI fica responsável somente por adaptar os campos do formulário.
+- Testes preservam a atribuição manual, verificam a distribuição, rejeitam número de telas inválido, payload malformado e confirmam ID para nova etapa. Não muda o estado persistido nem simula sincronização.
+- Verificação: Food **187/187**; prova Chrome **26/26**; verificador MVP **20 alvos, 18 candidatos não assinados e 2 bloqueados**; `node --check` e `git diff --check` aprovados. Food continua owner dos pedidos; nenhuma integração, contrato ou owner foi alterado.

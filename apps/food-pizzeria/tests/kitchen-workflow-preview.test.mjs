@@ -8,6 +8,7 @@ import {
   applyKitchenTaskAction,
   currentKitchenStep,
   createKitchenWorkflowPreset,
+  createKitchenWorkflowDraft,
   distributeKitchenSteps,
   reconcileKitchenTasks,
   saveKitchenWorkflow,
@@ -39,6 +40,45 @@ function action(tasks, actionName, orderId, stepId, screenNumber, commandId, at,
     ...(queueMode ? { queueMode } : {}),
   });
 }
+
+test("workflow editor draft preserves manual stations and supports even redistribution", () => {
+  const input = {
+    stepCount: 4,
+    screenCount: 2,
+    queueMode: KITCHEN_QUEUE_MODES.BY_STAGE,
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({
+      ...step,
+      screen: [2, 1, 2, 1][index],
+    })),
+  };
+  const manual = createKitchenWorkflowDraft(DEFAULT_KITCHEN_WORKFLOW, input);
+  assert.equal(manual.queueMode, KITCHEN_QUEUE_MODES.BY_STAGE);
+  assert.deepEqual(manual.steps.map(({ screen }) => screen), [2, 1, 2, 1]);
+
+  const distributed = createKitchenWorkflowDraft(DEFAULT_KITCHEN_WORKFLOW, input, { autoDistribute: true });
+  assert.deepEqual(distributed.steps.map(({ screen }) => screen), [1, 1, 2, 2]);
+  assert.throws(() => createKitchenWorkflowDraft(DEFAULT_KITCHEN_WORKFLOW, {
+    ...input,
+    screenCount: 5,
+  }), /número de telas precisa ser menor ou igual/);
+  assert.throws(() => createKitchenWorkflowDraft(DEFAULT_KITCHEN_WORKFLOW, null), /etapas da cozinha precisam ser uma lista/);
+});
+
+test("workflow editor generates an ID for each newly added step", () => {
+  const steps = [
+    ...DEFAULT_KITCHEN_WORKFLOW.steps,
+    { label: "Conferência final", screen: 1 },
+  ];
+  const draft = createKitchenWorkflowDraft(DEFAULT_KITCHEN_WORKFLOW, {
+    stepCount: 5,
+    screenCount: 1,
+    queueMode: KITCHEN_QUEUE_MODES.BY_ORDER,
+    steps,
+  }, { createStepId: (index) => `new-step-${index + 1}` });
+
+  assert.equal(draft.steps[4].id, "new-step-5");
+  assert.equal(draft.steps[4].label, "Conferência final");
+});
 
 test("production presets cover a solo pizzaiolo and a four-station pizza line", () => {
   const solo = createKitchenWorkflowPreset(DEFAULT_KITCHEN_WORKFLOW, KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO);

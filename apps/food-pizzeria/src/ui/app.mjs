@@ -13,10 +13,10 @@ import { addFoodCartItem, adjustFoodCartItemQuantity, countFoodCartUnits } from 
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
+  MAX_KITCHEN_WORKFLOW_STEPS,
   createKitchenWorkflowPreset,
-  KITCHEN_WORKFLOW_SCHEMA,
+  createKitchenWorkflowDraft,
   currentKitchenStep,
-  distributeKitchenSteps,
   saveKitchenWorkflow,
   sortKitchenTickets,
   validateKitchenTasks,
@@ -1052,34 +1052,23 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
 
   function kitchenWorkflowFromForm(form, { autoDistribute = false } = {}) {
     const values = new FormData(form);
-    const current = validateKitchenWorkflow(previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW);
     const stepCount = Number(values.get("stepCount"));
-    const screenCount = Number(values.get("screenCount"));
-    if (!Number.isSafeInteger(stepCount) || stepCount < 1 || stepCount > 8
-      || !Number.isSafeInteger(screenCount) || screenCount < 1 || screenCount > stepCount) {
-      throw new TypeError("O número de telas precisa ser menor ou igual ao número de etapas.");
-    }
-    const steps = Array.from({ length: stepCount }, (_, index) => {
-      const old = current.steps[index];
-      const label = values.get(`step-label-${index + 1}`);
-      const screen = Number(values.get(`step-screen-${index + 1}`));
-      const distributedScreen = Math.min(screenCount, Math.floor(index * screenCount / stepCount) + 1);
-      return {
-        id: String(values.get(`step-id-${index + 1}`) ?? old?.id ?? `step-${uid().replaceAll("-", "").slice(0, 12)}`),
-        label: String(label ?? old?.label ?? `Etapa ${index + 1}`),
-        screen: autoDistribute || !Number.isSafeInteger(screen) || screen < 1 || screen > screenCount
-          ? distributedScreen
-          : screen,
-      };
+    const stepInputs = Number.isSafeInteger(stepCount) && stepCount >= 1 && stepCount <= MAX_KITCHEN_WORKFLOW_STEPS
+      ? Array.from({ length: stepCount }, (_, index) => ({
+        id: values.get(`step-id-${index + 1}`),
+        label: values.get(`step-label-${index + 1}`),
+        screen: values.get(`step-screen-${index + 1}`),
+      }))
+      : [];
+    return createKitchenWorkflowDraft(previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW, {
+      stepCount,
+      screenCount: values.get("screenCount"),
+      queueMode: values.get("queueMode"),
+      steps: stepInputs,
+    }, {
+      autoDistribute,
+      createStepId: () => `step-${uid().replaceAll("-", "").slice(0, 12)}`,
     });
-    const candidate = validateKitchenWorkflow({
-      schema: KITCHEN_WORKFLOW_SCHEMA,
-      revision: current.revision,
-      screenCount,
-      queueMode: String(values.get("queueMode") ?? current.queueMode),
-      steps,
-    });
-    return autoDistribute ? distributeKitchenSteps(candidate, screenCount) : candidate;
   }
 
   async function saveKitchenWorkflowConfiguration(form) {

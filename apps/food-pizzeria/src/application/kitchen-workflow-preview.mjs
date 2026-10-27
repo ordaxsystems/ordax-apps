@@ -137,6 +137,45 @@ export function distributeKitchenSteps(workflowValue, screenCountValue) {
   return freezeWorkflow(workflow.revision, screenCount, steps, workflow.queueMode);
 }
 
+export function createKitchenWorkflowDraft(currentValue, inputValue, {
+  autoDistribute = false,
+  createStepId,
+} = {}) {
+  const current = validateKitchenWorkflow(currentValue ?? DEFAULT_KITCHEN_WORKFLOW);
+  if (!inputValue || typeof inputValue !== "object" || Array.isArray(inputValue)
+    || !Array.isArray(inputValue.steps)) {
+    throw new TypeError("As etapas da cozinha precisam ser uma lista.");
+  }
+  const stepCount = Number(inputValue?.stepCount);
+  const screenCount = Number(inputValue?.screenCount);
+  if (!Number.isSafeInteger(stepCount) || stepCount < 1 || stepCount > MAX_KITCHEN_WORKFLOW_STEPS
+    || !Number.isSafeInteger(screenCount) || screenCount < 1 || screenCount > stepCount) {
+    throw new TypeError("O número de telas precisa ser menor ou igual ao número de etapas.");
+  }
+  const steps = Array.from({ length: stepCount }, (_, index) => {
+    const old = current.steps[index];
+    const submitted = inputValue.steps[index] ?? {};
+    const parsedScreen = Number(submitted.screen);
+    const distributedScreen = Math.min(screenCount, Math.floor(index * screenCount / stepCount) + 1);
+    const rawId = submitted.id ?? old?.id ?? createStepId?.(index);
+    return {
+      id: String(rawId ?? ""),
+      label: String(submitted.label ?? old?.label ?? `Etapa ${index + 1}`),
+      screen: autoDistribute || !Number.isSafeInteger(parsedScreen) || parsedScreen < 1 || parsedScreen > screenCount
+        ? distributedScreen
+        : parsedScreen,
+    };
+  });
+  const candidate = validateKitchenWorkflow({
+    schema: KITCHEN_WORKFLOW_SCHEMA,
+    revision: current.revision,
+    screenCount,
+    queueMode: String(inputValue.queueMode ?? current.queueMode),
+    steps,
+  });
+  return autoDistribute ? distributeKitchenSteps(candidate, screenCount) : candidate;
+}
+
 export function saveKitchenWorkflow(currentValue, draftValue) {
   const current = validateKitchenWorkflow(currentValue ?? DEFAULT_KITCHEN_WORKFLOW);
   const draft = validateKitchenWorkflow({

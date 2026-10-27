@@ -87,3 +87,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - O cálculo de preço por linha e subtotal saiu do controlador de interface para o módulo de aplicação cart-pricing. A linha exibida e o fechamento do pedido agora consultam as mesmas funções puras.
 - Pizzas usam a regra e o snapshot atual do domínio Food; produtos adicionais mantêm o preço congelado no item local. Se uma edição do cardápio tornar uma pizza impossível de precificar, o rascunho continua visível pelo preço congelado, enquanto a revisão estrita continua bloqueando o envio.
 - Testes cobrem pizza, item de catálogo, subtotal misto, limites de quantidade e preservação do rascunho inválido. Suíte Food: 185/185; prova Chrome nas 26 configurações; sintaxe e git diff --check aprovados. Sem novos dados ou owners.
+
+### Cozinha — extrair a montagem do fluxo configurável (2026-10-27)
+
+- `createKitchenWorkflowDraft` agora monta e valida o rascunho de etapas na camada de aplicação: limites, atribuição manual de telas, redistribuição equilibrada, preservação de IDs/rótulos e geração injetável de IDs para novas etapas. O controlador traduz apenas `FormData` para a entrada tipada.
+- A função rejeita payloads sem lista de etapas sem lançar erro incidental. Não muda o formato persistido, fila de produção, pedido Food nem sincronização entre aparelhos.
+- Verificação: suíte Food **187/187**, prova Chrome **26/26**, verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados**, sintaxe JavaScript e `git diff --check` aprovados.
