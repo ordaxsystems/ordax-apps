@@ -40,3 +40,15 @@ test("parada em rota oferece ligação e cópia do endereço sem expor ações e
   assert.doesNotMatch(html, /data-address=""/);
   assert.doesNotMatch(html, /href="tel:.*Caio/);
 });
+
+test("fila de entrega informa a ordem de saída sem apresentar mapa ou GPS", () => {
+  const html = renderDelivery([
+    { id: "saída-posterior", channel: "delivery", status: "out-for-delivery", customerName: "Bia", phone: "11999990000", address: "Rua B", updatedAt: "2026-10-27T10:20:00.000Z" },
+    { id: "saída-anterior", channel: "delivery", status: "out-for-delivery", customerName: "Ana", phone: "11988880000", address: "Rua A", updatedAt: "2026-10-27T10:10:00.000Z" },
+  ]);
+
+  assert.match(html, /<h2>Fila de entrega<\/h2>/);
+  assert.match(html, /Da saída mais antiga à mais recente/);
+  assert.ok(html.indexOf("#saída-anterior") < html.indexOf("#saída-posterior"));
+  assert.doesNotMatch(html, /route-map|Diagrama esquemático|geolocalização|GPS|map-pin/);
+});

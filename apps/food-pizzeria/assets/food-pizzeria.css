@@ -666,13 +666,7 @@ dialog p { color: #a2a8af; }
 .delivery-stage, .route-panel { padding: 18px; }
 .delivery-stage .history-list { max-height: 420px; overflow: auto; }
 .delivery-kds-callout { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -2px 0 14px; padding: 10px 14px; border: 1px solid #3b4148; border-radius: 9px; background: #1a1d21; color: #c5cbd1; font-size: 10px; }
-.route-map { position: relative; height: 205px; overflow: hidden; border: 1px solid #343a40; border-radius: 11px; background-color: #202a2a; background-image: linear-gradient(30deg, transparent 48%, #394645 49%, #394645 52%, transparent 53%), linear-gradient(120deg, transparent 46%, #394645 47%, #394645 50%, transparent 51%), linear-gradient(90deg, #263331 1px, transparent 1px), linear-gradient(#263331 1px, transparent 1px); background-size: 100% 100%, 100% 100%, 42px 42px, 42px 42px; }
-.route-street { position: absolute; height: 10px; border: 1px solid #43504c; background: #303d38; transform: rotate(-28deg); }
-.street-one { top: 29%; left: -10%; width: 125%; }.street-two { top: 72%; left: -14%; width: 126%; transform: rotate(22deg); }.street-three { top: 10%; left: 49%; width: 98%; transform: rotate(75deg); }
-.map-pin { position: absolute; display: grid; width: 30px; height: 30px; place-items: center; border: 2px solid #fff; border-radius: 50% 50% 50% 3px; background: #ff652b; color: #fff; box-shadow: 0 4px 15px #0007; transform: rotate(-45deg); }
-.map-pin > * { transform: rotate(45deg); }.pin-shop { top: 22%; left: 20%; }
-.map-label { position: absolute; padding: 4px 7px; border: 1px solid #4b5550; border-radius: 5px; background: #1a2220; color: #dce4df; font-size: 8px; }.label-shop { top: 17%; left: 30%; }
-.map-route-count { position: absolute; right: 12px; bottom: 12px; padding: 6px 8px; border: 1px solid #4b5550; border-radius: 7px; background: #1a2220; color: #f4a37c; font-size: 9px; font-weight: 700; }
+.delivery-route-ordering { margin: 3px 0 0; color: #9ca3ab; font-size: 8px; }
 .delivery-stops { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
 .delivery-stop { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 9px; border: 1px solid #32373d; border-radius: 8px; background: #1c1f23; }
 .delivery-stop-number { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 7px; background: #30251f; color: #ff9469; font-size: 9px; font-weight: 800; }
