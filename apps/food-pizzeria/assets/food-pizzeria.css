@@ -1122,8 +1122,12 @@ dialog p { color: #a2a8af; }
 @media (max-width: 900px) {
   .settings-layout { grid-template-columns: minmax(0, 1fr); }
   .settings-layout > .settings-form { width: 100%; }
-  .recipe-line { grid-template-columns: minmax(140px, .7fr) minmax(0, 2fr) 30px; gap: 6px; padding: 8px; }
+  .recipe-line { grid-template-columns: minmax(140px, .7fr) minmax(0, 2fr) 44px; gap: 6px; padding: 8px; }
   .recipe-size-grid { grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 6px; }
+  .recipe-line .icon-button { width: 44px; min-height: 44px; }
+  .recipe-line input, .recipe-line select { min-height: 44px; font-size: 14px; }
+  .recipe-editor .panel-heading > .button { min-height: 44px; }
+  .recipe-editor-actions .button { min-height: 44px; }
 }
 @media (max-width: 680px) {
   .capability-pending { padding: 15px; }
@@ -1134,12 +1138,17 @@ dialog p { color: #a2a8af; }
   .batch-plan-actions > div { width: 100%; }
   .batch-plan-actions button { flex: 1 1 auto; }
   .batch-result-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
-  .recipe-line { grid-template-columns: minmax(0, 1fr) 30px; }
+  .recipe-line { grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; padding: 10px; }
   .recipe-line .recipe-ingredient { grid-column: 1 / -1; }
-  .recipe-size-grid { grid-column: 1; grid-row: 2; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); }
+  .recipe-size-grid { grid-column: 1; grid-row: 2; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .recipe-line label { font-size: 10px; }
+  .recipe-line input, .recipe-line select { min-height: 44px; font-size: 16px; }
   .recipe-line .icon-button { grid-column: 2; grid-row: 2; align-self: center; }
   .recipe-editor { padding: 12px; }
   .recipe-editor .panel-heading { flex-direction: row; }
+  .recipe-editor-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .recipe-editor-actions > span { min-width: 0; }
+  .recipe-editor-actions .button { width: 100%; min-height: 44px; justify-content: center; }
   .settings-config-row { grid-template-columns: minmax(0, 1fr) minmax(86px, .5fr); }
   .settings-config-row .settings-toggle { grid-column: 1 / -1; }
 }

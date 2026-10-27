@@ -410,6 +410,38 @@ try {
     ensure(root.querySelector('[name="ingredient-0"]')?.value === "tomate"
       && root.querySelector('[name="quantity-0-small"]')?.value === "137",
     "Fechar ou trocar de sabor descartou o rascunho da Calabresa.");
+
+    const viewport = parameters.get("__viewport");
+    if (viewport === "phone-portrait" || viewport === "small-portrait" || viewport === "phone-landscape") {
+      const editor = root.querySelector("#recipe-editor");
+      const recipeLine = editor?.querySelector(".recipe-line");
+      const sizeGrid = recipeLine?.querySelector(".recipe-size-grid");
+      const removeButton = recipeLine?.querySelector('[data-action="remove-recipe-line"]');
+      const sizeFields = [...(sizeGrid?.querySelectorAll("input") ?? [])];
+      const page = root.querySelector("#main-content");
+      ensure(editor && recipeLine && sizeGrid && removeButton && page,
+        `A ficha técnica não está completa no viewport ${viewport}.`);
+      const widths = [
+        ["document", document.documentElement.scrollWidth, innerWidth],
+        ["page", page.scrollWidth, page.clientWidth],
+        ["editor", editor.scrollWidth, editor.clientWidth],
+        ["ingredient row", recipeLine.scrollWidth, recipeLine.clientWidth],
+      ];
+      ensure(widths.every(([, scroll, client]) => scroll <= client + 1),
+        `A ficha técnica excede a largura do viewport ${viewport}: ${widths.map(([name, scroll, client]) => `${name} ${scroll}/${client}`).join(", ")}.`);
+      const removeBounds = removeButton.getBoundingClientRect();
+      ensure(removeBounds.width >= 44 && removeBounds.height >= 44,
+        `O alvo para remover insumo é pequeno no viewport ${viewport} (${removeBounds.width} × ${removeBounds.height}).`);
+      ensure(sizeFields.length >= 2 && sizeFields.every((field) => {
+        const bounds = field.getBoundingClientRect();
+        const minimumFontSize = viewport === "phone-portrait" || viewport === "small-portrait" ? 16 : 14;
+        return bounds.width >= 72 && bounds.height >= 44
+          && Number.parseFloat(getComputedStyle(field).fontSize) >= minimumFontSize;
+      }), `Os campos de medida não são legíveis/tocáveis no viewport ${viewport}.`);
+      ensure(editor.querySelector('[data-action="close-recipe-editor"]')?.getBoundingClientRect().height >= 44
+        && editor.querySelector('[type="submit"]')?.getBoundingClientRect().height >= 44,
+      `As ações da ficha técnica têm alvos pequenos no viewport ${viewport}.`);
+    }
   }
 
   if (parameters.has("station")) {

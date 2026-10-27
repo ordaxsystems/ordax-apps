@@ -147,3 +147,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - Rascunhos de ficha técnica permanecem associados ao sabor enquanto a instância do app está aberta: fechar o editor ou alternar para outra ficha não apaga quantidades/insumos; reabrir restaura a edição. Salvar remove o rascunho temporário. O estado não é gravado no domínio Food nem persiste após encerrar a instância.
 - O foco vai ao título quando a ficha abre, à linha após adicionar/remover insumo e ao acionador do sabor ao fechar/salvar. A rolagem respeita a preferência de movimento reduzido.
 - Verificação: Food **195/195**; Chrome **27/27**, incluindo alternância, fechamento, restauração do rascunho e foco; `node --check` e `git diff --check` aprovados. Catálogo e Inventory continuam sem novas escritas/integradores.
+
+### Cardápio — edição confortável de ficha técnica no telefone (2026-10-27)
+
+- No telefone, as medidas da ficha ficam numa grade 2×2, os campos recebem 44 px de altura (fonte 16 px em retrato), e remover, fechar e salvar têm área de toque de pelo menos 44 px. A coluna de remoção acompanha o tamanho do alvo também em paisagem, evitando rolagem horizontal.
+- A prova real de navegador exercita o editor com rascunho preservado em 390×844, 320×568 e 844×390; verifica largura da página/ficha/linha, legibilidade dos campos e altura das ações.
+- Verificação: suíte Food **195/195**; Chrome **30/30**; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações verificadas**; sintaxe JavaScript e `git diff --check` aprovados. Nenhuma regra de cardápio, pedido, Inventory ou contrato foi alterada.
