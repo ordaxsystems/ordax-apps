@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 jobs:
-  package-scope:
+  package_scope:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -142,8 +142,8 @@ jobs:
 # credentialed, explicitly authorized integration environment.
 
   owned-windows:
-    needs: package-scope
-    if: needs.package-scope.outputs.windows_required == 'true'
+    needs: package_scope
+    if: needs.package_scope.outputs.windows_required == 'true'
     runs-on: windows-2025
     timeout-minutes: 25
     steps:
