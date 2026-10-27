@@ -83,8 +83,8 @@ try {
     if (root.querySelector("[data-kitchen-current-order]")) {
       const focusedTicket = root.querySelector("[data-kitchen-current-order]");
       const ticketText = focusedTicket.textContent.toLocaleLowerCase("pt-BR");
-      ensure(ticketText.includes("fatias") && ticketText.includes("sabores"),
-      "O pedido em foco não exibe fatias e sabores.");
+      ensure(ticketText.includes("fatias") && /\bsabores?\b/.test(ticketText),
+      "O pedido em foco não exibe fatias e ao menos um sabor.");
     }
     ensure(root.querySelector(".food-embedded-preview-kitchen"),
       "A tela dedicada não ativou o layout compacto do preview.");
