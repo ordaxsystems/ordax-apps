@@ -734,6 +734,13 @@ o handoff bootstrap comprovado.
 - Correção de atomicidade: o scanner agora passa a variante lida ao mesmo fluxo de adição do carrinho e só muda busca/categoria depois da aceitação. Sem saldo ou diante de limites do carrinho, preserva busca, categoria, texto lido, carrinho e foco. Validado no host `:4353` com 5 unidades disponíveis: cinco leituras entraram no carrinho; a sexta foi recusada mantendo “bolsa”, categoria “Bolsas”, SKU, quantidade e foco. Nenhuma venda foi concluída.
 - O fluxo permanece na prévia local e não chama Catálogo, Inventory ou Sales reais.
 
+### Moda — consistência de trocas em relatórios e visão geral (2026-10-26)
+
+- Relatórios e clientes agora derivam o valor líquido de mercadorias considerando a peça substituta, além do item devolvido. O valor é explicitamente distinto de receita/caixa; a diferença financeira da troca continua pendente e nenhum pagamento ou reembolso é inferido.
+- A visão geral discrimina peças vendidas, devolvidas e substituídas em troca. Contagens zero deixam de ocupar espaço no resumo; dias com mais devoluções que vendas preservam o saldo negativo.
+- Testes Moda: `node --test apps/moda/tests/*.test.mjs` passou 46/46. Host da branch `:4353` responde em `/apps/moda/`; o controle visual do navegador não estava disponível, portanto a conferência visual por interação continua pendente.
+- As leituras usam apenas o snapshot fictício local. Sales mantém transações, Inventory mantém quantidades/movimentações e Payments permanece necessário para conciliação real. Sem alteração de distribuição.
+
 ### Alinhamento local do checkout e host ChatGPT Web (2026-10-09)
 
 - Origem local alinhada a `ordaxsystems/ordax-apps` e base atualizada por fast-forward para `f3815e031181cc6b30f986c2878f60aae651acf5`, por solicitação do usuário após a transferência da organização.

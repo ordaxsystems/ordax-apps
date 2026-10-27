@@ -66,6 +66,33 @@ export function returnableQuantity(state, saleId, sku) {
   return Math.max(0, sold - returned);
 }
 
+function returnImpact(items = []) {
+  return items.reduce((impact, item) => {
+    const quantity = Number.isSafeInteger(item?.quantity) && item.quantity > 0 ? item.quantity : 0;
+    const returnedCents = Number.isSafeInteger(item?.valueCents) && item.valueCents >= 0 ? item.valueCents : 0;
+    const exchange = item?.type === "exchange" && Boolean(item.replacementSku);
+    const replacementCents = exchange && Number.isSafeInteger(item.replacementValueCents) && item.replacementValueCents >= 0
+      ? item.replacementValueCents
+      : 0;
+    const pendingDifferenceCents = exchange && item.settlement === "pending" && Number.isSafeInteger(item.differenceCents)
+      ? item.differenceCents
+      : 0;
+    return {
+      returnedCents: impact.returnedCents + returnedCents,
+      replacementCents: impact.replacementCents + replacementCents,
+      unitsReturned: impact.unitsReturned + quantity,
+      unitsExchanged: impact.unitsExchanged + (exchange ? quantity : 0),
+      pendingDifferenceCents: impact.pendingDifferenceCents + pendingDifferenceCents,
+    };
+  }, {
+    returnedCents: 0,
+    replacementCents: 0,
+    unitsReturned: 0,
+    unitsExchanged: 0,
+    pendingDifferenceCents: 0,
+  });
+}
+
 export function deriveReturnValuePreview(state, {
   saleId, sku, quantity = 1, type = "return", replacementSku = "",
 } = {}) {
@@ -109,19 +136,21 @@ export function salesTotals(state, since = null) {
   const cutoff = since ? new Date(since).getTime() : Number.NEGATIVE_INFINITY;
   const sales = state.sales.orders.filter((sale) => Date.parse(sale.createdAt) >= cutoff);
   const returned = state.returns.items.filter((item) => Date.parse(item.createdAt) >= cutoff);
+  const impact = returnImpact(returned);
   const grossCents = sales.reduce((sum, sale) => sum + sale.totalCents, 0);
-  const returnedCents = returned.reduce((sum, item) => sum + item.valueCents, 0);
   const unitsSold = sales.reduce((sum, sale) => sum + sale.lines.reduce((total, line) => total + line.quantity, 0), 0);
-  const unitsReturned = returned.reduce((sum, item) => sum + item.quantity, 0);
-  const units = unitsSold - unitsReturned;
+  const units = unitsSold - impact.unitsReturned + impact.unitsExchanged;
   return {
     sales,
     returns: returned,
     grossCents,
-    returnedCents,
-    netCents: grossCents - returnedCents,
+    returnedCents: impact.returnedCents,
+    replacementCents: impact.replacementCents,
+    pendingExchangeDifferenceCents: impact.pendingDifferenceCents,
+    netCents: grossCents - impact.returnedCents + impact.replacementCents,
     unitsSold,
-    unitsReturned,
+    unitsReturned: impact.unitsReturned,
+    unitsExchanged: impact.unitsExchanged,
     units,
     ticketCount: sales.length,
     averageCents: sales.length ? Math.round(grossCents / sales.length) : 0,
@@ -175,28 +204,40 @@ export function deriveReport(state, days = 7, now = new Date()) {
     const end = start + 86_400_000;
     const sales = state.sales.orders.filter((sale) => Date.parse(sale.createdAt) >= start && Date.parse(sale.createdAt) < end);
     const returns = state.returns.items.filter((item) => Date.parse(item.createdAt) >= start && Date.parse(item.createdAt) < end);
+    const impact = returnImpact(returns);
     const grossCents = sales.reduce((sum, sale) => sum + sale.totalCents, 0);
-    const returnedCents = returns.reduce((sum, item) => sum + item.valueCents, 0);
     const soldUnits = sales.reduce((sum, sale) => sum + sale.lines.reduce((total, line) => total + line.quantity, 0), 0);
-    const returnedUnits = returns.reduce((sum, item) => sum + item.quantity, 0);
     buckets.push({
       label: new Intl.DateTimeFormat("pt-BR", { weekday: "short" }).format(date).replace(".", ""),
       date: date.toISOString(),
       grossCents,
-      returnedCents,
-      netCents: grossCents - returnedCents,
+      returnedCents: impact.returnedCents,
+      replacementCents: impact.replacementCents,
+      pendingExchangeDifferenceCents: impact.pendingDifferenceCents,
+      netCents: grossCents - impact.returnedCents + impact.replacementCents,
       unitsSold: soldUnits,
-      unitsReturned: returnedUnits,
-      units: soldUnits - returnedUnits,
+      unitsReturned: impact.unitsReturned,
+      unitsExchanged: impact.unitsExchanged,
+      units: soldUnits - impact.unitsReturned + impact.unitsExchanged,
       tickets: sales.length,
     });
   }
   const totals = buckets.reduce((all, item) => ({
     grossCents: all.grossCents + item.grossCents,
     returnedCents: all.returnedCents + item.returnedCents,
+    replacementCents: all.replacementCents + item.replacementCents,
+    pendingExchangeDifferenceCents: all.pendingExchangeDifferenceCents + item.pendingExchangeDifferenceCents,
     netCents: all.netCents + item.netCents,
+    unitsSold: all.unitsSold + item.unitsSold,
+    unitsReturned: all.unitsReturned + item.unitsReturned,
+    unitsExchanged: all.unitsExchanged + item.unitsExchanged,
+    units: all.units + item.units,
     tickets: all.tickets + item.tickets,
-  }), { grossCents: 0, returnedCents: 0, netCents: 0, tickets: 0 });
+  }), {
+    grossCents: 0, returnedCents: 0, replacementCents: 0,
+    pendingExchangeDifferenceCents: 0, netCents: 0,
+    unitsSold: 0, unitsReturned: 0, unitsExchanged: 0, units: 0, tickets: 0,
+  });
   const categories = new Map();
   for (const sale of state.sales.orders.filter((item) => Date.parse(item.createdAt) >= rangeStart)) {
     for (const line of sale.lines) {
@@ -215,10 +256,16 @@ export function customerMetrics(state, customerId) {
     .map(([saleId]) => saleId);
   const orders = state.sales.orders.filter((sale) => orderIds.includes(sale.id));
   const returns = state.returns.items.filter((item) => orderIds.includes(item.saleId));
+  const impact = returnImpact(returns);
+  const grossCents = orders.reduce((sum, sale) => sum + sale.totalCents, 0);
   return {
     orders,
     returns,
-    spendCents: Math.max(0, orders.reduce((sum, sale) => sum + sale.totalCents, 0) - returns.reduce((sum, item) => sum + item.valueCents, 0)),
+    grossCents,
+    returnedCents: impact.returnedCents,
+    replacementCents: impact.replacementCents,
+    pendingExchangeDifferenceCents: impact.pendingDifferenceCents,
+    spendCents: Math.max(0, grossCents - impact.returnedCents + impact.replacementCents),
     lastOrder: [...orders].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] ?? null,
   };
 }

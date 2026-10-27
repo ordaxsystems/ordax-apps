@@ -365,6 +365,7 @@ td small { display: block; margin-top: 4px; color: #a39d93; font-size: 8px; }
 .customer-stats > div { display: grid; gap: 5px; }
 .customer-stats small { color: #a39d93; font-size: 8px; }
 .customer-stats strong { color: #514c44; font-family: Georgia, serif; font-size: 14px; font-weight: 500; }
+.customer-settlement-note { display: block; margin-top: 8px; color: #8b8175; font-size: 9px; line-height: 1.5; }
 .panel-subheading { margin: 14px 0 5px; }
 .panel-subheading h3 { margin: 0; color: #69635a; font-size: 10px; }
 .customer-order { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0ede6; }
