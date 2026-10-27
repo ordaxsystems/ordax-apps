@@ -5,6 +5,7 @@ import { renderKitchenItemLine } from "../src/ui/views/kitchen-item.mjs";
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
+  KITCHEN_QUEUE_MODES,
   KITCHEN_WORKFLOW_PRESETS,
   applyKitchenTaskAction,
   createKitchenWorkflowPreset,
@@ -172,7 +173,7 @@ test("single-screen flow keeps every step in sequence on one focused ticket", ()
   assert.doesNotMatch(page, /<h1>Abrir massa · Montagem · Forno/);
 });
 
-test("solo pizzaiolo preset names the preparation-and-oven flow as one station", () => {
+test("solo pizzaiolo setup explains both per-order and batch preparation modes", () => {
   const soloWorkflow = createKitchenWorkflowPreset(DEFAULT_KITCHEN_WORKFLOW, KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO);
   const page = render({
     kitchenWorkflow: soloWorkflow,
@@ -188,6 +189,16 @@ test("solo pizzaiolo preset names the preparation-and-oven flow as one station",
   const setupPage = render({ kitchenWorkflow: soloWorkflow });
   assert.match(setupPage, /data-action="apply-kitchen-preset" data-preset="single-pizzaiolo"/);
   assert.match(setupPage, /data-action="apply-kitchen-preset" data-preset="pizzeria-line"/);
+
+  const soloBatchWorkflow = validateKitchenWorkflow({ ...soloWorkflow, queueMode: KITCHEN_QUEUE_MODES.BY_STAGE });
+  const batchPage = render({
+    kitchenWorkflow: soloBatchWorkflow,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, soloBatchWorkflow),
+    activeKitchenScreen: 1,
+    kitchenScreenCount: 1,
+  });
+  assert.match(batchPage, /faça o preparo de todos os pedidos antes de avançar ao forno/);
+  assert.doesNotMatch(batchPage, /um pedido por vez/);
 });
 
 test("each of the four production screens renders only its own assigned stage", () => {

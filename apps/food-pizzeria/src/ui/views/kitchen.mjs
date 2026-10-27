@@ -114,7 +114,9 @@ export function renderKitchenPage(viewModel) {
         ? "Produção completa"
         : activeAssignedLabels.join(" · ") || "Posto multi-etapa");
   const stationDescription = workflow.steps.length === 2 && workflow.screenCount === 1
-    ? "Uma pessoa · um pedido por vez · enviar ao forno ao concluir o preparo."
+    ? workflow.queueMode === "by-stage"
+      ? "Uma pessoa · faça o preparo de todos os pedidos antes de avançar ao forno."
+      : "Uma pessoa · um pedido por vez · enviar ao forno ao concluir o preparo."
     : activeAssignedLabels.length > 1
     ? activeAssignedLabels.length + " etapas nesta tela · "
       + (workflow.queueMode === "by-stage" ? "faça cada função em lote." : "conclua este pedido antes do próximo.")

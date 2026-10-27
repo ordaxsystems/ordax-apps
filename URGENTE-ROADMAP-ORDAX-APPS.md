@@ -774,3 +774,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Regressão em `tests/kitchen-page.test.mjs` cobre o total de pedidos em andamento, inclusive os que estão na expedição. Suíte Food: 82/82 nos worktrees da PR e do host; sintaxe e `git diff --check` aprovados.
 - A prévia continua com dados fictícios do browser. Nenhuma alteração em pedidos, Payments, Inventory, contratos do Space ou elegibilidade de distribuição.
 
+### Space Pizzaria / OrdaX Food — modos de fila e orientação do pizzaiolo solo (2026-10-27)
+
+- O fluxo da cozinha permite trabalhar pedido a pedido ou por função em lote. O preset de um pizzaiolo mantém pedido a pedido; a linha de produção começa em lote. A escolha e as tarefas continuam nas preferências locais de prévia, sem criar um estado operacional paralelo.
+- Corrigida a instrução da tela solo para acompanhar a escolha: por pedido informa que a pessoa conclui o preparo e envia ao forno; em lote informa que prepara todos os pedidos antes de avançar ao forno.
+- `node --test apps/food-pizzeria/tests/*.test.mjs`: 124/124; sintaxe dos módulos alterados e `git diff --check` aprovados. A rota local solo em lote mostrou a orientação correspondente. CI da PR #359 no head `8115347`: 4/4 verificações aprovadas.
+- A fila entre aparelhos ainda depende do contrato público Food de produção em tempo real; esta prévia não sincroniza tarefas, não altera pagamentos/Inventory e não muda elegibilidade de distribuição.
+
