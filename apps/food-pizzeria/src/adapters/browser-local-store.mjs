@@ -167,17 +167,21 @@ function refreshExpiredUntouchedPreviewActivity(state, nowValue) {
     const ageMinutes = PREVIEW_SEED_ORDER_AGES_MINUTES[orderNumber - 1047];
     const latestAt = Date.parse(order.updatedAt);
     const seedHistoryPrefix = `ng-history-${orderNumber}-`;
-    if (!Number.isFinite(ageMinutes)
-      || now - latestAt <= PREVIEW_ACTIVITY_REFRESH_AFTER_MS
+    if (!Number.isFinite(ageMinutes) || !Number.isFinite(latestAt)
       || order.statusHistory.some(({ id }) => !id.startsWith(seedHistoryPrefix))) continue;
 
     const targetCreatedAt = now - ageMinutes * 60000;
     candidates.set(order.id, {
       delta: targetCreatedAt - Date.parse(order.createdAt),
+      latestAt,
       targetCreatedAt,
       tableCommandId: order.tableCommandId,
     });
   }
+
+  if (candidates.size === 0) return state;
+  const oldestUntouchedActivityAt = Math.min(...[...candidates.values()].map(({ latestAt }) => latestAt));
+  if (now - oldestUntouchedActivityAt <= PREVIEW_ACTIVITY_REFRESH_AFTER_MS) return state;
 
   const eligibleOrderIds = new Set(candidates.keys());
   const tableCommandTargets = new Map();

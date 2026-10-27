@@ -43,6 +43,37 @@ test("reopening within two hours preserves the untouched sample timeline", async
   store.destroy();
 });
 
+test("reopening refreshes the untouched sample queue in one batch after its oldest activity expires", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-refresh-seed-batch";
+  const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
+  const now = storedAt + 51 * 60000;
+  const seeded = createSeedFoodState(storedAt);
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state: seeded,
+    processedCommands: [],
+  }));
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+
+  const refreshed = await store.initialize();
+
+  for (let index = 0; index < PREVIEW_SEED_ORDER_AGES_MINUTES.length; index += 1) {
+    const order = refreshed.orders.find(({ id }) => id === `ng-order-${1047 + index}`);
+    assert.equal(order.createdAt,
+      new Date(now - PREVIEW_SEED_ORDER_AGES_MINUTES[index] * 60000).toISOString());
+  }
+  assert.equal(refreshed.revision, seeded.revision + 1);
+  assert.equal(refreshed.tableCommands.find(({ id }) => id === "ng-command-04").openedAt,
+    new Date(now - 58 * 60000).toISOString());
+  store.destroy();
+});
+
 test("reopening an old preview refreshes untouched sample timelines and preserves worked orders", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-refresh-seed-timeline";

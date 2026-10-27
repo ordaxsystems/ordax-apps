@@ -390,10 +390,15 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const lastChange = order.statusHistory.at(-1);
     const startedAt = stageStartedAt(order);
     const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];
+    const channelLabel = orderChannelLabel(order);
+    const identityDetails = [
+      ...(order.tableCommandId && channelLabel === order.customerName ? [] : [channelLabel]),
+      ...(order.phone ? [order.phone] : []),
+    ];
     const age = kitchen && alertAfter ? `<div class="order-age" data-order-age data-started-at="${escapeHtml(startedAt)}" data-target-minutes="${alertAfter}"><span>Na etapa há</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong><span class="age-alert" data-age-alert hidden>Acima de ${alertAfter} min</span></div>` : "";
     return `<article class="order-card ${kitchen ? "order-card-kitchen" : ""}">
       <div class="order-card-head"><div><span class="order-number">${orderNumber(order)}</span><span class="order-time">${timeLabel(order.createdAt)}</span></div><span class="status-badge status-${order.status}"><span></span>${STATUS_LABELS[order.status]}</span></div>
-      <div class="order-customer"><strong>${escapeHtml(order.customerName)}</strong><span>${escapeHtml(orderChannelLabel(order))}${order.phone ? ` · ${escapeHtml(order.phone)}` : ""}</span></div>
+      <div class="order-customer"><strong>${escapeHtml(order.customerName)}</strong>${identityDetails.length ? `<span>${escapeHtml(identityDetails.join(" · "))}</span>` : ""}</div>
       ${age}
       ${order.channel === "delivery" ? `<div class="order-address">${escapeHtml(order.address)}</div>` : ""}
       <ul class="order-items">${items}</ul>

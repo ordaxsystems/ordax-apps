@@ -736,7 +736,7 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 ### OrdaX Food — linha do tempo da prévia local (2026-10-26)
 
-- Amostras de pedidos que ficavam abertas por dias no navegador agora mantêm uma linha do tempo coerente ao reabrir o host: após duas horas sem atividade, o adapter local ajusta somente timestamps de pedidos seed sem transições próprias e da comanda aberta associada.
+- Amostras de pedidos que ficavam abertas por dias no navegador mantêm uma linha do tempo coerente ao reabrir o host: quando a atividade seed mais antiga passa de duas horas, o adapter local ajusta em lote somente pedidos seed sem transições próprias e suas comandas abertas associadas.
 - Estados, histórico editado pela pessoa, diário de idempotência e dados não pertencentes à amostra são preservados. Esse ajuste é local à prévia; não atualiza pedidos reais, Sales, Inventory ou Space.
 - `node --test apps/food-pizzeria/tests/*.test.mjs`: 72/72; `node --check` e `git diff --check` aprovados.
 - Smoke no host local da branch em `http://127.0.0.1:4258/apps/food-pizzeria/`: a interface montou e a amostra exibiu horários atuais. Nenhuma transição foi executada.
@@ -760,4 +760,11 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A tela de Configurações usa o espaço horizontal do host: regras operacionais do Food no painel principal; preferência local de entrega e capacidades externas pendentes numa coluna lateral. Em telas menores, os painéis voltam a uma coluna, mantendo a ordem acessível.
 - Não cria outro Space, dashboard ou provider. A prévia continua usando dados locais; o Space real conserva navegação, contexto e autorização pelos contratos do host.
 - Validação: suíte Food 80/80; `node --check` dos arquivos alterados e `git diff --check` aprovados. No host local, confirmei a disposição em duas colunas e o formulário separado da taxa local; nenhuma preferência ou pedido foi alterado durante a conferência.
+
+### Space Pizzaria / OrdaX Food — KDS e cronologia da prévia (2026-10-26)
+
+- Cards do KDS removem a repetição do nome da mesa quando o pedido fictício usa esse mesmo rótulo como nome do cliente; quando o nome é diferente, mostram cliente e mesa sem perder contexto.
+- A prévia atualiza em lote todos os pedidos seed ainda intocados quando a atividade seed mais antiga passa de duas horas, evitando que a fila envelheça parcialmente; histórico e pedidos com transições próprias permanecem preservados.
+- Regressões cobrem as duas formas de identidade de mesa e o refresh em lote. Suíte Food: 81/81; `node --check` dos módulos alterados e `git diff --check` aprovados.
+- Conferência visual no host `:4259` confirmou o nome da mesa sem duplicação no modo incorporado. Nenhuma transição de pedido ou preferência foi feita durante a conferência; os dados continuam locais e fictícios.
 

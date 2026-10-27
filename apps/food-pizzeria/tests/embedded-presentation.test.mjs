@@ -102,6 +102,8 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     assert.equal(root.dispatchPreviewClick("kitchen"), true);
     assert.match(root.innerHTML, /Fila da cozinha/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
+    assert.match(root.innerHTML, /#1050[\s\S]*?<div class="order-customer"><strong>Mesa 04<\/strong><\/div>/);
+    assert.match(root.innerHTML, /#1055[\s\S]*?<div class="order-customer"><strong>Fernanda Lima<\/strong><span>Mesa 01<\/span><\/div>/);
   } finally {
     app.destroy();
   }
