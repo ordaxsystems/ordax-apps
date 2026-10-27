@@ -77,6 +77,14 @@ function fakeElement() {
   return { addEventListener() {}, removeEventListener() {} };
 }
 
+test("embedded preview marks dedicated kitchen stations for a compact viewport", () => {
+  const station = renderEmbeddedFoodPreview("<section class=\"kitchen-station-screen\"></section>", "", { kitchenStation: true });
+  const regular = renderEmbeddedFoodPreview("<section class=\"kitchen-station-screen\"></section>");
+  assert.match(station, /class="food-embedded-preview food-embedded-preview-kitchen"/);
+  assert.match(regular, /class="food-embedded-preview"/);
+  assert.doesNotMatch(regular, /food-embedded-preview-kitchen/);
+});
+
 test("content-only Food preview never includes a second sidebar, header or dashboard", async () => {
   const root = fakeRoot();
   const app = createFoodPizzeriaApp({ root, dataPort: fakePreviewPort(), presentation: "embedded-preview" });

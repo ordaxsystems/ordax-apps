@@ -354,7 +354,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (presentation === "embedded-preview") {
       return renderEmbeddedFoodPreview(content, notice
         ? `<div class="toast toast-${notice.type}" role="${notice.type === "error" ? "alert" : "status"}"><span>${notice.type === "error" ? "!" : "✓"}</span>${escapeHtml(notice.text)}<button type="button" aria-label="Fechar aviso" data-action="dismiss-notice">×</button></div>`
-        : "");
+        : "", { kitchenStation: activeKitchenScreen !== null });
     }
     const name = snapshot.settings?.storeName ?? "Pizzaria";
     return `<div class="app-shell">
@@ -472,9 +472,15 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function renderKitchenOrderCard(order, { deliveryDetails = false } = {}) {
     const totalPizzas = order.items.reduce((sum, item) => sum + item.quantity, 0);
     const items = order.items.map((item) => {
-      const size = item.sizeLabel ?? PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
-      const flavors = item.flavors.map(({ name }) => name).join(" + ");
-      return `<li class="kitchen-pizza-line"><span class="kitchen-pizza-quantity">${item.quantity}×</span><div><strong>${escapeHtml(size)}</strong><span>${escapeHtml(flavors)}</span></div></li>`;
+      const configuredSize = PIZZA_SIZES.find(({ id }) => id === item.size);
+      const size = item.sizeLabel ?? configuredSize?.label ?? item.size;
+      const flavorNames = item.flavors.map(({ name }) => name);
+      const flavors = flavorNames.length === 2
+        ? `Meio a meio · ${flavorNames.join(" / ")}`
+        : flavorNames.join(" + ");
+      const flavorLabel = item.flavors.length === 2 ? `Meio a meio · ${flavors}` : flavors;
+      const slices = configuredSize?.slices ? ` · ${configuredSize.slices} fatias` : "";
+      return `<li class="kitchen-pizza-line"><span class="kitchen-pizza-quantity">${item.quantity}×</span><div><strong>${escapeHtml(size)}${slices}</strong><span><small class="kitchen-pizza-flavor-label">Sabores</small> · ${escapeHtml(flavorLabel)}</span></div></li>`;
     }).join("");
     const startedAt = stageStartedAt(order);
     const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];

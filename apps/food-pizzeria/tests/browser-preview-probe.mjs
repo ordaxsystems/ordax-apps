@@ -17,9 +17,16 @@ const expected = {
   tables: "Mesas",
 };
 const expectedStationHeading = {
+  all: "Fluxo completo",
   received: "Recebidos",
   preparing: "Em preparo",
   ready: "Prontos",
+}[parameters.get("stationStage")];
+const expectedStationGuidance = {
+  all: "Fluxo completo",
+  received: "Abertura da massa",
+  preparing: "Montagem",
+  ready: "Expedição",
 }[parameters.get("stationStage")];
 
 function ensure(ok, message) {
@@ -66,6 +73,21 @@ try {
       "A tela dedicada da estação não foi montada.");
     ensure(root.querySelectorAll("[data-kitchen-stage]").length === 1,
       "A tela dedicada exibe mais de uma macroetapa.");
+    ensure(root.querySelectorAll("[data-kitchen-current-order]").length <= 1,
+      "A tela dedicada exibe mais de um pedido em foco.");
+    ensure(root.querySelectorAll("[data-kitchen-upcoming-order]").length <= 5,
+      "A lista da estação exibe mais de cinco próximos pedidos.");
+    const stationContent = root.querySelector(`[data-kitchen-station-screen="${station}"]`);
+    ensure(stationContent?.textContent.includes(expectedStationGuidance),
+      "A estação não mostra a orientação correspondente ao posto configurado.");
+    if (root.querySelector("[data-kitchen-current-order]")) {
+      const focusedTicket = root.querySelector("[data-kitchen-current-order]");
+      const ticketText = focusedTicket.textContent.toLocaleLowerCase("pt-BR");
+      ensure(ticketText.includes("fatias") && ticketText.includes("sabores"),
+      "O pedido em foco não exibe fatias e sabores.");
+    }
+    ensure(root.querySelector(".food-embedded-preview-kitchen"),
+      "A tela dedicada não ativou o layout compacto do preview.");
     ensure(root.querySelector('[data-action="fullscreen-kitchen"]'),
       "A tela dedicada não oferece o controle de tela cheia.");
     ensure(!root.querySelector(".kitchen-summary, .kitchen-toolbar, .kitchen-display-setup"),

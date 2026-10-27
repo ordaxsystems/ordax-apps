@@ -24,11 +24,12 @@ export function assertFoodModuleView(view) {
   return view;
 }
 
-export function renderEmbeddedFoodPreview(content, noticeHtml = "") {
-  if (typeof content !== "string" || typeof noticeHtml !== "string") {
+export function renderEmbeddedFoodPreview(content, noticeHtml = "", { kitchenStation = false } = {}) {
+  if (typeof content !== "string" || typeof noticeHtml !== "string"
+    || typeof kitchenStation !== "boolean") {
     throw new TypeError("Conteúdo Food inválido.");
   }
-  return `<div class="food-embedded-preview" data-preview-only="true">
+  return `<div class="food-embedded-preview${kitchenStation ? " food-embedded-preview-kitchen" : ""}" data-preview-only="true">
     <p class="food-preview-disclaimer" role="status"><strong>Prévia local</strong> · dados fictícios, sem autenticação ou sincronização com Space</p>
     <main id="main-content" class="content" tabindex="-1">${noticeHtml}${content}</main>
   </div>`;
