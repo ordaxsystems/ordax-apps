@@ -10,6 +10,7 @@
     "check": "node scripts/check-source.mjs",
     "test": "node --test --test-concurrency=4 --test-timeout=90000 test/*.test.mjs",
     "test:host": "node --test test/host-application.test.mjs test/host-browser-server.test.mjs",
+    "check:runtime-contract": "node scripts/check-runtime-contract.mjs",
     "validate": "npm run check && npm test",
     "start": "node scripts/start-host.mjs",
     "build:worker-preload": "node scripts/build-worker-preload.mjs",
@@ -82,3 +83,4 @@
     "afterPack": "./scripts/attest-packaged-asar.cjs"
   }
 }
+

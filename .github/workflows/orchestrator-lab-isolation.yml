@@ -86,6 +86,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Checkout canonical Runtime contract owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-runtime
+          ref: main
+          path: _runtime-contract
+          persist-credentials: false
+
       - name: Setup Node 24
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -119,6 +127,7 @@ jobs:
       - name: Validate the directly owned Lab product
         run: |
           npm ci --prefix prototypes/ordax-orchestrator/product
+          npm run check:runtime-contract --prefix prototypes/ordax-orchestrator/product -- "$GITHUB_WORKSPACE/_runtime-contract"
           npm run validate --prefix prototypes/ordax-orchestrator/product
           test ! -e prototypes/ordax-orchestrator/product/src/relay
           test ! -e prototypes/ordax-orchestrator/product/apps
@@ -242,4 +251,5 @@ jobs:
             prototypes/ordax-orchestrator/product/dist/orchestrator-packaged-proof.json
           retention-days: 3
           if-no-files-found: error
+
 
