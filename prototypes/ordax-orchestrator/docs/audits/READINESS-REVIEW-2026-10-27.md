@@ -144,3 +144,11 @@ O head `81bfb7b6dbb5e35424e312ac9fe0d60e8203fead` mantém a PR #348 aberta como 
 
 Consulta às fontes atuais dos owners mostrou que Runtime já possui `OrchestratorStore` durável para agentes, objetivos, sessões, checkpoints e leases, enquanto o OS Scheduler ainda não está ligado ao Background Runtime de produção. Logo, a lacuna central é contrato e integração do worker pelo owner correto, não criar mais um scheduler ou fila em Apps. Esse achado está detalhado junto ao mapa de responsabilidades e aos aceites das fases 4 e 5 do plano mestre.
 
+### Evidência adicional do bridge Runtime↔App
+
+Uma leitura direcionada da main do Runtime (`3a6af2a745d54f3399ea83bbe748f064500644fe`) encontrou uma implementação correspondente ao protocolo do App: `ordax_dev_agent/orchestrator_app_bridge.py`, launcher Windows com verificação de instalação e named pipe privado. Portanto, não é correto dizer que a infraestrutura de transporte ainda precise ser criada.
+
+O próprio Runtime, porém, qualifica o bridge como privado e **ainda não registrado no catálogo de ações de produção**, dependente de capability do Platform e launcher gerenciado comprovados. A ação Product presente lê apenas status; o cliente App aceita sete operações somente de leitura. O Runtime também possui ações duráveis de agent/work no `OrchestratorStore`, mas isso não comprova ligação dessas leases ao envio, à observação e à reconciliação do GPT Web no App. A lacuna é habilitação autorizada e contrato operacional de escrita/execução, não ausência de named pipe.
+
+O plano mestre foi ajustado para reaproveitar esse bridge existente, testar paridade do contrato entre os dois owners e exigir prova de quem mantém a sessão GPT Web e quem envia/atribui a resposta quando o worker continua sem a janela. Até essa evidência, 24h e execução GPT Web pós-fechamento permanecem sem aceite.
+
