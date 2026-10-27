@@ -197,3 +197,9 @@ No Visualizador G-code, arquivos sem comentários de camada agora inferem avanç
 ### Correção de validação do botão fixo no orçamento (2026-10-26)
 
 O botão fixo “Salvar orçamento” acompanha a validação do formulário: fica desativado se faltarem peso/tempo ou se margem e taxas inviabilizarem o preço, com o motivo exposto no estado acessível. No host local isolado `:4310`, validei a entrada manual de 28,6 g e 2,5 h: custo estimado de R$ 5,03, incluindo R$ 1,04 de depreciação (aquisição R$ 3.000, residual R$ 500, vida útil 6.000 h), preço de referência de R$ 6,79 e resultado estimado de R$ 1,76. Uma combinação inválida de margem e taxas desativou salvar e exportar. Nenhum orçamento foi salvo. Suíte OrdaX 3D: 149/149; `node --check` e `git diff --check` aprovados. O host não tem OrcaSlicer nem perfis locais configurados; a validação real de fatiamento segue pendente.
+
+### Resultado estimado por peça, prato e job técnico (2026-10-26)
+
+O Preview agora mostra junto ao custo e ao preço mínimo/de referência o resultado estimado com as taxas configuradas, tanto para o prato quanto para cada peça fatiada isoladamente. O snapshot normalizado do job conserva os valores unitário e total para que a Fila também mostre o resultado esperado. O orçamento avulso continua cobrindo peso/tempo, material, impressora, perdas, energia, depreciação, manutenção, operação, acabamento, embalagem, taxas e markup/margem.
+
+Validação: suíte OrdaX 3D 157/157, módulos alterados passaram em `node --check`, `git diff --check` passou e o verificador MVP reconheceu os mesmos 20 alvos. No host local da branch, a entrada manual de 28,6 g e 2,5 h atualizou o cálculo para custo R$ 3,99, referência R$ 5,38 e resultado R$ 1,40; o orçamento não foi salvo. A depreciação ficou corretamente marcada como pendente porque o perfil da impressora não tinha aquisição/residual configurados. O host não encontrou motor Orca local, portanto não houve fatiamento real nesta conferência.

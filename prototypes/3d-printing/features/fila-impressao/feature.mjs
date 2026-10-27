@@ -21,9 +21,11 @@ export function mountFeature(host = {}) {
     const summary = summarizeTechnicalJobCost(estimate);
     if (!summary) return "";
     const qualification = summary.complete ? "" : "estimativa parcial · ";
-    if (summary.scope === "plate") return `Prato · ${qualification}custo ${money(summary.totalCost)} · referência ${money(summary.suggestedPriceTotal)}`;
-    const unitSummary = `Por peça · ${qualification}custo ${money(summary.costPerUnit)} · referência ${money(summary.suggestedPricePerUnit)}`;
-    return summary.quantity === 1 ? unitSummary : `${unitSummary} · lote de ${summary.quantity}: custo ${money(summary.totalCost)} · referência ${money(summary.suggestedPriceTotal)}`;
+    const profit = summary.estimatedProfitTotal === null ? "" : ` · resultado ${money(summary.estimatedProfitTotal)}`;
+    if (summary.scope === "plate") return `Prato · ${qualification}custo ${money(summary.totalCost)} · referência ${money(summary.suggestedPriceTotal)}${profit}`;
+    const unitProfit = summary.estimatedProfitPerUnit === null ? "" : ` · resultado ${money(summary.estimatedProfitPerUnit)}/peça`;
+    const unitSummary = `Por peça · ${qualification}custo ${money(summary.costPerUnit)} · referência ${money(summary.suggestedPricePerUnit)}${unitProfit}`;
+    return summary.quantity === 1 ? unitSummary : `${unitSummary} · lote de ${summary.quantity}: custo ${money(summary.totalCost)} · referência ${money(summary.suggestedPriceTotal)}${profit}`;
   };
   function render() {
     const jobs = jobsService.list();

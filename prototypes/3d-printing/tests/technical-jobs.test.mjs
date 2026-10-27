@@ -102,17 +102,23 @@ test("job técnico preserva o snapshot de custo do fatiamento sem criar pedido c
 
   assert.equal(job.costEstimate.totalCost, costEstimate.totalCost);
   assert.equal(job.costEstimate.suggestedPriceTotal, costEstimate.suggestedPriceTotal);
+  assert.equal(job.costEstimate.estimatedProfitPerUnit, costEstimate.estimatedProfitPerUnit);
+  assert.equal(job.costEstimate.estimatedProfitTotal, costEstimate.estimatedProfitTotal);
   assert.equal(Object.hasOwn(job, "commercialOrderId"), false);
   assert.equal(Object.hasOwn(job, "paymentId"), false);
 });
 
-test("resumo de custo preserva escopo, completude e totais do orçamento", () => {
+test("resumo de custo preserva escopo, completude, lucro estimado e totais do orçamento", () => {
   const piece = summarizeTechnicalJobCost({ scope: "piece", quantity: 3, costPerUnit: 4.5, suggestedPricePerUnit: 6.25, totalCost: 13.5, suggestedPriceTotal: 18.75, complete: true });
   const plate = summarizeTechnicalJobCost({ scope: "plate", quantity: 1, costPerUnit: 12, suggestedPricePerUnit: 16.2, totalCost: 12, suggestedPriceTotal: 16.2 });
 
-  assert.deepEqual(piece, { scope: "piece", quantity: 3, complete: true, costPerUnit: 4.5, suggestedPricePerUnit: 6.25, totalCost: 13.5, suggestedPriceTotal: 18.75 });
+  assert.deepEqual(piece, { scope: "piece", quantity: 3, complete: true, costPerUnit: 4.5, suggestedPricePerUnit: 6.25, estimatedProfitPerUnit: null, totalCost: 13.5, suggestedPriceTotal: 18.75, estimatedProfitTotal: null });
   assert.equal(plate.scope, "plate");
   assert.equal(plate.complete, false);
+  assert.equal(plate.estimatedProfitTotal, null);
+  const profitable = summarizeTechnicalJobCost({ scope: "piece", quantity: 2, costPerUnit: 4, suggestedPricePerUnit: 6, estimatedProfitPerUnit: 1.5, totalCost: 8, suggestedPriceTotal: 12, estimatedProfitTotal: 3 });
+  assert.equal(profitable.estimatedProfitPerUnit, 1.5);
+  assert.equal(profitable.estimatedProfitTotal, 3);
   assert.equal(summarizeTechnicalJobCost(null), null);
   assert.equal(summarizeTechnicalJobCost({ scope: "piece", costPerUnit: -1, suggestedPricePerUnit: 2, totalCost: 1, suggestedPriceTotal: 2 }), null);
 });

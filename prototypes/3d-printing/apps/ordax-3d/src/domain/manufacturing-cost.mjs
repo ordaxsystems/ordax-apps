@@ -267,6 +267,8 @@ export function normalizeManufacturingCostEstimate(value) {
   const minimumPriceTotal = optionalNonNegative(value.minimumPriceTotal);
   const suggestedPricePerUnit = optionalNonNegative(value.suggestedPricePerUnit);
   const suggestedPriceTotal = optionalNonNegative(value.suggestedPriceTotal);
+  const estimatedProfitPerUnit = optionalNonNegative(value.estimatedProfitPerUnit);
+  const estimatedProfitTotal = optionalNonNegative(value.estimatedProfitTotal);
   if (value.pricingValid !== true || [costPerUnit, totalCost, suggestedPricePerUnit, suggestedPriceTotal].some(item => item === null)) return null;
   const components = {};
   for (const key of ["material", "energy", "depreciation", "maintenance", "machineOverhead", "labor", "packaging", "other", "taxes", "salesFee", "fixedSaleFee", "absorbedShipping", "salesExpenses"]) {
@@ -289,6 +291,8 @@ export function normalizeManufacturingCostEstimate(value) {
     minimumPriceTotal,
     suggestedPricePerUnit,
     suggestedPriceTotal,
+    estimatedProfitPerUnit,
+    estimatedProfitTotal,
     complete: value.complete === true,
     pricingMode: value.pricingMode === "margin" ? "margin" : "markup",
     pricingPercent: bounded(value.pricingPercent, 0, 0, 1000),

@@ -43,7 +43,7 @@ Até esse contrato ser publicado e implementado, a tela de referência é especi
 
 `ordax.3d-technical-job-repository/1` é uma porta **interna** do OrdaX 3D, não um provider público da plataforma. A coleção `technical-print-jobs` é a única origem da lista técnica local. Fila, Materiais, Central de Impressoras e o botão de incluir resultado do slicer compartilham a mesma instância de `createTechnicalJobsService`.
 
-Um job contém metadados técnicos (modelo, impressora de referência, perfil de material, tempo/peso estimados, estado técnico, motor e snapshot opcional da estimativa de custo). O snapshot guarda custos calculados e preço de referência com as taxas daquela revisão; ele não é um preço aprovado por Vendas. O job não contém pedido comercial, cliente, estado de venda, saldo/reserva de Inventory, dado de cobrança, credenciais, arquivo STL ou bytes G-code. O retorno do Orca é um arquivo separado que o usuário pode exportar.
+Um job contém metadados técnicos (modelo, impressora de referência, perfil de material, tempo/peso estimados, estado técnico, motor e snapshot opcional da estimativa de custo). O snapshot guarda custo, preço mínimo/de referência e resultado estimado com as taxas daquela revisão; ele não é um preço aprovado por Vendas. O job não contém pedido comercial, cliente, estado de venda, saldo/reserva de Inventory, dado de cobrança, credenciais, arquivo STL ou bytes G-code. O retorno do Orca é um arquivo separado que o usuário pode exportar.
 
 A Fila identifica no próprio resumo do job se os valores são por peça, lote ou prato completo. O resumo permanece visível no layout móvel, onde os metadados secundários da fila são recolhidos. Ele apresenta o snapshot técnico do job sem recalcular ou alterar o preço pertencente a Vendas.
 

@@ -130,6 +130,7 @@
 .preview-cost-line strong{color:#e2eae2;font:700 13px Manrope,"DM Sans",Inter,ui-sans-serif,system-ui,sans-serif}
 .preview-cost-line--price{padding-top:8px;border-top:1px solid #ffffff13}
 .preview-cost-line--price strong{color:#62d4aa}
+.preview-cost-line--profit strong{color:#e8c77c}
 .preview-cost-card>small{color:#a6b5a9;font-size:8px;line-height:1.5}
 .preview-cost-card details{padding-top:7px;border-top:1px solid #ffffff13;color:#c4cec5;font-size:9px}
 .preview-cost-card summary{cursor:pointer;font-weight:650}
@@ -147,9 +148,10 @@
 .preview-object-cost-row[data-state="unavailable"]{border-color:#ffad6b35;background:#d96b3510}
 .preview-object-cost-copy{display:grid;gap:3px;min-width:0}
 .preview-object-cost-copy>strong{overflow:hidden;color:#dce5dc;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
-.preview-object-cost-copy>small,.preview-object-cost-values>small{color:#94a598;font-size:8px;line-height:1.4}
-.preview-object-cost-values{display:grid;justify-items:end;gap:2px;flex:none}
+.preview-object-cost-copy>small,.preview-object-cost-values>small{color:#94a598;font-size:8px;line-height:1.4;overflow-wrap:anywhere}
+.preview-object-cost-values{display:grid;justify-items:end;gap:2px;flex:none;max-width:58%;text-align:right}
 .preview-object-cost-values>strong{color:#e3ede4;font-size:9px}
+.preview-object-cost-values>.preview-object-profit{color:#a9d9bd}
 .preview-object-quote{padding:1px 0;border:0;background:none;color:#65d4ab;font-size:8px;font-weight:700;cursor:pointer}
 .preview-object-quote:hover{text-decoration:underline}
 .preview-object-costs-omitted{color:#94a598;font-size:8px;line-height:1.4}

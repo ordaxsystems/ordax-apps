@@ -26,7 +26,7 @@ O app canônico de desenvolvimento fica em `apps/ordax-3d/`:
 - `features/<id>/` mantém renderizadores e interação de cada módulo, sem shell de produto próprio.
 - `shared/product-host.mjs` é o host local reutilizável que monta a entrada do app; não é um provider do Space de produção.
 
-`print-draft` é a fonte das regras puras de configuração do fatiamento. `technical-print-job` é a fonte das regras dos jobs técnicos. `manufacturing-cost` concentra a fórmula determinística; `manufacturing-cost-service` compartilha premissas, último resultado do slicer e histórico técnico entre Prepare, Preview e Custos. Preços de material e perfis de potência/depreciação/manutenção por impressora ficam no mesmo armazenamento local da calculadora. Uma única instância dos serviços de jobs e custos é injetada pelo host do app; o snapshot de custo do job conserva as premissas do cálculo sem se tornar pedido ou preço comercial aprovado.
+`print-draft` é a fonte das regras puras de configuração do fatiamento. `technical-print-job` é a fonte das regras dos jobs técnicos. `manufacturing-cost` concentra a fórmula determinística; `manufacturing-cost-service` compartilha premissas, último resultado do slicer e histórico técnico entre Prepare, Preview e Custos. Preços de material e perfis de potência/depreciação/manutenção por impressora ficam no mesmo armazenamento local da calculadora. Uma única instância dos serviços de jobs e custos é injetada pelo host do app; o snapshot do job conserva custo, preço mínimo/de referência e resultado estimado com as premissas usadas, sem se tornar pedido ou preço comercial aprovado.
 
 ## SSOT e ownership
 

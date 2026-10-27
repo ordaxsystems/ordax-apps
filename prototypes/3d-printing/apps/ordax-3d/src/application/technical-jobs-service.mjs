@@ -13,10 +13,12 @@ export function summarizeTechnicalJobCost(estimate) {
   const values = {
     costPerUnit: optionalNonNegativeNumber(estimate.costPerUnit),
     suggestedPricePerUnit: optionalNonNegativeNumber(estimate.suggestedPricePerUnit),
+    estimatedProfitPerUnit: optionalNonNegativeNumber(estimate.estimatedProfitPerUnit),
     totalCost: optionalNonNegativeNumber(estimate.totalCost),
     suggestedPriceTotal: optionalNonNegativeNumber(estimate.suggestedPriceTotal),
+    estimatedProfitTotal: optionalNonNegativeNumber(estimate.estimatedProfitTotal),
   };
-  if (Object.values(values).some(value => value === null)) return null;
+  if ([values.costPerUnit, values.suggestedPricePerUnit, values.totalCost, values.suggestedPriceTotal].some(value => value === null)) return null;
   return Object.freeze({
     scope: estimate.scope === "plate" ? "plate" : "piece",
     quantity: Math.max(1, Math.round(Number(estimate.quantity) || 1)),
