@@ -29,6 +29,9 @@ const scenarios = Object.freeze([
     extra: { station, stationStage, screenCount: "4", __expected_station_title: expectedTitle },
   })),
   { presentation: "embedded-preview", view: "kitchen", extra: {
+    station: "1", stationStage: "open-dough", screenCount: "4", __viewport: "notebook",
+  }, viewport: { width: 1280, height: 720, deviceScaleFactor: 1 } },
+  { presentation: "embedded-preview", view: "kitchen", extra: {
     station: "2", stationStage: "assembly", screenCount: "4", __viewport: "landscape",
   }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true } },
   { presentation: "embedded-preview", view: "orders" },
