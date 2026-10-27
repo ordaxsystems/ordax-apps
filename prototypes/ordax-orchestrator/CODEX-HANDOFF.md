@@ -344,3 +344,11 @@ Parser, integração SQLite de origem/revisão/contexto, e seleção de contexto
 - O teste físico de envio GPT Web, resposta/importação persistente, troca de conta e retomada continua sem comprovação. Não declarar E2E completo nem 24 h.
 - Ainda pendente: repetir fluxo real no Electron staged com perfil autenticado e build desta alteração; comprovar o fluxo completo de missão/projeto remoto VESTE por integração GitHub autenticada; fechar ownership Runtime/Platform/OS para grants, execução e continuidade. Não afirmar E2E/24 h concluído.
 
+## Correção do E2E empacotado — espera da frente recém-criada — 2026-10-27
+
+- No Apps head `326dcda413698d595f8e8af36058fdd650cb5f0f`, o CI Windows compilou o portable e passou pelas provas de formulário de projeto, missão persistida, bloqueio sem sessão, fluxo MCP, idempotência e Groq desligado sem bloquear o composer GPT. O runner falhou somente em `final_layout_verify`; não houve envio ao provedor (`providerMessagesSent=0`, `coordinatorApiCalls=0`).
+- Causa raiz no runner: após criar uma frente pelo MCP, o teste mantinha o painel dessa frente aberto. A criação seguinte era assíncrona, mas sua condição de prontidão aceitava apenas dois cartões e qualquer painel visível. Essa condição podia ser verdadeira antes de a nova frente terminar de abrir, produzindo falso negativo de layout.
+- O gate agora aguarda o título exato `Frente criada pela interface` junto com o painel e os dois cartões; o teste de isolamento do runner reproduziu a falha antes da alteração e passou **21/21** depois. `node --check` e `git diff --check` passaram. A repetição integral local foi encerrada após mais de dez minutos sem nova saída e **não conta como aprovada**; o novo CI empacotado deve confirmar essa correção após publicação.
+- A janela visível encontrada no desktop é um pacote antigo `27ce381`, não o candidato deste PR; duas capturas falharam e a automação foi encerrada sem interagir com a janela, perfil ou ChatGPT. Nenhum envio real foi feito nesta verificação.
+- Próximo gate: publicar este ajuste no PR #348, repetir os workflows Windows e revisar os logs do novo E2E. O envio/recepção/importação GPT do head atual, VESTE remoto e execução Runtime com UI fechada seguem sem aceite integral.
+

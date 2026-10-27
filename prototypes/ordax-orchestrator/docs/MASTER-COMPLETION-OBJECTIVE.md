@@ -164,3 +164,7 @@ O Orchestrator estará pronto para o objetivo descrito quando as fases 0 a 6 tiv
 - PR Apps #348: <https://github.com/ordaxsystems/ordax-apps/pull/348>
 - Runtime main: `ordax_core/orchestrator.py` (blob `715c3870e18d9037766e18c560e5e7832adb43d3`)
 - OS main: `system/services/scheduler/README.md` (blob `809cf6b219740702e5284d4e3d09ce3f3cdb5022`)
+
+## Registro incremental — correção do runner Windows — 2026-10-27
+
+O CI do commit `326dcda` provou o estado funcional isolado do pacote até a última frente, mas revelou que o gate de layout lia o painel anterior antes de concluir a abertura assíncrona da nova frente. O runner agora aguarda a identidade/título da frente criada pela UI, e `e2e-script-target-isolation.test.mjs` protege essa condição. A prova focada passou 21/21 após reproduzir a falha antes da correção. O ajuste ainda exige novo CI Windows no commit publicado; não modifica nem afirma comportamento do GPT Web real. A correção do runner não altera os portões de autenticação/envio/importação GPT, remoto VESTE, grants canônicos e retomada 24 h descritos neste objetivo.

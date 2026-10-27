@@ -124,6 +124,19 @@ test('all live smoke scripts have canonical Lab-only target and no Gratis refere
   assert.doesNotMatch(lock,/['"]Gratis['"]/);
 });
 
+test('packaged orchestration smoke waits for the newly created work to open before checking layout',()=>{
+  const source=fs.readFileSync(path.join(scripts,'live-ui-orchestration-smoke.cjs'),'utf8');
+  const scopedCreate=source.match(/phase='scoped_work_create';([\s\S]*?)phase='final_layout_verify';/);
+  assert.ok(scopedCreate,'the scoped-work creation phase is present');
+  const wait=[...scopedCreate[1].matchAll(/await wait\("([^"]+)"\)/g)]
+    .map(match=>match[1]).find(predicate=>predicate.includes('#orchestratorWorks .work-card'));
+  assert.ok(wait,'the E2E waits for the asynchronous work creation and open to finish');
+  assert.match(wait,/querySelectorAll\('#orchestratorWorks \.work-card'\)\.length===2/);
+  assert.match(wait,/getElementById\('taskTitle'\)\.textContent==='Frente criada pela interface'/,
+    'the existing task panel cannot satisfy readiness for a different work');
+  assert.match(source,/layoutResult\.openedWork!=='Frente criada pela interface'/);
+});
+
 test('live text smoke supports long responses and reports an unfinished run without retrying',()=>{
   const source=fs.readFileSync(path.join(scripts,'live-ui-text-smoke.cjs'),'utf8');
   assert.match(source,/ORDAX_E2E_RESPONSE_TIMEOUT_MS\|\|300000/);

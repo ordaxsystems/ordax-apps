@@ -163,7 +163,7 @@ let phase='startup';
     await evaluate(`document.getElementById('newScopedWorkButton').click()`);
     await wait("document.getElementById('newScopedWorkDetails').open");
     await evaluate(`(()=>{document.getElementById('scopedWorkTitle').value='Frente criada pela interface';document.getElementById('newScopedWorkForm').requestSubmit()})()`);
-    await wait("document.querySelectorAll('#orchestratorWorks .work-card').length===2 && !document.getElementById('taskPanel').classList.contains('hidden')");
+    await wait("document.querySelectorAll('#orchestratorWorks .work-card').length===2 && !document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('taskTitle').textContent==='Frente criada pela interface'");
     const layoutResult=await evaluate(`(()=>({openedWork:document.getElementById('taskTitle').textContent,
       projectItems:document.querySelectorAll('#projectNavList button').length,
       orchestratorItems:document.querySelectorAll('#orchestratorNavList button').length,
