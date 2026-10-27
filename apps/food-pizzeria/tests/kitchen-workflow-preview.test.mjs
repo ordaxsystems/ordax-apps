@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   DEFAULT_KITCHEN_TASKS,
   DEFAULT_KITCHEN_WORKFLOW,
+  KITCHEN_QUEUE_MODES,
   KITCHEN_WORKFLOW_PRESETS,
   applyKitchenTaskAction,
   currentKitchenStep,
@@ -26,7 +27,7 @@ function order(id, createdAt, status = "received") {
   return { id, status, createdAt, updatedAt: createdAt };
 }
 
-function action(tasks, actionName, orderId, stepId, screenNumber, commandId, at) {
+function action(tasks, actionName, orderId, stepId, screenNumber, commandId, at, queueMode) {
   return applyKitchenTaskAction(tasks, {
     action: actionName,
     orderId,
@@ -35,12 +36,14 @@ function action(tasks, actionName, orderId, stepId, screenNumber, commandId, at)
     commandId,
     digest,
     at,
+    ...(queueMode ? { queueMode } : {}),
   });
 }
 
 test("production presets cover a solo pizzaiolo and a four-station pizza line", () => {
   const solo = createKitchenWorkflowPreset(DEFAULT_KITCHEN_WORKFLOW, KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO);
   assert.equal(solo.screenCount, 1);
+  assert.equal(solo.queueMode, KITCHEN_QUEUE_MODES.BY_ORDER);
   assert.deepEqual(solo.steps.map(({ id, label, screen }) => [id, label, screen]), [
     ["prepare-order", "Preparar pedido", 1], ["oven", "Forno", 1],
   ]);
@@ -48,10 +51,28 @@ test("production presets cover a solo pizzaiolo and a four-station pizza line", 
   const line = createKitchenWorkflowPreset(solo, KITCHEN_WORKFLOW_PRESETS.PIZZERIA_LINE);
   assert.equal(line.revision, solo.revision);
   assert.equal(line.screenCount, 4);
+  assert.equal(line.queueMode, KITCHEN_QUEUE_MODES.BY_STAGE);
   assert.deepEqual(line.steps.map(({ label, screen }) => [label, screen]), [
     ["Abrir massa", 1], ["Montagem", 2], ["Forno", 3], ["Finalização e embalagem", 4],
   ]);
   assert.throws(() => createKitchenWorkflowPreset(line, "toString"), /Modelo de produção desconhecido/);
+});
+
+test("legacy workflow preferences migrate to the per-order queue mode without losing their settings", () => {
+  const legacy = validateKitchenWorkflow({
+    schema: "ordax.food-kitchen-workflow-preview/1",
+    revision: 7,
+    screenCount: 2,
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({
+      ...step,
+      screen: index < 2 ? 1 : 2,
+    })),
+  });
+  assert.equal(legacy.schema, "ordax.food-kitchen-workflow-preview/2");
+  assert.equal(legacy.revision, 7);
+  assert.equal(legacy.screenCount, 2);
+  assert.equal(legacy.queueMode, KITCHEN_QUEUE_MODES.BY_ORDER);
+  assert.deepEqual(legacy.steps.map(({ screen }) => screen), [1, 1, 2, 2]);
 });
 
 test("pizza workflow distributes four sequential stations across four screens", () => {
@@ -98,6 +119,38 @@ test("a screen can run two consecutive stages before routing the same order to t
     [currentKitchenStep(tasks.tickets[0]).id, currentKitchenStep(tasks.tickets[0]).screen],
     ["oven", 2],
   );
+});
+
+test("batch mode finishes a function across the queue before moving to the next function", () => {
+  const batchWorkflow = validateKitchenWorkflow({
+    ...DEFAULT_KITCHEN_WORKFLOW,
+    screenCount: 1,
+    queueMode: KITCHEN_QUEUE_MODES.BY_STAGE,
+  });
+  let tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [
+    order("batch-order-1", "2026-10-27T10:00:00.000Z"),
+    order("batch-order-2", "2026-10-27T10:01:00.000Z"),
+    order("batch-order-3", "2026-10-27T10:02:00.000Z"),
+  ], batchWorkflow);
+
+  tasks = action(tasks, "start", "batch-order-1", "open-dough", 1,
+    "batch-start-dough-1", "2026-10-27T10:03:00.000Z", KITCHEN_QUEUE_MODES.BY_STAGE);
+  tasks = action(tasks, "complete", "batch-order-1", "open-dough", 1,
+    "batch-complete-dough-1", "2026-10-27T10:04:00.000Z", KITCHEN_QUEUE_MODES.BY_STAGE);
+  assert.deepEqual(sortKitchenTickets(tasks.tickets, batchWorkflow, 1).map((ticket) => [
+    ticket.orderId,
+    currentKitchenStep(ticket).id,
+  ]), [
+    ["batch-order-2", "open-dough"],
+    ["batch-order-3", "open-dough"],
+    ["batch-order-1", "assembly"],
+  ]);
+
+  tasks = action(tasks, "pass-next", "batch-order-2", "open-dough", 1,
+    "batch-pass-dough-2", "2026-10-27T10:05:00.000Z", KITCHEN_QUEUE_MODES.BY_STAGE);
+  assert.deepEqual(sortKitchenTickets(tasks.tickets, batchWorkflow, 1).map(({ orderId }) => orderId), [
+    "batch-order-3", "batch-order-2", "batch-order-1",
+  ]);
 });
 
 test("starting a stage claims one ticket and blocks a second ticket on that station", () => {

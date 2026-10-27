@@ -6,16 +6,22 @@ import { createBrowserLocalFoodStore } from "../src/adapters/browser-local-store
 import { transitionPizzeriaOrder } from "../src/domain/domain.mjs";
 import { PREVIEW_SEED_ORDER_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 import { DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, resizeKitchenDisplayConfiguration } from "../src/application/kitchen-display-configuration.mjs";
+import { KITCHEN_QUEUE_MODES } from "../src/application/kitchen-workflow-preview.mjs";
 
 const defaultPreviewPreferences = (deliveryFeeCents = 500) => ({
   deliveryFeeCents,
   kitchenDisplays: DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
 });
 
-function assertKitchenPreviewPreferences(preferences, { deliveryFeeCents = 500, kitchenDisplays = DEFAULT_KITCHEN_DISPLAY_CONFIGURATION } = {}) {
+function assertKitchenPreviewPreferences(preferences, {
+  deliveryFeeCents = 500,
+  kitchenDisplays = DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+  queueMode = KITCHEN_QUEUE_MODES.BY_ORDER,
+} = {}) {
   assert.equal(preferences.deliveryFeeCents, deliveryFeeCents);
   assert.deepEqual(preferences.kitchenDisplays, kitchenDisplays);
-  assert.equal(preferences.kitchenWorkflow.schema, "ordax.food-kitchen-workflow-preview/1");
+  assert.equal(preferences.kitchenWorkflow.schema, "ordax.food-kitchen-workflow-preview/2");
+  assert.equal(preferences.kitchenWorkflow.queueMode, queueMode);
   assert.equal(preferences.kitchenWorkflow.steps.length, 4);
   assert.ok(preferences.kitchenTasks.tickets.length > 0);
 }
@@ -285,7 +291,16 @@ test("browser adapter stores local delivery preference outside the canonical Foo
   assert.equal(state.schema, "ordax.food-pizzeria-state/6");
   assertKitchenPreviewPreferences(store.getPreviewPreferences());
   const kitchenDisplays = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
-  const saved = await store.updatePreviewPreferences({ deliveryFeeCents: 875, kitchenDisplays });
+  const kitchenWorkflow = {
+    ...store.getPreviewPreferences().kitchenWorkflow,
+    queueMode: KITCHEN_QUEUE_MODES.BY_STAGE,
+  };
+  const saved = await store.updatePreviewPreferences({
+    ...store.getPreviewPreferences(),
+    deliveryFeeCents: 875,
+    kitchenDisplays,
+    kitchenWorkflow,
+  });
   assert.equal(saved.deliveryFeeCents, 875);
   assert.deepEqual(saved.kitchenDisplays, kitchenDisplays);
   assert.equal(saved.kitchenWorkflow.revision, 1);
@@ -297,11 +312,16 @@ test("browser adapter stores local delivery preference outside the canonical Foo
   assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/5");
   assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/6");
   assert.equal(persisted.previewPreferences.deliveryFeeCents, 875);
+  assert.equal(persisted.previewPreferences.kitchenWorkflow.queueMode, KITCHEN_QUEUE_MODES.BY_STAGE);
   store.destroy();
 
   const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
   assert.deepEqual(await reopened.initialize(), state);
-  assertKitchenPreviewPreferences(reopened.getPreviewPreferences(), { deliveryFeeCents: 875, kitchenDisplays });
+  assertKitchenPreviewPreferences(reopened.getPreviewPreferences(), {
+    deliveryFeeCents: 875,
+    kitchenDisplays,
+    queueMode: KITCHEN_QUEUE_MODES.BY_STAGE,
+  });
   reopened.destroy();
 });
 

@@ -95,6 +95,14 @@ try {
         expectedAssignedStepCount + " etapas nesta tela"),
       "A tela não informa quantas etapas foram agrupadas neste posto.");
     }
+    const expectedQueueMode = parameters.get("__expected_queue_mode");
+    if (expectedQueueMode) {
+      const modeDescription = expectedQueueMode === "by-stage"
+        ? "faça cada função em lote."
+        : "conclua este pedido antes do próximo.";
+      ensure(stationContent?.querySelector(".kitchen-station-header")?.textContent.includes(modeDescription),
+        "A tela não explica a organização da fila configurada.");
+    }
     const viewport = parameters.get("__viewport");
     if (viewport) {
       const current = stationContent?.querySelector(".kitchen-current-order");
@@ -182,6 +190,12 @@ try {
     ensure(screenLabels[0] === "Abrir massa · Montagem"
       && screenLabels[1] === "Forno · Finalização e embalagem",
     "Os links não refletem as funções agrupadas por tela: " + screenLabels.join(" / ") + ".");
+    const configureQueueMode = parameters.get("__configure_queue_mode");
+    if (configureQueueMode) {
+      ensure(["by-order", "by-stage"].includes(configureQueueMode),
+        "O modo de organização da fila solicitado não é válido.");
+      updatedForm.elements.queueMode.value = configureQueueMode;
+    }
     updatedForm.requestSubmit();
     await eventually(() => root.textContent.includes("Fluxo e telas da cozinha salvos."),
       "O fluxo de duas telas não foi salvo.");

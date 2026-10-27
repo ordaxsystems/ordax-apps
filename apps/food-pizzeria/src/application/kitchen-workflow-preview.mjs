@@ -1,7 +1,12 @@
-export const KITCHEN_WORKFLOW_SCHEMA = "ordax.food-kitchen-workflow-preview/1";
+export const KITCHEN_WORKFLOW_SCHEMA = "ordax.food-kitchen-workflow-preview/2";
+export const LEGACY_KITCHEN_WORKFLOW_SCHEMA = "ordax.food-kitchen-workflow-preview/1";
 export const KITCHEN_TASKS_SCHEMA = "ordax.food-kitchen-tasks-preview/2";
 export const MAX_KITCHEN_WORKFLOW_STEPS = 8;
 export const MAX_KITCHEN_DISPLAYS = 8;
+export const KITCHEN_QUEUE_MODES = Object.freeze({
+  BY_ORDER: "by-order",
+  BY_STAGE: "by-stage",
+});
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
 const TIME_RE = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/;
@@ -14,6 +19,7 @@ export const DEFAULT_KITCHEN_WORKFLOW = Object.freeze({
   schema: KITCHEN_WORKFLOW_SCHEMA,
   revision: 1,
   screenCount: 1,
+  queueMode: KITCHEN_QUEUE_MODES.BY_ORDER,
   steps: Object.freeze([
     Object.freeze({ id: "open-dough", label: "Abrir massa", screen: 1 }),
     Object.freeze({ id: "assembly", label: "Montagem", screen: 1 }),
@@ -30,6 +36,7 @@ export const KITCHEN_WORKFLOW_PRESETS = Object.freeze({
 const PRESET_STEPS = Object.freeze({
   [KITCHEN_WORKFLOW_PRESETS.SINGLE_PIZZAIOLO]: Object.freeze({
     screenCount: 1,
+    queueMode: KITCHEN_QUEUE_MODES.BY_ORDER,
     steps: Object.freeze([
       Object.freeze({ id: "prepare-order", label: "Preparar pedido", screen: 1 }),
       Object.freeze({ id: "oven", label: "Forno", screen: 1 }),
@@ -37,6 +44,7 @@ const PRESET_STEPS = Object.freeze({
   }),
   [KITCHEN_WORKFLOW_PRESETS.PIZZERIA_LINE]: Object.freeze({
     screenCount: 4,
+    queueMode: KITCHEN_QUEUE_MODES.BY_STAGE,
     steps: Object.freeze([
       Object.freeze({ id: "open-dough", label: "Abrir massa", screen: 1 }),
       Object.freeze({ id: "assembly", label: "Montagem", screen: 2 }),
@@ -68,20 +76,26 @@ function timestamp(value, label) {
   return new Date(Date.parse(value)).toISOString();
 }
 
-function freezeWorkflow(revision, screenCount, steps) {
+function freezeWorkflow(revision, screenCount, steps, queueMode = KITCHEN_QUEUE_MODES.BY_ORDER) {
   return Object.freeze({
     schema: KITCHEN_WORKFLOW_SCHEMA,
     revision,
     screenCount,
+    queueMode,
     steps: Object.freeze(steps.map((step) => Object.freeze({ ...step }))),
   });
 }
 
 export function validateKitchenWorkflow(value) {
-  const raw = exactObject(value, ["schema", "revision", "screenCount", "steps"], "Fluxo da cozinha");
-  if (raw.schema !== KITCHEN_WORKFLOW_SCHEMA
+  const legacy = value?.schema === LEGACY_KITCHEN_WORKFLOW_SCHEMA;
+  const raw = exactObject(value,
+    legacy ? ["schema", "revision", "screenCount", "steps"] : ["schema", "revision", "screenCount", "queueMode", "steps"],
+    "Fluxo da cozinha");
+  const queueMode = legacy ? KITCHEN_QUEUE_MODES.BY_ORDER : raw.queueMode;
+  if ((!legacy && raw.schema !== KITCHEN_WORKFLOW_SCHEMA)
     || !Number.isSafeInteger(raw.revision) || raw.revision < 1
     || !Number.isSafeInteger(raw.screenCount) || raw.screenCount < 1 || raw.screenCount > MAX_KITCHEN_DISPLAYS
+    || !Object.values(KITCHEN_QUEUE_MODES).includes(queueMode)
     || !Array.isArray(raw.steps) || raw.steps.length < 1 || raw.steps.length > MAX_KITCHEN_WORKFLOW_STEPS
     || raw.screenCount > raw.steps.length) {
     throw new TypeError("O fluxo precisa ter de 1 a 8 etapas e uma tela para cada posto configurado.");
@@ -106,7 +120,7 @@ export function validateKitchenWorkflow(value) {
     || Array.from({ length: raw.screenCount }, (_, index) => index + 1).some((screen) => !assignedScreens.has(screen))) {
     throw new TypeError("Cada tela precisa ter ao menos uma etapa atribuída.");
   }
-  return freezeWorkflow(raw.revision, raw.screenCount, steps);
+  return freezeWorkflow(raw.revision, raw.screenCount, steps, queueMode);
 }
 
 export function distributeKitchenSteps(workflowValue, screenCountValue) {
@@ -120,7 +134,7 @@ export function distributeKitchenSteps(workflowValue, screenCountValue) {
     ...step,
     screen: Math.min(screenCount, Math.floor(index * screenCount / workflow.steps.length) + 1),
   }));
-  return freezeWorkflow(workflow.revision, screenCount, steps);
+  return freezeWorkflow(workflow.revision, screenCount, steps, workflow.queueMode);
 }
 
 export function saveKitchenWorkflow(currentValue, draftValue) {
@@ -129,16 +143,17 @@ export function saveKitchenWorkflow(currentValue, draftValue) {
     ...draftValue,
     schema: KITCHEN_WORKFLOW_SCHEMA,
     revision: current.revision,
+    queueMode: draftValue.queueMode ?? current.queueMode,
   });
   if (current.revision >= Number.MAX_SAFE_INTEGER) throw new RangeError("Revisão do fluxo da cozinha esgotada.");
-  return freezeWorkflow(current.revision + 1, draft.screenCount, draft.steps);
+  return freezeWorkflow(current.revision + 1, draft.screenCount, draft.steps, draft.queueMode);
 }
 
 export function createKitchenWorkflowPreset(currentValue, presetId) {
   const current = validateKitchenWorkflow(currentValue ?? DEFAULT_KITCHEN_WORKFLOW);
   if (!Object.hasOwn(PRESET_STEPS, presetId)) throw new TypeError("Modelo de produção desconhecido.");
   const preset = PRESET_STEPS[presetId];
-  return freezeWorkflow(current.revision, preset.screenCount, preset.steps);
+  return freezeWorkflow(current.revision, preset.screenCount, preset.steps, preset.queueMode);
 }
 
 function validateTaskStep(value) {
@@ -266,6 +281,19 @@ function compareStationTickets(first, second) {
   return firstStep.queuePosition - secondStep.queuePosition
     || Date.parse(first.cycleQueuedAt) - Date.parse(second.cycleQueuedAt)
     || first.orderId.localeCompare(second.orderId);
+}
+
+function compareKitchenTickets(first, second, queueMode) {
+  const firstStep = currentStepForTicket(first);
+  const secondStep = currentStepForTicket(second);
+  if (firstStep.status === "active" && secondStep.status !== "active") return -1;
+  if (secondStep.status === "active" && firstStep.status !== "active") return 1;
+  if (queueMode === KITCHEN_QUEUE_MODES.BY_STAGE) {
+    const firstStage = first.steps.findIndex(({ id }) => id === firstStep.id);
+    const secondStage = second.steps.findIndex(({ id }) => id === secondStep.id);
+    if (firstStage !== secondStage) return firstStage - secondStage;
+  }
+  return compareStationTickets(first, second);
 }
 
 function reindexStationQueues(tickets, explicitOrderByScreen = new Map()) {
@@ -396,24 +424,27 @@ export function currentKitchenStep(ticketValue) {
   return currentStepForTicket(ticket);
 }
 
-export function sortKitchenTickets(ticketsValue, workflowValue, screenNumber, mode = "station") {
-  validateKitchenWorkflow(workflowValue);
+export function sortKitchenTickets(ticketsValue, workflowValue, screenNumber, queueMode) {
+  const workflow = validateKitchenWorkflow(workflowValue);
+  const effectiveQueueMode = queueMode ?? workflow.queueMode;
   if (!Number.isSafeInteger(screenNumber) || screenNumber < 1 || screenNumber > MAX_KITCHEN_DISPLAYS
-    || !["station", "complete-cycle"].includes(mode)) throw new TypeError("Tela da cozinha inválida.");
+    || !Object.values(KITCHEN_QUEUE_MODES).includes(effectiveQueueMode)) throw new TypeError("Tela da cozinha inválida.");
   const tickets = ticketsValue.map(validateTicket);
   return tickets.filter((ticket) => {
     const current = currentKitchenStep(ticket);
     return current !== null && current.screen === screenNumber;
-  }).sort(compareStationTickets);
+  }).sort((first, second) => compareKitchenTickets(first, second, effectiveQueueMode));
 }
 
 export function applyKitchenTaskAction(tasksValue, {
   action, orderId, stepId, screenNumber, at, commandId, digest,
+  queueMode = KITCHEN_QUEUE_MODES.BY_ORDER,
 } = {}) {
   const tasks = validateKitchenTasks(tasksValue);
   if (!ACTIONS.has(action) || typeof orderId !== "string" || !ID_RE.test(orderId)
     || typeof stepId !== "string" || !ID_RE.test(stepId)
     || !Number.isSafeInteger(screenNumber) || screenNumber < 1 || screenNumber > MAX_KITCHEN_DISPLAYS
+    || !Object.values(KITCHEN_QUEUE_MODES).includes(queueMode)
     || typeof commandId !== "string" || !ID_RE.test(commandId) || !DIGEST_RE.test(digest)) {
     throw new TypeError("Ação de produção inválida.");
   }
@@ -444,12 +475,16 @@ export function applyKitchenTaskAction(tasksValue, {
   }
 
   const stationQueue = action === "pass-next"
-    ? tasks.tickets.filter((item) => currentStepForTicket(item)?.screen === screenNumber).sort(compareStationTickets)
+    ? tasks.tickets.filter((item) => currentStepForTicket(item)?.screen === screenNumber)
+      .sort((first, second) => compareKitchenTickets(first, second, queueMode))
     : [];
+  const passQueue = queueMode === KITCHEN_QUEUE_MODES.BY_STAGE
+    ? stationQueue.filter((item) => currentStepForTicket(item)?.id === currentStep.id)
+    : stationQueue;
   if (action === "pass-next" && stationQueue[0]?.orderId !== orderId) {
     throw new Error("Só é possível passar o pedido que está em foco.");
   }
-  if (action === "pass-next" && stationQueue.length < 2) {
+  if (action === "pass-next" && passQueue.length < 2) {
     throw new Error("Não há outro pedido nesta etapa para passar.");
   }
 
@@ -473,7 +508,7 @@ export function applyKitchenTaskAction(tasksValue, {
         ...nextStep,
         status: "queued",
         queuedAt: nextStep.screen === currentStep.screen ? currentStep.queuedAt : changedAt,
-        queuePosition: nextStep.screen === currentStep.screen
+        queuePosition: nextStep.screen === currentStep.screen && queueMode === KITCHEN_QUEUE_MODES.BY_ORDER
           ? currentStep.queuePosition
           : nextQueuePosition(tasks.tickets, nextStep.screen),
       };
@@ -490,11 +525,16 @@ export function applyKitchenTaskAction(tasksValue, {
     nextTickets = nextTickets.map((item) => item.orderId === orderId ? { ...item, steps } : item);
   }
   if (action === "pass-next") {
-    const afterNext = stationQueue.length > 2 ? stationQueue[2] : null;
-    const shortQueueOrder = afterNext
-      ? [stationQueue[1].orderId, afterNext.orderId, stationQueue[0].orderId, ...stationQueue.slice(3).map(({ orderId: id }) => id)]
-      : [stationQueue[1].orderId, stationQueue[0].orderId];
-    nextTickets = reindexStationQueues(nextTickets, new Map([[screenNumber, shortQueueOrder]]));
+    const afterNext = passQueue.length > 2 ? passQueue[2] : null;
+    const reorderedPassQueue = afterNext
+      ? [passQueue[1].orderId, afterNext.orderId, passQueue[0].orderId, ...passQueue.slice(3).map(({ orderId: id }) => id)]
+      : [passQueue[1].orderId, passQueue[0].orderId];
+    const reorderedPassIds = new Set(passQueue.map(({ orderId: id }) => id));
+    let reorderedIndex = 0;
+    const fullQueueOrder = stationQueue.map(({ orderId: id }) => (
+      reorderedPassIds.has(id) ? reorderedPassQueue[reorderedIndex++] : id
+    ));
+    nextTickets = reindexStationQueues(nextTickets, new Map([[screenNumber, fullQueueOrder]]));
   }
   return validateKitchenTasks({
     ...tasks,

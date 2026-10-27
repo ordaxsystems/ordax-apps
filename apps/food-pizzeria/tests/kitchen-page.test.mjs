@@ -251,6 +251,34 @@ test("station heading names only the functions assigned to a shared two-function
   assert.doesNotMatch(page, /<h1>[^<]*(?:Forno|Finalização e embalagem)/);
 });
 
+test("kitchen setup explains and exposes both per-order and batch-by-stage work modes", () => {
+  const page = render();
+  assert.match(page, /name="queueMode"/);
+  assert.match(page, /Pedido a pedido/);
+  assert.match(page, /Por função em lote/);
+  assert.match(page, /faça a mesma etapa nos pedidos da fila/);
+});
+
+test("a batch-by-stage station explains that grouped functions run across the queue", () => {
+  const batchWorkflow = validateKitchenWorkflow({
+    ...DEFAULT_KITCHEN_WORKFLOW,
+    screenCount: 2,
+    queueMode: "by-stage",
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({
+      ...step,
+      screen: index < 2 ? 1 : 2,
+    })),
+  });
+  const page = render({
+    kitchenWorkflow: batchWorkflow,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, batchWorkflow),
+    activeKitchenScreen: 1,
+    kitchenScreenCount: 2,
+  });
+  assert.match(page, /faça cada função em lote/);
+  assert.match(page, /Abrir massa · Montagem/);
+});
+
 test("shared stations name all three functions assigned to them", () => {
   const sharedStationWorkflow = validateKitchenWorkflow({
     ...DEFAULT_KITCHEN_WORKFLOW,

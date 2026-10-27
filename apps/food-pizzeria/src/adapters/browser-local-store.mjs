@@ -514,6 +514,7 @@ export function createBrowserLocalFoodStore({
         if (!currentStep || currentStep.id !== stepId) throw new Error("A etapa deste pedido já mudou. Atualize a fila.");
         let nextTasks = applyKitchenTaskAction(currentTasks, {
           action, orderId, stepId, screenNumber, at, commandId, digest,
+          queueMode: currentPreferences.kitchenWorkflow.queueMode,
         });
         let nextState = persisted.state;
         let nextCommands = persisted.processedCommands;
