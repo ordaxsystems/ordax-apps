@@ -24,7 +24,7 @@ export const PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES = Object.freeze({
   "ng-command-04": 20,
 });
 
-export function createSeedFoodState(nowValue = Date.now()) {
+export function createSeedFoodState(nowValue = Date.now(), { includeFourFlavorSample = false } = {}) {
   const now = nowValue instanceof Date ? nowValue.getTime() : Number(nowValue);
   if (!Number.isFinite(now)) throw new TypeError("O horário da prévia Food precisa ser válido.");
   let state = configureFoodPizzeria(createEmptyFoodPizzeriaState(), {
@@ -80,7 +80,9 @@ export function createSeedFoodState(nowValue = Date.now()) {
     const number = 1047 + index;
     const createdAt = new Date(now - PREVIEW_SEED_ORDER_AGES_MINUTES[index] * 60000).toISOString();
     const fee = channel === "delivery" ? 500 : 0;
-    const flavorId = flavorIds[index];
+    const orderFlavorIds = index === 2 && includeFourFlavorSample
+      ? ["ng-marguerita", "ng-calabresa", "ng-quatro-queijos", "ng-frango-catupiry"]
+      : [flavorIds[index]];
     state = createPizzeriaOrder(state, {
       id: `ng-order-${number}`,
       historyId: `ng-history-${number}-received`,
@@ -92,7 +94,7 @@ export function createSeedFoodState(nowValue = Date.now()) {
       address,
       deliveryFeeCents: fee,
       notes: index === 0 ? "Borda de Catupiry" : index === 4 ? "Deixar na portaria" : "",
-      items: [{ id: `ng-item-${number}`, size: index % 4 === 0 ? "large" : "medium", flavorIds: [flavorId], quantity: index === 1 || index === 7 ? 2 : 1 }],
+      items: [{ id: `ng-item-${number}`, size: index % 4 === 0 ? "large" : "medium", flavorIds: orderFlavorIds, quantity: index === 1 || index === 7 ? 2 : 1 }],
     });
     const desired = stages[index];
     const transitions = desired === "preparing" ? ["preparing"]

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 import { kitchenStepClock, renderKitchenPage } from "../src/ui/views/kitchen.mjs";
 import { renderKitchenItemLine } from "../src/ui/views/kitchen-item.mjs";
 import {
@@ -422,6 +423,28 @@ test("Pizzeria item presenter keeps four flavor chips distinct without inventing
   assert.equal(presentation.modifiers.length, 4);
   assert.deepEqual(presentation.modifiers, ["Calabresa", "Margherita", "Quatro queijos", "Frango"]);
   assert.equal(presentation.detail, "8 fatias");
+});
+
+test("preview KDS demonstrates a real four-flavor pizza on the opening station", () => {
+  const seededState = createSeedFoodState(now, { includeFourFlavorSample: true });
+  const seededOrder = seededState.orders.find(({ id }) => id === "ng-order-1049");
+  const expectedFlavors = ["Marguerita", "Calabresa", "Quatro Queijos", "Frango com Catupiry"];
+  assert.ok(seededOrder);
+  assert.deepEqual(seededOrder.items[0].flavors.map(({ name }) => name), expectedFlavors);
+  assert.equal(seededOrder.items[0].sliceCount, 6);
+
+  const page = render({
+    snapshot: { tableCommands: [], orders: [seededOrder] },
+    kitchenWorkflow: workflow,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [seededOrder], workflow),
+    activeKitchenScreen: 1,
+    kitchenScreenCount: 4,
+  });
+
+  assert.match(page, /#1049/);
+  assert.match(page, /4 sabores/);
+  for (const flavor of expectedFlavors) assert.match(page, new RegExp(flavor));
+  assert.match(page, /6 fatias/);
 });
 
 test("Pizzeria item presenter never infers historical slices from current size settings", () => {

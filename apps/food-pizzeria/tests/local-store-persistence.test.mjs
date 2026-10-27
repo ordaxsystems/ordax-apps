@@ -63,6 +63,24 @@ test("reopening while the sample activity is fresh preserves its timeline", asyn
   store.destroy();
 });
 
+test("a new browser preview includes a four-flavor sample without changing migration fixtures", async () => {
+  const environment = createMemoryEnvironment();
+  const now = Date.parse("2026-10-27T12:00:00.000Z");
+  const store = createBrowserLocalFoodStore({
+    businessId: "preview-four-flavor-seed",
+    clock: () => new Date(now),
+    ...environment,
+  });
+
+  const preview = await store.initialize();
+  const previewOrder = preview.orders.find(({ id }) => id === "ng-order-1049");
+  const migrationFixtureOrder = createSeedFoodState(now).orders.find(({ id }) => id === "ng-order-1049");
+
+  assert.equal(previewOrder.items[0].flavors.length, 4);
+  assert.equal(migrationFixtureOrder.items[0].flavors.length, 1);
+  store.destroy();
+});
+
 test("preview seed activity is recent and all order transitions stay in the past", () => {
   const now = Date.parse("2026-10-27T12:00:00.000Z");
   const state = createSeedFoodState(now);

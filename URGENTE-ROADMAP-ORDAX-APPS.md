@@ -906,3 +906,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Testes cobrem relógio anterior à criação, refresh de fila, deferimento e preservação do trabalho. Suíte Food: 168/168; smoke Chrome: 24/24; sintaxe e `git diff --check` aprovados. Host confirmou 21 min no pedido e na etapa.
 - Somente amostras sem operação KDS são rebased; nenhum contrato, owner ou dado de produção foi alterado.
 
+### Space Pizzaria / OrdaX Food — demonstrar pizza de quatro sabores no KDS (2026-10-27)
+
+- A fila local passa a incluir um pedido de pizza com quatro sabores distintos, permitindo conferir na etapa Abrir massa os sabores, o tamanho e a quantidade de fatias usados pelo fluxo real de renderização.
+- O KDS continua exibindo os sabores sem presumir a divisão de fatias entre eles; a proposta de consumo e o preço derivam das regras Food já existentes.
+- Teste integrado renderiza o pedido seed na primeira estação e confere os quatro sabores e as seis fatias; fixture comum de migração continua válida para o limite histórico de dois sabores. Suíte Food: 170/170; smoke de navegador: 25/25; verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas.
+- Mudança restrita à prévia local, sem alterar schemas, owners, pedidos persistidos ou contratos.
+

@@ -34,7 +34,10 @@ const scenarios = Object.freeze([
     ["4", "finish-pack", "Finalização e embalagem"],
   ].map(([station, stationStage, expectedTitle]) => ({
     presentation: "embedded-preview", view: "kitchen",
-    extra: { station, stationStage, screenCount: "4", __expected_station_title: expectedTitle },
+    extra: {
+      station, stationStage, screenCount: "4", __expected_station_title: expectedTitle,
+      ...(station === "1" ? { __verify_four_flavor_sample: "1" } : {}),
+    },
   })),
   { presentation: "embedded-preview", view: "kitchen", extra: {
     __configure_screen_count: "2", __configure_queue_mode: "by-stage",

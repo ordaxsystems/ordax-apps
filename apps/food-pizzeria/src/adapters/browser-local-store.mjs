@@ -426,7 +426,7 @@ export function createBrowserLocalFoodStore({
           previewPreferences = reconcilePreviewPreferences(persisted.previewPreferences, snapshot);
           previewPreferences = rebaseUntouchedPreviewKitchenTickets(previewPreferences, snapshot);
         } else {
-          snapshot = validateFoodPizzeriaState(createSeedFoodState(now));
+          snapshot = validateFoodPizzeriaState(createSeedFoodState(now, { includeFourFlavorSample: true }));
           processedCommands = [];
           previewPreferences = reconcilePreviewPreferences(DEFAULT_PREVIEW_PREFERENCES, snapshot);
         }

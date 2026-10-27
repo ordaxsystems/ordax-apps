@@ -73,3 +73,4 @@ transações e concluído o rollout pelo migration registry canônico.
 - Readiness, identidade, grants e erros são expostos sem bypass.
 - Testes comprovam isolamento entre Spaces, idempotência, revisão/conflito, replay, falha e nenhuma escrita em owner não autorizado.
 - A área só aparece como operacional quando o provider retorna pronto.
+- Prévia KDS da pizzaria inclui um pedido local de quatro sabores para validar a leitura integrada de sabores, tamanho e fatias sem inventar proporções.

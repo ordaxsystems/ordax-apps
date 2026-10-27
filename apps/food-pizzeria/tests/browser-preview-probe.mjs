@@ -214,6 +214,14 @@ try {
       ensure(stationContent?.textContent.includes("Nenhum pedido aguardando nesta tela."),
         "A estação vazia não explica que não há pedido aguardando.");
     }
+    if (parameters.has("__verify_four_flavor_sample")) {
+      const sample = stationContent?.querySelector('[data-kitchen-upcoming-order="ng-order-1049"]');
+      ensure(sample?.textContent.includes("4 sabores") && sample.textContent.includes("6 fatias"),
+        "A fila não apresenta tamanho e fatias da pizza de quatro sabores.");
+      for (const flavor of ["Marguerita", "Calabresa", "Quatro Queijos", "Frango com Catupiry"]) {
+        ensure(sample.textContent.includes(flavor), `A fila não apresenta o sabor ${flavor}.`);
+      }
+    }
     ensure(root.querySelector(".food-embedded-preview-kitchen"),
       "A tela dedicada não ativou o layout compacto do preview.");
     ensure(root.querySelector('[data-action="fullscreen-kitchen"]'),
