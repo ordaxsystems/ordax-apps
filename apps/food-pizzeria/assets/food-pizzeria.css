@@ -980,6 +980,32 @@ dialog p { color: #a2a8af; }
 }
 
 /* Fichas técnicas do Food */
+.batch-plan-panel { display: grid; gap: 13px; margin-top: 16px; padding: 17px; }
+.batch-plan-panel .panel-heading { align-items: flex-start; }
+.batch-plan-panel .panel-heading > div > p:last-child { margin: 5px 0 0; color: #9ba2aa; font-size: 9px; }
+.batch-plan-panel form { display: grid; gap: 12px; }
+.batch-plan-controls { display: grid; grid-template-columns: minmax(150px, .45fr) minmax(0, 2fr); gap: 12px; }
+.batch-size-select { display: grid; align-content: start; gap: 6px; color: #a2a8af; font-size: 9px; }
+.batch-size-select select, .batch-plan-flavor input { width: 100%; min-width: 0; min-height: 36px; padding: 7px 9px; border: 1px solid #343940; border-radius: 7px; background: #22262a; color: #eef0f2; font-size: 11px; }
+.batch-plan-flavors { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 7px; }
+.batch-plan-flavor { display: grid; grid-template-columns: minmax(0, 1fr) 64px auto; align-items: center; gap: 6px; min-width: 0; padding: 8px; border: 1px solid #30353b; border-radius: 8px; background: #1b1f24; }
+.batch-plan-flavor > span { display: grid; min-width: 0; gap: 3px; }
+.batch-plan-flavor strong { overflow: hidden; color: #eef0f2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.batch-plan-flavor small, .batch-plan-actions > small { color: #8f969e; font-size: 8px; }
+.batch-plan-flavor input { min-height: 32px; padding: 5px; text-align: center; }
+.batch-plan-flavor input:disabled { opacity: .48; }
+.batch-plan-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.batch-plan-actions > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.batch-plan-result { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #30353b; }
+.batch-result-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.batch-result-heading > div { display: grid; gap: 3px; }
+.batch-result-heading strong { color: #eef0f2; font-size: 12px; }
+.batch-result-heading span { color: #8f969e; font-size: 9px; }
+.batch-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 6px; }
+.batch-result-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid #30353b; border-radius: 7px; background: #1b1f24; }
+.batch-result-item span { color: #aeb4ba; font-size: 9px; }
+.batch-result-item strong { color: #f2f3f4; font-size: 10px; white-space: nowrap; }
+.batch-plan-error { margin: 0; padding: 9px 11px; border: 1px solid #5b332c; border-radius: 8px; background: #291b19; color: #ffb2a4; font-size: 10px; }
 .recipe-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 11px; padding-top: 9px; border-top: 1px solid #30343a; }
 .recipe-summary > span { font-size: 8px; }
 .recipe-ready { color: #55ce8c; }
@@ -1021,6 +1047,13 @@ dialog p { color: #a2a8af; }
 }
 @media (max-width: 680px) {
   .capability-pending { padding: 15px; }
+  .batch-plan-panel { padding: 12px; }
+  .batch-plan-controls { grid-template-columns: minmax(0, 1fr); }
+  .batch-plan-flavors { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); }
+  .batch-plan-actions { align-items: stretch; flex-direction: column; }
+  .batch-plan-actions > div { width: 100%; }
+  .batch-plan-actions button { flex: 1 1 auto; }
+  .batch-result-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
   .recipe-line { grid-template-columns: minmax(0, 1fr) 30px; }
   .recipe-line .recipe-ingredient { grid-column: 1 / -1; }
   .recipe-size-grid { grid-column: 1; grid-row: 2; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); }
