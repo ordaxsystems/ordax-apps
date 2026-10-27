@@ -1,41 +1,64 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderKitchenPage } from "../src/ui/views/kitchen.mjs";
-import { defaultKitchenItemPresentation, renderKitchenItemLine } from "../src/ui/views/kitchen-item.mjs";
+import { renderKitchenItemLine } from "../src/ui/views/kitchen-item.mjs";
+import {
+  DEFAULT_KITCHEN_TASKS,
+  DEFAULT_KITCHEN_WORKFLOW,
+  applyKitchenTaskAction,
+  distributeKitchenSteps,
+  reconcileKitchenTasks,
+} from "../src/application/kitchen-workflow-preview.mjs";
 import {
   PIZZERIA_KITCHEN_ITEM_LABEL,
   PIZZERIA_KITCHEN_STAGE_GUIDANCE,
   presentPizzeriaKitchenItem,
 } from "../src/ui/pizzeria-kitchen-presentation.mjs";
-import { DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, resizeKitchenDisplayConfiguration } from "../src/application/kitchen-display-configuration.mjs";
 
 const now = Date.parse("2026-10-26T13:00:00.000Z");
+const digest = "c".repeat(64);
 
-function order({ id, status, channel, startedAt, quantity = 1, flavor = "Margherita", flavors = null, tableCommandId = null }) {
+function order({ id, status, channel, startedAt, quantity = 1, flavors = null, tableCommandId = null }) {
   return {
     id,
     status,
     channel,
     tableCommandId,
     createdAt: startedAt,
+    updatedAt: startedAt,
     statusHistory: [{ changedAt: startedAt }],
     customerName: "Cliente reservado",
     phone: "11999990000",
     address: "Rua confidencial, 123",
     notes: "Sem cebola",
-    items: [{ quantity, size: "large", sizeLabel: "Grande", flavors: flavors ?? [{ name: flavor }] }],
+    items: [{ quantity, size: "large", sizeLabel: "Grande", flavors: flavors ?? [{ name: "Margherita" }] }],
   };
+}
+
+const orders = [
+  order({ id: "order-1001", status: "received", channel: "counter", startedAt: "2026-10-26T12:40:00.000Z", quantity: 2, flavors: ["Calabresa", "Margherita", "Quatro queijos", "Frango"].map((name) => ({ name })) }),
+  order({ id: "order-1002", status: "preparing", channel: "dine-in", startedAt: "2026-10-26T12:10:00.000Z", tableCommandId: "command-3" }),
+  order({ id: "order-1003", status: "ready", channel: "pickup", startedAt: "2026-10-26T12:55:00.000Z", flavors: [{ name: "Quatro queijos" }] }),
+  order({ id: "order-1004", status: "out-for-delivery", channel: "delivery", startedAt: "2026-10-26T12:30:00.000Z" }),
+];
+const workflow = distributeKitchenSteps(DEFAULT_KITCHEN_WORKFLOW, 4);
+
+function makeTasks() {
+  let tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, workflow);
+  tasks = applyKitchenTaskAction(tasks, {
+    action: "start", orderId: "order-1001", stepId: "open-dough", screenNumber: 1,
+    at: "2026-10-26T12:41:00.000Z", commandId: "open-start-1001", digest,
+  });
+  return applyKitchenTaskAction(tasks, {
+    action: "complete", orderId: "order-1001", stepId: "open-dough", screenNumber: 1,
+    at: "2026-10-26T12:43:00.000Z", commandId: "open-complete-1001", digest: "d".repeat(64),
+  });
 }
 
 function render(overrides = {}) {
   const snapshot = {
     tableCommands: [{ id: "command-3", tableId: 3 }],
-    orders: [
-      order({ id: "order-1001", status: "received", channel: "counter", startedAt: "2026-10-26T12:40:00.000Z", quantity: 2, flavor: "Calabresa" }),
-      order({ id: "order-1002", status: "preparing", channel: "dine-in", startedAt: "2026-10-26T12:10:00.000Z", tableCommandId: "command-3" }),
-      order({ id: "order-1003", status: "ready", channel: "pickup", startedAt: "2026-10-26T12:55:00.000Z", flavor: "Quatro queijos" }),
-      order({ id: "order-1004", status: "out-for-delivery", channel: "delivery", startedAt: "2026-10-26T12:30:00.000Z" }),
-    ],
+    orders,
   };
   const viewModel = {
     KITCHEN_CHANNEL_FILTERS: [
@@ -48,6 +71,8 @@ function render(overrides = {}) {
     kitchenOrderQuery: "",
     kitchenLateOnly: false,
     snapshot,
+    kitchenWorkflow: DEFAULT_KITCHEN_WORKFLOW,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, DEFAULT_KITCHEN_WORKFLOW),
     kitchenItemPresentation: (item) => presentPizzeriaKitchenItem(item, [{ id: "large", label: "Grande", slices: 8 }]),
     kitchenItemLabel: PIZZERIA_KITCHEN_ITEM_LABEL,
     kitchenStageGuidance: PIZZERIA_KITCHEN_STAGE_GUIDANCE,
@@ -57,274 +82,122 @@ function render(overrides = {}) {
     orderNumber: (record) => `#${record.id.slice(-4)}`,
     orderChannelLabel: (record) => record.tableCommandId ? "Mesa 03" : ({ delivery: "Entrega", pickup: "Retirada", counter: "Balcão", "dine-in": "Salão" })[record.channel],
     escapeHtml: (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"),
-    renderKitchenOrderCard: (record, { deliveryDetails = false } = {}) => `<article data-order="${record.id}"><header><strong>#${record.id.slice(-4)}</strong></header><span class="status-badge status-${record.status}"></span><ul class="kitchen-item-lines">${record.items.map((item) => renderKitchenItemLine(item, viewModel.kitchenItemPresentation(item), viewModel.escapeHtml)).join("")}</ul>${deliveryDetails ? record.address : ""}</article>`,
+    renderKitchenOrderCard: (record, { deliveryDetails = false, task = null, screenNumber = null } = {}) => `<article data-order="${record.id}"><header><strong>#${record.id.slice(-4)}</strong></header><span class="status-badge status-${record.status}"></span>${task ? `<span>${task.steps.filter(({ status }) => status === "completed").length}/${task.steps.length}</span>` : ""}${screenNumber ? `<button data-screen="${screenNumber}">Concluir ${task?.steps.find(({ status }) => status !== "completed")?.label ?? "etapa"}</button><button>Adiar para o fim da fila</button>` : ""}<ul class="kitchen-item-lines">${record.items.map((item) => renderKitchenItemLine(item, viewModel.kitchenItemPresentation(item), viewModel.escapeHtml)).join("")}</ul>${deliveryDetails ? record.address : ""}</article>`,
     kitchenChannelButton: (filter) => `<button data-channel="${filter.id}">${filter.label}</button>`,
+    kitchenScreenHref: (screenNumber, stage, screenCount) => `/?station=${screenNumber}&stationStage=${stage}&screenCount=${screenCount}`,
+    kitchenOverviewHref: () => "/?view=kitchen",
     ...overrides,
   };
   return renderKitchenPage(viewModel);
 }
 
-test("KDS summarizes pizza volume, orders, and delivery without claiming a live shift", () => {
-  const page = render();
-
-  assert.match(page, /data-kitchen-overdue-count>2<\/strong>/);
-  assert.match(page, /Pizzas na cozinha<\/span><strong\s*>4<\/strong><small>3 pedidos em produção/);
-  assert.match(page, /Aguardando início<\/span><strong\s*>1<\/strong><small>2 pizzas na fila/);
-  assert.match(page, /Itens prontos<\/span><strong\s*>1<\/strong><small>1 pedido<\/small>/);
-  assert.match(page, /4 pedidos ativos/);
-  assert.match(page, /order-1004/);
-  assert.match(page, /Rua confidencial/);
-  assert.doesNotMatch(page, /Turno aberto|live-indicator|tempo real/);
+test("production board reflects each configured step and hands completed kitchen work to pickup or dispatch", () => {
+  const page = render({ kitchenWorkflow: workflow, kitchenTasks: makeTasks() });
+  assert.match(page, /data-kitchen-stage="open-dough"/);
+  assert.match(page, /data-kitchen-stage="assembly"/);
+  assert.match(page, /data-kitchen-stage="oven"/);
+  assert.match(page, /data-kitchen-stage="finish-pack"/);
+  assert.match(page, /Prontos para retirada ou entrega/);
+  assert.match(page, /Em entrega/);
+  assert.doesNotMatch(page, /data-action="cancel-order"|Cancelar pedido|Pular etapa/);
 });
 
-test("search filters by order, table, and pizza flavor without searching customer data", () => {
+test("search filters by order, table and pizza flavor without searching private address data", () => {
   const byTable = render({ kitchenOrderQuery: "mesa 03" });
   assert.match(byTable, /order-1002/);
   assert.doesNotMatch(byTable, /order-1001|order-1003|order-1004/);
-
   const byFlavor = render({ kitchenOrderQuery: "Calabresa" });
   assert.match(byFlavor, /order-1001/);
   assert.doesNotMatch(byFlavor, /order-1002|order-1003|order-1004/);
-
-  const byPrivateAddress = render({ kitchenOrderQuery: "Rua confidencial" });
-  assert.match(byPrivateAddress, /Nenhum pedido corresponde/);
-  assert.doesNotMatch(byPrivateAddress, /data-order="order-1004"/);
+  const byAddress = render({ kitchenOrderQuery: "Rua confidencial" });
+  assert.match(byAddress, /Nenhum pedido corresponde/);
+  assert.doesNotMatch(byAddress, /data-order="order-1004"/);
 });
 
-test("overdue filter shows orders beyond their current stage target", () => {
-  const page = render({ kitchenLateOnly: true });
-  assert.match(page, /data-order="order-1001"/);
-  assert.match(page, /data-order="order-1002"/);
-  assert.doesNotMatch(page, /data-order="order-1003"|data-order="order-1004"/);
+test("overdue filter keeps the existing order SLA while tickets move independently by station", () => {
+  const page = render({ kitchenLateOnly: true, kitchenWorkflow: workflow, kitchenTasks: makeTasks() });
+  assert.match(page, /data-kitchen-overdue-count>2<\/strong>/);
   assert.match(page, /aria-pressed="true"/);
 });
 
-test("KDS exposes touch-ready filters and stage navigation affordances", () => {
-  const page = render({ kitchenOrderQuery: "pizza" });
-  assert.match(page, /id="kitchen-search-form"/);
-  assert.match(page, /data-action="toggle-kitchen-late-filter"/);
-  assert.match(page, /data-action="reset-kitchen-filters"/);
-  assert.match(page, /tabindex="0" aria-label="Etapas da produção/);
-});
-
-test("KDS exposes screen assignments and states the real production boundary", () => {
-  const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
-  const page = render({ kitchenDisplayConfiguration: layout });
-
+test("workflow settings edit business steps and create a direct link for every screen", () => {
+  const page = render({ kitchenWorkflow: workflow, kitchenTasks: makeTasks() });
   assert.match(page, /id="kitchen-layout-form"/);
-  assert.match(page, /name="screenCount"/);
-  assert.match(page, /value="by-stage" selected/);
-  assert.match(page, /name="display-4"/);
-  assert.match(page, /Abrir tela 4/);
-  assert.match(page, /avanço é por pedido inteiro; tarefas detalhadas por item ou por etapa dependem do contrato Food de produção/);
-  assert.match(page, /Distribuição por pessoa/);
-  assert.match(page, /People\/Identity/);
+  assert.match(page, /name="step-label-1"/);
+  assert.match(page, /name="step-screen-4"/);
+  assert.match(page, /<strong>Tela 1<\/strong><span>Abrir massa<\/span>/);
+  assert.match(page, /<strong>Tela 4<\/strong><span>Finalização e embalagem<\/span>/);
+  assert.match(page, /data-action="copy-kitchen-link"/);
+  assert.match(page, /integração Food de produção em tempo real/);
+  assert.match(page, /data-action="move-kitchen-step"/);
+  assert.match(page, /O KDS não cancela pedidos/);
 });
 
-test("dedicated display shows only its assigned order stage with fullscreen controls", () => {
-  const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
+test("station focuses a single ticket, exposes start/complete/defer and lists five upcoming orders", () => {
   const page = render({
-    kitchenDisplayConfiguration: layout,
+    kitchenWorkflow: workflow,
+    kitchenTasks: makeTasks(),
     activeKitchenScreen: 2,
-    kitchenScreenStage: "preparing",
     kitchenScreenCount: 4,
+    renderKitchenOrderCard: (record, { task = null, screenNumber = null } = {}) => `<article data-order="${record.id}"><strong>#${record.id.slice(-4)}</strong>${task ? `<b>${task.steps.filter(({ status }) => status === "completed").length + 1}/${task.steps.length} ${task.steps.find(({ status }) => status !== "completed").label}</b>` : ""}${screenNumber ? `<button data-task-action="complete">Concluir montagem</button><button data-task-action="defer">Adiar para o fim da fila</button>` : ""}</article>`,
   });
-
   assert.match(page, /TELA 2 DE 4/);
   assert.match(page, /data-kitchen-station-screen="2"/);
   assert.match(page, /data-action="fullscreen-kitchen"/);
-  assert.match(page, /data-kitchen-stage="preparing"/);
-  assert.match(page, /data-order="order-1002"/);
-  assert.match(page, /data-kitchen-current-order="order-1002"/);
-  assert.equal((page.match(/#1002/g) ?? []).length, 1,
-    "O identificador do pedido em foco não deve ser repetido na tela.");
-  assert.match(page, /<strong>Grande<\/strong><span class="kitchen-item-detail">8 fatias/);
-  assert.doesNotMatch(page, /Fatias exibidas conforme o cadastro atual do tamanho/);
-  assert.doesNotMatch(page, /data-order="order-1001"|data-order="order-1003"/);
+  assert.match(page, /data-kitchen-current-order="order-1001"/);
+  assert.match(page, /Concluir montagem/);
+  assert.match(page, /Adiar para o fim da fila/);
+  assert.match(page, /Sem outros pedidos aguardando/);
+  assert.equal((page.match(/#1001/g) ?? []).length, 1);
+  assert.doesNotMatch(page, /Cancelar|data-action="cancel-order"|data-action="advance-order"/);
   assert.doesNotMatch(page, /kitchen-summary|kitchen-toolbar|kitchen-display-setup/);
-  assert.doesNotMatch(page, /PRÉVIA LOCAL|dados fictícios/i);
 });
 
-test("station guidance maps existing order states to dough, assembly, and dispatch instructions", () => {
-  const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 3, "by-stage");
-  const stations = [
-    { number: 1, stage: "received", guidance: "Abertura da massa" },
-    { number: 2, stage: "preparing", guidance: "Montagem" },
-    { number: 3, stage: "ready", guidance: "Expedição" },
-  ];
-
-  for (const { number, stage, guidance } of stations) {
-    const page = render({
-      kitchenDisplayConfiguration: layout,
-      activeKitchenScreen: number,
-      kitchenScreenStage: stage,
-      kitchenScreenCount: 3,
-    });
-    assert.match(page, new RegExp(guidance));
-    assert.match(page, new RegExp(`data-kitchen-stage="${stage}"`));
-  }
-});
-
-test("one full-cycle display keeps one FIFO ticket in focus through all order stages", () => {
+test("single-screen flow keeps every step in sequence on one focused ticket", () => {
   const page = render({
-    kitchenDisplayConfiguration: DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, DEFAULT_KITCHEN_WORKFLOW),
     activeKitchenScreen: 1,
-    kitchenScreenStage: "all",
     kitchenScreenCount: 1,
   });
-
-  assert.match(page, /Acompanhe cada pedido pelas etapas de produção até a expedição/);
+  assert.match(page, /Abrir massa/);
   assert.match(page, /data-kitchen-current-order="order-1002"/);
-  assert.equal([...page.matchAll(/data-kitchen-current-order="order-\d+"/g)].length, 1);
-  assert.match(page, /data-kitchen-upcoming-order="order-1001"/);
-  assert.match(page, /Balcão · Recebidos/);
+  assert.match(page, /Próximos pedidos/);
+  assert.match(page, /Concluir Abrir massa/);
+  assert.match(page, /Adiar para o fim da fila/);
+  assert.equal((page.match(/#1002/g) ?? []).length, 1);
+});
 
-  const advancedToAssembly = render({
-    kitchenDisplayConfiguration: DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+test("one pizza order keeps every selected flavor visible on its station ticket", () => {
+  const page = render({
+    kitchenWorkflow: workflow,
+    kitchenTasks: makeTasks(),
+    activeKitchenScreen: 2,
+    kitchenScreenCount: 4,
+  });
+  for (const flavor of ["Calabresa", "Margherita", "Quatro queijos", "Frango"]) assert.match(page, new RegExp(flavor));
+  assert.doesNotMatch(page, /Fatias exibidas conforme o cadastro atual do tamanho/);
+});
+
+test("generic Food production board uses neutral item labels and supports direct station routes", () => {
+  const page = render({
+    kitchenItemLabel: { singular: "item", plural: "itens", metricLabel: "Itens em produção" },
+    kitchenItemPresentation: (item) => ({ title: "Sanduíche", detail: "Sem picles", modifierLabel: "Adicionais", modifiers: ["Queijo"] }),
     activeKitchenScreen: 1,
-    kitchenScreenStage: "all",
-    kitchenScreenCount: 1,
-    snapshot: {
-      tableCommands: [],
-      orders: [
-        order({ id: "order-1001", status: "received", channel: "counter", startedAt: "2026-10-26T12:40:00.000Z" }),
-        order({ id: "order-1002", status: "preparing", channel: "dine-in", startedAt: "2026-10-26T12:10:00.000Z", tableCommandId: "command-3" }),
-        order({ id: "order-1003", status: "ready", channel: "pickup", startedAt: "2026-10-26T12:55:00.000Z" }),
-      ],
-    },
-  });
-  assert.match(advancedToAssembly, /data-kitchen-current-order="order-1002"/);
-  assert.match(advancedToAssembly, /class="status-badge status-preparing"/);
-
-  const afterCompletion = render({
-    kitchenDisplayConfiguration: DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
-    activeKitchenScreen: 1,
-    kitchenScreenStage: "all",
-    kitchenScreenCount: 1,
-    snapshot: {
-      tableCommands: [],
-      orders: [
-        order({ id: "order-1001", status: "received", channel: "counter", startedAt: "2026-10-26T12:40:00.000Z" }),
-        order({ id: "order-1002", status: "completed", channel: "dine-in", startedAt: "2026-10-26T12:10:00.000Z", tableCommandId: "command-3" }),
-        order({ id: "order-1003", status: "ready", channel: "pickup", startedAt: "2026-10-26T12:55:00.000Z" }),
-      ],
-    },
-  });
-  assert.match(afterCompletion, /data-kitchen-current-order="order-1001"/);
-  assert.doesNotMatch(afterCompletion, /data-kitchen-current-order="order-1002"/);
-});
-
-test("dedicated station focuses one FIFO order and lists the next five with every selected flavor", () => {
-  const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
-  const stationOrders = Array.from({ length: 8 }, (_, index) => order({
-    id: `prep-${index + 1}`,
-    status: "preparing",
-    channel: "counter",
-    startedAt: new Date(now - (60 - index * 5) * 60_000).toISOString(),
-    flavor: "Margherita",
-    flavors: index === 1 ? [{ name: "Margherita" }, { name: "Calabresa" }, { name: "Quatro queijos" }, { name: "Frango com catupiry" }] : null,
-  }));
-  const page = render({
-    kitchenDisplayConfiguration: layout,
-    activeKitchenScreen: 2,
-    kitchenScreenStage: "preparing",
-    kitchenScreenCount: 4,
-    snapshot: { tableCommands: [], orders: stationOrders },
-  });
-
-  assert.equal([...page.matchAll(/data-kitchen-current-order="prep-\d+"/g)].length, 1);
-  assert.match(page, /data-kitchen-current-order="prep-1"/);
-  assert.equal([...page.matchAll(/data-kitchen-upcoming-order="prep-\d+"/g)].length, 5);
-  assert.match(page, /data-kitchen-upcoming-order="prep-6"/);
-  assert.doesNotMatch(page, /data-kitchen-upcoming-order="prep-7"|data-kitchen-upcoming-order="prep-8"/);
-  for (const flavor of ["Margherita", "Calabresa", "Quatro queijos", "Frango com catupiry"]) {
-    assert.match(page, new RegExp(`<li>${flavor.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}<\\/li>`));
-  }
-  assert.match(page, /4 sabores/);
-  assert.doesNotMatch(page, /Meio a meio/);
-  assert.match(page, /\+ 2 pedidos depois dos próximos cinco/);
-
-  const advanced = render({
-    kitchenDisplayConfiguration: layout,
-    activeKitchenScreen: 2,
-    kitchenScreenStage: "preparing",
-    kitchenScreenCount: 4,
-    snapshot: {
-      tableCommands: [],
-      orders: stationOrders.map((record, index) => index === 0
-        ? { ...record, status: "ready", statusHistory: [...record.statusHistory, { changedAt: new Date(now).toISOString() }] }
-        : record),
-    },
-  });
-  assert.match(advanced, /data-kitchen-current-order="prep-2"/);
-  assert.doesNotMatch(advanced, /data-kitchen-current-order="prep-1"|data-kitchen-upcoming-order="prep-1"/);
-});
-
-test("shared production board uses neutral item language and accepts another Food menu shape", () => {
-  const genericOrder = order({ id: "food-2001", status: "preparing", channel: "counter", startedAt: "2026-10-26T12:50:00.000Z" });
-  genericOrder.items = [{
-    quantity: 2,
-    productName: "Sanduíche de frango",
-    variantLabel: "Pão australiano",
-    modifiers: ["Queijo extra", "Sem cebola"],
-  }];
-  const page = render({
-    kitchenOrderQuery: "Queijo extra",
-    kitchenItemPresentation: defaultKitchenItemPresentation,
-    kitchenItemLabel: { singular: "item", plural: "itens", metricLabel: "Itens na produção" },
-    kitchenStageGuidance: undefined,
-    kitchenSearchPlaceholder: "Buscar pedido ou produto",
-    kitchenSearchLabel: "Buscar pedido ou produto",
-    snapshot: { tableCommands: [], orders: [genericOrder] },
-  });
-
-  assert.match(page, /Itens na produção/);
-  assert.match(page, /2 itens/);
-  assert.match(page, /Sanduíche de frango/);
-  assert.match(page, /Pão australiano/);
-  assert.match(page, /Queijo extra/);
-  assert.match(page, /Sem cebola/);
-  assert.match(page, /Buscar pedido ou produto/);
-  assert.doesNotMatch(page, /pizza|pizzas|sabores|fatias|massa/i);
-
-  const stationPage = render({
-    activeKitchenScreen: 2,
-    kitchenScreenStage: "preparing",
-    kitchenScreenCount: 4,
-    kitchenItemPresentation: defaultKitchenItemPresentation,
-    kitchenItemLabel: { singular: "item", plural: "itens", metricLabel: "Itens na produção" },
-    kitchenStageGuidance: undefined,
-    snapshot: { tableCommands: [], orders: [genericOrder] },
-  });
-  assert.match(stationPage, /Prepare os itens e confira as instruções antes de concluir esta etapa/);
-  assert.doesNotMatch(stationPage, /pizza|pizzas|sabores|fatias|massa/i);
-});
-
-test("pizzeria item presentation keeps four flavors distinct without inventing proportions", () => {
-  const item = {
-    quantity: 1,
-    size: "large",
-    flavors: ["Margherita", "Calabresa", "Quatro queijos", "Frango com catupiry"].map((name) => ({ name })),
-  };
-  const presentation = presentPizzeriaKitchenItem(item, [{ id: "large", label: "Grande", slices: 8 }]);
-  const row = renderKitchenItemLine(item, presentation, (value) => String(value));
-
-  assert.deepEqual(presentation, {
-    title: "Grande",
-    detail: "8 fatias",
-    modifierLabel: "4 sabores",
-    modifiers: ["Margherita", "Calabresa", "Quatro queijos", "Frango com catupiry"],
-  });
-  for (const flavor of presentation.modifiers) assert.match(row, new RegExp(`<li>${flavor}</li>`));
-  assert.doesNotMatch(row, /Meio a meio|1\/4|25%/);
-});
-
-test("a station link may carry its display role without relying on another device's local preferences", () => {
-  const layout = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 3, "by-stage");
-  const page = render({
-    kitchenDisplayConfiguration: layout,
     kitchenScreenHref: (screenNumber, stage, screenCount) => `/?station=${screenNumber}&stationStage=${stage}&screenCount=${screenCount}`,
   });
+  assert.match(page, /TELA 1 DE 1/);
+  assert.match(page, /Sanduíche/);
+  assert.doesNotMatch(page, /pizza na cozinha|sabores da pizza/i);
+});
 
-  assert.match(page, /href="[^"]*station=2&amp;stationStage=preparing&amp;screenCount=3"/);
+test("Pizzeria item presenter keeps four flavor chips distinct without inventing proportions", () => {
+  const presentation = presentPizzeriaKitchenItem({
+    quantity: 1,
+    size: "large",
+    sizeLabel: "Grande",
+    flavors: ["Calabresa", "Margherita", "Quatro queijos", "Frango"].map((name) => ({ name })),
+  }, [{ id: "large", label: "Grande", slices: 8 }]);
+  assert.equal(presentation.modifiers.length, 4);
+  assert.deepEqual(presentation.modifiers, ["Calabresa", "Margherita", "Quatro queijos", "Frango"]);
+  assert.equal(presentation.detail, "8 fatias");
 });

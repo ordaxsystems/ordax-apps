@@ -7,8 +7,8 @@ import { createServer } from "node:net";
 const scenarios = Object.freeze([
   ["standalone-preview", "orders"],
   ["embedded-preview", "kitchen"],
-  ["embedded-preview", "kitchen", { station: "2", stationStage: "preparing", screenCount: "3" }],
-  ["embedded-preview", "kitchen", { station: "1", stationStage: "all", screenCount: "1" }],
+  ["embedded-preview", "kitchen", { station: "2", stationStage: "assembly", screenCount: "4" }],
+  ["embedded-preview", "kitchen", { station: "1", stationStage: "open-dough", screenCount: "1" }],
   ["embedded-preview", "orders"],
   ["embedded-preview", "tables"],
 ]);

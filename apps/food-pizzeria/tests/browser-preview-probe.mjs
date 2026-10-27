@@ -16,18 +16,6 @@ const expected = {
   orders: "Montar pedido",
   tables: "Mesas",
 };
-const expectedStationHeading = {
-  all: "Fluxo completo",
-  received: "Recebidos",
-  preparing: "Em preparo",
-  ready: "Prontos",
-}[parameters.get("stationStage")];
-const expectedStationGuidance = {
-  all: "Fluxo completo",
-  received: "Abertura da massa",
-  preparing: "Montagem",
-  ready: "Expedição",
-}[parameters.get("stationStage")];
 
 function ensure(ok, message) {
   if (!ok) throw new Error(message);
@@ -59,7 +47,7 @@ try {
     () => `Prévia não montou: errors=${browserErrors.join(" | ") || "nenhum"}; ready=${document.readyState}; modules=${[...document.querySelectorAll("script")].map(x=>x.src).join(",")}; resources=${performance.getEntriesByType("resource").filter(x=>/food|preview/.test(x.name)).map(x=>`${x.name.split("/").slice(-2).join("/")}:${x.responseStatus || "?"}`).join(",")}; host=${host.innerHTML.slice(0,350)}; shadowHost=${Boolean(host.shadowRoot)}; mount=${host.shadowRoot?.querySelector(".food-preview-content-root")?.innerHTML.slice(0,850) ?? "ausente"}`);
   const root = embedded ? host.shadowRoot : document;
   const expectedHeading = parameters.has("station")
-    ? expectedStationHeading
+    ? `TELA ${parameters.get("station")} DE ${parameters.get("screenCount") ?? parameters.get("station")}`
     : expected[view] ?? "OrdaX";
   ensure(expectedHeading && content.textContent.includes(expectedHeading),
     `O módulo ${view} não renderizou o conteúdo esperado${expectedHeading ? `: ${expectedHeading}` : ""}.`);
@@ -78,8 +66,8 @@ try {
     ensure(root.querySelectorAll("[data-kitchen-upcoming-order]").length <= 5,
       "A lista da estação exibe mais de cinco próximos pedidos.");
     const stationContent = root.querySelector(`[data-kitchen-station-screen="${station}"]`);
-    ensure(stationContent?.textContent.includes(expectedStationGuidance),
-      "A estação não mostra a orientação correspondente ao posto configurado.");
+    ensure(stationContent?.textContent.includes("Inicie a etapa"),
+      "A estação não mostra as ações disponíveis para trabalhar a etapa.");
     if (root.querySelector("[data-kitchen-current-order]")) {
       const focusedTicket = root.querySelector("[data-kitchen-current-order]");
       ensure(focusedTicket.querySelectorAll(".kitchen-item-line").length > 0,

@@ -1113,6 +1113,53 @@ dialog p { color: #a2a8af; }
 .kitchen-up-next-position { color: #ffad7a; font-size: 8px; font-weight: 700; }
 .kitchen-up-next-empty, .kitchen-up-next-more { margin: 12px 0 0; color: #929aa2; font-size: 9px; line-height: 1.45; }
 .kitchen-up-next-more { flex: 0 0 auto; padding-top: 8px; border-top: 1px solid #30363d; }
+
+/* Configurable production flow and explicit per-ticket stage controls. */
+.kitchen-workflow-step-list { display: grid; gap: 8px; }
+.kitchen-workflow-step { display: grid; grid-template-columns: 30px minmax(0, 1fr) 74px 46px; align-items: center; gap: 10px; min-width: 0; padding: 9px; border: 1px solid var(--kitchen-line); border-radius: 10px; background: #191c20; }
+.kitchen-step-number { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 8px; background: #33261f; color: #ffb078; font-size: 11px; font-weight: 800; }
+.kitchen-step-fields, .kitchen-step-screen { display: grid; min-width: 0; gap: 5px; color: #aeb5bc; font-size: 9px; font-weight: 700; }
+.kitchen-step-fields input, .kitchen-step-screen select { width: 100%; min-width: 0; min-height: 37px; padding: 7px 9px; border: 1px solid #373d44; border-radius: 7px; background: #22262b; color: #f0f2f4; font: 650 11px "Manrope", sans-serif; }
+.kitchen-step-order { display: grid; grid-template-columns: 1fr; gap: 3px; }
+.kitchen-step-order button { min-width: 35px; min-height: 25px; border: 1px solid #383e45; border-radius: 6px; background: #24282d; color: #e7eaed; cursor: pointer; }
+.kitchen-step-order button:disabled { opacity: .35; cursor: not-allowed; }
+.kitchen-screen-links { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.kitchen-screen-links h3 { margin: 0 0 2px; color: #e8eaec; font: 750 13px "Manrope", sans-serif; }
+.kitchen-screen-assignment { display: grid; min-width: 0; gap: 4px; }
+.kitchen-screen-assignment strong { color: #e8eaec; font-size: 11px; }
+.kitchen-screen-assignment span { overflow-wrap: anywhere; color: #a9b0b7; font-size: 9px; line-height: 1.4; }
+.kitchen-screen-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.kitchen-workflow-column .order-card { padding: 10px; }
+.kitchen-workflow-column .kitchen-task-progress { margin-block: 8px; }
+.kitchen-task-progress { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 1px solid #373d44; border-radius: 9px; background: #191c20; }
+.kitchen-task-progress > div { display: grid; gap: 3px; min-width: 0; }
+.kitchen-task-progress > div span { color: #a5adb5; font-size: 8px; font-weight: 800; letter-spacing: .7px; }
+.kitchen-task-progress > div strong { color: #ffb078; font: 750 12px "Manrope", sans-serif; }
+.kitchen-task-progress ol { display: flex; flex: 0 0 auto; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.kitchen-task-progress li { width: 17px; height: 5px; border-radius: 5px; background: #444b53; }
+.kitchen-task-progress li.is-completed { background: #36c294; }
+.kitchen-task-progress li.is-active { background: #ff9d68; box-shadow: 0 0 0 2px #ff9d6833; }
+.kitchen-task-progress li.is-queued { background: #a879ff; }
+.kitchen-task-progress li.is-pending { background: #41474f; }
+.kitchen-task-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 12px; }
+.kitchen-task-actions .button { min-height: 48px; }
+.kitchen-task-actions .button-primary { font-size: 13px; font-weight: 800; }
+.kitchen-handoff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; margin-top: 13px; }
+.kitchen-handoff-panel { min-width: 0; padding: 14px; border-color: var(--kitchen-line); background: var(--kitchen-surface); }
+.kitchen-handoff-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.kitchen-handoff-panel > header h2 { margin: 0; color: #edf0f2; font: 750 14px "Manrope", sans-serif; }
+.kitchen-handoff-panel .delivery-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 8px; }
+.kitchen-task-actions :focus-visible, .kitchen-workflow-step :focus-visible, .kitchen-screen-actions :focus-visible { outline: 2px solid #ff9867; outline-offset: 2px; }
+
+@media (max-width: 740px) {
+  .kitchen-workflow-step { grid-template-columns: 25px minmax(0, 1fr) 58px 38px; gap: 6px; padding: 7px; }
+  .kitchen-step-number { width: 23px; height: 23px; }
+  .kitchen-screen-actions { justify-content: stretch; }
+  .kitchen-screen-actions .button { flex: 1 1 110px; min-height: 38px; }
+  .kitchen-task-actions { grid-template-columns: 1fr; }
+  .kitchen-handoff-grid { grid-template-columns: minmax(0, 1fr); }
+  .kitchen-handoff-panel { padding: 10px; }
+}
 .kitchen-station-empty { display: grid; min-height: 150px; place-items: center; padding: 20px; border: 1px dashed #3b424a; border-radius: 10px; color: #a8afb7; font-size: 13px; text-align: center; }
 .kitchen-board-station { grid-template-columns: minmax(0, 900px); justify-content: center; overflow: visible; }
 .kitchen-station-screen .kitchen-column { min-height: calc(100vh - 225px); padding: clamp(12px, 2vw, 22px); }

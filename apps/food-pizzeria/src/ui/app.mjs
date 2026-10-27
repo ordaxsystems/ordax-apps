@@ -6,11 +6,16 @@ import {
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
 import {
-  DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
-  KITCHEN_DISPLAY_STAGES,
-  resizeKitchenDisplayConfiguration,
-  validateKitchenDisplayConfiguration,
-} from "../application/kitchen-display-configuration.mjs";
+  DEFAULT_KITCHEN_TASKS,
+  DEFAULT_KITCHEN_WORKFLOW,
+  KITCHEN_WORKFLOW_SCHEMA,
+  currentKitchenStep,
+  distributeKitchenSteps,
+  saveKitchenWorkflow,
+  sortKitchenTickets,
+  validateKitchenTasks,
+  validateKitchenWorkflow,
+} from "../application/kitchen-workflow-preview.mjs";
 import { reviewFoodCartPrices } from "../application/cart-pricing.mjs";
 import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
@@ -90,7 +95,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   const routeStageValue = routeParams.get("stationStage");
   const activeKitchenScreenFromRoute = Number.isSafeInteger(routeStationValue)
     && routeStationValue >= 1 && routeStationValue <= 8 ? routeStationValue : null;
-  const kitchenScreenStageFromRoute = KITCHEN_DISPLAY_STAGES.some(({ id }) => id === routeStageValue)
+  const kitchenScreenStageFromRoute = typeof routeStageValue === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(routeStageValue)
     ? routeStageValue
     : null;
   const kitchenScreenCountFromRoute = Number.isSafeInteger(routeScreenCountValue)
@@ -151,7 +156,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let kitchenChannelFilter = "all";
   let kitchenOrderQuery = "";
   let kitchenLateOnly = false;
-  let kitchenLayoutDraft = null;
+  let kitchenWorkflowDraft = null;
   let kitchenSetupExpanded = false;
   const activeKitchenScreen = activeKitchenScreenFromRoute;
   let activeCommandId = null;
@@ -237,9 +242,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return CHANNEL_LABELS[order.channel];
   }
 
-  function kitchenDisplayConfiguration() {
-    return validateKitchenDisplayConfiguration(
-      kitchenLayoutDraft ?? previewPreferences?.kitchenDisplays ?? DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+  function kitchenWorkflowConfiguration() {
+    return validateKitchenWorkflow(
+      kitchenWorkflowDraft ?? previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW,
     );
   }
 
@@ -398,7 +403,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return {
       PIZZA_SIZES, PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS, PREVIEW_INGREDIENTS,
       deliveryFeeCents: previewPreferences.deliveryFeeCents,
-      kitchenDisplayConfiguration: kitchenDisplayConfiguration(),
+      kitchenWorkflow: kitchenWorkflowConfiguration(),
+      kitchenTasks: validateKitchenTasks(previewPreferences?.kitchenTasks ?? DEFAULT_KITCHEN_TASKS),
+      kitchenTaskActionsAvailable: typeof store.recordKitchenTaskAction === "function",
       kitchenItemPresentation,
       kitchenItemLabel: PIZZERIA_KITCHEN_ITEM_LABEL,
       kitchenStageGuidance: PIZZERIA_KITCHEN_STAGE_GUIDANCE,
@@ -484,7 +491,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     </article>`;
   }
 
-  function renderKitchenOrderCard(order, { deliveryDetails = false } = {}) {
+  function renderKitchenOrderCard(order, { deliveryDetails = false, task = null, screenNumber = null } = {}) {
     const totalPizzas = order.items.reduce((sum, item) => sum + item.quantity, 0);
     const items = order.items.map((item) => renderKitchenItemLine(item, kitchenItemPresentation(item), escapeHtml)).join("");
     const startedAt = stageStartedAt(order);
@@ -495,14 +502,24 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const dispatchDetails = deliveryDetails && order.channel === "delivery"
       ? `<div class="kitchen-delivery-details"><span>DESTINO</span><strong>${escapeHtml(order.customerName)}</strong><p>${escapeHtml(order.address)}</p>${order.phone ? `<small>${escapeHtml(order.phone)}</small>` : ""}</div>`
       : "";
+    const currentTask = task ? currentKitchenStep(task) : null;
+    const taskProgress = task && currentTask
+      ? `<section class="kitchen-task-progress" aria-label="Etapa ${task.steps.filter(({ status }) => status === "completed").length + 1} de ${task.steps.length}"><div><span>ETAPA ${task.steps.filter(({ status }) => status === "completed").length + 1} DE ${task.steps.length}</span><strong>${escapeHtml(currentTask.label)}</strong></div><ol aria-label="Progresso do pedido">${task.steps.map((step) => `<li class="is-${step.status}" aria-label="${escapeHtml(step.label)}: ${({ completed: "concluída", active: "em andamento", queued: "aguardando", pending: "próxima" })[step.status]}"></li>`).join("")}</ol></section>`
+      : "";
+    const taskActions = task && currentTask && Number.isSafeInteger(screenNumber)
+      ? `<footer class="kitchen-ticket-actions kitchen-task-actions">${currentTask.status === "queued"
+        ? button(`Iniciar ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="start" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })
+        : button(`Concluir ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="complete" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}${button("Adiar para o fim da fila", "kitchen-task-action", { kind: "quiet", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="defer" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}</footer>`
+      : "";
     return `<article class="order-card order-card-kitchen" data-status="${order.status}">
       <header class="kitchen-ticket-head"><div class="kitchen-ticket-identity"><strong>${orderNumber(order)}</strong><span class="kitchen-channel-chip">${escapeHtml(orderChannelLabel(order))}</span></div><span class="status-badge status-${order.status}"><span></span>${escapeHtml(STATUS_LABELS[order.status])}</span></header>
       <div class="kitchen-ticket-meta"><span>Pedido às ${clockTime(order.createdAt)}</span><strong>${totalPizzas} ${totalPizzas === 1 ? "pizza" : "pizzas"}</strong></div>
+      ${taskProgress}
       ${age}
       <ul class="kitchen-item-lines">${items}</ul>
       ${order.notes ? `<div class="kitchen-production-note"><span>INSTRUÇÃO DE PREPARO</span><p>${escapeHtml(order.notes)}</p></div>` : ""}
       ${dispatchDetails}
-      <footer class="kitchen-ticket-actions">${canCancel(order) ? button("Cancelar", "cancel-order", { kind: "quiet", extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${orderAction(order)}</footer>
+      ${taskActions}
     </article>`;
   }
   
@@ -858,25 +875,46 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
   }
 
-  function kitchenLayoutFromForm(form) {
+  function kitchenWorkflowFromForm(form, { autoDistribute = false } = {}) {
     const values = new FormData(form);
-    const mode = String(values.get("mode") ?? "complete-cycle");
+    const current = validateKitchenWorkflow(previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW);
+    const stepCount = Number(values.get("stepCount"));
     const screenCount = Number(values.get("screenCount"));
-    const resized = resizeKitchenDisplayConfiguration(kitchenDisplayConfiguration(), screenCount, mode);
-    if (mode === "complete-cycle") return resized;
-    const assignments = Array.from({ length: screenCount }, (_, index) => {
-      const value = values.get(`display-${index + 1}`);
-      return typeof value === "string" ? value : resized.assignments[index];
+    if (!Number.isSafeInteger(stepCount) || stepCount < 1 || stepCount > 8
+      || !Number.isSafeInteger(screenCount) || screenCount < 1 || screenCount > stepCount) {
+      throw new TypeError("O número de telas precisa ser menor ou igual ao número de etapas.");
+    }
+    const steps = Array.from({ length: stepCount }, (_, index) => {
+      const old = current.steps[index];
+      const label = values.get(`step-label-${index + 1}`);
+      const screen = Number(values.get(`step-screen-${index + 1}`));
+      const distributedScreen = Math.min(screenCount, Math.floor(index * screenCount / stepCount) + 1);
+      return {
+        id: String(values.get(`step-id-${index + 1}`) ?? old?.id ?? `step-${uid().replaceAll("-", "").slice(0, 12)}`),
+        label: String(label ?? old?.label ?? `Etapa ${index + 1}`),
+        screen: autoDistribute || !Number.isSafeInteger(screen) || screen < 1 || screen > screenCount
+          ? distributedScreen
+          : screen,
+      };
     });
-    return validateKitchenDisplayConfiguration({ mode, screenCount, assignments });
+    const candidate = validateKitchenWorkflow({
+      schema: KITCHEN_WORKFLOW_SCHEMA,
+      revision: current.revision,
+      screenCount,
+      steps,
+    });
+    return autoDistribute ? distributeKitchenSteps(candidate, screenCount) : candidate;
   }
 
-  async function saveKitchenDisplayConfiguration(form) {
+  async function saveKitchenWorkflowConfiguration(form) {
     if (busy || destroyed) return false;
     kitchenSetupExpanded = root.querySelector(".kitchen-display-setup")?.open ?? kitchenSetupExpanded;
-    let kitchenDisplays;
+    let kitchenWorkflow;
     try {
-      kitchenDisplays = kitchenLayoutFromForm(form);
+      kitchenWorkflow = saveKitchenWorkflow(
+        previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW,
+        kitchenWorkflowFromForm(form),
+      );
     } catch (error) {
       report(error);
       return false;
@@ -884,11 +922,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     busy = true;
     setBusyUI(true);
     try {
-      await store.updatePreviewPreferences({ ...previewPreferences, kitchenDisplays });
+      await store.updatePreviewPreferences({ ...previewPreferences, kitchenWorkflow });
       if (destroyed) return false;
       previewPreferences = store.getPreviewPreferences();
-      kitchenLayoutDraft = null;
-      notice = { type: "success", text: "Distribuição local das telas salva." };
+      kitchenWorkflowDraft = null;
+      notice = { type: "success", text: "Fluxo e telas da cozinha salvos." };
       clearTimeout(noticeTimer);
       noticeTimer = setTimeout(() => {
         notice = null;
@@ -896,7 +934,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       }, 3600);
       return true;
     } catch (error) {
-      if (!destroyed) notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar a configuração local das telas." };
+      if (!destroyed) notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar o fluxo da cozinha." };
       return false;
     } finally {
       busy = false;
@@ -904,6 +942,68 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         setBusyUI(false);
         render();
       }
+    }
+  }
+
+  async function handleKitchenTaskAction(target) {
+    if (busy || destroyed) return;
+    if (typeof store.recordKitchenTaskAction !== "function") {
+      report(new Error("O contrato Food de tarefas de produção ainda não está disponível neste adapter."));
+      return;
+    }
+    busy = true;
+    setBusyUI(true);
+    try {
+      const action = target.dataset.taskAction;
+      const orderId = target.dataset.orderId;
+      const task = previewPreferences.kitchenTasks.tickets.find(({ orderId: id }) => id === orderId);
+      const step = task?.steps.find(({ id }) => id === target.dataset.stepId);
+      await store.recordKitchenTaskAction({
+        action,
+        orderId,
+        stepId: target.dataset.stepId,
+        screenNumber: Number(target.dataset.screenNumber),
+        at: new Date().toISOString(),
+        commandId: `kds-${uid()}`,
+      });
+      if (destroyed) return;
+      snapshot = readFoodSnapshot(store);
+      previewPreferences = store.getPreviewPreferences();
+      notice = {
+        type: "success",
+        text: action === "start" ? `${step?.label ?? "Etapa"} iniciada.`
+          : action === "complete" ? `${step?.label ?? "Etapa"} concluída. O pedido seguiu o fluxo.`
+            : "Pedido adiado para o fim desta fila.",
+      };
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => {
+        notice = null;
+        renderNotice();
+      }, 3000);
+    } catch (error) {
+      if (!destroyed) notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível atualizar esta etapa." };
+    } finally {
+      busy = false;
+      if (!destroyed) {
+        setBusyUI(false);
+        render();
+      }
+    }
+  }
+
+  async function copyKitchenScreenLink(target) {
+    const clipboard = globalThis.navigator?.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      report(new Error("Este aparelho não permite copiar o link automaticamente. Abra o link da tela e copie o endereço do navegador."));
+      return;
+    }
+    try {
+      const currentHref = globalThis.location?.href ?? "http://localhost/";
+      await clipboard.writeText(new URL(target.dataset.copyUrl, currentHref).href);
+      notice = { type: "success", text: "Link da tela copiado." };
+      renderNotice();
+    } catch (error) {
+      report(error);
     }
   }
   
@@ -915,6 +1015,26 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     const target = event.target.closest("button, a");
     if (!target) return;
+    if (target.dataset.action === "move-kitchen-step") {
+      const form = target.closest("#kitchen-layout-form");
+      if (!form) return;
+      try {
+        const current = kitchenWorkflowFromForm(form);
+        const index = Number(target.dataset.index);
+        const destination = index + Number(target.dataset.delta);
+        if (!Number.isSafeInteger(index) || !Number.isSafeInteger(destination)
+          || index < 0 || destination < 0 || destination >= current.steps.length) return;
+        const steps = [...current.steps];
+        [steps[index], steps[destination]] = [steps[destination], steps[index]];
+        kitchenWorkflowDraft = validateKitchenWorkflow({ ...current, steps });
+        kitchenSetupExpanded = true;
+        render();
+        root.querySelector(`[data-action="move-kitchen-step"][data-index="${destination}"][data-delta="${-Number(target.dataset.delta)}"]`)?.focus({ preventScroll: true });
+      } catch (error) {
+        report(error);
+      }
+      return;
+    }
     if (target.dataset.action === "fullscreen-kitchen") {
       const display = root.querySelector("[data-kitchen-station-screen]");
       if (!display) {
@@ -1046,6 +1166,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           changedAt: new Date().toISOString(),
         },
       }, `Pedido atualizado: ${STATUS_LABELS[status].toLocaleLowerCase("pt-BR")}.`);
+    } else if (action === "kitchen-task-action") {
+      void handleKitchenTaskAction(target);
+    } else if (action === "copy-kitchen-link") {
+      void copyKitchenScreenLink(target);
     } else if (action === "cancel-order") {
       cancelForm.elements.orderId.value = target.dataset.orderId;
       cancelForm.elements.reason.value = "";
@@ -1137,7 +1261,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     if (kind === "kitchen-layout-form") {
       event.preventDefault();
-      await saveKitchenDisplayConfiguration(form);
+      await saveKitchenWorkflowConfiguration(form);
       return;
     }
     if (!["setup-form", "flavor-form", "recipe-editor", "settings-form", "create-order-form", "cancel-order-form", "table-open-form"].includes(kind)) return;
@@ -1279,11 +1403,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   function handleInput(event) {
-    if (event.type === "change" && event.target.closest("#kitchen-layout-form")) {
+    if (event.type === "change" && event.target.closest("#kitchen-layout-form")
+      && ["screenCount", "stepCount"].includes(event.target.name)) {
       const form = event.target.closest("#kitchen-layout-form");
       try {
         kitchenSetupExpanded = root.querySelector(".kitchen-display-setup")?.open ?? kitchenSetupExpanded;
-        kitchenLayoutDraft = kitchenLayoutFromForm(form);
+        kitchenWorkflowDraft = kitchenWorkflowFromForm(form, { autoDistribute: true });
         render();
         root.querySelector(`#${CSS.escape(event.target.id)}`)?.focus({ preventScroll: true });
       } catch (error) {

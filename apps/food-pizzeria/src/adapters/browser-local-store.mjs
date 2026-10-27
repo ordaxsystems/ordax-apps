@@ -1,5 +1,4 @@
 import { applyFoodCommand, createFoodCommand } from "../application/commands.mjs";
-import { fingerprintFoodCommand } from "../application/command-fingerprint.mjs";
 import {
   DEFAULT_DELIVERY_FEE_CENTS,
   migrateFoodPizzeriaState,
@@ -15,9 +14,20 @@ import {
   DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
   validateKitchenDisplayConfiguration,
 } from "../application/kitchen-display-configuration.mjs";
+import { fingerprintFoodCommand } from "../application/command-fingerprint.mjs";
+import {
+  DEFAULT_KITCHEN_TASKS,
+  DEFAULT_KITCHEN_WORKFLOW,
+  applyKitchenTaskAction,
+  currentKitchenStep,
+  reconcileKitchenTasks,
+  validateKitchenTasks,
+  validateKitchenWorkflow,
+} from "../application/kitchen-workflow-preview.mjs";
 
-const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/4";
-const PREVIOUS_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/3";
+const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/5";
+const PREVIOUS_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/4";
+const PREVIOUS_PREVIEW_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/3";
 const LEGACY_ENVELOPE_SCHEMA = "ordax.food-pizzeria.browser-state/2";
 const LEGACY_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/1";
 const COMMAND_DIGEST_RE = /^[a-f0-9]{64}$/;
@@ -32,6 +42,8 @@ const PREVIEW_ACTIVITY_REFRESH_AFTER_MS = 2 * 60 * 60 * 1000;
 const DEFAULT_PREVIEW_PREFERENCES = Object.freeze({
   deliveryFeeCents: DEFAULT_DELIVERY_FEE_CENTS,
   kitchenDisplays: DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+  kitchenWorkflow: DEFAULT_KITCHEN_WORKFLOW,
+  kitchenTasks: DEFAULT_KITCHEN_TASKS,
 });
 const LEGACY_KEY = [
   "ordax.food-pizzeria.development.v2",
@@ -66,7 +78,7 @@ function validatePreviewPreferences(value) {
     ? Object.keys(value).sort().join(",")
     : "";
   if (!value || typeof value !== "object" || Array.isArray(value)
-    || !["deliveryFeeCents", "deliveryFeeCents,kitchenDisplays"].includes(keys)
+    || !["deliveryFeeCents", "deliveryFeeCents,kitchenDisplays", "deliveryFeeCents,kitchenDisplays,kitchenTasks,kitchenWorkflow"].includes(keys)
     || !Number.isSafeInteger(value.deliveryFeeCents)
     || value.deliveryFeeCents < 0 || value.deliveryFeeCents > 1_000_000_000) {
     throw new TypeError("As preferências locais da prévia estão inválidas.");
@@ -75,6 +87,8 @@ function validatePreviewPreferences(value) {
     deliveryFeeCents: value.deliveryFeeCents,
     kitchenDisplays: validateKitchenDisplayConfiguration(value.kitchenDisplays
       ?? DEFAULT_KITCHEN_DISPLAY_CONFIGURATION),
+    kitchenWorkflow: validateKitchenWorkflow(value.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW),
+    kitchenTasks: validateKitchenTasks(value.kitchenTasks ?? DEFAULT_KITCHEN_TASKS),
   });
 }
 
@@ -133,7 +147,7 @@ function decodeStoredValue(raw, businessId) {
     };
   }
 
-  if (parsed?.schema === PREVIOUS_STORAGE_SCHEMA) {
+  if ([PREVIOUS_STORAGE_SCHEMA, PREVIOUS_PREVIEW_STORAGE_SCHEMA].includes(parsed?.schema)) {
     const migrated = migrateLocalFoodSnapshot(parsed.state);
     return {
       state: migrated.state,
@@ -319,6 +333,16 @@ export function createBrowserLocalFoodStore({
     storage.setItem(key, serialized);
   }
 
+  function reconcilePreviewPreferences(preferences, state) {
+    const kitchenTasks = reconcileKitchenTasks(
+      preferences.kitchenTasks ?? DEFAULT_KITCHEN_TASKS,
+      state.orders,
+      preferences.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW,
+    );
+    if (JSON.stringify(kitchenTasks) === JSON.stringify(preferences.kitchenTasks)) return preferences;
+    return validatePreviewPreferences({ ...preferences, kitchenTasks });
+  }
+
   const onStorage = (event) => {
     if (!initialized || destroyed || event.key !== key || event.newValue === null) return;
     try {
@@ -354,11 +378,11 @@ export function createBrowserLocalFoodStore({
           archiveLegacyInventory(persisted.legacyInventoryArchive);
           snapshot = refreshExpiredUntouchedPreviewActivity(persisted.state, now);
           processedCommands = persisted.processedCommands;
-          previewPreferences = persisted.previewPreferences;
+          previewPreferences = reconcilePreviewPreferences(persisted.previewPreferences, snapshot);
         } else {
           snapshot = validateFoodPizzeriaState(createSeedFoodState(now));
           processedCommands = [];
-          previewPreferences = DEFAULT_PREVIEW_PREFERENCES;
+          previewPreferences = reconcilePreviewPreferences(DEFAULT_PREVIEW_PREFERENCES, snapshot);
         }
         // Persist the seed or migrated value under the same lock so every tab starts from one revision.
         writePersisted(snapshot, processedCommands, previewPreferences);
@@ -381,11 +405,11 @@ export function createBrowserLocalFoodStore({
     },
     async updatePreviewPreferences(value) {
       if (destroyed || !initialized) throw new Error("A interface de dados da pizzaria não está pronta.");
-      const nextPreferences = validatePreviewPreferences(value);
       return locks.request(lock, { mode: "exclusive" }, async () => {
         if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
         const persisted = readPersisted();
         if (!persisted) throw new Error("O estado local da pizzaria desapareceu durante a operação.");
+        const nextPreferences = reconcilePreviewPreferences(validatePreviewPreferences(value), persisted.state);
         if (JSON.stringify(persisted.previewPreferences) === JSON.stringify(nextPreferences)) {
           snapshot = persisted.state;
           processedCommands = persisted.processedCommands;
@@ -447,10 +471,86 @@ export function createBrowserLocalFoodStore({
           throw new Error("A operação produziu dados sem revisão válida da pizzaria.");
         }
         const nextCommands = [...persisted.processedCommands, { id: command.commandId, digest: commandDigest }];
-        writePersisted(next, nextCommands, persisted.previewPreferences);
+        const nextPreferences = reconcilePreviewPreferences(persisted.previewPreferences, next);
+        writePersisted(next, nextCommands, nextPreferences);
         snapshot = next;
         processedCommands = nextCommands;
-        previewPreferences = persisted.previewPreferences;
+        previewPreferences = nextPreferences;
+        emit();
+        return snapshot;
+      });
+    },
+    async recordKitchenTaskAction(inputValue = {}) {
+      if (destroyed || !initialized) throw new Error("A interface de dados da pizzaria não está pronta.");
+      const { action, orderId, stepId, screenNumber, at, commandId } = inputValue;
+      if (typeof globalThis.crypto?.subtle?.digest !== "function") {
+        throw new Error("WebCrypto SHA-256 é obrigatório para registrar uma ação da cozinha.");
+      }
+      const actionPayload = { action, orderId, stepId, screenNumber, at, commandId };
+      const digestBytes = await globalThis.crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(JSON.stringify(actionPayload)),
+      );
+      const digest = [...new Uint8Array(digestBytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      return locks.request(lock, { mode: "exclusive" }, async () => {
+        if (destroyed) throw new Error("A sessão da pizzaria foi encerrada.");
+        const persisted = readPersisted();
+        if (!persisted) throw new Error("O estado local da pizzaria desapareceu durante a operação.");
+        const previous = persisted.previewPreferences.kitchenTasks.commands.find(({ id }) => id === commandId);
+        if (previous) {
+          if (previous.digest !== digest) throw new Error("Identificador de ação reutilizado com outro conteúdo.");
+          snapshot = persisted.state;
+          processedCommands = persisted.processedCommands;
+          previewPreferences = persisted.previewPreferences;
+          emit();
+          return snapshot;
+        }
+
+        const currentPreferences = reconcilePreviewPreferences(persisted.previewPreferences, persisted.state);
+        const currentTasks = currentPreferences.kitchenTasks;
+        const ticket = currentTasks.tickets.find(({ orderId: id }) => id === orderId);
+        if (!ticket) throw new Error("O pedido não possui uma sequência de produção.");
+        const currentStep = currentKitchenStep(ticket);
+        if (!currentStep || currentStep.id !== stepId) throw new Error("A etapa deste pedido já mudou. Atualize a fila.");
+        let nextTasks = applyKitchenTaskAction(currentTasks, {
+          action, orderId, stepId, screenNumber, at, commandId, digest,
+        });
+        let nextState = persisted.state;
+        let nextCommands = persisted.processedCommands;
+        const order = nextState.orders.find(({ id }) => id === orderId);
+        const isFirstStep = ticket.steps[0].id === currentStep.id;
+        const isLastStep = ticket.steps.at(-1).id === currentStep.id;
+        const nextStatus = action === "start" && isFirstStep && order.status === "received"
+          ? "preparing"
+          : action === "complete" && isLastStep && order.status === "preparing"
+            ? "ready"
+            : null;
+        if (nextStatus) {
+          if (nextCommands.length >= MAX_RECORDED_COMMANDS) {
+            throw new RangeError("O histórico local de operações atingiu o limite seguro. Preserve os dados antes de continuar.");
+          }
+          const transition = createFoodCommand({
+            type: "order.transition",
+            payload: {
+              orderId,
+              nextStatus,
+              historyId: `${commandId}-history`,
+              changedAt: at,
+            },
+            expectedRevision: nextState.revision,
+            commandId: `${commandId}-food`,
+            issuedAt: at,
+          });
+          const transitionDigest = await fingerprintFoodCommand(transition);
+          nextState = validateFoodPizzeriaState(applyFoodCommand(nextState, transition));
+          nextCommands = [...nextCommands, { id: transition.commandId, digest: transitionDigest }];
+          nextTasks = reconcileKitchenTasks(nextTasks, nextState.orders, currentPreferences.kitchenWorkflow);
+        }
+        const nextPreferences = validatePreviewPreferences({ ...currentPreferences, kitchenTasks: nextTasks });
+        writePersisted(nextState, nextCommands, nextPreferences);
+        snapshot = nextState;
+        processedCommands = nextCommands;
+        previewPreferences = nextPreferences;
         emit();
         return snapshot;
       });
