@@ -19,6 +19,10 @@ Pedidos, cardápio, comandas, receitas, configuração de telas e o catálogo ad
 
 No fluxo, **concluir** avança apenas uma etapa do pedido. **Próximo** faz uma rotação curta: libera o pedido atual, coloca em foco o seguinte e posiciona o anterior em terceiro quando existem ao menos três tickets; com apenas dois, posiciona-o logo após o pedido que entrou. Não marca a etapa como concluída nem deixa o pedido para trás de dezenas de tickets. A ação fica indisponível quando não há outro pedido esperando. A última etapa muda o pedido Food para Pronto; Retirada e Delivery seguem para os módulos próprios de liberação e expedição. O KDS não cancela pedidos. Os sabores de pizzas com até quatro partes continuam em etiquetas individuais, sem presumir proporções. A configuração e as tarefas detalhadas ficam no envelope local do navegador; não alteram o estado Food. O estado local atual é v7 para preservar itens de catálogo como snapshots; o catálogo mostrado nessa prévia continua fixture e não está conectado ao owner Catálogo. O SQL proposto valida o contrato anterior v6 e precisa de atualização antes de aceitar o novo formato em produção. Links diretos abrem a estação, mas aparelhos diferentes ainda não compartilham tarefas. Para produção real, faltam o contrato Food/Catálogo para resolução de produtos, contrato Food de tarefas, autorização por ação, claim/lease idempotente e atualização/reconciliação compartilhada; a atribuição de operadores ainda depende de People/Identity.
 
+## Reconfigurar a cozinha com pedidos em andamento
+
+Quando a linha muda, o quadro mantém links às estações antigas que ainda têm pedidos iniciados naquele fluxo. O ticket continua com sua etapa original até terminar; tarefas não iniciadas seguem a configuração atual.
+
 ## Executar
 
 Com Node.js 20 ou superior, na raiz do repositório:

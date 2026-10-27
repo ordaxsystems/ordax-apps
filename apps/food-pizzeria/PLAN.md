@@ -33,6 +33,8 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 - Dados e identidade de interface não conectados não são apresentados como operação ativa.
 - Remoção do `mockWorkspace` e dos handlers antigos de Caixa, Estoque, Clientes e Equipe; somente estado transitório da interface e amostras marcadas permanecem fora do domínio versionado.
 
+- **Preservação de tarefas em andamento:** reduzir o número de telas mantém links diretos para as estações do fluxo anterior que ainda têm trabalho iniciado. A etapa e a atribuição do ticket são preservadas; vagas sem etapa não aparecem como telas configuradas.
+
 ## Próxima sequência
 
 1. **Contrato público Space Experience:** o source do OS já define `ordax.space-experience/1` e `ordax.space-capability-provider/2` em `system/contracts/space-experience.mjs`. **Ambos já estão exportados no App SDK 1.21.0 publicado pelo OS e fixado por commit/hash em `platform-sdk.lock.json`**. Ainda falta o owner host fornecer contexto autenticado, autorização real, readiness e lifecycle ao adapter Food. Enquanto isso, `embedded-preview` continua apenas prova visual local: não montar Food como Space pronto nem importar serviços privados.

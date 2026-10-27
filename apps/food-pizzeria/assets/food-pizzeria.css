@@ -1187,6 +1187,7 @@ dialog p { color: #a2a8af; }
 .kitchen-screen-assignment { display: grid; min-width: 0; gap: 4px; }
 .kitchen-screen-assignment strong { color: #e8eaec; font-size: 11px; }
 .kitchen-screen-assignment span { overflow-wrap: anywhere; color: #a9b0b7; font-size: 9px; line-height: 1.4; }
+.kitchen-preserved-work-note { color: #ffd2a8; font-size: 8px; line-height: 1.4; }
 .kitchen-screen-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .kitchen-workflow-column .order-card { padding: 10px; }
 .kitchen-workflow-column .kitchen-task-progress { margin-block: 8px; }

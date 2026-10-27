@@ -215,6 +215,55 @@ test("solo pizzaiolo setup explains both per-order and batch preparation modes",
   assert.doesNotMatch(batchPage, /um pedido por vez/);
 });
 
+test("started kitchen work stays reachable after the new layout removes its former screen", () => {
+  const inProgressOrder = { ...orders[0], status: "preparing" };
+  const legacyTicket = {
+    orderId: inProgressOrder.id,
+    workflowRevision: workflow.revision,
+    cycleQueuedAt: inProgressOrder.createdAt,
+    steps: workflow.steps.map((step, index) => ({
+      ...step,
+      status: index < 3 ? "completed" : "active",
+      queuedAt: "2026-10-26T12:40:00.000Z",
+      startedAt: "2026-10-26T12:41:00.000Z",
+      completedAt: index < 3 ? "2026-10-26T12:42:00.000Z" : null,
+      deferCount: 0,
+      queuePosition: index < 3 ? null : 1,
+    })),
+  };
+  const taskSnapshot = {
+    ...DEFAULT_KITCHEN_TASKS,
+    revision: 3,
+    tickets: [legacyTicket],
+  };
+  const newWorkflow = validateKitchenWorkflow({
+    ...workflow,
+    revision: workflow.revision + 1,
+    screenCount: 1,
+    steps: workflow.steps.map((step) => ({ ...step, screen: 1 })),
+  });
+  const snapshot = { tableCommands: [], orders: [inProgressOrder] };
+  const setupPage = render({
+    snapshot,
+    kitchenWorkflow: newWorkflow,
+    kitchenTasks: taskSnapshot,
+  });
+  assert.match(setupPage, /data-kitchen-preserved-screen="4"/);
+  assert.match(setupPage, /href="\/?\?station=4&amp;stationStage=finish-pack&amp;screenCount=4"/);
+  assert.match(setupPage, /1 pedido em andamento neste fluxo anterior/);
+
+  const legacyStation = render({
+    snapshot,
+    kitchenWorkflow: newWorkflow,
+    kitchenTasks: taskSnapshot,
+    activeKitchenScreen: 4,
+    kitchenScreenCount: 4,
+  });
+  assert.match(legacyStation, /TELA 4 DE 4/);
+  assert.match(legacyStation, /<h1>Finalização e embalagem<\/h1>/);
+  assert.match(legacyStation, /data-kitchen-current-order="order-1001"/);
+});
+
 test("each of the four production screens renders only its own assigned stage", () => {
   const stationOrders = Array.from({ length: 4 }, (_, index) => order({
     id: `station-order-${index + 1}`,

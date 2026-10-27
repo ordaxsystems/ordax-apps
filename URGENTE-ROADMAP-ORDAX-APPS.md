@@ -815,3 +815,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O Cardápio consolida os insumos necessários por tamanho e quantidade de cada sabor, reutilizando o cálculo de consumo já adotado pelos pedidos. A projeção não consulta saldos nem grava movimentações no Inventory.
 - Suíte Food: 138/138; o planejador valida tamanhos, sabores, fichas e limite do lote. A PR #359 permanece em rascunho.
 
+
+### Space Pizzaria / OrdaX Food — preservar pedidos durante reconfiguração do KDS (2026-10-27)
+
+- Reconfigurar a linha da cozinha não esconde mais tickets já iniciados em telas removidas. O quadro conserva links às estações antigas necessárias até os pedidos terminarem e marca quantos pedidos seguem no fluxo anterior; posições vazias não recebem links.
+- O ticket continua com sua etapa e atribuição originais; novos e ainda não iniciados seguem a configuração atual. Não foi criada sincronização entre aparelhos nem integração com Food Production.
+- Regressão cobre reduzir quatro telas para uma e reabrir o pedido pela estação antiga. Suíte Food: 139/139; a PR #359 segue como rascunho.

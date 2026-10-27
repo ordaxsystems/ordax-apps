@@ -415,3 +415,11 @@ O Cardápio oferece um cálculo de lote por tamanho e quantidade de cada sabor. 
 
 Validação: `tests/batch-planning.test.mjs`, 3/3; suíte Food completa, 138/138; `node --check` dos módulos alterados e `git diff --check` aprovados.
 
+
+## Acesso a pedidos em andamento após reconfigurar a cozinha (2026-10-27)
+
+O quadro de telas agora mantém uma rota direta para cada estação que ainda tem pedido iniciado no fluxo anterior, mesmo quando a configuração nova reduz a quantidade de telas. A linha informa a etapa preservada e quantos pedidos continuam nela. As telas configuradas sem trabalho anterior seguem mostrando apenas as etapas do fluxo atual; posições sem etapa e sem pedido não geram links vazios.
+
+O ticket conserva sua sequência, posição e tela original até terminar; tarefas ainda não iniciadas continuam podendo ser reorganizadas para a nova configuração. Assim, a alteração do layout não descarta nem oculta trabalho já iniciado. O link antigo ainda é um recurso local do mesmo navegador; não cria sincronização entre aparelhos.
+
+`tests/kitchen-page.test.mjs` cobre a redução de quatro telas para uma, a existência do link de compatibilidade da estação 4 e a renderização do pedido em foco nessa rota. Suíte Food: 139/139; `node --check` da view e `git diff --check` aprovados.

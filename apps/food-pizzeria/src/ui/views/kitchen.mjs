@@ -66,13 +66,33 @@ export function renderKitchenPage(viewModel) {
     { label: "Pedidos acima da meta", value: overdueOrders.length, detail: `${itemCount(sumItems(overdueOrders))} precisam de atenção`, tone: "red" },
   ];
 
-  const screenCount = Math.max(workflow.screenCount, activeKitchenScreen ?? 0, kitchenScreenCount ?? 0);
-  const screenLinks = Array.from({ length: workflow.screenCount }, (_, index) => {
-    const screenNumber = index + 1;
+  const preservedStepsByScreen = new Map();
+  for (const ticket of activeTickets) {
+    if (ticket.workflowRevision === workflow.revision) continue;
+    const step = currentKitchenStep(ticket);
+    if (!step) continue;
+    const screenSteps = preservedStepsByScreen.get(step.screen) ?? [];
+    screenSteps.push(step);
+    preservedStepsByScreen.set(step.screen, screenSteps);
+  }
+  const screenCount = Math.max(workflow.screenCount, activeKitchenScreen ?? 0, kitchenScreenCount ?? 0,
+    ...preservedStepsByScreen.keys());
+  const linkedScreens = [...new Set([
+    ...workflow.steps.map(({ screen }) => screen),
+    ...preservedStepsByScreen.keys(),
+  ])].sort((first, second) => first - second);
+  const screenLinks = linkedScreens.map((screenNumber) => {
     const assigned = workflow.steps.filter(({ screen }) => screen === screenNumber);
-    const stageLabel = assigned.map(({ label }) => label).join(" · ");
-    const href = kitchenScreenHref(screenNumber, assigned[0]?.id ?? workflow.steps[0].id, workflow.screenCount);
-    return `<div class="kitchen-display-row"><div class="kitchen-screen-assignment"><strong>Tela ${screenNumber}</strong><span>${escapeHtml(stageLabel)}</span></div><div class="kitchen-screen-actions"><a class="button button-quiet kitchen-open-display" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">Abrir tela <span aria-hidden="true">↗</span></a><button class="button button-quiet" type="button" data-action="copy-kitchen-link" data-copy-url="${escapeHtml(href)}">Copiar link</button></div></div>`;
+    const preserved = preservedStepsByScreen.get(screenNumber) ?? [];
+    const stageLabels = [...new Set([...assigned, ...preserved].map(({ label }) => label))];
+    const stageLabel = stageLabels.join(" · ");
+    const stageId = assigned[0]?.id ?? preserved[0]?.id ?? workflow.steps[0].id;
+    const routeScreenCount = Math.max(workflow.screenCount, screenNumber);
+    const href = kitchenScreenHref(screenNumber, stageId, routeScreenCount);
+    const preservedNote = preserved.length
+      ? `<small class="kitchen-preserved-work-note">${preserved.length} ${preserved.length === 1 ? "pedido em andamento" : "pedidos em andamento"} neste fluxo anterior</small>`
+      : "";
+    return `<div class="kitchen-display-row" ${preserved.length ? `data-kitchen-preserved-screen="${screenNumber}"` : ""}><div class="kitchen-screen-assignment"><strong>Tela ${screenNumber}</strong><span>${escapeHtml(stageLabel)}</span>${preservedNote}</div><div class="kitchen-screen-actions"><a class="button button-quiet kitchen-open-display" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">Abrir tela <span aria-hidden="true">↗</span></a><button class="button button-quiet" type="button" data-action="copy-kitchen-link" data-copy-url="${escapeHtml(href)}">Copiar link</button></div></div>`;
   }).join("");
   const stepRows = workflow.steps.map((step, index) => `<div class="kitchen-workflow-step"><span class="kitchen-step-number">${index + 1}</span><label class="kitchen-step-fields" for="kitchen-step-label-${index + 1}"><span>Nome da etapa</span><input id="kitchen-step-label-${index + 1}" name="step-label-${index + 1}" maxlength="48" minlength="2" required value="${escapeHtml(step.label)}"><input type="hidden" name="step-id-${index + 1}" value="${escapeHtml(step.id)}"></label><label class="kitchen-step-screen" for="kitchen-step-screen-${index + 1}"><span>Tela</span><select id="kitchen-step-screen-${index + 1}" name="step-screen-${index + 1}" aria-label="Tela da etapa ${index + 1}">${Array.from({ length: workflow.screenCount }, (_, screenIndex) => `<option value="${screenIndex + 1}" ${step.screen === screenIndex + 1 ? "selected" : ""}>${screenIndex + 1}</option>`).join("")}</select></label><div class="kitchen-step-order"><button type="button" data-action="move-kitchen-step" data-index="${index}" data-delta="-1" aria-label="Mover ${escapeHtml(step.label)} para cima" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" data-action="move-kitchen-step" data-index="${index}" data-delta="1" aria-label="Mover ${escapeHtml(step.label)} para baixo" ${index === workflow.steps.length - 1 ? "disabled" : ""}>↓</button></div></div>`).join("");
   const configuration = `<details class="panel kitchen-display-setup" ${viewModel.kitchenSetupExpanded ? "open" : ""}>
