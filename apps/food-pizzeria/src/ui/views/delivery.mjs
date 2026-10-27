@@ -3,7 +3,9 @@ export function renderDeliveryPage(viewModel) {
   const { snapshot, sectionHeader, statCard, renderOrderCard, emptyState, iconSvg, orderNumber, escapeHtml, clockTime } = viewModel;
   const activeDeliveries = snapshot.orders.filter(({ channel, status }) => channel === "delivery" && !["completed", "cancelled"].includes(status));
   const kitchenOrders = snapshot.orders.filter(({ status }) => ["received", "preparing"].includes(status));
-  const readyDeliveries = activeDeliveries.filter(({ status }) => status === "ready");
+  const readyDeliveries = activeDeliveries
+    .filter(({ status }) => status === "ready")
+    .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt));
   const customerHandoffs = snapshot.orders
     .filter(({ channel, status }) => channel !== "delivery" && status === "ready")
     .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt));

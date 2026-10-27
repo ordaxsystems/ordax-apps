@@ -919,3 +919,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Fixtures de uma nova prévia incluem uma retirada pronta e um pedido de quatro sabores. O estado fica no adapter local do Food; não cria owner, estado paralelo, integração ou alegação de sincronização.
 - Cobertura confirma classificação dos três canais, rótulos e transições; smoke Chrome clica e confirma a retirada, verificando sua saída da fila. Suíte Food: 173/173; smoke: 26/26; `node --check`, `git diff --check` e verificador MVP aprovados (20 alvos, 18 não assinados, 2 bloqueados, 0 instalações públicas verificadas).
 
+### Space Pizzaria / OrdaX Food — priorizar entregas prontas por tempo de espera (2026-10-27)
+
+- Pedidos de entrega prontos para despacho agora aparecem da liberação mais antiga à mais recente, sem depender da ordem incidental do snapshot. Retiradas/atendimentos já usam o mesmo critério; a fila em rota permanece ordenada pelo horário de saída.
+- A ordenação é somente de apresentação e deriva do `updatedAt` de cada pedido; não move pedidos no estado nem cria fila paralela.
+- Teste da Expedição fornece snapshots fora de ordem e exige FIFO de pedidos prontos. Suíte Food completa: 173/173; smoke de navegador: 26/26; `node --check` nos módulos alterados e `git diff --check`: aprovados.
+

@@ -19,7 +19,8 @@ function renderDelivery(orders) {
 
 test("Expedição separa despacho de entrega e entrega ao cliente em retirada, balcão e salão", () => {
   const html = renderDelivery([
-    { id: "delivery-ready", channel: "delivery", status: "ready", customerName: "Ana", address: "Rua A", updatedAt: "2026-10-27T10:00:00.000Z" },
+    { id: "delivery-ready-newer", channel: "delivery", status: "ready", customerName: "Ana", address: "Rua A", updatedAt: "2026-10-27T10:20:00.000Z" },
+    { id: "delivery-ready-older", channel: "delivery", status: "ready", customerName: "Bela", address: "Rua AA", updatedAt: "2026-10-27T10:00:00.000Z" },
     { id: "route", channel: "delivery", status: "out-for-delivery", customerName: "Bia", address: "Rua B", updatedAt: "2026-10-27T10:10:00.000Z" },
     { id: "pickup", channel: "pickup", status: "ready", customerName: "Caio", address: "", updatedAt: "2026-10-27T10:20:00.000Z" },
     { id: "counter", channel: "counter", status: "ready", customerName: "Dani", address: "", updatedAt: "2026-10-27T10:30:00.000Z" },
@@ -31,7 +32,10 @@ test("Expedição separa despacho de entrega e entrega ao cliente em retirada, b
   assert.match(html, /Prontos para despacho/);
   assert.match(html, /Retirada e atendimento/);
   assert.match(html, /Aguardando cliente: 3/);
-  for (const id of ["delivery-ready", "pickup", "counter", "dine-in", "route"]) {
+  assert.ok(html.indexOf('data-order-id="delivery-ready-older"')
+    < html.indexOf('data-order-id="delivery-ready-newer"'),
+  "Entregas prontas devem ser despachadas da mais antiga para a mais recente.");
+  for (const id of ["delivery-ready-older", "delivery-ready-newer", "pickup", "counter", "dine-in", "route"]) {
     assert.match(html, new RegExp(`data-order-id="${id}" data-can-cancel="false" data-can-advance="true"`));
   }
   assert.doesNotMatch(html, /data-order-id="still-in-kitchen"/);
