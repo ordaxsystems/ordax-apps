@@ -7,7 +7,7 @@ Este documento define as responsabilidades internas que os adapters Food deverã
 | Interface | Escopo atual | Limite |
 | --- | --- | --- |
 | `ordax.food-pizzeria-data-port/1` (`src/ports/food-data-port.mjs`) | Ciclo de vida, snapshot, inscrição e comandos do estado local Food. | É um port interno. O adapter atual grava sandbox no navegador; não é persistência de Space nem API pública. |
-| `ordax.food-pizzeria-command/1` (`src/application/commands.mjs`) | Comandos validados para setup, ajustes, cardápio/fichas, pedidos de teste e comandas. | Não é o command bus de Sales, Inventory, Payments ou Space. |
+| `ordax.food-pizzeria-command/2` (`src/application/commands.mjs`) | Comandos validados para setup, ajustes, cardápio/fichas, pedidos de prévia com itens de catálogo e comandas. | Não é o command bus de Sales, Inventory, Payments, Catálogo ou Space. |
 | Renderizadores em `src/ui/views/` | Apresentação de cada área do Food. | Recebem estado do mesmo app; não têm stores independentes nem são apps instaláveis. |
 | `standalone-preview` / `embedded-preview` (`src/ui/presentation.mjs` + `src/ui/preview-mount.mjs`) | Modos de demonstração, o segundo sem sidebar/cabeçalho Food e com CSS/diálogos em Shadow DOM; `navigate()` e cliques internos incorporados limitados aos módulos Food. | **Ambos exigem explicitamente `browser-local-preview` e rejeitam adapters comerciais antes de montar.** Essa verificação de modo não é autenticação/grant; portas reais dependem exclusivamente do host autorizado. |
 
@@ -74,8 +74,11 @@ não equivalem à homologação Postgres/RLS real da aplicação.
 ## Food Order Core — serviço de aplicação do owner, sem backend paralelo
 
 `src/application/food-order-core.mjs` aplica `order.create` e
-`order.transition` **pelo mesmo `applyFoodCommand` e pelo estado v6**;
-não implementa um segundo modelo de pedidos ou um segundo livro Sales.
+`order.transition` pelo mesmo `applyFoodCommand`, sem implementar um segundo
+modelo de pedidos ou um segundo livro Sales. O owner SQL fixado ainda aceita
+somente estado v6; o core rejeita estado v7 da prévia local antes de gravar.
+A interface local migra os próprios dados para v7 para guardar itens extras
+de catálogo, sem encaminhá-los ao owner.
 Uma única função `fingerprintFoodCommand` em `src/application/`
 calcula o hash tanto no preview como no owner.
 
@@ -100,7 +103,10 @@ Os testes `tests/food-order-core.test.mjs` usam **somente um repositório
 transacional simulado**, não banco real, para verificar escopo, replay,
 CAS, revogação, criação/transição, concorrência e conciliação.
 **Sem adapter PostgreSQL/RLS conectado, sem dados comerciais reais,
-sem instalação ou ativação de FOOD-001.**
+sem instalação ou ativação de FOOD-001.** A proposta SQL fixada ainda
+aceita Food v6; não aceita o documento v7 gerado por esta prévia. Antes de
+conectar o owner, a migração/validador precisa publicar suporte ao v7 e ao
+novo tipo de item, sem encaminhar os dados de fixture.
 
 ## Admissão transacional futura: confirmação durável do owner
 
@@ -120,8 +126,9 @@ O módulo `src/ports/food-order-commit-port.mjs` introduz **somente o contrato c
 | --- | --- | --- | --- |
 | Space / Host | Contexto autorizado do Space, capacidades disponíveis, identidade do provider e ciclo de vida. | Inventar `spaceId`, emitir grants, manter membership, criar auth ou sincronização. | `ordax.space-experience/1` e provider `/2` foram publicados no App SDK 1.21.0 (commit OS `5ef65423`, pin imutável neste repo). **Contrato publicado não é provider pronto**: o host ainda não disponibilizou o contexto/grants/lifecycle Food autorizado. |
 | Food Order Core / Sales | Food é o owner do pedido quando Food é o provedor, conforme FOOD-001/ACHEGUESE-001; Sales poderá consumir referência/projeção comercial autorizada, sem segundo mestre. | Publicar o mesmo pedido mutável em Food e Sales ou usar o livro genérico como fallback. | Direção definida em planos do owner OS; serviços e contratos públicos ainda não publicados. |
-| Food | Cardápio, ficha técnica e, após homologação, pedido canônico Food, mesas, preparo/fulfillment e delivery com `orderId` único. | Declarar o sandbox atual como Food Order Core comercial, PDV ou caixa real. | O estado local atual é exclusivamente preview. |
-| Inventory | Resposta de operação de consumo com referência ao pedido, revisão, escopo autorizado, chave idempotente e resultado aceito/rejeitado. | Criar catálogo mestre de insumos, saldo, reserva ou movimento; interpretar a proposta local como baixa efetivada. | Food v6 congela uma proposta imutável por pedido novo; registros migrados sem ficha histórica comprovada usam `null` e não podem gerar consumo inferido. |
+| Food | Cardápio, ficha técnica e, após homologação, pedido canônico Food, mesas, preparo/fulfillment e delivery com `orderId` único. | Declarar o sandbox atual como Food Order Core comercial, PDV ou caixa real. | O estado local atual é exclusivamente preview. O owner SQL continua em v6; a prévia v7 é rejeitada pelo Food Order Core persistente. |
+| Catálogo de produtos | Resolução autorizada de `productId`, nome/categoria/preço vigentes e revisão da oferta antes do pedido. | Manter mestre paralelo de bebidas, combos ou acompanhamentos no Food. | Provider/contrato não disponível. A prévia usa fixtures locais imutáveis; seus pedidos não são compatíveis com o owner SQL v6 até que o contrato publique v7. |
+| Inventory | Resposta de operação de consumo com referência ao pedido, revisão, escopo autorizado, chave idempotente e resultado aceito/rejeitado. | Criar catálogo mestre de insumos, saldo, reserva ou movimento; interpretar a proposta local como baixa efetivada. | Food v7 congela proposta somente para itens de pizza; itens de catálogo não geram consumo. Registros migrados sem ficha histórica comprovada usam `null` e não podem gerar consumo inferido. |
 | Payments | Tentativa e resultado verificado do meio de pagamento, incluindo falha, confirmação e estorno conforme contrato. | Marcar pagamento como concluído por escolha de PIX/cartão ou por estado do pedido. | Provider ausente. |
 | Finance | Referência de fato financeiro confirmado pelos owners de Sales/Payments e processamento idempotente. | Transformar total do pedido em recebimento, caixa ou lançamento contábil por inferência. | Provider ausente; o app Finance atual é uma fundação de ledger, não integração Food. |
 | Customers / CRM | Referência autorizada de cliente e projeção mínima permitida para o Space. | Manter cadastro mestre ou histórico mestre de relacionamento no Food. | Owner/contrato não disponível neste repo. |
@@ -135,7 +142,7 @@ O módulo `src/ports/food-order-commit-port.mjs` introduz **somente o contrato c
 5. Quando produção solicitar consumo, Inventory valida a autorização, deduplica a requisição e registra o movimento. Food conserva o resultado/referência operacional permitido pelo contrato, nunca um saldo.
 6. Caixa recebe resultado confirmado de Payments e os fatos aceitos por Sales/Finance. A interface não deduz sucesso de pagamento a partir de um botão ou status local.
 
-**Direção de ownership:** `ordax-os/FOOD-001` e `ACHEGUESE-001` atribuem pedidos Food ao Food Order Core, sem duplicação no livro Sales. Antes da integração real, publicar/homologar contratos entre Food, Space, canais e projeções Sales; não adaptar o livro genérico Sales como bypass. Até esses contratos existirem, nenhum fluxo cross-app é simulado como integrado. O preview pode criar registros locais fictícios para exercitar a interface, sempre sob o indicador “Prévia local · Dados fictícios · sem sincronização”.
+**Direção de ownership:** `ordax-os/FOOD-001` e `ACHEGUESE-001` atribuem pedidos Food ao Food Order Core, sem duplicação no livro Sales. Antes da integração real, publicar/homologar contratos entre Food, Catálogo de produtos, Space, canais e projeções Sales; não adaptar o livro genérico Sales como bypass. Até esses contratos existirem, nenhum fluxo cross-app é simulado como integrado. A prévia usa fixtures locais para exercitar interface e persistência no navegador; elas não são Catálogo, não sincronizam e não são aceitas pela proposta atual de owner SQL v6.
 
 ## Requisitos comuns dos contratos futuros
 

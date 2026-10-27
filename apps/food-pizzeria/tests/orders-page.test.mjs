@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderOrdersPage } from "../src/ui/views/orders.mjs";
-import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
+import { createSeedFoodState, PREVIEW_CATALOG_PRODUCTS } from "../src/fixtures/mock-data.mjs";
 
-function renderOrders(orders, deliveryFeeCents = 500) {
+function renderOrders(orders, deliveryFeeCents = 500, products = []) {
   return renderOrdersPage({
     PIZZERIA_TABLES: [],
+    PREVIEW_CATALOG_PRODUCTS: products,
     deliveryFeeCents,
     STATUS_LABELS: {},
     CHANNEL_LABELS: {},
@@ -36,6 +37,14 @@ test("formulário de entrega inicia com a taxa configurada e comunica que pode s
   assert.match(html, /name="deliveryFee"[^>]*value="8,75"/);
   assert.match(html, /Taxa padrão; ajuste neste pedido se necessário/);
   assert.doesNotMatch(html, /Valor inicial fictício/);
+});
+
+test("PDV mostra ações para adicionar bebidas e acompanhamentos ao mesmo pedido", () => {
+  const html = renderOrders([], 500, PREVIEW_CATALOG_PRODUCTS);
+
+  assert.match(html, /Mais itens/);
+  assert.match(html, /Refrigerante 2L/);
+  assert.match(html, /data-action="add-catalog-product" data-product-id="b-cola"/);
 });
 
 test("histórico de pedidos prioriza o horário de criação mesmo se a lista vier fora de ordem", () => {

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { createFoodCommand } from "../src/application/commands.mjs";
 import { createBrowserLocalFoodStore } from "../src/adapters/browser-local-store.mjs";
 import { transitionPizzeriaOrder } from "../src/domain/domain.mjs";
-import { PREVIEW_SEED_ORDER_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
+import { PREVIEW_CATALOG_PRODUCTS, PREVIEW_SEED_ORDER_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 import { DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, resizeKitchenDisplayConfiguration } from "../src/application/kitchen-display-configuration.mjs";
 import { KITCHEN_QUEUE_MODES } from "../src/application/kitchen-workflow-preview.mjs";
 
@@ -133,7 +133,7 @@ test("reopening an old preview refreshes untouched sample timelines and preserve
   assert.equal(refreshed.tableCommands.find(({ id }) => id === "ng-command-04").openedAt,
     new Date(now - 58 * 60000).toISOString());
   const refreshedEnvelope = JSON.parse(environment.storage.getItem(key));
-  assert.equal(refreshedEnvelope.schema, "ordax.food-pizzeria.browser-state/5");
+  assert.equal(refreshedEnvelope.schema, "ordax.food-pizzeria.browser-state/6");
   assert.deepEqual(refreshedEnvelope.processedCommands, journal);
   assert.equal(refreshedEnvelope.previewPreferences.deliveryFeeCents, 500);
   store.destroy();
@@ -195,7 +195,48 @@ test("browser preview persists revisions, accepts an exact command replay once, 
   reopened.destroy();
 });
 
-test("browser-state v3 migrates to v5 while retaining delivery and adding the configurable kitchen flow", async () => {
+test("local preview commits catalog products as priced Food order items without Inventory writes", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-catalog-order";
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const state = await store.initialize();
+  const product = PREVIEW_CATALOG_PRODUCTS.find(({ id }) => id === "b-cola");
+  const command = createFoodCommand({
+    type: "order.create",
+    payload: {
+      id: "catalog-order-1",
+      historyId: "catalog-order-history-1",
+      createdAt: new Date().toISOString(),
+      customerName: "Cliente da prévia",
+      phone: "",
+      channel: "pickup",
+      tableCommandId: null,
+      address: null,
+      deliveryFeeCents: 0,
+      notes: "",
+      items: [{
+        id: "catalog-order-item-1",
+        type: "catalog-product",
+        productId: product.id,
+        quantity: 2,
+      }],
+    },
+    expectedRevision: state.revision,
+    commandId: "catalog-order-command-1",
+  });
+
+  const saved = await store.execute(command);
+  const order = saved.orders.find(({ id }) => id === "catalog-order-1");
+  assert.equal(order.items[0].name, product.name);
+  assert.equal(order.items[0].quantity, 2);
+  assert.equal(order.items[0].lineTotalCents, product.priceCents * 2);
+  assert.deepEqual(order.consumptionSnapshot, []);
+  assert.equal(Object.hasOwn(saved, "catalogProducts"), false);
+  assert.equal(Object.hasOwn(saved, "inventoryMovements"), false);
+  store.destroy();
+});
+
+test("browser-state v3 migrates to v6 while retaining delivery and adding the configurable kitchen flow", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-migrate-browser-envelope-v3";
   const state = createSeedFoodState();
@@ -211,7 +252,7 @@ test("browser-state v3 migrates to v5 while retaining delivery and adding the co
   await store.initialize();
 
   assertKitchenPreviewPreferences(store.getPreviewPreferences(), { deliveryFeeCents: 875 });
-  assert.equal(JSON.parse(environment.storage.getItem(key)).schema, "ordax.food-pizzeria.browser-state/5");
+  assert.equal(JSON.parse(environment.storage.getItem(key)).schema, "ordax.food-pizzeria.browser-state/6");
   store.destroy();
 });
 
@@ -230,7 +271,7 @@ test("legacy command ids without fingerprints are migrated but cannot authorize 
   const restored = await store.initialize();
   assert.equal(restored.revision, source.revision);
   const upgraded = JSON.parse(environment.storage.getItem(key));
-  assert.equal(upgraded.schema, "ordax.food-pizzeria.browser-state/5");
+  assert.equal(upgraded.schema, "ordax.food-pizzeria.browser-state/6");
   assert.deepEqual(upgraded.processedCommands, [{ id: commandId, digest: null }]);
   assertKitchenPreviewPreferences(upgraded.previewPreferences);
   const blocked = createFoodCommand({
@@ -263,7 +304,7 @@ test("browser adapter transparently upgrades v5 Food records without fabricating
 
   const store = createBrowserLocalFoodStore({ businessId, ...environment });
   const migrated = await store.initialize();
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
   assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
   assert.equal(migrated.revision, source.revision);
   assert.equal(migrated.orders.length, source.orders.length);
@@ -271,8 +312,8 @@ test("browser adapter transparently upgrades v5 Food records without fabricating
   assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
     /consumo histórico não é verificável/);
   const persisted = JSON.parse(environment.storage.getItem(key));
-  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/5");
-  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/6");
+  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/7");
   assert.equal(persisted.previewPreferences.deliveryFeeCents, 500);
   assert.equal(Object.hasOwn(persisted.state, "inventoryMovements"), false);
   store.destroy();
@@ -288,7 +329,7 @@ test("browser adapter stores local delivery preference outside the canonical Foo
   const source = createSeedFoodState();
   const store = createBrowserLocalFoodStore({ businessId, ...environment });
   const state = await store.initialize();
-  assert.equal(state.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(state.schema, "ordax.food-pizzeria-state/7");
   assertKitchenPreviewPreferences(store.getPreviewPreferences());
   const kitchenDisplays = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
   const kitchenWorkflow = {
@@ -309,8 +350,8 @@ test("browser adapter stores local delivery preference outside the canonical Foo
 
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
   const persisted = JSON.parse(environment.storage.getItem(key));
-  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/5");
-  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/6");
+  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/7");
   assert.equal(persisted.previewPreferences.deliveryFeeCents, 875);
   assert.equal(persisted.previewPreferences.kitchenWorkflow.queueMode, KITCHEN_QUEUE_MODES.BY_STAGE);
   store.destroy();
@@ -344,13 +385,13 @@ test("browser adapter salvages the earlier local v7 preview into v6 and preserve
   const store = createBrowserLocalFoodStore({ businessId, ...environment });
   const migrated = await store.initialize();
 
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
   assert.equal(migrated.revision, legacyPreview.revision);
   assert.deepEqual(migrated.orders, legacyPreview.orders);
   assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
   assertKitchenPreviewPreferences(store.getPreviewPreferences(), { deliveryFeeCents: 875 });
   const persisted = JSON.parse(environment.storage.getItem(key));
-  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/5");
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/6");
   assert.equal(persisted.previewPreferences.deliveryFeeCents, 875);
   store.destroy();
 });

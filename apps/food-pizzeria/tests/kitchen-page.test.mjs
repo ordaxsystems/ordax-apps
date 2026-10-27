@@ -47,6 +47,20 @@ const orders = [
 ];
 const workflow = distributeKitchenSteps(DEFAULT_KITCHEN_WORKFLOW, 4);
 
+test("KDS apresenta produto adicional sem interpretar como pizza ou receita", () => {
+  assert.deepEqual(presentPizzeriaKitchenItem({
+    type: "catalog-product",
+    name: "Refrigerante 2L",
+    category: "Bebidas",
+  }), {
+    title: "Refrigerante 2L",
+    detail: "Bebidas",
+    modifierLabel: "Produto",
+    modifiers: [],
+  });
+  assert.equal(PIZZERIA_KITCHEN_ITEM_LABEL.metricLabel, "Itens na cozinha");
+});
+
 function makeTasks() {
   let tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, workflow);
   tasks = applyKitchenTaskAction(tasks, {

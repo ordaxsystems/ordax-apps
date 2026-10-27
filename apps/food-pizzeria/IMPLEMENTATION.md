@@ -373,3 +373,11 @@ O número de fatias vem do cadastro atual do tamanho, pois Food v6 ainda não gu
 
 `tests/kitchen-page.test.mjs` verifica foco FIFO, limite de cinco próximos, meio a meio, instruções por posto e permanência do pedido no fluxo completo; `tests/embedded-presentation.test.mjs` verifica o marcador de layout compacto; a prova de navegador verificou instruções, detalhes da pizza e limite da fila nas telas de fluxo completo e por etapa. A suíte Food passou com 97/97 testes. A renderização foi conferida em 844×390, 1366×768 e 390×844, sem overflow horizontal; `node --check` e `git diff --check` passaram.
 
+## PDV local com produtos adicionais (2026-10-27)
+
+O PDV da prévia passa a incluir bebidas, combos e acompanhamentos no mesmo pedido de pizza. O catálogo de demonstração permite adicionar/remover itens e quantidades; preço, nome e categoria são revalidados pela fixture local e congelados como snapshot no item Food. O histórico, a busca e o KDS exibem esses itens sem tratá-los como pizzas. Itens adicionais não geram consumo de ficha nem movimentação de estoque.
+
+Como o owner SQL fixado ainda valida Food v6, o estado local avança para v7 e o Food Order Core persistente recusa esse formato antes de gravar. A migração v6→v7 preserva pedidos existentes. O command schema interno avança para `/2`. O catálogo permanece uma fixture de prévia: falta publicar e homologar o contrato do owner Catálogo e atualizar o contrato Food/SQL antes de enviar pedidos com produtos ao serviço persistente. Sales, Payments, Inventory e Space não receberam integração simulada.
+
+Validação: `node --test apps/food-pizzeria/tests/*.test.mjs` passou com 130/130 testes; `git diff --check` passou. A verificação inclui preço atual e removido, quantidade, snapshot do pedido, pesquisa, KDS, consumo de receita, migração e rejeição do estado v7 pelo owner SQL v6. O preview continua local ao navegador.
+

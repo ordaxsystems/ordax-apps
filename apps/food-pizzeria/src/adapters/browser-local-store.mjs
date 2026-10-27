@@ -6,6 +6,7 @@ import {
 } from "../domain/domain.mjs";
 import {
   createSeedFoodState,
+  PREVIEW_CATALOG_PRODUCTS,
   PREVIEW_SEED_ORDER_AGES_MINUTES,
   PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES,
 } from "../fixtures/mock-data.mjs";
@@ -25,9 +26,10 @@ import {
   validateKitchenWorkflow,
 } from "../application/kitchen-workflow-preview.mjs";
 
-const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/5";
-const PREVIOUS_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/4";
-const PREVIOUS_PREVIEW_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/3";
+const STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/6";
+const PREVIOUS_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/5";
+const PREVIOUS_PREVIEW_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/4";
+const OLDER_PREVIEW_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/3";
 const LEGACY_ENVELOPE_SCHEMA = "ordax.food-pizzeria.browser-state/2";
 const LEGACY_STORAGE_SCHEMA = "ordax.food-pizzeria.browser-state/1";
 const COMMAND_DIGEST_RE = /^[a-f0-9]{64}$/;
@@ -105,7 +107,8 @@ function legacyInventoryArchive(state, businessId) {
 }
 
 function migrateLocalFoodSnapshot(value) {
-  if (value?.schema === LEGACY_PREVIEW_FOOD_STATE_V7) {
+  if (value?.schema === LEGACY_PREVIEW_FOOD_STATE_V7
+    && value.settings !== null && Object.hasOwn(value.settings, "deliveryFeeCents")) {
     const legacySettings = value.settings;
     const previewPreferences = legacySettings === null
       ? DEFAULT_PREVIEW_PREFERENCES
@@ -147,7 +150,7 @@ function decodeStoredValue(raw, businessId) {
     };
   }
 
-  if ([PREVIOUS_STORAGE_SCHEMA, PREVIOUS_PREVIEW_STORAGE_SCHEMA].includes(parsed?.schema)) {
+  if ([PREVIOUS_STORAGE_SCHEMA, PREVIOUS_PREVIEW_STORAGE_SCHEMA, OLDER_PREVIEW_STORAGE_SCHEMA].includes(parsed?.schema)) {
     const migrated = migrateLocalFoodSnapshot(parsed.state);
     return {
       state: migrated.state,
@@ -463,7 +466,9 @@ export function createBrowserLocalFoodStore({
         if (persisted.processedCommands.length >= MAX_RECORDED_COMMANDS) {
           throw new RangeError("O histórico local de operações atingiu o limite seguro. Preserve os dados antes de continuar.");
         }
-        const next = validateFoodPizzeriaState(applyFoodCommand(persisted.state, command));
+        const next = validateFoodPizzeriaState(applyFoodCommand(persisted.state, command, {
+          catalogProducts: PREVIEW_CATALOG_PRODUCTS,
+        }));
         const noChange = next.revision === persisted.state.revision;
         if (noChange
           ? JSON.stringify(next) !== JSON.stringify(persisted.state)
@@ -543,7 +548,9 @@ export function createBrowserLocalFoodStore({
             issuedAt: at,
           });
           const transitionDigest = await fingerprintFoodCommand(transition);
-          nextState = validateFoodPizzeriaState(applyFoodCommand(nextState, transition));
+          nextState = validateFoodPizzeriaState(applyFoodCommand(nextState, transition, {
+            catalogProducts: PREVIEW_CATALOG_PRODUCTS,
+          }));
           nextCommands = [...nextCommands, { id: transition.commandId, digest: transitionDigest }];
           nextTasks = reconcileKitchenTasks(nextTasks, nextState.orders, currentPreferences.kitchenWorkflow);
         }

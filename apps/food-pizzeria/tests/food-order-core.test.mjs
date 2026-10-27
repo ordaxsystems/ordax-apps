@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { createFoodCommand } from "../src/application/commands.mjs";
 import { createFoodOrderCore } from "../src/application/food-order-core.mjs";
+import { FOOD_PIZZERIA_STATE_SCHEMA_V6 } from "../src/domain/domain.mjs";
 import {
   FoodOrderOutcomeUnknownError,
   FoodOrderRejectedError,
@@ -51,7 +52,7 @@ function createCommand(state, id = "create-order-1") {
 function transactionalFixture() {
   // Build the seed once, so different Spaces start from identical immutable
   // fixture bytes rather than independent wall-clock timestamps.
-  const base = createSeedFoodState();
+  const base = { ...createSeedFoodState(), schema: FOOD_PIZZERIA_STATE_SCHEMA_V6 };
   const state = () => structuredClone(base);
   const bySpace = new Map([
     ["space-a", { state: state(), journal: new Map() }],
@@ -153,6 +154,28 @@ test("Food Core rejects unavailable ACID repository and non-order commands", asy
   await assert.rejects(core.commitOrderCommand(invalid),
     { name: "FoodOrderRejectedError", reason: "invalid-command" });
   assert.equal(fx.writes, 0);
+});
+
+test("Food Core refuses local v7 preview state while the SQL owner contract is v6", async () => {
+  const state = createSeedFoodState();
+  let commitCalls = 0;
+  const transactions = {
+    async transact(work) {
+      return work({
+        authorize: async () => ({ spaceId: "space-a", subjectId: "user-a", epoch: "epoch-1" }),
+        findCommand: async () => null,
+        readState: async () => state,
+        commit: async () => { commitCalls += 1; throw new Error("Commit must not be reached"); },
+      });
+    },
+  };
+  const core = createFoodOrderCore({ transactions });
+
+  await assert.rejects(core.commitOrderCommand(transitionCommand(state)), {
+    name: "FoodOrderRejectedError",
+    reason: "invalid-command",
+  });
+  assert.equal(commitCalls, 0);
 });
 
 test("Food Core performs a durable owner-authorized order transition once with replay-safe receipt", async () => {

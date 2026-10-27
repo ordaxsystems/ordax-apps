@@ -1,4 +1,12 @@
 export function presentPizzeriaKitchenItem(item, pizzaSizes = []) {
+  if (item.type === "catalog-product") {
+    return {
+      title: item.name,
+      detail: item.category,
+      modifierLabel: "Produto",
+      modifiers: [],
+    };
+  }
   const configuredSize = pizzaSizes.find(({ id }) => id === item.size);
   const flavorNames = item.flavors.map(({ name }) => name);
   return {
@@ -10,9 +18,9 @@ export function presentPizzeriaKitchenItem(item, pizzaSizes = []) {
 }
 
 export const PIZZERIA_KITCHEN_ITEM_LABEL = Object.freeze({
-  singular: "pizza",
-  plural: "pizzas",
-  metricLabel: "Pizzas na cozinha",
+  singular: "item",
+  plural: "itens",
+  metricLabel: "Itens na cozinha",
 });
 
 export const PIZZERIA_KITCHEN_STAGE_GUIDANCE = Object.freeze({

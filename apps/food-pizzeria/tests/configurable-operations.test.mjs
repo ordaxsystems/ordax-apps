@@ -196,7 +196,7 @@ test("v5 migration does not invent historical ingredient consumption", () => {
     orders: state.orders.map(({ consumptionSnapshot, ...order }) => order),
   };
   const migrated = migrateFoodPizzeriaState(v5);
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
   assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
   assert.equal(migrated.orders.length, state.orders.length);
   assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
@@ -208,7 +208,7 @@ test("v5 migration does not invent historical ingredient consumption", () => {
 test("taxa explicitamente informada fica congelada no pedido sem alterar o estado canônico", () => {
   const initial = createSeedFoodState();
   const historicalDelivery = initial.orders.find(({ channel }) => channel === "delivery");
-  assert.equal(initial.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(initial.schema, "ordax.food-pizzeria-state/7");
   assert.equal(Object.hasOwn(initial.settings, "deliveryFeeCents"), false);
   assert.equal(initial.orders.find(({ id }) => id === historicalDelivery.id).deliveryFeeCents, historicalDelivery.deliveryFeeCents);
 
@@ -229,7 +229,7 @@ test("taxa explicitamente informada fica congelada no pedido sem alterar o estad
   assert.equal(order.totalCents, order.subtotalCents + 875);
 });
 
-test("Food v6 valida sem incorporar preferências locais ao documento canônico", () => {
+test("Food v6 migra ao schema v7 sem incorporar preferências locais ao documento canônico", () => {
   const current = createSeedFoodState();
   const v6 = {
     ...current,
@@ -237,7 +237,7 @@ test("Food v6 valida sem incorporar preferências locais ao documento canônico"
   };
 
   const migrated = migrateFoodPizzeriaState(v6);
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/7");
   assert.equal(migrated.revision, current.revision);
   assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
   assert.deepEqual(migrated.orders, current.orders);

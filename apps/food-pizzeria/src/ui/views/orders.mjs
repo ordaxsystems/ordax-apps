@@ -14,7 +14,7 @@ function compareOrdersByCreationTime(first, second) {
 }
 
 export function renderOrdersPage(viewModel) {
-  const { PIZZERIA_TABLES, deliveryFeeCents, STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS, snapshot, orderQuery, orderStatusFilter, orderChannelFilter, activeCommandId, cart, busy, commandById, orderNumber, sizeOptions, flavorOptions, cartHtml, renderOrderCard, emptyState, button, money, escapeHtml } = viewModel;
+  const { PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS = [], deliveryFeeCents, STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS, snapshot, orderQuery, orderStatusFilter, orderChannelFilter, activeCommandId, cart, busy, commandById, orderNumber, sizeOptions, flavorOptions, cartHtml, renderOrderCard, emptyState, button, money, escapeHtml } = viewModel;
   const activeFlavors = snapshot.flavors.filter(({ id, active }) => active && snapshot.recipes.some((recipe) => recipe.flavorId === id));
   const activeWithoutRecipe = snapshot.flavors.some(({ id, active }) => active && !snapshot.recipes.some((recipe) => recipe.flavorId === id));
   const selectedCommand = activeCommandId ? commandById(activeCommandId) : null;
@@ -24,7 +24,10 @@ export function renderOrdersPage(viewModel) {
   const allOrders = [...snapshot.orders].sort(compareOrdersByCreationTime);
   const orders = allOrders.filter((order) => {
     const tableNumber = order.tableCommandId ? commandById(order.tableCommandId)?.tableId : null;
-    const searchable = `${order.id} ${orderNumber(order)} ${order.customerName} ${order.phone} ${tableNumber ? `mesa ${String(tableNumber).padStart(2, "0")}` : ""} ${order.items.flatMap((item) => item.flavors.map((flavor) => flavor.name)).join(" ")}`.toLocaleLowerCase("pt-BR");
+    const itemNames = order.items.flatMap((item) => item.type === "catalog-product"
+      ? [item.name, item.category]
+      : item.flavors.map((flavor) => flavor.name));
+    const searchable = `${order.id} ${orderNumber(order)} ${order.customerName} ${order.phone} ${tableNumber ? `mesa ${String(tableNumber).padStart(2, "0")}` : ""} ${itemNames.join(" ")}`.toLocaleLowerCase("pt-BR");
     return (!query || searchable.includes(query))
       && (orderStatusFilter === "all" || order.status === orderStatusFilter)
       && (orderChannelFilter === "all" || order.channel === orderChannelFilter);
@@ -37,7 +40,10 @@ export function renderOrdersPage(viewModel) {
       <div class="builder-title"><span class="builder-icon" aria-hidden="true">✦</span><div><strong>Pizza</strong><small>Escolha tamanho e até ${snapshot.settings.maxFlavorsPerPizza} sabores.</small></div></div>
       <div class="builder-grid"><label>Tamanho<select name="size">${sizeOptions()}</select></label>${Array.from({ length: snapshot.settings.maxFlavorsPerPizza }, (_, index) => `<label class="${index ? "second-flavor" : ""}">${index ? `Sabor ${index + 1} <span class="optional-tag">opcional</span>` : "Primeiro sabor"}<select name="flavor${index + 1}" ${index === 0 ? "required" : ""}>${index ? `<option value="">Sem sabor adicional</option>` : ""}${flavorOptions()}</select></label>`).join("")}<label>Quantidade<input name="quantity" type="number" min="1" max="50" value="1" required></label></div>
         <div class="builder-bottom"><span id="pizza-price-preview">Selecione um sabor para ver o preço.</span><button class="button button-dark" type="button" data-action="add-pizza">Adicionar pizza <span aria-hidden="true">＋</span></button></div>
-      </form>` : emptyState({ icon: "◉", title: activeWithoutRecipe ? "Fichas técnicas pendentes" : "Seu cardápio ainda está vazio", text: activeWithoutRecipe ? "Cadastre as receitas dos sabores no Cardápio antes de receber pedidos para preparo." : "Cadastre sabores e preços para começar a receber pedidos.", action: activeWithoutRecipe ? "Abrir cardápio" : "Cadastrar sabores", view: "menu" })}
+      </form>` : PREVIEW_CATALOG_PRODUCTS.length
+        ? `<div class="catalog-only-note">${activeWithoutRecipe ? "As pizzas aguardam ficha técnica. Bebidas e acompanhamentos continuam disponíveis abaixo." : "Nenhum sabor de pizza está disponível. Você ainda pode registrar outros produtos."}</div>`
+        : emptyState({ icon: "◉", title: activeWithoutRecipe ? "Fichas técnicas pendentes" : "Seu cardápio ainda está vazio", text: activeWithoutRecipe ? "Cadastre as receitas dos sabores no Cardápio antes de receber pedidos para preparo." : "Cadastre sabores e preços para começar a receber pedidos.", action: activeWithoutRecipe ? "Abrir cardápio" : "Cadastrar sabores", view: "menu" })}
+      ${PREVIEW_CATALOG_PRODUCTS.length ? `<section class="order-products" aria-label="Bebidas e acompanhamentos"><div class="order-products-heading"><div><strong>Mais itens</strong><span>Bebidas, combos e acompanhamentos</span></div><span>${PREVIEW_CATALOG_PRODUCTS.length} opções</span></div><div class="order-products-grid">${PREVIEW_CATALOG_PRODUCTS.map((product) => `<article class="order-product"><div class="order-product-copy"><strong>${escapeHtml(product.name)}</strong><span>${escapeHtml(product.category)} · ${money(product.priceCents)}</span></div><button class="button button-quiet" type="button" data-action="add-catalog-product" data-product-id="${escapeHtml(product.id)}" aria-label="Adicionar ${escapeHtml(product.name)} ao pedido">Adicionar <span aria-hidden="true">＋</span></button></article>`).join("")}</div></section>` : ""}
       <div class="cart-section"><div class="cart-heading"><strong>Itens do pedido</strong><span id="cart-count">${cart.length} ${cart.length === 1 ? "item" : "itens"}</span></div><div id="cart-content">${cartHtml()}</div></div>
       <form id="create-order-form" class="customer-form">
         <div class="cart-heading"><strong>Dados para atendimento</strong><span class="step-number step-small">02</span></div>
@@ -46,7 +52,7 @@ export function renderOrdersPage(viewModel) {
         <div id="delivery-fields" class="delivery-fields" hidden><label>Endereço de entrega<textarea name="address" maxlength="240" rows="2" placeholder="Rua, número, bairro e referência"></textarea></label><label>Taxa de entrega<input name="deliveryFee" inputmode="decimal" placeholder="0,00" value="${new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(deliveryFeeCents / 100)}"><small>Taxa padrão; ajuste neste pedido se necessário. Sem cálculo por distância.</small></label></div>
         <label>Observações do pedido<textarea name="notes" maxlength="240" rows="2" placeholder="Ex.: sem cebola, tocar o interfone…"></textarea></label>
         <div class="order-total"><div><span>Total do pedido</span><small>O valor não representa pagamento recebido.</small></div><strong id="order-total-value">${money(0)}</strong></div>
-        <button class="button button-primary button-wide" type="submit" ${busy || !activeFlavors.length ? "disabled" : ""}>Registrar pedido <span aria-hidden="true">→</span></button>
+        <button class="button button-primary button-wide" type="submit" ${busy || cart.length === 0 ? "disabled" : ""}>Registrar pedido <span aria-hidden="true">→</span></button>
       </form>
     </section><section class="orders-history"><div class="panel-heading history-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h2>Histórico</h2></div></div>
       <section class="panel orders-filter-panel" aria-label="Filtros do histórico de pedidos"><div class="orders-filter-controls"><label>Etapa<select data-order-status-filter aria-label="Filtrar pedidos por etapa">${ORDER_STATUS_FILTERS.map(({ id, label }) => `<option value="${id}" ${orderStatusFilter === id ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>Canal<select data-order-channel-filter aria-label="Filtrar pedidos por canal"><option value="all" ${orderChannelFilter === "all" ? "selected" : ""}>Todos os canais</option>${Object.entries(CHANNEL_LABELS).map(([id, label]) => `<option value="${id}" ${orderChannelFilter === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>${hasLocalFilters ? `<button class="button button-quiet clear-order-filters" type="button" data-action="reset-order-filters">Limpar filtros</button>` : ""}</div><p class="orders-filter-summary">${orders.length} ${orders.length === 1 ? "pedido encontrado" : "pedidos encontrados"}${query ? " para a busca atual" : ""}</p></section>

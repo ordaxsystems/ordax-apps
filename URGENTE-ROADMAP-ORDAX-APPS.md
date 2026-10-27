@@ -781,3 +781,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - `node --test apps/food-pizzeria/tests/*.test.mjs`: 124/124; sintaxe dos módulos alterados e `git diff --check` aprovados. A rota local solo em lote mostrou a orientação correspondente. CI da PR #359 no head `8115347`: 4/4 verificações aprovadas.
 - A fila entre aparelhos ainda depende do contrato público Food de produção em tempo real; esta prévia não sincroniza tarefas, não altera pagamentos/Inventory e não muda elegibilidade de distribuição.
 
+### Space Pizzaria / OrdaX Food — itens adicionais no PDV da prévia (2026-10-27)
+
+- A tela do PDV permite adicionar bebidas, combos e acompanhamentos junto com pizzas; nome, categoria, quantidade e preço são congelados no pedido local e aparecem no histórico e no KDS. Produtos não são processados como pizza nem geram proposta de consumo de ficha.
+- O estado do preview é v7 e migra v6 preservando histórico. Como o owner SQL ainda valida v6, Food Order Core recusa o v7 antes da gravação persistente. O command schema interno é `/2`; a fixture local não substitui o catálogo mestre.
+- Falta publicar/homologar Catálogo e atualizar o contrato Food SQL antes de integrar pedidos com produtos. Nenhuma integração com Sales, Payments, Inventory ou Space foi declarada.
+- Suíte Food: 130/130; `git diff --check` aprovado. Estado remoto e CI serão atualizados nesta rodada pela PR #359, mantida em rascunho.
+
