@@ -1004,3 +1004,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - O planejador de lote deixa de renderizar dois botões “Limpar” para a mesma operação. Antes do cálculo, a ação diz “Limpar quantidades”; no resultado, “Limpar lote”. Ambas são nomeadas para leitores de tela e limpam o mesmo rascunho, sem tocar em pedidos ou Inventory.
 - Smoke Chrome cobre cálculo dos insumos, exclusão do resultado e restauração dos campos; a suíte também verifica a existência de uma única ação nos dois estados.
 - Verificação: Food **195/195**; Chrome **27/27**; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.
+
+### Space Pizzaria / OrdaX Food — identificar ações repetidas para acessibilidade (2026-10-27)
+
+- Ações repetidas agora têm nomes acessíveis contextualizados com pedido, sabor ou mesa, cobrindo avanço/cancelamento de pedidos, disponibilidade do cardápio, cópia de endereço e comandas. Os rótulos visuais permanecem curtos.
+- A mudança mantém os comandos e o estado Food existentes; não cria integração, owner ou dados paralelos.
+- Verificação: Food **195/195**; Chrome **27/27** com assertions por módulo; `node --check` dos arquivos alterados e `git diff --check` aprovados.

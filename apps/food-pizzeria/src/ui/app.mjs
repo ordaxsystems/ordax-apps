@@ -472,9 +472,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function orderAction(order) {
     const status = nextFoodOrderStatus(order);
     if (!status) return "";
-    return button(foodOrderActionLabel(order, status), "advance-order", {
+    const actionLabel = foodOrderActionLabel(order, status);
+    return button(actionLabel, "advance-order", {
       kind: status === "ready" ? "primary" : "quiet",
-      extra: `data-order-id="${escapeHtml(order.id)}" data-next-status="${status}"`,
+      extra: `aria-label="${escapeHtml(actionLabel)} no pedido ${escapeHtml(orderNumber(order))}" data-order-id="${escapeHtml(order.id)}" data-next-status="${status}"`,
     });
   }
   
@@ -507,7 +508,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       <ul class="order-items">${items}</ul>
       ${order.notes ? `<p class="order-note"><span>Observação</span>${escapeHtml(order.notes)}</p>` : ""}
       ${order.status === "cancelled" ? `<p class="cancel-reason">Cancelado: ${escapeHtml(lastChange.reason)}</p>` : ""}
-      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${deliveryCallAction}${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${allowAdvance ? orderAction(order) : ""}</div></div>
+      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${deliveryCallAction}${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `aria-label="Cancelar pedido ${escapeHtml(orderNumber(order))}" data-order-id="${escapeHtml(order.id)}"` }) : ""}${allowAdvance ? orderAction(order) : ""}</div></div>
       ${showHistory ? renderOrderHistoryTimeline(order, { statusLabels: STATUS_LABELS, escapeHtml }) : ""}
     </article>`;
   }
@@ -690,7 +691,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const orderSummary = orders.length
       ? orders.map((order) => `${orderNumber(order)} · ${STATUS_LABELS[order.status]}`).join(" · ")
       : "Ainda sem pedidos";
-    return `<article class="table-card table-occupied table-card-open"><div class="table-card-top"><span class="table-number">${String(table.id).padStart(2, "0")}</span><span>${command.guestCount}/${table.seats} pessoas</span></div><strong>${escapeHtml(command.customerName)}</strong><small data-order-age data-started-at="${escapeHtml(command.openedAt)}"><span>Aberta há</span> <b data-age-value>${formatElapsed(elapsedMinutes(command.openedAt))}</b></small><div class="table-card-summary"><span>${orders.length} ${orders.length === 1 ? "pedido" : "pedidos"}</span><strong>${money(Number(tableCommandTotalCents(command.id)))}</strong></div><p class="table-order-list">${escapeHtml(orderSummary)}</p><div class="table-card-actions">${button("Adicionar pedido", "add-command-order", { kind: "primary", extra: `data-command-id="${escapeHtml(command.id)}"` })}${button("Encerrar comanda", "close-table-command", { disabled: !canClose, extra: `data-command-id="${escapeHtml(command.id)}"` })}</div>${!canClose ? `<small class="table-close-hint">Conclua ou cancele os pedidos na Cozinha para encerrar.</small>` : ""}</article>`;
+    const tableLabel = String(table.id).padStart(2, "0");
+    return `<article class="table-card table-occupied table-card-open"><div class="table-card-top"><span class="table-number">${tableLabel}</span><span>${command.guestCount}/${table.seats} pessoas</span></div><strong>${escapeHtml(command.customerName)}</strong><small data-order-age data-started-at="${escapeHtml(command.openedAt)}"><span>Aberta há</span> <b data-age-value>${formatElapsed(elapsedMinutes(command.openedAt))}</b></small><div class="table-card-summary"><span>${orders.length} ${orders.length === 1 ? "pedido" : "pedidos"}</span><strong>${money(Number(tableCommandTotalCents(command.id)))}</strong></div><p class="table-order-list">${escapeHtml(orderSummary)}</p><div class="table-card-actions">${button("Adicionar pedido", "add-command-order", { kind: "primary", extra: `aria-label="Adicionar pedido à comanda da Mesa ${tableLabel}" data-command-id="${escapeHtml(command.id)}"` })}${button("Encerrar comanda", "close-table-command", { disabled: !canClose, extra: `aria-label="Encerrar comanda da Mesa ${tableLabel}" data-command-id="${escapeHtml(command.id)}"` })}</div>${!canClose ? `<small class="table-close-hint">Conclua ou cancele os pedidos na Cozinha para encerrar.</small>` : ""}</article>`;
   }
   
   function openTableCommandDialog(preselectedTableId = null) {

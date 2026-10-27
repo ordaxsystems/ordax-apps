@@ -129,3 +129,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - O pré-preparo mostra um único controle de limpeza: “Limpar quantidades” antes do cálculo e “Limpar lote” junto do resultado. Os nomes deixam claro o efeito, e a ação no resultado também tem nome acessível.
 - A limpeza apaga apenas o rascunho e o resultado do planejador local; não altera pedido nem estoque.
 - Verificação: Food **195/195**; Chrome **27/27**, incluindo cálculo, limpeza e restauração dos campos; verificador MVP, sintaxe e `git diff --check` aprovados.
+
+### Food — nomes acessíveis para ações repetidas (2026-10-27)
+
+- Cancelar/avançar pedido, alterar disponibilidade de sabor, copiar endereço e operar uma comanda agora anunciam também a referência do pedido, o sabor ou a mesa. O texto visual segue compacto; leitores de tela deixam de receber uma lista ambígua de botões com o mesmo nome.
+- A alteração é de apresentação e acessibilidade: não muda comandos, regras de fila, dados, ownership ou integrações.
+- Verificação: Food **195/195**; Chrome **27/27**, com verificações contextuais em Pedidos, Cardápio, Expedição e Mesas; sintaxe JavaScript e `git diff --check` aprovados.

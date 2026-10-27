@@ -117,6 +117,12 @@ try {
     ensure(root.querySelector("#orders-search")?.value === ""
       && root.querySelectorAll(".history-list .order-card").length === 12,
     "Limpar filtros não restaurou a lista completa nem removeu a busca.");
+    const cancelButtons = [...root.querySelectorAll('.history-list .order-card [data-action="cancel-order"]')];
+    ensure(cancelButtons.length > 0 && cancelButtons.every((button) => {
+      const order = button.closest(".order-card");
+      return button.getAttribute("aria-label")
+        === `Cancelar pedido ${order?.querySelector(".order-number")?.textContent.trim()}`;
+    }), "Cada ação de cancelamento deve identificar o pedido correspondente.");
   }
 
   if (view === "orders" && !embedded) {
@@ -148,6 +154,7 @@ try {
       "Retirada não deve oferecer ação de ligação de entrega antes do atendimento.");
     const handoff = root.querySelector('[data-action="advance-order"][data-order-id="ng-order-1052"]');
     ensure(handoff?.textContent.trim() === "Confirmar retirada"
+      && handoff.getAttribute("aria-label") === "Confirmar retirada no pedido #1052"
       && handoff.getAttribute("data-next-status") === "completed",
     "Pedido de retirada pronto não oferece a confirmação de entrega ao cliente.");
     ensure(!root.querySelector('[data-action="cancel-order"][data-order-id="ng-order-1052"]'),
@@ -313,6 +320,12 @@ try {
   }
 
   if (view === "menu" && parameters.has("__exercise_recipe")) {
+    const flavorAvailabilityButtons = [...root.querySelectorAll('.flavor-card [data-action="toggle-flavor"]')];
+    ensure(flavorAvailabilityButtons.length > 0 && flavorAvailabilityButtons.every((button) => {
+      const flavor = button.closest(".flavor-card")?.querySelector("h3")?.textContent.trim();
+      const action = button.textContent.trim();
+      return button.getAttribute("aria-label") === `${action} sabor ${flavor}`;
+    }), "Cada ação de disponibilidade deve identificar o sabor correspondente.");
     const batchInput = root.querySelector('[name="batch-ng-calabresa"]');
     ensure(batchInput && root.querySelectorAll('[data-action="clear-batch-plan"]').length === 1,
       "O pré-preparo deve oferecer somente uma ação para limpar quantidades.");
@@ -569,6 +582,10 @@ try {
       ensure(!document.getElementById(id), `Diálogo Food ${id} vazou para o host.`);
     }
     if (view === "tables") {
+      const tableActions = [...root.querySelectorAll('.table-card-open [data-action="add-command-order"], .table-card-open [data-action="close-table-command"]')];
+      ensure(tableActions.length >= 2 && tableActions.every((button) =>
+        /Mesa \d{2}$/.test(button.getAttribute("aria-label") ?? "")),
+      "As ações de comanda devem identificar a mesa correspondente.");
       const open = root.querySelector('[data-action="open-table-command"]');
       ensure(open, "Botão real de abertura de mesa não renderizado.");
       open.click();

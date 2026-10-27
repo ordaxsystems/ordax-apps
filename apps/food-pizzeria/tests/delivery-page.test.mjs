@@ -54,7 +54,7 @@ test("parada em rota oferece ligação e cópia do endereço", () => {
   ]);
 
   assert.match(html, /href="tel:\+5511999990000" aria-label="Ligar para Bia do pedido #route"/);
-  assert.match(html, /data-action="copy-delivery-address" data-address="Rua B, 10" data-order-number="#route">Copiar endereço/);
+  assert.match(html, /data-action="copy-delivery-address" data-address="Rua B, 10" data-order-number="#route" aria-label="Copiar endereço do pedido #route">Copiar endereço/);
   assert.doesNotMatch(html, /data-address=""/);
   assert.doesNotMatch(html, /href="tel:.*Caio/);
 });

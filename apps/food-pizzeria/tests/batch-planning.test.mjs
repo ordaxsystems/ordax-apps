@@ -23,7 +23,7 @@ function renderMenu(snapshot, overrides = {}) {
     recipeDraftLines: [],
     editFlavorId: null,
     busy: false,
-    button: (label, action) => `<button data-action="${action}">${label}</button>`,
+    button: (label, action, { disabled = false, extra = "" } = {}) => `<button data-action="${action}" ${disabled ? "disabled" : ""} ${extra}>${label}</button>`,
     money: (cents) => `R$ ${(cents / 100).toFixed(2)}`,
     escapeHtml: (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]),
     timeLabel: () => "agora",
@@ -114,6 +114,7 @@ test("batch planner keeps one contextual clear action before a result exists", (
   assert.equal((html.match(/data-action="clear-batch-plan"/g) ?? []).length, 1);
   assert.match(html, /aria-label="Limpar quantidades do pré-preparo">Limpar quantidades/);
   assert.doesNotMatch(html, /Limpar lote/);
+  assert.match(html, /aria-label="Indisponibilizar sabor Calabresa"/);
 });
 
 test("recipe editor disables duplicate ingredients but preserves each row's current choice", () => {
