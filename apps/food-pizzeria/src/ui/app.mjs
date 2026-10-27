@@ -124,6 +124,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let orderStatusFilter = "all";
   let orderChannelFilter = "all";
   let kitchenChannelFilter = "all";
+  let kitchenOrderQuery = "";
+  let kitchenLateOnly = false;
   let activeCommandId = null;
   let editFlavorId = null;
   let cart = [];
@@ -342,12 +344,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
       KITCHEN_CHANNEL_FILTERS, ORDER_STAGE_ALERT_MINUTES, snapshot, recipeFlavorId,
       recipeDraftLines, orderQuery, orderStatusFilter, orderChannelFilter, kitchenChannelFilter,
+      kitchenOrderQuery, kitchenLateOnly,
       activeCommandId, editFlavorId, cart, busy, button, iconSvg, metricCard,
       orderItemDescription, nextStatus, nextActionLabel, orderAction, canCancel,
-      renderOrderCard, emptyState, sizeOptions, flavorOptions, cartHtml, flavorForm,
+      renderOrderCard, renderKitchenOrderCard, emptyState, sizeOptions, flavorOptions, cartHtml, flavorForm,
       kitchenChannelButton, activeCommandForTable, tableCard, sectionHeader, statCard,
       tableOrders, tableCommandTotalCents, money, escapeHtml, timeLabel, clockTime, stageStartedAt,
-      elapsedMinutes, formatElapsed, orderNumber, commandById,
+      elapsedMinutes, formatElapsed, orderNumber, orderChannelLabel, commandById,
     };
   }
   function metricCard({ label, value, detail, icon, tone = "red" }) {
@@ -405,6 +408,32 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       ${order.notes ? `<p class="order-note"><span>Observação</span>${escapeHtml(order.notes)}</p>` : ""}
       ${order.status === "cancelled" ? `<p class="cancel-reason">Cancelado: ${escapeHtml(lastChange.reason)}</p>` : ""}
       <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${canCancel(order) ? button("Cancelar", "cancel-order", { extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${orderAction(order)}</div></div>
+    </article>`;
+  }
+
+  function renderKitchenOrderCard(order, { deliveryDetails = false } = {}) {
+    const totalPizzas = order.items.reduce((sum, item) => sum + item.quantity, 0);
+    const items = order.items.map((item) => {
+      const size = item.sizeLabel ?? PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
+      const flavors = item.flavors.map(({ name }) => name).join(" + ");
+      return `<li class="kitchen-pizza-line"><span class="kitchen-pizza-quantity">${item.quantity}×</span><div><strong>${escapeHtml(size)}</strong><span>${escapeHtml(flavors)}</span></div></li>`;
+    }).join("");
+    const startedAt = stageStartedAt(order);
+    const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];
+    const age = alertAfter
+      ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}" data-target-minutes="${alertAfter}"><span>Na etapa há</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong><span class="kitchen-sla-target">Meta ${alertAfter} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></div>`
+      : "";
+    const dispatchDetails = deliveryDetails && order.channel === "delivery"
+      ? `<div class="kitchen-delivery-details"><span>DESTINO</span><strong>${escapeHtml(order.customerName)}</strong><p>${escapeHtml(order.address)}</p>${order.phone ? `<small>${escapeHtml(order.phone)}</small>` : ""}</div>`
+      : "";
+    return `<article class="order-card order-card-kitchen" data-status="${order.status}">
+      <header class="kitchen-ticket-head"><div class="kitchen-ticket-identity"><strong>${orderNumber(order)}</strong><span class="kitchen-channel-chip">${escapeHtml(orderChannelLabel(order))}</span></div><span class="status-badge status-${order.status}"><span></span>${escapeHtml(STATUS_LABELS[order.status])}</span></header>
+      <div class="kitchen-ticket-meta"><span>Pedido às ${clockTime(order.createdAt)}</span><strong>${totalPizzas} ${totalPizzas === 1 ? "pizza" : "pizzas"}</strong></div>
+      ${age}
+      <ul class="kitchen-pizza-lines">${items}</ul>
+      ${order.notes ? `<div class="kitchen-production-note"><span>INSTRUÇÃO DE PREPARO</span><p>${escapeHtml(order.notes)}</p></div>` : ""}
+      ${dispatchDetails}
+      <footer class="kitchen-ticket-actions">${canCancel(order) ? button("Cancelar", "cancel-order", { kind: "quiet", extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${orderAction(order)}</footer>
     </article>`;
   }
   
@@ -555,7 +584,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function refreshElapsedIndicators() {
     if (!root) return;
     const now = Date.now();
-    for (const indicator of root.querySelectorAll("[data-order-age]")) {
+    const indicators = [...root.querySelectorAll("[data-order-age]")];
+    for (const indicator of indicators) {
       const minutes = elapsedMinutes(indicator.dataset.startedAt, now);
       const target = Number(indicator.dataset.targetMinutes);
       const overdue = Number.isFinite(target) && minutes >= target;
@@ -565,6 +595,15 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       if (alert) alert.hidden = !overdue;
       indicator.classList.toggle("is-overdue", overdue);
     }
+    const visibleOverdueCount = indicators.filter((indicator) => indicator.classList.contains("is-overdue")).length;
+    const visibleOverdueValue = root.querySelector("[data-kitchen-overdue-count]");
+    if (visibleOverdueValue) visibleOverdueValue.textContent = String(visibleOverdueCount);
+    const activeStatuses = new Set(["received", "preparing", "ready", "out-for-delivery"]);
+    const totalOverdueCount = snapshot?.orders.filter((order) => activeStatuses.has(order.status)
+      && Number.isFinite(ORDER_STAGE_ALERT_MINUTES[order.status])
+      && elapsedMinutes(stageStartedAt(order), now) >= ORDER_STAGE_ALERT_MINUTES[order.status]).length ?? 0;
+    const totalOverdueValue = root.querySelector("[data-kitchen-overdue-total]");
+    if (totalOverdueValue) totalOverdueValue.textContent = String(totalOverdueCount);
   }
   
   function renderNotice() {
@@ -760,6 +799,26 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       root.querySelector(`[data-kitchen-channel="${kitchenChannelFilter}"]`)?.focus({ preventScroll: true });
       return;
     }
+    if (target.dataset.action === "toggle-kitchen-late-filter") {
+      kitchenLateOnly = !kitchenLateOnly;
+      render();
+      root.querySelector('[data-action="toggle-kitchen-late-filter"]')?.focus({ preventScroll: true });
+      return;
+    }
+    if (target.dataset.action === "clear-kitchen-search") {
+      kitchenOrderQuery = "";
+      render();
+      root.querySelector("#kitchen-search")?.focus({ preventScroll: true });
+      return;
+    }
+    if (target.dataset.action === "reset-kitchen-filters") {
+      kitchenChannelFilter = "all";
+      kitchenOrderQuery = "";
+      kitchenLateOnly = false;
+      render();
+      root.querySelector("#kitchen-search")?.focus({ preventScroll: true });
+      return;
+    }
     if (target.dataset.view) {
       event.preventDefault();
       try {
@@ -893,6 +952,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
     const kind = form.id;
+    if (kind === "kitchen-search-form") {
+      event.preventDefault();
+      kitchenOrderQuery = String(new FormData(form).get("query") ?? "").trim();
+      render();
+      root.querySelector("#kitchen-search")?.focus({ preventScroll: true });
+      return;
+    }
     if (kind === "global-search") {
       event.preventDefault();
       orderQuery = String(new FormData(form).get("query") ?? "");

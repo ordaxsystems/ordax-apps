@@ -12,7 +12,7 @@ window.addEventListener("unhandledrejection", (event) => {
   browserErrors.push(`Promise: ${String(event.reason?.stack ?? event.reason)}`);
 });
 const expected = {
-  kitchen: "Fila da cozinha",
+  kitchen: "Produção",
   orders: "Montar pedido",
   tables: "Mesas",
 };

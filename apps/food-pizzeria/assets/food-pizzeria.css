@@ -831,6 +831,105 @@ dialog p { color: #a2a8af; }
 .table-order-context span { color: #e7e1db; font-size: 9px; }
 .table-order-context small { color: #a9a09a; font-size: 8px; line-height: 1.5; }
 
+/* KDS de alto volume: prioridade visual, leitura à distância e controles táteis. */
+.kitchen-page { --kitchen-surface: #191c20; --kitchen-line: #30353b; }
+.kitchen-page-heading { align-items: center; margin-bottom: 17px; }
+.kitchen-page-heading h1 { font-size: clamp(27px, 2.2vw, 34px); }
+.kitchen-active-count { min-height: 36px; padding-inline: 14px; border-color: var(--kitchen-line); background: var(--kitchen-surface); font-size: 11px; }
+.kitchen-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 13px; }
+.kitchen-summary-card { display: grid; min-width: 0; gap: 6px; padding: 14px 15px; border: 1px solid var(--kitchen-line); border-radius: 13px; background: linear-gradient(145deg, #1d2024, #181a1e); }
+.kitchen-summary-card > span { color: #a2a8af; font-size: 10px; font-weight: 600; }
+.kitchen-summary-card > strong { color: #f4f5f6; font: 800 25px/1 "Manrope", sans-serif; font-variant-numeric: tabular-nums; }
+.kitchen-summary-card > small { color: #8f969e; font-size: 9px; line-height: 1.4; }
+.kitchen-summary-orange { box-shadow: inset 3px 0 #ff7b45; }
+.kitchen-summary-violet { box-shadow: inset 3px 0 #9e8be8; }
+.kitchen-summary-green { box-shadow: inset 3px 0 #4ecb88; }
+.kitchen-summary-red { box-shadow: inset 3px 0 #f0645b; }
+.kitchen-toolbar { display: grid; gap: 11px; margin-bottom: 13px; padding: 13px 15px; border-color: var(--kitchen-line); background: var(--kitchen-surface); }
+.kitchen-toolbar-main, .kitchen-toolbar-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.kitchen-search-form { display: flex; flex: 1 1 300px; min-width: 0; gap: 7px; }
+.kitchen-search-form input { flex: 1; min-width: 100px; min-height: 40px; padding: 8px 12px; border: 1px solid #363b42; border-radius: 9px; background: #111417; color: #eef0f2; font-size: 11px; }
+.kitchen-search-form .button { min-height: 40px; padding-inline: 14px; font-size: 10px; }
+.kitchen-late-filter { display: inline-flex; min-height: 40px; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid #473333; border-radius: 9px; background: #241d1d; color: #e6c2bd; font-size: 10px; font-weight: 650; cursor: pointer; }
+.kitchen-late-filter > span { display: grid; width: 19px; height: 19px; place-items: center; border-radius: 50%; background: #482624; color: #ff8a80; font-weight: 800; }
+.kitchen-late-filter strong { display: grid; min-width: 21px; height: 21px; place-items: center; border-radius: 6px; background: #392221; color: #ff968d; font-variant-numeric: tabular-nums; }
+.kitchen-late-filter:hover, .kitchen-late-filter.is-active { border-color: #a84a3d; background: #352120; }
+.kitchen-toolbar-filters > strong { color: #a2a8af; font-size: 10px; }
+.kitchen-toolbar .order-filters { justify-content: flex-start; gap: 6px; }
+.kitchen-toolbar .order-filter { min-height: 34px; padding-inline: 10px; font-size: 9px; }
+.kitchen-results-summary { margin: 0; color: #858d95; font-size: 9px; }
+.kitchen-page .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.kitchen-board { grid-template-columns: repeat(3, minmax(275px, 1fr)); gap: 11px; overflow-x: auto; padding-bottom: 7px; scroll-snap-type: x proximity; scrollbar-width: thin; scrollbar-color: #555d66 #202328; }
+.kitchen-board::-webkit-scrollbar { height: 7px; }
+.kitchen-board::-webkit-scrollbar-track { border-radius: 7px; background: #202328; }
+.kitchen-board::-webkit-scrollbar-thumb { border-radius: 7px; background: #555d66; }
+.kitchen-column { min-width: 0; min-height: 310px; padding: 13px; border-color: var(--kitchen-line); background: #171a1e; scroll-snap-align: start; }
+.kitchen-column-head { min-height: 48px; gap: 10px; padding: 0 1px 11px; border-bottom: 1px solid #2b3036; }
+.kitchen-column-head h2 { flex: 1; color: #eef0f2; font: 750 14px "Manrope", sans-serif; }
+.kitchen-column-icon { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid #343940; border-radius: 9px; background: #22262b; color: #ff9467; font-size: 15px; }
+.kitchen-column-volume { display: grid; justify-items: end; gap: 2px; margin-left: auto; }
+.kitchen-column-volume strong { color: #f2f3f4; font-size: 14px; font-variant-numeric: tabular-nums; }
+.kitchen-column-volume small { color: #9299a1; font-size: 8px; }
+.kitchen-column-body { gap: 9px; padding-top: 10px; }
+.column-alert-summary { margin: 8px 2px 0; padding: 8px 9px; border: 1px solid #57342d; border-radius: 8px; background: #2b201c; color: #ffad8d; font-size: 9px; }
+.order-card-kitchen { padding: 13px; border-color: #33383f; border-radius: 11px; background: #202328; box-shadow: 0 4px 14px #0000001c; }
+.kitchen-ticket-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.kitchen-ticket-identity { display: flex; align-items: center; gap: 7px; }
+.kitchen-ticket-identity > strong { color: #f5f6f7; font: 800 16px "Manrope", sans-serif; letter-spacing: -.3px; }
+.kitchen-channel-chip { padding: 4px 7px; border: 1px solid #3c4148; border-radius: 6px; background: #292d32; color: #bfc4ca; font-size: 8px; font-weight: 650; }
+.order-card-kitchen .status-badge { min-height: 26px; align-items: center; padding: 5px 8px; font-size: 8px; }
+.kitchen-ticket-meta { display: flex; justify-content: space-between; gap: 8px; margin-top: 10px; color: #979ea6; font-size: 9px; }
+.kitchen-ticket-meta strong { color: #f2a875; font-size: 10px; white-space: nowrap; }
+.kitchen-ticket-age { min-height: 30px; margin: 8px 0 3px; padding: 6px 8px; border-radius: 7px; background: #191c20; font-size: 9px; }
+.kitchen-ticket-age > strong { font-size: 11px; }
+.kitchen-ticket-age.is-overdue { background: #2b201f; }
+.kitchen-sla-target { margin-left: auto; color: #8a929a; font-size: 8px; }
+.kitchen-pizza-lines { display: grid; gap: 7px; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid #32373e; list-style: none; }
+.kitchen-pizza-line { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; }
+.kitchen-pizza-quantity { display: grid; min-height: 24px; place-items: center; border: 1px solid #514032; border-radius: 7px; background: #30261f; color: #ffb078; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.kitchen-pizza-line > div { display: grid; gap: 2px; }
+.kitchen-pizza-line strong { color: #dfe2e5; font-size: 9px; }
+.kitchen-pizza-line > div > span { color: #a8afb7; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
+.kitchen-production-note, .kitchen-delivery-details { margin-top: 9px; padding: 9px 10px; border: 1px solid #49362b; border-radius: 8px; background: #29211d; }
+.kitchen-production-note > span, .kitchen-delivery-details > span { color: #e9a16f; font-size: 7px; font-weight: 800; letter-spacing: .7px; }
+.kitchen-production-note p { margin: 4px 0 0; color: #f0d7c6; font-size: 9px; line-height: 1.45; overflow-wrap: anywhere; }
+.kitchen-delivery-details { border-color: #343b42; background: #1b2025; }
+.kitchen-delivery-details > span { color: #82bfd0; }
+.kitchen-delivery-details strong { display: block; margin-top: 4px; color: #e8eaec; font-size: 9px; }
+.kitchen-delivery-details p, .kitchen-delivery-details small { margin: 3px 0 0; color: #a4abb3; font-size: 8px; line-height: 1.45; }
+.kitchen-ticket-actions { display: flex; gap: 7px; margin-top: 11px; }
+.kitchen-ticket-actions .button { min-width: 0; min-height: 40px; flex: 1; justify-content: center; padding-inline: 9px; font-size: 9px; }
+.kitchen-empty-delivery { padding: 17px; color: #969da5; font-size: 9px; text-align: center; }
+.kitchen-toolbar :focus-visible, .kitchen-board:focus-visible { outline: 2px solid #ff986a; outline-offset: 3px; }
+
+@media (max-width: 920px) {
+  .kitchen-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kitchen-toolbar { align-items: stretch; }
+  .kitchen-toolbar-main { align-items: stretch; }
+}
+@media (max-width: 680px) {
+  .kitchen-page-heading { align-items: flex-start; }
+  .kitchen-active-count { align-self: flex-start; }
+  .kitchen-summary { gap: 7px; }
+  .kitchen-summary-card { padding: 11px; }
+  .kitchen-summary-card > span { font-size: 8px; }
+  .kitchen-summary-card > strong { font-size: 21px; }
+  .kitchen-summary-card > small { font-size: 8px; }
+  .kitchen-toolbar-main { flex-direction: column; }
+  .kitchen-search-form { flex-basis: auto; width: 100%; }
+  .kitchen-search-form .button { padding-inline: 10px; }
+  .kitchen-late-filter { align-self: flex-start; }
+  .kitchen-toolbar-filters { align-items: flex-start; }
+  .kitchen-toolbar-filters > strong { flex-basis: 100%; }
+  .kitchen-toolbar .order-filters { width: 100%; flex-wrap: nowrap; overflow-x: auto; padding: 2px 0 5px; }
+  .kitchen-toolbar .order-filter { flex: 0 0 auto; }
+  .kitchen-results-summary { line-height: 1.5; }
+  .kitchen-board { grid-auto-columns: minmax(84vw, 1fr); grid-auto-flow: column; grid-template-columns: none; overflow-x: auto; scroll-padding-inline: 4px; }
+  .kitchen-column { min-height: 265px; }
+  .kitchen-column-head h2 { font-size: 13px; }
+  .delivery-cards { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 900px) {
   .kitchen-toolbar { align-items: flex-start; flex-direction: column; }
   .kitchen-toolbar .order-filters { justify-content: start; }

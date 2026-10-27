@@ -347,3 +347,11 @@ A fila da cozinha substitui o indicador fictício “Turno aberto” por uma con
 
 `tests/kitchen-page.test.mjs` cobre a contagem incluindo pedidos em expedição e impede que o KDS volte a declarar turno aberto ou presença ao vivo sem provider. A suíte Food passou com 82/82 testes em ambos os worktrees; `node --check` da view e `git diff --check` também passaram. A prévia segue local e fictícia, sem sincronização com Space.
 
+## Iteração — painel de produção para operação de alto volume (2026-10-26)
+
+O KDS agora usa cartões de produção próprios, mostrando número do pedido, canal/mesa, quantidade e sabores por tamanho, instruções de preparo, tempo na etapa e meta operacional. Busca por pedido/mesa/sabor, filtro de canal, filtro de atraso, limpeza de filtros e totais separados de pedidos e pizzas ajudam a equipe a priorizar a fila. Os detalhes de cliente e endereço só aparecem na área de expedição. A interface adapta as etapas para navegação horizontal em celulares e usa controles com área tátil maior.
+
+Os indicadores derivam do snapshot Food existente e continuam agrupados por status do pedido; a meta 15/35/15/45 minutos é um aviso de interface já configurado, não uma promessa de tempo de produção. Não há avanço individual de cada pizza dentro de um pedido, configuração de estações, throughput diário configurável ou sincronização entre celulares. Esses recursos dependem de capacidades e providers Food/Space autorizados; a prévia atual segue fictícia e local.
+
+`tests/kitchen-page.test.mjs` cobre contagem de pizzas/pedidos, pesquisa, proteção de dados de cliente na cozinha e filtro de atraso. `tests/embedded-presentation.test.mjs` e `tests/browser-preview-probe.mjs` cobrem o novo título e o cartão sem dados de cliente. Suíte Food: 85/85; `node --check` nos módulos alterados e `git diff --check` aprovados.
+

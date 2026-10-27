@@ -100,10 +100,11 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     assert.throws(() => app.navigate("overview"), /somente módulos operacionais/);
     assert.throws(() => app.navigate("not-a-module"), /somente módulos operacionais/);
     assert.equal(root.dispatchPreviewClick("kitchen"), true);
-    assert.match(root.innerHTML, /Fila da cozinha/);
+    assert.match(root.innerHTML, /<h1>Produção<\/h1>/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
-    assert.match(root.innerHTML, /#1050[\s\S]*?<div class="order-customer"><strong>Mesa 04<\/strong><\/div>/);
-    assert.match(root.innerHTML, /#1055[\s\S]*?<div class="order-customer"><strong>Fernanda Lima<\/strong><span>Mesa 01<\/span><\/div>/);
+    assert.match(root.innerHTML, /#1050[\s\S]*?<span class="kitchen-channel-chip">Mesa 04<\/span>/);
+    assert.match(root.innerHTML, /#1055[\s\S]*?<span class="kitchen-channel-chip">Mesa 01<\/span>/);
+    assert.doesNotMatch(root.innerHTML, /class="order-customer"|Fernanda Lima/);
   } finally {
     app.destroy();
   }
