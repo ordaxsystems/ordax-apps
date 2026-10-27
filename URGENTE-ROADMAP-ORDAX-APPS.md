@@ -925,3 +925,10 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A ordenação é somente de apresentação e deriva do `updatedAt` de cada pedido; não move pedidos no estado nem cria fila paralela.
 - Teste da Expedição fornece snapshots fora de ordem e exige FIFO de pedidos prontos. Suíte Food completa: 173/173; smoke de navegador: 26/26; `node --check` nos módulos alterados e `git diff --check`: aprovados.
 
+### Space Pizzaria / OrdaX Food — desempatar transições simultâneas na Expedição (2026-10-27)
+
+- O contrato Food permite timestamps iguais em transições válidas. As filas de despacho, retirada/atendimento e entregas em rota desempatarão pelo pedido criado primeiro e depois pelo identificador estável, em vez de depender da ordem incidental do snapshot.
+- A ordenação continua somente visual e usa o horário da transição como critério principal; estado e histórico Food não mudam.
+- Teste renderizado cobre transições simultâneas nas três filas. Suíte Food: 174/174; smoke Chrome: 26/26; `node --check` no renderizador, teste e smoke; `git diff --check` aprovados. Verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas.
+- O smoke conclui a limpeza do Chrome no Windows verificando a existência do processo após os sinais, sem tratar um processo já encerrado como vazamento.
+

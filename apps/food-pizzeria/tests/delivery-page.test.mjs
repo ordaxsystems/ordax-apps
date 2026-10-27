@@ -54,6 +54,32 @@ test("parada em rota oferece ligação e cópia do endereço", () => {
   assert.doesNotMatch(html, /href="tel:.*Caio/);
 });
 
+test("a Expedição mantém ordem previsível quando transições ocorrem no mesmo instante", () => {
+  const sharedReleaseAt = "2026-10-27T10:20:00.000Z";
+  const html = renderDelivery([
+    { id: "delivery-tie-newer", channel: "delivery", status: "ready", customerName: "Ana", address: "Rua A", createdAt: "2026-10-27T10:00:00.000Z", updatedAt: sharedReleaseAt },
+    { id: "delivery-tie-older", channel: "delivery", status: "ready", customerName: "Bela", address: "Rua B", createdAt: "2026-10-27T09:55:00.000Z", updatedAt: sharedReleaseAt },
+    { id: "handoff-tie-newer", channel: "pickup", status: "ready", customerName: "Caio", address: "", createdAt: "2026-10-27T10:00:00.000Z", updatedAt: sharedReleaseAt },
+    { id: "handoff-tie-older", channel: "counter", status: "ready", customerName: "Dani", address: "", createdAt: "2026-10-27T09:55:00.000Z", updatedAt: sharedReleaseAt },
+    { id: "route-tie-newer", channel: "delivery", status: "out-for-delivery", customerName: "Eli", address: "Rua E", createdAt: "2026-10-27T10:00:00.000Z", updatedAt: sharedReleaseAt },
+    { id: "route-tie-older", channel: "delivery", status: "out-for-delivery", customerName: "Fabi", address: "Rua F", createdAt: "2026-10-27T09:55:00.000Z", updatedAt: sharedReleaseAt },
+    { id: "delivery-id-z", channel: "delivery", status: "ready", customerName: "Gabi", address: "Rua G", createdAt: "2026-10-27T10:00:00.000Z", updatedAt: sharedReleaseAt },
+    { id: "delivery-id-a", channel: "delivery", status: "ready", customerName: "Hugo", address: "Rua H", createdAt: "2026-10-27T10:00:00.000Z", updatedAt: sharedReleaseAt },
+  ]);
+
+  for (const [older, newer] of [
+    ["delivery-tie-older", "delivery-tie-newer"],
+    ["handoff-tie-older", "handoff-tie-newer"],
+    ["route-tie-older", "route-tie-newer"],
+    ["delivery-id-a", "delivery-id-z"],
+  ]) {
+    assert.ok(
+      html.indexOf(`data-order-id="${older}"`) < html.indexOf(`data-order-id="${newer}"`),
+      `${older} deve aparecer antes de ${newer} quando o horário da transição coincide.`,
+    );
+  }
+});
+
 test("fila de entrega informa a ordem de saída sem apresentar mapa ou GPS", () => {
   const html = renderDelivery([
     { id: "saída-posterior", channel: "delivery", status: "out-for-delivery", customerName: "Bia", phone: "11999990000", address: "Rua B", updatedAt: "2026-10-27T10:20:00.000Z" },

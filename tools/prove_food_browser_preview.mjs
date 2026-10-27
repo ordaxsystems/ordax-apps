@@ -98,16 +98,37 @@ async function freeLocalPort() {
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function processIsAlive(child) {
+  if (!child || !Number.isInteger(child.pid)
+    || (child.exitCode !== null && child.exitCode !== undefined)
+    || (child.signalCode !== null && child.signalCode !== undefined)) return false;
+  try {
+    return child.kill(0);
+  } catch (error) {
+    if (error.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+function signalProcess(child, signal) {
+  try {
+    return child.kill(signal);
+  } catch (error) {
+    if (error.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
 async function stopProcess(child) {
-  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  if (!processIsAlive(child)) return;
   const stopped = new Promise((resolve) => child.once("exit", resolve));
-  child.kill("SIGTERM");
+  signalProcess(child, "SIGTERM");
   await Promise.race([stopped, pause(4000)]);
-  if (child.exitCode === null && child.signalCode === null) {
-    child.kill("SIGKILL");
+  if (processIsAlive(child)) {
+    signalProcess(child, "SIGKILL");
     await Promise.race([stopped, pause(4000)]);
   }
-  if (child.exitCode === null && child.signalCode === null) {
+  if (processIsAlive(child)) {
     throw new Error(`O processo ${child.pid} não encerrou após SIGKILL.`);
   }
 }

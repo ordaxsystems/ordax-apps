@@ -1,17 +1,35 @@
 // Food remains the single owner of orders; this view presents customer handoff and delivery dispatch.
+function compareQueueTime(left, right) {
+  const leftTime = Date.parse(left ?? "");
+  const rightTime = Date.parse(right ?? "");
+  const leftValid = Number.isFinite(leftTime);
+  const rightValid = Number.isFinite(rightTime);
+  if (leftValid !== rightValid) return leftValid ? -1 : 1;
+  return leftValid ? leftTime - rightTime : 0;
+}
+
+function compareQueueOrder(left, right) {
+  const timeOrder = compareQueueTime(left.updatedAt, right.updatedAt)
+    || compareQueueTime(left.createdAt, right.createdAt);
+  if (timeOrder) return timeOrder;
+  const leftId = String(left.id ?? "");
+  const rightId = String(right.id ?? "");
+  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+}
+
 export function renderDeliveryPage(viewModel) {
   const { snapshot, sectionHeader, statCard, renderOrderCard, emptyState, iconSvg, orderNumber, escapeHtml, clockTime } = viewModel;
   const activeDeliveries = snapshot.orders.filter(({ channel, status }) => channel === "delivery" && !["completed", "cancelled"].includes(status));
   const kitchenOrders = snapshot.orders.filter(({ status }) => ["received", "preparing"].includes(status));
   const readyDeliveries = activeDeliveries
     .filter(({ status }) => status === "ready")
-    .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt));
+    .sort(compareQueueOrder);
   const customerHandoffs = snapshot.orders
     .filter(({ channel, status }) => channel !== "delivery" && status === "ready")
-    .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt));
+    .sort(compareQueueOrder);
   const routeOrders = activeDeliveries
     .filter(({ status }) => status === "out-for-delivery")
-    .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt));
+    .sort(compareQueueOrder);
   const stagePanel = (title, eyebrow, orders, emptyTitle, emptyText, icon = "delivery") => `<section class="panel delivery-stage"><div class="panel-heading"><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div><span class="column-count">${orders.length}</span></div>${orders.length ? `<div class="history-list">${orders.map((order) => renderOrderCard(order, { allowCancel: false, allowAdvance: true })).join("")}</div>` : emptyState({ icon: iconSvg(icon), title: emptyTitle, text: emptyText })}</section>`;
   const deliveryStops = routeOrders.map((order, index) => {
     const phoneDigits = (order.phone ?? "").replace(/\D/g, "");
