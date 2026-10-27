@@ -491,7 +491,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     </article>`;
   }
 
-  function renderKitchenOrderCard(order, { deliveryDetails = false, task = null, screenNumber = null } = {}) {
+  function renderKitchenOrderCard(order, { deliveryDetails = false, task = null, screenNumber = null, canPassNext = false, passBehindCount = 1 } = {}) {
     const totalPizzas = order.items.reduce((sum, item) => sum + item.quantity, 0);
     const items = order.items.map((item) => renderKitchenItemLine(item, kitchenItemPresentation(item), escapeHtml)).join("");
     const startedAt = stageStartedAt(order);
@@ -509,7 +509,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const taskActions = task && currentTask && Number.isSafeInteger(screenNumber)
       ? `<footer class="kitchen-ticket-actions kitchen-task-actions">${currentTask.status === "queued"
         ? button(`Iniciar ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="start" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })
-        : button(`Concluir ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="complete" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}${button("Adiar para o fim da fila", "kitchen-task-action", { kind: "quiet", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="defer" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}</footer>`
+        : button(`Concluir ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `data-task-action="complete" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}${button("Próximo", "kitchen-task-action", { kind: "quiet", disabled: typeof store.recordKitchenTaskAction !== "function" || !canPassNext, extra: `title="${canPassNext ? `O pedido atual volta na ${passBehindCount === 2 ? "terceira posição" : "segunda posição"}.` : "Não há outro pedido nesta etapa."}" aria-label="${canPassNext ? `Passar para o próximo; o atual volta na ${passBehindCount === 2 ? "terceira" : "segunda"} posição` : "Não há outro pedido nesta etapa"}" data-task-action="pass-next" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}" data-pass-behind="${passBehindCount}"` })}</footer>`
       : "";
     return `<article class="order-card order-card-kitchen" data-status="${order.status}">
       <header class="kitchen-ticket-head"><div class="kitchen-ticket-identity"><strong>${orderNumber(order)}</strong><span class="kitchen-channel-chip">${escapeHtml(orderChannelLabel(order))}</span></div><span class="status-badge status-${order.status}"><span></span>${escapeHtml(STATUS_LABELS[order.status])}</span></header>
@@ -973,7 +973,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         type: "success",
         text: action === "start" ? `${step?.label ?? "Etapa"} iniciada.`
           : action === "complete" ? `${step?.label ?? "Etapa"} concluída. O pedido seguiu o fluxo.`
-            : "Pedido adiado para o fim desta fila.",
+            : `Próximo pedido em foco; o atual voltou na ${Number(target.dataset.passBehind) === 2 ? "terceira" : "segunda"} posição.`,
       };
       clearTimeout(noticeTimer);
       noticeTimer = setTimeout(() => {

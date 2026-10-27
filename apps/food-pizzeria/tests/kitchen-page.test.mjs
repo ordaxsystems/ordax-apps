@@ -8,6 +8,7 @@ import {
   applyKitchenTaskAction,
   distributeKitchenSteps,
   reconcileKitchenTasks,
+  validateKitchenWorkflow,
 } from "../src/application/kitchen-workflow-preview.mjs";
 import {
   PIZZERIA_KITCHEN_ITEM_LABEL,
@@ -82,7 +83,7 @@ function render(overrides = {}) {
     orderNumber: (record) => `#${record.id.slice(-4)}`,
     orderChannelLabel: (record) => record.tableCommandId ? "Mesa 03" : ({ delivery: "Entrega", pickup: "Retirada", counter: "Balcão", "dine-in": "Salão" })[record.channel],
     escapeHtml: (value) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;"),
-    renderKitchenOrderCard: (record, { deliveryDetails = false, task = null, screenNumber = null } = {}) => `<article data-order="${record.id}"><header><strong>#${record.id.slice(-4)}</strong></header><span class="status-badge status-${record.status}"></span>${task ? `<span>${task.steps.filter(({ status }) => status === "completed").length}/${task.steps.length}</span>` : ""}${screenNumber ? `<button data-screen="${screenNumber}">Concluir ${task?.steps.find(({ status }) => status !== "completed")?.label ?? "etapa"}</button><button>Adiar para o fim da fila</button>` : ""}<ul class="kitchen-item-lines">${record.items.map((item) => renderKitchenItemLine(item, viewModel.kitchenItemPresentation(item), viewModel.escapeHtml)).join("")}</ul>${deliveryDetails ? record.address : ""}</article>`,
+    renderKitchenOrderCard: (record, { deliveryDetails = false, task = null, screenNumber = null } = {}) => `<article data-order="${record.id}"><header><strong>#${record.id.slice(-4)}</strong></header><span class="status-badge status-${record.status}"></span>${task ? `<span>${task.steps.filter(({ status }) => status === "completed").length}/${task.steps.length}</span>` : ""}${screenNumber ? `<button data-screen="${screenNumber}">Concluir ${task?.steps.find(({ status }) => status !== "completed")?.label ?? "etapa"}</button><button>Próximo</button>` : ""}<ul class="kitchen-item-lines">${record.items.map((item) => renderKitchenItemLine(item, viewModel.kitchenItemPresentation(item), viewModel.escapeHtml)).join("")}</ul>${deliveryDetails ? record.address : ""}</article>`,
     kitchenChannelButton: (filter) => `<button data-channel="${filter.id}">${filter.label}</button>`,
     kitchenScreenHref: (screenNumber, stage, screenCount) => `/?station=${screenNumber}&stationStage=${stage}&screenCount=${screenCount}`,
     kitchenOverviewHref: () => "/?view=kitchen",
@@ -133,20 +134,20 @@ test("workflow settings edit business steps and create a direct link for every s
   assert.match(page, /O KDS não cancela pedidos/);
 });
 
-test("station focuses a single ticket, exposes start/complete/defer and lists five upcoming orders", () => {
+test("station focuses a single ticket, exposes start/complete/next and lists five upcoming orders", () => {
   const page = render({
     kitchenWorkflow: workflow,
     kitchenTasks: makeTasks(),
     activeKitchenScreen: 2,
     kitchenScreenCount: 4,
-    renderKitchenOrderCard: (record, { task = null, screenNumber = null } = {}) => `<article data-order="${record.id}"><strong>#${record.id.slice(-4)}</strong>${task ? `<b>${task.steps.filter(({ status }) => status === "completed").length + 1}/${task.steps.length} ${task.steps.find(({ status }) => status !== "completed").label}</b>` : ""}${screenNumber ? `<button data-task-action="complete">Concluir montagem</button><button data-task-action="defer">Adiar para o fim da fila</button>` : ""}</article>`,
+    renderKitchenOrderCard: (record, { task = null, screenNumber = null } = {}) => `<article data-order="${record.id}"><strong>#${record.id.slice(-4)}</strong>${task ? `<b>${task.steps.filter(({ status }) => status === "completed").length + 1}/${task.steps.length} ${task.steps.find(({ status }) => status !== "completed").label}</b>` : ""}${screenNumber ? `<button data-task-action="complete">Concluir montagem</button><button data-task-action="pass-next">Próximo</button>` : ""}</article>`,
   });
   assert.match(page, /TELA 2 DE 4/);
   assert.match(page, /data-kitchen-station-screen="2"/);
   assert.match(page, /data-action="fullscreen-kitchen"/);
   assert.match(page, /data-kitchen-current-order="order-1001"/);
   assert.match(page, /Concluir montagem/);
-  assert.match(page, /Adiar para o fim da fila/);
+  assert.match(page, /Próximo/);
   assert.match(page, /Sem outros pedidos aguardando/);
   assert.equal((page.match(/#1001/g) ?? []).length, 1);
   assert.doesNotMatch(page, /Cancelar|data-action="cancel-order"|data-action="advance-order"/);
@@ -163,8 +164,42 @@ test("single-screen flow keeps every step in sequence on one focused ticket", ()
   assert.match(page, /data-kitchen-current-order="order-1002"/);
   assert.match(page, /Próximos pedidos/);
   assert.match(page, /Concluir Abrir massa/);
-  assert.match(page, /Adiar para o fim da fila/);
+  assert.match(page, /Próximo/);
   assert.equal((page.match(/#1002/g) ?? []).length, 1);
+  assert.match(page, /<h1>Produção completa<\/h1>/);
+  assert.doesNotMatch(page, /<h1>Abrir massa · Montagem · Forno/);
+});
+
+test("station heading names only the functions assigned to a shared two-function screen", () => {
+  const sharedStationWorkflow = validateKitchenWorkflow({
+    ...DEFAULT_KITCHEN_WORKFLOW,
+    screenCount: 2,
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({ ...step, screen: index < 2 ? 1 : 2 })),
+  });
+  const page = render({
+    kitchenWorkflow: sharedStationWorkflow,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, sharedStationWorkflow),
+    activeKitchenScreen: 1,
+    kitchenScreenCount: 2,
+  });
+  assert.match(page, /<h1>Abrir massa \+ Montagem<\/h1>/);
+  assert.doesNotMatch(page, /<h1>[^<]*(?:Forno|Finalização e embalagem)/);
+});
+
+test("shared stations name all three functions assigned to them", () => {
+  const sharedStationWorkflow = validateKitchenWorkflow({
+    ...DEFAULT_KITCHEN_WORKFLOW,
+    screenCount: 2,
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({ ...step, screen: index < 3 ? 1 : 2 })),
+  });
+  const page = render({
+    kitchenWorkflow: sharedStationWorkflow,
+    kitchenTasks: reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, orders, sharedStationWorkflow),
+    activeKitchenScreen: 1,
+    kitchenScreenCount: 2,
+  });
+  assert.match(page, /<h1>Abrir massa · Montagem · Forno<\/h1>/);
+  assert.doesNotMatch(page, /<h1>[^<]*Finalização e embalagem/);
 });
 
 test("one pizza order keeps every selected flavor visible on its station ticket", () => {

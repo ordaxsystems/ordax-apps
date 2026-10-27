@@ -9,6 +9,7 @@ import {
   reconcileKitchenTasks,
   saveKitchenWorkflow,
   sortKitchenTickets,
+  validateKitchenTasks,
   validateKitchenWorkflow,
 } from "../src/application/kitchen-workflow-preview.mjs";
 
@@ -56,20 +57,72 @@ test("starting a stage claims one ticket and blocks a second ticket on that stat
   ], workflow);
   const started = action(tasks, "start", "order-1", "open-dough", 1, "command-start-1", "2026-10-27T10:02:00.000Z");
   assert.equal(currentKitchenStep(started.tickets[0]).status, "active");
-  assert.throws(() => action(started, "start", "order-2", "open-dough", 1, "command-start-2", "2026-10-27T10:03:00.000Z"), /Conclua ou adie/);
+  assert.throws(() => action(started, "start", "order-2", "open-dough", 1, "command-start-2", "2026-10-27T10:03:00.000Z"), /Conclua esta etapa ou passe/);
 });
 
-test("deferring keeps the same required step and moves the ticket behind the next order", () => {
+test("next focuses the following ticket and moves the current ticket to third place, never to the queue tail", () => {
+  const oneScreen = { ...DEFAULT_KITCHEN_WORKFLOW, screenCount: 1 };
+  const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [
+    order("order-1", "2026-10-27T10:00:00.000Z"),
+    order("order-2", "2026-10-27T10:00:00.000Z"),
+    order("order-3", "2026-10-27T10:00:00.000Z"),
+    order("order-4", "2026-10-27T10:00:00.000Z"),
+  ], oneScreen);
+  const deferred = action(tasks, "pass-next", "order-1", "open-dough", 1, "command-defer-1", "2026-10-27T10:02:00.000Z");
+  const queue = sortKitchenTickets(deferred.tickets, oneScreen, 1);
+  assert.deepEqual(queue.map(({ orderId }) => orderId), ["order-2", "order-3", "order-1", "order-4"]);
+  assert.deepEqual(queue.map((ticket) => currentKitchenStep(ticket).queuePosition), [1, 2, 3, 4]);
+  assert.equal(currentKitchenStep(deferred.tickets.find(({ orderId }) => orderId === "order-1")).id, "open-dough");
+  assert.equal(currentKitchenStep(deferred.tickets.find(({ orderId }) => orderId === "order-1")).deferCount, 1);
+  assert.equal(deferred.tickets.find(({ orderId }) => orderId === "order-1").cycleQueuedAt, "2026-10-27T10:00:00.000Z");
+});
+
+test("passing next pauses an active step so the next order can take focus", () => {
   const oneScreen = { ...DEFAULT_KITCHEN_WORKFLOW, screenCount: 1 };
   const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [
     order("order-1", "2026-10-27T10:00:00.000Z"),
     order("order-2", "2026-10-27T10:01:00.000Z"),
+    order("order-3", "2026-10-27T10:02:00.000Z"),
+    order("order-4", "2026-10-27T10:03:00.000Z"),
   ], oneScreen);
-  const deferred = action(tasks, "defer", "order-1", "open-dough", 1, "command-defer-1", "2026-10-27T10:02:00.000Z");
-  const queue = sortKitchenTickets(deferred.tickets, oneScreen, 1, "complete-cycle");
-  assert.deepEqual(queue.map(({ orderId }) => orderId), ["order-2", "order-1"]);
-  assert.equal(currentKitchenStep(deferred.tickets.find(({ orderId }) => orderId === "order-1")).id, "open-dough");
-  assert.equal(currentKitchenStep(deferred.tickets.find(({ orderId }) => orderId === "order-1")).deferCount, 1);
+  const started = action(tasks, "start", "order-1", "open-dough", 1, "command-start-pass-1", "2026-10-27T10:04:00.000Z");
+  const passed = action(started, "pass-next", "order-1", "open-dough", 1, "command-pass-active-1", "2026-10-27T10:05:00.000Z");
+  const queue = sortKitchenTickets(passed.tickets, oneScreen, 1);
+  const returnedTicket = passed.tickets.find(({ orderId }) => orderId === "order-1");
+  assert.deepEqual(queue.map(({ orderId }) => orderId), ["order-2", "order-3", "order-1", "order-4"]);
+  assert.equal(currentKitchenStep(returnedTicket).status, "queued");
+  assert.equal(currentKitchenStep(returnedTicket).startedAt, null);
+  assert.equal(currentKitchenStep(returnedTicket).queuePosition, 3);
+});
+
+test("passing next is unavailable when no other ticket is waiting at the station", () => {
+  const oneScreen = { ...DEFAULT_KITCHEN_WORKFLOW, screenCount: 1 };
+  const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [order("order-1", "2026-10-27T10:00:00.000Z")], oneScreen);
+  assert.throws(
+    () => action(tasks, "pass-next", "order-1", "open-dough", 1, "command-defer-alone", "2026-10-27T10:02:00.000Z"),
+    /Não há outro pedido/,
+  );
+});
+
+test("legacy local task schema migrates to queue positions without losing completed steps or command receipts", () => {
+  const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [
+    order("order-1", "2026-10-27T10:00:00.000Z"),
+    order("order-2", "2026-10-27T10:01:00.000Z"),
+  ], DEFAULT_KITCHEN_WORKFLOW);
+  const legacy = {
+    ...tasks,
+    schema: "ordax.food-kitchen-tasks-preview/1",
+    commands: [{ id: "command-old-1", digest }],
+    tickets: tasks.tickets.map((ticket) => ({
+      ...ticket,
+      steps: ticket.steps.map(({ queuePosition, ...step }) => step),
+    })),
+  };
+  const migrated = validateKitchenTasks(legacy);
+  assert.equal(migrated.schema, "ordax.food-kitchen-tasks-preview/2");
+  assert.deepEqual(sortKitchenTickets(migrated.tickets, DEFAULT_KITCHEN_WORKFLOW, 1).map(({ orderId }) => orderId), ["order-1", "order-2"]);
+  assert.deepEqual(migrated.commands, legacy.commands);
+  assert.deepEqual(migrated.tickets.map((ticket) => currentKitchenStep(ticket).queuePosition), [1, 2]);
 });
 
 test("concluding a stage transfers the same ticket to the next configured screen", () => {
@@ -107,7 +160,7 @@ test("task commands are idempotent and one action id cannot be reused with new c
   const first = applyKitchenTaskAction(tasks, input);
   const replay = applyKitchenTaskAction(first, input);
   assert.equal(replay.revision, first.revision);
-  assert.throws(() => applyKitchenTaskAction(first, { ...input, action: "defer", digest: "b".repeat(64) }), /reutilizado/);
+  assert.throws(() => applyKitchenTaskAction(first, { ...input, action: "pass-next", digest: "b".repeat(64) }), /reutilizado/);
 });
 
 test("cancelling in the Food owner removes a ticket from production without adding KDS cancellation", () => {

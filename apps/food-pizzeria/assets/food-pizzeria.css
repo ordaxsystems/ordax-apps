@@ -1074,7 +1074,7 @@ dialog p { color: #a2a8af; }
 .kitchen-display-fullscreen-fallback { position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; width: 100vw !important; height: 100dvh !important; max-width: none !important; max-height: none !important; overflow: hidden !important; background: #111417 !important; }
 .kitchen-display-fullscreen-fallback .kitchen-station-screen { width: 100%; height: 100dvh; min-height: 0; margin: 0; padding: clamp(10px, 2vw, 26px); border: 0; border-radius: 0; }
 .kitchen-station-header { display: flex; min-width: 0; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 18px; }
-.kitchen-station-header h1 { margin: 4px 0 5px; color: #f2f3f4; font: 800 clamp(24px, 3vw, 38px)/1.1 "Manrope", sans-serif; letter-spacing: -1px; }
+.kitchen-station-header h1 { max-width: 28ch; margin: 4px 0 5px; color: #f2f3f4; font: 800 clamp(24px, 3vw, 38px)/1.1 "Manrope", sans-serif; letter-spacing: -1px; text-wrap: balance; overflow-wrap: anywhere; }
 .kitchen-station-header > div:first-child > p:last-child { margin: 0; color: #9ca4ac; font-size: 10px; }
 .kitchen-station-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; }
 .kitchen-station-controls .button { min-height: 40px; padding-inline: 11px; font-size: 9px; text-decoration: none; }
@@ -1189,7 +1189,7 @@ dialog p { color: #a2a8af; }
   .kitchen-station-screen .kitchen-column { min-height: calc(100vh - 210px); }
   .kitchen-station-screen { min-height: calc(100svh - 105px); padding: 9px; }
   .kitchen-station-header { gap: 8px; }
-  .kitchen-station-header h1 { font-size: clamp(21px, 7vw, 28px); }
+  .kitchen-station-header h1 { max-width: 100%; font-size: clamp(19px, 5.5vw, 25px); line-height: 1.08; letter-spacing: -.45px; }
   .kitchen-station-header > div:first-child > p:last-child { font-size: 9px; line-height: 1.4; }
   .kitchen-station-controls .button { min-height: 44px; flex: 1 1 auto; justify-content: center; }
   .kitchen-current-order, .kitchen-up-next { border-radius: 10px; }
@@ -1214,7 +1214,7 @@ dialog p { color: #a2a8af; }
   .kitchen-station-screen:fullscreen { gap: 8px; padding: 9px 12px; }
   .kitchen-station-screen:fullscreen .kitchen-station-header,
   .kitchen-display-fullscreen-fallback .kitchen-station-header { align-items: center; gap: 10px; }
-  .kitchen-station-header h1 { margin: 2px 0; font-size: clamp(20px, 4.8vh, 28px); }
+  .kitchen-station-header h1 { max-width: 28ch; margin: 2px 0; font-size: clamp(18px, 4.8vh, 26px); line-height: 1.05; }
   .kitchen-station-header > div:first-child > p:last-child { font-size: 8px; }
   .kitchen-station-controls { gap: 5px; }
   .kitchen-station-controls .button { min-height: 38px; padding-inline: 8px; font-size: 8px; }
