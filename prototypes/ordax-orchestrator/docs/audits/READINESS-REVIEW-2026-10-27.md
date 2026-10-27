@@ -1,5 +1,7 @@
 # Auditoria de prontidão — OrdaX Orchestrator
 
+> O plano executor desta auditoria está em [MASTER-COMPLETION-OBJECTIVE.md](../MASTER-COMPLETION-OBJECTIVE.md); ele consolida gates por owner, critérios de aceite e definição final de pronto.
+
 Data: 27/10/2026. Objetivo: identificar o que falta para chat confiável com GPT Web, orquestração de projetos e continuidade 24h.
 
 ## Base e limites desta análise
@@ -133,3 +135,12 @@ Após a auditoria, duas causas no fluxo de chat/recovery foram corrigidas na bra
 Evidências locais pós-correção: os 43 testes focados de atribuição/recuperação/UI passaram antes e depois da mudança de atomicidade; o teste específico de append atômico passou; a prova de dois projetos e restart SQLite passou e caiu de 152,3 s para 43,4 s nesta máquina. O `npm run check` passou após as mudanças de produção. A suíte completa executada antes da otimização terminou com 606 pass, 1 skip e 1 falha ambiental no esbuild; a falha foi reproduzida e o teste de bundle passou em execução isolada com acesso local elevado. Não houve suíte completa pós-otimização.
 
 O teste físico W3 não foi repetido: o Desktop remoto estava online, mas o conector reportou limite mensal de chamadas e pausou operações. Nenhuma resposta GPT foi importada ou reenviada nesta etapa. A prontidão global continua conforme o parecer e os gates acima.
+
+## Atualização do objetivo e auditoria de branches — 27/10/2026
+
+O objetivo completo foi consolidado no plano mestre vinculado acima. A auditoria das branches confirmou que a branch de trabalho da PR #348 é a linha de integração adequada; os dois commits únicos da branch `codex/orchestrator-24h-main-current` são antigos e removem funcionalidades e provas já presentes. Eles não devem ser integrados sem uma necessidade específica comprovada.
+
+O head `81bfb7b6dbb5e35424e312ac9fe0d60e8203fead` mantém a PR #348 aberta como draft e tem os dois workflows Apps verificados como `success` (#40490798707 e #40490798744). Isso confirma CI do commit, não o aceite end-to-end do produto.
+
+Consulta às fontes atuais dos owners mostrou que Runtime já possui `OrchestratorStore` durável para agentes, objetivos, sessões, checkpoints e leases, enquanto o OS Scheduler ainda não está ligado ao Background Runtime de produção. Logo, a lacuna central é contrato e integração do worker pelo owner correto, não criar mais um scheduler ou fila em Apps. Esse achado está detalhado junto ao mapa de responsabilidades e aos aceites das fases 4 e 5 do plano mestre.
+
