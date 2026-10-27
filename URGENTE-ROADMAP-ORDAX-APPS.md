@@ -759,5 +759,5 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 - A tela de Configurações usa o espaço horizontal do host: regras operacionais do Food no painel principal; preferência local de entrega e capacidades externas pendentes numa coluna lateral. Em telas menores, os painéis voltam a uma coluna, mantendo a ordem acessível.
 - Não cria outro Space, dashboard ou provider. A prévia continua usando dados locais; o Space real conserva navegação, contexto e autorização pelos contratos do host.
-- Validação: suíte Food 79/79; `node --check` dos arquivos alterados e `git diff --check` aprovados. No host local, confirmei a disposição em duas colunas e o formulário separado da taxa local; nenhuma preferência ou pedido foi alterado durante a conferência.
+- Validação: suíte Food 80/80; `node --check` dos arquivos alterados e `git diff --check` aprovados. No host local, confirmei a disposição em duas colunas e o formulário separado da taxa local; nenhuma preferência ou pedido foi alterado durante a conferência.
 
