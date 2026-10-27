@@ -126,6 +126,32 @@ O aceite deve demonstrar explicitamente o percurso de uma mensagem GPT Web a par
 5. Registrar o que foi efetivamente testado, limites, commit, CI e próxima barreira. Buscar remoto e publicar em commits pequenos sem sobrescrever trabalho paralelo.
 6. Não encerrar o objetivo por causa de um teste, uma etapa ou um bloqueio operacional. Publicar incrementos testados e recuperáveis; enquanto uma prova externa estiver indisponível, avançar as correções e validações independentes, deixando o limite explícito.
 
+## Ciclo obrigatório de execução contínua
+
+Cada retomada deste objetivo deve produzir progresso verificável, seguindo esta sequência:
+
+1. **Reconciliar o estado:** consultar a main remota dos owners relevantes, branch/PR, head remoto, mudanças locais, CI e handoff. Não usar cópia antiga como base nem descartar trabalho de outra sessão.
+2. **Escolher o próximo bloqueio real:** priorizar P0 do chat e recuperação GPT Web; em seguida fechar o coordenador de missão e o acesso remoto R0; avançar workspace/runtime e continuidade somente pelos owners e contratos canônicos. Resolver em paralelo apenas trabalho independente que não crie conflito de autoridade ou dados.
+3. **Reproduzir e localizar a causa:** executar o cenário que falhou, identificar a camada responsável e adicionar uma prova de regressão. Não trocar o cenário real por um mock para declarar aceite.
+4. **Corrigir e verificar:** corrigir a origem, executar primeiro a prova focada, depois regressões adjacentes, gates de contrato e a validação integral apropriada. Para mudanças no chat, verificar o Electron empacotado com perfil isolado; para trabalho em projeto, verificar artefatos, recibos e validadores externos.
+5. **Publicar sem perder trabalho:** registrar a evidência e limitações no handoff/plano, criar commit pequeno na branch de integração, verificar que o head remoto ainda é o esperado, publicar sem force-push e acompanhar os checks do commit publicado.
+6. **Prosseguir:** após uma correção passar, selecionar o próximo aceite pendente e continuar. Um teste verde, uma falha de ambiente ou o fim de uma rodada de diagnóstico não encerra o objetivo. Se uma prova exigir autenticação, decisão de risco ou recurso que só o usuário controla, deixar esse gate explícito e continuar todas as entregas independentes.
+
+### Limite entre trabalho da sessão e operação 24h do produto
+
+O trabalho deste objetivo é persistente entre retomadas e deve ser recuperado pelo plano, handoff, branch e commits. Isso não significa que uma conversa do Codex continue executando quando a sessão termina. A promessa 24h pertence ao produto Orchestrator e só será aceita depois que o worker Runtime existente, com o OS Scheduler quando conectado pelo owner, concluir e recuperar missões sem Electron aberto. Até lá, não anunciar supervisão 24h como capacidade disponível.
+
+### Portões que impedem a conclusão
+
+- **Chat GPT Web:** envio real, observação, atribuição, importação persistente, reconciliação depois de crash e ausência de duplicação comprovados em perfil Electron isolado autenticado.
+- **Memória e continuidade lógica:** tarefas longas com contexto substancial, regras alteradas, múltiplos chats GPT, troca de conta e reinício; memória do App preservada e sem contaminação entre projetos.
+- **Missão:** uma solicitação do usuário avança por planejamento, criação, revisão, correção e aceite verificável com estados e checkpoints persistentes.
+- **GitHub e projeto:** vínculo remoto autenticado, leitura comprovada por receipt e execução apenas dentro de grants; VESTE em cópia descartável; workspace local somente na fase e owner aprovados.
+- **Resiliência:** pausas, cancelamento, revogação, rate limit, rede indisponível, processo encerrado, reentrega e concorrência sem repetir efeitos incertos.
+- **Windows e release:** build instalado em perfil de teste, persistência de sessão, migração, encerramento, reinício e rollback observados; CI verde no mesmo head entregue para revisão.
+
+Qualquer portão ainda aberto mantém o produto em beta/laboratório, mesmo que os outros estejam aprovados. A lista de evidências deve indicar, para cada portão, estado `não iniciado`, `em andamento`, `aprovado` ou `bloqueado`, com commit/build e prova correspondente; nunca inferir estado por texto do modelo.
+
 ## Definição final de pronto
 
 O Orchestrator estará pronto para o objetivo descrito quando as fases 0 a 6 tiverem aceites verificáveis, o GPT Web real puder ser observado/recuperado sem duplicidade, memória local sobreviver à troca de conta, missões avançarem em várias conversas, execução de projeto respeitar grants e recibos, worker Runtime continuar após fechar UI, e testes prolongados demonstrarem isolamento e recuperação. Até então, descrever precisamente como laboratório, beta ou capacidade parcial, conforme as provas existentes.
