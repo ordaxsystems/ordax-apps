@@ -28,3 +28,15 @@ test("Delivery exibe pedidos de despacho sem disponibilizar cancelamento", () =>
   assert.doesNotMatch(html, /Cancelar|data-can-cancel="true"/);
   assert.doesNotMatch(html, /data-order-id="pickup"/);
 });
+
+test("parada em rota oferece ligação e cópia do endereço sem expor ações em pedido de retirada", () => {
+  const html = renderDelivery([
+    { id: "route", channel: "delivery", status: "out-for-delivery", customerName: "Bia", phone: "+55 (11) 99999-0000", address: "Rua B, 10", updatedAt: "2026-10-27T10:10:00.000Z" },
+    { id: "pickup", channel: "pickup", status: "ready", customerName: "Caio", phone: "", address: "", updatedAt: "2026-10-27T10:20:00.000Z" },
+  ]);
+
+  assert.match(html, /href="tel:\+5511999990000" aria-label="Ligar para Bia do pedido #route"/);
+  assert.match(html, /data-action="copy-delivery-address" data-address="Rua B, 10" data-order-number="#route">Copiar endereço/);
+  assert.doesNotMatch(html, /data-address=""/);
+  assert.doesNotMatch(html, /href="tel:.*Caio/);
+});

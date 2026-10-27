@@ -1088,6 +1088,26 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       report(error);
     }
   }
+
+  async function copyDeliveryAddress(target) {
+    const address = target.dataset.address;
+    const clipboard = globalThis.navigator?.clipboard;
+    if (!address) {
+      report(new Error("O pedido não tem um endereço de entrega para copiar."));
+      return;
+    }
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      report(new Error("Este aparelho não permite copiar o endereço automaticamente."));
+      return;
+    }
+    try {
+      await clipboard.writeText(address);
+      notice = { type: "success", text: `Endereço do pedido ${target.dataset.orderNumber} copiado.` };
+      renderNotice();
+    } catch (error) {
+      report(error);
+    }
+  }
   
   function handleClick(event) {
     const kitchenSetupSummary = event.target.closest("summary");
@@ -1271,6 +1291,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       void handleKitchenTaskAction(target);
     } else if (action === "copy-kitchen-link") {
       void copyKitchenScreenLink(target);
+    } else if (action === "copy-delivery-address") {
+      void copyDeliveryAddress(target);
     } else if (action === "cancel-order") {
       cancelForm.elements.orderId.value = target.dataset.orderId;
       cancelForm.elements.reason.value = "";

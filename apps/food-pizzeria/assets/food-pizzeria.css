@@ -676,10 +676,15 @@ dialog p { color: #a2a8af; }
 .delivery-stops { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
 .delivery-stop { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: start; gap: 8px; padding: 9px; border: 1px solid #32373d; border-radius: 8px; background: #1c1f23; }
 .delivery-stop-number { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 7px; background: #30251f; color: #ff9469; font-size: 9px; font-weight: 800; }
-.delivery-stop > div { display: grid; min-width: 0; gap: 4px; }
+.delivery-stop-copy { display: grid; min-width: 0; gap: 5px; }
 .delivery-stop strong { color: #e6e8eb; font-size: 9px; }
 .delivery-stop small, .delivery-stop-time { color: #9ca3ab; font-size: 8px; line-height: 1.45; }
 .delivery-stop small { overflow-wrap: anywhere; }
+.delivery-stop-time { white-space: nowrap; }
+.delivery-stop-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.delivery-stop-action { display: inline-flex; min-height: 28px; align-items: center; justify-content: center; padding: 0 9px; border: 1px solid #3a4148; border-radius: 7px; background: #24292d; color: #d8dee3; font-size: 8px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.delivery-stop-action:hover { border-color: #fb8158; color: #ffb398; }
+.delivery-stop-action:focus-visible { outline: 2px solid #ff936e; outline-offset: 2px; }
 .pos-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, .8fr); gap: 14px; align-items: start; }
 .pos-products, .pos-cart { padding: 15px; }.pos-categories { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; }
 .pos-category { min-height: 30px; padding: 0 11px; border: 1px solid #383d43; border-radius: 8px; background: #202328; color: #b5bbc2; font-size: 9px; cursor: pointer; white-space: nowrap; }

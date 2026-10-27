@@ -853,3 +853,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A migração para Food v8 mantém o histórico sem inventar dados: fatias de pedidos antigos ficam desconhecidas e o KDS informa que não foram registradas. O owner SQL ainda aceita v6 e rejeita v8 antes de persistir; nenhuma integração de Catálogo ou sincronização foi simulada.
 - Suíte Food completa: 148/148; inspeção do host confirmou as fatias no ticket; `git diff --check` aprovado. A PR #359 segue em rascunho e será atualizada com este incremento.
 
+### Space Pizzaria / OrdaX Food — acesso rápido às paradas de entrega (2026-10-27)
+
+- Cada parada ativa agora permite ligar para o cliente pelo discador do aparelho e copiar o endereço salvo para colá-lo no app de navegação. Número de telefone é normalizado na URL `tel:`; pedidos legados sem telefone não recebem link quebrado.
+- O diagrama da rota permanece explicitamente esquemático: sem GPS, geocodificação ou cálculo de trajeto. As ações não gravam ou sincronizam dados externos.
+- Suíte Food completa: 149/149; teste direcionado cobre ligação, endereço copiado e exclusão de pedidos de retirada. Host local confirmou as paradas e os controles; `git diff --check` aprovado. A PR #359 segue em rascunho.
+

@@ -451,3 +451,9 @@ O Food local avança para v8. O owner SQL continua validando v6, então o Food O
 
 Validação: suíte Food completa passou com 148/148; testes cobrem criação, alteração posterior das configurações, migração v7, apresentação do KDS e recusa do owner SQL v6. Inspeção do host KDS confirmou o número congelado no ticket. `git diff --check` aprovado.
 
+## Atalhos de contato nas paradas de Delivery (2026-10-27)
+
+Cada entrega ativa agora oferece uma ligação `tel:` que normaliza o número para dígitos e preserva apenas o prefixo internacional inicial, além de um botão para copiar o endereço da parada. A cópia usa a Clipboard API do navegador e confirma o pedido no aviso existente; aparelhos sem suporte recebem uma mensagem de erro compreensível. Pedidos legados sem telefone continuam exibindo somente a cópia de endereço. O recurso não geocodifica, reorganiza rota ou grava dados externos.
+
+Validação: `tests/delivery-page.test.mjs` cobre URL de ligação, cópia do endereço e separação de pedidos de retirada; a tela Delivery incorporada foi aberta no host local e conferida com fila, paradas, links e botões. Suíte Food: 149/149; `node --check` e `git diff --check` aprovados.
+
