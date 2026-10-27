@@ -111,6 +111,106 @@ test("reopening refreshes the untouched sample queue in one batch after its olde
   store.destroy();
 });
 
+test("fresh sample startup corrects a queued KDS clock that predates its order", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-kitchen-clock-before-order";
+  const now = Date.parse("2026-10-27T12:00:00.000Z");
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+  const state = await store.initialize();
+  const order = state.orders.find(({ id }) => id === "ng-order-1047");
+  const preferences = store.getPreviewPreferences();
+  const staleAt = new Date(Date.parse(order.createdAt) - 12 * 60000).toISOString();
+  const staleTasks = {
+    ...preferences.kitchenTasks,
+    revision: preferences.kitchenTasks.revision + 1,
+    tickets: preferences.kitchenTasks.tickets.map((ticket) => ticket.orderId !== order.id ? ticket : ({
+      ...ticket,
+      cycleQueuedAt: staleAt,
+      steps: ticket.steps.map((step) => step.status === "queued" ? { ...step, queuedAt: staleAt } : step),
+    })),
+  };
+  await store.updatePreviewPreferences({ ...preferences, kitchenTasks: staleTasks });
+  store.destroy();
+
+  const reopened = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now + 60000),
+    ...environment,
+  });
+  const reopenedState = await reopened.initialize();
+  const ticket = reopened.getPreviewPreferences().kitchenTasks.tickets
+    .find(({ orderId }) => orderId === order.id);
+  const queuedStep = ticket.steps.find(({ status }) => status === "queued");
+
+  assert.equal(reopenedState.revision, state.revision,
+    "Corrigir o relógio local do ticket não deve alterar o estado de pedidos Food.");
+  assert.equal(reopenedState.orders.find(({ id }) => id === order.id).createdAt, order.createdAt);
+  assert.equal(ticket.cycleQueuedAt, order.createdAt);
+  assert.equal(queuedStep.queuedAt, order.createdAt);
+  reopened.destroy();
+});
+
+test("expired sample refresh rebases only untouched KDS queue clocks and preserves a passed ticket", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-refresh-kitchen-clocks";
+  const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(storedAt),
+    ...environment,
+  });
+  await store.initialize();
+
+  const firstTicket = store.getPreviewPreferences().kitchenTasks.tickets
+    .find(({ orderId }) => orderId === "ng-order-1047");
+  const firstStep = firstTicket.steps.find(({ status }) => status === "queued");
+  const deferredAt = new Date(storedAt - 60000).toISOString();
+  await store.recordKitchenTaskAction({
+    action: "pass-next",
+    orderId: firstTicket.orderId,
+    stepId: firstStep.id,
+    screenNumber: firstStep.screen,
+    at: deferredAt,
+    commandId: "preview-pass-next-before-refresh",
+  });
+  const deferredTasks = store.getPreviewPreferences().kitchenTasks;
+  const deferredTicket = deferredTasks.tickets.find(({ orderId }) => orderId === firstTicket.orderId);
+  const deferredStep = deferredTicket.steps.find(({ status }) => status === "queued");
+  assert.equal(deferredStep.deferCount, 1);
+  assert.equal(deferredStep.queuedAt, deferredAt);
+  store.destroy();
+
+  const now = storedAt + 120 * 60000;
+  const reopened = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+  await reopened.initialize();
+
+  const refreshedOrder = reopened.getSnapshot().orders.find(({ id }) => id === "ng-order-1048");
+  const untouchedTicket = reopened.getPreviewPreferences().kitchenTasks.tickets
+    .find(({ orderId }) => orderId === refreshedOrder.id);
+  const untouchedStep = untouchedTicket.steps.find(({ status }) => status === "queued");
+  assert.equal(untouchedStep.queuedAt, refreshedOrder.createdAt);
+
+  const preservedTicket = reopened.getPreviewPreferences().kitchenTasks.tickets
+    .find(({ orderId }) => orderId === firstTicket.orderId);
+  const preservedOrder = reopened.getSnapshot().orders.find(({ id }) => id === firstTicket.orderId);
+  const preservedStep = preservedTicket.steps.find(({ status }) => status === "queued");
+  assert.equal(preservedOrder.createdAt, firstTicket.cycleQueuedAt,
+    "Um pedido passado pelo KDS conserva sua linha do tempo junto com a ação local.");
+  assert.equal(preservedStep.queuedAt, deferredAt);
+  assert.equal(preservedStep.deferCount, 1);
+  assert.equal(preservedTicket.cycleQueuedAt, firstTicket.cycleQueuedAt);
+  assert.equal(reopened.getPreviewPreferences().kitchenTasks.revision, deferredTasks.revision + 1);
+  reopened.destroy();
+});
+
 test("reopening an old preview refreshes untouched sample timelines and preserves worked orders", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-refresh-seed-timeline";

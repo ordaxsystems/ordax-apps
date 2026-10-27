@@ -900,3 +900,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Quantidades e ingredientes digitados continuam no rascunho ao adicionar ou remover uma linha. O fluxo Chrome cobre a edição completa sem salvar e sem tocar no estado persistido.
 - Suíte Food: 166/166; smoke Chrome: 24/24; `node --check` e `git diff --check` aprovados. A alteração permanece no preview local e não escreve no Inventory nem cria integração/contrato novo.
 
+### Space Pizzaria / OrdaX Food — relógios coerentes na fila KDS (2026-10-27)
+
+- Tickets seed intactos alinham a espera da etapa à criação do pedido quando o relógio KDS antecedia o próprio pedido. Ao expirar uma amostra, pedidos com etapa iniciada, concluída ou passada ficam protegidos e preservam juntos o pedido e a sequência local.
+- Testes cobrem relógio anterior à criação, refresh de fila, deferimento e preservação do trabalho. Suíte Food: 168/168; smoke Chrome: 24/24; sintaxe e `git diff --check` aprovados. Host confirmou 21 min no pedido e na etapa.
+- Somente amostras sem operação KDS são rebased; nenhum contrato, owner ou dado de produção foi alterado.
+

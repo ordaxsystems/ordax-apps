@@ -200,12 +200,13 @@ function decodeStoredValue(raw, businessId) {
   };
 }
 
-function refreshExpiredUntouchedPreviewActivity(state, nowValue) {
+function refreshExpiredUntouchedPreviewActivity(state, nowValue, protectedOrderIds = new Set()) {
   const now = nowValue instanceof Date ? nowValue.getTime() : Number(nowValue);
   if (!Number.isFinite(now)) throw new TypeError("O relógio local da prévia Food está inválido.");
 
   const candidates = new Map();
   for (const order of state.orders) {
+    if (protectedOrderIds.has(order.id)) continue;
     const match = /^ng-order-(10(?:4[7-9]|5[0-8]))$/.exec(order.id);
     if (!match) continue;
     const orderNumber = Number(match[1]);
@@ -262,6 +263,41 @@ function refreshExpiredUntouchedPreviewActivity(state, nowValue) {
     return openedAt === undefined ? command : { ...command, openedAt: new Date(openedAt).toISOString() };
   });
   return validateFoodPizzeriaState({ ...state, revision: state.revision + 1, orders, tableCommands });
+}
+
+function rebaseUntouchedPreviewKitchenTickets(preferences, state) {
+  const orders = new Map(state.orders.map((order) => [order.id, order]));
+  let changed = false;
+  const tickets = preferences.kitchenTasks.tickets.map((ticket) => {
+    if (!/^ng-order-10(?:4[7-9]|5[0-8])$/.test(ticket.orderId)) return ticket;
+    const order = orders.get(ticket.orderId);
+    if (!order) return ticket;
+    const currentIndex = ticket.steps.findIndex(({ status }) => status !== "completed");
+    const currentStep = ticket.steps[currentIndex];
+    const isUntouchedQueueEntry = currentStep?.status === "queued"
+      && currentStep.deferCount === 0
+      && ticket.steps.slice(0, currentIndex).every(({ status }) => status === "completed")
+      && ticket.steps.slice(currentIndex + 1).every(({ status }) => status === "pending");
+    if (!isUntouchedQueueEntry || Date.parse(currentStep.queuedAt) >= Date.parse(order.createdAt)) return ticket;
+
+    changed = true;
+    return {
+      ...ticket,
+      cycleQueuedAt: Date.parse(ticket.cycleQueuedAt) < Date.parse(order.createdAt)
+        ? order.createdAt
+        : ticket.cycleQueuedAt,
+      steps: ticket.steps.map((step, index) => index === currentIndex
+        ? { ...step, queuedAt: order.createdAt }
+        : step),
+    };
+  });
+  if (!changed) return preferences;
+  const kitchenTasks = validateKitchenTasks({
+    ...preferences.kitchenTasks,
+    revision: preferences.kitchenTasks.revision + 1,
+    tickets,
+  });
+  return validatePreviewPreferences({ ...preferences, kitchenTasks });
 }
 
 function conflictError(expectedRevision, actualRevision) {
@@ -380,9 +416,15 @@ export function createBrowserLocalFoodStore({
         const persisted = readPersisted();
         if (persisted) {
           archiveLegacyInventory(persisted.legacyInventoryArchive);
-          snapshot = refreshExpiredUntouchedPreviewActivity(persisted.state, now);
+          const activeKitchenOrderIds = new Set(persisted.previewPreferences.kitchenTasks.tickets
+            .filter((ticket) => ticket.steps[0]?.status !== "queued"
+              || ticket.steps[0]?.deferCount !== 0
+              || ticket.steps.slice(1).some(({ status }) => status !== "pending"))
+            .map(({ orderId }) => orderId));
+          snapshot = refreshExpiredUntouchedPreviewActivity(persisted.state, now, activeKitchenOrderIds);
           processedCommands = persisted.processedCommands;
           previewPreferences = reconcilePreviewPreferences(persisted.previewPreferences, snapshot);
+          previewPreferences = rebaseUntouchedPreviewKitchenTickets(previewPreferences, snapshot);
         } else {
           snapshot = validateFoodPizzeriaState(createSeedFoodState(now));
           processedCommands = [];

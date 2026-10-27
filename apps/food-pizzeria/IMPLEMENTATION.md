@@ -513,3 +513,9 @@ O Cardápio agora desabilita em cada linha os ingredientes já usados nas outras
 
 Validação: teste de render confirma as opções bloqueadas e a escolha preservada; prova Chrome exercita editar a ficha Calabresa, alterar uma quantidade, adicionar, remover e trocar ingrediente sem salvar nem alterar o estado persistido. Suíte Food: 166/166; smoke Chrome: 24/24; `node --check` e `git diff --check` aprovados. A mudança atua na interface local de prévia Food: não grava saldo/movimentação de Inventory, não cria contrato e não altera o owner da ficha técnica.
 
+## Iteração — coerência dos relógios da fila KDS de prévia (2026-10-27)
+
+Ao inicializar, o adapter alinha o relógio da etapa de tickets seed intactos com a criação do pedido quando uma fila antiga a antecede. A renovação de amostras expiradas agora protege qualquer ticket em que uma etapa foi iniciada, concluída ou passada: o pedido Food e sua linha do tempo KDS são preservados juntos. Estados de pedidos trabalhados continuam fora da renovação. Nenhum relógio de pedido real nem contrato de produção é alterado.
+
+Validação: testes cobrem o relógio anterior à criação, a renovação do lote, o deslocamento de pedido/ticket já passado e a preservação de pedidos trabalhados. Suíte Food: 168/168; smoke Chrome: 24/24; sintaxe e `git diff --check` aprovados. No host KDS, o pedido em foco e a etapa mostram 21 min, e os próximos tickets acompanham suas idades revisadas. Esse estado é a prévia local já existente.
+
