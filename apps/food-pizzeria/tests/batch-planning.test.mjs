@@ -132,4 +132,5 @@ test("recipe editor disables duplicate ingredients but preserves each row's curr
   assert.match(selectors[1], /value="molho" selected\s*>Molho de tomate · g/);
   assert.match(selectors[1], /value="farinha"\s+disabled\s*>Farinha · g · já usado/);
   assert.match(html, new RegExp(`name="quantity-0-small" type="number" min="1" step="1" value="137"`));
+  assert.match(html, /aria-label="Remover Farinha da ficha técnica de Calabresa"/);
 });

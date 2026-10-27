@@ -356,6 +356,13 @@ try {
       "Adicionar insumo não criou a nova linha da ficha.");
     ensure(quantityInput()?.value === "137",
       "Adicionar uma linha descartou a quantidade já digitada.");
+    const recipeRemovalButtons = [...root.querySelectorAll('#recipe-editor .recipe-line [data-action="remove-recipe-line"]')];
+    ensure(recipeRemovalButtons.length === 7 && recipeRemovalButtons.every((button) => {
+      const line = button.closest(".recipe-line");
+      const ingredient = line?.querySelector("select")?.selectedOptions[0]?.textContent.split(" · ")[0];
+      const flavor = root.querySelector("#recipe-editor h2")?.textContent.trim();
+      return button.getAttribute("aria-label") === `Remover ${ingredient} da ficha técnica de ${flavor}`;
+    }), "Cada remoção deve identificar o ingrediente e o sabor da ficha técnica.");
 
     root.querySelector('[data-action="remove-recipe-line"][data-index="6"]')?.click();
     await eventually(() => root.querySelectorAll("#recipe-editor .recipe-line").length === 6,

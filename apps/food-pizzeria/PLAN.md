@@ -135,3 +135,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - Cancelar/avançar pedido, alterar disponibilidade de sabor, copiar endereço e operar uma comanda agora anunciam também a referência do pedido, o sabor ou a mesa. O texto visual segue compacto; leitores de tela deixam de receber uma lista ambígua de botões com o mesmo nome.
 - A alteração é de apresentação e acessibilidade: não muda comandos, regras de fila, dados, ownership ou integrações.
 - Verificação: Food **195/195**; Chrome **27/27**, com verificações contextuais em Pedidos, Cardápio, Expedição e Mesas; sintaxe JavaScript e `git diff --check` aprovados.
+
+### Cardápio — remoção contextual na ficha técnica (2026-10-27)
+
+- Cada botão de remover insumo anuncia agora o nome do ingrediente e da ficha técnica correspondente, mantendo o ícone e o texto visual compacto. A etiqueta é derivada da linha atual do rascunho, então continua correta depois de adicionar ou reorganizar ingredientes.
+- A alteração não muda cálculo, recipe state, pedido ou Inventory; fichas e insumos continuam no preview local sem integração de saldo/custo.
+- Verificação: Food **195/195**; Chrome **27/27**, incluindo adição e remoção de linha com nome acessível; `node --check` e `git diff --check` aprovados.

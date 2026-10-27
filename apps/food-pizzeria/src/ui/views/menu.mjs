@@ -4,6 +4,7 @@ export function renderMenuPage(viewModel) {
   const sorted = [...snapshot.flavors].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name, "pt-BR"));
   const recipeFlavor = snapshot.flavors.find(({ id }) => id === recipeFlavorId) ?? null;
   const recipeLines = recipeDraftLines;
+  const ingredientName = (id) => PREVIEW_INGREDIENTS.find(({ id: current }) => current === id)?.name ?? id;
   const activeSizes = PIZZA_SIZES.filter(({ active }) => active);
   const activeFlavors = snapshot.flavors.filter(({ active }) => active);
   const recipesByFlavor = new Set(snapshot.recipes.map(({ flavorId }) => flavorId));
@@ -25,7 +26,7 @@ export function renderMenuPage(viewModel) {
       const usedByAnotherLine = recipeLines.some((other, otherIndex) => otherIndex !== index && other.ingredientId === ingredient.id);
       const unavailable = usedByAnotherLine && !selected;
       return `<option value="${escapeHtml(ingredient.id)}" ${selected ? "selected" : ""} ${unavailable ? "disabled" : ""}>${escapeHtml(ingredient.name)} · ${ingredient.unit}${unavailable ? " · já usado" : ""}</option>`;
-    }).join("")}</select></label><div class="recipe-size-grid">${PIZZA_SIZES.map(({ id, label, active }) => `<label data-size="${escapeHtml(label)}">${escapeHtml(label)}${active ? "" : " · inativo"} (${PREVIEW_INGREDIENTS.find(({ id: current }) => current === line.ingredientId)?.unit ?? "g"})<input name="quantity-${index}-${id}" type="number" min="${active ? 1 : 0}" step="1" value="${line.quantityBaseBySize[id] ?? (active ? "" : 0)}" ${active ? "required" : ""}></label>`).join("")}</div><button class="icon-button" type="button" data-action="remove-recipe-line" data-index="${index}" aria-label="Remover insumo">×</button></div>`).join("")}</div>
+    }).join("")}</select></label><div class="recipe-size-grid">${PIZZA_SIZES.map(({ id, label, active }) => `<label data-size="${escapeHtml(label)}">${escapeHtml(label)}${active ? "" : " · inativo"} (${PREVIEW_INGREDIENTS.find(({ id: current }) => current === line.ingredientId)?.unit ?? "g"})<input name="quantity-${index}-${id}" type="number" min="${active ? 1 : 0}" step="1" value="${line.quantityBaseBySize[id] ?? (active ? "" : 0)}" ${active ? "required" : ""}></label>`).join("")}</div><button class="icon-button" type="button" data-action="remove-recipe-line" data-index="${index}" aria-label="Remover ${escapeHtml(ingredientName(line.ingredientId))} da ficha técnica de ${escapeHtml(recipeFlavor.name)}">×</button></div>`).join("")}</div>
     <div class="recipe-editor-actions">${button("＋ Adicionar insumo", "add-recipe-line", { kind: "quiet", disabled: PREVIEW_INGREDIENTS.length <= recipeLines.length })}<span>Custos e saldos não são exibidos sem provider Inventory.</span><button class="button button-primary" type="submit" ${busy || !recipeLines.length ? "disabled" : ""}>Salvar ficha técnica</button></div>
   </form>` : "";
   return `<section class="page-section">
