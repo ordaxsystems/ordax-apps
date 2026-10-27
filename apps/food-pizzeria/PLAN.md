@@ -26,6 +26,7 @@ Entregar primeiro um protótipo local do Food Core. A experiência integrada ser
 - Taxa padrão de entrega configurável somente na preferência local do adapter de prévia, fora do documento Food; cada pedido continua congelando a taxa explicitamente aplicada. Integração com o owner SQL depende de um contrato que suporte esta configuração e o estado atual v7.
 - Configurações distribuídas em duas áreas responsivas: regras operacionais do Food no painel principal; preferência local de entrega e capacidades externas pendentes na coluna lateral. Em telas estreitas, os painéis se empilham sem alterar a ordem de leitura.
 - Salão exige comanda e tem canal próprio, separado de balcão; pedidos e encerramentos respeitam a cronologia da comanda. Ajustes não podem diminuir os lugares de uma mesa abaixo dos ocupantes de comanda aberta; o histórico de comandas encerradas permanece preservado.
+- Encerrar uma comanda fecha a sessão operacional e libera a mesa depois dos pedidos concluídos/cancelados; isso não implica recebimento. A confirmação de pagamento segue com o owner Payments.
 - Persistência local cobre reabertura, replay exato sem duplicação e rejeição de gravação com revisão antiga; o journal de IDs não é truncado silenciosamente ao atingir o limite, e eventos de outras abas sempre reconsultam o registro persistido atual.
 - Overview tratado como responsabilidade do Space; PDV e capacidades horizontais sem provider mostram um estado explícito de integração pendente.
 - Dados e identidade de interface não conectados não são apresentados como operação ativa.

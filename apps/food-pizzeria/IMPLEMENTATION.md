@@ -403,3 +403,9 @@ O renderizador compartilhado agora exige permissão explícita de contexto para 
 
 Validação: views Pedidos/Delivery, 6/6 testes direcionados; suíte Food completa, 134/134; `node --check` e `git diff --check` aprovados.
 
+## Encerramento de comanda sem falsa confirmação financeira (2026-10-27)
+
+A tela Mesas/Comandas agora descreve o total como consumo derivado dos pedidos não cancelados. A explicação deixa claro que encerrar o atendimento libera a mesa após os pedidos terminarem e não registra nem confirma pagamento. Nenhum estado financeiro novo foi criado no Food; a confirmação permanece no owner Payments.
+
+Validação: `tests/tables-page.test.mjs`, 1/1; suíte Food completa, 135/135; `node --check` da view e `git diff --check` aprovados.
+

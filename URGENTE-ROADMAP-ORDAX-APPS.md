@@ -805,3 +805,8 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Pedidos fica como histórico/gestão e cancelamento elegível, sem transicionar preparo ou expedição. KDS controla etapas de produção; Delivery recebe controles apenas para saída e conclusão de pedidos em entrega.
 - Regressão no renderizador compartilhado exige permissão explícita para mostrar ações de status; Delivery e Pedidos têm testes independentes. Suíte Food: 134/134; `node --check` e `git diff --check` aprovados. PR #359 foi atualizada no commit `3a6dc74`; seus quatro checks passaram, e ela segue em rascunho.
 
+### Space Pizzaria / OrdaX Food — encerrar mesa não confirma pagamento (2026-10-27)
+
+- A tela de salão deixa explícito que o total é consumo calculado dos pedidos não cancelados e que encerrar a comanda libera a mesa sem registrar recebimento.
+- Food continua sem estado de pagamento paralelo; confirmação fica com Payments. Suíte Food: 135/135; a PR #359 foi atualizada nesta rodada e segue em rascunho.
+
