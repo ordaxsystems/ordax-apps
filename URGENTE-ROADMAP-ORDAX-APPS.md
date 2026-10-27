@@ -886,5 +886,5 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 - A fila fictícia agora cobre pedidos entre 3 e 18 minutos e distribui as mudanças de status dentro da idade de cada pedido, sem datas futuras. Um único ticket passa da meta de 15 minutos para que o KDS demonstre atraso sem apresentar toda a operação em colapso.
 - Ao reabrir, atividade seed não operada que excede 35 minutos é rebaseada junto das comandas abertas associadas. Pedidos trabalhados, estados, histórico e journal permanecem intactos.
-- A mudança afeta somente dados locais de prévia; não adiciona sincronização nem altera o owner Food. Suíte Food: 164/164; `node --check` e `git diff --check` aprovados. Host local recarregado: pedido em foco a 18 minutos e próximos entre 15 e 5 minutos. Os quatro checks do novo head serão registrados após o push.
+- A mudança afeta somente dados locais de prévia; não adiciona sincronização nem altera o owner Food. Suíte Food: 164/164; `node --check` e `git diff --check` aprovados. Host local recarregado: pedido em foco a 18 minutos e próximos entre 15 e 5 minutos. No head `32fa7f0`, os quatro checks passaram após a reexecução do job de prova de navegador.
 
