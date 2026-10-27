@@ -215,6 +215,7 @@ textarea { resize: vertical; line-height: 1.5; }
 .order-card-foot > div:first-child small { color: #a39e95; font-size: 8px; }
 .order-actions { display: flex; flex-wrap: wrap; justify-content: end; gap: 6px; }
 .order-actions .button { min-height: 31px; padding: 0 10px; font-size: 9px; }
+.delivery-call-link { text-decoration: none; }
 
 /* Cozinha */
 .kitchen-active-count { display: inline-flex; align-items: center; min-height: 27px; margin-bottom: 5px; padding: 0 10px; border: 1px solid #e8e5de; border-radius: 999px; background: #fff; color: #716d66; font-size: 9px; font-weight: 700; white-space: nowrap; }

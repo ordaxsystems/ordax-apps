@@ -932,3 +932,8 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - Teste renderizado cobre transições simultâneas nas três filas. Suíte Food: 174/174; smoke Chrome: 26/26; `node --check` no renderizador, teste e smoke; `git diff --check` aprovados. Verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas.
 - O smoke conclui a limpeza do Chrome no Windows verificando a existência do processo após os sinais, sem tratar um processo já encerrado como vazamento.
 
+### Space Pizzaria / OrdaX Food — contato antes do despacho (2026-10-27)
+
+- A Expedição permite ligar para o cliente enquanto o pedido de entrega ainda aguarda despacho. O link `tel:` é montado apenas para telefones válidos e inclui nome e número do pedido no rótulo acessível; pedidos de retirada, atendimento local e entregas já em rota não recebem uma segunda ação no cartão.
+- O telefone é usado somente como dado já presente no pedido Food. Não há chamada de API, cópia de dados, integração ou mudança de owner.
+- Suíte Food: 178/178; smoke Chrome: 26/26 com verificação do link pré-despacho no cartão. `node --check` e `git diff --check` aprovados.

@@ -25,6 +25,7 @@ import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
 import { renderSpaceCapabilityStatus } from "./space-capability-status.mjs";
+import { telephoneHref } from "./contact-links.mjs";
 import {
   assertFoodPreviewPresentation,
   assertFoodModuleView,
@@ -472,12 +473,18 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return ["received", "preparing", "ready"].includes(order.status);
   }
   
-  function renderOrderCard(order, { kitchen = false, allowCancel = false, allowAdvance = false } = {}) {
+  function renderOrderCard(order, { kitchen = false, allowCancel = false, allowAdvance = false, showDeliveryCall = false } = {}) {
     const items = order.items.map((item) => `<li><span>${escapeHtml(orderItemDescription(item))}</span><strong>${money(item.lineTotalCents)}</strong></li>`).join("");
     const lastChange = order.statusHistory.at(-1);
     const startedAt = stageStartedAt(order);
     const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];
     const channelLabel = orderChannelLabel(order);
+    const deliveryCallHref = showDeliveryCall && order.channel === "delivery" && order.status === "ready"
+      ? telephoneHref(order.phone)
+      : null;
+    const deliveryCallAction = deliveryCallHref
+      ? `<a class="button button-quiet delivery-call-link" href="tel:${escapeHtml(deliveryCallHref)}" aria-label="Ligar para ${escapeHtml(order.customerName)} antes de despachar o pedido ${escapeHtml(orderNumber(order))}">Ligar</a>`
+      : "";
     const identityDetails = [
       ...(order.tableCommandId && channelLabel === order.customerName ? [] : [channelLabel]),
       ...(order.phone ? [order.phone] : []),
@@ -491,7 +498,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       <ul class="order-items">${items}</ul>
       ${order.notes ? `<p class="order-note"><span>Observação</span>${escapeHtml(order.notes)}</p>` : ""}
       ${order.status === "cancelled" ? `<p class="cancel-reason">Cancelado: ${escapeHtml(lastChange.reason)}</p>` : ""}
-      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${allowAdvance ? orderAction(order) : ""}</div></div>
+      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${deliveryCallAction}${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${allowAdvance ? orderAction(order) : ""}</div></div>
     </article>`;
   }
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { telephoneHref } from "../src/ui/contact-links.mjs";
 import { renderDeliveryPage } from "../src/ui/views/delivery.mjs";
 
 function renderDelivery(orders) {
@@ -8,7 +9,11 @@ function renderDelivery(orders) {
     snapshot: { orders },
     sectionHeader: (_eyebrow, title, description, actions = "") => `<header><h1>${title}</h1><p>${description}</p>${actions}</header>`,
     statCard: (title, count) => `<div>${title}: ${count}</div>`,
-    renderOrderCard: (order, { allowCancel = false, allowAdvance = false } = {}) => `<article data-order-id="${order.id}" data-can-cancel="${allowCancel}" data-can-advance="${allowAdvance}">${allowCancel ? "Cancelar" : allowAdvance ? "Avançar pedido" : ""}</article>`,
+    renderOrderCard: (order, { allowCancel = false, allowAdvance = false, showDeliveryCall = false } = {}) => {
+      const deliveryCallHref = showDeliveryCall && order.channel === "delivery" && order.status === "ready" ? telephoneHref(order.phone) : null;
+      const deliveryCallAction = deliveryCallHref ? `<a href="tel:${deliveryCallHref}" aria-label="Ligar para ${order.customerName} do pedido #${order.id}">Ligar</a>` : "";
+      return `<article data-order-id="${order.id}" data-can-cancel="${allowCancel}" data-can-advance="${allowAdvance}" data-show-delivery-call="${Boolean(deliveryCallAction)}">${deliveryCallAction}${allowCancel ? "Cancelar" : allowAdvance ? "Avançar pedido" : ""}</article>`;
+    },
     emptyState: ({ title }) => `<div>${title}</div>`,
     iconSvg: () => "icon",
     orderNumber: ({ id }) => `#${id}`,
@@ -52,6 +57,20 @@ test("parada em rota oferece ligação e cópia do endereço", () => {
   assert.match(html, /data-action="copy-delivery-address" data-address="Rua B, 10" data-order-number="#route">Copiar endereço/);
   assert.doesNotMatch(html, /data-address=""/);
   assert.doesNotMatch(html, /href="tel:.*Caio/);
+});
+
+test("Expedição permite ligar antes do despacho somente para entrega pronta", () => {
+  const html = renderDelivery([
+    { id: "delivery-ready", channel: "delivery", status: "ready", customerName: "Ana", phone: "+55 (11) 99999-0000", address: "Rua A", updatedAt: "2026-10-27T10:10:00.000Z" },
+    { id: "pickup-ready", channel: "pickup", status: "ready", customerName: "Bia", phone: "11988880000", address: "", updatedAt: "2026-10-27T10:20:00.000Z" },
+    { id: "delivery-route", channel: "delivery", status: "out-for-delivery", customerName: "Caio", phone: "11977770000", address: "Rua B", updatedAt: "2026-10-27T10:30:00.000Z" },
+  ]);
+
+  assert.match(html, /data-order-id="delivery-ready"[^>]*data-show-delivery-call="true"/);
+  assert.match(html, /data-order-id="pickup-ready"[^>]*data-show-delivery-call="false"/);
+  assert.match(html, /data-order-id="delivery-route"[^>]*data-show-delivery-call="false"/);
+  assert.match(html, /href="tel:\+5511999990000" aria-label="Ligar para Ana do pedido #delivery-ready"/);
+  assert.doesNotMatch(html, /href="tel:11988880000"/);
 });
 
 test("a Expedição mantém ordem previsível quando transições ocorrem no mesmo instante", () => {

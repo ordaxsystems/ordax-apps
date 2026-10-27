@@ -90,6 +90,12 @@ try {
   }
 
   if (view === "delivery" && parameters.has("__verify_pickup_handoff")) {
+    const readyDeliveryCall = root.querySelector('.delivery-call-link[href="tel:11988113020"]');
+    ensure(readyDeliveryCall?.getAttribute("aria-label")
+      === "Ligar para Lucas Ferreira antes de despachar o pedido #1056",
+    "Entrega pronta deve oferecer ligação acessível antes do despacho.");
+    ensure(root.querySelectorAll(".delivery-call-link").length === 1,
+      "Retirada não deve oferecer ação de ligação de entrega antes do atendimento.");
     const handoff = root.querySelector('[data-action="advance-order"][data-order-id="ng-order-1052"]');
     ensure(handoff?.textContent.trim() === "Confirmar retirada"
       && handoff.getAttribute("data-next-status") === "completed",
