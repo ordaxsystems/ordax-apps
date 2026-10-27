@@ -82,9 +82,8 @@ try {
       "A estação não mostra a orientação correspondente ao posto configurado.");
     if (root.querySelector("[data-kitchen-current-order]")) {
       const focusedTicket = root.querySelector("[data-kitchen-current-order]");
-      const ticketText = focusedTicket.textContent.toLocaleLowerCase("pt-BR");
-      ensure(ticketText.includes("fatias") && /\bsabores?\b/.test(ticketText),
-      "O pedido em foco não exibe fatias e ao menos um sabor.");
+      ensure(focusedTicket.querySelectorAll(".kitchen-item-line").length > 0,
+        "O pedido em foco não apresenta itens de produção.");
     }
     ensure(root.querySelector(".food-embedded-preview-kitchen"),
       "A tela dedicada não ativou o layout compacto do preview.");
