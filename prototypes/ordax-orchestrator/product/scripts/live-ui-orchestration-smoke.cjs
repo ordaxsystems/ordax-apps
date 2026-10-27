@@ -28,6 +28,7 @@ let phase='startup';
       pending.set(id,{resolve,reject,timer});
       ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
     });
+    let disposableApiKeyCleanupRequired=false;
     phase='app_ready';
     await waitForLabAppMode(evaluate);
     const proof=await evaluate('window.ordax.labBuildProof()');
@@ -53,7 +54,7 @@ let phase='startup';
       document.getElementById('newProjectForm').requestSubmit();
     })()`);
     const wait=expression=>evaluate(`(async()=>{for(let n=0;n<80;n++){
-      const value=(${expression});if(value)return value;
+      const value=await (${expression});if(value)return value;
       await new Promise(r=>setTimeout(r,100));}throw Error('ui_condition_timeout');})()`);
     phase='mission_project_selected';
     const projectId=await wait("document.getElementById('projectSelect').value");
@@ -95,6 +96,7 @@ let phase='startup';
     if(!coordinatorLayout.focus||!coordinatorLayout.rail||!coordinatorLayout.selected)throw Error('coordinator_workspace_layout_missing');
     phase='api_key_save';
     // Disposable credential fixture only: activation must not call the API.
+    disposableApiKeyCleanupRequired=true;
     await evaluate(`window.ordax.supervisorSaveKey('gsk_'+ 'A'.repeat(40))`);
     phase='api_key_save_status';
     const credential=await evaluate(`window.ordax.supervisorStatus()`);
@@ -111,11 +113,14 @@ let phase='startup';
     phase='api_disable_request';
     await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
     phase='api_disable_state';
-    await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='false' && document.getElementById('coordinatorSend').disabled");
+    // Disabling Groq must turn off analysis/preparation while leaving the
+    // central composer available through the primary GPT Web executor.
+    await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='false' && !document.getElementById('coordinatorSend').disabled && document.getElementById('analyzeWorks').disabled && document.getElementById('prepareWork').disabled && document.getElementById('orchestrationConnection').textContent.includes('Groq está desligado.')");
     phase='api_key_remove';
     await evaluate(`window.ordax.supervisorRemoveKey()`);
     phase='api_key_remove_state';
-    await wait("document.getElementById('coordinatorApiEnable').disabled");
+    await wait("document.getElementById('coordinatorApiEnable').disabled && (async()=>!(await window.ordax.supervisorStatus()).keySaved)()");
+    disposableApiKeyCleanupRequired=false;
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
       const p=document.getElementById('projectSelect').value;
@@ -178,8 +183,17 @@ let phase='startup';
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
       externalMcpConnected:false,autonomousExecution:false}));
   }finally{
-    for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
-    ws.close();
+    try {
+      if(disposableApiKeyCleanupRequired) {
+        phase='test_credential_cleanup';
+        await evaluate(`window.ordax.supervisorRemoveKey()`);
+        const status=await evaluate(`window.ordax.supervisorStatus()`);
+        if(status?.keySaved!==false)throw Error('test_api_key_cleanup_failed');
+      }
+    } finally {
+      for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
+      ws.close();
+    }
   }
 })().catch(()=>{console.error(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,
   phase,reason:'app_orchestration_scenario_failed'}));process.exitCode=2;});
