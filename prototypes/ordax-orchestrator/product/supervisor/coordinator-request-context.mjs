@@ -40,12 +40,17 @@ export function buildCoordinatorRequestContext({store,taskId,mission,projectId,o
   const rawProject=store.db.prepare('SELECT name,objective FROM lab_projects WHERE id=?').get(projectId);
   const project=rawProject?{name:redactOrchestratorAnalysisText(rawProject.name,160),
     objective:redactOrchestratorAnalysisText(rawProject.objective,3000)}:null;
-  const projectMemory=store.listProjectMemory(taskId)
-    .sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)) || String(b.id).localeCompare(String(a.id)))
-    .slice(0,8).map(item=>({
-    category:item.category,key:redactOrchestratorAnalysisText(item.key,120),
-    content:redactOrchestratorAnalysisText(item.content,550),updatedAt:item.updated_at
-  }));
+  // Same Store/SSOT. Collect only active memories bound to THIS coordinator
+  // within THIS project, including its GPT work conversations; no global scan.
+  const projectMemory=store.db.prepare(`SELECT m.category,m.memory_key AS key,m.content,m.updated_at,m.source_type
+    FROM project_memory_items m JOIN lab_task_bindings b ON b.task_id=m.task_id
+    WHERE b.project_id=? AND b.orchestrator_id=? AND m.status='active'
+    ORDER BY m.updated_at DESC,m.id DESC LIMIT 8`)
+    .all(projectId,orchestratorId).map(item=>({
+      category:item.category,key:redactOrchestratorAnalysisText(item.key,120),
+      content:redactOrchestratorAnalysisText(item.content,550),updatedAt:item.updated_at,
+      sourceType:item.source_type
+    }));
   const works=analysisContext!==null?[]:typeof orchestratorId==='string'
     ?store.db.prepare(`SELECT t.title,t.status FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
       WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work' ORDER BY t.updated_at DESC LIMIT 20`)
