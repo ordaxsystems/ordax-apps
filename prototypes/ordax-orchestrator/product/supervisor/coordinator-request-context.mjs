@@ -40,7 +40,9 @@ export function buildCoordinatorRequestContext({store,taskId,mission,projectId,o
   const rawProject=store.db.prepare('SELECT name,objective FROM lab_projects WHERE id=?').get(projectId);
   const project=rawProject?{name:redactOrchestratorAnalysisText(rawProject.name,160),
     objective:redactOrchestratorAnalysisText(rawProject.objective,3000)}:null;
-  const projectMemory=store.listProjectMemory(taskId).slice(-8).map(item=>({
+  const projectMemory=store.listProjectMemory(taskId)
+    .sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at)) || String(b.id).localeCompare(String(a.id)))
+    .slice(0,8).map(item=>({
     category:item.category,key:redactOrchestratorAnalysisText(item.key,120),
     content:redactOrchestratorAnalysisText(item.content,550),updatedAt:item.updated_at
   }));
