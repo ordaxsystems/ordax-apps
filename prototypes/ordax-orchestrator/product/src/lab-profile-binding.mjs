@@ -13,12 +13,21 @@ const stagedName=/^candidate-userdata-v\d+\.\d+\.\d+-alpha\.\d+$/;
 // argument; otherwise it must fail closed before opening any SQLite profile.
 export function resolveLabUserRoot({
   argv=process.argv,
-  localAppData=process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE||process.cwd(),'AppData','Local')
+  localAppData=process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE||process.cwd(),'AppData','Local'),
+  executablePath=process.execPath
 }={}) {
   const candidates=argv.filter(v=>typeof v==='string'&&v.startsWith(stagedPrefix));
   const debugArgs=argv.filter(v=>typeof v==='string'&&v.startsWith('--remote-debugging-port='));
   const approved=argv.includes(approvalFlag);
+  // The installed portable executable is extracted into a temporary directory.
+  // Only uninstalled candidate builds inside a development dist tree require a
+  // separately approved staged profile. Never let their default launch reuse
+  // the installed owner's SQLite, cookie partition or Groq credential.
+  const candidateBuild=typeof executablePath==='string' &&
+    /[\\/]dist[\\/]candidate-[^\\/]+[\\/]win-unpacked[\\/][^\\/]+\.exe$/i.test(executablePath);
   const stagedIntent=approved || candidates.length>0 || argv.includes('--remote-debugging-port=9446');
+  if(candidateBuild && !stagedIntent)
+    throw new Error('lab_candidate_requires_staged_profile');
   const validStagedPort=debugArgs.length===1 && stagedDebugPorts.has(debugArgs[0]);
   if(candidates.length>1 || (stagedIntent && (!approved || candidates.length!==1 || !validStagedPort)))
     throw new Error('lab_staged_profile_explicit_binding_required');
