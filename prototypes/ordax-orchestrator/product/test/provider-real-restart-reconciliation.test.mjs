@@ -97,15 +97,57 @@ test('a provider response without an acknowledged submission receipt must not be
   assert.equal(f.restart(),1);
   let readCount=0,sendCount=0;
   const worker={
+    status:()=>({url:task.url}),
     inspectConversationReadOnly:async()=>{readCount++;return observation(task,'Provider response');},
     sendPrompt:async()=>{sendCount++;}
   };
+  const background=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:Date.now()});
+  assert.deepEqual(background,{state:'idle',reason:'provider_recovery_not_applicable'});
+  assert.equal(readCount,0,'an interrupted Run without a receipt or dispatch intent is not inspected');
   const inspection=await inspectProviderLinkedThread({store:f.store,worker,taskId:task.task.id});
   assert.equal(inspection.reason,'provider_submission_provenance_missing');
   assert.equal(inspection.recoveryPreview,undefined);
   assert.equal(readCount,0);
   assert.equal(sendCount,0);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.task.id).n,0);
+});
+
+test('app restart can reconcile a late GPT reply from durable dispatch evidence without replaying the send',async t=>{
+  const f=openFixture(t);
+  const task=stageSubmission(f.store,{url:threadA,providerPrompt:'reply after app restart '+randomUUID(),withReceipt:false});
+  const baselineId='gpt-baseline-before-app-restart';
+  assert.deepEqual(recordProviderSubmissionIntent({
+    store:f.store,taskId:task.task.id,runId:task.runId,messageId:task.userMessage.id,
+    providerPrompt:task.providerPrompt,chatUrl:threadA,intentAt:Date.now(),
+    baselineUserMessageId:baselineId,baselineUserMessagePresent:true,baselinePromptMatches:false
+  }),{recorded:true,reason:'intent_recorded'});
+  assert.equal(f.restart(),1);
+  assert.equal(f.store.db.prepare("SELECT error FROM runs WHERE id=?").get(task.runId).error,'process_interrupted');
+  let reads=0,sends=0;
+  const worker={status:()=>({url:threadA}),inspectConversationReadOnly:async(target,{allowNavigation}={})=>{
+    reads++;
+    assert.equal(target,threadA);
+    assert.equal(allowNavigation,false);
+    return {available:true,domReliable:true,truncated:false,
+      responseCompletionObserved:true,generationStopVisible:false,url:threadA,
+      messages:[
+        {role:'user',id:baselineId,text:'previous task turn'},
+        {role:'assistant',id:'baseline-answer',text:'previous answer'},
+        {role:'user',id:'gpt-user-after-restart',text:task.providerPrompt},
+        {role:'assistant',id:'gpt-answer-after-restart',text:'Resposta concluída depois de reiniciar o OrdaX.'}
+      ]};
+  },sendPrompt:async()=>{sends++;throw Error('restart_recovery_must_never_resend');}};
+  const recovered=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:200_000});
+  assert.equal(recovered.state,'recovered');
+  assert.equal(recovered.runId,task.runId);
+  assert.equal(reads,2,'the existing conversation is re-read before import');
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='assistant'").get(task.task.id).content,
+    'Resposta concluída depois de reiniciar o OrdaX.');
+  assert.equal(f.store.db.prepare("SELECT status FROM runs WHERE id=?").get(task.runId).status,'succeeded');
+  assert.equal(f.store.db.prepare("SELECT status FROM tasks WHERE id=?").get(task.task.id).status,'ready');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.reconciled'").get(task.task.id).n,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
 test('lost send acknowledgement auto-recovers one complete reply from a durable dispatch intent without resending',async t=>{

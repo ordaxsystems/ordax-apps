@@ -45,8 +45,9 @@ O App pode persistir a conversa e a memória que pertencem à experiência do us
 ## Incremento corrente — recuperação GPT tardia — 27/10/2026
 
 - O commit de código e0ef3057e3320ac88217c2d2d5ff52356e223aed da Apps PR #348 adiciona reobservação limitada à conversa GPT já visível e vinculada sem ambiguidade, usando o tick e o Store existentes. O backoff sobrevive a reinícios do Store; a importação continua condicionada a evidência completa, atribuível e idempotente.
+- Uma extensão de recuperação após encerramento agora aceita somente Runs marcados app_shutdown/process_interrupted com receipt ou dispatch intent durável, prompt novo em relação ao baseline e a thread vinculada já visível após o app reabrir. Sem essas provas, o app não inspeciona nem importa; nenhuma operação é reenviada.
 - O fluxo não navega, não repete envio e não cria scheduler, worker, fila, banco ou Runtime duplicado. Electron e Host atualizam a conversa quando a reconciliação termina.
-- Verificação do incremento: source check passou; contrato Electron/Host 32/32; regressões de resposta tardia, backoff no reinício e fail-closed 2/2; diff check passou. A suíte completa de reconciliação/restart 22/22 passou antes da última asserção de índice, e a asserção foi validada nos casos focados. Apps Foundation #40612197809 e Lab Isolation #40612197802 estão queued.
+- Verificação local do source atual: source check passou; contrato Electron/Host 32/32; suítes combinadas de observação, reconciliação e restart 23/23; diff check passou. CI para o próximo head remoto deve ser consultada após a publicação do incremento.
 - Limite conhecido: a recuperação automática requer o app ativo e a thread já visível; não prova execução headless/24 h. GPT Web live e importação física, VESTE/grants e continuidade via Runtime/OS seguem pendentes.
 
 ## Plano de trabalho e critérios de aceite

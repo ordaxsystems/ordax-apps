@@ -127,10 +127,10 @@ export async function reconcileProviderLinkedReply({store,worker,taskId,response
   return {reconciled:commit.reconciled,reason:commit.reason||'reconciled'};
 }
 
-// Auto-reconcile only the narrow lost-ack case while the same linked GPT chat
-// is already open. This never navigates or sends. Any ambiguity, stale view,
-// partial answer or missing dispatch intent leaves the original failure for
-// the user to inspect; the verified reply is then committed idempotently.
+// Auto-reconcile only a lost-ack or app-restart interruption backed by durable
+// submission evidence while the same linked GPT chat is already open. This
+// never navigates or sends. Ambiguity, stale view or partial answer stays
+// unresolved; a verified reply is committed idempotently.
 export async function recoverFailedProviderSubmission({store,worker,taskId,runId}={}) {
   const id=String(taskId||'');
   const run=store?.db?.prepare('SELECT id,status,error,metrics FROM runs WHERE id=? AND task_id=?').get(runId,id);
@@ -140,12 +140,18 @@ export async function recoverFailedProviderSubmission({store,worker,taskId,runId
   let metrics=null;
   try {metrics=JSON.parse(run.metrics||'{}');} catch {}
   const failure=String(run.error||'').split(':').at(-1);
-  if(failure!=='send_confirmation_unknown'||metrics?.failed_stage!=='submit'||
-     metrics?.provider_delivery_state!=='uncertain'||
-     !Number.isSafeInteger(metrics?.submit_attempt_at)||metrics.submit_attempt_at<=0)
-    return {reconciled:false,reason:'provider_recovery_not_applicable'};
   const latestMessage=store.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(id);
   const intent=findProviderSubmissionIntent({store,taskId:id,runId:String(runId||''),messageId:latestMessage?.id});
+  const uncertainLostAck=failure==='send_confirmation_unknown'&&metrics?.failed_stage==='submit'&&
+    metrics?.provider_delivery_state==='uncertain'&&
+    Number.isSafeInteger(metrics?.submit_attempt_at)&&metrics.submit_attempt_at>0;
+  const interruptedWithDurableSubmissionEvidence=run.status==='interrupted'&&task.status==='interrupted'&&
+    ['app_shutdown','process_interrupted'].includes(run.error)&&
+    Boolean(intent||findProviderSubmissionProvenance({
+      store,taskId:id,chatUrl:task.chat_url,messageId:latestMessage?.id
+    }));
+  if(!uncertainLostAck&&!interruptedWithDurableSubmissionEvidence)
+    return {reconciled:false,reason:'provider_recovery_not_applicable'};
   if(intent?.new_session===true)
     return recoverFreshProviderSubmission({store,worker,taskId:id,runId:String(runId),intent});
   const first=await inspectProviderLinkedThread({store,worker,taskId:id,allowNavigation:false});
@@ -161,8 +167,8 @@ export async function recoverFailedProviderSubmission({store,worker,taskId,runId
 const PROVIDER_RECOVERY_BACKOFF_MS=Object.freeze([15_000,30_000,60_000,120_000,300_000,600_000]);
 export const PROVIDER_RECOVERY_MAX_OBSERVATIONS=24;
 
-// Revisit only an uncertain Run whose exact linked GPT conversation is already
-// visible. The attempt ledger is durable and bounded; inspection never
+// Revisit only an uncertain or interrupted Run backed by submission evidence
+// whose exact linked GPT conversation is already visible. The attempt ledger is durable and bounded; inspection never
 // navigates, sends, or retries a provider action. This lets a late GPT reply be
 // reconciled by the existing Store transaction without adding another worker.
 export async function recoverVisibleLinkedProviderSubmission({store,worker,now=Date.now()}={}) {
@@ -179,15 +185,24 @@ export async function recoverVisibleLinkedProviderSubmission({store,worker,now=D
   const taskId=linked[0].id;
   const run=store.db.prepare(`SELECT id,status,error,metrics FROM runs
     WHERE task_id=? ORDER BY rowid DESC LIMIT 1`).get(taskId);
-  const task=store.db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId);
+  const task=store.db.prepare('SELECT status,chat_url FROM tasks WHERE id=?').get(taskId);
   if(!run||!task||!['failed','interrupted'].includes(run.status)||
-      !['error','interrupted'].includes(task.status)||
-      String(run.error||'').split(':').at(-1)!=='send_confirmation_unknown')
+      !['error','interrupted'].includes(task.status))
     return {state:'idle',reason:'provider_recovery_not_applicable'};
   let metrics=null;
   try {metrics=JSON.parse(run.metrics||'{}');} catch {}
-  if(metrics?.failed_stage!=='submit'||metrics?.provider_delivery_state!=='uncertain'||
-      !Number.isSafeInteger(metrics?.submit_attempt_at)||metrics.submit_attempt_at<=0)
+  const failure=String(run.error||'').split(':').at(-1);
+  const uncertainLostAck=failure==='send_confirmation_unknown'&&metrics?.failed_stage==='submit'&&
+    metrics?.provider_delivery_state==='uncertain'&&
+    Number.isSafeInteger(metrics?.submit_attempt_at)&&metrics.submit_attempt_at>0;
+  const latestMessage=store.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(taskId);
+  const intent=findProviderSubmissionIntent({store,taskId,runId:run.id,messageId:latestMessage?.id});
+  const interruptedWithDurableSubmissionEvidence=run.status==='interrupted'&&task.status==='interrupted'&&
+    ['app_shutdown','process_interrupted'].includes(run.error)&&
+    Boolean(intent||findProviderSubmissionProvenance({
+      store,taskId,chatUrl:task.chat_url||currentUrl,messageId:latestMessage?.id
+    }));
+  if(!uncertainLostAck&&!interruptedWithDurableSubmissionEvidence)
     return {state:'idle',reason:'provider_recovery_not_applicable'};
 
   const previous=store.db.prepare(`SELECT payload FROM events WHERE task_id=?
