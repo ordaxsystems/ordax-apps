@@ -680,7 +680,13 @@ try {
       "O modo alternativo de tela cheia não pode ser encerrado pelo mesmo controle.");
     if (parameters.has("__exercise_solo")) {
       const start = stationContent.querySelector('button[data-task-action="start"]');
-      ensure(start?.textContent.trim() === "Iniciar", "O fluxo solo deve usar a ação curta Iniciar.");
+      const ticketNumber = stationContent.querySelector(".kitchen-ticket-identity strong")?.textContent.trim();
+      ensure(start?.textContent.trim() === "Iniciar preparo", "O fluxo solo deve identificar claramente o início do preparo.");
+      ensure(start?.getAttribute("aria-label")?.includes(ticketNumber),
+        "A ação acessível para iniciar o preparo deve identificar o pedido em foco.");
+      const passNext = stationContent.querySelector('button[data-task-action="pass-next"]');
+      ensure(passNext?.getAttribute("aria-label")?.includes(ticketNumber),
+        "A ação acessível para passar a fila deve identificar o pedido em foco.");
       start.click();
       const sendToOven = await eventually(() => root.querySelector(
         `[data-kitchen-station-screen="${station}"] button[data-task-action="complete"]`),

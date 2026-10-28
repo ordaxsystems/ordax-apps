@@ -171,3 +171,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - O lote agora é montado por combinações e quantidade, respeitando o limite configurado de sabores por pizza. O usuário pode acrescentar/remover combinações e sabores, distinguir fichas pendentes e indisponíveis, e o resultado agrupa combinações equivalentes e mostra a composição de cada grupo.
 - Quantidades e seleções permanecem no rascunho da interface ao alterar campos, adicionar ou remover linhas. O cálculo reutiliza a regra de consumo Food já aplicada aos pedidos, com divisão igual entre os sabores selecionados; não grava estado Food, Inventory ou movimentação de estoque.
 - Verificação: suíte Food **196/196**; Chrome **31/31**, incluindo duas composições (uma com quatro sabores) e largura sem overflow em 390×844, 320×568 e 844×390; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.
+
+### KDS — explicitar ações do pizzaiolo solo e identificar o pedido (2026-10-27)
+
+- Na tela de um pizzaiolo, a ação curta passa de “Iniciar” para “Iniciar preparo”, deixando claro o trabalho que começa. Os rótulos acessíveis de iniciar, concluir e passar a fila incluem também a referência do pedido em foco; os botões permanecem curtos para toque.
+- A passagem continua mantendo a etapa do pedido e o posicionamento imediato após o próximo ticket conforme a regra existente; nenhum pedido ou fluxo é alterado por este ajuste de apresentação.
+- Verificação: suíte Food **196/196**; prova Chrome em **31/31 configurações**, incluindo o rótulo “Iniciar preparo” e referências do pedido nos nomes acessíveis de iniciar e passar a fila; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.
