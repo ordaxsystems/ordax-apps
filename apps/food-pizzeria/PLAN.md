@@ -153,3 +153,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - No telefone, as medidas da ficha ficam numa grade 2×2, os campos recebem 44 px de altura (fonte 16 px em retrato), e remover, fechar e salvar têm área de toque de pelo menos 44 px. A coluna de remoção acompanha o tamanho do alvo também em paisagem, evitando rolagem horizontal.
 - A prova real de navegador exercita o editor com rascunho preservado em 390×844, 320×568 e 844×390; verifica largura da página/ficha/linha, legibilidade dos campos e altura das ações.
 - Verificação: suíte Food **195/195**; Chrome **30/30**; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações verificadas**; sintaxe JavaScript e `git diff --check` aprovados. Nenhuma regra de cardápio, pedido, Inventory ou contrato foi alterada.
+
+### Cardápio — manter rascunhos do editor de sabores (2026-10-27)
+
+- Alterações não salvas de nome, descrição e preços ficam associadas ao sabor durante rerenders, alternância entre sabores e navegação entre módulos, enquanto a instância do app está aberta. Também vale para um novo sabor ainda não salvo.
+- Salvar remove apenas o rascunho depois do sucesso; cancelar descarta a edição atual e devolve foco ao acionador do sabor. O rascunho é estado temporário da UI: não grava no estado Food, não cria persistência local e não altera contratos/owners.
+- Verificação: suíte Food **195/195**; Chrome **31/31**, incluindo edição, rerender, alternância, navegação, cancelamento, foco e novo sabor; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.

@@ -444,6 +444,75 @@ try {
     }
   }
 
+  if (parameters.has("__exercise_flavor")) {
+    const editFlavor = (flavorId) => root.querySelector(`[data-action="edit-flavor"][data-flavor-id="${flavorId}"]`);
+    const inputValue = (name) => root.querySelector(`#flavor-form [name="${name}"]`)?.value;
+    const setInput = (name, value) => {
+      const input = root.querySelector(`#flavor-form [name="${name}"]`);
+      ensure(input, `O campo ${name} não apareceu no formulário de sabor.`);
+      input.value = value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const toggleMarguerita = async (nextActive) => {
+      const button = root.querySelector('[data-action="toggle-flavor"][data-flavor-id="ng-marguerita"]');
+      ensure(button && button.dataset.active === String(nextActive),
+        `A disponibilidade da Marguerita não está pronta para ${nextActive ? "desativar" : "reativar"}.`);
+      button.click();
+      await eventually(() => root.querySelector('[data-action="toggle-flavor"][data-flavor-id="ng-marguerita"]')
+        ?.dataset.active === String(!nextActive),
+      "A alteração de disponibilidade não confirmou o rerender do cardápio.");
+    };
+
+    if (view !== "menu") {
+      root.querySelector('[data-view="menu"]')?.click();
+      await eventually(() => root.querySelector("#main-content")?.textContent.includes("Cardápio"),
+        "A navegação para Cardápio não abriu o módulo.");
+    }
+
+    editFlavor("ng-calabresa")?.click();
+    await eventually(() => inputValue("name") === "Calabresa",
+      "O formulário de edição da Calabresa não abriu.");
+    setInput("name", "Calabresa da casa");
+    setInput("description", "Rascunho ajustado pelo operador.");
+    setInput("price-small", "41,50");
+    await toggleMarguerita(false);
+    ensure(inputValue("name") === "Calabresa da casa"
+      && inputValue("description") === "Rascunho ajustado pelo operador."
+      && inputValue("price-small") === "41,50",
+    "Um rerender por disponibilidade descartou alterações da ficha do sabor.");
+
+    editFlavor("ng-pepperoni")?.click();
+    await eventually(() => inputValue("name") === "Pepperoni",
+      "Trocar para editar outro sabor falhou.");
+    editFlavor("ng-calabresa")?.click();
+    await eventually(() => inputValue("name") === "Calabresa da casa"
+      && inputValue("price-small") === "41,50",
+    "Alternar entre sabores descartou o rascunho anterior.");
+
+    root.querySelector('[data-view="orders"]')?.click();
+    await eventually(() => root.querySelector("#main-content")?.textContent.includes("Pedidos"),
+      "Navegar para Pedidos não abriu o módulo.");
+    root.querySelector('[data-view="menu"]')?.click();
+    await eventually(() => inputValue("name") === "Calabresa da casa"
+      && inputValue("description") === "Rascunho ajustado pelo operador."
+      && inputValue("price-small") === "41,50",
+    "Voltar ao Cardápio descartou a edição do sabor.");
+
+    root.querySelector('[data-action="cancel-flavor-edit"]')?.click();
+    await eventually(() => inputValue("name") === "",
+      "Cancelar a edição não descartou o rascunho do sabor.");
+    ensure(root.activeElement?.dataset.flavorId === "ng-calabresa",
+      "Cancelar a edição deveria devolver o foco ao sabor correspondente.");
+    setInput("name", "Sabor em construção");
+    setInput("description", "Cadastro ainda não salvo.");
+    setInput("price-small", "42,50");
+    await toggleMarguerita(true);
+    ensure(inputValue("name") === "Sabor em construção"
+      && inputValue("description") === "Cadastro ainda não salvo."
+      && inputValue("price-small") === "42,50",
+    "Um rerender descartou o rascunho de um novo sabor.");
+  }
+
   if (parameters.has("station")) {
     const station = parameters.get("station");
     ensure(root.querySelector(`[data-kitchen-station-screen="${station}"]`),

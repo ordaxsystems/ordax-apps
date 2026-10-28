@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 
 const scenarios = Object.freeze([
   { presentation: "standalone-preview", view: "orders" },
+  { presentation: "standalone-preview", view: "orders", extra: { __exercise_flavor: "1" }, resetPreviewStorage: true },
   { presentation: "embedded-preview", view: "kitchen" },
   { presentation: "embedded-preview", view: "pos" },
   { presentation: "embedded-preview", view: "pos", extra: { __exercise_cart: "1" }, resetPreviewStorage: true },

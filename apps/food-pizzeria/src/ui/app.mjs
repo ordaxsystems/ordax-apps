@@ -182,6 +182,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   const activeKitchenScreen = activeKitchenScreenFromRoute;
   let activeCommandId = null;
   let editFlavorId = null;
+  const flavorDraftsById = new Map();
   let cart = [];
   let busy = false;
   let notice = null;
@@ -610,11 +611,16 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function flavorForm() {
     const flavor = snapshot.flavors.find(({ id }) => id === editFlavorId) ?? null;
     const prices = flavor?.pricesCents ?? {};
+    const draft = flavorDraftsById.get(editFlavorId);
     return `<form id="flavor-form" class="panel flavor-form">
       <div class="panel-heading"><div><p class="eyebrow">${flavor ? "ATUALIZAR CADASTRO" : "NOVO SABOR"}</p><h2>${flavor ? "Editar sabor" : "Adicionar ao cardápio"}</h2></div><span class="step-number">${flavor ? "✎" : "＋"}</span></div>
-      <label>Nome do sabor<input name="name" maxlength="60" required value="${escapeHtml(flavor?.name ?? "")}" placeholder="Ex.: Margherita"></label>
-      <label>Descrição <span class="optional-tag">opcional</span><textarea name="description" maxlength="240" rows="2" placeholder="Ingredientes ou detalhes para a cozinha">${escapeHtml(flavor?.description ?? "")}</textarea></label>
-      <div class="price-fields"><span>Preço por tamanho</span><div class="price-grid">${PIZZA_SIZES.map(({ id, label, active }) => `<label>${escapeHtml(label)}${active ? "" : " · inativo"}<div class="currency-input"><span>R$</span><input name="price-${id}" inputmode="decimal" placeholder="${active ? "0,00" : "0,00 (inativo)"}" ${active ? "required" : ""} value="${flavor ? money(prices[id]).replace("R$ ", "").trim() : active ? "" : "0,00"}"></div></label>`).join("")}</div></div>
+      <label>Nome do sabor<input name="name" maxlength="60" required value="${escapeHtml(draft?.name ?? flavor?.name ?? "")}" placeholder="Ex.: Margherita"></label>
+      <label>Descrição <span class="optional-tag">opcional</span><textarea name="description" maxlength="240" rows="2" placeholder="Ingredientes ou detalhes para a cozinha">${escapeHtml(draft?.description ?? flavor?.description ?? "")}</textarea></label>
+      <div class="price-fields"><span>Preço por tamanho</span><div class="price-grid">${PIZZA_SIZES.map(({ id, label, active }) => {
+    const savedPrice = flavor ? money(prices[id]).replace("R$ ", "").trim() : active ? "" : "0,00";
+    const draftPrice = draft?.prices?.[id];
+    return `<label>${escapeHtml(label)}${active ? "" : " · inativo"}<div class="currency-input"><span>R$</span><input name="price-${id}" inputmode="decimal" placeholder="${active ? "0,00" : "0,00 (inativo)"}" ${active ? "required" : ""} value="${escapeHtml(draftPrice ?? savedPrice)}"></div></label>`;
+  }).join("")}</div></div>
       <div class="flavor-form-actions">${flavor ? button("Cancelar edição", "cancel-flavor-edit") : ""}<button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>${flavor ? "Salvar alterações" : "Salvar sabor"} <span aria-hidden="true">→</span></button></div>
     </form>`;
   }
@@ -1399,8 +1405,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       root.querySelector("#flavor-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
       root.querySelector('#flavor-form [name="name"]')?.focus({ preventScroll: true });
     } else if (action === "cancel-flavor-edit") {
+      const cancelledFlavorId = editFlavorId;
+      flavorDraftsById.delete(cancelledFlavorId);
       editFlavorId = null;
       render();
+      focusFlavorTrigger(cancelledFlavorId);
     } else if (action === "toggle-flavor") {
       const flavorId = target.dataset.flavorId;
       const active = target.dataset.active === "true";
@@ -1570,6 +1579,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           render();
         }
       } else if (kind === "flavor-form") {
+        const flavorDraftId = editFlavorId;
+        captureFlavorDraftFromForm(form);
         const values = new FormData(form);
         const pricesCents = Object.fromEntries(PIZZA_SIZES.map(({ id }) => {
           const parsed = parseMoney(values.get(`price-${id}`));
@@ -1577,7 +1588,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           if (parsed === null || (size.active && parsed === 0)) throw new TypeError(`Informe um preço válido para pizza ${size.label}.`);
           return [id, parsed];
         }));
-        const flavorId = editFlavorId ?? uid();
+        const flavorId = flavorDraftId ?? uid();
         const saved = await dispatch({
           type: "menu.flavor.save",
           payload: {
@@ -1587,8 +1598,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
             pricesCents,
             at: new Date().toISOString(),
           },
-        }, editFlavorId ? "Sabor atualizado. Os pedidos anteriores mantiveram o preço registrado." : "Sabor adicionado ao cardápio.", { renderAfter: false });
+        }, flavorDraftId ? "Sabor atualizado. Os pedidos anteriores mantiveram o preço registrado." : "Sabor adicionado ao cardápio.", { renderAfter: false });
         if (saved) {
+          flavorDraftsById.delete(flavorDraftId);
           editFlavorId = null;
           render();
         }
@@ -1708,6 +1720,19 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }));
   }
 
+  function captureFlavorDraftFromForm(form) {
+    if (!form) return;
+    const values = new FormData(form);
+    flavorDraftsById.set(editFlavorId, {
+      name: String(values.get("name") ?? ""),
+      description: String(values.get("description") ?? ""),
+      prices: Object.fromEntries(PIZZA_SIZES.map(({ id }) => [
+        id,
+        String(values.get(`price-${id}`) ?? ""),
+      ])),
+    });
+  }
+
   function recipeDraftForFlavor(flavorId) {
     const pendingDraft = recipeDraftsByFlavorId.get(flavorId);
     if (pendingDraft) return cloneRecipeDraftLines(pendingDraft);
@@ -1737,6 +1762,15 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     scrollToFoodElement(trigger, "center");
   }
 
+  function focusFlavorTrigger(flavorId) {
+    if (!flavorId) return;
+    const trigger = [...root.querySelectorAll('[data-action="edit-flavor"]')]
+      .find((button) => button.dataset.flavorId === flavorId);
+    if (!trigger) return;
+    trigger.focus({ preventScroll: true });
+    scrollToFoodElement(trigger, "center");
+  }
+
   function focusRecipeLine(index) {
     const ingredient = root.querySelector(`[name="ingredient-${index}"]`);
     if (!ingredient) return;
@@ -1751,6 +1785,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
 
   function handleInput(event) {
+    const flavorForm = event.target.closest("#flavor-form");
+    if (flavorForm) {
+      captureFlavorDraftFromForm(flavorForm);
+      return;
+    }
     const recipeForm = event.target.closest("#recipe-editor");
     if (recipeForm) {
       captureRecipeDraftFromForm(recipeForm);
@@ -1873,6 +1912,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     root.removeAttribute?.("aria-busy");
     root.innerHTML = "";
     cart = [];
+    flavorDraftsById.clear();
     recipeDraftsByFlavorId.clear();
     snapshot = null;
     notice = null;
@@ -1883,7 +1923,6 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (presentation === "embedded-preview") assertFoodModuleView(view);
     else if (!Object.hasOwn(VIEW_LABELS, view)) throw new TypeError("Área desconhecida do Food.");
     activeView = view;
-    if (activeView !== "menu") editFlavorId = null;
     if (mounted) render();
   }
 
