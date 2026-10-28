@@ -24,9 +24,9 @@ test('normal OrdaX App without staged flags keeps its existing private Lab root'
 });
 
 test('unpacked candidate cannot attach to the installed owner profile',()=>{
-  const candidateExe='C:\\\\build\\\\dist\\\\candidate-5bb2b5e\\\\win-unpacked\\\\OrdaX Orchestrator Lab.exe';
-  const installedExe='C:\\\\Users\\\\owner\\\\AppData\\\\Local\\\\Programs\\\\OrdaX Orchestrator Lab\\\\OrdaX Orchestrator Lab.exe';
-  const portableExe='C:\\\\Users\\\\owner\\\\AppData\\\\Local\\\\Temp\\\\portable\\\\OrdaX Orchestrator Lab.exe';
+  const candidateExe=String.raw`C:\build\dist\candidate-5bb2b5e\win-unpacked\OrdaX Orchestrator Lab.exe`;
+  const installedExe=String.raw`C:\Users\owner\AppData\Local\Programs\OrdaX Orchestrator Lab\OrdaX Orchestrator Lab.exe`;
+  const portableExe=String.raw`C:\Users\owner\AppData\Local\Temp\portable\OrdaX Orchestrator Lab.exe`;
   const ordinary=path.resolve(os.tmpdir(),'ordinary-appdata');
   const resolve=(executablePath,argv)=>resolveLabUserRoot({executablePath,argv,localAppData:ordinary});
   assert.throws(()=>resolve(candidateExe,['candidate']),/lab_candidate_requires_staged_profile/);
