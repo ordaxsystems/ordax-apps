@@ -8,12 +8,6 @@ import {LabContinuation} from './lab-continuation.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
-const GROQ_FALLBACK_HEALTH_FAILURES=new Set([
-  'chatgpt_login_required','chatgpt_session_not_observed','chatgpt_verification_required',
-  'chatgpt_provider_backend_access_restricted','chatgpt_provider_rate_limited_observed',
-  'provider_health_unavailable','provider_health_observation_timeout'
-]);
-
 function missionProjectName(mission) {
   const firstLine=String(mission||'').trim().split(/\r?\n/u,1)[0].trim();
   const firstSentence=firstLine.split(/(?<=[.!?])\s+/u,1)[0].trim();
