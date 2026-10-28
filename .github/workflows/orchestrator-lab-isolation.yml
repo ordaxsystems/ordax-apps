@@ -21,6 +21,62 @@ permissions:
   contents: read
 
 jobs:
+  package_scope:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      windows_required: ${{ steps.scope.outputs.windows_required }}
+    steps:
+      - name: Checkout full git history for an exact change delta
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test canonical path classifier (no third-party paths action)
+        run: node --test prototypes/ordax-orchestrator/tests/ci-scope.test.mjs
+      - name: Decide if a fresh Windows artifact is required
+        id: scope
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action || '' }}
+          BEFORE: ${{ github.event.before || '' }}
+          AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha || '' }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          required=true
+          before="$BEFORE"
+          # A full PR must be validated once. Only subsequent documentation-only
+          # pushes with a successful previous head may reuse that proof.
+          if [[ "$EVENT" == "pull_request" && "$ACTION" == "synchronize" &&
+                "$before" =~ ^[0-9a-f]{40}$ ]]; then
+            git diff --check "$before" "$AFTER"
+            git diff --name-only "$before" "$AFTER" > "$RUNNER_TEMP/orchestrator-change-paths"
+            if [[ "$(node prototypes/ordax-orchestrator/scripts/ci-scope.mjs "$RUNNER_TEMP/orchestrator-change-paths")" == "false" ]]; then
+              # No previous successful run (or API unavailable) means BUILD,
+              # not an unverified green check following a cancelled build.
+              if gh api "repos/$REPOSITORY/actions/workflows/orchestrator-lab-isolation.yml/runs?head_sha=$before&status=success&per_page=10" \
+                  --jq '[.workflow_runs[] | select(.event == "pull_request" and .conclusion == "success")] | length' \
+                  | grep -qx '[1-9][0-9]*'; then
+                required=false
+              fi
+            fi
+          elif [[ "$EVENT" == "push" && "$BEFORE" =~ ^[0-9a-f]{40}$ &&
+                  ! "$BEFORE" =~ ^0{40}$ ]]; then
+            git diff --check "$BEFORE" "$AFTER"
+            git diff --name-only "$BEFORE" "$AFTER" > "$RUNNER_TEMP/orchestrator-change-paths"
+            if [[ "$(node prototypes/ordax-orchestrator/scripts/ci-scope.mjs "$RUNNER_TEMP/orchestrator-change-paths")" == "false" ]]; then
+              required=false
+            fi
+          fi
+          echo "windows_required=$required" >> "$GITHUB_OUTPUT"
+          echo "Windows artifact required: $required"
+
   isolation:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -28,6 +84,14 @@ jobs:
       - name: Checkout app repo, do not persist GitHub credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          persist-credentials: false
+
+      - name: Checkout canonical Runtime contract owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-runtime
+          ref: main
+          path: _runtime-contract
           persist-credentials: false
 
       - name: Setup Node 24
@@ -63,6 +127,7 @@ jobs:
       - name: Validate the directly owned Lab product
         run: |
           npm ci --prefix prototypes/ordax-orchestrator/product
+          npm run check:runtime-contract --prefix prototypes/ordax-orchestrator/product -- "$GITHUB_WORKSPACE/_runtime-contract"
           npm run validate --prefix prototypes/ordax-orchestrator/product
           test ! -e prototypes/ordax-orchestrator/product/src/relay
           test ! -e prototypes/ordax-orchestrator/product/apps
@@ -86,6 +151,8 @@ jobs:
 # credentialed, explicitly authorized integration environment.
 
   owned-windows:
+    needs: package_scope
+    if: needs.package_scope.outputs.windows_required == 'true'
     runs-on: windows-2025
     timeout-minutes: 25
     steps:
@@ -184,4 +251,3 @@ jobs:
             prototypes/ordax-orchestrator/product/dist/orchestrator-packaged-proof.json
           retention-days: 3
           if-no-files-found: error
-

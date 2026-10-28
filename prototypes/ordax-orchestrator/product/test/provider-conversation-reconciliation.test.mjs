@@ -57,3 +57,16 @@ test('malformed or oversized observations cannot create a receipt',()=>{
   assert.equal(assessProviderConversationEvidence(inspect({messages:[{...user,text:'x'.repeat(12001)}]})).kind,'unavailable');
   assert.equal(assessProviderConversationEvidence(inspect({messages:Array(51).fill(user)})).kind,'unavailable');
 });
+
+test('long technical assistant response stays a candidate only for exact unique prompt',()=>{
+  const long={role:'assistant',text:'CODE'.repeat(22000)};
+  const accepted=assessProviderConversationEvidence(inspect({messages:[user,long]}));
+  assert.equal(accepted.kind,'response_candidate');
+  assert.equal(accepted.requiresReconciliation,true);
+  const wrong=assessProviderConversationEvidence(inspect({messages:[{role:'user',text:prompt+' changed'},long]}));
+  assert.equal(wrong.kind,'unresolved');
+  const tooLong=assessProviderConversationEvidence(inspect({messages:[user,{role:'assistant',text:'x'.repeat(100001)}]}));
+  assert.equal(tooLong.kind,'unavailable');
+  const truncated=assessProviderConversationEvidence(inspect({messages:[user,{...long,textTruncated:true}]}));
+  assert.equal(truncated.kind,'unavailable');
+});

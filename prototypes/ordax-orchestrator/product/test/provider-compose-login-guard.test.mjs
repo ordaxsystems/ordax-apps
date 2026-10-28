@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import {fileURLToPath} from 'node:url';
-import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
+import {providerComposeAvailability,canStartFreshProviderChat,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
 
 const dir=path.dirname(fileURLToPath(import.meta.url));
 const main=fs.readFileSync(path.resolve(dir,'../desktop/main.mjs'),'utf8');
@@ -17,15 +17,20 @@ test('renderer gates submit on observed session and live composer; anything else
     health_observed:true,verification_required:false,provider_access_problem:null};
   assert.deepEqual(providerComposeAvailability(ready),{allowed:true,reason:'ready'});
   assert.deepEqual(providerComposeAvailability(ready,{hostMode:true}),{allowed:false,reason:'host_auth_unavailable'});
-  assert.match(COMPOSE_STATUS_MESSAGES.host_auth_unavailable,/sessão do ChatGPT/);
+  assert.match(COMPOSE_STATUS_MESSAGES.host_auth_unavailable,/não tem transporte suportado para o ChatGPT Web/);
+  assert.match(COMPOSE_STATUS_MESSAGES.host_auth_unavailable,/Entrar em outra aba não conecta a sessão/);
   const blocked=[
     [{...ready,auth_state:'anonymous'},'login_required'],
+    [{...ready,auth_state:'anonymous',page_state:'conversation_load_failed'},'login_required'],
     [{...ready,auth_state:'authenticating'},'authenticating'],
     [{...ready,auth_state:'unknown'},'unverified'],
     [{...ready,health_observed:false},'unverified'],
     [{...ready,composer_ready:false},'unverified'],
     [{...ready,health_pending:true},'checking'],
     [{...ready,active:true},'busy'],
+    [{...ready,response_generation_active:true},'busy'],
+    [{...ready,provider_response_failure:'chatgpt_response_retry_required'},'response_retry_required'],
+    [{...ready,provider_response_failure:'chatgpt_response_error_observed'},'response_error'],
     [{...ready,verification_required:true},'verification'],
     [{...ready,provider_access_problem:'backend_http_403_observed'},'access_restricted'],
     [{...ready,provider_access_problem:'backend_http_429_observed'},'rate_limited'],
@@ -35,6 +40,32 @@ test('renderer gates submit on observed session and live composer; anything else
     assert.deepEqual(providerComposeAvailability(status),{allowed:false,reason});
     assert.ok(COMPOSE_STATUS_MESSAGES[reason]);
   }
+});
+
+test('fresh provider chat recovery preserves the Task and is blocked for unsafe sessions or delivery state',()=>{
+  const status={connected:true,health_observed:true,auth_state:'session_present',composer_ready:false,
+    page_state:'conversation_load_failed',verification_required:false,provider_access_problem:null};
+  const availability=providerComposeAvailability(status);
+  const task={id:'task_one',chat_url:'https://chatgpt.com/c/previous',status:'idle',latest_run:null};
+  assert.equal(canStartFreshProviderChat({task,status,availability}),true);
+  assert.equal(canStartFreshProviderChat({task,status,availability,hostMode:true}),false);
+  assert.equal(canStartFreshProviderChat({task,status,availability,activeRun:true}),false);
+  assert.equal(canStartFreshProviderChat({task:{...task,latest_run:{status:'failed',provider_delivery_state:'uncertain'}},status,availability}),false);
+  assert.equal(canStartFreshProviderChat({task:{...task,status:'interrupted'},status,availability}),false);
+  for(const blockedStatus of [
+    {...status,verification_required:true},
+    {...status,provider_access_problem:'backend_http_403_observed'},
+    {...status,provider_access_problem:'backend_http_429_observed'},
+    {...status,provider_response_failure:'chatgpt_response_retry_required'},
+    {...status,health_observed:false}
+  ]) assert.equal(canStartFreshProviderChat({task,status:blockedStatus,
+    availability:providerComposeAvailability(blockedStatus)}),false);
+  assert.equal(canStartFreshProviderChat({task,status:{...status,auth_state:'anonymous'},
+    availability:providerComposeAvailability({...status,auth_state:'anonymous'})}),false);
+  const ready={...status,page_state:'unknown',composer_ready:true};
+  assert.equal(canStartFreshProviderChat({task,status:ready,availability:providerComposeAvailability(ready)}),true);
+  assert.equal(canStartFreshProviderChat({task:{...task,chat_url:null},status:ready,
+    availability:providerComposeAvailability(ready)}),false);
 });
 
 test('Electron uses existing persistent isolated Chromium partition; never stores provider password',()=>{
@@ -65,6 +96,9 @@ test('App has visible login warning, optional local draft, and disabled send ini
   assert.match(html,/id="composerLogin"/);
   assert.match(html,/id="send"[^>]*disabled/);
   assert.match(ui,/providerComposeAvailability\(status,\{hostMode:window\.ordaxHost\?\.hostMode===true\}\)/);
+  assert.match(html,/id="recoverProviderConversation"[^>]*hidden/);
+  assert.match(ui,/await flushDraft\(\);[\s\S]*await window\.ordax\.rotateConversation\(currentTaskId\)[\s\S]*await window\.ordax\.home\(\)/);
+  assert.match(ui,/canStartFreshProviderChat\(/);
   assert.match(ui,/COMPOSE_STATUS_MESSAGES/);
   assert.match(ui,/dataset\.sendReady = allowed \? 'true' : 'false'/);
   assert.match(ui,/\$\('#composerLogin'\)\.addEventListener\('click', \(\) => \$\('#login'\)\.click\(\)\)/);

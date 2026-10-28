@@ -140,10 +140,11 @@ export class OrchestratorService {
     return normalizeGitHubRepositoryUrl(row.repository_url);
   }
 
-  assertProviderTaskAvailable(taskId) {
+  assertProviderTaskAvailable(taskId,{allowCoordinator=false}={}) {
     const binding=this.db.prepare(`SELECT b.kind,o.status FROM lab_task_bindings b
       JOIN lab_orchestrators o ON o.id=b.orchestrator_id WHERE b.task_id=?`).get(taskId);
-    if(binding?.kind==='orchestrator')throw Error('orchestrator_coordinator_channel_required');
+    if(binding?.kind==='orchestrator'&&!allowCoordinator)throw Error('orchestrator_coordinator_channel_required');
+    if(allowCoordinator&&binding?.kind!=='orchestrator')throw Error('orchestrator_coordinator_task_required');
     if(binding?.status==='paused')throw Error('orchestrator_paused');
     if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(taskId))
       throw Error('orchestrator_reconciliation_required');
@@ -246,6 +247,7 @@ export class OrchestratorService {
       tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
       externalTransport:'not_connected',autonomousExecution:false,
       autonomousAnalysisAvailable:true,
+      coordinatorDraftCommitAvailable:true,
       workspacePortAvailable:this.workspace.available(),
       continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
       coordinatorAvailable:this.coordinator?.available?.()===true,
@@ -545,6 +547,8 @@ export class OrchestratorService {
     // Return an accepted command even if the provider is now offline; never replay.
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const isWorkSend=operation==='work_send'||operation==='proposal_send';
+    const gptWebChat=operation==='orchestrator_chat';
+    const usesProvider=isWorkSend||gptWebChat;
     const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
@@ -552,7 +556,7 @@ export class OrchestratorService {
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
-    const port=isWorkSend?this.provider:this.coordinator;
+    const port=usesProvider?this.provider:this.coordinator;
     if(typeof port?.send!=='function'||(port.available&&port.available(input.projectId,owner.id)!==true))
       throw Error('orchestrator_provider_unavailable');
     const prepareWork=operation==='orchestrator_prepare';
@@ -562,9 +566,16 @@ export class OrchestratorService {
     const content=operation==='orchestrator_analyze'
       ?'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
       :sendInput.content;
-    const providerContent=isWorkSend
+    const providerContent=usesProvider
       ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
       :content;
+    const providerChatDraft=gptWebChat&&input.draftRevision!==undefined;
+    if(providerChatDraft) {
+      const draft=this.store.getTaskDraft(task.id);
+      if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
+        throw Error('task_draft_revision_conflict');
+      if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
+    }
     const workspaceStatus=isWorkSend?null:this.workspace.status(context,input.projectId);
     const workspaceObservation=workspaceStatus?{
       state:workspaceStatus.state,
@@ -586,7 +597,9 @@ export class OrchestratorService {
     if(isWorkSend&&this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(task.id))
       throw Error('orchestrator_reconciliation_required');
     const reserved=this.transaction(()=>{
+      this.requireAccess(context,operation,input.projectId);
       const reservation=this.reserve(context,operation,input);
+      if(reservation.existing)return {existing:reservation.existing};
       if(preparedSend) {
         reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',reservation.commandId,
           {actorId:context.actorId,clientId:context.clientId,sourceActionId:input.actionId,
@@ -599,17 +612,34 @@ export class OrchestratorService {
       this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
         .run(JSON.stringify({taskId:task.id,...(reservation.sendActionId?{
           sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),reservation.commandId);
+      if(!usesProvider) {
+        const coordinatorDraft=['orchestrator_chat','orchestrator_prepare'].includes(operation)&&input.draftRevision!==undefined;
+        if(coordinatorDraft) {
+          const draft=this.store.getTaskDraft(task.id);
+          if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
+            throw Error('task_draft_revision_conflict');
+          if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
+        }
+        this.store.appendMessage(task.id,'user',content);
+        if(coordinatorDraft) {
+          const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
+          if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
+            throw Error('task_draft_revision_conflict');
+        }
+      }
       return reservation;
     });
+    if(reserved.existing)return reserved.existing;
     try {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
-      if(!isWorkSend)this.transaction(()=>this.store.appendMessage(task.id,'user',content));
-      const reply=await port.send({taskId:task.id,content:isWorkSend?providerContent:content,draftRevision:sendInput.draftRevision??null,
+      const reply=await port.send({taskId:task.id,content:usesProvider?providerContent:content,
+        draftRevision:providerChatDraft?input.draftRevision+1:sendInput.draftRevision??null,
+        taskKind:gptWebChat?'orchestrator':isWorkSend?'work':null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
         workspaceObservation,repositoryUrl});
       this.requireAccess(context,operation,input.projectId);
-      if(!isWorkSend) {
+      if(!usesProvider) {
         if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
           throw Error('orchestrator_reply_invalid');
         return this.transaction(()=>{
@@ -623,7 +653,7 @@ export class OrchestratorService {
           this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
             ...(proposalActionId?{proposalActionId}:{}),
-            proposalsExecuted:0,provider:'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
+            proposalsExecuted:0,provider:reply.provider||'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
               messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})});
         });
       }
@@ -633,6 +663,7 @@ export class OrchestratorService {
       if(canonicalRun?.status!=='succeeded')throw Error('orchestrator_effect_unconfirmed');
       return this.transaction(()=>{
         const result={taskId:task.id,runId:reply.runId,responseObserved:true,effectVerified:false,
+          provider:'chatgpt_web',
           ...(reserved.sendActionId?{sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
         if(reserved.sendActionId){
           this.db.prepare('UPDATE action_ledger SET run_id=? WHERE id=?').run(reply.runId,reserved.sendActionId);
@@ -641,17 +672,29 @@ export class OrchestratorService {
         return this.finish(reserved.commandId,result);
       });
     } catch(error) {
+      // The central chat is the GPT executor, never an implicit Groq chat.
+      // A failed, unavailable, or uncertain GPT submission must not be
+      // replaced with an answer from a different model.
+      const failure=error;
       // Only an explicit pre-submit disposition from the provider executor is
       // retryable. Missing/invalid evidence remains uncertain and quarantined.
-      const notSubmitted=isWorkSend&&error?.providerDeliveryState==='not_submitted';
-      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(error?.providerFailureCode||''))
-        ?String(error.providerFailureCode):'provider_send_unconfirmed';
-      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':'execution_unconfirmed',
-        ...(notSubmitted?{providerStage:String(error?.providerFailureStage||'unknown'),failureCode}:{}),...(reserved.sendActionId?{
+      const notSubmitted=usesProvider&&failure?.providerDeliveryState==='not_submitted';
+      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(failure?.providerFailureCode||''))
+        ?String(failure.providerFailureCode):'provider_send_unconfirmed';
+      const coordinatorCode=!usesProvider&&/^(?:groq|chatgpt)_[a-z0-9_]{1,64}$/.test(String(failure?.orchestratorFailureCode||''))
+        ?String(failure.orchestratorFailureCode):null;
+      const coordinatorOutcome=!usesProvider&&['rejected','response_invalid'].includes(failure?.orchestratorRequestOutcome)
+        ?failure.orchestratorRequestOutcome:null;
+      const coordinatorRejected=Boolean(coordinatorCode&&coordinatorOutcome);
+      const coordinatorHttpStatus=coordinatorCode&&Number.isSafeInteger(failure?.orchestratorHttpStatus)
+        ?failure.orchestratorHttpStatus:null;
+      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
+        ...(notSubmitted?{providerStage:String(failure?.providerFailureStage||'unknown'),failureCode}:{}),
+        ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),...(reserved.sendActionId?{
         sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
       this.transaction(()=>{
         if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,notSubmitted?'failed':'indeterminate',result);
-        this.finish(reserved.commandId,result,notSubmitted?'failed':'uncertain');
+        this.finish(reserved.commandId,result,notSubmitted||coordinatorRejected?'failed':'uncertain');
       });
       this.requireAccess(context,operation,input.projectId);
       return this.getReceipt(context,reserved.commandId);

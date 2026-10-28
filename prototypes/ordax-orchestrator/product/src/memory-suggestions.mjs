@@ -1,7 +1,10 @@
 // Deterministic, domain-neutral detector of explicitly labeled project statements.
 // Legacy genre aliases remain accepted for backward compatibility, not privileged.
 // A suggestion is untrusted until the user explicitly approves it.
-export const SUGGESTION_EXTRACTOR_VERSION = 'explicit-project-v2';
+export const SUGGESTION_EXTRACTOR_VERSION = 'explicit-project-v3';
+
+const ASSISTANT_PROPOSAL_START = '[[ORDAX_MEMORY_PROPOSALS_V1]]';
+const ASSISTANT_PROPOSAL_END = '[[/ORDAX_MEMORY_PROPOSALS_V1]]';
 
 const PREFIXES = [
   ['personagem','entity'], ['entidade','entity'], ['estrutura','structure'],
@@ -71,4 +74,18 @@ export function suggestFromExplicitText(text) {
     if (decided) add('decision', normalize(decided[1]).slice(0, 75), decided[1], line);
   }
   return result;
+}
+
+// Assistant-authored prose is never mined as canon. Only a single, explicitly
+// delimited proposal block can create reviewable candidates, and those remain
+// untrusted until the user reviews them in the app.
+export function suggestFromAssistantProposal(text) {
+  const source = String(text || '');
+  const lines = source.split(/\r?\n/);
+  const starts = lines.flatMap((line,index)=>line.trim()===ASSISTANT_PROPOSAL_START?[index]:[]);
+  const ends = lines.flatMap((line,index)=>line.trim()===ASSISTANT_PROPOSAL_END?[index]:[]);
+  if (starts.length !== 1 || ends.length !== 1 || starts[0] >= ends[0]) return [];
+  const block = lines.slice(starts[0]+1,ends[0]).join('\n');
+  if (block.length > 8_000) return [];
+  return suggestFromExplicitText(block).slice(0, 5);
 }

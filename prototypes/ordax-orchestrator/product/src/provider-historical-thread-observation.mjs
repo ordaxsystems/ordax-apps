@@ -1,8 +1,10 @@
 import { canonicalProviderChatUrl } from './conversation-policy.mjs';
 import { observeWithin, safeHistoricalThreadFailure } from './provider-observation-policy.mjs';
+import {W3_OBSERVER_READ_TIMEOUT_MS} from './provider-recovery-bounds.mjs';
 
 // Read-only React hydration observation. The caller navigates at most once.
-// Missing DOM may be retried; a hung observation is never re-issued.
+// Missing DOM may be retried only after a completed read. The outer gate
+// permits the complete canonical CDP budget; a hung read is never re-issued.
 export async function waitForHistoricalThreadDom({
   expectedUrl,read,now=Date.now,
   sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
@@ -20,7 +22,7 @@ export async function waitForHistoricalThreadDom({
     if(remaining<=0) return {available:false,url:expected,reason:'thread_dom_not_ready'};
     let snapshot;
     try {
-      snapshot=await observeWithin(read,{timeoutMs:Math.min(2000,remaining),
+      snapshot=await observeWithin(read,{timeoutMs:Math.min(W3_OBSERVER_READ_TIMEOUT_MS,remaining),
         code:'provider_conversation_observation_timeout'});
     } catch(error) {
       // A non-settling renderer observation may still be pending.

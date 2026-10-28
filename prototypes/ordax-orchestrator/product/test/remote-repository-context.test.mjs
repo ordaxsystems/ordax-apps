@@ -31,3 +31,13 @@ test('remote task instructions name the project GitHub target and fail closed wi
   assert.match(content,/Não afirme leitura, alteração, commit, teste ou publicação sem evidência/);
   assert.equal(appendRemoteRepositoryInstructions('Keep working.',null),'Keep working.');
 });
+
+test('explicit OrdaX Apps request is not overridden by the OrdaX OS default',()=>{
+  const context=appendRemoteRepositoryInstructions('Analise ordaxsystems/ordax-apps.',
+    'https://github.com/ordaxsystems/ordax-os');
+  assert.match(context,/Analise ordaxsystems\/ordax-apps/);
+  assert.match(context,/Repositório padrão: https:\/\/github.com\/ordaxsystems\/ordax-os/);
+  assert.match(context,/não substitua esse alvo pelo padrão do projeto/);
+  assert.match(context,/Este texto não concede permissão para leitura ou escrita em outro repositório/);
+  assert.doesNotMatch(context,/não use outro repositório/i);
+});

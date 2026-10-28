@@ -9,9 +9,19 @@ test('clearing the provider composer alone never confirms sending',()=>{
   assert.equal(unresolvedSubmitCode({composerText:''}),'send_confirmation_unknown');
   assert.equal(unresolvedSubmitCode({composerText:prompt}),'send_not_observed');
 });
-test('accepted user bubble or new canonical provider conversation confirms receipt',()=>{
-  assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,url:'https://chatgpt.com/c/6ad46c78-729c-83e9-a6eb-4006830ada90'},prompt}),true);
+test('only the exact observed latest user bubble confirms receipt',()=>{
+  assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,url:'https://chatgpt.com/c/6ad46c78-729c-83e9-a6eb-4006830ada90'},prompt}),false);
   assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,userCount:1,latestUserText:prompt},prompt}),true);
+  assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,userCount:1,latestUserText:prompt,composerText:prompt},prompt}),true);
+  assert.equal(providerSubmissionConfirmed({baseline:{...baseline,userCount:5,latestUserText:'previous prompt'},current:{...baseline,userCount:5,latestUserText:prompt},prompt}),true);
+  assert.equal(providerSubmissionConfirmed({baseline:{...baseline,userCount:5,latestUserText:prompt},current:{...baseline,userCount:5,latestUserText:prompt},prompt}),false);
+  assert.equal(providerSubmissionConfirmed({baseline:{...baseline,userCount:5,latestUserText:prompt},current:{...baseline,userCount:6,latestUserText:prompt},prompt}),true);
+  assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,userCount:1,latestUserText:prompt+'\n…\nMostrar mais',latestUserExpandControlPresent:true},prompt}),true);
+  const longPrompt='x'.repeat(12000)+' nonce-a4f87c';
+  const collapsedLongPrompt=longPrompt.slice(0,10100)+'…\nMostrar mais';
+  assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,userCount:1,latestUserText:collapsedLongPrompt,latestUserExpandControlPresent:true},prompt:longPrompt}),false);
+  assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,userCount:1,latestUserText:longPrompt+'\nMostrar menos',latestUserExpandControlPresent:true},prompt:longPrompt}),true);
+  assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,userCount:1,latestUserText:prompt+'\n…\nMostrar mais'},prompt}),false);
   assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,userCount:1,latestUserText:'wrong prompt'},prompt}),false);
   assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,url:'https://chatgpt.com/auth/login'},prompt}),false);
   assert.equal(providerSubmissionConfirmed({baseline,current:{...baseline,url:'https://chatgpt.com/c/6ad46c78-729c-83e9-a6eb-4006830ada90',composerText:prompt},prompt}),false);

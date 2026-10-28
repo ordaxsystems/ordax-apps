@@ -7,7 +7,7 @@
 
 **Direção oficial aprovada:** o objeto central é um projeto com missão, pasta/repositório local autorizado, plano, diffs, testes e evidências. ChatGPT e outros modelos são inteligências/executores opcionais. O App e o plugin OrdaX MCP devem consumir o mesmo Runtime e grants canônicos; não criar segunda camada de arquivos/Git/terminal dentro do Lab.
 
-**Estado do source:** alpha.14 inicia uma missão pela criação transacional de projeto, coordenador e conversa inicial. Com sessão ChatGPT pronta, a UI usa o executor existente; sem sessão, deixa a missão em rascunho. Workspace permanece `capability_unavailable` sem o port Runtime real; GitHub remoto continua sendo apenas uma URL de referência até haver evidência da integração autorizada. Leitura/escrita de arquivos, site validado e supervisor headless 24h ainda não existem. Distribuição segue desativada; Flow/Grátis 0.4.12 e a sessão instalada permanecem isolados.
+**Estado do candidato alpha.19 (branch, 2026-10-24):** `npm start` inicia o servidor Node loopback, sem Electron, para a UI real do Lab; `npm run start:electron` é a entrada desktop explícita. Host e Electron compartilham o `OrchestratorService`, MCP, handlers de tarefas e o mesmo Store; o Host usa `.host-profile` isolado e o pacote Windows continua sem o servidor de desenvolvimento. Teste visual real criou o projeto VESTE, persistiu missão/rascunho e os recuperou após reload. Uma chamada Groq real não teve resposta confirmada e ficou em reconciliação; não a contamos como sucesso. O Host ainda não conecta executor GPT, Runtime workspace/grants ou GitHub, nem cria arquivos, valida o site ou trabalha 24 h. As funções automáticas seguem bloqueadas quando dependem desses owners. Distribuição continua desativada; Flow/Grátis e o perfil instalado ficam isolados.
 
 As seções históricas abaixo documentam incrementos anteriores; **não superam** a decisão Project-First nem a fonte canônica de versionamento.
 
@@ -92,7 +92,7 @@ Preservar integralmente o aplicativo Grátis que funciona no Windows e construir
 
 ## P1 — Fonte própria do produto, sem reconstrução em cada execução
 
-O Electron do Orchestrator agora pertence ao **diretório versionado `product/`**, dentro do `ordax-apps`. Não é mais gerado em `workspace/` no início do app. O `ordax-flow` original continua intacto.
+O código do Orchestrator agora pertence ao **diretório versionado `product/`**, dentro do `ordax-apps`. Não é mais gerado em `workspace/` no início do app. O `ordax-flow` original continua intacto.
 
 ```powershell
 cd ordax-apps\prototypes\ordax-orchestrator
@@ -102,7 +102,7 @@ npm run validate:owned
 npm start
 ```
 
-A execução usa `scripts/start-lab.mjs` que valida identidade, versão e isolamento antes de chamar o Electron instalado em `product/node_modules`. `npm run start:staged` abre perfil temporário separado. A integração com a conta ChatGPT deve ser realizada legitimamente pelo próprio usuário, sem importar sessão do Grátis.
+`npm start` abre a UI Host Node no navegador, usando perfil de desenvolvimento isolado. `npm run start:electron` é a entrada desktop explícita e usa `scripts/start-lab.mjs`, que valida identidade, versão e isolamento antes de chamar o Electron instalado em `product/node_modules`. `npm run start:staged` abre o candidato Electron em perfil temporário separado. A integração com a conta ChatGPT deve ser realizada legitimamente pelo próprio usuário, sem importar sessão do Grátis.
 
 **Somente auditoria histórica:** `scripts/import-flow.mjs` pode reconstruir `workspace/` a partir do commit fixado em `source-lock.json`, e `scripts/promote-owned-source.mjs` registrou a migração única. Nenhum dos dois participa da execução normal ou atualiza o `product/` automaticamente. O manifesto `product/OWNED-SOURCE.json` registra a origem inicial do código; hashes nele não devem bloquear evolução versionada posterior do Lab.
 

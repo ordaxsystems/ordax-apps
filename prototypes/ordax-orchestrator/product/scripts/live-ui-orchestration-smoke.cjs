@@ -2,10 +2,25 @@
 // ChatGPT DOM, screenshots, a paid API, or an installed user profile.
 const {waitForLabUiTarget,waitForLabAppMode}=require('./e2e-lab-target.cjs');
 const {acquireE2ELock}=require('./e2e-lock.cjs');
+const {closeCdpWebSocket}=require('./cdp-websocket-close.cjs');
 acquireE2ELock('orchestration-native-mcp');
 if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
   throw Error('lab_orchestration_e2e_approval_required');
+const scenarioReasons=new Set([
+  'app_evaluation_failed','app_evaluation_timeout','socket_unavailable',
+  'runtime_identity_mismatch','fresh_disabled_profile_required','project_navigation_not_selected',
+  'mission_draft_not_persisted','workspace_grant_absence_not_visible','coordinator_workspace_layout_missing',
+  'api_key_not_persisted_securely','prepare_action_unavailable','mcp_initialization_failed',
+  'native_mcp_state_mismatch','work_conversation_layout_failed',
+  'lab_e2e_multiple_visible_app_windows','lab_e2e_multiple_app_windows',
+  'lab_e2e_provider_fallback_not_app_test','lab_e2e_profile_proof_unavailable','lab_e2e_profile_mismatch',
+  'lab_e2e_app_mode_not_ready','lab_e2e_app_mode_required',
+  'lab_ui_not_ready:endpoint_not_ready','lab_ui_not_ready:ui_target_not_ready',
+  'lab_ui_not_ready:app_mode_not_ready'
+]);
 let phase='startup';
+let scenarioFailurePhase=null;
+let cleanupFailurePhase=null;
 (async()=>{
   const {ORCHESTRATOR_TOOLS}=await import('../src/orchestrator-contract.mjs');
   phase='app_start';
@@ -13,6 +28,14 @@ let phase='startup';
   const ws=new WebSocket(tab.webSocketDebuggerUrl);
   let sequence=0;
   const pending=new Map();
+  let disposableApiKeyCleanupRequired=false;
+  let successReport=null;
+  const evaluate=expression=>new Promise((resolve,reject)=>{
+    const id=++sequence;
+    const timer=setTimeout(()=>{pending.delete(id);reject(Error('app_evaluation_timeout'));},20000);
+    pending.set(id,{resolve,reject,timer});
+    ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
+  });
   try {
     await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=()=>reject(Error('socket_unavailable'));});
     ws.onmessage=event=>{
@@ -22,12 +45,6 @@ let phase='startup';
       if(message.error||message.result?.exceptionDetails)waiter.reject(Error('app_evaluation_failed'));
       else waiter.resolve(message.result?.result?.value);
     };
-    const evaluate=expression=>new Promise((resolve,reject)=>{
-      const id=++sequence;
-      const timer=setTimeout(()=>{pending.delete(id);reject(Error('app_evaluation_timeout'));},20000);
-      pending.set(id,{resolve,reject,timer});
-      ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression,awaitPromise:true,returnByValue:true}}));
-    });
     phase='app_ready';
     await waitForLabAppMode(evaluate);
     const proof=await evaluate('window.ordax.labBuildProof()');
@@ -53,7 +70,7 @@ let phase='startup';
       document.getElementById('newProjectForm').requestSubmit();
     })()`);
     const wait=expression=>evaluate(`(async()=>{for(let n=0;n<80;n++){
-      const value=(${expression});if(value)return value;
+      const value=await (${expression});if(value)return value;
       await new Promise(r=>setTimeout(r,100));}throw Error('ui_condition_timeout');})()`);
     phase='mission_project_selected';
     const projectId=await wait("document.getElementById('projectSelect').value");
@@ -95,6 +112,7 @@ let phase='startup';
     if(!coordinatorLayout.focus||!coordinatorLayout.rail||!coordinatorLayout.selected)throw Error('coordinator_workspace_layout_missing');
     phase='api_key_save';
     // Disposable credential fixture only: activation must not call the API.
+    disposableApiKeyCleanupRequired=true;
     await evaluate(`window.ordax.supervisorSaveKey('gsk_'+ 'A'.repeat(40))`);
     phase='api_key_save_status';
     const credential=await evaluate(`window.ordax.supervisorStatus()`);
@@ -111,11 +129,14 @@ let phase='startup';
     phase='api_disable_request';
     await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
     phase='api_disable_state';
-    await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='false' && document.getElementById('coordinatorSend').disabled");
+    // Disabling Groq must turn off analysis/preparation while leaving the
+    // central composer available through the primary GPT Web executor.
+    await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='false' && !document.getElementById('coordinatorSend').disabled && document.getElementById('analyzeWorks').disabled && document.getElementById('prepareWork').disabled && document.getElementById('orchestrationConnection').textContent.includes('Groq está desligado.')");
     phase='api_key_remove';
     await evaluate(`window.ordax.supervisorRemoveKey()`);
     phase='api_key_remove_state';
-    await wait("document.getElementById('coordinatorApiEnable').disabled");
+    await wait("document.getElementById('coordinatorApiEnable').disabled && (async()=>!(await window.ordax.supervisorStatus()).keySaved)()");
+    disposableApiKeyCleanupRequired=false;
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
       const p=document.getElementById('projectSelect').value;
@@ -146,17 +167,19 @@ let phase='startup';
     if(summary.projectId!==projectId||summary.toolCount!==ORCHESTRATOR_TOOLS.length||!summary.continuationAvailable||!summary.commandSucceeded||
       !summary.idempotent||summary.workCount!==2||!summary.missionDraftPreserved||summary.coordinatorMessages!==0)
       throw Error('native_mcp_state_mismatch');
-    phase='work_navigation';
+    phase='work_list_refresh';
     await wait("[...document.querySelectorAll('#tasks .task strong')].some(n=>n.textContent==='Frente criada pelo MCP')");
-    await evaluate(`document.querySelector('#tasks .task').click()`);
-    await wait("!document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('orchestrationPanel').hidden");
+    phase='work_open';
+    await evaluate(`([...document.querySelectorAll('#tasks .task')].find(row=>row.querySelector('strong')?.textContent==='Frente criada pelo MCP')?.click())`);
+    await wait("!document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('orchestrationPanel').hidden && document.getElementById('taskTitle').textContent==='Frente criada pelo MCP'");
+    phase='coordinator_reopen';
     await evaluate(`document.querySelector('#orchestratorNavList button.active').click()`);
     await wait("!document.getElementById('orchestrationPanel').hidden && document.getElementById('taskPanel').classList.contains('hidden')");
     phase='scoped_work_create';
     await evaluate(`document.getElementById('newScopedWorkButton').click()`);
     await wait("document.getElementById('newScopedWorkDetails').open");
     await evaluate(`(()=>{document.getElementById('scopedWorkTitle').value='Frente criada pela interface';document.getElementById('newScopedWorkForm').requestSubmit()})()`);
-    await wait("document.querySelectorAll('#orchestratorWorks .work-card').length===2 && !document.getElementById('taskPanel').classList.contains('hidden')");
+    await wait("document.querySelectorAll('#orchestratorWorks .work-card').length===2 && !document.getElementById('taskPanel').classList.contains('hidden') && document.getElementById('taskTitle').textContent==='Frente criada pela interface'");
     const layoutResult=await evaluate(`(()=>({openedWork:document.getElementById('taskTitle').textContent,
       projectItems:document.querySelectorAll('#projectNavList button').length,
       orchestratorItems:document.querySelectorAll('#orchestratorNavList button').length,
@@ -166,7 +189,7 @@ let phase='startup';
     if(layoutResult.openedWork!=='Frente criada pela interface'||layoutResult.conversationCards!==2||
       layoutResult.analysisDisabled!==true)
       throw Error('work_conversation_layout_failed');
-    console.log(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
+    successReport={schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
       appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
       projectFormVerified:true,missionDraftPersisted:true,missionStartBlockedWithoutSession:true,
       coordinatorFormVerified:true,workVisibleInApp:true,
@@ -174,11 +197,46 @@ let phase='startup';
       projectWorkspaceFailClosedVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,
       idempotencyVerified:true,providerMessagesSent:0,coordinatorApiCalls:0,
-      externalMcpConnected:false,autonomousExecution:false}));
+      externalMcpConnected:false,autonomousExecution:false};
+  }catch(error){
+    scenarioFailurePhase=phase;
+    throw error;
   }finally{
-    for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
-    ws.close();
+    try {
+      if(disposableApiKeyCleanupRequired) {
+        phase='test_credential_cleanup';
+        await evaluate(`window.ordax.supervisorRemoveKey()`);
+        const status=await evaluate(`window.ordax.supervisorStatus()`);
+        if(status?.keySaved!==false)throw Error('test_api_key_cleanup_failed');
+      }
+    } catch(error) {
+      cleanupFailurePhase=phase;
+      throw error;
+    } finally {
+      try {
+        phase='pending_request_cleanup';
+        for(const item of pending.values()){clearTimeout(item.timer);item.reject(Error('socket_closed'));}
+      } catch(error) {
+        cleanupFailurePhase=phase;
+        throw error;
+      } finally {
+        phase='cdp_websocket_cleanup';
+        try{await closeCdpWebSocket(ws);}
+        catch(error){cleanupFailurePhase=phase;throw error;}
+      }
+    }
   }
-})().catch(()=>{console.error(JSON.stringify({schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,
-  phase,reason:'app_orchestration_scenario_failed'}));process.exitCode=2;});
+  console.log(JSON.stringify(successReport));
+})().catch(error=>{
+  const cleanupReasons=new Set(['cdp_websocket_close_unavailable','cdp_websocket_close_timeout_invalid',
+    'cdp_websocket_close_invalid_state','cdp_websocket_close_timeout','cdp_websocket_close_failed']);
+  const reportedPhase=scenarioFailurePhase||cleanupFailurePhase||phase;
+  const reason=scenarioFailurePhase?(scenarioReasons.has(error?.message)?error.message:'app_orchestration_scenario_failed')
+    :cleanupFailurePhase?(cleanupReasons.has(error?.message)?error.message:'app_orchestration_cleanup_failed')
+    :'app_orchestration_scenario_failed';
+  const report={schema:'ordax.lab.orchestration-app-e2e.v1',ok:false,phase:reportedPhase,reason};
+  if(cleanupFailurePhase)report.cleanupPhase=cleanupFailurePhase;
+  console.error(JSON.stringify(report));
+  process.exitCode=2;
+});
 
