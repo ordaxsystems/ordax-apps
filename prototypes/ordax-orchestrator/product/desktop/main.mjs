@@ -436,6 +436,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       throw commitError;
     }
     const postCommitNavigation=await observePostCommitNavigation({worker,chatUrl:confirmedChatUrl});
+    if(postCommitNavigation.navigated===false)
+      emitRendererEvent('ordax:task:provider-navigation',{
+        taskId,provider_navigation:'post_commit_failed',
+        provider_navigation_reason:postCommitNavigation.reason
+      });
     return { result: { ...result, runId, assets,
       ...(postCommitNavigation.navigated===false?{postCommitNavigation}:{}) },
       task:getTaskView(taskId) };
