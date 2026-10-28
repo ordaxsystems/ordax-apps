@@ -17,6 +17,7 @@ import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
 import { projectCoordinatorContinuationEnabled } from '../src/project-coordinator-continuation.mjs';
+import { observePostCommitNavigation } from '../src/provider-post-commit-navigation.mjs';
 
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -434,8 +435,10 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       }
       throw commitError;
     }
-    if (confirmedChatUrl) await worker.showConversation(confirmedChatUrl).catch(() => {});
-    return { result: { ...result, runId, assets }, task:getTaskView(taskId) };
+    const postCommitNavigation=await observePostCommitNavigation({worker,chatUrl:confirmedChatUrl});
+    return { result: { ...result, runId, assets,
+      ...(postCommitNavigation.navigated===false?{postCommitNavigation}:{}) },
+      task:getTaskView(taskId) };
   } catch (error) {
     // Persist the last pending observed text, never as a confirmed message.
     provisional.flush();
