@@ -165,3 +165,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - Quando existe um rascunho de novo sabor, o formulário oferece “Descartar rascunho”. A ação limpa nome, descrição e preços temporários, mantém o catálogo salvo inalterado e devolve o foco ao campo de nome.
 - O controle só aparece depois de começar a preencher e fica desabilitado enquanto há gravação em andamento. Não envia comando Food nem altera o cardápio.
 - Verificação: suíte Food **195/195**; Chrome **31/31**, incluindo descarte após rerender, limpeza dos campos, foco e contagem de sabores persistidos; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.
+
+### Pré-preparo — planejar pizzas de múltiplos sabores (2026-10-27)
+
+- O lote agora é montado por combinações e quantidade, respeitando o limite configurado de sabores por pizza. O usuário pode acrescentar/remover combinações e sabores, distinguir fichas pendentes e indisponíveis, e o resultado agrupa combinações equivalentes e mostra a composição de cada grupo.
+- Quantidades e seleções permanecem no rascunho da interface ao alterar campos, adicionar ou remover linhas. O cálculo reutiliza a regra de consumo Food já aplicada aos pedidos, com divisão igual entre os sabores selecionados; não grava estado Food, Inventory ou movimentação de estoque.
+- Verificação: suíte Food **196/196**; Chrome **31/31**, incluindo duas composições (uma com quatro sabores) e largura sem overflow em 390×844, 320×568 e 844×390; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.

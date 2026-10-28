@@ -30,7 +30,8 @@ function renderMenu(snapshot, overrides = {}) {
     flavorForm: () => "<form id=flavor-form></form>",
     emptyState: () => "",
     batchPlanSize: "small",
-    batchPlanQuantities: {},
+    batchPlanLines: [{ id: "batch-line-1", flavorIds: ["ng-calabresa"], quantity: "0" }],
+    maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza,
     batchPlanResult: null,
     batchPlanError: null,
     ...overrides,
@@ -41,14 +42,18 @@ test("batch planner consolidates ingredient quantities from the current recipes"
   const state = createSeedFoodState(Date.parse("2026-10-27T12:00:00.000Z"));
   const plan = calculatePizzeriaBatchConsumption(state, {
     size: "small",
-    flavorQuantities: [
-      { flavorId: "ng-calabresa", quantity: 2 },
-      { flavorId: "ng-marguerita", quantity: 3 },
+    pizzaLines: [
+      { flavorIds: ["ng-calabresa"], quantity: 2 },
+      { flavorIds: ["ng-marguerita"], quantity: 3 },
     ],
   });
 
   assert.equal(plan.sizeId, "small");
   assert.equal(plan.totalPizzas, 5);
+  assert.deepEqual(plan.compositions, [
+    { flavorNames: ["Calabresa"], quantity: 2 },
+    { flavorNames: ["Marguerita"], quantity: 3 },
+  ]);
   assert.deepEqual(quantitiesByIngredient(plan), {
     farinha: 600,
     molho: 300,
@@ -62,42 +67,88 @@ test("batch planner consolidates ingredient quantities from the current recipes"
   assert.equal(Object.isFrozen(plan.ingredients), true);
 });
 
-test("batch planner rejects empty, duplicate, oversized and unavailable production requests", () => {
+test("batch planner calculates a four-flavor composition with the Food portion rule", () => {
   const state = createSeedFoodState(Date.parse("2026-10-27T12:00:00.000Z"));
-  const oneFlavor = [{ flavorId: "ng-calabresa", quantity: 1 }];
-  assert.throws(() => calculatePizzeriaBatchConsumption(state, { size: "small", flavorQuantities: [] }), /ao menos uma pizza/);
+  const plan = calculatePizzeriaBatchConsumption(state, {
+    size: "small",
+    pizzaLines: [{
+      flavorIds: ["ng-calabresa", "ng-frango-catupiry", "ng-marguerita", "ng-pepperoni"],
+      quantity: 2,
+    }],
+  });
+
+  assert.equal(plan.totalPizzas, 2);
+  assert.deepEqual(plan.compositions, [{
+    flavorNames: ["Calabresa", "Frango com Catupiry", "Marguerita", "Pepperoni"],
+    quantity: 2,
+  }]);
+  assert.equal(Object.isFrozen(plan.compositions), true);
+  assert.equal(Object.isFrozen(plan.compositions[0].flavorNames), true);
+  assert.equal(quantitiesByIngredient(plan).farinha, 240);
+  const grouped = calculatePizzeriaBatchConsumption(state, {
+    size: "small",
+    pizzaLines: [
+      { flavorIds: ["ng-calabresa", "ng-marguerita"], quantity: 1 },
+      { flavorIds: ["ng-marguerita", "ng-calabresa"], quantity: 2 },
+    ],
+  });
+  assert.deepEqual(grouped.compositions, [{ flavorNames: ["Calabresa", "Marguerita"], quantity: 3 }]);
+});
+
+test("batch planner validates per-pizza compositions, total volume and recipe availability", () => {
+  const state = createSeedFoodState(Date.parse("2026-10-27T12:00:00.000Z"));
+  const oneFlavor = [{ flavorIds: ["ng-calabresa"], quantity: 1 }];
+  assert.throws(() => calculatePizzeriaBatchConsumption(state, { size: "small", pizzaLines: [] }), /ao menos uma pizza/);
   assert.throws(() => calculatePizzeriaBatchConsumption(state, {
     size: "small",
-    flavorQuantities: [...oneFlavor, ...oneFlavor],
-  }), /uma única vez/);
+    pizzaLines: [{ flavorIds: [], quantity: 1 }],
+  }), /ao menos um sabor/);
   assert.throws(() => calculatePizzeriaBatchConsumption(state, {
     size: "small",
-    flavorQuantities: [{ flavorId: "ng-calabresa", quantity: 10001 }],
+    pizzaLines: [{ flavorIds: ["ng-calabresa", "ng-calabresa"], quantity: 1 }],
+  }), /sabores diferentes/);
+  assert.throws(() => calculatePizzeriaBatchConsumption(state, {
+    size: "small",
+    pizzaLines: [{ flavorIds: ["ng-calabresa", "ng-frango-catupiry", "ng-marguerita", "ng-pepperoni", "ng-portuguesa"], quantity: 1 }],
+  }), /um a 4 sabores/);
+  assert.throws(() => calculatePizzeriaBatchConsumption(state, {
+    size: "small",
+    pizzaLines: [{ flavorIds: ["ng-calabresa"], quantity: 10001 }],
   }), /quantidades inteiras/);
-  assert.throws(() => calculatePizzeriaBatchConsumption(state, { size: "unknown", flavorQuantities: oneFlavor }), /tamanho ativo/);
+  assert.throws(() => calculatePizzeriaBatchConsumption(state, {
+    size: "small",
+    pizzaLines: [...oneFlavor, { flavorIds: ["ng-marguerita"], quantity: 10000 }],
+  }), /no máximo 10\.000 pizzas/);
+  assert.throws(() => calculatePizzeriaBatchConsumption(state, { size: "unknown", pizzaLines: oneFlavor }), /tamanho ativo/);
 
   const missingRecipe = {
     ...state,
     recipes: state.recipes.filter(({ flavorId }) => flavorId !== "ng-calabresa"),
   };
-  assert.throws(() => calculatePizzeriaBatchConsumption(missingRecipe, { size: "small", flavorQuantities: oneFlavor }), /ficha técnica/);
+  assert.throws(() => calculatePizzeriaBatchConsumption(missingRecipe, { size: "small", pizzaLines: oneFlavor }), /ficha técnica/);
+  const unavailableFlavor = {
+    ...state,
+    flavors: state.flavors.map((flavor) => flavor.id === "ng-calabresa" ? { ...flavor, active: false } : flavor),
+  };
+  assert.throws(() => calculatePizzeriaBatchConsumption(unavailableFlavor, { size: "small", pizzaLines: oneFlavor }), /indisponível/);
 });
 
 test("menu displays the batch plan using recipe units without implying inventory writes", () => {
   const snapshot = createSeedFoodState(Date.parse("2026-10-27T12:00:00.000Z"));
   const batchPlanResult = calculatePizzeriaBatchConsumption(snapshot, {
     size: "small",
-    flavorQuantities: [{ flavorId: "ng-calabresa", quantity: 2 }],
+    pizzaLines: [{ flavorIds: ["ng-calabresa"], quantity: 2 }],
   });
   const html = renderMenu(snapshot, {
     recipeFlavorId: null,
-    batchPlanQuantities: { "ng-calabresa": 2 },
+    batchPlanLines: [{ id: "batch-line-1", flavorIds: ["ng-calabresa"], quantity: "2" }],
     batchPlanResult,
   });
 
   assert.match(html, /id="batch-plan-form"/);
   assert.match(html, /Planejar um lote/);
   assert.match(html, /2 pizzas pequena/);
+  assert.match(html, /2×<\/b><span>Calabresa<\/span>/);
   assert.match(html, /Farinha/);
   assert.match(html, /240 g/);
   assert.match(html, /não altera o estoque/);
@@ -112,7 +163,7 @@ test("batch planner keeps one contextual clear action before a result exists", (
   const html = renderMenu(snapshot);
 
   assert.equal((html.match(/data-action="clear-batch-plan"/g) ?? []).length, 1);
-  assert.match(html, /aria-label="Limpar quantidades do pré-preparo">Limpar quantidades/);
+  assert.match(html, /aria-label="Limpar combinações do pré-preparo">Limpar combinações/);
   assert.doesNotMatch(html, /Limpar lote/);
   assert.match(html, /aria-label="Indisponibilizar sabor Calabresa"/);
 });

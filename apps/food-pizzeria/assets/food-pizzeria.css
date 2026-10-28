@@ -1066,14 +1066,20 @@ dialog p { color: #a2a8af; }
 .batch-plan-panel form { display: grid; gap: 12px; }
 .batch-plan-controls { display: grid; grid-template-columns: minmax(150px, .45fr) minmax(0, 2fr); gap: 12px; }
 .batch-size-select { display: grid; align-content: start; gap: 6px; color: #a2a8af; font-size: 9px; }
-.batch-size-select select, .batch-plan-flavor input { width: 100%; min-width: 0; min-height: 36px; padding: 7px 9px; border: 1px solid #343940; border-radius: 7px; background: #22262a; color: #eef0f2; font-size: 11px; }
-.batch-plan-flavors { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 7px; }
-.batch-plan-flavor { display: grid; grid-template-columns: minmax(0, 1fr) 64px auto; align-items: center; gap: 6px; min-width: 0; padding: 8px; border: 1px solid #30353b; border-radius: 8px; background: #1b1f24; }
-.batch-plan-flavor > span { display: grid; min-width: 0; gap: 3px; }
-.batch-plan-flavor strong { overflow: hidden; color: #eef0f2; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.batch-plan-flavor small, .batch-plan-actions > small { color: #8f969e; font-size: 8px; }
-.batch-plan-flavor input { min-height: 32px; padding: 5px; text-align: center; }
-.batch-plan-flavor input:disabled { opacity: .48; }
+.batch-size-select select, .batch-plan-select select, .batch-plan-quantity input { width: 100%; min-width: 0; min-height: 36px; padding: 7px 9px; border: 1px solid #343940; border-radius: 7px; background: #22262a; color: #eef0f2; font-size: 11px; }
+.batch-plan-lines { display: grid; gap: 8px; }
+.batch-plan-line { display: grid; gap: 9px; min-width: 0; margin: 0; padding: 10px; border: 1px solid #30353b; border-radius: 8px; background: #1b1f24; }
+.batch-plan-line legend { padding: 0 5px; color: #d7dce1; font-size: 10px; font-weight: 700; }
+.batch-plan-selects { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px; }
+.batch-plan-select, .batch-plan-quantity { display: grid; min-width: 0; gap: 5px; color: #a2a8af; font-size: 9px; }
+.batch-plan-select select option:disabled { color: #737a82; }
+.batch-plan-line-footer { display: flex; align-items: end; justify-content: space-between; gap: 9px; }
+.batch-plan-quantity { width: min(100%, 180px); }
+.batch-plan-quantity input { min-height: 34px; padding: 5px 8px; text-align: center; }
+.batch-plan-line-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.batch-plan-line-actions .button, .batch-plan-row-actions .button { min-height: 36px; }
+.batch-plan-row-actions { display: flex; justify-content: flex-start; }
+.batch-plan-actions > small { color: #8f969e; font-size: 8px; }
 .batch-plan-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .batch-plan-actions > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .batch-plan-result { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid #30353b; }
@@ -1081,6 +1087,12 @@ dialog p { color: #a2a8af; }
 .batch-result-heading > div { display: grid; gap: 3px; }
 .batch-result-heading strong { color: #eef0f2; font-size: 12px; }
 .batch-result-heading span { color: #8f969e; font-size: 9px; }
+.batch-result-compositions { display: grid; gap: 6px; padding: 9px 10px; border: 1px solid #30353b; border-radius: 7px; background: #1b1f24; }
+.batch-result-compositions > strong { color: #aeb4ba; font-size: 9px; }
+.batch-result-compositions ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.batch-result-compositions li { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 7px; color: #eef0f2; font-size: 9px; }
+.batch-result-compositions li b { color: #c8a779; }
+.batch-result-compositions li span { min-width: 0; overflow-wrap: anywhere; }
 .batch-result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 6px; }
 .batch-result-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid #30353b; border-radius: 7px; background: #1b1f24; }
 .batch-result-item span { color: #aeb4ba; font-size: 9px; }
@@ -1133,7 +1145,12 @@ dialog p { color: #a2a8af; }
   .capability-pending { padding: 15px; }
   .batch-plan-panel { padding: 12px; }
   .batch-plan-controls { grid-template-columns: minmax(0, 1fr); }
-  .batch-plan-flavors { grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); }
+  .batch-plan-line-footer { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .batch-plan-quantity { width: 100%; max-width: none; }
+  .batch-plan-select select, .batch-plan-quantity input, .batch-size-select select { min-height: 44px; font-size: 16px; }
+  .batch-plan-line-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+  .batch-plan-line-actions .button, .batch-plan-row-actions .button { min-height: 44px; justify-content: center; }
+  .batch-plan-row-actions .button { width: 100%; }
   .batch-plan-actions { align-items: stretch; flex-direction: column; }
   .batch-plan-actions > div { width: 100%; }
   .batch-plan-actions button { flex: 1 1 auto; }

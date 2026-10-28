@@ -164,7 +164,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   let recipeDraftLines = [];
   const recipeDraftsByFlavorId = new Map();
   let batchPlanSize = null;
-  let batchPlanQuantities = {};
+  let batchPlanLines = null;
+  let batchPlanLineSequence = 0;
   let batchPlanRequested = false;
   let settingsSizesDraft = null;
   let settingsTablesDraft = null;
@@ -628,15 +629,16 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function menuPage() {
     const activeSizes = PIZZA_SIZES.filter(({ active }) => active);
     if (!activeSizes.some(({ id }) => id === batchPlanSize)) batchPlanSize = activeSizes[0]?.id ?? null;
+    if (batchPlanLines === null) batchPlanLines = [createBatchPlanLine()];
     let batchPlanResult = null;
     let batchPlanError = null;
     if (batchPlanRequested) {
       try {
         batchPlanResult = calculatePizzeriaBatchConsumption(snapshot, {
           size: batchPlanSize,
-          flavorQuantities: snapshot.flavors.filter(({ active }) => active).map(({ id }) => ({
-            flavorId: id,
-            quantity: batchPlanQuantities[id] ?? 0,
+          pizzaLines: batchPlanLines.map(({ flavorIds, quantity }) => ({
+            flavorIds: flavorIds.filter(Boolean),
+            quantity: Number(quantity),
           })),
         });
         const unknownIngredient = batchPlanResult.ingredients.find(({ ingredientId }) =>
@@ -649,10 +651,21 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return renderMenuPage({
       ...viewModel(),
       batchPlanSize,
-      batchPlanQuantities,
+      batchPlanLines,
+      maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza,
       batchPlanResult,
       batchPlanError,
     });
+  }
+
+  function createBatchPlanLine() {
+    const firstRecipeFlavor = snapshot?.flavors.find((flavor) => flavor.active
+      && snapshot.recipes.some((recipe) => recipe.flavorId === flavor.id));
+    return {
+      id: `batch-line-${++batchPlanLineSequence}`,
+      flavorIds: [firstRecipeFlavor?.id ?? ""],
+      quantity: "0",
+    };
   }
 
   function settingsPage() {
@@ -1506,9 +1519,46 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       if (nextIndex >= 0) focusRecipeLine(nextIndex);
       else root.querySelector('[data-action="add-recipe-line"]')?.focus({ preventScroll: true });
     } else if (action === "clear-batch-plan") {
-      batchPlanQuantities = {};
+      batchPlanLines = [createBatchPlanLine()];
       batchPlanRequested = false;
       render();
+      root.querySelector("[data-batch-flavor-selector]")?.focus({ preventScroll: true });
+    } else if (action === "add-batch-line") {
+      captureBatchPlanDraftFromForm(root.querySelector("#batch-plan-form"));
+      const line = createBatchPlanLine();
+      batchPlanLines.push(line);
+      batchPlanRequested = false;
+      render();
+      root.querySelector(`[name="${CSS.escape(`batch-${line.id}-flavor-0`)}"]`)?.focus({ preventScroll: true });
+    } else if (action === "remove-batch-line") {
+      captureBatchPlanDraftFromForm(root.querySelector("#batch-plan-form"));
+      const removedIndex = batchPlanLines.findIndex(({ id }) => id === target.dataset.batchLineId);
+      if (removedIndex < 0) return;
+      batchPlanLines.splice(removedIndex, 1);
+      batchPlanRequested = false;
+      render();
+      const nextLine = batchPlanLines[Math.min(removedIndex, batchPlanLines.length - 1)];
+      if (nextLine) root.querySelector(`[name="${CSS.escape(`batch-${nextLine.id}-flavor-0`)}"]`)?.focus({ preventScroll: true });
+      else root.querySelector('[data-action="add-batch-line"]')?.focus({ preventScroll: true });
+    } else if (action === "add-batch-flavor") {
+      captureBatchPlanDraftFromForm(root.querySelector("#batch-plan-form"));
+      const line = batchPlanLines.find(({ id }) => id === target.dataset.batchLineId);
+      if (!line || line.flavorIds.length >= snapshot.settings.maxFlavorsPerPizza) return;
+      const nextIndex = line.flavorIds.length;
+      line.flavorIds.push("");
+      batchPlanRequested = false;
+      render();
+      root.querySelector(`[name="${CSS.escape(`batch-${line.id}-flavor-${nextIndex}`)}"]`)?.focus({ preventScroll: true });
+    } else if (action === "remove-batch-flavor") {
+      captureBatchPlanDraftFromForm(root.querySelector("#batch-plan-form"));
+      const line = batchPlanLines.find(({ id }) => id === target.dataset.batchLineId);
+      const flavorIndex = Number(target.dataset.flavorIndex);
+      if (!line || !Number.isInteger(flavorIndex) || flavorIndex < 1 || flavorIndex >= line.flavorIds.length) return;
+      line.flavorIds.splice(flavorIndex, 1);
+      batchPlanRequested = false;
+      render();
+      const nextIndex = Math.min(flavorIndex, line.flavorIds.length - 1);
+      root.querySelector(`[name="${CSS.escape(`batch-${line.id}-flavor-${nextIndex}`)}"]`)?.focus({ preventScroll: true });
     } else if (action === "close-recipe-editor") {
       const closedFlavorId = recipeFlavorId;
       rememberRecipeDraft(closedFlavorId);
@@ -1559,12 +1609,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     if (kind === "batch-plan-form") {
       event.preventDefault();
-      const values = new FormData(form);
-      batchPlanSize = String(values.get("size") ?? batchPlanSize ?? "");
-      batchPlanQuantities = Object.fromEntries(snapshot.flavors.map(({ id }) => [
-        id,
-        Number(values.get(`batch-${id}`) ?? 0),
-      ]));
+      captureBatchPlanDraftFromForm(form);
       batchPlanRequested = true;
       render();
       return;
@@ -1713,6 +1758,19 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
   }
   
+  function captureBatchPlanDraftFromForm(form) {
+    if (!form || !batchPlanLines) return;
+    const values = new FormData(form);
+    batchPlanSize = String(values.get("size") ?? batchPlanSize ?? "");
+    batchPlanLines = batchPlanLines.map((line) => ({
+      ...line,
+      flavorIds: line.flavorIds.map((flavorId, index) => String(
+        values.get(`batch-${line.id}-flavor-${index}`) ?? flavorId,
+      )),
+      quantity: String(values.get(`batch-${line.id}-quantity`) ?? line.quantity ?? "0"),
+    }));
+  }
+
   function captureRecipeDraftFromForm(form) {
     if (!form || recipeDraftLines.length === 0) return;
     const values = new FormData(form);
@@ -1808,16 +1866,19 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       }
       return;
     }
-    if (event.target.closest("#batch-plan-form")) {
-      const form = event.target.closest("#batch-plan-form");
-      const values = new FormData(form);
-      batchPlanSize = String(values.get("size") ?? batchPlanSize ?? "");
-      batchPlanQuantities = Object.fromEntries(snapshot.flavors.map(({ id }) => [
-        id,
-        Number(values.get(`batch-${id}`) ?? 0),
-      ]));
+    const batchForm = event.target.closest("#batch-plan-form");
+    if (batchForm) {
+      const flavorSelectorName = event.type === "change" && event.target.matches("[data-batch-flavor-selector]")
+        ? event.target.name
+        : null;
+      captureBatchPlanDraftFromForm(batchForm);
       batchPlanRequested = false;
       root.querySelector("#batch-plan-result")?.remove();
+      if (flavorSelectorName) {
+        render();
+        root.querySelector(`[name="${CSS.escape(flavorSelectorName)}"]`)?.focus({ preventScroll: true });
+      }
+      return;
     } else if (event.type === "change" && event.target.closest("#kitchen-layout-form")
       && ["screenCount", "stepCount"].includes(event.target.name)) {
       const form = event.target.closest("#kitchen-layout-form");
@@ -1922,6 +1983,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     cart = [];
     flavorDraftsById.clear();
     recipeDraftsByFlavorId.clear();
+    batchPlanLines = null;
+    batchPlanLineSequence = 0;
+    batchPlanRequested = false;
     snapshot = null;
     notice = null;
   }

@@ -326,22 +326,65 @@ try {
       const action = button.textContent.trim();
       return button.getAttribute("aria-label") === `${action} sabor ${flavor}`;
     }), "Cada ação de disponibilidade deve identificar o sabor correspondente.");
-    const batchInput = root.querySelector('[name="batch-ng-calabresa"]');
-    ensure(batchInput && root.querySelectorAll('[data-action="clear-batch-plan"]').length === 1,
-      "O pré-preparo deve oferecer somente uma ação para limpar quantidades.");
-    batchInput.value = "2";
-    batchInput.dispatchEvent(new Event("input", { bubbles: true }));
+    const batchForm = root.querySelector("#batch-plan-form");
+    const firstBatchLine = root.querySelector(".batch-plan-line");
+    const firstBatchLineId = firstBatchLine?.dataset.batchLineId;
+    ensure(batchForm && firstBatchLineId && root.querySelectorAll('[data-action="clear-batch-plan"]').length === 1,
+      "O pré-preparo deve começar com uma combinação e somente uma ação para limpar.");
+    const setBatchFlavor = (lineId, flavorIndex, flavorId) => {
+      const selector = root.querySelector(`[data-batch-line-id="${lineId}"][data-batch-flavor-index="${flavorIndex}"]`);
+      ensure(selector, `O seletor ${flavorIndex + 1} da combinação ${lineId} não apareceu.`);
+      selector.value = flavorId;
+      selector.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const addBatchFlavor = async (lineId, flavorIndex) => {
+      root.querySelector(`[data-action="add-batch-flavor"][data-batch-line-id="${lineId}"]`)?.click();
+      await eventually(() => root.querySelector(`[data-batch-line-id="${lineId}"][data-batch-flavor-index="${flavorIndex}"]`),
+        `Adicionar o sabor ${flavorIndex + 1} não criou um seletor na combinação.`);
+    };
+    setBatchFlavor(firstBatchLineId, 0, "ng-calabresa");
+    for (const [flavorIndex, flavorId] of ["ng-frango-catupiry", "ng-marguerita", "ng-pepperoni"].entries()) {
+      await addBatchFlavor(firstBatchLineId, flavorIndex + 1);
+      setBatchFlavor(firstBatchLineId, flavorIndex + 1, flavorId);
+    }
+    const firstQuantity = root.querySelector(`[name="batch-${firstBatchLineId}-quantity"]`);
+    firstQuantity.value = "2";
+    firstQuantity.dispatchEvent(new Event("input", { bubbles: true }));
+    root.querySelector('[data-action="add-batch-line"]')?.click();
+    await eventually(() => root.querySelectorAll(".batch-plan-line").length === 2,
+      "Adicionar combinação não criou a segunda linha do lote.");
+    const secondBatchLineId = root.querySelectorAll(".batch-plan-line")[1].dataset.batchLineId;
+    await addBatchFlavor(secondBatchLineId, 1);
+    setBatchFlavor(secondBatchLineId, 1, "ng-pepperoni");
+    const secondQuantity = root.querySelector(`[name="batch-${secondBatchLineId}-quantity"]`);
+    secondQuantity.value = "1";
+    secondQuantity.dispatchEvent(new Event("input", { bubbles: true }));
+    if (["phone-portrait", "small-portrait", "phone-landscape"].includes(parameters.get("__viewport"))) {
+      const batchPanel = root.querySelector(".batch-plan-panel");
+      const batchLine = root.querySelector(".batch-plan-line");
+      ensure(batchPanel.scrollWidth <= batchPanel.clientWidth + 1
+        && batchLine.scrollWidth <= batchLine.clientWidth + 1,
+      `As combinações do lote excedem a largura no viewport ${parameters.get("__viewport")}.`);
+    }
     root.querySelector("#batch-plan-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     await eventually(() => root.querySelector("#batch-plan-result"),
       "Calcular insumos não apresentou o resultado do lote.");
+    const batchResultText = root.querySelector("#batch-plan-result")?.textContent.replace(/\s+/g, " ") ?? "";
+    ensure(batchResultText.includes("3 pizzas pequena")
+      && batchResultText.includes("2×Calabresa + Frango com Catupiry + Marguerita + Pepperoni")
+      && batchResultText.includes("1×Calabresa + Pepperoni"),
+    "O resultado deve discriminar duas composições, incluindo pizza de quatro sabores.");
     ensure(root.querySelectorAll('[data-action="clear-batch-plan"]').length === 1
       && root.querySelector('[data-action="clear-batch-plan"]')?.getAttribute("aria-label")
         === "Limpar resultado do pré-preparo",
     "O resultado não deve duplicar a ação de limpar e deve descrevê-la para leitores de tela.");
     root.querySelector('[data-action="clear-batch-plan"]').click();
     await eventually(() => !root.querySelector("#batch-plan-result")
-      && root.querySelector('[name="batch-ng-calabresa"]')?.value === "0",
+      && root.querySelectorAll(".batch-plan-line").length === 1
+      && root.querySelector(".batch-plan-line input[type=number]")?.value === "0",
     "Limpar o lote não restaurou os campos do pré-preparo.");
+    ensure(root.activeElement?.matches("[data-batch-flavor-selector]") === true,
+      "Limpar o lote deveria devolver o foco à primeira combinação.");
 
     root.querySelector('[data-action="edit-recipe"][data-flavor-id="ng-calabresa"]')?.click();
     await eventually(() => root.querySelector("#recipe-editor .recipe-line"),

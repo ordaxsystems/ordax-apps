@@ -1058,43 +1058,55 @@ export function calculatePizzeriaOrderConsumption(stateValue, orderId) {
   return order.consumptionSnapshot;
 }
 
-export function calculatePizzeriaBatchConsumption(stateValue, { size, flavorQuantities } = {}) {
+export function calculatePizzeriaBatchConsumption(stateValue, { size, pizzaLines } = {}) {
   const state = validateFoodPizzeriaState(stateValue);
   if (!state.settings) throw new Error("Configure a pizzaria antes de planejar um lote.");
   const selectedSize = state.settings.pizzaSizes.find((entry) => entry.id === size && entry.active);
   if (!selectedSize) throw new TypeError("Escolha um tamanho ativo para planejar o lote.");
-  if (!Array.isArray(flavorQuantities) || flavorQuantities.length > state.flavors.length) {
-    throw new TypeError("Informe quantidades válidas por sabor.");
+  if (!Array.isArray(pizzaLines) || pizzaLines.length > MAX_BATCH_PIZZAS) {
+    throw new TypeError("Informe combinações válidas para o lote.");
   }
 
-  const seenFlavorIds = new Set();
   const items = [];
+  const compositionTotals = new Map();
   let totalPizzas = 0;
-  for (const raw of flavorQuantities) {
-    const selection = exactObject(raw, ["flavorId", "quantity"], "Quantidade do lote");
-    const flavorId = identifier(selection.flavorId, "Sabor do lote");
-    if (seenFlavorIds.has(flavorId)) throw new TypeError("Cada sabor pode aparecer uma única vez no planejamento.");
-    seenFlavorIds.add(flavorId);
-    if (!Number.isSafeInteger(selection.quantity) || selection.quantity < 0 || selection.quantity > MAX_BATCH_PIZZAS) {
+  for (const raw of pizzaLines) {
+    const line = exactObject(raw, ["flavorIds", "quantity"], "Combinação do lote");
+    if (!Array.isArray(line.flavorIds) || line.flavorIds.length > state.settings.maxFlavorsPerPizza) {
+      throw new TypeError(`Cada pizza pode ter de um a ${state.settings.maxFlavorsPerPizza} sabores.`);
+    }
+    if (!Number.isSafeInteger(line.quantity) || line.quantity < 0 || line.quantity > MAX_BATCH_PIZZAS) {
       throw new TypeError(`Use quantidades inteiras entre 0 e ${MAX_BATCH_PIZZAS.toLocaleString("pt-BR")} pizzas.`);
     }
-    const flavor = state.flavors.find((entry) => entry.id === flavorId);
-    if (!flavor) throw new Error("O sabor selecionado não existe mais no cardápio.");
-    if (selection.quantity === 0) continue;
-    if (!flavor.active) throw new Error(`${flavor.name} está indisponível no cardápio.`);
-    if (!state.recipes.some((recipe) => recipe.flavorId === flavorId)) {
-      throw new Error(`Cadastre a ficha técnica de ${flavor.name} antes de planejar esse lote.`);
+    if (line.quantity === 0) continue;
+    if (line.flavorIds.length === 0) throw new TypeError("Escolha ao menos um sabor para cada combinação com quantidade.");
+    const flavorIds = line.flavorIds.map((flavorId) => identifier(flavorId, "Sabor da combinação"));
+    if (new Set(flavorIds).size !== flavorIds.length) {
+      throw new TypeError("Escolha sabores diferentes dentro da mesma pizza.");
     }
-    totalPizzas += selection.quantity;
+    const flavors = flavorIds.map((flavorId) => {
+      const flavor = state.flavors.find((entry) => entry.id === flavorId);
+      if (!flavor) throw new Error("Um sabor da combinação não existe mais no cardápio.");
+      if (!flavor.active) throw new Error(`${flavor.name} está indisponível no cardápio.`);
+      if (!state.recipes.some((recipe) => recipe.flavorId === flavorId)) {
+        throw new Error(`Cadastre a ficha técnica de ${flavor.name} antes de planejar esse lote.`);
+      }
+      return { id: flavor.id, name: flavor.name };
+    });
+    totalPizzas += line.quantity;
     if (totalPizzas > MAX_BATCH_PIZZAS) {
       throw new TypeError(`O lote pode ter no máximo ${MAX_BATCH_PIZZAS.toLocaleString("pt-BR")} pizzas.`);
     }
     items.push({
       type: "pizza",
       size: selectedSize.id,
-      quantity: selection.quantity,
-      flavors: [{ id: flavor.id, name: flavor.name }],
+      quantity: line.quantity,
+      flavors,
     });
+    const key = [...flavorIds].sort().join("\u0000");
+    const composition = compositionTotals.get(key);
+    if (composition) composition.quantity += line.quantity;
+    else compositionTotals.set(key, { flavorNames: flavors.map(({ name }) => name), quantity: line.quantity });
   }
 
   if (totalPizzas === 0) throw new TypeError("Informe ao menos uma pizza para calcular os insumos do lote.");
@@ -1102,6 +1114,10 @@ export function calculatePizzeriaBatchConsumption(stateValue, { size, flavorQuan
   return Object.freeze({
     sizeId: selectedSize.id,
     totalPizzas,
+    compositions: Object.freeze([...compositionTotals.values()].map((composition) => Object.freeze({
+      flavorNames: Object.freeze([...composition.flavorNames]),
+      quantity: composition.quantity,
+    }))),
     ingredients: Object.freeze(ingredients.map((ingredient) => Object.freeze({ ...ingredient }))),
   });
 }
