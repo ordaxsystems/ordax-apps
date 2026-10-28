@@ -177,3 +177,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - Na tela de um pizzaiolo, a ação curta passa de “Iniciar” para “Iniciar preparo”, deixando claro o trabalho que começa. Os rótulos acessíveis de iniciar, concluir e passar a fila incluem também a referência do pedido em foco; os botões permanecem curtos para toque.
 - A passagem continua mantendo a etapa do pedido e o posicionamento imediato após o próximo ticket conforme a regra existente; nenhum pedido ou fluxo é alterado por este ajuste de apresentação.
 - Verificação: suíte Food **196/196**; prova Chrome em **31/31 configurações**, incluindo o rótulo “Iniciar preparo” e referências do pedido nos nomes acessíveis de iniciar e passar a fila; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.
+
+### KDS — identificar as ações dos links por aparelho (2026-10-27)
+
+- Os controles repetidos de abrir e copiar agora anunciam o número da tela, por exemplo “Abrir tela 2 em nova aba” e “Copiar link da tela 2”. Os rótulos visíveis continuam compactos, mas cada posto é distinguível por leitor de tela e automação.
+- A prova do fluxo de configuração confirma as ações identificadas para cada tela depois de agrupar quatro etapas em dois aparelhos. Os links continuam sendo rotas diretas da prévia local; a fila compartilhada entre aparelhos depende do contrato Food de produção em tempo real.
+- Verificação: suíte Food **196/196**; prova Chrome em **31/31 configurações**, incluindo os dois nomes acessíveis em cada tela; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.

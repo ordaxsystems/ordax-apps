@@ -741,6 +741,14 @@ try {
     ensure(screenLabels[0] === "Abrir massa · Montagem"
       && screenLabels[1] === "Forno · Finalização e embalagem",
     "Os links não refletem as funções agrupadas por tela: " + screenLabels.join(" / ") + ".");
+    const screenActions = [...root.querySelectorAll(".kitchen-display-row")];
+    ensure(screenActions.length === 2 && screenActions.every((row, index) => {
+      const screenNumber = String(index + 1);
+      return row.querySelector(".kitchen-open-display")?.getAttribute("aria-label")
+          === `Abrir tela ${screenNumber} em nova aba`
+        && row.querySelector('[data-action="copy-kitchen-link"]')?.getAttribute("aria-label")
+          === `Copiar link da tela ${screenNumber}`;
+    }), "Cada aparelho precisa ter ações de abrir e copiar identificadas pelo número da tela.");
     const configureQueueMode = parameters.get("__configure_queue_mode");
     if (configureQueueMode) {
       ensure(["by-order", "by-stage"].includes(configureQueueMode),

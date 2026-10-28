@@ -165,6 +165,10 @@ test("workflow settings edit business steps and create a direct link for every s
   assert.match(page, /<strong>Tela 1<\/strong><span>Abrir massa<\/span>/);
   assert.match(page, /<strong>Tela 4<\/strong><span>Finalização e embalagem<\/span>/);
   assert.match(page, /data-action="copy-kitchen-link"/);
+  assert.match(page, /aria-label="Abrir tela 1 em nova aba"/);
+  assert.match(page, /aria-label="Copiar link da tela 1"/);
+  assert.match(page, /aria-label="Abrir tela 4 em nova aba"/);
+  assert.match(page, /aria-label="Copiar link da tela 4"/);
   assert.match(page, /integração Food de produção em tempo real/);
   assert.match(page, /data-action="move-kitchen-step"/);
   assert.match(page, /O KDS não cancela pedidos/);
