@@ -69,6 +69,8 @@ const scenarios = Object.freeze([
   }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true } },
   { presentation: "embedded-preview", view: "orders" },
   { presentation: "embedded-preview", view: "delivery", extra: { __verify_pickup_handoff: "1" }, resetPreviewStorage: true },
+  { presentation: "embedded-preview", view: "delivery", extra: { __verify_pickup_handoff: "1", __viewport: "phone-portrait" }, viewport: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }, resetPreviewStorage: true },
+  { presentation: "embedded-preview", view: "delivery", extra: { __verify_pickup_handoff: "1", __viewport: "small-portrait" }, viewport: { width: 320, height: 568, deviceScaleFactor: 1, mobile: true }, resetPreviewStorage: true },
   { presentation: "embedded-preview", view: "tables" },
 ]);
 

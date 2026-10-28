@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { telephoneHref } from "../src/ui/contact-links.mjs";
+import { telephoneHref, whatsappHref } from "../src/ui/contact-links.mjs";
 import { renderDeliveryPage } from "../src/ui/views/delivery.mjs";
 
 function renderDelivery(orders) {
@@ -9,10 +9,12 @@ function renderDelivery(orders) {
     snapshot: { orders },
     sectionHeader: (_eyebrow, title, description, actions = "") => `<header><h1>${title}</h1><p>${description}</p>${actions}</header>`,
     statCard: (title, count) => `<div>${title}: ${count}</div>`,
-    renderOrderCard: (order, { allowCancel = false, allowAdvance = false, showDeliveryCall = false } = {}) => {
+    renderOrderCard: (order, { allowCancel = false, allowAdvance = false, showDeliveryCall = false, customerUpdate = null } = {}) => {
       const deliveryCallHref = showDeliveryCall && order.channel === "delivery" && order.status === "ready" ? telephoneHref(order.phone) : null;
       const deliveryCallAction = deliveryCallHref ? `<a href="tel:${deliveryCallHref}" aria-label="Ligar para ${order.customerName} do pedido #${order.id}">Ligar</a>` : "";
-      return `<article data-order-id="${order.id}" data-can-cancel="${allowCancel}" data-can-advance="${allowAdvance}" data-show-delivery-call="${Boolean(deliveryCallAction)}">${deliveryCallAction}${allowCancel ? "Cancelar" : allowAdvance ? "Avançar pedido" : ""}</article>`;
+      const customerUpdateHref = customerUpdate ? whatsappHref(order.phone, customerUpdate.message) : null;
+      const customerUpdateAction = customerUpdateHref ? `<a href="${customerUpdateHref}" data-customer-message="${customerUpdate.message}">Avisar cliente</a>` : "";
+      return `<article data-order-id="${order.id}" data-can-cancel="${allowCancel}" data-can-advance="${allowAdvance}" data-show-delivery-call="${Boolean(deliveryCallAction)}" data-show-customer-update="${Boolean(customerUpdateAction)}">${deliveryCallAction}${customerUpdateAction}${allowCancel ? "Cancelar" : allowAdvance ? "Avançar pedido" : ""}</article>`;
     },
     emptyState: ({ title }) => `<div>${title}</div>`,
     iconSvg: () => "icon",
@@ -24,10 +26,10 @@ function renderDelivery(orders) {
 
 test("Expedição separa despacho de entrega e entrega ao cliente em retirada, balcão e salão", () => {
   const html = renderDelivery([
-    { id: "delivery-ready-newer", channel: "delivery", status: "ready", customerName: "Ana", address: "Rua A", updatedAt: "2026-10-27T10:20:00.000Z" },
-    { id: "delivery-ready-older", channel: "delivery", status: "ready", customerName: "Bela", address: "Rua AA", updatedAt: "2026-10-27T10:00:00.000Z" },
-    { id: "route", channel: "delivery", status: "out-for-delivery", customerName: "Bia", address: "Rua B", updatedAt: "2026-10-27T10:10:00.000Z" },
-    { id: "pickup", channel: "pickup", status: "ready", customerName: "Caio", address: "", updatedAt: "2026-10-27T10:20:00.000Z" },
+    { id: "delivery-ready-newer", channel: "delivery", status: "ready", customerName: "Ana", phone: "11999990001", address: "Rua A", updatedAt: "2026-10-27T10:20:00.000Z" },
+    { id: "delivery-ready-older", channel: "delivery", status: "ready", customerName: "Bela", phone: "11999990002", address: "Rua AA", updatedAt: "2026-10-27T10:00:00.000Z" },
+    { id: "route", channel: "delivery", status: "out-for-delivery", customerName: "Bia", phone: "11999990003", address: "Rua B", updatedAt: "2026-10-27T10:10:00.000Z" },
+    { id: "pickup", channel: "pickup", status: "ready", customerName: "Caio", phone: "11999990004", address: "", updatedAt: "2026-10-27T10:20:00.000Z" },
     { id: "counter", channel: "counter", status: "ready", customerName: "Dani", address: "", updatedAt: "2026-10-27T10:30:00.000Z" },
     { id: "dine-in", channel: "dine-in", status: "ready", customerName: "Mesa 2", address: "", updatedAt: "2026-10-27T10:40:00.000Z" },
     { id: "still-in-kitchen", channel: "pickup", status: "preparing", customerName: "Eli", address: "", updatedAt: "2026-10-27T10:50:00.000Z" },
@@ -45,6 +47,11 @@ test("Expedição separa despacho de entrega e entrega ao cliente em retirada, b
   }
   assert.doesNotMatch(html, /data-order-id="still-in-kitchen"/);
   assert.doesNotMatch(html, /Cancelar|data-can-cancel="true"/);
+  assert.match(html, /data-order-id="delivery-ready-older"[^>]*data-show-customer-update="true"/);
+  assert.match(html, /data-order-id="pickup"[^>]*data-show-customer-update="true"/);
+  assert.match(html, /data-order-id="route"[^>]*data-show-customer-update="true"/);
+  assert.match(html, /data-order-id="counter"[^>]*data-show-customer-update="false"/);
+  assert.match(html, /data-order-id="dine-in"[^>]*data-show-customer-update="false"/);
 });
 
 test("parada em rota oferece ligação e cópia do endereço", () => {
@@ -71,6 +78,9 @@ test("Expedição permite ligar antes do despacho somente para entrega pronta", 
   assert.match(html, /data-order-id="delivery-route"[^>]*data-show-delivery-call="false"/);
   assert.match(html, /href="tel:\+5511999990000" aria-label="Ligar para Ana do pedido #delivery-ready"/);
   assert.doesNotMatch(html, /href="tel:11988880000"/);
+  assert.match(html, /href="https:\/\/wa\.me\/5511999990000\?text=Seu%20pedido%20%23delivery-ready%20est%C3%A1%20pronto%20e%20aguardando%20despacho\."/);
+  assert.match(html, /data-customer-message="Seu pedido #pickup-ready está pronto para retirada\."/);
+  assert.match(html, /data-customer-message="Seu pedido #delivery-route saiu para entrega\."/);
 });
 
 test("a Expedição mantém ordem previsível quando transições ocorrem no mesmo instante", () => {

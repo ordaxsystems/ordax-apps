@@ -152,6 +152,35 @@ try {
     "Entrega pronta deve oferecer ligação acessível antes do despacho.");
     ensure(root.querySelectorAll(".delivery-call-link").length === 1,
       "Retirada não deve oferecer ação de ligação de entrega antes do atendimento.");
+    const deliveryUpdate = root.querySelector('.customer-update-link[aria-label*="pedido #1056"]');
+    const deliveryUpdateUrl = deliveryUpdate ? new URL(deliveryUpdate.href) : null;
+    ensure(deliveryUpdateUrl?.hostname === "wa.me"
+      && deliveryUpdateUrl.pathname === "/5511988113020"
+      && deliveryUpdateUrl.searchParams.get("text") === "Seu pedido #1056 está pronto e aguardando despacho."
+      && deliveryUpdate.target === "_blank"
+      && deliveryUpdate.rel.includes("noopener"),
+    "A entrega pronta precisa abrir um rascunho correto e seguro de WhatsApp, sem enviar sozinho.");
+    const pickupUpdate = root.querySelector('.customer-update-link[aria-label*="pedido #1052"]');
+    const pickupUpdateUrl = pickupUpdate ? new URL(pickupUpdate.href) : null;
+    ensure(pickupUpdateUrl?.pathname === "/5511991237780"
+      && pickupUpdateUrl.searchParams.get("text") === "Seu pedido #1052 está pronto para retirada.",
+    "A retirada pronta precisa preparar uma mensagem de retirada com o telefone do pedido correto.");
+    const routeUpdate = root.querySelector('.customer-update-link[aria-label*="pedido #1057"]');
+    const routeUpdateUrl = routeUpdate ? new URL(routeUpdate.href) : null;
+    ensure(routeUpdateUrl?.pathname === "/5511981107622"
+      && routeUpdateUrl.searchParams.get("text") === "Seu pedido #1057 saiu para entrega.",
+    "A entrega em rota precisa preparar a mensagem de saída com o telefone do pedido correto.");
+    ensure(root.querySelectorAll(".customer-update-link").length === 4,
+      "Somente entregas prontas, retiradas prontas e entregas em rota devem receber mensagens de cliente.");
+    if (parameters.has("__viewport")) {
+      const actionRows = [...root.querySelectorAll(".delivery-stage .order-actions")];
+      const actionLinks = [...root.querySelectorAll(".delivery-stage .customer-update-link")];
+      ensure(document.documentElement.scrollWidth <= innerWidth + 1
+        && document.body.scrollWidth <= innerWidth + 1
+        && actionRows.every((row) => row.scrollWidth <= row.clientWidth + 1)
+        && actionLinks.every((link) => link.getBoundingClientRect().right <= innerWidth + 1),
+      `Os avisos e ações da Expedição excedem o viewport ${parameters.get("__viewport")}.`);
+    }
     const handoff = root.querySelector('[data-action="advance-order"][data-order-id="ng-order-1052"]');
     ensure(handoff?.textContent.trim() === "Confirmar retirada"
       && handoff.getAttribute("aria-label") === "Confirmar retirada no pedido #1052"

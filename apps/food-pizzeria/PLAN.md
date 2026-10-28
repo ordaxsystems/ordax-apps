@@ -205,3 +205,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - O quadro e o filtro “Acima da meta” consideram tanto o SLA atual do pedido quanto a meta configurada para a etapa ativa. Metas vazias não geram alertas.
 - Fluxo e tarefas locais passam para schema v3 com migração de workflows e tickets v1/v2; a migração preserva filas, ações registradas e etapas ativas. Preferências seguem locais a este navegador; a sincronização entre aparelhos continua pendente do contrato Food Production. Nenhum contrato, owner ou estoque mudou.
 - Verificação: suíte Food **200/200**; Chromium **34/34** cenários, incluindo edição e execução da meta em telefones 320×568 e 390×844; `node --check` e `git diff --check` aprovados; verificador MVP **20 alvos / 18 entradas não assinadas / 2 bloqueados / 0 instalações públicas verificadas**.
+
+### Expedição — rascunhos de aviso ao cliente (2026-10-27)
+
+- Pedidos de entrega prontos, retiradas prontas e entregas em rota oferecem uma mensagem de status previamente preenchida para WhatsApp. A ação abre a conversa para revisão e envio manual; abrir o link não envia mensagem nem altera o pedido. Balcão e salão não exibem aviso externo.
+- Telefones locais brasileiros recebem o código do país; números internacionais com prefixo são preservados. Telefone ausente ou inválido não produz link. O texto é codificado para URL, abre em nova aba com proteção `noopener` e usa apenas o canal/estado/ID já presentes no pedido Food.
+- Verificação: suíte Food **202/202**; Chromium **32/32** cenários, incluindo avisos e ações sem overflow em telefones 390×844 e 320×568; `node --check` e `git diff --check` aprovados; verificador MVP **20 alvos / 18 entradas não assinadas / 2 bloqueados / 0 instalações públicas verificadas**. Nenhum provider ou integração de mensagens é declarado; o operador envia pela própria conta WhatsApp.

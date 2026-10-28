@@ -31,7 +31,7 @@ import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
 import { renderSpaceCapabilityStatus } from "./space-capability-status.mjs";
-import { telephoneHref } from "./contact-links.mjs";
+import { telephoneHref, whatsappHref } from "./contact-links.mjs";
 import {
   assertFoodPreviewPresentation,
   assertFoodModuleView,
@@ -505,7 +505,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return ["received", "preparing", "ready"].includes(order.status);
   }
   
-  function renderOrderCard(order, { kitchen = false, allowCancel = false, allowAdvance = false, showDeliveryCall = false, showHistory = false } = {}) {
+  function renderOrderCard(order, { kitchen = false, allowCancel = false, allowAdvance = false, showDeliveryCall = false, customerUpdate = null, showHistory = false } = {}) {
     const items = order.items.map((item) => `<li><span>${escapeHtml(orderItemDescription(item))}</span><strong>${money(item.lineTotalCents)}</strong></li>`).join("");
     const lastChange = order.statusHistory.at(-1);
     const startedAt = stageStartedAt(order);
@@ -516,6 +516,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       : null;
     const deliveryCallAction = deliveryCallHref
       ? `<a class="button button-quiet delivery-call-link" href="tel:${escapeHtml(deliveryCallHref)}" aria-label="Ligar para ${escapeHtml(order.customerName)} antes de despachar o pedido ${escapeHtml(orderNumber(order))}">Ligar</a>`
+      : "";
+    const customerUpdateHref = customerUpdate ? whatsappHref(order.phone, customerUpdate.message) : null;
+    const customerUpdateAction = customerUpdateHref
+      ? `<a class="button button-quiet customer-update-link" href="${escapeHtml(customerUpdateHref)}" target="_blank" rel="noopener noreferrer" title="Abre um rascunho para revisar e enviar no WhatsApp" aria-label="Preparar mensagem no WhatsApp para ${escapeHtml(order.customerName)} sobre o pedido ${escapeHtml(orderNumber(order))}">Avisar cliente</a>`
       : "";
     const identityDetails = [
       ...(order.tableCommandId && channelLabel === order.customerName ? [] : [channelLabel]),
@@ -530,7 +534,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       <ul class="order-items">${items}</ul>
       ${order.notes ? `<p class="order-note"><span>Observação</span>${escapeHtml(order.notes)}</p>` : ""}
       ${order.status === "cancelled" ? `<p class="cancel-reason">Cancelado: ${escapeHtml(lastChange.reason)}</p>` : ""}
-      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${deliveryCallAction}${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `aria-label="Cancelar pedido ${escapeHtml(orderNumber(order))}" data-order-id="${escapeHtml(order.id)}"` }) : ""}${allowAdvance ? orderAction(order) : ""}</div></div>
+      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${deliveryCallAction}${customerUpdateAction}${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `aria-label="Cancelar pedido ${escapeHtml(orderNumber(order))}" data-order-id="${escapeHtml(order.id)}"` }) : ""}${allowAdvance ? orderAction(order) : ""}</div></div>
       ${showHistory ? renderOrderHistoryTimeline(order, { statusLabels: STATUS_LABELS, escapeHtml }) : ""}
     </article>`;
   }
