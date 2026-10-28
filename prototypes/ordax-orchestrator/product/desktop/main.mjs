@@ -666,7 +666,8 @@ const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
 let localCoordinatorChatEnabled=null;
 const coordinatorChatEnabled=(projectId=null,orchestratorId=null)=>
   (localCoordinatorChatEnabled??(process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1'))===true ||
-  projectCoordinatorContinuationEnabled(store.db,projectId,orchestratorId);
+  Boolean(projectId && orchestratorId &&
+    projectCoordinatorContinuationEnabled(store.db,projectId,orchestratorId));
 const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey())});
 function requireLabSupervisor() {
   if (process.env.ORDAX_LAB_SUPERVISOR_ENABLE !== '1') throw new Error('supervisor_disabled');
