@@ -82,8 +82,11 @@ async function attestPackagedAsar({archive,sourceCommit,
 exports.attestPackagedAsar=attestPackagedAsar;
 exports.beforePack=async function beforePack(){
   const productRoot=path.resolve(__dirname,'..');
-  cp.execFileSync(process.execPath,[path.join(productRoot,'scripts','build-worker-preload.mjs')],
-    {encoding:'utf8',timeout:30000,stdio:'pipe'});
+  // Build within the packager process. Spawning a nested Node process on
+  // Windows made otherwise healthy builds fail on a fixed 30s startup timeout.
+  // The same canonical esbuild entrypoint is reused, not reimplemented.
+  const {buildWorkerPreload}=await import('./build-worker-preload.mjs');
+  buildWorkerPreload();
   const sourceCommit=sourceCommitFromGit(productRoot);
   if(buildSourceCommit!==null && buildSourceCommit!==sourceCommit)
     throw Error('packaged_build_source_changed');
