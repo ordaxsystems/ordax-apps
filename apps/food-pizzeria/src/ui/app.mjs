@@ -621,7 +621,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const draftPrice = draft?.prices?.[id];
     return `<label>${escapeHtml(label)}${active ? "" : " · inativo"}<div class="currency-input"><span>R$</span><input name="price-${id}" inputmode="decimal" placeholder="${active ? "0,00" : "0,00 (inativo)"}" ${active ? "required" : ""} value="${escapeHtml(draftPrice ?? savedPrice)}"></div></label>`;
   }).join("")}</div></div>
-      <div class="flavor-form-actions">${flavor ? button("Cancelar edição", "cancel-flavor-edit") : ""}<button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>${flavor ? "Salvar alterações" : "Salvar sabor"} <span aria-hidden="true">→</span></button></div>
+      <div class="flavor-form-actions">${flavor ? button("Cancelar edição", "cancel-flavor-edit") : draft ? button("Descartar rascunho", "cancel-flavor-create") : ""}<button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>${flavor ? "Salvar alterações" : "Salvar sabor"} <span aria-hidden="true">→</span></button></div>
     </form>`;
   }
   
@@ -1410,6 +1410,14 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       editFlavorId = null;
       render();
       focusFlavorTrigger(cancelledFlavorId);
+    } else if (action === "cancel-flavor-create") {
+      flavorDraftsById.delete(null);
+      render();
+      const nameField = root.querySelector('#flavor-form [name="name"]');
+      if (nameField) {
+        nameField.focus({ preventScroll: true });
+        scrollToFoodElement(nameField, "center");
+      }
     } else if (action === "toggle-flavor") {
       const flavorId = target.dataset.flavorId;
       const active = target.dataset.active === "true";

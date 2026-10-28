@@ -511,6 +511,16 @@ try {
       && inputValue("description") === "Cadastro ainda não salvo."
       && inputValue("price-small") === "42,50",
     "Um rerender descartou o rascunho de um novo sabor.");
+    const flavorCountBeforeDiscard = root.querySelectorAll('[data-action="edit-flavor"]').length;
+    root.querySelector('[data-action="cancel-flavor-create"]')?.click();
+    await eventually(() => inputValue("name") === ""
+      && !root.querySelector('[data-action="cancel-flavor-create"]'),
+    "Descartar o novo sabor deveria limpar o formulário e remover a ação de descarte.");
+    ensure(inputValue("description") === ""
+      && inputValue("price-small") === ""
+      && root.activeElement?.name === "name"
+      && root.querySelectorAll('[data-action="edit-flavor"]').length === flavorCountBeforeDiscard,
+    "Descartar o rascunho deveria limpar os campos, devolver o foco e manter o cardápio salvo inalterado.");
   }
 
   if (parameters.has("station")) {

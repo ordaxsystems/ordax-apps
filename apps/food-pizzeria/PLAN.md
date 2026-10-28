@@ -159,3 +159,9 @@ transações e concluído o rollout pelo migration registry canônico.
 - Alterações não salvas de nome, descrição e preços ficam associadas ao sabor durante rerenders, alternância entre sabores e navegação entre módulos, enquanto a instância do app está aberta. Também vale para um novo sabor ainda não salvo.
 - Salvar remove apenas o rascunho depois do sucesso; cancelar descarta a edição atual e devolve foco ao acionador do sabor. O rascunho é estado temporário da UI: não grava no estado Food, não cria persistência local e não altera contratos/owners.
 - Verificação: suíte Food **195/195**; Chrome **31/31**, incluindo edição, rerender, alternância, navegação, cancelamento, foco e novo sabor; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.
+
+### Cardápio — descarte explícito de novo sabor (2026-10-27)
+
+- Quando existe um rascunho de novo sabor, o formulário oferece “Descartar rascunho”. A ação limpa nome, descrição e preços temporários, mantém o catálogo salvo inalterado e devolve o foco ao campo de nome.
+- O controle só aparece depois de começar a preencher e fica desabilitado enquanto há gravação em andamento. Não envia comando Food nem altera o cardápio.
+- Verificação: suíte Food **195/195**; Chrome **31/31**, incluindo descarte após rerender, limpeza dos campos, foco e contagem de sabores persistidos; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.
