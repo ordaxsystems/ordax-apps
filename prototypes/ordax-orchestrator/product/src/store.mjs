@@ -518,11 +518,12 @@ export class Store {
     return { ...task, conversations:active ? [active] : [] };
   }
 
-  // Derive a bounded text-only transcript footprint from the canonical turn
+  // Derive a bounded prompt/response byte footprint from the canonical turn
   // ledger and immutable provider receipts. Incomplete receipts, ambiguous
-  // assistant attribution, multimodal turns, or oversized histories return
-  // null so policy falls back to its completed-turn ceiling. This deliberately
-  // does not estimate hidden provider tokens or context-window capacity.
+  // assistant attribution, unmeasured context attachments, multimodal turns,
+  // or oversized histories return null so policy falls back to its completed-
+  // turn ceiling. This deliberately does not estimate hidden provider tokens
+  // or context-window capacity.
   observedConversationTranscriptBytes(taskId,conversationId,completedTurns) {
     if(!Number.isSafeInteger(completedTurns)||completedTurns<0||completedTurns>SUCCESSFUL_TURNS_PER_SEGMENT)return null;
     if(completedTurns===0)return 0;
@@ -539,14 +540,33 @@ export class Store {
       const runId=payload?.run_id;
       const messageId=row.kind==='provider.submission.provenance'?payload?.message_id:payload?.user_message_id;
       if(typeof runId!=='string'||typeof messageId!=='string'||!runId||!messageId)return null;
-      const prior=messageByRun.get(runId);
-      if(prior&&prior!==messageId)return null;
-      messageByRun.set(runId,messageId);
+      const prior=messageByRun.get(runId)||{
+        messageId:null,providerPromptBytes:null,contextManifestPresent:false,
+        attachmentExpected:false,attachmentBytes:0
+      };
+      if(prior.messageId&&prior.messageId!==messageId)return null;
+      prior.messageId=messageId;
+      if(row.kind==='provider.submission.provenance'){
+        const hasPromptBytes=Object.hasOwn(payload,'provider_prompt_bytes');
+        if(hasPromptBytes&&(!Number.isSafeInteger(payload.provider_prompt_bytes)||payload.provider_prompt_bytes<1))return null;
+        if(hasPromptBytes&&prior.providerPromptBytes!==null&&prior.providerPromptBytes!==payload.provider_prompt_bytes)return null;
+        if(hasPromptBytes)prior.providerPromptBytes=payload.provider_prompt_bytes;
+        prior.contextManifestPresent=payload.context_manifest!==undefined&&payload.context_manifest!==null;
+        prior.attachmentExpected=payload.context_manifest?.attachment_useful===true;
+        if(payload.context_attachment!==undefined&&payload.context_attachment!==null){
+          const attachmentBytes=payload.context_attachment.byte_length;
+          if(!prior.contextManifestPresent||!prior.attachmentExpected||
+             !Number.isSafeInteger(attachmentBytes)||attachmentBytes<1||attachmentBytes>1_000_000)return null;
+          prior.attachmentBytes=attachmentBytes;
+        }
+      }
+      messageByRun.set(runId,prior);
     }
     let total=0;
     for(const {run_id:runId} of completed){
-      const userMessageId=messageByRun.get(runId);
-      if(!userMessageId)return null;
+      const mapping=messageByRun.get(runId);
+      const userMessageId=mapping?.messageId;
+      if(!userMessageId||(mapping.attachmentExpected&&!mapping.attachmentBytes))return null;
       const user=this.db.prepare(`SELECT id,role,content,sequence FROM messages
         WHERE id=? AND task_id=?`).get(userMessageId,taskId);
       if(!user||user.role!=='user'||!Number.isSafeInteger(Number(user.sequence)))return null;
@@ -559,7 +579,14 @@ export class Store {
       const assistant=assistants[0];
       if(this.db.prepare('SELECT 1 FROM message_assets WHERE message_id IN (?,?) LIMIT 1')
         .get(user.id,assistant.id))return null;
-      total+=Buffer.byteLength(user.content,'utf8')+Buffer.byteLength(assistant.content,'utf8');
+      const localPromptBytes=Buffer.byteLength(user.content,'utf8');
+      // Older receipts without an expanded context manifest sent the stored
+      // user text verbatim. For a contextual prompt, count only the exact byte
+      // size of the submitted provider prompt from the immutable receipt.
+      const providerPromptBytes=mapping.providerPromptBytes ??
+        (mapping.contextManifestPresent||mapping.attachmentExpected?null:localPromptBytes);
+      if(providerPromptBytes===null)return null;
+      total+=providerPromptBytes+mapping.attachmentBytes+Buffer.byteLength(assistant.content,'utf8');
       if(total>=MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT)return MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT;
     }
     return total;

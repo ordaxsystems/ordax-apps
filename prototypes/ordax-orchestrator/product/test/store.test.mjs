@@ -866,6 +866,77 @@ test('observed transcript measurement fails closed when receipts or multimodal b
   assert.equal(store.getTaskExecutionSnapshot(noReceipt.id).conversations[0].observed_transcript_bytes,null);
 });
 
+test('transcript pressure counts the expanded provider prompt and verified continuation attachment',t=>{
+  const store=new Store(':memory:');
+  t.after(()=>store.close());
+  const finish=({title,chatUrl,prompt,providerPrompt,contextManifest,contextAttachmentReceipt=null})=>{
+    const task=store.createTask(title);
+    store.setChatUrl(task.id,chatUrl);
+    const {userMessage,runId}=store.beginProviderRun(task.id,prompt);
+    assert.deepEqual(recordProviderSubmissionProvenance({store,taskId:task.id,runId,
+      messageId:userMessage.id,providerPrompt,chatUrl,submittedAt:Date.now(),
+      contextManifest,contextAttachmentReceipt}),{recorded:true,reason:'receipt_recorded'});
+    store.commitObservedProviderReply(task.id,runId,{text:'resposta confirmada',observedAt:new Date().toISOString(),chatUrl});
+    return {task,runId};
+  };
+
+  const prompt='Continue o projeto';
+  const expanded='CONTEXTO CANÔNICO '+'decisão importante '.repeat(2_000)+'\n'+prompt;
+  const expandedTask=finish({title:'Expanded continuation prompt',
+    chatUrl:'https://chatgpt.com/c/expanded-context',prompt,providerPrompt:expanded,
+    contextManifest:{format:'ordax-continuation-context/v1',promptSha256:providerPromptDigest(expanded),
+      contextIncluded:true,attachmentUseful:false}});
+  let observed=store.getTaskExecutionSnapshot(expandedTask.task.id).conversations[0].observed_transcript_bytes;
+  assert.equal(observed,Buffer.byteLength(expanded,'utf8')+Buffer.byteLength('resposta confirmada','utf8'));
+  const provenance=store.db.prepare("SELECT payload FROM events WHERE task_id=? AND kind='provider.submission.provenance' AND json_extract(payload,'$.run_id')=?").get(expandedTask.task.id,expandedTask.runId);
+  const savedReceipt=JSON.parse(provenance.payload);
+  assert.equal(savedReceipt.provider_prompt_bytes,Buffer.byteLength(expanded,'utf8'));
+  assert.equal(Object.hasOwn(savedReceipt,'provider_prompt'),false);
+
+  const attachmentTask=store.createTask('Verified continuation attachment');
+  const attachmentChatUrl='https://chatgpt.com/c/attachment-context';
+  store.setChatUrl(attachmentTask.id,attachmentChatUrl);
+  const attachmentReceipt={format:'ordax-task-handoff/v1',deliveryState:'uploaded',
+    taskId:attachmentTask.id,filename:'ordax-handoff-'+attachmentTask.id+'-c1-abcdef123456.txt',
+    sha256:'a'.repeat(64),byteLength:4096,checkpointVersion:0,uploadedAt:Date.now(),
+    memoryIds:[],recentMessageIds:[],historicalMessageIds:[]};
+  const attachmentProviderPrompt='Arquivo de continuidade anexado: handoff.txt';
+  const attachmentManifest={format:'ordax-continuation-context/v1',
+    promptSha256:providerPromptDigest(attachmentProviderPrompt),contextIncluded:true,attachmentUseful:true};
+  const attachmentRun=store.beginProviderRun(attachmentTask.id,'Retome com o arquivo de handoff');
+  assert.deepEqual(recordProviderSubmissionProvenance({store,taskId:attachmentTask.id,runId:attachmentRun.runId,
+    messageId:attachmentRun.userMessage.id,providerPrompt:attachmentProviderPrompt,
+    chatUrl:attachmentChatUrl,submittedAt:Date.now(),contextManifest:attachmentManifest,
+    contextAttachmentReceipt:attachmentReceipt}),{recorded:true,reason:'receipt_recorded'});
+  store.commitObservedProviderReply(attachmentTask.id,attachmentRun.runId,{
+    text:'resposta confirmada',observedAt:new Date().toISOString(),chatUrl:attachmentChatUrl});
+  observed=store.getTaskExecutionSnapshot(attachmentTask.id).conversations[0].observed_transcript_bytes;
+  assert.equal(observed,Buffer.byteLength(attachmentProviderPrompt,'utf8')+attachmentReceipt.byteLength+
+    Buffer.byteLength('resposta confirmada','utf8'));
+
+  const uncertainAttachment=store.createTask('Unconfirmed continuation attachment');
+  const uncertainUrl='https://chatgpt.com/c/unconfirmed-attachment';
+  store.setChatUrl(uncertainAttachment.id,uncertainUrl);
+  const uncertainPrompt='Continue';
+  const uncertainExpanded='Contexto enviado com arquivo';
+  const uncertainRun=store.beginProviderRun(uncertainAttachment.id,uncertainPrompt);
+  assert.deepEqual(recordProviderSubmissionProvenance({store,taskId:uncertainAttachment.id,
+    runId:uncertainRun.runId,messageId:uncertainRun.userMessage.id,providerPrompt:uncertainExpanded,
+    chatUrl:uncertainUrl,submittedAt:Date.now(),
+    contextManifest:{format:'ordax-continuation-context/v1',
+      promptSha256:providerPromptDigest(uncertainExpanded),contextIncluded:true,attachmentUseful:true}}),
+  {recorded:true,reason:'receipt_recorded'});
+  store.commitObservedProviderReply(uncertainAttachment.id,uncertainRun.runId,{
+    text:'resposta confirmada',observedAt:new Date().toISOString(),chatUrl:uncertainUrl});
+  assert.equal(store.getTaskExecutionSnapshot(uncertainAttachment.id).conversations[0].observed_transcript_bytes,null);
+
+  const legacyPayload=JSON.parse(provenance.payload);
+  delete legacyPayload.provider_prompt_bytes;
+  store.db.prepare("UPDATE events SET payload=? WHERE task_id=? AND kind='provider.submission.provenance' AND json_extract(payload,'$.run_id')=?")
+    .run(JSON.stringify(legacyPayload),expandedTask.task.id,expandedTask.runId);
+  assert.equal(store.getTaskExecutionSnapshot(expandedTask.task.id).conversations[0].observed_transcript_bytes,null);
+});
+
 test('reconciled provider replies retain their conversation transcript attribution',t=>{
   const store=new Store(':memory:');
   t.after(()=>store.close());

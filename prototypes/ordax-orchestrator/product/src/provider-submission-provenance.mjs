@@ -2,7 +2,8 @@ import {createHash} from 'node:crypto';
 import {canonicalProviderChatUrl} from './conversation-policy.mjs';
 
 // Acknowledged provider submission is a different fact from response completion.
-// Store only a digest of the actual (possibly context-expanded) provider prompt.
+// Store a digest and UTF-8 byte count of the actual (possibly expanded) prompt,
+// never a second copy of its text.
 export function providerPromptDigest(prompt) {
   if(typeof prompt!=='string' || !prompt.trim()) return null;
   return createHash('sha256').update(prompt.trim(),'utf8').digest('hex');
@@ -116,6 +117,7 @@ export function recordProviderSubmissionProvenance({
   store.event(taskId,'provider.submission.provenance',{
     run_id:runId,message_id:messageId,conversation_id:conversation.id,
     prompt_sha256:digest,submitted_at:submittedAt,
+    provider_prompt_bytes:Buffer.byteLength(providerPrompt,'utf8'),
     ...(safeManifest?{context_manifest:safeManifest}:{}),
     ...(safeAttachment?{context_attachment:safeAttachment}:{}),
     // No message text, credential or duplicate URL is placed into the event.
