@@ -2,6 +2,13 @@
 
 **Estado:** objetivo contínuo ativo. Este documento é o plano de execução e aceite da auditoria de prontidão de 27/10/2026, atualizado com o estado remoto confirmado em 27/10/2026. A conclusão depende de evidências observáveis; respostas do GPT, mocks e testes unitários isolados não provam o produto completo.
 
+## Estado remoto atual — 27/10/2026
+
+- Apps PR #348 está aberta em draft. Branch `codex/orchestrator-host-runtime-architecture`, head remoto `bd5dc89e75a62f787613fe32323d534f9aa00375`, base `main` `2b76001db889e450ac9d537152e2485d455db73f`.
+- O head atual inclui a recuperação limitada de resposta GPT tardia e, após reinício do app, somente reconcilia quando o Run interrompido tem receipt/dispatch intent durável, a thread exata já está visível e o prompt, baseline e resposta completa são atribuíveis. Nenhum reenvio automático.
+- Verificação local no head: `npm run check` aprovado, suítes focadas de observação/reconciliação/restart **23/23**, `git diff --check` aprovado. Apps Foundation #40614010952 e Lab Isolation #40614010813 estão **queued**; suíte integral ainda não certificada neste head.
+- Isto exige o App ativo após reabertura e não implementa trabalho com a janela fechada, execução headless nem continuidade 24 h. Os gates operacionais e cross-repo abaixo permanecem abertos.
+
 ## Objetivo do produto
 
 O usuário cria ou abre um projeto, descreve uma missão em linguagem natural e acompanha uma única conversa de trabalho no OrdaX. O Orchestrator transforma a missão em etapas com critérios de saída, conversa com o ChatGPT Web por meio do transporte real do aplicativo, mantém o histórico e a memória do projeto no OrdaX, coordena várias conversas do GPT sem expor a rotação ao usuário, detecta falhas e incerteza, recupera sem duplicar envios e executa somente operações autorizadas pelos owners OrdaX. A execução deve sobreviver ao fechamento da janela e a falhas recuperáveis por meio do Runtime e do serviço de agendamento existentes.
@@ -20,7 +27,7 @@ O produto só pode afirmar autonomia e continuidade de 24 horas quando houver um
 
 O App pode persistir a conversa e a memória que pertencem à experiência do usuário. A fila, os leases, o estado do worker e os checkpoints de execução permanecem no Runtime. IDs e recibos relacionam os domínios; não se cria uma segunda fila ou cópia concorrente do estado executável.
 
-## Estado de partida verificado em 27/10/2026
+## Snapshot da auditoria inicial — histórico de 27/10/2026
 
 - OrdaX Apps está sendo desenvolvido na branch `codex/orchestrator-host-runtime-architecture`, PR #348 aberta como draft, contra a main `2b76001db889e450ac9d537152e2485d455db73f`. A recuperação foi publicada inicialmente em `9d8928bd232f4e502d748ff48c4232843b1c8b0f`; depois, o head de código `bf3f9ce2b05896b4b7e98e016c85b08a0c7a8347` corrigiu a normalização LF/EOF e passou os gates de código. Commits subsequentes atualizaram somente documentação. A PR não foi integrada. O clone de referência permanece atrás e não deve ser usado para sobrescrever a branch remota; cada nova escrita precisa consultar o head e usar lease/CAS.
 - O incremento torna explícito o diagnóstico de recuperação inconclusiva e grava mensagem, Task, evento e sugestão de memória atomicamente. A correção P0 de perda de confirmação DOM foi publicada com reconciliação segura de conversas existentes e novas. Na validação do head de código `bf3f9ce2b05896b4b7e98e016c85b08a0c7a8347`, `npm run check`, o gate de contrato Runtime e a suíte Windows terminaram com **614 aprovados, 0 falhas e 1 skip** (Python ausente); Apps Foundation #40559361641 e Orchestrator Lab Isolation #40559361683 passaram, incluindo o job Windows empacotado. Commits documentais posteriores não modificaram esse código. Os heads intermediários `8a1893b` e `5e9d8c9` falharam, respectivamente, por CRLF e linhas vazias extras no EOF; ambos os incidentes foram corrigidos em commits posteriores. No corte daquela auditoria, a verificação física GPT Web ainda estava pendente; a evidência posterior está registrada abaixo.
@@ -42,12 +49,12 @@ O App pode persistir a conversa e a memória que pertencem à experiência do us
 - O relatório mostra que o Host atual não disponibiliza o transporte de execução GPT Web; o aceite desse fluxo deve ocorrer na superfície Electron que possui o navegador interno. A janela fechada só conta como teste de continuidade quando o Runtime/worker real prosseguir sem depender do processo Electron.
 - A branch de trabalho é a superfície de integração. Não alterar diretamente Apps main, não fazer force-push e não promover candidato como release antes dos gates abaixo.
 
-## Incremento corrente — recuperação GPT tardia — 27/10/2026
+## Incremento corrente — recuperação GPT tardia após reinício — head bd5dc89 — 27/10/2026
 
-- O commit de código e0ef3057e3320ac88217c2d2d5ff52356e223aed da Apps PR #348 adiciona reobservação limitada à conversa GPT já visível e vinculada sem ambiguidade, usando o tick e o Store existentes. O backoff sobrevive a reinícios do Store; a importação continua condicionada a evidência completa, atribuível e idempotente.
+- Os commits de código e0ef3057e3320ac88217c2d2d5ff52356e223aed e bd5dc89e75a62f787613fe32323d534f9aa00375 da Apps PR #348 adicionam reobservação limitada à conversa GPT já visível e vinculada sem ambiguidade, usando o tick e o Store existentes. O backoff sobrevive a reinícios do Store; a importação continua condicionada a evidência completa, atribuível e idempotente.
 - Uma extensão de recuperação após encerramento agora aceita somente Runs marcados app_shutdown/process_interrupted com receipt ou dispatch intent durável, prompt novo em relação ao baseline e a thread vinculada já visível após o app reabrir. Sem essas provas, o app não inspeciona nem importa; nenhuma operação é reenviada.
 - O fluxo não navega, não repete envio e não cria scheduler, worker, fila, banco ou Runtime duplicado. Electron e Host atualizam a conversa quando a reconciliação termina.
-- Verificação local do source atual: source check passou; contrato Electron/Host 32/32; suítes combinadas de observação, reconciliação e restart 23/23; diff check passou. CI para o próximo head remoto deve ser consultada após a publicação do incremento.
+- Verificação local do source atual: `npm run check` passou; contrato Electron/Host 32/32 passou no incremento de UI anterior; suítes combinadas de observação, reconciliação e restart **23/23** no head `bd5dc89`; `git diff --check` passou. CI do head atual: Apps Foundation #40614010952 e Lab Isolation #40614010813 estão queued.
 - Limite conhecido: a recuperação automática requer o app ativo e a thread já visível; não prova execução headless/24 h. GPT Web live e importação física, VESTE/grants e continuidade via Runtime/OS seguem pendentes.
 
 ## Plano de trabalho e critérios de aceite

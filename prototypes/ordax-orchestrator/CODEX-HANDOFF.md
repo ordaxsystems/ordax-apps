@@ -2,11 +2,11 @@
 
 ## Estado atual — resposta GPT tardia reconciliada com segurança — 27/10/2026
 
-- O incremento de código da Apps PR #348 está no commit e0ef3057e3320ac88217c2d2d5ff52356e223aed, no branch remoto codex/orchestrator-host-runtime-architecture, contra main 2b76001db889e450ac9d537152e2485d455db73f. A sincronização documental posterior não alterou o source. PR aberta/draft; Runtime e Platform não foram alterados.
+- O head atual da Apps PR #348 é bd5dc89e75a62f787613fe32323d534f9aa00375, no branch remoto codex/orchestrator-host-runtime-architecture, contra main 2b76001db889e450ac9d537152e2485d455db73f. Ele inclui o supervisor de recuperação de e0ef305 e a recuperação limitada após app_shutdown/process_interrupted; a PR segue aberta/draft. Runtime e Platform não foram alterados.
 - O tick de supervisão já existente reobserva, com backoff persistido no Store e até 24 observações, somente a thread GPT já visível e associada sem ambiguidade a uma única Task. Também pode reconciliar um Run interrompido por fechamento/crash do app quando existe receipt ou dispatch intent durável. A inspeção é read-only, não navega, não reenvia e importa apenas resposta completa atribuível; o Store mantém a reconciliação idempotente.
 - A interface Electron e o Host recebem o evento de reconciliação e atualizam o histórico. Não foi criado timer, worker, fila, serviço, Runtime ou banco paralelo.
-- Source check e git diff --check passaram; contratos desktop/Host 32/32; as suítes combinadas de observação/reconciliação/restart passaram **23/23**. O caso de encerramento verifica receipt/intent e baseline exatos; sem ambos, não há sequer inspeção.
-- CI deste head: Apps Foundation #40612197809 e Lab Isolation #40612197802 estão queued. A suíte integral neste head ainda não foi certificada.
+- Source check e git diff --check passaram; contratos desktop/Host 32/32 passaram no incremento de UI anterior; as suítes combinadas de observação/reconciliação/restart passaram **23/23** no head atual. O caso de encerramento verifica receipt/intent e baseline exatos; sem ambos, não há sequer inspeção.
+- CI do head atual bd5dc89: Apps Foundation #40614010952 e Lab Isolation #40614010813 estão queued. A suíte integral neste head ainda não foi certificada.
 - Teste adicional: depois de um reinício físico do Store que marca o Run como process_interrupted, uma resposta completa com intent, prompt e baseline exatos foi reconciliada uma vez, sem replay; um Run interrompido sem receipt nem intent foi recusado antes de qualquer inspeção.
 - Limite: a recuperação exige o processo do app ativo e a thread vinculada visível; após reiniciar, é retomada somente quando o usuário/app já está nessa thread. Isto não comprova operação headless/24 h. Login, envio e importação GPT Web live, VESTE/grants, execução enquanto o app está fechado e recuperação via Runtime/OS seguem gates pendentes.
 
