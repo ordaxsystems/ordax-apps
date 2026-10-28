@@ -240,7 +240,9 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   const task = store.getTaskExecutionSnapshot(taskId);
   if (!task) throw new Error('task_not_found');
 
-  const conversationPlan = planProviderConversation(task, { forceNew:newSession });
+  const conversationPlan = planProviderConversation(task, {
+    forceNew:newSession,nextPromptBytes:Buffer.byteLength(String(prompt||'').trim(),'utf8')
+  });
   const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
   const checkpointVersion = task.checkpoint_version;
   let continuationPacket = needsContinuation ? store.buildContinuationPacket(taskId,prompt) : null;

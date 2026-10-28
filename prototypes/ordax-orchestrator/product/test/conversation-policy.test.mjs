@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planProviderConversation, SUCCESSFUL_TURNS_PER_SEGMENT, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
+import { planProviderConversation, SUCCESSFUL_TURNS_PER_SEGMENT, MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 
 const makeTask = (turns, options = {}) => ({
   chat_url: options.url === undefined ? 'https://chatgpt.com/c/old' : options.url,
   conversations: options.url === null ? [] : [{
     id:'segment_old',chat_url:'https://chatgpt.com/c/old',
-    status:'active',completed_turns:turns
+    status:'active',completed_turns:turns,
+    ...(Object.hasOwn(options,'observedTranscriptBytes')?{observed_transcript_bytes:options.observedTranscriptBytes}:{})
   }]
 });
 
@@ -22,6 +23,24 @@ test('first and manually prepared sessions receive continuation without an autom
   assert.equal(planProviderConversation(makeTask(0,{url:null})).newSession,true);
   assert.equal(planProviderConversation(makeTask(0),{forceNew:true}).newSession,true);
   assert.equal(planProviderConversation(makeTask(0)).newSession,false);
+});
+
+test('observed transcript pressure rotates before the completed-turn ceiling',()=>{
+  const bytes=MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT;
+  const plan=planProviderConversation(makeTask(3,{observedTranscriptBytes:bytes-10}),{nextPromptBytes:10});
+  assert.equal(plan.automaticRotation,true);
+  assert.equal(plan.newSession,true);
+  assert.equal(plan.reason,'observed_transcript_budget');
+  assert.equal(plan.completedTurns,3);
+  assert.equal(plan.observedTranscriptBytes,bytes-10);
+  assert.equal(plan.nextPromptBytes,10);
+});
+
+test('unavailable or malformed transcript measurements preserve the hard turn ceiling',()=>{
+  const task=makeTask(3,{observedTranscriptBytes:null});
+  assert.equal(planProviderConversation(task,{nextPromptBytes:MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT*4}).automaticRotation,false);
+  assert.equal(planProviderConversation(makeTask(3,{observedTranscriptBytes:-1}),{nextPromptBytes:1}).automaticRotation,false);
+  assert.equal(planProviderConversation(makeTask(3,{observedTranscriptBytes:MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT}),{nextPromptBytes:1}).automaticRotation,true);
 });
 
 test('the policy does not rotate on unavailable or inconsistent segment counts', () => {

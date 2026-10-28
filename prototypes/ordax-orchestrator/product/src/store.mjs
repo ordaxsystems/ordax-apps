@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { MemoryCandidateLedger } from './memory-candidates.mjs';
 import { assertSupervisorRole } from './supervisor-role-presets.mjs';
-import { canonicalProviderChatUrl } from './conversation-policy.mjs';
+import { canonicalProviderChatUrl, MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT, SUCCESSFUL_TURNS_PER_SEGMENT } from './conversation-policy.mjs';
 import {W3_MAX_ASSISTANT_CHARS} from './provider-recovery-bounds.mjs';
 import { buildProjectContinuationPacket } from './continuation-context.mjs';
 import { buildTaskHandoffSnapshot } from './task-handoff-snapshot.mjs';
@@ -509,11 +509,60 @@ export class Store {
       COALESCE((SELECT MAX(version) FROM checkpoints c WHERE c.task_id=t.id),0) AS checkpoint_version
       FROM tasks t WHERE t.id=?`).get(taskId);
     if (!task) return null;
-    const active = this.db.prepare(`SELECT c.*,
+    let active = this.db.prepare(`SELECT c.*,
       (SELECT COUNT(*) FROM conversation_completed_runs r WHERE r.conversation_id=c.id) AS completed_turns
       FROM task_conversations c WHERE c.task_id=? AND c.status='active'
       ORDER BY c.sequence DESC LIMIT 1`).get(taskId);
+    if(active) active={...active,
+      observed_transcript_bytes:this.observedConversationTranscriptBytes(taskId,active.id,Number(active.completed_turns||0))};
     return { ...task, conversations:active ? [active] : [] };
+  }
+
+  // Derive a bounded text-only transcript footprint from the canonical turn
+  // ledger and immutable provider receipts. Incomplete receipts, ambiguous
+  // assistant attribution, multimodal turns, or oversized histories return
+  // null so policy falls back to its completed-turn ceiling. This deliberately
+  // does not estimate hidden provider tokens or context-window capacity.
+  observedConversationTranscriptBytes(taskId,conversationId,completedTurns) {
+    if(!Number.isSafeInteger(completedTurns)||completedTurns<0||completedTurns>SUCCESSFUL_TURNS_PER_SEGMENT)return null;
+    if(completedTurns===0)return 0;
+    const completed=this.db.prepare(`SELECT run_id FROM conversation_completed_runs
+      WHERE task_id=? AND conversation_id=? ORDER BY created_at,run_id`).all(taskId,conversationId);
+    if(completed.length!==completedTurns)return null;
+    const mappings=this.db.prepare(`SELECT kind,payload FROM events WHERE task_id=?
+      AND kind IN ('provider.submission.provenance','provider.response.reconciled')
+      AND json_extract(payload,'$.conversation_id')=? ORDER BY seq`).all(taskId,conversationId);
+    const messageByRun=new Map();
+    for(const row of mappings){
+      let payload;
+      try{payload=JSON.parse(row.payload);}catch{return null;}
+      const runId=payload?.run_id;
+      const messageId=row.kind==='provider.submission.provenance'?payload?.message_id:payload?.user_message_id;
+      if(typeof runId!=='string'||typeof messageId!=='string'||!runId||!messageId)return null;
+      const prior=messageByRun.get(runId);
+      if(prior&&prior!==messageId)return null;
+      messageByRun.set(runId,messageId);
+    }
+    let total=0;
+    for(const {run_id:runId} of completed){
+      const userMessageId=messageByRun.get(runId);
+      if(!userMessageId)return null;
+      const user=this.db.prepare(`SELECT id,role,content,sequence FROM messages
+        WHERE id=? AND task_id=?`).get(userMessageId,taskId);
+      if(!user||user.role!=='user'||!Number.isSafeInteger(Number(user.sequence)))return null;
+      const nextUser=this.db.prepare(`SELECT sequence FROM messages WHERE task_id=? AND role='user'
+        AND sequence>? ORDER BY sequence LIMIT 1`).get(taskId,user.sequence);
+      const assistants=this.db.prepare(`SELECT id,content FROM messages WHERE task_id=? AND role='assistant'
+        AND sequence>? AND (? IS NULL OR sequence<?) ORDER BY sequence LIMIT 2`)
+        .all(taskId,user.sequence,nextUser?.sequence??null,nextUser?.sequence??null);
+      if(assistants.length!==1)return null;
+      const assistant=assistants[0];
+      if(this.db.prepare('SELECT 1 FROM message_assets WHERE message_id IN (?,?) LIMIT 1')
+        .get(user.id,assistant.id))return null;
+      total+=Buffer.byteLength(user.content,'utf8')+Buffer.byteLength(assistant.content,'utf8');
+      if(total>=MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT)return MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT;
+    }
+    return total;
   }
 
   // Keyset cursors use a monotonic task-local sequence, stable even when timestamps tie.

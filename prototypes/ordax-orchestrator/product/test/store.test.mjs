@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { Store } from '../src/store.mjs';
-import { planProviderConversation, SUCCESSFUL_TURNS_PER_SEGMENT } from '../src/conversation-policy.mjs';
+import { planProviderConversation, SUCCESSFUL_TURNS_PER_SEGMENT, MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT } from '../src/conversation-policy.mjs';
+import { recordProviderSubmissionProvenance, providerPromptDigest } from '../src/provider-submission-provenance.mjs';
 
 function tempStore() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ordax-gratis-'));
@@ -801,6 +803,90 @@ test('automatic provider rotation counts only completed runs and is restart-safe
   assert.equal(planProviderConversation(project).automaticRotation,false);
   assert.equal(project.conversations[1].status,'archived');
   assert.equal(project.conversations[0].status,'active');
+});
+
+test('provider conversation execution snapshot measures confirmed UTF-8 transcript and rotates before turn cap',t=>{
+  const store=new Store(':memory:');
+  t.after(()=>store.close());
+  const task=store.createTask('Transcript pressure');
+  const chatUrl='https://chatgpt.com/c/transcript-pressure';
+  store.setChatUrl(task.id,chatUrl);
+  const sendAndComplete=(prompt,response)=>{
+    const {userMessage,runId}=store.beginProviderRun(task.id,prompt);
+    assert.deepEqual(recordProviderSubmissionProvenance({store,taskId:task.id,runId,
+      messageId:userMessage.id,providerPrompt:prompt,chatUrl,submittedAt:Date.now()}),
+    {recorded:true,reason:'receipt_recorded'});
+    store.commitObservedProviderReply(task.id,runId,{text:response,observedAt:new Date().toISOString(),chatUrl});
+  };
+
+  sendAndComplete('á'.repeat(10_000),'🧵'.repeat(3_000));
+  let snapshot=store.getTaskExecutionSnapshot(task.id);
+  assert.equal(snapshot.conversations[0].observed_transcript_bytes,
+    Buffer.byteLength('á'.repeat(10_000),'utf8')+Buffer.byteLength('🧵'.repeat(3_000),'utf8'));
+  assert.equal(planProviderConversation(snapshot,{nextPromptBytes:1}).automaticRotation,false);
+
+  sendAndComplete('x'.repeat(12_000),'y'.repeat(10_000));
+  snapshot=store.getTaskExecutionSnapshot(task.id);
+  assert.equal(snapshot.conversations[0].completed_turns,2);
+  assert.ok(snapshot.conversations[0].observed_transcript_bytes>MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT-12_000);
+  const plan=planProviderConversation(snapshot,{nextPromptBytes:12_000});
+  assert.equal(plan.automaticRotation,true);
+  assert.equal(plan.reason,'observed_transcript_budget');
+});
+
+test('observed transcript measurement fails closed when receipts or multimodal bytes are unavailable',t=>{
+  const store=new Store(':memory:');
+  t.after(()=>store.close());
+  const task=store.createTask('Multimodal transcript measurement');
+  const chatUrl='https://chatgpt.com/c/transcript-unknown';
+  store.setChatUrl(task.id,chatUrl);
+  let begun=store.beginProviderRun(task.id,'mensagem textual');
+  assert.deepEqual(recordProviderSubmissionProvenance({store,taskId:task.id,runId:begun.runId,
+    messageId:begun.userMessage.id,providerPrompt:'mensagem textual',chatUrl,submittedAt:Date.now()}),
+  {recorded:true,reason:'receipt_recorded'});
+  store.commitObservedProviderReply(task.id,begun.runId,{text:'resposta textual',observedAt:new Date().toISOString(),chatUrl});
+  assert.ok(Number.isSafeInteger(store.getTaskExecutionSnapshot(task.id).conversations[0].observed_transcript_bytes));
+  const userMessage=store.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user'").get(task.id);
+  store.db.prepare(`INSERT INTO message_assets(id,task_id,message_id,kind,mime_type,local_path,created_at)
+    VALUES('asset_transcript_probe',?,?,'image','image/png','unused-test-path',?)`).run(task.id,userMessage.id,new Date().toISOString());
+  // Even with a valid text receipt, image/token payload size is outside this
+  // visible-text metric, so the policy must not treat it as a complete budget.
+  begun=store.beginProviderRun(task.id,'segunda mensagem');
+  assert.deepEqual(recordProviderSubmissionProvenance({store,taskId:task.id,runId:begun.runId,
+    messageId:begun.userMessage.id,providerPrompt:'segunda mensagem',chatUrl,submittedAt:Date.now()}),
+  {recorded:true,reason:'receipt_recorded'});
+  store.commitObservedProviderReply(task.id,begun.runId,{text:'segunda resposta',observedAt:new Date().toISOString(),chatUrl});
+  assert.equal(store.getTaskExecutionSnapshot(task.id).conversations[0].observed_transcript_bytes,null);
+
+  const noReceipt=store.createTask('Transcript without provider receipt');
+  const noReceiptUrl='https://chatgpt.com/c/transcript-no-receipt';
+  store.setChatUrl(noReceipt.id,noReceiptUrl);
+  const unreceipted=store.beginProviderRun(noReceipt.id,'mensagem sem recibo');
+  store.commitObservedProviderReply(noReceipt.id,unreceipted.runId,{text:'resposta',observedAt:new Date().toISOString(),chatUrl:noReceiptUrl});
+  assert.equal(store.getTaskExecutionSnapshot(noReceipt.id).conversations[0].observed_transcript_bytes,null);
+});
+
+test('reconciled provider replies retain their conversation transcript attribution',t=>{
+  const store=new Store(':memory:');
+  t.after(()=>store.close());
+  const task=store.createTask('Reconciled transcript usage');
+  const chatUrl='https://chatgpt.com/c/transcript-recovery';
+  const conversation=store.setChatUrl(task.id,chatUrl);
+  const prompt='Uma pergunta já enviada';
+  const response='Resposta recuperada após observação interrompida';
+  const {userMessage,runId}=store.beginProviderRun(task.id,prompt);
+  assert.deepEqual(recordProviderSubmissionProvenance({store,taskId:task.id,runId,
+    messageId:userMessage.id,providerPrompt:prompt,chatUrl,submittedAt:Date.now()}),
+  {recorded:true,reason:'receipt_recorded'});
+  store.finishRun(task.id,runId,'observer_interrupted');
+  const result=store.reconcileObservedProviderReply(task.id,{runId,userMessageId:userMessage.id,
+    conversationId:conversation.id,chatUrl,promptSha256:providerPromptDigest(prompt),
+    responseSha256:createHash('sha256').update(response,'utf8').digest('hex'),text:response});
+  assert.equal(result.reconciled,true);
+  const snapshot=store.getTaskExecutionSnapshot(task.id);
+  assert.equal(snapshot.conversations[0].completed_turns,1);
+  assert.equal(snapshot.conversations[0].observed_transcript_bytes,
+    Buffer.byteLength(prompt,'utf8')+Buffer.byteLength(response,'utf8'));
 });
 
 test('provider conversation links are canonical: URL params cannot create false chat segments', t => {

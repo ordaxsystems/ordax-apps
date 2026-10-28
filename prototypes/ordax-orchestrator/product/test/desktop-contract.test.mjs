@@ -449,19 +449,26 @@ test('persistent Task memory can rotate provider conversations without losing th
   assert.match(uiHtml, /id="recoverProviderConversation"/);
 });
 
-test('a persistent project hides internal provider sessions and rotates only after completed turns', () => {
+test('a persistent project hides internal provider sessions and rotates by observed transcript pressure or the hard turn ceiling', () => {
   const policy = fs.readFileSync(path.join(root,'src','conversation-policy.mjs'),'utf8');
+  const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
   const html = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   assert.match(policy, /SUCCESSFUL_TURNS_PER_SEGMENT = 24/);
+  assert.match(policy, /MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT = 64 \* 1024/);
+  assert.match(policy, /observedTranscriptPressure/);
   assert.match(main, /planProviderConversation/);
+  assert.match(main, /nextPromptBytes:Buffer\.byteLength/);
   assert.match(main, /conversationPlan\.newSession/);
   assert.match(main, /provider\.conversation\.auto_rotated/);
+  assert.match(store, /observedConversationTranscriptBytes/);
+  assert.match(store, /provider\.submission\.provenance/);
+  assert.match(store, /message_assets/);
   assert.match(taskHandlers, /conversation_rotation_during_run/);
   assert.match(html, /internal-diagnostics/);
   assert.match(html, /<details/);
   assert.match(ui, /Projeto contínuo/);
   assert.doesNotMatch(html, /id="rotateConversation"[^>]*Nova conversa interna/);
-  assert.match(fs.readFileSync(path.join(root,'src','store.mjs'),'utf8'), /conversation_completed_runs/);
+  assert.match(store, /conversation_completed_runs/);
 });
 
 test('provider chat identity is canonical and unconfirmed navigation never triggers resend', () => {

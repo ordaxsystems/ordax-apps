@@ -388,3 +388,11 @@ Parser, integração SQLite de origem/revisão/contexto, e seleção de contexto
 - O source local captura `scenarioFailurePhase` antes do `finally`, registra `cleanupFailurePhase` quando uma operação de limpeza falha e inclui a fase de cleanup no recibo, mantendo detalhes arbitrários ocultos. O contrato direcionado passou **55/55** após essa mudança; `npm run check` ainda estava em execução no momento do registro.
 - Próximo gate: publicar somente se o remoto continuar no head `9ec3324`; confirmar o resumo final de `npm run check`, executar CI de novo e usar a fase realmente preservada para corrigir o cenário ou cleanup proprietário. Nenhum aceite E2E foi concedido.
 
+## Rotação por pressão observável do transcript — 2026-10-27
+
+A política do executor GPT Web agora pode rotacionar uma conversa interna antes do teto anterior de 24 turnos se o texto UTF-8 visível e confirmado atingir 64 KiB ao incluir o próximo prompt. Isso é um sinal local e limitado do transcript, não uma estimativa de tokens nem conhecimento da janela oculta do ChatGPT. O teto de 24 turnos permanece como fallback.
+
+O Store deriva a contagem do ledger canônico de Runs concluídos e dos recibos de submissão/reconciliação. Só conta a associação inequívoca de um prompt a uma resposta assistant única até o próximo prompt. Recibos faltando ou ambíguos, medidas fora do limite e mensagens com anexos resultam em medida desconhecida, mantendo a política de fallback. Não foram adicionados banco, Runtime, scheduler, fila ou owner de permissões.
+
+Validação nesta worktree: `npm run check` aprovado; testes de política/contrato/isolamento **62/62**; testes direcionados de Store e recuperação **5/5**; `git diff --check` aprovado. A suíte completa `npm test` iniciou e emitiu diversos testes aprovados, mas não produziu linhas por mais de cinco minutos; foi interrompida, portanto o resultado global é **inconclusivo**. Esta mudança precisa do CI Windows no novo SHA e de um E2E live que observe a rotação e continuidade GPT. Ela não certifica transporte GPT real nem autonomia após fechar o app.
+
