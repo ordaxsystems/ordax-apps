@@ -553,7 +553,7 @@ export class OrchestratorService {
     // Return an accepted command even if the provider is now offline; never replay.
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const isWorkSend=operation==='work_send'||operation==='proposal_send';
-    const gptWebChat=operation==='orchestrator_chat'&&typeof this.provider?.send==='function';
+    const gptWebChat=operation==='orchestrator_chat';
     const usesProvider=isWorkSend||gptWebChat;
     const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
@@ -678,58 +678,23 @@ export class OrchestratorService {
         return this.finish(reserved.commandId,result);
       });
     } catch(error) {
-      let failure=error;
-      let fallbackAttempted=false;
-      if(gptWebChat&&error?.providerDeliveryState==='not_submitted'&&
-        error?.providerFailureStage==='health'&&GROQ_FALLBACK_HEALTH_FAILURES.has(error?.providerFailureCode)&&
-        this.coordinator?.available?.(input.projectId,owner.id)===true) {
-        try {
-          fallbackAttempted=true;
-          this.requireAccess(context,operation,input.projectId);
-          this.transaction(()=>{
-            this.requireAccess(context,operation,input.projectId);
-            if(providerChatDraft) {
-              const draft=this.store.getTaskDraft(task.id);
-              if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
-                throw Error('task_draft_revision_conflict');
-              const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
-              if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
-                throw Error('task_draft_revision_conflict');
-            }
-            this.store.appendMessage(task.id,'user',content);
-            this.db.prepare('UPDATE lab_command_receipts SET result=?,updated_at=? WHERE id=? AND status=\'running\'')
-              .run(JSON.stringify({taskId:task.id,fallbackProvider:'groq',fallbackReason:error.providerFailureCode}),
-                this.store.now(),reserved.commandId);
-          });
-          const fallbackReply=await this.coordinator.send({taskId:task.id,content,mission:owner.mission,
-            projectId:input.projectId,orchestratorId:owner.id,repositoryUrl});
-          this.requireAccess(context,operation,input.projectId);
-          if(!fallbackReply||typeof fallbackReply.content!=='string'||!fallbackReply.content.trim()||fallbackReply.content.length>12000)
-            throw Error('orchestrator_reply_invalid');
-          return this.transaction(()=>{
-            this.store.appendMessage(task.id,'assistant',fallbackReply.content);
-            this.store.event(task.id,'orchestrator.chat.fallback',{command_id:reserved.commandId,
-              primary_provider:'chatgpt_web',fallback_provider:'groq',reason:error.providerFailureCode});
-            return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,proposalsExecuted:0,
-              provider:'groq',fallback:{provider:'groq',after:'chatgpt_not_submitted',reason:error.providerFailureCode}});
-          });
-        } catch(fallbackError) {
-          failure=fallbackError;
-        }
-      }
+      // The central chat is the GPT executor, never an implicit Groq chat.
+      // A failed, unavailable, or uncertain GPT submission must not be
+      // replaced with an answer from a different model.
+      const failure=error;
       // Only an explicit pre-submit disposition from the provider executor is
       // retryable. Missing/invalid evidence remains uncertain and quarantined.
-      const notSubmitted=!fallbackAttempted&&usesProvider&&failure?.providerDeliveryState==='not_submitted';
+      const notSubmitted=usesProvider&&failure?.providerDeliveryState==='not_submitted';
       const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(failure?.providerFailureCode||''))
         ?String(failure.providerFailureCode):'provider_send_unconfirmed';
-      const coordinatorCode=(!usesProvider||fallbackAttempted)&&/^(?:groq|chatgpt)_[a-z0-9_]{1,64}$/.test(String(failure?.orchestratorFailureCode||''))
+      const coordinatorCode=!usesProvider&&/^(?:groq|chatgpt)_[a-z0-9_]{1,64}$/.test(String(failure?.orchestratorFailureCode||''))
         ?String(failure.orchestratorFailureCode):null;
-      const coordinatorOutcome=(!usesProvider||fallbackAttempted)&&['rejected','response_invalid'].includes(failure?.orchestratorRequestOutcome)
+      const coordinatorOutcome=!usesProvider&&['rejected','response_invalid'].includes(failure?.orchestratorRequestOutcome)
         ?failure.orchestratorRequestOutcome:null;
       const coordinatorRejected=Boolean(coordinatorCode&&coordinatorOutcome);
       const coordinatorHttpStatus=coordinatorCode&&Number.isSafeInteger(failure?.orchestratorHttpStatus)
         ?failure.orchestratorHttpStatus:null;
-      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':fallbackAttempted?'fallback_unconfirmed':'execution_unconfirmed',
+      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
         ...(notSubmitted?{providerStage:String(failure?.providerFailureStage||'unknown'),failureCode}:{}),
         ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),...(reserved.sendActionId?{
         sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
