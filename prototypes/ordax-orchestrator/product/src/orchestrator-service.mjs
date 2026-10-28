@@ -563,7 +563,7 @@ export class OrchestratorService {
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
     const port=usesProvider?this.provider:this.coordinator;
-    if(typeof port?.send!=='function'||(port.available&&port.available()!==true))
+    if(typeof port?.send!=='function'||(port.available&&port.available(input.projectId,owner.id)!==true))
       throw Error('orchestrator_provider_unavailable');
     const prepareWork=operation==='orchestrator_prepare';
     const analysisContext=operation==='orchestrator_analyze'||prepareWork
@@ -682,7 +682,7 @@ export class OrchestratorService {
       let fallbackAttempted=false;
       if(gptWebChat&&error?.providerDeliveryState==='not_submitted'&&
         error?.providerFailureStage==='health'&&GROQ_FALLBACK_HEALTH_FAILURES.has(error?.providerFailureCode)&&
-        this.coordinator?.available?.()===true) {
+        this.coordinator?.available?.(input.projectId,owner.id)===true) {
         try {
           fallbackAttempted=true;
           this.requireAccess(context,operation,input.projectId);

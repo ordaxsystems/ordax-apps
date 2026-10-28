@@ -16,10 +16,10 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
     typeof model!=='string'||!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/.test(model))
     throw Error('orchestrator_coordinator_ports_required');
   return Object.freeze({
-    available:()=>isEnabled()===true&&Boolean(getApiKey()),
+    available:(projectId,orchestratorId)=>isEnabled(projectId,orchestratorId)===true&&Boolean(getApiKey()),
     async send({taskId,mission,projectId,orchestratorId,analysisContext=null,prepareWork=false,
       workspaceObservation=null,repositoryUrl=null}) {
-      if(isEnabled()!==true)throw Error('supervisor_disabled');
+      if(isEnabled(projectId,orchestratorId)!==true)throw Error('supervisor_disabled');
       const apiKey=getApiKey();
       if(typeof apiKey!=='string'||!apiKey.trim()||/[\r\n]/.test(apiKey))throw Error('supervisor_api_key_missing');
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,

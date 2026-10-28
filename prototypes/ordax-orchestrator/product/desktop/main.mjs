@@ -16,6 +16,7 @@ import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
+import { projectCoordinatorContinuationEnabled } from '../src/project-coordinator-continuation.mjs';
 
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -738,7 +739,10 @@ const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
 // Local chat opt-in lasts only for this App process; it does not enable the
 // supervisor, provider automation, remote grants or an external MCP endpoint.
 let localCoordinatorChatEnabled=null;
-const coordinatorChatEnabled=()=>localCoordinatorChatEnabled??(process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1');
+const coordinatorChatEnabled=(projectId=null,orchestratorId=null)=>
+  (localCoordinatorChatEnabled??(process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1'))===true ||
+  Boolean(projectId && orchestratorId &&
+    projectCoordinatorContinuationEnabled(store.db,projectId,orchestratorId));
 const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey()),
   groqConfigured:Boolean(currentGroqKey()),provider:'groq',executionSurface:'electron'});
 function requireLabSupervisor() {
