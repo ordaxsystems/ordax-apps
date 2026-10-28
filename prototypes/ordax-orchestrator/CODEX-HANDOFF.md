@@ -1,6 +1,15 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
-## Estado mais recente — E2E nativo empacotado passou — 27/10/2026
+## Estado atual — resposta GPT tardia reconciliada com segurança — 27/10/2026
+
+- Apps PR #348 está no branch remoto codex/orchestrator-host-runtime-architecture, head e0ef3057e3320ac88217c2d2d5ff52356e223aed, contra main 2b76001db889e450ac9d537152e2485d455db73f. PR aberta/draft; Runtime e Platform não foram alterados.
+- O tick de supervisão já existente reobserva, com backoff persistido no Store e até 24 observações, somente a thread GPT já visível e associada sem ambiguidade a uma única Task. A inspeção é read-only, não navega, não reenvia e importa apenas resposta completa atribuível; o Store mantém a reconciliação idempotente.
+- A interface Electron e o Host recebem o evento de reconciliação e atualizam o histórico. Não foi criado timer, worker, fila, serviço, Runtime ou banco paralelo.
+- Source check e git diff --check passaram; contratos desktop/Host 32/32; cenários focados de late response/backoff/restart 2/2; os testes completos de reconciliação/restart passaram 22/22 antes da última asserção de plano SQLite, que passou nos cenários focados.
+- CI deste head: Apps Foundation #40612197809 e Lab Isolation #40612197802 estão queued. A suíte integral neste head ainda não foi certificada.
+- Limite: a verificação exige o processo do app ativo e a thread vinculada visível; isto não comprova operação headless/24 h. Login, envio e importação GPT Web live, VESTE/grants, execução depois de fechar o app e recuperação via Runtime/OS seguem gates pendentes.
+
+## Evidência anterior — E2E nativo empacotado — 27/10/2026
 
 - Apps PR #348 está no head remoto `45970e7aec30bb029f230ecbe0022e50e4e0e249`. Apps Foundation e Lab Isolation passaram. Windows concluiu **622 testes aprovados, 0 falhas, 1 skip**, portable build verificado e ambos os E2E empacotados: `ordax.lab.orchestration-app-e2e.v1` e `ordax.lab.runtime-host-app-e2e.v1`. O pacote tem `sourceCommit` de merge `cdd444ff115809106c667db3aadd3a0e0e34b458`, digest `f68ce540366c7037e84cb01ca2d3b5f3e8c608e526a4f3be79aafc6bb6f47e43`.
 - A regressão anterior era de escopo lexical: `evaluate`, `disposableApiKeyCleanupRequired` e `successReport` eram declarados dentro do bloco `try`, mas usados pelo `finally` ou depois dele. Isso causava `ReferenceError` durante limpeza após as asserções. O commit `45970e7` move os recursos para o escopo dono e adiciona um teste estático de regressão e razões de falha sintéticas allowlisted.
