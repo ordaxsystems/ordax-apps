@@ -150,10 +150,84 @@ export async function recoverFailedProviderSubmission({store,worker,taskId,runId
     return recoverFreshProviderSubmission({store,worker,taskId:id,runId:String(runId),intent});
   const first=await inspectProviderLinkedThread({store,worker,taskId:id,allowNavigation:false});
   if(!first.recoveryPreview?.responseSha256)
-    return {reconciled:false,reason:first.recoveryReason||first.inspectionReason||'provider_reply_not_recoverable'};
+    return {reconciled:false,reason:!first.threadRendered
+      ?first.inspectionReason||first.recoveryReason||'provider_reply_not_recoverable'
+      :first.recoveryReason||first.inspectionReason||'provider_reply_not_recoverable'};
   return reconcileProviderLinkedReply({
     store,worker,taskId:id,responseSha256:first.recoveryPreview.responseSha256,allowNavigation:false
   });
+}
+
+const PROVIDER_RECOVERY_BACKOFF_MS=Object.freeze([15_000,30_000,60_000,120_000,300_000,600_000]);
+export const PROVIDER_RECOVERY_MAX_OBSERVATIONS=24;
+
+// Revisit only an uncertain Run whose exact linked GPT conversation is already
+// visible. The attempt ledger is durable and bounded; inspection never
+// navigates, sends, or retries a provider action. This lets a late GPT reply be
+// reconciled by the existing Store transaction without adding another worker.
+export async function recoverVisibleLinkedProviderSubmission({store,worker,now=Date.now()}={}) {
+  if(!store?.db||typeof worker?.inspectConversationReadOnly!=='function')
+    throw new Error('provider_recovery_ports_required');
+  if(!Number.isSafeInteger(now)||now<0)throw new Error('provider_recovery_clock_invalid');
+  let currentUrl=null;
+  try {currentUrl=canonicalProviderChatUrl(worker.status?.()?.url);} catch {}
+  if(!currentUrl)return {state:'idle',reason:'provider_thread_not_visible'};
+
+  const linked=store.db.prepare('SELECT id FROM tasks WHERE chat_url=? LIMIT 2').all(currentUrl);
+  if(linked.length===0)return {state:'idle',reason:'provider_thread_not_linked'};
+  if(linked.length!==1)return {state:'ambiguous',reason:'provider_thread_linked_to_multiple_tasks'};
+  const taskId=linked[0].id;
+  const run=store.db.prepare(`SELECT id,status,error,metrics FROM runs
+    WHERE task_id=? ORDER BY rowid DESC LIMIT 1`).get(taskId);
+  const task=store.db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId);
+  if(!run||!task||!['failed','interrupted'].includes(run.status)||
+      !['error','interrupted'].includes(task.status)||
+      String(run.error||'').split(':').at(-1)!=='send_confirmation_unknown')
+    return {state:'idle',reason:'provider_recovery_not_applicable'};
+  let metrics=null;
+  try {metrics=JSON.parse(run.metrics||'{}');} catch {}
+  if(metrics?.failed_stage!=='submit'||metrics?.provider_delivery_state!=='uncertain'||
+      !Number.isSafeInteger(metrics?.submit_attempt_at)||metrics.submit_attempt_at<=0)
+    return {state:'idle',reason:'provider_recovery_not_applicable'};
+
+  const previous=store.db.prepare(`SELECT payload FROM events WHERE task_id=?
+    AND json_extract(payload,'$.run_id')=? AND kind='provider.response.recovery_attempt'
+    ORDER BY seq DESC LIMIT 1`).get(taskId,run.id);
+  let attemptState=null;
+  try {attemptState=previous?JSON.parse(previous.payload):null;} catch {}
+  const previousAttempt=Number.isSafeInteger(attemptState?.attempt)&&attemptState.attempt>0
+    ?attemptState.attempt:0;
+  if(previousAttempt>=PROVIDER_RECOVERY_MAX_OBSERVATIONS)
+    return {state:'exhausted',reason:'provider_recovery_observation_limit',taskId,runId:run.id};
+  const nextAt=Number.isSafeInteger(attemptState?.next_attempt_at)?attemptState.next_attempt_at:null;
+  if(nextAt!==null&&now<nextAt)
+    return {state:'waiting',reason:'provider_recovery_backoff',taskId,runId:run.id,nextAttemptAt:nextAt};
+
+  const attempt=previousAttempt+1;
+  const delay=PROVIDER_RECOVERY_BACKOFF_MS[Math.min(attempt-1,PROVIDER_RECOVERY_BACKOFF_MS.length-1)];
+  const recovery=await recoverFailedProviderSubmission({store,worker,taskId,runId:run.id})
+    .catch(error=>({reconciled:false,reason:safeHistoricalThreadFailure(error?.message)}));
+  const reconciled=recovery?.reconciled===true||recovery?.reason==='already_reconciled';
+  const exhausted=!reconciled&&attempt>=PROVIDER_RECOVERY_MAX_OBSERVATIONS;
+  const reason=typeof recovery?.reason==='string'&&/^[a-z0-9_]{1,80}$/.test(recovery.reason)
+    ?recovery.reason:'provider_inspection_unavailable';
+  let eventSeq=null;
+  try {
+    eventSeq=store.event(taskId,'provider.response.recovery_attempt',{
+      run_id:run.id,attempt,observed_at:now,
+      next_attempt_at:reconciled||exhausted?null:now+delay,
+      state:reconciled?'reconciled':exhausted?'exhausted':'pending',reason
+    });
+  } catch(error) {
+    // Reconciliation itself already committed its canonical response event.
+    // A failed diagnostic-attempt event must not hide the imported Run from UI.
+    if(!reconciled)throw error;
+  }
+  return reconciled
+    ?{state:'recovered',reason:'reconciled',taskId,runId:run.id,eventSeq}
+    :exhausted
+      ?{state:'exhausted',reason:'provider_recovery_observation_limit',taskId,runId:run.id,eventSeq}
+      :{state:'pending',reason,taskId,runId:run.id,attempt,nextAttemptAt:now+delay,eventSeq};
 }
 
 async function recoverFreshProviderSubmission({store,worker,taskId,runId,intent}={}) {

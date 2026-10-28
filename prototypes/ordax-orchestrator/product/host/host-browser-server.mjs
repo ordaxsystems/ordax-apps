@@ -69,7 +69,7 @@ export const HOST_BROWSER_METHODS = Object.freeze({
   setChatVisible:['ordax:chat:visible',a=>[a[0]]]
 });
 
-const EVENT_NAMES=new Set(['orchestrator-changed','run-started','task-stage','task-stream','task-provider-navigation','confirm']);
+const EVENT_NAMES=new Set(['orchestrator-changed','run-started','task-stage','task-stream','task-provider-navigation','task-reconciled','confirm']);
 const MIME=new Map([['.css','text/css; charset=utf-8'],['.gif','image/gif'],['.jpeg','image/jpeg'],['.jpg','image/jpeg'],['.png','image/png'],['.svg','image/svg+xml'],['.webp','image/webp'],['.avif','image/avif']]);
 
 function json(res,status,value,headers={}) {

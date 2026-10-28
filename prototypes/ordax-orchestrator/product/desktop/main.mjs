@@ -4,7 +4,7 @@ import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
 import { recordProviderSubmissionProvenance, recordProviderSubmissionIntent, findProviderSubmissionProvenance, providerPromptDigest } from '../src/provider-submission-provenance.mjs';
-import { inspectProviderLinkedThread, reconcileProviderLinkedReply, recoverFailedProviderSubmission } from '../src/provider-linked-thread-recovery.mjs';
+import { inspectProviderLinkedThread, reconcileProviderLinkedReply, recoverFailedProviderSubmission, recoverVisibleLinkedProviderSubmission } from '../src/provider-linked-thread-recovery.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
 import { assertProviderSendReadiness, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
 import { assertContinuationContextReady } from '../src/continuation-context.mjs';
@@ -156,7 +156,8 @@ const HOST_EVENT_BY_CHANNEL=Object.freeze({
   'ordax:task:run-started':'run-started',
   'ordax:task:stage':'task-stage',
   'ordax:task:stream':'task-stream',
-  'ordax:task:provider-navigation':'task-provider-navigation'
+  'ordax:task:provider-navigation':'task-provider-navigation',
+  'ordax:task:reconciled':'task-reconciled'
 });
 function emitRendererEvent(channel,payload) {
   if(win&&!win.isDestroyed())win.webContents.send(channel,payload);
@@ -930,6 +931,7 @@ registerUiHandler('ordax:supervisor:dispatch', (event,payload) => {
   return requireLabSupervisor().dispatch({taskId:payload?.taskId,actionId:payload?.actionId});
 });
 let continuationTimer=null;
+let providerRecoveryInFlight=false;
 app.whenReady().then(async () => {
   hostStartupLog('electron_ready');
   protocol.handle('ordax-asset', request => {
@@ -955,9 +957,29 @@ app.whenReady().then(async () => {
   // Observe completed Runs even when the coordinator chat is not selected.
   // Bound to this App lifetime; does not promise a headless 24h supervisor.
   continuationTimer=setInterval(()=>{
-    void orchestratorService.continuation.tick(localOrchestratorContext)
-      .then(result=>{if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();})
-      .catch(()=>{}); // No auto-retry of an uncertain provider/API effect.
+    void (async()=>{
+      try {
+        const result=await orchestratorService.continuation.tick(localOrchestratorContext);
+        if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();
+      } catch {}
+      // Use the existing app-lifetime supervisor tick. Recovery is restricted
+      // to an uncertain Run whose exact linked GPT thread is already visible;
+      // it performs bounded, read-only observations and never re-sends.
+      if(providerRecoveryInFlight||liveRun||
+          store.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
+          store.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
+          orchestratorService.provider?.busy?.()===true)return;
+      providerRecoveryInFlight=true;
+      try {
+        const recovery=await recoverVisibleLinkedProviderSubmission({store,worker});
+        if(recovery.state==='recovered') {
+          emitRendererEvent('ordax:task:reconciled',{
+            taskId:recovery.taskId,runId:recovery.runId
+          });
+          notifyOrchestratorChanged();
+        }
+      } catch {} finally {providerRecoveryInFlight=false;}
+    })().catch(()=>{});
   },10000);
 }).catch(()=>{
   hostStartupLog('startup_failed');

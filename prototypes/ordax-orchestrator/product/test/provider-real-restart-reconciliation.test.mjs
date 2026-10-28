@@ -6,7 +6,7 @@ import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {Store} from '../src/store.mjs';
 import {recordProviderSubmissionProvenance,recordProviderSubmissionIntent} from '../src/provider-submission-provenance.mjs';
-import {inspectProviderLinkedThread,reconcileProviderLinkedReply,recoverFailedProviderSubmission} from '../src/provider-linked-thread-recovery.mjs';
+import {inspectProviderLinkedThread,reconcileProviderLinkedReply,recoverFailedProviderSubmission,recoverVisibleLinkedProviderSubmission} from '../src/provider-linked-thread-recovery.mjs';
 
 const sha256=value=>createHash('sha256').update(value,'utf8').digest('hex');
 const url=id=>'https://chatgpt.com/c/'+id;
@@ -153,6 +153,82 @@ test('lost send acknowledgement auto-recovers one complete reply from a durable 
     'dispatch_intent');
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.task.id).n,1);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM checkpoints WHERE task_id=?").get(task.task.id).n,1);
+});
+
+test('background recovery observes a late GPT reply with durable backoff across Store restart and never resends',async t=>{
+  const f=openFixture(t);
+  const task=stageSubmission(f.store,{url:threadA,providerPrompt:'late reply '+randomUUID()});
+  f.store.recordRunMetrics(task.task.id,task.runId,'beta',{
+    failedStage:'submit',providerDeliveryState:'uncertain',submitAttemptAt:10_000
+  });
+  f.store.finishRun(task.task.id,task.runId,'submit:send_confirmation_unknown');
+  let reads=0,sends=0;
+  let current={...observation(task,'A resposta chegou depois do timeout.'),
+    generationStopVisible:true,responseCompletionObserved:false};
+  const worker={status:()=>({url:threadA}),inspectConversationReadOnly:async(target,options={})=>{
+    reads++;
+    assert.equal(target,threadA);
+    assert.equal(options.allowNavigation,false,'background recovery must not navigate');
+    return current;
+  },sendPrompt:async()=>{sends++;throw Error('recovery_must_never_send');}};
+
+  const first=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:100_000});
+  assert.equal(first.state,'pending');
+  assert.equal(first.reason,'provider_response_generation_active');
+  assert.equal(first.taskId,task.task.id);
+  assert.equal(first.runId,task.runId);
+  assert.equal(first.attempt,1);
+  assert.equal(first.nextAttemptAt,115_000);
+  assert.ok(Number.isSafeInteger(first.eventSeq));
+  const eventPlan=f.store.db.prepare(`EXPLAIN QUERY PLAN SELECT payload FROM events WHERE task_id=?
+    AND json_extract(payload,'$.run_id')=? AND kind='provider.response.recovery_attempt'
+    ORDER BY seq DESC LIMIT 1`).all(task.task.id,task.runId);
+  assert.match(eventPlan.map(row=>row.detail).join(' '),/idx_events_provider_recovery_attempt/);
+  assert.equal(reads,1);
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.task.id).n,0);
+
+  assert.equal(f.restart(),0);
+  const beforeDue=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:114_999});
+  assert.equal(beforeDue.state,'waiting');
+  assert.equal(reads,1,'a restart must preserve the backoff and avoid a duplicate read');
+  current=observation(task,'A resposta chegou depois do timeout.');
+  const recovered=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:115_000});
+  assert.equal(recovered.state,'recovered');
+  assert.equal(recovered.reason,'reconciled');
+  assert.equal(reads,3,'recovery reads and revalidates the completed transcript');
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='assistant'").get(task.task.id).content,
+    'A resposta chegou depois do timeout.');
+  assert.equal(f.store.db.prepare("SELECT status FROM runs WHERE id=?").get(task.runId).status,'succeeded');
+  assert.equal(f.store.db.prepare("SELECT status FROM tasks WHERE id=?").get(task.task.id).status,'ready');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.recovery_attempt'").get(task.task.id).n,2);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.reconciled'").get(task.task.id).n,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('background recovery refuses an unlinked or shared visible GPT thread without inspecting or sending',async t=>{
+  const f=openFixture(t);
+  const task=stageSubmission(f.store,{url:threadA,providerPrompt:'uncertain shared link '+randomUUID()});
+  f.store.recordRunMetrics(task.task.id,task.runId,'beta',{
+    failedStage:'submit',providerDeliveryState:'uncertain',submitAttemptAt:10_000
+  });
+  f.store.finishRun(task.task.id,task.runId,'submit:send_confirmation_unknown');
+  const second=f.store.createTask('A second task sharing a provider URL');
+  f.store.setChatUrl(second.id,threadA);
+  let reads=0,sends=0;
+  const worker={status:()=>({url:threadA}),inspectConversationReadOnly:async()=>{
+    reads++;return observation(task,'Ambiguous answer');
+  },sendPrompt:async()=>{sends++;}};
+  assert.deepEqual(await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:100_000}),
+    {state:'ambiguous',reason:'provider_thread_linked_to_multiple_tasks'});
+  worker.status=()=>({url:threadB});
+  assert.deepEqual(await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:100_000}),
+    {state:'idle',reason:'provider_thread_not_linked'});
+  assert.equal(reads,0);
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare("SELECT status FROM runs WHERE id=?").get(task.runId).status,'failed');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.task.id).n,0);
 });
 
 test('dispatch intent without a stable pre-dispatch baseline fails closed and never imports a historical duplicate',async t=>{

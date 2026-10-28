@@ -117,6 +117,9 @@ export class Store {
       CREATE INDEX IF NOT EXISTS idx_events_provider_transcript
         ON events(task_id,json_extract(payload,'$.conversation_id'),json_extract(payload,'$.run_id'),kind)
         WHERE kind IN ('provider.submission.provenance','provider.response.reconciled');
+      CREATE INDEX IF NOT EXISTS idx_events_provider_recovery_attempt
+        ON events(task_id,json_extract(payload,'$.run_id'),seq DESC)
+        WHERE kind='provider.response.recovery_attempt';
       CREATE TABLE IF NOT EXISTS checkpoints (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

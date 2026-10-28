@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('ordax', {
   onRunStarted: callback => ipcRenderer.on('ordax:task:run-started', (_event, payload) => callback(payload)),
   onTaskStage: callback => ipcRenderer.on('ordax:task:stage', (_event, payload) => callback(payload)),
   onTaskStream: callback => ipcRenderer.on('ordax:task:stream', (_event, payload) => callback(payload)),
-  onTaskProviderNavigation: callback => ipcRenderer.on('ordax:task:provider-navigation', (_event, payload) => callback(payload))
+  onTaskProviderNavigation: callback => ipcRenderer.on('ordax:task:provider-navigation', (_event, payload) => callback(payload)),
+  onTaskReconciled: callback => ipcRenderer.on('ordax:task:reconciled', (_event, payload) => callback(payload))
 });
 

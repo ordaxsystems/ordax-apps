@@ -647,6 +647,7 @@ async function openTask(id) {
   $('#provisionalResponseText').textContent=observation?.content || '';
 
   const recovery = $('#recoveryBanner');
+  recovery.classList.remove('recovered');
   if (task.status === 'interrupted') {
     const capsule = await window.ordax.resumeCapsule(id);
     const checkpointVersion = capsule?.checkpoint?.version || 0;
@@ -1190,6 +1191,23 @@ window.ordax.onTaskProviderNavigation(payload=>{
   currentTask={...currentTask,provider_navigation:payload.provider_navigation,
     ...(payload.provider_navigation_reason?{provider_navigation_reason:payload.provider_navigation_reason}:{})};
   renderTaskNavigationStatus(currentTask);
+});
+window.ordax.onTaskReconciled(async payload=>{
+  const taskId=payload?.taskId;
+  if(typeof taskId!=='string'||!taskId)return;
+  try {
+    await loadTasks();
+    if(currentTaskId!==taskId)return;
+    const updated=await window.ordax.getTask(taskId);
+    if(currentTaskId!==taskId||!updated)return;
+    currentTask=acceptTaskRefresh(updated);
+    renderHistory(currentTask,{scrollToLatest:historyPageIndex===0});
+    renderContext(currentTask);
+    const recovery=$('#recoveryBanner');
+    recovery.textContent='A resposta tardia do ChatGPT foi conferida e vinculada à execução original. Ela foi salva uma única vez; nenhum reenvio foi feito.';
+    recovery.classList.add('recovered');
+    recovery.classList.remove('hidden');
+  } catch {}
 });
 
 await selectRightPane('provider');

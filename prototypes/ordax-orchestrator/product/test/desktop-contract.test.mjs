@@ -533,3 +533,13 @@ test('Electron UI document is a single well-formed tree with unique control IDs'
   assert.match(source,/<div id=\"contextPanel\"[^>]*>[\s\S]*<\/div>\s*<\/aside>/);
 });
 
+test('late provider recovery refreshes both Electron and Host task views',()=>{
+  assert.match(main,/'ordax:task:reconciled':'task-reconciled'/);
+  assert.match(preload,/onTaskReconciled: callback => ipcRenderer\.on\('ordax:task:reconciled'/);
+  assert.match(hostBridge,/task-reconciled/);
+  assert.match(hostBridge,/api\.onTaskReconciled=callback=>subscribe\('task-reconciled',callback\)/);
+  assert.match(hostServer,/task-reconciled/);
+  assert.match(ui,/window\.ordax\.onTaskReconciled\(async payload=>/);
+  assert.match(ui,/recovery\.classList\.add\('recovered'\)/);
+});
+

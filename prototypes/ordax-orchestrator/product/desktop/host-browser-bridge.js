@@ -122,7 +122,7 @@
     eventSource=new EventSource('/api/events');
     eventSource.addEventListener('open',()=>setSessionState(true));
     eventSource.addEventListener('error',()=>setSessionState(false,'host_connection_lost'));
-    for(const name of ['orchestrator-changed','run-started','task-stage','task-stream','task-provider-navigation']) {
+    for(const name of ['orchestrator-changed','run-started','task-stage','task-stream','task-provider-navigation','task-reconciled']) {
       eventSource.addEventListener(name,event=>{
         let payload;try{payload=JSON.parse(event.data);}catch{return;}
         for(const callback of listeners.get(name)||[])callback(payload);
@@ -220,6 +220,7 @@
   api.onTaskStage=callback=>subscribe('task-stage',callback);
   api.onTaskStream=callback=>subscribe('task-stream',callback);
   api.onTaskProviderNavigation=callback=>subscribe('task-provider-navigation',callback);
+  api.onTaskReconciled=callback=>subscribe('task-reconciled',callback);
   Object.defineProperty(window,'ordax',{value:api,configurable:false,writable:false});
   Object.defineProperty(window,'ordaxHost',{value:Object.freeze({ready,hostMode:true}),configurable:false,writable:false});
   document.documentElement.dataset.ordaxHostUi='true';
