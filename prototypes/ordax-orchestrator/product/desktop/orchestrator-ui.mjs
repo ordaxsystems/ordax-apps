@@ -37,7 +37,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const selectedReady=Boolean(selected)&&selected.status!=='paused';
-    $('coordinatorSend').disabled=!(orchestratorChatAvailable||coordinatorAvailable)||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
+    $('coordinatorSend').disabled=!orchestratorChatAvailable||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
     $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy;
     $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
@@ -277,21 +277,21 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const engineStatus=await call('status');
     coordinatorAvailable=engineStatus.coordinatorAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
-    orchestratorChatAvailable=gptWebTransportAvailable||coordinatorAvailable;
+    orchestratorChatAvailable=gptWebTransportAvailable;
     coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     $('coordinatorApiEnable').disabled=!state.configured;
-    $('coordinatorApiEnable').textContent=state.enabled?'Desativar Groq':'Ativar Groq fallback';
+    $('coordinatorApiEnable').textContent=state.enabled?'Desativar Groq':'Ativar Groq para análises';
     $('coordinatorApiEnable').dataset.enabled=String(state.enabled);
     $('orchestrationConnection').textContent=gptWebTransportAvailable
-      ?`ChatGPT Web é o canal principal; a sessão é validada antes de cada envio.${coordinatorAvailable?' Groq está ativo como alternativa segura ou análise opcional.':' Groq está desligado.'}`
+      ?`ChatGPT Web é o único transporte para enviar mensagens neste chat; a sessão é verificada antes do envio.${coordinatorAvailable?' Groq está ativo para análise e propostas, sem se passar pelo GPT.':' Groq está desligado.'}`
       :coordinatorAvailable
-        ?'Chat do coordenador via Groq está ativo nesta superfície; o transporte ChatGPT Web não está disponível aqui.'
+        ?'GPT Web indisponível nesta superfície: envio bloqueado. Groq pode somente analisar e preparar propostas, não responder como GPT.'
         :!state.configured
-          ?'O transporte ChatGPT Web não está disponível nesta superfície. Configure Groq somente para análise ou alternativa opcional.'
-          :'Groq está configurado. Ative-o para análise opcional e alternativa após bloqueio confirmado do ChatGPT Web.';
+          ?'GPT Web indisponível nesta superfície: envio bloqueado. Groq é opcional para análise e propostas.'
+          :'GPT Web indisponível nesta superfície: envio bloqueado. Groq configurado apenas para análise e propostas.';
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
@@ -444,7 +444,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
     for(const message of page.messages) {
       const article=document.createElement('article');article.className='coordinator-message';
-      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'Orquestrador';
+      const role=document.createElement('strong');role.textContent=message.role==='user'?'Você':'Resposta registrada (origem no recibo)';
       const text=document.createElement('p');text.textContent=message.content;
       article.append(role,text);box.append(article);
     }
@@ -628,7 +628,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
         if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
         await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-        if(receipt.status==='succeeded')status('Resposta registrada. Propostas aguardam execução autorizada.');
+        if(receipt.status==='succeeded')status(receipt.result?.provider==='chatgpt_web'
+          ?'Resposta observada do ChatGPT Web e registrada. Nenhuma ação de projeto foi executada.'
+          :'Resposta registrada; consulte o provedor no recibo. Nenhuma ação de projeto foi executada.');
+        else status('Envio GPT não confirmado ('+receipt.status+'). Sem resposta atribuída nem reenvio automático.');
         await renderCoordinator();
       } finally {
         coordinatorSubmitting=false;syncCoordinatorActions();
