@@ -871,13 +871,13 @@ test('transcript pressure counts the expanded provider prompt and verified conti
   t.after(()=>store.close());
   const finish=({title,chatUrl,prompt,providerPrompt,contextManifest,contextAttachmentReceipt=null})=>{
     const task=store.createTask(title);
-    store.setChatUrl(task.id,chatUrl);
+    const conversation=store.setChatUrl(task.id,chatUrl);
     const {userMessage,runId}=store.beginProviderRun(task.id,prompt);
     assert.deepEqual(recordProviderSubmissionProvenance({store,taskId:task.id,runId,
       messageId:userMessage.id,providerPrompt,chatUrl,submittedAt:Date.now(),
       contextManifest,contextAttachmentReceipt}),{recorded:true,reason:'receipt_recorded'});
     store.commitObservedProviderReply(task.id,runId,{text:'resposta confirmada',observedAt:new Date().toISOString(),chatUrl});
-    return {task,runId};
+    return {task,runId,conversation};
   };
 
   const prompt='Continue o projeto';
@@ -892,6 +892,18 @@ test('transcript pressure counts the expanded provider prompt and verified conti
   const savedReceipt=JSON.parse(provenance.payload);
   assert.equal(savedReceipt.provider_prompt_bytes,Buffer.byteLength(expanded,'utf8'));
   assert.equal(Object.hasOwn(savedReceipt,'provider_prompt'),false);
+  for(let i=0;i<200;i++)store.event(expandedTask.task.id,'provider.submission.provenance',{
+    run_id:'failed_'+i,message_id:'uncertain_'+i,conversation_id:expandedTask.conversation.id
+  });
+  observed=store.getTaskExecutionSnapshot(expandedTask.task.id).conversations[0].observed_transcript_bytes;
+  assert.equal(observed,Buffer.byteLength(expanded,'utf8')+Buffer.byteLength('resposta confirmada','utf8'));
+  const queryPlan=store.db.prepare(`EXPLAIN QUERY PLAN SELECT kind,payload FROM events WHERE task_id=?
+    AND kind IN ('provider.submission.provenance','provider.response.reconciled')
+    AND json_extract(payload,'$.conversation_id')=?
+    AND json_extract(payload,'$.run_id') IN (?) ORDER BY seq LIMIT ?`)
+    .all(expandedTask.task.id,expandedTask.conversation.id,expandedTask.runId,SUCCESSFUL_TURNS_PER_SEGMENT*4+1)
+    .map(row=>row.detail).join(' ');
+  assert.match(queryPlan,/idx_events_provider_transcript/);
 
   const attachmentTask=store.createTask('Verified continuation attachment');
   const attachmentChatUrl='https://chatgpt.com/c/attachment-context';

@@ -114,6 +114,9 @@ export class Store {
         payload TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_events_provider_transcript
+        ON events(task_id,json_extract(payload,'$.conversation_id'),json_extract(payload,'$.run_id'),kind)
+        WHERE kind IN ('provider.submission.provenance','provider.response.reconciled');
       CREATE TABLE IF NOT EXISTS checkpoints (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -530,9 +533,16 @@ export class Store {
     const completed=this.db.prepare(`SELECT run_id FROM conversation_completed_runs
       WHERE task_id=? AND conversation_id=? ORDER BY created_at,run_id`).all(taskId,conversationId);
     if(completed.length!==completedTurns)return null;
+    const runIds=completed.map(({run_id})=>run_id);
+    if(runIds.some(runId=>typeof runId!=='string'||!runId))return null;
+    const maxReceiptEvents=SUCCESSFUL_TURNS_PER_SEGMENT*4;
+    const runPlaceholders=runIds.map(()=>'?').join(',');
     const mappings=this.db.prepare(`SELECT kind,payload FROM events WHERE task_id=?
       AND kind IN ('provider.submission.provenance','provider.response.reconciled')
-      AND json_extract(payload,'$.conversation_id')=? ORDER BY seq`).all(taskId,conversationId);
+      AND json_extract(payload,'$.conversation_id')=?
+      AND json_extract(payload,'$.run_id') IN (${runPlaceholders})
+      ORDER BY seq LIMIT ?`).all(taskId,conversationId,...runIds,maxReceiptEvents+1);
+    if(mappings.length>maxReceiptEvents)return null;
     const messageByRun=new Map();
     for(const row of mappings){
       let payload;
