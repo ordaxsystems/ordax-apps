@@ -279,6 +279,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       return `?presentation=embedded-preview&view=kitchen&station=${screenNumber}&stationStage=${encodeURIComponent(stage)}&screenCount=${screenCount}`;
     }
     const url = new URL(currentHref);
+    for (const key of [...url.searchParams.keys()]) {
+      if (key.startsWith("__")) url.searchParams.delete(key);
+    }
     url.searchParams.set("view", "kitchen");
     url.searchParams.set("station", String(screenNumber));
     url.searchParams.set("stationStage", stage);

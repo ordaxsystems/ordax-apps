@@ -749,6 +749,23 @@ try {
         && row.querySelector('[data-action="copy-kitchen-link"]')?.getAttribute("aria-label")
           === `Copiar link da tela ${screenNumber}`;
     }), "Cada aparelho precisa ter ações de abrir e copiar identificadas pelo número da tela.");
+    const secondScreenLink = screenActions[1].querySelector(".kitchen-open-display");
+    const secondScreenUrl = new URL(secondScreenLink.href);
+    ensure(secondScreenUrl.searchParams.get("station") === "2"
+      && secondScreenUrl.searchParams.get("stationStage") === "oven"
+      && secondScreenUrl.searchParams.get("screenCount") === "2"
+      && ![...secondScreenUrl.searchParams.keys()].some((key) => key.startsWith("__")),
+    "O link da segunda tela precisa abrir o posto correto sem repassar parâmetros internos do host.");
+    let copiedScreenUrl = null;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (value) => { copiedScreenUrl = value; } },
+    });
+    screenActions[1].querySelector('[data-action="copy-kitchen-link"]').click();
+    await eventually(() => copiedScreenUrl && root.querySelector('.toast[role="status"]')?.textContent.includes("copiado"),
+      "Copiar o link da segunda tela não gravou a URL nem confirmou a ação.");
+    ensure(copiedScreenUrl === secondScreenLink.href,
+      "A URL copiada deve corresponder à rota direta exibida para a segunda tela.");
     const configureQueueMode = parameters.get("__configure_queue_mode");
     if (configureQueueMode) {
       ensure(["by-order", "by-stage"].includes(configureQueueMode),

@@ -183,3 +183,10 @@ transações e concluído o rollout pelo migration registry canônico.
 - Os controles repetidos de abrir e copiar agora anunciam o número da tela, por exemplo “Abrir tela 2 em nova aba” e “Copiar link da tela 2”. Os rótulos visíveis continuam compactos, mas cada posto é distinguível por leitor de tela e automação.
 - A prova do fluxo de configuração confirma as ações identificadas para cada tela depois de agrupar quatro etapas em dois aparelhos. Os links continuam sendo rotas diretas da prévia local; a fila compartilhada entre aparelhos depende do contrato Food de produção em tempo real.
 - Verificação: suíte Food **196/196**; prova Chrome em **31/31 configurações**, incluindo os dois nomes acessíveis em cada tela; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; `node --check` e `git diff --check` aprovados.
+
+
+### KDS — gerar link direto limpo e verificar cópia (2026-10-27)
+
+- Os links diretos preservam o contexto normal do host, removem parâmetros internos reservados (`__*`) e continuam apontando para a tela, etapa e quantidade de postos configuradas. Isso impede que parâmetros de automação ou configuração temporária sejam compartilhados com o aparelho da cozinha.
+- A prova Chrome configura duas telas, copia o link da segunda, verifica o posto 2/Forno/duas telas, compara com a rota “Abrir tela” e confirma a mensagem de sucesso.
+- Verificação: suíte Food **196/196**; prova Chrome em **31/31 configurações**; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; sintaxe JavaScript e `git diff --check` aprovados. A fila segue local à prévia enquanto falta o contrato Food Production.
