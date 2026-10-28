@@ -757,24 +757,65 @@ try {
       && ![...secondScreenUrl.searchParams.keys()].some((key) => key.startsWith("__")),
     "O link da segunda tela precisa abrir o posto correto sem repassar parâmetros internos do host.");
     let copiedScreenUrl = null;
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText: async (value) => { copiedScreenUrl = value; } },
-    });
-    screenActions[1].querySelector('[data-action="copy-kitchen-link"]').click();
-    await eventually(() => copiedScreenUrl && root.querySelector('.toast[role="status"]')?.textContent.includes("copiado"),
-      "Copiar o link da segunda tela não gravou a URL nem confirmou a ação.");
-    ensure(copiedScreenUrl === secondScreenLink.href,
-      "A URL copiada deve corresponder à rota direta exibida para a segunda tela.");
     const configureQueueMode = parameters.get("__configure_queue_mode");
     if (configureQueueMode) {
       ensure(["by-order", "by-stage"].includes(configureQueueMode),
         "O modo de organização da fila solicitado não é válido.");
       updatedForm.elements.queueMode.value = configureQueueMode;
     }
-    updatedForm.requestSubmit();
-    await eventually(() => root.textContent.includes("Fluxo e telas da cozinha salvos."),
-      "O fluxo de duas telas não foi salvo.");
+    const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
+    const nativeClearTimeout = globalThis.clearTimeout.bind(globalThis);
+    const noticeTimeouts = [];
+    globalThis.setTimeout = (callback, delay, ...args) => {
+      if (delay === 3600) {
+        const handle = { callback: () => callback(...args), cleared: false };
+        noticeTimeouts.push(handle);
+        return handle;
+      }
+      return nativeSetTimeout(callback, delay, ...args);
+    };
+    globalThis.clearTimeout = (handle) => {
+      if (handle && typeof handle === "object" && "callback" in handle) {
+        handle.cleared = true;
+        return;
+      }
+      nativeClearTimeout(handle);
+    };
+    try {
+      updatedForm.requestSubmit();
+      await eventually(() => root.querySelector('.toast[role="status"]')?.textContent.includes("salvos"),
+        "O fluxo de duas telas não foi salvo.");
+      const previousNoticeTimer = noticeTimeouts.at(-1);
+      ensure(previousNoticeTimer, "Salvar o fluxo deveria iniciar o prazo do aviso de sucesso.");
+      const liveScreenActions = [...root.querySelectorAll(".kitchen-display-row")];
+      const secondScreenCopy = liveScreenActions[1]?.querySelector('[data-action="copy-kitchen-link"]');
+      const clipboardPort = { writeText: async (value) => { copiedScreenUrl = value; } };
+      Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboardPort });
+      secondScreenCopy?.click();
+      await eventually(() => copiedScreenUrl && root.querySelector('.toast[role="status"]')?.textContent.includes("Link da tela 2 copiado"),
+        "Copiar o link da segunda tela não gravou a URL nem confirmou a ação.");
+      ensure(copiedScreenUrl === liveScreenActions[1].querySelector(".kitchen-open-display").href,
+        "A URL copiada deve corresponder à rota direta exibida para a segunda tela.");
+      const copyNoticeTimer = noticeTimeouts.at(-1);
+      ensure(copyNoticeTimer && copyNoticeTimer !== previousNoticeTimer && previousNoticeTimer.cleared,
+        "A cópia precisa substituir o prazo do aviso anterior.");
+      previousNoticeTimer.callback();
+      ensure(root.querySelector('.toast[role="status"]')?.textContent.includes("Link da tela 2 copiado"),
+        "Um temporizador anterior não pode apagar o aviso novo mesmo que sua execução já esteja na fila.");
+      copyNoticeTimer.callback();
+      ensure(!root.querySelector(".toast"), "O aviso de sucesso deve desaparecer ao vencer seu próprio prazo.");
+      clipboardPort.writeText = async () => { throw new Error("Permissão de cópia negada."); };
+      secondScreenCopy.click();
+      await eventually(() => root.querySelector('.toast[role="alert"]')?.textContent.includes("Permissão de cópia negada"),
+        "A falha real do clipboard não foi comunicada como erro.");
+      ensure(noticeTimeouts.length === 2,
+        "Um erro deve permanecer até o operador fechá-lo, sem ganhar temporizador de sucesso.");
+      root.querySelector('.toast[role="alert"] [data-action="dismiss-notice"]')?.click();
+      ensure(!root.querySelector(".toast"), "Fechar um erro deve remover o aviso e cancelar seu temporizador.");
+    } finally {
+      globalThis.setTimeout = nativeSetTimeout;
+      globalThis.clearTimeout = nativeClearTimeout;
+    }
   }
 
   if (embedded) {

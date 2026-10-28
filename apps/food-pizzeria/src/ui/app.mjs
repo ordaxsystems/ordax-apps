@@ -299,11 +299,32 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     url.searchParams.delete("screenCount");
     return `${url.pathname}${url.search}${url.hash}`;
   }
+
+  function clearNotice() {
+    clearTimeout(noticeTimer);
+    noticeTimer = null;
+    notice = null;
+  }
+
+  function setNotice(type, text, { duration = type === "success" ? 3600 : 0, render = true } = {}) {
+    if (destroyed) return;
+    clearTimeout(noticeTimer);
+    noticeTimer = null;
+    const nextNotice = { type, text };
+    notice = nextNotice;
+    if (render) renderNotice();
+    if (Number.isFinite(duration) && duration > 0) {
+      noticeTimer = globalThis.setTimeout(() => {
+        if (notice !== nextNotice) return;
+        noticeTimer = null;
+        notice = null;
+        renderNotice();
+      }, duration);
+    }
+  }
   
   function report(error) {
-    if (destroyed) return;
-    notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível concluir esta operação." };
-    renderNotice();
+    setNotice("error", error instanceof Error ? error.message : "Não foi possível concluir esta operação.");
   }
   
   function setBusyUI(value) {
@@ -323,7 +344,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   async function dispatch(commandInput, successText, { renderAfter = true } = {}) {
     if (busy || destroyed) return false;
     const startingRevision = snapshot?.revision;
-    notice = null;
+    clearNotice();
     busy = true;
     setBusyUI(true);
     let committed = false;
@@ -335,16 +356,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       await store.execute(command);
       if (destroyed) return false;
       committed = true;
-      notice = { type: "success", text: successText };
-      clearTimeout(noticeTimer);
-      noticeTimer = setTimeout(() => {
-        notice = null;
-        renderNotice();
-      }, 3600);
+      setNotice("success", successText, { render: false });
       return true;
     } catch (error) {
       if (!destroyed) {
-        notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar os dados." };
+        setNotice("error", error instanceof Error ? error.message : "Não foi possível salvar os dados.", { render: false });
       }
       return false;
     } finally {
@@ -721,8 +737,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function openTableCommandDialog(preselectedTableId = null) {
     const availableTables = PIZZERIA_TABLES.filter(({ active, id }) => active && !activeCommandForTable(id));
     if (!availableTables.length) {
-      notice = { type: "error", text: "Todas as mesas já têm uma comanda aberta." };
-      renderNotice();
+      setNotice("error", "Todas as mesas já têm uma comanda aberta.");
       return;
     }
     const select = tableOpenForm.elements.tableId;
@@ -780,13 +795,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       urlApi.revokeObjectURL(url);
     }, 1000);
     reportDownloadTimers.set(timer, { url, urlApi });
-    notice = { type: "success", text: "Relatório CSV baixado." };
-    clearTimeout(noticeTimer);
-    noticeTimer = globalThis.setTimeout(() => {
-      notice = null;
-      renderNotice();
-    }, 3600);
-    renderNotice();
+    setNotice("success", "Relatório CSV baixado.");
   }
 
   function render() {
@@ -1085,15 +1094,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       await store.updatePreviewPreferences({ ...previewPreferences, deliveryFeeCents });
       if (destroyed) return false;
       previewPreferences = store.getPreviewPreferences();
-      notice = { type: "success", text: "Taxa padrão salva para os próximos pedidos." };
-      clearTimeout(noticeTimer);
-      noticeTimer = setTimeout(() => {
-        notice = null;
-        renderNotice();
-      }, 3600);
+      setNotice("success", "Taxa padrão salva para os próximos pedidos.", { render: false });
       return true;
     } catch (error) {
-      if (!destroyed) notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar a preferência local." };
+      if (!destroyed) setNotice("error", error instanceof Error ? error.message : "Não foi possível salvar a preferência local.", { render: false });
       return false;
     } finally {
       busy = false;
@@ -1145,15 +1149,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       if (destroyed) return false;
       previewPreferences = store.getPreviewPreferences();
       kitchenWorkflowDraft = null;
-      notice = { type: "success", text: "Fluxo e telas da cozinha salvos." };
-      clearTimeout(noticeTimer);
-      noticeTimer = setTimeout(() => {
-        notice = null;
-        renderNotice();
-      }, 3600);
+      setNotice("success", "Fluxo e telas da cozinha salvos.", { render: false });
       return true;
     } catch (error) {
-      if (!destroyed) notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar o fluxo da cozinha." };
+      if (!destroyed) setNotice("error", error instanceof Error ? error.message : "Não foi possível salvar o fluxo da cozinha.", { render: false });
       return false;
     } finally {
       busy = false;
@@ -1188,19 +1187,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       if (destroyed) return;
       snapshot = readFoodSnapshot(store);
       previewPreferences = store.getPreviewPreferences();
-      notice = {
-        type: "success",
-        text: action === "start" ? `${step?.label ?? "Etapa"} iniciada.`
-          : action === "complete" ? `${step?.label ?? "Etapa"} concluída. O pedido seguiu o fluxo.`
-            : `Próximo pedido em foco; o atual voltou na ${Number(target.dataset.passBehind) === 2 ? "terceira" : "segunda"} posição.`,
-      };
-      clearTimeout(noticeTimer);
-      noticeTimer = setTimeout(() => {
-        notice = null;
-        renderNotice();
-      }, 3000);
+      setNotice("success", action === "start" ? `${step?.label ?? "Etapa"} iniciada.`
+        : action === "complete" ? `${step?.label ?? "Etapa"} concluída. O pedido seguiu o fluxo.`
+          : `Próximo pedido em foco; o atual voltou na ${Number(target.dataset.passBehind) === 2 ? "terceira" : "segunda"} posição.`,
+      { duration: 3000, render: false });
     } catch (error) {
-      if (!destroyed) notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível atualizar esta etapa." };
+      if (!destroyed) setNotice("error", error instanceof Error ? error.message : "Não foi possível atualizar esta etapa.", { render: false });
     } finally {
       busy = false;
       if (!destroyed) {
@@ -1218,9 +1210,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     try {
       const currentHref = globalThis.location?.href ?? "http://localhost/";
-      await clipboard.writeText(new URL(target.dataset.copyUrl, currentHref).href);
-      notice = { type: "success", text: "Link da tela copiado." };
-      renderNotice();
+      const url = new URL(target.dataset.copyUrl, currentHref);
+      await clipboard.writeText(url.href);
+      const screenNumber = url.searchParams.get("station");
+      setNotice("success", `Link da tela ${screenNumber} copiado.`);
     } catch (error) {
       report(error);
     }
@@ -1239,8 +1232,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     try {
       await clipboard.writeText(address);
-      notice = { type: "success", text: `Endereço do pedido ${target.dataset.orderNumber} copiado.` };
-      renderNotice();
+      setNotice("success", `Endereço do pedido ${target.dataset.orderNumber} copiado.`);
     } catch (error) {
       report(error);
     }
@@ -1377,7 +1369,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     } else if (action === "export-food-report") {
       try { exportFoodReport(); } catch (error) { report(error); }
     } else if (action === "dismiss-notice") {
-      notice = null;
+      clearNotice();
       renderNotice();
     } else if (action === "reset-order-filters") {
       orderStatusFilter = "all";
@@ -1472,13 +1464,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     } else if (action === "add-command-order") {
       const command = commandById(target.dataset.commandId);
       if (!command || command.closedAt !== null) {
-        notice = { type: "error", text: "Esta comanda já foi encerrada." };
-        renderNotice();
+        setNotice("error", "Esta comanda já foi encerrada.");
         return;
       }
       if (cart.length) {
-        notice = { type: "error", text: "Finalize ou limpe o pedido atual antes de iniciar um pedido para a mesa." };
-        renderNotice();
+        setNotice("error", "Finalize ou limpe o pedido atual antes de iniciar um pedido para a mesa.");
         return;
       }
       activeCommandId = command.id;
@@ -1937,7 +1927,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       });
     } catch (error) {
       if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.", { cause: error });
-      notice = { type: "error", text: error instanceof Error ? error.message : "Armazenamento local indisponível." };
+      setNotice("error", error instanceof Error ? error.message : "Armazenamento local indisponível.", { render: false });
     }
     if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.");
     root.addEventListener("click", handleClick);

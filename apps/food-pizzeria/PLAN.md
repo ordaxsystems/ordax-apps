@@ -190,3 +190,10 @@ transações e concluído o rollout pelo migration registry canônico.
 - Os links diretos preservam o contexto normal do host, removem parâmetros internos reservados (`__*`) e continuam apontando para a tela, etapa e quantidade de postos configuradas. Isso impede que parâmetros de automação ou configuração temporária sejam compartilhados com o aparelho da cozinha.
 - A prova Chrome configura duas telas, copia o link da segunda, verifica o posto 2/Forno/duas telas, compara com a rota “Abrir tela” e confirma a mensagem de sucesso.
 - Verificação: suíte Food **196/196**; prova Chrome em **31/31 configurações**; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; sintaxe JavaScript e `git diff --check` aprovados. A fila segue local à prévia enquanto falta o contrato Food Production.
+
+
+### Food — notificações sem temporizadores concorrentes (2026-10-27)
+
+- Avisos de sucesso e erro passam por um único controlador: cada nova mensagem cancela o prazo anterior; sucessos são fechados automaticamente no próprio prazo e erros permanecem até o operador dispensá-los. Ações Food, KDS, cópia de links/endereços, configurações e relatórios agora compartilham o mesmo ciclo.
+- A prova no Chrome simula um temporizador antigo já na fila depois de salvar o fluxo, copia o link da tela 2 e verifica que o aviso novo não é apagado. Também comprova fechamento no prazo próprio, erro de permissão do clipboard mantido até dispensar e confirmação contextual da tela copiada.
+- Verificação: suíte Food **196/196**; prova Chrome em **31/31 configurações**; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; sintaxe JavaScript e `git diff --check` aprovados. Nenhuma regra de pedidos ou integração externa foi alterada.
