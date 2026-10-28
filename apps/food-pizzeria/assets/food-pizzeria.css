@@ -749,7 +749,7 @@ dialog p { color: #a2a8af; }
 .food-report-range { min-height: 30px; padding: 0 11px; border: 0; border-radius: 6px; background: transparent; color: #a9b0b7; font-size: 9px; font-weight: 700; cursor: pointer; }
 .food-report-range:hover { color: #f0f1f2; }
 .food-report-range.is-active { background: #38251f; color: #ff9a6c; box-shadow: inset 0 0 0 1px #68402e; }
-.food-report-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
+.food-report-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 14px; }
 .food-report-metrics .metric-card { min-width: 0; }
 .food-report-metrics .metric-value { overflow-wrap: anywhere; font-size: clamp(18px, 2vw, 25px); }
 .food-report-layout { grid-template-columns: minmax(0, 1.1fr) minmax(290px, .9fr); align-items: start; }
@@ -789,6 +789,7 @@ dialog p { color: #a2a8af; }
 .food-report-empty-state .empty-icon .ui-icon { width: 24px; height: 24px; color: #ff9469; }
 
 @media (max-width: 980px) {
+  .food-report-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .food-report-layout { grid-template-columns: minmax(0, 1fr); }
   .food-report-side-column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

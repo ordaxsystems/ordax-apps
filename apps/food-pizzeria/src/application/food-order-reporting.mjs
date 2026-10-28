@@ -38,6 +38,14 @@ export function buildFoodOperationalReport(snapshot, { range = "7d", now = Date.
   const flavorCounts = new Map();
   let pizzaUnits = 0;
   let additionalProductUnits = 0;
+  const pricedOrders = orders.filter((order) => order.status !== "cancelled"
+    && Number.isSafeInteger(order.totalCents) && order.totalCents >= 0);
+  const totalOrderValueCents = pricedOrders.reduce((sum, order) => {
+    if (!Number.isSafeInteger(sum + order.totalCents)) {
+      throw new RangeError("O total dos pedidos excede o intervalo monetário seguro do relatório.");
+    }
+    return sum + order.totalCents;
+  }, 0);
   const readyDurationsMinutes = [];
 
   for (const order of orders) {
@@ -84,6 +92,9 @@ export function buildFoodOperationalReport(snapshot, { range = "7d", now = Date.
     completedOrders: orders.filter(({ status }) => status === "completed").length,
     cancelledOrders,
     cancellationRate: orders.length ? cancelledOrders / orders.length : 0,
+    totalOrderValueCents: pricedOrders.length ? totalOrderValueCents : null,
+    averageOrderValueCents: pricedOrders.length ? Math.round(totalOrderValueCents / pricedOrders.length) : null,
+    pricedOrderSampleSize: pricedOrders.length,
     medianReadyMinutes,
     readySampleSize: readyDurationsMinutes.length,
     byChannel: Object.freeze(byChannel),
@@ -124,6 +135,8 @@ export function serializeFoodOperationalReportCsv(report, {
     ["Pedidos", "Prontos", report.readyOrders, "pedidos", "Estado atual do pedido"],
     ["Pedidos", "Concluídos", report.completedOrders, "pedidos", "Estado atual do pedido"],
     ["Pedidos", "Cancelados", report.cancelledOrders, "pedidos", `${Math.round(report.cancellationRate * 100)}% do período`],
+    ["Pedidos", "Valor dos pedidos", formatBrl(report.totalOrderValueCents), "BRL", "Exclui cancelados; não confirma pagamento"],
+    ["Pedidos", "Média por pedido", formatBrl(report.averageOrderValueCents), "BRL", `${report.pricedOrderSampleSize ?? 0} pedidos válidos não cancelados`],
     ["Produção", "Mediana até Pronto", report.medianReadyMinutes ?? "", "minutos", `${report.readySampleSize} pedidos na amostra`],
     ["Itens", "Pizzas", report.pizzaUnits, "unidades", "Quantidades dos snapshots Food"],
     ["Itens", "Produtos adicionais", report.additionalProductUnits, "unidades", "Sem baixa de Inventory"],
@@ -145,4 +158,10 @@ export function serializeFoodOperationalReportCsv(report, {
   }
 
   return `\uFEFF${rows.map((row) => row.map(csvCell).join(";")).join("\r\n")}\r\n`;
+}
+
+function formatBrl(cents) {
+  return Number.isSafeInteger(cents) && cents >= 0
+    ? new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cents / 100)
+    : "";
 }

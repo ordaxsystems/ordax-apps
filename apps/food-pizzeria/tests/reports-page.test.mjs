@@ -9,6 +9,7 @@ const snapshot = {
     createdAt: "2026-10-27T15:00:00.000Z",
     channel: "pickup",
     status: "ready",
+    totalCents: 2450,
     items: [{ id: "pizza-1", quantity: 1, flavors: [{ id: "calabresa", name: "Calabresa" }] }],
     statusHistory: [
       { status: "received", changedAt: "2026-10-27T15:00:00.000Z" },
@@ -36,6 +37,9 @@ test("Food reports render operational metrics, period controls and navigation ac
   assert.match(page, /ANÁLISE OPERACIONAL/);
   assert.match(page, /Pedidos por canal/);
   assert.match(page, /Mediana até ficar pronto/);
+  assert.match(page, /Média por pedido/);
+  assert.match(page, /R\$ 24,50/);
+  assert.match(page, /não confirma pagamento/);
   assert.match(page, /16 min/);
   assert.match(page, /data-report-range="24h"/);
   assert.match(page, /data-report-range="7d" aria-pressed="true"/);
@@ -53,6 +57,7 @@ test("reports explain combined-flavor counting and keep payments and inventory o
   const page = renderFoodReportsPage(viewModel());
   assert.match(page, /Em pizzas combinadas, cada sabor aparece na contagem/);
   assert.match(page, /Pagamentos e saldos de estoque continuam nos respectivos owners/);
+  assert.match(page, /total congelado nos pedidos não cancelados/);
   assert.doesNotMatch(page, /faturamento|lucro|receita líquida/i);
 });
 

@@ -210,4 +210,10 @@ transações e concluído o rollout pelo migration registry canônico.
 
 - Pedidos de entrega prontos, retiradas prontas e entregas em rota oferecem uma mensagem de status previamente preenchida para WhatsApp. A ação abre a conversa para revisão e envio manual; abrir o link não envia mensagem nem altera o pedido. Balcão e salão não exibem aviso externo.
 - Telefones locais brasileiros recebem o código do país; números internacionais com prefixo são preservados. Telefone ausente ou inválido não produz link. O texto é codificado para URL, abre em nova aba com proteção `noopener` e usa apenas o canal/estado/ID já presentes no pedido Food.
-- Verificação: suíte Food **202/202**; Chromium **32/32** cenários, incluindo avisos e ações sem overflow em telefones 390×844 e 320×568; `node --check` e `git diff --check` aprovados; verificador MVP **20 alvos / 18 entradas não assinadas / 2 bloqueados / 0 instalações públicas verificadas**. Nenhum provider ou integração de mensagens é declarado; o operador envia pela própria conta WhatsApp.
+- Verificação: suíte Food **202/202**; Chromium **36/36** cenários, incluindo avisos e ações sem overflow em telefones 390×844 e 320×568; `node --check` e `git diff --check` aprovados; verificador MVP **20 alvos / 18 entradas não assinadas / 2 bloqueados / 0 instalações públicas verificadas**. Nenhum provider ou integração de mensagens é declarado; o operador envia pela própria conta WhatsApp.
+
+### Relatórios — média dos valores registrados nos pedidos (2026-10-27)
+
+- O relatório mostra a média dos totais congelados em pedidos Food não cancelados e o CSV inclui média e soma do período. A amostra ignora total inválido/ausente, conserva cancelamentos na contagem de cancelados e não os soma ao valor solicitado.
+- A apresentação informa que o indicador não confirma pagamento recebido. Não lê Payments, Sales ou Finance; Food continua usando o total já persistido no snapshot do pedido.
+- Verificação: suíte Food **205/205**; Chromium **39/39** cenários, incluindo relatório em 390×844 e 320×568 sem overflow; `node --check` e `git diff --check` aprovados; verificador MVP **20 alvos / 18 entradas não assinadas / 2 bloqueados / 0 instalações públicas verificadas**.

@@ -1022,3 +1022,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 - A edição não salva da ficha técnica agora permanece em memória, por sabor, se o operador fechar ou abrir outra ficha; ao reabrir, o editor restaura ingredientes e quantidades. O foco acompanha abertura, inclusão/remoção de linhas e retorno ao cardápio. O rascunho é descartado ao salvar com sucesso ou ao encerrar a instância; ele não é persistência de domínio.
 - Smoke cobre mudança para Marguerita, fechamento, retorno à Calabresa com insumo/quantidade alterados e foco contextual. O helper de rolagem consulta a preferência de movimento reduzido. Nenhum pedido, ficha persistida, saldo ou movimento de Inventory é alterado por fechar o editor.
 - Verificação: Food **195/195**; Chrome **27/27**; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.
+
+### Space Pizzaria / OrdaX Food — valor médio em relatórios de pedidos (2026-10-27)
+
+- O relatório operacional inclui a média e a soma dos totais congelados dos pedidos não cancelados. O CSV identifica BRL e exclui cancelados; snapshots inválidos não entram na amostra. A UI esclarece que o indicador não comprova pagamento recebido.
+- Food segue como owner dos pedidos; a métrica consome somente `totalCents` já presente no pedido. Payments, Sales e Finance não são consultados ou alterados, e não foi criada persistência paralela.
+- Verificação: suíte Food **205/205**; Chromium **39/39** cenários, com relatórios em 390×844 e 320×568 sem overflow; sintaxe e `git diff --check` aprovados; MVP **20 alvos, 18 entradas não assinadas, 2 bloqueados e 0 instalações públicas verificadas**.

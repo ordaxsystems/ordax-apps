@@ -16,6 +16,7 @@ Protótipo independente do domínio de alimentação, com pizzaria e registros f
 - Relatórios operacionais: consultar últimos 24 h, 7 dias ou 30 dias; ver pedidos por canal, itens pedidos, sabores presentes, cancelamentos e mediana entre recebimento e Pronto; baixar um CSV de resumo sem dados pessoais dos clientes. Todos os indicadores derivam do histórico Food. Em pizzas combinadas, cada sabor escolhido aparece na contagem. Não inclui pagamento, saldo de Inventory, lucro nem uma visão geral agregada do Space.
 - Em pedidos prontos para entrega/retirada e entregas em rota, a Expedição prepara um rascunho de atualização pelo WhatsApp com o status e o número do pedido. O operador revisa e envia na própria conversa; não há envio automático nem alteração do pedido por abrir o link. Atendimento de balcão e salão não exibe aviso externo.
 - Visão geral, Estoque, Clientes e Equipe dependem da composição do Space ou dos respectivos owners/providers; o Food não duplica esses dados nem monta um segundo dashboard do Space.
+- Relatórios incluem a média dos totais Food válidos em pedidos não cancelados. Esse indicador é valor solicitado/congelado no pedido, não confirmação de pagamento nem receita recebida; cancelamentos ficam de fora e Payments continua como owner da confirmação financeira.
 
 Na fila inicial da prévia, o pedido #1052 exemplifica a confirmação de retirada e o pedido #1049 contém uma pizza média de seis fatias com quatro sabores. O KDS apresenta cada sabor individualmente junto do tamanho e das fatias; não presume a quantidade de fatias de cada sabor.
 

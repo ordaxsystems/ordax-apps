@@ -4,12 +4,13 @@ import { buildFoodOperationalReport, serializeFoodOperationalReportCsv } from ".
 
 const NOW = Date.parse("2026-10-27T16:00:00.000Z");
 
-function order(id, { createdAt, channel = "pickup", status = "received", items = [], history = [] }) {
+function order(id, { createdAt, channel = "pickup", status = "received", totalCents, items = [], history = [] }) {
   return {
     id,
     createdAt: new Date(createdAt).toISOString(),
     channel,
     status,
+    totalCents,
     items,
     statusHistory: history,
   };
@@ -29,6 +30,7 @@ const snapshot = {
       createdAt: "2026-10-27T15:00:00.000Z",
       channel: "delivery",
       status: "ready",
+      totalCents: 4200,
       items: [pizza("pizza-1", ["Calabresa", "Portuguesa"], 2), catalogItem("drink-1", 3)],
       history: [
         { status: "received", changedAt: "2026-10-27T15:00:00.000Z" },
@@ -40,6 +42,7 @@ const snapshot = {
       createdAt: "2026-10-27T13:00:00.000Z",
       channel: "dine-in",
       status: "completed",
+      totalCents: 9800,
       items: [pizza("pizza-2", ["Calabresa"])],
       history: [
         { status: "received", changedAt: "2026-10-27T13:00:00.000Z" },
@@ -51,12 +54,14 @@ const snapshot = {
       createdAt: "2026-10-27T14:00:00.000Z",
       channel: "pickup",
       status: "cancelled",
+      totalCents: 3000,
       items: [catalogItem("drink-2", 1)],
     }),
     order("older", {
       createdAt: "2026-10-26T10:00:00.000Z",
       channel: "counter",
       status: "preparing",
+      totalCents: 1500,
       items: [pizza("pizza-3", ["Marguerita"])],
     }),
     order("future", {
@@ -88,6 +93,26 @@ test("item and flavor counts preserve combined pizzas without assigning flavor f
   ]);
 });
 
+test("order-value metrics use Food snapshots, exclude cancellations and ignore invalid price snapshots", () => {
+  const report = buildFoodOperationalReport(snapshot, { range: "24h", now: NOW });
+  assert.equal(report.totalOrderValueCents, 14000);
+  assert.equal(report.averageOrderValueCents, 7000);
+  assert.equal(report.pricedOrderSampleSize, 2);
+
+  const withInvalidPrice = {
+    orders: [
+      order("valid", { createdAt: "2026-10-27T15:00:00.000Z", status: "completed", totalCents: 999 }),
+      order("negative", { createdAt: "2026-10-27T14:00:00.000Z", status: "ready", totalCents: -1 }),
+      order("fraction", { createdAt: "2026-10-27T13:00:00.000Z", status: "ready", totalCents: 2.5 }),
+      order("cancelled", { createdAt: "2026-10-27T12:00:00.000Z", status: "cancelled", totalCents: 5000 }),
+    ],
+  };
+  const validOnly = buildFoodOperationalReport(withInvalidPrice, { range: "24h", now: NOW });
+  assert.equal(validOnly.totalOrderValueCents, 999);
+  assert.equal(validOnly.averageOrderValueCents, 999);
+  assert.equal(validOnly.pricedOrderSampleSize, 1);
+});
+
 test("rolling windows exclude future records and include older Food records in wider ranges", () => {
   const oneDay = buildFoodOperationalReport(snapshot, { range: "24h", now: NOW });
   const sevenDays = buildFoodOperationalReport(snapshot, { range: "7d", now: NOW });
@@ -113,8 +138,31 @@ test("operational report CSV exports only Food-owned metrics and recent order re
   assert.match(csv, /"Pedidos";"Total";"3";"pedidos"/);
   assert.match(csv, /"Canais";"Entrega";"1";"pedidos"/);
   assert.match(csv, /"Itens";"Produtos adicionais";"4";"unidades";"Sem baixa de Inventory"/);
+  assert.match(csv, /"Pedidos";"Valor dos pedidos";"140,00";"BRL";"Exclui cancelados; não confirma pagamento"/);
+  assert.match(csv, /"Pedidos";"Média por pedido";"70,00";"BRL";"2 pedidos válidos não cancelados"/);
   assert.match(csv, /"Pedidos recentes";"#ready-now";"Pronto"/);
   assert.doesNotMatch(csv, /R\$|lucro|cliente|telefone/i);
+});
+
+test("report leaves order-value metrics empty when the period has no valid non-cancelled price", () => {
+  const report = buildFoodOperationalReport({ orders: [
+    order("cancelled", { createdAt: "2026-10-27T15:00:00.000Z", status: "cancelled", totalCents: 2000 }),
+    order("unpriced", { createdAt: "2026-10-27T14:00:00.000Z", status: "ready" }),
+  ] }, { range: "24h", now: NOW });
+  assert.equal(report.totalOrderValueCents, null);
+  assert.equal(report.averageOrderValueCents, null);
+  assert.equal(report.pricedOrderSampleSize, 0);
+});
+
+test("report refuses to overflow the safe monetary total", () => {
+  const tooLarge = { orders: [
+    order("large-a", { createdAt: "2026-10-27T15:00:00.000Z", totalCents: Number.MAX_SAFE_INTEGER }),
+    order("large-b", { createdAt: "2026-10-27T14:00:00.000Z", totalCents: 1 }),
+  ] };
+  assert.throws(
+    () => buildFoodOperationalReport(tooLarge, { range: "24h", now: NOW }),
+    /excede o intervalo monetário seguro/,
+  );
 });
 
 test("CSV quotes cells and neutralizes spreadsheet formula prefixes", () => {

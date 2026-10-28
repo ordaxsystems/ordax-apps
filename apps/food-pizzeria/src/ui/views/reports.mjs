@@ -37,12 +37,16 @@ export function renderFoodReportsPage(viewModel) {
   const readyValue = report.medianReadyMinutes === null
     ? "—"
     : `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 }).format(report.medianReadyMinutes)} min`;
+  const averageOrderValue = report.averageOrderValueCents === null
+    ? "—"
+    : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(report.averageOrderValueCents / 100);
 
   return `<section class="page-section food-report-page">
-    <div class="page-heading food-report-heading"><div><p class="eyebrow">ANÁLISE OPERACIONAL</p><h1>Relatórios</h1><p>Volume e andamento dos pedidos registrados no Food.</p></div><div class="food-report-actions"><button class="button button-quiet" type="button" data-action="export-food-report"><span aria-hidden="true">↓</span> Baixar CSV</button><button class="button button-quiet" type="button" data-view="kitchen">${iconSvg("kitchen")} Abrir cozinha</button><button class="button button-primary" type="button" data-view="pos">Novo pedido <span aria-hidden="true">→</span></button></div></div>
+    <div class="page-heading food-report-heading"><div><p class="eyebrow">ANÁLISE OPERACIONAL</p><h1>Relatórios</h1><p>Volume, andamento e valores registrados nos pedidos Food.</p></div><div class="food-report-actions"><button class="button button-quiet" type="button" data-action="export-food-report"><span aria-hidden="true">↓</span> Baixar CSV</button><button class="button button-quiet" type="button" data-view="kitchen">${iconSvg("kitchen")} Abrir cozinha</button><button class="button button-primary" type="button" data-view="pos">Novo pedido <span aria-hidden="true">→</span></button></div></div>
     <div class="food-report-toolbar"><div class="food-report-range-group" role="group" aria-label="Período de análise">${rangeControls}</div><span>${RANGE_DESCRIPTIONS[reportRange]}</span></div>
     <section class="metrics-grid food-report-metrics" aria-label="Indicadores de pedidos no período">
       <article class="metric-card"><div class="metric-top"><span>Pedidos</span><span class="metric-icon tone-orange">${iconSvg("orders")}</span></div><strong class="metric-value">${report.totalOrders}</strong><small>Registrados no período</small></article>
+      <article class="metric-card food-report-value-metric"><div class="metric-top"><span>Média por pedido</span><span class="metric-icon tone-violet">${iconSvg("reports")}</span></div><strong class="metric-value">${averageOrderValue}</strong><small>${report.pricedOrderSampleSize} pedidos não cancelados · não confirma pagamento</small></article>
       <article class="metric-card"><div class="metric-top"><span>Na cozinha</span><span class="metric-icon tone-blue">${iconSvg("kitchen")}</span></div><strong class="metric-value">${report.kitchenOrders}</strong><small>Recebidos ou em preparo</small></article>
       <article class="metric-card"><div class="metric-top"><span>Prontos para saída</span><span class="metric-icon tone-green">${iconSvg("delivery")}</span></div><strong class="metric-value">${report.readyOrders}</strong><small>Aguardando retirada ou expedição</small></article>
       <article class="metric-card"><div class="metric-top"><span>Mediana até ficar pronto</span><span class="metric-icon tone-violet">${iconSvg("reports")}</span></div><strong class="metric-value">${readyValue}</strong><small>${report.readySampleSize ? `De ${report.readySampleSize} pedidos que chegaram a Pronto` : "Ainda sem pedidos prontos no período"}</small></article>
@@ -57,6 +61,6 @@ export function renderFoodReportsPage(viewModel) {
         <section class="panel food-report-recent" aria-labelledby="food-report-recent-title"><div class="panel-heading"><div><p class="eyebrow">ACOMPANHAMENTO</p><h2 id="food-report-recent-title">Pedidos recentes</h2></div><button class="text-button" type="button" data-view="orders">Ver histórico →</button></div><ul class="food-report-recent-list">${recentRows}</ul><p class="food-report-cancellations">${report.cancelledOrders} ${report.cancelledOrders === 1 ? "pedido cancelado" : "pedidos cancelados"} · ${Math.round(report.cancellationRate * 100)}% do período</p></section>
       </div>
     </div>` : `<section class="panel food-report-empty-state"><span class="empty-icon" aria-hidden="true">${iconSvg("reports")}</span><h2>Sem pedidos neste período</h2><p>Escolha um intervalo maior ou registre um novo pedido para acompanhar a operação.</p><button class="button button-primary" type="button" data-view="pos">Registrar pedido <span aria-hidden="true">→</span></button></section>`}
-    <p class="food-report-scope">Este relatório deriva do histórico de pedidos Food. Pagamentos e saldos de estoque continuam nos respectivos owners.</p>
+    <p class="food-report-scope">Este relatório deriva do histórico de pedidos Food. A média usa o total congelado nos pedidos não cancelados; não confirma valores recebidos. Pagamentos e saldos de estoque continuam nos respectivos owners.</p>
   </section>`;
 }

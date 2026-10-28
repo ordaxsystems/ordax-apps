@@ -15,6 +15,7 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 const expected = {
   kitchen: "Produção",
+  reports: "Relatórios",
   menu: "Cardápio",
   orders: "Pedidos",
   pos: "PDV",
@@ -143,6 +144,26 @@ try {
     summary.click();
     ensure(timeline.open && timeline.querySelectorAll("time[datetime]").length > 1,
       "Expandir o histórico não apresentou as datas dos eventos Food.");
+  }
+
+  if (view === "reports" && parameters.has("__verify_order_value")) {
+    const metric = root.querySelector(".food-report-value-metric");
+    const value = metric?.querySelector(".metric-value");
+    ensure(value?.textContent.trim().startsWith("R$")
+      && metric.querySelector("small")?.textContent.includes("não confirma pagamento"),
+    "O relatório precisa mostrar a média Food e distinguir pedido de pagamento recebido.");
+    const rangeButton = root.querySelector('[data-report-range="24h"]');
+    ensure(rangeButton && root.querySelectorAll(".food-report-metrics .metric-card").length === 5,
+      "Os indicadores e os períodos do relatório não foram apresentados.");
+    if (parameters.has("__viewport")) {
+      const metrics = root.querySelector(".food-report-metrics");
+      const cards = [...root.querySelectorAll(".food-report-metrics .metric-card")];
+      ensure(document.documentElement.scrollWidth <= innerWidth + 1
+        && document.body.scrollWidth <= innerWidth + 1
+        && metrics.scrollWidth <= metrics.clientWidth + 1
+        && cards.every((card) => card.getBoundingClientRect().right <= innerWidth + 1),
+      `Os indicadores do relatório excedem o viewport ${parameters.get("__viewport")}.`);
+    }
   }
 
   if (view === "delivery" && parameters.has("__verify_pickup_handoff")) {
