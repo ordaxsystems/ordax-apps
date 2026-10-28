@@ -16,6 +16,10 @@ test('OrdaX coordinator identifies the Groq model as a coordinator, not as ChatG
   const {projectId,orchestratorId,chatTaskId}=creation.result;
   store.upsertProjectMemory(chatTaskId,{category:'decision',key:'modelo_coordenador',
     content:'Groq coordena, GPT Web responde na conversa; Runtime executa somente com grants.'});
+  const work=(await service.invoke(ctx,'work_create',{requestId:'work-identity',projectId,orchestratorId,
+    title:'Auditar ordax-apps'})).result.taskId;
+  store.upsertProjectMemory(work,{category:'fact',key:'work_memory_proof',
+    content:'Memória da frente Auditar ordax-apps, não da telemetria do workspace.'});
   const context=buildCoordinatorRequestContext({store,taskId:chatTaskId,mission,projectId,orchestratorId,
     workspaceObservation:{state:'capability_unavailable',filesRead:0,snapshotObserved:false}});
   assert.match(context.system,/OrdaX Orchestrator Lab/);
@@ -24,6 +28,7 @@ test('OrdaX coordinator identifies the Groq model as a coordinator, not as ChatG
   assert.match(context.system,/não se apresente como ChatGPT/);
   assert.match(context.system,/Não alterar Stable sem autorização/);
   assert.match(context.system,/modelo_coordenador/);
+  assert.match(context.system,/work_memory_proof/);
   assert.match(context.system,/Groq coordena, GPT Web responde/);
   assert.match(context.system,/workspaceObservation não é memória/);
   let actual;
