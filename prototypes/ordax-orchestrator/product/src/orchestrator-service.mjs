@@ -553,7 +553,7 @@ export class OrchestratorService {
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
     const port=isWorkSend?this.provider:this.coordinator;
-    if(typeof port?.send!=='function'||(port.available&&port.available()!==true))
+    if(typeof port?.send!=='function'||(port.available&&port.available(input.projectId,owner.id)!==true))
       throw Error('orchestrator_provider_unavailable');
     const prepareWork=operation==='orchestrator_prepare';
     const analysisContext=operation==='orchestrator_analyze'||prepareWork
