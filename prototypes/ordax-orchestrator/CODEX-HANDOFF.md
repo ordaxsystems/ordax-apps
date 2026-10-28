@@ -2,7 +2,7 @@
 
 ## Estado atual — resposta GPT tardia reconciliada com segurança — 27/10/2026
 
-- Apps PR #348 está no branch remoto codex/orchestrator-host-runtime-architecture, head e0ef3057e3320ac88217c2d2d5ff52356e223aed, contra main 2b76001db889e450ac9d537152e2485d455db73f. PR aberta/draft; Runtime e Platform não foram alterados.
+- O incremento de código da Apps PR #348 está no commit e0ef3057e3320ac88217c2d2d5ff52356e223aed, no branch remoto codex/orchestrator-host-runtime-architecture, contra main 2b76001db889e450ac9d537152e2485d455db73f. A sincronização documental posterior não alterou o source. PR aberta/draft; Runtime e Platform não foram alterados.
 - O tick de supervisão já existente reobserva, com backoff persistido no Store e até 24 observações, somente a thread GPT já visível e associada sem ambiguidade a uma única Task. A inspeção é read-only, não navega, não reenvia e importa apenas resposta completa atribuível; o Store mantém a reconciliação idempotente.
 - A interface Electron e o Host recebem o evento de reconciliação e atualizam o histórico. Não foi criado timer, worker, fila, serviço, Runtime ou banco paralelo.
 - Source check e git diff --check passaram; contratos desktop/Host 32/32; cenários focados de late response/backoff/restart 2/2; os testes completos de reconciliação/restart passaram 22/22 antes da última asserção de plano SQLite, que passou nos cenários focados.
