@@ -680,7 +680,7 @@ test('work send targets the linked GitHub remote and clearly reports that no loc
   const receipt=await f.call('work_send',{projectId,taskId,content:'Inspecione a loja e proponha a primeira alteração.'});
   assert.equal(receipt.status,'succeeded');
   assert.equal(received.repositoryUrl,'https://github.com/ordaxsystems/veste');
-  assert.match(received.content,/Repositório alvo: https:\/\/github\.com\/ordaxsystems\/veste/);
+  assert.match(received.content,/Repositório padrão: https:\/\/github\.com\/ordaxsystems\/veste/);
   assert.match(received.content,/Nenhuma pasta local está conectada/);
   assert.equal(receipt.result.effectVerified,false);
   await assert.rejects(f.call('project_repository_set',{projectId,repositoryUrl:'https://github.com/ordaxsystems/another-repo'}),
