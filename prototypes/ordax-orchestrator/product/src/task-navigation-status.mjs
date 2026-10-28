@@ -6,7 +6,8 @@ const NAVIGATION_REASONS = new Set([
   'chatgpt_draft_present', 'visible_draft_present',
   'chatgpt_session_not_observed', 'chatgpt_login_required',
   'chatgpt_verification_required', 'provider_view_unavailable',
-  'provider_health_observation_timeout', 'provider_navigation_unavailable'
+  'provider_health_observation_timeout', 'provider_navigation_unavailable',
+  'provider_navigation_failed', 'provider_navigation_not_confirmed', 'provider_url_mismatch'
 ]);
 
 const TASK_LIST_STATUS_LABELS = Object.freeze({
@@ -40,6 +41,13 @@ export function taskNavigationStatus(task) {
     threadRendered: 'false',
     message: 'Histórico e memória locais abertos. Abrindo a conversa GPT vinculada; nenhuma mensagem foi enviada.'
   };
+  if (navigation === 'post_commit_failed') {
+    const reason = safeTaskNavigationReason(task.provider_navigation_reason);
+    return {
+      kind: 'unavailable', reason, state: 'error', threadRendered: 'false',
+      message: `A resposta do GPT já foi registrada. A conversa vinculada não pôde ser exibida (${reason}). Nenhuma mensagem foi reenviada.`
+    };
+  }
   if (navigation !== 'failed' && navigation !== 'not_navigated') return null;
   const raw = navigation === 'failed'
     ? (task.provider_navigation_reason || task.provider_navigation_error)
