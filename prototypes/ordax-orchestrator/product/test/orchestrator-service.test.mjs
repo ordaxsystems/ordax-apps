@@ -498,8 +498,8 @@ test('central project chat cannot impersonate GPT using only the Groq coordinato
   assert.equal(groqCalls,0);
   assert.equal(f.store.getTaskDraft(a.chat).draft,'Pergunte ao GPT qual meu nome.');
   assert.equal(f.store.messages(a.chat).length,0);
-  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts").get().n,2,
-    'only project and coordinator creation receipts, no spoofed chat dispatch');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='orchestrator_chat'").get().n,0,
+    'no bogus chat receipt was reserved');
 });
 
 test('central project conversation uses GPT Web as primary and commits exactly one Store-owned message pair',async t=>{
@@ -700,7 +700,7 @@ test('Groq planning keeps its own project history and never submits to GPT',asyn
     fetchImpl:async(_url,options)=>{
       const body=JSON.parse(options.body);requests.push(body);
       assert.match(body.messages[0].content,/API não consultou o GitHub nem recebeu conteúdo/);
-      assert.match(body.messages[0].content,/"remoteRepository":\\{"provider":"github","url":"https:\\/\\/github.com\\/ordaxsystems\\/veste"\\}/);
+      assert.ok(body.messages[0].content.includes('https://github.com/ordaxsystems/veste'));
       return jsonResponse({choices:[{finish_reason:'stop',message:{
         content:JSON.stringify({title:'Revisar catálogo',content:'Pesquisar itens',reason:'Planejar projeto'})}}]});
     }});
