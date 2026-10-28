@@ -603,20 +603,17 @@ test('coordinator refuses a stale composer revision before reserving a request o
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?').get('stale-draft').n,0);
 });
 
-test('coordinator draft and user message roll back together if the atomic clear fails',async t=>{
-  let calls=0;
-  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>{calls++;return {content:'Não deve ser chamada.'};}}}),a=await project(f);
+test('GPT Store keeps user draft and history atomic when draft-clear fails',async t=>{
+  const f=fixture(t),a=await project(f);
   f.store.setDraft(a.chat,'Mensagem que precisa sobreviver',1);
   f.store.db.exec(`CREATE TRIGGER refuse_coordinator_draft_clear BEFORE UPDATE OF draft ON tasks
     WHEN NEW.id='${a.chat}' AND NEW.draft='' BEGIN SELECT RAISE(ABORT,'injected_coordinator_draft_clear'); END`);
-  await assert.rejects(f.call('orchestrator_chat',{requestId:'atomic-draft-failure',projectId:a.p,
-    orchestratorId:a.o,content:'Mensagem que precisa sobreviver',draftRevision:1}),/injected_coordinator_draft_clear/);
-  assert.equal(calls,0);
+  assert.throws(()=>f.store.beginProviderRun(a.chat,'Mensagem que precisa sobreviver',{draftRevision:2}),
+    /injected_coordinator_draft_clear/);
   assert.equal(f.store.getTaskDraft(a.chat).draft,'Mensagem que precisa sobreviver');
   assert.equal(f.store.getTaskDraft(a.chat).draft_revision,1);
   assert.equal(f.store.messages(a.chat).length,0);
-  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
-    .get('atomic-draft-failure').n,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM runs WHERE task_id=?").get(a.chat).n,0);
 });
 
 test('project remote repository is persisted and can be changed or cleared without local workspace access',async t=>{
