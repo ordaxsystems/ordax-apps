@@ -104,15 +104,73 @@ test("legacy workflow preferences migrate to the per-order queue mode without lo
     revision: 7,
     screenCount: 2,
     steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({
-      ...step,
+      id: step.id,
+      label: step.label,
       screen: index < 2 ? 1 : 2,
     })),
   });
-  assert.equal(legacy.schema, "ordax.food-kitchen-workflow-preview/2");
+  assert.equal(legacy.schema, "ordax.food-kitchen-workflow-preview/3");
   assert.equal(legacy.revision, 7);
   assert.equal(legacy.screenCount, 2);
   assert.equal(legacy.queueMode, KITCHEN_QUEUE_MODES.BY_ORDER);
   assert.deepEqual(legacy.steps.map(({ screen }) => screen), [1, 1, 2, 2]);
+  assert.deepEqual(legacy.steps.map(({ targetMinutes }) => targetMinutes), [null, null, null, null]);
+});
+
+test("workflow v2 migrates to per-step targets without changing screens or queue mode", () => {
+  const previous = validateKitchenWorkflow({
+    schema: "ordax.food-kitchen-workflow-preview/2",
+    revision: 4,
+    screenCount: 2,
+    queueMode: KITCHEN_QUEUE_MODES.BY_STAGE,
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({
+      id: step.id,
+      label: step.label,
+      screen: index < 2 ? 1 : 2,
+    })),
+  });
+  assert.equal(previous.schema, "ordax.food-kitchen-workflow-preview/3");
+  assert.equal(previous.queueMode, KITCHEN_QUEUE_MODES.BY_STAGE);
+  assert.deepEqual(previous.steps.map(({ targetMinutes }) => targetMinutes), [null, null, null, null]);
+});
+
+test("workflow targets are optional, validated, clearable, and snapshotted on tickets", () => {
+  const draft = createKitchenWorkflowDraft(DEFAULT_KITCHEN_WORKFLOW, {
+    stepCount: 4,
+    screenCount: 1,
+    queueMode: KITCHEN_QUEUE_MODES.BY_ORDER,
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step, index) => ({
+      ...step,
+      targetMinutes: index === 0 ? "3" : "",
+    })),
+  });
+  assert.deepEqual(draft.steps.map(({ targetMinutes }) => targetMinutes), [3, null, null, null]);
+  assert.throws(() => validateKitchenWorkflow({
+    ...draft,
+    steps: draft.steps.map((step, index) => index === 0 ? { ...step, targetMinutes: 0 } : step),
+  }), /Revise os nomes, a ordem e a tela/);
+  assert.throws(() => validateKitchenWorkflow({
+    ...draft,
+    steps: draft.steps.map((step, index) => index === 0 ? { ...step, targetMinutes: 481 } : step),
+  }), /Revise os nomes, a ordem e a tela/);
+
+  const configured = saveKitchenWorkflow(DEFAULT_KITCHEN_WORKFLOW, draft);
+  const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [order("target-order", "2026-10-27T10:00:00.000Z")], configured);
+  const started = action(tasks, "start", "target-order", "open-dough", 1,
+    "target-order-start", "2026-10-27T10:01:00.000Z");
+  assert.equal(currentKitchenStep(started.tickets[0]).targetMinutes, 3);
+
+  const changed = saveKitchenWorkflow(configured, createKitchenWorkflowDraft(configured, {
+    stepCount: 4,
+    screenCount: 1,
+    queueMode: KITCHEN_QUEUE_MODES.BY_ORDER,
+    steps: configured.steps.map((step) => ({ ...step, targetMinutes: "" })),
+  }));
+  const reconciled = reconcileKitchenTasks(started, [order("target-order", "2026-10-27T10:00:00.000Z")], changed);
+  assert.equal(currentKitchenStep(reconciled.tickets[0]).targetMinutes, 3);
+  const pending = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS,
+    [order("pending-target-order", "2026-10-27T10:00:00.000Z")], configured);
+  assert.equal(currentKitchenStep(pending.tickets[0]).targetMinutes, 3);
 });
 
 test("pizza workflow distributes four sequential stations across four screens", () => {
@@ -277,14 +335,37 @@ test("legacy local task schema migrates to queue positions without losing comple
     commands: [{ id: "command-old-1", digest }],
     tickets: tasks.tickets.map((ticket) => ({
       ...ticket,
-      steps: ticket.steps.map(({ queuePosition, ...step }) => step),
+      steps: ticket.steps.map(({ queuePosition, targetMinutes, ...step }) => step),
     })),
   };
   const migrated = validateKitchenTasks(legacy);
-  assert.equal(migrated.schema, "ordax.food-kitchen-tasks-preview/2");
+  assert.equal(migrated.schema, "ordax.food-kitchen-tasks-preview/3");
   assert.deepEqual(sortKitchenTickets(migrated.tickets, DEFAULT_KITCHEN_WORKFLOW, 1).map(({ orderId }) => orderId), ["order-1", "order-2"]);
   assert.deepEqual(migrated.commands, legacy.commands);
   assert.deepEqual(migrated.tickets.map((ticket) => currentKitchenStep(ticket).queuePosition), [1, 2]);
+});
+
+test("task v2 migration adds an unset target and preserves current queue position and activity", () => {
+  const tasks = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [
+    order("order-v2", "2026-10-27T10:00:00.000Z"),
+  ], DEFAULT_KITCHEN_WORKFLOW);
+  const started = action(tasks, "start", "order-v2", "open-dough", 1,
+    "command-start-v2", "2026-10-27T10:01:00.000Z");
+  const v2 = {
+    ...started,
+    schema: "ordax.food-kitchen-tasks-preview/2",
+    tickets: started.tickets.map((ticket) => ({
+      ...ticket,
+      steps: ticket.steps.map(({ targetMinutes, ...step }) => step),
+    })),
+  };
+  const migrated = validateKitchenTasks(v2);
+  const current = currentKitchenStep(migrated.tickets[0]);
+  assert.equal(migrated.schema, "ordax.food-kitchen-tasks-preview/3");
+  assert.equal(current.status, "active");
+  assert.equal(current.startedAt, "2026-10-27T10:01:00.000Z");
+  assert.equal(current.targetMinutes, null);
+  assert.equal(current.queuePosition, 1);
 });
 
 test("concluding a stage transfers the same ticket to the next configured screen", () => {

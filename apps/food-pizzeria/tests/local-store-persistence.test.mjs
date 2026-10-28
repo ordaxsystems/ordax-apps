@@ -20,7 +20,7 @@ function assertKitchenPreviewPreferences(preferences, {
 } = {}) {
   assert.equal(preferences.deliveryFeeCents, deliveryFeeCents);
   assert.deepEqual(preferences.kitchenDisplays, kitchenDisplays);
-  assert.equal(preferences.kitchenWorkflow.schema, "ordax.food-kitchen-workflow-preview/2");
+  assert.equal(preferences.kitchenWorkflow.schema, "ordax.food-kitchen-workflow-preview/3");
   assert.equal(preferences.kitchenWorkflow.queueMode, queueMode);
   assert.equal(preferences.kitchenWorkflow.steps.length, 4);
   assert.ok(preferences.kitchenTasks.tickets.length > 0);

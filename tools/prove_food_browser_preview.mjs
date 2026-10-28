@@ -31,6 +31,11 @@ const scenarios = Object.freeze([
   { presentation: "embedded-preview", view: "kitchen", extra: {
     station: "1", stationStage: "prepare-order", screenCount: "1", __viewport: "landscape",
   }, viewport: { width: 844, height: 390, deviceScaleFactor: 1, mobile: true } },
+  { presentation: "embedded-preview", view: "kitchen", extra: { __configure_step_target: "3", __viewport: "phone-portrait" }, viewport: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }, resetPreviewStorage: true },
+  { presentation: "embedded-preview", view: "kitchen", extra: {
+    station: "1", stationStage: "open-dough", screenCount: "1",
+    __exercise_step_target: "1", __viewport: "phone-portrait",
+  }, viewport: { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } },
   { presentation: "embedded-preview", view: "kitchen", extra: { __configure_workflow: "pizzeria-line", __expected_preset_title: "Linha por etapas" }, resetPreviewStorage: true },
   ...[
     ["1", "open-dough", "Abrir massa"],

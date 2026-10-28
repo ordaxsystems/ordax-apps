@@ -972,7 +972,9 @@ dialog p { color: #a2a8af; }
 .kitchen-ticket-age { min-height: 30px; margin: 8px 0 3px; padding: 6px 8px; border-radius: 7px; background: #191c20; font-size: 9px; }
 .kitchen-ticket-age > strong { font-size: 11px; }
 .kitchen-ticket-age.is-overdue { background: #2b201f; }
+.kitchen-ticket-age.is-step-overdue { background: #2b201f; }
 .kitchen-sla-target { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px; margin-left: auto; color: #8a929a; font-size: 8px; }
+.kitchen-sla-target.is-overdue { color: #ff9b91; }
 .kitchen-item-lines { display: grid; gap: 8px; margin: 10px 0 0; padding: 10px 0 0; border-top: 1px solid #32373e; list-style: none; }
 .kitchen-item-line { display: grid; min-width: 0; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; }
 .kitchen-item-quantity { display: grid; min-height: 24px; place-items: center; border: 1px solid #514032; border-radius: 7px; background: #30261f; color: #ffb078; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -1284,6 +1286,8 @@ dialog p { color: #a2a8af; }
 .kitchen-workflow-step { display: grid; grid-template-columns: 30px minmax(0, 1fr) 74px 46px; align-items: center; gap: 10px; min-width: 0; padding: 9px; border: 1px solid var(--kitchen-line); border-radius: 10px; background: #191c20; }
 .kitchen-step-number { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 8px; background: #33261f; color: #ffb078; font-size: 11px; font-weight: 800; }
 .kitchen-step-fields, .kitchen-step-screen { display: grid; min-width: 0; gap: 5px; color: #aeb5bc; font-size: 9px; font-weight: 700; }
+.kitchen-step-fields { grid-template-columns: minmax(0, 1fr) 68px; gap: 8px; align-items: end; }
+.kitchen-step-fields > label { display: grid; min-width: 0; gap: 5px; }
 .kitchen-step-fields input, .kitchen-step-screen select { width: 100%; min-width: 0; min-height: 37px; padding: 7px 9px; border: 1px solid #373d44; border-radius: 7px; background: #22262b; color: #f0f2f4; font: 650 11px "Manrope", sans-serif; }
 .kitchen-step-order { display: grid; grid-template-columns: 1fr; gap: 3px; }
 .kitchen-step-order button { min-width: 35px; min-height: 25px; border: 1px solid #383e45; border-radius: 6px; background: #24282d; color: #e7eaed; cursor: pointer; }
@@ -1319,12 +1323,22 @@ dialog p { color: #a2a8af; }
 
 @media (max-width: 740px) {
   .kitchen-workflow-step { grid-template-columns: 25px minmax(0, 1fr) 58px 38px; gap: 6px; padding: 7px; }
+  .kitchen-step-fields { grid-template-columns: minmax(0, 1fr) 54px; gap: 5px; }
+  .kitchen-step-fields input { padding-right: 5px; padding-left: 5px; font-size: 10px; }
+  .kitchen-step-fields input, .kitchen-step-screen select { min-height: 44px; }
   .kitchen-step-number { width: 23px; height: 23px; }
   .kitchen-screen-actions { justify-content: stretch; }
   .kitchen-screen-actions .button { flex: 1 1 110px; min-height: 38px; }
   .kitchen-task-actions { grid-template-columns: 1fr; }
   .kitchen-handoff-grid { grid-template-columns: minmax(0, 1fr); }
   .kitchen-handoff-panel { padding: 10px; }
+}
+
+@media (max-width: 360px) {
+  .kitchen-workflow-step { grid-template-columns: 25px minmax(0, 1fr) 38px; }
+  .kitchen-step-fields { grid-column: 2; grid-template-columns: minmax(0, 1fr) 64px; }
+  .kitchen-step-screen { grid-column: 2; grid-row: 2; grid-template-columns: 1fr; }
+  .kitchen-step-order { grid-column: 3; grid-row: 1 / span 2; }
 }
 .kitchen-station-empty { display: grid; min-height: 150px; place-items: center; padding: 20px; border: 1px dashed #3b424a; border-radius: 10px; color: #a8afb7; font-size: 13px; text-align: center; }
 .kitchen-board-station { grid-template-columns: minmax(0, 900px); justify-content: center; overflow: visible; }

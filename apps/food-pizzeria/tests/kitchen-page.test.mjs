@@ -161,6 +161,9 @@ test("workflow settings edit business steps and create a direct link for every s
   const page = render({ kitchenWorkflow: workflow, kitchenTasks: makeTasks() });
   assert.match(page, /id="kitchen-layout-form"/);
   assert.match(page, /name="step-label-1"/);
+  assert.match(page, /name="step-target-1"/);
+  assert.match(page, /type="number" min="1" max="480"/);
+  assert.match(page, /A meta em minutos mede somente o tempo de trabalho depois de iniciar a etapa/);
   assert.match(page, /name="step-screen-4"/);
   assert.match(page, /<strong>Tela 1<\/strong><span>Abrir massa<\/span>/);
   assert.match(page, /<strong>Tela 4<\/strong><span>Finalização e embalagem<\/span>/);
@@ -172,6 +175,39 @@ test("workflow settings edit business steps and create a direct link for every s
   assert.match(page, /integração Food de produção em tempo real/);
   assert.match(page, /data-action="move-kitchen-step"/);
   assert.match(page, /O KDS não cancela pedidos/);
+});
+
+test("late filter includes an active kitchen step that passed its configured target", () => {
+  const targetOrder = order({
+    id: "order-step-target",
+    status: "received",
+    channel: "counter",
+    startedAt: "2026-10-26T12:55:00.000Z",
+  });
+  const targetWorkflow = validateKitchenWorkflow({
+    schema: "ordax.food-kitchen-workflow-preview/3",
+    revision: 2,
+    screenCount: 1,
+    queueMode: KITCHEN_QUEUE_MODES.BY_ORDER,
+    steps: DEFAULT_KITCHEN_WORKFLOW.steps.map((step) => ({
+      ...step,
+      screen: 1,
+      targetMinutes: step.id === "open-dough" ? 3 : null,
+    })),
+  });
+  const queued = reconcileKitchenTasks(DEFAULT_KITCHEN_TASKS, [targetOrder], targetWorkflow);
+  const active = applyKitchenTaskAction(queued, {
+    action: "start", orderId: targetOrder.id, stepId: "open-dough", screenNumber: 1,
+    at: "2026-10-26T12:56:00.000Z", commandId: "start-step-target", digest,
+  });
+  const page = render({
+    snapshot: { tableCommands: [], orders: [targetOrder] },
+    kitchenWorkflow: targetWorkflow,
+    kitchenTasks: active,
+    kitchenLateOnly: true,
+  });
+  assert.match(page, /order-step-target/);
+  assert.match(page, /data-kitchen-overdue-count>1<\/strong>/);
 });
 
 test("station focuses a single ticket, exposes start/complete/next and lists five upcoming orders", () => {

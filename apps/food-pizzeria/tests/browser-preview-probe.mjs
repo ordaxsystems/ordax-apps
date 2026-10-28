@@ -698,6 +698,44 @@ try {
         `[data-kitchen-station-screen="${station}"] .kitchen-task-progress > div > strong`)?.textContent.trim() === "Forno",
       "Concluir o preparo não encaminhou o pedido à etapa Forno.");
     }
+    if (parameters.has("__exercise_step_target")) {
+      const currentTicket = stationContent?.querySelector("[data-kitchen-current-order] .order-card-kitchen");
+      ensure(currentTicket && !currentTicket.querySelector("[data-kitchen-step-sla]"),
+        "A meta da etapa aguardando não deve iniciar antes do pizzaiolo começar o trabalho.");
+      const start = currentTicket.querySelector('button[data-task-action="start"]');
+      ensure(start?.disabled === false, "A etapa com meta configurada deve permitir iniciar o preparo.");
+      start.click();
+      const indicator = await eventually(() => root.querySelector(
+        `[data-kitchen-station-screen="${station}"] [data-kitchen-step-sla]`),
+      "Iniciar a etapa não mostrou o cronômetro e a meta configurada.");
+      ensure(indicator.dataset.targetMinutes === "3"
+        && indicator.querySelector("[data-sla-value]")?.textContent.includes("Etapa Abrir massa")
+        && indicator.querySelector("[data-sla-value]")?.textContent.includes("meta 3 min"),
+      "O KDS não exibiu a meta correta na etapa que começou.");
+      ensure(document.documentElement.scrollWidth <= window.innerWidth + 1,
+        "O indicador da meta da etapa criou rolagem horizontal no telefone.");
+    }
+  }
+
+  if (parameters.has("__configure_step_target")) {
+    const setup = root.querySelector(".kitchen-display-setup");
+    if (setup && !setup.open) setup.querySelector("summary")?.click();
+    const form = root.querySelector("#kitchen-layout-form");
+    const target = form?.elements["step-target-1"];
+    ensure(target && target.min === "1" && target.max === "480",
+      "A etapa deve oferecer meta opcional em minutos, com limites válidos.");
+    target.value = parameters.get("__configure_step_target");
+    form.requestSubmit();
+    await eventually(() => root.querySelector('.toast[role="status"]')?.textContent.includes("Fluxo e telas da cozinha salvos."),
+      "Salvar a meta da etapa não confirmou a atualização do fluxo.");
+    const savedTarget = root.querySelector('#kitchen-layout-form [name="step-target-1"]');
+    ensure(savedTarget?.value === parameters.get("__configure_step_target"),
+      "A meta em minutos não permaneceu no fluxo salvo.");
+    const fields = savedTarget.closest(".kitchen-step-fields");
+    ensure(fields && fields.scrollWidth <= fields.clientWidth + 1
+      && savedTarget.getBoundingClientRect().width >= 45
+      && document.documentElement.scrollWidth <= window.innerWidth + 1,
+    "Os campos de meta e etapa precisam caber no viewport do telefone.");
   }
 
   if (configureWorkflow) {

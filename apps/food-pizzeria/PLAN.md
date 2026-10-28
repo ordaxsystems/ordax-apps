@@ -197,3 +197,11 @@ transações e concluído o rollout pelo migration registry canônico.
 - Avisos de sucesso e erro passam por um único controlador: cada nova mensagem cancela o prazo anterior; sucessos são fechados automaticamente no próprio prazo e erros permanecem até o operador dispensá-los. Ações Food, KDS, cópia de links/endereços, configurações e relatórios agora compartilham o mesmo ciclo.
 - A prova no Chrome simula um temporizador antigo já na fila depois de salvar o fluxo, copia o link da tela 2 e verifica que o aviso novo não é apagado. Também comprova fechamento no prazo próprio, erro de permissão do clipboard mantido até dispensar e confirmação contextual da tela copiada.
 - Verificação: suíte Food **196/196**; prova Chrome em **31/31 configurações**; verificador MVP **20 alvos / 18 candidatos não assinados / 2 bloqueados / 0 instalações públicas verificadas**; sintaxe JavaScript e `git diff --check` aprovados. Nenhuma regra de pedidos ou integração externa foi alterada.
+
+
+### KDS — metas de preparo por etapa (2026-10-27)
+
+- O fluxo aceita uma meta opcional de 1 a 480 minutos por etapa. O relógio da meta começa quando o operador inicia o trabalho; o tempo anterior na fila continua separado e não consome a meta. O alerta acompanha o ticket ativo, e editar o fluxo não altera metas de pedidos que já começaram.
+- O quadro e o filtro “Acima da meta” consideram tanto o SLA atual do pedido quanto a meta configurada para a etapa ativa. Metas vazias não geram alertas.
+- Fluxo e tarefas locais passam para schema v3 com migração de workflows e tickets v1/v2; a migração preserva filas, ações registradas e etapas ativas. Preferências seguem locais a este navegador; a sincronização entre aparelhos continua pendente do contrato Food Production. Nenhum contrato, owner ou estoque mudou.
+- Verificação: suíte Food **200/200**; Chromium **33/33** cenários, incluindo edição e execução da meta em telefone 390×844; `node --check` e `git diff --check` aprovados; verificador MVP **20 alvos / 18 entradas não assinadas / 2 bloqueados / 0 instalações públicas verificadas**.

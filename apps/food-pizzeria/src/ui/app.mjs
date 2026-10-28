@@ -544,11 +544,15 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];
     const orderSlaStartedAt = stageStartedAt(order);
     const slaLabel = order.status === "preparing" ? "Preparo total" : "Tempo do pedido";
+    const stepTargetMinutes = currentTask?.status === "active" ? currentTask.targetMinutes : null;
+    const stepSla = taskClock && Number.isSafeInteger(stepTargetMinutes)
+      ? `<span class="kitchen-sla-target kitchen-step-sla" data-kitchen-step-sla data-order-id="${escapeHtml(order.id)}" data-started-at="${escapeHtml(currentTask.startedAt)}" data-target-minutes="${stepTargetMinutes}" data-sla-label="Etapa ${escapeHtml(currentTask.label)}"><span data-sla-value>Etapa ${escapeHtml(currentTask.label)} ${formatElapsed(elapsedMinutes(currentTask.startedAt))} / meta ${stepTargetMinutes} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></span>`
+      : "";
     const orderSla = taskClock && Number.isFinite(alertAfter)
       ? `<span class="kitchen-sla-target" data-order-sla data-started-at="${escapeHtml(orderSlaStartedAt)}" data-target-minutes="${alertAfter}" data-sla-label="${slaLabel}"><span data-sla-value>${slaLabel} ${formatElapsed(elapsedMinutes(orderSlaStartedAt))} / meta ${alertAfter} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></span>`
       : "";
     const age = taskClock
-      ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}"><span>${taskClock.label}</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong>${orderSla}</div>`
+      ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}"><span>${taskClock.label}</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong>${orderSla}${stepSla}</div>`
       : alertAfter
         ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}" data-target-minutes="${alertAfter}"><span>Pedido nesta etapa há</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong><span class="kitchen-sla-target">Meta ${alertAfter} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></div>`
         : "";
@@ -563,7 +567,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         ? button(currentTask.id === "prepare-order" ? "Iniciar preparo" : "Iniciar", "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `aria-label="${currentTask.id === "prepare-order" ? "Iniciar preparo" : `Iniciar ${escapeHtml(currentTask.label)}`} do pedido ${escapeHtml(orderNumber(order))}" data-task-action="start" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })
         : button(currentTask.id === "prepare-order" ? "Enviar para o forno" : `Concluir ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `aria-label="${currentTask.id === "prepare-order" ? "Concluir preparo e enviar para o forno" : `Concluir ${escapeHtml(currentTask.label)}`} no pedido ${escapeHtml(orderNumber(order))}" data-task-action="complete" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}${button("Próximo", "kitchen-task-action", { kind: "quiet", disabled: typeof store.recordKitchenTaskAction !== "function" || !canPassNext, extra: `title="${canPassNext ? `O pedido atual volta na ${passBehindCount === 2 ? "terceira posição" : "segunda posição"}.` : "Não há outro pedido nesta etapa."}" aria-label="${canPassNext ? `Passar o pedido ${escapeHtml(orderNumber(order))} para o próximo; ele volta na ${passBehindCount === 2 ? "terceira" : "segunda"} posição` : `Não há outro pedido depois de ${escapeHtml(orderNumber(order))} nesta etapa`}" data-task-action="pass-next" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}" data-pass-behind="${passBehindCount}"` })}</footer>`
       : "";
-    return `<article class="order-card order-card-kitchen" data-status="${order.status}">
+    return `<article class="order-card order-card-kitchen" data-order-id="${escapeHtml(order.id)}" data-status="${order.status}">
       <header class="kitchen-ticket-head"><div class="kitchen-ticket-identity"><strong>${orderNumber(order)}</strong><span class="kitchen-channel-chip">${escapeHtml(orderChannelLabel(order))}</span></div><span class="status-badge status-${order.status}"><span></span>${escapeHtml(STATUS_LABELS[order.status])}</span></header>
       <div class="kitchen-ticket-meta"><span>Pedido às ${clockTime(order.createdAt)}</span><strong>${totalItems} ${totalItems === 1 ? "item" : "itens"}</strong></div>
       ${taskProgress}
@@ -863,13 +867,33 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       if (alert) alert.hidden = !overdue;
       indicator.closest(".kitchen-ticket-age")?.classList.toggle("is-overdue", overdue);
     }
-    const visibleOverdueCount = indicators.filter((indicator) => indicator.classList.contains("is-overdue")).length;
+    for (const indicator of root.querySelectorAll("[data-kitchen-step-sla]")) {
+      const minutes = elapsedMinutes(indicator.dataset.startedAt, now);
+      const target = Number(indicator.dataset.targetMinutes);
+      const overdue = Number.isFinite(target) && minutes >= target;
+      const label = indicator.dataset.slaLabel ?? "Etapa";
+      const value = indicator.querySelector("[data-sla-value]");
+      const alert = indicator.querySelector("[data-age-alert]");
+      if (value) value.textContent = `${label} ${formatElapsed(minutes)} / meta ${target} min`;
+      if (alert) alert.hidden = !overdue;
+      indicator.classList.toggle("is-overdue", overdue);
+      indicator.closest(".kitchen-ticket-age")?.classList.toggle("is-step-overdue", overdue);
+    }
+    const visibleOverdueIds = new Set([...root.querySelectorAll(".order-card-kitchen[data-order-id]")]
+      .filter((card) => card.querySelector(".kitchen-ticket-age.is-overdue, .kitchen-ticket-age.is-step-overdue"))
+      .map((card) => card.dataset.orderId));
     const visibleOverdueValue = root.querySelector("[data-kitchen-overdue-count]");
-    if (visibleOverdueValue) visibleOverdueValue.textContent = String(visibleOverdueCount);
+    if (visibleOverdueValue) visibleOverdueValue.textContent = String(visibleOverdueIds.size);
     const activeStatuses = new Set(["received", "preparing", "ready", "out-for-delivery"]);
-    const totalOverdueCount = snapshot?.orders.filter((order) => activeStatuses.has(order.status)
+    const totalOverdueIds = new Set(snapshot?.orders.filter((order) => activeStatuses.has(order.status)
       && Number.isFinite(ORDER_STAGE_ALERT_MINUTES[order.status])
-      && elapsedMinutes(stageStartedAt(order), now) >= ORDER_STAGE_ALERT_MINUTES[order.status]).length ?? 0;
+      && elapsedMinutes(stageStartedAt(order), now) >= ORDER_STAGE_ALERT_MINUTES[order.status]).map(({ id }) => id) ?? []);
+    for (const ticket of previewPreferences?.kitchenTasks?.tickets ?? []) {
+      const step = currentKitchenStep(ticket);
+      if (step?.status === "active" && Number.isSafeInteger(step.targetMinutes)
+        && elapsedMinutes(step.startedAt, now) >= step.targetMinutes) totalOverdueIds.add(ticket.orderId);
+    }
+    const totalOverdueCount = totalOverdueIds.size;
     const totalOverdueValue = root.querySelector("[data-kitchen-overdue-total]");
     if (totalOverdueValue) totalOverdueValue.textContent = String(totalOverdueCount);
   }
@@ -1116,6 +1140,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         id: values.get(`step-id-${index + 1}`),
         label: values.get(`step-label-${index + 1}`),
         screen: values.get(`step-screen-${index + 1}`),
+        targetMinutes: values.get(`step-target-${index + 1}`),
       }))
       : [];
     return createKitchenWorkflowDraft(previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW, {
