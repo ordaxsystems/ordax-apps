@@ -98,3 +98,22 @@ test('Electron main delegates task navigation to the shared safe provider-aware 
   assert.equal(safeTaskNavigationReason('provider_navigation_timeout'),'provider_navigation_timeout');
   assert.equal(safeTaskNavigationReason('visible_draft_present'),'visible_draft_present');
 });
+
+
+test('recorded GPT reply and failed follow-up navigation cannot be shown as unsent',()=>{
+  const result=taskNavigationStatus({
+    provider_navigation:'post_commit_failed',
+    provider_navigation_reason:'visible_draft_present'
+  });
+  assert.equal(result.kind,'unavailable');
+  assert.equal(result.reason,'visible_draft_present');
+  assert.match(result.message,/resposta do GPT já foi registrada/);
+  assert.match(result.message,/Nenhuma mensagem foi reenviada/);
+  assert.doesNotMatch(result.message,/nenhuma mensagem foi enviada/i);
+  const unsafe=taskNavigationStatus({
+    provider_navigation:'post_commit_failed',
+    provider_navigation_reason:'https://chatgpt.com/c/private?token=secret'
+  });
+  assert.equal(unsafe.reason,'provider_navigation_unavailable');
+  assert.doesNotMatch(unsafe.message,/private|token=secret/i);
+});
