@@ -47,6 +47,16 @@ export class OrchestratorService {
         FOREIGN KEY(orchestrator_id,project_id) REFERENCES lab_orchestrators(id,project_id)
       );
       CREATE INDEX IF NOT EXISTS idx_lab_binding_project ON lab_task_bindings(project_id,kind);
+      CREATE TABLE IF NOT EXISTS lab_work_dependencies (
+        project_id TEXT NOT NULL REFERENCES lab_projects(id),
+        task_id TEXT NOT NULL REFERENCES tasks(id),
+        prerequisite_id TEXT NOT NULL REFERENCES tasks(id),
+        PRIMARY KEY(task_id,prerequisite_id),
+        FOREIGN KEY(task_id) REFERENCES lab_task_bindings(task_id),
+        FOREIGN KEY(prerequisite_id) REFERENCES lab_task_bindings(task_id),
+        CHECK(task_id<>prerequisite_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_lab_work_dependencies_project ON lab_work_dependencies(project_id);
       -- Idempotency receipts for App commands, including project creation
       -- before a Task exists. NOT a provider queue or replacement action ledger.
       CREATE TABLE IF NOT EXISTS lab_command_receipts (
@@ -275,7 +285,9 @@ export class OrchestratorService {
       WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
       AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)
       .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)
-      .map(work=>({...work,execution:workExecutionSummary([work])[0]}))};
+      .map(work=>({...work,execution:workExecutionSummary([work])[0],
+        dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
+          .all(input.projectId,work.id).map(row=>row.prerequisite_id)}))};
     if(operation==='work_get') {
       const task=this.task(input.projectId,input.taskId);
       const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
@@ -413,6 +425,30 @@ export class OrchestratorService {
       this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
         .run(input.paused?'paused':'ready',input.orchestratorId);
       return {orchestratorId:input.orchestratorId,status:input.paused?'paused':'ready'};
+    }
+    if(operation==='work_dependency_set') {
+      this.task(input.projectId,input.taskId,'work');
+      for(const dep of input.dependsOn)this.task(input.projectId,dep,'work');
+      const existing=this.db.prepare('SELECT task_id,prerequisite_id FROM lab_work_dependencies WHERE project_id=?').all(input.projectId);
+      const graph=new Map();
+      for(const edge of existing) {
+        if(!graph.has(edge.task_id))graph.set(edge.task_id,[]);
+        if(edge.task_id!==input.taskId)graph.get(edge.task_id).push(edge.prerequisite_id);
+      }
+      graph.set(input.taskId,[...input.dependsOn]);
+      const done=new Set(),active=new Set();
+      const visit=id=>{
+        if(active.has(id))throw Error('orchestrator_dependency_cycle');
+        if(done.has(id))return;
+        active.add(id);
+        for(const dep of graph.get(id)||[])visit(dep);
+        active.delete(id);done.add(id);
+      };
+      for(const id of graph.keys())visit(id);
+      this.db.prepare('DELETE FROM lab_work_dependencies WHERE project_id=? AND task_id=?').run(input.projectId,input.taskId);
+      const insert=this.db.prepare('INSERT INTO lab_work_dependencies(project_id,task_id,prerequisite_id) VALUES(?,?,?)');
+      for(const dep of input.dependsOn)insert.run(input.projectId,input.taskId,dep);
+      return {taskId:input.taskId,dependsOn:[...input.dependsOn]};
     }
     if(operation==='work_create') {
       this.orchestrator(input.projectId,input.orchestratorId);
