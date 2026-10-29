@@ -114,3 +114,17 @@ test('coordinator receives bounded SSOT dependencies without an execution grant'
   assert.equal(later.planning.candidateTaskIds.includes(publish),false);
   assert.equal(f.effects(),0);
 });
+
+test('work send honors persisted prerequisites and checks again before the provider',async t=>{
+  const f=fixture(t),{projectId,work}=await f.makeProject();
+  const predecessor=await work('Source'),dependent=await work('Publish');
+  await f.call('work_dependency_set',{projectId,taskId:dependent,dependsOn:[predecessor]});
+  await assert.rejects(f.call('work_send',{projectId,taskId:dependent,content:'Publish now'}),
+    /orchestrator_work_prerequisite_not_confirmed/);
+  assert.equal(f.effects(),0);
+  const confirmedRun=f.getStore().startRun(predecessor);
+  f.getStore().finishRun(predecessor,confirmedRun);
+  const receipt=await f.call('work_send',{projectId,taskId:dependent,content:'Publish after prerequisite'});
+  assert.equal(receipt.status,'uncertain');
+  assert.equal(f.effects(),1);
+});
