@@ -604,3 +604,5 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
 .coordinator-proposal { padding: 16px; border: 1px solid var(--border, #334155); border-radius: 12px; margin: 8px 16px; }
 .coordinator-proposal pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; font: inherit; }
 .coordinator-proposal button { margin: 4px 8px 0 0; }
+
+.work-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;margin-bottom:12px;background:var(--panel-2);border:1px solid var(--border);border-radius:12px}.work-overview-stat{display:flex;flex-direction:column;gap:4px;padding:9px;background:var(--panel);border-radius:9px}.work-overview-stat strong{font-size:20px}.work-overview-stat span,.work-overview-note{font-size:10px;color:var(--muted)}.work-overview-note{grid-column:1/-1;margin:2px 0}

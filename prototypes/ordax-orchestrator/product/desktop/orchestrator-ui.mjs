@@ -177,6 +177,24 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('workRailCount').textContent=String(works.length);
     $('workRailProject').textContent=$('projectSelect').selectedOptions[0]?.textContent||'';
     const list=$('orchestratorWorks');list.replaceChildren();
+    const counts={running:0,completed:0,attention:0,ready:0};
+    for(const w of works){
+      if(w.status==='running')counts.running++;
+      else if(w.status==='completed')counts.completed++;
+      else if(['failed','error','interrupted'].includes(w.status))counts.attention++;
+      else counts.ready++;
+    }
+    const overview=document.createElement('section');overview.className='work-overview';
+    overview.setAttribute('aria-label','Resumo das frentes observadas');
+    for(const [key,label] of [['running','Em andamento'],['completed','Concluídas'],['attention','Revisar'],['ready','Aguardando']]){
+      const stat=document.createElement('div');stat.className='work-overview-stat';
+      const value=document.createElement('strong');value.textContent=String(counts[key]);
+      const name=document.createElement('span');name.textContent=label;
+      stat.append(value,name);overview.append(stat);
+    }
+    const note=document.createElement('p');note.className='work-overview-note';
+    note.textContent='Estado das conversas; execução paralela automática ainda não habilitada.';
+    overview.append(note);list.append(overview);
     if(!works.length){const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
     for(const work of works){
       const [label,state]=work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);const button=document.createElement('button');
