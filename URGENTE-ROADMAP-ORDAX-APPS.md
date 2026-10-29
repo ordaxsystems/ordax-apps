@@ -713,6 +713,29 @@ o handoff bootstrap comprovado.
 
 ## 13. Registro de alterações
 
+### OrdaX Internet — busca central na página inicial (2026-10-28)
+
+- A página inicial agora exibe a marca OrdaX, uma busca central responsiva e o resumo de sessão/projetos/referências/favoritos/histórico, alinhados ao conceito visual enviado pelo usuário.
+- A busca usa o mesmo `resolveBrowserNavigation`, a mesma preferência pública de mecanismo de pesquisa e o mesmo contrato `browserSession.navigate/openTab` da barra de endereço; não adiciona serviço de rede nem autoridade do host.
+- Campos e botão receberam nomes acessíveis em português e inglês; o layout passa a rolar dentro da página inicial e adapta a grade para telas estreitas.
+- **Verificação local:** `node --test apps/internet/tests/browser-services.test.mjs` passou (4/4); `node --check` passou nos módulos de UI e mensagens; import ESM do runtime confirmou `internet` versão `0.3.1`; `git diff --check` limpo.
+- **Prévia:** servidor visual local retornou HTTP 200 para a página, manifesto, runtime e CSS. A abertura no navegador interno foi solicitada e retornou `queued`; a montagem visual ainda depende da aba aparecer no Codex.
+- **Limite:** a fixture é visual e usa estado demonstrativo; ela não simula engine web, rede, downloads ou permissões, nem comprova disponibilidade no OS.
+
+### OrdaX Internet — grade responsiva da barra de navegação (2026-10-28)
+
+- A barra agora declara uma coluna para cada controle visível no desktop, reduz os controles no breakpoint compacto e mantém voltar/avançar/recarregar/endereço/Localizar em uma grade de cinco colunas em telas estreitas. O seletor de mecanismo e ações secundárias são recolhidos no breakpoint móvel para evitar colunas implícitas e transbordamento horizontal.
+- **Verificação local:** testes do app passaram (4/4); `node --check` e `git diff --check` passaram; verificação estática confirmou as regras CSS para desktop, compacto e móvel.
+- **Prévia:** a folha CSS servida em `http://127.0.0.1:4293/` contém as regras atualizadas e respondeu HTTP 200; a abertura no navegador interno retornou `queued`, então a inspeção visual ainda aguarda a aba abrir.
+
+### OrdaX Internet — abas horizontais no topo (2026-10-28, versão 0.3.2)
+
+- A lista de abas foi movida da barra lateral para uma faixa horizontal acima da navegação, seguindo o conceito enviado. Busca de abas e criação de nova aba continuam acessíveis na faixa; a lateral fica dedicada a espaço, coleções e histórico.
+- O tablist declara orientação horizontal; setas esquerda/direita percorrem as abas, e a aba focada rola para a área visível. Controles de abas continuam usando os mesmos IDs e ações do app.
+- **Verificação local:** testes do app passaram (4/4); `node --check`, import ESM do runtime e `git diff --check` passaram; verificação estática confirmou os cinco posicionamentos de faixa/toolbar/painéis/corpo.
+- **Prévia:** servidor visual confirmou HTTP 200 para o CSS, UI e manifesto na versão 0.3.2; abertura no navegador interno solicitada e retornou `queued`, sem confirmação visual nesta execução.
+- **Limite:** a prévia usa estado demonstrativo e não simula engine web ou capacidades do host.
+
 ### Alinhamento local do checkout e host ChatGPT Web (2026-10-09)
 
 - Origem local alinhada a `ordaxsystems/ordax-apps` e base atualizada por fast-forward para `f3815e031181cc6b30f986c2878f60aae651acf5`, por solicitação do usuário após a transferência da organização.

@@ -3,7 +3,7 @@
   "id": "internet",
   "title": "Internet",
   "kind": "app",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "releaseMode": "component-slot",
   "criticality": "optional",
   "failureDomain": "app",

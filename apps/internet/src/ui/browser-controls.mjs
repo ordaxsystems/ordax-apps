@@ -78,20 +78,13 @@ function tabMatchesQuery(tab, query, locale = "pt-BR") {
     .some((value) => value.toLocaleLowerCase(locale).includes(query));
 }
 
-function createSidebar(documentObject, t) {
-  const sidebar = node(documentObject, "aside", "ordax-internet-sidebar");
-  sidebar.setAttribute("aria-label", t("internet.sidebar.aria"));
-  const workspace = node(documentObject, "button", "ordax-internet-workspace");
-  workspace.type = "button";
-  workspace.disabled = true;
-  workspace.title = t("internet.workspace.pending");
-  workspace.append(node(documentObject, "span", "ordax-internet-workspace-mark", ""));
-  workspace.append(node(documentObject, "strong", "", t("internet.workspace.current")));
-  workspace.append(node(documentObject, "span", "", "⌄"));
-
-  const newTab = node(documentObject, "button", "ordax-internet-new-tab", `+  ${t("internet.action.newTab")}`);
-  newTab.type = "button";
-  newTab.dataset.browserNewTab = "";
+function createTabStrip(documentObject, t) {
+  const strip = node(documentObject, "div", "ordax-internet-tab-strip");
+  const tabs = node(documentObject, "div", "ordax-internet-tabs");
+  tabs.dataset.browserTabs = "";
+  tabs.setAttribute("role", "tablist");
+  tabs.setAttribute("aria-label", t("internet.tabs.heading"));
+  tabs.setAttribute("aria-orientation", "horizontal");
 
   const search = node(documentObject, "label", "ordax-internet-tab-search");
   search.append(node(documentObject, "span", "ordax-internet-tab-search-icon", "⌕"));
@@ -104,13 +97,25 @@ function createSidebar(documentObject, t) {
   searchInput.dataset.browserTabSearch = "";
   search.append(searchInput);
 
-  const label = node(documentObject, "span", "ordax-internet-section-label", t("internet.tabs.heading"));
-  label.id = "ordax-internet-tabs-label";
-  const tabs = node(documentObject, "div", "ordax-internet-tabs");
-  tabs.dataset.browserTabs = "";
-  tabs.setAttribute("role", "tablist");
-  tabs.setAttribute("aria-labelledby", label.id);
-  tabs.setAttribute("aria-orientation", "vertical");
+  const newTab = node(documentObject, "button", "ordax-internet-tab-new", "+");
+  newTab.type = "button";
+  newTab.dataset.browserNewTab = "";
+  newTab.setAttribute("aria-label", t("internet.action.newTab"));
+  newTab.title = t("internet.action.newTab");
+  strip.append(tabs, search, newTab);
+  return strip;
+}
+
+function createSidebar(documentObject, t) {
+  const sidebar = node(documentObject, "aside", "ordax-internet-sidebar");
+  sidebar.setAttribute("aria-label", t("internet.sidebar.aria"));
+  const workspace = node(documentObject, "button", "ordax-internet-workspace");
+  workspace.type = "button";
+  workspace.disabled = true;
+  workspace.title = t("internet.workspace.pending");
+  workspace.append(node(documentObject, "span", "ordax-internet-workspace-mark", ""));
+  workspace.append(node(documentObject, "strong", "", t("internet.workspace.current")));
+  workspace.append(node(documentObject, "span", "", "⌄"));
 
   const collections = node(documentObject, "div", "ordax-internet-collections");
   collections.append(node(documentObject, "span", "ordax-internet-section-label", t("internet.collections.heading")));
@@ -155,7 +160,7 @@ function createSidebar(documentObject, t) {
   const footer = node(documentObject, "div", "ordax-internet-sidebar-footer");
   footer.append(node(documentObject, "span", "", t("internet.privateSoon")));
 
-  sidebar.append(workspace, newTab, search, label, tabs, collections, history, footer);
+  sidebar.append(workspace, collections, history, footer);
   return sidebar;
 }
 
@@ -203,18 +208,43 @@ function createToolbar(documentObject, t) {
 function createHome(documentObject, supported, reason, t) {
   const home = node(documentObject, "div", "ordax-internet-home");
   home.dataset.browserHome = "";
-  home.append(node(documentObject, "span", "ordax-internet-home-mark", "○"));
-  home.append(node(documentObject, "h2", "", t("internet.home.title")));
-  home.append(node(documentObject, "p", "", t("internet.home.body")));
+  const hero = node(documentObject, "section", "ordax-internet-home-hero");
+  hero.setAttribute("aria-labelledby", "ordax-internet-home-title");
+  const mark = node(documentObject, "span", "ordax-internet-home-mark", "◉");
+  mark.setAttribute("aria-hidden", "true");
+  hero.append(mark);
+  const title = node(documentObject, "h2", "", t("internet.home.title"));
+  title.id = "ordax-internet-home-title";
+  hero.append(title, node(documentObject, "p", "", t("internet.home.body")));
   if (!supported) {
     const unavailable = node(documentObject, "div", "ordax-internet-unavailable");
     unavailable.append(node(documentObject, "strong", "", t("internet.home.unavailable")));
     unavailable.append(node(documentObject, "span", "", reason));
-    home.append(unavailable);
+    hero.append(unavailable);
   } else {
-    home.append(node(documentObject, "span", "ordax-internet-home-hint", t("internet.home.hint")));
+    const search = node(documentObject, "form", "ordax-internet-home-search");
+    search.dataset.browserHomeSearchForm = "";
+    search.setAttribute("role", "search");
+    search.setAttribute("aria-label", t("internet.home.search.aria"));
+    const searchIcon = node(documentObject, "span", "ordax-internet-home-search-icon", "⌕");
+    searchIcon.setAttribute("aria-hidden", "true");
+    const input = node(documentObject, "input", "ordax-internet-home-search-input");
+    input.type = "search";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.placeholder = t("internet.home.search.placeholder");
+    input.setAttribute("aria-label", t("internet.home.search.aria"));
+    input.dataset.browserHomeSearch = "";
+    const submit = node(documentObject, "button", "ordax-internet-home-search-submit", "→");
+    submit.type = "submit";
+    submit.setAttribute("aria-label", t("internet.home.search.submit"));
+    search.append(searchIcon, input, submit);
+    hero.append(search, node(documentObject, "span", "ordax-internet-home-hint", t("internet.home.hint")));
   }
-  const cards = node(documentObject, "div", "ordax-internet-home-links");
+  home.append(hero);
+
+  const cards = node(documentObject, "section", "ordax-internet-home-links");
+  cards.setAttribute("aria-label", t("internet.home.overview"));
   for (const [key, label] of [
     ["session", t("internet.home.session")],
     ["projects", t("internet.home.projects")],
@@ -361,6 +391,7 @@ function createPageFindBar(documentObject, t) {
 function createView(documentObject, snapshot, t) {
   const view = node(documentObject, "div", "ordax-internet-view");
   view.dataset.ordaxInternetView = "";
+  const tabStrip = createTabStrip(documentObject, t);
   const toolbar = createToolbar(documentObject, t);
   const body = node(documentObject, "div", "ordax-internet-body");
   const center = node(documentObject, "main", "ordax-internet-center");
@@ -373,7 +404,7 @@ function createView(documentObject, snapshot, t) {
   downloadsPanel.dataset.browserDownloadsPanel = "";
   downloadsPanel.setAttribute("aria-label", t("internet.downloads.heading"));
   downloadsPanel.hidden = true;
-  view.append(toolbar, downloadsPanel, createPageFindBar(documentObject, t), body);
+  view.append(tabStrip, toolbar, downloadsPanel, createPageFindBar(documentObject, t), body);
   return view;
 }
 
@@ -541,7 +572,9 @@ export function mountInternetBrowserControls(
 
   const focusTab = (tabId) => {
     windowObject.requestAnimationFrame(() => {
-      findTabButton(findSlot(), tabId)?.focus({ preventScroll: true });
+      const button = findTabButton(findSlot(), tabId);
+      button?.focus({ preventScroll: true });
+      button?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     });
   };
 
@@ -1569,9 +1602,9 @@ export function mountInternetBrowserControls(
     if (index < 0 || tabs.length === 0) return;
 
     let targetIndex = null;
-    if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+    if (event.key === "ArrowLeft") {
       targetIndex = (index - 1 + tabs.length) % tabs.length;
-    } else if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+    } else if (event.key === "ArrowRight") {
       targetIndex = (index + 1) % tabs.length;
     } else if (event.key === "Home") {
       targetIndex = 0;
@@ -1632,19 +1665,20 @@ export function mountInternetBrowserControls(
   };
 
   const onSubmit = (event) => {
-    const form = event.target.closest("[data-browser-address-form]");
+    const form = event.target.closest("[data-browser-address-form], [data-browser-home-search-form]");
     if (!form || !root.contains(form)) return;
     event.preventDefault();
-    const input = form.querySelector("[data-browser-address]");
+    const input = form.querySelector("[data-browser-address], [data-browser-home-search]");
     const tab = activeTab();
-    if (!input || !tab) return;
+    if (!input) return;
     try {
       const url = resolveBrowserNavigation(input.value, {
         searchProviderId: searchPreferencesPort?.getSnapshot().providerId ?? BROWSER_SEARCH_PROVIDER.id,
       })?.url;
       if (!url) return;
       clearMessage();
-      port.navigate(tab.id, url);
+      if (tab) port.navigate(tab.id, url);
+      else if (snapshot.supported) port.openTab(allocateTabId(), url);
     } catch {
       setMessage("internet.address.invalid");
       render();

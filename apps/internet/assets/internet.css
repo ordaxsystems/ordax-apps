@@ -15,7 +15,7 @@
   height: 100%;
   min-height: 620px;
   display: grid;
-  grid-template-rows: 52px minmax(0, 1fr);
+  grid-template-rows: 40px 52px auto auto minmax(0, 1fr);
   background:
     radial-gradient(circle at 82% 10%, color-mix(in srgb, var(--ordax-accent) 7%, transparent), transparent 30%),
     var(--ordax-app-bg);
@@ -23,8 +23,9 @@
 }
 
 .ordax-internet-toolbar {
+  grid-row: 2;
   display: grid;
-  grid-template-columns: 36px 36px 36px minmax(220px, 1fr) 36px 36px 36px;
+  grid-template-columns: 36px 36px 36px minmax(160px, 1fr) minmax(96px, 142px) 36px 36px 36px 36px;
   align-items: center;
   gap: 4px;
   padding: 6px 10px;
@@ -55,6 +56,7 @@
 .ordax-internet-icon-button:disabled { opacity: .32; cursor: default; }
 
 .ordax-internet-address-form {
+  min-width: 0;
   height: 36px;
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
@@ -88,6 +90,7 @@
 }
 
 .ordax-internet-body {
+  grid-row: 5;
   min-height: 0;
   display: grid;
   grid-template-columns: 190px minmax(320px, 1fr) 265px;
@@ -110,7 +113,6 @@
 }
 
 .ordax-internet-workspace,
-.ordax-internet-new-tab,
 .ordax-internet-collection-row {
   width: 100%;
   border: 0;
@@ -136,16 +138,37 @@
   border-radius: 50%;
 }
 
-.ordax-internet-new-tab {
-  padding: 10px 12px;
+.ordax-internet-tab-strip {
+  grid-row: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--ordax-border-soft);
+  background: color-mix(in srgb, var(--ordax-panel) 88%, transparent);
+}
+
+.ordax-internet-tab-new {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
   border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
   border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.ordax-internet-new-tab:hover { background: color-mix(in srgb, currentColor 5%, transparent); }
+.ordax-internet-tab-new:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
 
 .ordax-internet-tab-search {
+  flex: 0 1 190px;
+  width: 190px;
+  min-width: 112px;
   min-height: 32px;
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
@@ -194,10 +217,22 @@
   color: var(--ordax-muted);
 }
 
-.ordax-internet-tabs { display: grid; gap: 3px; }
+.ordax-internet-tabs {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ordax-muted) 38%, transparent) transparent;
+}
 
 .ordax-internet-tab {
-  width: 100%;
+  flex: 0 0 clamp(132px, 18vw, 220px);
+  min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -207,7 +242,7 @@
 
 .ordax-internet-tab[data-selected="true"] {
   background: var(--ordax-selected-bg);
-  box-shadow: inset 3px 0 var(--ordax-accent);
+  box-shadow: inset 0 -2px var(--ordax-accent);
 }
 
 .ordax-internet-tab:hover:not([data-selected="true"]) { background: color-mix(in srgb, currentColor 5%, transparent); }
@@ -288,36 +323,64 @@
 }
 
 .ordax-internet-home {
-  width: min(680px, calc(100% - 64px));
-  margin: clamp(56px, 10vh, 110px) auto 0;
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: clamp(36px, 7vh, 76px) 24px 32px;
+  box-sizing: border-box;
   text-align: center;
+  background: radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--ordax-accent) 11%, transparent), transparent 48%);
 }
 
 .ordax-internet-home[hidden] { display: none; }
-.ordax-internet-home-mark { display: inline-grid; place-items: center; color: var(--ordax-accent); font-size: 34px; }
-.ordax-internet-home h2 { margin: 8px 0 5px; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.04em; }
-.ordax-internet-home > p { margin: 0 auto; max-width: 540px; color: var(--ordax-muted); font-size: 14px; line-height: 1.5; }
-.ordax-internet-home-hint { display: block; margin-top: 22px; font-size: 12px; color: var(--ordax-muted); }
+.ordax-internet-home-hero { width: min(820px, 100%); margin: 0 auto; }
+.ordax-internet-home-mark { display: inline-grid; place-items: center; color: var(--ordax-accent); font-size: 38px; text-shadow: 0 0 28px color-mix(in srgb, var(--ordax-accent) 55%, transparent); }
+.ordax-internet-home h2 { margin: 8px 0 8px; font-size: clamp(34px, 5vw, 58px); letter-spacing: -.045em; line-height: 1.08; background: linear-gradient(100deg, var(--ordax-text) 25%, var(--ordax-accent) 82%); color: transparent; background-clip: text; -webkit-background-clip: text; }
+.ordax-internet-home-hero > p { margin: 0 auto; max-width: 580px; color: var(--ordax-muted); font-size: clamp(14px, 1.5vw, 17px); line-height: 1.55; }
+.ordax-internet-home-search {
+  width: min(760px, 100%);
+  min-height: 60px;
+  margin: clamp(28px, 5vh, 46px) auto 0;
+  padding: 5px 6px 5px 16px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid color-mix(in srgb, var(--ordax-accent) 38%, var(--ordax-border-soft));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ordax-panel) 91%, transparent);
+  box-shadow: 0 14px 40px color-mix(in srgb, #000 24%, transparent), 0 0 28px color-mix(in srgb, var(--ordax-accent) 9%, transparent);
+  text-align: left;
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+.ordax-internet-home-search:focus-within { border-color: var(--ordax-focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ordax-focus) 28%, transparent), 0 14px 40px color-mix(in srgb, #000 24%, transparent); }
+.ordax-internet-home-search-icon { color: var(--ordax-muted); font-size: 25px; line-height: 1; text-align: center; }
+.ordax-internet-home-search-input { min-width: 0; width: 100%; min-height: 44px; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; font-size: 15px; }
+.ordax-internet-home-search-input::placeholder { color: var(--ordax-muted); opacity: .92; }
+.ordax-internet-home-search-submit { width: 48px; height: 48px; border: 0; border-radius: 50%; background: var(--ordax-accent); color: var(--ordax-app-bg); font: inherit; font-size: 25px; line-height: 1; cursor: pointer; transition: transform .16s ease, filter .16s ease; }
+.ordax-internet-home-search-submit:hover { filter: brightness(1.12); transform: translateX(1px); }
+.ordax-internet-home-hint { display: block; margin-top: 13px; font-size: 12px; color: var(--ordax-muted); }
 
 .ordax-internet-home-links {
-  margin-top: 34px;
+  width: min(900px, 100%);
+  margin: clamp(36px, 7vh, 62px) auto 0;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+  gap: 12px;
   text-align: left;
 }
 
 .ordax-internet-home-link {
-  min-height: 78px;
-  padding: 14px;
+  min-height: 88px;
+  padding: 16px;
   border: 1px solid var(--ordax-border-soft);
   border-radius: var(--ordax-radius-md);
   background: color-mix(in srgb, var(--ordax-panel) 58%, transparent);
   box-shadow: var(--ordax-shadow-soft);
 }
 
-.ordax-internet-home-link span { display: block; font-size: 9px; letter-spacing: .08em; color: var(--ordax-muted); margin-bottom: 8px; }
-.ordax-internet-home-link strong { font-size: 12px; }
+.ordax-internet-home-link span { display: block; font-size: 10px; letter-spacing: .08em; color: var(--ordax-muted); margin-bottom: 9px; }
+.ordax-internet-home-link strong { font-size: 13px; }
 
 .ordax-internet-unavailable {
   max-width: 520px;
@@ -500,15 +563,31 @@
 @media (max-width: 1020px) {
   .ordax-internet-body { grid-template-columns: 165px minmax(300px, 1fr); }
   .ordax-internet-project-panel { display: none; }
+  .ordax-internet-toolbar { grid-template-columns: 36px 36px 36px minmax(140px, 1fr) minmax(88px, 104px) 36px 36px 36px; }
   .ordax-internet-toolbar [data-browser-action="more"] { display: none; }
+  .ordax-internet-tab-search { flex-basis: 160px; }
 }
 
 @media (max-width: 760px) {
   .ordax-internet-body { grid-template-columns: 1fr; }
   .ordax-internet-sidebar { display: none; }
-  .ordax-internet-toolbar { grid-template-columns: 32px 32px 32px minmax(140px, 1fr); }
+  .ordax-internet-toolbar { grid-template-columns: 32px 32px 32px minmax(0, 1fr) 32px; }
+  .ordax-internet-toolbar .ordax-internet-icon-button { width: 32px; height: 32px; }
+  .ordax-internet-search-provider { display: none; }
   .ordax-internet-toolbar [data-browser-action="bookmark"],
   .ordax-internet-toolbar [data-browser-action="downloads"] { display: none; }
+  .ordax-internet-tab-strip { gap: 6px; padding-inline: 8px; }
+  .ordax-internet-tab-search { flex-basis: 132px; }
+  .ordax-internet-home { padding: 38px 18px 28px; }
+  .ordax-internet-home-links { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }
+}
+
+@media (max-width: 420px) {
+  .ordax-internet-tab-strip { gap: 4px; padding-inline: 6px; }
+  .ordax-internet-tab-search { flex-basis: 104px; min-width: 88px; }
+  .ordax-internet-home { padding: 30px 14px 24px; }
+  .ordax-internet-home-search { grid-template-columns: 28px minmax(0, 1fr) 42px; gap: 5px; padding-left: 10px; }
+  .ordax-internet-home-search-submit { width: 42px; height: 42px; }
   .ordax-internet-home-links { grid-template-columns: 1fr; }
 }
 
@@ -689,6 +768,7 @@
 
 /* Native WebKit find UI: one shared Surface component, no page DOM injection. */
 .ordax-internet-find-bar {
+  grid-row: 4;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -730,6 +810,7 @@
 
 /* Native user-approved downloads; browser pages never select destination paths. */
 .ordax-internet-downloads-panel {
+  grid-row: 3;
   padding: 12px;
   border-block-end: 1px solid var(--ordax-border, rgba(130,144,170,.35));
   max-height: 290px;
