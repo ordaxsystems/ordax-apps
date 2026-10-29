@@ -128,3 +128,32 @@ test('work send honors persisted prerequisites and checks again before the provi
   assert.equal(receipt.status,'uncertain');
   assert.equal(f.effects(),1);
 });
+
+test('prerequisites are immutable after the target has started a Run, including after restart',async t=>{
+  const f=fixture(t),{projectId,work}=await f.makeProject();
+  const build=await work('Build'),audit=await work('Audit'),release=await work('Release');
+  await f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[build]});
+  const started=f.getStore().startRun(release);
+  await assert.rejects(f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[audit]}),
+    /orchestrator_dependencies_locked_after_execution/);
+  f.getStore().finishRun(release,started);
+  f.reopen();
+  await assert.rejects(f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[]}),
+    /orchestrator_dependencies_locked_after_execution/);
+  const listing=await f.call('work_list',{projectId});
+  assert.deepEqual(listing.works.find(w=>w.id===release).dependsOn,[build]);
+  assert.equal(f.effects(),0);
+});
+test('uncertain provider outcome without a Run freezes prerequisite edits',async t=>{
+  const f=fixture(t),{projectId,work}=await f.makeProject();
+  const build=await work('Build'),release=await work('Release');
+  await f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[]});
+  const outcome=await f.call('work_send',{projectId,taskId:release,content:'Investigate'});
+  assert.equal(outcome.status,'uncertain');
+  assert.equal(f.effects(),1);
+  await assert.rejects(f.call('work_dependency_set',{projectId,taskId:release,dependsOn:[build]}),
+    /orchestrator_dependencies_locked_after_execution/);
+  const listing=await f.call('work_list',{projectId});
+  assert.deepEqual(listing.works.find(w=>w.id===release).dependsOn,[]);
+  assert.equal(f.effects(),1);
+});
