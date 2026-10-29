@@ -18,10 +18,15 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
   return Object.freeze({
     available:(projectId,orchestratorId)=>isEnabled(projectId,orchestratorId)===true&&Boolean(getApiKey()),
     async send({taskId,mission,projectId,orchestratorId,analysisContext=null,prepareWork=false,
-      workspaceObservation=null,repositoryUrl=null}) {
+      workspaceObservation=null,repositoryUrl=null,completionProfile='standard'}) {
       if(isEnabled(projectId,orchestratorId)!==true)throw Error('supervisor_disabled');
       const apiKey=getApiKey();
       if(typeof apiKey!=='string'||!apiKey.trim()||/[\r\n]/.test(apiKey))throw Error('supervisor_api_key_missing');
+      if(!['standard','narrative','narrative_recovery'].includes(completionProfile))
+        throw Error('orchestrator_completion_profile_invalid');
+      const narrative=completionProfile!=='standard';
+      const maxCompletionTokens=completionProfile==='narrative_recovery'?3200:
+        narrative?2600:1200;
       const request=buildCoordinatorRequestContext({store,taskId,mission,projectId,orchestratorId,
         analysisContext,prepareWork,workspaceObservation,repositoryUrl});
       let response;
@@ -29,7 +34,9 @@ export function createGroqCoordinatorConversation({getApiKey,isEnabled,store,
         response=await fetchImpl('https://api.groq.com/openai/v1/chat/completions',{
           method:'POST',signal:AbortSignal.timeout(timeoutMs),
           headers:{Authorization:'Bearer '+apiKey,'Content-Type':'application/json'},
-          body:JSON.stringify({model,temperature:0,max_completion_tokens:1200,
+          body:JSON.stringify({model,temperature:narrative?0.2:0,
+            max_completion_tokens:maxCompletionTokens,
+            ...(narrative&&/^openai\/gpt-oss-(20b|120b)$/.test(model)?{reasoning_effort:'low'}:{}),
             messages:[{role:'system',content:request.system},...request.history]})
         });
       } catch(error) {

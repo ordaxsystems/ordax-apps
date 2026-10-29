@@ -40,7 +40,7 @@ function fixture(t,{beforeSendFailure=null,readyCount=0,slowCoordinator=false}={
      }
      assert.equal(turn,5,'only one synthesis after four confirmed scenes');
      assert.equal(payload.prepareWork,false);
-     for(const item of scene)assert.match(payload.mission,new RegExp(item.slice(0,19)));
+     for(const item of scene)assert.ok(payload.analysisContext.works.some(w=>w.messages.some(m=>m.content.includes(item.slice(0,19)))));
      return {content:synthesis};
    }
  };
@@ -180,4 +180,49 @@ test('story in-flight restart is quarantined before any model or provider replay
    authorize:({context})=>context===f.context});
  assert.equal(next.autonomous.get(r.result.missionId).state,'reconciliation_required');
  assert.equal(next.autonomous.status(f.context,ids).mission.requiresReconciliation,true);
+});
+
+test('Groq output truncated at the fourth scene is replanned once, never replaying GPT',async t=>{
+ const f=fixture(t);const ids=await f.setup();
+ const original=f.service.coordinator.send;
+ let truncated=0;
+ f.service.coordinator.send=async payload=>{
+   if(payload.mission.includes('ETAPA 4/4')&&payload.completionProfile==='narrative'&&truncated++===0){
+     const error=Error('groq_incomplete_response');
+     error.orchestratorFailureCode='groq_incomplete_response';
+     error.orchestratorRequestOutcome='response_invalid';
+     throw error;
+   }
+   return original(payload);
+ };
+ const receipt=await f.service.invoke(f.context,'autonomous_dialogue_start',{
+   ...ids,requestId:'truncated_plan',mode:'story',mission:'Quatro cenas e correção de resposta Groq interrompida'});
+ const result=await f.wait(receipt.result.missionId);
+ assert.equal(result.state,'succeeded');
+ assert.equal(truncated,1);
+ assert.equal(f.seen.sends.length,4);
+ assert.equal(f.seen.calls.length,5,'five accepted coordinator outputs, no duplicated GPT sends');
+});
+test('Groq timeout is an unknown external outcome and is not automatically repeated',async t=>{
+ const f=fixture(t);const ids=await f.setup();
+ let calls=0;
+ const original=f.service.coordinator.send;
+ f.service.coordinator.send=async payload=>{
+   calls++;
+   if(payload.mission.includes('ETAPA 4/4')){
+     const error=Error('groq_request_timeout');
+     error.orchestratorFailureCode='groq_request_timeout';
+     error.orchestratorRequestOutcome='unknown';
+     throw error;
+   }
+   return original(payload);
+ };
+ const receipt=await f.service.invoke(f.context,'autonomous_dialogue_start',{
+   ...ids,requestId:'unknown_groq',mode:'story',mission:'Quatro cenas sem repetição de timeout'});
+ const result=await f.wait(receipt.result.missionId);
+ assert.equal(result.state,'reconciliation_required');
+ assert.equal(f.seen.sends.length,3);
+ await f.service.autonomous.tick(f.context);
+ assert.equal(f.seen.sends.length,3);
+ assert.equal(calls,4,'the uncertain Groq call is never replayed');
 });

@@ -63,3 +63,15 @@ O teste automatizado usa executor de prova, **não** conversa de produção. Nar
 completa, recuperação física de travamento, qualidade literária subjetiva,
 operações 24 h e repetição autônoma de missões falhas não são homologadas
 somente por aprovação dos testes unitários.
+
+## Correção E2E real — orçamento Groq
+
+A primeira execução física publicou três respostas GPT e bloqueou ao preparar a
+quarta cena com `groq_incomplete_response` (saída terminada pelo limite do
+modelo). Nenhum quarto envio ocorreu. Corrigimos a duplicação de contexto no
+planejamento narrativo e usamos perfis `narrative` (2600 tokens,
+`reasoning_effort=low`) e `narrative_recovery` (3200 tokens).
+Uma única repetição da **chamada Groq** só é permitida quando o provedor
+retornou explicitamente `response_invalid` para `groq_incomplete_response`.
+Uma resposta de API incerta, timeout ou qualquer envio GPT não é repetido.
+Docs de parâmetro: https://console.groq.com/docs/reasoning .
