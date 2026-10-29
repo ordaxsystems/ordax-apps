@@ -7,6 +7,7 @@ import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {workExecutionSummary} from './work-execution-summary.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
 function missionProjectName(mission) {
@@ -273,7 +274,8 @@ export class OrchestratorService {
       FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
       WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
       AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)
-      .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)};
+      .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)
+      .map(work=>({...work,execution:workExecutionSummary([work])[0]}))};
     if(operation==='work_get') {
       const task=this.task(input.projectId,input.taskId);
       const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
