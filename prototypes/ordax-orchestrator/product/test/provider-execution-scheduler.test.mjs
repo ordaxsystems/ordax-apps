@@ -126,7 +126,7 @@ test('host calls the SAME scheduler from UI task sends, Groq supervisor and orch
   assert.match(main,/createProviderExecutionScheduler/);
   assert.match(main,/enqueueExecution\(String\(taskId\),/);
   assert.match(main,/enqueueExecution\(taskId,/);
-  assert.match(main,/providerScheduler\?\.close/);
+  assert.match(main,/registeredScheduler\.close/);
   assert.doesNotMatch(main,/provider_lane_identity_mismatch/);
   // Real send ownership is now carried by the lane worker into runTask,
   // not looked up from the globally visible provider view.
