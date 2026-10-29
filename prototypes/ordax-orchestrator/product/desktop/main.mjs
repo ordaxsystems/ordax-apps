@@ -182,10 +182,7 @@ let providerScheduler = null;
 // remains the only physical lane until isolated multi-view E2E is verified.
 function enqueueExecution(taskId,operation) {
   if(!providerScheduler)return Promise.reject(Error('provider_worker_unavailable'));
-  return providerScheduler.enqueue(String(taskId),laneWorker=>{
-    if(laneWorker!==worker)throw Error('provider_lane_identity_mismatch');
-    return operation();
-  });
+  return providerScheduler.enqueue(String(taskId),operation);
 }
 
 function assetUrl(id) {
@@ -239,7 +236,11 @@ function persistImages(taskId, messageId, images = [], writtenPaths = null) {
   return out;
 }
 
-async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false } = {}) {
+async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false } = {}, runWorker) {
+  // An execution is always owned by the physical worker selected by the
+  // canonical scheduler, never by whichever view happens to be visible.
+  if(!runWorker||providerViews.resolve(runWorker?.view?.webContents)!==runWorker)
+    throw Error('provider_run_worker_unregistered');
   orchestratorService.assertProviderTaskAvailable(taskId,{allowCoordinator:allowCoordinatorTask});
   // Before appending another user message or starting another Run, require
   // reconciliation of any earlier uncertain transport effect on this Task.
@@ -291,8 +292,9 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   // Authoritative, fresh, read-only readiness gate BEFORE any Task/Run/message
   // mutation or draft clearing. A signed-out/unknown provider creates no Run.
   // Worker.sendPrompt independently checks again immediately before editing.
-  try { assertProviderSendReadiness(await worker.health()); }
+  try { assertProviderSendReadiness(await runWorker.health()); }
   catch(error) { throw normalizeProviderFailure(error,{stage:'health'}); }
+  if(liveRun)throw Error('orchestrator_executor_busy');
   const contextAttachment=handoffSnapshot?writeTaskHandoffFile(handoffRoot,handoffSnapshot):null;
   // No provider interaction happens until this atomic transaction commits.
   // The message, draft-clear and Run must never be persisted separately.
@@ -307,20 +309,21 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   }
   const { userMessage, runId } = begun;
   let contextAttachmentReceipt=null;
-  liveRun = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
+  const runContext = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
+  liveRun = runContext;
   const provisional=createProviderProvisionalRecorder({
     save:(text,source)=>store.saveRunProvisionalOutput(taskId,runId,text,source)
   });
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
 
   try {
-    providerViews.bindRun(worker,liveRun);
+    providerViews.bindRun(runWorker,runContext);
     if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
-    const result = await worker.sendPrompt({
+    const result = await runWorker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
       contextAttachment,
       onContextAttachmentObserved:receipt=>{
-        if(liveRun?.runId!==runId)throw new Error('context_attachment_run_context_changed');
+        if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('context_attachment_run_context_changed');
         const durableReceipt={
           format:handoffSnapshot.manifest.format,deliveryState:'uploaded',
           taskId:handoffSnapshot.manifest.taskId,filename:receipt.filename,
@@ -340,7 +343,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
         contextAttachmentReceipt=durableReceipt;
       },
       onProvisionalProgress:({text,source})=>{
-        if(liveRun?.runId===runId)provisional.capture(text,source);
+        if(providerViews.runForWorker(runWorker)===runContext)provisional.capture(text,source);
       },
       onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
         if(liveRun?.runId!==runId)throw new Error('submission_run_context_changed');
@@ -379,7 +382,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
         return requireRecordedIntent(intent);
       },
       onDeliveryObserved:({chatUrl,submittedAt}) => {
-        if (liveRun?.runId !== runId) throw new Error('submission_run_context_changed');
+        if (providerViews.runForWorker(runWorker)!==runContext) throw new Error('submission_run_context_changed');
         const binding=bindObservedSubmittedConversation({
           store,taskId,runId,chatUrl,submittedAt,
           plannedNewSession:conversationPlan.newSession,
@@ -431,7 +434,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
         previous_completed_turns:conversationPlan.completedTurns
       });
     }
-    const runMetrics = store.recordRunMetrics(taskId, runId, observerMode, { ...(result.metrics || {}), runStartedAt: liveRun?.startedAt || null });
+    const runMetrics = store.recordRunMetrics(taskId, runId, observerMode, { ...(result.metrics || {}), runStartedAt: runContext.startedAt });
     provisional.flush();
     // File bytes live outside SQLite. Track new writes so an SQL rollback
     // does not leave unnecessary assets in a normal (non-crash) failure.
@@ -450,7 +453,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       }
       throw commitError;
     }
-    const postCommitNavigation=await observePostCommitNavigation({worker,chatUrl:confirmedChatUrl});
+    const postCommitNavigation=await observePostCommitNavigation({worker:runWorker,chatUrl:confirmedChatUrl});
     if(postCommitNavigation.navigated===false)
       emitRendererEvent('ordax:task:provider-navigation',{
         taskId,provider_navigation:'post_commit_failed',
@@ -462,22 +465,22 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   } catch (error) {
     // Persist the last pending observed text, never as a confirmed message.
     provisional.flush();
-    if (worker.lastFailureMetrics) {
+    if (runWorker.lastFailureMetrics) {
       try { store.recordRunMetrics(taskId, runId, observerMode, {
-        ...worker.lastFailureMetrics,
-        runStartedAt:liveRun?.startedAt || null
+        ...runWorker.lastFailureMetrics,
+        runStartedAt:runContext.startedAt
       }); } catch { /* preserve original failure */ }
     }
     store.finishRun(taskId, runId, String(error?.message || error));
     if(error?.providerFailureCode==='send_confirmation_unknown'&&error?.providerDeliveryState==='uncertain') {
-      const recovered=await recoverFailedProviderSubmission({store,worker,taskId,runId}).catch(()=>null);
+      const recovered=await recoverFailedProviderSubmission({store,worker:runWorker,taskId,runId}).catch(()=>null);
       if(recovered?.reconciled===true||recovered?.reason==='already_reconciled')
         return {result:{runId,recovered:true},task:getTaskView(taskId)};
     }
     throw error;
   } finally {
-    providerViews.unbindRun(worker,runId);
-    if (liveRun?.runId === runId) liveRun = null;
+    providerViews.unbindRun(runWorker,runId);
+    if (liveRun===runContext) liveRun = null;
     clearInterval(heartbeat);
     if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
   }
@@ -764,7 +767,7 @@ registerUiHandler('ordax:tasks:send', async (event, { taskId, content, newSessio
     if(receipt.status!=='succeeded')throw Error('orchestrator_reconciliation_required');
     return {task:getTaskView(taskId),command:receipt};
   }
-  return enqueueExecution(String(taskId),() => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision }));
+  return enqueueExecution(String(taskId),runWorker => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision },runWorker));
 });
 
 
@@ -788,7 +791,7 @@ function requireLabSupervisor() {
       planner:createGroqSupervisorPlanner({ apiKey }),
       authorizeTask: scope => authorizeLocalSupervisorTask({ store, ...scope }),
       chat:{ send:async ({ taskId,content }) => {
-        const reply = await enqueueExecution(taskId,() => runTask(taskId,content,{newSession:false}));
+        const reply = await enqueueExecution(taskId,runWorker => runTask(taskId,content,{newSession:false},runWorker));
         return chatReceiptFromRunTask(reply);
       } }
     });
@@ -839,8 +842,8 @@ const orchestratorKernel=createOrchestratorKernel({
   provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
     send:async({taskId,content,draftRevision,taskKind})=>
-    chatReceiptFromRunTask(await enqueueExecution(taskId,()=>runTask(taskId,content,{newSession:false,draftRevision,
-      allowCoordinatorTask:taskKind==='orchestrator'})))},
+    chatReceiptFromRunTask(await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{newSession:false,draftRevision,
+      allowCoordinatorTask:taskKind==='orchestrator'},runWorker)))},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})
 });
