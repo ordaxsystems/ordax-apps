@@ -172,7 +172,27 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       list.append(button);
     }
   }
+  let visibleWorkItems=[];
+  const workClass=work=>work.status==='running'?'running':
+    work.status==='completed'?'completed':
+    ['failed','error','interrupted'].includes(work.status)?'attention':'ready';
+  function applyWorkFilters(){
+    const query=($('workSearch')?.value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR').trim();
+    const state=$('workStatusFilter')?.value||'all';
+    const nodes=$('orchestratorWorks').querySelectorAll('.work-card');
+    let visible=0;
+    for(const button of nodes){
+      const work=visibleWorkItems.find(w=>w.id===button.dataset.taskId);
+      const haystack=String(work?.title||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+      const show=Boolean(work)&&(!query||haystack.includes(query))&&(state==='all'||workClass(work)===state);
+      button.hidden=!show;if(show)visible++;
+    }
+    $('workFilteredCount').textContent=visible+' de '+visibleWorkItems.length+' frentes exibidas';
+  }
+  $('workSearch').addEventListener('input',applyWorkFilters);
+  $('workStatusFilter').addEventListener('change',applyWorkFilters);
   function renderWorks(works) {
+    visibleWorkItems=works;
     const labels={running:['Em andamento','running'],completed:['Concluída','completed'],failed:['Revisar','attention'],error:['Revisar','attention'],interrupted:['Revisar','attention'],paused:['Pausada','paused'],ready:['Pronta','ready']};
     $('workRailCount').textContent=String(works.length);
     $('workRailProject').textContent=$('projectSelect').selectedOptions[0]?.textContent||'';
@@ -195,7 +215,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const note=document.createElement('p');note.className='work-overview-note';
     note.textContent='Estado das conversas; execução paralela automática ainda não habilitada.';
     overview.append(note);list.append(overview);
-    if(!works.length){const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
+    if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
     for(const work of works){
       const [label,state]=work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);const button=document.createElement('button');
       button.type='button';button.className='work-card';button.dataset.taskId=work.id;
@@ -208,6 +228,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       button.append(copy,badge);button.addEventListener('click',async()=>{
         try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
       });list.append(button);
+    applyWorkFilters();
     }
   }
   async function command(operation,input) {
