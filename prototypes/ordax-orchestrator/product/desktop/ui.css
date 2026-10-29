@@ -612,3 +612,8 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
 .work-attention-summary{display:flex;flex-direction:column;gap:5px;padding:11px 12px;margin-bottom:10px;border:1px solid rgba(232,183,88,.4);border-radius:10px;background:rgba(232,183,88,.07)}.work-attention-summary strong{font-size:12px;color:var(--text)}.work-attention-summary span{font-size:11px;line-height:1.5;color:var(--muted)}
 
 .work-run-evidence{display:block;margin-top:5px;font-size:10px;color:var(--muted)}
+
+.work-plan-summary{margin:7px 0 12px;padding:10px 11px;border:1px solid var(--border);background:var(--panel-2);border-radius:10px;font-size:11px;line-height:1.5;color:var(--muted)}
+.work-plan-summary[data-state="ready"]{border-color:rgba(69,207,135,.32);color:var(--text)}
+.work-plan-summary[data-state="blocked"]{border-color:rgba(232,183,88,.35);color:var(--text)}
+.work-plan-item{display:block;font-size:10px;line-height:1.4;margin-top:5px;color:var(--muted)}
