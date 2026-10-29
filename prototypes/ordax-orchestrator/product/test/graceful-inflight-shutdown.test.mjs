@@ -86,7 +86,8 @@ test('Electron close invokes canonical synchronous recovery before closing the w
   const end=main.indexOf("\n  });",start);
   assert.ok(start>=0&&end>start);
   const handler=main.slice(start,end);
-  assert.match(handler,/if \(!liveRun\) return;/);
+  assert.match(handler,/if \(!liveRun\) \{registeredScheduler\.close\(\);return;\}/);
+  assert.match(handler,/registeredScheduler\.close\(\)/);
   assert.match(handler,/store\.recoverInterruptedRuns\('app_shutdown'\)/);
   assert.match(handler,/event\.preventDefault\(\)/);
   assert.doesNotMatch(handler,/sendPrompt|loadURL|requestSubmit|fetch\(/);
