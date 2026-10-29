@@ -268,6 +268,7 @@ export class OrchestratorService {
       continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
       coordinatorAvailable:this.coordinator?.available?.()===true,
       providerExecutionAvailable:typeof this.provider?.send==='function',
+      executor:this.executorAdmission(),
       activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
       uncertainCommands:Number(this.db.prepare(`SELECT COUNT(*) n FROM lab_command_receipts
         WHERE status='uncertain' AND workspace_session_id=? AND actor_id=? AND client_id=?`)
@@ -307,6 +308,28 @@ export class OrchestratorService {
     throw Error('orchestrator_unknown_operation');
   }
 
+  // The Electron host currently has ONE shared WebContentsView and ONE
+  // canonical provider transport. This capability is a verified ceiling,
+  // not an opt-in flag that may be raised without isolated workers.
+  executorAdmission() {
+    const activeRuns=Number(this.db.prepare(
+      "SELECT COUNT(*) n FROM runs WHERE status='running'"
+    ).get().n);
+    const activeCommands=Number(this.db.prepare(
+      "SELECT COUNT(*) n FROM lab_command_receipts WHERE status='running'"
+    ).get().n);
+    const hostOccupied=this.provider?.busy?.()===true;
+    const occupied=activeRuns>0||activeCommands>0||hostOccupied;
+    return Object.freeze({
+      mode:'single_embedded_chatgpt_worker',
+      maxConcurrentSends:1,
+      activeRuns,activeCommands,hostOccupied,
+      availableSlots:occupied?0:1,
+      isolatedWorkerSessions:false,
+      parallelProviderSendsEnabled:false
+    });
+  }
+
   monitor(task,runs) {
     const command=this.db.prepare(`SELECT status,result FROM lab_command_receipts
       WHERE json_extract(result,'$.taskId')=? ORDER BY rowid DESC LIMIT 1`).get(task.id);
@@ -342,12 +365,20 @@ export class OrchestratorService {
       const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id
         FROM lab_work_dependencies WHERE project_id=? ORDER BY task_id,prerequisite_id`)
         .all(projectId);
-      return projectWorkPlan({
+      const planning=projectWorkPlan({
         projectId:projectId,maxParallel:maxParallel,edges,
         works:works.map(w=>({...w,monitor:this.monitor(w,[{
           status:w.latest_run_status,started_at:w.latest_started_at,
           heartbeat_at:w.latest_heartbeat_at
         }])}))
+      });
+      const executor=this.executorAdmission();
+      return Object.freeze({...planning,
+        executor,
+        // Structural candidates are not permission to send. Only one candidate
+        // can occupy the real shared-browser lane, and zero when it is busy.
+        transportSlotCandidates:Object.freeze(planning.candidates.slice(0,executor.availableSlots)),
+        automaticDispatchAllowed:false
       });
   }
 
@@ -654,8 +685,7 @@ export class OrchestratorService {
     const providerContent=appendRemoteRepositoryInstructions(draft.content,repositoryUrl);
     const reviewedDraft={...draft,repositoryUrl,providerContent};
     if(typeof this.provider?.send!=='function')throw Error('orchestrator_provider_unavailable');
-    if(this.provider.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
-      this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
+    if(this.executorAdmission().availableSlots===0)
       throw Error('orchestrator_executor_busy');
     if(this.pendingProposalReviews.has(input.actionId))throw Error('orchestrator_proposal_review_busy');
     this.pendingProposalReviews.add(input.actionId);
@@ -733,9 +763,8 @@ export class OrchestratorService {
       filesWritten:workspaceStatus.filesWritten
     }:null;
     assertTaskHasNoUncertainTransport(this.store,task.id);
-    // A single global executor until multi-session E2E proves concurrency.
-    if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
-      this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||this.provider?.busy?.())
+    // The same admission rule gates plans and all canonical provider sends.
+    if(this.executorAdmission().availableSlots===0)
       throw Error('orchestrator_executor_busy');
     // Advisory API replies cannot submit GPT work. Preserve their uncertain
     // receipts without replay, but allow a fresh explicit API request. Only
