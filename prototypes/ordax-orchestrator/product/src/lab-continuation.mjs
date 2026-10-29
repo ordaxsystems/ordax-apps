@@ -77,6 +77,10 @@ export class LabContinuation {
       JOIN lab_orchestrators o ON o.id=b.orchestrator_id
       WHERE p.enabled=1 AND o.status='ready' AND r.status='succeeded'
       AND r.rowid>p.start_run_rowid
+      -- Deduplicate BEFORE LIMIT. INSERT OR IGNORE alone would repeatedly
+      -- pick the oldest 100 reviewed Runs and permanently starve newer work.
+      AND NOT EXISTS (SELECT 1 FROM lab_continuation_reviews reviewed
+        WHERE reviewed.run_id=r.id)
       ORDER BY r.completed_at,r.id LIMIT 100`).run(now);
     return result.changes;
   }

@@ -203,3 +203,41 @@ test('only one proposal model request can be active during a periodic tick',asyn
   assert.equal((await first).state,'proposed');
   assert.equal(prepares,1);
 });
+
+test('continuation scan does not starve later Runs beyond the 100-row batch boundary',async t=>{
+  let calls=0;
+  const f=setup(t,{available:()=>false,send:async()=>{calls++;throw Error('model_should_not_run')}});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const all=[];
+  for(let i=0;i<205;i++)all.push(finish(f.store,a.taskId));
+  const continuation=f.service.continuation;
+  assert.equal(continuation.scan(),100);
+  assert.equal(continuation.scan(),100);
+  assert.equal(continuation.scan(),5);
+  assert.equal(continuation.scan(),0);
+  const rows=f.store.db.prepare('SELECT run_id,state FROM lab_continuation_reviews').all();
+  assert.equal(rows.length,205);
+  assert.equal(new Set(rows.map(row=>row.run_id)).size,205);
+  assert.deepEqual(new Set(rows.map(row=>row.run_id)),new Set(all));
+  assert.ok(rows.every(row=>row.state==='queued'));
+  assert.equal(calls,0);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('continuation scan preserves already reviewed Runs and resumes after reinitialization',async t=>{
+  const f=setup(t,{available:()=>false,send:()=>{throw Error('must_not_send')}});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const all=Array.from({length:120},()=>finish(f.store,a.taskId));
+  const continuation=f.service.continuation;
+  assert.equal(continuation.scan(),100);
+  const selected=all[0];
+  f.store.db.prepare("UPDATE lab_continuation_reviews SET state='analyzed' WHERE run_id=?").run(selected);
+  const restarted=new LabContinuation({store:f.store,service:f.service});
+  assert.equal(restarted.scan(),20);
+  assert.equal(restarted.scan(),0);
+  assert.equal(f.store.db.prepare("SELECT state FROM lab_continuation_reviews WHERE run_id=?").get(selected).state,'analyzed');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_continuation_reviews').get().n,120);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_continuation_reviews WHERE state=?').get('analyzed').n,1);
+});
