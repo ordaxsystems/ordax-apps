@@ -27,11 +27,20 @@ export function planParallelWork({tasks,maxParallel=4}={}){
  const running=tasks.filter(t=>t.state==='running');
  const available=Math.max(0,maxParallel-running.length);
  const ready=[],blocked=[],waiting=[];
+ // Propagate blocked dependencies through the whole DAG without changing
+ // persistent task state or dispatching anything.
+ const blockedMemo=new Map();
+ function isBlocked(id){
+   if(blockedMemo.has(id))return blockedMemo.get(id);
+   const t=map.get(id);
+   const result=['uncertain','failed','blocked'].includes(t.state)||
+     t.dependsOn.some(dep=>isBlocked(dep));
+   blockedMemo.set(id,result);return result;
+ }
  for(const t of tasks){
    if(t.state!=='pending')continue;
-   const deps=t.dependsOn.map(id=>map.get(id));
-   if(deps.some(d=>['uncertain','failed','blocked'].includes(d.state)))blocked.push(t.id);
-   else if(deps.every(d=>d.state==='succeeded'))ready.push(t.id);
+   if(isBlocked(t.id))blocked.push(t.id);
+   else if(t.dependsOn.every(id=>map.get(id).state==='succeeded'))ready.push(t.id);
    else waiting.push(t.id);
  }
  return Object.freeze({dispatch:Object.freeze(ready.slice(0,available)),
