@@ -269,6 +269,20 @@
             <button class="primary" type="submit">Criar e abrir conversa</button>
           </form>
         </details>
+        <details id="workDependencyEditor" class="work-dependency-editor">
+          <summary>Organizar dependências</summary>
+          <form id="workDependencyForm">
+            <p>Escolha uma frente que ainda não foi executada e marque quais trabalhos precisam terminar antes dela.</p>
+            <label for="dependencyTarget">Frente a organizar</label>
+            <select id="dependencyTarget" required aria-describedby="dependencyEditNote"></select>
+            <fieldset>
+              <legend>Pré-requisitos</legend>
+              <div id="dependencyCandidates" class="work-dependency-candidates"></div>
+            </fieldset>
+            <button id="saveWorkDependencies" class="mini-primary" type="submit">Salvar dependências</button>
+            <small id="dependencyEditNote" role="status" aria-live="polite">Nenhum envio ao GPT é realizado ao salvar.</small>
+          </form>
+        </details>
         <div class="work-toolbar"><label class="sr-only" for="workSearch">Buscar frentes de trabalho</label><input id="workSearch" type="search" autocomplete="off" placeholder="Buscar frentes..." aria-controls="orchestratorWorks" /><label class="sr-only" for="workStatusFilter">Filtrar por estado</label><select id="workStatusFilter" aria-label="Filtrar frentes por estado"><option value="all">Todos os estados</option><option value="running">Em andamento</option><option value="completed">Concluídas</option><option value="attention">Precisam de revisão</option><option value="ready">Aguardando</option></select></div><div id="workFilteredCount" class="work-filter-count" role="status" aria-live="polite"></div><div id="orchestratorWorks" class="orchestrator-works" aria-live="polite"></div>
         <p id="workRailNote" class="work-rail-note">Cada conversa mantém o próprio histórico dentro do projeto.</p>
       </section>
