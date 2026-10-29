@@ -69,7 +69,7 @@ export function validateOrchestratorInput(operation, input) {
       const item=schema.items;
       if(!Array.isArray(value)||value.length>schema.maxItems||
         new Set(value).size!==value.length||value.some(entry=>
-          typeof entry!=='string'||entry.includes('\\0')||
+          typeof entry!=='string'||entry.includes('\0')||
           entry.length>item.maxLength||entry.trim().length<item.minLength||
           (item.pattern&&!new RegExp(item.pattern).test(entry))))
         throw Error('orchestrator_invalid_input');
