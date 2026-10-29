@@ -253,10 +253,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const planStatus=$('workPlanSummary');
     if(plan?.automaticDispatchAllowed===false){
       planStatus.dataset.state=plan.blocked.length?'blocked':'ready';
+      const executor=plan.executor;
+      const physical=executor?.maxConcurrentSends===1&&executor?.isolatedWorkerSessions===false
+        ?'Executor real: 1 sessão de navegador'+
+          (executor.availableSlots===0?' (ocupada).':' (vaga disponível).')
+        :'Capacidade física do executor não atestada.';
       planStatus.textContent='Planejamento do projeto · '+plan.candidates.length+' candidatas · '+
         plan.waiting.length+' aguardando · '+plan.blocked.length+' bloqueadas · '+
-        plan.inFlight+' em execução. Lote consultivo de até '+(plan.availableSlots+plan.inFlight)+
-        ' frentes; isso não comprova execução simultânea. Nenhum envio automático autorizado.';
+        plan.inFlight+' em execução no projeto. '+physical+
+        ' A seleção consultiva de até '+(plan.availableSlots+plan.inFlight)+
+        ' frentes não significa envios simultâneos. Nenhum envio automático autorizado.';
     }else{
       planStatus.dataset.state='unavailable';
       planStatus.textContent=projectId?
