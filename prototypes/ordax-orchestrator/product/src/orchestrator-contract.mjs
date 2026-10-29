@@ -66,7 +66,13 @@ export function validateOrchestratorInput(operation, input) {
         throw Error('orchestrator_invalid_input');
       normalized[key]=value.trim();
     } else if(schema.type==='array') {
-      if(!Array.isArray(value)||value.length>schema.maxItems||new Set(value).size!==value.length||value.some(item=>typeof item!=='string'||!new RegExp(schema.items.pattern).test(item)))throw Error('orchestrator_invalid_input');
+      const item=schema.items;
+      if(!Array.isArray(value)||value.length>schema.maxItems||
+        new Set(value).size!==value.length||value.some(entry=>
+          typeof entry!=='string'||entry.includes('\\0')||
+          entry.length>item.maxLength||entry.trim().length<item.minLength||
+          (item.pattern&&!new RegExp(item.pattern).test(entry))))
+        throw Error('orchestrator_invalid_input');
       normalized[key]=[...value];
     } else if(schema.type==='boolean') {
       if(typeof value!=='boolean')throw Error('orchestrator_invalid_input');
