@@ -25,6 +25,7 @@ const definitions = [
   ['work_create','Create a work conversation under a project/coordinator. No provider submission.',{projectId:id,orchestratorId:id,title:text(140)},['projectId','orchestratorId','title'],false],
   ['work_dependency_set','Replace prerequisite work IDs for one existing work, without dispatching.',{projectId:id,taskId:id,dependsOn:{type:'array',items:id,maxItems:64}},['projectId','taskId','dependsOn'],false],
   ['work_list','List work conversations, excluding the coordinator chat.',{projectId:id,orchestratorId:id},['projectId'],true],
+  ['work_plan','Inspect bounded dependency readiness of all works in one project, without approving or dispatching any message.',{projectId:id,maxParallel:{type:'integer',minimum:1,maximum:32}},['projectId'],true],
   ['work_get','Inspect a scoped work and its provider segments without browser navigation.',{projectId:id,taskId:id},['projectId','taskId'],true],
   ['work_messages','Read a bounded page of persisted work or coordinator messages.',{projectId:id,taskId:id,before:text(1000),limit:{type:'integer',minimum:1,maximum:50}},['projectId','taskId'],true],
   ['work_send','Send one authorized prompt through the existing App executor. An uncertain command must never be replayed.',{projectId:id,taskId:id,content:text(6000),draftRevision:{type:'integer',minimum:1,maximum:Number.MAX_SAFE_INTEGER}},['projectId','taskId','content'],false],
