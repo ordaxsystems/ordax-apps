@@ -31,9 +31,15 @@ export function diagnoseAgentFailure({code,stage='unknown',deliveryState='unknow
   if(health?.page_state==='conversation_load_failed'||blocked.has(failureCode))
     return Object.freeze({category:'confirmed_pre_submit_blocker',severity:'stop',
       replayAllowed:false,autoRetry:false,operatorAction:'repair_session_or_composer',evidence});
-  if(loading.has(failureCode) || ['loading','hydrating','pending','connecting'].includes(health?.page_state))
+  if(loading.has(failureCode) || ['loading','hydrating','pending','connecting'].includes(health?.page_state)) {
+    // A transient load is only a wait condition within a bounded observation
+    // budget. A persistent failure needs diagnosis, never infinite polling.
+    if(evidence.elapsedMs>=45000)
+      return Object.freeze({category:'pre_submit_load_deadline_exceeded',severity:'stop',
+        replayAllowed:false,autoRetry:false,operatorAction:'inspect_navigation_or_session_root_cause',evidence});
     return Object.freeze({category:'transient_pre_submit_wait',severity:'wait',
       replayAllowed:false,autoRetry:false,operatorAction:'observe_health_again_without_dispatch',evidence});
+  }
   return Object.freeze({category:'confirmed_pre_submit_failure',severity:'stop',
     replayAllowed:false,autoRetry:false,operatorAction:'inspect_failure_and_fix_root_cause',evidence});
 }
