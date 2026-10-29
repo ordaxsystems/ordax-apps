@@ -356,31 +356,71 @@ export class OrchestratorService {
     const project=this.db.prepare(`SELECT name,objective FROM lab_projects
       WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
     if(!project)throw Error('orchestrator_project_unavailable');
-    const rows=this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
-      (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments
+
+    // The same Store powers the UI, coordinator and authenticated executor.
+    // Cover many work fronts without copying their full conversation histories.
+    // Never expose the titles or IDs of another coordinator's private works.
+    const totalWorkCount=this.db.prepare(`SELECT COUNT(*) n FROM tasks t
+      JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+      AND t.workspace_session_id=?`)
+      .get(projectId,orchestratorId,this.store.getWorkspaceSession().id).n;
+    const overviewRows=this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+      (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) last_run_status
       FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
       WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
-        AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 4`)
+        AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 257`)
       .all(projectId,orchestratorId,this.store.getWorkspaceSession().id);
+    const ownerIds=new Set(overviewRows.map(row=>row.id));
 
-    // The coordinator receives a bounded advisory snapshot of the SAME
-    // persisted project DAG. It cannot approve, create, or dispatch work.
-    let planning={state:'unavailable'};
+    // The project DAG is advisory, never an authorization to submit messages.
+    // Preserve project-wide dependencies internally but disclose only THIS
+    // coordinator's scoped work in the Groq analysis.
+    let planning={state:'unavailable',automaticDispatchAllowed:false,qualityCertified:false};
+    let plan=null;
     try {
-      const plan=this.projectPlan(projectId,4);
-      planning={state:'available',candidateTaskIds:plan.candidates.slice(0,8),
-        waitingCount:plan.waiting.length,blockedCount:plan.blocked.length,
-        inFlight:plan.inFlight,workCount:plan.workCount,
-        automaticDispatchAllowed:false,qualityCertified:false};
+      plan=this.projectPlan(projectId,4);
+      const owned=plan.workers.filter(worker=>ownerIds.has(worker.taskId));
+      planning={state:'available',
+        candidateTaskIds:plan.candidates.filter(id=>ownerIds.has(id)).slice(0,8),
+        waitingCount:plan.waiting.filter(id=>ownerIds.has(id)).length,
+        blockedCount:plan.blocked.filter(id=>ownerIds.has(id)).length,
+        inFlight:owned.filter(worker=>worker.state==='running').length,
+        workCount:totalWorkCount,automaticDispatchAllowed:false,qualityCertified:false};
     }catch(error){
       if(error?.message!=='orchestrator_work_plan_too_large')throw error;
       planning={state:'scope_too_large',automaticDispatchAllowed:false,qualityCertified:false};
     }
+    const candidate=new Set(plan?.candidates||[]);
+    const waiting=new Set(plan?.waiting||[]);
+    const blocked=new Set(plan?.blocked||[]);
+    const states=new Map((plan?.workers||[]).map(worker=>[worker.taskId,worker.state]));
+    const readiness=id=>blocked.has(id)?'blocked':waiting.has(id)?'waiting':
+      candidate.has(id)?'candidate':states.get(id)||'unavailable';
+    // Prioritize reviews and active work, then ready/waiting tasks. The rich
+    // history remains capped at four works with five messages each; the wider
+    // overview has no message contents and no provider authority.
+    const priority=row=>{
+      const state=readiness(row.id);
+      return state==='uncertain'?0:state==='failed'?1:state==='running'?2:
+        state==='blocked'?3:state==='candidate'?4:state==='waiting'?5:6;
+    };
+    const ordered=[...overviewRows].sort((a,b)=>priority(a)-priority(b)||
+      String(b.updated_at).localeCompare(String(a.updated_at))||a.id.localeCompare(b.id));
+    const rows=ordered.slice(0,4);
     return {
       planning,
       project:{name:redactOrchestratorAnalysisText(project.name,160),objective:redactOrchestratorAnalysisText(project.objective,600)},
       orchestrator:{name:redactOrchestratorAnalysisText(owner.name,160),mission:redactOrchestratorAnalysisText(owner.mission,800)},
-      scope:{includedWorkCount:rows.length,workLimit:4,messageLimitPerWork:5},
+      scope:{includedWorkCount:rows.length,workLimit:4,messageLimitPerWork:5,
+        overviewCount:Math.min(ordered.length,32),overviewLimit:32,totalWorkCount,
+        overviewTruncated:totalWorkCount>32},
+      workOverview:ordered.slice(0,32).map(row=>({
+        title:redactOrchestratorAnalysisText(row.title,180),
+        status:row.status,latestRunStatus:row.last_run_status,
+        readiness:readiness(row.id),updatedAt:row.updated_at
+      })),
       works:rows.map(row=>{
         const runs=this.db.prepare(`SELECT status,started_at,completed_at,heartbeat_at
           FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 3`).all(row.id);
