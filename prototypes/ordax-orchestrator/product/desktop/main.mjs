@@ -527,10 +527,11 @@ async function createWindowOnce() {
   worker = new EmbeddedChatWorker();
   providerViews.register(worker);
   providerScheduler=createProviderExecutionScheduler({lanes:[{id:'primary',worker}]});
+  const registeredScheduler=providerScheduler;
   const registeredWorker=worker;
   registeredWorker.view.webContents.once('destroyed',()=>{
     providerViews.unregister(registeredWorker);
-    providerScheduler?.close('provider_worker_destroyed');
+    registeredScheduler.close('provider_worker_destroyed');
   });
   hostStartupLog('worker_constructed');
   worker.setObserverMode(observerMode);
@@ -560,10 +561,10 @@ async function createWindowOnce() {
   // startup before destroying the window. No provider retry/cancel/API call.
   // A late response cannot be committed: finishRun requires status=running.
   win.on('close', event => {
-    if (!liveRun) {providerScheduler?.close();return;}
+    if (!liveRun) {registeredScheduler.close();return;}
     try {
       const interrupted = store.recoverInterruptedRuns('app_shutdown');
-      providerScheduler?.close();
+      registeredScheduler.close();
       providerViews.unbindRun(worker,liveRun.runId);
       liveRun = null;
       if (interrupted) hostStartupLog('inflight_run_interrupted_on_close');
