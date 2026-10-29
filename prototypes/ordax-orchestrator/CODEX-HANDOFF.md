@@ -1,5 +1,15 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Estado canônico — 29/10/2026 (prevalece sobre registros históricos abaixo)
+
+- **SSOT do produto:** `ordaxsystems/ordax-apps`, branch `main`. A [PR #348](https://github.com/ordaxsystems/ordax-apps/pull/348) foi **integrada** em `c4eb3e6852c856fd4bda97e7247dd6539b8de80c` (28/10), seguida da correção de empacotamento Windows `031d2b95219c9bbf19ea25a8150bc7538b135ebe`. Não reabrir a PR/branch histórica nem tratar os estados de draft abaixo como atuais.
+- **Windows — uma instalação operacional:** binário canônico em `%LOCALAPPDATA%\\Programs\\OrdaX Orchestrator Lab\\OrdaX Orchestrator Lab.exe`; dados/SQLite e perfil isolado em `%LOCALAPPDATA%\\OrdaX\\OrchestratorLab`. No Desktop de validação, o pacote `0.2.0-alpha.19` tem `sourceCommit=031d2b9` e SHA-256 do `resources/app.asar` validado contra o manifesto `orchestrator-packaged-proof.json`. O binário não deve ser duplicado em outros diretórios nem recompilado sem mudança pertinente de source.
+- **Política de trabalho:** desenvolver e integrar no GitHub; no Windows, somente verificar e atualizar o mesmo local canônico após artefato validado. Diretórios temporários de E2E, candidatos antigos e checkouts históricos **não são instalações de produto**. Nunca promover, importar ou eliminar perfis/receipts/SQLite por simples comparação de nomes; antes de retirar checkout, resolver alterações locais e commits não integrados.
+- **Gates ainda não certificados por esse empacotamento:** envio/importação GPT Web real com atribuição inequívoca do turno, recuperação W3 com receipt correto sem reenvio, grants Runtime/Platform físicos, execução real headless/24h e continuidade ao fechar o aplicativo. Testes e SHA de pacote não substituem essas provas. Não afirmar autonomia geral enquanto os gates estiverem abertos.
+- **CI:** a ausência de checks reportados para o commit `031d2b9` na consulta atual não autoriza declarar CI integral aprovado neste HEAD. O histórico de CI aprovado em revisões anteriores permanece evidência daquela revisão, não atestado novo.
+
+## Registros históricos (não usar como status atual)
+
 ## Estado atual — resposta GPT tardia reconciliada com segurança — 27/10/2026
 
 - O último commit de código da Apps PR #348 é bd5dc89e75a62f787613fe32323d534f9aa00375, no branch remoto codex/orchestrator-host-runtime-architecture, contra main 2b76001db889e450ac9d537152e2485d455db73f. Ele inclui o supervisor de recuperação de e0ef305 e a recuperação limitada após app_shutdown/process_interrupted; a PR segue aberta/draft. Commits documentais podem avançar o head sem alterar esse source. Runtime e Platform não foram alterados.
