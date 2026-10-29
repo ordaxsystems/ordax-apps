@@ -216,7 +216,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     note.textContent='Estado das conversas; execução paralela automática ainda não habilitada.';
     overview.append(note);list.append(overview);
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
-    for(const work of works){
+    const ordered=[...works].sort((a,b)=>{const priority={failed:0,error:0,interrupted:0,running:1,ready:2,paused:3,completed:4};return (priority[a.status]??5)-(priority[b.status]??5);});
+    for(const work of ordered){
       const [label,state]=work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);const button=document.createElement('button');
       button.type='button';button.className='work-card';button.dataset.taskId=work.id;
       const copy=document.createElement('span');copy.className='work-card-copy';
@@ -228,8 +229,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       button.append(copy,badge);button.addEventListener('click',async()=>{
         try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
       });list.append(button);
-    applyWorkFilters();
     }
+    applyWorkFilters();
   }
   async function command(operation,input) {
     const key=JSON.stringify({operation,input});
