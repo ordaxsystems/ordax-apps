@@ -267,7 +267,9 @@ export class OrchestratorService {
     if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
       'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
     if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
-      b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments
+      b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+      (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
       FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
       WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
       AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)

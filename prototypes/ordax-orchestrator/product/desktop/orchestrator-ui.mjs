@@ -235,7 +235,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const detail=document.createElement('small');detail.textContent=work.provider_segments
         ?`${work.provider_segments} conversa${work.provider_segments===1?'':'s'} no histórico`
         :nodeHost?'Rascunho local • envio ao GPT indisponível neste host':'Conversa pronta para iniciar';
-      copy.append(title,detail);const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
+const runState=document.createElement('small');
+      const states={running:'Run ativo',succeeded:'Último Run confirmado',failed:'Último Run falhou',cancelled:'Último Run cancelado',interrupted:'Run interrompido'};
+      runState.textContent=work.running_runs>0?'Run em andamento':states[work.latest_run_status]||'Sem Run confirmado';
+      runState.className='work-run-evidence';
+      copy.append(title,detail,runState);const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
       button.append(copy,badge);button.addEventListener('click',async()=>{
         try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
       });list.append(button);
