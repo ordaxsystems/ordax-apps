@@ -346,7 +346,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
         if(providerViews.runForWorker(runWorker)===runContext)provisional.capture(text,source);
       },
       onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
-        if(liveRun?.runId!==runId)throw new Error('submission_run_context_changed');
+        if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('submission_run_context_changed');
         const requireRecordedIntent=intent=>{
           if(intent.recorded)return intent;
           // The reason is a closed-set local validation code, never the prompt,
