@@ -791,12 +791,30 @@ export class Store {
     `).all(taskId);
   }
 
-  bindConversation(taskId, url, contextCheckpointVersion = null) {
-    const normalized = canonicalProviderChatUrl(url);
-    if (!normalized) {
-      if (!String(url || '').trim()) return null;
-      throw new Error('invalid_provider_conversation_url');
+  // One remote ChatGPT conversation belongs to exactly one local Task, even
+  // when it was archived, migrated from the legacy tasks.chat_url column, or
+  // observed through chat.openai.com instead of chatgpt.com. A different Task
+  // must use a different remote thread; do not silently adopt another Task's
+  // evidence during navigation, submission or recovery.
+  assertProviderConversationUnclaimed(taskId, url) {
+    const canonical=canonicalProviderChatUrl(url);
+    if(!canonical)throw new Error('invalid_provider_conversation_url');
+    const threadPath=new URL(canonical).pathname;
+    const claims=this.db.prepare(`SELECT task_id,chat_url
+      FROM task_conversations WHERE task_id<>? AND chat_url IS NOT NULL
+      UNION ALL SELECT id AS task_id,chat_url FROM tasks
+      WHERE id<>? AND chat_url IS NOT NULL`).all(taskId,taskId);
+    for(const claim of claims) {
+      const stored=canonicalProviderChatUrl(claim.chat_url);
+      if(stored&&new URL(stored).pathname===threadPath)
+        throw new Error('provider_conversation_owned_by_another_task');
     }
+    return canonical;
+  }
+
+  bindConversation(taskId, url, contextCheckpointVersion = null) {
+    if (!String(url || '').trim()) return null;
+    const normalized = this.assertProviderConversationUnclaimed(taskId,url);
     const now = this.now();
     const exact = this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? AND chat_url=? ORDER BY sequence DESC LIMIT 1').get(taskId, normalized);
     const existing = exact || this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? ORDER BY sequence DESC').all(taskId)
@@ -1219,6 +1237,9 @@ export class Store {
         intent.new_session===false);
       const acknowledgedReceiptValid=Boolean(receipt&&receipt.conversation_id===conversationId&&
         receipt.prompt_sha256===promptSha256&&receipt.response_observed===false&&receipt.effect_verified===false);
+      // Check even an already-bound thread before adopting its response:
+      // a historical collision cannot be transformed into proven delivery.
+      this.assertProviderConversationUnclaimed(taskId,canonicalUrl);
       let effectiveConversationId=conversationId;
       let freshDispatchIntentValid=false;
       if(intent&&intent.new_session===true&&conversationId===null&&intentBaselineValid&&
