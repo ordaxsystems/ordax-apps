@@ -191,11 +191,28 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   $('workSearch').addEventListener('input',applyWorkFilters);
   $('workStatusFilter').addEventListener('change',applyWorkFilters);
-  function renderWorks(works) {
+  function renderWorks(works,plan=null) {
     visibleWorkItems=works;
+    const planWorkers=new Map((plan?.workers||[]).map(w=>[w.taskId,w]));
+    const candidates=new Set(plan?.candidates||[]);
+    const waiting=new Set(plan?.waiting||[]);
+    const blocked=new Set(plan?.blocked||[]);
     const labels={running:['Em andamento','running'],completed:['Concluída','completed'],failed:['Revisar','attention'],error:['Revisar','attention'],interrupted:['Revisar','attention'],paused:['Pausada','paused'],ready:['Pronta','ready']};
     $('workRailCount').textContent=String(works.length);
     $('workRailProject').textContent=$('projectSelect').selectedOptions[0]?.textContent||'';
+    const planStatus=$('workPlanSummary');
+    if(plan?.automaticDispatchAllowed===false){
+      planStatus.dataset.state=plan.blocked.length?'blocked':'ready';
+      planStatus.textContent='Projeto completo · '+plan.candidates.length+' candidatas · '+
+        plan.waiting.length+' aguardando · '+plan.blocked.length+' bloqueadas · '+
+        plan.inFlight+' em execução. Limite consultivo: '+(plan.availableSlots+plan.inFlight)+
+        ' frentes. Nenhum envio automático autorizado.';
+    }else{
+      planStatus.dataset.state='unavailable';
+      planStatus.textContent=projectId?
+        'Planejamento indisponível; consulte as tarefas e os recibos antes de agir.':
+        'Selecione um projeto para consultar dependências.';
+    }
     const list=$('orchestratorWorks');list.replaceChildren();
     const counts={running:0,completed:0,attention:0,ready:0};
     for(const w of works){
@@ -222,7 +239,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const description=document.createElement('span');
       description.textContent='Abra a conversa para conferir a última execução e seus recibos antes de continuar.';
       summary.append(label,description);list.append(summary);
-    }    const note=document.createElement('p');note.className='work-overview-note';
+    }
+    const note=document.createElement('p');note.className='work-overview-note';
     note.textContent='Estado das conversas; execução paralela automática ainda não habilitada.';
     overview.append(note);list.append(overview);
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
@@ -245,6 +263,21 @@ const runState=document.createElement('small');
         dependencies.textContent=work.dependsOn.length+' dependência(s) registrada(s)';
         copy.append(title,detail,runState,dependencies);
       }else copy.append(title,detail,runState);
+      const planned=planWorkers.get(work.id);
+      if(planned){
+        const label=document.createElement('small');
+        label.className='work-plan-item';
+        label.textContent=blocked.has(work.id)?'Dependência bloqueada · revisar':
+          waiting.has(work.id)?'Aguardando pré-requisitos':
+          candidates.has(work.id)?'Candidata à próxima ação · requer autorização':
+          planned.state==='uncertain'?'Entrega incerta · reconciliar':
+          planned.state==='failed'?'Falha confirmada · revisar':
+          planned.state==='running'?'Ação em andamento':
+          planned.state==='succeeded'?'Último Run concluído; qualidade não certificada':
+          planned.state==='pending'?'Aguardando capacidade ou autorização':
+          'Estado não liberado';
+        copy.append(label);
+      }
       const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
       button.append(copy,badge);button.addEventListener('click',async()=>{
         try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
@@ -400,10 +433,14 @@ const runState=document.createElement('small');
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
     if(!p) {workCount=0;renderWorks([]);await onScopeChange(null);syncCoordinatorActions();return;}
-    const {works}=await call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})});
+    const [result,planning]=await Promise.all([
+      call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})}),
+      call('work_plan',{projectId:p,maxParallel:4}).catch(()=>null)
+    ]);
     if(generation!==epoch)return;
+    const works=result.works;
     workCount=works.length;
-    renderWorks(works);
+    renderWorks(works,planning?.plan||null);
     await onScopeChange(new Set(works.map(w=>w.id)));
     syncCoordinatorActions();
   }
