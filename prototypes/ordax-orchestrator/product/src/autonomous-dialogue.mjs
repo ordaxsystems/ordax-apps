@@ -136,12 +136,12 @@ export class AutonomousDialogue {
     if(phase==='b'&&proposal.content===row.question_a)throw Error('autonomous_duplicate_question');
     return proposal;
   }
-  async send(row,phase) {
+  async send(row,phase,context) {
     const taskId=phase==='a'?row.task_a_id:row.task_b_id;
     const content=phase==='a'?row.question_a:row.question_b;
-    this.service.requireAccess({
-      actorId:row.actor_id,clientId:row.client_id,workspaceSessionId:row.workspace_session_id
-    },'autonomous_dialogue_start',row.project_id);
+    // Reuse the exact host-authorized session object. A lookalike object
+    // must never pass the canonical per-process authority predicate.
+    this.service.requireAccess(context,'autonomous_dialogue_start',row.project_id);
     assertTaskHasNoUncertainTransport(this.store,taskId);
     const r=await this.service.provider.send({taskId,content,draftRevision:null,taskKind:'work'});
     requireConfirmedChatReceipt(r);
@@ -186,7 +186,7 @@ export class AutonomousDialogue {
         }
       } else if(row.state==='ready_a') {
         working='sending_a';this.move(row.id,'ready_a',working);
-        await this.send(row,'a');this.move(row.id,working,'ready_b');
+        await this.send(row,'a',context);this.move(row.id,working,'ready_b');
       } else if(row.state==='ready_b') {
         working='planning_b';this.move(row.id,'ready_b',working);
         const p=await this.plan(row,'b');
@@ -203,7 +203,7 @@ export class AutonomousDialogue {
         }
       } else if(row.state==='ready_final') {
         working='sending_b';this.move(row.id,'ready_final',working);
-        await this.send(row,'b');
+        await this.send(row,'b',context);
         this.move(row.id,working,'planning_final');
         working='planning_final';
         const p=await this.plan(this.get(row.id),'final');
