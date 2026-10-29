@@ -15,3 +15,15 @@ test('bad list types and extra authority are rejected',()=>{
  assert.throws(()=>validateOrchestratorInput('work_dependency_set',{...input,dependsOn:'task_build'}),/orchestrator_invalid_input/);
  assert.throws(()=>validateOrchestratorInput('work_dependency_set',{...input,execute:true}),/orchestrator_invalid_input/);
 });
+
+test('dependency IDs enforce the same bounded canonical format as ordinary task IDs',()=>{
+  assert.throws(()=>validateOrchestratorInput('work_dependency_set',{
+    ...input,dependsOn:['x'.repeat(181)]
+  }),/orchestrator_invalid_input/);
+  assert.throws(()=>validateOrchestratorInput('work_dependency_set',{
+    ...input,dependsOn:['task_a\\0x']
+  }),/orchestrator_invalid_input/);
+  assert.throws(()=>validateOrchestratorInput('work_dependency_set',{
+    ...input,dependsOn:['']
+  }),/orchestrator_invalid_input/);
+});
