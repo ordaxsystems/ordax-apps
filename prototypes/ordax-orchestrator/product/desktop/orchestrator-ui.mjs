@@ -239,7 +239,13 @@ const runState=document.createElement('small');
       const states={running:'Run ativo',succeeded:'Último Run confirmado',failed:'Último Run falhou',cancelled:'Último Run cancelado',interrupted:'Run interrompido'};
       runState.textContent=work.execution?.observed==='reconciliation_required'?'Execução incerta · verificar recibos':work.execution?.observed==='review_required'?'Execução requer revisão':work.execution?.observed==='running'?'Run em andamento':work.execution?.observed==='last_run_succeeded'?'Último Run confirmado':work.running_runs>0?'Run em andamento':states[work.latest_run_status]||'Sem Run confirmado';
       runState.className='work-run-evidence';
-      copy.append(title,detail,runState);const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
+      if(Array.isArray(work.dependsOn)&&work.dependsOn.length){
+        const dependencies=document.createElement('small');
+        dependencies.className='work-run-evidence';
+        dependencies.textContent=work.dependsOn.length+' dependência(s) registrada(s)';
+        copy.append(title,detail,runState,dependencies);
+      }else copy.append(title,detail,runState);
+      const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
       button.append(copy,badge);button.addEventListener('click',async()=>{
         try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
       });list.append(button);
