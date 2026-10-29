@@ -1,6 +1,6 @@
 import { WebContentsView, session } from 'electron';
 import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
-import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
+import { submitExactlyOnce, waitForSubmitControl, providerBaselineMessageId } from '../src/provider-submit-receipt.mjs';
 import { createResponseObservationBudget, responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { providerGenerationStopProbeExpression, providerResponseControlStateExpression } from '../src/provider-generation-stop-probe.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
@@ -882,8 +882,9 @@ export class EmbeddedChatWorker {
       // means requestSubmit has never run; retry policy may distinguish it.
       if(typeof onSubmissionIntent==='function') await onSubmissionIntent({
         intentAt,chatUrl:wc.getURL(),
-        baselineUserMessageId:typeof baseline.latestUserMessageId==='string'&&baseline.latestUserMessageId.length<=180
-          ?baseline.latestUserMessageId:null,
+        // DOM returns an empty string when the new GPT chat has no prior
+        // user message; durable evidence requires null, never an empty ID.
+        baselineUserMessageId:providerBaselineMessageId(baseline.latestUserMessageId),
         baselineUserMessagePresent:Number.isSafeInteger(baseline.userCount)&&baseline.userCount>0,
         baselinePromptMatches:providerUserMessageMatchesPrompt(baseline.latestUserText,prompt)
       });

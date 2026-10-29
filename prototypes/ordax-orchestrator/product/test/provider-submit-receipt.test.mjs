@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { providerSubmissionConfirmed, unresolvedSubmitCode, submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
+import { providerSubmissionConfirmed, unresolvedSubmitCode, submitExactlyOnce, waitForSubmitControl, providerBaselineMessageId } from '../src/provider-submit-receipt.mjs';
 const baseline={userCount:0,composerText:'',url:'https://chatgpt.com/'};
 const prompt='ORDAX_SEND_ONCE_TEST';
 
@@ -82,4 +82,16 @@ test('a rejected durable intent happens before requestSubmit and is never classi
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   assert.match(main,/provider\.submission\.intent_rejected/);
   assert.match(main,/return requireRecordedIntent\(intent\)/);
+});
+
+test('new GPT chat with no previous user message passes a null baseline ID to durable submission',()=>{
+  assert.equal(providerBaselineMessageId(''),null,'empty DOM attribute is absence, not an ID');
+  assert.equal(providerBaselineMessageId('   '),null);
+  assert.equal(providerBaselineMessageId(undefined),null);
+  assert.equal(providerBaselineMessageId('gpt-user-previous'),'gpt-user-previous');
+  assert.equal(providerBaselineMessageId('x'.repeat(181)),null);
+  const worker=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8');
+  const source=worker.split('const fire = async () => {')[1]?.split('const submitted = await wc.executeJavaScript')[0]||'';
+  assert.match(source,/baselineUserMessageId:providerBaselineMessageId\(baseline\.latestUserMessageId\)/);
+  assert.ok(source.indexOf('await onSubmissionIntent({')<source.indexOf('submitAttemptAt = Date.now()'));
 });

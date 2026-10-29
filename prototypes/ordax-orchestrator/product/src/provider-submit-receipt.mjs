@@ -3,6 +3,15 @@
 import { normalizeProviderUserMessage, providerUserMessageMatchesPrompt } from './provider-user-message.mjs';
 
 const normalized = value => String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+
+// DOM #submissionState exposes '' when no earlier provider user bubble exists.
+// The durable dispatch-intent contract uses null for absence. Preserve actual
+// non-empty message IDs byte-for-byte; never invent an ID or accept an
+// overlong/whitespace-only identifier as proof of a previous turn.
+export function providerBaselineMessageId(value) {
+  return typeof value==='string' && value.trim().length>0 && value.length<=180
+    ? value : null;
+}
 export function providerSubmissionConfirmed({ baseline, current, prompt }) {
   if (!baseline || !current) return false;
   const currentUserText=normalizeProviderUserMessage(current.latestUserText,{

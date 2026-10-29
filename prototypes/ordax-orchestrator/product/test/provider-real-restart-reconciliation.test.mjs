@@ -6,6 +6,7 @@ import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {Store} from '../src/store.mjs';
 import {recordProviderSubmissionProvenance,recordProviderSubmissionIntent} from '../src/provider-submission-provenance.mjs';
+import {providerBaselineMessageId} from '../src/provider-submit-receipt.mjs';
 import {inspectProviderLinkedThread,reconcileProviderLinkedReply,recoverFailedProviderSubmission,recoverVisibleLinkedProviderSubmission} from '../src/provider-linked-thread-recovery.mjs';
 
 const sha256=value=>createHash('sha256').update(value,'utf8').digest('hex');
@@ -486,4 +487,52 @@ test('unlinked fresh conversation with an unrelated prompt remains unbound and o
   assert.equal(sends,0);
   assert.equal(f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(task.id).chat_url,null);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,0);
+});
+
+test('first new GPT conversation persists a real dispatch intent when DOM baseline message ID is empty',async t=>{
+  const f=openFixture(t);
+  const task=f.store.createTask('First GPT submission empty DOM baseline '+randomUUID());
+  const providerPrompt='Distinct provider prompt '+randomUUID();
+  const {runId,userMessage}=f.store.beginProviderRun(task.id,'Local request');
+  // Electron DOM #submissionState() returns '' when no previous user message
+  // exists. This used to fail validation and prevent the first GPT submission.
+  const baseline={latestUserMessageId:'',userCount:0,latestUserText:''};
+  const intent=recordProviderSubmissionIntent({
+    store:f.store,taskId:task.id,runId,messageId:userMessage.id,
+    providerPrompt,chatUrl:'https://chatgpt.com/',intentAt:Date.now(),
+    baselineUserMessageId:providerBaselineMessageId(baseline.latestUserMessageId),
+    baselineUserMessagePresent:baseline.userCount>0,
+    baselinePromptMatches:false,newSession:true,
+    previousConversationId:null,previousChatUrl:null
+  });
+  assert.deepEqual(intent,{recorded:true,reason:'intent_recorded'});
+  const payload=JSON.parse(f.store.db.prepare(
+    "SELECT payload FROM events WHERE task_id=? AND kind='provider.submission.intent'").get(task.id).payload);
+  assert.equal(payload.baseline_user_message_id,null);
+  assert.equal(payload.baseline_user_message_present,false);
+  assert.equal(payload.new_session,true);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.submission.intent'").get(task.id).n,1);
+  assert.equal(f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(task.id).chat_url,null);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+
+  // Preserve the recovery gates after the legitimate durable intent exists.
+  f.store.recordRunMetrics(task.id,runId,'beta',{
+    failedStage:'submit',providerDeliveryState:'uncertain',submitAttemptAt:Date.now()
+  });
+  f.store.finishRun(task.id,runId,'submit:send_confirmation_unknown');
+  let reads=0,sends=0;
+  const worker={status:()=>({url:threadA}),
+    inspectConversationReadOnly:async(target,{allowNavigation}={})=>{
+      assert.equal(target,threadA);assert.equal(allowNavigation,false);
+      reads++;return observation({url:threadA,providerPrompt},'First real answer could be recovered');
+    },
+    sendPrompt:async()=>{sends++;throw Error('no_replay');}
+  };
+  const result=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:100000});
+  assert.equal(result.state,'recovered');
+  assert.equal(reads,2);
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(task.id).chat_url,threadA);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
