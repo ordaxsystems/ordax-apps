@@ -164,6 +164,42 @@ export async function recoverFailedProviderSubmission({store,worker,taskId,runId
   });
 }
 
+// A lost acknowledgement of the FIRST message has no task.chat_url yet.
+// Find a single eligible fresh-session intent in the active workspace before
+// observing the already-visible GPT conversation. No navigation, sending or
+// speculative binding is allowed. Multiple candidates fail closed.
+function uniquePendingFreshSubmission(store) {
+  const sessionId=store.getWorkspaceSession()?.id;
+  if(!sessionId)return null;
+  const rows=store.db.prepare(`SELECT t.id task_id,t.status task_status,
+      r.id run_id,r.status run_status,r.error run_error,r.metrics run_metrics
+    FROM tasks t JOIN runs r ON r.task_id=t.id
+    WHERE t.workspace_session_id=? AND t.status IN ('error','interrupted')
+      AND r.status IN ('failed','interrupted')
+      AND r.rowid=(SELECT rowid FROM runs WHERE task_id=t.id ORDER BY rowid DESC LIMIT 1)`).all(sessionId);
+  let candidate=null;
+  for(const row of rows) {
+    let metrics=null;
+    try {metrics=JSON.parse(row.run_metrics||'{}');} catch {}
+    const failure=String(row.run_error||'').split(':').at(-1);
+    const lostAck=failure==='send_confirmation_unknown'&&metrics?.failed_stage==='submit'&&
+      metrics?.provider_delivery_state==='uncertain'&&
+      Number.isSafeInteger(metrics?.submit_attempt_at)&&metrics.submit_attempt_at>0;
+    const interrupted=row.run_status==='interrupted'&&row.task_status==='interrupted'&&
+      ['app_shutdown','process_interrupted'].includes(row.run_error);
+    if(!lostAck&&!interrupted)continue;
+    const message=store.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1")
+      .get(row.task_id);
+    const intent=findProviderSubmissionIntent({
+      store,taskId:row.task_id,runId:row.run_id,messageId:message?.id
+    });
+    if(intent?.new_session!==true)continue;
+    if(candidate)return {ambiguous:true};
+    candidate={taskId:row.task_id};
+  }
+  return candidate;
+}
+
 const PROVIDER_RECOVERY_BACKOFF_MS=Object.freeze([15_000,30_000,60_000,120_000,300_000,600_000]);
 export const PROVIDER_RECOVERY_MAX_OBSERVATIONS=24;
 
@@ -180,9 +216,15 @@ export async function recoverVisibleLinkedProviderSubmission({store,worker,now=D
   if(!currentUrl)return {state:'idle',reason:'provider_thread_not_visible'};
 
   const linked=store.db.prepare('SELECT id FROM tasks WHERE chat_url=? LIMIT 2').all(currentUrl);
-  if(linked.length===0)return {state:'idle',reason:'provider_thread_not_linked'};
-  if(linked.length!==1)return {state:'ambiguous',reason:'provider_thread_linked_to_multiple_tasks'};
-  const taskId=linked[0].id;
+  if(linked.length!==0&&linked.length!==1)
+    return {state:'ambiguous',reason:'provider_thread_linked_to_multiple_tasks'};
+  // First-send uncertainty has no linked URL yet; require exactly one durable,
+  // active-workspace intent rather than guessing which Task owns this thread.
+  const fresh=linked.length===0?uniquePendingFreshSubmission(store):null;
+  if(fresh?.ambiguous)
+    return {state:'ambiguous',reason:'provider_new_session_multiple_candidates'};
+  if(linked.length===0&&!fresh)return {state:'idle',reason:'provider_thread_not_linked'};
+  const taskId=linked.length===1?linked[0].id:fresh.taskId;
   const run=store.db.prepare(`SELECT id,status,error,metrics FROM runs
     WHERE task_id=? ORDER BY rowid DESC LIMIT 1`).get(taskId);
   const task=store.db.prepare('SELECT status,chat_url FROM tasks WHERE id=?').get(taskId);

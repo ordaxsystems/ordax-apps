@@ -377,3 +377,113 @@ test('post-preview response replacement remains untrusted, with original interru
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM checkpoints WHERE task_id=?").get(task.task.id).n,0);
 });
 
+
+test('background supervisor recovers an unlinked first GPT conversation only from its unique durable new-session intent',async t=>{
+  const f=openFixture(t);
+  const task=f.store.createTask('First-send background recovery '+randomUUID());
+  const prompt='First GPT message after lost acknowledgement '+randomUUID();
+  const {runId,userMessage}=f.store.beginProviderRun(task.id,'First local message');
+  assert.deepEqual(recordProviderSubmissionIntent({
+    store:f.store,taskId:task.id,runId,messageId:userMessage.id,providerPrompt:prompt,
+    chatUrl:'https://chatgpt.com/',intentAt:Date.now(),newSession:true,
+    previousConversationId:null,previousChatUrl:null,
+    baselineUserMessageId:null,baselineUserMessagePresent:false,baselinePromptMatches:false
+  }),{recorded:true,reason:'intent_recorded'});
+  f.store.recordRunMetrics(task.id,runId,'beta',{
+    failedStage:'submit',providerDeliveryState:'uncertain',submitAttemptAt:Date.now()
+  });
+  f.store.finishRun(task.id,runId,'submit:send_confirmation_unknown');
+  let reads=0,sends=0;
+  const worker={status:()=>({url:threadA}),
+    inspectConversationReadOnly:async(target,{allowNavigation}={})=>{
+      reads++;
+      assert.equal(target,threadA);
+      assert.equal(allowNavigation,false);
+      return observation({url:threadA,providerPrompt:prompt},'Recovered first answer');
+    },
+    sendPrompt:async()=>{sends++;throw Error('first_send_recovery_never_replays');}
+  };
+  assert.equal(f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(task.id).chat_url,null);
+  const result=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:100_000});
+  assert.equal(result.state,'recovered');
+  assert.equal(result.taskId,task.id);
+  assert.equal(result.runId,runId);
+  assert.equal(reads,2);
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(task.id).chat_url,threadA);
+  assert.equal(f.store.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='assistant'").get(task.id).content,'Recovered first answer');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.reconciled'").get(task.id).n,1);
+  assert.equal((await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:115_000})).state,'idle');
+  assert.equal(reads,2,'completed first send is never recovered twice');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('background supervisor refuses multiple pending unlinked first-send intents without any provider read',async t=>{
+  const f=openFixture(t);
+  const records=[];
+  for(let n=0;n<2;n++) {
+    const task=f.store.createTask('Ambiguous fresh GPT task '+randomUUID());
+    const {runId,userMessage}=f.store.beginProviderRun(task.id,'Local request '+n);
+    assert.equal(recordProviderSubmissionIntent({
+      store:f.store,taskId:task.id,runId,messageId:userMessage.id,
+      providerPrompt:'External prompt '+n+' '+randomUUID(),
+      chatUrl:'https://chatgpt.com/',intentAt:Date.now(),newSession:true,
+      previousConversationId:null,previousChatUrl:null,
+      baselineUserMessageId:null,baselineUserMessagePresent:false,baselinePromptMatches:false
+    }).recorded,true);
+    f.store.recordRunMetrics(task.id,runId,'beta',{
+      failedStage:'submit',providerDeliveryState:'uncertain',submitAttemptAt:Date.now()
+    });
+    f.store.finishRun(task.id,runId,'submit:send_confirmation_unknown');
+    records.push({task,runId});
+  }
+  let reads=0,sends=0;
+  const worker={status:()=>({url:threadA}),
+    inspectConversationReadOnly:async()=>{reads++;throw Error('ambiguous_must_not_inspect');},
+    sendPrompt:async()=>{sends++;}
+  };
+  assert.deepEqual(await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:100_000}),
+    {state:'ambiguous',reason:'provider_new_session_multiple_candidates'});
+  assert.equal(reads,0);
+  assert.equal(sends,0);
+  for(const {task,runId} of records) {
+    assert.equal(f.store.db.prepare('SELECT status FROM runs WHERE id=?').get(runId).status,'failed');
+    assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,0);
+    assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.recovery_attempt'").get(task.id).n,0);
+  }
+});
+
+test('unlinked fresh conversation with an unrelated prompt remains unbound and obeys the recovery backoff',async t=>{
+  const f=openFixture(t);
+  const task=f.store.createTask('Unrelated GPT answer '+randomUUID());
+  const {runId,userMessage}=f.store.beginProviderRun(task.id,'Local request');
+  assert.equal(recordProviderSubmissionIntent({
+    store:f.store,taskId:task.id,runId,messageId:userMessage.id,
+    providerPrompt:'Expected first prompt '+randomUUID(),
+    chatUrl:'https://chatgpt.com/',intentAt:Date.now(),newSession:true,
+    previousConversationId:null,previousChatUrl:null,
+    baselineUserMessageId:null,baselineUserMessagePresent:false,baselinePromptMatches:false
+  }).recorded,true);
+  f.store.recordRunMetrics(task.id,runId,'beta',{
+    failedStage:'submit',providerDeliveryState:'uncertain',submitAttemptAt:Date.now()
+  });
+  f.store.finishRun(task.id,runId,'submit:send_confirmation_unknown');
+  let reads=0,sends=0;
+  const worker={status:()=>({url:threadA}),
+    inspectConversationReadOnly:async(target,options)=>{
+      reads++;
+      assert.equal(options.allowNavigation,false);
+      return observation({url:threadA,providerPrompt:'Wrong prompt'},'Unrelated reply');
+    },sendPrompt:async()=>{sends++;}
+  };
+  const first=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:100_000});
+  assert.equal(first.state,'pending');
+  assert.equal(first.attempt,1);
+  assert.equal(first.nextAttemptAt,115_000);
+  const second=await recoverVisibleLinkedProviderSubmission({store:f.store,worker,now:114_999});
+  assert.equal(second.state,'waiting');
+  assert.equal(reads,1);
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(task.id).chat_url,null);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,0);
+});
