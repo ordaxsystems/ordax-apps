@@ -191,6 +191,56 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   $('workSearch').addEventListener('input',applyWorkFilters);
   $('workStatusFilter').addEventListener('change',applyWorkFilters);
+  let dependencyWorks=[],dependencySelectionDirty=false,dependencyProject=null;
+  function showDependencyChoices(){
+    const targetId=$('dependencyTarget').value;
+    const selected=dependencyWorks.find(work=>work.id===targetId);
+    const area=$('dependencyCandidates');area.replaceChildren();
+    if(!selected){
+      area.textContent='Selecione uma frente que ainda não foi executada.';
+      return;
+    }
+    for(const work of dependencyWorks){
+      if(work.id===targetId)continue;
+      const label=document.createElement('label');
+      const checkbox=document.createElement('input');
+      checkbox.type='checkbox';checkbox.value=work.id;
+      checkbox.checked=selected.dependsOn?.includes(work.id)===true;
+      const title=document.createElement('span');title.textContent=work.title;
+      label.append(checkbox,title);area.append(label);
+    }
+    if(!area.children.length)area.textContent='Crie outra frente para configurar pré-requisitos.';
+  }
+  function renderDependencyEditor(works,plan){
+    const editor=$('workDependencyEditor'),select=$('dependencyTarget'),save=$('saveWorkDependencies');
+    const sameProject=dependencyProject===projectId;
+    if(editor.open&&dependencySelectionDirty&&sameProject)return;
+    dependencyProject=projectId;
+    dependencyWorks=works||[];
+    const complete=Boolean(plan&&Array.isArray(works)&&works.length===plan.workCount&&works.length<200);
+    const eligible=complete?works.filter(work=>
+      work.latest_run_status==null&&work.running_runs===0&&
+      !['running','error','interrupted'].includes(work.status)&&
+      work.execution?.observed!=='reconciliation_required'):[];
+    const previous=sameProject?select.value:'';
+    select.replaceChildren();
+    const empty=document.createElement('option');empty.value='';empty.textContent='Selecione uma frente';
+    select.append(empty);
+    for(const work of eligible){
+      const option=document.createElement('option');
+      option.value=work.id;option.textContent=work.title;select.append(option);
+    }
+    select.value=eligible.some(work=>work.id===previous)?previous:'';
+    save.disabled=!complete||eligible.length===0;
+    select.disabled=save.disabled;
+    $('dependencyEditNote').textContent=!complete
+      ?'A lista completa do projeto não está disponível; edição bloqueada para não apagar dependências ocultas.'
+      :eligible.length===0
+        ?'Não há frentes sem execução para configurar. Crie uma nova frente para a próxima etapa.'
+        :'Pré-requisitos só podem ser alterados antes da primeira execução. Salvar não envia mensagens.';
+    dependencySelectionDirty=false;
+    showDependencyChoices();
+  }
   function renderWorks(works,plan=null) {
     visibleWorkItems=works;
     const planWorkers=new Map((plan?.workers||[]).map(w=>[w.taskId,w]));
@@ -430,17 +480,58 @@ const runState=document.createElement('small');
     setWorkRailOpen(false);
     $('coordinatorRailToggle').focus();
   });
+  $('dependencyTarget').addEventListener('change',()=>{
+    dependencySelectionDirty=false;
+    showDependencyChoices();
+  });
+  $('dependencyCandidates').addEventListener('change',()=>{dependencySelectionDirty=true;});
+  $('workDependencyForm').addEventListener('submit',event=>{
+    event.preventDefault();
+    void (async()=>{
+      const selectedProject=projectId,taskId=$('dependencyTarget').value;
+      if(!selectedProject||!taskId)return;
+      const dependsOn=[...$('dependencyCandidates').querySelectorAll('input[type="checkbox"]:checked')].map(node=>node.value);
+      if(dependsOn.length>64){
+        $('dependencyEditNote').textContent='Selecione no máximo 64 pré-requisitos.';
+        return;
+      }
+      const save=$('saveWorkDependencies');
+      save.disabled=true;
+      $('dependencyEditNote').textContent='Verificando e salvando no projeto...';
+      try{
+        const receipt=await command('work_dependency_set',{projectId:selectedProject,taskId,dependsOn});
+        if(receipt.status!=='succeeded')throw Error('dependency_change_unconfirmed');
+        if(projectId!==selectedProject)return;
+        dependencySelectionDirty=false;
+        await refreshWorks();
+        $('dependencyEditNote').textContent='Dependências registradas no projeto. Nenhuma mensagem foi enviada.';
+        status('Dependências atualizadas. O planejamento considera os pré-requisitos persistidos.');
+      }catch(error){
+        if(projectId===selectedProject){
+          $('dependencyEditNote').textContent=String(error?.message||'')==='orchestrator_dependency_cycle'
+            ?'Dependências circulares não são permitidas. Revise as seleções.'
+            :String(error?.message||'')==='orchestrator_dependencies_locked_after_execution'
+              ?'Essa frente já foi executada. Crie uma nova frente para dependências futuras.'
+              :'Não foi possível confirmar a gravação. Confira o estado antes de tentar novamente.';
+        }
+      }finally{
+        if(projectId===selectedProject)save.disabled=false;
+      }
+    })();
+  });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
-    if(!p) {workCount=0;renderWorks([]);await onScopeChange(null);syncCoordinatorActions();return;}
-    const [result,planning]=await Promise.all([
+    if(!p) {workCount=0;renderWorks([]);renderDependencyEditor([],null);await onScopeChange(null);syncCoordinatorActions();return;}
+    const [result,planning,allResult]=await Promise.all([
       call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})}),
-      call('work_plan',{projectId:p,maxParallel:4}).catch(()=>null)
+      call('work_plan',{projectId:p,maxParallel:4}).catch(()=>null),
+      o?call('work_list',{projectId:p}).catch(()=>null):Promise.resolve(null)
     ]);
     if(generation!==epoch)return;
     const works=result.works;
     workCount=works.length;
     renderWorks(works,planning?.plan||null);
+    renderDependencyEditor(allResult?.works||result.works,planning?.plan||null);
     await onScopeChange(new Set(works.map(w=>w.id)));
     syncCoordinatorActions();
   }
