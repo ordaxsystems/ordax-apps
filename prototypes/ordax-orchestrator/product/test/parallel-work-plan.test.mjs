@@ -36,3 +36,22 @@ test('chat rollover handoff retains provenance and unresolved questions',()=>{
  assert.throws(()=>buildContinuationEnvelope({projectId:'ordax',workId:'build',checkpointId:'cp7',
   confirmedFacts:[],unresolved:[],sourceRunIds:[]}),/continuation_envelope_invalid/);
 });
+
+test('transitive failure blocks downstream DAG without marking independent work blocked',()=>{
+ const graph=[
+  task('source','uncertain'),
+  task('compile','pending',['source']),
+  task('package','pending',['compile']),
+  task('release','pending',['package']),
+  task('documentation','pending')
+ ];
+ const result=planParallelWork({tasks:graph,maxParallel:3});
+ assert.deepEqual(result.blocked,['compile','package','release']);
+ assert.deepEqual(result.dispatch,['documentation']);
+ assert.deepEqual(result.waiting,[]);
+});
+test('an in-flight dependency is waiting rather than blocked',()=>{
+ const result=planParallelWork({tasks:[task('build','running'),task('test','pending',['build'])]});
+ assert.deepEqual(result.blocked,[]);
+ assert.deepEqual(result.waiting,['test']);
+});
