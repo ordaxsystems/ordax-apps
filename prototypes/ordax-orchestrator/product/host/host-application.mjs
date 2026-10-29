@@ -203,7 +203,7 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   add('ordax:supervisor:key:remove',async()=>{
     await loadGroqCredential();
     const result=await groqCredential.remove();
-    hostGroqKey=environmentGroqKey;hostGroqKeySource=environmentGroqKey?'environment':null;chatEnabled=false;notify();
+    hostGroqKey=environmentGroqKey;hostGroqKeySource=environmentGroqKey?'environment':null;notify();
     return result;
   });
   add('ordax:tasks:supervisor-role:set',(_event,payload)=>
@@ -224,11 +224,11 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
       readAsset:id=>store.getAsset(String(id)),
       onChatGPTCallback:async({session,callbackUrl,redirectUri})=>{
         const result=await chatgptConnection.completeCallback({session,callbackUrl,redirectUri});
-        chatgptAuthStatus=result;chatgptAuthStatusLoaded=true;chatEnabled=false;notify();return result;
+        chatgptAuthStatus=result;chatgptAuthStatusLoaded=true;notify();return result;
       },onShutdown});
     hostServer=server;
     return server;
   };
   return Object.freeze({store,service,context,assetsRoot,invoke,createServer,
-    close(){hostServer=null;chatEnabled=false;hostGroqKey=null;groqCredentialLoad=null;store.close();}});
+    close(){hostServer=null;hostGroqKey=null;groqCredentialLoad=null;store.close();}});
 }

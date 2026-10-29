@@ -53,7 +53,7 @@ test('Groq question -> GPT conversation A -> Groq interpretation -> GPT conversa
   };
   const service=new OrchestratorService({store,coordinator,provider,authorize:({context:c})=>c===context});
   let sequence=0;
-  const call=(operation,input)=>service.invoke(context,operation,{...input,requestId:'cycle_'+(++sequence)});
+  const call=(operation,input)=>service.invoke(context,operation,{requestId:'cycle_'+(++sequence),...input});
   const projectId=(await call('project_create',{name:'Teste encadeado',objective:'Validar duas conversas GPT'})).result.projectId;
   const orch=(await call('orchestrator_create',{projectId,name:'Groq coordenador',mission:'Analisar somente respostas verificadas'})).result;
   const workA=(await call('work_create',{projectId,orchestratorId:orch.orchestratorId,title:'Conversa GPT A'})).result.taskId;
