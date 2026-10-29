@@ -25,6 +25,7 @@ import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
+import { createProviderExecutionScheduler } from '../src/provider-execution-scheduler.mjs';
 import { normalizeProviderViewBounds } from '../src/provider-view-bounds.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
@@ -175,13 +176,16 @@ let observerMode = ['auto','fast','beta'].includes(persistedObserverMode) ? pers
 let workerPreload = { ready:false, url:null, at:null };
 let providerHealthInFlight = null;
 let providerHealthCache = null;
-let executionTail = Promise.resolve();
+let providerScheduler = null;
 
-
-function enqueueExecution(operation) {
-  const next = executionTail.then(operation, operation);
-  executionTail = next.catch(() => {});
-  return next;
+// Replaces the former global promise chain. The existing provider worker
+// remains the only physical lane until isolated multi-view E2E is verified.
+function enqueueExecution(taskId,operation) {
+  if(!providerScheduler)return Promise.reject(Error('provider_worker_unavailable'));
+  return providerScheduler.enqueue(String(taskId),laneWorker=>{
+    if(laneWorker!==worker)throw Error('provider_lane_identity_mismatch');
+    return operation();
+  });
 }
 
 function assetUrl(id) {
@@ -519,8 +523,12 @@ async function createWindowOnce() {
 
   worker = new EmbeddedChatWorker();
   providerViews.register(worker);
+  providerScheduler=createProviderExecutionScheduler({lanes:[{id:'primary',worker}]});
   const registeredWorker=worker;
-  registeredWorker.view.webContents.once('destroyed',()=>providerViews.unregister(registeredWorker));
+  registeredWorker.view.webContents.once('destroyed',()=>{
+    providerViews.unregister(registeredWorker);
+    providerScheduler?.close('provider_worker_destroyed');
+  });
   hostStartupLog('worker_constructed');
   worker.setObserverMode(observerMode);
   worker.setStageSink(({ stage, at }) => {
@@ -549,9 +557,10 @@ async function createWindowOnce() {
   // startup before destroying the window. No provider retry/cancel/API call.
   // A late response cannot be committed: finishRun requires status=running.
   win.on('close', event => {
-    if (!liveRun) return;
+    if (!liveRun) {providerScheduler?.close();return;}
     try {
       const interrupted = store.recoverInterruptedRuns('app_shutdown');
+      providerScheduler?.close();
       providerViews.unbindRun(worker,liveRun.runId);
       liveRun = null;
       if (interrupted) hostStartupLog('inflight_run_interrupted_on_close');
@@ -755,7 +764,7 @@ registerUiHandler('ordax:tasks:send', async (event, { taskId, content, newSessio
     if(receipt.status!=='succeeded')throw Error('orchestrator_reconciliation_required');
     return {task:getTaskView(taskId),command:receipt};
   }
-  return enqueueExecution(() => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision }));
+  return enqueueExecution(String(taskId),() => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision }));
 });
 
 
@@ -779,7 +788,7 @@ function requireLabSupervisor() {
       planner:createGroqSupervisorPlanner({ apiKey }),
       authorizeTask: scope => authorizeLocalSupervisorTask({ store, ...scope }),
       chat:{ send:async ({ taskId,content }) => {
-        const reply = await enqueueExecution(() => runTask(taskId,content,{newSession:false}));
+        const reply = await enqueueExecution(taskId,() => runTask(taskId,content,{newSession:false}));
         return chatReceiptFromRunTask(reply);
       } }
     });
@@ -827,10 +836,10 @@ const orchestratorKernel=createOrchestratorKernel({
     detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+'\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
     approveLabel:'Criar frente com rascunho'
   }),
-  provider:{busy:()=>Boolean(liveRun||worker?.active),
+  provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
     send:async({taskId,content,draftRevision,taskKind})=>
-    chatReceiptFromRunTask(await enqueueExecution(()=>runTask(taskId,content,{newSession:false,draftRevision,
+    chatReceiptFromRunTask(await enqueueExecution(taskId,()=>runTask(taskId,content,{newSession:false,draftRevision,
       allowCoordinatorTask:taskKind==='orchestrator'})))},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})
@@ -1024,5 +1033,3 @@ app.on('will-quit', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
-
-
