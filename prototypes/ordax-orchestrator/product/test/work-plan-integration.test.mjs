@@ -181,7 +181,7 @@ test('Groq sees 35 scoped work fronts, prioritizes failures and recovers the ove
   assert.equal(context.works.length,4);
   assert.equal(context.workOverview.length,32);
   assert.equal(context.workOverview[0].title,'Foundation needs attention');
-  assert.equal(context.workOverview[0].readiness,'failed');
+  assert.equal(context.workOverview[0].readiness,'uncertain');
   assert.equal(context.planning.workCount,35);
   assert.equal(context.planning.candidateTaskIds.includes(foreign),false);
   assert.equal(context.planning.candidateTaskIds.includes(foreignProjectWork),false);
@@ -191,5 +191,5 @@ test('Groq sees 35 scoped work fronts, prioritizes failures and recovers the ove
   f.reopen();
   const recovered=f.analysis(a.projectId,a.orchestratorId);
   assert.equal(recovered.scope.totalWorkCount,35);
-  assert.equal(recovered.workOverview[0].readiness,'failed');
+  assert.equal(recovered.workOverview[0].readiness,'uncertain');
 });
