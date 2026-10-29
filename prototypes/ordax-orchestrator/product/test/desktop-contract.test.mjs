@@ -57,7 +57,9 @@ test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(main, /heartbeatRun/);
   assert.match(main, /will-quit/);
   assert.match(main, /store\.close\(\)/);
-  assert.match(main, /executionTail/);
+  assert.doesNotMatch(main, /executionTail/);
+  assert.match(main, /createProviderExecutionScheduler/);
+  assert.match(main, /const registeredScheduler=providerScheduler/);
   assert.match(main, /enqueueExecution/);
   assert.match(main, /providerHealthInFlight/);
   assert.match(main, /providerHealthCache/);
