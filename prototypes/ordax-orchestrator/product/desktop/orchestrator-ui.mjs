@@ -413,7 +413,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
     const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Groq preparando GPT A',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Groq analisando resposta A',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Groq interpretando resposta B',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
-    const storyLabel=job?.mode==='story'?(job.state==='succeeded'
+    const storyLabel=job?.mode==='story'?(job.quality?.passed===false
+      ?'História produzida, mas reprovada na qualidade: '+job.quality.violations.join(', ')
+      :job.state==='succeeded'
       ?'História final montada pelo Groq, após duas rodadas GPT A/B'
       :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
     $('autonomousDialogueState').textContent=job?`${storyLabel||labels[job.state]||job.state}. ${job.lastError||''}${job.questionFinal?(job.mode==='story'?' História final: ':' Próxima pergunta proposta (não enviada): ')+job.questionFinal:''}`:

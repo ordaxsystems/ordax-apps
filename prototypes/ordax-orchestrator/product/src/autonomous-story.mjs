@@ -2,6 +2,7 @@ import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
 import {diagnoseAgentFailure} from './agent-failure-diagnosis.mjs';
+import {assessStoryQuality} from './story-quality.mjs';
 
 export const STORY_ROUNDS=2;
 export const STORY_TURNS=STORY_ROUNDS*2;
@@ -65,7 +66,10 @@ export async function planStoryTurn(engine,row,ordinal){
     const continuity=storyContinuityEvidence(proposal.content,previous.answer);
     if(!continuity.valid)throw Error('story_continuity_anchor_missing');
   }
-  return proposal;
+  // Groq designs the content. The host owns the output contract: the GPT
+  // must be asked for a pure scene, not optional headings or next steps.
+  return {...proposal,content:proposal.content.trim()+
+    '\n\nCONTRATO DE SAÍDA OBRIGATÓRIO: escreva SOMENTE a continuação narrativa da cena em português, entre 75 e 110 palavras. Não use título, subtítulo, listas, explicações, observações, análise, sugestões, perguntas finais, nem a frase “posso continuar”. Não repita o prólogo nem invente que a cena anterior foi diferente. Termine no acontecimento narrativo.'};
 }
 export async function sendStoryTurn(engine,context,row,ordinal){
   engine.service.requireAccess(context,'autonomous_dialogue_start',row.project_id);
@@ -94,7 +98,7 @@ export async function synthesizeStory(engine,row){
     'do conto colaborativo em português. NÃO envie nova mensagem ao GPT. Preserve '+
     'personagens, objeto, conflitos e promessas, sem contradizer as quatro cenas '+
     'OBSERVADAS no contexto de análise. Uma história com início, duas rodadas '+
-    'e desfecho; 320 a 450 palavras. Missão original: '+row.mission;
+    'e desfecho; 320 a 450 palavras. Entregue apenas o conto, sem comentários. Não reescreva acontecimentos incompatíveis com as quatro cenas. Missão original: '+row.mission;
   const sendSynthesis=completionProfile=>engine.service.coordinator.send({
     taskId:owner.chat_task_id,mission,projectId:row.project_id,
     orchestratorId:row.orchestrator_id,analysisContext,prepareWork:false,
@@ -169,6 +173,17 @@ export async function advanceStory(engine,context,row){
     if(state==='story_ready_synthesis'){
       working='story_synthesizing';engine.move(row.id,state,working);
       const result=await synthesizeStory(engine,row);
+      const turns=witnessedAnswers(engine,row);
+      const quality=assessStoryQuality(turns.map(x=>x.answer),result);
+      // Persist evidence even when the story fails quality requirements.
+      engine.db.prepare(`INSERT INTO lab_autonomous_story_quality(mission_id,report_json,created_at)
+        VALUES(?,?,?) ON CONFLICT(mission_id) DO UPDATE SET report_json=excluded.report_json,
+        created_at=excluded.created_at`).run(row.id,JSON.stringify(quality),engine.store.now());
+      if(!quality.passed){
+        const violation=Error('story_quality_policy_failed');
+        violation.orchestratorRequestOutcome='response_invalid';
+        throw violation;
+      }
       engine.move(row.id,working,'succeeded',{question_final:result});
       return {state:'advanced'};
     }

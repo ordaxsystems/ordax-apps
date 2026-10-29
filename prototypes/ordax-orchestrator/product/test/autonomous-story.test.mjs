@@ -6,23 +6,29 @@ import path from 'node:path';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {storyContinuityEvidence} from '../src/autonomous-story.mjs';
+import {storyWordCount,assessStoryQuality} from '../src/story-quality.mjs';
 import {diagnoseAgentFailure,describeAgentDiagnosticForGroq} from '../src/agent-failure-diagnosis.mjs';
 
+const padStory=(text,target)=>{let out=text,step=0;const additions=[
+ 'A guardiã insistiu que a promessa permaneceria viva enquanto a chama iluminasse o caminho dos viajantes.',
+ 'O mapa mudou lentamente, mas Caio recusou esquecer os passageiros e manteve a chave guardada junto da lâmpada.',
+ 'Amara repetiu que cada escolha teria consequências e que nem o passado nem as memórias deveriam ser apagados.'
+];while(storyWordCount(out)<target)out+=' '+additions[(step++)%additions.length];return out;};
 const scene=[
  'Caio descobriu uma lâmpada dourada na estação deserta. A guardiã Amara pediu que jamais apagasse a última chama antes de devolver a chave de cobre. Enquanto a chuva batia no telhado, um trem sem passageiros parou na plataforma esquecida. Caio guardou a lâmpada no casaco, ouviu passos vindos do túnel e prometeu a Amara proteger a chama. A promessa custaria sua liberdade, mas ele ainda não sabia disso.',
  'Amara encontrou Caio na plataforma da estação e viu a lâmpada dourada quase apagada. A chave de cobre fazia um ruído estranho dentro do casaco. Ao abrir uma porta do trem, perceberam que a cidade inteira estava desenhada no vidro e que cada estação correspondia a uma memória perdida. Caio recusou apagar a chama, mesmo quando uma sombra ofereceu devolver sua infância em troca. Amara compreendeu que a promessa começava a mudar o mapa.',
  'Caio e Amara desceram do trem levando a lâmpada dourada e a chave de cobre. O mapa das memórias perdidas apontava agora para uma torre inundada, onde a chama poderia libertar os passageiros presos no tempo. Amara contou que o pai de Caio havia construído a torre e desaparecido lá. Caio decidiu entrar na água sem apagar a lâmpada, apesar do vento e das vozes que pediam silêncio. A promessa sobreviveu à travessia.',
  'Na torre inundada, Amara encontrou uma fechadura que reconheceu a chave de cobre. Caio ergueu a lâmpada dourada e a chama revelou os rostos dos passageiros esquecidos. Em vez de apagar a luz, Caio abriu as janelas da torre; o vento espalhou pequenos reflexos que guiaram todos de volta à estação. Amara finalmente contou a verdade: ela era a guardiã daquela última memória. A promessa ficou cumprida sem sacrifício.'
-];
+].map(text=>padStory(text,80));
 const prompts=[
  'Groq inicia: Na estação deserta, Caio recebeu de Amara uma lâmpada dourada e uma chave de cobre. A promessa era nunca apagar a chama. GPT A, continue a cena original de Caio, Amara, lâmpada e estação com conflito em 90 palavras.',
  'GPT B, continue o mesmo enredo: Caio, Amara, estação, lâmpada dourada e chave de cobre. A promessa era não apagar a chama. Continue o trem e o mapa sem reiniciar a história em 90 palavras.',
  'GPT A, segunda rodada: preserve Caio, Amara, lâmpada dourada, chave de cobre e memórias da estação. Explore a torre inundada, o mapa e a promessa sem apagar a chama, em 90 palavras.',
  'GPT B, segunda rodada: Caio e Amara chegaram à torre inundada com a chave de cobre e a lâmpada dourada. Resolva o conflito das memórias sem apagar a chama, respeitando a promessa, em 90 palavras.'
 ];
-const synthesis='Na estação deserta, Caio recebeu de Amara uma lâmpada dourada, uma chave de cobre e a promessa de não apagar a chama. No trem silencioso, as memórias perdidas dos passageiros apareciam no mapa gravado no vidro; uma sombra exigiu a luz em troca da infância de Caio, mas ele recusou. Amara revelou que a torre inundada guardava o segredo do pai desaparecido de Caio. Ao atravessar a água com a lâmpada acesa e a chave protegida, os dois chegaram à fechadura da torre. Os passageiros esquecidos viram os reflexos da chama pelas janelas abertas e retornaram à estação. Amara, guardiã da memória, recebeu a chave, e Caio conservou sua liberdade e sua promessa. Assim, o mapa se fechou, a torre deixou de estar inundada e nenhuma memória precisou ser apagada.';
+const synthesis=padStory('Na estação deserta, Caio recebeu de Amara uma lâmpada dourada, uma chave de cobre e a promessa de não apagar a chama. No trem silencioso, as memórias perdidas dos passageiros apareciam no mapa gravado no vidro; uma sombra exigiu a luz em troca da infância de Caio, mas ele recusou. Amara revelou que a torre inundada guardava o segredo do pai desaparecido de Caio. Ao atravessar a água com a lâmpada acesa e a chave protegida, os dois chegaram à fechadura da torre. Os passageiros esquecidos viram os reflexos da chama pelas janelas abertas e retornaram à estação. Amara, guardiã da memória, recebeu a chave, e Caio conservou sua liberdade e sua promessa. Assim, o mapa se fechou, a torre deixou de estar inundada e nenhuma memória precisou ser apagada.',345);
 const pause=ms=>new Promise(r=>setTimeout(r,ms));
-function fixture(t,{beforeSendFailure=null,readyCount=0,slowCoordinator=false}={}){
+function fixture(t,{beforeSendFailure=null,readyCount=0,slowCoordinator=false,oversizedTurn=0,shortFinal=false}={}){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-story-e2e-'));
  const store=new Store(path.join(dir,'canonical.sqlite'));
  const context=Object.freeze({actorId:'lab-story-owner',clientId:'single-client',workspaceSessionId:store.getWorkspaceSession().id});
@@ -41,7 +47,7 @@ function fixture(t,{beforeSendFailure=null,readyCount=0,slowCoordinator=false}={
      assert.equal(turn,5,'only one synthesis after four confirmed scenes');
      assert.equal(payload.prepareWork,false);
      for(const item of scene)assert.ok(payload.analysisContext.works.some(w=>w.messages.some(m=>m.content.includes(item.slice(0,19)))));
-     return {content:synthesis};
+     return {content:shortFinal?synthesis.slice(0,680):synthesis};
    }
  };
  const provider={
@@ -58,12 +64,13 @@ function fixture(t,{beforeSendFailure=null,readyCount=0,slowCoordinator=false}={
        if(beforeSendFailure.notSubmitted)err.providerDeliveryState='not_submitted';
        throw err;
      }
-     const n=seen.sends.length;assert.equal(content,prompts[n-1],'only Groq-planned exact messages');
+     const n=seen.sends.length;assert.ok(content.startsWith(prompts[n-1]),'host preserves Groq scene plan');
+     assert.match(content,/CONTRATO DE SAÍDA OBRIGATÓRIO/,'host owns output-length instruction');
      const {runId}=store.beginProviderRun(taskId,content);
      store.event(taskId,'provider.submission.intent',{run_id:runId});
      store.event(taskId,'provider.submission.provenance',{run_id:runId});
      store.setChatUrl(taskId,'https://chatgpt.com/c/'+n.toString(16).padStart(8,'0')+'-1234-4123-8123-123456789012');
-     store.appendMessage(taskId,'assistant',scene[n-1]);
+     store.appendMessage(taskId,'assistant',oversizedTurn===n?scene[n-1]+' '+('O relógio virou e a chama brilhou na estação mais uma vez. '.repeat(20)):scene[n-1]);
      store.finishRun(taskId,runId);
      return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
    }
@@ -225,4 +232,46 @@ test('Groq timeout is an unknown external outcome and is not automatically repea
  await f.service.autonomous.tick(f.context);
  assert.equal(f.seen.sends.length,3);
  assert.equal(calls,4,'the uncertain Groq call is never replayed');
+});
+
+test('story quality report counts observed GPT turns, rather than trusting completed runs',()=>{
+ const pass=assessStoryQuality(scene,synthesis);
+ assert.equal(pass.passed,true,JSON.stringify(pass));
+ assert.equal(pass.sceneWords.length,4);
+ assert.ok(pass.sceneWords.every(n=>n>=75&&n<=110));
+ assert.ok(pass.synthesisWords>=320&&pass.synthesisWords<=450);
+ const long=assessStoryQuality([...scene.slice(0,2),scene[2]+' '.repeat(1)+
+   'Essa cena acrescentou conteúdo demais sem respeitar os limites. '.repeat(30),scene[3]],synthesis);
+ assert.equal(long.passed,false);
+ assert.ok(long.violations.includes('scene_3_word_limit'));
+ const oversizedFinal=assessStoryQuality(scene,synthesis+' Excesso de palavras de desfecho. '.repeat(60));
+ assert.equal(oversizedFinal.passed,false);
+ assert.ok(oversizedFinal.violations.includes('synthesis_word_limit'));
+});
+test('four transport-successful GPT scenes do not count as a quality-successful narrative',async t=>{
+ const f=fixture(t,{oversizedTurn:2});const ids=await f.setup();
+ const receipt=await f.service.invoke(f.context,'autonomous_dialogue_start',{
+   ...ids,requestId:'quality_scene_bad',mode:'story',mission:'Teste de qualidade com cena excessiva'});
+ const result=await f.wait(receipt.result.missionId);
+ assert.equal(result.state,'blocked');
+ assert.equal(result.last_error,'story_quality_policy_failed');
+ assert.equal(f.seen.sends.length,4);
+ const audit=f.store.db.prepare('SELECT report_json FROM lab_autonomous_story_quality WHERE mission_id=?').get(result.id);
+ const quality=JSON.parse(audit.report_json);
+ assert.equal(quality.passed,false);
+ assert.ok(quality.violations.includes('scene_2_word_limit'));
+ assert.equal(f.service.autonomous.status(f.context,ids).mission.quality.passed,false);
+ await f.service.autonomous.tick(f.context);
+ assert.equal(f.seen.sends.length,4,'quality failure must not trigger a fifth GPT message');
+});
+test('Groq synthesis out of bounds is rejected after all four independently confirmed turns',async t=>{
+ const f=fixture(t,{shortFinal:true});const ids=await f.setup();
+ const receipt=await f.service.invoke(f.context,'autonomous_dialogue_start',{
+   ...ids,requestId:'quality_final_bad',mode:'story',mission:'Síntese limitada por contagem de palavras'});
+ const result=await f.wait(receipt.result.missionId);
+ assert.equal(result.state,'blocked');
+ assert.equal(result.last_error,'story_quality_policy_failed');
+ assert.equal(f.seen.sends.length,4);
+ const quality=JSON.parse(f.store.db.prepare('SELECT report_json FROM lab_autonomous_story_quality WHERE mission_id=?').get(result.id).report_json);
+ assert.ok(quality.violations.includes('synthesis_word_limit'));
 });

@@ -47,6 +47,11 @@ export class AutonomousDialogue {
       task_id TEXT NOT NULL UNIQUE REFERENCES tasks(id),
       prompt TEXT NOT NULL,
       PRIMARY KEY(mission_id,ordinal)
+    );
+    CREATE TABLE IF NOT EXISTS lab_autonomous_story_quality (
+      mission_id TEXT PRIMARY KEY REFERENCES lab_autonomous_dialogues(id),
+      report_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );`);
     this.db.prepare(`UPDATE lab_autonomous_dialogues SET
       state='reconciliation_required',
@@ -66,9 +71,11 @@ export class AutonomousDialogue {
     const a=row.task_a_id?this.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(row.task_a_id):null;
     const b=row.task_b_id?this.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(row.task_b_id):null;
     const story=row.mode==='story';
+    const storedQuality=story?this.db.prepare('SELECT report_json FROM lab_autonomous_story_quality WHERE mission_id=?').get(row.id):null;
+    const quality=storedQuality?JSON.parse(storedQuality.report_json):null;
     const turns=story?this.db.prepare('SELECT ordinal,task_id FROM lab_autonomous_story_turns WHERE mission_id=? ORDER BY ordinal').all(row.id):[];
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
-      mode:story?'story':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,
+      mode:story?'story':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.max_gpt_sends,taskAId:row.task_a_id,taskBId:row.task_b_id,
       questionFinal:row.state==='succeeded'?row.question_final:null,
       distinctConfirmedConversations:Boolean(a?.chat_url&&b?.chat_url&&a.chat_url!==b.chat_url),
