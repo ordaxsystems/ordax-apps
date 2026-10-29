@@ -418,7 +418,12 @@ export class OrchestratorService {
         waitingCount:plan.waiting.filter(id=>ownerIds.has(id)).length,
         blockedCount:plan.blocked.filter(id=>ownerIds.has(id)).length,
         inFlight:owned.filter(worker=>worker.state==='running').length,
-        workCount:totalWorkCount,automaticDispatchAllowed:false,qualityCertified:false};
+        workCount:totalWorkCount,
+        executorMode:plan.executor.mode,
+        physicalProviderLanes:plan.executor.maxConcurrentSends,
+        availablePhysicalSlots:plan.executor.availableSlots,
+        transportSlotCandidateCount:plan.transportSlotCandidates.filter(id=>ownerIds.has(id)).length,
+        automaticDispatchAllowed:false,qualityCertified:false};
     }catch(error){
       if(error?.message!=='orchestrator_work_plan_too_large')throw error;
       planning={state:'scope_too_large',automaticDispatchAllowed:false,qualityCertified:false};
