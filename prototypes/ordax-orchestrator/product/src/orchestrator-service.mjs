@@ -318,7 +318,7 @@ export class OrchestratorService {
     const activeCommands=Number(this.db.prepare(
       "SELECT COUNT(*) n FROM lab_command_receipts WHERE status='running'"
     ).get().n);
-    const hostOccupied=this.provider?.busy?.()===true;
+    const hostOccupied=Boolean(this.provider?.busy?.());
     const occupied=activeRuns>0||activeCommands>0||hostOccupied;
     return Object.freeze({
       mode:'single_embedded_chatgpt_worker',
