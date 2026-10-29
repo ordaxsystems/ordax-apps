@@ -20,6 +20,8 @@ const definitions = [
   ['continuity_status','Inspect durable post-run analysis, blockers and required reconciliation.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['continuity_set','Opt in or out of automatic analysis after confirmed work runs. Never authorizes GPT sends.',{projectId:id,orchestratorId:id,enabled:{type:'boolean'}},['projectId','orchestratorId','enabled'],false],
   ['continuity_proposals_set','Opt in or out of at most two advisory next-work proposals after confirmed analyses. No GPT sends.',{projectId:id,orchestratorId:id,enabled:{type:'boolean'}},['projectId','orchestratorId','enabled'],false],
+  ['autonomous_dialogue_status','Read the latest bounded one-mission dialogue; no external effects.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
+  ['autonomous_dialogue_start','Explicitly authorize one autonomous Groq -> GPT A -> Groq -> GPT B -> Groq mission, at most two GPT sends; no other system effects.',{projectId:id,orchestratorId:id,mission:text(4000)},['projectId','orchestratorId','mission'],false],
   ['work_create','Create a work conversation under a project/coordinator. No provider submission.',{projectId:id,orchestratorId:id,title:text(140)},['projectId','orchestratorId','title'],false],
   ['work_list','List work conversations, excluding the coordinator chat.',{projectId:id,orchestratorId:id},['projectId'],true],
   ['work_get','Inspect a scoped work and its provider segments without browser navigation.',{projectId:id,taskId:id},['projectId','taskId'],true],
@@ -40,7 +42,7 @@ export const ORCHESTRATOR_TOOLS = Object.freeze(definitions.map(([operation,desc
     properties:{...(!readOnly?{requestId}:{}),...properties},
     required:[...(!readOnly?['requestId']:[]),...required]},
   annotations:{readOnlyHint:readOnly,destructiveHint:false,idempotentHint:true,
-    openWorldHint:['work_send','proposal_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare'].includes(operation)}
+    openWorldHint:['work_send','proposal_send','orchestrator_chat','orchestrator_analyze','orchestrator_prepare','autonomous_dialogue_start'].includes(operation)}
 })));
 
 export function validateOrchestratorInput(operation, input) {

@@ -40,6 +40,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('coordinatorSend').disabled=!orchestratorChatAvailable||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
     $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy;
     $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
+    $('startAutonomousDialogue').disabled=!coordinatorAvailable||!gptWebTransportAvailable||!selectedReady||analysisBusy||coordinatorSubmitting;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
   }
   function setCoordinatorDraftState(text='') {
@@ -401,7 +402,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     renderOrchestratorNavigation();
     await refreshWorks();
     await refreshContinuityStatus();
+    await refreshAutonomousDialogue();
     return orchestrators;
+  }
+  async function refreshAutonomousDialogue(){
+    if(!projectId||!orchestratorId)return;
+    const p=projectId,o=orchestratorId;
+    const result=await call('autonomous_dialogue_status',{projectId:p,orchestratorId:o}).catch(()=>null);
+    if(p!==projectId||o!==orchestratorId)return;
+    const job=result?.mission;
+    const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Groq preparando GPT A',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Groq analisando resposta A',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Groq interpretando resposta B',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
+    $('autonomousDialogueState').textContent=job?`${labels[job.state]||job.state}. ${job.lastError||''}${job.questionFinal?' Próxima pergunta proposta (não enviada): '+job.questionFinal:''}`:'Uma missão inicial autoriza no máximo duas conversas GPT. Groq conduz o diálogo sem comandos adicionais.';
+    $('startAutonomousDialogue').disabled=Boolean(job && !['succeeded','blocked','reconciliation_required'].includes(job.state))||!coordinatorAvailable||!gptWebTransportAvailable;
   }
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
@@ -440,6 +452,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       article.append(role,text);box.append(article);
     }
     box.scrollTop=box.scrollHeight;
+    await refreshAutonomousDialogue();
     const cards=$('coordinatorProposals');cards.replaceChildren();
     for(const proposal of proposals) {
       const prepared=proposal.status==='prepared';
@@ -643,6 +656,21 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await renderCoordinator();
     }catch{error();}
     finally{analysisBusy=false;syncCoordinatorActions();}
+  });
+  $('startAutonomousDialogue').addEventListener('click',async()=>{
+    if($('startAutonomousDialogue').disabled||!projectId||!orchestratorId)return;
+    const p=projectId,o=orchestratorId;
+    // The mission text is a single top-level authorization to send at most
+    // two GPT messages. It never approves shell, workspace or Git operations.
+    const mission=$('coordinatorPrompt').value.trim();
+    if(!mission){status('Descreva a missão única no campo do orquestrador.');$('coordinatorPrompt').focus();return;}
+    $('startAutonomousDialogue').disabled=true;
+    try {
+      const receipt=await command('autonomous_dialogue_start',{projectId:p,orchestratorId:o,mission});
+      if(p!==projectId||o!==orchestratorId)return;
+      if(receipt.status==='succeeded')status('Missão iniciada. O Groq e o GPT executarão as etapas sem novos comandos manuais.');
+      await refreshAutonomousDialogue();
+    }catch{error();}finally{await refreshAutonomousDialogue();}
   });
   $('prepareWork').addEventListener('click',async()=>{
     if($('prepareWork').disabled||!projectId||!orchestratorId)return;

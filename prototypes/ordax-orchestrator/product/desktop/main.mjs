@@ -825,6 +825,7 @@ const orchestratorKernel=createOrchestratorKernel({
 });
 localOrchestratorContext=orchestratorKernel.context;
 const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
+orchestratorService.autonomous.setNotifier(()=>notifyOrchestratorChanged());
 orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
 // A Runtime launcher must supply the first bootstrap AFTER canonical owner
@@ -966,6 +967,10 @@ app.whenReady().then(async () => {
   continuationTimer=setInterval(()=>{
     void (async()=>{
       try {
+        const autonomous=await orchestratorService.autonomous.tick(localOrchestratorContext);
+        if(autonomous.state==='advanced'||autonomous.state==='blocked'||autonomous.state==='reconciliation_required')notifyOrchestratorChanged();
+        // Never compete with an active autonomous mission for the same GPT executor.
+        if(['advanced','busy','executor_busy'].includes(autonomous.state))return;
         const result=await orchestratorService.continuation.tick(localOrchestratorContext);
         if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();
       } catch {}

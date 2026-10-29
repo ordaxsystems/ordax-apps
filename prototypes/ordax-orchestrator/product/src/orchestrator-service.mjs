@@ -5,6 +5,7 @@ import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
+import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
@@ -76,6 +77,7 @@ export class OrchestratorService {
     if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='repository_url'))
       this.db.exec('ALTER TABLE lab_projects ADD COLUMN repository_url TEXT');
     this.continuation=new LabContinuation({store,service:this});
+    this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
   }
 
@@ -194,6 +196,8 @@ export class OrchestratorService {
   async invoke(context,operation,raw={}) {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
+    if(operation==='autonomous_dialogue_start')return {status:'succeeded',operation,result:this.autonomous.start(context,input)};
     if(operation==='workspace_snapshot')return this.workspace.snapshot(context,input,()=>this.requireAccess(context,operation,input.projectId));
     if(operation==='workspace_bind')return this.bindWorkspace(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
