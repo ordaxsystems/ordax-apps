@@ -194,7 +194,7 @@
 
   const api={};
   const methods={
-    coordinatorChatStatus:[],coordinatorChatEnable:['enabled'],chatgptPlanStatus:[],chatgptPlanDisconnect:[],
+    coordinatorChatStatus:[],chatgptPlanStatus:[],chatgptPlanDisconnect:[],
     orchestratorInvoke:['operation','input'],orchestratorMcp:['message'],
     supervisorStatus:[],supervisorSaveKey:['key'],supervisorRemoveKey:[],setTaskSupervisorRole:['taskId','role'],
     supervisorPlan:['payload'],supervisorRecoverable:['payload'],supervisorInspect:['payload'],supervisorApprove:['payload'],supervisorDispatch:['payload'],

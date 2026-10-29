@@ -282,11 +282,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
-    $('coordinatorApiEnable').disabled=!state.configured;
-    $('coordinatorApiEnable').textContent=state.enabled?'Desativar Groq':'Ativar Groq para análises';
-    $('coordinatorApiEnable').dataset.enabled=String(state.enabled);
     $('orchestrationConnection').textContent=gptWebTransportAvailable
-      ?`ChatGPT Web é o único transporte para enviar mensagens neste chat; a sessão é verificada antes do envio.${coordinatorAvailable?' Groq está ativo para análise e propostas, sem se passar pelo GPT.':' Groq está desligado.'}`
+      ?`ChatGPT Web é o único transporte para enviar mensagens neste chat; a sessão é verificada antes do envio.${coordinatorAvailable?' Groq disponível automaticamente para análise e propostas, sem se passar pelo GPT.':' Groq não configurado ou indisponível.'}`
       :coordinatorAvailable
         ?'GPT Web indisponível nesta superfície: envio bloqueado. Groq pode somente analisar e preparar propostas, não responder como GPT.'
         :!state.configured
@@ -337,12 +334,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('closeWorkRail').addEventListener('click',()=>{
     setWorkRailOpen(false);
     $('coordinatorRailToggle').focus();
-  });
-  $('coordinatorApiEnable').addEventListener('click',async()=>{
-    $('coordinatorApiEnable').disabled=true;
-    try {await api.coordinatorChatEnable($('coordinatorApiEnable').dataset.enabled!=='true');
-      await refreshApiStatus();await refreshOrchestrators();}
-    catch {status('Não foi possível ativar o chat. Confira a conexão do modelo.');}
   });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;

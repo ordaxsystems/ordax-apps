@@ -2,7 +2,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('ordax', {
   coordinatorChatStatus: () => ipcRenderer.invoke('ordax:orchestrator:chat-status'),
-  coordinatorChatEnable: enabled => ipcRenderer.invoke('ordax:orchestrator:chat-enable',enabled),
   orchestratorInvoke: (operation,input={}) => ipcRenderer.invoke('ordax:orchestrator:invoke',{operation,input}),
   orchestratorMcp: message => ipcRenderer.invoke('ordax:orchestrator:mcp',message),
   onOrchestratorChanged: callback => {

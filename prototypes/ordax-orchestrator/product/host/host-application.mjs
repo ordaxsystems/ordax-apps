@@ -34,7 +34,6 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     sqlite_open_retries:store.openRetryCount,execution_surface:'node_host'});
 
   let hostServer=null;
-  let chatEnabled=null;
   const sessionMetadata=store.getWorkspaceSession()?.metadata||{};
   const hostId=typeof sessionMetadata.ext_agent_host_id==='string'&&/^urn:uuid:[0-9a-f-]{36}$/i.test(sessionMetadata.ext_agent_host_id)
     ?sessionMetadata.ext_agent_host_id:`urn:uuid:${randomUUID()}`;
@@ -62,7 +61,7 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
     return groqCredentialLoad;
   };
   const apiKey=()=>hostGroqKey;
-  const coordinatorEnabled=()=>chatEnabled??(environment.ORDAX_LAB_SUPERVISOR_ENABLE==='1');
+  const coordinatorEnabled=()=>Boolean(apiKey()||chatgptConnection.isPlanAvailable());
   const groqCoordinator=createGroqCoordinatorConversation({store,getApiKey:apiKey,isEnabled:coordinatorEnabled,fetchImpl});
   const chatgptConnection=createChatGPTPlanConnection({hostId,fetchImpl,credentialStore:osCredentialStore});
   let chatgptAuthStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:chatgptConnection.secureStorageAvailable()};
@@ -73,7 +72,7 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
   };
   void refreshChatGPTAuthStatus().catch(()=>{});
   const chatgptCoordinator=createChatGPTPlanCoordinatorConversation({connection:chatgptConnection,store,isEnabled:coordinatorEnabled});
-  const activeCoordinatorProvider=()=>chatgptConnection.isPlanAvailable()?'chatgpt_plan':apiKey()?'groq':null;
+  const activeCoordinatorProvider=()=>apiKey()?'groq':chatgptConnection.isPlanAvailable()?'chatgpt_plan':null;
   const coordinator={
     available:()=>coordinatorEnabled()&&Boolean(activeCoordinatorProvider()),
     async send(input) {
@@ -142,14 +141,6 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
         secureStorageAvailable:chatgptAuthStatus.secureStorageAvailable===true,email:chatgptAuthStatus.email||null,
         reason:chatgptAuthStatus.reason||null},executionSurface:'node_host'};
   });
-  add('ordax:orchestrator:chat-enable',async(_event,enabled)=>{
-    await Promise.all([loadGroqCredential(),refreshChatGPTAuthStatus()]);
-    if(typeof enabled!=='boolean')throw Error('orchestrator_chat_setting_invalid');
-    if(enabled&&!activeCoordinatorProvider())throw Error('coordinator_provider_missing');
-    chatEnabled=enabled;notify();
-    return {enabled:coordinatorEnabled(),configured:Boolean(activeCoordinatorProvider()),groqConfigured:Boolean(apiKey()),available:coordinator.available(),
-      provider:activeCoordinatorProvider(),executionSurface:'node_host'};
-  });
   add('ordax:chatgpt-plan:status',async()=>{
     return refreshChatGPTAuthStatus();
   });
@@ -159,7 +150,6 @@ export function createHostApplication({productRoot,dataRoot,environment=process.
       redirectUri:hostServer.getAuthorizationRedirectUri()});
   });
   add('ordax:chatgpt-plan:disconnect',async()=>{
-    chatEnabled=false;
     const result=await chatgptConnection.disconnect();
     chatgptAuthStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:chatgptConnection.secureStorageAvailable(),reason:'not_connected'};
     chatgptAuthStatusLoaded=true;notify();

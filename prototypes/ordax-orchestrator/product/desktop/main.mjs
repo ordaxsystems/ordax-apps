@@ -16,7 +16,6 @@ import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
-import { projectCoordinatorContinuationEnabled } from '../src/project-coordinator-continuation.mjs';
 import { observePostCommitNavigation } from '../src/provider-post-commit-navigation.mjs';
 
 import fs from 'node:fs';
@@ -753,13 +752,9 @@ let labSupervisor = null;
 // The UI may prepare a key, but only an explicit dev enable flag permits a
 // model call. Stored secrets never travel back through IPC.
 const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
-// Local chat opt-in lasts only for this App process; it does not enable the
-// supervisor, provider automation, remote grants or an external MCP endpoint.
-let localCoordinatorChatEnabled=null;
-const coordinatorChatEnabled=(projectId=null,orchestratorId=null)=>
-  (localCoordinatorChatEnabled??(process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1'))===true ||
-  Boolean(projectId && orchestratorId &&
-    projectCoordinatorContinuationEnabled(store.db,projectId,orchestratorId));
+// Readable protected Groq key is the sole advisory availability source.
+// Background project continuation and GPT sends retain separate authorizations.
+const coordinatorChatEnabled=()=>Boolean(currentGroqKey());
 const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey()),
   groqConfigured:Boolean(currentGroqKey()),provider:'groq',executionSurface:'electron'});
 function requireLabSupervisor() {
@@ -867,15 +862,6 @@ registerUiHandler('ordax:orchestrator:chat-status',event=>{
   requireTrustedSupervisorRenderer(event);
   return coordinatorChatStatus();
 });
-registerUiHandler('ordax:orchestrator:chat-enable',(event,enabled)=>{
-  requireTrustedSupervisorRenderer(event);
-  if(typeof enabled!=='boolean')throw Error('orchestrator_chat_setting_invalid');
-  if(enabled&&!currentGroqKey())throw Error('supervisor_api_key_missing');
-  localCoordinatorChatEnabled=enabled;
-  notifyOrchestratorChanged();
-  return coordinatorChatStatus();
-});
-
 registerUiHandler('ordax:supervisor:status', (event) => {
   requireTrustedSupervisorRenderer(event);
   return ({

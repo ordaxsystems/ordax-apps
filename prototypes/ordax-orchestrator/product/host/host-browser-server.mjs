@@ -24,7 +24,6 @@ const STATIC_FILES = new Map([
 // Store-backed handlers, shared by the Node host and Electron shell.
 export const HOST_BROWSER_METHODS = Object.freeze({
   coordinatorChatStatus:['ordax:orchestrator:chat-status',()=>[]],
-  coordinatorChatEnable:['ordax:orchestrator:chat-enable',a=>[a[0]]],
   chatgptPlanStatus:['ordax:chatgpt-plan:status',()=>[]],
   chatgptPlanLogin:['ordax:chatgpt-plan:login',()=>[]],
   chatgptPlanDisconnect:['ordax:chatgpt-plan:disconnect',()=>[]],
