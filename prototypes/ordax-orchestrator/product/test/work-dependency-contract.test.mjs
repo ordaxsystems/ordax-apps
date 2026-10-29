@@ -21,7 +21,7 @@ test('dependency IDs enforce the same bounded canonical format as ordinary task 
     ...input,dependsOn:['x'.repeat(181)]
   }),/orchestrator_invalid_input/);
   assert.throws(()=>validateOrchestratorInput('work_dependency_set',{
-    ...input,dependsOn:['task_a\\0x']
+    ...input,dependsOn:['task_a\0x']
   }),/orchestrator_invalid_input/);
   assert.throws(()=>validateOrchestratorInput('work_dependency_set',{
     ...input,dependsOn:['']
