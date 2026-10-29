@@ -227,7 +227,7 @@ test('one in-flight Run from another project closes transport slots globally',as
   assert.equal(f.effects(),0);
 });
 test('host busy state prohibits transport slot admission even when SQLite is idle',async t=>{
-  let busy=true;
+  let busy=1;
   const f=fixture(t,{hostBusy:()=>busy}),a=await f.makeProject();
   await a.work('Independent proposal');
   const blocked=(await f.call('work_plan',{projectId:a.projectId})).plan;
