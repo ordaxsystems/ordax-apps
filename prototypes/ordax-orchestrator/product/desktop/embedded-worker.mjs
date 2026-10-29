@@ -4,6 +4,7 @@ import { submitExactlyOnce, waitForSubmitControl, providerBaselineMessageId } fr
 import { createResponseObservationBudget, responseObservationComplete, requireObservedCompletion } from '../src/provider-response-completion.mjs';
 import { providerGenerationStopProbeExpression, providerResponseControlStateExpression } from '../src/provider-generation-stop-probe.mjs';
 import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
+import { isOfficialStandaloneComposer, uniqueOfficialStandaloneSendButton } from '../src/provider-standalone-composer.mjs';
 import { canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { createProviderDeliveryRecorder } from '../src/provider-delivery-recorder.mjs';
 import { providerUserMessageMatchesPrompt, providerUserMessageIsCollapsedPromptPrefix, shouldExpandCollapsedProviderPromptForResponse } from '../src/provider-user-message.mjs';
@@ -66,15 +67,16 @@ function composerExpression() {
   return `(() => {
     const sels = ${JSON.stringify(selectors.composer)};
     const all = sels.flatMap(selector => Array.from(document.querySelectorAll(selector)));
+    const isOfficialStandaloneComposer = ${isOfficialStandaloneComposer.toString()};
     const usable = element => {
       if (!element || element.disabled || element.getAttribute('aria-disabled') === 'true') return false;
-      const hasSubmitContext = Boolean(element.closest('form')) || element.id === 'pending-home-input';
+      const hasSubmitContext = Boolean(element.closest('form')) || isOfficialStandaloneComposer(element);
       if (!hasSubmitContext) return false;
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
       return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
     };
-    return all.find(usable) || all.find(element => element && (element.closest('form') || element.id === 'pending-home-input')) || null;
+    return all.find(usable) || all.find(element => element && (element.closest('form') || isOfficialStandaloneComposer(element))) || null;
   })()`;
 }
 
@@ -712,7 +714,8 @@ export class EmbeddedChatWorker {
       const el = ${composerExpression()};
       if (!el) return { found:false, text:'' };
       const text = 'value' in el ? el.value : (el.innerText || el.textContent || '');
-      return { found:true, formReady:Boolean(el.closest('form')) || el.id === 'pending-home-input', text:String(text || ''), tag:el.tagName, id:el.id || '' };
+      const isOfficialStandaloneComposer = ${isOfficialStandaloneComposer.toString()};
+      return { found:true, formReady:Boolean(el.closest('form')) || isOfficialStandaloneComposer(el), text:String(text || ''), tag:el.tagName, id:el.id || '' };
     })()`), {timeoutMs:4000,code:'provider_composer_observation_timeout'});
   }
 
@@ -866,16 +869,40 @@ export class EmbeddedChatWorker {
       const scope = form || document;
       const selectors = ${JSON.stringify(selectors.send)};
       const matches = selectors.flatMap(selector => Array.from(scope.querySelectorAll(selector)));
-      const button = matches.find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length)
-        || form?.querySelector('button[type="submit"]:not([disabled])') || null;
+      const formButton = form ? (matches.find(el => el && !el.disabled &&
+        el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length) ||
+        form.querySelector('button[type="submit"]:not([disabled])')) : null;
+      const uniqueOfficialStandaloneSendButton = ${uniqueOfficialStandaloneSendButton.toString()};
+      const standaloneButton = !form ? uniqueOfficialStandaloneSendButton(document,input) : null;
+      const button = formButton || standaloneButton;
       const rect = button?.getBoundingClientRect();
-      return { button:!!button, form:!!form, x:rect?.left + rect?.width / 2, y:rect?.top + rect?.height / 2 };
+      return { button:!!button, form:!!form, trustedPointer:!!standaloneButton,
+        x:rect?.left + rect?.width / 2, y:rect?.top + rect?.height / 2 };
     })()`).catch(() => ({button:false,form:false})),
       wait: () => sleep(150),
       maxChecks:40
     });
 
     const fire = async () => {
+      if (!target.form) {
+        if (!target.trustedPointer) throw new Error('send_control_unavailable');
+        // Re-observe the exact official control and hit target before intent.
+        // Never dispatch to a stale or obscured location.
+        const safeHit=await wc.executeJavaScript(`(() => {
+          const input = ${composerExpression()};
+          const uniqueOfficialStandaloneSendButton = ${uniqueOfficialStandaloneSendButton.toString()};
+          const button = uniqueOfficialStandaloneSendButton(document,input);
+          if (!button) return false;
+          const rect=button.getBoundingClientRect();
+          const x=rect.left+rect.width/2,y=rect.top+rect.height/2;
+          const hit=document.elementFromPoint(x,y)?.closest('button');
+          return hit===button && Math.abs(x-${target.x})<3 && Math.abs(y-${target.y})<3;
+        })()`).catch(()=>false);
+        if (!safeHit) throw new Error('send_control_unavailable');
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
+          type:'mouseMoved',x:target.x,y:target.y
+        });
+      }
       const intentAt=Date.now();
       // The provider must not be marked possibly submitted until its exact
       // dispatch intent has been persisted successfully. A rejected intent
@@ -893,6 +920,7 @@ export class EmbeddedChatWorker {
       // pointer events. Use the browser's standardized form-submission API
       // instead of a simulated click. Exactly one requestSubmit invocation
       // is made for this Run; the receipt watcher still fails closed.
+      if (target.form) {
       const submitted = await wc.executeJavaScript(`(() => {
         const input = ${composerExpression()};
         const form = input?.closest('form');
@@ -910,6 +938,17 @@ export class EmbeddedChatWorker {
         return true;
       })()`);
       if (!submitted) throw new Error('send_control_unavailable');
+      } else {
+        // ONE native Chromium press/release for an official formless editor.
+        // No fallback click, Enter or retry after press; exact user-bubble
+        // observation remains mandatory for delivery confirmation.
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
+          type:'mousePressed',x:target.x,y:target.y,button:'left',clickCount:1
+        });
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent',{
+          type:'mouseReleased',x:target.x,y:target.y,button:'left',clickCount:1
+        });
+      }
     };
 
     let promptExpansionAttempted=false;
