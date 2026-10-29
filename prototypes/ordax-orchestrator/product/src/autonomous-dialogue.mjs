@@ -193,9 +193,7 @@ export class AutonomousDialogue {
     if(this.service.orchestrator(row.project_id,row.orchestrator_id).status!=='ready')return {state:'paused'};
     if(this.service.coordinator.available?.(row.project_id,row.orchestrator_id)!==true)
       return {state:'blocked_coordinator'};
-    if(this.service.provider.busy?.()||
-       this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
-       this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
+    if(this.service.executorAdmission().availableSlots===0)
       return {state:'executor_busy'};
     if(row.mode==='story')return advanceStory(this,context,row);
     let working='';
