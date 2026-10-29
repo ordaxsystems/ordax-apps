@@ -41,6 +41,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy;
     $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
     $('startAutonomousDialogue').disabled=!coordinatorAvailable||!gptWebTransportAvailable||!selectedReady||analysisBusy||coordinatorSubmitting;
+    $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
   }
   function setCoordinatorDraftState(text='') {
@@ -412,8 +413,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
     const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Groq preparando GPT A',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Groq analisando resposta A',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Groq interpretando resposta B',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
-    $('autonomousDialogueState').textContent=job?`${labels[job.state]||job.state}. ${job.lastError||''}${job.questionFinal?' Próxima pergunta proposta (não enviada): '+job.questionFinal:''}`:'Uma missão inicial autoriza no máximo duas conversas GPT. Groq conduz o diálogo sem comandos adicionais.';
+    const storyLabel=job?.mode==='story'?(job.state==='succeeded'
+      ?'História final montada pelo Groq, após duas rodadas GPT A/B'
+      :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
+    $('autonomousDialogueState').textContent=job?`${storyLabel||labels[job.state]||job.state}. ${job.lastError||''}${job.questionFinal?(job.mode==='story'?' História final: ':' Próxima pergunta proposta (não enviada): ')+job.questionFinal:''}`:
+      'Uma missão autoriza duas perguntas ou quatro cenas em duas rodadas. Groq conduz tudo sem comandos adicionais.';
     $('startAutonomousDialogue').disabled=Boolean(job && !['succeeded','blocked','reconciliation_required'].includes(job.state))||!coordinatorAvailable||!gptWebTransportAvailable;
+    $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
   }
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
@@ -657,21 +663,22 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }catch{error();}
     finally{analysisBusy=false;syncCoordinatorActions();}
   });
-  $('startAutonomousDialogue').addEventListener('click',async()=>{
-    if($('startAutonomousDialogue').disabled||!projectId||!orchestratorId)return;
+  async function launchAutonomousMission(mode){
+    const button=$(mode==='story'?'startAutonomousStory':'startAutonomousDialogue');
+    if(button.disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
-    // The mission text is a single top-level authorization to send at most
-    // two GPT messages. It never approves shell, workspace or Git operations.
     const mission=$('coordinatorPrompt').value.trim();
     if(!mission){status('Descreva a missão única no campo do orquestrador.');$('coordinatorPrompt').focus();return;}
-    $('startAutonomousDialogue').disabled=true;
+    $('startAutonomousStory').disabled=true;$('startAutonomousDialogue').disabled=true;
     try {
-      const receipt=await command('autonomous_dialogue_start',{projectId:p,orchestratorId:o,mission});
+      const receipt=await command('autonomous_dialogue_start',{projectId:p,orchestratorId:o,mission,mode});
       if(p!==projectId||o!==orchestratorId)return;
-      if(receipt.status==='succeeded')status('Missão iniciada. O Groq e o GPT executarão as etapas sem novos comandos manuais.');
+      if(receipt.status==='succeeded')status('Missão aceita. Groq coordena as etapas e GPT responde sem novas orientações.');
       await refreshAutonomousDialogue();
     }catch{error();}finally{await refreshAutonomousDialogue();}
-  });
+  }
+  $('startAutonomousDialogue').addEventListener('click',()=>void launchAutonomousMission('dialogue'));
+  $('startAutonomousStory').addEventListener('click',()=>void launchAutonomousMission('story'));
   $('prepareWork').addEventListener('click',async()=>{
     if($('prepareWork').disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId,t=chatTaskId;

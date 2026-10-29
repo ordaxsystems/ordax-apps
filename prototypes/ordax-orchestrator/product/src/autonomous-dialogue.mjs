@@ -2,6 +2,8 @@ import {randomUUID} from 'node:crypto';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {assertTaskHasNoUncertainTransport} from './provider-uncertain-run-policy.mjs';
+import {advanceStory,STORY_TURNS} from './autonomous-story.mjs';
+import {diagnoseAgentFailure} from './agent-failure-diagnosis.mjs';
 
 // One mission, one owner authorization, ONE canonical Store and existing GPT
 // executor. A mission's consent covers at most two GPT Web submissions.
@@ -35,6 +37,22 @@ export class AutonomousDialogue {
       UNIQUE(workspace_session_id,actor_id,client_id,request_id)
     );
     CREATE INDEX IF NOT EXISTS idx_lab_autonomous_queue ON lab_autonomous_dialogues(state,created_at);`);
+    // Story adds four canonical work Tasks to the SAME mission, Store and
+    // provider; max_gpt_sends=2 remains a per-cycle cap for old profiles.
+    if(!this.db.prepare("PRAGMA table_info(lab_autonomous_dialogues)").all().some(x=>x.name==='mode'))
+      this.db.exec("ALTER TABLE lab_autonomous_dialogues ADD COLUMN mode TEXT NOT NULL DEFAULT 'dialogue' CHECK(mode IN ('dialogue','story'))");
+    this.db.exec(`CREATE TABLE IF NOT EXISTS lab_autonomous_story_turns (
+      mission_id TEXT NOT NULL REFERENCES lab_autonomous_dialogues(id),
+      ordinal INTEGER NOT NULL CHECK(ordinal BETWEEN 1 AND 4),
+      task_id TEXT NOT NULL UNIQUE REFERENCES tasks(id),
+      prompt TEXT NOT NULL,
+      PRIMARY KEY(mission_id,ordinal)
+    );`);
+    this.db.prepare(`UPDATE lab_autonomous_dialogues SET
+      state='reconciliation_required',
+      last_error='interrupted_story_stage_requires_reconciliation',updated_at=?
+      WHERE mode='story' AND (state LIKE 'story_planning_%' OR
+        state LIKE 'story_sending_%' OR state='story_synthesizing')`).run(this.store.now());
     // Unknown effect after a process crash must NEVER be replayed.
     this.db.prepare(`UPDATE lab_autonomous_dialogues
       SET state='reconciliation_required',last_error='interrupted_effect_requires_reconciliation',updated_at=?
@@ -47,8 +65,11 @@ export class AutonomousDialogue {
     if(!row)return null;
     const a=row.task_a_id?this.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(row.task_a_id):null;
     const b=row.task_b_id?this.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(row.task_b_id):null;
+    const story=row.mode==='story';
+    const turns=story?this.db.prepare('SELECT ordinal,task_id FROM lab_autonomous_story_turns WHERE mission_id=? ORDER BY ordinal').all(row.id):[];
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
-      state:row.state,maxGPTSends:row.max_gpt_sends,taskAId:row.task_a_id,taskBId:row.task_b_id,
+      mode:story?'story':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,
+      state:row.state,maxGPTSends:story?STORY_TURNS:row.max_gpt_sends,taskAId:row.task_a_id,taskBId:row.task_b_id,
       questionFinal:row.state==='succeeded'?row.question_final:null,
       distinctConfirmedConversations:Boolean(a?.chat_url&&b?.chat_url&&a.chat_url!==b.chat_url),
       lastError:row.last_error,requiresReconciliation:row.state==='reconciliation_required'};
@@ -62,11 +83,11 @@ export class AutonomousDialogue {
       .get(context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId);
     return {mission:this.summary(row)};
   }
-  start(context,{projectId,orchestratorId,mission,requestId}) {
+  start(context,{projectId,orchestratorId,mission,requestId,mode='dialogue'}) {
     this.service.requireAccess(context,'autonomous_dialogue_start',projectId);
     const owner=this.service.orchestrator(projectId,orchestratorId);
     if(owner.status!=='ready')throw Error('orchestrator_paused');
-    if(!noExtra(mission)||mission.length>4000)throw Error('autonomous_mission_invalid');
+    if(!noExtra(mission)||mission.length>4000||!['dialogue','story'].includes(mode))throw Error('autonomous_mission_invalid');
     if(typeof this.service.coordinator?.send!=='function'||
        this.service.coordinator.available?.(projectId,orchestratorId)!==true||
        typeof this.service.provider?.send!=='function')throw Error('autonomous_provider_unavailable');
@@ -74,21 +95,21 @@ export class AutonomousDialogue {
       workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
       .get(context.workspaceSessionId,context.actorId,context.clientId,requestId);
     if(existing) {
-      if(existing.project_id!==projectId||existing.orchestrator_id!==orchestratorId||existing.mission!==mission)
+      if(existing.project_id!==projectId||existing.orchestrator_id!==orchestratorId||existing.mission!==mission||existing.mode!==mode)
         throw Error('autonomous_request_conflict');
       return this.summary(existing);
     }
     if(this.db.prepare(`SELECT 1 FROM lab_autonomous_dialogues
       WHERE state IN ('queued','planning_a','ready_a','sending_a','ready_b','planning_b',
-        'ready_final','sending_b','planning_final') LIMIT 1`).get())
+        'ready_final','sending_b','planning_final','story_ready_synthesis') OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%' OR state LIKE 'story_planning_%' OR state LIKE 'story_sending_%' OR state='story_synthesizing')) LIMIT 1`).get())
       throw Error('autonomous_mission_already_running');
     const id='autonomous_'+randomUUID(),now=this.store.now();
     this.db.prepare(`INSERT INTO lab_autonomous_dialogues
       (id,workspace_session_id,actor_id,client_id,project_id,orchestrator_id,request_id,mission,
-        state,max_gpt_sends,created_at,updated_at)
-      VALUES(?,?,?,?,?,?,?,?,'queued',?,?,?)`)
+        state,max_gpt_sends,created_at,updated_at,mode)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,?)`)
       .run(id,context.workspaceSessionId,context.actorId,context.clientId,projectId,orchestratorId,
-        requestId,mission,LIMIT,now,now);
+        requestId,mission,mode==='story'?'story_queued_1':'queued',LIMIT,now,now,mode);
     this.notify();
     // Initiating a mission is the ONLY operator action. The existing App
     // lifetime tick also resumes queued/ready (never indeterminate) stages.
@@ -155,7 +176,8 @@ export class AutonomousDialogue {
   }
   async step(context) {
     const row=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues
-      WHERE state IN ('queued','ready_a','ready_b','ready_final')
+      WHERE state IN ('queued','ready_a','ready_b','ready_final','story_ready_synthesis')
+        OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%'))
       ORDER BY created_at,id LIMIT 1`).get();
     if(!row)return {state:'idle'};
     this.service.requireAccess(context,'autonomous_dialogue_start',row.project_id);
@@ -168,6 +190,7 @@ export class AutonomousDialogue {
        this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
        this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
       return {state:'executor_busy'};
+    if(row.mode==='story')return advanceStory(this,context,row);
     let working='';
     try {
       if(row.state==='queued') {
@@ -216,7 +239,9 @@ export class AutonomousDialogue {
         ||working.startsWith('planning')&&error?.orchestratorRequestOutcome!=='rejected'&&
           error?.orchestratorRequestOutcome!=='response_invalid';
       this.move(row.id,working,unknown?'reconciliation_required':'blocked',
-        {last_error:boundedError(error)});
+        {last_error:diagnoseAgentFailure({code:error?.providerFailureCode||error?.message,
+          stage:working,deliveryState:working.startsWith('sending')
+            ?error?.providerDeliveryState||'unknown':'unknown'}).evidence.code});
       return {state:unknown?'reconciliation_required':'blocked',error:boundedError(error)};
     }
   }
@@ -227,7 +252,7 @@ export class AutonomousDialogue {
       // One complete authorized mission in one handoff. Yield between durable
       // stages, while allowing a separate App event to stop at any blocker.
       let result={state:'idle'};
-      for(let i=0;i<4;i++){
+      for(let i=0;i<STORY_TURNS*2+2;i++){
         result=await this.step(context);
         if(result.state!=='advanced')return result;
       }
