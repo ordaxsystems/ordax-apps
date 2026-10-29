@@ -253,10 +253,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const planStatus=$('workPlanSummary');
     if(plan?.automaticDispatchAllowed===false){
       planStatus.dataset.state=plan.blocked.length?'blocked':'ready';
-      planStatus.textContent='Projeto completo · '+plan.candidates.length+' candidatas · '+
+      planStatus.textContent='Planejamento do projeto · '+plan.candidates.length+' candidatas · '+
         plan.waiting.length+' aguardando · '+plan.blocked.length+' bloqueadas · '+
-        plan.inFlight+' em execução. Limite consultivo: '+(plan.availableSlots+plan.inFlight)+
-        ' frentes. Nenhum envio automático autorizado.';
+        plan.inFlight+' em execução. Lote consultivo de até '+(plan.availableSlots+plan.inFlight)+
+        ' frentes; isso não comprova execução simultânea. Nenhum envio automático autorizado.';
     }else{
       planStatus.dataset.state='unavailable';
       planStatus.textContent=projectId?
