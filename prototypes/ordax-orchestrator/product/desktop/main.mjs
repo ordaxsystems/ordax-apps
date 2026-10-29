@@ -24,6 +24,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
+import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
 import { normalizeProviderViewBounds } from '../src/provider-view-bounds.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
@@ -142,6 +143,7 @@ const MIME_EXT = new Map([
 
 let win;
 let worker;
+const providerViews=createProviderViewRegistry();
 let windowCreationPromise=null;
 let hostBrowserServer=null;
 const hostBrowserRequest=Symbol('authenticated-host-browser-request');
@@ -514,6 +516,9 @@ async function createWindowOnce() {
   });
 
   worker = new EmbeddedChatWorker();
+  providerViews.register(worker);
+  const registeredWorker=worker;
+  registeredWorker.view.webContents.once('destroyed',()=>providerViews.unregister(registeredWorker));
   hostStartupLog('worker_constructed');
   worker.setObserverMode(observerMode);
   worker.setStageSink(({ stage, at }) => {
@@ -615,12 +620,12 @@ async function createWindowOnce() {
 }
 
 ipcMain.on('ordax:worker:preload-ready', (event, payload) => {
-  if (!worker || event.sender.id !== worker.view.webContents.id) return;
+  if (providerViews.resolve(event.sender)!==worker) return;
   workerPreload = { ready:true, url:String(payload?.url || ''), at:Number(payload?.at || Date.now()) };
 });
 
 ipcMain.on('ordax:worker:stream', (event, snapshot) => {
-  if (!worker || event.sender.id !== worker.view.webContents.id || !liveRun || !win || win.isDestroyed()) return;
+  if (providerViews.resolve(event.sender)!==worker || !liveRun || !win || win.isDestroyed()) return;
   const delta = worker.acceptStreamSnapshot(snapshot);
   if (!delta) return;
   const mirrorAt = Date.now();
