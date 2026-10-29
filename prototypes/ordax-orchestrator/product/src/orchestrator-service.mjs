@@ -470,6 +470,13 @@ export class OrchestratorService {
     }
     if(operation==='work_dependency_set') {
       this.task(input.projectId,input.taskId,'work');
+      // Prerequisites are pre-execution policy, not retroactive evidence.
+      // For continuing an already-executed work, create a new work milestone.
+      if(this.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(input.taskId)||
+        this.db.prepare(`SELECT 1 FROM lab_command_receipts
+          WHERE status IN ('running','uncertain') AND json_extract(result,'$.taskId')=? LIMIT 1`)
+          .get(input.taskId))
+        throw Error('orchestrator_dependencies_locked_after_execution');
       for(const dep of input.dependsOn)this.task(input.projectId,dep,'work');
       const existing=this.db.prepare('SELECT task_id,prerequisite_id FROM lab_work_dependencies WHERE project_id=?').all(input.projectId);
       const graph=new Map();
