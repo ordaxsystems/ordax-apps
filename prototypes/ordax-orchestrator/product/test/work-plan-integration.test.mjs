@@ -7,7 +7,7 @@ import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {ORCHESTRATOR_TOOLS} from '../src/orchestrator-contract.mjs';
 
-function fixture(t){
+function fixture(t,{hostBusy=()=>false}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-dag-'));
   const file=path.join(dir,'lab.sqlite');
   let store=new Store(file);
@@ -15,7 +15,7 @@ function fixture(t){
     workspaceSessionId:store.getWorkspaceSession().id});
   let effects=0,seq=0;
   let service=new OrchestratorService({store,authorize:({context:ctx})=>ctx===context,
-    provider:{send:()=>{effects++;throw Error('unexpected_provider_send');}}});
+    provider:{busy:hostBusy,send:()=>{effects++;throw Error('unexpected_provider_send');}}});
   const call=(op,input={})=>service.invoke(context,op,{
     ...(!ORCHESTRATOR_TOOLS.find(x=>x.operation===op)?.readOnly
       ?{requestId:'request_'+(++seq)}:{}),...input
@@ -31,7 +31,7 @@ function fixture(t){
   const reopen=()=>{
     store.close();store=new Store(file);
     service=new OrchestratorService({store,authorize:({context:ctx})=>ctx===context,
-      provider:{send:()=>{effects++;throw Error('unexpected_provider_send');}}});
+      provider:{busy:hostBusy,send:()=>{effects++;throw Error('unexpected_provider_send');}}});
   };
   t.after(()=>{try{store.close();}catch{} fs.rmSync(dir,{recursive:true,force:true});});
   return {call,makeProject,reopen,getStore:()=>store,effects:()=>effects,
@@ -192,4 +192,52 @@ test('Groq sees 35 scoped work fronts, prioritizes failures and recovers the ove
   const recovered=f.analysis(a.projectId,a.orchestratorId);
   assert.equal(recovered.scope.totalWorkCount,35);
   assert.equal(recovered.workOverview[0].readiness,'uncertain');
+});
+
+test('real transport admits only one lane although the DAG has 12 independent candidates',async t=>{
+  const f=fixture(t),{projectId,work}=await f.makeProject();
+  for(let i=0;i<12;i++)await work('Front '+i);
+  const plan=(await f.call('work_plan',{projectId,maxParallel:8})).plan;
+  assert.equal(plan.candidates.length,8,'planning remains N-worker capable');
+  assert.equal(plan.executor.mode,'single_embedded_chatgpt_worker');
+  assert.equal(plan.executor.maxConcurrentSends,1);
+  assert.equal(plan.executor.availableSlots,1);
+  assert.equal(plan.executor.isolatedWorkerSessions,false);
+  assert.equal(plan.executor.parallelProviderSendsEnabled,false);
+  assert.deepEqual(plan.transportSlotCandidates,plan.candidates.slice(0,1));
+  const engine=await f.call('status');
+  assert.deepEqual(engine.executor,plan.executor);
+  assert.equal(plan.automaticDispatchAllowed,false);
+  assert.equal(f.effects(),0);
+});
+test('one in-flight Run from another project closes transport slots globally',async t=>{
+  const f=fixture(t),a=await f.makeProject(),b=await f.makeProject();
+  const first=await a.work('Work running elsewhere');
+  await b.work('Another independent project');
+  const run=f.getStore().startRun(first);
+  const plan=(await f.call('work_plan',{projectId:b.projectId,maxParallel:8})).plan;
+  assert.equal(plan.executor.activeRuns,1);
+  assert.equal(plan.executor.availableSlots,0);
+  assert.deepEqual(plan.transportSlotCandidates,[]);
+  assert.equal(plan.candidates.length,1,'independent planning is not execution admission');
+  f.getStore().finishRun(first,run);
+  const recovered=(await f.call('work_plan',{projectId:b.projectId,maxParallel:8})).plan;
+  assert.equal(recovered.executor.availableSlots,1);
+  assert.equal(recovered.transportSlotCandidates.length,1);
+  assert.equal(f.effects(),0);
+});
+test('host busy state prohibits transport slot admission even when SQLite is idle',async t=>{
+  let busy=true;
+  const f=fixture(t,{hostBusy:()=>busy}),a=await f.makeProject();
+  await a.work('Independent proposal');
+  const blocked=(await f.call('work_plan',{projectId:a.projectId})).plan;
+  assert.equal(blocked.executor.activeRuns,0);
+  assert.equal(blocked.executor.hostOccupied,true);
+  assert.equal(blocked.executor.availableSlots,0);
+  assert.deepEqual(blocked.transportSlotCandidates,[]);
+  busy=false;
+  const free=(await f.call('work_plan',{projectId:a.projectId})).plan;
+  assert.equal(free.executor.availableSlots,1);
+  assert.equal(free.transportSlotCandidates.length,1);
+  assert.equal(f.effects(),0);
 });
