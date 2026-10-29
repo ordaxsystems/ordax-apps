@@ -877,7 +877,9 @@ export class EmbeddedChatWorker {
 
     const fire = async () => {
       const intentAt=Date.now();
-      if (this.streamContext) this.streamContext.submitAttemptAt = intentAt;
+      // The provider must not be marked possibly submitted until its exact
+      // dispatch intent has been persisted successfully. A rejected intent
+      // means requestSubmit has never run; retry policy may distinguish it.
       if(typeof onSubmissionIntent==='function') await onSubmissionIntent({
         intentAt,chatUrl:wc.getURL(),
         baselineUserMessageId:typeof baseline.latestUserMessageId==='string'&&baseline.latestUserMessageId.length<=180
@@ -885,6 +887,7 @@ export class EmbeddedChatWorker {
         baselineUserMessagePresent:Number.isSafeInteger(baseline.userCount)&&baseline.userCount>0,
         baselinePromptMatches:providerUserMessageMatchesPrompt(baseline.latestUserText,prompt)
       });
+      if (this.streamContext) this.streamContext.submitAttemptAt = Date.now();
       // The hidden Chromium view can accept text while discarding synthetic
       // pointer events. Use the browser's standardized form-submission API
       // instead of a simulated click. Exactly one requestSubmit invocation

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { providerSubmissionConfirmed, unresolvedSubmitCode, submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
 const baseline={userCount:0,composerText:'',url:'https://chatgpt.com/'};
 const prompt='ORDAX_SEND_ONCE_TEST';
@@ -52,4 +53,33 @@ test('a missing or disabled button does not trigger Enter or duplicate sending',
   let attempts=0;
   await assert.rejects(()=>waitForSubmitControl({read:async()=>({button:false,form:true}),wait:async()=>{},maxChecks:3}),/send_control_unavailable/);
   assert.equal(attempts,0);
+});
+
+test('a rejected durable intent happens before requestSubmit and is never classified as an attempted delivery',async()=>{
+  let requested=0,attemptAt=null,reads=0,waits=0;
+  const onSubmissionIntent=async()=>{throw Error('provider_submission_intent_not_recorded');};
+  const fire=async()=>{
+    await onSubmissionIntent();
+    attemptAt=Date.now();
+    requested++;
+  };
+  await assert.rejects(()=>submitExactlyOnce({
+    baseline,prompt,fire,
+    readState:async()=>{reads++;return baseline;},
+    wait:async()=>{waits++;}
+  }),/provider_submission_intent_not_recorded/);
+  assert.equal(requested,0,'provider form is never submitted after a rejected intent');
+  assert.equal(attemptAt,null,'no submit timestamp before durable intent');
+  assert.equal(reads,0);
+  assert.equal(waits,0);
+  // Ensure the real Electron worker preserves this ordering, not just a mock.
+  const worker=fs.readFileSync(new URL('../desktop/embedded-worker.mjs',import.meta.url),'utf8');
+  const source=worker.split('const fire = async () => {')[1]?.split('const submitted = await wc.executeJavaScript')[0]||'';
+  assert.ok(source.includes("await onSubmissionIntent({"));
+  const observedIntent=source.indexOf("await onSubmissionIntent({");
+  const observedAttempt=source.indexOf("this.streamContext.submitAttemptAt = Date.now()");
+  assert.ok(observedAttempt>observedIntent,'durable intent must precede attempt metrics');
+  const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
+  assert.match(main,/provider\.submission\.intent_rejected/);
+  assert.match(main,/return requireRecordedIntent\(intent\)/);
 });

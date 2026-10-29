@@ -338,6 +338,17 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       },
       onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
         if(liveRun?.runId!==runId)throw new Error('submission_run_context_changed');
+        const requireRecordedIntent=intent=>{
+          if(intent.recorded)return intent;
+          // The reason is a closed-set local validation code, never the prompt,
+          // provider URL or any private identity. Recording diagnostics must
+          // not change the original fail-closed submit outcome.
+          const reason=['intent_incomplete','intent_reference_missing','intent_already_recorded']
+            .includes(intent.reason)?intent.reason:'intent_unavailable';
+          try {store.event(taskId,'provider.submission.intent_rejected',{run_id:runId,reason});}
+          catch {/* The send remains blocked even if diagnostics cannot persist. */}
+          throw new Error('provider_submission_intent_not_recorded');
+        };
         if(conversationPlan.newSession) {
           // A fresh GPT chat has no permalink before its first accepted send.
           // Persist the exact dispatch intent against the official empty home
@@ -350,8 +361,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
             previousChatUrl:task.chat_url,
             contextCheckpointVersion:needsContinuation?checkpointVersion:null
           });
-          if(!intent.recorded)throw new Error('provider_submission_intent_not_recorded');
-          return intent;
+          return requireRecordedIntent(intent);
         }
         const expected=canonicalProviderChatUrl(task.chat_url);
         if(!expected||canonicalProviderChatUrl(chatUrl)!==expected)
@@ -360,8 +370,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
           store,taskId,runId,messageId:userMessage.id,providerPrompt,
           chatUrl:expected,intentAt,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches
         });
-        if(!intent.recorded)throw new Error('provider_submission_intent_not_recorded');
-        return intent;
+        return requireRecordedIntent(intent);
       },
       onDeliveryObserved:({chatUrl,submittedAt}) => {
         if (liveRun?.runId !== runId) throw new Error('submission_run_context_changed');
