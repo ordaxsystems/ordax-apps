@@ -157,3 +157,39 @@ test('uncertain provider outcome without a Run freezes prerequisite edits',async
   assert.deepEqual(listing.works.find(w=>w.id===release).dependsOn,[]);
   assert.equal(f.effects(),1);
 });
+
+test('Groq sees 35 scoped work fronts, prioritizes failures and recovers the overview from SQLite',async t=>{
+  const f=fixture(t),a=await f.makeProject();
+  const first=await a.work('Foundation needs attention');
+  const run=f.getStore().startRun(first);
+  f.getStore().finishRun(first,run,'root_cause_not_resolved');
+  for(let i=0;i<34;i++)await a.work('Independent task '+i);
+  const other=(await f.call('orchestrator_create',{
+    projectId:a.projectId,name:'Other team',mission:'Private team'
+  })).result.orchestratorId;
+  const foreign=(await f.call('work_create',{
+    projectId:a.projectId,orchestratorId:other,title:'OTHER_TEAM_PRIVATE'
+  })).result.taskId;
+  const another=await f.makeProject();
+  const foreignProjectWork=await another.work('OTHER_PROJECT_PRIVATE');
+  const context=f.analysis(a.projectId,a.orchestratorId);
+  assert.equal(context.scope.totalWorkCount,35);
+  assert.equal(context.scope.overviewCount,32);
+  assert.equal(context.scope.overviewTruncated,true);
+  assert.equal(context.scope.workLimit,4);
+  assert.equal(context.scope.messageLimitPerWork,5);
+  assert.equal(context.works.length,4);
+  assert.equal(context.workOverview.length,32);
+  assert.equal(context.workOverview[0].title,'Foundation needs attention');
+  assert.equal(context.workOverview[0].readiness,'failed');
+  assert.equal(context.planning.workCount,35);
+  assert.equal(context.planning.candidateTaskIds.includes(foreign),false);
+  assert.equal(context.planning.candidateTaskIds.includes(foreignProjectWork),false);
+  assert.doesNotMatch(JSON.stringify(context),/OTHER_TEAM_PRIVATE|OTHER_PROJECT_PRIVATE/);
+  assert.equal(context.planning.automaticDispatchAllowed,false);
+  assert.equal(f.effects(),0);
+  f.reopen();
+  const recovered=f.analysis(a.projectId,a.orchestratorId);
+  assert.equal(recovered.scope.totalWorkCount,35);
+  assert.equal(recovered.workOverview[0].readiness,'failed');
+});
