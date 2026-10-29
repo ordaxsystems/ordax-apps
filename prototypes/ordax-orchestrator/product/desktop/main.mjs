@@ -307,10 +307,11 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   const provisional=createProviderProvisionalRecorder({
     save:(text,source)=>store.saveRunProvisionalOutput(taskId,runId,text,source)
   });
-  if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
 
   try {
+    providerViews.bindRun(worker,liveRun);
+    if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
     const result = await worker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
       contextAttachment,
@@ -471,6 +472,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     }
     throw error;
   } finally {
+    providerViews.unbindRun(worker,runId);
     if (liveRun?.runId === runId) liveRun = null;
     clearInterval(heartbeat);
     if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
@@ -522,14 +524,16 @@ async function createWindowOnce() {
   hostStartupLog('worker_constructed');
   worker.setObserverMode(observerMode);
   worker.setStageSink(({ stage, at }) => {
-    if (!liveRun || !win || win.isDestroyed()) return;
+    const routed=providerViews.runForWorker(registeredWorker);
+    if (!routed || !win || win.isDestroyed()) return;
     emitRendererEvent('ordax:task:stage', {
-      taskId:liveRun.taskId, runId:liveRun.runId, stage, at, runStartedAt:liveRun.startedAt
+      taskId:routed.taskId, runId:routed.runId, stage, at, runStartedAt:routed.startedAt
     });
   });
   worker.setFastStreamSink(delta => {
-    if (!liveRun || !win || win.isDestroyed()) return;
-    emitRendererEvent('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, ...delta, mirrorAt:Date.now(), runStartedAt:liveRun.startedAt });
+    const routed=providerViews.runForWorker(registeredWorker);
+    if (!routed || !win || win.isDestroyed()) return;
+    emitRendererEvent('ordax:task:stream', { taskId:routed.taskId, runId:routed.runId, ...delta, mirrorAt:Date.now(), runStartedAt:routed.startedAt });
   });
 
   // Native WebContentsView defaults to visible. Hide the embedded provider
@@ -548,6 +552,7 @@ async function createWindowOnce() {
     if (!liveRun) return;
     try {
       const interrupted = store.recoverInterruptedRuns('app_shutdown');
+      providerViews.unbindRun(worker,liveRun.runId);
       liveRun = null;
       if (interrupted) hostStartupLog('inflight_run_interrupted_on_close');
     } catch {
@@ -625,12 +630,14 @@ ipcMain.on('ordax:worker:preload-ready', (event, payload) => {
 });
 
 ipcMain.on('ordax:worker:stream', (event, snapshot) => {
-  if (providerViews.resolve(event.sender)!==worker || !liveRun || !win || win.isDestroyed()) return;
-  const delta = worker.acceptStreamSnapshot(snapshot);
+  const fromWorker=providerViews.resolve(event.sender);
+  const routed=providerViews.runForSender(event.sender);
+  if (fromWorker!==worker || !routed || !win || win.isDestroyed()) return;
+  const delta = fromWorker.acceptStreamSnapshot(snapshot);
   if (!delta) return;
   const mirrorAt = Date.now();
-  if (!liveRun.firstDeltaAt) liveRun.firstDeltaAt = delta.firstDeltaAt || mirrorAt;
-  emitRendererEvent('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, source:'beta', ...delta, mirrorAt, runStartedAt:liveRun.startedAt });
+  if (!routed.firstDeltaAt) routed.firstDeltaAt = delta.firstDeltaAt || mirrorAt;
+  emitRendererEvent('ordax:task:stream', { taskId:routed.taskId, runId:routed.runId, source:'beta', ...delta, mirrorAt, runStartedAt:routed.startedAt });
 });
 
 const sharedTaskHandlers=createTaskUiHandlers({

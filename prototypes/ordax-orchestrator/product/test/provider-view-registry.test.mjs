@@ -70,3 +70,81 @@ test('registry only routes browser instances; it has no Run, Task, or send autho
   assert.equal('store' in registry,false);
   assert.ok(Object.isFrozen(registry));
 });
+test('two independent WebContents are bound to their own exact Task and Run',()=>{
+  const registry=createProviderViewRegistry(),a=fixture(41),b=fixture(42);
+  registry.register(a.worker);registry.register(b.worker);
+  const first={taskId:'task_A',runId:'run_A',startedAt:123,firstDeltaAt:null};
+  const second={taskId:'task_B',runId:'run_B',startedAt:124,firstDeltaAt:null};
+  assert.equal(registry.bindRun(a.worker,first),first);
+  assert.equal(registry.bindRun(b.worker,second),second);
+  assert.equal(registry.activeRunCount,2);
+  assert.equal(registry.runForSender(a.webContents),first);
+  assert.equal(registry.runForSender(b.webContents),second);
+  assert.equal(registry.runForSender({id:41}),null);
+  assert.equal(registry.runForSender({id:42}),null);
+  assert.throws(()=>{first.taskId='task_forged';},TypeError);
+  assert.throws(()=>{first.runId='run_forged';},TypeError);
+  assert.throws(()=>{first.startedAt=999;},TypeError);
+  first.firstDeltaAt=200;
+  assert.equal(registry.runForSender(a.webContents).firstDeltaAt,200);
+  assert.equal(registry.runForSender(b.webContents).firstDeltaAt,null);
+});
+
+test('duplicate Task, duplicate Run and occupied worker fail closed',()=>{
+  const registry=createProviderViewRegistry(),a=fixture(50),b=fixture(51);
+  registry.register(a.worker);registry.register(b.worker);
+  registry.bindRun(a.worker,{taskId:'task_1',runId:'run_1',startedAt:400});
+  assert.throws(()=>registry.bindRun(a.worker,{taskId:'task_2',runId:'run_2',startedAt:401}),/provider_run_worker_occupied/);
+  assert.throws(()=>registry.bindRun(b.worker,{taskId:'task_1',runId:'run_2',startedAt:401}),/provider_run_context_conflict/);
+  assert.throws(()=>registry.bindRun(b.worker,{taskId:'task_2',runId:'run_1',startedAt:401}),/provider_run_context_conflict/);
+  assert.equal(registry.activeRunCount,1);
+  assert.equal(registry.runForSender(b.webContents),null);
+});
+
+test('stale Run unbinding never affects a newer Run; destroyed sender loses authority',()=>{
+  const registry=createProviderViewRegistry(),a=fixture(52),b=fixture(53);
+  registry.register(a.worker);registry.register(b.worker);
+  const old={taskId:'task_old',runId:'run_old',startedAt:500};
+  registry.bindRun(a.worker,old);
+  assert.equal(registry.unbindRun(a.worker,'run_wrong'),false);
+  assert.equal(registry.runForSender(a.webContents),old);
+  assert.equal(registry.unbindRun(a.worker,'run_old'),true);
+  assert.equal(registry.runForSender(a.webContents),null);
+  const next={taskId:'task_new',runId:'run_new',startedAt:501};
+  registry.bindRun(a.worker,next);
+  registry.bindRun(b.worker,{taskId:'task_b',runId:'run_b',startedAt:503});
+  assert.equal(registry.unbindRun(a.worker,'run_old'),false);
+  assert.equal(registry.runForSender(a.webContents),next);
+  a.destroy();
+  assert.equal(registry.runForSender(a.webContents),null);
+  assert.equal(registry.unregister(a.worker),true);
+  assert.equal(registry.activeRunCount,1);
+  assert.equal(registry.runForSender(b.webContents).runId,'run_b');
+});
+
+test('malformed Run and unregistered worker do not acquire routing authority',()=>{
+  const registry=createProviderViewRegistry(),a=fixture(54),b=fixture(55);
+  registry.register(a.worker);
+  for(const run of [null,{}, {taskId:'task_a',runId:'bad/run',startedAt:4},
+    {taskId:'task_a',runId:'run_a',startedAt:0},
+    {taskId:'task_a',runId:'run_a',startedAt:1.5}]){
+    assert.throws(()=>registry.bindRun(a.worker,run),/provider_run_context_invalid/);
+  }
+  assert.throws(()=>registry.bindRun(b.worker,{taskId:'task_b',runId:'run_b',startedAt:100}),
+    /provider_run_worker_unregistered/);
+  assert.equal(registry.activeRunCount,0);
+});
+
+test('Electron routes stage and streaming IPC only through registered per-worker Run context',async()=>{
+  const fs=await import('node:fs');
+  const url=await import('node:url');
+  const path=await import('node:path');
+  const main=fs.readFileSync(path.resolve(path.dirname(url.fileURLToPath(import.meta.url)),
+    '../desktop/main.mjs'),'utf8');
+  assert.match(main,/providerViews\.bindRun\(worker,liveRun\)/);
+  assert.match(main,/providerViews\.unbindRun\(worker,runId\)/);
+  assert.match(main,/providerViews\.runForWorker\(registeredWorker\)/);
+  assert.match(main,/providerViews\.runForSender\(event\.sender\)/);
+  assert.match(main,/const delta = fromWorker\.acceptStreamSnapshot\(snapshot\)/);
+  assert.match(main,/taskId:routed\.taskId, runId:routed\.runId/);
+});
