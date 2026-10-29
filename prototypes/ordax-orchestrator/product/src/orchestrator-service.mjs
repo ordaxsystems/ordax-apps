@@ -278,30 +278,7 @@ export class OrchestratorService {
       .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
     if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
       'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
-    if(operation==='work_plan') {
-      // Query all scoped works: dependencies can span several orchestrators of
-      // the SAME project. Never silently omit dependencies through pagination.
-      const works=this.db.prepare(`SELECT t.id,t.status,
-        (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
-        (SELECT r.started_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_started_at,
-        (SELECT r.heartbeat_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_heartbeat_at,
-        (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
-        FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
-        WHERE b.project_id=? AND b.kind='work' AND t.workspace_session_id=?
-        ORDER BY t.created_at,t.id LIMIT 257`)
-        .all(input.projectId,context.workspaceSessionId);
-      if(works.length>256)throw Error('orchestrator_work_plan_too_large');
-      const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id
-        FROM lab_work_dependencies WHERE project_id=? ORDER BY task_id,prerequisite_id`)
-        .all(input.projectId);
-      return {plan:projectWorkPlan({
-        projectId:input.projectId,maxParallel:input.maxParallel||4,edges,
-        works:works.map(w=>({...w,monitor:this.monitor(w,[{
-          status:w.latest_run_status,started_at:w.latest_started_at,
-          heartbeat_at:w.latest_heartbeat_at
-        }])}))
-      })};
-    }
+    if(operation==='work_plan')return {plan:this.projectPlan(input.projectId,input.maxParallel||4)};
     if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
       b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
       (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
@@ -349,6 +326,31 @@ export class OrchestratorService {
     return {state:task.status==='completed'?'completed':'awaiting_instruction',mayAutomaticallySend:false};
   }
 
+  projectPlan(projectId,maxParallel=4) {
+      // Query all scoped works: dependencies can span several orchestrators of
+      // the SAME project. Never silently omit dependencies through pagination.
+      const works=this.db.prepare(`SELECT t.id,t.status,
+        (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+        (SELECT r.started_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_started_at,
+        (SELECT r.heartbeat_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_heartbeat_at,
+        (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
+        FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.kind='work' AND t.workspace_session_id=?
+        ORDER BY t.created_at,t.id LIMIT 257`)
+        .all(projectId,this.store.getWorkspaceSession().id);
+      if(works.length>256)throw Error('orchestrator_work_plan_too_large');
+      const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id
+        FROM lab_work_dependencies WHERE project_id=? ORDER BY task_id,prerequisite_id`)
+        .all(projectId);
+      return projectWorkPlan({
+        projectId:projectId,maxParallel:maxParallel,edges,
+        works:works.map(w=>({...w,monitor:this.monitor(w,[{
+          status:w.latest_run_status,started_at:w.latest_started_at,
+          heartbeat_at:w.latest_heartbeat_at
+        }])}))
+      });
+  }
+
   analysisContext(projectId,orchestratorId) {
     const owner=this.orchestrator(projectId,orchestratorId);
     const project=this.db.prepare(`SELECT name,objective FROM lab_projects
@@ -360,7 +362,22 @@ export class OrchestratorService {
       WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
         AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 4`)
       .all(projectId,orchestratorId,this.store.getWorkspaceSession().id);
+
+    // The coordinator receives a bounded advisory snapshot of the SAME
+    // persisted project DAG. It cannot approve, create, or dispatch work.
+    let planning={state:'unavailable'};
+    try {
+      const plan=this.projectPlan(projectId,4);
+      planning={state:'available',candidateTaskIds:plan.candidates.slice(0,8),
+        waitingCount:plan.waiting.length,blockedCount:plan.blocked.length,
+        inFlight:plan.inFlight,workCount:plan.workCount,
+        automaticDispatchAllowed:false,qualityCertified:false};
+    }catch(error){
+      if(error?.message!=='orchestrator_work_plan_too_large')throw error;
+      planning={state:'scope_too_large',automaticDispatchAllowed:false,qualityCertified:false};
+    }
     return {
+      planning,
       project:{name:redactOrchestratorAnalysisText(project.name,160),objective:redactOrchestratorAnalysisText(project.objective,600)},
       orchestrator:{name:redactOrchestratorAnalysisText(owner.name,160),mission:redactOrchestratorAnalysisText(owner.mission,800)},
       scope:{includedWorkCount:rows.length,workLimit:4,messageLimitPerWork:5},
