@@ -8,6 +8,7 @@ import {LabContinuation} from './lab-continuation.mjs';
 import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
 import {workExecutionSummary} from './work-execution-summary.mjs';
+import {projectWorkPlan} from './work-plan-read-model.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
 function missionProjectName(mission) {
@@ -277,6 +278,30 @@ export class OrchestratorService {
       .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
     if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
       'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
+    if(operation==='work_plan') {
+      // Query all scoped works: dependencies can span several orchestrators of
+      // the SAME project. Never silently omit dependencies through pagination.
+      const works=this.db.prepare(`SELECT t.id,t.status,
+        (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+        (SELECT r.started_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_started_at,
+        (SELECT r.heartbeat_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_heartbeat_at,
+        (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
+        FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.kind='work' AND t.workspace_session_id=?
+        ORDER BY t.created_at,t.id LIMIT 257`)
+        .all(input.projectId,context.workspaceSessionId);
+      if(works.length>256)throw Error('orchestrator_work_plan_too_large');
+      const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id
+        FROM lab_work_dependencies WHERE project_id=? ORDER BY task_id,prerequisite_id`)
+        .all(input.projectId);
+      return {plan:projectWorkPlan({
+        projectId:input.projectId,maxParallel:input.maxParallel||4,edges,
+        works:works.map(w=>({...w,monitor:this.monitor(w,[{
+          status:w.latest_run_status,started_at:w.latest_started_at,
+          heartbeat_at:w.latest_heartbeat_at
+        }])}))
+      })};
+    }
     if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
       b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
       (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
