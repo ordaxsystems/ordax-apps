@@ -626,6 +626,18 @@ export class OrchestratorService {
     }finally{this.pendingProposalReviews.delete(input.actionId);}
   }
 
+  assertDependenciesSatisfied(projectId,taskId) {
+    const hasDependencies=this.db.prepare(
+      'SELECT 1 FROM lab_work_dependencies WHERE project_id=? AND task_id=? LIMIT 1'
+    ).get(projectId,taskId);
+    if(!hasDependencies)return;
+    const plan=this.projectPlan(projectId,4);
+    const states=new Map(plan.workers.map(worker=>[worker.taskId,worker.state]));
+    const target=plan.workers.find(worker=>worker.taskId===taskId);
+    if(!target||target.dependsOn.some(id=>states.get(id)!=='succeeded'))
+      throw Error('orchestrator_work_prerequisite_not_confirmed');
+  }
+
   async dispatch(context,operation,input,preparedSend=null) {
     const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
       AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
@@ -640,6 +652,7 @@ export class OrchestratorService {
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
+    if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
     const port=usesProvider?this.provider:this.coordinator;
@@ -684,6 +697,7 @@ export class OrchestratorService {
       throw Error('orchestrator_reconciliation_required');
     const reserved=this.transaction(()=>{
       this.requireAccess(context,operation,input.projectId);
+      if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
       const reservation=this.reserve(context,operation,input);
       if(reservation.existing)return {existing:reservation.existing};
       if(preparedSend) {
