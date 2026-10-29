@@ -212,7 +212,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const name=document.createElement('span');name.textContent=label;
       stat.append(value,name);overview.append(stat);
     }
-    const note=document.createElement('p');note.className='work-overview-note';
+    const attention=works.filter(w=>['failed','error','interrupted'].includes(w.status));
+    if(attention.length){
+      const summary=document.createElement('div');
+      summary.className='work-attention-summary';
+      summary.setAttribute('role','status');
+      const label=document.createElement('strong');
+      label.textContent=attention.length+' frente(s) precisam de revisão';
+      const description=document.createElement('span');
+      description.textContent='Abra a conversa para conferir a última execução e seus recibos antes de continuar.';
+      summary.append(label,description);list.append(summary);
+    }    const note=document.createElement('p');note.className='work-overview-note';
     note.textContent='Estado das conversas; execução paralela automática ainda não habilitada.';
     overview.append(note);list.append(overview);
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
