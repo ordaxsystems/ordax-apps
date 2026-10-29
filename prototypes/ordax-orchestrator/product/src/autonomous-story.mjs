@@ -129,7 +129,7 @@ export async function advanceStory(engine,context,row){
       return {state:'advanced'};
     }
     if(ready){
-      const ordinal=Number(ready[1]); 
+      const ordinal=Number(ready[1]);
       // Only readiness observation is retried. No submission has been claimed.
       if(typeof engine.service.provider?.ready==='function'){
         try{await engine.service.provider.ready();}
