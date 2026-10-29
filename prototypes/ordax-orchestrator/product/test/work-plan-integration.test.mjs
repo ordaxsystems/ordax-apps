@@ -34,7 +34,8 @@ function fixture(t){
       provider:{send:()=>{effects++;throw Error('unexpected_provider_send');}}});
   };
   t.after(()=>{try{store.close();}catch{} fs.rmSync(dir,{recursive:true,force:true});});
-  return {call,makeProject,reopen,getStore:()=>store,effects:()=>effects};
+  return {call,makeProject,reopen,getStore:()=>store,effects:()=>effects,
+    analysis:(projectId,orchestratorId)=>service.analysisContext(projectId,orchestratorId)};
 }
 test('real SQLite: multi-worker dependency persists across restart and unlocks only after a successful Run',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
@@ -95,4 +96,21 @@ test('read model: empty project is legal and no worker is dispatched',async t=>{
   assert.equal(plan.workCount,0);
   assert.deepEqual(plan.candidates,[]);
   assert.equal(plan.automaticDispatchAllowed,false);
+});
+
+test('coordinator receives bounded SSOT dependencies without an execution grant',async t=>{
+  const f=fixture(t),{projectId,orchestratorId,work}=await f.makeProject();
+  const build=await work('Build'),publish=await work('Publish'),docs=await work('Docs');
+  await f.call('work_dependency_set',{projectId,taskId:publish,dependsOn:[build]});
+  const analysis=f.analysis(projectId,orchestratorId);
+  assert.equal(analysis.planning.state,'available');
+  assert.deepEqual(analysis.planning.candidateTaskIds,[build,docs]);
+  assert.equal(analysis.planning.waitingCount,1);
+  assert.equal(analysis.planning.automaticDispatchAllowed,false);
+  assert.equal(analysis.planning.qualityCertified,false);
+  const run=f.getStore().startRun(build);f.getStore().finishRun(build,run,'test_failure');
+  const later=f.analysis(projectId,orchestratorId);
+  assert.equal(later.planning.blockedCount,1);
+  assert.equal(later.planning.candidateTaskIds.includes(publish),false);
+  assert.equal(f.effects(),0);
 });
