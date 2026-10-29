@@ -129,7 +129,9 @@ test('Host keeps Groq credential across restart but never pretends to send GPT',
   assert.equal(initial.secureStorageAvailable,true);
   assert.equal(initial.credentialPersistence,'os_credential_vault');
   assert.equal((await post('supervisorSaveKey',[fakeKey])).status,200);
-  await post('coordinatorChatEnable',[true]);
+  const automaticallyAvailable=(await post('coordinatorChatStatus')).body;
+  assert.equal(automaticallyAvailable.enabled,true);
+  assert.equal(automaticallyAvailable.provider,'groq');
   const project=(await post('orchestratorInvoke',['project_create',{requestId:'groq-project',name:'Teste Groq',objective:'Planejar'}])).body.result.projectId;
   const coordinator=(await post('orchestratorInvoke',['orchestrator_create',{
     requestId:'groq-orchestrator',projectId:project,name:'Coordenador',mission:'Coordenar'
@@ -172,7 +174,8 @@ test('Host keeps Groq credential across restart but never pretends to send GPT',
   assert.equal(status.configured,true);assert.equal(status.keySaved,true);
   assert.equal(status.credentialPersistence,'os_credential_vault');
   assert.equal(JSON.stringify(status).includes(fakeKey),false);
-  await post('coordinatorChatEnable',[true]);
+  assert.equal((await post('coordinatorChatStatus')).body.enabled,true,
+    'Groq must be available again after restart without manual enable');
   const continued=await plan('groq-plan-after-restart','Continue planejamento.');
   assert.equal(continued.body.status,'succeeded');
   assert.equal(requests.length,4);

@@ -543,3 +543,19 @@ test('late provider recovery refreshes both Electron and Host task views',()=>{
   assert.match(ui,/recovery\.classList\.add\('recovered'\)/);
 });
 
+
+test('Groq analysis uses the configured credential automatically, never a volatile enable button',()=>{
+  const host=fs.readFileSync(path.join(root,'host','host-application.mjs'),'utf8');
+  const orchestratorUI=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(main,/const coordinatorChatEnabled=\(\)=>Boolean\(currentGroqKey\(\)\)/);
+  assert.match(host,/const coordinatorEnabled=\(\)=>Boolean\(apiKey\(\)\|\|chatgptConnection\.isPlanAvailable\(\)\)/);
+  assert.match(host,/const activeCoordinatorProvider=\(\)=>apiKey\(\)\?'groq'/);
+  assert.doesNotMatch(main,/localCoordinatorChatEnabled|ordax:orchestrator:chat-enable/);
+  assert.doesNotMatch(host,/chatEnabled|ordax:orchestrator:chat-enable/);
+  assert.doesNotMatch(uiHtml,/coordinatorApiEnable|Ativar Groq para análises/);
+  assert.doesNotMatch(orchestratorUI,/coordinatorApiEnable|coordinatorChatEnable/);
+  assert.doesNotMatch(preload,/coordinatorChatEnable/);
+  assert.doesNotMatch(hostBridge,/coordinatorChatEnable/);
+  assert.doesNotMatch(hostServer,/coordinatorChatEnable/);
+  assert.match(main,/createGroqCoordinatorConversation/);
+});

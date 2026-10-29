@@ -118,24 +118,12 @@ let cleanupFailurePhase=null;
     const credential=await evaluate(`window.ordax.supervisorStatus()`);
     if(credential.configured!==true||credential.keySaved!==true||credential.secureStorageAvailable!==true)
       throw Error('api_key_not_persisted_securely');
-    phase='api_enable_button_available';
-    await wait("!document.getElementById('coordinatorApiEnable').disabled");
-    phase='api_enable_request';
-    await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
-    phase='api_enable_state';
-    await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='true' && !document.getElementById('coordinatorSend').disabled");
-    phase='api_prepare_action_available';
-    if(await evaluate("document.getElementById('prepareWork').disabled"))throw Error('prepare_action_unavailable');
-    phase='api_disable_request';
-    await evaluate(`document.getElementById('coordinatorApiEnable').click()`);
-    phase='api_disable_state';
-    // Disabling Groq must turn off analysis/preparation while leaving the
-    // central composer available through the primary GPT Web executor.
-    await wait("document.getElementById('coordinatorApiEnable').dataset.enabled==='false' && !document.getElementById('coordinatorSend').disabled && document.getElementById('analyzeWorks').disabled && document.getElementById('prepareWork').disabled && document.getElementById('orchestrationConnection').textContent.includes('Groq está desligado.')");
+    phase='groq_auto_available_after_configure';
+    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.enabled===true&&s.configured===true&&!document.getElementById('coordinatorApiEnable')&&!document.getElementById('prepareWork').disabled})()");
     phase='api_key_remove';
     await evaluate(`window.ordax.supervisorRemoveKey()`);
-    phase='api_key_remove_state';
-    await wait("document.getElementById('coordinatorApiEnable').disabled && (async()=>!(await window.ordax.supervisorStatus()).keySaved)()");
+    phase='groq_unavailable_after_key_removal';
+    await wait("(async()=>{const s=await window.ordax.coordinatorChatStatus();return s.enabled===false&&s.configured===false&&!document.getElementById('coordinatorApiEnable')&&document.getElementById('analyzeWorks').disabled&&document.getElementById('prepareWork').disabled})()");
     disposableApiKeyCleanupRequired=false;
     phase='mcp_work_create';
     const summary=await evaluate(`(async()=>{
