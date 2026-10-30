@@ -63,7 +63,7 @@ test("local studio seeds fictional synthetic profiles and product preview record
   const state = await port.initialize();
 
   assert.equal(state.settings.storeName, "Ateliê Aurora");
-  assert.equal(state.catalog.products.find((item) => item.id === "camisa-brisa").imageSrc, "/apps/moda/assets/wearly/product-linen-shirt.jpg");
+  assert.equal(state.catalog.products.find((item) => item.id === "camisa-brisa").imageSrc, undefined);
   assert.equal(state.studio.models.length, 2);
   assert.ok(state.studio.models.every((model) => model.synthetic));
   assert.equal(state.studio.jobs.length, 2);
@@ -173,10 +173,10 @@ test("opening the studio starts a fresh draft with its catalog reference visible
   const html = renderProductStudioPage(state);
 
   assert.match(html, /RASCUNHO LOCAL/);
-  assert.match(html, /MOCK DE CATÁLOGO · WEARLY/);
-  assert.match(html, /Imagem de referência do mock para Camisa Brisa de Linho/);
+  assert.doesNotMatch(html, /assets\/wearly|MOCK DE CATÁLOGO · WEARLY/);
+  assert.match(html, /REFERÊNCIA VISUAL LOCAL/);
   assert.match(html, /studio-profile-silhouette/);
-  assert.match(html, /studio-photo-action">Trocar foto/);
+  assert.doesNotMatch(html, /studio-photo-action">Trocar foto/);
   assert.match(html, /studio-photo-action">Adicionar foto/);
   assert.match(html, /studio-photo-input" type="file"/);
   assert.match(html, /Analise o caimento para destacar as regiões/);
@@ -310,28 +310,23 @@ test("seller-entered elasticity changes only the explicit heuristic tolerance", 
   port.destroy();
 });
 
-test("Wearly reference photos bring the same ten products into catalog, overview, and POS", async () => {
+test("catalog, overview and POS render owned schematic artwork with no third-party image dependencies", async () => {
   const { port } = mockPort();
   const state = await port.initialize();
-  const references = state.catalog.products.filter((product) => product.imageSrc);
+  assert.equal(state.catalog.products.filter((product) => product.imageSrc).length, 0);
 
-  assert.equal(references.length, 10);
   const catalog = renderProductsPage(state);
   const pointOfSale = renderPosPage(state);
   const overview = renderOverviewPage(state);
-  assert.equal((catalog.match(/catalog-product-card/g) ?? []).length, state.catalog.products.length, "the catalog should render an editorial card for every product");
-  assert.equal((catalog.match(/product-art-source/g) ?? []).length, 10);
-  assert.equal((pointOfSale.match(/product-art-source/g) ?? []).length, 10);
-  assert.match(overview, /feature-product-photo/);
-  assert.match(overview, /has-wearly-photo/);
-  const featuredPhotos = [...overview.matchAll(/<img class="feature-product-photo" src="([^"]+)"/g)].map((match) => match[1]);
-  assert.equal(featuredPhotos.length, 4, "overview should lead with four photo references");
-  assert.ok(featuredPhotos.every((src) => references.some((product) => product.imageSrc === src)));
-  assert.ok(overview.indexOf("Peças em destaque") < overview.indexOf("Vendas recentes"), "the photo rail should appear before the operations table");
-  for (const product of references) {
-    assert.ok(catalog.includes(product.imageSrc), product.name + " should use its Wearly reference in the catalog");
-    assert.ok(pointOfSale.includes(product.imageSrc), product.name + " should use its Wearly reference in the point of sale");
+  assert.equal((catalog.match(/catalog-product-card/g) ?? []).length, state.catalog.products.length);
+  for (const html of [catalog, pointOfSale, overview]) {
+    assert.doesNotMatch(html, /\/apps\/moda\/assets\/wearly\//);
+    assert.doesNotMatch(html, /<img[^>]+src="[^"]*wearly/);
   }
+  assert.match(catalog, /art-orbit/);
+  assert.match(pointOfSale, /art-orbit/);
+  assert.match(overview, /Peças em destaque/);
+  assert.ok(overview.indexOf("Peças em destaque") < overview.indexOf("Vendas recentes"));
   port.destroy();
 });
 
@@ -748,7 +743,7 @@ test("older local catalog gains new clothing fixtures and opening stock without 
   assert.equal(migrated.catalog.products.find((item) => item.id === "camisa-brisa").name, "Nome editado na loja local");
   assert.equal(migrated.catalog.products.find((item) => item.id === "camisa-brisa").imageSrc, "/assets/loja/camisa-local.jpg");
   assert.ok(migrated.catalog.products.find((item) => item.id === "blazer-bruma").fitProfile);
-  assert.equal(migrated.catalog.products.find((item) => item.id === "blazer-bruma").imageSrc, "/apps/moda/assets/wearly/product-relaxed-blazer.jpg");
+  assert.equal(migrated.catalog.products.find((item) => item.id === "blazer-bruma").imageSrc, undefined);
   const newVariant = migrated.catalog.products.find((item) => item.id === "blusa-marea").variants[0];
   assert.ok(migrated.inventory.movements.some((item) => item.id === "initial-" + newVariant.sku));
   nextPort.destroy();
