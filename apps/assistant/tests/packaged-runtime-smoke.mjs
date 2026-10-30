@@ -19,7 +19,9 @@ assert.equal(presentation.appVersion, manifest.version);
 assert.equal(presentation.authority, "none");
 assert.equal(presentation.sourceLocale, "pt-BR");
 assert.equal(presentation.singleton, true);
-assert.deepEqual(presentation.translations, {}, "manifest title remains sole product brand authority");
+assert.deepEqual(Object.keys(presentation.translations), ["en-US"]);
+assert.equal(presentation.translations["en-US"].title, manifest.title,
+  "Native catalog translation cannot drift from the app's product identity");
 assert.equal(manifest.owner, "ordaxsystems/ordax-apps");
 assert.equal(existsSync(join(base, "assets", "assistant.css")), true);
 
