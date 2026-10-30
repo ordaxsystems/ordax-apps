@@ -668,11 +668,18 @@ test("Native Aura bounds waiting, reports timeout and observes late upstream fai
   const snapshot = conversation.getSnapshot();
   assert.equal(snapshot.inferencePending, false);
   assert.equal(snapshot.lastError, "response-timeout");
-  assert.equal(snapshot.state, "error");
+  assert.equal(snapshot.state, "ready", "a presentation timeout does not prove that the model is unavailable");
   assert.deepEqual(snapshot.messages.map(entry => entry.text), ["consulta demorada"]);
   lateReject(Error("late upstream failure"));
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(conversation.getSnapshot().lastError, "response-timeout");
+  intelligence.respond = async () => ({
+    schema: INTELLIGENCE_RESPONSE_SCHEMA, text: "resposta válida",
+    engineId: "llama.cpp", modelId: "qwen-test", authority: "none",
+  });
+  await conversation.send("tentar novamente");
+  assert.equal(conversation.getSnapshot().lastError, null);
+  assert.equal(conversation.getSnapshot().messages.at(-1).text, "resposta válida");
   conversation.dispose();
 });
 
