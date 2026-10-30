@@ -8,18 +8,6 @@ import { evaluateGarmentFit, fitDimensionsForKind } from "../../apps/moda/src/do
 export const MAX_LOCAL_PREVIEW_MOVEMENTS = 2048;
 
 const STORAGE_KEY = "ordax.moda.atelie-aurora.preview.v1";
-const WEARLY_IMAGE_BY_PRODUCT_ID = Object.freeze({
-  "camisa-brisa": "product-linen-shirt.jpg",
-  "vestido-serena": "product-slip-dress.jpg",
-  "blusa-marea": "product-oversized-tee.jpg",
-  "jaqueta-duna": "product-cropped-jacket.jpg",
-  "moletom-nuvem": "product-classic-hoodie.jpg",
-  "calca-cargo-vale": "product-cargo-pants.jpg",
-  "tricot-cedro": "product-knit-sweater.jpg",
-  "jeans-horizonte": "product-relaxed-jeans.jpg",
-  "blazer-bruma": "product-relaxed-blazer.jpg",
-  "vestido-lua": "product-knit-midi-dress.jpg",
-});
 const SIZES = Object.freeze({
   Camisa: ["P", "M", "G"],
   Vestido: ["PP", "P", "M", "G"],
@@ -77,11 +65,8 @@ function makeProduct(id, name, category, kind, description, sizes, colors, price
       });
     }
   }
-  const imageName = WEARLY_IMAGE_BY_PRODUCT_ID[id];
-  return {
-    id, name, category, kind, description, tone, active: true, variants,
-    ...(imageName ? { imageSrc: "/apps/moda/assets/wearly/" + imageName } : {}),
-  };
+  // Demo fixtures use owned vector artwork; no third-party photos are bundled.
+  return { id, name, category, kind, description, tone, active: true, variants };
 }
 
 function fitProfile(fabric, stretchPercent, easeByMeasurementCm, measurementsBySize, cut = "Regular") {
