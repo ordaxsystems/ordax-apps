@@ -8,15 +8,19 @@ import {fileURLToPath} from 'node:url';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
 const first="$('#inspectLinkedThread').addEventListener('click', async () => {";
-const last="$('#directMode').addEventListener('click'";
+const last="$('#confirmLinkedReplyRecovery').addEventListener('click',async()=>{";
 const a=ui.indexOf(first),b=ui.indexOf(last,a);
 assert.ok(a>=0 && b>a,'w3_ui_handler_not_found');
 const registration=ui.slice(a,b);
+const recoveryEnd=ui.indexOf("document.querySelectorAll('.right-pane-tab')",b);
+const recoveryRegistration=ui.slice(b,recoveryEnd);
 
 // Execute the actual production UI handler, not a rewritten copy of its logic.
 // No Electron, browser navigation, network, SQLite or provider session required.
 function mount(handler) {
   const status={dataset:{kind:'',reason:'',state:'idle',threadRendered:'false'},textContent:''};
+  const recovery={classList:{add(){},remove(){}},open:false};
+  const recoveryText={textContent:''};
   let listener;
   const button={disabled:false,addEventListener:(event,fn)=>{
     if(event!=='click')throw Error('unexpected_event');
@@ -26,12 +30,14 @@ function mount(handler) {
     currentTaskId:'isolated-fixture',
     currentTask:{chat_url:'https://chatgpt.com/c/11111111-2222-4333-8444-555555555555'},
     window:{ordax:{inspectLinkedThread:handler}},
-    $:id=>id==='#inspectLinkedThread'?button:status,
+    pendingReplyRecovery:null,
+    clearLinkedReplyRecovery(){context.pendingReplyRecovery=null;recovery.classList.add('hidden');recovery.open=false;recoveryText.textContent='';},
+    $:id=>id==='#inspectLinkedThread'?button:id==='#linkedReplyRecovery'?recovery:id==='#linkedReplyRecoveryText'?recoveryText:status,
     friendlyError:()=> 'classified_error'
   };
   vm.runInNewContext(registration,context,{timeout:1500});
   assert.equal(typeof listener,'function');
-  return {status,button,click:()=>listener(),context};
+  return {status,button,recovery,recoveryText,click:()=>listener(),context};
 }
 
 test('W3 actual UI handler requires response attributable to linked Task',async()=>{
@@ -79,6 +85,17 @@ test('W3 UI explains a missing conversation DOM without replaying the request',a
   assert.equal(form.button.disabled,false);
 });
 
+test('W3 UI explains inconclusive evidence without labeling it a provider inspection failure',async()=>{
+  const form=mount(async()=>({kind:'unresolved',inspectionReason:'message_not_observed',threadRendered:false}));
+  await form.click();
+  assert.equal(form.status.dataset.state,'complete');
+  assert.equal(form.status.dataset.reason,'message_not_observed');
+  assert.match(form.status.textContent,/Isso não prova falha de entrega/);
+  assert.match(form.status.textContent,/nenhum reenvio/);
+  assert.equal(form.status.dataset.threadRendered,'false');
+  assert.equal(form.button.disabled,false);
+});
+
 test('W3 UI reports rejected inspection with terminal error, never stale success',async()=>{
   const form=mount(async()=>{throw Error('untrusted_provider_error_details');});
   await form.click();
@@ -89,6 +106,48 @@ test('W3 UI reports rejected inspection with terminal error, never stale success
   assert.equal(form.button.disabled,false);
   assert.equal(form.status.textContent,'Inspeção indisponível: classified_error');
   assert.doesNotMatch(form.status.textContent,/untrusted_provider_error_details/);
+});
+
+test('W3 UI displays a safely escaped recovery preview without importing it',async()=>{
+  const answer='<script>literal GPT response</script>';
+  const form=mount(async()=>({kind:'response_candidate',inspectionReason:'thread_rendered',threadRendered:true,
+    recoveryPreview:{text:answer,responseSha256:'b'.repeat(64)}}));
+  await form.click();
+  assert.equal(form.recoveryText.textContent,answer);
+  assert.equal(form.recovery.open,true);
+  assert.match(form.status.textContent,/nada foi importado ainda/);
+  assert.equal(form.context.pendingReplyRecovery.responseSha256,'b'.repeat(64));
+});
+
+test('W3 UI requires the explicit import action and refreshes the local Task after success',async()=>{
+  let listener=null,importArgs=null,refreshes=0;
+  const status={dataset:{state:'idle'},textContent:''};
+  const button={disabled:false,addEventListener:(_event,fn)=>{listener=fn;}};
+  const recovery={classList:{add(){},remove(){}},open:true};
+  const recoveryText={textContent:'confirmed response'};
+  const task={id:'isolated-fixture',messages:[{role:'assistant',content:'restored'}],checkpoint:'saved',checkpoint_record:{version:3},continuation:{total_messages:2}};
+  const context={
+    pendingReplyRecovery:{taskId:'isolated-fixture',responseSha256:'c'.repeat(64)},
+    currentTaskId:'isolated-fixture',currentTask:null,
+    window:{ordax:{
+      reconcileLinkedReply:async(...args)=>{importArgs=args;return {reconciled:true};},
+      getTask:async()=>task
+    }},
+    $:id=>id==='#confirmLinkedReplyRecovery'?button:id==='#linkedThreadStatus'?status:id==='#linkedReplyRecovery'?recovery:
+      id==='#linkedReplyRecoveryText'?recoveryText:{textContent:'',classList:{add(){}}},
+    clearLinkedReplyRecovery(){context.pendingReplyRecovery=null;recovery.open=false;},
+    friendlyError:()=> 'classified_error',plural:(n,one,many)=>`${n} ${n===1?one:many}`,
+    renderHistory:()=>{refreshes++;},renderContext:()=>{},renderTaskNavigationStatus:()=>{},loadTasks:async()=>{refreshes++;}
+  };
+  vm.runInNewContext(recoveryRegistration,context,{timeout:1500});
+  assert.equal(typeof listener,'function');
+  const pending=listener();
+  await pending;
+  assert.deepEqual(importArgs,['isolated-fixture','c'.repeat(64)]);
+  assert.equal(context.currentTask,task);
+  assert.equal(refreshes,2);
+  assert.match(status.textContent,/importada uma única vez/);
+  assert.equal(button.disabled,false);
 });
 
 test('W3 late result cannot overwrite a different Task navigation',async()=>{

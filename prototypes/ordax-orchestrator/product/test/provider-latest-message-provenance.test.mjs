@@ -74,10 +74,12 @@ test('W3 SQL insertion order remains correct when timestamps are identical',()=>
 test('W3 canonical inspection uses latest message ID, not task-wide receipt',()=>{
   const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
   const start=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
-  const end=main.indexOf("registerUiHandler('ordax:tasks:resume-capsule'",start);
+  const end=main.indexOf("// Exact-profile attestation for Lab E2E",start);
   const handler=main.slice(start,end);
-  assert.match(handler,/SELECT id,content FROM messages WHERE task_id=\? AND role='user'/);
-  assert.match(handler,/ORDER BY rowid DESC LIMIT 1/);
-  assert.match(handler,/messageId:message\?\.id/);
-  assert.doesNotMatch(handler,/sendPrompt\(|requestSubmit\(/);
+  const core=fs.readFileSync(new URL('../src/provider-linked-thread-recovery.mjs',import.meta.url),'utf8');
+  assert.match(handler,/inspectProviderLinkedThread/);
+  assert.match(core,/SELECT id,content FROM messages WHERE task_id=\? AND role='user'/);
+  assert.match(core,/ORDER BY rowid DESC LIMIT 1/);
+  assert.match(core,/messageId:message\?\.id/);
+  assert.doesNotMatch(handler+core,/sendPrompt\(|requestSubmit\(/);
 });

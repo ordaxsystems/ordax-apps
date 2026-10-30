@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron');
+const { providerMessageSelectors, queryProviderMessageNodes } = require('../src/provider-dom-selectors.cjs');
 
 const CHANNEL = 'ordax:worker:stream';
 const READY_CHANNEL = 'ordax:worker:preload-ready';
@@ -25,10 +26,14 @@ function readImages(root, minSize) {
 }
 
 function snapshot() {
-  const nodes = Array.from(document.querySelectorAll('[data-message-role="assistant"], [data-message-author-role="assistant"], [data-message-author="assistant"], [data-chatgpt-selection-message-id]'));
+  const nodes = queryProviderMessageNodes(document, 'assistant', providerMessageSelectors);
   const node = nodes[nodes.length - 1] || null;
-  const userNodes = Array.from(document.querySelectorAll('[data-message-role="user"], [data-message-author-role="user"], [data-message-author="user"], [data-user-message-bubble="true"]'));
-  const latestUserText = String(userNodes.at(-1)?.innerText || userNodes.at(-1)?.textContent || '').trim();
+  const userNodes = queryProviderMessageNodes(document, 'user', providerMessageSelectors);
+  const latestUserNode = userNodes.at(-1) || null;
+  const latestUserExpandControlPresent = Boolean(latestUserNode && Array.from(latestUserNode.querySelectorAll('button,[role="button"]')).some(control =>
+    /^(Mostrar mais|Show more|Mostrar menos|Show less)$/i.test(String(control.innerText || control.textContent || control.getAttribute('aria-label') || '').trim())
+  ));
+  const latestUserText = String(latestUserNode?.innerText || latestUserNode?.textContent || '').trim();
   const generating = Boolean(document.querySelector('button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]'));
   const generatedImages = readImages(document, 64).filter(image => {
     const el = Array.from(document.querySelectorAll('[data-testid="generated-image-preview"] img')).find(img => (img.currentSrc || img.src || '') === image.src);
@@ -38,13 +43,14 @@ function snapshot() {
   // ChatGPT can render a provisional assistant MarkdownRoot before its final
   // message wrapper exists. Only prefer it while generation is active and it
   // is outside the previous assistant message; never mirror general page text.
-  const provisionalMarkdown = Array.from(document.querySelectorAll('[data-markdown-text-style="assistant-message"]')).at(-1);
+  const provisionalMarkdown = Array.from(document.querySelectorAll(providerMessageSelectors.assistant.fallback)).at(-1);
   if (generating && provisionalMarkdown && (!node || !node.contains(provisionalMarkdown))) {
     return {
       mode:'direct',
       assistantCount:nodes.length + 1,
       messageId:'',
       latestUserText,
+      latestUserExpandControlPresent,
       text:cleanText(provisionalMarkdown.innerText || ''),
       rawBody:'',
       images:[...readImages(provisionalMarkdown, 64), ...generatedImages],
@@ -63,6 +69,7 @@ function snapshot() {
       assistantCount: nodes.length,
       messageId,
       latestUserText,
+      latestUserExpandControlPresent,
       text: cleanText((markdown && markdown.innerText) || node.innerText || ''),
       rawBody: '',
       images: [...readImages(node, 64), ...generatedImages].filter((image,index,all) => all.findIndex(other => other.src === image.src) === index),
@@ -79,6 +86,7 @@ function snapshot() {
     mode: 'body',
     assistantCount: 0,
     latestUserText,
+    latestUserExpandControlPresent,
     text: '',
     rawBody: body.slice(-20000),
     images: [...readImages(conversationRoot || document, 128), ...generatedImages].filter((image,index,all) => all.findIndex(other => other.src === image.src) === index),

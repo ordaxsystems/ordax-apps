@@ -2,7 +2,7 @@
 // text, chat content, URLs, account identity or opaque error payloads.
 // A sidebar history failure is not proof that the current conversation failed.
 export function classifyProviderPageAvailability({
-  body='',messageNodes=0,composerPresent=false
+  body='',messageNodes=0,composerPresent=false,verificationAlert=false
 }={}) {
   const text=typeof body==='string' ? body.slice(-5000).normalize('NFC') : '';
   const historyUnavailable=
@@ -14,8 +14,11 @@ export function classifyProviderPageAvailability({
   const currentConversationUnavailable=errorCopy &&
     Number.isSafeInteger(messageNodes) && messageNodes===0 &&
     composerPresent!==true;
+  const browserVerificationRequired=verificationAlert===true&&
+    Number.isSafeInteger(messageNodes)&&messageNodes===0&&composerPresent!==true;
   return {
-    page_state:currentConversationUnavailable ? 'conversation_load_failed' : 'unknown',
+    page_state:browserVerificationRequired ? 'browser_verification_required' :
+      currentConversationUnavailable ? 'conversation_load_failed' : 'unknown',
     history_unavailable:historyUnavailable
   };
 }

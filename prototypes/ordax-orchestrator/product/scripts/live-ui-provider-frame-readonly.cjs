@@ -2,6 +2,7 @@
 // Provider CDP is diagnostic only; only actual OrdaX App UI tests count as certification.
 const {acquireE2ELock}=require('./e2e-lock.cjs');
 const {DEBUG_PORT,readLabDebugTargets,waitForLabUiTarget}=require('./e2e-lab-target.cjs');
+const {providerMessageSelectors,queryProviderMessageNodes,providerMessageQueryBootstrap}=require('../src/provider-dom-selectors.cjs');
 acquireE2ELock('provider-frame-readonly');
 (async()=>{
   await waitForLabUiTarget();
@@ -22,17 +23,18 @@ acquireE2ELock('provider-frame-readonly');
     await new Promise((resolve,reject)=>{
       ws.onopen=resolve;ws.onerror=()=>reject(new Error('lab_provider_cdp_unavailable'));
     });
-    const expression="(()=>({"+
-      "readyState:['loading','interactive','complete'].includes(document.readyState)?document.readyState:'unknown',"+
+    const expression="(()=>{"+
+      providerMessageQueryBootstrap+
+      "return ({readyState:['loading','interactive','complete'].includes(document.readyState)?document.readyState:'unknown',"+
       "bodyPresent:Boolean(document.body),"+
       "pageType:/^\\/c\\/[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(location.pathname)?'conversation':location.pathname==='/'?'home':'other',"+
       "mainPresent:Boolean(document.querySelector('main,[role=\"main\"]')),"+
       "composerPresent:Boolean(document.querySelector('#prompt-textarea,[contenteditable=\"true\"][role=\"textbox\"]')),"+
-      "userNodeCount:Math.min(1000,document.querySelectorAll('[data-message-author-role=\"user\"],[data-message-role=\"user\"],[data-message-author=\"user\"]').length),"+
-      "assistantNodeCount:Math.min(1000,document.querySelectorAll('[data-message-author-role=\"assistant\"],[data-message-role=\"assistant\"],[data-message-author=\"assistant\"]').length),"+
+      "userNodeCount:Math.min(1000,queryProviderMessageNodes(document,'user',providerMessageSelectors).length),"+
+      "assistantNodeCount:Math.min(1000,queryProviderMessageNodes(document,'assistant',providerMessageSelectors).length),"+
       "conversationTurnStructuralCount:Math.min(1000,document.querySelectorAll('[data-testid=\"conversation-turn\"],[data-chatgpt-selection-message-id],[data-message-id]').length),"+
       "backendApiFailureCounts:(()=>{const c={s401:0,s403:0,s404:0,s429:0,s5xx:0};for(const e of performance.getEntriesByType('resource')){try{const u=new URL(e.name);if(u.origin!==location.origin||!u.pathname.startsWith('/backend-api/'))continue;const s=e.responseStatus;if(s===401)c.s401++;else if(s===403)c.s403++;else if(s===404)c.s404++;else if(s===429)c.s429++;else if(s>=500&&s<=599)c.s5xx++;}catch{}}for(const k of Object.keys(c))c[k]=Math.min(1000,c[k]);return c;})()"+
-    "}))()";
+    "});})()";
     const result=await Promise.race([
       new Promise((resolve,reject)=>{
         ws.onmessage=event=>{

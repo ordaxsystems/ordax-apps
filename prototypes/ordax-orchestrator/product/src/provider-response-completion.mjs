@@ -22,11 +22,11 @@ export function createResponseObservationBudget({now=()=>performance.now()}={}) 
 
 export function responseObservationComplete({ candidate, stable, transient, generating }) {
   if (!candidate || (!candidate.text && !candidate.images?.length)) return false;
-  if (transient || generating !== false) return false;
-  return (candidate.complete === true && stable >= 2) || stable >= 4;
+  if (transient || generating !== false || candidate.complete !== true) return false;
+  return stable >= 2;
 }
 
 export function requireObservedCompletion({ candidate, completed }) {
-  if (!candidate) throw new Error('response_not_observed');
-  if (completed !== true) throw new Error('response_completion_unconfirmed');
+  if (!candidate || (!candidate.text && !candidate.images?.length)) throw new Error('response_not_observed');
+  if (candidate.complete !== true || completed !== true) throw new Error('response_completion_unconfirmed');
 }

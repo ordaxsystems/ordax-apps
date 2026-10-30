@@ -3,8 +3,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {isValidGroqKey} from './groq-key-contract.mjs';
 
-const GROQ_KEY=/^gsk_[A-Za-z0-9_-]{20,240}$/;
 export function createLocalGroqCredential({userRoot,safeStorage,fsImpl=fs,platform=process.platform}={}){
   if(typeof userRoot!=='string'||!path.isAbsolute(userRoot))throw Error('supervisor_key_root_invalid');
   const file=path.join(userRoot,'config','groq-key.enc');
@@ -13,12 +13,12 @@ export function createLocalGroqCredential({userRoot,safeStorage,fsImpl=fs,platfo
     if(!isAvailable()||!fsImpl.existsSync(file))return null;
     try{
       const value=safeStorage.decryptString(fsImpl.readFileSync(file));
-      return GROQ_KEY.test(value)?value:null;
+      return isValidGroqKey(value)?value:null;
     }catch{return null;}
   }
   function save(value){
     if(!isAvailable())throw Error('supervisor_secure_storage_unavailable');
-    if(typeof value!=='string'||!GROQ_KEY.test(value))throw Error('supervisor_key_invalid_format');
+    if(!isValidGroqKey(value))throw Error('supervisor_key_invalid_format');
     const dir=path.dirname(file);
     const tmp=file+'.'+randomUUID()+'.tmp';
     try{

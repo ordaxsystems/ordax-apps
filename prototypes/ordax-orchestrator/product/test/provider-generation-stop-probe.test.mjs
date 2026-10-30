@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { providerGenerationStopProbeExpression } from '../src/provider-generation-stop-probe.mjs';
+import { providerGenerationStopProbeExpression, providerHasObservedCompletion, providerResponseControlStateExpression } from '../src/provider-generation-stop-probe.mjs';
 import { responseObservationComplete } from '../src/provider-response-completion.mjs';
 
 function element({testId='',label='',style={},rect={width:24,height:24},hidden=false,parent=null}={}) {
@@ -44,4 +44,24 @@ test('accessible labels are precise and ignore unrelated stop controls',()=>{
   assert.equal(probe([element({label:'Stop speaking'})]),false);
   assert.equal(probe([element({label:'Stop sharing'})]),false);
   assert.equal(probe([element({label:'Parar gravação'})]),false);
+});
+
+test('no visible Stop button alone is not positive completion evidence',()=>{
+  assert.equal(providerHasObservedCompletion({generationStopVisible:false}),false);
+  assert.equal(providerHasObservedCompletion({generationStopVisible:null}),false);
+  assert.match(providerResponseControlStateExpression,/latestAssistant/);
+  assert.match(providerResponseControlStateExpression,/depth<8/);
+});
+
+test('visible final response control or explicit marker confirms only when generation is not active',()=>{
+  assert.equal(providerHasObservedCompletion({generationStopVisible:false,
+    completionControlLabels:['Gerar resposta novamente']}),true);
+  assert.equal(providerHasObservedCompletion({generationStopVisible:null,
+    completionControlLabels:['Regenerate response']}),true);
+  assert.equal(providerHasObservedCompletion({generationStopVisible:false,
+    explicitCompletionMarker:true}),true);
+  assert.equal(providerHasObservedCompletion({generationStopVisible:true,
+    explicitCompletionMarker:true,completionControlLabels:['Gerar resposta novamente']}),false);
+  assert.equal(providerHasObservedCompletion({generationStopVisible:false,
+    completionControlLabels:['Parar de gerar']}),false);
 });

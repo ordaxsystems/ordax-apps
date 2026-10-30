@@ -13,7 +13,7 @@
         <div class="logo">O</div>
         <div class="brand-copy">
           <h1>OrdaX</h1>
-          <p>Orchestrator Lab • memória isolada</p>
+          <p id="brandMode">Orchestrator Lab • carregando ambiente</p>
         </div>
       </header>
 
@@ -76,8 +76,7 @@
           </div>
         </section>
         <div class="footer-actions">
-          <button id="login" class="icon-button" aria-label="Entrar no ChatGPT" title="Entrar no ChatGPT">Entrar</button>
-          <button id="directMode" class="icon-button">Modo direto</button>
+          <button id="login" class="icon-button" aria-label="Entrar no ChatGPT" title="Entrar no ChatGPT">Entrar no ChatGPT</button>
         </div>
         <div class="observer-row">
           <label for="observerMode">Resposta</label>
@@ -89,7 +88,7 @@
           <span id="observerHint">Fast quando disponível.</span>
         </div>
         <details id="hostBrowserControls" class="host-browser-controls" hidden>
-          <summary>Host local ativo</summary>
+          <summary id="hostBrowserStatusSummary">Host local ativo</summary>
           <div class="host-browser-controls-panel">
             <span>O serviço local continua ativo se esta aba for fechada.</span>
             <button id="hostBrowserShutdown" type="button">Encerrar serviço</button>
@@ -107,41 +106,58 @@
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Conversas</button>
             <button id="openOrchestrator" class="ghost-button" type="button" disabled>Orquestrador</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
-            <button id="coordinatorApiSettings" class="ghost-button" type="button">Configurar API</button>
-            <button id="coordinatorApiEnable" class="primary coordinator-enable" type="button" disabled>Ativar chat por API</button>
+            <button id="coordinatorApiSettings" class="ghost-button" type="button" title="Configurar conexão com ChatGPT e Groq">Conectar IA</button>
           </div>
         </header>
         <p id="orchestrationConnection" class="orchestration-connection" role="status"></p>
-        <section id="remoteRepositoryOverview" class="coordinator-analysis-actions remote-repository-panel" aria-label="Repositório GitHub remoto do projeto">
-          <strong>GitHub remoto do projeto</strong>
-          <form id="projectRepositoryForm" class="remote-repository-form">
-            <label class="sr-only" for="projectRepositoryInput">URL do repositório GitHub</label>
-            <input id="projectRepositoryInput" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
-            <button id="saveProjectRepository" class="mini-secondary" type="submit">Salvar repositório</button>
-          </form>
-          <small id="remoteRepositoryStatus" role="status">Vincule um repositório GitHub para orientar as conversas de trabalho.</small>
-          <small>A API recebe somente a URL. As tarefas pedem ao ChatGPT para usar a integração GitHub disponível na sessão. Nenhum arquivo local é lido nesta etapa.</small>
-        </section>
-        <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Workspace local em etapa futura">
-          <strong>Arquivos locais · etapa posterior</strong>
-          <small id="workspaceConnection" role="status">Acesso ao workspace local ainda indisponível; o fluxo GitHub remoto não depende dele.</small>
-          <small id="workspaceEvidence">Nenhum arquivo local é lido ou enviado nesta fase.</small>
-        </section>
-        <div class="coordinator-analysis-actions">
-          <button id="analyzeWorks" type="button" class="mini-secondary" disabled>Analisar conversas</button>
-          <button id="continuityToggle" type="button" class="mini-secondary" disabled>Ativar análise automática</button>
-          <button id="continuityProposalsToggle" type="button" class="mini-secondary" disabled>Propor próximas frentes automaticamente</button>
-          <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
-          <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
-          <small id="analysisScopeHint">Envia ao Groq o contexto do projeto/orquestrador, até quatro conversas recentes e oito mensagens do chat central. Sem anexos ou links; recomendações não executam ações.</small>
+        <div id="orchestrationCapabilitySummary" class="orchestration-capabilities" aria-label="Capacidades disponíveis no Host" hidden>
+          <span id="capabilityGroq" data-state="blocked">Groq · não configurado</span>
+          <span id="capabilityGpt" data-state="blocked">ChatGPT Plan · não conectado</span>
+          <span id="capabilityGitHub" data-state="blocked">GitHub · sem leitura autenticada</span>
+          <span id="capabilityRuntime" data-state="blocked">Runtime · sem conexão</span>
+          <span id="capabilityContinuity" data-state="blocked">24 h · não operacional</span>
         </div>
-        <div id="coordinatorMessages" class="coordinator-messages" aria-live="polite"></div>
+        <details id="orchestrationIntegrations" class="orchestration-integrations">
+          <summary><span>Projeto, conexões e automação</span><small>Configurações e limites de execução</small></summary>
+          <div class="orchestration-integrations-content">
+            <section id="remoteRepositoryOverview" class="coordinator-analysis-actions remote-repository-panel" aria-label="Repositório GitHub remoto do projeto">
+              <strong>GitHub remoto do projeto</strong>
+              <form id="projectRepositoryForm" class="remote-repository-form">
+                <label class="sr-only" for="projectRepositoryInput">URL do repositório GitHub</label>
+                <input id="projectRepositoryInput" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
+                <button id="saveProjectRepository" class="mini-secondary" type="submit">Salvar repositório</button>
+              </form>
+              <small id="remoteRepositoryStatus" role="status">Vincule um repositório GitHub para orientar as conversas de trabalho.</small>
+              <small id="remoteRepositoryCapabilityNote">A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.</small>
+            </section>
+            <section id="workspaceOverview" class="coordinator-analysis-actions" aria-label="Workspace local em etapa futura">
+              <strong>Arquivos locais · etapa posterior</strong>
+              <small id="workspaceConnection" role="status">O workspace local ainda não está conectado. Nenhum arquivo local é lido nesta fase.</small>
+              <small id="workspaceEvidence">Nenhum arquivo local é lido ou enviado nesta fase.</small>
+            </section>
+            <div class="coordinator-analysis-actions">
+              <button id="analyzeWorks" type="button" class="mini-secondary" disabled>Analisar conversas</button>
+              <button id="continuityToggle" type="button" class="mini-secondary" disabled>Ativar análise automática</button>
+              <button id="continuityProposalsToggle" type="button" class="mini-secondary" disabled>Propor próximas frentes automaticamente</button>
+              <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
+              <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
+              <button id="startAutonomousDialogue" type="button" class="mini-primary" disabled>Executar missão autônoma (2 perguntas GPT)</button>
+              <button id="startAutonomousStory" type="button" class="mini-secondary" disabled>Criar história colaborativa (2 ciclos, 4 cenas GPT)</button>
+              <small id="autonomousDialogueState" role="status" aria-live="polite">Escolha diálogo de duas mensagens ou história de quatro cenas. Uma missão inicial autoriza no máximo duas conversas GPT. O Groq planeja e interpreta as respostas sem novos comandos; falhas incertas bloqueiam reenvio.</small>
+              <small id="analysisScopeHint">Envia ao modelo conectado o contexto limitado do projeto e do orquestrador. Sem anexos ou links; recomendações não executam ações.</small>
+            </div>
+          </div>
+        </details>
+        <div id="coordinatorMessages" class="coordinator-messages" aria-live="polite">
+          <div id="coordinatorRecoveryNotice" class="coordinator-recovery hidden" role="status" aria-live="polite"></div>
+        </div>
         <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
         <form id="coordinatorComposer">
           <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>
           <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Converse com o orquestrador..." required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao orquestrador" disabled>↑</button>
         </form>
+        <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
       <section id="taskPanel" class="task-panel hidden">
@@ -168,6 +184,12 @@
           </div>
         </header>
         <p id="linkedThreadStatus" class="composer-hint" role="status" aria-live="polite"></p>
+        <details id="linkedReplyRecovery" class="linked-reply-recovery hidden">
+          <summary>Resposta completa encontrada no ChatGPT, ainda fora do histórico OrdaX</summary>
+          <p>Confira o texto. Ao importar, o app verificará a mesma conversa novamente e registrará a resposta uma única vez.</p>
+          <pre id="linkedReplyRecoveryText"></pre>
+          <button id="confirmLinkedReplyRecovery" class="mini-primary" type="button">Importar resposta verificada no histórico</button>
+        </details>
         <div id="recoveryBanner" class="recovery hidden"></div>
         <details id="provisionalResponse" class="provisional-response hidden">
           <summary>Texto observado antes da interrupção — não verificado</summary>
@@ -185,6 +207,7 @@
           <div id="composerConnection" class="composer-connection" data-state="unverified" role="status" aria-live="polite">
             <span id="composerConnectionText">Verificando a sessão do ChatGPT. O rascunho é salvo localmente.</span>
             <button id="composerLogin" type="button" class="mini-secondary">Entrar no ChatGPT</button>
+            <button id="recoverProviderConversation" type="button" class="mini-primary" hidden>Continuar em conversa nova</button>
           </div>
           <form id="composer" class="composer">
             <textarea id="prompt" rows="1" placeholder="Pergunte, crie ou continue o trabalho…"></textarea>
@@ -202,16 +225,41 @@
 
       <section id="empty" class="empty">
         <div class="empty-mark">O</div>
-        <h2>Comece uma conversa que pode continuar amanhã.</h2>
-        <p>Um único histórico para seu projeto, com decisões, checkpoints, arquivos e memória local. O OrdaX gerencia automaticamente as conversas internas quando necessário.</p>
+        <h2>Um projeto, um histórico que você pode retomar.</h2>
+        <p>Missões e rascunhos ficam salvos no projeto. Para o Orquestrador executar trabalho, a conexão de modelo e os recursos autorizados precisam estar disponíveis.</p>
         <button class="primary empty-create" type="button" data-create-task>Nova conversa</button>
       </section>
     </section>
 
     <aside id="contextRail" class="context-rail">
+      <nav id="rightPaneTabs" class="right-pane-tabs" aria-label="Painel de trabalho" role="tablist">
+        <button id="providerPaneTab" class="right-pane-tab active" type="button" role="tab" aria-selected="true" aria-controls="providerPanel" data-pane="provider">ChatGPT</button>
+        <button id="previewPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" data-pane="preview">Preview</button>
+        <button id="contextPaneTab" class="right-pane-tab" type="button" role="tab" aria-selected="false" aria-controls="contextPanel" data-pane="context">Projeto</button>
+      </nav>
+      <section id="providerPanel" class="right-pane-panel provider-panel" role="tabpanel" aria-labelledby="providerPaneTab">
+        <div class="provider-toolbar" aria-label="Navegação do ChatGPT">
+          <div class="provider-navigation">
+            <button id="providerBack" type="button" aria-label="Voltar uma página" title="Voltar" disabled>←</button>
+            <button id="providerForward" type="button" aria-label="Avançar uma página" title="Avançar" disabled>→</button>
+            <button id="providerReload" type="button" aria-label="Recarregar página" title="Recarregar">↻</button>
+            <button id="providerHome" type="button" aria-label="Nova conversa no ChatGPT" title="Nova conversa">＋</button>
+          </div>
+          <button id="providerClose" class="provider-close" type="button" aria-label="Fechar navegador do ChatGPT" title="Fechar navegador e voltar ao OrdaX">×</button>
+        </div>
+        <div class="provider-address" aria-live="polite"><span class="provider-address-dot"></span><span id="providerAddressText">ChatGPT · sessão isolada do OrdaX</span></div>
+        <div id="providerViewport" class="provider-viewport">
+          <div id="providerViewportPlaceholder" class="provider-viewport-placeholder"><strong>ChatGPT Web</strong><span>Conecte sua sessão para acompanhar a conversa nesta coluna.</span><button id="providerPaneLogin" type="button" class="mini-primary">Entrar no ChatGPT</button></div>
+        </div>
+      </section>
+      <section id="previewPanel" class="right-pane-panel preview-panel" role="tabpanel" aria-labelledby="previewPaneTab" hidden>
+        <div class="preview-state-card"><span class="eyebrow">Preview do projeto</span><h3>Runtime ainda não forneceu uma visualização</h3><p>Quando houver um preview autorizado do workspace pelo Runtime, ele aparecerá aqui. Esta tela não cria servidor nem simula arquivos.</p><span id="previewRuntimeState" class="preview-runtime-state">Aguardando conexão do Runtime</span></div>
+      </section>
+      <div id="contextPanel" class="right-pane-panel context-panel" role="tabpanel" aria-labelledby="contextPaneTab" hidden>
       <section id="orchestratorWorkRail" class="orchestrator-work-rail" hidden aria-label="Conversas do projeto no GPT">
-        <header class="work-rail-head"><div><span class="eyebrow">Projeto ativo</span><h3>Conversas no GPT</h3></div><span id="workRailCount" class="work-rail-count">0</span></header>
+        <header class="work-rail-head"><div><span class="eyebrow">Projeto ativo</span><h3 id="workRailTitle">Conversas no GPT</h3></div><div class="work-rail-head-actions"><span id="workRailCount" class="work-rail-count">0</span><button id="closeWorkRail" class="work-rail-close" type="button" aria-label="Fechar frentes de trabalho">×</button></div></header>
         <p id="workRailProject" class="work-rail-project"></p>
+        <p id="workPlanSummary" class="work-plan-summary" role="status" aria-live="polite">Planejamento do projeto não consultado.</p>
         <button id="newScopedWorkButton" class="primary new-gpt-conversation" type="button">＋ Nova conversa no GPT</button>
         <details id="newScopedWorkDetails" class="new-work-details">
           <summary>Configurar nome da conversa</summary>
@@ -221,8 +269,22 @@
             <button class="primary" type="submit">Criar e abrir conversa</button>
           </form>
         </details>
-        <div id="orchestratorWorks" class="orchestrator-works" aria-live="polite"></div>
-        <p class="work-rail-note">Cada conversa mantém o próprio histórico dentro do projeto.</p>
+        <details id="workDependencyEditor" class="work-dependency-editor">
+          <summary>Organizar dependências</summary>
+          <form id="workDependencyForm">
+            <p>Escolha uma frente que ainda não foi executada e marque quais trabalhos precisam terminar antes dela.</p>
+            <label for="dependencyTarget">Frente a organizar</label>
+            <select id="dependencyTarget" required aria-describedby="dependencyEditNote"></select>
+            <fieldset>
+              <legend>Pré-requisitos</legend>
+              <div id="dependencyCandidates" class="work-dependency-candidates"></div>
+            </fieldset>
+            <button id="saveWorkDependencies" class="mini-primary" type="submit">Salvar dependências</button>
+            <small id="dependencyEditNote" role="status" aria-live="polite">Nenhum envio ao GPT é realizado ao salvar.</small>
+          </form>
+        </details>
+        <div class="work-toolbar"><label class="sr-only" for="workSearch">Buscar frentes de trabalho</label><input id="workSearch" type="search" autocomplete="off" placeholder="Buscar frentes..." aria-controls="orchestratorWorks" /><label class="sr-only" for="workStatusFilter">Filtrar por estado</label><select id="workStatusFilter" aria-label="Filtrar frentes por estado"><option value="all">Todos os estados</option><option value="running">Em andamento</option><option value="completed">Concluídas</option><option value="attention">Precisam de revisão</option><option value="ready">Aguardando</option></select></div><div id="workFilteredCount" class="work-filter-count" role="status" aria-live="polite"></div><div id="orchestratorWorks" class="orchestrator-works" aria-live="polite"></div>
+        <p id="workRailNote" class="work-rail-note">Cada conversa mantém o próprio histórico dentro do projeto.</p>
       </section>
       <header class="context-head">
         <div>
@@ -316,21 +378,30 @@
         <div id="conversationTimeline" class="conversation-timeline">
           <div class="context-empty">A primeira conversa será registrada ao enviar uma mensagem.</div>
         </div>
-        <button id="rotateConversation" class="mini-secondary" type="button">Preparar outra sessão interna</button>
+        <button id="rotateConversation" class="mini-secondary" type="button">Abrir outro chat GPT</button>
       </details>
       <details class="context-section" id="labSupervisorPanel">
-        <summary class="section-title-row"><span>Supervisor OrdaX Lab</span></summary>
+        <summary class="section-title-row"><span>Configurações do Orquestrador</span></summary>
         <button id="closeCoordinatorApiSettings" class="mini-secondary coordinator-settings-back" type="button">Voltar às conversas</button>
         <p id="labVersion" class="diagnostics-hint">Versão do Lab indisponível</p>
         <p id="labSupervisorState" class="diagnostics-hint">Verificando supervisor...</p>
+        <section id="chatgptPlanSettings" class="context-section chatgpt-plan-settings" aria-label="Conexão com ChatGPT">
+          <h4>ChatGPT Plan</h4>
+          <p id="chatgptPlanState" role="status" aria-live="polite" class="diagnostics-hint">Verificando conexão segura…</p>
+          <div class="memory-editor-actions">
+            <button type="button" class="mini-primary" id="chatgptPlanConnect">Continuar com ChatGPT</button>
+            <button type="button" class="mini-secondary" id="chatgptPlanDisconnect" hidden>Desconectar</button>
+          </div>
+          <p class="diagnostics-hint">A autorização oficial permite ao chat coordenador do OrdaX fazer inferências com o plano ChatGPT elegível, sem chave de API. O login acontece nesta aba e os tokens ficam no cofre seguro do sistema. Isso não abre suas conversas existentes do ChatGPT nem conecta, por si só, o envio às frentes de trabalho.</p>
+        </section>
         <label for="labSupervisorRole">Papel desta conversa</label>
         <select id="labSupervisorRole" aria-describedby="labRoleDescription" disabled>
           <option value="none">Sem papel definido</option>
         </select>
         <p id="labRoleDescription" role="status" class="diagnostics-hint">Selecione uma tarefa para preparar seu papel. Isso não inicia a IA.</p>
         <details id="labSupervisorKeySettings" class="context-section">
-          <summary>Chave API do supervisor (Groq)</summary>
-          <p class="diagnostics-hint">Usada pelo chat de coordenação e pelo planejador Groq. Não é a senha do ChatGPT; salvar não faz chamadas à API nem ativa comandos.</p>
+          <summary>Chave da API Groq</summary>
+            <p class="diagnostics-hint">Provedor alternativo de coordenação, separado do login ChatGPT Plan. A chave Groq deste Host fica somente na memória do processo e não persiste depois que ele fecha.</p>
           <form id="labSupervisorKeyForm" autocomplete="off">
             <label for="labSupervisorKeyInput">Chave Groq</label>
             <input id="labSupervisorKeyInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="gsk_..." maxlength="244" aria-describedby="labSupervisorKeyState" />
@@ -352,17 +423,23 @@
         </div>
         <pre id="labSupervisorProposal" role="status" aria-live="polite" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
       </details>
+      </div>
     </aside>
   </main>
   <section id="hostBrowserSessionNotice" class="host-browser-session-notice" role="alert" aria-live="assertive" hidden>
     <h1 id="hostBrowserSessionTitle">Validando a sessão local…</h1>
     <p id="hostBrowserSessionMessage">Aguarde enquanto o OrdaX valida esta aba.</p>
   </section>
+  <section id="hostBrowserOfflineNotice" class="host-browser-offline-notice" role="alert" aria-live="assertive" hidden>
+    <strong id="hostBrowserOfflineTitle">Host local desconectado</strong>
+    <p id="hostBrowserOfflineMessage">Esta aba pode mostrar dados desatualizados. As ações estão bloqueadas até a conexão voltar.</p>
+  </section>
   <dialog id="hostBrowserConfirmation" class="host-browser-confirmation">
     <form method="dialog">
       <h2 id="hostBrowserConfirmationTitle"></h2>
       <p id="hostBrowserConfirmationMessage"></p>
       <pre id="hostBrowserConfirmationDetail"></pre>
+      <p id="hostBrowserConfirmationStatus" class="host-browser-confirmation-status" role="status" aria-live="polite" hidden></p>
       <div class="host-browser-confirmation-actions">
         <button id="hostBrowserConfirmationCancel" type="submit" value="cancel">Cancelar</button>
         <button id="hostBrowserConfirmationApprove" type="submit" value="approve">Confirmar</button>
@@ -373,4 +450,3 @@
   <script type="module" src="./ui.js"></script>
 </body>
 </html>
-

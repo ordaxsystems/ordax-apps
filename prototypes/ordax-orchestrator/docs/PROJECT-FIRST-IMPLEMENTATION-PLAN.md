@@ -1,6 +1,6 @@
 # Plano de execução — OrdaX Orchestrator Project-First
 
-**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Bases conferidas em 2026-10-24: Apps `31cf14b`, Runtime `af5b3a3`, Platform `3ae5d91`, OS `1192ae9`.
+**Estado:** roteiro aprovado como direção de produto, **não execução comprovada**. Leia [RFC de arquitetura](PROJECT-FIRST-ARCHITECTURE.md) antes de tocar no código; [handoff Codex](../CODEX-HANDOFF.md) define o próximo incremento. **Owner:** Apps (PR #268 mesclada), com dependências Runtime/Platform/OS em seus contratos canônicos. Bases remotas conferidas em 2026-10-24: Apps `5d033e4`, Runtime `d12f28d`, Platform `3ae5d91`. A candidata alpha.19 adiciona somente a superfície Host Node e extração compartilhada; não habilita modelo/GitHub, workspace ou execução 24 h.
 
 ## Regras do programa
 

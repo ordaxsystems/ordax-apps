@@ -7,14 +7,20 @@ O produto deve retomar etapas limitadas sem depender de um turno ou da janela do
 ### Prioridade revisada: GitHub remoto antes de workspace local (2026-10-22)
 
 O proprietário definiu que a primeira etapa de uso deve começar por um projeto
-vinculado a um repositório GitHub remoto. A conversa do coordenador continua
-usando a API já existente; as conversas de trabalho continuam usando o executor
-ChatGPT já existente. O App pode guardar e encaminhar a URL canônica como
-referência, mas a API Groq não consulta arquivos GitHub e a URL não é evidência
-de leitura ou alteração. A tarefa enviada ao ChatGPT deve identificar o remoto
-e usar somente a integração GitHub realmente disponível naquela sessão; se ela
-não estiver conectada ou não tiver permissão, o trabalho deve parar e informar o
-bloqueio. Arquivos locais, Git local e Runtime passam para uma etapa posterior.
+vinculado a um repositório GitHub remoto. A conversa lógica principal do projeto
+usa o executor real do ChatGPT Web já pertencente ao Apps/Electron; várias
+conversas físicas do GPT continuam sendo uma única conversa lógica persistida no
+App. Groq/API é opcional: pode atuar em análise consultiva e só pode substituir
+uma mensagem GPT quando a checagem de saúde permitida prova que o envio não
+ocorreu. Entrega `submitted` ou `uncertain` nunca aciona fallback nem replay.
+
+O App pode guardar e encaminhar a URL canônica como referência, mas URL ou
+resposta textual não comprovam leitura/alteração. A tarefa enviada ao ChatGPT
+deve identificar o remoto e usar somente a integração GitHub realmente
+disponível naquela sessão; se ela não estiver conectada ou não tiver permissão,
+o trabalho deve parar e informar o bloqueio. O Host Node não possui o transporte
+GPT Web e não pode ser apresentado como prova desse fluxo. Arquivos locais, Git
+local e Runtime continuam na etapa posterior, pelos owners e grants existentes.
 
 Esta prioridade não autoriza criar OAuth, token store ou conector GitHub paralelo:
 acesso autenticado da aplicação precisa reutilizar um contrato público do owner
@@ -26,12 +32,53 @@ ou execução sem evidência.
 
 **Arquitetura final autorizada:** o OrdaX Orchestrator gerencia projetos reais, acompanha Git/alterações/testes e usa o GPT como ferramenta, sem duplicar Runtime. Para acesso local, consome capacidades tipadas do owner **ordax-runtime** e grants dos owners **ordax-platform/OS**. A ordem atual é remota primeiro, conforme a decisão de 2026-10-22 acima; binding local, watcher, executor de missão e autonomia permanecem fases posteriores, ainda não concluídas.
 
-**Primeiro gate atual:** criar/vincular URL GitHub remota, manter conversa pela API existente e encaminhar o destino às tarefas GPT sem inventar acesso ou efeito. A URL é só referência: Groq não lê GitHub. Integração GitHub autenticada do App depende do contrato público do Platform, sem OAuth ou token store duplicado. PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) foi mesclada; preservar Flow/Grátis e envio VESTE incerto. Fontes:
+**Primeiro gate atual:** criar/vincular URL GitHub remota, manter a conversa principal no executor GPT Web já existente e encaminhar o destino remoto sem inventar acesso ou efeito. Groq permanece opcional e não lê GitHub. Integração GitHub autenticada do App depende do contrato público do Platform, sem OAuth ou token store duplicado. PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) foi mesclada; preservar Flow/Grátis e envio VESTE incerto. Fontes:
 [RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md),
 [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md),
 [handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md),
 [aceite VESTE](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
 Os incrementos de chat/alpha.10 descritos abaixo são **histórico e fundação**, não conclusão dessa arquitetura.
+
+## Prova real de continuidade ChatGPT Web — 2026-10-25
+
+Em Electron de desenvolvimento da worktree e perfil staged isolado, o smoke
+`live-ui-continuity-smoke.cjs` enviou duas mensagens reais ao ChatGPT Web, girou
+para um segundo segmento e comprovou recuperação de um marcador via checkpoint
+local do mesmo Task. Após fechar/reabrir o candidato, a sessão, o Task, os dois
+segmentos e as quatro mensagens foram recuperados; `SQLite quick_check=ok`.
+`npm run validate` terminou com 471/471 testes. O ciclo também corrigiu a criação
+não serializada de janelas Electron e a seleção ambígua do alvo CDP.
+
+Limites: sessão observada como `session_present`, identidade/conta `not_verified`;
+nenhuma troca real de conta, projeto VESTE, GitHub, workspace Runtime/Platform,
+site, pacote instalável ou execução 24 h foi comprovada. Esta evidência é um gate
+do transporte Web experimental em Electron; **não** fecha R0 remoto nem o aceite
+de VESTE. Detalhes e IDs estão no [handoff](prototypes/ordax-orchestrator/CODEX-HANDOFF.md)
+e no [roteiro E2E](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
+
+## Snapshot local para handoff entre conversas — 2026-10-25
+
+O Orchestrator agora expõe `Store.buildTaskHandoffSnapshot(taskId, {request})`,
+que projeta do SQLite vigente um arquivo textual `.txt` determinístico em
+memória: checkpoint, todas as memórias ativas, até oito mensagens históricas
+selecionadas dentro da Task, IDs de origem e hash SHA-256. Memórias arquivadas,
+conteúdo do transcript completo e fontes de outra Task não são exportados; o
+limite de 1 MB falha fechado sem truncar. O manifesto contém somente IDs,
+versão, hash e tamanho, e indica `deliveryState=not_attached`.
+
+`npm run validate` passou com **511/511 testes**, incluindo três novos testes de
+determinismo, escopo de fontes, isolamento entre Tasks e limite de tamanho. O
+E2E GPT Web 9+1 registrado em [VESTE E2E 3.4](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md)
+continuou sem anexo: o contexto inline foi suficiente e não demonstrou benefício
+de arquivo.
+
+Limite: o snapshot existe apenas como valor em memória retornado pelo Store; o
+Lab ainda não grava nem anexa o arquivo, não observa upload na conversa GPT e não
+vincula uma confirmação a um Run. O próximo aceite de arquivo deve comparar
+recuperação seletiva, pacote inline e `.txt` com a mesma pergunta e gabarito;
+depois, um E2E deve comprovar upload observável e hash/version/source ligados ao
+Run. A identidade da conta GPT permanece `not_verified`; nenhuma autonomia 24 h
+foi comprovada.
 
 ---
 
@@ -728,26 +775,17 @@ A conversa sincronizada continua usando ChatGPT Web. O projeto passou de modal a
 
 O workspace avançado Studio foi preservado; sua adoção completa e o host Windows canônico exigem paridade no Runtime. Não portar informalmente pairing, grants ou execution authority. Fonte local e pacote portátil não representam publicação/ativação. Critérios de aceite, contratos, riscos e matriz de recursos em [STUDIO-CONVERSATION-REPLACEMENT.md](docs/STUDIO-CONVERSATION-REPLACEMENT.md).
 
-### OrdaX 3D — inspeção do percurso no Visualizador G-code (2026-10-26)
+### OrdaX Food — cronologia do histórico de pedidos (2026-10-26)
 
-- O Visualizador usa o parser compartilhado com Prepare para selecionar a camada verticalmente e percorrer seus trechos com um controle horizontal. O trecho atual e o bico são destacados; o caminho futuro fica esmaecido.
-- A inspeção é local e somente leitura. Nenhum job, arquivo, saldo de Inventory, owner, SSOT, integração ou elegibilidade de distribuição foi alterado.
-- Dois testes cobrem limites do progresso e localização do trecho atual; suíte 3D: 124/124. `node --check` e `git diff --check` aprovados; host da PR verificado.
+- O histórico de Pedidos ordena uma cópia dos registros por `createdAt` decrescente, sem depender da ordem de append do estado. Datas válidas ficam à frente de datas ausentes/inválidas; empates preservam a ordem estável. A fixture local agora alinha horários à sequência dos números de pedido.
+- A regressão prova a ordenação quando o snapshot chega fora de ordem, preserva registros sem data interpretável e confere a cronologia da fixture. Suíte Food: 71/71; `node --check` e `git diff --check` aprovados.
+- Host da PR em `http://127.0.0.1:4257/apps/food-pizzeria/` conferido sem criar pedido. Mudança somente de leitura/apresentação e dados fictícios locais; Food segue dono do pedido alimentar/produção no domínio vertical, Inventory do saldo/movimentações e os providers comerciais continuam pendentes.
 
-### OrdaX 3D — seletor acessível de camadas G-code (2026-10-26)
+### OrdaX Food — linha do tempo da prévia local (2026-10-26)
 
-- O controle vertical comunica camadas em numeração humana (1 a N) e sincroniza seu aria-valuetext com a camada selecionada, preservando o índice interno do parser.
-- A suíte passou com 126/126 testes; node --check e git diff --check passaram. No host da branch da PR em http://127.0.0.1:4313/?area=visualizador-gcode, confirmei valor 1/rótulo “Camada 1 de 4”, avanço para valor 2/rótulo “Camada 2 de 4” e retorno à camada 1.
-- O arquivo permanece local e somente leitura; owners, SSOT e elegibilidade de distribuição não mudaram.
+- Amostras de pedidos que ficavam abertas por dias no navegador agora mantêm uma linha do tempo coerente ao reabrir o host: após 12 horas, o adapter local ajusta somente timestamps de pedidos seed sem transições próprias e da comanda aberta associada.
+- Estados, histórico editado pela pessoa, diário de idempotência e dados não pertencentes à amostra são preservados. Esse ajuste é local à prévia; não atualiza pedidos reais, Sales, Inventory ou Space.
+- `node --test apps/food-pizzeria/tests/*.test.mjs`: 72/72; `node --check` e `git diff --check` aprovados.
+- Smoke no host local da branch em `http://127.0.0.1:4258/apps/food-pizzeria/`: a interface montou e a amostra exibiu horários atuais. Nenhuma transição foi executada.
+- Nenhuma autoridade comercial ou elegibilidade de distribuição foi alterada; a transformação só ocorre no adapter `browser-local-preview`.
 
-### OrdaX 3D — inferência de camadas sem marcadores (2026-10-26)
-
-- O parser compartilhado do Prepare/Visualizador passa a inferir uma nova camada somente em extrusão positiva quando o G-code não contém marcadores de camada. Z-hop, travel e retração não inflam mais a contagem; marcadores explícitos continuam sendo autoridade.
-- Dois testes cobrem G-code sem marcadores e precedência dos marcadores explícitos. Suíte completa do OrdaX 3D no worktree da PR: 128/128; `node --check` e `git diff --check` aprovados. O workflow 40274456096 passou no gate MVP e falhou no workspace-boundary por dois testes de Food (`apps/food-pizzeria/tests/cart-pricing.test.mjs`, erro “Atualização do sabor antecede sua criação”), fora da mudança 3D.
-- Correção local de interpretação; sem alteração de arquivos enviados, jobs técnicos, hardware, Inventory, outros owners ou elegibilidade de distribuição.
-
-### OrdaX 3D — resultado estimado por peça e no job técnico (2026-10-26)
-
-- O Preview passa a mostrar o resultado financeiro estimado junto do custo e do preço mínimo/de referência do prato e de cada peça fatiada individualmente. O snapshot normalizado leva resultado unitário e total para a Fila técnica.
-- O orçamento avulso continua usando peso/tempo informados, material, impressora, perda, energia, depreciação, manutenção, operação, acabamento, embalagem, taxas e markup/margem. O cálculo permanece local e técnico: não cria preço aprovado, venda, cobrança, lançamento financeiro ou movimentação de Inventory.
-- Suíte OrdaX 3D: 157/157; módulos alterados aprovados em `node --check`, `git diff --check` aprovado; verificador do MVP encontrou 20 alvos, 18 candidatos sem assinatura e 2 bloqueios estruturais documentados. No host local `:4354`, entrada manual de 28,6 g e 2,5 h apresentou R$ 3,99 de custo, R$ 5,38 de referência e R$ 1,40 de resultado esperado; nada foi salvo. Depreciação foi indicada pendente porque aquisição/residual estavam sem configuração. O Orca local não estava disponível, portanto não houve fatiamento real nesta rodada.

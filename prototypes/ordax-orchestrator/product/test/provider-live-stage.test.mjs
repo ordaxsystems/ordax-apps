@@ -8,9 +8,9 @@ function fixture() {
   const node={dataset:{},querySelector:selector=>selector==='.live-content'?content:null};
   return {content,status,node,options:{getNode:id=>id==='live-test'?node:null,statusElement:status}};
 }
-test('six distinct phases appear, including waiting for ChatGPT', () => {
+test('provider stages appear distinctly, including file handoff and waiting for ChatGPT', () => {
   const { content,status,options }=fixture();
-  const stages=['health','prepare','baseline','submit','await-response','assets'];
+  const stages=['health','prepare','baseline','context-attachment','submit','await-response','assets'];
   for(const stage of stages) {
     assert.equal(renderLiveStage({runId:'test',stage,at:3000,runStartedAt:1000},options),true);
     assert.equal(content.textContent,RUN_STAGE_TEXT[stage]);

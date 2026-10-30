@@ -5,11 +5,12 @@ import vm from 'node:vm';
 import {Store} from '../src/store.mjs';
 import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
 import {findProviderSubmissionProvenance,recordProviderSubmissionProvenance} from '../src/provider-submission-provenance.mjs';
+import {inspectProviderLinkedThread} from '../src/provider-linked-thread-recovery.mjs';
 
 const link='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';
 const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
 const start=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
-const end=main.indexOf("registerUiHandler('ordax:tasks:resume-capsule'",start);
+const end=main.indexOf("// Exact-profile attestation for Lab E2E",start);
 assert.ok(start>=0&&end>start,'W3 canonical handler not found');
 const handlerSource=main.slice(start,end);
 
@@ -28,7 +29,7 @@ function fixture(t) {
     registerUiHandler:(name,fn)=>registered.set(name,fn),
     requireTrustedSupervisorRenderer:()=>{},
     liveRun:null,store,worker,canonicalProviderChatUrl,
-    findProviderSubmissionProvenance,
+    findProviderSubmissionProvenance,inspectProviderLinkedThread,
     assessProviderConversationEvidence:()=>({
       kind:'unavailable',reason:'thread_dom_not_ready',
       responseCandidate:false,requiresReconciliation:true
@@ -86,9 +87,11 @@ test('W3 valid latest-turn receipt retains a single authorized read-only inspect
   assert.equal(result.inspectionReason,'thread_dom_not_ready');
   assert.equal(x.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,1);
 });
-test('W3 missing-receipt check comes before any call that loads a provider URL',()=>{
- const guard=handlerSource.indexOf('if (!provenance) return {');
- const navigate=handlerSource.indexOf('worker.inspectConversationReadOnly(');
- assert.ok(guard>0&&navigate>guard);
+test('W3 canonical inspection checks the latest receipt before any provider navigation',()=>{
+ const implementation=fs.readFileSync(new URL('../src/provider-linked-thread-recovery.mjs',import.meta.url),'utf8');
+ const guard=implementation.indexOf('if(!provenance)return {');
+ const navigate=implementation.indexOf('worker.inspectConversationReadOnly(');
+ assert.ok(guard>=0&&navigate>guard);
+ assert.match(handlerSource,/inspectProviderLinkedThread\(\{store,worker,taskId:requestedId\}\)/);
  assert.doesNotMatch(handlerSource,/sendPrompt\(|requestSubmit\(|\.reload\(/);
 });

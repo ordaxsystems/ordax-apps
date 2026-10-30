@@ -13,12 +13,18 @@ e/ou atalhos de autoridade.
 | Vendas | `apps/sales/src/domain/orders.mjs` | Pedido, linhas, preço unitário em centavos, estados draft/confirmed/cancelled, histórico imutável | Não recebe pagamento, não lança movimento financeiro, não reserva estoque |
 | Estoque | `apps/inventory/src/domain/movements.mjs` | Recebimento, baixa, estorno, quantidade não negativa por SKU, histórico imutável | Não cobra, não vende, não baixa produto a partir de texto de IA |
 
-Uma Pizzaria, uma loja de roupas ou uma gráfica 3D utilizarão o
-**mesmo source de cada aplicativo**, com dados diferentes **por empresa e
-Space autorizado**. `Profile Pack` indica compatibilidade, conhecimento e
-recomendações; não se torna dono de Finanças/Vendas/Estoque. O catálogo de
-profissões (`ordax-os/system/profile-packs/taxonomy.json`) continua o SSOT
-de categorias/nichos; não recriar categorias aqui.
+Os aplicativos **horizontais aplicáveis** (como Finance e Inventory)
+utilizam o mesmo source entre os Spaces, com dados isolados por empresa e
+Space autorizado. O livro genérico Sales é owner apenas dos pedidos que
+efetivamente forem contratados/processados **pelo domínio Sales**. Quando
+o merchant usa **OrdaX Food como provedor de pedidos**, os planos do owner OS
+`FOOD-001` e `ACHEGUESE-001` atribuem o pedido canônico ao Food Order Core.
+Nesse caso, Sales pode receber uma projeção comercial autorizada, mas **não**
+manter outro pedido mestre ou executar dual-write. Essa é a arquitetura
+prevista, ainda sem contratos públicos e integração comercial homologados.
+`Profile Pack` seleciona capacidades, não possui Finance, Orders nem Inventory.
+O catálogo de profissões
+(`ordax-os/system/profile-packs/taxonomy.json`) continua o SSOT de categorias/nichos.
 
 ### Integridade do MVP de domínio
 

@@ -151,9 +151,13 @@ test('coordinator work proposal survives restart and approval creates exactly on
     return {content:'Revisar proposta',proposal:{title:'Investigar erro',content:'Analise o erro sem alterar arquivos.',reason:'Separar a investigação'}};
   }},provider:{send:()=>{sends++;throw Error('must not send');}}}),a=await project(f),b=await project(f,'B');
   const before=f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n;
-  const input={projectId:a.p,orchestratorId:a.o,content:'Prepare uma investigação',requestId:'prepare-once'};
+  f.store.setDraft(a.chat,'Prepare uma investigação',1);
+  const input={projectId:a.p,orchestratorId:a.o,content:'Prepare uma investigação',draftRevision:1,requestId:'prepare-once'};
   const receipt=await f.call('orchestrator_prepare',input);
   assert.equal(receipt.status,'succeeded');
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'');
+  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
+  assert.equal(f.store.messages(a.chat).filter(message=>message.role==='user').at(-1).content,input.content);
   await f.call('orchestrator_prepare',input);assert.equal(calls,1);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM tasks').get().n,before);
   const actionId=receipt.result.proposalActionId;
@@ -251,7 +255,7 @@ test('Groq work preparation parses a strictly bounded JSON proposal without invo
     }});
   const input={taskId:a.chat,projectId:a.p,orchestratorId:a.o,mission:'Pesquisar',prepareWork:true};
   assert.equal((await adapter.send(input)).proposal.title,'Pesquisar');
-  response='Not JSON';await assert.rejects(adapter.send(input),/proposal_invalid/);
+  response='Not JSON';await assert.rejects(adapter.send(input),/groq_invalid_work_proposal/);
 });
 
 test('projects, coordinators and work persist in the same SQLite, with bounded semantic reads',async t=>{
@@ -468,6 +472,7 @@ test('in-flight requests do not run twice; pause and a second work cannot bypass
   await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
   assert.throws(()=>f.service.assertProviderTaskAvailable(a.w),/paused/);
   assert.throws(()=>f.service.assertProviderTaskAvailable(a.chat),/coordinator_channel/);
+  assert.throws(()=>f.service.assertProviderTaskAvailable(a.chat,{allowCoordinator:true}),/paused/);
   resolve();await pending;assert.equal(calls,1);
   await assert.rejects(f.call('work_send',{...input,requestId:'paused'}),/paused/);
 });
@@ -483,25 +488,132 @@ test('interrupted command recovery only marks uncertain and cannot dispatch or c
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,0);
 });
 
-test('coordinator chat is separate from GPT work; calls require a port and persist only observed text',async t=>{
-  let calls=0,workspaceObservation;
-  const f=fixture(t,{coordinator:{available:()=>true,send:async({taskId,mission,workspaceObservation:observation})=>{
-    calls++;assert.match(mission,/evoluir/);
-    workspaceObservation=observation;
-    assert.equal(f.store.messages(taskId).at(-1).role,'user');
-    return {content:'Podemos começar pelo layout.'};
-  }}}),a=await project(f);
-  const input={requestId:'chat',projectId:a.p,orchestratorId:a.o,content:'Planeje o site'};
+test('central project chat cannot impersonate GPT using only the Groq coordinator',async t=>{
+  let groqCalls=0;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>{groqCalls++;return {content:'Sou ChatGPT'};}}});
+  const a=await project(f);
+  f.store.setDraft(a.chat,'Pergunte ao GPT qual meu nome.',1);
+  const input={projectId:a.p,orchestratorId:a.o,content:'Pergunte ao GPT qual meu nome.',draftRevision:1};
+  await assert.rejects(f.call('orchestrator_chat',input),/orchestrator_provider_unavailable/);
+  assert.equal(groqCalls,0);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'Pergunte ao GPT qual meu nome.');
+  assert.equal(f.store.messages(a.chat).length,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='orchestrator_chat'").get().n,0,
+    'no bogus chat receipt was reserved');
+});
+
+test('central project conversation uses GPT Web as primary and commits exactly one Store-owned message pair',async t=>{
+  let providerCalls=0,groqCalls=0,received;
+  const f=fixture(t,{provider:{send:async args=>{
+    providerCalls++;received=args;
+    const begun=f.store.beginProviderRun(args.taskId,args.content,{draftRevision:args.draftRevision});
+    f.store.appendMessage(args.taskId,'assistant','Resposta observada do ChatGPT Web.');
+    f.store.finishRun(args.taskId,begun.runId);
+    return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId:begun.runId};
+  }},coordinator:{available:()=>true,send:async()=>{groqCalls++;throw Error('must_not_fallback');}}}),a=await project(f);
+  f.store.setDraft(a.chat,'Quero criar a loja VESTE.',1);
+  const input={requestId:'gpt-primary',projectId:a.p,orchestratorId:a.o,
+    content:'Quero criar a loja VESTE.',draftRevision:1};
   const reply=await f.call('orchestrator_chat',input);
   assert.equal(reply.status,'succeeded');
-  assert.equal(reply.result.proposalsExecuted,0);
-  assert.deepEqual(workspaceObservation,{state:'capability_unavailable',capabilityAvailable:false,
-    snapshotObserved:false,gitMetadataAvailable:false,fileContentAvailable:false,filesRead:0,filesWritten:0});
-  // The immediate HTTP fixture may persist both messages in the same clock
-  // tick. This test proves presence, not the Store's UUID tie-break ordering.
-  assert.deepEqual(f.store.messages(a.chat).map(m=>m.role).sort(),['assistant','user']);
-  assert.equal(f.store.messages(a.w).length,0);
-  await f.call('orchestrator_chat',input);assert.equal(calls,1);
+  assert.equal(reply.result.provider,'chatgpt_web');
+  assert.equal(providerCalls,1);assert.equal(groqCalls,0);
+  assert.equal(received.taskKind,'orchestrator');
+  assert.equal(received.draftRevision,2);
+  assert.equal(received.content,input.content);
+  assert.deepEqual(f.store.messages(a.chat).map(message=>[message.role,message.content]),[
+    ['user',input.content],['assistant','Resposta observada do ChatGPT Web.']
+  ]);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'');
+  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,2);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=? AND status=\'succeeded\'').get(a.chat).n,1);
+  assert.deepEqual(await f.call('orchestrator_chat',input),reply);
+  assert.equal(providerCalls,1,'same request receipt never resubmits to GPT Web');
+});
+
+test('GPT health failure is reported without a Groq answer masquerading as GPT',async t=>{
+  let providerCalls=0,groqCalls=0;
+  const f=fixture(t,{provider:{send:async()=>{
+    providerCalls++;
+    const e=Error('health:chatgpt_login_required');
+    Object.assign(e,{providerDeliveryState:'not_submitted',providerFailureStage:'health',providerFailureCode:'chatgpt_login_required'});
+    throw e;
+  }},coordinator:{available:()=>true,send:async()=>{groqCalls++;return {content:'Fake GPT'};}}});
+  const a=await project(f);
+  f.store.setDraft(a.chat,'Pergunte ao GPT qual meu nome.',3);
+  const input={projectId:a.p,orchestratorId:a.o,content:'Pergunte ao GPT qual meu nome.',draftRevision:3};
+  const receipt=await f.call('orchestrator_chat',input);
+  assert.equal(receipt.status,'failed');
+  assert.equal(receipt.result.reason,'provider_not_submitted');
+  assert.equal(receipt.result.failureCode,'chatgpt_login_required');
+  assert.equal(providerCalls,1);assert.equal(groqCalls,0);
+  assert.equal(f.store.messages(a.chat).length,0);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'Pergunte ao GPT qual meu nome.');
+});
+
+test('GPT uncertain delivery and active generation never invoke Groq fallback',async t=>{
+  for(const scenario of ['uncertain','generation-active']) {
+    let providerCalls=0,groqCalls=0;
+    const f=fixture(t,{provider:{send:async({taskId,content})=>{
+      providerCalls++;
+      const error=scenario==='uncertain'
+        ?(()=>{
+          const begun=f.store.beginProviderRun(taskId,content);
+          f.store.finishRun(taskId,begun.runId,'send_confirmation_unknown');
+          return Error('submission:send_confirmation_unknown');
+        })()
+        :Error('health:chatgpt_response_in_progress');
+      Object.assign(error,scenario==='uncertain'
+        ?{providerDeliveryState:'uncertain',providerFailureStage:'submit',providerFailureCode:'send_confirmation_unknown'}
+        :{providerDeliveryState:'not_submitted',providerFailureStage:'health',providerFailureCode:'chatgpt_response_in_progress'});
+      throw error;
+    }},coordinator:{available:()=>true,send:async()=>{groqCalls++;return {content:'must_not_fallback'};}}}),a=await project(f);
+    const input={requestId:`gpt-${scenario}`,projectId:a.p,orchestratorId:a.o,content:'Responda à missão.'};
+    const receipt=await f.call('orchestrator_chat',input);
+    assert.equal(receipt.status,scenario==='uncertain'?'uncertain':'failed');
+    assert.equal(providerCalls,1);assert.equal(groqCalls,0);
+    assert.deepEqual(f.store.messages(a.chat).map(message=>message.role),scenario==='uncertain'?['user']:[]);
+    assert.deepEqual(await f.call('orchestrator_chat',input),receipt);
+    assert.equal(providerCalls,1);assert.equal(groqCalls,0,'uncertain/active GPT state is never replayed or replaced');
+  }
+});
+
+test('GPT absent refuses to consume local draft or pretend Groq completed the chat',async t=>{
+  let calls=0;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>{calls++;throw Error('must_not_call');}}});
+  const a=await project(f);
+  f.store.setDraft(a.chat,'Continue a proposta da loja.',1);
+  await assert.rejects(f.call('orchestrator_chat',{
+    projectId:a.p,orchestratorId:a.o,content:'Continue a proposta da loja.',draftRevision:1
+  }),/orchestrator_provider_unavailable/);
+  assert.equal(calls,0);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'Continue a proposta da loja.');
+  assert.equal(f.store.messages(a.chat).length,0);
+});
+
+test('coordinator refuses a stale composer revision before reserving a request or calling the provider',async t=>{
+  let calls=0;
+  const f=fixture(t,{provider:{send:async()=>{calls++;return {confirmed:false};}}}),a=await project(f);
+  f.store.setDraft(a.chat,'Mensagem mais recente',3);
+  await assert.rejects(f.call('orchestrator_chat',{requestId:'stale-draft',projectId:a.p,orchestratorId:a.o,
+    content:'Texto antigo',draftRevision:2}),/task_draft_revision_conflict/);
+  assert.equal(calls,0);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'Mensagem mais recente');
+  assert.equal(f.store.messages(a.chat).length,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?').get('stale-draft').n,0);
+});
+
+test('GPT Store keeps user draft and history atomic when draft-clear fails',async t=>{
+  const f=fixture(t),a=await project(f);
+  f.store.setDraft(a.chat,'Mensagem que precisa sobreviver',1);
+  f.store.db.exec(`CREATE TRIGGER refuse_coordinator_draft_clear BEFORE UPDATE OF draft ON tasks
+    WHEN NEW.id='${a.chat}' AND NEW.draft='' BEGIN SELECT RAISE(ABORT,'injected_coordinator_draft_clear'); END`);
+  assert.throws(()=>f.store.beginProviderRun(a.chat,'Mensagem que precisa sobreviver',{draftRevision:2}),
+    /injected_coordinator_draft_clear/);
+  assert.equal(f.store.getTaskDraft(a.chat).draft,'Mensagem que precisa sobreviver');
+  assert.equal(f.store.getTaskDraft(a.chat).draft_revision,1);
+  assert.equal(f.store.messages(a.chat).length,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM runs WHERE task_id=?").get(a.chat).n,0);
 });
 
 test('project remote repository is persisted and can be changed or cleared without local workspace access',async t=>{
@@ -568,7 +680,7 @@ test('work send targets the linked GitHub remote and clearly reports that no loc
   const receipt=await f.call('work_send',{projectId,taskId,content:'Inspecione a loja e proponha a primeira alteração.'});
   assert.equal(receipt.status,'succeeded');
   assert.equal(received.repositoryUrl,'https://github.com/ordaxsystems/veste');
-  assert.match(received.content,/Repositório alvo: https:\/\/github\.com\/ordaxsystems\/veste/);
+  assert.match(received.content,/Repositório padrão: https:\/\/github\.com\/ordaxsystems\/veste/);
   assert.match(received.content,/Nenhuma pasta local está conectada/);
   assert.equal(receipt.result.effectVerified,false);
   await assert.rejects(f.call('project_repository_set',{projectId,repositoryUrl:'https://github.com/ordaxsystems/another-repo'}),
@@ -577,7 +689,7 @@ test('work send targets the linked GitHub remote and clearly reports that no loc
     'https://github.com/ordaxsystems/veste');
 });
 
-test('API coordinator continues its persisted conversation and receives only the linked remote URL',async t=>{
+test('Groq planning keeps its own project history and never submits to GPT',async t=>{
   const f=fixture(t),a=await project(f);
   await f.call('project_repository_set',{projectId:a.p,repositoryUrl:'https://github.com/ordaxsystems/veste'});
   const requests=[];
@@ -585,19 +697,19 @@ test('API coordinator continues its persisted conversation and receives only the
     fetchImpl:async(_url,options)=>{
       const body=JSON.parse(options.body);requests.push(body);
       assert.match(body.messages[0].content,/API não consultou o GitHub nem recebeu conteúdo/);
-      assert.match(body.messages[0].content,/"remoteRepository":\{"provider":"github","url":"https:\/\/github.com\/ordaxsystems\/veste"\}/);
-      return jsonResponse({choices:[{finish_reason:'stop',message:{content:`Resposta ${requests.length}`}}]});
+      assert.ok(body.messages[0].content.includes('https://github.com/ordaxsystems/veste'));
+      return jsonResponse({choices:[{finish_reason:'stop',message:{
+        content:JSON.stringify({title:'Revisar catálogo',content:'Pesquisar itens',reason:'Planejar projeto'})}}]});
     }});
-  const first=await f.call('orchestrator_chat',{projectId:a.p,orchestratorId:a.o,content:'Vamos criar a loja VESTE.'});
-  const second=await f.call('orchestrator_chat',{projectId:a.p,orchestratorId:a.o,content:'Continue pela etapa de catálogo.'});
+  const first=await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Vamos criar a loja VESTE.'});
+  const second=await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,content:'Continue pela etapa de catálogo.'});
   assert.equal(first.status,'succeeded');assert.equal(second.status,'succeeded');
   assert.equal(requests.length,2);
   const secondHistory=JSON.stringify(requests[1].messages.slice(1));
-  assert.match(secondHistory,/Vamos criar a loja VESTE\./);
-  assert.match(secondHistory,/Resposta 1/);
-  assert.match(secondHistory,/Continue pela etapa de catálogo\./);
-  assert.doesNotMatch(secondHistory,/package\.json|src\/|checkout|filesystem/);
-  assert.equal(f.store.messages(a.chat).filter(message=>message.role==='assistant').length,2);
+  assert.match(secondHistory,/Vamos criar a loja VESTE/);
+  assert.match(secondHistory,/Continue pela etapa de catálogo/);
+  assert.equal(f.store.messages(a.chat).filter(m=>m.role==='assistant').length,2);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs WHERE task_id=?').get(a.chat).n,0);
 });
 
 test('explicit coordinator analysis is bounded to one project and orchestrator and never sends GPT work',async t=>{
@@ -631,11 +743,13 @@ test('explicit coordinator analysis is bounded to one project and orchestrator a
   await f.call('orchestrator_analyze',input);assert.equal(calls,1,'same receipt never repeats the API request');
 });
 
-test('late response after authorization revocation is not disclosed or falsely confirmed',async t=>{
+test('late Groq planning reply after authorization revocation is not disclosed or confirmed',async t=>{
   let resolve;
   const gate=new Promise(r=>resolve=r);
-  const f=fixture(t,{coordinator:{send:async()=>{await gate;return {content:'Private reply'};}}}),a=await project(f);
-  const pending=f.call('orchestrator_chat',{projectId:a.p,orchestratorId:a.o,content:'Olá'});
+  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>{await gate;return {content:'Private reply'};}}});
+  const a=await project(f);
+  f.store.appendMessage(a.w,'user','Analise o andamento.');
+  const pending=f.call('orchestrator_analyze',{projectId:a.p,orchestratorId:a.o});
   f.setAllowed(false);resolve();
   await assert.rejects(pending,/access_denied/);
   assert.equal(f.store.messages(a.chat).length,1);

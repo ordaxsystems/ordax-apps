@@ -1,0 +1,83 @@
+name: Food PostgreSQL Driver Integration (isolated)
+
+on:
+  pull_request:
+    paths:
+      - "apps/food-pizzeria/src/application/**"
+      - "apps/food-pizzeria/src/adapters/**"
+      - "apps/food-pizzeria/src/domain/**"
+      - "apps/food-pizzeria/tests/postgres-real-integration.mjs"
+      - ".github/workflows/food-postgres-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  food-real-postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: food_ci_ephemeral
+          POSTGRES_DB: food_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d food_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - name: Checkout Food owner source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Checkout exact Platform SQL owner revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-platform
+          ref: 140b9d1fc60e502aa755845d079dc68cd47a0341
+          path: .food-platform
+          persist-credentials: false
+
+      - name: Install canonical Platform PostgreSQL driver from pinned lockfile
+        run: |
+          set -euo pipefail
+          node --version
+          npm ci --prefix .food-platform/control-plane/cloudflare --omit=dev --ignore-scripts --no-audit --no-fund
+          node -e "const path=require('node:path'); const requireFromOwner=require('node:module').createRequire(path.resolve('.food-platform/control-plane/cloudflare/package.json')); if(requireFromOwner('pg').Pool===undefined) process.exit(1)"
+
+      - name: Build disposable account/Space authority and private Food SQL proposals
+        env:
+          PG_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec -i "$PG_ID" psql -v ON_ERROR_STOP=1 -U postgres -d food_ci <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          create role service_role nologin;
+          create role ordax_edge_executor nologin;
+          create role ordax_edge_runtime nologin;
+          SQL
+          for file in \
+            control-plane/supabase/tests/food_action_policy_fixture.sql \
+            control-plane/supabase/proposals/food_order_action_policy_v1.sql \
+            control-plane/supabase/proposals/food_order_core_storage_v1.sql \
+            control-plane/supabase/proposals/food_order_executor_boundary_v1.sql
+          do
+            docker exec -i "$PG_ID" psql -v ON_ERROR_STOP=1 -U postgres -d food_ci \
+              < ".food-platform/$file"
+          done
+
+      - name: Exercise Food domain, authorizer and PostgreSQL adapter together
+        env:
+          FOOD_TEST_POSTGRES_URL: postgresql://postgres:food_ci_ephemeral@127.0.0.1:5432/food_ci
+        run: |
+          set -euo pipefail
+          node --check apps/food-pizzeria/tests/postgres-real-integration.mjs
+          node --test apps/food-pizzeria/tests/postgres-real-integration.mjs
+          echo "FOOD_REAL_POSTGRES_DRIVER=PASS ISOLATED_ONLY=YES"

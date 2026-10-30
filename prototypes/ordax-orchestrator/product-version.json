@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.18",
+  "version": "0.2.0-alpha.19",
   "channel": "alpha",
-  "name": "Estados honestos de conversa",
+  "name": "Host Node com núcleo compartilhado",
   "distributionEnabled": false,
   "releaseDate": null
 }

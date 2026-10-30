@@ -3,19 +3,20 @@ import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSuper
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
 import { bindObservedSubmittedConversation } from '../src/provider-submitted-conversation.mjs';
-import { recordProviderSubmissionProvenance, findProviderSubmissionProvenance } from '../src/provider-submission-provenance.mjs';
+import { recordProviderSubmissionProvenance, recordProviderSubmissionIntent, findProviderSubmissionProvenance, providerPromptDigest } from '../src/provider-submission-provenance.mjs';
+import { inspectProviderLinkedThread, reconcileProviderLinkedReply, recoverFailedProviderSubmission, recoverVisibleLinkedProviderSubmission } from '../src/provider-linked-thread-recovery.mjs';
 import { assertTaskHasNoUncertainTransport } from '../src/provider-uncertain-run-policy.mjs';
 import { assertProviderSendReadiness, normalizeProviderFailure } from '../src/provider-observation-policy.mjs';
-import { assessProviderConversationEvidence } from '../src/provider-conversation-reconciliation.mjs';
-import { safeHistoricalThreadFailure } from '../src/provider-observation-policy.mjs';
+import { assertContinuationContextReady } from '../src/continuation-context.mjs';
 import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
-import { OrchestratorService } from '../src/orchestrator-service.mjs';
-import { createOrchestratorMcp } from '../src/orchestrator-mcp.mjs';
+import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
+import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
 import { ORCHESTRATOR_TOOLS } from '../src/orchestrator-contract.mjs';
 import { createOrchestratorRuntimeBridge,attachOrchestratorRuntimePipes,resolveOrchestratorRuntimeTransport,openOrchestratorRuntimeStreams } from '../src/orchestrator-runtime-bridge.mjs';
 import { createGroqCoordinatorConversation } from '../supervisor/groq-conversation.mjs';
+import { observePostCommitNavigation } from '../src/provider-post-commit-navigation.mjs';
 
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -23,9 +24,14 @@ import { randomUUID, createHash } from 'node:crypto';
 import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
+import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
+import { createProviderExecutionScheduler } from '../src/provider-execution-scheduler.mjs';
+import { normalizeProviderViewBounds } from '../src/provider-view-bounds.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
 import { resolveLabUserRoot, labProfileFingerprint } from '../src/lab-profile-binding.mjs';
 import { verifyRuntimeManifest } from '../src/runtime-build-identity.mjs';
+import { assertTaskHandoffCoversOmissions, buildProviderContextAttachmentNotice, validateProviderContextAttachment } from '../src/provider-context-attachment.mjs';
+import { removeStaleTaskHandoffFiles, removeTaskHandoffFile, resolveTaskHandoffRoot, writeTaskHandoffFile } from '../src/task-handoff-file.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
   app.commandLine.appendSwitch('remote-debugging-port', '9445');
@@ -37,7 +43,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const hostBrowserMode=!app.isPackaged&&(process.env.ORDAX_HOST_BROWSER_UI==='1'||process.argv.includes('--host-browser'));
 let createHostBrowserServer=null;
-if(hostBrowserMode)({createHostBrowserServer} = await import('./host-browser-server.mjs'));
+if(hostBrowserMode)({createHostBrowserServer} = await import('../host/host-browser-server.mjs'));
 const hostStartupLog=stage=>{
   if(!hostBrowserMode||process.env.ORDAX_HOST_BROWSER_DEBUG!=='1')return;
   const line=JSON.stringify({stage,at:new Date().toISOString()})+'\n';
@@ -70,7 +76,13 @@ if (!singleInstanceLock) {
   hostStartupLog('single_instance_lock_acquired');
   app.on('second-instance', () => {
     if(hostBrowserMode)return;
-    if (!win) return;
+    // A previous Electron main process may still own the profile after its
+    // window has disappeared (for example after a renderer crash). A new
+    // launch must restore the UI instead of silently focusing nothing.
+    if (!win || win.isDestroyed()) {
+      void createWindow().catch(()=>hostStartupLog('window_recovery_failed'));
+      return;
+    }
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
@@ -80,7 +92,12 @@ if (!singleInstanceLock) {
 
 const dataRoot = path.join(userRoot, 'data');
 const assetsRoot = path.join(dataRoot, 'assets');
+// Provider uploads must use a short per-profile path. Placing the generated
+// context artifact under the staged userData tree can exceed Windows MAX_PATH,
+// causing Chromium to fire file-input events while silently selecting no file.
+const handoffRoot = resolveTaskHandoffRoot({tempRoot:app.getPath('temp'),userRoot});
 fs.mkdirSync(assetsRoot, { recursive: true });
+fs.mkdirSync(handoffRoot, { recursive: true });
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'ordax-asset', privileges: { standard: true, secure: true, supportFetchAPI: true } }
@@ -93,6 +110,8 @@ store.updateWorkspaceMetadata({
   recovered_runs_on_start: recoveredRunCount,
   sqlite_open_retries: store.openRetryCount
 });
+
+removeStaleTaskHandoffFiles(handoffRoot);
 
 function migrateExternalAssetPaths() {
   const safeRoot = path.resolve(assetsRoot) + path.sep;
@@ -125,6 +144,8 @@ const MIME_EXT = new Map([
 
 let win;
 let worker;
+const providerViews=createProviderViewRegistry();
+let windowCreationPromise=null;
 let hostBrowserServer=null;
 const hostBrowserRequest=Symbol('authenticated-host-browser-request');
 const uiHandlers=new Map();
@@ -138,7 +159,9 @@ const HOST_EVENT_BY_CHANNEL=Object.freeze({
   'ordax:orchestrator:changed':'orchestrator-changed',
   'ordax:task:run-started':'run-started',
   'ordax:task:stage':'task-stage',
-  'ordax:task:stream':'task-stream'
+  'ordax:task:stream':'task-stream',
+  'ordax:task:provider-navigation':'task-provider-navigation',
+  'ordax:task:reconciled':'task-reconciled'
 });
 function emitRendererEvent(channel,payload) {
   if(win&&!win.isDestroyed())win.webContents.send(channel,payload);
@@ -146,19 +169,20 @@ function emitRendererEvent(channel,payload) {
   if(hostEvent)hostBrowserServer?.publish(hostEvent,payload);
 }
 let chatVisible = false;
+let providerViewBounds = null;
 let liveRun = null;
 const persistedObserverMode = store.getWorkspaceSession()?.metadata?.observer_mode;
 let observerMode = ['auto','fast','beta'].includes(persistedObserverMode) ? persistedObserverMode : 'auto';
 let workerPreload = { ready:false, url:null, at:null };
 let providerHealthInFlight = null;
 let providerHealthCache = null;
-let executionTail = Promise.resolve();
-const LEFT_WIDTH = 470;
+let providerScheduler = null;
 
-function enqueueExecution(operation) {
-  const next = executionTail.then(operation, operation);
-  executionTail = next.catch(() => {});
-  return next;
+// Replaces the former global promise chain. The existing provider worker
+// remains the only physical lane until isolated multi-view E2E is verified.
+function enqueueExecution(taskId,operation) {
+  if(!providerScheduler)return Promise.reject(Error('provider_worker_unavailable'));
+  return providerScheduler.enqueue(String(taskId),operation);
 }
 
 function assetUrl(id) {
@@ -212,8 +236,12 @@ function persistImages(taskId, messageId, images = [], writtenPaths = null) {
   return out;
 }
 
-async function runTask(taskId, prompt, { newSession = false, draftRevision = null } = {}) {
-  orchestratorService.assertProviderTaskAvailable(taskId);
+async function runTask(taskId, prompt, { newSession = false, draftRevision = null, allowCoordinatorTask = false } = {}, runWorker) {
+  // An execution is always owned by the physical worker selected by the
+  // canonical scheduler, never by whichever view happens to be visible.
+  if(!runWorker||providerViews.resolve(runWorker?.view?.webContents)!==runWorker)
+    throw Error('provider_run_worker_unregistered');
+  orchestratorService.assertProviderTaskAvailable(taskId,{allowCoordinator:allowCoordinatorTask});
   // Before appending another user message or starting another Run, require
   // reconciliation of any earlier uncertain transport effect on this Task.
   // The single existing Store is authoritative; this performs no replay.
@@ -221,35 +249,140 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
   const task = store.getTaskExecutionSnapshot(taskId);
   if (!task) throw new Error('task_not_found');
 
-  const conversationPlan = planProviderConversation(task, { forceNew:newSession });
+  const conversationPlan = planProviderConversation(task, {
+    forceNew:newSession,nextPromptBytes:Buffer.byteLength(String(prompt||'').trim(),'utf8')
+  });
   const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
   const checkpointVersion = task.checkpoint_version;
-  const providerPrompt = needsContinuation ? store.buildContinuationPrompt(taskId, prompt) : prompt;
+  let continuationPacket = needsContinuation ? store.buildContinuationPacket(taskId,prompt) : null;
+  if (continuationPacket) assertContinuationContextReady(continuationPacket);
+  let contextManifest=continuationPacket?.manifest || null;
+  let handoffSnapshot=null;
+  let contextAttachmentNotice='';
+  if(contextManifest?.attachmentUseful===true){
+    const buildSnapshot=manifest=>store.buildTaskHandoffSnapshot(taskId,{
+      request:prompt,includeMessageIds:manifest.omittedMessageIds||[]
+    });
+    handoffSnapshot=buildSnapshot(contextManifest);
+    const estimatedNotice=buildProviderContextAttachmentNotice({
+      filename:handoffSnapshot.filename,filePath:path.join(handoffRoot,handoffSnapshot.filename),
+      sha256:handoffSnapshot.manifest.sha256,taskId:taskId,
+      checkpointVersion:handoffSnapshot.manifest.checkpointVersion,
+      byteLength:handoffSnapshot.manifest.byteLength
+    });
+    const boundedPromptChars=16000-estimatedNotice.length;
+    if(boundedPromptChars<1024)throw new Error('task_handoff_prompt_budget_exhausted');
+    continuationPacket=store.buildContinuationPacket(taskId,prompt,{maxChars:boundedPromptChars});
+    assertContinuationContextReady(continuationPacket);
+    contextManifest=continuationPacket.manifest;
+    handoffSnapshot=buildSnapshot(contextManifest);
+    assertTaskHandoffCoversOmissions(contextManifest,handoffSnapshot.manifest);
+    contextAttachmentNotice=buildProviderContextAttachmentNotice({
+      filename:handoffSnapshot.filename,filePath:path.join(handoffRoot,handoffSnapshot.filename),
+      sha256:handoffSnapshot.manifest.sha256,taskId:taskId,
+      checkpointVersion:handoffSnapshot.manifest.checkpointVersion,
+      byteLength:handoffSnapshot.manifest.byteLength
+    });
+  }
+  const providerPrompt = (continuationPacket?.prompt || prompt)+contextAttachmentNotice;
+  if(contextManifest&&contextAttachmentNotice){
+    if(providerPrompt.length>16000)throw new Error('task_handoff_prompt_budget_exceeded');
+    contextManifest={...contextManifest,maxChars:16000,promptChars:providerPrompt.length,promptSha256:providerPromptDigest(providerPrompt)};
+  }
   // Authoritative, fresh, read-only readiness gate BEFORE any Task/Run/message
   // mutation or draft clearing. A signed-out/unknown provider creates no Run.
   // Worker.sendPrompt independently checks again immediately before editing.
-  try { assertProviderSendReadiness(await worker.health()); }
+  try { assertProviderSendReadiness(await runWorker.health()); }
   catch(error) { throw normalizeProviderFailure(error,{stage:'health'}); }
+  if(liveRun)throw Error('orchestrator_executor_busy');
+  const contextAttachment=handoffSnapshot?writeTaskHandoffFile(handoffRoot,handoffSnapshot):null;
   // No provider interaction happens until this atomic transaction commits.
   // The message, draft-clear and Run must never be persisted separately.
-  const { userMessage, runId } = store.beginProviderRun(taskId, prompt, {
-    draftRevision,workerId:'electron-embedded-chatgpt',observerMode
-  });
-  liveRun = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
+  let begun;
+  try {
+    begun=store.beginProviderRun(taskId, prompt, {
+      draftRevision,workerId:'electron-embedded-chatgpt',observerMode
+    });
+  } catch(error) {
+    if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
+    throw error;
+  }
+  const { userMessage, runId } = begun;
+  let contextAttachmentReceipt=null;
+  const runContext = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
+  liveRun = runContext;
   const provisional=createProviderProvisionalRecorder({
     save:(text,source)=>store.saveRunProvisionalOutput(taskId,runId,text,source)
   });
-  if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
 
   try {
-    const result = await worker.sendPrompt({
+    providerViews.bindRun(runWorker,runContext);
+    if (win && !win.isDestroyed()) emitRendererEvent('ordax:task:run-started', { taskId, runId, userMessage });
+    const result = await runWorker.sendPrompt({
       prompt:providerPrompt,chatUrl:task.chat_url,newSession:conversationPlan.newSession,
+      contextAttachment,
+      onContextAttachmentObserved:receipt=>{
+        if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('context_attachment_run_context_changed');
+        const durableReceipt={
+          format:handoffSnapshot.manifest.format,deliveryState:'uploaded',
+          taskId:handoffSnapshot.manifest.taskId,filename:receipt.filename,
+          sha256:receipt.sha256,byteLength:receipt.byteLength,
+          checkpointVersion:receipt.checkpointVersion,uploadedAt:receipt.uploadedAt,
+          memoryIds:handoffSnapshot.manifest.memoryIds,
+          recentMessageIds:handoffSnapshot.manifest.recentMessageIds,
+          historicalMessageIds:handoffSnapshot.manifest.historicalMessageIds
+        };
+        store.event(taskId,'provider.context_attachment.uploaded',{
+          run_id:runId,filename:durableReceipt.filename,sha256:durableReceipt.sha256,
+          byte_length:durableReceipt.byteLength,checkpoint_version:durableReceipt.checkpointVersion,
+          uploaded_at:durableReceipt.uploadedAt,memory_ids:durableReceipt.memoryIds,
+          recent_message_ids:durableReceipt.recentMessageIds,
+          historical_message_ids:durableReceipt.historicalMessageIds
+        });
+        contextAttachmentReceipt=durableReceipt;
+      },
       onProvisionalProgress:({text,source})=>{
-        if(liveRun?.runId===runId)provisional.capture(text,source);
+        if(providerViews.runForWorker(runWorker)===runContext)provisional.capture(text,source);
+      },
+      onSubmissionIntent:({intentAt,chatUrl,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches})=>{
+        if(providerViews.runForWorker(runWorker)!==runContext)throw new Error('submission_run_context_changed');
+        const requireRecordedIntent=intent=>{
+          if(intent.recorded)return intent;
+          // The reason is a closed-set local validation code, never the prompt,
+          // provider URL or any private identity. Recording diagnostics must
+          // not change the original fail-closed submit outcome.
+          const reason=['intent_incomplete','intent_reference_missing','intent_already_recorded']
+            .includes(intent.reason)?intent.reason:'intent_unavailable';
+          try {store.event(taskId,'provider.submission.intent_rejected',{run_id:runId,reason});}
+          catch {/* The send remains blocked even if diagnostics cannot persist. */}
+          throw new Error('provider_submission_intent_not_recorded');
+        };
+        if(conversationPlan.newSession) {
+          // A fresh GPT chat has no permalink before its first accepted send.
+          // Persist the exact dispatch intent against the official empty home
+          // and the previous task link; recovery can bind a new URL only after
+          // the unique prompt and one complete response are observed twice.
+          const intent=recordProviderSubmissionIntent({
+            store,taskId,runId,messageId:userMessage.id,providerPrompt,
+            chatUrl,intentAt,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches,
+            newSession:true,previousConversationId:conversationPlan.previousConversationId,
+            previousChatUrl:task.chat_url,
+            contextCheckpointVersion:needsContinuation?checkpointVersion:null
+          });
+          return requireRecordedIntent(intent);
+        }
+        const expected=canonicalProviderChatUrl(task.chat_url);
+        if(!expected||canonicalProviderChatUrl(chatUrl)!==expected)
+          throw new Error('provider_submission_intent_target_mismatch');
+        const intent=recordProviderSubmissionIntent({
+          store,taskId,runId,messageId:userMessage.id,providerPrompt,
+          chatUrl:expected,intentAt,baselineUserMessageId,baselineUserMessagePresent,baselinePromptMatches
+        });
+        return requireRecordedIntent(intent);
       },
       onDeliveryObserved:({chatUrl,submittedAt}) => {
-        if (liveRun?.runId !== runId) throw new Error('submission_run_context_changed');
+        if (providerViews.runForWorker(runWorker)!==runContext) throw new Error('submission_run_context_changed');
         const binding=bindObservedSubmittedConversation({
           store,taskId,runId,chatUrl,submittedAt,
           plannedNewSession:conversationPlan.newSession,
@@ -260,7 +393,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
         try {
           recordProviderSubmissionProvenance({
             store,taskId,runId,messageId:userMessage.id,providerPrompt,
-            chatUrl,submittedAt
+            chatUrl,submittedAt,contextManifest,contextAttachmentReceipt
           });
         } catch {
           // The provider already accepted the send. Never fail or retry it
@@ -301,7 +434,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
         previous_completed_turns:conversationPlan.completedTurns
       });
     }
-    const runMetrics = store.recordRunMetrics(taskId, runId, observerMode, { ...(result.metrics || {}), runStartedAt: liveRun?.startedAt || null });
+    const runMetrics = store.recordRunMetrics(taskId, runId, observerMode, { ...(result.metrics || {}), runStartedAt: runContext.startedAt });
     provisional.flush();
     // File bytes live outside SQLite. Track new writes so an SQL rollback
     // does not leave unnecessary assets in a normal (non-crash) failure.
@@ -320,41 +453,64 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
       }
       throw commitError;
     }
-    if (confirmedChatUrl) await worker.showConversation(confirmedChatUrl).catch(() => {});
-    return { result: { ...result, runId, assets }, task:getTaskView(taskId) };
+    const postCommitNavigation=await observePostCommitNavigation({worker:runWorker,chatUrl:confirmedChatUrl});
+    if(postCommitNavigation.navigated===false)
+      emitRendererEvent('ordax:task:provider-navigation',{
+        taskId,provider_navigation:'post_commit_failed',
+        provider_navigation_reason:postCommitNavigation.reason
+      });
+    return { result: { ...result, runId, assets,
+      ...(postCommitNavigation.navigated===false?{postCommitNavigation}:{}) },
+      task:getTaskView(taskId) };
   } catch (error) {
     // Persist the last pending observed text, never as a confirmed message.
     provisional.flush();
-    if (worker.lastFailureMetrics) {
+    if (runWorker.lastFailureMetrics) {
       try { store.recordRunMetrics(taskId, runId, observerMode, {
-        ...worker.lastFailureMetrics,
-        runStartedAt:liveRun?.startedAt || null
+        ...runWorker.lastFailureMetrics,
+        runStartedAt:runContext.startedAt
       }); } catch { /* preserve original failure */ }
     }
     store.finishRun(taskId, runId, String(error?.message || error));
+    if(error?.providerFailureCode==='send_confirmation_unknown'&&error?.providerDeliveryState==='uncertain') {
+      const recovered=await recoverFailedProviderSubmission({store,worker:runWorker,taskId,runId}).catch(()=>null);
+      if(recovered?.reconciled===true||recovered?.reason==='already_reconciled')
+        return {result:{runId,recovered:true},task:getTaskView(taskId)};
+    }
     throw error;
   } finally {
-    if (liveRun?.runId === runId) liveRun = null;
+    providerViews.unbindRun(runWorker,runId);
+    if (liveRun===runContext) liveRun = null;
     clearInterval(heartbeat);
+    if(contextAttachment)try{removeTaskHandoffFile(handoffRoot,contextAttachment.filePath);}catch{}
   }
 }
 
 function layoutViews() {
   if (!win || !worker) return;
-  const [width, height] = win.getContentSize();
-  const workerBounds = chatVisible
-    ? { x: LEFT_WIDTH, y: 0, width: Math.max(640, width - LEFT_WIDTH), height }
-    : { x: 0, y: 0, width: Math.max(960, width), height: Math.max(700, height) };
-  worker.view.setBounds(workerBounds);
-  worker.view.setVisible(chatVisible);
+  const [width,height]=win.getContentSize();
+  const bounds=providerViewBounds?normalizeProviderViewBounds(providerViewBounds,{
+    contentWidth:width,contentHeight:height,zoomFactor:win.webContents.getZoomFactor()
+  }):null;
+  worker.view.setBounds(bounds||{x:0,y:0,width:1,height:1});
+  worker.view.setVisible(Boolean(chatVisible&&bounds));
 }
 
 async function createWindow() {
+  if(windowCreationPromise)return windowCreationPromise;
+  if(win&&!win.isDestroyed())return win;
+  const creation=Promise.resolve().then(createWindowOnce);
+  windowCreationPromise=creation;
+  try{return await creation;}
+  finally{if(windowCreationPromise===creation)windowCreationPromise=null;}
+}
+
+async function createWindowOnce() {
   hostStartupLog('window_create_begin');
   win = new BrowserWindow({
     width: 1500,
     height: 920,
-    minWidth: 1050,
+    minWidth: 1160,
     minHeight: 700,
     title: 'OrdaX Orchestrator Lab',
     backgroundColor: '#0b0e13',
@@ -369,17 +525,27 @@ async function createWindow() {
   });
 
   worker = new EmbeddedChatWorker();
+  providerViews.register(worker);
+  providerScheduler=createProviderExecutionScheduler({lanes:[{id:'primary',worker}]});
+  const registeredScheduler=providerScheduler;
+  const registeredWorker=worker;
+  registeredWorker.view.webContents.once('destroyed',()=>{
+    providerViews.unregister(registeredWorker);
+    registeredScheduler.close('provider_worker_destroyed');
+  });
   hostStartupLog('worker_constructed');
   worker.setObserverMode(observerMode);
   worker.setStageSink(({ stage, at }) => {
-    if (!liveRun || !win || win.isDestroyed()) return;
+    const routed=providerViews.runForWorker(registeredWorker);
+    if (!routed || !win || win.isDestroyed()) return;
     emitRendererEvent('ordax:task:stage', {
-      taskId:liveRun.taskId, runId:liveRun.runId, stage, at, runStartedAt:liveRun.startedAt
+      taskId:routed.taskId, runId:routed.runId, stage, at, runStartedAt:routed.startedAt
     });
   });
   worker.setFastStreamSink(delta => {
-    if (!liveRun || !win || win.isDestroyed()) return;
-    emitRendererEvent('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, ...delta, mirrorAt:Date.now(), runStartedAt:liveRun.startedAt });
+    const routed=providerViews.runForWorker(registeredWorker);
+    if (!routed || !win || win.isDestroyed()) return;
+    emitRendererEvent('ordax:task:stream', { taskId:routed.taskId, runId:routed.runId, ...delta, mirrorAt:Date.now(), runStartedAt:routed.startedAt });
   });
 
   // Native WebContentsView defaults to visible. Hide the embedded provider
@@ -390,6 +556,24 @@ async function createWindow() {
   win.on('resize', layoutViews);
   win.on('maximize', layoutViews);
   win.on('unmaximize', layoutViews);
+  // The user can close Electron while a provider request was accepted but
+  // its reply is unknown. Persist the SAME interruption transaction used on
+  // startup before destroying the window. No provider retry/cancel/API call.
+  // A late response cannot be committed: finishRun requires status=running.
+  win.on('close', event => {
+    if (!liveRun) {registeredScheduler.close();return;}
+    try {
+      const interrupted = store.recoverInterruptedRuns('app_shutdown');
+      registeredScheduler.close();
+      providerViews.unbindRun(worker,liveRun.runId);
+      liveRun = null;
+      if (interrupted) hostStartupLog('inflight_run_interrupted_on_close');
+    } catch {
+      // Never let a failed SQLite transition silently discard an in-flight Run.
+      event.preventDefault();
+      hostStartupLog('inflight_shutdown_recovery_failed');
+    }
+  });
 
   // A dead App renderer must never look like a successfully started product.
   // Report only local, sanitized shell failure codes, never provider content.
@@ -442,143 +626,57 @@ async function createWindow() {
     hostStartupLog('provider_worker_load_started');
     void worker.load('https://chatgpt.com/').catch(()=>hostStartupLog('provider_worker_load_failed'));
   }
-  else await worker.load('https://chatgpt.com/');
+  else {
+    // The provider is an external dependency. Its navigation must not hold
+    // the OrdaX shell's startup promise or make app.whenReady quit the app.
+    // The worker keeps the failure in status(); the operator can retry from
+    // the provider pane after the App has loaded.
+    void worker.load('https://chatgpt.com/').catch(()=>{});
+  }
   hostStartupLog('window_create_complete');
+  return win;
 }
 
 ipcMain.on('ordax:worker:preload-ready', (event, payload) => {
-  if (!worker || event.sender.id !== worker.view.webContents.id) return;
+  if (providerViews.resolve(event.sender)!==worker) return;
   workerPreload = { ready:true, url:String(payload?.url || ''), at:Number(payload?.at || Date.now()) };
 });
 
 ipcMain.on('ordax:worker:stream', (event, snapshot) => {
-  if (!worker || event.sender.id !== worker.view.webContents.id || !liveRun || !win || win.isDestroyed()) return;
-  const delta = worker.acceptStreamSnapshot(snapshot);
+  const fromWorker=providerViews.resolve(event.sender);
+  const routed=providerViews.runForSender(event.sender);
+  if (fromWorker!==worker || !routed || !win || win.isDestroyed()) return;
+  const delta = fromWorker.acceptStreamSnapshot(snapshot);
   if (!delta) return;
   const mirrorAt = Date.now();
-  if (!liveRun.firstDeltaAt) liveRun.firstDeltaAt = delta.firstDeltaAt || mirrorAt;
-  emitRendererEvent('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, source:'beta', ...delta, mirrorAt, runStartedAt:liveRun.startedAt });
+  if (!routed.firstDeltaAt) routed.firstDeltaAt = delta.firstDeltaAt || mirrorAt;
+  emitRendererEvent('ordax:task:stream', { taskId:routed.taskId, runId:routed.runId, source:'beta', ...delta, mirrorAt, runStartedAt:routed.startedAt });
 });
 
-registerUiHandler('ordax:workspace:get', () => store.getWorkspaceSession());
-registerUiHandler('ordax:tasks:list', () => {
-  const bindings=new Map(store.db.prepare('SELECT * FROM lab_task_bindings').all().map(row=>[row.task_id,row]));
-  return store.listTasks().map(task=>({...task,lab_binding:bindings.get(task.id)||null}));
+const sharedTaskHandlers=createTaskUiHandlers({
+  store,decorateTask,decorateMessages,getTaskView,isRunActive:()=>Boolean(liveRun),
+  onOpenTask:createProviderAwareTaskOpener({
+    isChatVisible:()=>chatVisible,
+    showConversation:url=>worker.showConversation(url),
+    safeTaskNavigationReason,
+    onNavigationResult:result=>emitRendererEvent('ordax:task:provider-navigation',result)
+  })
 });
-registerUiHandler('ordax:tasks:create', (_event, title) => decorateTask(store.createTask(String(title || 'Nova tarefa'))));
-registerUiHandler('ordax:tasks:get', (_event, id) => getTaskView(id));
-registerUiHandler('ordax:tasks:messages:page', (_event, { taskId, before }) => {
-  if (!store.getTaskExecutionSnapshot(String(taskId))) throw new Error('task_not_found');
-  const page = store.messagesPage(String(taskId), { before });
-  return { ...page, messages:decorateMessages(page.messages) };
-});
-registerUiHandler('ordax:tasks:rename', (_event, { taskId, title }) => {
-  store.renameTask(String(taskId), title);
-  return getTaskView(taskId);
-});
-registerUiHandler('ordax:tasks:draft:set', (_event, { taskId, content, revision }) =>
-  store.setDraft(String(taskId), content, revision));
-registerUiHandler('ordax:tasks:open', async (_event, id) => {
-  const task = getTaskView(id);
-  if (chatVisible && task?.chat_url) {
-    try {
-      const navigation = await worker.showConversation(task.chat_url);
-      if (navigation.navigated === false) return {
-        ...task, provider_navigation:'not_navigated',
-        provider_navigation_reason:safeTaskNavigationReason(navigation.reason)
-      };
-    } catch (error) {
-      return {
-        ...task, provider_navigation:'failed',
-        provider_navigation_reason:safeTaskNavigationReason(error?.message)
-      };
-    }
-  }
-  return task;
-});
+for(const [channel,handler] of sharedTaskHandlers)registerUiHandler(channel,handler);
 // A first-party OrdaX App action, not the ChatGPT direct-mode UI.
-// Historical inspection never sends messages or changes the SQLite ledger.
+// Inspection is read-only; recovery is a second explicit action that rechecks
+// the exact provider evidence and atomically reconciles the local ledger.
 registerUiHandler('ordax:tasks:inspect-linked-thread', async (event, requestedId) => {
   requireTrustedSupervisorRenderer(event);
   if (liveRun) return {kind:'unavailable',reason:'run_active',threadRendered:false,requiresReconciliation:true};
-  const taskId=String(requestedId || '');
-  const row=store.db.prepare('SELECT chat_url,workspace_session_id FROM tasks WHERE id=?').get(taskId);
-  const currentSession=store.getWorkspaceSession();
-  if (!row || row.workspace_session_id !== currentSession?.id)
-    throw new Error('task_access_denied');
-  const expectedUrl=canonicalProviderChatUrl(row.chat_url);
-  if (!expectedUrl)
-    return {kind:'unavailable',reason:'canonical_chat_url_missing',threadRendered:false,requiresReconciliation:true};
-  // SQLite insertion order is authoritative here. created_at/id can tie or
-  // sort randomly within a millisecond, selecting an older turn by mistake.
-  const message=store.db.prepare(`SELECT id,content FROM messages WHERE task_id=? AND role='user'
-    ORDER BY rowid DESC LIMIT 1`).get(taskId);
-  // The receipt must belong to this exact latest local user turn, not just an
-  // older message sharing its Task and provider conversation.
-  const provenance=findProviderSubmissionProvenance({
-    store,taskId,chatUrl:expectedUrl,messageId:message?.id
+  return inspectProviderLinkedThread({store,worker,taskId:requestedId});
+});
+registerUiHandler('ordax:tasks:reconcile-linked-reply', async (event, payload={}) => {
+  requireTrustedSupervisorRenderer(event);
+  if(liveRun)throw new Error('provider_reply_recovery_run_active');
+  return reconcileProviderLinkedReply({
+    store,worker,taskId:payload?.taskId,responseSha256:payload?.responseSha256
   });
-  // Without a receipt for the latest submitted turn, W3 certification is
-  // impossible regardless of what the remote DOM displays. Return from the
-  // local ledger BEFORE triggering any provider navigation or extra traffic.
-  // Manual task opening remains a separate, explicitly requested action.
-  if (!provenance) return {
-    kind:'unavailable',reason:'provider_submission_provenance_missing',
-    inspectionReason:'provider_submission_provenance_missing',
-    threadRendered:false,responseCandidate:false,requiresReconciliation:true
-  };
-  // No mutation or replay, including when the provider navigation times out.
-  const observed=await worker.inspectConversationReadOnly(expectedUrl).catch(() => ({available:false,reason:'provider_inspection_unavailable'}));
-  const assessment=assessProviderConversationEvidence({
-    expectedUrl,observed,expectedMessage:message?.content,
-    expectedPromptSha256:provenance?.promptSha256
-  });
-  // DOM presence is not evidence that the Task's conversation was restored.
-  // The canonical submitted turn and its assistant reply must both match.
-  // A candidate in a still-generating thread is never a completed W3 answer.
-  // Older/untrusted observations lacking the explicit read-only stop probe also
-  // fail closed. Absence of a stop control is necessary but not sufficient.
-  const generationNotActive=observed?.generationStopVisible===false;
-  const threadRendered=Boolean(provenance) && assessment.kind==='response_candidate' &&
-    assessment.candidates===1 && assessment.responseCandidate===true &&
-    observed?.truncated!==true && generationNotActive;
-  const possibleAnswer=assessment.kind==='response_candidate' &&
-    assessment.candidates===1 && assessment.responseCandidate===true;
-  return {
-    kind:assessment.kind,reason:assessment.reason,threadRendered,
-    inspectionReason:threadRendered ? 'thread_rendered' :
-      (!provenance && possibleAnswer
-        ? 'provider_submission_provenance_missing'
-        : possibleAnswer && observed?.generationStopVisible===true
-          ? 'provider_response_generation_active'
-          : possibleAnswer && observed?.generationStopVisible!==false
-            ? 'provider_generation_state_unobserved'
-            : safeHistoricalThreadFailure(observed?.reason)),
-    responseCandidate:assessment.responseCandidate===true,
-    requiresReconciliation:assessment.requiresReconciliation===true
-  };
-});
-registerUiHandler('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
-registerUiHandler('ordax:tasks:rotate-conversation', (_event, id) => {
-  if (liveRun) throw new Error('conversation_rotation_during_run');
-  store.rotateConversation(String(id), 'manual_ui');
-  return getTaskView(id);
-});
-registerUiHandler('ordax:tasks:memory:upsert', (_event, { taskId, item }) => {
-  store.upsertProjectMemory(String(taskId), { ...(item || {}), source_type:'manual' });
-  return getTaskView(taskId);
-});
-registerUiHandler('ordax:tasks:memory:archive', (_event, { taskId, memoryId }) => {
-  store.archiveProjectMemory(String(taskId), String(memoryId));
-  return getTaskView(taskId);
-});
-registerUiHandler('ordax:tasks:memory:candidates:scan', (_event, taskId) => {
-  store.memoryCandidates.scan(String(taskId));
-  return getTaskView(taskId);
-});
-registerUiHandler('ordax:tasks:memory:candidates:review', (_event, { taskId, candidateId, action, changes }) => {
-  store.memoryCandidates.review(String(taskId), String(candidateId), String(action), changes || {});
-  return getTaskView(taskId);
 });
 // Exact-profile attestation for Lab E2E: expose only an allowlisted hash, not
 // filesystem paths, credentials or application data. This is read-only.
@@ -621,21 +719,40 @@ registerUiHandler('ordax:provider:diagnostic', async event => {
   // Read-only provider UI inspection; no API key, chat submission or disk write.
   return worker.inspectDiagnosticReadOnly();
 });
-registerUiHandler('ordax:provider:login', () => {
+registerUiHandler('ordax:provider:view-bounds', (event,rect) => {
+  requireTrustedSupervisorRenderer(event);
+  if(hostBrowserMode)throw new Error('provider_view_unavailable_on_host');
+  providerViewBounds=rect&&typeof rect==='object'?{x:rect.x,y:rect.y,width:rect.width,height:rect.height}:null;
+  layoutViews();
+  return Boolean(providerViewBounds&&chatVisible);
+});
+registerUiHandler('ordax:provider:navigate', async (event,direction) => {
+  requireTrustedSupervisorRenderer(event);
+  if(!['back','forward'].includes(direction))throw new Error('provider_navigation_invalid');
+  if(liveRun||worker.active)throw new Error('provider_navigation_during_run_blocked');
+  return worker.navigateHistory(direction);
+});
+registerUiHandler('ordax:provider:login', event => {
+  requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode)throw new Error('provider_login_requires_app_view');
   return worker.login();
 });
-registerUiHandler('ordax:provider:home', () => worker.newChat());
-registerUiHandler('ordax:provider:reload', () => {
-  // Manual reload must never interrupt a pending/uncertain provider send.
-  if (liveRun || worker.active) throw new Error('provider_reload_during_run_blocked');
-  return worker.view.webContents.reload();
+registerUiHandler('ordax:provider:home', event => {
+  requireTrustedSupervisorRenderer(event);
+  if(liveRun||worker.active)throw new Error('provider_navigation_during_run_blocked');
+  return worker.newChat();
 });
-registerUiHandler('ordax:chat:visible', (_event, visible) => {
+registerUiHandler('ordax:provider:reload', async event => {
+  requireTrustedSupervisorRenderer(event);
+  if (liveRun || worker.active) throw new Error('provider_reload_during_run_blocked');
+  return worker.reloadCurrentPage();
+});
+registerUiHandler('ordax:chat:visible', (event, visible) => {
+  requireTrustedSupervisorRenderer(event);
   if(hostBrowserMode&&visible)throw new Error('provider_login_requires_app_view');
-  chatVisible = Boolean(visible);
+  chatVisible=Boolean(visible);
   layoutViews();
-  return chatVisible;
+  return chatVisible&&Boolean(providerViewBounds);
 });
 registerUiHandler('ordax:tasks:send', async (event, { taskId, content, newSession = false, draftRevision = null, requestId = null }) => {
   requireTrustedSupervisorRenderer(event);
@@ -651,7 +768,7 @@ registerUiHandler('ordax:tasks:send', async (event, { taskId, content, newSessio
     if(receipt.status!=='succeeded')throw Error('orchestrator_reconciliation_required');
     return {task:getTaskView(taskId),command:receipt};
   }
-  return enqueueExecution(() => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision }));
+  return enqueueExecution(String(taskId),runWorker => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision },runWorker));
 });
 
 
@@ -660,11 +777,11 @@ let labSupervisor = null;
 // The UI may prepare a key, but only an explicit dev enable flag permits a
 // model call. Stored secrets never travel back through IPC.
 const currentGroqKey=()=>groqCredential.read()||process.env.GROQ_API_KEY||null;
-// Local chat opt-in lasts only for this App process; it does not enable the
-// supervisor, provider automation, remote grants or an external MCP endpoint.
-let localCoordinatorChatEnabled=null;
-const coordinatorChatEnabled=()=>localCoordinatorChatEnabled??(process.env.ORDAX_LAB_SUPERVISOR_ENABLE==='1');
-const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey())});
+// Readable protected Groq key is the sole advisory availability source.
+// Background project continuation and GPT sends retain separate authorizations.
+const coordinatorChatEnabled=()=>Boolean(currentGroqKey());
+const coordinatorChatStatus=()=>({enabled:coordinatorChatEnabled(),configured:Boolean(currentGroqKey()),
+  groqConfigured:Boolean(currentGroqKey()),provider:'groq',executionSurface:'electron'});
 function requireLabSupervisor() {
   if (process.env.ORDAX_LAB_SUPERVISOR_ENABLE !== '1') throw new Error('supervisor_disabled');
   const apiKey=currentGroqKey();
@@ -675,7 +792,7 @@ function requireLabSupervisor() {
       planner:createGroqSupervisorPlanner({ apiKey }),
       authorizeTask: scope => authorizeLocalSupervisorTask({ store, ...scope }),
       chat:{ send:async ({ taskId,content }) => {
-        const reply = await enqueueExecution(() => runTask(taskId,content,{newSession:false}));
+        const reply = await enqueueExecution(taskId,runWorker => runTask(taskId,content,{newSession:false},runWorker));
         return chatReceiptFromRunTask(reply);
       } }
     });
@@ -706,11 +823,13 @@ async function confirmInActiveUi({title,message,detail,approveLabel='Confirmar',
 
 // One App service for native UI and the MCP adapter. The fixed identity is
 // local-only; it is NOT exported as authentication for a remote MCP endpoint.
-const localOrchestratorContext=Object.freeze({actorId:'lab-owner',clientId:'lab-ui',
-  workspaceSessionId:store.getWorkspaceSession().id});
+let localOrchestratorContext=null;
 let runtimeOrchestratorBridge=null;
 let closeRuntimeOrchestratorPipe=null;
-const orchestratorService=new OrchestratorService({
+const orchestratorKernel=createOrchestratorKernel({
+  store,version:app.getVersion(),
+  authorize:({context,operation})=>context===localOrchestratorContext||
+    runtimeOrchestratorBridge?.allows(context,operation)===true,
   confirmProposalSend:async({title,content})=>confirmInActiveUi({
     title:'Confirmar primeiro envio ao ChatGPT',message:title,
     detail:'Mensagem exata a enviar:\n\n'+content+'\n\nSerá enviada uma única mensagem pelo executor do App. Uma resposta observada não comprova alterações em arquivos ou outros efeitos.',
@@ -721,15 +840,17 @@ const orchestratorService=new OrchestratorService({
     detail:proposal.reason+'\n\nPrimeira mensagem (rascunho):\n'+proposal.content+'\n\nEsta ação cria uma frente local e salva o rascunho. Não envia ao ChatGPT.',
     approveLabel:'Criar frente com rascunho'
   }),
-  store,authorize:({context,operation})=>context===localOrchestratorContext||
-    runtimeOrchestratorBridge?.allows(context,operation)===true,
-  provider:{busy:()=>Boolean(liveRun||worker?.active),
+  provider:{busy:()=>Boolean(liveRun||worker?.active||providerScheduler?.snapshot().pendingTasks),
     ready:async()=>{assertProviderSendReadiness(await worker.health());return true;},
-    send:async({taskId,content,draftRevision})=>
-    chatReceiptFromRunTask(await enqueueExecution(()=>runTask(taskId,content,{newSession:false,draftRevision})))},
+    send:async({taskId,content,draftRevision,taskKind})=>
+    chatReceiptFromRunTask(await enqueueExecution(taskId,runWorker=>runTask(taskId,content,{newSession:false,draftRevision,
+      allowCoordinatorTask:taskKind==='orchestrator'},runWorker)))},
   coordinator:createGroqCoordinatorConversation({store,getApiKey:currentGroqKey,
     isEnabled:coordinatorChatEnabled})
 });
+localOrchestratorContext=orchestratorKernel.context;
+const {service:orchestratorService,mcp:localOrchestratorMcp}=orchestratorKernel;
+orchestratorService.autonomous.setNotifier(()=>notifyOrchestratorChanged());
 orchestratorService.recoverInterruptedCommands();
 // Off by default. This inherited private pipe is NOT a public MCP endpoint.
 // A Runtime launcher must supply the first bootstrap AFTER canonical owner
@@ -744,8 +865,6 @@ if(runtimeTransportRequest) {
   const detach=attachOrchestratorRuntimePipes({...streams,bridge:runtimeOrchestratorBridge});
   closeRuntimeOrchestratorPipe=()=>{detach();streams.close();};
 }
-const localOrchestratorMcp=createOrchestratorMcp({service:orchestratorService,
-  getContext:()=>localOrchestratorContext,version:app.getVersion()});
 registerUiHandler('ordax:orchestrator:invoke',async(event,payload)=>{
   requireTrustedSupervisorRenderer(event);
   const result=await orchestratorService.invoke(localOrchestratorContext,payload?.operation,payload?.input??{});
@@ -769,15 +888,6 @@ registerUiHandler('ordax:orchestrator:chat-status',event=>{
   requireTrustedSupervisorRenderer(event);
   return coordinatorChatStatus();
 });
-registerUiHandler('ordax:orchestrator:chat-enable',(event,enabled)=>{
-  requireTrustedSupervisorRenderer(event);
-  if(typeof enabled!=='boolean')throw Error('orchestrator_chat_setting_invalid');
-  if(enabled&&!currentGroqKey())throw Error('supervisor_api_key_missing');
-  localCoordinatorChatEnabled=enabled;
-  notifyOrchestratorChanged();
-  return coordinatorChatStatus();
-});
-
 registerUiHandler('ordax:supervisor:status', (event) => {
   requireTrustedSupervisorRenderer(event);
   return ({
@@ -854,6 +964,7 @@ registerUiHandler('ordax:supervisor:dispatch', (event,payload) => {
   return requireLabSupervisor().dispatch({taskId:payload?.taskId,actionId:payload?.actionId});
 });
 let continuationTimer=null;
+let providerRecoveryInFlight=false;
 app.whenReady().then(async () => {
   hostStartupLog('electron_ready');
   protocol.handle('ordax-asset', request => {
@@ -879,9 +990,33 @@ app.whenReady().then(async () => {
   // Observe completed Runs even when the coordinator chat is not selected.
   // Bound to this App lifetime; does not promise a headless 24h supervisor.
   continuationTimer=setInterval(()=>{
-    void orchestratorService.continuation.tick(localOrchestratorContext)
-      .then(result=>{if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();})
-      .catch(()=>{}); // No auto-retry of an uncertain provider/API effect.
+    void (async()=>{
+      try {
+        const autonomous=await orchestratorService.autonomous.tick(localOrchestratorContext);
+        if(autonomous.state==='advanced'||autonomous.state==='blocked'||autonomous.state==='reconciliation_required')notifyOrchestratorChanged();
+        // Never compete with an active autonomous mission for the same GPT executor.
+        if(['advanced','busy','executor_busy'].includes(autonomous.state))return;
+        const result=await orchestratorService.continuation.tick(localOrchestratorContext);
+        if(result.state==='analyzed'||result.state==='reconciliation_required')notifyOrchestratorChanged();
+      } catch {}
+      // Use the existing app-lifetime supervisor tick. Recovery is restricted
+      // to an uncertain Run whose exact linked GPT thread is already visible;
+      // it performs bounded, read-only observations and never re-sends.
+      if(providerRecoveryInFlight||liveRun||
+          store.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
+          store.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
+          orchestratorService.provider?.busy?.()===true)return;
+      providerRecoveryInFlight=true;
+      try {
+        const recovery=await recoverVisibleLinkedProviderSubmission({store,worker});
+        if(recovery.state==='recovered') {
+          emitRendererEvent('ordax:task:reconciled',{
+            taskId:recovery.taskId,runId:recovery.runId
+          });
+          notifyOrchestratorChanged();
+        }
+      } catch {} finally {providerRecoveryInFlight=false;}
+    })().catch(()=>{});
   },10000);
 }).catch(()=>{
   hostStartupLog('startup_failed');
@@ -902,4 +1037,3 @@ app.on('will-quit', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
-
