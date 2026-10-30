@@ -564,11 +564,17 @@ app.whenReady().then(async () => {
     await window.webContents.executeJavaScript('document.querySelector("#projectFiles button").click()');
     await until('!document.getElementById("projectEditor").disabled');
     await window.webContents.executeJavaScript('document.getElementById("projectEditor").value="edição pendente";document.getElementById("projectEditor").dispatchEvent(new Event("input"))');
-    await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectB}"]').click()`);
-    await until('document.getElementById("notice").textContent.includes("antes de trocar de projeto")');
-    assert.equal(bridge.activeProjectId,boundProject.id);assert.equal(await window.webContents.executeJavaScript('document.getElementById("projectEditor").value'),'edição pendente');
+    // The canonical Workspace now refuses to leave at all while the editor
+    // has unreviewed work, instead of revealing another project behind it.
+    await window.webContents.executeJavaScript("document.querySelector('button[data-studio-page=projects]').click()");
+    await until('document.getElementById("notice").textContent.includes("Revise ou descarte")');
+    assert.equal(bridge.activeProjectId,boundProject.id);
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("projectDialog").hidden'),false);
+    assert.equal(await window.webContents.executeJavaScript('document.getElementById("projectEditor").value'),'edição pendente');
     await window.webContents.executeJavaScript('document.getElementById("projectDiscard").click()');
-    await window.webContents.executeJavaScript(`document.querySelector('button[data-studio-page=projects]').click();document.querySelector('[data-project-id="${projectB}"]').click()`);
+    await window.webContents.executeJavaScript("document.querySelector('button[data-studio-page=projects]').click()");
+    await until('document.querySelector(\'[data-project-id="${projectB}"]\')!==null');
+    await window.webContents.executeJavaScript(`document.querySelector('[data-project-id="${projectB}"]').click()`);
     await until('document.getElementById("projectScopeName").textContent==="Jogo" && document.getElementById("prompt").value==="Rascunho do jogo"');
     console.log('PASS: projeto autorizado do Runtime abre seu grupo de conversas; edição pendente impede troca de contexto e permanece intacta.');
     for (const [mode, slug] of [['projectCreate','created-site'],['projectImport','existing-site']]) {
