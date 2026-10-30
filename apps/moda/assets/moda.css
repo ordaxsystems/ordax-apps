@@ -642,9 +642,9 @@ body { background: var(--canvas); }
 .featured-products { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .featured-product { min-width: 0; }
 .featured-media { position: relative; height: 156px; overflow: hidden; border-radius: 8px; background: #ebe4de; }
-.featured-media.has-wearly-photo { background: radial-gradient(ellipse at 50% 45%, #fffdfa 0%, #f5ece6 58%, #eadbd7 100%); }
+.featured-media.has-catalog-photo { background: radial-gradient(ellipse at 50% 45%, #fffdfa 0%, #f5ece6 58%, #eadbd7 100%); }
 .feature-product-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; mix-blend-mode: multiply; transition: transform .28s ease; }
-.featured-media.has-wearly-photo .feature-product-photo { object-fit: contain; padding: 8px; }
+.featured-media.has-catalog-photo .feature-product-photo { object-fit: contain; padding: 8px; }
 .featured-product:hover .feature-product-photo { transform: scale(1.035); }
 .feature-photo-note { position: absolute; z-index: 2; right: 8px; bottom: 8px; padding: 4px 7px; border: 1px solid #e9e2da; border-radius: 20px; background: #fffdf9e8; color: #766b61; font-size: 6px; font-weight: 750; letter-spacing: .5px; }
 .feature-art { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
@@ -1023,7 +1023,7 @@ td strong { font-size: 10px; }
   .sale-item-meta > strong { max-width: 105px; }
 }
 
-/* Vitrine editorial da visão geral, com espaço responsivo para as fotos Wearly. */
+/* Vitrine editorial da visão geral, com espaço responsivo para as referências autorizadas de produto. */
 .overview-feature-grid { grid-template-columns: minmax(0, 1fr); }
 .overview-stock-stack { display: grid; align-content: start; gap: 13px; min-width: 0; }
 .featured-products { gap: 13px; }
@@ -1067,7 +1067,7 @@ td strong { font-size: 10px; }
   .metric-sparkline, .mini-bars { display: none; }
 }
 
-/* Catálogo editorial: fotos do Wearly em destaque, sem associar imagens a tipos incompatíveis. */
+/* Catálogo editorial: imagens autorizadas do catálogo em destaque, sem associar imagens a tipos incompatíveis. */
 .catalog-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }
 .catalog-filter-row .filter-chip { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; color: #665d5c; font-size: 10px; transition: border-color .16s ease, background .16s ease, color .16s ease; }
 .catalog-filter-row .filter-chip:hover { border-color: #d8c0c7; color: var(--berry-dark); }
@@ -1102,7 +1102,7 @@ td strong { font-size: 10px; }
 .catalog-actions .button { min-width: 0; min-height: 35px; padding: 0 8px; font-size: 9px; }
 .catalog-actions .catalog-toggle { grid-column: 1 / -1; }
 
-/* A foto principal do Wearly orienta o Estúdio; os dois slots restantes continuam próprios da peça. */
+/* A foto principal de catálogo autorizada orienta o Estúdio; os dois slots restantes continuam próprios da peça. */
 .studio-photo-card:first-child { grid-column: 1 / -1; grid-template-columns: minmax(104px, .82fr) minmax(0, 1fr); align-items: start; gap: 8px 10px; padding: 9px; }
 .studio-photo-card:first-child .studio-photo-frame { grid-row: 1 / span 2; min-height: 128px; aspect-ratio: 4 / 5; border: 1px solid #ece3dc; border-radius: 8px; background: radial-gradient(ellipse at center, #fffefa, #f2e9e0); }
 .studio-photo-frame img { object-fit: contain; padding: 5px; mix-blend-mode: multiply; }
