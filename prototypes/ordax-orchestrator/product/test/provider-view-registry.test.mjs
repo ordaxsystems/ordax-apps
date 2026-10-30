@@ -141,8 +141,10 @@ test('Electron routes stage and streaming IPC only through registered per-worker
   const path=await import('node:path');
   const main=fs.readFileSync(path.resolve(path.dirname(url.fileURLToPath(import.meta.url)),
     '../desktop/main.mjs'),'utf8');
-  assert.match(main,/providerViews\.bindRun\(worker,liveRun\)/);
-  assert.match(main,/providerViews\.unbindRun\(worker,runId\)/);
+  // The scheduler supplies the physical worker and the exact immutable
+  // Run context; the old worker/liveRun source assertion predates this gate.
+  assert.match(main,/providerViews\.bindRun\(runWorker,runContext\)/);
+  assert.match(main,/providerViews\.unbindRun\(runWorker,runId\)/);
   assert.match(main,/providerViews\.runForWorker\(registeredWorker\)/);
   assert.match(main,/providerViews\.runForSender\(event\.sender\)/);
   assert.match(main,/const delta = fromWorker\.acceptStreamSnapshot\(snapshot\)/);
