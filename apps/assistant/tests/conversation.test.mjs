@@ -631,3 +631,65 @@ test("Assistant aborts old request on Space change without leaking its content i
   assert.deepEqual(conversation.getSnapshot().messages, []);
   conversation.dispose();
 });
+
+test("Native Aura discard settles without waiting for a non-cooperative provider", async () => {
+  let lateResolve;
+  const intelligence = intelligencePort();
+  intelligence.respond = () => new Promise(resolve => { lateResolve = resolve; });
+  let captures = 0;
+  const conversation = createAssistantConversationRuntime({
+    intelligencePort: intelligence,
+    responseDeadlineMs: 1000,
+    memoryCapture: { bindTurn() { return { async capture() { captures++; } }; } },
+  });
+  const pending = conversation.send("descartar");
+  assert.equal(conversation.discardPendingResponse(), true);
+  const result = await Promise.race([
+    pending.then(() => "unexpected success", error => error.message),
+    new Promise(resolve => setTimeout(() => resolve("still waiting"), 200)),
+  ]);
+  assert.match(result, /discarded/);
+  assert.equal(conversation.getSnapshot().inferencePending, false);
+  assert.equal(conversation.getSnapshot().lastError, "response-discarded");
+  assert.deepEqual(conversation.getSnapshot().messages, []);
+  lateResolve({schema: INTELLIGENCE_RESPONSE_SCHEMA, text:"late", engineId:"llama.cpp", modelId:"qwen-test",authority:"none"});
+  await Promise.resolve();
+  assert.deepEqual(conversation.getSnapshot().messages, []);
+  assert.equal(captures, 0);
+  conversation.dispose();
+});
+
+test("Native Aura bounds waiting, reports timeout and observes late upstream failure", async () => {
+  let lateReject;
+  const intelligence = intelligencePort();
+  intelligence.respond = () => new Promise((_, reject) => { lateReject = reject; });
+  const conversation = createAssistantConversationRuntime({ intelligencePort: intelligence, responseDeadlineMs: 20 });
+  await assert.rejects(conversation.send("consulta demorada"), /timed out/);
+  const snapshot = conversation.getSnapshot();
+  assert.equal(snapshot.inferencePending, false);
+  assert.equal(snapshot.lastError, "response-timeout");
+  assert.equal(snapshot.state, "error");
+  assert.deepEqual(snapshot.messages.map(entry => entry.text), ["consulta demorada"]);
+  lateReject(Error("late upstream failure"));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(conversation.getSnapshot().lastError, "response-timeout");
+  conversation.dispose();
+});
+
+test("Native Aura deadline is bounded and account or Space revocation releases a stuck request", async () => {
+  assert.throws(() => createAssistantConversationRuntime({responseDeadlineMs:120001}), /deadline/);
+  assert.throws(() => createAssistantConversationRuntime({responseDeadlineMs:0}), /deadline/);
+  const scope = scopePorts("account-a", "space-a");
+  const intelligence = intelligencePort();
+  intelligence.respond = () => new Promise(() => {});
+  const conversation = createBoundConversationRuntime({
+    intelligencePort: intelligence, identitySessionPort: scope.identity,
+    spaceSelectionPort: scope.spaceSelection, responseDeadlineMs: 1000,
+  });
+  const pending = conversation.send("segredo anterior");
+  scope.spaceSelection.setSnapshot(selectedSpace("account-a", "space-b"));
+  await assert.rejects(pending, /context changed/);
+  assert.deepEqual(conversation.getSnapshot().messages, []);
+  assert.equal(conversation.getSnapshot().inferencePending, false);
+  conversation.dispose();
+});
