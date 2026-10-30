@@ -14,7 +14,7 @@ O rodapé da navegação identifica a origem atual como **Dados locais** e infor
 
 Nos indicadores, vendas, devoluções e substituições são agrupadas pela data de cada evento. Unidades líquidas podem ficar negativas em um dia quando as devoluções superam as peças vendidas; a visão geral discrimina vendas, devoluções e substituições e omite movimentos zerados. O valor de mercadorias líquidas é calculado como venda bruta menos itens devolvidos mais itens substitutos; ele não representa receita ou caixa. Diferenças de troca continuam pendentes e não são apresentadas como pagamento ou reembolso.
 
-Os mocks do Ateliê Aurora incluem 15 produtos locais: roupas, calçados, bolsas e acessórios, com variantes e saldo por SKU. Dez peças de roupa usam fotografias do catálogo Wearly como imagens de referência visual nos destaques, catálogo e PDV, além de miniaturas em vendas, estoque e devoluções; elas não representam fotos da Ateliê Aurora nem mudam de cor conforme a variante selecionada. Bolsas, calçados e acessórios mantêm ilustrações próprias para não associar uma foto incompatível. As peças de vestuário elegíveis também têm ficha própria de tecido, elasticidade, modelagem, folga planejada e medidas por tamanho. Uma migração aditiva leva essas peças, imagens e recebimentos iniciais para estados de preview antigos, sem sobrescrever alterações já feitas no catálogo local.
+Os mocks do Ateliê Aurora incluem 15 produtos locais, com variantes e saldo por SKU. A prévia usa ilustrações vetoriais próprias em catálogo, destaques, PDV, estoque e devoluções, sem empacotar fotografias de terceiros. As peças de vestuário elegíveis incluem fichas de tecido, elasticidade, modelagem, folga planejada e medidas por tamanho. Uma migração aditiva preserva edições locais e adiciona recebimentos iniciais sem sobrescrever SKUs existentes.
 
 O perfil sintético registra a preferência de caimento no brief de conteúdo. A classificação numérica continua comparando as medidas corporais e da peça com a folga planejada; a preferência não altera esse cálculo.
 
@@ -28,7 +28,7 @@ Cada sessão local preserva um snapshot do produto, variante, perfil sintético,
 
 Quando uma revisão solicita ajustes, a sessão fica preservada e o fluxo abre um rascunho vinculado para criar a próxima versão. Cada versão guarda a referência à anterior, o número de versão e o comentário que motivou o retrabalho. Uma versão recusada não pode ser aprovada depois sem nova ilustração; os registros continuam somente no histórico local e não alteram imagens ou arquivos reais.
 
-O mock foi inspirado na separação do Wearly entre catálogo, variante, motor de caimento, brief e sessões de geração. As fotos de referência foram copiadas a pedido do usuário, que informou que o projeto está liberado para uso; a atribuição e os nomes dos arquivos estão em `assets/wearly/ATTRIBUTION.md`. A consulta ao repositório público não encontrou um arquivo de licença, então nenhum identificador de licença foi presumido. O botão de geração real fica desativado até haver contrato oficial de Intelligence/Platform, além de regras de autorização e gestão de arquivos.
+A organização do protótipo usa como referência conceitual a separação de catálogo, variante, caimento, brief e histórico apresentada pelo Wearly. Em 30/10/2026, o repositório público consultado não publicava uma licença; por isso, **as dez fotografias de terceiros não fazem parte do candidato canônico nem da distribuição**. Elas permanecem acessíveis somente no histórico da branch da PR #358 para avaliação de proveniência, sem serem carregadas pelo preview integrado. O gerador real continua desabilitado até haver contratos oficiais de Intelligence/Platform, autorização e gestão de arquivos.
 
 ## Executar no host de desenvolvimento
 
@@ -36,7 +36,7 @@ Na raiz do checkout:
 
     node .\prototypes\moda\server.mjs
 
-Abra http://127.0.0.1:4245. O host injeta dados fictícios de Ateliê Aurora no armazenamento deste navegador. A interface não exibe faixa de ambiente de demonstração.
+Abra http://127.0.0.1:4245. O host injeta dados fictícios de Ateliê Aurora no armazenamento deste navegador. O rodapé informa explicitamente **Dados locais**, sem afirmar sincronização ou conexão comercial.
 
 ## Limites
 
