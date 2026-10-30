@@ -107,6 +107,25 @@ visível não é aceito como prova de prontidão do produto. Esse teste usa
 DOM sintético em Node, **não equivale a WebKit no USB**, assinatura ou
 Gate B liberado.
 
+## Identidade visual no catálogo Native (slot assinado)
+
+O mesmo pacote `assistant` inclui agora
+`presentation/manifest.json` (`ordax.app-presentation-manifest/1`).
+O catálogo Native canônico do OS **exige** esse manifesto descritivo
+para descobrir e exibir um `current` verificado: sem ele, mesmo um
+slot assinado pode ficar invisível no workspace. O ID e a versão precisam
+coincidir com `app.json`; `authority=none`, `singleton=true`.
+A marca e o título continuam exclusivamente em `app.json#title`;
+o catálogo utiliza esse título para a locale fonte e seu fallback, sem
+duplicar textos de branding na apresentação.
+
+Os testes de identidade e montagem exigem o manifesto no **ZIP verificado**
+pelo builder existente, e o pipeline Store Catalog Candidate volta a incluir
+esse arquivo no envelope assinado apenas com chave efêmera de CI. Isso
+corrige elegibilidade de descoberta, **não** prova que o Native Host
+Windows já tem um `current` assinado, probation, promotion, rollback,
+distribuição pública ou que a Aura esteja instalada no PC.
+
 ## Disponibilidade e instalação
 
 **Estado verificado em código:** a fonte está externalizada; o pacote
