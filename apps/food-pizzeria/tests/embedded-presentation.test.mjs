@@ -19,6 +19,8 @@ function fakePreviewPort(adapter = "browser-local-preview", state = createSeedFo
     context: { ...context, adapter },
     async initialize() { return state; },
     getSnapshot() { return state; },
+    getPreviewPreferences() { return { deliveryFeeCents: 500 }; },
+    async updatePreviewPreferences(preferences) { return preferences; },
     subscribe() { return () => {}; },
     async execute() { throw new Error("Não é um provider comercial."); },
     destroy() {},
@@ -68,12 +70,26 @@ function fakeRoot() {
         preventDefault() {},
       });
     },
+    dispatchReportRange(range) {
+      listeners.get("click")?.({
+        target: { closest() { return { dataset: { reportRange: range } }; } },
+        preventDefault() {},
+      });
+    },
   };
 }
 
 function fakeElement() {
   return { addEventListener() {}, removeEventListener() {} };
 }
+
+test("embedded preview marks dedicated kitchen stations for a compact viewport", () => {
+  const station = renderEmbeddedFoodPreview("<section class=\"kitchen-station-screen\"></section>", "", { kitchenStation: true });
+  const regular = renderEmbeddedFoodPreview("<section class=\"kitchen-station-screen\"></section>");
+  assert.match(station, /class="food-embedded-preview food-embedded-preview-kitchen"/);
+  assert.match(regular, /class="food-embedded-preview"/);
+  assert.doesNotMatch(regular, /food-embedded-preview-kitchen/);
+});
 
 test("content-only Food preview never includes a second sidebar, header or dashboard", async () => {
   const root = fakeRoot();
@@ -82,24 +98,129 @@ test("content-only Food preview never includes a second sidebar, header or dashb
     app.navigate("kitchen");
     await app.mount();
     assert.match(root.innerHTML, /data-preview-only="true"/);
-    assert.match(root.innerHTML, /Prévia local/);
+    assert.doesNotMatch(root.innerHTML.replace(/<[^>]*>/g, " "), /prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i);
     assert.match(root.innerHTML, /id="main-content"/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"|class="main-nav"|data-view="overview"/);
-    for (const view of ["orders", "menu", "tables", "delivery", "settings"]) {
+    for (const view of ["orders", "pos", "menu", "tables", "delivery", "reports", "settings"]) {
       app.navigate(view);
       assert.match(root.innerHTML, /data-preview-only="true"/);
+      assert.doesNotMatch(root.innerHTML.replace(/<[^>]*>/g, " "), /prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i);
       assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
     }
     app.navigate("orders");
-    assert.match(root.innerHTML, /Montar pedido/);
+    assert.match(root.innerHTML, /<h1>Pedidos<\/h1>/);
+    assert.doesNotMatch(root.innerHTML, /id="create-order-form"/);
+    app.navigate("pos");
+    assert.match(root.innerHTML, /<h1>PDV<\/h1>/);
+    assert.match(root.innerHTML, /id="create-order-form"/);
+    assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
+    app.navigate("reports");
+    assert.match(root.innerHTML, /<h1>Relatórios<\/h1>/);
+    assert.match(root.innerHTML, /Pedidos por canal/);
+    assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
+    root.dispatchReportRange("24h");
+    assert.match(root.innerHTML, /data-report-range="24h" aria-pressed="true"/);
     const beforeUnauthorizedClick = root.innerHTML;
     assert.equal(root.dispatchPreviewClick("inventory"), true);
     assert.equal(root.innerHTML, beforeUnauthorizedClick);
     assert.throws(() => app.navigate("overview"), /somente módulos operacionais/);
     assert.throws(() => app.navigate("not-a-module"), /somente módulos operacionais/);
     assert.equal(root.dispatchPreviewClick("kitchen"), true);
-    assert.match(root.innerHTML, /Fila da cozinha/);
+    assert.match(root.innerHTML, /<h1>Produção<\/h1>/);
     assert.doesNotMatch(root.innerHTML, /class="sidebar"|class="topbar"/);
+    assert.match(root.innerHTML, /#1050[\s\S]*?<span class="kitchen-channel-chip">Mesa 04<\/span>/);
+    assert.equal((root.innerHTML.match(/#1050/g) ?? []).length, 1,
+      "O número do pedido deve aparecer uma vez no cartão da cozinha.");
+    assert.match(root.innerHTML, /#1055[\s\S]*?<span class="kitchen-channel-chip">Mesa 01<\/span>/);
+    assert.doesNotMatch(root.innerHTML, /class="order-customer"|Fernanda Lima/);
+  } finally {
+    app.destroy();
+  }
+  assert.equal(root.listenerCount, 0);
+});
+
+test("Food operational reports download an aggregate CSV and release the object URL on teardown", async () => {
+  const originalCreateObjectURL = globalThis.URL.createObjectURL;
+  const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+  const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  let exportedBlob = null;
+  const revokedUrls = [];
+  const links = [];
+  const toasts = [];
+  globalThis.URL.createObjectURL = (blob) => {
+    exportedBlob = blob;
+    return "blob:food-report";
+  };
+  globalThis.URL.revokeObjectURL = (url) => revokedUrls.push(url);
+
+  const root = fakeRoot();
+  const reportContent = { querySelector() { return null; }, prepend(toast) { toasts.push(toast); } };
+  const rootQuerySelector = root.querySelector.bind(root);
+  root.querySelector = (selector) => selector === "#main-content" ? reportContent : rootQuerySelector(selector);
+  const document = {
+    body: { appendChild(link) { links.push(link); } },
+    createElement(tagName) {
+      if (tagName === "a") {
+        return { remove() { this.removed = true; }, click() { this.clicked = true; } };
+      }
+      return {
+        dataset: {},
+        append(...children) { this.textContent = children.map((child) => child.textContent).join(""); },
+        setAttribute() {},
+      };
+    },
+    createTextNode(text) { return { textContent: text }; },
+  };
+  globalThis.document = document;
+  root.ownerDocument = {
+    body: { appendChild(link) { links.push(link); } },
+    createElement(tagName) {
+      assert.equal(tagName, "a");
+      return {
+        remove() { this.removed = true; },
+        click() { this.clicked = true; },
+      };
+    },
+  };
+  const app = createFoodPizzeriaApp({ root, dataPort: fakePreviewPort(), presentation: "embedded-preview" });
+  try {
+    await app.mount();
+    app.navigate("reports");
+    root.dispatchReportRange("24h");
+    root.dispatchPreviewAction("export-food-report");
+
+    assert.equal(links.length, 1, toasts.map(({ textContent }) => textContent).join(" | "));
+    assert.equal(links[0].href, "blob:food-report");
+    assert.match(links[0].download, /ordax-food-relatorio-24h-\d{4}-\d{2}-\d{2}\.csv/);
+    assert.equal(links[0].clicked, true);
+    assert.equal(links[0].removed, true);
+    assert.match(toasts.at(-1)?.textContent ?? "", /Relatório CSV baixado/);
+    const bytes = new Uint8Array(await exportedBlob.arrayBuffer());
+    assert.deepEqual([...bytes.slice(0, 3)], [0xEF, 0xBB, 0xBF]);
+    const csv = await exportedBlob.text();
+    assert.match(csv, /"seção";"indicador";"valor"/);
+    assert.match(csv, /"Pedidos por canal"|"Canais"/);
+    assert.doesNotMatch(csv, /Fernanda Lima|Marina Alves|telefone/i);
+    app.destroy();
+    assert.deepEqual(revokedUrls, ["blob:food-report"]);
+  } finally {
+    app.destroy();
+    if (originalCreateObjectURL) globalThis.URL.createObjectURL = originalCreateObjectURL;
+    else delete globalThis.URL.createObjectURL;
+    if (originalRevokeObjectURL) globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    else delete globalThis.URL.revokeObjectURL;
+    if (originalDocument) Object.defineProperty(globalThis, "document", originalDocument);
+    else delete globalThis.document;
+  }
+});
+
+test("standalone Food header does not spend space on demo-data notices", async () => {
+  const root = fakeRoot();
+  const app = createFoodPizzeriaApp({ root, dataPort: fakePreviewPort(), presentation: "standalone-preview" });
+  try {
+    await app.mount();
+    assert.match(root.innerHTML, /class="topbar"/);
+    assert.doesNotMatch(root.innerHTML.replace(/<[^>]*>/g, " "), /preview-context|prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem sincronização/i);
   } finally {
     app.destroy();
   }
@@ -123,7 +244,9 @@ test("embedded Food preview cannot impersonate a real Space provider or open hor
   assert.throws(() => assertFoodPreviewPresentation("space-live", fakePreviewPort()),
     /Apresentação Food desconhecida/);
   assert.equal(assertFoodModuleView("delivery"), "delivery");
-  for (const view of ["overview", "inventory", "pos", "finance", "team"]) {
+  assert.equal(assertFoodModuleView("pos"), "pos");
+  assert.equal(assertFoodModuleView("reports"), "reports");
+  for (const view of ["overview", "inventory", "finance", "team"]) {
     assert.throws(() => assertFoodModuleView(view), /somente módulos operacionais/);
   }
   const port = fakePreviewPort("space-live");
@@ -131,10 +254,9 @@ test("embedded Food preview cannot impersonate a real Space provider or open hor
     /host Space ainda não está autorizado/);
 });
 
-test("pure embedded frame remains explicitly marked as fictitious", () => {
+test("pure embedded frame adds no visible preview or fictitious-data banner", () => {
   const markup = renderEmbeddedFoodPreview("<section>Cardápio</section>");
-  assert.match(markup, /Prévia local/);
-  assert.match(markup, /dados fictícios/);
+  assert.doesNotMatch(markup.replace(/<[^>]*>/g, " "), /prévia|preview|fictíci|amostra|dados de teste|registros de teste|sem autenticação/i);
   assert.match(markup, /Cardápio/);
   assert.doesNotMatch(markup, /<nav|<aside|class="topbar"/);
   assert.throws(() => renderEmbeddedFoodPreview(null), /Conteúdo Food inválido/);

@@ -1,6 +1,6 @@
 import { applyFoodCommand, createFoodCommand } from "./commands.mjs";
 import { fingerprintFoodCommand } from "./command-fingerprint.mjs";
-import { validateFoodPizzeriaState } from "../domain/domain.mjs";
+import { FOOD_PIZZERIA_STATE_SCHEMA_V6, validateFoodPizzeriaState } from "../domain/domain.mjs";
 import {
   FoodOrderOutcomeUnknownError,
   FoodOrderRejectedError,
@@ -126,11 +126,19 @@ export function createFoodOrderCore({ transactions } = {}) {
           // The transaction holds the authoritative state lock/CAS scope;
           // applying the same domain rules does not create another order master.
           const state = validateFoodPizzeriaState(await tx.readState(scope.spaceId));
+          if (state.schema !== FOOD_PIZZERIA_STATE_SCHEMA_V6) {
+            throw new FoodOrderRejectedError("invalid-command",
+              "O owner SQL Food suporta somente o estado v6; a prévia local mais recente não pode ser enviada.");
+          }
           if (state.revision !== command.expectedRevision) {
             throw new FoodOrderRejectedError("revision-conflict",
               "O pedido Food mudou: é necessário reconciliar a revisão atual.");
           }
           const next = validateFoodPizzeriaState(applyFoodCommand(state, command));
+          if (next.schema !== FOOD_PIZZERIA_STATE_SCHEMA_V6) {
+            throw new FoodOrderRejectedError("invalid-command",
+              "A operação produziu um formato fora do contrato v6 aceito pelo owner SQL.");
+          }
           if (next.revision !== state.revision + 1) {
             throw new FoodOrderRejectedError("invalid-command",
               "O comando Food não produziu uma revisão única e válida.");

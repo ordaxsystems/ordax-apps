@@ -1,16 +1,58 @@
-// Pure Food page renderer. All business state and actions are supplied by the app view model.
+// Food remains the single owner of orders; this view presents customer handoff and delivery dispatch.
+import { telephoneHref } from "../contact-links.mjs";
+
+function compareQueueTime(left, right) {
+  const leftTime = Date.parse(left ?? "");
+  const rightTime = Date.parse(right ?? "");
+  const leftValid = Number.isFinite(leftTime);
+  const rightValid = Number.isFinite(rightTime);
+  if (leftValid !== rightValid) return leftValid ? -1 : 1;
+  return leftValid ? leftTime - rightTime : 0;
+}
+
+function compareQueueOrder(left, right) {
+  const timeOrder = compareQueueTime(left.updatedAt, right.updatedAt)
+    || compareQueueTime(left.createdAt, right.createdAt);
+  if (timeOrder) return timeOrder;
+  const leftId = String(left.id ?? "");
+  const rightId = String(right.id ?? "");
+  return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+}
+
 export function renderDeliveryPage(viewModel) {
   const { snapshot, sectionHeader, statCard, renderOrderCard, emptyState, iconSvg, orderNumber, escapeHtml, clockTime } = viewModel;
-  const deliveries = snapshot.orders.filter(({ channel, status }) => channel === "delivery" && !["completed", "cancelled"].includes(status));
-  const kitchenOrders = deliveries.filter(({ status }) => ["received", "preparing"].includes(status));
-  const readyOrders = deliveries.filter(({ status }) => status === "ready");
-  const routeOrders = deliveries
+  const activeDeliveries = snapshot.orders.filter(({ channel, status }) => channel === "delivery" && !["completed", "cancelled"].includes(status));
+  const kitchenOrders = snapshot.orders.filter(({ status }) => ["received", "preparing"].includes(status));
+  const readyDeliveries = activeDeliveries
+    .filter(({ status }) => status === "ready")
+    .sort(compareQueueOrder);
+  const customerHandoffs = snapshot.orders
+    .filter(({ channel, status }) => channel !== "delivery" && status === "ready")
+    .sort(compareQueueOrder);
+  const routeOrders = activeDeliveries
     .filter(({ status }) => status === "out-for-delivery")
-    .sort((left, right) => Date.parse(left.updatedAt) - Date.parse(right.updatedAt));
-  const stagePanel = (title, eyebrow, orders, emptyTitle, emptyText) => `<section class="panel delivery-stage"><div class="panel-heading"><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div><span class="column-count">${orders.length}</span></div>${orders.length ? `<div class="history-list">${orders.map((order) => renderOrderCard(order)).join("")}</div>` : emptyState({ icon: iconSvg("delivery"), title: emptyTitle, text: emptyText })}</section>`;
-  return `<section class="page-section">${sectionHeader("ENTREGAS", "Delivery", "Organize pedidos para despacho e acompanhe o status da entrega.", `<button class="button button-quiet" type="button" data-view="settings">Configurar delivery</button>`)}
-    <div class="metrics-grid three-metrics">${statCard("Na cozinha", kitchenOrders.length, "Recebidos ou em preparo", "kitchen", "blue")}${statCard("Prontos para sair", readyOrders.length, "Aguardando despacho", "ready", "gold")}${statCard("Na rua", routeOrders.length, "Entregas não concluídas", "delivery", "green")}</div>
+    .sort(compareQueueOrder);
+  const stagePanel = (title, eyebrow, orders, emptyTitle, emptyText, icon = "delivery", orderCardOptions = {}) => `<section class="panel delivery-stage"><div class="panel-heading"><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div><span class="column-count">${orders.length}</span></div>${orders.length ? `<div class="history-list">${orders.map((order) => renderOrderCard(order, { allowCancel: false, allowAdvance: true, customerUpdate: customerUpdateForOrder(order, orderNumber(order)), ...orderCardOptions })).join("")}</div>` : emptyState({ icon: iconSvg(icon), title: emptyTitle, text: emptyText })}</section>`;
+  const deliveryStops = routeOrders.map((order, index) => {
+    const phoneNumber = telephoneHref(order.phone);
+    return `<li class="delivery-stop"><span class="delivery-stop-number">${String(index + 1).padStart(2, "0")}</span><div class="delivery-stop-copy"><strong>${orderNumber(order)} · ${escapeHtml(order.customerName)}</strong><small>${escapeHtml(order.address)}</small><div class="delivery-stop-actions">${phoneNumber ? `<a class="delivery-stop-action" href="tel:${escapeHtml(phoneNumber)}" aria-label="Ligar para ${escapeHtml(order.customerName)} do pedido ${orderNumber(order)}">Ligar</a>` : ""}<button class="delivery-stop-action" type="button" data-action="copy-delivery-address" data-address="${escapeHtml(order.address)}" data-order-number="${escapeHtml(orderNumber(order))}" aria-label="Copiar endereço do pedido ${escapeHtml(orderNumber(order))}">Copiar endereço</button></div></div><span class="delivery-stop-time">${clockTime(order.updatedAt)}</span></li>`;
+  }).join("");
+  return `<section class="page-section">${sectionHeader("EXPEDIÇÃO", "Expedição", "Libere pedidos de entrega, retirada, balcão e salão após o preparo.", `<button class="button button-quiet" type="button" data-view="settings">Configurar operação</button>`)}
+    <div class="metrics-grid">${statCard("Na cozinha", kitchenOrders.length, "Recebidos ou em preparo", "kitchen", "blue")}${statCard("Prontos para sair", readyDeliveries.length, "Aguardando despacho", "ready", "gold")}${statCard("Aguardando cliente", customerHandoffs.length, "Retirada, balcão e salão", "ready", "orange")}${statCard("Na rua", routeOrders.length, "Entregas não concluídas", "delivery", "green")}</div>
     ${kitchenOrders.length ? `<div class="delivery-kds-callout"><span>${kitchenOrders.length} ${kitchenOrders.length === 1 ? "pedido está" : "pedidos estão"} na fila da cozinha.</span><button class="button button-quiet" type="button" data-view="kitchen">Abrir Cozinha (KDS) →</button></div>` : ""}
-    <div class="delivery-layout"><div class="delivery-stage-grid">${stagePanel("Prontos para despacho", "AGUARDANDO SAÍDA", readyOrders, "Nenhum pedido pronto", "Quando a cozinha liberar um pedido de entrega, ele aparecerá aqui.")}${stagePanel("Em rota", "ENTREGAS ATIVAS", routeOrders, "Nenhuma entrega na rua", "Marque um pedido pronto como saiu para entrega para acompanhar seu endereço aqui.")}</div><section class="panel route-panel"><div class="panel-heading"><div><p class="eyebrow">REGIÃO DE ATENDIMENTO</p><h2>Paradas em rota</h2></div><span class="column-count">${routeOrders.length}</span></div><div class="route-map" aria-label="Diagrama ilustrativo, sem geolocalização"><div class="route-street street-one"></div><div class="route-street street-two"></div><div class="route-street street-three"></div><span class="map-pin pin-shop">🍕</span><span class="map-label label-shop">Pizzaria</span><span class="map-route-count">${routeOrders.length} ${routeOrders.length === 1 ? "destino" : "destinos"} em rota</span></div><p class="route-note">Diagrama esquemático, sem GPS ou cálculo de trajeto. Use os endereços salvos nos pedidos para organizar a saída.</p>${routeOrders.length ? `<ol class="delivery-stops">${routeOrders.map((order, index) => `<li class="delivery-stop"><span class="delivery-stop-number">${String(index + 1).padStart(2, "0")}</span><div><strong>${orderNumber(order)} · ${escapeHtml(order.customerName)}</strong><small>${escapeHtml(order.address)}</small></div><span class="delivery-stop-time">${clockTime(order.updatedAt)}</span></li>`).join("")}</ol>` : emptyState({ icon: iconSvg("delivery"), title: "Sem paradas ativas", text: "Os endereços aparecerão após a saída para entrega." })}</section></div>
+    <div class="delivery-layout"><div class="delivery-stage-grid">${stagePanel("Prontos para despacho", "AGUARDANDO SAÍDA", readyDeliveries, "Nenhuma entrega pronta", "Os pedidos de entrega aparecem aqui quando a cozinha os libera.", "delivery", { showDeliveryCall: true })}${stagePanel("Retirada e atendimento", "AGUARDANDO CLIENTE", customerHandoffs, "Nenhum pedido aguardando cliente", "Pedidos de retirada, balcão e salão ficam aqui até serem entregues ou servidos.", "ready")}${stagePanel("Em rota", "ENTREGAS ATIVAS", routeOrders, "Nenhuma entrega na rua", "Marque uma entrega como saiu para acompanhar o endereço nesta fila.")}</div><section class="panel route-panel"><div class="panel-heading"><div><p class="eyebrow">ORDEM DE SAÍDA</p><h2>Fila de entrega</h2><p class="delivery-route-ordering">Da saída mais antiga à mais recente</p></div><span class="column-count">${routeOrders.length}</span></div>${routeOrders.length ? `<ol class="delivery-stops">${deliveryStops}</ol>` : emptyState({ icon: iconSvg("delivery"), title: "Nenhuma entrega em rota", text: "Os pedidos entram nesta lista quando saem para entrega." })}</section></div>
   </section>`;
+}
+
+function customerUpdateForOrder(order, formattedOrderNumber) {
+  if (order.status === "ready" && order.channel === "delivery") {
+    return { message: `Seu pedido ${formattedOrderNumber} está pronto e aguardando despacho.` };
+  }
+  if (order.status === "ready" && order.channel === "pickup") {
+    return { message: `Seu pedido ${formattedOrderNumber} está pronto para retirada.` };
+  }
+  if (order.status === "out-for-delivery" && order.channel === "delivery") {
+    return { message: `Seu pedido ${formattedOrderNumber} saiu para entrega.` };
+  }
+  return null;
 }

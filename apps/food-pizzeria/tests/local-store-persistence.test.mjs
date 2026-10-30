@@ -4,7 +4,27 @@ import assert from "node:assert/strict";
 import { createFoodCommand } from "../src/application/commands.mjs";
 import { createBrowserLocalFoodStore } from "../src/adapters/browser-local-store.mjs";
 import { transitionPizzeriaOrder } from "../src/domain/domain.mjs";
-import { PREVIEW_SEED_ORDER_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
+import { PREVIEW_CATALOG_PRODUCTS, PREVIEW_SEED_ORDER_AGES_MINUTES, PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES, createSeedFoodState } from "../src/fixtures/mock-data.mjs";
+import { DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, resizeKitchenDisplayConfiguration } from "../src/application/kitchen-display-configuration.mjs";
+import { KITCHEN_QUEUE_MODES } from "../src/application/kitchen-workflow-preview.mjs";
+
+const defaultPreviewPreferences = (deliveryFeeCents = 500) => ({
+  deliveryFeeCents,
+  kitchenDisplays: DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+});
+
+function assertKitchenPreviewPreferences(preferences, {
+  deliveryFeeCents = 500,
+  kitchenDisplays = DEFAULT_KITCHEN_DISPLAY_CONFIGURATION,
+  queueMode = KITCHEN_QUEUE_MODES.BY_ORDER,
+} = {}) {
+  assert.equal(preferences.deliveryFeeCents, deliveryFeeCents);
+  assert.deepEqual(preferences.kitchenDisplays, kitchenDisplays);
+  assert.equal(preferences.kitchenWorkflow.schema, "ordax.food-kitchen-workflow-preview/3");
+  assert.equal(preferences.kitchenWorkflow.queueMode, queueMode);
+  assert.equal(preferences.kitchenWorkflow.steps.length, 4);
+  assert.ok(preferences.kitchenTasks.tickets.length > 0);
+}
 
 function createMemoryEnvironment() {
   const records = new Map();
@@ -16,6 +36,202 @@ function createMemoryEnvironment() {
   const eventTarget = { addEventListener() {}, removeEventListener() {} };
   return { storage, locks, eventTarget };
 }
+
+test("reopening while the sample activity is fresh preserves its timeline", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-refresh-fresh-window";
+  const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
+  const now = storedAt + 16 * 60000;
+  const seeded = createSeedFoodState(storedAt);
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state: seeded,
+    processedCommands: [],
+  }));
+
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+  const reopened = await store.initialize();
+
+  assert.equal(reopened.revision, seeded.revision);
+  assert.deepEqual(reopened.orders, seeded.orders);
+  assert.deepEqual(reopened.tableCommands, seeded.tableCommands);
+  store.destroy();
+});
+
+test("a new browser preview includes pickup handoff and four-flavor samples without changing migration fixtures", async () => {
+  const environment = createMemoryEnvironment();
+  const now = Date.parse("2026-10-27T12:00:00.000Z");
+  const store = createBrowserLocalFoodStore({
+    businessId: "preview-four-flavor-seed",
+    clock: () => new Date(now),
+    ...environment,
+  });
+
+  const preview = await store.initialize();
+  const previewOrder = preview.orders.find(({ id }) => id === "ng-order-1049");
+  const pickupHandoffOrder = preview.orders.find(({ id }) => id === "ng-order-1052");
+  const migrationFixtureOrder = createSeedFoodState(now).orders.find(({ id }) => id === "ng-order-1049");
+  const defaultPickupOrder = createSeedFoodState(now).orders.find(({ id }) => id === "ng-order-1052");
+
+  assert.equal(previewOrder.items[0].flavors.length, 4);
+  assert.equal(pickupHandoffOrder.status, "ready");
+  assert.equal(migrationFixtureOrder.items[0].flavors.length, 1);
+  assert.equal(defaultPickupOrder.status, "preparing");
+  store.destroy();
+});
+
+test("preview seed activity is recent and all order transitions stay in the past", () => {
+  const now = Date.parse("2026-10-27T12:00:00.000Z");
+  const state = createSeedFoodState(now);
+
+  assert.deepEqual(PREVIEW_SEED_ORDER_AGES_MINUTES.map((_, index) => {
+    const order = state.orders.find(({ id }) => id === `ng-order-${1047 + index}`);
+    return Math.round((now - Date.parse(order.createdAt)) / 60000);
+  }), PREVIEW_SEED_ORDER_AGES_MINUTES);
+  assert.equal(Math.max(...PREVIEW_SEED_ORDER_AGES_MINUTES), 18);
+  for (const order of state.orders) {
+    const historyTimes = order.statusHistory.map(({ changedAt }) => Date.parse(changedAt));
+    assert.ok(historyTimes.every((changedAt, index) => changedAt <= now
+      && changedAt >= Date.parse(order.createdAt)
+      && (index === 0 || historyTimes[index - 1] <= changedAt)));
+  }
+});
+
+test("reopening refreshes the untouched sample queue in one batch after its oldest activity expires", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-refresh-seed-batch";
+  const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
+  const now = storedAt + 18 * 60000;
+  const seeded = createSeedFoodState(storedAt);
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state: seeded,
+    processedCommands: [],
+  }));
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+
+  const refreshed = await store.initialize();
+
+  for (let index = 0; index < PREVIEW_SEED_ORDER_AGES_MINUTES.length; index += 1) {
+    const order = refreshed.orders.find(({ id }) => id === `ng-order-${1047 + index}`);
+    assert.equal(order.createdAt,
+      new Date(now - PREVIEW_SEED_ORDER_AGES_MINUTES[index] * 60000).toISOString());
+  }
+  assert.equal(refreshed.revision, seeded.revision + 1);
+  assert.equal(refreshed.tableCommands.find(({ id }) => id === "ng-command-04").openedAt,
+    new Date(now - PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES["ng-command-04"] * 60000).toISOString());
+  store.destroy();
+});
+
+test("fresh sample startup corrects a queued KDS clock that predates its order", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-kitchen-clock-before-order";
+  const now = Date.parse("2026-10-27T12:00:00.000Z");
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+  const state = await store.initialize();
+  const order = state.orders.find(({ id }) => id === "ng-order-1047");
+  const preferences = store.getPreviewPreferences();
+  const staleAt = new Date(Date.parse(order.createdAt) - 12 * 60000).toISOString();
+  const staleTasks = {
+    ...preferences.kitchenTasks,
+    revision: preferences.kitchenTasks.revision + 1,
+    tickets: preferences.kitchenTasks.tickets.map((ticket) => ticket.orderId !== order.id ? ticket : ({
+      ...ticket,
+      cycleQueuedAt: staleAt,
+      steps: ticket.steps.map((step) => step.status === "queued" ? { ...step, queuedAt: staleAt } : step),
+    })),
+  };
+  await store.updatePreviewPreferences({ ...preferences, kitchenTasks: staleTasks });
+  store.destroy();
+
+  const reopened = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now + 60000),
+    ...environment,
+  });
+  const reopenedState = await reopened.initialize();
+  const ticket = reopened.getPreviewPreferences().kitchenTasks.tickets
+    .find(({ orderId }) => orderId === order.id);
+  const queuedStep = ticket.steps.find(({ status }) => status === "queued");
+
+  assert.equal(reopenedState.revision, state.revision,
+    "Corrigir o relógio local do ticket não deve alterar o estado de pedidos Food.");
+  assert.equal(reopenedState.orders.find(({ id }) => id === order.id).createdAt, order.createdAt);
+  assert.equal(ticket.cycleQueuedAt, order.createdAt);
+  assert.equal(queuedStep.queuedAt, order.createdAt);
+  reopened.destroy();
+});
+
+test("expired sample refresh rebases only untouched KDS queue clocks and preserves a passed ticket", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-refresh-kitchen-clocks";
+  const storedAt = Date.parse("2026-10-20T12:00:00.000Z");
+  const store = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(storedAt),
+    ...environment,
+  });
+  await store.initialize();
+
+  const firstTicket = store.getPreviewPreferences().kitchenTasks.tickets
+    .find(({ orderId }) => orderId === "ng-order-1047");
+  const firstStep = firstTicket.steps.find(({ status }) => status === "queued");
+  const deferredAt = new Date(storedAt - 60000).toISOString();
+  await store.recordKitchenTaskAction({
+    action: "pass-next",
+    orderId: firstTicket.orderId,
+    stepId: firstStep.id,
+    screenNumber: firstStep.screen,
+    at: deferredAt,
+    commandId: "preview-pass-next-before-refresh",
+  });
+  const deferredTasks = store.getPreviewPreferences().kitchenTasks;
+  const deferredTicket = deferredTasks.tickets.find(({ orderId }) => orderId === firstTicket.orderId);
+  const deferredStep = deferredTicket.steps.find(({ status }) => status === "queued");
+  assert.equal(deferredStep.deferCount, 1);
+  assert.equal(deferredStep.queuedAt, deferredAt);
+  store.destroy();
+
+  const now = storedAt + 120 * 60000;
+  const reopened = createBrowserLocalFoodStore({
+    businessId,
+    clock: () => new Date(now),
+    ...environment,
+  });
+  await reopened.initialize();
+
+  const refreshedOrder = reopened.getSnapshot().orders.find(({ id }) => id === "ng-order-1048");
+  const untouchedTicket = reopened.getPreviewPreferences().kitchenTasks.tickets
+    .find(({ orderId }) => orderId === refreshedOrder.id);
+  const untouchedStep = untouchedTicket.steps.find(({ status }) => status === "queued");
+  assert.equal(untouchedStep.queuedAt, refreshedOrder.createdAt);
+
+  const preservedTicket = reopened.getPreviewPreferences().kitchenTasks.tickets
+    .find(({ orderId }) => orderId === firstTicket.orderId);
+  const preservedOrder = reopened.getSnapshot().orders.find(({ id }) => id === firstTicket.orderId);
+  const preservedStep = preservedTicket.steps.find(({ status }) => status === "queued");
+  assert.equal(preservedOrder.createdAt, firstTicket.cycleQueuedAt,
+    "Um pedido passado pelo KDS conserva sua linha do tempo junto com a ação local.");
+  assert.equal(preservedStep.queuedAt, deferredAt);
+  assert.equal(preservedStep.deferCount, 1);
+  assert.equal(preservedTicket.cycleQueuedAt, firstTicket.cycleQueuedAt);
+  assert.equal(reopened.getPreviewPreferences().kitchenTasks.revision, deferredTasks.revision + 1);
+  reopened.destroy();
+});
 
 test("reopening an old preview refreshes untouched sample timelines and preserves worked orders", async () => {
   const environment = createMemoryEnvironment();
@@ -54,8 +270,11 @@ test("reopening an old preview refreshes untouched sample timelines and preserve
   assert.equal(worked.updatedAt, workedState.orders.find(({ id }) => id === worked.id).updatedAt);
   assert.equal(refreshed.revision, workedState.revision + 1);
   assert.equal(refreshed.tableCommands.find(({ id }) => id === "ng-command-04").openedAt,
-    new Date(now - 58 * 60000).toISOString());
-  assert.deepEqual(JSON.parse(environment.storage.getItem(key)).processedCommands, journal);
+    new Date(now - PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES["ng-command-04"] * 60000).toISOString());
+  const refreshedEnvelope = JSON.parse(environment.storage.getItem(key));
+  assert.equal(refreshedEnvelope.schema, "ordax.food-pizzeria.browser-state/6");
+  assert.deepEqual(refreshedEnvelope.processedCommands, journal);
+  assert.equal(refreshedEnvelope.previewPreferences.deliveryFeeCents, 500);
   store.destroy();
 });
 
@@ -115,6 +334,67 @@ test("browser preview persists revisions, accepts an exact command replay once, 
   reopened.destroy();
 });
 
+test("local preview commits catalog products as priced Food order items without Inventory writes", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-catalog-order";
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const state = await store.initialize();
+  const product = PREVIEW_CATALOG_PRODUCTS.find(({ id }) => id === "b-cola");
+  const command = createFoodCommand({
+    type: "order.create",
+    payload: {
+      id: "catalog-order-1",
+      historyId: "catalog-order-history-1",
+      createdAt: new Date().toISOString(),
+      customerName: "Cliente da prévia",
+      phone: "",
+      channel: "pickup",
+      tableCommandId: null,
+      address: null,
+      deliveryFeeCents: 0,
+      notes: "",
+      items: [{
+        id: "catalog-order-item-1",
+        type: "catalog-product",
+        productId: product.id,
+        quantity: 2,
+      }],
+    },
+    expectedRevision: state.revision,
+    commandId: "catalog-order-command-1",
+  });
+
+  const saved = await store.execute(command);
+  const order = saved.orders.find(({ id }) => id === "catalog-order-1");
+  assert.equal(order.items[0].name, product.name);
+  assert.equal(order.items[0].quantity, 2);
+  assert.equal(order.items[0].lineTotalCents, product.priceCents * 2);
+  assert.deepEqual(order.consumptionSnapshot, []);
+  assert.equal(Object.hasOwn(saved, "catalogProducts"), false);
+  assert.equal(Object.hasOwn(saved, "inventoryMovements"), false);
+  store.destroy();
+});
+
+test("browser-state v3 migrates to v6 while retaining delivery and adding the configurable kitchen flow", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-migrate-browser-envelope-v3";
+  const state = createSeedFoodState();
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/3",
+    state,
+    processedCommands: [],
+    previewPreferences: { deliveryFeeCents: 875 },
+  }));
+
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  await store.initialize();
+
+  assertKitchenPreviewPreferences(store.getPreviewPreferences(), { deliveryFeeCents: 875 });
+  assert.equal(JSON.parse(environment.storage.getItem(key)).schema, "ordax.food-pizzeria.browser-state/6");
+  store.destroy();
+});
+
 test("legacy command ids without fingerprints are migrated but cannot authorize ambiguous replays", async () => {
   const environment = createMemoryEnvironment();
   const businessId = "preview-legacy-replay";
@@ -130,8 +410,9 @@ test("legacy command ids without fingerprints are migrated but cannot authorize 
   const restored = await store.initialize();
   assert.equal(restored.revision, source.revision);
   const upgraded = JSON.parse(environment.storage.getItem(key));
-  assert.equal(upgraded.schema, "ordax.food-pizzeria.browser-state/2");
+  assert.equal(upgraded.schema, "ordax.food-pizzeria.browser-state/6");
   assert.deepEqual(upgraded.processedCommands, [{ id: commandId, digest: null }]);
+  assertKitchenPreviewPreferences(upgraded.previewPreferences);
   const blocked = createFoodCommand({
     type: "food.settings.update",
     payload: { halfPricePolicy: "average" },
@@ -151,7 +432,14 @@ test("browser adapter transparently upgrades v5 Food records without fabricating
   const historicalState = {
     ...source,
     schema: "ordax.food-pizzeria-state/5",
-    orders: source.orders.map(({ consumptionSnapshot, ...order }) => order),
+    orders: source.orders.map(({ consumptionSnapshot, ...order }) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
   };
   const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
   environment.storage.setItem(key, JSON.stringify({
@@ -162,20 +450,152 @@ test("browser adapter transparently upgrades v5 Food records without fabricating
 
   const store = createBrowserLocalFoodStore({ businessId, ...environment });
   const migrated = await store.initialize();
-  assert.equal(migrated.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/8");
+  assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
   assert.equal(migrated.revision, source.revision);
   assert.equal(migrated.orders.length, source.orders.length);
   assert.ok(migrated.orders.every(({ consumptionSnapshot }) => consumptionSnapshot === null));
   assert.throws(() => calculatePizzeriaOrderConsumption(migrated, migrated.orders[0].id),
     /consumo histórico não é verificável/);
   const persisted = JSON.parse(environment.storage.getItem(key));
-  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/6");
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/6");
+  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/8");
+  assert.equal(persisted.previewPreferences.deliveryFeeCents, 500);
   assert.equal(Object.hasOwn(persisted.state, "inventoryMovements"), false);
   store.destroy();
 
   const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
   assert.deepEqual(await reopened.initialize(), migrated);
   reopened.destroy();
+});
+
+test("browser adapter stores local delivery preference outside the canonical Food state", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-local-delivery-preference";
+  const source = createSeedFoodState();
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const state = await store.initialize();
+  assert.equal(state.schema, "ordax.food-pizzeria-state/8");
+  assertKitchenPreviewPreferences(store.getPreviewPreferences());
+  const kitchenDisplays = resizeKitchenDisplayConfiguration(DEFAULT_KITCHEN_DISPLAY_CONFIGURATION, 4, "by-stage");
+  const kitchenWorkflow = {
+    ...store.getPreviewPreferences().kitchenWorkflow,
+    queueMode: KITCHEN_QUEUE_MODES.BY_STAGE,
+  };
+  const saved = await store.updatePreviewPreferences({
+    ...store.getPreviewPreferences(),
+    deliveryFeeCents: 875,
+    kitchenDisplays,
+    kitchenWorkflow,
+  });
+  assert.equal(saved.deliveryFeeCents, 875);
+  assert.deepEqual(saved.kitchenDisplays, kitchenDisplays);
+  assert.equal(saved.kitchenWorkflow.revision, 1);
+  assert.deepEqual(store.getSnapshot(), state);
+  assert.equal(Object.hasOwn(store.getSnapshot().settings, "deliveryFeeCents"), false);
+
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  const persisted = JSON.parse(environment.storage.getItem(key));
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/6");
+  assert.equal(persisted.state.schema, "ordax.food-pizzeria-state/8");
+  assert.equal(persisted.previewPreferences.deliveryFeeCents, 875);
+  assert.equal(persisted.previewPreferences.kitchenWorkflow.queueMode, KITCHEN_QUEUE_MODES.BY_STAGE);
+  store.destroy();
+
+  const reopened = createBrowserLocalFoodStore({ businessId, ...environment });
+  assert.deepEqual(await reopened.initialize(), state);
+  assertKitchenPreviewPreferences(reopened.getPreviewPreferences(), {
+    deliveryFeeCents: 875,
+    kitchenDisplays,
+    queueMode: KITCHEN_QUEUE_MODES.BY_STAGE,
+  });
+  reopened.destroy();
+});
+
+test("browser adapter extracts the legacy v7 delivery preference and preserves its orders", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-rollback-food-v7";
+  const source = createSeedFoodState();
+  const legacyPreview = {
+    ...source,
+    schema: "ordax.food-pizzeria-state/7",
+    settings: { ...source.settings, deliveryFeeCents: 875 },
+    orders: source.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
+  };
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  environment.storage.setItem(key, JSON.stringify({
+    schema: "ordax.food-pizzeria.browser-state/2",
+    state: legacyPreview,
+    processedCommands: [],
+  }));
+
+  const store = createBrowserLocalFoodStore({ businessId, ...environment });
+  const migrated = await store.initialize();
+
+  assert.equal(migrated.schema, "ordax.food-pizzeria-state/8");
+  assert.equal(migrated.revision, legacyPreview.revision);
+  assert.deepEqual(migrated.orders, legacyPreview.orders.map((order) => ({
+    ...order,
+    items: order.items.map((item) => item.type === "catalog-product" ? item : { ...item, sliceCount: null }),
+  })));
+  assert.equal(Object.hasOwn(migrated.settings, "deliveryFeeCents"), false);
+  assertKitchenPreviewPreferences(store.getPreviewPreferences(), { deliveryFeeCents: 875 });
+  const persisted = JSON.parse(environment.storage.getItem(key));
+  assert.equal(persisted.schema, "ordax.food-pizzeria.browser-state/6");
+  assert.equal(persisted.previewPreferences.deliveryFeeCents, 875);
+  store.destroy();
+});
+
+test("kitchen task actions keep detailed progress local and advance the canonical Food order only at start and handoff", async () => {
+  const environment = createMemoryEnvironment();
+  const businessId = "preview-kitchen-task-actions";
+  const clock = new Date("2026-10-27T12:00:00.000Z");
+  const store = createBrowserLocalFoodStore({ businessId, clock: () => clock, ...environment });
+  const initial = await store.initialize();
+  const order = initial.orders.find(({ status }) => status === "received");
+  assert.ok(order);
+  let actionAtMs = Math.max(clock.getTime(), Date.parse(order.updatedAt)) + 1000;
+  let actionIndex = 0;
+  const send = async (action, step) => store.recordKitchenTaskAction({
+    action,
+    orderId: order.id,
+    stepId: step.id,
+    screenNumber: step.screen,
+    at: new Date(actionAtMs++).toISOString(),
+    commandId: `kds-integration-${actionIndex++}`,
+  });
+
+  let task = store.getPreviewPreferences().kitchenTasks.tickets.find(({ orderId }) => orderId === order.id);
+  const started = await send("start", task.steps[0]);
+  assert.equal(started.orders.find(({ id }) => id === order.id).status, "preparing");
+  const revisionAfterStart = started.revision;
+
+  for (const originalStep of task.steps) {
+    const currentTask = store.getPreviewPreferences().kitchenTasks.tickets.find(({ orderId }) => orderId === order.id);
+    const step = currentTask.steps.find(({ status }) => status !== "completed");
+    if (step.status === "queued") await send("start", step);
+    await send("complete", step);
+  }
+
+  const finished = store.getSnapshot();
+  task = store.getPreviewPreferences().kitchenTasks.tickets.find(({ orderId }) => orderId === order.id);
+  assert.equal(finished.orders.find(({ id }) => id === order.id).status, "ready");
+  assert.equal(finished.revision, revisionAfterStart + 1, "etapas locais não incrementam o agregado Food");
+  assert.ok(task.steps.every(({ status }) => status === "completed"));
+  assert.equal(Object.hasOwn(finished, "kitchenTasks"), false);
+
+  const key = `ordax.food-pizzeria.browser-state.v1.${encodeURIComponent(businessId)}`;
+  const persisted = JSON.parse(environment.storage.getItem(key));
+  assert.equal(persisted.state.orders.find(({ id }) => id === order.id).status, "ready");
+  assert.ok(persisted.previewPreferences.kitchenTasks.commands.length >= 8);
+  store.destroy();
 });
 
 test("idempotent availability no-op is durable without revision churn or bypassing replay validation", async () => {

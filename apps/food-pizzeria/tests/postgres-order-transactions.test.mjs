@@ -4,6 +4,7 @@ import test from "node:test";
 import { createFoodCommand } from "../src/application/commands.mjs";
 import { createFoodOrderCore } from "../src/application/food-order-core.mjs";
 import { createFoodPostgresTransactions } from "../src/adapters/postgres-order-transactions.mjs";
+import { FOOD_PIZZERIA_STATE_SCHEMA_V6 } from "../src/domain/domain.mjs";
 import { FoodOrderRejectedError } from "../src/ports/food-order-commit-port.mjs";
 import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 
@@ -29,8 +30,23 @@ function transition(state, commandId = "order-transaction-1") {
   });
 }
 
+function asFoodV6(value) {
+  return {
+    ...value,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V6,
+    orders: value.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
+  };
+}
+
 function dbFixture() {
-  let state = createSeedFoodState();
+  let state = asFoodV6(createSeedFoodState());
   const journal = new Map();
   const calls = [];
   let releaseArgument;

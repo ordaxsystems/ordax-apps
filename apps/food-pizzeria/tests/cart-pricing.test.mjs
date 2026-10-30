@@ -1,12 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { reviewFoodCartPrices } from "../src/application/cart-pricing.mjs";
 import {
+  foodCartItemLineTotalCents,
+  foodCartSubtotalCents,
+  reviewFoodCartPrices,
+} from "../src/application/cart-pricing.mjs";
+import { PREVIEW_CATALOG_PRODUCTS } from "../src/fixtures/mock-data.mjs";
+import {
+  FOOD_PIZZERIA_STATE_SCHEMA_V6,
   createPizzeriaOrder,
   savePizzeriaFlavor,
   setPizzeriaFlavorAvailability,
   updateFoodPizzeriaSettings,
+  validateFoodPizzeriaState,
 } from "../src/domain/domain.mjs";
 import { createSeedFoodState } from "../src/fixtures/mock-data.mjs";
 
@@ -28,6 +35,36 @@ function pizzaItem(state, flavorIds = ["ng-calabresa"]) {
     : Math.ceil(prices.reduce((sum, price) => sum + price, 0) / prices.length);
   return { id: "draft-pizza-1", size, flavorIds, quantity: 2, unitPriceCents };
 }
+
+test("cart rows and checkout subtotal share the Food menu price calculation", () => {
+  const state = createSeedFoodState();
+  const pizza = pizzaItem(state);
+  const product = PREVIEW_CATALOG_PRODUCTS[0];
+  const catalogItem = {
+    id: "draft-product-line",
+    type: "catalog-product",
+    productId: product.id,
+    name: product.name,
+    category: product.category,
+    quantity: 3,
+    unitPriceCents: product.priceCents,
+  };
+
+  assert.equal(foodCartItemLineTotalCents(pizza, state), pizza.unitPriceCents * pizza.quantity);
+  assert.equal(foodCartItemLineTotalCents(catalogItem, state), product.priceCents * 3);
+  assert.equal(foodCartSubtotalCents([pizza, catalogItem], state),
+    pizza.unitPriceCents * pizza.quantity + product.priceCents * 3);
+  assert.throws(() => foodCartItemLineTotalCents({ ...pizza, quantity: 51 }, state), /quantidade do item/);
+});
+
+test("cart summary keeps its frozen pizza price if the current menu cannot price the draft", () => {
+  const state = createSeedFoodState();
+  const pizza = pizzaItem(state);
+  const removedFlavor = { ...state, flavors: state.flavors.filter(({ id }) => id !== pizza.flavorIds[0]) };
+
+  assert.equal(foodCartItemLineTotalCents(pizza, removedFlavor), pizza.unitPriceCents * pizza.quantity);
+  assert.throws(() => reviewFoodCartPrices([pizza], removedFlavor), /não está disponível/);
+});
 
 test("unchanged menu prices preserve the draft without mutation", () => {
   const state = createSeedFoodState();
@@ -90,4 +127,89 @@ test("unavailable pizza flavors are never silently accepted at stale prices", ()
   const inactive = setPizzeriaFlavorAvailability(state, { flavorId: item.flavorIds[0], active: false, at });
   assert.throws(() => reviewFoodCartPrices([item], inactive), /não está disponível/);
   assert.equal(item.unitPriceCents, 4990);
+});
+
+test("catalog preview prices are rechecked and removed products block order submission", () => {
+  const state = createSeedFoodState();
+  const product = PREVIEW_CATALOG_PRODUCTS[0];
+  const cart = [{
+    id: "draft-product-1",
+    type: "catalog-product",
+    productId: product.id,
+    name: product.name,
+    category: product.category,
+    quantity: 2,
+    unitPriceCents: product.priceCents,
+  }];
+  assert.equal(reviewFoodCartPrices(cart, state, PREVIEW_CATALOG_PRODUCTS).changed, false);
+  const revised = [{ ...product, priceCents: product.priceCents + 100 }];
+  const review = reviewFoodCartPrices(cart, state, revised);
+  assert.equal(review.changed, true);
+  assert.equal(review.items[0].unitPriceCents, product.priceCents + 100);
+  assert.equal(cart[0].unitPriceCents, product.priceCents);
+  assert.throws(() => reviewFoodCartPrices(cart, state, []), /não está mais disponível/);
+});
+
+test("Food order keeps a product price snapshot and excludes products from recipe consumption", () => {
+  const state = createSeedFoodState();
+  const createdAt = new Date().toISOString();
+  const product = PREVIEW_CATALOG_PRODUCTS[0];
+  const shared = {
+    createdAt,
+    customerName: "Cliente da prévia",
+    channel: "pickup",
+  };
+  const pizzaOnly = createPizzeriaOrder(state, {
+    ...shared,
+    id: "pizza-only-comparison",
+    historyId: "pizza-only-comparison-history",
+    items: [{ id: "pizza-only-comparison-item", size: "medium", flavorIds: ["ng-calabresa"], quantity: 1 }],
+  }).orders[0];
+  const mixed = createPizzeriaOrder(state, {
+    ...shared,
+    id: "mixed-food-order",
+    historyId: "mixed-food-order-history",
+    catalogProducts: PREVIEW_CATALOG_PRODUCTS,
+    items: [
+      { id: "mixed-food-pizza", size: "medium", flavorIds: ["ng-calabresa"], quantity: 1 },
+      { id: "mixed-food-drink", type: "catalog-product", productId: product.id, quantity: 2 },
+    ],
+  }).orders[0];
+
+  assert.equal(mixed.items[1].name, product.name);
+  assert.equal(mixed.items[1].unitPriceCents, product.priceCents);
+  assert.equal(mixed.items[1].lineTotalCents, product.priceCents * 2);
+  assert.equal(mixed.subtotalCents, pizzaOnly.subtotalCents + product.priceCents * 2);
+  assert.deepEqual(mixed.consumptionSnapshot, pizzaOnly.consumptionSnapshot);
+  const invalidPizzaSnapshot = {
+    ...state,
+    orders: [{ ...mixed, consumptionSnapshot: [] }, ...state.orders],
+  };
+  assert.throws(() => validateFoodPizzeriaState(invalidPizzaSnapshot), /pizza exigem uma proposta/);
+  assert.throws(() => createPizzeriaOrder(state, {
+    ...shared,
+    id: "unknown-food-product-order",
+    historyId: "unknown-food-product-history",
+    catalogProducts: PREVIEW_CATALOG_PRODUCTS,
+    items: [{ id: "unknown-food-product-item", type: "catalog-product", productId: "unknown-item", quantity: 1 }],
+  }), /não está disponível no catálogo/);
+  const ownerV6 = {
+    ...state,
+    schema: FOOD_PIZZERIA_STATE_SCHEMA_V6,
+    orders: state.orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => {
+        if (item.type === "catalog-product") return item;
+        const { sliceCount: _sliceCount, ...legacyItem } = item;
+        return legacyItem;
+      }),
+    })),
+  };
+  assert.throws(() => createPizzeriaOrder(ownerV6, {
+    ...shared,
+    id: "owner-v6-catalog-order",
+    historyId: "owner-v6-catalog-history",
+    catalogProducts: PREVIEW_CATALOG_PRODUCTS,
+    items: [{ id: "owner-v6-catalog-item", type: "catalog-product", productId: product.id, quantity: 1 }],
+  }), /Food v7 ou superior e só são aceitos na prévia local/);
 });
