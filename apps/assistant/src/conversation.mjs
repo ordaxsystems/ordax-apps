@@ -65,6 +65,32 @@ function sessionContext(messages) {
   })]);
 }
 
+// Native Aura owns the presentation wait, never inference engine cancellation.
+const ASSISTANT_MAX_RESPONSE_WAIT_MS = 120_000;
+function cancelledInferenceError() {
+  const error = new Error("Assistant inference wait aborted");
+  error.name = "AbortError";
+  return error;
+}
+async function awaitAbortableResponse(start, signal) {
+  if (signal.aborted) throw cancelledInferenceError();
+  let onAbort;
+  const cancelled = new Promise((_, reject) => {
+    onAbort = () => reject(cancelledInferenceError());
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    if (signal.aborted) throw cancelledInferenceError();
+    // Promise.race attaches rejection handlers even if the upstream settles late.
+    // Start synchronously to preserve the canonical port's send semantics.
+    const result = await Promise.race([Promise.resolve(start()), cancelled]);
+    if (signal.aborted) throw cancelledInferenceError();
+    return result;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
 function runtimeState(snapshot) {
   if (!snapshot) return "unavailable";
   if (snapshot.state === "ready") return "ready";
@@ -122,7 +148,12 @@ export function createAssistantConversationRuntime({
   identitySessionPort,
   spaceSelectionPort,
   profileActivationStatePort = null,
+  responseDeadlineMs = ASSISTANT_MAX_RESPONSE_WAIT_MS,
 } = {}) {
+  if (!Number.isSafeInteger(responseDeadlineMs) || responseDeadlineMs < 1
+    || responseDeadlineMs > ASSISTANT_MAX_RESPONSE_WAIT_MS) {
+    throw new TypeError("Assistant response deadline must be positive and bounded");
+  }
   const intelligence = intelligencePort === null ? null : assertIntelligencePort(intelligencePort);
   if (
     memoryCapture !== null
@@ -279,17 +310,31 @@ export function createAssistantConversationRuntime({
       inferencePending = true;
       discardRequested = false;
       let wasDiscarded = false;
+      let timedOut = false;
       state = "busy";
       lastError = null;
       publish();
 
       try {
-        const response = validateIntelligenceResponse(await intelligence.respond({
-          intent: "ask",
-          prompt,
-          context: priorContext,
-          maxTokens: 512,
-        }, { signal: inferenceController.signal }));
+        let response;
+        // Bounds only the UI wait. The OS remains the sole engine supervisor.
+        const deadline = setTimeout(() => {
+          timedOut = true;
+          inferenceController.abort();
+        }, responseDeadlineMs);
+        try {
+          response = validateIntelligenceResponse(await awaitAbortableResponse(
+            () => intelligence.respond({
+              intent: "ask",
+              prompt,
+              context: priorContext,
+              maxTokens: 512,
+            }, { signal: inferenceController.signal }),
+            inferenceController.signal,
+          ));
+        } finally {
+          clearTimeout(deadline);
+        }
         inferencePending = false;
         reconcileScope();
         if (disposed || scopeGeneration !== generationAtStart) {
@@ -355,9 +400,9 @@ export function createAssistantConversationRuntime({
         }
         state = runtimeState(validateIntelligenceSnapshot(intelligence.getSnapshot()));
         if (state === "ready") state = "error";
-        lastError = "response-failed";
+        lastError = timedOut ? "response-timeout" : "response-failed";
         publish();
-        throw new Error("Assistant response failed");
+        throw new Error(timedOut ? "Assistant response timed out" : "Assistant response failed");
       } finally {
         requestInFlight = false;
         inferencePending = false;
