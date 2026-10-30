@@ -79,7 +79,7 @@ function productArt(product, compact = false, showSource = false) {
   const art = product.imageSrc
     ? '<img class="product-art-photo" src="' + escapeHtml(product.imageSrc) + '" alt="" loading="lazy">'
     : '<span class="art-orbit"></span><svg viewBox="0 0 104 104" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">' + shape + "</svg>";
-  const source = product.imageSrc && showSource ? '<span class="product-art-source">Referência · Wearly</span>' : "";
+  const source = product.imageSrc && showSource ? '<span class="product-art-source">Referência de catálogo</span>' : "";
   return '<div class="product-art ' + colorClass + (compact ? " is-compact" : "") + (product.imageSrc ? " has-photo" : "") + '" role="img" aria-label="Referência visual do mock: ' + escapeHtml(product.name) + '">' + art + source + "</div>";
 }
 
@@ -187,7 +187,7 @@ export function renderOverviewPage(state) {
     const colors = [...new Map(item.product.variants.filter((variant) => variant.active).map((variant) => [variant.color, variant])).values()];
     const swatches = colors.slice(0, 3).map((variant) => '<span class="swatch ' + swatchClass(variant.colorHex) + '" title="' + escapeHtml(variant.color) + '"></span>').join("");
     const additionalColors = colors.length > 3 ? '<span class="swatch-more">+' + (colors.length - 3) + '</span>' : "";
-    return '<article class="featured-product"><div class="featured-media' + (item.product.imageSrc ? " has-wearly-photo" : "") + '">' + productEditorialArt(item.product) + '<span class="feature-badge">' + (item.quantity > 0 ? "Destaque de vendas" : item.product.imageSrc ? "Peça do catálogo" : "Prévia do catálogo") + '</span></div><div class="featured-product-info"><strong>' + escapeHtml(item.product.name) + '</strong><span>' + escapeHtml(money(item.variant.priceCents)) + '</span><div class="feature-swatches" aria-label="Cores disponíveis">' + swatches + additionalColors + '</div></div></article>';
+    return '<article class="featured-product"><div class="featured-media' + (item.product.imageSrc ? " has-catalog-photo" : "") + '">' + productEditorialArt(item.product) + '<span class="feature-badge">' + (item.quantity > 0 ? "Destaque de vendas" : item.product.imageSrc ? "Peça do catálogo" : "Prévia do catálogo") + '</span></div><div class="featured-product-info"><strong>' + escapeHtml(item.product.name) + '</strong><span>' + escapeHtml(money(item.variant.priceCents)) + '</span><div class="feature-swatches" aria-label="Cores disponíveis">' + swatches + additionalColors + '</div></div></article>';
   };
   const heroFeatured = featured[0];
   const supportingFeatured = featured.slice(1).map(featuredCard).join("");
@@ -452,7 +452,7 @@ function studioPhotoCard(key, title, reference, photoType = "product") {
   const image = reference?.url
     ? '<img src="' + escapeHtml(reference.url) + '" alt="Referência local do ' + noun + ': ' + escapeHtml(title.toLowerCase()) + '">'
     : isProfilePhoto ? studioProfilePlaceholder(key) : '<span class="studio-photo-placeholder">＋</span>';
-  const description = reference?.source === "wearly-mock" ? "Mock de catálogo · Wearly" : reference ? "Temporária nesta aba" : isProfilePhoto ? "Adicionar foto do perfil" : "Adicionar foto da peça";
+  const description = reference?.source === "catalog-reference" ? "Mock de catálogo · Wearly" : reference ? "Temporária nesta aba" : isProfilePhoto ? "Adicionar foto do perfil" : "Adicionar foto da peça";
   const action = reference ? "Trocar foto" : "Adicionar foto";
   const inputLabel = reference ? "Substituir foto de " : "Adicionar foto de ";
   const target = isProfilePhoto ? 'data-studio-model-photo="' + key + '"' : 'data-studio-photo="' + key + '"';
@@ -460,10 +460,10 @@ function studioPhotoCard(key, title, reference, photoType = "product") {
 }
 
 function studioReferenceGallery(product, references) {
-  const front = references.front ?? (product.imageSrc ? { url: product.imageSrc, source: "wearly-mock" } : null);
-  const source = front?.source === "wearly-mock" ? "MOCK DE CATÁLOGO · WEARLY" : front ? "FOTO LOCAL · FRENTE" : "REFERÊNCIA VISUAL LOCAL";
+  const front = references.front ?? (product.imageSrc ? { url: product.imageSrc, source: "catalog-reference" } : null);
+  const source = front?.source === "catalog-reference" ? "REFERÊNCIA DE CATÁLOGO" : front ? "FOTO LOCAL · FRENTE" : "REFERÊNCIA VISUAL LOCAL";
   const main = front?.url
-    ? '<img src="' + escapeHtml(front.url) + '" alt="' + escapeHtml(front.source === "wearly-mock" ? "Imagem de referência do mock para " + product.name : "Foto temporária da frente de " + product.name) + '">'
+    ? '<img src="' + escapeHtml(front.url) + '" alt="' + escapeHtml(front.source === "catalog-reference" ? "Imagem de referência do mock para " + product.name : "Foto temporária da frente de " + product.name) + '">'
     : productArt(product, true);
   const additional = [["detail", "Detalhe"], ["back", "Costas"]]
     .filter(([key]) => references[key]?.url)
@@ -530,9 +530,9 @@ export function renderProductStudioPage(state, session = {}) {
     return '<button class="studio-history-row" type="button" data-action="studio-job-open" data-job-id="' + escapeHtml(job.id) + '"><span class="studio-history-mark">' + (displayJobProduct ? productArt(displayJobProduct, true) : icon("hanger")) + '</span><span><strong>' + escapeHtml(job.contextSnapshot?.product?.name ?? jobProduct?.name ?? "Produto") + '</strong><small>Versão ' + version + ' · ' + escapeHtml([jobVariant?.size, jobVariant?.color, job.contextSnapshot?.model?.name ?? jobModel?.name].filter(Boolean).join(" · ")) + '</small></span><span class="studio-history-status">' + escapeHtml(studioJobStatus(job)) + '</span></button>';
   }).join("");
   const referencePhotos = session.references ?? {};
-  const frontReference = referencePhotos.front ?? (displayProduct.imageSrc ? { url: displayProduct.imageSrc, source: "wearly-mock" } : null);
+  const frontReference = referencePhotos.front ?? (displayProduct.imageSrc ? { url: displayProduct.imageSrc, source: "catalog-reference" } : null);
   const savedIllustration = selectedJob?.status === "local-illustration" || selectedJob?.status === "reviewed-local";
-  const hasUploadedReference = Object.values(referencePhotos).some((reference) => reference?.url && reference.source !== "wearly-mock");
+  const hasUploadedReference = Object.values(referencePhotos).some((reference) => reference?.url && reference.source !== "catalog-reference");
   const showVisualPreview = savedIllustration || report?.status === "ready" || hasUploadedReference || Boolean(frontReference?.url);
   const fitVisual = report?.status === "ready"
     ? studioFitMap(report)
@@ -544,7 +544,7 @@ export function renderProductStudioPage(state, session = {}) {
       studioReferenceGallery(displayProduct, referencePhotos) +
       studioModelReferenceGallery(displayModel, modelReferences) +
       '<div class="studio-technical-preview"><div><p class="eyebrow">GUIA ESTRUTURAL</p><strong>' + escapeHtml(displayProduct.name) + '</strong></div>' + studioIllustration(displayProduct, displayVariant, displayModel, report, illustrationScales) + '<div class="studio-tech-facts"><span><small>VARIANTE</small><strong>' + escapeHtml(displayVariant.size + " · " + displayVariant.color) + '</strong></span><span><small>MODELAGEM</small><strong>' + escapeHtml(displayProduct.fitProfile?.cut ?? "Regular") + '</strong></span><span><small>ESCALA ESQUEMÁTICA</small><strong>perfil ' + illustrationScales.bodyScale.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '× · peça ' + illustrationScales.garmentScale.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '×</strong></span></div>' + fitVisual + '</div>' +
-      '<div class="studio-preview-caption"><span class="studio-local-tag">' + (selectedJob ? savedIllustration ? "SESSÃO SALVA" : "BRIEF LOCAL" : "RASCUNHO LOCAL") + '</span><span>A foto Wearly é referência do catálogo e não acompanha a cor da variante. O esquema usa proporções numéricas do perfil e da grade; não é prova virtual nem geração de IA.</span></div></div>'
+      '<div class="studio-preview-caption"><span class="studio-local-tag">' + (selectedJob ? savedIllustration ? "SESSÃO SALVA" : "BRIEF LOCAL" : "RASCUNHO LOCAL") + '</span><span>Imagens de catálogo eventualmente autorizadas são referências, não garantem a cor da variante. O esquema usa proporções numéricas do perfil e da grade; não é prova virtual nem geração de IA.</span></div></div>'
     : '<div class="studio-preview-empty"><div class="preview-empty-figure">' + productArt(displayProduct, true) + '</div><p class="eyebrow">ÁREA DE PRÉVIA</p><h3>Prepare uma prévia do produto</h3><p>Analise o caimento e crie uma ilustração local para visualizar a estrutura desta etapa.</p></div>';
   const requestedChanges = selectedJob?.reviews?.[0]?.decision === "changes-requested";
   const nextVersion = requestedChanges
