@@ -1,0 +1,44 @@
+name: OrdaX Moda Preview Contract Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/moda/**'
+      - 'prototypes/moda/**'
+      - '.github/workflows/moda-preview.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/moda/**'
+      - 'prototypes/moda/**'
+      - '.github/workflows/moda-preview.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ordax-moda-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-preview-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact preview candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Use canonical Node test runner
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Validate preview code without account or provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          find apps/moda/src prototypes/moda -type f -name '*.mjs' -print0 |
+            sort -z | xargs -0 -r -n1 node --check
+          node --test apps/moda/tests/*.test.mjs
+          echo 'ORDAX_MODA_PREVIEW_TESTS=PASS RELEASE_ACTIVATION=NOT_ATTESTED'
