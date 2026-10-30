@@ -399,7 +399,9 @@ export function createAssistantConversationRuntime({
           throw new Error("Assistant response discarded");
         }
         state = runtimeState(validateIntelligenceSnapshot(intelligence.getSnapshot()));
-        if (state === "ready") state = "error";
+        // A UI timeout is not proof of engine failure. Keep the verified
+        // readiness so the user may retry without restarting the Desktop.
+        if (state === "ready" && !timedOut) state = "error";
         lastError = timedOut ? "response-timeout" : "response-failed";
         publish();
         throw new Error(timedOut ? "Assistant response timed out" : "Assistant response failed");
