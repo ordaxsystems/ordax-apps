@@ -7,5 +7,10 @@
   "description": "Converse com a Aura e receba respostas do motor local de inteligência do OrdaX.",
   "monogram": "AU",
   "singleton": true,
-  "translations": {}
+  "translations": {
+    "en-US": {
+      "title": "Aura",
+      "description": "Chat with Aura using the OrdaX local intelligence engine."
+    }
+  }
 }
