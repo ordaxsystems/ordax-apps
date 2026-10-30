@@ -21,6 +21,62 @@ permissions:
   contents: read
 
 jobs:
+  package_scope:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      windows_required: ${{ steps.scope.outputs.windows_required }}
+    steps:
+      - name: Checkout full git history for an exact change delta
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test canonical path classifier (no third-party paths action)
+        run: node --test prototypes/ordax-orchestrator/tests/ci-scope.test.mjs
+      - name: Decide if a fresh Windows artifact is required
+        id: scope
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action || '' }}
+          BEFORE: ${{ github.event.before || '' }}
+          AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha || '' }}
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          required=true
+          before="$BEFORE"
+          # A full PR must be validated once. Only subsequent documentation-only
+          # pushes with a successful previous head may reuse that proof.
+          if [[ "$EVENT" == "pull_request" && "$ACTION" == "synchronize" &&
+                "$before" =~ ^[0-9a-f]{40}$ ]]; then
+            git diff --check "$before" "$AFTER"
+            git diff --name-only "$before" "$AFTER" > "$RUNNER_TEMP/orchestrator-change-paths"
+            if [[ "$(node prototypes/ordax-orchestrator/scripts/ci-scope.mjs "$RUNNER_TEMP/orchestrator-change-paths")" == "false" ]]; then
+              # No previous successful run (or API unavailable) means BUILD,
+              # not an unverified green check following a cancelled build.
+              if gh api "repos/$REPOSITORY/actions/workflows/orchestrator-lab-isolation.yml/runs?head_sha=$before&status=success&per_page=10" \
+                  --jq '[.workflow_runs[] | select(.event == "pull_request" and .conclusion == "success")] | length' \
+                  | grep -qx '[1-9][0-9]*'; then
+                required=false
+              fi
+            fi
+          elif [[ "$EVENT" == "push" && "$BEFORE" =~ ^[0-9a-f]{40}$ &&
+                  ! "$BEFORE" =~ ^0{40}$ ]]; then
+            git diff --check "$BEFORE" "$AFTER"
+            git diff --name-only "$BEFORE" "$AFTER" > "$RUNNER_TEMP/orchestrator-change-paths"
+            if [[ "$(node prototypes/ordax-orchestrator/scripts/ci-scope.mjs "$RUNNER_TEMP/orchestrator-change-paths")" == "false" ]]; then
+              required=false
+            fi
+          fi
+          echo "windows_required=$required" >> "$GITHUB_OUTPUT"
+          echo "Windows artifact required: $required"
+
   isolation:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -28,6 +84,14 @@ jobs:
       - name: Checkout app repo, do not persist GitHub credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          persist-credentials: false
+
+      - name: Checkout canonical Runtime contract owner
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ordaxsystems/ordax-runtime
+          ref: main
+          path: _runtime-contract
           persist-credentials: false
 
       - name: Setup Node 24
@@ -63,6 +127,7 @@ jobs:
       - name: Validate the directly owned Lab product
         run: |
           npm ci --prefix prototypes/ordax-orchestrator/product
+          npm run check:runtime-contract --prefix prototypes/ordax-orchestrator/product -- "$GITHUB_WORKSPACE/_runtime-contract"
           npm run validate --prefix prototypes/ordax-orchestrator/product
           test ! -e prototypes/ordax-orchestrator/product/src/relay
           test ! -e prototypes/ordax-orchestrator/product/apps
@@ -86,6 +151,8 @@ jobs:
 # credentialed, explicitly authorized integration environment.
 
   owned-windows:
+    needs: package_scope
+    if: needs.package_scope.outputs.windows_required == 'true'
     runs-on: windows-2025
     timeout-minutes: 25
     steps:
@@ -174,6 +241,41 @@ jobs:
           }
           $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $dist 'orchestrator-e2e-build.json') -Encoding utf8
 
+          # The Electron executable embeds the ASAR integrity digest. Updating
+          # app.asar alone is forbidden: install the SAME unpacked executable
+          # and resources as one coherent Windows candidate.
+          $unpackedRoot = Join-Path $dist 'win-unpacked'
+          $unpackedExe = Join-Path $unpackedRoot 'OrdaX Orchestrator Lab.exe'
+          $unpackedManifest = Join-Path $unpackedRoot 'resources/runtime-build.json'
+          if (-not (Test-Path -LiteralPath $unpackedExe -PathType Leaf) -or
+              -not (Test-Path -LiteralPath $unpackedManifest -PathType Leaf)) {
+            throw 'w8_unpacked_install_incomplete'
+          }
+          $runtimeManifest = Get-Content -LiteralPath $unpackedManifest -Raw | ConvertFrom-Json
+          if ($runtimeManifest.schema -ne 'ordax.lab.runtime-build.v1' -or
+              $runtimeManifest.sourceCommit -ne $env:GITHUB_SHA -or
+              $runtimeManifest.contentDigest -ne $packagedProof.contentDigest -or
+              $runtimeManifest.packageVersion -ne $packagedProof.packageVersion) {
+            throw 'w8_unpacked_manifest_mismatch'
+          }
+          $installReceipt = [ordered]@{
+            schema = 'ordax.lab.windows-dev-install-candidate.v1'
+            build_type = 'unsigned_dev_test_only'
+            workflow_run_id = $env:GITHUB_RUN_ID
+            checkout_sha = $env:GITHUB_SHA
+            app_id = 'br.com.ordax.orchestrator.lab'
+            package_version = $packagedProof.packageVersion
+            executable = 'win-unpacked/OrdaX Orchestrator Lab.exe'
+            executable_sha256 = (Get-FileHash -LiteralPath $unpackedExe -Algorithm SHA256).Hash.ToLowerInvariant()
+            resources_asar = 'win-unpacked/resources/app.asar'
+            resources_asar_sha256 = $packagedProof.asarSha256
+            resources_manifest = 'win-unpacked/resources/runtime-build.json'
+            runtime_content_digest = $packagedProof.contentDigest
+            profile_copied = $false
+            provider_messages_sent = 0
+          }
+          $installReceipt | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $dist 'orchestrator-windows-install.json') -Encoding utf8
+
       - name: Upload short-lived unsigned Windows E2E candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
@@ -185,3 +287,16 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
+      # Full matching Electron installation for the single canonical Dev path.
+      # Do not patch app.asar into a different executable: its embedded
+      # integrity digest belongs to the executable produced by THIS build.
+      - name: Upload coherent unpacked Windows Dev install candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ordax-orchestrator-windows-dev-${{ github.sha }}
+          path: |
+            prototypes/ordax-orchestrator/product/dist/win-unpacked/**
+            prototypes/ordax-orchestrator/product/dist/orchestrator-windows-install.json
+            prototypes/ordax-orchestrator/product/dist/orchestrator-packaged-proof.json
+          retention-days: 3
+          if-no-files-found: error

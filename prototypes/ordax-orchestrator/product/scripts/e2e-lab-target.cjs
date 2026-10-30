@@ -39,6 +39,10 @@ function isLabUiTarget(target) {
 
 
 const MAX_DEBUG_RESPONSE_BYTES=256*1024;
+// A real Windows renderer can be busy hydrating the full App when CDP first
+// evaluates its mode probe. Bound the probe at the full local CDP budget
+// instead of repeatedly misclassifying a live shell as an unavailable port.
+const TARGET_PROBE_TIMEOUT_MS=5000;
 function readLabDebugTargets() {
   return new Promise((resolve,reject)=>{
     const req=http.get(DEBUG_URL,{timeout:4000},res=>{
@@ -73,12 +77,54 @@ function validLabWebSocket(target) {
   }catch{return false;}
 }
 
+// A debug port can list more than one Orchestrator page when an earlier
+// renderer is still around. Do not bind an E2E run to the first matching
+// title: identify the initialized App shell before any UI interaction.
+function probeLabUiTarget(target,{
+  WebSocketImpl=globalThis.WebSocket,timeoutMs=TARGET_PROBE_TIMEOUT_MS
+}={}) {
+  if(!validLabWebSocket(target))return Promise.reject(new Error('lab_debug_target_invalid'));
+  if(typeof WebSocketImpl!=='function')return Promise.reject(new Error('lab_debug_websocket_unavailable'));
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>5000)
+    return Promise.reject(new Error('lab_debug_target_probe_invalid_bounds'));
+  return new Promise((resolve,reject)=>{
+    let socket,settled=false,timer=null;
+    const finish=(error,value)=>{
+      if(settled)return;
+      settled=true;
+      if(timer)clearTimeout(timer);
+      if(socket){socket.onopen=null;socket.onmessage=null;socket.onerror=null;socket.onclose=null;
+        try{socket.close();}catch{}}
+      if(error)reject(error);else resolve(value);
+    };
+    try{socket=new WebSocketImpl(target.webSocketDebuggerUrl);}
+    catch{return finish(new Error('lab_debug_target_probe_failed'));}
+    timer=setTimeout(()=>finish(new Error('lab_debug_target_probe_timeout')),timeoutMs);
+    socket.onopen=()=>{
+      try{socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{
+        expression:LAB_APP_MODE_PROBE,awaitPromise:true,returnByValue:true
+      }}));}
+      catch{finish(new Error('lab_debug_target_probe_failed'));}
+    };
+    socket.onmessage=event=>{
+      let message;
+      try{message=JSON.parse(event.data);}catch{return finish(new Error('lab_debug_target_probe_failed'));}
+      if(message.id!==1)return;
+      if(message.error||message.result?.exceptionDetails)
+        return finish(new Error('lab_debug_target_probe_failed'));
+      finish(null,message.result?.result?.value||null);
+    };
+    socket.onerror=()=>finish(new Error('lab_debug_target_probe_failed'));
+    socket.onclose=()=>finish(new Error('lab_debug_target_probe_failed'));
+  });
+}
+
 // Portable Electron may first extract its payload, then launch its child
 // process. Wait for the exact authorized UI instead of assuming a fixed
 // startup delay or treating a transient ECONNREFUSED as a broken application.
 // This is read-only discovery: it never opens the provider or sends a message.
 async function waitForLabUiTarget({
-  readTargets=readLabDebugTargets,clock=Date.now,
+  readTargets=readLabDebugTargets,inspectTarget=probeLabUiTarget,clock=Date.now,
   sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
   maxWaitMs=90000,pollMs=500
 }={}) {
@@ -92,10 +138,30 @@ async function waitForLabUiTarget({
     try {
       const targets=await readTargets();
       if(!Array.isArray(targets))throw new Error('lab_debug_invalid_targets');
-      const found=targets.find(validLabWebSocket);
-      if(found)return found;
-      result='ui_target_not_ready';
-    }catch{result='endpoint_not_ready';}
+      const candidates=targets.filter(validLabWebSocket);
+      if(candidates.length){
+        const states=await Promise.all(candidates.map(async target=>{
+          try{return {target,state:await inspectTarget(target)};}
+          catch{return {target,state:null};}
+        }));
+        const appTargets=states.filter(({state})=>{
+          try{assertLabAppModeState(state);return true;}catch{return false;}
+        });
+        if(appTargets.length){
+          const visible=appTargets.filter(({state})=>state.visibility==='visible');
+          if(visible.length>1)throw new Error('lab_e2e_multiple_visible_app_windows');
+          if(visible.length===1)return visible[0].target;
+          if(appTargets.length===1)return appTargets[0].target;
+          throw new Error('lab_e2e_multiple_app_windows');
+        }
+        if(states.some(({state})=>state?.view==='provider'))
+          throw new Error('lab_e2e_provider_fallback_not_app_test');
+        result='app_mode_not_ready';
+      }else result='ui_target_not_ready';
+    }catch(error){
+      if(/^lab_e2e_(?:multiple_|provider_fallback)/.test(String(error?.message||'')))throw error;
+      result='endpoint_not_ready';
+    }
     const remaining=deadline-clock();
     if(remaining<=0)throw new Error('lab_ui_not_ready:'+result);
     await sleep(Math.min(pollMs,remaining));
@@ -106,20 +172,21 @@ async function waitForLabUiTarget({
 // never satisfy a functional E2E gate by accident. This does not send data.
 const LAB_APP_MODE_PROBE = `(()=>({
   view:document.documentElement.dataset.ordaxView||null,
-  directButton:document.querySelector('#directMode')?.textContent?.trim()||null,
+  providerPane:document.querySelector('#rightPaneTabs')?.tagName==='NAV'?'TABLIST':null,
   composer:document.querySelector('#composer')?.tagName||null,
   prompt:document.querySelector('#prompt')?.tagName||null,
-  newTask:document.querySelector('#newTask')?.tagName||null
+  newTask:document.querySelector('#newTask')?.tagName||null,
+  visibility:document.visibilityState||'unknown'
 }))()`;
 function assertLabAppModeState(state) {
-  if(state?.view!=='app' || state?.directButton!=='Modo direto' ||
+  if(state?.view!=='app' || state?.providerPane!=='TABLIST' ||
      state?.composer!=='FORM' || state?.prompt!=='TEXTAREA' ||
      state?.newTask!=='BUTTON') throw new Error('lab_e2e_app_mode_required');
   return state;
 }
 
 // Fall back remains fully available to the person; the certification runner
-// simply waits for the OrdaX shell and does not count direct-mode output.
+// requires the OrdaX shell and a mounted right-pane tab bar.
 async function waitForLabAppMode(evaluate,{
   clock=Date.now,
   sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)),
@@ -159,5 +226,5 @@ async function waitForLabAppMode(evaluate,{
 module.exports={
   DEBUG_PORT,DEBUG_URL,PRODUCT_TITLE,labStagedLocalAppData,labDatabasePath,
   labLockPath,isLabUiTarget,validLabWebSocket,readLabDebugTargets,waitForLabUiTarget,
-  LAB_APP_MODE_PROBE,assertLabAppModeState,waitForLabAppMode
+  probeLabUiTarget,LAB_APP_MODE_PROBE,assertLabAppModeState,waitForLabAppMode
 };

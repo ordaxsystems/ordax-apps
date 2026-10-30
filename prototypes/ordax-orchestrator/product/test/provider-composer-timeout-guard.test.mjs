@@ -50,7 +50,10 @@ test('read-only provider inspectors have deadlines and remain no-send',()=>{
   assert.match(conversation,/waitForHistoricalThreadDom/);
   const observation=fs.readFileSync(path.resolve(here,'../src/provider-historical-thread-observation.mjs'),'utf8');
   assert.match(observation,/provider_conversation_observation_timeout/);
-  assert.match(observation,/timeoutMs:Math\.min\(2000,remaining\)/);
+  assert.ok(observation.includes('timeoutMs:Math.min(W3_OBSERVER_READ_TIMEOUT_MS,remaining)'));
+  const bounds=fs.readFileSync(path.resolve(here,'../src/provider-recovery-bounds.mjs'),'utf8');
+  assert.ok(bounds.includes('W3_OBSERVER_READ_TIMEOUT_MS=7000'));
+  assert.ok(bounds.includes('W3_CDP_READ_TIMEOUT_MS=6000'));
   for(const area of [diagnostic,conversation]){
     assert.doesNotMatch(area,/submitExactlyOnce|requestSubmit|setComposerAndSend|sendPrompt/);
   }
@@ -62,7 +65,7 @@ test('historical read-only thread can render without a composer; sending still r
   const load=section('  async #safeLoad(', '  async #assistantSnapshot()');
   assert.match(show,/requireComposer = true/);
   assert.match(show,/this\.#safeLoad\(url, \{ requireComposer, protectDraft: !force, readOnlyThread \}\)/);
-  assert.match(read,/this\.showConversation\(expected, \{force:false,requireComposer:false,readOnlyThread:true\}\)/);
+  assert.match(read,/this\.showConversation\(expected, \{\s*force:false,requireComposer:false,readOnlyThread:true,allowNavigation\s*\}\)/);
   assert.match(read,/canonicalProviderChatUrl\(this\.view\.webContents\.getURL\(\)\) !== expected/);
   assert.match(load,/if \(protectDraft\) \{\s*const state = await this\.#composerState\(\)/);
   assert.match(load,/if \(requireComposer\) await this\.#waitForComposer\(\)/);
@@ -79,8 +82,10 @@ test('historical thread uses one bounded CDP Runtime.evaluate without input or n
   const inspector=section('  async #readHistoricalThreadDOM() {',
     '  // Explicit, read-only inspection of an existing, canonical conversation.');
   const read=section('  async inspectConversationReadOnly(', '  async #composerState()');
-  assert.match(inspector,/wc\.debugger\.sendCommand\('Runtime\.evaluate'/);
-  assert.match(inspector,/awaitPromise:false,returnByValue:true/);
+  assert.ok(inspector.includes('evaluateProviderReadOnlyDom({'));
+  const evaluator=fs.readFileSync(path.resolve(here,'../src/provider-readonly-cdp-evaluator.mjs'),'utf8');
+  assert.ok(evaluator.includes("devtools.sendCommand('Runtime.evaluate'"));
+  assert.ok(evaluator.includes('awaitPromise:false,returnByValue:true'));
   assert.match(read,/read:\(\)=>this\.#readHistoricalThreadDOM\(\)/);
   assert.doesNotMatch(inspector,/Input\.insertText|requestSubmit|loadURL|sendPrompt|\.click\(/);
   assert.doesNotMatch(read,/executeJavaScript/);
@@ -94,18 +99,20 @@ test('OrdaX UI inspection uses existing Task/SQLite, trusted IPC and no replay',
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   const html=fs.readFileSync(path.resolve(here,'../desktop/ui.html'),'utf8');
   const chunk=main.split("registerUiHandler('ordax:tasks:inspect-linked-thread'")[1]
-    .split("registerUiHandler('ordax:tasks:resume-capsule'")[0];
+    .split('// Exact-profile attestation for Lab E2E')[0];
+  const core=fs.readFileSync(path.resolve(here,'../src/provider-linked-thread-recovery.mjs'),'utf8');
   assert.match(chunk,/requireTrustedSupervisorRenderer\(event\)/);
-  assert.match(chunk,/workspace_session_id !== currentSession\?\.id/);
+  assert.match(chunk,/inspectProviderLinkedThread\(\{store,worker,taskId:requestedId\}\)/);
+  assert.match(core,/workspace_session_id!==session\?\.id/);
   assert.match(chunk,/liveRun/);
-  assert.match(chunk,/canonicalProviderChatUrl\(row\.chat_url\)/);
-  assert.match(chunk,/assessProviderConversationEvidence/);
-  assert.match(chunk,/worker\.inspectConversationReadOnly/);
-  assert.doesNotMatch(chunk,/appendMessage|startRun|finishRun|sendPrompt|requestSubmit|insert into|update tasks/i);
+  assert.match(core,/canonicalProviderChatUrl\(row\.chat_url\)/);
+  assert.match(core,/assessProviderConversationEvidence/);
+  assert.match(core,/worker\.inspectConversationReadOnly/);
+  assert.doesNotMatch(chunk+core,/appendMessage\(|startRun\(|finishRun\(|sendPrompt\(|requestSubmit\(|INSERT INTO|UPDATE tasks/i);
   assert.match(preload,/inspectLinkedThread:/);
   assert.match(html,/id="inspectLinkedThread"/);
   assert.match(ui,/window\.ordax\.inspectLinkedThread\(taskId\)/);
-  assert.doesNotMatch(ui.split("$('#inspectLinkedThread').addEventListener")[1].split("$('#directMode').addEventListener")[0],/requestSubmit|sendPrompt|setChatVisible/);
+  assert.doesNotMatch(ui.split("$('#inspectLinkedThread').addEventListener")[1].split("document.querySelectorAll('.right-pane-tab')")[0],/requestSubmit|sendPrompt|setChatVisible/);
 });
 
 test('W3 success requires attributable Task user-and-assistant turn, never bare provider DOM',()=>{
@@ -113,12 +120,14 @@ test('W3 success requires attributable Task user-and-assistant turn, never bare 
   const ui=fs.readFileSync(path.resolve(here,'../desktop/ui.js'),'utf8');
   const script=fs.readFileSync(path.resolve(here,'../scripts/live-ui-linked-thread-smoke.cjs'),'utf8');
   const chunk=main.split("registerUiHandler('ordax:tasks:inspect-linked-thread'")[1]
-    .split("registerUiHandler('ordax:tasks:resume-capsule'")[0];
-  assert.match(chunk,/assessment\.kind==='response_candidate'/);
-  assert.match(chunk,/assessment\.candidates===1/);
-  assert.match(chunk,/assessment\.responseCandidate===true/);
-  assert.match(chunk,/observed\?\.truncated!==true/);
-  assert.doesNotMatch(chunk,/threadRendered=observed\?\.available===true/);
+    .split('// Exact-profile attestation for Lab E2E')[0];
+  const core=fs.readFileSync(path.resolve(here,'../src/provider-linked-thread-recovery.mjs'),'utf8');
+  assert.match(chunk,/inspectProviderLinkedThread/);
+  assert.match(core,/assessment\.kind==='response_candidate'/);
+  assert.match(core,/assessment\.candidates===1/);
+  assert.match(core,/assessment\.responseCandidate===true/);
+  assert.match(core,/observed\?\.truncated!==true/);
+  assert.doesNotMatch(core,/threadRendered=observed\?\.available===true/);
   assert.match(ui,/Conversa e resposta da tarefa observadas/);
   assert.match(ui,/dataset\.state = 'pending'/);
   assert.match(ui,/dataset\.state = 'complete'/);
@@ -139,3 +148,4 @@ test('safe observation timeout does not turn absence into session or success',as
   await assert.rejects(observeWithin(()=>new Promise(()=>{}),{timeoutMs:20,code}),/test_observation_expired/);
   assert.deepEqual(await observeWithin(()=>Promise.resolve({found:false}),{timeoutMs:40}),{found:false});
 });
+

@@ -99,7 +99,7 @@ test('manual UI guards IPC; browser inspection uses no submission path',()=>{
   assert.match(ui,/id="labSupervisorInspect"/);
   const inspector=worker.split('async inspectConversationReadOnly(')[1].split('async #composerState()')[0];
   assert.match(inspector,/this\.enqueue/);
-  assert.match(inspector,/showConversation\(expected, \{force:false,requireComposer:false,readOnlyThread:true\}\)/);
+  assert.match(inspector,/showConversation\(expected, \{\s*force:false,requireComposer:false,readOnlyThread:true,allowNavigation\s*\}\)/);
   assert.doesNotMatch(inspector,/submitExactlyOnce|requestSubmit|setComposerAndSend|sendPrompt/);
 });
 
@@ -128,3 +128,4 @@ test('recovery IPC and UI allow inspection without planner API access',()=>{
   assert.doesNotMatch(chunk,/requireLabSupervisor/);
   assert.match(ui,/labRecoverButton.disabled = false;/);
 });
+

@@ -31,7 +31,7 @@ function fixtures(){
       "ORDER BY t.updated_at DESC LIMIT 1").get(status,status==='ready'?'succeeded':'interrupted');
     const done=find('ready'),interrupted=find('interrupted');
     assert.ok(done&&interrupted,'lab_e2e_local_fixtures_missing');
-    const last=db.prepare("SELECT content FROM messages WHERE task_id=? AND role=? ORDER BY created_at DESC,id DESC LIMIT 1");
+    const last=db.prepare("SELECT content FROM messages WHERE task_id=? AND role=? ORDER BY sequence DESC LIMIT 1");
     const get=(id,role)=>last.get(id,role)?.content;
     const pair=[
       {kind:'complete',id:done.id,user:get(done.id,'user'),assistant:get(done.id,'assistant')},

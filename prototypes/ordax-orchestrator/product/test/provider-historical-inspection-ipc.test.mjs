@@ -2,110 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {canonicalProviderChatUrl} from '../src/conversation-policy.mjs';
-import {safeHistoricalThreadFailure} from '../src/provider-observation-policy.mjs';
-import {assessProviderConversationEvidence} from '../src/provider-conversation-reconciliation.mjs';
-import {providerPromptDigest} from '../src/provider-submission-provenance.mjs';
 
-const expectedUrl='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';
 const main=fs.readFileSync(new URL('../desktop/main.mjs',import.meta.url),'utf8');
-const start=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
-const end=main.indexOf("registerUiHandler('ordax:tasks:resume-capsule'",start);
-assert.ok(start>=0 && end>start,'inspection_ipc_handler_missing');
-const actualHandler=main.slice(start,end);
+const inspectStart=main.indexOf("registerUiHandler('ordax:tasks:inspect-linked-thread'");
+const reconcileStart=main.indexOf("registerUiHandler('ordax:tasks:reconcile-linked-reply'",inspectStart);
+const nextHandler=main.indexOf("registerUiHandler('ordax:lab:build-proof'",reconcileStart);
+assert.ok(inspectStart>=0&&reconcileStart>inspectStart&&nextHandler>reconcileStart,'linked_thread_ipc_handlers_missing');
+const inspectHandler=main.slice(inspectStart,reconcileStart);
+const reconcileHandler=main.slice(reconcileStart,nextHandler);
 
-function mount({provenance=null,observed,localText='continue',localMessageId='msg-current',url=expectedUrl}={}) {
-  let handler=null;let inspections=0;let writes=0;
+function mount(source,{liveRun=null}={}) {
+  let handler=null,trusted=0,calls=0,received=null;
+  const store={},worker={};
   const context={
-    requireTrustedSupervisorRenderer:()=>{},
-    liveRun:null,
-    store:{
-      getWorkspaceSession:()=>({id:'session-test'}),
-      db:{prepare:sql=>({
-        get:()=>sql.includes('FROM tasks')
-          ? {chat_url:url,workspace_session_id:'session-test'}
-          : sql.includes('FROM messages') ? {id:localMessageId,content:localText} : null,
-        run:()=>{writes++;throw Error('unexpected_write');}
-      })}
-    },
-    findProviderSubmissionProvenance:({messageId})=>messageId===localMessageId?provenance:null,
-    canonicalProviderChatUrl,
-    worker:{inspectConversationReadOnly:async()=>{inspections++;return observed || {
-      available:true,url:expectedUrl,domReliable:true,truncated:false,
-      messages:[{role:'user',text:localText},{role:'assistant',text:'Resposta'}]
-    };}},
-    assessProviderConversationEvidence,
-    safeHistoricalThreadFailure,
-    registerUiHandler:(name,fn)=>{assert.equal(name,'ordax:tasks:inspect-linked-thread');handler=fn;}
+    requireTrustedSupervisorRenderer:()=>{trusted++;},liveRun,store,worker,
+    inspectProviderLinkedThread:async value=>{calls++;assert.equal(value.store,store);assert.equal(value.worker,worker);received=value.taskId;return {kind:'response_candidate',threadRendered:true};},
+    reconcileProviderLinkedReply:async value=>{calls++;received=value;return {reconciled:true,reason:'reconciled'};},
+    registerUiHandler:(name,fn)=>{handler=fn;}
   };
-  vm.runInNewContext(actualHandler,context,{timeout:1500});
-  return {invoke:()=>handler({},'task-1'),inspections:()=>inspections,writes:()=>writes};
+  vm.runInNewContext(source,context,{timeout:1500});
+  return {invoke:arg=>handler({},arg),trusted:()=>trusted,calls:()=>calls,received:()=>received};
 }
 
-test('W3 actual read-only IPC never certifies an unsubmitted local message',async()=>{
-  const app=mount();
-  const outcome=await app.invoke();
-  assert.equal(outcome.kind,'unavailable');
-  assert.equal(outcome.threadRendered,false);
-  assert.equal(outcome.responseCandidate,false);
-  assert.equal(outcome.inspectionReason,'provider_submission_provenance_missing');
-  // Without a durable receipt, the UI must not trigger a futile GET.
-  assert.equal(app.inspections(),0);
-  assert.equal(app.writes(),0);
+test('linked-thread inspection IPC is trusted, read-only, and refuses active runs',async()=>{
+  const app=mount(inspectHandler);
+  assert.deepEqual(await app.invoke('task-1'),{kind:'response_candidate',threadRendered:true});
+  assert.equal(app.trusted(),1);
+  assert.equal(app.calls(),1);
+  assert.equal(app.received(),'task-1');
+  const active=mount(inspectHandler,{liveRun:{taskId:'task-1'}});
+  assert.equal((await active.invoke('task-1')).reason,'run_active');
+  assert.equal(active.calls(),0);
 });
 
-test('W3 actual IPC can attribute exact expanded prompt with persisted receipt',async()=>{
-  const expanded='[CONTEXTO ORDAX]\nPedido atual: continue';
-  const app=mount({
-    provenance:{runId:'run-1',promptSha256:providerPromptDigest(expanded)},
-    observed:{available:true,url:expectedUrl,domReliable:true,truncated:false,generationStopVisible:false,
-      messages:[{role:'user',text:expanded},{role:'assistant',text:'Resposta'}]}
-  });
-  const result=await app.invoke();
-  assert.equal(result.threadRendered,true);
-  assert.equal(result.inspectionReason,'thread_rendered');
-  assert.equal(app.writes(),0);
-});
-
-test('W3 actual IPC never treats a partial DOM as certified',async()=>{
-  const expanded='[CONTEXTO ORDAX]\nPedido atual: continue';
-  const app=mount({
-    provenance:{runId:'run-1',promptSha256:providerPromptDigest(expanded)},
-    observed:{available:true,url:expectedUrl,domReliable:true,truncated:true,
-      messages:[{role:'user',text:expanded},{role:'assistant',text:'Resposta'}]}
-  });
-  const result=await app.invoke();
-  assert.equal(result.threadRendered,false);
-  assert.equal(app.writes(),0);
-});
-
-
-test('W3 actual IPC refuses a still-generating assistant bubble',async()=>{
-  const expanded='[CONTEXTO ORDAX]\\nPedido atual: continue';
-  const app=mount({
-    provenance:{runId:'run-1',promptSha256:providerPromptDigest(expanded)},
-    observed:{available:true,url:expectedUrl,domReliable:true,truncated:false,generationStopVisible:true,
-      messages:[{role:'user',text:expanded},{role:'assistant',text:'Resposta parcial'}]}
-  });
-  const result=await app.invoke();
-  assert.equal(result.kind,'response_candidate');
-  assert.equal(result.threadRendered,false);
-  assert.equal(result.inspectionReason,'provider_response_generation_active');
-  assert.equal(app.writes(),0);
-});
-
-test('W3 actual IPC refuses legacy snapshots without a generation-state probe',async()=>{
-  const expanded='[CONTEXTO ORDAX]\\nPedido atual: continue';
-  const app=mount({
-    provenance:{runId:'run-1',promptSha256:providerPromptDigest(expanded)},
-    observed:{available:true,url:expectedUrl,domReliable:true,truncated:false,
-      messages:[{role:'user',text:expanded},{role:'assistant',text:'Resposta aparente'}]}
-  });
-  const result=await app.invoke();
-  assert.equal(result.kind,'response_candidate');
-  assert.equal(result.threadRendered,false);
-  assert.equal(result.inspectionReason,'provider_generation_state_unobserved');
-  assert.equal(app.writes(),0);
+test('reply reconciliation IPC requires trusted renderer and refuses active runs before storage',async()=>{
+  const app=mount(reconcileHandler);
+  assert.deepEqual(await app.invoke({taskId:'task-2',responseSha256:'a'.repeat(64)}),{reconciled:true,reason:'reconciled'});
+  assert.equal(app.trusted(),1);
+  assert.equal(JSON.stringify(app.received()),JSON.stringify({store:{},worker:{},taskId:'task-2',responseSha256:'a'.repeat(64)}));
+  const active=mount(reconcileHandler,{liveRun:{taskId:'task-2'}});
+  await assert.rejects(active.invoke({taskId:'task-2',responseSha256:'a'.repeat(64)}),/provider_reply_recovery_run_active/);
+  assert.equal(active.calls(),0);
 });
 
 test('W3 DOM inspector captures generation stop state without additional navigation or sends',()=>{
@@ -115,7 +52,8 @@ test('W3 DOM inspector captures generation stop state without additional navigat
   assert.ok(start>=0&&end>start);
   const inspector=source.slice(start,end);
   assert.match(inspector,/generationStopVisible/);
-  assert.match(inspector,/generationStopVisible=\$\{providerGenerationStopProbeExpression\}/);
-  assert.match(source,/import \{ providerGenerationStopProbeExpression \} from '\.\.\/src\/provider-generation-stop-probe\.mjs'/);
-  assert.ok(!inspector.includes('sendPrompt(') && !inspector.includes('requestSubmit(') && !inspector.includes('.loadURL('));
+  assert.match(inspector,/responseCompletionObserved/);
+  assert.match(inspector,/responseControlState=\$\{providerResponseControlStateExpression\}/);
+  assert.match(source,/import \{ providerGenerationStopProbeExpression, providerResponseControlStateExpression \} from '\.\.\/src\/provider-generation-stop-probe\.mjs'/);
+  assert.ok(!inspector.includes('sendPrompt(')&&!inspector.includes('requestSubmit(')&&!inspector.includes('.loadURL('));
 });

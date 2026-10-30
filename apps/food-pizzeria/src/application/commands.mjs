@@ -10,7 +10,7 @@ import {
   updateFoodPizzeriaSettings,
 } from "../domain/domain.mjs";
 
-export const FOOD_COMMAND_SCHEMA = "ordax.food-pizzeria-command/1";
+export const FOOD_COMMAND_SCHEMA = "ordax.food-pizzeria-command/2";
 const COMMAND_TYPES = new Set([
   "food.setup.configure",
   "food.settings.update",
@@ -69,7 +69,7 @@ export function createFoodCommand({ type, payload, expectedRevision, commandId, 
   return deepFreeze(JSON.parse(serialized));
 }
 
-export function applyFoodCommand(state, commandValue) {
+export function applyFoodCommand(state, commandValue, { catalogProducts = [] } = {}) {
   const command = createFoodCommand(commandValue);
   const payload = command.payload;
   switch (command.type) {
@@ -84,7 +84,7 @@ export function applyFoodCommand(state, commandValue) {
     case "menu.recipe.save":
       return savePizzeriaRecipe(state, payload);
     case "order.create":
-      return createPizzeriaOrder(state, payload);
+      return createPizzeriaOrder(state, { ...payload, catalogProducts });
     case "order.transition":
       return transitionPizzeriaOrder(state, payload);
     case "table.command.open":

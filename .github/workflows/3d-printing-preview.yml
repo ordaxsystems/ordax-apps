@@ -1,0 +1,46 @@
+name: OrdaX 3D Preview Contract Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'prototypes/3d-printing/**'
+      - '.github/workflows/3d-printing-preview.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'prototypes/3d-printing/**'
+      - '.github/workflows/3d-printing-preview.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ordax-3d-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-preview-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact application candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Use supported Node.js for native tests
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Validate the entire single-host source graph syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          find prototypes/3d-printing -type f -name '*.mjs' -print0 |
+            sort -z | xargs -0 -r -n1 node --check
+      - name: Prove domain, adapters, boundaries and negative tests without real devices
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test prototypes/3d-printing/tests/*.test.mjs
+          echo "ORDAX_3D_PREVIEW_TESTS=PASS RELEASE_ACTIVATION=NOT_ATTESTED"

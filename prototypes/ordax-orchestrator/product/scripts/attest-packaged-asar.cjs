@@ -48,8 +48,15 @@ async function attestPackagedAsar({archive,sourceCommit,
     const pkg=JSON.parse(fs.readFileSync(path.join(extracted,'package.json'),'utf8'));
     if(pkg.main!=='desktop/bootstrap.mjs')
       throw Error('packaged_entrypoint_not_bootstrap');
+    const workerPreloadPath=path.join(extracted,'desktop','worker-preload.bundle.cjs');
+    if(!fs.existsSync(workerPreloadPath))throw Error('packaged_worker_preload_bundle_missing');
+    const workerPreload=fs.readFileSync(workerPreloadPath,'utf8');
+    if(!/require\(["']electron["']\)/.test(workerPreload) ||
+       !workerPreload.includes('[data-message-author-role="assistant"]') ||
+       /require\(["']\.\.\/src\/provider-dom-selectors\.cjs["']\)/.test(workerPreload))
+      throw Error('packaged_worker_preload_not_self_contained');
     const manifest=makeRuntimeManifest(extracted,sourceCommit);
-    if(!['desktop/bootstrap.mjs','desktop/main.mjs','src/runtime-build-identity.mjs']
+    if(!['desktop/bootstrap.mjs','desktop/main.mjs','desktop/worker-preload.bundle.cjs','src/runtime-build-identity.mjs']
       .every(name=>manifest.files.some(file=>file.path===name)))
       throw Error('packaged_runtime_incomplete');
     // The file lives beside app.asar in resources/, not INSIDE app.asar.
@@ -75,6 +82,11 @@ async function attestPackagedAsar({archive,sourceCommit,
 exports.attestPackagedAsar=attestPackagedAsar;
 exports.beforePack=async function beforePack(){
   const productRoot=path.resolve(__dirname,'..');
+  // Build within the packager process. Spawning a nested Node process on
+  // Windows made otherwise healthy builds fail on a fixed 30s startup timeout.
+  // The same canonical esbuild entrypoint is reused, not reimplemented.
+  const {buildWorkerPreload}=await import('./build-worker-preload.mjs');
+  buildWorkerPreload();
   const sourceCommit=sourceCommitFromGit(productRoot);
   if(buildSourceCommit!==null && buildSourceCommit!==sourceCommit)
     throw Error('packaged_build_source_changed');

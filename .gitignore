@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Isolated, ignored development profile for the Node-host Orchestrator.
+prototypes/ordax-orchestrator/product/.host-profile/
+
 # Read-only canonical owner snapshots checked out by CI into the repository root.
 /.ordax-assistant-os-main/
 /.ordax-files-sdk/

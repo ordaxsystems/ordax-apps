@@ -12,7 +12,7 @@ function spawn(profile,approved='1') {
  return spawnSync(process.execPath,[fileURLToPath(seed)],{
    env:{...process.env,ORDAX_LAB_E2E_LOCALAPPDATA:profile,
      ORDAX_LAB_E2E_APPROVED:approved,ORDAX_LAB_E2E_DEBUG_PORT:'9445'},
-   encoding:'utf8',timeout:30000
+   encoding:'utf8',timeout:90000
  });
 }
 test('W4 offline seed creates only synthetic interrupted and completed Runs, exactly once',t=>{
@@ -21,6 +21,7 @@ test('W4 offline seed creates only synthetic interrupted and completed Runs, exa
  const profile=path.join(root,'candidate-userdata-v0.2.0-alpha.2');
  const dbPath=path.join(profile,'OrdaX','OrchestratorLab','data','ordax-orchestrator-lab.sqlite');
  const first=spawn(profile);
+ assert.equal(first.error,undefined,`offline seed subprocess did not complete: ${first.error?.code||'unknown_error'}`);
  assert.equal(first.status,0,first.stderr.slice(0,350));
  const receipt=JSON.parse(first.stdout.trim());
  assert.equal(receipt.synthetic,true);

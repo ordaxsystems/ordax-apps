@@ -40,9 +40,10 @@ test('product is under version control and not a generated workspace or copied F
   assert.ok(paths.every(x=>!x.startsWith('src/relay/')&&!x.startsWith('apps/')&&!x.startsWith('sql/')));
 });
 
-test('start command now runs owned source and retains separate profile', () => {
+test('start defaults to the Node host while explicit Electron retains its isolated profile', () => {
   const bootstrap=JSON.parse(read('package.json'));
-  assert.equal(bootstrap.scripts.start,'node scripts/start-lab.mjs');
+  assert.equal(bootstrap.scripts.start,'node product/scripts/start-host.mjs');
+  assert.equal(bootstrap.scripts['start:electron'],'node scripts/start-lab.mjs');
   assert.ok(!('import:flow' in bootstrap.scripts));
   const launch=read('scripts/start-lab.mjs');
   assert.match(launch,/path\.join\(root, 'product'\)/);

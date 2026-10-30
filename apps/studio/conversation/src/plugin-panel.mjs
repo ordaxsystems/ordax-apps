@@ -37,7 +37,8 @@ export function createPluginPanel({ host, nativeWeb, notify, preparePrompt, snap
     $('pluginBrowser').disabled = !nativeWeb?.pluginBrowser;
     $('pluginReturn').disabled = !nativeWeb?.pluginReturn;
     $('pluginTest').disabled = !snapshot()?.ready || snapshot()?.busy;
-    if (service.mcpURL) $('pluginEndpoint').value = service.mcpURL;
+    // Never retain an endpoint from a previous host state or disconnected session.
+    $('pluginEndpoint').value = typeof service.mcpURL === 'string' ? service.mcpURL : '';
     const oauth = service.status === 'available' ? service.oauthSettings : null;
     for (const [id, key] of [['pluginScopes', 'scopes'], ['pluginIssuer', 'issuer'], ['pluginAuthorization', 'authorizationEndpoint'], ['pluginToken', 'tokenEndpoint'], ['pluginRegistration', 'registrationEndpoint']]) $(id).value = oauth?.[key] || '';
     $('pluginOAuthGuide').textContent = oauth ? oauth.clientRegistration === 'DCR' ? 'Método confirmado: registro dinâmico de cliente (DCR). Selecione essa opção e deixe ID e segredo manuais vazios. Use os escopos abaixo e PKCE S256.' : 'Método confirmado: documento de metadados do cliente (CIMD). Selecione essa opção, sem ID ou segredo estáticos; mantenha a descoberta automática e PKCE S256.' : 'Clique em Verificar serviço para obter as configurações OAuth publicadas. Escolha o método confirmado pelo diagnóstico antes de concluir o cadastro.';

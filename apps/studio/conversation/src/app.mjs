@@ -395,6 +395,11 @@ async function send(retry = false) {
   const message = projectMessage({ project: project(), messages: chat()?.messages, message: { text: $('prompt').value, attachments: [...attachments] }, enabled: $('useProjectContext').checked });
   if (!retry) composeTextMessage(message);
   if (['prepared','submitted','uncertain'].includes(chat()?.delivery?.status)) { notify('Confira o envio sem confirmação na área Web antes de continuar.'); return; }
+  if (!$('projectDialog').hidden) {
+    if (!projectPanel.canClose()) { notify('Revise ou descarte as alterações do Workspace antes de enviar.'); return; }
+    projectPanel.showConversation();
+    navigation.go('conversation', { focus: false });
+  }
   let started = false, terminal = false;
   busy = true; notify(''); renderSidebar(); updateControls();
   try {
@@ -677,7 +682,7 @@ const activityTimer = setInterval(() => {
   tickActivityClocks(); renderRunStatus();
   if (navigation?.current() === 'central') centralPanel.poll();
 }, 1000);
-const projectPanel = createProjectPanel({ host, notify, onProjectConversations: openWorkspaceConversations, attach: async attachment => {
+const projectPanel = createProjectPanel({ host, notify, onProjectConversations: openWorkspaceConversations, showConversationLayout: showConversationView, attach: async attachment => {
   if (locked()) throw new Error('Aguarde a resposta antes de adicionar contexto.');
   composeTextMessage({ text: $('prompt').value, attachments: [...attachments, attachment] });
   attachments.push(attachment); saveDraft(); await drafts.flush(); renderAttachments();

@@ -1,25 +1,60 @@
 import {
   PIZZA_SIZES as DEFAULT_PIZZA_SIZES,
   PIZZERIA_TABLES as DEFAULT_PIZZERIA_TABLES,
+  DEFAULT_DELIVERY_FEE_CENTS,
+  MAX_ORDER_ITEM_QUANTITY,
   calculatePizzaPriceCents,
+  calculatePizzeriaBatchConsumption,
+  isValidPizzeriaDeliveryAddress,
+  isValidPizzeriaDeliveryPhone,
 } from "../domain/domain.mjs";
 import { createFoodCommand } from "../application/commands.mjs";
-import { reviewFoodCartPrices } from "../application/cart-pricing.mjs";
+import { addFoodCartItem, adjustFoodCartItemQuantity, countFoodCartUnits } from "../application/cart-quantity.mjs";
+import {
+  DEFAULT_KITCHEN_TASKS,
+  DEFAULT_KITCHEN_WORKFLOW,
+  MAX_KITCHEN_WORKFLOW_STEPS,
+  createKitchenWorkflowPreset,
+  createKitchenWorkflowDraft,
+  currentKitchenStep,
+  saveKitchenWorkflow,
+  sortKitchenTickets,
+  validateKitchenTasks,
+  validateKitchenWorkflow,
+} from "../application/kitchen-workflow-preview.mjs";
+import {
+  foodCartItemLineTotalCents,
+  foodCartSubtotalCents,
+  reviewFoodCartPrices,
+} from "../application/cart-pricing.mjs";
 import { PREVIEW_CATALOG_PRODUCTS } from "../fixtures/mock-data.mjs";
 import { FOOD_RECIPE_INGREDIENT_FIXTURES } from "../fixtures/food-recipes.mjs";
 import { assertFoodDataPort, readFoodSnapshot } from "../ports/food-data-port.mjs";
 import { renderSpaceCapabilityStatus } from "./space-capability-status.mjs";
+import { telephoneHref, whatsappHref } from "./contact-links.mjs";
 import {
   assertFoodPreviewPresentation,
   assertFoodModuleView,
   renderEmbeddedFoodPreview,
 } from "./presentation.mjs";
 import { renderOrdersPage } from "./views/orders.mjs";
-import { renderKitchenPage } from "./views/kitchen.mjs";
+import { renderOrderHistoryTimeline } from "./views/order-history-timeline.mjs";
+import { renderPosPage } from "./views/pos.mjs";
+import { kitchenStepClock, renderKitchenPage } from "./views/kitchen.mjs";
+import { renderKitchenItemLine } from "./views/kitchen-item.mjs";
+import { formatFoodOrderNumber } from "./order-number.mjs";
+import { foodOrderActionLabel, nextFoodOrderStatus } from "./order-actions.mjs";
+import {
+  PIZZERIA_KITCHEN_ITEM_LABEL,
+  PIZZERIA_KITCHEN_STAGE_GUIDANCE,
+  presentPizzeriaKitchenItem,
+} from "./pizzeria-kitchen-presentation.mjs";
 import { renderMenuPage } from "./views/menu.mjs";
 import { renderTablesPage } from "./views/tables.mjs";
 import { renderDeliveryPage } from "./views/delivery.mjs";
 import { renderSettingsPage } from "./views/settings.mjs";
+import { renderFoodReportsPage } from "./views/reports.mjs";
+import { buildFoodOperationalReport, serializeFoodOperationalReportCsv } from "../application/food-order-reporting.mjs";
 
 export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalone-preview" } = {}) {
   if (!root || typeof root.querySelector !== "function" || typeof root.addEventListener !== "function") {
@@ -27,6 +62,10 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   assertFoodDataPort(dataPort);
   assertFoodPreviewPresentation(presentation, dataPort);
+  if (typeof dataPort.getPreviewPreferences !== "function"
+    || typeof dataPort.updatePreviewPreferences !== "function") {
+    throw new TypeError("A prévia Food precisa do adapter de preferências locais do navegador.");
+  }
   const surface = root.getRootNode();
   const querySurface = (selector) => surface.querySelector(selector) ?? root.querySelector(selector);
   const cancelDialog = querySurface("#cancel-dialog");
@@ -57,7 +96,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     menu: "Cardápio",
     kitchen: "Cozinha (KDS)",
     tables: "Mesas e Comandas",
-    delivery: "Delivery",
+    delivery: "Expedição",
     pos: "Caixa (PDV)",
     inventory: "Estoque",
     customers: "Clientes",
@@ -66,8 +105,19 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     settings: "Configurações",
   });
   const PREVIEW_INGREDIENTS = FOOD_RECIPE_INGREDIENT_FIXTURES;
-  const PREVIEW_DELIVERY_FEE_CENTS = 500;
-  const SPACE_PENDING_VIEWS = new Set(["overview", "pos", "inventory", "customers", "reports", "team"]);
+  const routeParams = new URLSearchParams(globalThis.location?.search ?? "");
+  const routeStationValue = Number(routeParams.get("station"));
+  const routeScreenCountValue = Number(routeParams.get("screenCount"));
+  const routeStageValue = routeParams.get("stationStage");
+  const activeKitchenScreenFromRoute = Number.isSafeInteger(routeStationValue)
+    && routeStationValue >= 1 && routeStationValue <= 8 ? routeStationValue : null;
+  const kitchenScreenStageFromRoute = typeof routeStageValue === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(routeStageValue)
+    ? routeStageValue
+    : null;
+  const kitchenScreenCountFromRoute = Number.isSafeInteger(routeScreenCountValue)
+    && routeScreenCountValue >= (activeKitchenScreenFromRoute ?? 1)
+    && routeScreenCountValue <= 8 ? routeScreenCountValue : null;
+  const SPACE_PENDING_VIEWS = new Set(["overview", "inventory", "customers", "team"]);
   const ORDER_STATUS_FILTERS = Object.freeze([
     Object.freeze({ id: "all", label: "Todas as etapas" }),
     Object.freeze({ id: "received", label: "Recebidos" }),
@@ -107,25 +157,40 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   
   const store = dataPort;
   let snapshot = null;
+  let previewPreferences = { deliveryFeeCents: DEFAULT_DELIVERY_FEE_CENTS };
   let PIZZA_SIZES = DEFAULT_PIZZA_SIZES.map((size) => ({ ...size, active: true }));
   let PIZZERIA_TABLES = DEFAULT_PIZZERIA_TABLES.map((table) => ({ ...table, active: true }));
   let recipeFlavorId = null;
   let recipeDraftLines = [];
+  const recipeDraftsByFlavorId = new Map();
+  let batchPlanSize = null;
+  let batchPlanLines = null;
+  let batchPlanLineSequence = 0;
+  let batchPlanRequested = false;
   let settingsSizesDraft = null;
   let settingsTablesDraft = null;
   let unsubscribe = null;
-  let activeView = "orders";
+  let activeView = activeKitchenScreenFromRoute === null ? "orders" : "kitchen";
+  let reportRange = "7d";
   let orderQuery = "";
   let orderStatusFilter = "all";
   let orderChannelFilter = "all";
   let kitchenChannelFilter = "all";
+  let kitchenOrderQuery = "";
+  let kitchenLateOnly = false;
+  let kitchenWorkflowDraft = null;
+  let kitchenSetupExpanded = false;
+  const activeKitchenScreen = activeKitchenScreenFromRoute;
   let activeCommandId = null;
   let editFlavorId = null;
+  const flavorDraftsById = new Map();
   let cart = [];
   let busy = false;
   let notice = null;
   let noticeTimer = null;
+  const reportDownloadTimers = new Map();
   let ageRefreshTimer = null;
+  let posCheckoutObserver = null;
   let destroyed = false;
   let mounted = false;
   
@@ -187,8 +252,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   function orderNumber(order) {
-    const numericSuffix = order.id.match(/(\d+)$/)?.[1];
-    return `#${(numericSuffix ?? order.id.replaceAll("-", "").slice(-6)).toUpperCase()}`;
+    return formatFoodOrderNumber(order.id);
   }
   
   function commandById(commandId) {
@@ -202,11 +266,65 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     return CHANNEL_LABELS[order.channel];
   }
+
+  function kitchenWorkflowConfiguration() {
+    return validateKitchenWorkflow(
+      kitchenWorkflowDraft ?? previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW,
+    );
+  }
+
+  function kitchenScreenHref(screenNumber, stage, screenCount) {
+    const currentHref = globalThis.location?.href;
+    if (!currentHref) {
+      return `?presentation=embedded-preview&view=kitchen&station=${screenNumber}&stationStage=${encodeURIComponent(stage)}&screenCount=${screenCount}`;
+    }
+    const url = new URL(currentHref);
+    for (const key of [...url.searchParams.keys()]) {
+      if (key.startsWith("__")) url.searchParams.delete(key);
+    }
+    url.searchParams.set("view", "kitchen");
+    url.searchParams.set("station", String(screenNumber));
+    url.searchParams.set("stationStage", stage);
+    url.searchParams.set("screenCount", String(screenCount));
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function kitchenOverviewHref() {
+    const currentHref = globalThis.location?.href;
+    if (!currentHref) return "?presentation=embedded-preview&view=kitchen";
+    const url = new URL(currentHref);
+    url.searchParams.set("view", "kitchen");
+    url.searchParams.delete("station");
+    url.searchParams.delete("stationStage");
+    url.searchParams.delete("screenCount");
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function clearNotice() {
+    clearTimeout(noticeTimer);
+    noticeTimer = null;
+    notice = null;
+  }
+
+  function setNotice(type, text, { duration = type === "success" ? 3600 : 0, render = true } = {}) {
+    if (destroyed) return;
+    clearTimeout(noticeTimer);
+    noticeTimer = null;
+    const nextNotice = { type, text };
+    notice = nextNotice;
+    if (render) renderNotice();
+    if (Number.isFinite(duration) && duration > 0) {
+      noticeTimer = globalThis.setTimeout(() => {
+        if (notice !== nextNotice) return;
+        noticeTimer = null;
+        notice = null;
+        renderNotice();
+      }, duration);
+    }
+  }
   
   function report(error) {
-    if (destroyed) return;
-    notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível concluir esta operação." };
-    renderNotice();
+    setNotice("error", error instanceof Error ? error.message : "Não foi possível concluir esta operação.");
   }
   
   function setBusyUI(value) {
@@ -226,7 +344,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   async function dispatch(commandInput, successText, { renderAfter = true } = {}) {
     if (busy || destroyed) return false;
     const startingRevision = snapshot?.revision;
-    notice = null;
+    clearNotice();
     busy = true;
     setBusyUI(true);
     let committed = false;
@@ -238,16 +356,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       await store.execute(command);
       if (destroyed) return false;
       committed = true;
-      notice = { type: "success", text: successText };
-      clearTimeout(noticeTimer);
-      noticeTimer = setTimeout(() => {
-        notice = null;
-        renderNotice();
-      }, 3600);
+      setNotice("success", successText, { render: false });
       return true;
     } catch (error) {
       if (!destroyed) {
-        notice = { type: "error", text: error instanceof Error ? error.message : "Não foi possível salvar os dados." };
+        setNotice("error", error instanceof Error ? error.message : "Não foi possível salvar os dados.", { render: false });
       }
       return false;
     } finally {
@@ -287,8 +400,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const name = snapshot.settings?.storeName ?? "Pizzaria";
     return `<header class="topbar">
       <div class="mobile-brand"><span class="brand-mark">${iconSvg("pizza")}</span><span>OrdaX <b>Food</b></span></div>
-      <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido ou cliente no pedido" placeholder="Buscar pedido ou cliente no pedido..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
-      <div class="topbar-right"><div class="preview-context" role="status"><strong>Prévia local</strong><small>Dados fictícios · sem sincronização</small></div><button type="button" class="avatar-button" aria-label="Configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
+      <form id="global-search" class="global-search"><span aria-hidden="true">⌕</span><input name="query" aria-label="Buscar pedido, cliente, telefone, endereço, mesa ou item" placeholder="Buscar pedido, cliente ou endereço..." value="${escapeHtml(orderQuery)}"><kbd>/</kbd></form>
+      <div class="topbar-right"><button type="button" class="avatar-button" aria-label="Configurações da pizzaria" data-view="settings">${escapeHtml(name.slice(0, 1).toUpperCase())}</button></div>
     </header>`;
   }
   
@@ -296,7 +409,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (presentation === "embedded-preview") {
       return renderEmbeddedFoodPreview(content, notice
         ? `<div class="toast toast-${notice.type}" role="${notice.type === "error" ? "alert" : "status"}"><span>${notice.type === "error" ? "!" : "✓"}</span>${escapeHtml(notice.text)}<button type="button" aria-label="Fechar aviso" data-action="dismiss-notice">×</button></div>`
-        : "");
+        : "", { kitchenStation: activeKitchenScreen !== null });
     }
     const name = snapshot.settings?.storeName ?? "Pizzaria";
     return `<div class="app-shell">
@@ -333,15 +446,34 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function viewModel() {
     return {
       PIZZA_SIZES, PIZZERIA_TABLES, PREVIEW_CATALOG_PRODUCTS, PREVIEW_INGREDIENTS,
-      PREVIEW_DELIVERY_FEE_CENTS, STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
+      MAX_ORDER_ITEM_QUANTITY,
+      deliveryFeeCents: previewPreferences.deliveryFeeCents,
+      kitchenWorkflow: kitchenWorkflowConfiguration(),
+      kitchenTasks: validateKitchenTasks(previewPreferences?.kitchenTasks ?? DEFAULT_KITCHEN_TASKS),
+      kitchenTaskActionsAvailable: typeof store.recordKitchenTaskAction === "function",
+      kitchenItemPresentation,
+      kitchenItemLabel: PIZZERIA_KITCHEN_ITEM_LABEL,
+      kitchenStageGuidance: PIZZERIA_KITCHEN_STAGE_GUIDANCE,
+      kitchenSearchPlaceholder: "Buscar pedido, mesa ou sabor",
+      kitchenSearchLabel: "Buscar pedido, mesa ou sabor",
+      reportRange,
+      activeKitchenScreen,
+      kitchenScreenStage: kitchenScreenStageFromRoute,
+      kitchenScreenCount: kitchenScreenCountFromRoute,
+      kitchenScreenHref,
+      kitchenOverviewHref,
+      kitchenSetupExpanded,
+      STATUS_LABELS, CHANNEL_LABELS, ORDER_STATUS_FILTERS,
       KITCHEN_CHANNEL_FILTERS, ORDER_STAGE_ALERT_MINUTES, snapshot, recipeFlavorId,
       recipeDraftLines, orderQuery, orderStatusFilter, orderChannelFilter, kitchenChannelFilter,
+      showLocalSearch: presentation === "embedded-preview",
+      kitchenOrderQuery, kitchenLateOnly,
       activeCommandId, editFlavorId, cart, busy, button, iconSvg, metricCard,
-      orderItemDescription, nextStatus, nextActionLabel, orderAction, canCancel,
-      renderOrderCard, emptyState, sizeOptions, flavorOptions, cartHtml, flavorForm,
+      orderItemDescription, orderAction, canCancel,
+      renderOrderCard, renderKitchenOrderCard, emptyState, sizeOptions, flavorOptions, cartHtml, flavorForm,
       kitchenChannelButton, activeCommandForTable, tableCard, sectionHeader, statCard,
       tableOrders, tableCommandTotalCents, money, escapeHtml, timeLabel, clockTime, stageStartedAt,
-      elapsedMinutes, formatElapsed, orderNumber, commandById,
+      elapsedMinutes, formatElapsed, orderNumber, orderChannelLabel, commandById,
     };
   }
   function metricCard({ label, value, detail, icon, tone = "red" }) {
@@ -349,29 +481,23 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   }
   
   function orderItemDescription(item) {
+    if (item.type === "catalog-product") return `${item.quantity}× ${item.name} · ${item.category}`;
     const size = item.sizeLabel ?? PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
     const flavors = item.flavors.map(({ name }) => name).join(" + ");
     return `${item.quantity}× ${size} · ${flavors}`;
   }
-  
-  function nextStatus(order) {
-    if (order.status === "received") return "preparing";
-    if (order.status === "preparing") return "ready";
-    if (order.status === "ready") return order.channel === "delivery" ? "out-for-delivery" : "completed";
-    if (order.status === "out-for-delivery") return "completed";
-    return null;
-  }
-  
-  function nextActionLabel(status) {
-    return ({ preparing: "Iniciar preparo", ready: "Marcar como pronto", "out-for-delivery": "Saiu para entrega", completed: "Concluir pedido" })[status] ?? "";
+
+  function kitchenItemPresentation(item) {
+    return presentPizzeriaKitchenItem(item);
   }
   
   function orderAction(order) {
-    const status = nextStatus(order);
+    const status = nextFoodOrderStatus(order);
     if (!status) return "";
-    return button(nextActionLabel(status), "advance-order", {
+    const actionLabel = foodOrderActionLabel(order, status);
+    return button(actionLabel, "advance-order", {
       kind: status === "ready" ? "primary" : "quiet",
-      extra: `data-order-id="${escapeHtml(order.id)}" data-next-status="${status}"`,
+      extra: `aria-label="${escapeHtml(actionLabel)} no pedido ${escapeHtml(orderNumber(order))}" data-order-id="${escapeHtml(order.id)}" data-next-status="${status}"`,
     });
   }
   
@@ -379,21 +505,81 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return ["received", "preparing", "ready"].includes(order.status);
   }
   
-  function renderOrderCard(order, { kitchen = false } = {}) {
+  function renderOrderCard(order, { kitchen = false, allowCancel = false, allowAdvance = false, showDeliveryCall = false, customerUpdate = null, showHistory = false } = {}) {
     const items = order.items.map((item) => `<li><span>${escapeHtml(orderItemDescription(item))}</span><strong>${money(item.lineTotalCents)}</strong></li>`).join("");
     const lastChange = order.statusHistory.at(-1);
     const startedAt = stageStartedAt(order);
     const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];
+    const channelLabel = orderChannelLabel(order);
+    const deliveryCallHref = showDeliveryCall && order.channel === "delivery" && order.status === "ready"
+      ? telephoneHref(order.phone)
+      : null;
+    const deliveryCallAction = deliveryCallHref
+      ? `<a class="button button-quiet delivery-call-link" href="tel:${escapeHtml(deliveryCallHref)}" aria-label="Ligar para ${escapeHtml(order.customerName)} antes de despachar o pedido ${escapeHtml(orderNumber(order))}">Ligar</a>`
+      : "";
+    const customerUpdateHref = customerUpdate ? whatsappHref(order.phone, customerUpdate.message) : null;
+    const customerUpdateAction = customerUpdateHref
+      ? `<a class="button button-quiet customer-update-link" href="${escapeHtml(customerUpdateHref)}" target="_blank" rel="noopener noreferrer" title="Abre um rascunho para revisar e enviar no WhatsApp" aria-label="Preparar mensagem no WhatsApp para ${escapeHtml(order.customerName)} sobre o pedido ${escapeHtml(orderNumber(order))}">Avisar cliente</a>`
+      : "";
+    const identityDetails = [
+      ...(order.tableCommandId && channelLabel === order.customerName ? [] : [channelLabel]),
+      ...(order.phone ? [order.phone] : []),
+    ];
     const age = kitchen && alertAfter ? `<div class="order-age" data-order-age data-started-at="${escapeHtml(startedAt)}" data-target-minutes="${alertAfter}"><span>Na etapa há</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong><span class="age-alert" data-age-alert hidden>Acima de ${alertAfter} min</span></div>` : "";
     return `<article class="order-card ${kitchen ? "order-card-kitchen" : ""}">
       <div class="order-card-head"><div><span class="order-number">${orderNumber(order)}</span><span class="order-time">${timeLabel(order.createdAt)}</span></div><span class="status-badge status-${order.status}"><span></span>${STATUS_LABELS[order.status]}</span></div>
-      <div class="order-customer"><strong>${escapeHtml(order.customerName)}</strong><span>${escapeHtml(orderChannelLabel(order))}${order.phone ? ` · ${escapeHtml(order.phone)}` : ""}</span></div>
+      <div class="order-customer"><strong>${escapeHtml(order.customerName)}</strong>${identityDetails.length ? `<span>${escapeHtml(identityDetails.join(" · "))}</span>` : ""}</div>
       ${age}
       ${order.channel === "delivery" ? `<div class="order-address">${escapeHtml(order.address)}</div>` : ""}
       <ul class="order-items">${items}</ul>
       ${order.notes ? `<p class="order-note"><span>Observação</span>${escapeHtml(order.notes)}</p>` : ""}
       ${order.status === "cancelled" ? `<p class="cancel-reason">Cancelado: ${escapeHtml(lastChange.reason)}</p>` : ""}
-      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${canCancel(order) ? button("Cancelar", "cancel-order", { extra: `data-order-id="${escapeHtml(order.id)}"` }) : ""}${orderAction(order)}</div></div>
+      <div class="order-card-foot"><div><span>Total do pedido</span><strong>${money(order.totalCents)}</strong>${order.deliveryFeeCents ? `<small>Inclui ${money(order.deliveryFeeCents)} de entrega</small>` : ""}</div><div class="order-actions">${deliveryCallAction}${customerUpdateAction}${allowCancel && canCancel(order) ? button("Cancelar", "cancel-order", { extra: `aria-label="Cancelar pedido ${escapeHtml(orderNumber(order))}" data-order-id="${escapeHtml(order.id)}"` }) : ""}${allowAdvance ? orderAction(order) : ""}</div></div>
+      ${showHistory ? renderOrderHistoryTimeline(order, { statusLabels: STATUS_LABELS, escapeHtml }) : ""}
+    </article>`;
+  }
+
+  function renderKitchenOrderCard(order, { deliveryDetails = false, task = null, screenNumber = null, canPassNext = false, passBehindCount = 1 } = {}) {
+    const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
+    const items = order.items.map((item) => renderKitchenItemLine(item, kitchenItemPresentation(item), escapeHtml)).join("");
+    const currentTask = task ? currentKitchenStep(task) : null;
+    const taskClock = task ? kitchenStepClock(task) : null;
+    const startedAt = taskClock?.startedAt ?? stageStartedAt(order);
+    const alertAfter = ORDER_STAGE_ALERT_MINUTES[order.status];
+    const orderSlaStartedAt = stageStartedAt(order);
+    const slaLabel = order.status === "preparing" ? "Preparo total" : "Tempo do pedido";
+    const stepTargetMinutes = currentTask?.status === "active" ? currentTask.targetMinutes : null;
+    const stepSla = taskClock && Number.isSafeInteger(stepTargetMinutes)
+      ? `<span class="kitchen-sla-target kitchen-step-sla" data-kitchen-step-sla data-order-id="${escapeHtml(order.id)}" data-started-at="${escapeHtml(currentTask.startedAt)}" data-target-minutes="${stepTargetMinutes}" data-sla-label="Etapa ${escapeHtml(currentTask.label)}"><span data-sla-value>Etapa ${escapeHtml(currentTask.label)} ${formatElapsed(elapsedMinutes(currentTask.startedAt))} / meta ${stepTargetMinutes} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></span>`
+      : "";
+    const orderSla = taskClock && Number.isFinite(alertAfter)
+      ? `<span class="kitchen-sla-target" data-order-sla data-started-at="${escapeHtml(orderSlaStartedAt)}" data-target-minutes="${alertAfter}" data-sla-label="${slaLabel}"><span data-sla-value>${slaLabel} ${formatElapsed(elapsedMinutes(orderSlaStartedAt))} / meta ${alertAfter} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></span>`
+      : "";
+    const age = taskClock
+      ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}"><span>${taskClock.label}</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong>${orderSla}${stepSla}</div>`
+      : alertAfter
+        ? `<div class="order-age kitchen-ticket-age" data-order-age data-started-at="${escapeHtml(startedAt)}" data-target-minutes="${alertAfter}"><span>Pedido nesta etapa há</span><strong data-age-value>${formatElapsed(elapsedMinutes(startedAt))}</strong><span class="kitchen-sla-target">Meta ${alertAfter} min</span><span class="age-alert" data-age-alert hidden>Acima da meta</span></div>`
+        : "";
+    const dispatchDetails = deliveryDetails && order.channel === "delivery"
+      ? `<div class="kitchen-delivery-details"><span>DESTINO</span><strong>${escapeHtml(order.customerName)}</strong><p>${escapeHtml(order.address)}</p>${order.phone ? `<small>${escapeHtml(order.phone)}</small>` : ""}</div>`
+      : "";
+    const taskProgress = task && currentTask
+      ? `<section class="kitchen-task-progress" aria-label="Etapa ${task.steps.filter(({ status }) => status === "completed").length + 1} de ${task.steps.length}"><div><span>ETAPA ${task.steps.filter(({ status }) => status === "completed").length + 1} DE ${task.steps.length}</span><strong>${escapeHtml(currentTask.label)}</strong></div><ol aria-label="Progresso do pedido">${task.steps.map((step) => `<li class="is-${step.status}" aria-label="${escapeHtml(step.label)}: ${({ completed: "concluída", active: "em andamento", queued: "aguardando", pending: "próxima" })[step.status]}"></li>`).join("")}</ol></section>`
+      : "";
+    const taskActions = task && currentTask && Number.isSafeInteger(screenNumber)
+      ? `<footer class="kitchen-ticket-actions kitchen-task-actions">${currentTask.status === "queued"
+        ? button(currentTask.id === "prepare-order" ? "Iniciar preparo" : "Iniciar", "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `aria-label="${currentTask.id === "prepare-order" ? "Iniciar preparo" : `Iniciar ${escapeHtml(currentTask.label)}`} do pedido ${escapeHtml(orderNumber(order))}" data-task-action="start" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })
+        : button(currentTask.id === "prepare-order" ? "Enviar para o forno" : `Concluir ${currentTask.label}`, "kitchen-task-action", { kind: "primary", disabled: typeof store.recordKitchenTaskAction !== "function", extra: `aria-label="${currentTask.id === "prepare-order" ? "Concluir preparo e enviar para o forno" : `Concluir ${escapeHtml(currentTask.label)}`} no pedido ${escapeHtml(orderNumber(order))}" data-task-action="complete" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}"` })}${button("Próximo", "kitchen-task-action", { kind: "quiet", disabled: typeof store.recordKitchenTaskAction !== "function" || !canPassNext, extra: `title="${canPassNext ? `O pedido atual volta na ${passBehindCount === 2 ? "terceira posição" : "segunda posição"}.` : "Não há outro pedido nesta etapa."}" aria-label="${canPassNext ? `Passar o pedido ${escapeHtml(orderNumber(order))} para o próximo; ele volta na ${passBehindCount === 2 ? "terceira" : "segunda"} posição` : `Não há outro pedido depois de ${escapeHtml(orderNumber(order))} nesta etapa`}" data-task-action="pass-next" data-order-id="${escapeHtml(order.id)}" data-step-id="${escapeHtml(currentTask.id)}" data-screen-number="${screenNumber}" data-pass-behind="${passBehindCount}"` })}</footer>`
+      : "";
+    return `<article class="order-card order-card-kitchen" data-order-id="${escapeHtml(order.id)}" data-status="${order.status}">
+      <header class="kitchen-ticket-head"><div class="kitchen-ticket-identity"><strong>${orderNumber(order)}</strong><span class="kitchen-channel-chip">${escapeHtml(orderChannelLabel(order))}</span></div><span class="status-badge status-${order.status}"><span></span>${escapeHtml(STATUS_LABELS[order.status])}</span></header>
+      <div class="kitchen-ticket-meta"><span>Pedido às ${clockTime(order.createdAt)}</span><strong>${totalItems} ${totalItems === 1 ? "item" : "itens"}</strong></div>
+      ${taskProgress}
+      ${age}
+      <ul class="kitchen-item-lines">${items}</ul>
+      ${order.notes ? `<div class="kitchen-production-note"><span>INSTRUÇÃO DE PREPARO</span><p>${escapeHtml(order.notes)}</p></div>` : ""}
+      ${dispatchDetails}
+      ${taskActions}
     </article>`;
   }
   
@@ -412,20 +598,36 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     return `<option value="">Escolha um sabor</option>${active.map(({ id, name }) => `<option value="${escapeHtml(id)}" ${id === selected ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}`;
   }
   
+  function cartQuantityControls(item, index, label) {
+    const safeLabel = escapeHtml(label);
+    const itemIndex = String(index);
+    const decreaseDisabled = item.quantity <= 1 ? " disabled" : "";
+    const increaseDisabled = item.quantity >= MAX_ORDER_ITEM_QUANTITY ? " disabled" : "";
+    return '<div class="cart-line-controls" role="group" aria-label="Quantidade de ' + safeLabel + '">'
+      + '<div class="cart-quantity-stepper">'
+      + '<button class="cart-quantity-button" type="button" data-action="decrease-cart-item" data-index="' + itemIndex + '" aria-label="Diminuir quantidade de ' + safeLabel + '"' + decreaseDisabled + '>−</button>'
+      + '<span class="cart-quantity-value" aria-live="polite" aria-atomic="true">' + item.quantity + '</span>'
+      + '<button class="cart-quantity-button" type="button" data-action="increase-cart-item" data-index="' + itemIndex + '" aria-label="Aumentar quantidade de ' + safeLabel + '"' + increaseDisabled + '>+</button>'
+      + '</div><button class="icon-button" type="button" data-action="remove-cart-item" data-index="' + itemIndex + '" aria-label="Remover ' + safeLabel + '">×</button></div>';
+  }
+
   function cartHtml() {
-    if (!cart.length) return `<div class="cart-empty" id="cart-empty"><span aria-hidden="true">◌</span><p>Adicione a primeira pizza ao pedido.</p></div>`;
-    return `<ul class="cart-list">${cart.map((item, index) => {
-      const size = PIZZA_SIZES.find(({ id }) => id === item.size)?.label;
+    if (!cart.length) return '<div class="cart-empty" id="cart-empty"><span aria-hidden="true">◌</span><p>Adicione uma pizza ou outro produto ao pedido.</p></div>';
+    return '<ul class="cart-list">' + cart.map((item, index) => {
+      if (item.type === "catalog-product") {
+        const label = String(item.name);
+        return '<li class="cart-line"><div><strong>' + escapeHtml(label) + '</strong><span>' + escapeHtml(item.category) + '</span></div><strong>' + money(foodCartItemLineTotalCents(item, snapshot)) + '</strong>' + cartQuantityControls(item, index, label) + '</li>';
+      }
+      const size = PIZZA_SIZES.find(({ id }) => id === item.size)?.label ?? item.size;
       const flavorNames = item.flavorIds.map((id) => snapshot.flavors.find((flavor) => flavor.id === id)?.name ?? "Sabor indisponível");
-      let unit = 0;
-      try {
-        unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
-      } catch { unit = item.unitPriceCents; }
-      return `<li class="cart-line"><div><strong>${item.quantity}× ${escapeHtml(size)}</strong><span>${escapeHtml(flavorNames.join(" + "))}</span></div><strong>${money(unit * item.quantity)}</strong><button class="icon-button" type="button" data-action="remove-cart-item" data-index="${index}" aria-label="Remover ${escapeHtml(flavorNames.join(" e "))}">×</button></li>`;
-    }).join("")}</ul>`;
+      const label = size + " · " + flavorNames.join(" + ");
+      return '<li class="cart-line"><div><strong>' + escapeHtml(size) + '</strong><span>' + escapeHtml(flavorNames.join(" + ")) + '</span></div><strong>' + money(foodCartItemLineTotalCents(item, snapshot)) + '</strong>' + cartQuantityControls(item, index, label) + '</li>';
+    }).join("") + '</ul>';
   }
   
   function ordersPage() { return renderOrdersPage(viewModel()); }
+
+  function posPage() { return renderPosPage(viewModel()); }
 
   function kitchenChannelButton(filter, activeOrders) {
     const count = filter.id === "all" ? activeOrders.length : activeOrders.filter(({ channel }) => channel === filter.id).length;
@@ -437,16 +639,61 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function flavorForm() {
     const flavor = snapshot.flavors.find(({ id }) => id === editFlavorId) ?? null;
     const prices = flavor?.pricesCents ?? {};
+    const draft = flavorDraftsById.get(editFlavorId);
     return `<form id="flavor-form" class="panel flavor-form">
       <div class="panel-heading"><div><p class="eyebrow">${flavor ? "ATUALIZAR CADASTRO" : "NOVO SABOR"}</p><h2>${flavor ? "Editar sabor" : "Adicionar ao cardápio"}</h2></div><span class="step-number">${flavor ? "✎" : "＋"}</span></div>
-      <label>Nome do sabor<input name="name" maxlength="60" required value="${escapeHtml(flavor?.name ?? "")}" placeholder="Ex.: Margherita"></label>
-      <label>Descrição <span class="optional-tag">opcional</span><textarea name="description" maxlength="240" rows="2" placeholder="Ingredientes ou detalhes para a cozinha">${escapeHtml(flavor?.description ?? "")}</textarea></label>
-      <div class="price-fields"><span>Preço por tamanho</span><div class="price-grid">${PIZZA_SIZES.map(({ id, label, active }) => `<label>${escapeHtml(label)}${active ? "" : " · inativo"}<div class="currency-input"><span>R$</span><input name="price-${id}" inputmode="decimal" placeholder="${active ? "0,00" : "0,00 (inativo)"}" ${active ? "required" : ""} value="${flavor ? money(prices[id]).replace("R$ ", "").trim() : active ? "" : "0,00"}"></div></label>`).join("")}</div></div>
-      <div class="flavor-form-actions">${flavor ? button("Cancelar edição", "cancel-flavor-edit") : ""}<button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>${flavor ? "Salvar alterações" : "Salvar sabor"} <span aria-hidden="true">→</span></button></div>
+      <label>Nome do sabor<input name="name" maxlength="60" required value="${escapeHtml(draft?.name ?? flavor?.name ?? "")}" placeholder="Ex.: Margherita"></label>
+      <label>Descrição <span class="optional-tag">opcional</span><textarea name="description" maxlength="240" rows="2" placeholder="Ingredientes ou detalhes para a cozinha">${escapeHtml(draft?.description ?? flavor?.description ?? "")}</textarea></label>
+      <div class="price-fields"><span>Preço por tamanho</span><div class="price-grid">${PIZZA_SIZES.map(({ id, label, active }) => {
+    const savedPrice = flavor ? money(prices[id]).replace("R$ ", "").trim() : active ? "" : "0,00";
+    const draftPrice = draft?.prices?.[id];
+    return `<label>${escapeHtml(label)}${active ? "" : " · inativo"}<div class="currency-input"><span>R$</span><input name="price-${id}" inputmode="decimal" placeholder="${active ? "0,00" : "0,00 (inativo)"}" ${active ? "required" : ""} value="${escapeHtml(draftPrice ?? savedPrice)}"></div></label>`;
+  }).join("")}</div></div>
+      <div class="flavor-form-actions">${flavor ? button("Cancelar edição", "cancel-flavor-edit") : draft ? button("Descartar rascunho", "cancel-flavor-create") : ""}<button class="button button-primary" type="submit" ${busy ? "disabled" : ""}>${flavor ? "Salvar alterações" : "Salvar sabor"} <span aria-hidden="true">→</span></button></div>
     </form>`;
   }
   
-  function menuPage() { return renderMenuPage(viewModel()); }
+  function menuPage() {
+    const activeSizes = PIZZA_SIZES.filter(({ active }) => active);
+    if (!activeSizes.some(({ id }) => id === batchPlanSize)) batchPlanSize = activeSizes[0]?.id ?? null;
+    if (batchPlanLines === null) batchPlanLines = [createBatchPlanLine()];
+    let batchPlanResult = null;
+    let batchPlanError = null;
+    if (batchPlanRequested) {
+      try {
+        batchPlanResult = calculatePizzeriaBatchConsumption(snapshot, {
+          size: batchPlanSize,
+          pizzaLines: batchPlanLines.map(({ flavorIds, quantity }) => ({
+            flavorIds: flavorIds.filter(Boolean),
+            quantity: Number(quantity),
+          })),
+        });
+        const unknownIngredient = batchPlanResult.ingredients.find(({ ingredientId }) =>
+          !PREVIEW_INGREDIENTS.some(({ id }) => id === ingredientId));
+        if (unknownIngredient) throw new Error(`O insumo ${unknownIngredient.ingredientId} não tem unidade cadastrada no catálogo disponível.`);
+      } catch (error) {
+        batchPlanError = error instanceof Error ? error.message : "Não foi possível calcular este lote.";
+      }
+    }
+    return renderMenuPage({
+      ...viewModel(),
+      batchPlanSize,
+      batchPlanLines,
+      maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza,
+      batchPlanResult,
+      batchPlanError,
+    });
+  }
+
+  function createBatchPlanLine() {
+    const firstRecipeFlavor = snapshot?.flavors.find((flavor) => flavor.active
+      && snapshot.recipes.some((recipe) => recipe.flavorId === flavor.id));
+    return {
+      id: `batch-line-${++batchPlanLineSequence}`,
+      flavorIds: [firstRecipeFlavor?.id ?? ""],
+      quantity: "0",
+    };
+  }
 
   function settingsPage() {
     settingsSizesDraft ??= snapshot.settings.pizzaSizes.map((size) => ({ ...size }));
@@ -491,14 +738,14 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const orderSummary = orders.length
       ? orders.map((order) => `${orderNumber(order)} · ${STATUS_LABELS[order.status]}`).join(" · ")
       : "Ainda sem pedidos";
-    return `<article class="table-card table-occupied table-card-open"><div class="table-card-top"><span class="table-number">${String(table.id).padStart(2, "0")}</span><span>${command.guestCount}/${table.seats} pessoas</span></div><strong>${escapeHtml(command.customerName)}</strong><small data-order-age data-started-at="${escapeHtml(command.openedAt)}"><span>Aberta há</span> <b data-age-value>${formatElapsed(elapsedMinutes(command.openedAt))}</b></small><div class="table-card-summary"><span>${orders.length} ${orders.length === 1 ? "pedido" : "pedidos"}</span><strong>${money(Number(tableCommandTotalCents(command.id)))}</strong></div><p class="table-order-list">${escapeHtml(orderSummary)}</p><div class="table-card-actions">${button("Adicionar pedido", "add-command-order", { kind: "primary", extra: `data-command-id="${escapeHtml(command.id)}"` })}${button("Encerrar comanda", "close-table-command", { disabled: !canClose, extra: `data-command-id="${escapeHtml(command.id)}"` })}</div>${!canClose ? `<small class="table-close-hint">Conclua ou cancele os pedidos na Cozinha para encerrar.</small>` : ""}</article>`;
+    const tableLabel = String(table.id).padStart(2, "0");
+    return `<article class="table-card table-occupied table-card-open"><div class="table-card-top"><span class="table-number">${tableLabel}</span><span>${command.guestCount}/${table.seats} pessoas</span></div><strong>${escapeHtml(command.customerName)}</strong><small data-order-age data-started-at="${escapeHtml(command.openedAt)}"><span>Aberta há</span> <b data-age-value>${formatElapsed(elapsedMinutes(command.openedAt))}</b></small><div class="table-card-summary"><span>${orders.length} ${orders.length === 1 ? "pedido" : "pedidos"}</span><strong>${money(Number(tableCommandTotalCents(command.id)))}</strong></div><p class="table-order-list">${escapeHtml(orderSummary)}</p><div class="table-card-actions">${button("Adicionar pedido", "add-command-order", { kind: "primary", extra: `aria-label="Adicionar pedido à comanda da Mesa ${tableLabel}" data-command-id="${escapeHtml(command.id)}"` })}${button("Encerrar comanda", "close-table-command", { disabled: !canClose, extra: `aria-label="Encerrar comanda da Mesa ${tableLabel}" data-command-id="${escapeHtml(command.id)}"` })}</div>${!canClose ? `<small class="table-close-hint">Conclua ou cancele os pedidos na Cozinha para encerrar.</small>` : ""}</article>`;
   }
   
   function openTableCommandDialog(preselectedTableId = null) {
     const availableTables = PIZZERIA_TABLES.filter(({ active, id }) => active && !activeCommandForTable(id));
     if (!availableTables.length) {
-      notice = { type: "error", text: "Todas as mesas já têm uma comanda aberta." };
-      renderNotice();
+      setNotice("error", "Todas as mesas já têm uma comanda aberta.");
       return;
     }
     const select = tableOpenForm.elements.tableId;
@@ -516,8 +763,53 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
 
   function deliveryPage() { return renderDeliveryPage(viewModel()); }
 
+  function reportsPage() { return renderFoodReportsPage(viewModel()); }
+
+  function exportFoodReport() {
+    const reportData = buildFoodOperationalReport(snapshot, { range: reportRange });
+    const csv = serializeFoodOperationalReportCsv(reportData, {
+      channelLabels: CHANNEL_LABELS,
+      statusLabels: STATUS_LABELS,
+      orderNumber: ({ id }) => formatFoodOrderNumber(id),
+    });
+    const document = root.ownerDocument ?? globalThis.document;
+    const urlApi = globalThis.URL;
+    const downloadContainer = document?.body ?? document?.documentElement;
+    if (typeof globalThis.Blob !== "function" || typeof urlApi?.createObjectURL !== "function"
+      || typeof urlApi?.revokeObjectURL !== "function" || !document?.createElement
+      || !downloadContainer?.appendChild) {
+      throw new Error("Este navegador não oferece exportação de arquivos.");
+    }
+
+    const url = urlApi.createObjectURL(new globalThis.Blob([csv], { type: "text/csv;charset=utf-8" }));
+    let link = null;
+    try {
+      link = document.createElement("a");
+      link.href = url;
+      link.download = `ordax-food-relatorio-${reportRange}-${new Date(reportData.end).toISOString().slice(0, 10)}.csv`;
+      link.hidden = true;
+      downloadContainer.appendChild(link);
+      link.click();
+    } catch (error) {
+      urlApi.revokeObjectURL(url);
+      throw error;
+    } finally {
+      link?.remove?.();
+    }
+
+    let timer = null;
+    timer = globalThis.setTimeout(() => {
+      reportDownloadTimers.delete(timer);
+      urlApi.revokeObjectURL(url);
+    }, 1000);
+    reportDownloadTimers.set(timer, { url, urlApi });
+    setNotice("success", "Relatório CSV baixado.");
+  }
+
   function render() {
     if (destroyed || !root) return;
+    posCheckoutObserver?.disconnect();
+    posCheckoutObserver = null;
     PIZZA_SIZES = snapshot?.settings?.pizzaSizes ?? DEFAULT_PIZZA_SIZES.map((size) => ({ ...size, active: true }));
     PIZZERIA_TABLES = snapshot?.settings?.tables?.filter(({ active }) => active)
       ?? DEFAULT_PIZZERIA_TABLES.map((table) => ({ ...table, active: true }));
@@ -531,20 +823,34 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
     const page = SPACE_PENDING_VIEWS.has(activeView)
       ? renderSpaceCapabilityStatus(activeView, { labels: VIEW_LABELS, iconSvg })
-      : ({ orders: ordersPage, kitchen: kitchenPage, menu: menuPage, tables: tablesPage, delivery: deliveryPage, settings: settingsPage })[activeView]();
+      : ({ orders: ordersPage, pos: posPage, kitchen: kitchenPage, menu: menuPage, tables: tablesPage, delivery: deliveryPage, reports: reportsPage, settings: settingsPage })[activeView]();
     root.innerHTML = shell(page);
-    if (activeView === "orders") {
+    if (activeView === "orders" || activeView === "pos") {
       updateDeliveryVisibility();
       updateCartTotals();
       updatePizzaPricePreview();
     }
+    observePosCheckout();
     refreshElapsedIndicators();
+  }
+
+  function observePosCheckout() {
+    const access = root.querySelector("#pos-mobile-order-access");
+    const checkout = root.querySelector("#pos-checkout-column");
+    if (!access || !checkout || typeof globalThis.IntersectionObserver !== "function") return;
+    posCheckoutObserver = new globalThis.IntersectionObserver(([entry]) => {
+      const visible = Boolean(entry?.isIntersecting && entry.intersectionRatio > 0.02);
+      access.toggleAttribute("data-checkout-visible", visible);
+      root.querySelector(".pos-page")?.classList.toggle("has-mobile-order-access", cart.length > 0 && !visible);
+    }, { threshold: [0, 0.02] });
+    posCheckoutObserver.observe(checkout);
   }
   
   function refreshElapsedIndicators() {
     if (!root) return;
     const now = Date.now();
-    for (const indicator of root.querySelectorAll("[data-order-age]")) {
+    const indicators = [...root.querySelectorAll("[data-order-age]")];
+    for (const indicator of indicators) {
       const minutes = elapsedMinutes(indicator.dataset.startedAt, now);
       const target = Number(indicator.dataset.targetMinutes);
       const overdue = Number.isFinite(target) && minutes >= target;
@@ -554,6 +860,46 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       if (alert) alert.hidden = !overdue;
       indicator.classList.toggle("is-overdue", overdue);
     }
+    for (const indicator of root.querySelectorAll("[data-order-sla]")) {
+      const minutes = elapsedMinutes(indicator.dataset.startedAt, now);
+      const target = Number(indicator.dataset.targetMinutes);
+      const overdue = Number.isFinite(target) && minutes >= target;
+      const label = indicator.dataset.slaLabel ?? "Tempo do pedido";
+      const value = indicator.querySelector("[data-sla-value]");
+      const alert = indicator.querySelector("[data-age-alert]");
+      if (value) value.textContent = `${label} ${formatElapsed(minutes)} / meta ${target} min`;
+      if (alert) alert.hidden = !overdue;
+      indicator.closest(".kitchen-ticket-age")?.classList.toggle("is-overdue", overdue);
+    }
+    for (const indicator of root.querySelectorAll("[data-kitchen-step-sla]")) {
+      const minutes = elapsedMinutes(indicator.dataset.startedAt, now);
+      const target = Number(indicator.dataset.targetMinutes);
+      const overdue = Number.isFinite(target) && minutes >= target;
+      const label = indicator.dataset.slaLabel ?? "Etapa";
+      const value = indicator.querySelector("[data-sla-value]");
+      const alert = indicator.querySelector("[data-age-alert]");
+      if (value) value.textContent = `${label} ${formatElapsed(minutes)} / meta ${target} min`;
+      if (alert) alert.hidden = !overdue;
+      indicator.classList.toggle("is-overdue", overdue);
+      indicator.closest(".kitchen-ticket-age")?.classList.toggle("is-step-overdue", overdue);
+    }
+    const visibleOverdueIds = new Set([...root.querySelectorAll(".order-card-kitchen[data-order-id]")]
+      .filter((card) => card.querySelector(".kitchen-ticket-age.is-overdue, .kitchen-ticket-age.is-step-overdue"))
+      .map((card) => card.dataset.orderId));
+    const visibleOverdueValue = root.querySelector("[data-kitchen-overdue-count]");
+    if (visibleOverdueValue) visibleOverdueValue.textContent = String(visibleOverdueIds.size);
+    const activeStatuses = new Set(["received", "preparing", "ready", "out-for-delivery"]);
+    const totalOverdueIds = new Set(snapshot?.orders.filter((order) => activeStatuses.has(order.status)
+      && Number.isFinite(ORDER_STAGE_ALERT_MINUTES[order.status])
+      && elapsedMinutes(stageStartedAt(order), now) >= ORDER_STAGE_ALERT_MINUTES[order.status]).map(({ id }) => id) ?? []);
+    for (const ticket of previewPreferences?.kitchenTasks?.tickets ?? []) {
+      const step = currentKitchenStep(ticket);
+      if (step?.status === "active" && Number.isSafeInteger(step.targetMinutes)
+        && elapsedMinutes(step.startedAt, now) >= step.targetMinutes) totalOverdueIds.add(ticket.orderId);
+    }
+    const totalOverdueCount = totalOverdueIds.size;
+    const totalOverdueValue = root.querySelector("[data-kitchen-overdue-total]");
+    if (totalOverdueValue) totalOverdueValue.textContent = String(totalOverdueCount);
   }
   
   function renderNotice() {
@@ -595,6 +941,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function updatePizzaPricePreview() {
     const form = root.querySelector("#add-pizza-form");
     if (!form) return;
+    const flavorSelects = [...form.querySelectorAll('select[name^="flavor"]')];
+    for (const select of flavorSelects) {
+      for (const option of select.options) {
+        if (!option.value) continue;
+        option.disabled = flavorSelects.some((other) => other !== select && other.value === option.value);
+      }
+    }
     const price = root.querySelector("#pizza-price-preview");
     const button = form.querySelector('[data-action="add-pizza"]');
     const flavorIds = [...form.querySelectorAll('[name^="flavor"]')].map(({ value }) => value).filter(Boolean);
@@ -602,7 +955,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     try {
       if (!flavorIds.length) throw new Error("Selecione ao menos um sabor.");
       if (new Set(flavorIds).size !== flavorIds.length) throw new Error("Escolha sabores diferentes.");
-      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 50) throw new Error("Confira a quantidade.");
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_ORDER_ITEM_QUANTITY) throw new Error("Confira a quantidade.");
       const unit = calculatePizzaPriceCents({ size: form.elements.size.value, flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
       price.textContent = `${money(unit)} por pizza · ${money(unit * quantity)} no total`;
       price.classList.remove("has-error");
@@ -617,28 +970,65 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
   function updateCartTotals() {
     const form = root.querySelector("#create-order-form");
     if (!form) return;
-    const subtotal = cart.reduce((sum, item) => {
-      try {
-        const unit = calculatePizzaPriceCents({ size: item.size, flavorIds: item.flavorIds, flavors: snapshot.flavors, halfPricePolicy: snapshot.settings.halfPricePolicy, pizzaSizes: PIZZA_SIZES, maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza });
-        return sum + unit * item.quantity;
-      } catch {
-        return sum + item.unitPriceCents * item.quantity;
-      }
-    }, 0);
-    const delivery = form.elements.channel.value === "delivery" ? parseMoney(form.elements.deliveryFee.value) ?? 0 : 0;
+    const subtotal = foodCartSubtotalCents(cart, snapshot);
+    const isDelivery = form.elements.channel.value === "delivery";
+    const phoneRequirementHint = root.querySelector("#phone-requirement-hint");
+    if (phoneRequirementHint) {
+      phoneRequirementHint.textContent = isDelivery ? "obrigatório na entrega" : "opcional, exceto entrega";
+      phoneRequirementHint.classList.toggle("is-required", isDelivery);
+    }
+    const deliveryPhoneValid = !isDelivery || isValidPizzeriaDeliveryPhone(form.elements.phone.value);
+    const deliveryAddressValid = !isDelivery || isValidPizzeriaDeliveryAddress(form.elements.address.value);
+    const phoneHint = root.querySelector("#delivery-phone-hint");
+    if (phoneHint) phoneHint.hidden = !isDelivery || deliveryPhoneValid;
+    const addressHint = root.querySelector("#delivery-address-hint");
+    if (addressHint) addressHint.hidden = !isDelivery || deliveryAddressValid;
+    for (const [field, valid] of [[form.elements.phone, deliveryPhoneValid], [form.elements.address, deliveryAddressValid]]) {
+      if (isDelivery && !valid) field.setAttribute("aria-invalid", "true");
+      else field.removeAttribute("aria-invalid");
+    }
+    const parsedDeliveryFeeCents = parseMoney(form.elements.deliveryFee.value);
+    const deliveryFeeCents = isDelivery ? parsedDeliveryFeeCents : 0;
+    const subtotalValue = root.querySelector("#order-subtotal-value");
+    if (subtotalValue) subtotalValue.textContent = money(subtotal);
+    const deliveryFeeRow = root.querySelector("#order-delivery-fee-row");
+    if (deliveryFeeRow) deliveryFeeRow.hidden = !isDelivery || cart.length === 0;
+    const deliveryFeeValue = root.querySelector("#order-delivery-fee-value");
+    if (deliveryFeeValue) deliveryFeeValue.textContent = parsedDeliveryFeeCents === null ? "—" : money(parsedDeliveryFeeCents);
     const total = root.querySelector("#order-total-value");
-    if (total) total.textContent = money(subtotal + delivery);
+    if (total) {
+      total.textContent = cart.length === 0
+        ? money(0)
+        : isDelivery && deliveryFeeCents === null
+          ? "Revise a taxa"
+          : money(subtotal + deliveryFeeCents);
+    }
     const count = root.querySelector("#cart-count");
-    if (count) count.textContent = `${cart.length} ${cart.length === 1 ? "item" : "itens"}`;
+    const units = countFoodCartUnits(cart);
+    if (count) {
+      count.textContent = units + " " + (units === 1 ? "item" : "itens");
+    }
+    const mobileAccess = root.querySelector("#pos-mobile-order-access");
+    if (mobileAccess) {
+      mobileAccess.hidden = cart.length === 0;
+      const mobileCount = root.querySelector("#pos-mobile-order-count");
+      if (mobileCount) mobileCount.textContent = units + " " + (units === 1 ? "item" : "itens");
+      const mobileTotal = root.querySelector("#pos-mobile-order-total");
+      if (mobileTotal) mobileTotal.textContent = total?.textContent ?? money(0);
+      const checkoutVisible = mobileAccess.hasAttribute("data-checkout-visible");
+      root.querySelector(".pos-page")?.classList.toggle("has-mobile-order-access", cart.length > 0 && !checkoutVisible);
+    }
     const content = root.querySelector("#cart-content");
     if (content) content.innerHTML = cartHtml();
     const createButton = form.querySelector('[type="submit"]');
-    if (createButton) createButton.disabled = busy || cart.length === 0;
+    if (createButton) createButton.disabled = busy || cart.length === 0
+      || !deliveryPhoneValid || !deliveryAddressValid
+      || (isDelivery && deliveryFeeCents === null);
     const feeHelp = form.querySelector('[name="deliveryFee"]')?.parentElement?.querySelector("small");
     if (feeHelp) {
       const valid = parseMoney(form.elements.deliveryFee.value) !== null;
       feeHelp.textContent = valid
-        ? "Valor padrão da pizzaria; pode ser ajustado neste pedido. Não calcula distância."
+        ? "Taxa padrão; ajuste neste pedido se necessário. Sem cálculo por distância."
         : "Informe um valor válido, como 8,00.";
       feeHelp.classList.toggle("field-error", !valid && form.elements.channel.value === "delivery");
     }
@@ -657,18 +1047,33 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       pizzaSizes: PIZZA_SIZES,
       maxFlavorsPerPizza: snapshot.settings.maxFlavorsPerPizza,
     });
-    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 50) throw new TypeError("Quantidade inválida.");
-    cart.push({ id: uid(), size: form.elements.size.value, flavorIds, quantity, unitPriceCents });
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_ORDER_ITEM_QUANTITY) throw new TypeError("Quantidade inválida.");
+    cart = addFoodCartItem(cart, { id: uid(), size: form.elements.size.value, flavorIds, quantity, unitPriceCents });
     form.elements.quantity.value = "1";
     updatePizzaPricePreview();
     updateCartTotals();
   }
+
+  function addCatalogProduct(productId) {
+    const product = PREVIEW_CATALOG_PRODUCTS.find(({ id }) => id === productId);
+    if (!product) throw new Error("Este produto não está disponível no catálogo da prévia.");
+    cart = addFoodCartItem(cart, {
+      id: uid(),
+      type: "catalog-product",
+      productId: product.id,
+      name: product.name,
+      category: product.category,
+      quantity: 1,
+      unitPriceCents: product.priceCents,
+    });
+    updateCartTotals();
+  }
   
   async function submitOrder(form) {
-    if (cart.length === 0) throw new Error("Adicione ao menos uma pizza antes de registrar o pedido.");
+    if (cart.length === 0) throw new Error("Adicione ao menos uma pizza ou outro produto antes de registrar o pedido.");
     // Require renewed confirmation when another tab or settings change reprices the draft.
     // dispatch() uses the same snapshot revision as a CAS guard against changes after this review.
-    const review = reviewFoodCartPrices(cart, snapshot);
+    const review = reviewFoodCartPrices(cart, snapshot, PREVIEW_CATALOG_PRODUCTS);
     if (review.changed) {
       cart = [...review.items];
       updateCartTotals();
@@ -691,12 +1096,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         address: channel === "delivery" ? form.elements.address.value : null,
         deliveryFeeCents,
         notes: form.elements.notes.value,
-        items: cart.map((item) => ({
-          id: item.id,
-          size: item.size,
-          flavorIds: item.flavorIds,
-          quantity: item.quantity,
-        })),
+        items: cart.map((item) => item.type === "catalog-product"
+          ? { id: item.id, type: item.type, productId: item.productId, quantity: item.quantity }
+          : { id: item.id, size: item.size, flavorIds: item.flavorIds, quantity: item.quantity }),
       },
     }, `Pedido ${orderNumber({ id: orderId })} registrado.`, { renderAfter: false });
     if (saved) {
@@ -706,15 +1108,267 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       render();
     }
   }
+
+  async function savePreviewDeliveryFee(form) {
+    if (busy || destroyed) return false;
+    const deliveryFeeCents = parseMoney(form?.elements.deliveryFee.value);
+    if (deliveryFeeCents === null) {
+      report(new TypeError("Informe uma taxa padrão válida, como 8,00."));
+      return false;
+    }
+    busy = true;
+    setBusyUI(true);
+    try {
+      await store.updatePreviewPreferences({ ...previewPreferences, deliveryFeeCents });
+      if (destroyed) return false;
+      previewPreferences = store.getPreviewPreferences();
+      setNotice("success", "Taxa padrão salva para os próximos pedidos.", { render: false });
+      return true;
+    } catch (error) {
+      if (!destroyed) setNotice("error", error instanceof Error ? error.message : "Não foi possível salvar a preferência local.", { render: false });
+      return false;
+    } finally {
+      busy = false;
+      if (!destroyed) {
+        setBusyUI(false);
+        render();
+      }
+    }
+  }
+
+  function kitchenWorkflowFromForm(form, { autoDistribute = false } = {}) {
+    const values = new FormData(form);
+    const stepCount = Number(values.get("stepCount"));
+    const stepInputs = Number.isSafeInteger(stepCount) && stepCount >= 1 && stepCount <= MAX_KITCHEN_WORKFLOW_STEPS
+      ? Array.from({ length: stepCount }, (_, index) => ({
+        id: values.get(`step-id-${index + 1}`),
+        label: values.get(`step-label-${index + 1}`),
+        screen: values.get(`step-screen-${index + 1}`),
+        targetMinutes: values.get(`step-target-${index + 1}`),
+      }))
+      : [];
+    return createKitchenWorkflowDraft(previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW, {
+      stepCount,
+      screenCount: values.get("screenCount"),
+      queueMode: values.get("queueMode"),
+      steps: stepInputs,
+    }, {
+      autoDistribute,
+      createStepId: () => `step-${uid().replaceAll("-", "").slice(0, 12)}`,
+    });
+  }
+
+  async function saveKitchenWorkflowConfiguration(form) {
+    if (busy || destroyed) return false;
+    kitchenSetupExpanded = root.querySelector(".kitchen-display-setup")?.open ?? kitchenSetupExpanded;
+    let kitchenWorkflow;
+    try {
+      kitchenWorkflow = saveKitchenWorkflow(
+        previewPreferences?.kitchenWorkflow ?? DEFAULT_KITCHEN_WORKFLOW,
+        kitchenWorkflowFromForm(form),
+      );
+    } catch (error) {
+      report(error);
+      return false;
+    }
+    busy = true;
+    setBusyUI(true);
+    try {
+      await store.updatePreviewPreferences({ ...previewPreferences, kitchenWorkflow });
+      if (destroyed) return false;
+      previewPreferences = store.getPreviewPreferences();
+      kitchenWorkflowDraft = null;
+      setNotice("success", "Fluxo e telas da cozinha salvos.", { render: false });
+      return true;
+    } catch (error) {
+      if (!destroyed) setNotice("error", error instanceof Error ? error.message : "Não foi possível salvar o fluxo da cozinha.", { render: false });
+      return false;
+    } finally {
+      busy = false;
+      if (!destroyed) {
+        setBusyUI(false);
+        render();
+      }
+    }
+  }
+
+  async function handleKitchenTaskAction(target) {
+    if (busy || destroyed) return;
+    if (typeof store.recordKitchenTaskAction !== "function") {
+      report(new Error("O contrato Food de tarefas de produção ainda não está disponível neste adapter."));
+      return;
+    }
+    busy = true;
+    setBusyUI(true);
+    try {
+      const action = target.dataset.taskAction;
+      const orderId = target.dataset.orderId;
+      const task = previewPreferences.kitchenTasks.tickets.find(({ orderId: id }) => id === orderId);
+      const step = task?.steps.find(({ id }) => id === target.dataset.stepId);
+      await store.recordKitchenTaskAction({
+        action,
+        orderId,
+        stepId: target.dataset.stepId,
+        screenNumber: Number(target.dataset.screenNumber),
+        at: new Date().toISOString(),
+        commandId: `kds-${uid()}`,
+      });
+      if (destroyed) return;
+      snapshot = readFoodSnapshot(store);
+      previewPreferences = store.getPreviewPreferences();
+      setNotice("success", action === "start" ? `${step?.label ?? "Etapa"} iniciada.`
+        : action === "complete" ? `${step?.label ?? "Etapa"} concluída. O pedido seguiu o fluxo.`
+          : `Próximo pedido em foco; o atual voltou na ${Number(target.dataset.passBehind) === 2 ? "terceira" : "segunda"} posição.`,
+      { duration: 3000, render: false });
+    } catch (error) {
+      if (!destroyed) setNotice("error", error instanceof Error ? error.message : "Não foi possível atualizar esta etapa.", { render: false });
+    } finally {
+      busy = false;
+      if (!destroyed) {
+        setBusyUI(false);
+        render();
+      }
+    }
+  }
+
+  async function copyKitchenScreenLink(target) {
+    const clipboard = globalThis.navigator?.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      report(new Error("Este aparelho não permite copiar o link automaticamente. Abra o link da tela e copie o endereço do navegador."));
+      return;
+    }
+    try {
+      const currentHref = globalThis.location?.href ?? "http://localhost/";
+      const url = new URL(target.dataset.copyUrl, currentHref);
+      await clipboard.writeText(url.href);
+      const screenNumber = url.searchParams.get("station");
+      setNotice("success", `Link da tela ${screenNumber} copiado.`);
+    } catch (error) {
+      report(error);
+    }
+  }
+
+  async function copyDeliveryAddress(target) {
+    const address = target.dataset.address;
+    const clipboard = globalThis.navigator?.clipboard;
+    if (!address) {
+      report(new Error("O pedido não tem um endereço de entrega para copiar."));
+      return;
+    }
+    if (!clipboard || typeof clipboard.writeText !== "function") {
+      report(new Error("Este aparelho não permite copiar o endereço automaticamente."));
+      return;
+    }
+    try {
+      await clipboard.writeText(address);
+      setNotice("success", `Endereço do pedido ${target.dataset.orderNumber} copiado.`);
+    } catch (error) {
+      report(error);
+    }
+  }
   
   function handleClick(event) {
+    const kitchenSetupSummary = event.target.closest("summary");
+    if (kitchenSetupSummary?.parentElement?.classList.contains("kitchen-display-setup")) {
+      kitchenSetupExpanded = !kitchenSetupExpanded;
+      return;
+    }
     const target = event.target.closest("button, a");
     if (!target) return;
+    if (target.dataset.action === "apply-kitchen-preset") {
+      try {
+        kitchenWorkflowDraft = createKitchenWorkflowPreset(kitchenWorkflowConfiguration(), target.dataset.preset);
+        kitchenSetupExpanded = true;
+        render();
+        root.querySelector(`[data-action="apply-kitchen-preset"][data-preset="${CSS.escape(target.dataset.preset)}"]`)?.focus({ preventScroll: true });
+      } catch (error) {
+        report(error);
+      }
+      return;
+    }
+    if (target.dataset.action === "move-kitchen-step") {
+      const form = target.closest("#kitchen-layout-form");
+      if (!form) return;
+      try {
+        const current = kitchenWorkflowFromForm(form);
+        const index = Number(target.dataset.index);
+        const destination = index + Number(target.dataset.delta);
+        if (!Number.isSafeInteger(index) || !Number.isSafeInteger(destination)
+          || index < 0 || destination < 0 || destination >= current.steps.length) return;
+        const steps = [...current.steps];
+        [steps[index], steps[destination]] = [steps[destination], steps[index]];
+        kitchenWorkflowDraft = validateKitchenWorkflow({ ...current, steps });
+        kitchenSetupExpanded = true;
+        render();
+        root.querySelector(`[data-action="move-kitchen-step"][data-index="${destination}"][data-delta="${-Number(target.dataset.delta)}"]`)?.focus({ preventScroll: true });
+      } catch (error) {
+        report(error);
+      }
+      return;
+    }
+    if (target.dataset.action === "fullscreen-kitchen") {
+      const display = root.querySelector("[data-kitchen-station-screen]");
+      if (!display) {
+        report(new Error("A tela da estação não está disponível."));
+        return;
+      }
+      const fallbackClass = "kitchen-display-fullscreen-fallback";
+      if (root.classList?.contains(fallbackClass)) {
+        root.classList.remove(fallbackClass);
+        target.innerHTML = 'Tela cheia <span aria-hidden="true">⛶</span>';
+        return;
+      }
+      if (typeof display.requestFullscreen !== "function") {
+        root.classList?.add(fallbackClass);
+        target.innerHTML = 'Sair da tela cheia <span aria-hidden="true">⛶</span>';
+        return;
+      }
+      if (globalThis.document?.fullscreenElement === display
+        && typeof globalThis.document.exitFullscreen === "function") {
+        globalThis.document.exitFullscreen().catch(report);
+        return;
+      }
+      display.requestFullscreen().catch(report);
+      return;
+    }
+    if (target.dataset.action === "exit-kitchen-station") {
+      activeView = "kitchen";
+      const currentHref = globalThis.location?.href;
+      if (currentHref && globalThis.history?.replaceState) {
+        const url = new URL(currentHref);
+        url.searchParams.delete("station");
+        url.searchParams.delete("stationStage");
+        url.searchParams.delete("screenCount");
+        globalThis.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+      }
+      render();
+      return;
+    }
     if (target.dataset.kitchenChannel) {
       if (!KITCHEN_CHANNEL_FILTERS.some(({ id }) => id === target.dataset.kitchenChannel)) return;
       kitchenChannelFilter = target.dataset.kitchenChannel;
       render();
       root.querySelector(`[data-kitchen-channel="${kitchenChannelFilter}"]`)?.focus({ preventScroll: true });
+      return;
+    }
+    if (target.dataset.action === "toggle-kitchen-late-filter") {
+      kitchenLateOnly = !kitchenLateOnly;
+      render();
+      root.querySelector('[data-action="toggle-kitchen-late-filter"]')?.focus({ preventScroll: true });
+      return;
+    }
+    if (target.dataset.action === "clear-kitchen-search") {
+      kitchenOrderQuery = "";
+      render();
+      root.querySelector("#kitchen-search")?.focus({ preventScroll: true });
+      return;
+    }
+    if (target.dataset.action === "reset-kitchen-filters") {
+      kitchenChannelFilter = "all";
+      kitchenOrderQuery = "";
+      kitchenLateOnly = false;
+      render();
+      root.querySelector("#kitchen-search")?.focus({ preventScroll: true });
       return;
     }
     if (target.dataset.view) {
@@ -727,15 +1381,32 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       }
       return;
     }
+    if (target.dataset.reportRange) {
+      if (!["24h", "7d", "30d"].includes(target.dataset.reportRange)) return;
+      reportRange = target.dataset.reportRange;
+      render();
+      root.querySelector(`[data-report-range="${reportRange}"]`)?.focus({ preventScroll: true });
+      return;
+    }
     const action = target.dataset.action;
-    if (action === "dismiss-notice") {
-      notice = null;
+    if (action === "review-pos-order") {
+      const checkout = root.querySelector("#pos-checkout-column");
+      if (checkout) {
+        checkout.scrollIntoView({ behavior: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+        checkout.focus({ preventScroll: true });
+      }
+    } else if (action === "export-food-report") {
+      try { exportFoodReport(); } catch (error) { report(error); }
+    } else if (action === "dismiss-notice") {
+      clearNotice();
       renderNotice();
     } else if (action === "reset-order-filters") {
       orderStatusFilter = "all";
       orderChannelFilter = "all";
+      orderQuery = "";
       render();
-      root.querySelector("[data-order-status-filter]")?.focus({ preventScroll: true });
+      const search = root.querySelector("#orders-search") ?? root.querySelector("#global-search input");
+      (search ?? root.querySelector("[data-order-status-filter]"))?.focus({ preventScroll: true });
     } else if (action === "add-pizza-size") {
       settingsPage();
       const suffix = uid().replaceAll("-", "").slice(0, 12);
@@ -754,6 +1425,14 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       render();
     } else if (action === "add-pizza") {
       try { addPizza(); } catch (error) { report(error); }
+    } else if (action === "add-catalog-product") {
+      try { addCatalogProduct(target.dataset.productId); } catch (error) { report(error); }
+    } else if (action === "increase-cart-item" || action === "decrease-cart-item") {
+      try {
+        const change = action === "increase-cart-item" ? 1 : -1;
+        cart = adjustFoodCartItemQuantity(cart, Number(target.dataset.index), change);
+        updateCartTotals();
+      } catch (error) { report(error); }
     } else if (action === "remove-cart-item") {
       cart.splice(Number(target.dataset.index), 1);
       updateCartTotals();
@@ -763,8 +1442,19 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       root.querySelector("#flavor-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
       root.querySelector('#flavor-form [name="name"]')?.focus({ preventScroll: true });
     } else if (action === "cancel-flavor-edit") {
+      const cancelledFlavorId = editFlavorId;
+      flavorDraftsById.delete(cancelledFlavorId);
       editFlavorId = null;
       render();
+      focusFlavorTrigger(cancelledFlavorId);
+    } else if (action === "cancel-flavor-create") {
+      flavorDraftsById.delete(null);
+      render();
+      const nameField = root.querySelector('#flavor-form [name="name"]');
+      if (nameField) {
+        nameField.focus({ preventScroll: true });
+        scrollToFoodElement(nameField, "center");
+      }
     } else if (action === "toggle-flavor") {
       const flavorId = target.dataset.flavorId;
       const active = target.dataset.active === "true";
@@ -783,6 +1473,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           changedAt: new Date().toISOString(),
         },
       }, `Pedido atualizado: ${STATUS_LABELS[status].toLocaleLowerCase("pt-BR")}.`);
+    } else if (action === "kitchen-task-action") {
+      void handleKitchenTaskAction(target);
+    } else if (action === "copy-kitchen-link") {
+      void copyKitchenScreenLink(target);
+    } else if (action === "copy-delivery-address") {
+      void copyDeliveryAddress(target);
     } else if (action === "cancel-order") {
       cancelForm.elements.orderId.value = target.dataset.orderId;
       cancelForm.elements.reason.value = "";
@@ -797,17 +1493,15 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     } else if (action === "add-command-order") {
       const command = commandById(target.dataset.commandId);
       if (!command || command.closedAt !== null) {
-        notice = { type: "error", text: "Esta comanda já foi encerrada." };
-        renderNotice();
+        setNotice("error", "Esta comanda já foi encerrada.");
         return;
       }
       if (cart.length) {
-        notice = { type: "error", text: "Finalize ou limpe o pedido atual antes de iniciar um pedido para a mesa." };
-        renderNotice();
+        setNotice("error", "Finalize ou limpe o pedido atual antes de iniciar um pedido para a mesa.");
         return;
       }
       activeCommandId = command.id;
-      activeView = "orders";
+      activeView = "pos";
       render();
     } else if (action === "leave-command-context") {
       if (cart.length) return;
@@ -821,28 +1515,79 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
         payload: { commandId: command.id, closedAt: new Date().toISOString() },
       }, `Comanda da Mesa ${String(command.tableId).padStart(2, "0")} encerrada.`);
     } else if (action === "edit-recipe") {
-      const recipe = snapshot.recipes.find(({ flavorId }) => flavorId === target.dataset.flavorId);
+      rememberRecipeDraft(recipeFlavorId);
       recipeFlavorId = target.dataset.flavorId;
-      recipeDraftLines = recipe
-        ? recipe.lines.map((line) => ({ ingredientId: line.ingredientId, quantityBaseBySize: { ...line.quantityBaseBySize } }))
-        : [];
+      recipeDraftLines = recipeDraftForFlavor(recipeFlavorId);
       render();
-      root.querySelector("#recipe-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      root.querySelector("#recipe-editor-title")?.focus({ preventScroll: true });
+      scrollToFoodElement(root.querySelector("#recipe-editor"), "start");
     } else if (action === "add-recipe-line") {
+      captureRecipeDraftFromForm(root.querySelector("#recipe-editor"));
       const ingredient = PREVIEW_INGREDIENTS.find(({ id }) => !recipeDraftLines.some((line) => line.ingredientId === id));
       if (!ingredient) return;
+      const newLineIndex = recipeDraftLines.length;
       recipeDraftLines.push({
         ingredientId: ingredient.id,
         quantityBaseBySize: Object.fromEntries(PIZZA_SIZES.map(({ id, active }) => [id, active ? "" : 0])),
       });
       render();
+      focusRecipeLine(newLineIndex);
     } else if (action === "remove-recipe-line") {
-      recipeDraftLines.splice(Number(target.dataset.index), 1);
+      captureRecipeDraftFromForm(root.querySelector("#recipe-editor"));
+      const removedIndex = Number(target.dataset.index);
+      recipeDraftLines.splice(removedIndex, 1);
       render();
+      const nextIndex = Math.min(removedIndex, recipeDraftLines.length - 1);
+      if (nextIndex >= 0) focusRecipeLine(nextIndex);
+      else root.querySelector('[data-action="add-recipe-line"]')?.focus({ preventScroll: true });
+    } else if (action === "clear-batch-plan") {
+      batchPlanLines = [createBatchPlanLine()];
+      batchPlanRequested = false;
+      render();
+      root.querySelector("[data-batch-flavor-selector]")?.focus({ preventScroll: true });
+    } else if (action === "add-batch-line") {
+      captureBatchPlanDraftFromForm(root.querySelector("#batch-plan-form"));
+      const line = createBatchPlanLine();
+      batchPlanLines.push(line);
+      batchPlanRequested = false;
+      render();
+      root.querySelector(`[name="${CSS.escape(`batch-${line.id}-flavor-0`)}"]`)?.focus({ preventScroll: true });
+    } else if (action === "remove-batch-line") {
+      captureBatchPlanDraftFromForm(root.querySelector("#batch-plan-form"));
+      const removedIndex = batchPlanLines.findIndex(({ id }) => id === target.dataset.batchLineId);
+      if (removedIndex < 0) return;
+      batchPlanLines.splice(removedIndex, 1);
+      batchPlanRequested = false;
+      render();
+      const nextLine = batchPlanLines[Math.min(removedIndex, batchPlanLines.length - 1)];
+      if (nextLine) root.querySelector(`[name="${CSS.escape(`batch-${nextLine.id}-flavor-0`)}"]`)?.focus({ preventScroll: true });
+      else root.querySelector('[data-action="add-batch-line"]')?.focus({ preventScroll: true });
+    } else if (action === "add-batch-flavor") {
+      captureBatchPlanDraftFromForm(root.querySelector("#batch-plan-form"));
+      const line = batchPlanLines.find(({ id }) => id === target.dataset.batchLineId);
+      if (!line || line.flavorIds.length >= snapshot.settings.maxFlavorsPerPizza) return;
+      const nextIndex = line.flavorIds.length;
+      line.flavorIds.push("");
+      batchPlanRequested = false;
+      render();
+      root.querySelector(`[name="${CSS.escape(`batch-${line.id}-flavor-${nextIndex}`)}"]`)?.focus({ preventScroll: true });
+    } else if (action === "remove-batch-flavor") {
+      captureBatchPlanDraftFromForm(root.querySelector("#batch-plan-form"));
+      const line = batchPlanLines.find(({ id }) => id === target.dataset.batchLineId);
+      const flavorIndex = Number(target.dataset.flavorIndex);
+      if (!line || !Number.isInteger(flavorIndex) || flavorIndex < 1 || flavorIndex >= line.flavorIds.length) return;
+      line.flavorIds.splice(flavorIndex, 1);
+      batchPlanRequested = false;
+      render();
+      const nextIndex = Math.min(flavorIndex, line.flavorIds.length - 1);
+      root.querySelector(`[name="${CSS.escape(`batch-${line.id}-flavor-${nextIndex}`)}"]`)?.focus({ preventScroll: true });
     } else if (action === "close-recipe-editor") {
+      const closedFlavorId = recipeFlavorId;
+      rememberRecipeDraft(closedFlavorId);
       recipeFlavorId = null;
       recipeDraftLines = [];
       render();
+      focusRecipeTrigger(closedFlavorId);
     }
   }
   
@@ -850,12 +1595,44 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
     const kind = form.id;
+    if (kind === "kitchen-search-form") {
+      event.preventDefault();
+      kitchenOrderQuery = String(new FormData(form).get("query") ?? "").trim();
+      render();
+      root.querySelector("#kitchen-search")?.focus({ preventScroll: true });
+      return;
+    }
     if (kind === "global-search") {
       event.preventDefault();
-      orderQuery = String(new FormData(form).get("query") ?? "");
+      orderQuery = String(new FormData(form).get("query") ?? "").trim();
       activeView = "orders";
       orderStatusFilter = "all";
       orderChannelFilter = "all";
+      render();
+      return;
+    }
+    if (kind === "orders-search-form") {
+      event.preventDefault();
+      orderQuery = String(new FormData(form).get("query") ?? "").trim();
+      render();
+      root.querySelector("#orders-search")?.focus({ preventScroll: true });
+      return;
+    }
+    if (kind === "preview-delivery-fee-form") {
+      event.preventDefault();
+      if (busy) return;
+      await savePreviewDeliveryFee(form);
+      return;
+    }
+    if (kind === "kitchen-layout-form") {
+      event.preventDefault();
+      await saveKitchenWorkflowConfiguration(form);
+      return;
+    }
+    if (kind === "batch-plan-form") {
+      event.preventDefault();
+      captureBatchPlanDraftFromForm(form);
+      batchPlanRequested = true;
       render();
       return;
     }
@@ -877,6 +1654,8 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           render();
         }
       } else if (kind === "flavor-form") {
+        const flavorDraftId = editFlavorId;
+        captureFlavorDraftFromForm(form);
         const values = new FormData(form);
         const pricesCents = Object.fromEntries(PIZZA_SIZES.map(({ id }) => {
           const parsed = parseMoney(values.get(`price-${id}`));
@@ -884,7 +1663,7 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           if (parsed === null || (size.active && parsed === 0)) throw new TypeError(`Informe um preço válido para pizza ${size.label}.`);
           return [id, parsed];
         }));
-        const flavorId = editFlavorId ?? uid();
+        const flavorId = flavorDraftId ?? uid();
         const saved = await dispatch({
           type: "menu.flavor.save",
           payload: {
@@ -894,8 +1673,9 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
             pricesCents,
             at: new Date().toISOString(),
           },
-        }, editFlavorId ? "Sabor atualizado. Os pedidos anteriores mantiveram o preço registrado." : "Sabor adicionado ao cardápio.", { renderAfter: false });
+        }, flavorDraftId ? "Sabor atualizado. Os pedidos anteriores mantiveram o preço registrado." : "Sabor adicionado ao cardápio.", { renderAfter: false });
         if (saved) {
+          flavorDraftsById.delete(flavorDraftId);
           editFlavorId = null;
           render();
         }
@@ -919,9 +1699,12 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           },
         }, "Ficha técnica salva. A nova composição será aplicada aos próximos pedidos; os pedidos existentes preservam sua proposta de consumo.", { renderAfter: false });
         if (saved) {
+          const savedFlavorId = recipeFlavorId;
+          recipeDraftsByFlavorId.delete(savedFlavorId);
           recipeFlavorId = null;
           recipeDraftLines = [];
           render();
+          focusRecipeTrigger(savedFlavorId);
         }
       } else if (kind === "settings-form") {
         const values = new FormData(form);
@@ -997,8 +1780,139 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     }
   }
   
+  function captureBatchPlanDraftFromForm(form) {
+    if (!form || !batchPlanLines) return;
+    const values = new FormData(form);
+    batchPlanSize = String(values.get("size") ?? batchPlanSize ?? "");
+    batchPlanLines = batchPlanLines.map((line) => ({
+      ...line,
+      flavorIds: line.flavorIds.map((flavorId, index) => String(
+        values.get(`batch-${line.id}-flavor-${index}`) ?? flavorId,
+      )),
+      quantity: String(values.get(`batch-${line.id}-quantity`) ?? line.quantity ?? "0"),
+    }));
+  }
+
+  function captureRecipeDraftFromForm(form) {
+    if (!form || recipeDraftLines.length === 0) return;
+    const values = new FormData(form);
+    recipeDraftLines = recipeDraftLines.map((line, index) => ({
+      ingredientId: String(values.get(`ingredient-${index}`) ?? line.ingredientId),
+      quantityBaseBySize: Object.fromEntries(PIZZA_SIZES.map(({ id }) => {
+        const value = values.get(`quantity-${index}-${id}`);
+        if (value === null) return [id, line.quantityBaseBySize[id]];
+        if (value === "") return [id, ""];
+        const quantity = Number(value);
+        return [id, Number.isFinite(quantity) ? quantity : line.quantityBaseBySize[id]];
+      })),
+    }));
+  }
+
+  function captureFlavorDraftFromForm(form) {
+    if (!form) return;
+    const values = new FormData(form);
+    flavorDraftsById.set(editFlavorId, {
+      name: String(values.get("name") ?? ""),
+      description: String(values.get("description") ?? ""),
+      prices: Object.fromEntries(PIZZA_SIZES.map(({ id }) => [
+        id,
+        String(values.get(`price-${id}`) ?? ""),
+      ])),
+    });
+  }
+
+  function recipeDraftForFlavor(flavorId) {
+    const pendingDraft = recipeDraftsByFlavorId.get(flavorId);
+    if (pendingDraft) return cloneRecipeDraftLines(pendingDraft);
+    const recipe = snapshot.recipes.find(({ flavorId: current }) => current === flavorId);
+    return recipe ? cloneRecipeDraftLines(recipe.lines) : [];
+  }
+
+  function rememberRecipeDraft(flavorId) {
+    if (!flavorId) return;
+    captureRecipeDraftFromForm(root.querySelector("#recipe-editor"));
+    recipeDraftsByFlavorId.set(flavorId, cloneRecipeDraftLines(recipeDraftLines));
+  }
+
+  function cloneRecipeDraftLines(lines) {
+    return lines.map((line) => ({
+      ingredientId: line.ingredientId,
+      quantityBaseBySize: { ...line.quantityBaseBySize },
+    }));
+  }
+
+  function focusRecipeTrigger(flavorId) {
+    if (!flavorId) return;
+    const trigger = [...root.querySelectorAll('[data-action="edit-recipe"]')]
+      .find((button) => button.dataset.flavorId === flavorId);
+    if (!trigger) return;
+    trigger.focus({ preventScroll: true });
+    scrollToFoodElement(trigger, "center");
+  }
+
+  function focusFlavorTrigger(flavorId) {
+    if (!flavorId) return;
+    const trigger = [...root.querySelectorAll('[data-action="edit-flavor"]')]
+      .find((button) => button.dataset.flavorId === flavorId);
+    if (!trigger) return;
+    trigger.focus({ preventScroll: true });
+    scrollToFoodElement(trigger, "center");
+  }
+
+  function focusRecipeLine(index) {
+    const ingredient = root.querySelector(`[name="ingredient-${index}"]`);
+    if (!ingredient) return;
+    ingredient.focus({ preventScroll: true });
+    scrollToFoodElement(ingredient, "center");
+  }
+
+  function scrollToFoodElement(element, block = "nearest") {
+    if (!element) return;
+    const behavior = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    element.scrollIntoView({ behavior, block });
+  }
+
   function handleInput(event) {
-    if (event.type === "change" && event.target.matches("[data-order-status-filter]")) {
+    const flavorForm = event.target.closest("#flavor-form");
+    if (flavorForm) {
+      captureFlavorDraftFromForm(flavorForm);
+      return;
+    }
+    const recipeForm = event.target.closest("#recipe-editor");
+    if (recipeForm) {
+      captureRecipeDraftFromForm(recipeForm);
+      if (event.type === "change" && event.target.name.startsWith("ingredient-")) {
+        const lineIndex = Number(event.target.name.slice("ingredient-".length));
+        render();
+        root.querySelector(`[name="ingredient-${lineIndex}"]`)?.focus({ preventScroll: true });
+      }
+      return;
+    }
+    const batchForm = event.target.closest("#batch-plan-form");
+    if (batchForm) {
+      const flavorSelectorName = event.type === "change" && event.target.matches("[data-batch-flavor-selector]")
+        ? event.target.name
+        : null;
+      captureBatchPlanDraftFromForm(batchForm);
+      batchPlanRequested = false;
+      root.querySelector("#batch-plan-result")?.remove();
+      if (flavorSelectorName) {
+        render();
+        root.querySelector(`[name="${CSS.escape(flavorSelectorName)}"]`)?.focus({ preventScroll: true });
+      }
+      return;
+    } else if (event.type === "change" && event.target.closest("#kitchen-layout-form")
+      && ["screenCount", "stepCount"].includes(event.target.name)) {
+      const form = event.target.closest("#kitchen-layout-form");
+      try {
+        kitchenSetupExpanded = root.querySelector(".kitchen-display-setup")?.open ?? kitchenSetupExpanded;
+        kitchenWorkflowDraft = kitchenWorkflowFromForm(form, { autoDistribute: true });
+        render();
+        root.querySelector(`#${CSS.escape(event.target.id)}`)?.focus({ preventScroll: true });
+      } catch (error) {
+        report(error);
+      }
+    } else if (event.type === "change" && event.target.matches("[data-order-status-filter]")) {
       orderStatusFilter = event.target.value;
       render();
       root.querySelector("[data-order-status-filter]")?.focus({ preventScroll: true });
@@ -1019,10 +1933,6 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
           tableOpenForm.elements.guestCount.value = String(table.seats);
         }
       }
-    } else if (event.type === "change" && event.target.name.startsWith("ingredient-") && event.target.closest("#recipe-editor")) {
-      const unit = event.target.selectedOptions[0]?.textContent.split("·").at(-1)?.trim() ?? "g";
-      const line = event.target.closest(".recipe-line");
-      for (const label of line.querySelectorAll("label[data-size]") ) label.firstChild.textContent = `${label.dataset.size} (${unit})`;
     }
   }
   
@@ -1037,14 +1947,16 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
       await store.initialize();
       if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.");
       snapshot = readFoodSnapshot(store);
+      previewPreferences = store.getPreviewPreferences();
       unsubscribe = store.subscribe(() => {
         if (destroyed) return;
         snapshot = readFoodSnapshot(store);
+        previewPreferences = store.getPreviewPreferences();
         if (!busy) render();
       });
     } catch (error) {
       if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.", { cause: error });
-      notice = { type: "error", text: error instanceof Error ? error.message : "Armazenamento local indisponível." };
+      setNotice("error", error instanceof Error ? error.message : "Armazenamento local indisponível.", { render: false });
     }
     if (destroyed) throw new Error("A interface Food foi encerrada durante a inicialização.");
     root.addEventListener("click", handleClick);
@@ -1067,6 +1979,13 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     destroyed = true;
     clearTimeout(noticeTimer);
     clearInterval(ageRefreshTimer);
+    posCheckoutObserver?.disconnect();
+    posCheckoutObserver = null;
+    for (const [timer, { url, urlApi }] of reportDownloadTimers) {
+      clearTimeout(timer);
+      urlApi.revokeObjectURL(url);
+    }
+    reportDownloadTimers.clear();
     unsubscribe?.();
     root.removeEventListener("click", handleClick);
     root.removeEventListener("submit", handleSubmit);
@@ -1084,6 +2003,11 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     root.removeAttribute?.("aria-busy");
     root.innerHTML = "";
     cart = [];
+    flavorDraftsById.clear();
+    recipeDraftsByFlavorId.clear();
+    batchPlanLines = null;
+    batchPlanLineSequence = 0;
+    batchPlanRequested = false;
     snapshot = null;
     notice = null;
   }
@@ -1093,7 +2017,6 @@ export function createFoodPizzeriaApp({ root, dataPort, presentation = "standalo
     if (presentation === "embedded-preview") assertFoodModuleView(view);
     else if (!Object.hasOwn(VIEW_LABELS, view)) throw new TypeError("Área desconhecida do Food.");
     activeView = view;
-    if (activeView !== "menu") editFlavorId = null;
     if (mounted) render();
   }
 

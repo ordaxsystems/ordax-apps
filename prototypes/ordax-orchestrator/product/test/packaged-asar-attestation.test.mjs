@@ -25,6 +25,8 @@ function fixture(t,entry='desktop/bootstrap.mjs') {
     JSON.stringify({name:'ordax-orchestrator-lab',version:'0.2.0-alpha.2',main:entry}));
   fs.writeFileSync(path.join(source,'desktop','bootstrap.mjs'),'await import("./main.mjs");\n');
   fs.writeFileSync(path.join(source,'desktop','main.mjs'),'export const main=true;\n');
+  fs.writeFileSync(path.join(source,'desktop','worker-preload.bundle.cjs'),
+    'const { ipcRenderer } = require("electron"); const selector = \'[data-message-author-role="assistant"]\';\n');
   fs.writeFileSync(path.join(source,'src','runtime-build-identity.mjs'),'export {};\n');
   fs.writeFileSync(path.join(source,'supervisor','coordinator.mjs'),'export {};\n');
   return {root,source,archive:path.join(root,'app.asar')};
@@ -33,6 +35,7 @@ test('electron-builder runs clean-source capture and ASAR attestation hooks',()=
   const pkg=JSON.parse(fs.readFileSync(new URL('../package.json',import.meta.url),'utf8'));
   assert.equal(pkg.build.beforePack,'./scripts/attest-packaged-asar.cjs');
   assert.equal(pkg.build.afterPack,'./scripts/attest-packaged-asar.cjs');
+  assert.equal(pkg.scripts['build:worker-preload'],'node scripts/build-worker-preload.mjs');
   assert.equal(typeof packagerHooks.beforePack,'function');
   assert.equal(typeof packagerHooks.afterPack,'function');
   assert.equal(packagerHooks.afterPack,packagerHooks.default);

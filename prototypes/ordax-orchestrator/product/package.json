@@ -1,6 +1,6 @@
 {
   "name": "ordax-orchestrator-lab",
-  "version": "0.2.0-alpha.18",
+  "version": "0.2.0-alpha.19",
   "private": true,
   "type": "module",
   "main": "desktop/bootstrap.mjs",
@@ -8,14 +8,18 @@
   "author": "OrdaX Systems",
   "scripts": {
     "check": "node scripts/check-source.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-concurrency=4 --test-timeout=90000 test/*.test.mjs",
+    "test:host": "node --test test/host-application.test.mjs test/host-browser-server.test.mjs",
+    "check:runtime-contract": "node scripts/check-runtime-contract.mjs",
     "validate": "npm run check && npm test",
-    "start": "electron .",
-    "start:host": "electron . --host-browser",
+    "start": "node scripts/start-host.mjs",
+    "build:worker-preload": "node scripts/build-worker-preload.mjs",
+    "start:electron": "npm run build:worker-preload && electron .",
     "build:win": "electron-builder --win portable",
     "test:live:ready": "node scripts/live-ui-readiness.cjs",
     "test:live:build-proof": "node scripts/live-ui-build-proof-readonly.cjs",
     "test:live:linked-thread": "node scripts/live-ui-linked-thread-smoke.cjs",
+    "test:live:gpt-recovery-readonly": "node scripts/live-ui-gpt-interrupted-recovery-readonly.cjs",
     "test:live:w3-offline-seed": "node scripts/seed-w3-unsubmitted-offline.cjs",
     "test:live:w3-offline-preflight": "node scripts/live-ui-w3-offline-preflight.cjs",
     "test:live:w4-offline-seed": "node scripts/seed-w4-offline-recovery.cjs",
@@ -29,12 +33,22 @@
     "test:live:restart": "node scripts/live-ui-restart-smoke.cjs",
     "test:live:image": "node scripts/live-ui-image-smoke.cjs",
     "test:live:history": "node scripts/live-ui-history-smoke.cjs",
-    "test:live:stream": "node scripts/live-ui-stream-smoke.cjs"
+    "test:live:stream": "node scripts/live-ui-stream-smoke.cjs",
+    "test:live:multiturn": "node scripts/live-ui-multiturn-smoke.cjs",
+    "test:live:context-packet": "node scripts/live-ui-context-packet-smoke.cjs",
+    "test:live:handoff-attachment": "node scripts/live-ui-handoff-attachment-smoke.cjs",
+    "test:live:persisted-mission": "node scripts/live-ui-persisted-mission-smoke.cjs",
+    "test:live:memory-proposal": "node scripts/live-ui-memory-proposal-smoke.cjs"
   },
   "devDependencies": {
     "@electron/asar": "3.4.1",
+    "@github/keytar": "7.10.6",
     "electron": "^44.8.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "esbuild": "0.28.2"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   },
   "build": {
     "appId": "br.com.ordax.orchestrator.lab",
@@ -42,8 +56,8 @@
     "asar": true,
     "files": [
       "desktop/**/*",
-      "!desktop/host-browser-server.mjs",
       "src/*.mjs",
+      "src/*.cjs",
       "supervisor/**/*",
       "package.json"
     ],

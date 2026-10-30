@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { waitForHistoricalThreadDom } from '../src/provider-historical-thread-observation.mjs';
+import {W3_CDP_READ_TIMEOUT_MS,W3_OBSERVER_READ_TIMEOUT_MS} from '../src/provider-recovery-bounds.mjs';
 
 const url='https://chatgpt.com/c/11111111-2222-4333-8444-555555555555';
 const notReady={available:true,url,domReliable:false,messages:[]};
@@ -48,4 +49,17 @@ test('navigation mismatch or invalid request cannot be certified',async()=>{
   assert.equal(result.reason,'thread_navigation_changed');
   await assert.rejects(waitForHistoricalThreadDom({expectedUrl:'https://evil.example/',read:async()=>ready}),
     /invalid_thread_observation_request/);
+});
+
+test('W3 long reply CDP read may finish after two seconds without being abandoned or retried',async()=>{
+  assert.equal(W3_CDP_READ_TIMEOUT_MS,6000);
+  assert.ok(W3_OBSERVER_READ_TIMEOUT_MS>W3_CDP_READ_TIMEOUT_MS);
+  let reads=0;
+  const result=await waitForHistoricalThreadDom({
+    expectedUrl:url,
+    read:async()=>{reads++;await new Promise(resolve=>setTimeout(resolve,2150));return ready;},
+    timeoutMs:8000
+  });
+  assert.deepEqual(result,ready);
+  assert.equal(reads,1,'a slow but completed CDP read is never replayed');
 });

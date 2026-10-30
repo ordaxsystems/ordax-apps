@@ -6,7 +6,7 @@ import { deviceAvailable, deviceLabel, deviceStatus, assertOperationBinding } fr
 
 const resultData = op => op?.result?.data || op?.result || {};
 
-export function createProjectPanel({ host, attach, notify, onProjectConversations }) {
+export function createProjectPanel({ host, attach, notify, onProjectConversations, showConversationLayout = () => {} }) {
   const $ = id => document.getElementById(id);
   let state = { targets: [], operations: [] }, refreshPromise = null, submitting = 0, file = null, entries = [], proposal = null, reviewed = null, stamp = '', handled = new Set();
   let continuityProposal = null, contextResult = null, continuityBase = null;
@@ -40,12 +40,21 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const message = text => { $('projectNotice').textContent = text; };
   const task = fn => Promise.resolve().then(fn).catch(error => message(error.message));
   const workspaceVisible = () => !$('projectDialog').hidden;
+  const canClose = () => !dirty() && !continuityDirty();
   function showWorkspace(visible) {
+    // Never hide an unreviewed file edit or continuity draft.
+    if (!visible && !canClose()) {
+      message('Revise ou descarte as alterações do Workspace antes de sair.');
+      return false;
+    }
+    if (visible) showConversationLayout();
     $('projectDialog').hidden = !visible;
     $('conversation').hidden = visible;
-    document.querySelector('.composer-area').hidden = visible;
+    // Workspace and Conversation use the same composer, draft and session.
+    document.querySelector('.composer-area').hidden = false;
     $('openProject').setAttribute('aria-pressed', String(visible));
     if (!visible) $('prompt').focus();
+    return true;
   }
   function tab(id) {
     $('projectDialog').dataset.activeTab = id;
@@ -233,7 +242,7 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   $('openContext').addEventListener('click', () => task(async () => { await open(); tab('studioContinuity'); $('studioTabContinuity').focus(); }));
   $('activityScope').addEventListener('change', renderOperations);
   $('activityRefresh').addEventListener('click', () => task(() => refresh({ fresh: true })));
-  $('projectClose').addEventListener('click', () => { if (dirty()) { message('Revise ou descarte a edição antes de fechar.'); return; } showWorkspace(false); });
+  $('projectClose').addEventListener('click', () => { showWorkspace(false); });
   async function applyConnectedState(connected) {
     state = connected; handled = new Set(state.operations.map(op => op.id));
     file = null; reviewed = null; entries = []; clearProjectTools(); $('projectEditor').value = ''; $('projectReviewArea').hidden = true; $('runtimeProject').replaceChildren(); renderEntries();
@@ -326,5 +335,5 @@ export function createProjectPanel({ host, attach, notify, onProjectConversation
   const timer = setInterval(() => { if (workspaceVisible() || state.operations.some(pending)) refresh(); }, 1000);
   $('workspaceProjectConversations').addEventListener('click', () => task(() => onProjectConversations({ binding: selected(), name: $('runtimeProject').selectedOptions[0]?.textContent || selected().project })));
   window.addEventListener('beforeunload', () => clearInterval(timer));
-  return { open, assertContext, setContext, showConversation: () => showWorkspace(false), canClose: () => !dirty() && !continuityDirty(), async propose(content) { await open(); tab('studioFiles'); if (dirty()) { message('Revise ou descarte a edição atual antes de preparar outra proposta.'); return; } if (file) { $('projectEditor').value = content; controls(); } else { proposal = content; message('Selecione um projeto e abra o arquivo que receberá este código. A proposta ficará pronta para revisão.'); } } };
+  return { open, assertContext, setContext, showConversation: () => { if (!showWorkspace(false)) throw new Error('Revise ou descarte as alterações do Workspace antes de sair.'); }, canClose, async propose(content) { await open(); tab('studioFiles'); if (dirty()) { message('Revise ou descarte a edição atual antes de preparar outra proposta.'); return; } if (file) { $('projectEditor').value = content; controls(); } else { proposal = content; message('Selecione um projeto e abra o arquivo que receberá este código. A proposta ficará pronta para revisão.'); } } };
 }

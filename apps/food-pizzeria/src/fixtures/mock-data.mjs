@@ -18,8 +18,15 @@ const flavors = [
   ["pepperoni", "Pepperoni", "Muçarela, pepperoni e molho da casa", 4690, 5690, 7490],
 ];
 
-export function createSeedFoodState() {
-  const now = Date.now();
+export const PREVIEW_SEED_ORDER_AGES_MINUTES = Object.freeze([18, 15, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+export const PREVIEW_SEED_TABLE_OPENING_AGES_MINUTES = Object.freeze({
+  "ng-command-01": 16,
+  "ng-command-04": 20,
+});
+
+export function createSeedFoodState(nowValue = Date.now(), { includeFourFlavorSample = false, includePickupHandoffSample = false } = {}) {
+  const now = nowValue instanceof Date ? nowValue.getTime() : Number(nowValue);
+  if (!Number.isFinite(now)) throw new TypeError("O horário da prévia Food precisa ser válido.");
   let state = configureFoodPizzeria(createEmptyFoodPizzeriaState(), {
     storeName: "Na Garagem",
     halfPricePolicy: "highest",
@@ -67,14 +74,16 @@ export function createSeedFoodState() {
     ["Bruno Almeida", "delivery", "(11) 97001-8834", "Rua do Oratório, 740 — Ipiranga"],
   ];
   const stages = ["received", "received", "received", "preparing", "preparing", "preparing", "preparing", "preparing", "ready", "ready", "out-for-delivery", "out-for-delivery"];
-  const ageMinutes = [70, 18, 8, 52, 34, 24, 17, 12, 25, 15, 30, 20];
+  if (includePickupHandoffSample) stages[5] = "ready";
   const flavorIds = ["ng-calabresa", "ng-portuguesa", "ng-marguerita", "ng-portuguesa", "ng-frango-catupiry", "ng-calabresa", "ng-quatro-queijos", "ng-pepperoni", "ng-marguerita", "ng-frango-catupiry", "ng-calabresa", "ng-portuguesa"];
   for (let index = 0; index < people.length; index += 1) {
     const [customerName, channel, phone, address] = people[index];
     const number = 1047 + index;
-    const createdAt = new Date(now - ageMinutes[index] * 60000).toISOString();
+    const createdAt = new Date(now - PREVIEW_SEED_ORDER_AGES_MINUTES[index] * 60000).toISOString();
     const fee = channel === "delivery" ? 500 : 0;
-    const flavorId = flavorIds[index];
+    const orderFlavorIds = index === 2 && includeFourFlavorSample
+      ? ["ng-marguerita", "ng-calabresa", "ng-quatro-queijos", "ng-frango-catupiry"]
+      : [flavorIds[index]];
     state = createPizzeriaOrder(state, {
       id: `ng-order-${number}`,
       historyId: `ng-history-${number}-received`,
@@ -86,7 +95,7 @@ export function createSeedFoodState() {
       address,
       deliveryFeeCents: fee,
       notes: index === 0 ? "Borda de Catupiry" : index === 4 ? "Deixar na portaria" : "",
-      items: [{ id: `ng-item-${number}`, size: index % 4 === 0 ? "large" : "medium", flavorIds: [flavorId], quantity: index === 1 || index === 7 ? 2 : 1 }],
+      items: [{ id: `ng-item-${number}`, size: index % 4 === 0 ? "large" : "medium", flavorIds: orderFlavorIds, quantity: index === 1 || index === 7 ? 2 : 1 }],
     });
     const desired = stages[index];
     const transitions = desired === "preparing" ? ["preparing"]
@@ -94,15 +103,14 @@ export function createSeedFoodState() {
         : desired === "out-for-delivery" ? ["preparing", "ready", "out-for-delivery"]
           : desired === "completed" ? ["preparing", "ready", channel === "delivery" ? "out-for-delivery" : "completed", ...(channel === "delivery" ? ["completed"] : [])]
             : [];
-    let minute = 4;
-    for (const nextStatus of transitions) {
+    const transitionIntervalMs = (PREVIEW_SEED_ORDER_AGES_MINUTES[index] * 60000) / (transitions.length + 1);
+    for (const [transitionIndex, nextStatus] of transitions.entries()) {
       state = transitionPizzeriaOrder(state, {
         orderId: `ng-order-${number}`,
         nextStatus,
         historyId: `ng-history-${number}-${nextStatus}`,
-        changedAt: new Date(Date.parse(createdAt) + minute * 60000).toISOString(),
+        changedAt: new Date(Date.parse(createdAt) + Math.round(transitionIntervalMs * (transitionIndex + 1))).toISOString(),
       });
-      minute += 5;
     }
   }
   return state;

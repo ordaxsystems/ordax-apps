@@ -19,7 +19,7 @@ Auditoria do código em `ordax-apps`, complementada pela leitura dos contratos a
 1. **Food state v6:** `src/domain/domain.mjs` contém configuração da pizzaria, sabores/preços, pedidos de sandbox, comandas e receitas. Não tem `ingredients` ou `inventoryMovements`. v4→v5 preserva histórico e configuração; v5→v6 acrescenta propostas de consumo imutáveis para novos pedidos, preservando legados com `null`, sem inventar consumo histórico.
 2. **Sem escrita cruzada em estoque:** novos pedidos congelam uma proposta calculada pelas fichas vigentes. `calculatePizzeriaOrderConsumption()` lê essa proposta sem recalcular receitas editadas; recusa pedidos legados sem histórico verificável. `transitionPizzeriaOrder()` altera somente o pedido Food. Comandos Inventory estão ausentes.
 3. **Migração segura do preview:** ao ler v3 no browser, o adapter grava ingredientes/movimentos antigos em uma chave de arquivo local antes de salvar o novo estado ativo. O arquivo é preservação de dados legados, não é lido como saldo atual.
-4. **Owners ausentes ficam explícitos:** Overview, PDV, Inventory, Customers, Reports e Team são áreas de status do provider em `src/ui/space-capability-status.mjs`; não apresentam listas/valores de fixtures como estado operacional. A interface mostra “Prévia local · Dados fictícios · sem sincronização”.
+4. **Owners ausentes ficam explícitos:** Overview, Inventory, Customers e Team continuam áreas de status dos respectivos providers em `src/ui/space-capability-status.mjs`. PDV e Relatórios operam somente sobre snapshots da prévia Food: relatórios são read-only e exportam somente métricas, itens, sabores e referências de pedidos, sem cliente, pagamento ou Inventory. A interface não apresenta esses dados locais como operação empresarial compartilhada.
 5. **Sem dashboard Food concorrente:** o Food abre em Pedidos; a rota Visão Geral explica que a projeção agregada é do Space.
 6. **Sem custo de estoque inventado:** a ficha técnica não calcula custo unitário a partir da fixture de estoque.
 7. **Sem estado operacional paralelo oculto:** `createMockWorkspace()`, handlers de PDV/caixa, estoque, clientes, equipe e configurações não versionadas foram removidos do runtime. Permanecem apenas dados transitórios de interface (filtros, carrinho de pedido e rascunho da ficha) e amostras imutáveis do catálogo auxiliar.
@@ -318,4 +318,204 @@ os dados da fixture são provisionados separadamente pelo runner.
 Esta prova não instala a proposta no Supabase, não cria role LOGIN
 ou grant de produção e não representa binding de sessão Web/Native
 autenticado. FOOD-001 e Store seguem bloqueados.
+
+## Correção — cronologia do histórico de pedidos (2026-10-26)
+
+O histórico de Pedidos agora ordena os registros por `createdAt` decrescente em uma cópia da lista, sem depender da ordem de persistência/append. Timestamps válidos aparecem antes de timestamps ausentes ou inválidos; empates preservam a ordem estável recebida. Os horários da fixture local foram alinhados à sequência dos números para que a amostra represente a mesma cronologia.
+
+`tests/orders-page.test.mjs` cobre lista fora de ordem, timestamp inválido e coerência cronológica da fixture. Suíte Food: 71/71; `node --check` nos três arquivos JavaScript alterados e `git diff --check` aprovados. No host de PR `http://127.0.0.1:4257/apps/food-pizzeria/`, o histórico mostra #1058–#1047 com horários decrescentes; não criei pedido nem alterei uma comanda. A mudança afeta a apresentação e os dados fictícios locais; não altera pedidos reais, Food Order Core, Sales, Inventory, pagamentos ou os contratos pendentes.
+
+## Revisão — taxa padrão local de entrega (2026-10-26)
+
+O contrato Food v6 permanece intacto porque o owner SQL atual ainda rejeita outra versão de documento. A taxa padrão usada pelo host fica em `previewPreferences` no envelope local `ordax.food-pizzeria.browser-state/3`, fora do estado canônico Food. O formulário de entrega carrega essa preferência, aceita substituição por pedido e grava a taxa efetiva no snapshot do pedido; mudar a preferência não reescreve históricos. A tela Configurações separa o salvamento da preferência local do salvamento das configurações operacionais Food.
+
+O adapter migra envelopes v1/v2 para v3 com padrão local de R$ 5,00, sem mexer em pedidos, comanda, revisão, preços ou proposta de consumo. Ele também recupera com segurança uma prévia local v7 criada antes desta correção: remove apenas `deliveryFeeCents` do estado v7, conserva esse valor nas preferências do adapter e valida o restante como Food v6. As chamadas de produção continuam recebendo apenas o documento Food v6. A taxa não representa tarifa por distância, sincronização comercial ou configuração compartilhada entre dispositivos.
+
+`tests/configurable-operations.test.mjs`, `tests/local-store-persistence.test.mjs`, `tests/orders-page.test.mjs` e `tests/settings-page.test.mjs` cobrem valor padrão, substituição, imutabilidade histórica, validação do envelope, migração/recuperação, renderização e preservação de tamanhos/mesas personalizados. Suíte Food: 79/79; verificações `node --check` e `git diff --check` aprovadas. A CI inicial da PR #359 encontrou a incompatibilidade v7/v6; esta correção mantém Food v6 e move a preferência para o adapter local. A nova execução remota ainda deve confirmar o resultado.
+
+No host local da branch `http://127.0.0.1:4258/apps/food-pizzeria/`, a taxa foi alterada de R$ 5,00 para R$ 8,75 nas Configurações; o formulário de Entrega carregou R$ 8,75 e atualizou o total. Depois, o padrão foi restaurado a R$ 5,00, conferido no formulário e nenhum pedido foi criado. O teste automatizado de navegador não iniciou porque Chrome/Chromium não está instalado neste host Windows; a interação foi conferida diretamente no navegador conectado. A auditoria MVP do workspace terminou com exit 0: 20 alvos, 18 entradas de catálogo ainda não assinadas e 2 bloqueios já existentes; nenhuma publicação nem elegibilidade foi alterada.
+
+### Formulários independentes para a taxa local (2026-10-26)
+
+A taxa de entrega local agora fica em `preview-delivery-fee-form`, fora de `settings-form`. Enter e o botão submetem somente `updatePreviewPreferences`; as configurações operacionais continuam gravadas pelo comando `food.settings.update`. Assim, a preferência local não entra no snapshot/contrato Food e não é enviada junto com as mudanças de cardápio/mesas.
+
+`settings-page.test.mjs` verifica os dois formulários independentes. Suíte Food: 79/79; `node --check` dos módulos alterados e `git diff --check` aprovados. No host isolado `http://127.0.0.1:4262/apps/food-pizzeria/`, Enter salvou R$ 8,25; o formulário de pedido carregou o mesmo valor e mostrou o total de uma pizza de R$ 49,90 mais a taxa. Nenhum pedido foi registrado. O preview e as preferências permanecem locais.
+
+## Correção — estado explícito no KDS local (2026-10-26)
+
+A fila da cozinha substitui o indicador fictício “Turno aberto” por uma contagem calculada do snapshot (`pedidos ativos`). O preview não recebe estado de turno nem eventos de realtime; o indicador anterior sugeria capacidades indisponíveis. Nenhuma transição, configuração ou persistência de pedido foi alterada.
+
+`tests/kitchen-page.test.mjs` cobre a contagem incluindo pedidos em expedição e impede que o KDS volte a declarar turno aberto ou presença ao vivo sem provider. A suíte Food passou com 82/82 testes em ambos os worktrees; `node --check` da view e `git diff --check` também passaram. A prévia segue local e fictícia, sem sincronização com Space.
+
+## Iteração — painel de produção para operação de alto volume (2026-10-26)
+
+O KDS agora usa cartões de produção próprios, mostrando número do pedido, canal/mesa, quantidade e sabores por tamanho, instruções de preparo, tempo na etapa e meta operacional. Busca por pedido/mesa/sabor, filtro de canal, filtro de atraso, limpeza de filtros e totais separados de pedidos e pizzas ajudam a equipe a priorizar a fila. Os detalhes de cliente e endereço só aparecem na área de expedição. A interface adapta as etapas para navegação horizontal em celulares e usa controles com área tátil maior.
+
+Os indicadores derivam do snapshot Food existente e continuam agrupados por status do pedido; a meta 15/35/15/45 minutos é um aviso de interface já configurado, não uma promessa de tempo de produção. Não há avanço individual de cada pizza dentro de um pedido, configuração de estações, throughput diário configurável ou sincronização entre celulares. Esses recursos dependem de capacidades e providers Food/Space autorizados; a prévia atual segue fictícia e local.
+
+`tests/kitchen-page.test.mjs` cobre contagem de pizzas/pedidos, pesquisa, proteção de dados de cliente na cozinha e filtro de atraso. `tests/embedded-presentation.test.mjs` e `tests/browser-preview-probe.mjs` cobrem o novo título e o cartão sem dados de cliente. Suíte Food: 85/85; `node --check` nos módulos alterados e `git diff --check` aprovados.
+
+## Distribuição local de telas do KDS (2026-10-27)
+
+O KDS agora permite configurar de 1 a 8 telas na preferência local do adapter, sem alterar o schema Food v6. O operador pode manter o ciclo completo ou distribuir entre telas os estados de pedido já existentes (Recebido, Em preparo e Pronto), ajustar a macroetapa exibida em cada tela e abrir o respectivo URL em um aparelho/aba. A tela dedicada oculta busca, resumo e as outras filas; usa tela cheia nativa quando disponível e um modo de viewport reversível nos navegadores incorporados sem a Fullscreen API. A configuração sobrevive à reabertura do mesmo perfil local.
+
+Ao avançar um pedido pelos comandos Food existentes, ele sai da fila daquela macroetapa e passa para o estado seguinte. No preview, a persistência e os eventos entre abas existentes podem refletir a alteração no mesmo perfil/origem; um celular separado não recebe esses dados. A interface o identifica como prévia sem sincronização entre aparelhos. O fluxo é por pedido inteiro: abrir massa, montar, assar e finalizar cada pizza ainda precisa de tarefas e progresso por item no contrato Food de produção. A atribuição por trabalhador precisa também do owner People/Identity e não é apresentada como concluída.
+
+`application/kitchen-display-configuration.mjs` valida modos, quantidade, atribuições, migração do envelope antigo e persistência da configuração local. `tests/kitchen-display-configuration.test.mjs`, `tests/kitchen-page.test.mjs`, `tests/local-store-persistence.test.mjs` e `tests/lifecycle.test.mjs` cobrem validação, layout dedicado, transição de macroetapa, preservação após reabertura e alternância do fallback de tela cheia. O smoke headless abre uma estação isolada e verifica entrar e sair do fallback no navegador real. Suíte Food: 93/93; verificações `node --check` e `git diff --check` aprovadas.
+
+## Foco por pedido e adaptação a celulares (2026-10-27)
+
+Cada estação dedicada mostra um pedido atual (FIFO) e os cinco próximos pedidos no máximo. No ciclo completo, o pedido em foco permanece na tela quando muda de Recebido para Em preparo ou Pronto; só sai ao ser concluído, quando o próximo passa ao foco. Em telas divididas por posto, a conclusão da macroetapa tira o pedido dessa fila e encaminha o próximo ticket à tela. Recebidos orienta a abertura da massa, Em preparo orienta a montagem e Prontos orienta a expedição. Os cartões deixam quantidade, tamanho, sabores, meio a meio e observações legíveis; a fila ao lado/abaixo preserva o resumo do próximo trabalho.
+
+Em telefone horizontal, o ticket principal e a fila usam duas colunas compactas; em notebook usam uma coluna principal mais larga e uma fila lateral. Em telefone vertical, a fila passa abaixo do pedido atual e a página rola verticalmente. Os controles de ação mantêm alvos táteis. A prévia incorporada da estação se encaixa no viewport curto para evitar rolagem horizontal ou que o posto fique parcialmente escondido. Essa marca de layout é exclusiva do preview local.
+
+O número de fatias vem do cadastro atual do tamanho, pois Food v6 ainda não guarda esse valor no snapshot do item. A interface informa essa origem. O KDS continua avançando pedidos inteiros; confirmação por pizza de abertura, montagem e forno, atribuição de pessoa e sincronização entre celulares dependem dos contratos de produção Food e People/Identity, ainda pendentes. Nenhuma integração ou estado paralelo foi criado.
+
+`tests/kitchen-page.test.mjs` verifica foco FIFO, limite de cinco próximos, meio a meio, instruções por posto e permanência do pedido no fluxo completo; `tests/embedded-presentation.test.mjs` verifica o marcador de layout compacto; a prova de navegador verificou instruções, detalhes da pizza e limite da fila nas telas de fluxo completo e por etapa. A suíte Food passou com 97/97 testes. A renderização foi conferida em 844×390, 1366×768 e 390×844, sem overflow horizontal; `node --check` e `git diff --check` passaram.
+
+## PDV local com produtos adicionais (2026-10-27)
+
+O PDV da prévia passa a incluir bebidas, combos e acompanhamentos no mesmo pedido de pizza. O catálogo de demonstração permite adicionar/remover itens e quantidades; preço, nome e categoria são revalidados pela fixture local e congelados como snapshot no item Food. O histórico, a busca e o KDS exibem esses itens sem tratá-los como pizzas. Itens adicionais não geram consumo de ficha nem movimentação de estoque.
+
+Como o owner SQL fixado ainda valida Food v6, o estado local avança para v7 e o Food Order Core persistente recusa esse formato antes de gravar. A migração v6→v7 preserva pedidos existentes. O command schema interno avança para `/2`. O catálogo permanece uma fixture de prévia: falta publicar e homologar o contrato do owner Catálogo e atualizar o contrato Food/SQL antes de enviar pedidos com produtos ao serviço persistente. Sales, Payments, Inventory e Space não receberam integração simulada.
+
+Validação: `node --test apps/food-pizzeria/tests/*.test.mjs` passou com 130/130 testes; `git diff --check` passou. A verificação inclui preço atual e removido, quantidade, snapshot do pedido, pesquisa, KDS, consumo de receita, migração e rejeição do estado v7 pelo owner SQL v6. O preview continua local ao navegador.
+
+## PDV e histórico em módulos próprios (2026-10-27)
+
+O módulo `PDV` agora concentra a montagem e o registro local de pedidos. `Pedidos` fica dedicado ao histórico, busca, filtros por etapa/canal e acompanhamento, com uma ação que leva ao PDV para iniciar outro pedido. O formulário de entrada é um único renderizador compartilhado também com o contexto de comanda; carrinho e comandos continuam no mesmo controlador/estado Food, sem segunda loja nem domínio paralelo. Após registrar, o operador volta ao histórico.
+
+A prévia incorporada permite abrir diretamente `view=pos`, sem header nem navegação duplicados do Food, e usa o mesmo CSS isolado em Shadow DOM. O valor do pedido continua sem significar pagamento recebido. Itens adicionais vêm da fixture local; provider de Catálogo e schema Food persistente v7 continuam pendentes, e o core SQL v6 recusa esse estado antes de gravar.
+
+Validação: suíte Food completa, 131/131; `git diff --check` e verificações de sintaxe aprovados. A renderização do PDV foi conferida no host local incorporado, incluindo catálogo, carrinho vazio, campos de atendimento e total. O runner automatizado de navegador não iniciou porque Chrome/Chromium não está instalado neste host; CI da PR executará a verificação de navegador.
+
+## Ação de cancelamento no módulo correto (2026-10-27)
+
+O cartão de pedido compartilhado não oferece mais Cancelar por padrão. O histórico de Pedidos habilita explicitamente a ação para pedidos elegíveis; Delivery desabilita a ação nos cartões de despacho e rota, e o KDS continua sem cancelamento. O fluxo pede motivo e registra a transição no mesmo domínio Food.
+
+A interface limita o local de gestão, mas não finge que sabe quem é admin. O adapter de preview não autentica operadores; autorização por papel depende de grants por ação e identidade fornecidos pelo host Identity/Space. A aplicação deve manter esse gate no owner quando houver contrato.
+
+Validação: pedidos, Delivery e fronteiras SSOT, 10/10 testes direcionados; suíte completa Food, 133/133; `node --check` dos módulos alterados e `git diff --check` aprovados.
+
+## Ações do ciclo de pedido por área (2026-10-27)
+
+O renderizador compartilhado agora exige permissão explícita de contexto para controles de estado. Pedidos exibe histórico e filtros, além de cancelamento elegível com motivo, mas não avança preparo ou expedição. Cozinha/KDS mantém as transições de produção. Delivery habilita somente os controles de saída e conclusão para pedidos que já estão prontos ou em rota; nunca habilita cancelamento.
+
+Validação: views Pedidos/Delivery, 6/6 testes direcionados; suíte Food completa, 134/134; `node --check` e `git diff --check` aprovados.
+
+## Encerramento de comanda sem falsa confirmação financeira (2026-10-27)
+
+A tela Mesas/Comandas agora descreve o total como consumo derivado dos pedidos não cancelados. A explicação deixa claro que encerrar o atendimento libera a mesa após os pedidos terminarem e não registra nem confirma pagamento. Nenhum estado financeiro novo foi criado no Food; a confirmação permanece no owner Payments.
+
+Validação: `tests/tables-page.test.mjs`, 1/1; suíte Food completa, 135/135; `node --check` da view e `git diff --check` aprovados.
+
+## Planejamento de pré-preparo por lote (2026-10-27)
+
+O Cardápio oferece um cálculo de lote por tamanho e quantidade de cada sabor. A regra reaproveita o mesmo cálculo de consumo das receitas usado nos pedidos, agrega insumos em unidades-base e recusa tamanho inativo, sabor indisponível, ficha ausente, quantidades inválidas ou lote acima de 10.000 pizzas. Os valores permanecem derivados e transitórios; o recurso não consulta saldo nem escreve em Inventory.
+
+Validação: `tests/batch-planning.test.mjs`, 3/3; suíte Food completa, 138/138; `node --check` dos módulos alterados e `git diff --check` aprovados.
+
+## Acesso a pedidos em andamento após reconfigurar a cozinha (2026-10-27)
+
+O quadro de telas agora mantém uma rota direta para cada estação que ainda tem pedido iniciado no fluxo anterior, mesmo quando a configuração nova reduz a quantidade de telas. A linha informa a etapa preservada e quantos pedidos continuam nela. As telas configuradas sem trabalho anterior seguem mostrando apenas as etapas do fluxo atual; posições sem etapa e sem pedido não geram links vazios.
+
+O ticket conserva sua sequência, posição e tela original até terminar; tarefas ainda não iniciadas continuam podendo ser reorganizadas para a nova configuração. Assim, a alteração do layout não descarta nem oculta trabalho já iniciado. O link antigo ainda é um recurso local do mesmo navegador; não cria sincronização entre aparelhos.
+
+`tests/kitchen-page.test.mjs` cobre a redução de quatro telas para uma, a existência do link de compatibilidade da estação 4 e a renderização do pedido em foco nessa rota. Suíte Food: 139/139; `node --check` da view e `git diff --check` aprovados.
+
+## Layout responsivo de montagem e fechamento no PDV (2026-10-27)
+
+O PDV agora organiza o catálogo e a montagem do lado do carrinho e fechamento em notebooks. O resumo permanece acessível durante a seleção. Até 980 px, o mesmo conteúdo passa a uma coluna; em telefones, a área de fechamento volta ao fluxo normal para evitar sobreposição e rolagem horizontal. O composer continua sendo uma única apresentação do carrinho/comando Food, sem duplicar formulário ou pedido.
+
+A prova de navegador cobre notebook (1280 px), telefone vertical (390 px) e horizontal (844 px), verificando colunas, posicionamento do fechamento, unicidade dos formulários e ausência de overflow horizontal. Suíte Food e CI serão atualizados com o head desta PR.
+
+## Edição de quantidades no carrinho do PDV (2026-10-27)
+
+Cada linha do carrinho oferece controles para diminuir, aumentar e remover. A quantidade mínima é 1 e o teto de 50 vem de uma constante única no domínio; o formulário inicial e o ajuste do carrinho usam esse mesmo valor. O contador mostra unidades totais, e os subtotais e o total são recalculados sem recriar a linha nem perder os demais itens.
+
+Validação: testes unitários cobrem soma de unidades, imutabilidade, limites inferior/superior e delta permitido; a prova de navegador percorre adicionar, aumentar, atingir o máximo, diminuir e remover no notebook e no telefone horizontal, incluindo alinhamento dos controles. Suíte Food: 143/143; `node --check` nos módulos alterados e `git diff --check` aprovados. Host conferido em notebook, telefone vertical e horizontal, sem overflow horizontal.
+
+Ao adicionar pizzas repetidas, a aplicação agora acumula a quantidade na linha existente quando tamanho, sequência de sabores e preço unitário são iguais. Bebidas e acompanhamentos usam a mesma regra, incluindo nome/categoria/preço do snapshot. Linhas com outra configuração ou cotação permanecem separadas para preservar o valor que o operador já viu; quando a soma ultrapassaria 50, a próxima quantidade abre uma nova linha. Suíte Food: 146/146; prova de navegador no host validou agrupamento, subtotal e limites.
+
+## Seletores de sabores no PDV (2026-10-27)
+
+Ao escolher um sabor, os demais campos da mesma pizza desabilitam essa opção; ao trocar ou limpar a escolha, o sabor volta a ficar disponível. Isso previne a combinação duplicada antes de calcular o preço, enquanto a validação do domínio continua como última proteção. A mensagem de preço/erro agora usa `role="status"` e anúncio `polite` para leitores de tela.
+
+Validação: suíte Food 146/146; prova real no host verificou sabor repetido indisponível, opção distinta disponível e pizza válida adicionada. Mudança de apresentação apenas: não altera preços, receitas, snapshots, owners ou integrações.
+
+## Snapshot histórico das fatias no pedido (2026-10-27)
+
+Novos pedidos de pizza agora congelam `sliceCount` junto ao tamanho e aos sabores. O KDS usa somente esse valor do pedido; alterar o cadastro de tamanhos depois não reinterpreta tickets antigos. A migração v7→v8 conserva os itens e registra `sliceCount: null` para pizzas históricas, e a tela informa que as fatias não foram registradas em vez de estimá-las pela configuração atual. O snapshot não se aplica a bebidas, combos ou acompanhamentos.
+
+O Food local avança para v8. O owner SQL continua validando v6, então o Food Order Core rejeita v8 antes de qualquer gravação persistente. A fixture de catálogo e a prévia permanecem locais; Catálogo precisa publicar seu contrato e o owner Food/SQL precisa homologar a nova versão antes de integração real.
+
+Validação: suíte Food completa passou com 148/148; testes cobrem criação, alteração posterior das configurações, migração v7, apresentação do KDS e recusa do owner SQL v6. Inspeção do host KDS confirmou o número congelado no ticket. `git diff --check` aprovado.
+
+## Atalhos de contato nas paradas de Delivery (2026-10-27)
+
+Cada entrega ativa agora oferece uma ligação `tel:` que normaliza o número para dígitos e preserva apenas o prefixo internacional inicial, além de um botão para copiar o endereço da parada. A cópia usa a Clipboard API do navegador e confirma o pedido no aviso existente; aparelhos sem suporte recebem uma mensagem de erro compreensível. Pedidos legados sem telefone continuam exibindo somente a cópia de endereço. O antigo desenho decorativo sem coordenadas foi removido; a fila é apresentada como ordem de saída, da mais antiga para a mais recente, sem alegar geocodificação, roteirização ou gravação externa.
+
+Validação: `tests/delivery-page.test.mjs` cobre URL de ligação, cópia do endereço, separação de pedidos de retirada, ordenação de saída e ausência de mapa/GPS fictícios. A tela Delivery incorporada foi aberta no host local e conferida com fila, paradas, links e botões. Suíte Food: 151/151; host local conferido em 320 px sem overflow horizontal na área de Delivery; `node --check` e `git diff --check` aprovados.
+
+## PDV de quatro sabores por padrão (2026-10-27)
+
+Uma pizzaria nova agora começa com limite de quatro sabores por pizza. O PDV cria um seletor para cada sabor permitido e os pedidos congelam a seleção, preço conforme a regra configurada e total de fatias. O limite continua ajustável em Configurações; validar ou carregar uma pizzaria já configurada não substitui o valor escolhido pelo estabelecimento nem altera pedidos históricos.
+
+Validação: testes de domínio confirmam o limite inicial, preço pela regra vigente e snapshot de quatro sabores; teste do PDV confirma quatro seletores na configuração inicial. Suíte Food: 152/152; `node --check` e `git diff --check` aprovados. Estado local de preview existente permanece intacto. A mudança não cria catálogo paralelo nem afeta Sales, Payments ou Inventory.
+
+## Referência visível dos pedidos (2026-10-27)
+
+Pedidos com UUID agora exibem os últimos dez caracteres hexadecimais como referência estável; isso reduz colisões visíveis mantendo a mesma fonte do identificador do pedido. IDs sequenciais seed continuam exibindo a sequência original. Nenhum ID persistido, contrato, transação ou histórico foi alterado.
+
+Validação: teste prova estabilidade, compatibilidade com sequência seed e distinção entre dois UUIDs que compartilham os seis caracteres finais. Suíte Food: 152/152; `node --check` e `git diff --check` aprovados. A mudança não altera o owner do pedido nem cria integração.
+
+## Relatórios operacionais do Food (2026-10-27)
+
+O módulo Relatórios agora transforma o histórico de pedidos Food em indicadores para 24 h, 7 dias ou 30 dias: volume, pedidos em cozinha, prontos, mediana do tempo até Pronto, canais, itens, sabores mais presentes, cancelamentos e pedidos recentes. O cálculo fica em um módulo de aplicação sem escrita; a tela oferece rotas diretas para Cozinha, PDV e histórico. Barras usam `<progress>` semântico e estilos próprios do Food, com layout em uma ou duas colunas conforme a largura.
+
+Ownership permanece separado: o relatório só lê snapshots Food. Cada sabor de uma pizza combinada aparece na contagem de sabores; itens adicionais são contados pela quantidade congelada e não implicam movimentação de estoque. Pagamentos, saldo de Inventory, lucro e o dashboard do Space não são inferidos. O overview continua sob composição do Space; o relatório é um módulo operacional Food. Os dados vistos no host seguem sendo a prévia local já existente, sem provider, persistência entre aparelhos ou integração de produção.
+
+Validação: `node --test` passou com 160/160 testes; `node --check` dos módulos de relatório e controlador, `git diff --check` e inspeção visual do host incorporado aprovados. A conferência no host confirmou as proporções das barras e a troca de período. Nenhum owner, contrato ou estado comercial foi alterado.
+
+## Exportação segura dos relatórios Food (2026-10-27)
+
+Relatórios pode baixar um CSV UTF-8 com BOM e separador compatível com planilhas em português. O arquivo leva o resumo do período, contagens por canal/itens/sabores e até cinco referências recentes, sem nome, telefone, endereço, pagamentos ou saldos. Células são citadas e valores textuais iniciados por caracteres de fórmula são neutralizados. A URL temporária do Blob é liberada após a descarga ou ao desmontar o app.
+
+A exportação é gerada no navegador, no mesmo snapshot local Food do relatório; não chama providers nem grava dados. Overview continua sob Space; Estoque, Clientes, Equipe e dados financeiros não entram na exportação. As descrições antigas de “Relatórios pendente” foram corrigidas: somente a composição externa com outros owners permanece pendente.
+
+Validação: suíte Food completa 163/163; `node --check` dos módulos alterados e `git diff --check` aprovados. O verificador MVP mantém 20 alvos, 18 entradas não assinadas e 2 bloqueados. Host incorporado conferido após atualizar a página: botão Baixar CSV, métricas e proporções visíveis; testes cobrem o conteúdo agregado, ausência de nomes de clientes, escape/neutralização de fórmulas, ação do botão e revogação da URL. No head `1b19d60`, os quatro checks remotos passaram: workspace-boundary, food-real-postgres, catalog-candidate e mvp-app-functional-minimum.
+
+## Fila de prévia com tempos operacionais recentes (2026-10-27)
+
+A amostra da pizzaria agora começa com pedidos de 3 a 18 minutos. Os horários de cada mudança de status são distribuídos dentro da idade do próprio pedido; assim, nenhuma transição fictícia fica no futuro. Uma única espera mais longa continua presente para demonstrar a meta de preparo sem sinalizar a fila inteira como atrasada. Ao reabrir o preview, pedidos seed e comandas abertas não operados são rebaseados quando sua atividade mais antiga passa de 35 minutos. Operações locais, status, histórico e journal permanecem preservados.
+
+Validação: testes cobrem sequência e janela de idade da fixture, transições não futuras, preservação dentro da janela, rebase após expiração e conservação do pedido operado. Suíte Food completa: 164/164; `node --check` e `git diff --check` aprovados. Host local recarregado: o ticket em foco caiu de 70 para 18 minutos e os próximos ficaram entre 15 e 5 minutos. No head `32fa7f0`, os quatro checks remotos passaram; o job de prova Chrome precisou ser reexecutado após falha de inicialização do runner, sem alteração de código. A integração permanece browser-local e não representa sincronização ou produção Food.
+
+## Iteração — KDS: fila mais visível no telefone vertical (2026-10-27)
+
+Em telefones verticais com pelo menos 700 px de altura, a área do pedido em foco agora acompanha o conteúdo do ticket; a fila dos próximos pedidos usa o restante da tela. Isso remove o espaço vazio que antes reduzia a lista a pouco mais de um ticket. A rolagem continua restrita à lista dos próximos; o pedido atual permanece totalmente visível. O layout horizontal mantém o pedido e a fila lado a lado, sem rolagem de página.
+
+O smoke do navegador ganhou uma asserção para comprovar que, no cenário vertical de 390 × 844, a fila recebe mais espaço que o ticket individual. O runner também localiza Chrome no Windows por `CHROME_PATH`, `CHROME_BIN` ou caminhos instalados comuns e usa uma porta DevTools fixa escolhida em execução; assim não depende de `DevToolsActivePort`, que não foi criado neste ambiente Windows. O timeout de comando CDP é ampliado no Windows para permitir o primeiro carregamento frio.
+
+Validação: suíte Food completa 164/164; smoke Chrome 23/23 cenários, incluindo telefone vertical e horizontal e os fluxos solo e em quatro estações; `node --check` nos scripts modificados e `git diff --check` aprovados. Inspeção visual e de medidas no host confirmou 390 × 844 sem rolagem externa e lista de pedidos seguinte com 348 px de área interna, além de 844 × 390 com as duas colunas no viewport e a rolagem dentro da fila. Os dados continuam locais ao navegador; não há sincronização entre aparelhos.
+
+## Iteração — relógio operacional por etapa no KDS (2026-10-27)
+
+O ticket agora separa o tempo na etapa atual do SLA total do pedido. Uma etapa em andamento conta desde `startedAt`; uma etapa aguardando conta desde seu `queuedAt`. A meta do pedido continua baseada no histórico canônico Food e aparece separadamente como tempo total do pedido/preparo. A lista dos próximos pedidos usa o relógio de sua etapa e é atualizada pelo mesmo ticker da interface. Ao concluir uma etapa, a seguinte entra na fila no horário da conclusão mesmo quando o operador continua na mesma tela; sua posição de fila continua independente desse horário.
+
+Ownership e integrações não mudaram: as etapas e seus horários continuam na preferência local de produção; o status e seu SLA continuam no pedido Food local. Nenhum contrato de produção ou sincronização entre aparelhos é alegado.
+
+Validação: suíte Food completa 165/165; smoke Chrome 23/23 cenários, incluindo fila, telas individuais, configuração de pizzaiolo solo e layouts de telefone/notebook. Testes cobrem relógio em espera/execução e a nova entrada na etapa seguinte. `node --check` e `git diff --check` aprovados.
+
+## Iteração — integridade do editor de fichas técnicas (2026-10-27)
+
+O Cardápio agora desabilita em cada linha os ingredientes já usados nas outras linhas, mantendo disponível a escolha atual daquela linha. Trocar um ingrediente atualiza as opções e a unidade exibida nas demais áreas da ficha. Quantidades e escolhas não salvas são capturadas antes de adicionar ou remover linhas e durante a edição; os rerenders deixam de descartar o rascunho.
+
+Validação: teste de render confirma as opções bloqueadas e a escolha preservada; prova Chrome exercita editar a ficha Calabresa, alterar uma quantidade, adicionar, remover e trocar ingrediente sem salvar nem alterar o estado persistido. Suíte Food: 166/166; smoke Chrome: 24/24; `node --check` e `git diff --check` aprovados. A mudança atua na interface local de prévia Food: não grava saldo/movimentação de Inventory, não cria contrato e não altera o owner da ficha técnica.
+
+## Iteração — coerência dos relógios da fila KDS de prévia (2026-10-27)
+
+Ao inicializar, o adapter alinha o relógio da etapa de tickets seed intactos com a criação do pedido quando uma fila antiga a antecede. A renovação de amostras expiradas agora protege qualquer ticket em que uma etapa foi iniciada, concluída ou passada: o pedido Food e sua linha do tempo KDS são preservados juntos. Estados de pedidos trabalhados continuam fora da renovação. Nenhum relógio de pedido real nem contrato de produção é alterado.
+
+Validação: testes cobrem o relógio anterior à criação, a renovação do lote, o deslocamento de pedido/ticket já passado e a preservação de pedidos trabalhados. Suíte Food: 168/168; smoke Chrome: 24/24; sintaxe e `git diff --check` aprovados. No host KDS, o pedido em foco e a etapa mostram 21 min, e os próximos tickets acompanham suas idades revisadas. Esse estado é a prévia local já existente.
 
