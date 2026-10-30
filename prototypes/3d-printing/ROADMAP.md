@@ -1,0 +1,205 @@
+# OrdaX 3D — plano de evolução
+
+### Escopo explícito do orçamento avulso (2026-10-26)
+
+Custos e orçamento permite selecionar se o peso e o tempo informados pertencem a uma peça ou ao lote/prato completo. A quantidade repete a base escolhida: não transforma o total do lote em custo unitário nem reparte automaticamente estatísticas agregadas. Ao importar um resultado do fatiador, a base fica vinculada à origem; para escolher outra, é preciso revisar manualmente peso e tempo, evitando reinterpretar silenciosamente uma estatística agregada. No fatiador, a peça única mantém custo e preço por peça; mesas com várias peças usam fatiamentos isolados para mostrar cada valor sem alterar o custo do prato original. A área avulsa permanece acessível separadamente e compartilha as mesmas premissas, histórico e exportação local.
+
+Verificação desta rodada: suíte OrdaX 3D 157/157; `node --check` e `git diff --check` aprovados. O host `:4263` serviu a calculadora atualizada e confirmou os controles de escopo/revisão por HTTP 200. O host não tem OrcaSlicer/perfis reais configurados; a fórmula por peça/lote foi coberta localmente, sem alegar fatiamento real ponta a ponta.
+
+### Visibilidade do orçamento técnico na fila (2026-10-26)
+
+A fila mantém o resumo do snapshot do job ao lado do nome, inclusive no layout móvel, onde os metadados de impressora/tempo ficam recolhidos. O texto distingue estimativa por peça, lote ou prato e identifica cálculos parciais quando a depreciação ainda não está configurada. Um dos registros de prévia local inclui um custo calculado a partir das premissas fictícias padrão, marcado como fictício pela própria origem do job. A fila só apresenta o snapshot salvo; não altera Vendas nem refaz a estimativa.
+
+Validação: suíte OrdaX 3D 155/155; `node --check` dos módulos alterados e `git diff --check` aprovados. No host `:4263`, a fila carregou sem erros; o navegador já tinha jobs locais persistidos sem snapshots de custo e estes foram preservados. Os testes unitários cobrem escopo, valores unitários/totais e estimativa parcial. O OrcaSlicer não está configurado neste host, então não houve fatiamento real.
+
+### Calculadora técnica e orçamento por peça — validação local (2026-10-26)
+
+O orçamento avulso calcula peso, tempo, material, quantidade e impressora, incluindo perdas, energia, depreciação, manutenção, custos da máquina, mão de obra, preparação/acabamento, embalagem, taxas e frete informados. Mostra custo, preço mínimo sem lucro e preço de referência por markup ou margem; o histórico e o CSV mantêm a origem dos dados. No Preview, uma peça única recebe custo direto das estatísticas do fatiador. Em mesas com vários objetos, cada linha usa um fatiamento isolado para estimar o cenário de imprimir aquela peça sozinha; o tempo/custo do prato compartilhado não é rateado. Os G-codes auxiliares são descartados e o G-code original do prato permanece intacto.
+
+No host local `:4235`, conferi sem salvar um orçamento de 28,6 g, 2,5 h, PLA, aquisição de R$ 3.000, residual de R$ 500 e vida útil de 6.000 h: custo R$ 5,03, referência R$ 6,79 e resultado estimado R$ 1,76. Restaurei as premissas iniciais e deixei o formulário sem esses valores. Suíte OrdaX 3D: 153/153; `node --check` e `git diff --check` aprovados. Este host não tem OrcaSlicer/perfis reais configurados; não há validação E2E de fatiamento nesta rodada. Custos, preços de material e histórico continuam locais; Vendas, Inventory e Finance mantêm seus owners.
+
+### Integridade da quantidade no orçamento técnico (2026-10-26)
+
+O campo de quantidade agora usa a mesma normalização do domínio de custos e retorna para um inteiro entre 1 e 100.000 ao sair do campo. Isso evita que o orçamento calcule uma quantidade diferente da exibida, inclusive enquanto peso e tempo ainda estão em branco. Verificação: 150/150 testes OrdaX 3D, `node --check` em 81 módulos e `git diff --check` aprovados. No host isolado `:4448`, confirmei 2,6 → 3 e 0 → 1 na tela; nenhum orçamento foi salvo. O fatiamento real segue condicionado ao OrcaSlicer e aos perfis locais disponíveis.
+
+
+### Validação da calculadora no host e perfil ao abrir orçamento (2026-10-26)
+
+Ao carregar um orçamento de uma peça fatiada, a calculadora também atualiza os campos visíveis com as premissas da impressora vinculada, mantendo tela e fórmula no mesmo perfil. No host local isolado `:4448`, a entrada manual de 28,6 g, 2,5 h, PLA a R$ 119,90/kg e 8% de perda exibiu R$ 3,99 de custo parcial e R$ 5,38 de referência por peça. Com 3 unidades, exibiu 92,7 g, 7,50 h de máquina, R$ 11,97 de custo e R$ 16,15 de referência no lote. Não salvei o orçamento. Suíte OrdaX 3D: 149/149; `node --check` em 42 módulos e `git diff --check` aprovados. O host não tem OrcaSlicer/perfis de fatiamento reais configurados, então este aceite cobre o orçamento avulso, não o E2E de fatiamento.
+
+### Atualização — preço de equilíbrio e recálculo por peça (2026-10-26)
+
+A calculadora técnica passou a separar o custo de fabricação, o preço mínimo sem lucro (incluindo taxas percentuais e custos fixos/frete rateados pela quantidade) e o preço de referência com markup ou margem. O Preview exibe custo, preço mínimo e referência; cada peça fatiada individualmente usa as premissas atuais compartilhadas da calculadora, sem refatiar para atualizar material, impressora ou formação de preço. O acompanhamento contínuo de mão de obra começa em 0%; preparação e acabamento continuam configuráveis. O cálculo avulso aceita peso, tempo, material, quantidade, impressora e custos operacionais; salvar/exportar segue separado da venda.
+
+Validação local: 149/149 testes OrdaX 3D aprovados; node --check nos 81 módulos e git diff --check aprovados. No host isolado :4351, a amostra de 3 peças (28,6 g e 2,5 h por peça) exibiu R$ 8,76 de custo, R$ 22,07 de preço mínimo, R$ 29,79 de referência por peça e R$ 66,20/R$ 89,37 para o lote. A amostra não foi salva. OrcaSlicer e perfis reais não estão configurados aqui, portanto o fatiamento real continua sem E2E.
+
+
+### Correção local — atualizar orçamento ao trocar material (2026-10-26)
+
+Ao escolher outro material no orçamento, o preço local por kg já era carregado no formulário, mas os custos e o preço de referência permaneciam com o cálculo anterior até outra edição. A seleção agora recalcula imediatamente a estimativa com a premissa daquele material. O preço continua sendo uma referência local informada pelo operador; Inventory segue como owner de saldo e movimentações.
+
+Validação: suíte OrdaX 3D 146/146; `node --check` e `git diff --check` aprovados. No host temporário isolado `:4338`, 100 g e 1 h com PETG a R$ 250/kg exibiram R$ 27,00 de material; ao trocar para PLA a R$ 119,90/kg, sem editar outro campo, o painel passou imediatamente a R$ 12,95 de material e R$ 38,06 de custo. Não salvei orçamento; fechei a aba e encerrei o host de teste. O fatiador real ainda depende de OrcaSlicer e perfis locais.
+
+### Correção local — preservar proveniência na exportação do orçamento (2026-10-26)
+
+O CSV agora registra se peso e tempo vieram de entrada manual ou de estatísticas do fatiador, se o cálculo representa uma peça ou um prato completo e, quando houver, o motor e sua versão. Isso mantém a origem do orçamento visível quando o arquivo é revisado fora do app.
+
+Validação: suíte OrdaX 3D 146/146; `node --check` e `git diff --check` aprovados. OrcaSlicer não está configurado neste host; o caminho de fatiamento real permanece pendente de E2E.
+
+### Incremento local — orçamento claro por peça, prato e lote (2026-10-26)
+
+O orçamento avulso passa a mostrar a origem dos dados, o custo e resultado por unidade-base, o total de filamento com a perda configurada, as horas totais de máquina, as taxas variáveis somadas para o lote e o lucro estimado por unidade e no lote. Os rótulos acompanham o escopo (peça ou prato), e o tempo manual explica o uso de horas decimais. O histórico local pode ser expandido para revisar material, impressora, parâmetros, composição, preço e resultado usados naquele orçamento; o CSV inclui premissas e separa valores unitários e do lote. A prévia do fatiador continua calculando custo/preço por peça a partir dos fatiamentos individuais reais, sem ratear o total da mesa.
+
+Validação: suíte OrdaX 3D 146/146; `node --check` e `git diff --check` aprovados. No host local `:4336`, 3 peças com 28,6 g e 2,5 h por peça mostraram 92,7 g com perda, 7,50 h de máquina, custo R$ 66,49 por peça e R$ 199,47 no lote; sem taxas, preço de referência R$ 89,76 por peça e R$ 269,28 no lote. No host temporário isolado `:4337`, confirmei taxas de 10% + 5% totalizando R$ 47,52 para três unidades e conferi a memória completa depois de salvar. A amostra não foi salva no host `:4336`. OrcaSlicer e perfis reais não estão configurados aqui, então o vínculo com estatísticas de um fatiamento real continua sem validação E2E. As estimativas e o histórico permanecem locais; não criam preço aprovado por Vendas, movimentação de Inventory, cobrança ou lançamento financeiro.
+
+### Incremento local — orçamento individual automático após fatiar (2026-10-26)
+
+Quando um fatiamento real contém mais de uma peça, o Preview agora inicia os fatiamentos individuais necessários para mostrar custo e preço de referência por objeto. O cálculo usa peso e duração reais de cada execução isolada; o resultado agregado do prato permanece separado, e os G-codes auxiliares são descartados. O servidor remoto continua exigindo confirmação específica antes de receber cada lote. O app processa até 20 peças por rodada, mantém o cancelamento disponível e deixa as demais ou as peças sem estatísticas para uma nova rodada manual. A calculadora independente segue aceitando peso e tempo manuais ou dados do último fatiamento, com material, energia, depreciação, manutenção, mão de obra, taxas e markup/margem.
+
+Validação desta rodada: suíte OrdaX 3D 146/146; `node --check` nos módulos alterados e `git diff --check` aprovados. No host local `http://127.0.0.1:4324/?area=costs`, conferi o formulário e o cálculo com 28,6 g, 2,6 h, aquisição de R$ 2.000 e residual de R$ 500: custo R$ 69,39 e preço de referência R$ 93,68. Restaurei as premissas originais e não salvei orçamento. O OrcaSlicer/perfis não estão configurados, portanto a execução automática de custos por peça ainda depende de validação com o motor real. Dados de custo seguem locais e não criam pedido, movimento de Inventory, lançamento financeiro ou preço comercial aprovado.
+
+### Incremento local — visibilidade de custo por peça no Preview (2026-10-26)
+
+Depois do fatiamento de uma mesa múltipla, o Preview agora deixa visível a lista de objetos e o estado individual de cada peça, mesmo antes do cálculo. A ação explicita que executará fatiamentos isolados; cada linha passa de pendente para calculada ou sem estatísticas, mostrando custo e preço de referência por unidade quando o Orca informar peso e duração válidos. O total agregado do prato continua identificado como total, sem rateio artificial. O orçamento avulso segue separado no módulo Custos e orçamento, preenchido manualmente ou com estatísticas de um fatiamento real.
+
+Validação: suíte OrdaX 3D 145/145; `node --check` e `git diff --check` aprovados. No host local `:4324`, o formulário avulso calculou uma amostra digitada de 28,6 g e 2,6 h, exibindo custo técnico de R$ 69,00 e preço de referência de R$ 93,15; não salvei o orçamento. O host não tem OrcaSlicer/perfis configurados, então não houve fatiamento real nem prova de custo por objeto nesta rodada. Os dados de custos continuam locais; Inventory, Vendas e Finance não foram alterados.
+
+### Incremento local — custo individual de cada peça em pratos múltiplos (2026-10-26)
+
+O Preview já mostra custo total quando o motor retorna estatísticas agregadas do prato. Agora, **Calcular/recalcular peças** permite calcular cada modelo sem ratear esse total: o app envia cada geometria individual transformada ao mesmo serviço/perfil, em lotes de até 20, calcula pelo peso e duração retornados, e descarta esses G-codes auxiliares. O G-code original do prato não é alterado. Cada linha abre o orçamento técnico preenchido para revisão e salvamento; o orçamento manual/avulso continua disponível. Mudanças de perfil ou geometria invalidam resultados anteriores.
+
+No destino servidor, cada rodada apresenta uma confirmação que identifica o host e a quantidade de peças antes de enviar as malhas individuais. A lista e o histórico continuam locais; não criam pedido comercial, aprovação de preço, apuração fiscal ou movimentação de Inventory. A integração de Space, Vendas, Finance, Files e Inventory permanece pendente dos contratos públicos dos owners.
+
+Verificação desta rodada: `node --test prototypes/3d-printing/tests/*.test.mjs` (145/145), `node --check` nos módulos alterados e `git diff --check` aprovados. O host local em `http://127.0.0.1:4316/` serviu a entrada, o novo módulo de seleção e as duas telas com HTTP 200. O host precisa do OrcaSlicer/perfis para executar o fatiamento individual; sem esse serviço real, a tela de orçamento avulso continua aceitando dados manuais e a lista de peças não é simulada.
+
+### Incremento local — premissas de custo por impressora (2026-10-26)
+
+A calculadora agora mantém perfis locais de custo para cada impressora nomeada. Potência, valor de aquisição, residual, vida útil, manutenção e custo horário da máquina podem variar por impressora; tarifa de energia, mão de obra, acabamento, perdas, embalagem, impostos e taxas continuam como premissas gerais da oficina. A estimativa automática do fatiador usa o perfil da impressora selecionada e o preço local do material, e o orçamento independente mantém os mesmos campos editáveis, histórico e exportação CSV. Isso continua sendo uma referência técnica local, não preço comercial aprovado nem integração com Inventory/Finance.
+
+O resultado de um objeto único segue exibindo custo e preço de referência por peça no Preview. Para pratos com vários objetos, o app conserva o custo/preço total do prato enquanto o motor só fornecer estatísticas agregadas; não divide peso nem duração para inventar valores unitários.
+
+`node --test prototypes/3d-printing/tests/*.test.mjs`: 142/142; `node --check` nos módulos alterados e `git diff --check` aprovados. O host local em `http://127.0.0.1:4315/` abriu Custos e orçamento com seleção de impressora e parâmetros próprios por máquina. OrcaSlicer e perfis reais continuam ausentes neste host, portanto não houve fatiamento E2E.
+
+### Incremento local — fluxo direto de orçamento após fatiar (2026-10-26)
+
+O resultado real do último fatiamento continua alimentando o custo e o preço de referência no Preview. O botão agora abre Custos e orçamento já carregando nome, material, impressora, peso e duração, para o usuário revisar premissas, quantidade e salvar/exportar o cálculo separado. O serviço também conserva quantos objetos compunham o prato. Quando o motor só informa estatísticas agregadas, o app mantém o orçamento como total do prato e explica que não há custo individual por objeto; não divide peso/tempo nem apresenta uma média como dado do Orca. A estimativa de um objeto único segue por peça. Isso não cria pedido comercial, preço aprovado, lançamento financeiro ou movimentação de Inventory.
+
+`node --test prototypes/3d-printing/tests/*.test.mjs`: 140 testes aprovados; `node --check` nos quatro módulos alterados e `git diff --check` aprovados. A instalação do OrcaSlicer/perfis não está configurada neste host, então o fatiamento com motor real segue sem validação local. O adapter ainda recebe estatísticas agregadas do prato; quando o OrcaSlicer e perfis reais estiverem configurados, o fluxo de fatiamentos isolados estima cada peça impressa sozinha e mantém o total do prato sem rateio.
+
+### Incremento local — orçamento de fabricação conectado ao fatiador (2026-10-26)
+
+O módulo Custos e orçamento aceita peso, duração, material, quantidade e impressora manualmente, ou carrega as estatísticas reais do último fatiamento. O cálculo reúne preço do material por perfil informado, perda, energia por potência/tarifa, depreciação por aquisição/residual/vida produtiva, manutenção, custo horário da máquina, tempo de operador, preparação, acabamento, embalagem e outros custos. A formação do preço permite markup ou margem alvo, tributos e taxas variáveis, taxa fixa por pedido e frete absorvido; bloqueia preços quando a margem mais as taxas tornam a fórmula inviável. Histórico, premissas por material e CSV são locais. O fatiador exibe custo/preço da peça única e grava um snapshot técnico opcional na fila; em pratos com mais de um objeto, exibe o total do prato porque o motor disponível não retorna custos por objeto.
+
+Testes de domínio cobrem fórmulas, taxas, arredondamento de premissas, preços locais por material, entradas inválidas e snapshot do job. Suíte OrdaX 3D: 139 testes aprovados; nenhuma integração de Vendas, Finance, Inventory, Space ou motor foi inventada. A instalação OrcaSlicer/perfis não está configurada neste host, então o caminho automático foi validado com dados de serviço e montagem, mas ainda depende de um fatiamento real para E2E.
+
+### Incremento local — integridade das estimativas dos jobs (2026-10-25)
+
+Ao adicionar um resultado de fatiamento à fila técnica, `Number(null)` convertia estatísticas ausentes do motor em zero; o fallback de duração também interpretava texto ausente como zero. A aplicação agora preserva tempo e gramas ausentes ou inválidos como desconhecidos, e o domínio não atribui duração zero a jobs sem valor legado. A fila e Materiais continuam lendo o mesmo SSOT local de jobs. `node --test prototypes/3d-printing/tests/*.test.mjs`: 120 aprovados; `node --check` dos módulos alterados e `git diff --check`: aprovados. O host local em `http://127.0.0.1:4304/?area=slicing` carregou o módulo e manteve Fatiar bloqueado com aviso correto; este ambiente não tem OrcaSlicer/perfis configurados, então o fatiamento real segue sem validação nesta máquina.
+
+### Incremento local — enquadramento do Visualizador G-code (2026-10-26)
+
+O canvas do Visualizador somava a altura completa da mesa à origem vertical já centralizada, deslocando os trajetos e podendo cortá-los. Além disso, o host montava todas as áreas enquanto ocultas, e o canvas G-code tentava calcular a mesa com dimensão zero, impedindo o shell de iniciar. O desenho agora ignora viewports ocultos/pequenos, e a projeção é um helper próprio que mantém as proporções e enquadra a peça dentro do recuo da mesa. O host permite esse módulo pela allowlist explícita; `tests/viewport-geometry.test.mjs` cobre inicialização oculta, centralização, limites, proporção, vazio e coordenadas inválidas. A correção não altera o G-code, o fatiamento, hardware ou SSOT dos owners.
+
+### Incremento local — Visualizador compartilha a leitura de G-code (2026-10-26)
+
+O Visualizador usava um parser próprio limitado a G0/G1, separado do parser já usado no Prepare. Agora ambos usam `parseGcodePreview`, que conserva modos absoluto/relativo, unidades, G92 e a aproximação limitada dos arcos G2/G3 no plano XY. Os trajetos não interpretados são contados e explicados; Extrusão, Deslocamento e Temperatura programada agora selecionam de fato os modos de cor. O resumo lê tempo, temperatura, camada e unidade de filamento do arquivo, deixando unidade ausente como “Não informado”.
+
+Dois testes cobrem o resumo e a contagem de arcos omitidos; os testes existentes de arcos continuam exercitando centros I/J, R, voltas completas, planos, unidades e limites de tesselação. Suíte 3D: 122/122; `node --check` passou no parser, renderer e servidor; `git diff --check` passou. O host de branch `http://127.0.0.1:4306/?area=visualizador-gcode` montou o módulo no shell escuro, exibiu o resumo da amostra e confirmou que o seletor Temperatura programada atualiza a legenda. A amostra é apenas visual e não veio do OrcaSlicer; não houve teste de motor, hardware ou dados dos owners.
+
+### Incremento local — inspeção do percurso no Visualizador G-code (2026-10-26)
+
+O Visualizador agora permite escolher a camada pelo controle vertical e avançar horizontalmente pelos trechos já parseados do G-code. A posição do bico acompanha o último trecho visível e os trechos seguintes ficam esmaecidos, preservando o enquadramento completo da camada durante a inspeção. O controle usa o parser compartilhado com o Prepare e não altera o arquivo nem executa movimentos.
+
+Dois testes cobrem a seleção por camada, o ponto atual e limites do progresso. Suíte OrdaX 3D: 124/124; `node --check` nos módulos/testes alterados e `git diff --check` aprovados. A tela foi conferida no host do PR com os dois controles e o contador acessíveis. Não houve alteração de dados persistidos, owners, SSOT, motor, hardware ou elegibilidade de distribuição.
+
+## Princípio do produto
+
+Construir uma estação de trabalho 3D confiável: preparação e fatiamento com resultados produzidos por um motor real, configuração rastreável, validação antes da impressão e IA que explica o que sabe, mostra suas evidências e pede revisão antes de alterar o projeto. O Space é dono de contexto, identidade, autorização, composição, navegação e visão geral; OrdaX 3D é um único app vertical com módulos internos. O host atual é somente uma prévia local.
+
+## Owners e SSOT
+
+- Space/OrdaX OS: identidade, autorização, contexto, composição e visão geral. O contrato público de montagem do Space não está disponível para este protótipo.
+- OrdaX 3D: rascunho, parâmetros, resultados e jobs técnicos. O estado atual é local, não um provider de produção.
+- Vendas (`apps/sales/src/domain/orders.mjs`): pedido, cliente, itens, preço aprovado e estado comercial. OrdaX 3D não cria pedido.
+- Inventory (`apps/inventory/src/domain/movements.mjs`): bobinas, saldo, reserva e movimentações. OrdaX 3D só estima consumo e não grava estoque.
+- Files: armazenamento, compartilhamento e retenção dos arquivos. O protótipo usa File API local e transferência efêmera entre módulos.
+- Payments: cobrança/transação. Estimativa de fabricação não é pagamento.
+
+Os domínios de Vendas e Inventory neste repo ainda não oferecem providers públicos para esta integração. Contratos necessários e status por owner estão em [INTEGRATION-PORTS.md](./INTEGRATION-PORTS.md). Não criar adapters simulados como se fossem conexões prontas.
+
+## Etapas
+
+| Etapa | Resultado verificável | Estado |
+| --- | --- | --- |
+| 0. Base do app vertical e host | Uma entrada OrdaX 3D, onze módulos internos, uma navegação de app, job técnico compartilhado e adapters de desenvolvimento claramente locais. | Base consolidada nesta branch; Space Experience e owners ainda dependem de contratos públicos |
+| 1. Copiloto consultivo | Saída JSON estruturada, validação de esquema e limites no cliente, contexto tipado, sugestões revisáveis, sem execução implícita. | Implementado nesta branch; Groq só é ativado no host local e MCP/grants não estão conectados |
+| 2. Motor real | Integrar OrcaSlicer como primeiro adaptador local opcional; detectar versão, executar com ambiente mínimo e arquivos efêmeros, cancelar trabalhos e só exportar G-code gerado pelo engine. | Adaptador do host implementado; subprocesso recebe apenas variáveis de sistema permitidas e diretórios privados por job, mas continua com as permissões do usuário do host. Em Linux, o host lê os eventos JSON do `--pipe` e encaminha mensagem e percentual real do Orca para a interface; em Windows/macOS, mostra fases sem percentual porque o CLI upstream só implementa esse pipe no Linux. A interface oferece ajuste validado de paredes, camadas/espessura de casca superior e inferior, tipo/largura/distância do brim e posição da costura com herança do perfil, seleção explícita de superfície da mesa quando impressora e filamento a suportam, temperaturas de mesa herdadas do perfil, overrides globais de temperatura do bico limitados pela faixa do filamento e máximo da máquina, preenchimento, suportes e faixa da ventoinha. Aguarda instalação/perfis locais e E2E real. Escopo inicial: processo uniforme por mesa. |
+| 2b. Fatiamento web remoto | Usar a mesma interface no browser, com worker servidor autorizado, fila limitada, cancelamento, isolamento e limpeza de arquivos por job. | A porta do app diferencia dispositivo/servidor, identifica o destino e exige consentimento por trabalho; o pedido remoto envia somente STL preparada, parâmetros e IDs remapeados. O host atual continua loopback local e não existe worker remoto implantado. O fluxo, owners, contratos necessários e aceite estão em [WEB-SLICER-ARCHITECTURE.md](./WEB-SLICER-ARCHITECTURE.md). |
+| 3. Perfis e compatibilidade | Catálogo de impressoras, bicos e materiais com origem/licença/versão, importação dos formatos upstream, validação de limites e combinação compatível antes de fatiar. Substituir referências visuais atuais por perfis selecionáveis com proveniência. | Parcial: o host aceita catálogos locais de até 32 JSON por tipo, produz IDs vinculados ao conteúdo, oculta caminhos locais e deixa selecionar máquina/processo/filamento. A cadeia `inherits` é resolvida a partir do `resources/profiles` instalado ou dos pais no catálogo, com mesclagem pai→filho para compatibilidade e valores do CLI; cadeias ausentes, ambíguas e cíclicas bloqueiam o perfil. App e host conferem `compatible_printers` e `compatible_prints`; expressões ainda não avaliadas bloqueiam o job. Selecionar um processo aplica aos processos da mesa os valores reconhecidos pelo app. Perfis de máquina preservam `printable_area` e `bed_exclude_area`; a interface faz uma triagem conservadora pela caixa envolvente transformada de cada objeto. Linguagem de expressões, validação E2E com diferentes versões e matriz de compatibilidade continuam pendentes. |
+| 4. Projeto e geometria | Projetos reproduzíveis com arquivos/3MF, múltiplas placas, transformações e processos preservados; inspeção real da malha, unidades, reparos sugeridos e histórico de alterações. | Parcial: importação, matrizes 3MF Core convertidas e composição de itens preservada, leitura de ZIP64 dentro de 50 MB, edição local, área, incidência de arestas e links de vértices por coordenadas Float32 idênticas (até 100.000 faces por objeto); pacote `.ordax3d` guarda o STL/3MF original e configurações permitidas de processo, perfis e transformações, com caminhos limitados, limite de 51 MB e CRC32 conferido ao abrir. O rascunho agora associa configurações ao SHA-256 dos bytes originais, em vez de metadados que poderiam colidir entre modelos diferentes; o pacote portátil preserva essa identidade ao reabrir. Testes unitários cobrem round-trip STL/3MF, allowlist do rascunho, CRC, entradas extras, limite do pacote, identidade do conteúdo e atribuição completa de processos. E2E no host/browser atual confirmou importação de 3MF com duas peças, criação de dois processos, transformação individual, salvamento do `.ordax3d` e reabertura com camadas/processos e posição restaurados; matriz de navegadores e migração entre versões ainda precisam de E2E. Multi-placa, reparos, autointerseções, histórico de alterações, assinatura/confiança e inspeção topológica completa pendentes |
+| 5. Preview e análise de fabricação | Mostrar o G-code do motor por camada/tipo de extrusão; estatísticas reais, limites da máquina, conflitos, avisos de material e comparação antes/depois. Todo número derivado do resultado do engine deve identificar sua origem. | Parcial: preview lê movimentos lineares e arcos G2/G3 no plano XY com erro de corda limitado, além das estatísticas do OrcaSlicer para tempo, gramas, metros, camadas e tempo por tipo de extrusão quando emitido no JSON. Arcos fora de XY/helicoidais são sinalizados e não desenhados. O Prepare agora compara caixas envolventes 3D das peças após transformações e apresenta pares que podem se sobrepor, sem bloquear o job nem afirmar colisão da malha; conferir no OrcaSlicer continua obrigatório. Análises geométricas profundas e validação E2E pendentes. |
+| 6. IA ligada ao trabalho real | Copiloto recebe dados derivados localmente da malha e do slicer, explica avisos, compara perfis, propõe calibrações e configurações com justificativa/confiança/evidências; aplica mudanças só após revisão e oferece desfazer. Envio de arquivos a provedores externos exige escolha explícita; análise local é preferida quando disponível. | Parcial: contexto inclui área triangulada local, diagnósticos parciais de incidência de arestas e conectividade dos links de vértices, além de resumo por peça limitado a 12 itens (peça selecionada primeiro, índice original preservado, sem nomes/IDs das peças e ordenação heurística sem escala de risco), candidatos de sobreposição entre caixas 3D identificados por índice de peça (sem transmitir nomes nem declarar colisões), catálogos compactados separados (até 24 por tipo, ativo priorizado), valores de processo após herança pai→filho, motor, versão e estatísticas de extrusão quando houver resultado; há um atalho para comparar opções. Sugestões de ajustes, tipo/ângulo/alcance de suportes automáticos, padrão de preenchimento, limites de ventoinha, transformações e IDs de perfis passam por validação de esquema, evidência e lista permitida que corresponde às opções enviadas; mudanças exigem revisão e podem ser desfeitas até a próxima edição. Expressões de compatibilidade, topologia profunda, calibração, suporte de MCP com grant e E2E com engine ainda pendentes. Arquivos e G-code não são enviados. |
+| 7. Impressoras e calibração | Conectar impressoras pelo gateway autorizado, acompanhar estado/fila e executar calibrações com confirmação explícita, limites de segurança e registro do resultado. | Pendente; não há controle de hardware neste app |
+| 8. Comunidade e distribuição | Projetos compartilháveis, perfis importáveis com procedência, extensões assinadas, compatibilidade entre Spaces, atualizações e Loja, respeitando licenças do motor e dos perfis. | Pendente |
+
+## Decisões técnicas e de confiança
+
+- OrcaSlicer é o primeiro motor por oferecer CLI, presets e estatísticas; a integração usa uma instalação local controlada pelo usuário. Não embutir ou redistribuir binário sem revisão de licença.
+- O adaptador carrega catálogos locais de até 32 perfis JSON por tipo, limita cada arquivo a 2 MB e cada catálogo a 16 MB e calcula IDs a partir do conteúdo. O navegador vê nomes e metadados, nunca caminhos do host. A seleção explícita de máquina, processo e filamento é resolvida contra a lista permitida pelo host antes de cada job. O adaptador transforma geometria e unidades no navegador e envia somente uma malha STL combinada ao host local. O CLI recebe overrides validados de camada, paredes, contagem/espessura mínima de cascas superior/inferior, tipo/largura/distância do brim, posição da costura, preenchimento e padrão de preenchimento, ativação, tipo, ângulo e alcance dos suportes, e faixa mínima/máxima da ventoinha de peça; o Orca ainda modula a velocidade do resfriamento dentro da faixa conforme regras do material e tempo de camada. O engine gera G-code e estatísticas. O G-code retorna ao navegador como arquivo e não fica arquivado no diretório temporário.
+- Não usar `--load-assemble-list` como base de suporte por peça até validar a versão exata instalada: existem relatos upstream de falha nessa modalidade e não há prova neste workspace de que o problema esteja resolvido na instalação do usuário. Por isso, enquanto o adapter só aceita processo uniforme, ele bloqueia combinações diferentes em vez de simular uma atribuição independente. Um único STL combinado preserva a geometria transformada, mas não as identidades/processos independentes dentro do slicer.
+- O host resolve cadeias de `inherits` a partir do diretório instalado `resources/profiles` (ou de pais incluídos no catálogo), mescla os JSONs do pai para o filho e usa esse perfil efetivo para a compatibilidade, valores da UI e CLI. Cadeias ausentes, ambíguas ou cíclicas bloqueiam a seleção. O host valida listas explícitas de compatibilidade; expressões não avaliadas bloqueiam o job. A validação efetiva ainda precisa ser confirmada por uma execução real do engine; a ausência do binário nesta máquina impede declarar E2E aprovada.
+- A área triangulada é a soma local das faces fornecidas, convertida para mm² e recalculada após as escalas globais/individuais. Faces coincidentes ou internas continuam contadas. A checagem de arestas compara coordenadas Float32 idênticas separadamente por objeto e limita a análise a 100.000 faces por objeto para manter memória previsível; pode ser parcial. Ela não detecta autointerseções, vértices não manifold, cavidades nem certifica watertightness ou imprimibilidade.
+- A prévia expõe estatísticas de fabricação extraídas do JSON oficial do motor. Tempo por tipo de extrusão, peso, metros e camadas não são preenchidos por aproximações da interface; quando não vierem no resultado, permanecem identificados como indisponíveis.
+- O host não deve criar G-code de demonstração, estimativas que pareçam resultados de fabricação ou ações ocultas. Ausência de engine/perfil compatível deve bloquear fatiamento e explicar o que falta.
+- A IA ajuda a interpretar contexto e propor mudanças; cálculos críticos, validações e aplicação de limites permanecem determinísticos no app/motor. Cada sugestão precisa indicar a que objeto/processo se aplica e permanecer revisável/desfazível.
+- Confiança da sugestão é uma avaliação declarada pela IA, não uma probabilidade calibrada. Os IDs citados são aceitos somente quando o dado correspondente foi incluído no contexto; isso melhora a rastreabilidade, mas não transforma uma inferência em diagnóstico do motor.
+- A integração Groq atual é apenas um adaptador local de desenvolvimento. Chaves e dados de produção pertencem ao serviço OrdaX Intelligence, não ao navegador nem ao bundle do app.
+
+### Incremento — preservar a origem das medidas do orçamento (2026-10-26)
+
+Editar nome, material, impressora ou quantidade mantém a procedência do peso/tempo importado do fatiador. Editar peso ou tempo diretamente muda a origem para manual, limpa a referência ao motor e conserva o escopo original (peça ou prato). O estado de resultado usa “Depreciação incluída” quando essa premissa está configurada, sem afirmar que os custos opcionais foram confirmados.
+
+Validação: suíte OrdaX 3D 153/153, `node --check` em 83 módulos e `git diff --check` aprovados.
+
+## Próximas entregas
+
+1. Ampliar a E2E do pacote `.ordax3d` para a matriz de navegadores suportados, atribuições inconsistentes e migração entre versões. O host/browser atual já validou o fluxo de download e reabertura de um 3MF com dois processos, transformação individual e altura 0,21 mm restauradas; testes unitários cobrem STL/3MF, allowlist, CRC inválido, entradas extras e limite máximo.
+2. Configurar o host Groq com uma instalação OrcaSlicer e catálogos de perfis reais exportados, preservando a chave Groq apenas na memória do processo.
+3. Executar o fluxo completo com modelo local: abrir projeto → validar geometria/área útil → aplicar transformações → fatiar → comparar preview e estatísticas com OrcaSlicer → exportar.
+4. Corrigir incompatibilidades encontradas e registrar a matriz validada de versões, formatos, settings e perfis.
+5. Investigar uma rota upstream estável para processos distintos por peça; habilitá-la somente depois de um E2E com configurações divergentes e comparação do G-code.
+6. Executar recomendações de perfis no OrcaSlicer real e validar combinações por versão; medir o resultado e explicar avisos a partir da saída oficial do motor.
+7. Expandir a análise local com detecção de autointerseções e reparos assistidos, documentando tolerâncias e memória; não transformar contagens de área/arestas em certificado de malha imprimível.
+8. Após promoção pelos owners OS/Platform, integrar o contrato público de identidade, Space, autorização, admissão e jobs para um worker web; implementar fila/progresso/cancelamento, isolamento e remoção verificável de temporários, observabilidade, implantação e E2E com OrcaSlicer licenciado e perfis rastreáveis. FAB-001 está atualmente `DEFERRED FOR EXECUTION`, e Operational Realtime continua como fundação pré-MVP; até os owners promoverem o escopo, manter o modo web remoto como contrato de host sem publicar endpoint ou fila próprios. O aceite completo está em [WEB-SLICER-ARCHITECTURE.md](./WEB-SLICER-ARCHITECTURE.md); revisar as obrigações AGPL-3.0 antes da distribuição.
+
+## Referências de integração
+
+- [OrcaSlicer CLI Mode](https://github.com/OrcaSlicer/OrcaSlicer/wiki/cli_mode)
+- [OrcaSlicer CLI Actions](https://github.com/OrcaSlicer/OrcaSlicer/wiki/cli_actions)
+- [OrcaSlicer CLI Misc](https://github.com/OrcaSlicer/OrcaSlicer/wiki/cli_misc)
+- [Implementação upstream do callback `--pipe` (Linux)](https://github.com/OrcaSlicer/OrcaSlicer/blob/main/src/OrcaSlicer.cpp)
+- [OrcaSlicer CLI Transform](https://github.com/OrcaSlicer/OrcaSlicer/wiki/cli_transform)
+- [OrcaSlicer Support settings](https://github.com/OrcaSlicer/OrcaSlicer/wiki/support_settings_support)
+- [OrcaSlicer Infill settings](https://github.com/OrcaSlicer/OrcaSlicer/wiki/strength_settings_infill)
+- [OrcaSlicer Top and Bottom Shells](https://github.com/OrcaSlicer/OrcaSlicer/wiki/strength_settings_top_bottom_shells)
+- [OrcaSlicer CLI assemble-list report #11588](https://github.com/OrcaSlicer/OrcaSlicer/issues/11588)
+- [OrcaSlicer CLI assemble-list report #6611](https://github.com/OrcaSlicer/OrcaSlicer/issues/6611)
+- [OrcaSlicer Import/Export and statistics](https://github.com/OrcaSlicer/OrcaSlicer/wiki/import_export)
+- [Repositório e licença do OrcaSlicer](https://github.com/OrcaSlicer/OrcaSlicer)
+
+### Incremento — valores de camada acessíveis no Visualizador G-code (2026-10-26)
+
+O seletor vertical apresenta as camadas como 1 a N e expõe o texto acessível “Camada N de M”, enquanto converte o valor para o índice interno do parser. O controle continua sincronizado com os botões de camada, e a inspeção dos trajetos permanece somente leitura. A suíte do OrdaX 3D passou com 126/126 testes; os módulos alterados passaram em node --check e git diff --check. No host da branch da PR, confirmei que Próxima camada altera o controle para valor 2 e o rótulo para “Camada 2 de 4”, e Camada anterior retorna a ambos para 1.
+
+### Incremento — inferência de camadas sem marcadores (2026-10-26)
+
+No Visualizador G-code, arquivos sem comentários de camada agora inferem avanço somente em movimentos com extrusão positiva. Z-hop, deslocamentos e retrações não criam camadas falsas; quando há marcadores explícitos `LAYER_CHANGE` ou `LAYER:`, eles continuam dirigindo a contagem. Duas regressões cobrem os dois modos. A suíte completa do OrdaX 3D no worktree da PR passou com 128/128 testes; `node --check` e `git diff --check` também passaram. No workflow 40274456096, o gate MVP passou e o workspace-boundary falhou por dois testes de Food, sem relação com esta mudança. A correção não altera jobs, hardware, owners ou integrações.
+### Correção de validação do botão fixo no orçamento (2026-10-26)
+
+O botão fixo “Salvar orçamento” acompanha a validação do formulário: fica desativado se faltarem peso/tempo ou se margem e taxas inviabilizarem o preço, com o motivo exposto no estado acessível. No host local isolado `:4310`, validei a entrada manual de 28,6 g e 2,5 h: custo estimado de R$ 5,03, incluindo R$ 1,04 de depreciação (aquisição R$ 3.000, residual R$ 500, vida útil 6.000 h), preço de referência de R$ 6,79 e resultado estimado de R$ 1,76. Uma combinação inválida de margem e taxas desativou salvar e exportar. Nenhum orçamento foi salvo. Suíte OrdaX 3D: 149/149; `node --check` e `git diff --check` aprovados. O host não tem OrcaSlicer nem perfis locais configurados; a validação real de fatiamento segue pendente.
+
+### Resultado estimado por peça, prato e job técnico (2026-10-26)
+
+O Preview agora mostra junto ao custo e ao preço mínimo/de referência o resultado estimado com as taxas configuradas, tanto para o prato quanto para cada peça fatiada isoladamente. O snapshot normalizado do job conserva os valores unitário e total para que a Fila também mostre o resultado esperado. O orçamento avulso continua cobrindo peso/tempo, material, impressora, perdas, energia, depreciação, manutenção, operação, acabamento, embalagem, taxas e markup/margem.
+
+Validação: suíte OrdaX 3D 157/157, módulos alterados passaram em `node --check`, `git diff --check` passou e o verificador MVP reconheceu os mesmos 20 alvos. No host local da branch, a entrada manual de 28,6 g e 2,5 h atualizou o cálculo para custo R$ 3,99, referência R$ 5,38 e resultado R$ 1,40; o orçamento não foi salvo. A depreciação ficou corretamente marcada como pendente porque o perfil da impressora não tinha aquisição/residual configurados. O host não encontrou motor Orca local, portanto não houve fatiamento real nesta conferência.

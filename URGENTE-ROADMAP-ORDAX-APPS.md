@@ -7,14 +7,20 @@ O produto deve retomar etapas limitadas sem depender de um turno ou da janela do
 ### Prioridade revisada: GitHub remoto antes de workspace local (2026-10-22)
 
 O proprietário definiu que a primeira etapa de uso deve começar por um projeto
-vinculado a um repositório GitHub remoto. A conversa do coordenador continua
-usando a API já existente; as conversas de trabalho continuam usando o executor
-ChatGPT já existente. O App pode guardar e encaminhar a URL canônica como
-referência, mas a API Groq não consulta arquivos GitHub e a URL não é evidência
-de leitura ou alteração. A tarefa enviada ao ChatGPT deve identificar o remoto
-e usar somente a integração GitHub realmente disponível naquela sessão; se ela
-não estiver conectada ou não tiver permissão, o trabalho deve parar e informar o
-bloqueio. Arquivos locais, Git local e Runtime passam para uma etapa posterior.
+vinculado a um repositório GitHub remoto. A conversa lógica principal do projeto
+usa o executor real do ChatGPT Web já pertencente ao Apps/Electron; várias
+conversas físicas do GPT continuam sendo uma única conversa lógica persistida no
+App. Groq/API é opcional: pode atuar em análise consultiva e só pode substituir
+uma mensagem GPT quando a checagem de saúde permitida prova que o envio não
+ocorreu. Entrega `submitted` ou `uncertain` nunca aciona fallback nem replay.
+
+O App pode guardar e encaminhar a URL canônica como referência, mas URL ou
+resposta textual não comprovam leitura/alteração. A tarefa enviada ao ChatGPT
+deve identificar o remoto e usar somente a integração GitHub realmente
+disponível naquela sessão; se ela não estiver conectada ou não tiver permissão,
+o trabalho deve parar e informar o bloqueio. O Host Node não possui o transporte
+GPT Web e não pode ser apresentado como prova desse fluxo. Arquivos locais, Git
+local e Runtime continuam na etapa posterior, pelos owners e grants existentes.
 
 Esta prioridade não autoriza criar OAuth, token store ou conector GitHub paralelo:
 acesso autenticado da aplicação precisa reutilizar um contrato público do owner
@@ -26,12 +32,53 @@ ou execução sem evidência.
 
 **Arquitetura final autorizada:** o OrdaX Orchestrator gerencia projetos reais, acompanha Git/alterações/testes e usa o GPT como ferramenta, sem duplicar Runtime. Para acesso local, consome capacidades tipadas do owner **ordax-runtime** e grants dos owners **ordax-platform/OS**. A ordem atual é remota primeiro, conforme a decisão de 2026-10-22 acima; binding local, watcher, executor de missão e autonomia permanecem fases posteriores, ainda não concluídas.
 
-**Primeiro gate atual:** criar/vincular URL GitHub remota, manter conversa pela API existente e encaminhar o destino às tarefas GPT sem inventar acesso ou efeito. A URL é só referência: Groq não lê GitHub. Integração GitHub autenticada do App depende do contrato público do Platform, sem OAuth ou token store duplicado. PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) foi mesclada; preservar Flow/Grátis e envio VESTE incerto. Fontes:
+**Primeiro gate atual:** criar/vincular URL GitHub remota, manter a conversa principal no executor GPT Web já existente e encaminhar o destino remoto sem inventar acesso ou efeito. Groq permanece opcional e não lê GitHub. Integração GitHub autenticada do App depende do contrato público do Platform, sem OAuth ou token store duplicado. PR Apps [#268](https://github.com/ordaxsystems/ordax-apps/pull/268) foi mesclada; preservar Flow/Grátis e envio VESTE incerto. Fontes:
 [RFC](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-ARCHITECTURE.md),
 [plano M0–M7](prototypes/ordax-orchestrator/docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md),
 [handoff Codex](prototypes/ordax-orchestrator/CODEX-HANDOFF.md),
 [aceite VESTE](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
 Os incrementos de chat/alpha.10 descritos abaixo são **histórico e fundação**, não conclusão dessa arquitetura.
+
+## Prova real de continuidade ChatGPT Web — 2026-10-25
+
+Em Electron de desenvolvimento da worktree e perfil staged isolado, o smoke
+`live-ui-continuity-smoke.cjs` enviou duas mensagens reais ao ChatGPT Web, girou
+para um segundo segmento e comprovou recuperação de um marcador via checkpoint
+local do mesmo Task. Após fechar/reabrir o candidato, a sessão, o Task, os dois
+segmentos e as quatro mensagens foram recuperados; `SQLite quick_check=ok`.
+`npm run validate` terminou com 471/471 testes. O ciclo também corrigiu a criação
+não serializada de janelas Electron e a seleção ambígua do alvo CDP.
+
+Limites: sessão observada como `session_present`, identidade/conta `not_verified`;
+nenhuma troca real de conta, projeto VESTE, GitHub, workspace Runtime/Platform,
+site, pacote instalável ou execução 24 h foi comprovada. Esta evidência é um gate
+do transporte Web experimental em Electron; **não** fecha R0 remoto nem o aceite
+de VESTE. Detalhes e IDs estão no [handoff](prototypes/ordax-orchestrator/CODEX-HANDOFF.md)
+e no [roteiro E2E](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md).
+
+## Snapshot local para handoff entre conversas — 2026-10-25
+
+O Orchestrator agora expõe `Store.buildTaskHandoffSnapshot(taskId, {request})`,
+que projeta do SQLite vigente um arquivo textual `.txt` determinístico em
+memória: checkpoint, todas as memórias ativas, até oito mensagens históricas
+selecionadas dentro da Task, IDs de origem e hash SHA-256. Memórias arquivadas,
+conteúdo do transcript completo e fontes de outra Task não são exportados; o
+limite de 1 MB falha fechado sem truncar. O manifesto contém somente IDs,
+versão, hash e tamanho, e indica `deliveryState=not_attached`.
+
+`npm run validate` passou com **511/511 testes**, incluindo três novos testes de
+determinismo, escopo de fontes, isolamento entre Tasks e limite de tamanho. O
+E2E GPT Web 9+1 registrado em [VESTE E2E 3.4](prototypes/ordax-orchestrator/docs/VESTE-PROJECT-FIRST-E2E.md)
+continuou sem anexo: o contexto inline foi suficiente e não demonstrou benefício
+de arquivo.
+
+Limite: o snapshot existe apenas como valor em memória retornado pelo Store; o
+Lab ainda não grava nem anexa o arquivo, não observa upload na conversa GPT e não
+vincula uma confirmação a um Run. O próximo aceite de arquivo deve comparar
+recuperação seletiva, pacote inline e `.txt` com a mesma pergunta e gabarito;
+depois, um E2E deve comprovar upload observável e hash/version/source ligados ao
+Run. A identidade da conta GPT permanece `not_verified`; nenhuma autonomia 24 h
+foi comprovada.
 
 ---
 
@@ -736,295 +783,9 @@ O workspace avançado Studio foi preservado; sua adoção completa e o host Wind
 
 ### OrdaX Food — linha do tempo da prévia local (2026-10-26)
 
-- Amostras de pedidos que ficavam abertas por dias no navegador mantêm uma linha do tempo coerente ao reabrir o host: quando a atividade seed mais antiga passa de duas horas, o adapter local ajusta em lote somente pedidos seed sem transições próprias e suas comandas abertas associadas.
+- Amostras de pedidos que ficavam abertas por dias no navegador agora mantêm uma linha do tempo coerente ao reabrir o host: após 12 horas, o adapter local ajusta somente timestamps de pedidos seed sem transições próprias e da comanda aberta associada.
 - Estados, histórico editado pela pessoa, diário de idempotência e dados não pertencentes à amostra são preservados. Esse ajuste é local à prévia; não atualiza pedidos reais, Sales, Inventory ou Space.
 - `node --test apps/food-pizzeria/tests/*.test.mjs`: 72/72; `node --check` e `git diff --check` aprovados.
 - Smoke no host local da branch em `http://127.0.0.1:4258/apps/food-pizzeria/`: a interface montou e a amostra exibiu horários atuais. Nenhuma transição foi executada.
 - Nenhuma autoridade comercial ou elegibilidade de distribuição foi alterada; a transformação só ocorre no adapter `browser-local-preview`.
 
-### OrdaX Food — taxa de entrega como preferência local da prévia (2026-10-26)
-
-- O estado de domínio Food permanece em `ordax.food-pizzeria-state/6`. A taxa padrão configurável pertence às preferências locais do browser (`browser-state/3`); cada pedido de entrega continua guardando a taxa explicitamente aplicada, sem reescrever pedidos antigos.
-- A migração recupera a taxa dos registros de prévia v7, remove essa preferência do documento Food e preserva pedidos, revisão, histórico e journal de idempotência. A configuração informa que é local e não calcula distância.
-- Verificação: suíte Food 79/79; `node --check` e `git diff --check` aprovados. Na PR #359, `catalog-candidate`, `mvp-app-functional-minimum`, `workspace-boundary` e `food-real-postgres` concluíram com sucesso. O host local `:4259` respondeu HTTP 200.
-- A taxa padrão ainda não é persistida por um provider Food centralizado; integração real com Space, Vendas, Inventory e Payments continua condicionada aos contratos dos owners. Nenhuma movimentação de estoque, pagamento ou elegibilidade de distribuição foi criada.
-
-### Food — separar formulário da preferência local de entrega (2026-10-26)
-
-- A taxa padrão local ganhou formulário próprio, separado das configurações operacionais Food. Enter no campo e o botão salvam a preferência deste navegador sem submeter o nome da loja, cardápio ou mesas.
-- Validação no host isolado `:4262`: Enter salvou R$ 8,25 e mostrou confirmação; em um pedido local de teste, selecionar Entrega carregou R$ 8,25 e atualizou o total de R$ 49,90 para R$ 58,15. Nenhum pedido foi registrado; o host usa armazenamento local independente.
-- Suíte Food: 79/79; `node --check` nos módulos da interface e `git diff --check` aprovados. A separação preserva Food como owner de sua configuração operacional; taxa default da prévia permanece local, e a taxa efetivamente escolhida fica congelada em cada pedido local.
-
-### Space Pizzaria / OrdaX Food — composição das configurações (2026-10-26)
-
-- A tela de Configurações usa o espaço horizontal do host: regras operacionais do Food no painel principal; preferência local de entrega e capacidades externas pendentes numa coluna lateral. Em telas menores, os painéis voltam a uma coluna, mantendo a ordem acessível.
-- Não cria outro Space, dashboard ou provider. A prévia continua usando dados locais; o Space real conserva navegação, contexto e autorização pelos contratos do host.
-- Validação: suíte Food 80/80; `node --check` dos arquivos alterados e `git diff --check` aprovados. No host local, confirmei a disposição em duas colunas e o formulário separado da taxa local; nenhuma preferência ou pedido foi alterado durante a conferência.
-
-### Space Pizzaria / OrdaX Food — KDS e cronologia da prévia (2026-10-26)
-
-- Cards do KDS removem a repetição do nome da mesa quando o pedido fictício usa esse mesmo rótulo como nome do cliente; quando o nome é diferente, mostram cliente e mesa sem perder contexto.
-- A prévia atualiza em lote todos os pedidos seed ainda intocados quando a atividade seed mais antiga passa de duas horas, evitando que a fila envelheça parcialmente; histórico e pedidos com transições próprias permanecem preservados.
-- Regressões cobrem as duas formas de identidade de mesa e o refresh em lote. Suíte Food: 81/81; `node --check` dos módulos alterados e `git diff --check` aprovados.
-- Conferência visual no host `:4259` confirmou o nome da mesa sem duplicação no modo incorporado. Nenhuma transição de pedido ou preferência foi feita durante a conferência; os dados continuam locais e fictícios.
-
-### Space Pizzaria / OrdaX Food — presença explícita na fila KDS (2026-10-26)
-
-- A tela KDS troca “Turno aberto” por uma contagem derivada do snapshot local. O preview não possui provider de turnos nem feed realtime; a interface não sugere esses estados.
-- Regressão em `tests/kitchen-page.test.mjs` cobre o total de pedidos em andamento, inclusive os que estão na expedição. Suíte Food: 82/82 nos worktrees da PR e do host; sintaxe e `git diff --check` aprovados.
-- A prévia continua com dados fictícios do browser. Nenhuma alteração em pedidos, Payments, Inventory, contratos do Space ou elegibilidade de distribuição.
-
-### Space Pizzaria / OrdaX Food — modos de fila e orientação do pizzaiolo solo (2026-10-27)
-
-- O fluxo da cozinha permite trabalhar pedido a pedido ou por função em lote. O preset de um pizzaiolo mantém pedido a pedido; a linha de produção começa em lote. A escolha e as tarefas continuam nas preferências locais de prévia, sem criar um estado operacional paralelo.
-- Corrigida a instrução da tela solo para acompanhar a escolha: por pedido informa que a pessoa conclui o preparo e envia ao forno; em lote informa que prepara todos os pedidos antes de avançar ao forno.
-- `node --test apps/food-pizzeria/tests/*.test.mjs`: 124/124; sintaxe dos módulos alterados e `git diff --check` aprovados. A rota local solo em lote mostrou a orientação correspondente. CI da PR #359 no head `8115347`: 4/4 verificações aprovadas.
-- A fila entre aparelhos ainda depende do contrato público Food de produção em tempo real; esta prévia não sincroniza tarefas, não altera pagamentos/Inventory e não muda elegibilidade de distribuição.
-
-### Space Pizzaria / OrdaX Food — itens adicionais no PDV da prévia (2026-10-27)
-
-- A tela do PDV permite adicionar bebidas, combos e acompanhamentos junto com pizzas; nome, categoria, quantidade e preço são congelados no pedido local e aparecem no histórico e no KDS. Produtos não são processados como pizza nem geram proposta de consumo de ficha.
-- O estado do preview é v7 e migra v6 preservando histórico. Como o owner SQL ainda valida v6, Food Order Core recusa o v7 antes da gravação persistente. O command schema interno é `/2`; a fixture local não substitui o catálogo mestre.
-- Falta publicar/homologar Catálogo e atualizar o contrato Food SQL antes de integrar pedidos com produtos. Nenhuma integração com Sales, Payments, Inventory ou Space foi declarada.
-- Suíte Food: 130/130; `git diff --check` aprovado. Estado remoto e CI serão atualizados nesta rodada pela PR #359, mantida em rascunho.
-
-### Space Pizzaria / OrdaX Food — PDV separado do histórico (2026-10-27)
-
-- A criação de pedidos tem módulo `PDV`; `Pedidos` foca em histórico, pesquisa e filtros. Ambos usam o mesmo estado/carrinho e os comandos Food; o formulário também é reutilizado no fluxo de comanda. O preview incorporado abre `view=pos` diretamente e mantém apresentação sem o shell duplicado.
-- A UI e as interações estruturais do PDV foram conferidas no host local. Suíte Food: 131/131; `git diff --check` e sintaxe aprovados. O runner Chrome local não encontrou Chrome/Chromium instalado; a PR #359 continua em rascunho e será atualizada para CI remoto.
-- Catálogo adicional segue fixture local; owner Catálogo e persistência Food v7 ainda não publicados. Totais não confirmam pagamento e não foram simuladas integrações com Space, Payments ou Inventory.
-
-### Space Pizzaria / OrdaX Food — cancelar somente na gestão de Pedidos (2026-10-27)
-
-- O cartão compartilhado agora recebe permissão explícita para expor cancelamento: Pedidos habilita para pedidos elegíveis; Delivery e KDS não mostram a ação. Cancelar continua exigindo motivo e é uma transição do domínio Food.
-- A interface não cria papel admin local. Grant por ação e identidade do operador seguem dependentes do host Identity/Space; visibilidade de botão não é autorização.
-- Testes direcionados: 10/10; suíte completa: 133/133; `node --check` e `git diff --check` aprovados. A PR #359 será atualizada nesta rodada e permanece em rascunho.
-
-### Space Pizzaria / OrdaX Food — autoridade dos botões por módulo (2026-10-27)
-
-- Pedidos fica como histórico/gestão e cancelamento elegível, sem transicionar preparo ou expedição. KDS controla etapas de produção; Delivery recebe controles apenas para saída e conclusão de pedidos em entrega.
-- Regressão no renderizador compartilhado exige permissão explícita para mostrar ações de status; Delivery e Pedidos têm testes independentes. Suíte Food: 134/134; `node --check` e `git diff --check` aprovados. PR #359 foi atualizada no commit `3a6dc74`; seus quatro checks passaram, e ela segue em rascunho.
-
-### Space Pizzaria / OrdaX Food — encerrar mesa não confirma pagamento (2026-10-27)
-
-- A tela de salão deixa explícito que o total é consumo calculado dos pedidos não cancelados e que encerrar a comanda libera a mesa sem registrar recebimento.
-- Food continua sem estado de pagamento paralelo; confirmação fica com Payments. Suíte Food: 135/135; a PR #359 foi atualizada nesta rodada e segue em rascunho.
-
-### Space Pizzaria / OrdaX Food — pré-preparo calculado pelas fichas (2026-10-27)
-
-- O Cardápio consolida os insumos necessários por tamanho e quantidade de cada sabor, reutilizando o cálculo de consumo já adotado pelos pedidos. A projeção não consulta saldos nem grava movimentações no Inventory.
-- Suíte Food: 138/138; o planejador valida tamanhos, sabores, fichas e limite do lote. A PR #359 permanece em rascunho.
-
-### Space Pizzaria / OrdaX Food — preservar pedidos durante reconfiguração do KDS (2026-10-27)
-
-- Reconfigurar a linha da cozinha não esconde mais tickets já iniciados em telas removidas. O quadro conserva links às estações antigas necessárias até os pedidos terminarem e marca quantos pedidos seguem no fluxo anterior; posições vazias não recebem links.
-- O ticket continua com sua etapa e atribuição originais; novos e ainda não iniciados seguem a configuração atual. Não foi criada sincronização entre aparelhos nem integração com Food Production.
-- Regressão cobre reduzir quatro telas para uma e reabrir o pedido pela estação antiga. Suíte Food: 139/139; a PR #359 segue como rascunho.
-
-### Space Pizzaria / OrdaX Food — layout responsivo do PDV (2026-10-27)
-
-- O PDV organiza montagem e fechamento em áreas paralelas no notebook; em telefone, empilha as mesmas áreas sem sobrepor o carrinho nem criar rolagem horizontal.
-- A criação continua no módulo PDV e o histórico em Pedidos. Carrinho e formulário usam o mesmo estado/comando Food, sem duplicar pedido ou integrar pagamentos.
-- Prova de navegador verifica notebook, telefone vertical e horizontal; suíte e CI serão registrados após a validação do commit.
-
-### Space Pizzaria / OrdaX Food — quantidades editáveis no carrinho do PDV (2026-10-27)
-
-- O caixa permite aumentar, diminuir e remover cada item do carrinho. O contador soma unidades, não linhas; subtotal e total acompanham a quantidade editada.
-- Mínimo de uma e máximo de 50 unidades são compartilhados pelo domínio, pelo formulário e pelos controles; ajustes preservam os demais itens.
-- Suíte Food: 143/143; `node --check` e `git diff --check` aprovados. O fluxo foi conferido no host em notebook, telefone vertical e horizontal, sem overflow horizontal.
-- Itens adicionais continuam na fixture local da prévia; registro, pagamento, catálogo mestre e Inventory mantêm seus owners e limites atuais.
-
-### Space Pizzaria / OrdaX Food — agrupar itens iguais no carrinho (2026-10-27)
-
-- Adicionar novamente a mesma pizza agora aumenta sua quantidade na linha atual quando tamanho, ordem dos sabores e preço unitário coincidem. Bebidas e acompanhamentos usam a mesma regra por produto e snapshot.
-- Configurações ou preços diferentes continuam em linhas separadas. Se a soma passar de 50, o item seguinte abre outra linha para respeitar o limite sem descartar unidades.
-- Suíte Food: 146/146; sintaxe e `git diff --check` aprovados. Prova real no host validou adição repetida, total, contador e limite do carrinho.
-- Os valores seguem locais no preview; os contratos e owners de Catálogo, pedidos comerciais e Payments permanecem inalterados.
-
-### Space Pizzaria / OrdaX Food — evitar sabor duplicado no PDV (2026-10-27)
-
-- Ao selecionar um sabor, os outros campos da mesma pizza desabilitam essa escolha; trocar ou limpar libera a opção novamente. A validação do domínio continua protegendo entradas inválidas.
-- A prévia de preço/validação é anunciada por leitores de tela. Prova real no host confirmou combinação distinta válida e bloqueio da repetição; suíte Food: 146/146.
-- Alteração restrita à interação do PDV; preços, receitas, snapshots e owners não mudaram. PR #359 segue em rascunho.
-
-### Space Pizzaria / OrdaX Food — congelar fatias de cada pedido (2026-10-27)
-
-- Novos pedidos registram o total de fatias do tamanho escolhido. O KDS lê o snapshot do pedido e não muda o número quando a configuração da loja é alterada.
-- A migração para Food v8 mantém o histórico sem inventar dados: fatias de pedidos antigos ficam desconhecidas e o KDS informa que não foram registradas. O owner SQL ainda aceita v6 e rejeita v8 antes de persistir; nenhuma integração de Catálogo ou sincronização foi simulada.
-- Suíte Food completa: 148/148; inspeção do host confirmou as fatias no ticket; `git diff --check` aprovado. A PR #359 segue em rascunho e será atualizada com este incremento.
-
-### Space Pizzaria / OrdaX Food — fila de saída e contato das entregas (2026-10-27)
-
-- Cada parada ativa agora permite ligar para o cliente pelo discador do aparelho e copiar o endereço salvo para colá-lo no app de navegação. Número de telefone é normalizado na URL `tel:`; pedidos legados sem telefone não recebem link quebrado.
-- O desenho decorativo foi removido. A lista se chama Fila de entrega e é ordenada pelo horário de saída, da mais antiga para a mais recente; não apresenta mapa, GPS, geocodificação ou otimização que não existam. As ações não gravam nem sincronizam dados externos.
-- Suíte Food completa: 151/151; testes cobrem ligação, endereço copiado, exclusão de pedidos de retirada, ordem de saída, ausência de mapa/GPS fictícios e quebra do cabeçalho em telefone estreito. Host local conferido em 320 px: sem overflow horizontal na área de Delivery. `git diff --check` aprovado. A PR #359 segue em rascunho.
-
-### Space Pizzaria / OrdaX Food — quatro sabores disponíveis por padrão (2026-10-27)
-
-- Uma pizzaria nova começa aceitando até quatro sabores por pizza. O PDV renderiza seletores conforme o limite configurado; preços continuam usando a política de múltiplos sabores definida pelo estabelecimento.
-- O limite segue ajustável. Estados existentes e pedidos históricos são preservados; testes cobrem preço, snapshot de sabores/fatias e os quatro seletores iniciais do PDV.
-- Suíte Food: 152/152; `node --check` dos módulos alterados e `git diff --check` aprovados. O incremento atua sobre o preview Food e não muda o owner dos pedidos nem integra Sales, Catálogo, Payments ou Inventory.
-
-### Space Pizzaria / OrdaX Food — referência mais distinta para pedidos (2026-10-27)
-
-- A referência exibida em pedidos identificados por UUID passou de seis para dez caracteres hexadecimais. IDs sequenciais continuam mostrando a sequência; o identificador persistido não muda.
-- A suíte Food completa passou com 152/152, incluindo UUIDs diferentes com o mesmo sufixo antigo; `node --check` e `git diff --check` aprovados. A mudança é somente de apresentação e não altera contratos nem owners.
-
-### Space Pizzaria / OrdaX Food — relatórios operacionais por período (2026-10-27)
-
-- Relatórios agora consulta os snapshots Food nos períodos de 24 horas, 7 dias e 30 dias e apresenta pedidos, operação de cozinha, prontos, mediana até Pronto, canais, itens, sabores, cancelamentos e pedidos recentes. A tela permite navegar para Cozinha, PDV e histórico.
-- O overview segue no Space; relatório não calcula receita, lucro, pagamento ou saldo/movimentação de Inventory. Itens adicionais e sabores são derivados das quantidades congeladas em cada pedido; pizza combinada conta cada sabor selecionado, sem frações.
-- Suíte Food completa: 160/160; sintaxe e `git diff --check` aprovados. Host incorporado inspecionado: proporções dos gráficos e filtros visíveis; provider de produção não existe neste caminho e os dados continuam locais. PR #359 segue como rascunho.
-
-### Space Pizzaria / OrdaX Food — exportação dos relatórios em CSV (2026-10-27)
-
-- A tela Relatórios baixa resumo UTF-8 dos indicadores do período, canais, itens, sabores e até cinco pedidos por referência. Não exporta nomes, telefones, endereços, pagamentos nem dados de Inventory.
-- O CSV protege células com escape e prefixo neutro para conteúdo que poderia ser interpretado como fórmula. O Blob usa URL temporária revogada após o download ou ao desmontar a interface.
-- Suíte Food completa: 163/163; verificador do mínimo MVP: 20 alvos, 18 não assinados e 2 bloqueados; host incorporado mostra o botão e os relatórios. No head `1b19d60`, os quatro checks da PR #359 passaram; a PR permanece em rascunho.
-
-### Space Pizzaria / OrdaX Food — fila de prévia com tempos operacionais recentes (2026-10-27)
-
-- A fila fictícia agora cobre pedidos entre 3 e 18 minutos e distribui as mudanças de status dentro da idade de cada pedido, sem datas futuras. Um único ticket passa da meta de 15 minutos para que o KDS demonstre atraso sem apresentar toda a operação em colapso.
-- Ao reabrir, atividade seed não operada que excede 35 minutos é rebaseada junto das comandas abertas associadas. Pedidos trabalhados, estados, histórico e journal permanecem intactos.
-- A mudança afeta somente dados locais de prévia; não adiciona sincronização nem altera o owner Food. Suíte Food: 164/164; `node --check` e `git diff --check` aprovados. Host local recarregado: pedido em foco a 18 minutos e próximos entre 15 e 5 minutos. No head `32fa7f0`, os quatro checks passaram após a reexecução do job de prova de navegador.
-
-### Space Pizzaria / OrdaX Food — KDS mais equilibrado em telefone vertical (2026-10-27)
-
-- Em telas verticais altas, o ticket atual usa sua altura de conteúdo e a fila seguinte passa a ocupar o restante do viewport; a rolagem fica somente na lista dos próximos pedidos. Em telefone horizontal, as duas colunas continuam visíveis dentro do viewport.
-- O smoke Chrome agora verifica a distribuição no viewport 390 × 844 e consegue localizar/abrir o Chrome instalado no Windows com uma porta DevTools local fixa, além do caminho já usado no CI Linux.
-- Suíte Food: 164/164; smoke de navegador: 23/23; `node --check` e `git diff --check` aprovados. A fila continua sendo prévia local, sem sincronização entre aparelhos; PR #359 permanece em rascunho.
-
-### Space Pizzaria / OrdaX Food — preservar rascunhos das fichas técnicas (2026-10-27)
-
-- O editor de receitas desabilita em cada seletor os ingredientes já escolhidos por outras linhas, sem bloquear a escolha atual. Ao trocar o ingrediente, os demais seletores e unidades acompanham a nova composição.
-- Quantidades e ingredientes digitados continuam no rascunho ao adicionar ou remover uma linha. O fluxo Chrome cobre a edição completa sem salvar e sem tocar no estado persistido.
-- Suíte Food: 166/166; smoke Chrome: 24/24; `node --check` e `git diff --check` aprovados. A alteração permanece no preview local e não escreve no Inventory nem cria integração/contrato novo.
-
-### Space Pizzaria / OrdaX Food — relógios coerentes na fila KDS (2026-10-27)
-
-- Tickets seed intactos alinham a espera da etapa à criação do pedido quando o relógio KDS antecedia o próprio pedido. Ao expirar uma amostra, pedidos com etapa iniciada, concluída ou passada ficam protegidos e preservam juntos o pedido e a sequência local.
-- Testes cobrem relógio anterior à criação, refresh de fila, deferimento e preservação do trabalho. Suíte Food: 168/168; smoke Chrome: 24/24; sintaxe e `git diff --check` aprovados. Host confirmou 21 min no pedido e na etapa.
-- Somente amostras sem operação KDS são rebased; nenhum contrato, owner ou dado de produção foi alterado.
-
-### Space Pizzaria / OrdaX Food — demonstrar pizza de quatro sabores no KDS (2026-10-27)
-
-- A fila local passa a incluir um pedido de pizza com quatro sabores distintos, permitindo conferir na etapa Abrir massa os sabores, o tamanho e a quantidade de fatias usados pelo fluxo real de renderização.
-- O KDS continua exibindo os sabores sem presumir a divisão de fatias entre eles; a proposta de consumo e o preço derivam das regras Food já existentes.
-- Teste integrado renderiza o pedido seed na primeira estação e confere os quatro sabores e as seis fatias; fixture comum de migração continua válida para o limite histórico de dois sabores. Suíte Food: 170/170; smoke de navegador: 25/25; verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas.
-- Mudança restrita à prévia local, sem alterar schemas, owners, pedidos persistidos ou contratos.
-
-### Space Pizzaria / OrdaX Food — concluir expedição por canal (2026-10-27)
-
-- A área Delivery passa a se chamar Expedição e atende o ciclo completo do mesmo pedido Food: entrega pronta/na rua e handoff de retirada, balcão ou salão. O operador vê ações próprias ao canal, como “Confirmar retirada”, “Entregar ao cliente”, “Marcar como servido”, “Despachar para entrega” e “Concluir entrega”; cancelamento segue somente em Pedidos.
-- Fixtures de uma nova prévia incluem uma retirada pronta e um pedido de quatro sabores. O estado fica no adapter local do Food; não cria owner, estado paralelo, integração ou alegação de sincronização.
-- Cobertura confirma classificação dos três canais, rótulos e transições; smoke Chrome clica e confirma a retirada, verificando sua saída da fila. Suíte Food: 173/173; smoke: 26/26; `node --check`, `git diff --check` e verificador MVP aprovados (20 alvos, 18 não assinados, 2 bloqueados, 0 instalações públicas verificadas).
-
-### Space Pizzaria / OrdaX Food — priorizar entregas prontas por tempo de espera (2026-10-27)
-
-- Pedidos de entrega prontos para despacho agora aparecem da liberação mais antiga à mais recente, sem depender da ordem incidental do snapshot. Retiradas/atendimentos já usam o mesmo critério; a fila em rota permanece ordenada pelo horário de saída.
-- A ordenação é somente de apresentação e deriva do `updatedAt` de cada pedido; não move pedidos no estado nem cria fila paralela.
-- Teste da Expedição fornece snapshots fora de ordem e exige FIFO de pedidos prontos. Suíte Food completa: 173/173; smoke de navegador: 26/26; `node --check` nos módulos alterados e `git diff --check`: aprovados.
-
-### Space Pizzaria / OrdaX Food — desempatar transições simultâneas na Expedição (2026-10-27)
-
-- O contrato Food permite timestamps iguais em transições válidas. As filas de despacho, retirada/atendimento e entregas em rota desempatarão pelo pedido criado primeiro e depois pelo identificador estável, em vez de depender da ordem incidental do snapshot.
-- A ordenação continua somente visual e usa o horário da transição como critério principal; estado e histórico Food não mudam.
-- Teste renderizado cobre transições simultâneas nas três filas. Suíte Food: 174/174; smoke Chrome: 26/26; `node --check` no renderizador, teste e smoke; `git diff --check` aprovados. Verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas.
-- O smoke conclui a limpeza do Chrome no Windows verificando a existência do processo após os sinais, sem tratar um processo já encerrado como vazamento.
-
-### Space Pizzaria / OrdaX Food — contato antes do despacho (2026-10-27)
-
-- A Expedição permite ligar para o cliente enquanto o pedido de entrega ainda aguarda despacho. O link `tel:` é montado apenas para telefones válidos e inclui nome e número do pedido no rótulo acessível; pedidos de retirada, atendimento local e entregas já em rota não recebem uma segunda ação no cartão.
-- O telefone é usado somente como dado já presente no pedido Food. Não há chamada de API, cópia de dados, integração ou mudança de owner.
-- Suíte Food: 178/178; smoke Chrome: 26/26 com verificação do link pré-despacho no cartão. `node --check` e `git diff --check` aprovados.
-
-### Space Pizzaria / OrdaX Food — KDS com fila de alto volume (2026-10-27)
-
-- Regressão de 100 pedidos confirma que **Próximo** muda o foco para o segundo ticket e devolve o atual à 3ª posição, preservando 100 pedidos e a ordem da cauda.
-- A estação dedicada renderiza um pedido em foco, os cinco seguintes e informa os 94 que permanecem atrás. Isso valida o fluxo de tela do operador sem alongar o cartão atual com a fila inteira.
-- Suíte Food: 180/180; testes KDS: 39/39; smoke Chrome: 26/26; verificador MVP: 20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas. Sintaxe e `git diff --check` aprovados.
-- A prova cobre a fila local de prévia; não cria sync, persistência compartilhada, owner ou contrato de Food Production.
-
-### Space Pizzaria / OrdaX Food — detalhar o fechamento do PDV por canal (2026-10-27)
-
-- O fechamento mostra o subtotal dos itens e discrimina a taxa somente em pedidos de entrega. O total atualiza enquanto o operador muda o canal, os itens ou a taxa; entrega com taxa zero fica explícita.
-- Taxa inválida não vira valor zero silencioso: o total pede revisão e o botão de registro permanece bloqueado até corrigir o valor. Os canais retirada e balcão não incluem taxa de entrega.
-- Suíte Food: 180/180; smoke Chrome: 26/26, incluindo retirada, balcão, entrega, entrega gratuita e bloqueio de taxa inválida. Sintaxe JavaScript, `git diff --check` e verificador MVP (20 alvos, 18 candidatos não assinados, 2 bloqueados, 0 instalações públicas) aprovados.
-- A alteração só muda apresentação e validação do rascunho Food local. Não registra pagamento, muda owner, lê Inventory nem altera contratos pendentes.
-
-### Space Pizzaria / OrdaX Food — validar contato e endereço no PDV (2026-10-27)
-
-- Em pedidos de entrega, telefone inválido/ausente e endereço vazio são sinalizados inline em tamanho legível enquanto o formulário é preenchido; o botão fica indisponível até ambos estarem corretos. O rótulo do telefone muda para obrigatório na entrega e opcional nos demais canais. Regras e acessibilidade vêm do domínio/formulário Food; balcão e retirada removem a exigência de entrega.
-- Verificação: suíte Food **183/183**, prova completa de navegador Chrome aprovada nas 26 configurações atuais, node --check dos módulos/testes alterados e git diff --check aprovados.
-- Nenhuma identidade de cliente ou endereço passa a ter owner local: os valores só compõem o pedido Food da prévia. Contratos, Spaces e sincronização entre aparelhos não foram alterados.
-
-### Space Pizzaria / OrdaX Food — unificar preços do carrinho no PDV (2026-10-27)
-
-- A UI não recalcula preço de linha e subtotal em blocos independentes: o módulo de aplicação cart-pricing agora fornece as funções puras usadas pelo carrinho e pelo fechamento. Isso mantém o preço apresentado alinhado ao total do pedido.
-- Pizzas continuam usando a regra/snapshot Food e itens adicionais preservam o preço congelado da fixture local. Uma linha cuja precificação atual ficou inválida permanece visível pelo preço do rascunho; a revisão estrita ainda bloqueia envio para exigir correção.
-- Verificação: suíte Food **185/185**, smoke Chrome aprovado nas 26 configurações, sintaxe e git diff --check aprovados. Nenhum contrato, owner, pagamento ou saldo de Inventory foi alterado.
-
-### Space Pizzaria / OrdaX Food — extrair rascunho do fluxo de cozinha (2026-10-27)
-
-- A camada de aplicação `createKitchenWorkflowDraft` passa a montar e validar etapas, número de telas, modo da fila, atribuições manuais ou distribuição equilibrada e IDs de novas etapas. A UI fica responsável somente por adaptar os campos do formulário.
-- Testes preservam a atribuição manual, verificam a distribuição, rejeitam número de telas inválido, payload malformado e confirmam ID para nova etapa. Não muda o estado persistido nem simula sincronização.
-- Verificação: Food **187/187**; prova Chrome **26/26**; verificador MVP **20 alvos, 18 candidatos não assinados e 2 bloqueados**; `node --check` e `git diff --check` aprovados. Food continua owner dos pedidos; nenhuma integração, contrato ou owner foi alterado.
-
-### Space Pizzaria / OrdaX Food — legibilidade da estação KDS em telefone (2026-10-27)
-
-- Títulos dos itens, tamanhos/fatias e sabores na estação e na lista de próximos pedidos passam a ter tamanho mínimo legível, preservando a prioridade do pedido atual e mantendo a rolagem somente na fila seguinte.
-- O smoke verifica fonte computada, ticket sem corte e ausência de rolagem da página nos tamanhos configurados. Inspeção visual em 390 × 844 e 844 × 390 confirmou a hierarquia e o fluxo anterior.
-- Food **187/187**; Chrome **26/26**; `node --check` do probe e `git diff --check` aprovados. A mudança é de apresentação; nenhum pedido, contrato, owner ou integração foi alterado.
-
-### Space Pizzaria / OrdaX Food — revisão rápida do pedido no telefone (2026-10-27)
-
-- O PDV oferece uma barra inferior compacta em telas estreitas quando há itens no carrinho, para conferir unidades e total já calculados pelo formulário. Um único comando leva o foco ao fechamento e a barra se oculta quando ele fica visível.
-- A rolagem não cobre campos, o carrinho continua sendo o único estado do pedido e “Ir para fechamento” não registra venda nem confirma pagamento.
-- Food: **187/187** testes; Chrome **27/27** configurações, incluindo a revisão do pedido preenchido em 390 × 844; verificador MVP: **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**. Integrações reais e owners permanecem inalterados.
-
-### Space Pizzaria / OrdaX Food — consultar histórico de status dos pedidos (2026-10-27)
-
-- A tela Pedidos agora permite expandir uma linha do tempo recolhida, montada a partir do journal/statusHistory imutável do pedido Food. Cada evento mostra somente o estado e o horário já registrados; a consulta não altera pedidos nem duplica dados pessoais ou cancelamentos.
-- Verificação: suíte Food **191/191**, smoke Chrome **27/27** com abertura da linha do tempo, verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**. Owners, contratos e integrações permanecem iguais.
-
-### Space Pizzaria / OrdaX Food — buscar pedidos no Space incorporado (2026-10-27)
-
-- O histórico no host incorporado passa a expor a busca que antes só existia no cabeçalho standalone. Busca por referência, cliente, telefone, mesa e item compõe com etapa/canal. Limpar filtros restaura a consulta e a lista completa; standalone preserva seu único campo global.
-- O valor consultado é escaped, não cria estado de pedidos paralelo e não muda ownership/integrações.
-- Verificação: Food **193/193**; Chrome **27/27** cobrindo busca, combinação, limpeza e standalone; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**.
-
-### Space Pizzaria / OrdaX Food — busca tolerante a termos e endereço (2026-10-27)
-
-- Pedidos aceita termos em qualquer ordem e cruza cliente, endereço, telefone, referência, mesa e itens sem diferenciar acentos; telefones formatados também são encontrados por dígitos. Etapa/canal continuam sendo filtros cumulativos da mesma projeção do histórico Food.
-- A busca continua sendo estado de apresentação, sem store ou pedido paralelo; os rótulos indicam endereço tanto no host incorporado quanto no standalone.
-- Verificação: Food **194/194**; Chrome **27/27**, incluindo busca composta, limpar filtros e standalone; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.
-
-### Space Pizzaria / OrdaX Food — remover ação duplicada no pré-preparo (2026-10-27)
-
-- O planejador de lote deixa de renderizar dois botões “Limpar” para a mesma operação. Antes do cálculo, a ação diz “Limpar quantidades”; no resultado, “Limpar lote”. Ambas são nomeadas para leitores de tela e limpam o mesmo rascunho, sem tocar em pedidos ou Inventory.
-- Smoke Chrome cobre cálculo dos insumos, exclusão do resultado e restauração dos campos; a suíte também verifica a existência de uma única ação nos dois estados.
-- Verificação: Food **195/195**; Chrome **27/27**; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.
-
-### Space Pizzaria / OrdaX Food — identificar ações repetidas para acessibilidade (2026-10-27)
-
-- Ações repetidas agora têm nomes acessíveis contextualizados com pedido, sabor ou mesa, cobrindo avanço/cancelamento de pedidos, disponibilidade do cardápio, cópia de endereço e comandas. Os rótulos visuais permanecem curtos.
-- A mudança mantém os comandos e o estado Food existentes; não cria integração, owner ou dados paralelos.
-- Verificação: Food **195/195**; Chrome **27/27** com assertions por módulo; `node --check` dos arquivos alterados e `git diff --check` aprovados.
-
-### Space Pizzaria / OrdaX Food — identificar remoção de insumo na ficha técnica (2026-10-27)
-
-- O controle de remoção do editor de receitas anuncia o ingrediente e o sabor da ficha, preservando rótulos visuais compactos e o mesmo fluxo de edição. O smoke cobre etiquetas após adicionar uma linha e antes de removê-la.
-- Mudança somente de apresentação/acessibilidade: não altera ficha, consumo proposto, pedidos nem Inventory.
-- Verificação: suíte Food **195/195**; Chrome **27/27**; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.
-
-### Space Pizzaria / OrdaX Food — manter a edição da ficha ao fechar ou alternar (2026-10-27)
-
-- A edição não salva da ficha técnica agora permanece em memória, por sabor, se o operador fechar ou abrir outra ficha; ao reabrir, o editor restaura ingredientes e quantidades. O foco acompanha abertura, inclusão/remoção de linhas e retorno ao cardápio. O rascunho é descartado ao salvar com sucesso ou ao encerrar a instância; ele não é persistência de domínio.
-- Smoke cobre mudança para Marguerita, fechamento, retorno à Calabresa com insumo/quantidade alterados e foco contextual. O helper de rolagem consulta a preferência de movimento reduzido. Nenhum pedido, ficha persistida, saldo ou movimento de Inventory é alterado por fechar o editor.
-- Verificação: Food **195/195**; Chrome **27/27**; verificador MVP **20 alvos, 18 candidatos não assinados, 2 bloqueados e 0 instalações públicas verificadas**; sintaxe e `git diff --check` aprovados.
-
-### Space Pizzaria / OrdaX Food — valor médio em relatórios de pedidos (2026-10-27)
-
-- O relatório operacional inclui a média e a soma dos totais congelados dos pedidos não cancelados. O CSV identifica BRL e exclui cancelados; snapshots inválidos não entram na amostra. A UI esclarece que o indicador não comprova pagamento recebido.
-- Food segue como owner dos pedidos; a métrica consome somente `totalCents` já presente no pedido. Payments, Sales e Finance não são consultados ou alterados, e não foi criada persistência paralela.
-- Verificação: suíte Food **205/205**; Chromium **39/39** cenários, com relatórios em 390×844 e 320×568 sem overflow; sintaxe e `git diff --check` aprovados; MVP **20 alvos, 18 entradas não assinadas, 2 bloqueados e 0 instalações públicas verificadas**.

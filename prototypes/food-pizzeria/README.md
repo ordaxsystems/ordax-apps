@@ -16,4 +16,4 @@ Abra `http://127.0.0.1:4240`. Use `-Port` para escolher outra porta.
 
 ## Prova de navegador real
 
-O workflow Foundation executa `node tools/prove_food_browser_preview.mjs` em runner Linux com Chrome/Chromium instalado. O verificador liga o servidor localhost automaticamente, ativa a injeção de teste somente com `ORDAX_FOOD_BROWSER_SMOKE=1` e exige cenários aprovados: modo standalone/Pedidos e modos incorporáveis PDV, Cozinha, Pedidos e Mesas (incluindo diálogo nativo). Não introduz Playwright, Selenium, serviços remotos ou um host Space fictício.
+O workflow Foundation executa `node tools/prove_food_browser_preview.mjs` em runner Linux com Chrome/Chromium instalado. O verificador liga o servidor localhost automaticamente, ativa a injeção de teste somente com `ORDAX_FOOD_BROWSER_SMOKE=1` e exige quatro cenários aprovados: modo standalone/Pedidos e modos incorporáveis Cozinha, Pedidos e Mesas (incluindo diálogo nativo). Não introduz Playwright, Selenium, serviços remotos ou um host Space fictício.

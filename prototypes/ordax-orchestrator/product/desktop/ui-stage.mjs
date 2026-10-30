@@ -3,6 +3,7 @@ export const RUN_STAGE_TEXT = Object.freeze({
   health:'Verificando sessão do ChatGPT…',
   prepare:'Preparando conversa do provedor…',
   baseline:'Preparando observação de resposta…',
+  'context-attachment':'Anexando e confirmando o pacote de continuidade…',
   submit:'Preenchendo e acionando o envio…',
   'await-response':'Aguardando a resposta do ChatGPT…',
   assets:'Finalizando e verificando os resultados…'

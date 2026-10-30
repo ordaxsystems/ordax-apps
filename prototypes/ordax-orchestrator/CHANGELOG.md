@@ -1,3 +1,12 @@
+## 0.2.0-alpha.19 — host Node com núcleo compartilhado (2026-10-24)
+
+- `npm start` inicia Node diretamente nos níveis produto e protótipo; Electron exige a entrada explícita `npm run start:electron`.
+- Electron e Host compõem o mesmo `OrchestratorService`, MCP, handlers de tarefas e Store SQLite. O Host usa perfil isolado `.host-profile`, trava instâncias concorrentes e mantém autenticação loopback same-origin.
+- A chave Groq do Host é apenas de processo/memória e nunca é persistida. Erros HTTP e respostas inválidas são classificados com códigos sanitizados; timeout/rede não são reenviados automaticamente.
+- E2E visual no Host criou VESTE, persistiu missão/rascunho e recuperou após reload. Uma chamada Groq real entrou em estado incerto e não gerou resposta verificável; nenhuma resposta GPT, leitura GitHub, arquivo, site ou teste de VESTE foi comprovado.
+- O Host não conecta executor GPT, Runtime workspace/grants, GitHub nem supervisor 24 h. Distribuição continua desativada e o pacote Windows permanece Electron, sem o servidor Host.
+- Validação atual: 38 testes do bootstrap, 9 testes Host, 24 contratos de UI, 36 testes do serviço, versão e sintaxe passam. A suíte integral de 69 arquivos não foi fechada neste ciclo por seu custo de SQLite no Windows.
+
 ## 0.2.0-alpha.18 — estado correto das conversas (2026-10-24)
 
 - A navegação distingue conversa nova, rascunho salvo, conversa em espera, execução e conclusão; uma missão não enviada deixa de parecer pronta ou concluída.

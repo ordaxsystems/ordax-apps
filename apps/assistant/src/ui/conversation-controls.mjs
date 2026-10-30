@@ -425,9 +425,11 @@ export function mountAssistantConversationControls(
 
     if (snapshot.lastError || view.state === "failed") {
       const discarded = snapshot.lastError === "response-discarded";
+      const timedOut = snapshot.lastError === "response-timeout";
       const notice = node(documentObject, "p",
         discarded ? "ordax-assistant-notice" : "ordax-assistant-error",
-        t(discarded ? "assistant.notice.discarded" : "assistant.error.response"));
+        t(discarded ? "assistant.notice.discarded"
+          : timedOut ? "assistant.error.timeout" : "assistant.error.response"));
       notice.setAttribute("role", discarded ? "status" : "alert");
       slot.append(notice);
     }

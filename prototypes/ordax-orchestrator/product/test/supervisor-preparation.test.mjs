@@ -88,6 +88,9 @@ test('preparation IPC checks trusted renderer and does not invoke planning or Ch
   assert.match(preload,/setTaskSupervisorRole:/);
   assert.match(ui,/labRoleSelect\.addEventListener\('change'/);
   assert.match(ui,/labKeyForm\.addEventListener\('submit'/);
+  assert.match(ui,/const canConfigureLabKey=\(\)=>labStatus\.secureStorageAvailable===true/);
+  assert.match(ui,/salva no cofre seguro do Windows e recuperada ao reabrir o app/);
+  assert.doesNotMatch(ui,/hostEphemeralSecret|memory_until_host_exit/);
   assert.doesNotMatch(ui.slice(ui.indexOf('labKeyForm.addEventListener'),ui.indexOf('labKeyRemove.addEventListener')),/supervisorPlan\(|supervisorDispatch\(/);
 });
 

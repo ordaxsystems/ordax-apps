@@ -61,7 +61,7 @@ export class LabContinuation {
     const enabled=policy?.enabled===1;
     return {enabled,mode:'automatic_analysis_and_optional_proposals',automaticGPTSends:false,
       nextProposals:this.nextProposal.status(projectId,orchestratorId),
-      state:!enabled?'disabled':this.service.coordinator?.available?.()!==true
+      state:!enabled?'disabled':this.service.coordinator?.available?.(projectId,orchestratorId)!==true
         ?'blocked_coordinator':counts.reconciliation_required?'reconciliation_required':
           counts.queued||counts.analyzing?'pending':'observing',
       counts,latest};
@@ -77,6 +77,10 @@ export class LabContinuation {
       JOIN lab_orchestrators o ON o.id=b.orchestrator_id
       WHERE p.enabled=1 AND o.status='ready' AND r.status='succeeded'
       AND r.rowid>p.start_run_rowid
+      -- Deduplicate BEFORE LIMIT. INSERT OR IGNORE alone would repeatedly
+      -- pick the oldest 100 reviewed Runs and permanently starve newer work.
+      AND NOT EXISTS (SELECT 1 FROM lab_continuation_reviews reviewed
+        WHERE reviewed.run_id=r.id)
       ORDER BY r.completed_at,r.id LIMIT 100`).run(now);
     return result.changes;
   }
@@ -95,7 +99,7 @@ export class LabContinuation {
         WHERE q.state='queued' AND p.enabled=1 AND o.status='ready'
         ORDER BY transport_uncertain ASC,q.updated_at,q.run_id LIMIT 1`).get();
       if(!row)return await this.nextProposal.tick(context);
-      if(this.service.coordinator?.available?.()!==true)return {state:'blocked_coordinator'};
+      if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};
       if(row.transport_uncertain)return {state:'reconciliation_required'};
       if(this.service.provider?.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
         this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())

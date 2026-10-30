@@ -69,6 +69,28 @@ app.whenReady().then(async () => {
     assert.equal(await first.webContents.executeJavaScript('document.body.dataset.native'),'undefined');assert.equal(await first.webContents.executeJavaScript('document.body.dataset.ordax'),'undefined');assert.ok(!first.webContents.getLastWebPreferences().preload);
     await first.webContents.executeJavaScript('document.querySelector("button").click()');assert.match(await first.webContents.executeJavaScript('document.querySelector(".card").textContent'),/confirmada/);
     console.log('PASS PREVIEW: projeto carrega endereço automaticamente; preview interativo tem sessão isolada e nenhum Node/preload/port OrdaX.');
+    // Workspace must retain the same chat composer and protect local drafts.
+    await js('document.getElementById("openProject").click()');
+    await until('!document.getElementById("projectDialog").hidden && document.querySelector(".composer-area").getBoundingClientRect().height>40');
+    const layout=await js(`(()=>{
+      const panel=document.getElementById('projectDialog').getBoundingClientRect();
+      const composer=document.querySelector('.composer-area').getBoundingClientRect();
+      const slot=document.getElementById('previewCanvas').getBoundingClientRect();
+      return { workspace:panel.height>0, composer:composer.height>40,
+        below:composer.top>=panel.bottom-2, noOverlap:slot.width===0||composer.right<=slot.left+2 };
+    })()`);
+    assert.deepEqual(layout,{workspace:true,composer:true,below:true,noOverlap:true});
+    await js('document.getElementById("prompt").value="Rascunho do Workspace";document.getElementById("prompt").dispatchEvent(new Event("input"))');
+    await js('document.getElementById("studioSummary").value="Rascunho de continuidade não revisado";document.getElementById("studioSummary").dispatchEvent(new Event("input"))');
+    await js('document.getElementById("projectClose").click()');
+    assert.equal(await js('document.getElementById("projectDialog").hidden'),false);
+    assert.match(await js('document.getElementById("projectNotice").textContent'),/Revise ou descarte/);
+    await js('document.getElementById("studioContinuityDiscard").click()');
+    await js('document.getElementById("projectClose").click()');
+    await until('document.getElementById("projectDialog").hidden && !document.getElementById("prompt").disabled');
+    assert.equal(await js('document.getElementById("prompt").value'),'Rascunho do Workspace');
+    await js('document.getElementById("prompt").value="";document.getElementById("prompt").dispatchEvent(new Event("input"))');
+    console.log('PASS WORKSPACE COMPOSER: o mesmo chat permanece acessível e o rascunho de continuidade impede fechar até descarte.');
     await js('document.getElementById("newChat").click()');
     await until('document.body.classList.contains("chatgpt-fallback") && document.getElementById("chatModeStatus").textContent==="Chat confirmado" && !document.getElementById("newChat").disabled');
     for(let i=0;i<80&&!chat.getVisible();i++)await pause(50);

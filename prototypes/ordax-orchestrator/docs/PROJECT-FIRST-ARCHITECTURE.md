@@ -5,6 +5,8 @@
 **Data da decisão:** 2026-10-21. **Destino:** OrdaX Orchestrator App (Windows inicialmente, OrdaX OS por ports públicos depois).
 **Leitura complementar:** [plano de execução](PROJECT-FIRST-IMPLEMENTATION-PLAN.md), [handoff Codex](../CODEX-HANDOFF.md), [aceite VESTE](VESTE-PROJECT-FIRST-E2E.md).
 
+**Estado observado em 2026-10-24:** a UI e o domínio atual ainda são um protótipo interativo. A candidata alpha.19 inicia a mesma UI por Node loopback, sem Electron, e compartilha Store/serviços com o shell desktop. O host visual já persistiu e recuperou VESTE, mas não dispõe de executor GPT, leitura/escrita GitHub, grant de workspace ligado ao App, edição/testes de arquivo nem supervisor headless. Uma tentativa Groq ficou sem resposta confirmada. Portanto, a arquitetura abaixo continua sendo direção e gates, não capacidades já entregues.
+
 ## 1. Decisão e motivação
 
 O **projeto**, seu workspace autorizado, suas entregas e evidências são o centro do produto. O chat não é a fonte de verdade nem o único lugar em que ocorre trabalho. O usuário cria ou seleciona um projeto, define uma missão e vincula um ou mais diretórios/repositórios locais. O orquestrador observa resultados reais, avalia alterações e utiliza ChatGPT, outras IAs e capacidades do OrdaX conforme necessidade e permissão. Pode retomar uma missão mesmo quando uma conversa terminou, tornou-se indisponível ou mudou de sessão.

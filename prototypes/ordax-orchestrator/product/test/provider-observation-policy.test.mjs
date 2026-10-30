@@ -16,6 +16,15 @@ test('provider failure exposes a safe retry disposition only before submit was a
   assert.equal(uncertain.message,'await-response:provider_send_unconfirmed');
   assert.equal(uncertain.providerDeliveryState,'uncertain');
   assert.equal(uncertain.providerFailureCode,'provider_send_unconfirmed');
+  const submitted=normalizeProviderFailure(new Error('await-response:chatgpt_response_retry_required'),{
+    stage:'await-response',submitAttemptAt:123,submissionConfirmedAt:456
+  });
+  assert.equal(submitted.message,'await-response:chatgpt_response_retry_required');
+  assert.equal(submitted.providerDeliveryState,'submitted');
+  assert.equal(submitted.providerFailureCode,'chatgpt_response_retry_required');
+  assert.equal(normalizeProviderFailure(new Error('provider_error'),{
+    submitAttemptAt:123,submissionConfirmedAt:'456'
+  }).providerDeliveryState,'uncertain');
 });
 
 test('DOM unavailable on ChatGPT home is UNKNOWN, not logged in',()=>{
@@ -61,7 +70,9 @@ test('worker health is bounded and can never turn missing DOM into confirmed ses
   const here=path.dirname(fileURLToPath(import.meta.url));
   const code=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
   const health=code.split('  async health() {')[1].split('  enqueue(fn) {')[0];
-  assert.match(health,/observeWithin\(\(\) => this\.view\.webContents\.executeJavaScript/);
+  assert.ok(health.includes('evaluateProviderReadOnlyDom({'));
+  assert.ok(health.includes('debugger:this.view.webContents.debugger'));
+  assert.match(health,/timeoutCode:'provider_health_observation_timeout'/);
   assert.match(health,/timeoutMs:5000/);
   assert.match(health,/\.catch\(\(\) => null\)/);
   assert.match(health,/classifyProviderAuthObservation/);
@@ -91,7 +102,12 @@ test('worker health counts only HTTP 403 from first-party backend API with no UR
   const health=worker.split('  async health() {')[1].split('  enqueue(fn) {')[0];
   assert.match(health,/entry\.responseStatus !== 403 && entry\.responseStatus !== 429/);
   assert.match(health,/backendRateLimitedCount:Math\.min\(100,backendRateLimitedCount\)/);
-  assert.match(health,/rateLimitedCount:page\?\.backendRateLimitedCount/);
+  assert.match(health,/rateLimitedCount:page\?\.backendRateLimitedRecentCount/);
+  assert.match(health,/forbiddenCount:page\?\.backendForbiddenRecentCount/);
+  assert.match(health,/backendRecentWindowMs=120000/);
+  assert.match(health,/observedAtMs-start<=backendRecentWindowMs/);
+  assert.match(health,/backend_api_403_recent_count:page\?\.backendForbiddenRecentCount/);
+  assert.match(health,/backend_api_429_recent_count:page\?\.backendRateLimitedRecentCount/);
   assert.match(health,/backend_api_429_count:page\?\.backendRateLimitedCount/);
   assert.match(health,/requestUrl\.origin==='https:\/\/chatgpt\.com'/);
   assert.match(health,/pathname\.startsWith\('\/backend-api\/'\)/);
@@ -129,4 +145,49 @@ test('429 is surfaced only through sanitized first-party status counts, not priv
   assert.match(ui,/ChatGPT • limitação observada \(429\)/);
   assert.match(ui,/chatgpt_provider_rate_limited_observed:/);
   assert.doesNotMatch(ui,/429.*(?:setTimeout|retry|reload)/i);
+});
+
+test('provider preflight blocks composing over active GPT generation or unresolved response failure',()=>{
+  const ready={auth_state:'session_present',composer_ready:true,health_observed:true};
+  assert.throws(()=>assertProviderSendReadiness({...ready,response_generation_active:true}),
+    /chatgpt_response_in_progress/);
+  assert.throws(()=>assertProviderSendReadiness({...ready,
+    provider_response_failure:'chatgpt_response_retry_required'}),/chatgpt_response_retry_required/);
+  assert.throws(()=>assertProviderSendReadiness({...ready,
+    provider_response_failure:'chatgpt_response_error_observed'}),/chatgpt_response_error_observed/);
+});
+
+test('historical backend failures do not override missing-composer authentication gate',()=>{
+  const historical={backendForbiddenCount:14,backendRateLimitedCount:1,
+    backendForbiddenRecentCount:1,backendRateLimitedRecentCount:0};
+  assert.equal(classifyProviderAccessRestriction({
+    forbiddenCount:historical.backendForbiddenRecentCount,
+    rateLimitedCount:historical.backendRateLimitedRecentCount,
+    composerReady:false
+  }),null);
+  assert.throws(()=>assertProviderSendReadiness({
+    auth_state:'unknown',composer_ready:false,health_observed:true,
+    provider_access_problem:null
+  }),/chatgpt_session_not_observed/);
+  assert.equal(classifyProviderAccessRestriction({
+    forbiddenCount:3,rateLimitedCount:1,composerReady:false
+  }),'backend_http_429_observed');
+});
+
+
+test('large already-rendered GPT thread health never forces full body layout',()=>{
+  const here=path.dirname(fileURLToPath(import.meta.url));
+  const worker=fs.readFileSync(path.resolve(here,'../desktop/embedded-worker.mjs'),'utf8');
+  const health=worker.split('  async health() {')[1].split('  enqueue(fn) {')[0];
+  const match=health.match(/const body=!composer && messageNodes===0[^;]*;/);
+  assert.ok(match,'the actual health probe must defer body text until missing chat DOM');
+  assert.match(match[0],/document\.body\?\.innerText/);
+  const evaluate=new Function('composer','messageNodes','document',match[0]+'return body;');
+  let bodyReads=0;
+  const document={body:{get innerText(){bodyReads++;return 'historical load error';}}};
+  assert.equal(evaluate(true,0,document),'');
+  assert.equal(evaluate(false,1,document),'');
+  assert.equal(bodyReads,0,'no expensive full-page innerText read for a usable thread');
+  assert.equal(evaluate(false,0,document),'historical load error');
+  assert.equal(bodyReads,1,'load-failure classification still receives its error text');
 });

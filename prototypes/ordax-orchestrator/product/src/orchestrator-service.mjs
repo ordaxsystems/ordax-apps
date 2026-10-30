@@ -5,7 +5,10 @@ import {requireConfirmedChatReceipt} from './supervisor-chat-receipt.mjs';
 import {redactOrchestratorAnalysisText} from './orchestrator-analysis-text.mjs';
 import {validateWorkProposal} from './orchestrator-proposal.mjs';
 import {LabContinuation} from './lab-continuation.mjs';
+import {AutonomousDialogue} from './autonomous-dialogue.mjs';
 import {ProjectWorkspace} from './project-workspace.mjs';
+import {workExecutionSummary} from './work-execution-summary.mjs';
+import {projectWorkPlan} from './work-plan-read-model.mjs';
 import {appendRemoteRepositoryInstructions,normalizeGitHubRepositoryUrl} from './remote-repository-context.mjs';
 
 function missionProjectName(mission) {
@@ -45,6 +48,16 @@ export class OrchestratorService {
         FOREIGN KEY(orchestrator_id,project_id) REFERENCES lab_orchestrators(id,project_id)
       );
       CREATE INDEX IF NOT EXISTS idx_lab_binding_project ON lab_task_bindings(project_id,kind);
+      CREATE TABLE IF NOT EXISTS lab_work_dependencies (
+        project_id TEXT NOT NULL REFERENCES lab_projects(id),
+        task_id TEXT NOT NULL REFERENCES tasks(id),
+        prerequisite_id TEXT NOT NULL REFERENCES tasks(id),
+        PRIMARY KEY(task_id,prerequisite_id),
+        FOREIGN KEY(task_id) REFERENCES lab_task_bindings(task_id),
+        FOREIGN KEY(prerequisite_id) REFERENCES lab_task_bindings(task_id),
+        CHECK(task_id<>prerequisite_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_lab_work_dependencies_project ON lab_work_dependencies(project_id);
       -- Idempotency receipts for App commands, including project creation
       -- before a Task exists. NOT a provider queue or replacement action ledger.
       CREATE TABLE IF NOT EXISTS lab_command_receipts (
@@ -76,6 +89,7 @@ export class OrchestratorService {
     if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='repository_url'))
       this.db.exec('ALTER TABLE lab_projects ADD COLUMN repository_url TEXT');
     this.continuation=new LabContinuation({store,service:this});
+    this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
   }
 
@@ -140,10 +154,11 @@ export class OrchestratorService {
     return normalizeGitHubRepositoryUrl(row.repository_url);
   }
 
-  assertProviderTaskAvailable(taskId) {
+  assertProviderTaskAvailable(taskId,{allowCoordinator=false}={}) {
     const binding=this.db.prepare(`SELECT b.kind,o.status FROM lab_task_bindings b
       JOIN lab_orchestrators o ON o.id=b.orchestrator_id WHERE b.task_id=?`).get(taskId);
-    if(binding?.kind==='orchestrator')throw Error('orchestrator_coordinator_channel_required');
+    if(binding?.kind==='orchestrator'&&!allowCoordinator)throw Error('orchestrator_coordinator_channel_required');
+    if(allowCoordinator&&binding?.kind!=='orchestrator')throw Error('orchestrator_coordinator_task_required');
     if(binding?.status==='paused')throw Error('orchestrator_paused');
     if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(taskId))
       throw Error('orchestrator_reconciliation_required');
@@ -193,6 +208,8 @@ export class OrchestratorService {
   async invoke(context,operation,raw={}) {
     const {tool,input}=validateOrchestratorInput(operation,raw);
     this.requireAccess(context,operation,input.projectId||null);
+    if(operation==='autonomous_dialogue_status')return this.autonomous.status(context,input);
+    if(operation==='autonomous_dialogue_start')return {status:'succeeded',operation,result:this.autonomous.start(context,input)};
     if(operation==='workspace_snapshot')return this.workspace.snapshot(context,input,()=>this.requireAccess(context,operation,input.projectId));
     if(operation==='workspace_bind')return this.bindWorkspace(context,input);
     if(tool.readOnly)return this.read(context,operation,input);
@@ -246,10 +263,12 @@ export class OrchestratorService {
       tools:ORCHESTRATOR_TOOLS.map(t=>t.name),
       externalTransport:'not_connected',autonomousExecution:false,
       autonomousAnalysisAvailable:true,
+      coordinatorDraftCommitAvailable:true,
       workspacePortAvailable:this.workspace.available(),
       continuationEnabled:Number(this.db.prepare('SELECT COUNT(*) n FROM lab_continuation_policies WHERE enabled=1').get().n),
       coordinatorAvailable:this.coordinator?.available?.()===true,
       providerExecutionAvailable:typeof this.provider?.send==='function',
+      executor:this.executorAdmission(),
       activeRuns:Number(this.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='running'").get().n),
       uncertainCommands:Number(this.db.prepare(`SELECT COUNT(*) n FROM lab_command_receipts
         WHERE status='uncertain' AND workspace_session_id=? AND actor_id=? AND client_id=?`)
@@ -260,12 +279,18 @@ export class OrchestratorService {
       .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
     if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
       'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
+    if(operation==='work_plan')return {plan:this.projectPlan(input.projectId,input.maxParallel||4)};
     if(operation==='work_list')return {works:this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
-      b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments
+      b.orchestrator_id,(SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+      (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
       FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
       WHERE b.project_id=? AND b.kind='work' AND (? IS NULL OR b.orchestrator_id=?)
       AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 200`)
-      .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)};
+      .all(input.projectId,input.orchestratorId||null,input.orchestratorId||null,context.workspaceSessionId)
+      .map(work=>({...work,execution:workExecutionSummary([work])[0],
+        dependsOn:this.db.prepare('SELECT prerequisite_id FROM lab_work_dependencies WHERE project_id=? AND task_id=? ORDER BY prerequisite_id')
+          .all(input.projectId,work.id).map(row=>row.prerequisite_id)}))};
     if(operation==='work_get') {
       const task=this.task(input.projectId,input.taskId);
       const runs=this.db.prepare(`SELECT id,status,started_at,completed_at,heartbeat_at
@@ -281,6 +306,28 @@ export class OrchestratorService {
     }
     if(operation==='command_get')return this.getReceipt(context,input.commandId);
     throw Error('orchestrator_unknown_operation');
+  }
+
+  // The Electron host currently has ONE shared WebContentsView and ONE
+  // canonical provider transport. This capability is a verified ceiling,
+  // not an opt-in flag that may be raised without isolated workers.
+  executorAdmission() {
+    const activeRuns=Number(this.db.prepare(
+      "SELECT COUNT(*) n FROM runs WHERE status='running'"
+    ).get().n);
+    const activeCommands=Number(this.db.prepare(
+      "SELECT COUNT(*) n FROM lab_command_receipts WHERE status='running'"
+    ).get().n);
+    const hostOccupied=Boolean(this.provider?.busy?.());
+    const occupied=activeRuns>0||activeCommands>0||hostOccupied;
+    return Object.freeze({
+      mode:'single_embedded_chatgpt_worker',
+      maxConcurrentSends:1,
+      activeRuns,activeCommands,hostOccupied,
+      availableSlots:occupied?0:1,
+      isolatedWorkerSessions:false,
+      parallelProviderSendsEnabled:false
+    });
   }
 
   monitor(task,runs) {
@@ -302,21 +349,114 @@ export class OrchestratorService {
     return {state:task.status==='completed'?'completed':'awaiting_instruction',mayAutomaticallySend:false};
   }
 
+  projectPlan(projectId,maxParallel=4) {
+      // Query all scoped works: dependencies can span several orchestrators of
+      // the SAME project. Never silently omit dependencies through pagination.
+      const works=this.db.prepare(`SELECT t.id,t.status,
+        (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_run_status,
+        (SELECT r.started_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_started_at,
+        (SELECT r.heartbeat_at FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) latest_heartbeat_at,
+        (SELECT COUNT(*) FROM runs r WHERE r.task_id=t.id AND r.status='running') running_runs
+        FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.kind='work' AND t.workspace_session_id=?
+        ORDER BY t.created_at,t.id LIMIT 257`)
+        .all(projectId,this.store.getWorkspaceSession().id);
+      if(works.length>256)throw Error('orchestrator_work_plan_too_large');
+      const edges=this.db.prepare(`SELECT project_id,task_id,prerequisite_id
+        FROM lab_work_dependencies WHERE project_id=? ORDER BY task_id,prerequisite_id`)
+        .all(projectId);
+      const planning=projectWorkPlan({
+        projectId:projectId,maxParallel:maxParallel,edges,
+        works:works.map(w=>({...w,monitor:this.monitor(w,[{
+          status:w.latest_run_status,started_at:w.latest_started_at,
+          heartbeat_at:w.latest_heartbeat_at
+        }])}))
+      });
+      const executor=this.executorAdmission();
+      return Object.freeze({...planning,
+        executor,
+        // Structural candidates are not permission to send. Only one candidate
+        // can occupy the real shared-browser lane, and zero when it is busy.
+        transportSlotCandidates:Object.freeze(planning.candidates.slice(0,executor.availableSlots)),
+        automaticDispatchAllowed:false
+      });
+  }
+
   analysisContext(projectId,orchestratorId) {
     const owner=this.orchestrator(projectId,orchestratorId);
     const project=this.db.prepare(`SELECT name,objective FROM lab_projects
       WHERE id=? AND workspace_session_id=?`).get(projectId,this.store.getWorkspaceSession().id);
     if(!project)throw Error('orchestrator_project_unavailable');
-    const rows=this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
-      (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments
+
+    // The same Store powers the UI, coordinator and authenticated executor.
+    // Cover many work fronts without copying their full conversation histories.
+    // Never expose the titles or IDs of another coordinator's private works.
+    const totalWorkCount=this.db.prepare(`SELECT COUNT(*) n FROM tasks t
+      JOIN lab_task_bindings b ON b.task_id=t.id
+      WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+      AND t.workspace_session_id=?`)
+      .get(projectId,orchestratorId,this.store.getWorkspaceSession().id).n;
+    const overviewRows=this.db.prepare(`SELECT t.id,t.title,t.status,t.updated_at,
+      (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) provider_segments,
+      (SELECT r.status FROM runs r WHERE r.task_id=t.id ORDER BY r.rowid DESC LIMIT 1) last_run_status
       FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
       WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
-        AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 4`)
+        AND t.workspace_session_id=? ORDER BY t.updated_at DESC,t.id LIMIT 257`)
       .all(projectId,orchestratorId,this.store.getWorkspaceSession().id);
+    const ownerIds=new Set(overviewRows.map(row=>row.id));
+
+    // The project DAG is advisory, never an authorization to submit messages.
+    // Preserve project-wide dependencies internally but disclose only THIS
+    // coordinator's scoped work in the Groq analysis.
+    let planning={state:'unavailable',automaticDispatchAllowed:false,qualityCertified:false};
+    let plan=null;
+    try {
+      plan=this.projectPlan(projectId,4);
+      const owned=plan.workers.filter(worker=>ownerIds.has(worker.taskId));
+      planning={state:'available',
+        candidateTaskIds:plan.candidates.filter(id=>ownerIds.has(id)).slice(0,8),
+        waitingCount:plan.waiting.filter(id=>ownerIds.has(id)).length,
+        blockedCount:plan.blocked.filter(id=>ownerIds.has(id)).length,
+        inFlight:owned.filter(worker=>worker.state==='running').length,
+        workCount:totalWorkCount,
+        executorMode:plan.executor.mode,
+        physicalProviderLanes:plan.executor.maxConcurrentSends,
+        availablePhysicalSlots:plan.executor.availableSlots,
+        transportSlotCandidateCount:plan.transportSlotCandidates.filter(id=>ownerIds.has(id)).length,
+        automaticDispatchAllowed:false,qualityCertified:false};
+    }catch(error){
+      if(error?.message!=='orchestrator_work_plan_too_large')throw error;
+      planning={state:'scope_too_large',automaticDispatchAllowed:false,qualityCertified:false};
+    }
+    const candidate=new Set(plan?.candidates||[]);
+    const waiting=new Set(plan?.waiting||[]);
+    const blocked=new Set(plan?.blocked||[]);
+    const states=new Map((plan?.workers||[]).map(worker=>[worker.taskId,worker.state]));
+    const readiness=id=>blocked.has(id)?'blocked':waiting.has(id)?'waiting':
+      candidate.has(id)?'candidate':states.get(id)||'unavailable';
+    // Prioritize reviews and active work, then ready/waiting tasks. The rich
+    // history remains capped at four works with five messages each; the wider
+    // overview has no message contents and no provider authority.
+    const priority=row=>{
+      const state=readiness(row.id);
+      return state==='uncertain'?0:state==='failed'?1:state==='running'?2:
+        state==='blocked'?3:state==='candidate'?4:state==='waiting'?5:6;
+    };
+    const ordered=[...overviewRows].sort((a,b)=>priority(a)-priority(b)||
+      String(b.updated_at).localeCompare(String(a.updated_at))||a.id.localeCompare(b.id));
+    const rows=ordered.slice(0,4);
     return {
+      planning,
       project:{name:redactOrchestratorAnalysisText(project.name,160),objective:redactOrchestratorAnalysisText(project.objective,600)},
       orchestrator:{name:redactOrchestratorAnalysisText(owner.name,160),mission:redactOrchestratorAnalysisText(owner.mission,800)},
-      scope:{includedWorkCount:rows.length,workLimit:4,messageLimitPerWork:5},
+      scope:{includedWorkCount:rows.length,workLimit:4,messageLimitPerWork:5,
+        overviewCount:Math.min(ordered.length,32),overviewLimit:32,totalWorkCount,
+        overviewTruncated:totalWorkCount>32},
+      workOverview:ordered.slice(0,32).map(row=>({
+        title:redactOrchestratorAnalysisText(row.title,180),
+        status:row.status,latestRunStatus:row.last_run_status,
+        readiness:readiness(row.id),updatedAt:row.updated_at
+      })),
       works:rows.map(row=>{
         const runs=this.db.prepare(`SELECT status,started_at,completed_at,heartbeat_at
           FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 3`).all(row.id);
@@ -403,6 +543,37 @@ export class OrchestratorService {
       this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
         .run(input.paused?'paused':'ready',input.orchestratorId);
       return {orchestratorId:input.orchestratorId,status:input.paused?'paused':'ready'};
+    }
+    if(operation==='work_dependency_set') {
+      this.task(input.projectId,input.taskId,'work');
+      // Prerequisites are pre-execution policy, not retroactive evidence.
+      // For continuing an already-executed work, create a new work milestone.
+      if(this.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(input.taskId)||
+        this.db.prepare(`SELECT 1 FROM lab_command_receipts
+          WHERE status IN ('running','uncertain') AND json_extract(result,'$.taskId')=? LIMIT 1`)
+          .get(input.taskId))
+        throw Error('orchestrator_dependencies_locked_after_execution');
+      for(const dep of input.dependsOn)this.task(input.projectId,dep,'work');
+      const existing=this.db.prepare('SELECT task_id,prerequisite_id FROM lab_work_dependencies WHERE project_id=?').all(input.projectId);
+      const graph=new Map();
+      for(const edge of existing) {
+        if(!graph.has(edge.task_id))graph.set(edge.task_id,[]);
+        if(edge.task_id!==input.taskId)graph.get(edge.task_id).push(edge.prerequisite_id);
+      }
+      graph.set(input.taskId,[...input.dependsOn]);
+      const done=new Set(),active=new Set();
+      const visit=id=>{
+        if(active.has(id))throw Error('orchestrator_dependency_cycle');
+        if(done.has(id))return;
+        active.add(id);
+        for(const dep of graph.get(id)||[])visit(dep);
+        active.delete(id);done.add(id);
+      };
+      for(const id of graph.keys())visit(id);
+      this.db.prepare('DELETE FROM lab_work_dependencies WHERE project_id=? AND task_id=?').run(input.projectId,input.taskId);
+      const insert=this.db.prepare('INSERT INTO lab_work_dependencies(project_id,task_id,prerequisite_id) VALUES(?,?,?)');
+      for(const dep of input.dependsOn)insert.run(input.projectId,input.taskId,dep);
+      return {taskId:input.taskId,dependsOn:[...input.dependsOn]};
     }
     if(operation==='work_create') {
       this.orchestrator(input.projectId,input.orchestratorId);
@@ -519,8 +690,7 @@ export class OrchestratorService {
     const providerContent=appendRemoteRepositoryInstructions(draft.content,repositoryUrl);
     const reviewedDraft={...draft,repositoryUrl,providerContent};
     if(typeof this.provider?.send!=='function')throw Error('orchestrator_provider_unavailable');
-    if(this.provider.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
-      this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
+    if(this.executorAdmission().availableSlots===0)
       throw Error('orchestrator_executor_busy');
     if(this.pendingProposalReviews.has(input.actionId))throw Error('orchestrator_proposal_review_busy');
     this.pendingProposalReviews.add(input.actionId);
@@ -538,6 +708,18 @@ export class OrchestratorService {
     }finally{this.pendingProposalReviews.delete(input.actionId);}
   }
 
+  assertDependenciesSatisfied(projectId,taskId) {
+    const hasDependencies=this.db.prepare(
+      'SELECT 1 FROM lab_work_dependencies WHERE project_id=? AND task_id=? LIMIT 1'
+    ).get(projectId,taskId);
+    if(!hasDependencies)return;
+    const plan=this.projectPlan(projectId,4);
+    const states=new Map(plan.workers.map(worker=>[worker.taskId,worker.state]));
+    const target=plan.workers.find(worker=>worker.taskId===taskId);
+    if(!target||target.dependsOn.some(id=>states.get(id)!=='succeeded'))
+      throw Error('orchestrator_work_prerequisite_not_confirmed');
+  }
+
   async dispatch(context,operation,input,preparedSend=null) {
     const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
       AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
@@ -545,15 +727,18 @@ export class OrchestratorService {
     // Return an accepted command even if the provider is now offline; never replay.
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const isWorkSend=operation==='work_send'||operation==='proposal_send';
+    const gptWebChat=operation==='orchestrator_chat';
+    const usesProvider=isWorkSend||gptWebChat;
     const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
       this.task(input.projectId,orch.chat_task_id,'orchestrator');
     const owner=orch||this.orchestrator(input.projectId,task.orchestrator_id);
+    if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
     const repositoryUrl=this.projectRepositoryUrl(input.projectId);
     if(owner.status==='paused')throw Error('orchestrator_paused');
-    const port=isWorkSend?this.provider:this.coordinator;
-    if(typeof port?.send!=='function'||(port.available&&port.available()!==true))
+    const port=usesProvider?this.provider:this.coordinator;
+    if(typeof port?.send!=='function'||(port.available&&port.available(input.projectId,owner.id)!==true))
       throw Error('orchestrator_provider_unavailable');
     const prepareWork=operation==='orchestrator_prepare';
     const analysisContext=operation==='orchestrator_analyze'||prepareWork
@@ -562,9 +747,16 @@ export class OrchestratorService {
     const content=operation==='orchestrator_analyze'
       ?'Analise explicitamente as conversas recentes de trabalho deste projeto e recomende próximos passos, sem executar nenhum deles.'
       :sendInput.content;
-    const providerContent=isWorkSend
+    const providerContent=usesProvider
       ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
       :content;
+    const providerChatDraft=gptWebChat&&input.draftRevision!==undefined;
+    if(providerChatDraft) {
+      const draft=this.store.getTaskDraft(task.id);
+      if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
+        throw Error('task_draft_revision_conflict');
+      if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
+    }
     const workspaceStatus=isWorkSend?null:this.workspace.status(context,input.projectId);
     const workspaceObservation=workspaceStatus?{
       state:workspaceStatus.state,
@@ -576,9 +768,8 @@ export class OrchestratorService {
       filesWritten:workspaceStatus.filesWritten
     }:null;
     assertTaskHasNoUncertainTransport(this.store,task.id);
-    // A single global executor until multi-session E2E proves concurrency.
-    if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get()||
-      this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||this.provider?.busy?.())
+    // The same admission rule gates plans and all canonical provider sends.
+    if(this.executorAdmission().availableSlots===0)
       throw Error('orchestrator_executor_busy');
     // Advisory API replies cannot submit GPT work. Preserve their uncertain
     // receipts without replay, but allow a fresh explicit API request. Only
@@ -586,7 +777,10 @@ export class OrchestratorService {
     if(isWorkSend&&this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(task.id))
       throw Error('orchestrator_reconciliation_required');
     const reserved=this.transaction(()=>{
+      this.requireAccess(context,operation,input.projectId);
+      if(isWorkSend)this.assertDependenciesSatisfied(input.projectId,task.id);
       const reservation=this.reserve(context,operation,input);
+      if(reservation.existing)return {existing:reservation.existing};
       if(preparedSend) {
         reservation.sendActionId=this.store.beginAction(task.id,null,'orchestrator.proposal-send',reservation.commandId,
           {actorId:context.actorId,clientId:context.clientId,sourceActionId:input.actionId,
@@ -599,17 +793,34 @@ export class OrchestratorService {
       this.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
         .run(JSON.stringify({taskId:task.id,...(reservation.sendActionId?{
           sendActionId:reservation.sendActionId,approvalId:reservation.approvalId}: {})}),reservation.commandId);
+      if(!usesProvider) {
+        const coordinatorDraft=['orchestrator_chat','orchestrator_prepare'].includes(operation)&&input.draftRevision!==undefined;
+        if(coordinatorDraft) {
+          const draft=this.store.getTaskDraft(task.id);
+          if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
+            throw Error('task_draft_revision_conflict');
+          if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
+        }
+        this.store.appendMessage(task.id,'user',content);
+        if(coordinatorDraft) {
+          const cleared=this.store.setDraft(task.id,'',input.draftRevision+1);
+          if(cleared.draft!==''||cleared.draft_revision!==input.draftRevision+1)
+            throw Error('task_draft_revision_conflict');
+        }
+      }
       return reservation;
     });
+    if(reserved.existing)return reserved.existing;
     try {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
-      if(!isWorkSend)this.transaction(()=>this.store.appendMessage(task.id,'user',content));
-      const reply=await port.send({taskId:task.id,content:isWorkSend?providerContent:content,draftRevision:sendInput.draftRevision??null,
+      const reply=await port.send({taskId:task.id,content:usesProvider?providerContent:content,
+        draftRevision:providerChatDraft?input.draftRevision+1:sendInput.draftRevision??null,
+        taskKind:gptWebChat?'orchestrator':isWorkSend?'work':null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
         workspaceObservation,repositoryUrl});
       this.requireAccess(context,operation,input.projectId);
-      if(!isWorkSend) {
+      if(!usesProvider) {
         if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
           throw Error('orchestrator_reply_invalid');
         return this.transaction(()=>{
@@ -623,7 +834,7 @@ export class OrchestratorService {
           this.store.appendMessage(task.id,'assistant',reply.content);
           return this.finish(reserved.commandId,{taskId:task.id,responseObserved:true,
             ...(proposalActionId?{proposalActionId}:{}),
-            proposalsExecuted:0,provider:'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
+            proposalsExecuted:0,provider:reply.provider||'groq',...(analysisContext?{analysis:{workCount:analysisContext.works.length,
               messageCount:analysisContext.works.reduce((n,work)=>n+work.messages.length,0)}}:{})});
         });
       }
@@ -633,6 +844,7 @@ export class OrchestratorService {
       if(canonicalRun?.status!=='succeeded')throw Error('orchestrator_effect_unconfirmed');
       return this.transaction(()=>{
         const result={taskId:task.id,runId:reply.runId,responseObserved:true,effectVerified:false,
+          provider:'chatgpt_web',
           ...(reserved.sendActionId?{sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
         if(reserved.sendActionId){
           this.db.prepare('UPDATE action_ledger SET run_id=? WHERE id=?').run(reply.runId,reserved.sendActionId);
@@ -641,17 +853,29 @@ export class OrchestratorService {
         return this.finish(reserved.commandId,result);
       });
     } catch(error) {
+      // The central chat is the GPT executor, never an implicit Groq chat.
+      // A failed, unavailable, or uncertain GPT submission must not be
+      // replaced with an answer from a different model.
+      const failure=error;
       // Only an explicit pre-submit disposition from the provider executor is
       // retryable. Missing/invalid evidence remains uncertain and quarantined.
-      const notSubmitted=isWorkSend&&error?.providerDeliveryState==='not_submitted';
-      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(error?.providerFailureCode||''))
-        ?String(error.providerFailureCode):'provider_send_unconfirmed';
-      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':'execution_unconfirmed',
-        ...(notSubmitted?{providerStage:String(error?.providerFailureStage||'unknown'),failureCode}:{}),...(reserved.sendActionId?{
+      const notSubmitted=usesProvider&&failure?.providerDeliveryState==='not_submitted';
+      const failureCode=/^[a-z][a-z0-9_]{1,80}$/i.test(String(failure?.providerFailureCode||''))
+        ?String(failure.providerFailureCode):'provider_send_unconfirmed';
+      const coordinatorCode=!usesProvider&&/^(?:groq|chatgpt)_[a-z0-9_]{1,64}$/.test(String(failure?.orchestratorFailureCode||''))
+        ?String(failure.orchestratorFailureCode):null;
+      const coordinatorOutcome=!usesProvider&&['rejected','response_invalid'].includes(failure?.orchestratorRequestOutcome)
+        ?failure.orchestratorRequestOutcome:null;
+      const coordinatorRejected=Boolean(coordinatorCode&&coordinatorOutcome);
+      const coordinatorHttpStatus=coordinatorCode&&Number.isSafeInteger(failure?.orchestratorHttpStatus)
+        ?failure.orchestratorHttpStatus:null;
+      const result={taskId:task.id,reason:notSubmitted?'provider_not_submitted':coordinatorRejected?'coordinator_request_failed':'execution_unconfirmed',
+        ...(notSubmitted?{providerStage:String(failure?.providerFailureStage||'unknown'),failureCode}:{}),
+        ...(coordinatorCode?{failureCode:coordinatorCode}:{}),...(coordinatorHttpStatus!==null?{httpStatus:coordinatorHttpStatus}:{}),...(reserved.sendActionId?{
         sendActionId:reserved.sendActionId,approvalId:reserved.approvalId}:{})};
       this.transaction(()=>{
         if(reserved.sendActionId)this.store.finishAction(task.id,reserved.sendActionId,notSubmitted?'failed':'indeterminate',result);
-        this.finish(reserved.commandId,result,notSubmitted?'failed':'uncertain');
+        this.finish(reserved.commandId,result,notSubmitted||coordinatorRejected?'failed':'uncertain');
       });
       this.requireAccess(context,operation,input.projectId);
       return this.getReceipt(context,reserved.commandId);

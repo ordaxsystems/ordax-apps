@@ -1,11 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { MemoryCandidateLedger } from './memory-candidates.mjs';
 import { assertSupervisorRole } from './supervisor-role-presets.mjs';
-import { canonicalProviderChatUrl } from './conversation-policy.mjs';
-import { buildProjectContinuation } from './continuation-context.mjs';
+import { canonicalProviderChatUrl, MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT, SUCCESSFUL_TURNS_PER_SEGMENT } from './conversation-policy.mjs';
+import {W3_MAX_ASSISTANT_CHARS} from './provider-recovery-bounds.mjs';
+import { buildProjectContinuationPacket } from './continuation-context.mjs';
+import { buildTaskHandoffSnapshot } from './task-handoff-snapshot.mjs';
+import { searchTaskHistoricalMessages, searchTaskHistoricalMessagesWithMemoryKeys } from './task-message-search.mjs';
 
 const SQLITE_OPEN_RETRY_DELAYS_MS = [0, 40, 80, 160, 320, 640, 1280];
 const sqliteOpenWait = new Int32Array(new SharedArrayBuffer(4));
@@ -67,9 +70,9 @@ export class Store {
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        sequence INTEGER
       );
-      CREATE INDEX IF NOT EXISTS idx_messages_task_time ON messages(task_id, created_at, id);
       CREATE TABLE IF NOT EXISTS message_assets (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -111,6 +114,12 @@ export class Store {
         payload TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_events_provider_transcript
+        ON events(task_id,json_extract(payload,'$.conversation_id'),json_extract(payload,'$.run_id'),kind)
+        WHERE kind IN ('provider.submission.provenance','provider.response.reconciled');
+      CREATE INDEX IF NOT EXISTS idx_events_provider_recovery_attempt
+        ON events(task_id,json_extract(payload,'$.run_id'),seq DESC)
+        WHERE kind='provider.response.recovery_attempt';
       CREATE TABLE IF NOT EXISTS checkpoints (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -190,6 +199,9 @@ export class Store {
     this.ensureColumn('runs', 'heartbeat_at', 'TEXT');
     this.ensureColumn('runs', 'observer_mode', 'TEXT');
     this.ensureColumn('runs', 'metrics', 'TEXT');
+    this.ensureColumn('messages','sequence','INTEGER');
+    this.ensureTaskMessageSequence();
+    this.ensureTaskMessageSearchIndex();
     this.memoryCandidates = new MemoryCandidateLedger(this);
     this.workspaceSession = this.ensureWorkspaceSession();
     this.db.prepare("UPDATE tasks SET workspace_session_id=? WHERE workspace_session_id IS NULL OR workspace_session_id=''")
@@ -229,6 +241,82 @@ export class Store {
   ensureColumn(table, column, type) {
     const columns = this.db.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name);
     if (!columns.includes(column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+  }
+
+  ensureTaskMessageSequence() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS store_migrations (
+        name TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL
+      );
+      CREATE TRIGGER IF NOT EXISTS messages_assign_sequence AFTER INSERT ON messages
+      WHEN new.sequence IS NULL BEGIN
+        UPDATE messages SET sequence=COALESCE((
+          SELECT MAX(sequence)+1 FROM messages WHERE task_id=new.task_id AND rowid<>new.rowid
+        ),1) WHERE rowid=new.rowid;
+      END;
+    `);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const migrated=this.db.prepare("SELECT 1 FROM store_migrations WHERE name='task-message-sequence-v1'").get();
+      if (!migrated) {
+        const rows=this.db.prepare('SELECT rowid,task_id FROM messages ORDER BY rowid').all();
+        const nextByTask=new Map();
+        const update=this.db.prepare('UPDATE messages SET sequence=? WHERE rowid=?');
+        for (const row of rows) {
+          const sequence=(nextByTask.get(row.task_id)||0)+1;
+          nextByTask.set(row.task_id,sequence);
+          update.run(sequence,row.rowid);
+        }
+        this.db.prepare('INSERT INTO store_migrations(name,applied_at) VALUES(?,?)')
+          .run('task-message-sequence-v1',this.now());
+      }
+      this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_task_sequence ON messages(task_id,sequence);');
+      this.db.exec('DROP INDEX IF EXISTS idx_messages_task_time;');
+      this.db.exec('COMMIT');
+    } catch(error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  ensureTaskMessageSearchIndex() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS store_migrations (
+        name TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL
+      );
+      CREATE VIRTUAL TABLE IF NOT EXISTS task_message_search USING fts5(
+        content, task_id UNINDEXED,
+        content='messages', content_rowid='rowid',
+        tokenize='unicode61 remove_diacritics 2'
+      );
+      CREATE TRIGGER IF NOT EXISTS task_message_search_insert AFTER INSERT ON messages BEGIN
+        INSERT INTO task_message_search(rowid,content,task_id) VALUES(new.rowid,new.content,new.task_id);
+      END;
+      CREATE TRIGGER IF NOT EXISTS task_message_search_update AFTER UPDATE OF content,task_id ON messages BEGIN
+        INSERT INTO task_message_search(task_message_search,rowid,content,task_id)
+          VALUES('delete',old.rowid,old.content,old.task_id);
+        INSERT INTO task_message_search(rowid,content,task_id) VALUES(new.rowid,new.content,new.task_id);
+      END;
+      CREATE TRIGGER IF NOT EXISTS task_message_search_delete AFTER DELETE ON messages BEGIN
+        INSERT INTO task_message_search(task_message_search,rowid,content,task_id)
+          VALUES('delete',old.rowid,old.content,old.task_id);
+      END;
+    `);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const indexed=this.db.prepare("SELECT 1 FROM store_migrations WHERE name='task-message-search-fts-v1'").get();
+      if (!indexed) {
+        this.db.prepare("INSERT INTO task_message_search(task_message_search) VALUES('rebuild')").run();
+        this.db.prepare('INSERT INTO store_migrations(name,applied_at) VALUES(?,?)')
+          .run('task-message-search-fts-v1',this.now());
+      }
+      this.db.exec('COMMIT');
+    } catch(error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   ensureWorkspaceSession() {
@@ -326,6 +414,13 @@ export class Store {
     return this.db.prepare('SELECT draft,draft_revision,draft_updated_at FROM tasks WHERE id=?').get(taskId);
   }
 
+  getTaskDraft(taskId) {
+    const draft=this.db.prepare(`SELECT draft,draft_revision,draft_updated_at FROM tasks
+      WHERE id=? AND workspace_session_id=?`).get(taskId,this.workspaceSession.id);
+    if(!draft)throw new Error('task_not_found');
+    return draft;
+  }
+
   getTask(id, { messageLimit = null } = {}) {
     const task = this.db.prepare('SELECT * FROM tasks WHERE id=?').get(id);
     if (!task) return null;
@@ -336,12 +431,32 @@ export class Store {
     const conversations = this.listConversations(id);
     const projectMemory = this.projectMemorySummary(id);
     const pendingCount = this.memoryCandidates.pendingCount(id);
+    const run=this.db.prepare(`SELECT id,status,error,metrics,started_at,completed_at FROM runs
+      WHERE task_id=? ORDER BY rowid DESC LIMIT 1`).get(id);
+    let runMetrics={};
+    try { runMetrics=JSON.parse(run?.metrics||'{}')||{}; } catch { /* malformed metrics cannot certify delivery */ }
     return {
       ...task,
       supervisor_role:this.getTaskSupervisorRole(id),
       messages,
       ...(page ? { message_page:{ has_more:page.has_more, next_cursor:page.next_cursor, page_size:page.page_size } } : {}),
       events: this.events(id, 100),
+      latest_run:run?{
+        id:run.id,status:run.status,error:run.error,
+        provider_delivery_state:['not_submitted','uncertain','submitted'].includes(runMetrics.provider_delivery_state)
+          ?runMetrics.provider_delivery_state:null,
+        context_attachment_state:['uploading','confirmed'].includes(runMetrics.context_attachment_state)
+          ?runMetrics.context_attachment_state:null,
+        context_attachment_filename:typeof runMetrics.context_attachment_filename==='string'&&
+          /^ordax-handoff-task_[a-z0-9_-]+-c\d+-[a-f0-9]{12}\.txt$/i.test(runMetrics.context_attachment_filename)
+          ?runMetrics.context_attachment_filename:null,
+        context_attachment_sha256:typeof runMetrics.context_attachment_sha256==='string'&&
+          /^[a-f0-9]{64}$/.test(runMetrics.context_attachment_sha256)
+          ?runMetrics.context_attachment_sha256:null,
+        submit_attempt_observed:Boolean(runMetrics.submit_attempt_at),
+        submission_confirmed:Boolean(runMetrics.submitted_at),
+        started_at:run.started_at,completed_at:run.completed_at
+      }:null,
       provisional_response:['running','interrupted','error'].includes(task.status)
         ? this.getRunProvisionalOutput(id) : null,
       checkpoint_record: checkpoint,
@@ -400,17 +515,103 @@ export class Store {
       COALESCE((SELECT MAX(version) FROM checkpoints c WHERE c.task_id=t.id),0) AS checkpoint_version
       FROM tasks t WHERE t.id=?`).get(taskId);
     if (!task) return null;
-    const active = this.db.prepare(`SELECT c.*,
+    let active = this.db.prepare(`SELECT c.*,
       (SELECT COUNT(*) FROM conversation_completed_runs r WHERE r.conversation_id=c.id) AS completed_turns
       FROM task_conversations c WHERE c.task_id=? AND c.status='active'
       ORDER BY c.sequence DESC LIMIT 1`).get(taskId);
+    if(active) active={...active,
+      observed_transcript_bytes:this.observedConversationTranscriptBytes(taskId,active.id,Number(active.completed_turns||0))};
     return { ...task, conversations:active ? [active] : [] };
   }
 
-  // Immutable keyset cursors use the existing (created_at,id) SQLite ordering.
-  // No separate index, page cache, offset-based scans, or replicated history.
-  encodeMessageCursor(message) {
-    return Buffer.from(JSON.stringify([message.created_at, message.id])).toString('base64url');
+  // Derive a bounded prompt/response byte footprint from the canonical turn
+  // ledger and immutable provider receipts. Incomplete receipts, ambiguous
+  // assistant attribution, unmeasured context attachments, multimodal turns,
+  // or oversized histories return null so policy falls back to its completed-
+  // turn ceiling. This deliberately does not estimate hidden provider tokens
+  // or context-window capacity.
+  observedConversationTranscriptBytes(taskId,conversationId,completedTurns) {
+    if(!Number.isSafeInteger(completedTurns)||completedTurns<0||completedTurns>SUCCESSFUL_TURNS_PER_SEGMENT)return null;
+    if(completedTurns===0)return 0;
+    const completed=this.db.prepare(`SELECT run_id FROM conversation_completed_runs
+      WHERE task_id=? AND conversation_id=? ORDER BY created_at,run_id`).all(taskId,conversationId);
+    if(completed.length!==completedTurns)return null;
+    const runIds=completed.map(({run_id})=>run_id);
+    if(runIds.some(runId=>typeof runId!=='string'||!runId))return null;
+    const maxReceiptEvents=SUCCESSFUL_TURNS_PER_SEGMENT*4;
+    const runPlaceholders=runIds.map(()=>'?').join(',');
+    const mappings=this.db.prepare(`SELECT kind,payload FROM events WHERE task_id=?
+      AND kind IN ('provider.submission.provenance','provider.response.reconciled')
+      AND json_extract(payload,'$.conversation_id')=?
+      AND json_extract(payload,'$.run_id') IN (${runPlaceholders})
+      ORDER BY seq LIMIT ?`).all(taskId,conversationId,...runIds,maxReceiptEvents+1);
+    if(mappings.length>maxReceiptEvents)return null;
+    const messageByRun=new Map();
+    for(const row of mappings){
+      let payload;
+      try{payload=JSON.parse(row.payload);}catch{return null;}
+      const runId=payload?.run_id;
+      const messageId=row.kind==='provider.submission.provenance'?payload?.message_id:payload?.user_message_id;
+      if(typeof runId!=='string'||typeof messageId!=='string'||!runId||!messageId)return null;
+      const prior=messageByRun.get(runId)||{
+        messageId:null,providerPromptBytes:null,contextManifestPresent:false,
+        attachmentExpected:false,attachmentBytes:0
+      };
+      if(prior.messageId&&prior.messageId!==messageId)return null;
+      prior.messageId=messageId;
+      if(row.kind==='provider.submission.provenance'){
+        const hasPromptBytes=Object.hasOwn(payload,'provider_prompt_bytes');
+        if(hasPromptBytes&&(!Number.isSafeInteger(payload.provider_prompt_bytes)||payload.provider_prompt_bytes<1))return null;
+        if(hasPromptBytes&&prior.providerPromptBytes!==null&&prior.providerPromptBytes!==payload.provider_prompt_bytes)return null;
+        if(hasPromptBytes)prior.providerPromptBytes=payload.provider_prompt_bytes;
+        prior.contextManifestPresent=payload.context_manifest!==undefined&&payload.context_manifest!==null;
+        prior.attachmentExpected=payload.context_manifest?.attachment_useful===true;
+        if(payload.context_attachment!==undefined&&payload.context_attachment!==null){
+          const attachmentBytes=payload.context_attachment.byte_length;
+          if(!prior.contextManifestPresent||!prior.attachmentExpected||
+             !Number.isSafeInteger(attachmentBytes)||attachmentBytes<1||attachmentBytes>1_000_000)return null;
+          prior.attachmentBytes=attachmentBytes;
+        }
+      }
+      messageByRun.set(runId,prior);
+    }
+    let total=0;
+    for(const {run_id:runId} of completed){
+      const mapping=messageByRun.get(runId);
+      const userMessageId=mapping?.messageId;
+      if(!userMessageId||(mapping.attachmentExpected&&!mapping.attachmentBytes))return null;
+      const user=this.db.prepare(`SELECT id,role,content,sequence FROM messages
+        WHERE id=? AND task_id=?`).get(userMessageId,taskId);
+      if(!user||user.role!=='user'||!Number.isSafeInteger(Number(user.sequence)))return null;
+      const nextUser=this.db.prepare(`SELECT sequence FROM messages WHERE task_id=? AND role='user'
+        AND sequence>? ORDER BY sequence LIMIT 1`).get(taskId,user.sequence);
+      const assistants=this.db.prepare(`SELECT id,content FROM messages WHERE task_id=? AND role='assistant'
+        AND sequence>? AND (? IS NULL OR sequence<?) ORDER BY sequence LIMIT 2`)
+        .all(taskId,user.sequence,nextUser?.sequence??null,nextUser?.sequence??null);
+      if(assistants.length!==1)return null;
+      const assistant=assistants[0];
+      if(this.db.prepare('SELECT 1 FROM message_assets WHERE message_id IN (?,?) LIMIT 1')
+        .get(user.id,assistant.id))return null;
+      const localPromptBytes=Buffer.byteLength(user.content,'utf8');
+      // Older receipts without an expanded context manifest sent the stored
+      // user text verbatim. For a contextual prompt, count only the exact byte
+      // size of the submitted provider prompt from the immutable receipt.
+      const providerPromptBytes=mapping.providerPromptBytes ??
+        (mapping.contextManifestPresent||mapping.attachmentExpected?null:localPromptBytes);
+      if(providerPromptBytes===null)return null;
+      total+=providerPromptBytes+mapping.attachmentBytes+Buffer.byteLength(assistant.content,'utf8');
+      if(total>=MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT)return MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT;
+    }
+    return total;
+  }
+
+  // Keyset cursors use a monotonic task-local sequence, stable even when timestamps tie.
+  // No offset scans, page cache, or replicated history.
+  encodeMessageCursor(message, taskId) {
+    const sequence=Number(message.sequence);
+    if (typeof taskId!=='string'||!taskId||!Number.isSafeInteger(sequence)||sequence<1)
+      throw new Error('invalid_message_cursor');
+    return Buffer.from(JSON.stringify(['task-message-sequence-v1',taskId,sequence])).toString('base64url');
   }
 
   decodeMessageCursor(cursor) {
@@ -418,10 +619,11 @@ export class Store {
     try {
       const raw = Buffer.from(cursor, 'base64url');
       const tuple = JSON.parse(raw.toString('utf8'));
-      if (raw.toString('base64url') !== cursor || !Array.isArray(tuple) || tuple.length !== 2 ||
-        typeof tuple[0] !== 'string' || !tuple[0] || tuple[0].length > 64 ||
-        typeof tuple[1] !== 'string' || !tuple[1] || tuple[1].length > 200) throw new Error('invalid_message_cursor');
-      return tuple;
+      if (raw.toString('base64url') !== cursor || !Array.isArray(tuple) || tuple.length !== 3 ||
+        tuple[0] !== 'task-message-sequence-v1' || typeof tuple[1]!=='string' || !tuple[1] || tuple[1].length>256 ||
+        !Number.isSafeInteger(tuple[2]) || tuple[2]<1)
+        throw new Error('invalid_message_cursor');
+      return {taskId:tuple[1],sequence:tuple[2]};
     } catch { throw new Error('invalid_message_cursor'); }
   }
 
@@ -434,7 +636,7 @@ export class Store {
     return {
       messages:page,
       has_more:hasMore,
-      next_cursor:hasMore ? this.encodeMessageCursor(page[0]) : null,
+      next_cursor:hasMore ? this.encodeMessageCursor(page[0],taskId) : null,
       page_size:size,
       total_messages:Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n || 0)
     };
@@ -446,13 +648,13 @@ export class Store {
     const bounded = Number.isSafeInteger(limit) && limit > 0;
     if (!bounded && before != null) throw new Error('invalid_message_cursor');
     const cursor = before == null ? null : this.decodeMessageCursor(before);
+    if (cursor&&cursor.taskId!==taskId) return [];
     const rows = bounded
       ? cursor
-        ? this.db.prepare(`SELECT id,role,content,created_at FROM messages WHERE task_id=?
-          AND (created_at < ? OR (created_at = ? AND id < ?))
-          ORDER BY created_at DESC,id DESC LIMIT ?`).all(taskId, cursor[0], cursor[0], cursor[1], limit).reverse()
-        : this.db.prepare('SELECT id,role,content,created_at FROM messages WHERE task_id=? ORDER BY created_at DESC,id DESC LIMIT ?').all(taskId, limit).reverse()
-      : this.db.prepare('SELECT id,role,content,created_at FROM messages WHERE task_id=? ORDER BY created_at,id').all(taskId);
+        ? this.db.prepare(`SELECT id,role,content,created_at,sequence FROM messages WHERE task_id=?
+          AND sequence < ? ORDER BY sequence DESC LIMIT ?`).all(taskId,cursor.sequence,limit).reverse()
+        : this.db.prepare('SELECT id,role,content,created_at,sequence FROM messages WHERE task_id=? ORDER BY sequence DESC LIMIT ?').all(taskId,limit).reverse()
+      : this.db.prepare('SELECT id,role,content,created_at,sequence FROM messages WHERE task_id=? ORDER BY sequence').all(taskId);
     if (!rows.length) return [];
     const assets = new Map();
     // The bounded continuation path needs at most eight messages. For full history,
@@ -466,6 +668,11 @@ export class Store {
       assets.get(message_id).push({ ...asset, url: `/api/assets/${encodeURIComponent(asset.id)}` });
     }
     return rows.map(row => ({ ...row, assets: assets.get(row.id) || [] }));
+  }
+
+  searchHistoricalMessages(taskId, request, { beforeMessage = null, limit = 4 } = {}) {
+    const boundary=beforeMessage || this.messages(taskId,{limit:8})[0] || null;
+    return searchTaskHistoricalMessages(this.db,taskId,request,{beforeMessage:boundary,limit});
   }
 
   getAsset(id) { return this.db.prepare('SELECT * FROM message_assets WHERE id=?').get(id) || null; }
@@ -490,14 +697,24 @@ export class Store {
   }
 
   appendMessage(taskId, role, content) {
-    const id = `msg_${randomUUID()}`;
-    const now = this.now();
-    this.db.prepare('INSERT INTO messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)')
-      .run(id, taskId, role, content, now);
-    this.touch(taskId);
-    this.event(taskId, 'message.appended', { id, role });
-    if (role === 'user') this.memoryCandidates.suggestFromMessage(taskId, { id, role, content });
-    return { id, role, content, created_at: now, assets: [] };
+    const ownsTransaction=!this.db.isTransaction;
+    if(ownsTransaction)this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const id = `msg_${randomUUID()}`;
+      const now = this.now();
+      this.db.prepare('INSERT INTO messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)')
+        .run(id, taskId, role, content, now);
+      this.touch(taskId);
+      this.event(taskId, 'message.appended', { id, role });
+      const message={ id, role, content };
+      if (role === 'user') this.memoryCandidates.suggestFromMessage(taskId,message);
+      else if (role === 'assistant') this.memoryCandidates.suggestFromAssistantMessage(taskId,message);
+      if(ownsTransaction)this.db.exec('COMMIT');
+      return { id, role, content, created_at: now, assets: [] };
+    } catch(error) {
+      if(ownsTransaction&&this.db.isTransaction)this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   touch(id) { this.db.prepare('UPDATE tasks SET updated_at=? WHERE id=?').run(this.now(), id); }
@@ -574,12 +791,30 @@ export class Store {
     `).all(taskId);
   }
 
-  bindConversation(taskId, url, contextCheckpointVersion = null) {
-    const normalized = canonicalProviderChatUrl(url);
-    if (!normalized) {
-      if (!String(url || '').trim()) return null;
-      throw new Error('invalid_provider_conversation_url');
+  // One remote ChatGPT conversation belongs to exactly one local Task, even
+  // when it was archived, migrated from the legacy tasks.chat_url column, or
+  // observed through chat.openai.com instead of chatgpt.com. A different Task
+  // must use a different remote thread; do not silently adopt another Task's
+  // evidence during navigation, submission or recovery.
+  assertProviderConversationUnclaimed(taskId, url) {
+    const canonical=canonicalProviderChatUrl(url);
+    if(!canonical)throw new Error('invalid_provider_conversation_url');
+    const threadPath=new URL(canonical).pathname;
+    const claims=this.db.prepare(`SELECT task_id,chat_url
+      FROM task_conversations WHERE task_id<>? AND chat_url IS NOT NULL
+      UNION ALL SELECT id AS task_id,chat_url FROM tasks
+      WHERE id<>? AND chat_url IS NOT NULL`).all(taskId,taskId);
+    for(const claim of claims) {
+      const stored=canonicalProviderChatUrl(claim.chat_url);
+      if(stored&&new URL(stored).pathname===threadPath)
+        throw new Error('provider_conversation_owned_by_another_task');
     }
+    return canonical;
+  }
+
+  bindConversation(taskId, url, contextCheckpointVersion = null) {
+    if (!String(url || '').trim()) return null;
+    const normalized = this.assertProviderConversationUnclaimed(taskId,url);
     const now = this.now();
     const exact = this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? AND chat_url=? ORDER BY sequence DESC LIMIT 1').get(taskId, normalized);
     const existing = exact || this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? ORDER BY sequence DESC').all(taskId)
@@ -631,18 +866,78 @@ export class Store {
     };
   }
 
-  buildContinuationPrompt(taskId, prompt) {
+  buildContinuationPacket(taskId, prompt, { maxChars = 16000 } = {}) {
     // Bounded projection of the SAME SQLite SSOT, never an independent cache.
     // Avoid loading every message, event, candidate and conversation on each send.
     const task = this.db.prepare('SELECT id,title,checkpoint FROM tasks WHERE id=?').get(taskId);
-    if (!task) return String(prompt || '');
-    return buildProjectContinuation({
+    if (!task) return {prompt:String(prompt||''),manifest:null};
+    const checkpoint=this.latestCheckpoint(taskId);
+    const recentMessages=this.messages(taskId,{limit:8});
+    const totalMessageCount=Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n||0);
+    const memoryItems=this.listProjectMemory(taskId);
+    const retrievedMessages=totalMessageCount>recentMessages.length
+      ?searchTaskHistoricalMessagesWithMemoryKeys(this.db,taskId,prompt,{beforeMessage:recentMessages[0],limit:4,memoryItems})
+      :[];
+    return buildProjectContinuationPacket({
       title: task.title,
-      checkpoint: this.latestCheckpoint(taskId)?.summary || task.checkpoint,
-      memoryItems: this.listProjectMemory(taskId),
-      recentMessages: this.messages(taskId, { limit: 8 }),
-      request: prompt
+      checkpoint: checkpoint?.summary || task.checkpoint,
+      checkpointVersion: checkpoint?.version || 0,
+      memoryItems,
+      recentMessages,
+      retrievedMessages,
+      totalMessageCount,
+      request: prompt,
+      maxChars
     });
+  }
+
+  buildTaskHandoffSnapshot(taskId, { request = '', historyLimit = 8, maxBytes, includeMessageIds = [] } = {}) {
+    const task=this.db.prepare('SELECT id,title,checkpoint FROM tasks WHERE id=? AND workspace_session_id=?')
+      .get(taskId,this.workspaceSession.id);
+    if(!task)throw new Error('task_not_found');
+    if(!Array.isArray(includeMessageIds)||includeMessageIds.length>64||
+       includeMessageIds.some(id=>typeof id!=='string'||!id.trim()||id.length>180)||
+       new Set(includeMessageIds).size!==includeMessageIds.length)
+      throw new Error('task_handoff_message_scope_invalid');
+    const checkpoint=this.latestCheckpoint(taskId);
+    const memoryItems=this.listProjectMemory(taskId);
+    for(const item of memoryItems){
+      if(!item.source_ref)continue;
+      const sourceExists=item.source_type==='message'
+        ?this.db.prepare('SELECT 1 AS found FROM messages WHERE id=? AND task_id=?').get(item.source_ref,taskId)
+        :item.source_type==='checkpoint'
+          ?this.db.prepare('SELECT 1 AS found FROM checkpoints WHERE id=? AND task_id=?').get(item.source_ref,taskId)
+          :true;
+      if(!sourceExists)throw new Error('task_handoff_source_scope_invalid');
+    }
+    const recentMessages=this.messages(taskId,{limit:8});
+    const totalMessages=Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n||0);
+    const beforeMessage=recentMessages[0]||null;
+    const retrievedMessages=beforeMessage&&totalMessages>recentMessages.length
+      ?searchTaskHistoricalMessagesWithMemoryKeys(this.db,taskId,request,{
+        beforeMessage,limit:historyLimit,memoryItems
+      })
+      :[];
+    const recentIds=new Set(recentMessages.map(message=>message.id));
+    const requestedHistory=includeMessageIds.filter(id=>!recentIds.has(id)).map(id=>{
+      const row=this.db.prepare('SELECT id,role,content,created_at,sequence FROM messages WHERE id=? AND task_id=?')
+        .get(id,taskId);
+      if(!row)throw new Error('task_handoff_message_scope_invalid');
+      return row;
+    });
+    const historicalMessages=[...new Map([...retrievedMessages,...requestedHistory]
+      .map(message=>[message.id,message])).values()].sort((a,b)=>a.sequence-b.sequence);
+    return buildTaskHandoffSnapshot({
+      taskId:task.id,title:task.title,
+      checkpoint:checkpoint?.summary||task.checkpoint||'',checkpointVersion:checkpoint?.version||0,
+      memoryItems,recentMessages,historicalMessages,historyMessageCount:Math.max(0,totalMessages-recentMessages.length),
+      generatedAt:this.now(),...(maxBytes==null?{}:{maxBytes})
+    });
+  }
+
+  buildContinuationPrompt(taskId, prompt, options = {}) {
+    const packet=this.buildContinuationPacket(taskId,prompt,options);
+    return packet.manifest?packet.prompt:String(prompt||'');
   }
 
   checkpoint(id, summary, payload = {}) {
@@ -712,8 +1007,41 @@ export class Store {
     const normalized = {
       observer_mode: observerMode,
       failed_stage: metrics?.failedStage || null,
+      response_prompt_expansion_attempted:metrics?.responsePromptExpansionAttempted===true,
+      response_prompt_expanded:metrics?.responsePromptExpanded===true,
       provider_delivery_state: ['not_submitted','uncertain','submitted'].includes(metrics?.providerDeliveryState)
         ? metrics.providerDeliveryState : null,
+      context_attachment_state:['uploading','confirmed'].includes(metrics?.contextAttachmentState)
+        ? metrics.contextAttachmentState : null,
+      context_attachment_filename:typeof metrics?.contextAttachmentFilename==='string'&&
+        /^ordax-handoff-task_[a-z0-9_-]+-c\d+-[a-f0-9]{12}\.txt$/i.test(metrics.contextAttachmentFilename)
+        ? metrics.contextAttachmentFilename : null,
+      context_attachment_sha256:typeof metrics?.contextAttachmentSha256==='string'&&
+        /^[a-f0-9]{64}$/.test(metrics.contextAttachmentSha256)
+        ? metrics.contextAttachmentSha256 : null,
+      context_attachment_byte_length:Number.isSafeInteger(metrics?.contextAttachmentByteLength)&&
+        metrics.contextAttachmentByteLength>0&&metrics.contextAttachmentByteLength<=1_000_000
+        ? metrics.contextAttachmentByteLength : null,
+      context_attachment_uploaded_at:Number.isSafeInteger(metrics?.contextAttachmentUploadedAt)&&
+        metrics.contextAttachmentUploadedAt>0?metrics.contextAttachmentUploadedAt:null,
+      context_attachment_selection_confirmed:metrics?.contextAttachmentSelectionConfirmed===true,
+      context_attachment_observation_count:Number.isSafeInteger(metrics?.contextAttachmentObservationCount)&&
+        metrics.contextAttachmentObservationCount>=0&&metrics.contextAttachmentObservationCount<=1000
+        ?metrics.contextAttachmentObservationCount:0,
+      context_attachment_file_input_count:Number.isSafeInteger(metrics?.contextAttachmentFileInputCount)&&
+        metrics.contextAttachmentFileInputCount>=0&&metrics.contextAttachmentFileInputCount<=100
+        ?metrics.contextAttachmentFileInputCount:0,
+      context_attachment_selected_file_count:Number.isSafeInteger(metrics?.contextAttachmentSelectedFileCount)&&
+        metrics.contextAttachmentSelectedFileCount>=0&&metrics.contextAttachmentSelectedFileCount<=100
+        ?metrics.contextAttachmentSelectedFileCount:0,
+      context_attachment_expected_file_selected:metrics?.contextAttachmentExpectedFileSelected===true,
+      context_attachment_filename_text_visible:metrics?.contextAttachmentFilenameTextVisible===true,
+      context_attachment_filename_attribute_visible:metrics?.contextAttachmentFilenameAttributeVisible===true,
+      context_attachment_progress_visible:metrics?.contextAttachmentProgressVisible===true,
+      context_attachment_error_visible:metrics?.contextAttachmentErrorVisible===true,
+      context_attachment_visible_stable_observations:Number.isSafeInteger(metrics?.contextAttachmentVisibleStableObservations)&&
+        metrics.contextAttachmentVisibleStableObservations>=0&&metrics.contextAttachmentVisibleStableObservations<=1000
+        ?metrics.contextAttachmentVisibleStableObservations:0,
       run_started_at: metrics?.runStartedAt || null,
       prepare_started_at: metrics?.prepareStartedAt || null,
       health_completed_at: metrics?.healthCompletedAt || null,
@@ -847,9 +1175,150 @@ export class Store {
     });
   }
 
-  recoverInterruptedRuns() {
-    // Startup recovery is one durable SQLite transaction: a power loss must
-    // never leave an interrupted Run with its Task still marked as running.
+  // Recover a reply that the provider demonstrably completed after the local
+  // observer failed. The caller supplies a digest from a fresh read-only
+  // inspection; every ledger reference is revalidated inside one transaction.
+  reconcileObservedProviderReply(taskId, {
+    runId,userMessageId,conversationId,chatUrl,promptSha256,responseSha256,text
+  }={}) {
+    const canonicalUrl=canonicalProviderChatUrl(chatUrl);
+    if(typeof text!=='string'||!text.trim()||text.length>W3_MAX_ASSISTANT_CHARS||
+       !/^[a-f0-9]{64}$/.test(promptSha256||'')||
+       !/^[a-f0-9]{64}$/.test(responseSha256||'')||
+       createHash('sha256').update(text,'utf8').digest('hex')!==responseSha256||
+       typeof runId!=='string'||typeof userMessageId!=='string'||
+       (conversationId!==null&&typeof conversationId!=='string')||!canonicalUrl)
+      throw new Error('invalid_provider_reply_reconciliation');
+
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const task=this.db.prepare('SELECT workspace_session_id,status,chat_url FROM tasks WHERE id=?').get(taskId);
+      if(!task||task.workspace_session_id!==this.workspaceSession.id)
+        throw new Error('task_access_denied');
+      const run=this.db.prepare('SELECT id,status FROM runs WHERE id=? AND task_id=?').get(runId,taskId);
+      if(run?.status==='succeeded') {
+        const prior=this.db.prepare(`SELECT 1 FROM events WHERE task_id=? AND kind='provider.response.reconciled'
+          AND json_extract(payload,'$.run_id')=? AND json_extract(payload,'$.response_sha256')=? LIMIT 1`)
+          .get(taskId,runId,responseSha256);
+        if(prior) {
+          this.db.exec('COMMIT');
+          return {reconciled:false,reason:'already_reconciled'};
+        }
+      }
+      if(!run||!['failed','interrupted'].includes(run.status))
+        throw new Error('provider_reply_run_not_recoverable');
+      if(task.status!=='error'&&task.status!=='interrupted')
+        throw new Error('provider_reply_task_state_changed');
+      const newestRun=this.db.prepare('SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(taskId);
+      if(newestRun?.id!==runId||this.db.prepare("SELECT 1 FROM runs WHERE task_id=? AND status='running' LIMIT 1").get(taskId))
+        throw new Error('provider_reply_run_not_latest');
+      const latestUser=this.db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY rowid DESC LIMIT 1").get(taskId);
+      if(latestUser?.id!==userMessageId)
+        throw new Error('provider_reply_user_message_changed');
+      const receiptRow=this.db.prepare(`SELECT payload FROM events WHERE task_id=?
+        AND kind='provider.submission.provenance' AND json_extract(payload,'$.run_id')=?
+        AND json_extract(payload,'$.message_id')=? ORDER BY seq DESC LIMIT 1`).get(taskId,runId,userMessageId);
+      let receipt=null;
+      try {receipt=receiptRow?JSON.parse(receiptRow.payload):null;} catch {}
+      const intentRow=this.db.prepare(`SELECT payload FROM events WHERE task_id=?
+        AND kind='provider.submission.intent' AND json_extract(payload,'$.run_id')=?
+        AND json_extract(payload,'$.message_id')=? ORDER BY seq DESC LIMIT 1`).get(taskId,runId,userMessageId);
+      let intent=null;
+      try {intent=intentRow?JSON.parse(intentRow.payload):null;} catch {}
+      const intentBaselineValid=Boolean(intent&&
+        (intent.baseline_user_message_id===null||
+          (typeof intent.baseline_user_message_id==='string'&&intent.baseline_user_message_id.length>0&&intent.baseline_user_message_id.length<=180))&&
+        typeof intent.baseline_user_message_present==='boolean'&&
+        (intent.baseline_user_message_id===null||intent.baseline_user_message_present)&&
+        typeof intent.baseline_prompt_matches==='boolean');
+      const linkedDispatchIntentValid=Boolean(intent&&intent.new_session!==true&&
+        intent.conversation_id===conversationId&&intentBaselineValid&&
+        intent.prompt_sha256===promptSha256&&Number.isSafeInteger(intent.intent_at)&&intent.intent_at>0&&
+        intent.new_session===false);
+      const acknowledgedReceiptValid=Boolean(receipt&&receipt.conversation_id===conversationId&&
+        receipt.prompt_sha256===promptSha256&&receipt.response_observed===false&&receipt.effect_verified===false);
+      // Check even an already-bound thread before adopting its response:
+      // a historical collision cannot be transformed into proven delivery.
+      this.assertProviderConversationUnclaimed(taskId,canonicalUrl);
+      let effectiveConversationId=conversationId;
+      let freshDispatchIntentValid=false;
+      if(intent&&intent.new_session===true&&conversationId===null&&intentBaselineValid&&
+         intent.baseline_user_message_id===null&&intent.baseline_user_message_present===false&&
+         intent.baseline_prompt_matches===false&&intent.prompt_sha256===promptSha256&&
+         Number.isSafeInteger(intent.intent_at)&&intent.intent_at>0&&
+         intent.conversation_id===null&&
+         (intent.context_checkpoint_version===null||
+           (Number.isSafeInteger(intent.context_checkpoint_version)&&intent.context_checkpoint_version>=0))) {
+        const previousUrl=canonicalProviderChatUrl(intent.previous_chat_url);
+        const previousReferenceMatches=intent.previous_conversation_id===null
+          ?(!previousUrl&&!canonicalProviderChatUrl(task.chat_url)&&
+            !this.db.prepare("SELECT 1 FROM task_conversations WHERE task_id=? AND status='active' LIMIT 1").get(taskId))
+          :(typeof intent.previous_conversation_id==='string'&&previousUrl&&
+            canonicalProviderChatUrl(task.chat_url)===previousUrl&&
+            Boolean(this.db.prepare(`SELECT 1 FROM task_conversations WHERE id=? AND task_id=? AND chat_url=? AND status='active'`)
+              .get(intent.previous_conversation_id,taskId,previousUrl)));
+        const freshUrlUnused=!this.db.prepare('SELECT 1 FROM task_conversations WHERE task_id=? AND chat_url=? LIMIT 1')
+          .get(taskId,canonicalUrl);
+        if(!previousReferenceMatches||previousUrl===canonicalUrl||!freshUrlUnused)
+          throw new Error('provider_reply_new_conversation_reference_changed');
+        const now=this.now();
+        this.db.prepare("UPDATE task_conversations SET status='archived',ended_at=COALESCE(ended_at,?),updated_at=? WHERE task_id=? AND status='active'")
+          .run(now,now,taskId);
+        const sequence=Number(this.db.prepare('SELECT COALESCE(MAX(sequence),0)+1 AS sequence FROM task_conversations WHERE task_id=?')
+          .get(taskId)?.sequence||1);
+        effectiveConversationId=`conversation_${randomUUID()}`;
+        this.db.prepare(`INSERT INTO task_conversations
+          (id,task_id,sequence,chat_url,status,context_checkpoint_version,created_at,updated_at)
+          VALUES(?,?,?,?,?,?,?,?)`).run(effectiveConversationId,taskId,sequence,canonicalUrl,'active',
+            intent.context_checkpoint_version,now,now);
+        this.db.prepare('UPDATE tasks SET chat_url=?,updated_at=? WHERE id=?').run(canonicalUrl,now,taskId);
+        this.event(taskId,'provider.conversation.bound',{
+          conversation_id:effectiveConversationId,sequence,url:canonicalUrl,
+          context_checkpoint_version:intent.context_checkpoint_version
+        });
+        freshDispatchIntentValid=true;
+      }
+      const dispatchIntentValid=linkedDispatchIntentValid||freshDispatchIntentValid;
+      const conversation=this.db.prepare(`SELECT c.id FROM task_conversations c JOIN tasks t
+        ON t.id=c.task_id AND t.chat_url=c.chat_url
+        WHERE c.id=? AND c.task_id=? AND c.chat_url=? AND c.status='active'`).get(effectiveConversationId,taskId,canonicalUrl);
+      if(!conversation||canonicalProviderChatUrl(this.db.prepare('SELECT chat_url FROM tasks WHERE id=?').get(taskId)?.chat_url)!==canonicalUrl)
+        throw new Error('provider_reply_conversation_changed');
+      if(!acknowledgedReceiptValid&&!dispatchIntentValid)
+        throw new Error('provider_reply_submission_receipt_invalid');
+
+      const now=this.now();
+      const finalized=this.db.prepare(`UPDATE runs SET status='succeeded',completed_at=?,heartbeat_at=?,error=NULL
+        WHERE id=? AND task_id=? AND status IN ('failed','interrupted')`).run(now,now,runId,taskId);
+      if(finalized.changes!==1)throw new Error('provider_reply_run_state_changed');
+      const updated=this.db.prepare("UPDATE tasks SET status='ready',updated_at=? WHERE id=? AND status IN ('error','interrupted')").run(now,taskId);
+      if(updated.changes!==1)throw new Error('provider_reply_task_state_changed');
+      const assistant=this.appendMessage(taskId,'assistant',text);
+      this.checkpoint(taskId,`Resposta do ChatGPT recuperada após verificação em ${now}: ${text.slice(0,800)}`,{
+        run_id:runId,chat_url:canonicalUrl,observer_mode:'verified-dom-reconciliation'
+      });
+      this.db.prepare('DELETE FROM run_provisional_outputs WHERE run_id=? AND task_id=?').run(runId,taskId);
+      this.event(taskId,'provider.response.reconciled',{
+        run_id:runId,user_message_id:userMessageId,conversation_id:effectiveConversationId,
+        prompt_sha256:promptSha256,response_sha256:responseSha256,
+        evidence:'unique_exact_prompt_completed_provider_reply',
+        submission_evidence:acknowledgedReceiptValid?'delivery_receipt':'dispatch_intent',
+        reconciled_at:now
+      });
+      this.recordConversationCompletion(taskId,runId);
+      this.db.exec('COMMIT');
+      return {reconciled:true,assistant};
+    } catch(error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  recoverInterruptedRuns(reason='process_interrupted') {
+    if (!['process_interrupted','app_shutdown'].includes(reason))
+      throw new Error('invalid_interruption_reason');
+    // Shared startup and graceful-window-close transaction: a crash or normal
+    // close must never leave a submitted Run running after the app disappears.
     // In-flight run-linked actions have uncertain external side effects.
     // Mark them indeterminate; NEVER retry or dispatch them on boot.
     this.db.exec('BEGIN IMMEDIATE');
@@ -865,7 +1334,7 @@ export class Store {
         "AND run_id=? AND status IN ('pending','planning','approved','dispatching')"
       );
       const stopRun = this.db.prepare(
-        "UPDATE runs SET status='interrupted',completed_at=?,heartbeat_at=?,error='process_interrupted' " +
+        "UPDATE runs SET status='interrupted',completed_at=?,heartbeat_at=?,error=? " +
         "WHERE id=? AND status='running'"
       );
       const stopTask = this.db.prepare(
@@ -875,13 +1344,13 @@ export class Store {
         for (const action of actions.all(run.id,run.task_id)) {
           if (stopAction.run(now,action.id,run.id).changes===1)
             this.event(run.task_id,'action.indeterminate',{
-              action_id:action.id,run_id:run.id,reason:'process_interrupted'
+              action_id:action.id,run_id:run.id,reason
             });
         }
-        if (stopRun.run(now,now,run.id).changes!==1) throw new Error('run_recovery_state_changed');
+        if (stopRun.run(now,now,reason,run.id).changes!==1) throw new Error('run_recovery_state_changed');
         stopTask.run(now,run.task_id);
         this.event(run.task_id,'run.interrupted',{
-          run_id:run.id,reason:'process_interrupted'
+          run_id:run.id,reason
         });
       }
       this.db.exec('COMMIT');
@@ -955,3 +1424,4 @@ export class Store {
     };
   }
 }
+

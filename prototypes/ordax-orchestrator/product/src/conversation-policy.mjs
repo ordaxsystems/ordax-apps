@@ -19,8 +19,12 @@ export function canonicalProviderChatUrl(value) {
   } catch { return null; }
 }
 export const SUCCESSFUL_TURNS_PER_SEGMENT = 24;
+// This is an OrdaX-side ceiling for the UTF-8 bytes of confirmed visible
+// user/assistant transcript text. It is an observable pressure signal, not a
+// claim about ChatGPT's hidden prompt or model token/context limit.
+export const MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT = 64 * 1024;
 
-export function planProviderConversation(task, { forceNew = false } = {}) {
+export function planProviderConversation(task, { forceNew = false, nextPromptBytes = null } = {}) {
   if (!task) throw new Error('task_not_found');
   const currentUrl = canonicalProviderChatUrl(task.chat_url);
   const active = currentUrl ? (task.conversations || []).find(row =>
@@ -28,15 +32,24 @@ export function planProviderConversation(task, { forceNew = false } = {}) {
   ) || null : null;
   const firstSegment = !currentUrl;
   const completedTurns = Number(active?.completed_turns || 0);
+  const observedTranscriptBytes = Number.isSafeInteger(active?.observed_transcript_bytes) &&
+    active.observed_transcript_bytes >= 0 ? active.observed_transcript_bytes : null;
+  const nextBytes = Number.isSafeInteger(nextPromptBytes) && nextPromptBytes >= 0 ? nextPromptBytes : null;
+  const observedTranscriptPressure = Boolean(task.chat_url && active && completedTurns > 0 &&
+    observedTranscriptBytes !== null && nextBytes !== null &&
+    observedTranscriptBytes + nextBytes >= MAX_OBSERVED_TRANSCRIPT_BYTES_PER_SEGMENT);
   const automaticRotation = Boolean(task.chat_url && active &&
-    completedTurns >= SUCCESSFUL_TURNS_PER_SEGMENT);
+    (completedTurns >= SUCCESSFUL_TURNS_PER_SEGMENT || observedTranscriptPressure));
   const newSession = Boolean(forceNew || firstSegment || automaticRotation);
   return {
     newSession,
     automaticRotation,
     reason: forceNew ? 'explicit' : firstSegment ? 'new_or_prepared' :
-      automaticRotation ? 'completed_turn_threshold' : 'continue_active',
+      observedTranscriptPressure ? 'observed_transcript_budget' :
+        automaticRotation ? 'completed_turn_threshold' : 'continue_active',
     completedTurns,
+    observedTranscriptBytes,
+    nextPromptBytes:nextBytes,
     previousConversationId: active?.id || null
   };
 }

@@ -58,7 +58,7 @@ export class LabNextProposal {
           AND q.rowid>p.start_review_rowid)<2
       ORDER BY r.updated_at,r.run_id LIMIT 1`).get();
     if(!row)return {state:'idle'};
-    if(this.service.coordinator?.available?.()!==true)return {state:'blocked_coordinator'};
+    if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};
     if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get() ||
        this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get() ||
        this.service.provider?.busy?.())return {state:'executor_busy'};

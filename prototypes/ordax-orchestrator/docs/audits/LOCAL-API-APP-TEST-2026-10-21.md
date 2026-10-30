@@ -41,7 +41,7 @@ ler a chave. Resultado: a chamada real ao provedor passou. A persistência após
 fechar e reabrir o App ainda não foi verificada. O opt-in precisa ser ativado
 novamente a cada sessão.
 
-O helper `product/scripts/prepare-physical-api-test.cjs` limita o ensaio ao artefato
+O helper `product/scripts/prepare-physical-api-e2e.cjs` limita o ensaio ao artefato
 validado e perfil novo. Não lê chaves, não envia prompts e não acessa DOM do
 provedor. A candidata é um teste portátil, não instalação/distribuição oficial.
 W3/W4 de ChatGPT Web e autonomia contínua permanecem fora deste aceite por API.
