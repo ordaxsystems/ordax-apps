@@ -16,6 +16,7 @@ test("Aura is the single product identity of the versioned Assistant component",
   const intelligence = json("ai/manifest.json");
   const actions = json("actions/manifest.json");
   const providers = json("actions/providers/manifest.json");
+  const presentation = json("presentation/manifest.json");
 
   assert.equal(manifest.id, "assistant"); // Stable install/activation key, not a second app.
   assert.equal(typeof manifest.title, "string");
@@ -37,6 +38,14 @@ test("Aura is the single product identity of the versioned Assistant component",
   assert.equal(intelligence.execution, "declarative-only");
   assert.equal(actions.execution, "proposal-only");
   assert.equal(providers.execution, "unavailable");
+  assert.equal(presentation.schema, "ordax.app-presentation-manifest/1");
+  assert.equal(presentation.appId, manifest.id);
+  assert.equal(presentation.appVersion, manifest.version);
+  assert.equal(presentation.authority, "none");
+  assert.equal(presentation.sourceLocale, "pt-BR");
+  assert.equal(presentation.singleton, true);
+  assert.equal(presentation.monogram, "AU");
+  assert.deepEqual(presentation.translations, {}, "app title comes only from app.json");
   assert.equal(actions.capabilities[0].executionAuthorized, false);
   assert.equal(actions.capabilities[0].modelDirectExecutionAuthorized, false);
   assert.equal(existsSync(resolve(repositoryRoot, "apps/aura")), false);
