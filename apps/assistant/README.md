@@ -128,6 +128,10 @@ ou o modelo local. Retirar/trocar o modelo é uma ação separada do owner Local
 e não um botão de exclusão de arquivos no app. Nenhuma reinstalação silenciosa
 de app explicitamente removido deve ocorrer no update do sistema.
 
+## Espera cancelável no aplicativo Native
+
+A conversa Native da Aura libera o cliente após cancelamento explícito, mesmo se um provedor não cooperar. O prazo máximo de apresentação é de 120 segundos, sem prometer que a computação do modelo terminou. Resultados e erros tardios não são promovidos nem entram em Memory. Timeout é mostrado de forma distinta de falha genérica; o contexto de conta/Space permanece isolado. Não cria motor, rede, credencial, canal de atualização ou autorização de distribuição.
+
 ## Testes
 
 ```sh
