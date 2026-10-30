@@ -258,7 +258,12 @@ test('background recovery refuses an unlinked or shared visible GPT thread witho
   });
   f.store.finishRun(task.task.id,task.runId,'submit:send_confirmation_unknown');
   const second=f.store.createTask('A second task sharing a provider URL');
-  f.store.setChatUrl(second.id,threadA);
+  // New writes must reject duplicate ownership. Historical/corrupt snapshots
+  // may still contain shared links, so inject that state through SQLite only
+  // to prove recovery refuses to inspect or send on ambiguous provenance.
+  assert.throws(() => f.store.setChatUrl(second.id,threadA),
+    /provider_conversation_owned_by_another_task/);
+  f.store.db.prepare('UPDATE tasks SET chat_url=? WHERE id=?').run(threadA,second.id);
   let reads=0,sends=0;
   const worker={status:()=>({url:threadA}),inspectConversationReadOnly:async()=>{
     reads++;return observation(task,'Ambiguous answer');
