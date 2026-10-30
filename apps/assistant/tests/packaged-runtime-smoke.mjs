@@ -12,6 +12,16 @@ const base = resolve(packageRoot, "system", "apps", "assistant");
 const manifest = JSON.parse(readFileSync(join(base, "app.json"), "utf8"));
 assert.equal(manifest.id, "assistant");
 assert.equal(manifest.releaseMode, "component-slot");
+const presentation = JSON.parse(readFileSync(join(base, "presentation", "manifest.json"), "utf8"));
+assert.equal(presentation.schema, "ordax.app-presentation-manifest/1");
+assert.equal(presentation.appId, manifest.id);
+assert.equal(presentation.appVersion, manifest.version);
+assert.equal(presentation.authority, "none");
+assert.equal(presentation.sourceLocale, "pt-BR");
+assert.equal(presentation.singleton, true);
+assert.deepEqual(Object.keys(presentation.translations), ["en-US"]);
+assert.equal(presentation.translations["en-US"].title, manifest.title,
+  "Native catalog translation cannot drift from the app's product identity");
 assert.equal(manifest.owner, "ordaxsystems/ordax-apps");
 assert.equal(existsSync(join(base, "assets", "assistant.css")), true);
 
