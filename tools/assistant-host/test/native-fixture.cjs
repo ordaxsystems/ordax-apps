@@ -573,7 +573,7 @@ app.whenReady().then(async () => {
     assert.equal(await window.webContents.executeJavaScript('document.getElementById("projectEditor").value'),'edição pendente');
     await window.webContents.executeJavaScript('document.getElementById("projectDiscard").click()');
     await window.webContents.executeJavaScript("document.querySelector('button[data-studio-page=projects]').click()");
-    await until('document.querySelector(\'[data-project-id="${projectB}"]\')!==null');
+    await until(`Boolean(document.querySelector('[data-project-id="${projectB}"]'))`);
     await window.webContents.executeJavaScript(`document.querySelector('[data-project-id="${projectB}"]').click()`);
     await until('document.getElementById("projectScopeName").textContent==="Jogo" && document.getElementById("prompt").value==="Rascunho do jogo"');
     console.log('PASS: projeto autorizado do Runtime abre seu grupo de conversas; edição pendente impede troca de contexto e permanece intacta.');
