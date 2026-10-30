@@ -115,9 +115,10 @@ O catálogo Native canônico do OS **exige** esse manifesto descritivo
 para descobrir e exibir um `current` verificado: sem ele, mesmo um
 slot assinado pode ficar invisível no workspace. O ID e a versão precisam
 coincidir com `app.json`; `authority=none`, `singleton=true`.
-A marca e o título continuam exclusivamente em `app.json#title`;
-o catálogo utiliza esse título para a locale fonte e seu fallback, sem
-duplicar textos de branding na apresentação.
+O nome canônico é `app.json#title`; o catálogo utiliza esse
+título na locale fonte. A tradução obrigatória `en-US` repete
+o mesmo nome como dado de apresentação e os testes obrigam
+a igualdade com `app.json`, impedindo duas marcas divergentes.
 
 Os testes de identidade e montagem exigem o manifesto no **ZIP verificado**
 pelo builder existente, e o pipeline Store Catalog Candidate volta a incluir
