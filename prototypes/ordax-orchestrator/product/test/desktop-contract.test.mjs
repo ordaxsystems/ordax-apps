@@ -41,8 +41,8 @@ test('desktop package ships only canonical desktop runtime', () => {
 });
 
 test('empty project state promises persistence without claiming autonomous execution',()=>{
-  assert.match(uiHtml,/Um projeto, um histórico que você pode retomar/);
-  assert.match(uiHtml,/Missões e rascunhos ficam salvos no projeto/);
+  assert.match(uiHtml,/Seu projeto começa no Orquestrador/);
+  assert.match(uiHtml,/Cada campo identifica o seu destino/);
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
 });
 
@@ -313,7 +313,7 @@ test('saving or removing the Groq key refreshes Orchestrator readiness and send 
   assert.match(orchestration,/refreshStatus:\(\)=>refreshApiStatus\(\)/);
 });
 
-test('a new mission is persisted once, starts through the existing GPT executor, and labels project and conversation actions separately',()=>{
+test('new missions are local drafts and never silently start a GPT work conversation',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   const contract=fs.readFileSync(path.join(root,'src','orchestrator-contract.mjs'),'utf8');
@@ -323,9 +323,10 @@ test('a new mission is persisted once, starts through the existing GPT executor,
   assert.match(html,/id="renameProjectForm"/);
   assert.match(html,/aria-label="Nome da conversa"/);
   assert.match(orchestration,/command\('mission_create',input\)/);
-  assert.match(orchestration,/canStartMission\(\)===true/);
-  assert.match(orchestration,/onStartMission\(\{taskId:receipt\.result\.taskId,mission\}\)/);
-  assert.match(ui,/return submitTaskMessage\(mission\)/);
+  assert.doesNotMatch(orchestration,/onStartMission\(/);
+  assert.doesNotMatch(orchestration,/canStartMission\(/);
+  assert.match(orchestration,/Projeto e missão criados localmente/);
+  assert.match(orchestration,/await showCoordinator\(\)/);
   assert.match(ui,/window\.ordax\.send\(\{ taskId, content, draftRevision \}\)/);
   assert.match(contract,/\['mission_create'/);
   assert.match(contract,/\['project_rename'/);
@@ -560,4 +561,33 @@ test('Groq analysis uses the configured credential automatically, never a volati
   assert.doesNotMatch(hostBridge,/coordinatorChatEnable/);
   assert.doesNotMatch(hostServer,/coordinatorChatEnable/);
   assert.match(main,/createGroqCoordinatorConversation/);
+});
+
+test('Groq and ChatGPT workspaces have distinct visible destinations and fail-closed routes',()=>{
+  const orchestratorUi=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const contract=fs.readFileSync(path.join(root,'src','orchestrator-contract.mjs'),'utf8');
+  const service=fs.readFileSync(path.join(root,'src','orchestrator-service.mjs'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  assert.match(uiHtml,/id="openOrchestrator"/);
+  assert.match(uiHtml,/id="openWorks"/);
+  assert.match(uiHtml,/CONVERSA DIRETA · GROQ/);
+  assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
+  assert.match(uiHtml,/id="coordinatorComposer"/);
+  assert.match(uiHtml,/id="composer"/);
+  assert.match(uiHtml,/Enviar à Groq/);
+  assert.match(uiHtml,/Enviar ao GPT/);
+  assert.match(ui,/setWorkspaceRoute\('coordinator'\)/);
+  assert.match(ui,/setWorkspaceRoute\('gpt'\)/);
+  assert.match(ui,/flushDraft\(\);await selectRightPane\('context'\)/);
+  assert.match(ui,/await selectRightPane\('provider'\)/);
+  assert.match(orchestratorUi,/orchestratorChatAvailable=coordinatorAvailable/);
+  assert.doesNotMatch(orchestratorUi,/orchestratorChatAvailable=gptWebTransportAvailable/);
+  assert.match(orchestratorUi,/\$\('coordinatorComposer'\)\.addEventListener\('submit'/);
+  assert.match(orchestratorUi,/command\('orchestrator_chat'/);
+  assert.match(contract,/\['orchestrator_chat'.*configured coordinator/);
+  assert.match(service,/const usesProvider=isWorkSend;/);
+  assert.match(service,/const port=usesProvider\?this\.provider:this\.coordinator/);
+  assert.doesNotMatch(service,/const gptWebChat=operation==='orchestrator_chat'/);
+  assert.match(css,/#orchestratorWorkRail\{display:flex!important/);
+  assert.doesNotMatch(orchestratorUi,/GPT Web é o único transporte para enviar mensagens neste chat/);
 });
