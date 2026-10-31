@@ -50,6 +50,10 @@ test('one-process native lifecycle keeps existing web worker and tick and has a 
   assert.match(preload,/backgroundStatus: \(\) => ipcRenderer\.invoke\('ordax:background:status'\)/);
   assert.match(preload,/setBackgroundMode: enabled => ipcRenderer\.invoke\('ordax:background:set',enabled\)/);
   assert.match(ui,/backgroundToggle\?\.addEventListener\('change'/);
+  assert.match(preload,/quitApp: \(\) => ipcRenderer\.invoke\('ordax:app:quit'\)/);
+  assert.match(main,/registerUiHandler\('ordax:app:quit'/);
+  assert.match(ui,/backgroundExitApp'\)\?\.addEventListener\('click'/);
+  assert.match(html,/id="backgroundExitApp"/);
   assert.match(html,/id="backgroundModeToggle"/);
   assert.match(html,/não certifica disponibilidade contínua por 24 horas/);
 });
