@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('ordax', {
     return ()=>ipcRenderer.removeListener('ordax:orchestrator:changed',listener);
   },
   supervisorStatus: () => ipcRenderer.invoke("ordax:supervisor:status"),
+  backgroundStatus: () => ipcRenderer.invoke('ordax:background:status'),
+  setBackgroundMode: enabled => ipcRenderer.invoke('ordax:background:set',enabled),
   supervisorSaveKey: key => ipcRenderer.invoke('ordax:supervisor:key:save',key),
   supervisorRemoveKey: () => ipcRenderer.invoke('ordax:supervisor:key:remove'),
   setTaskSupervisorRole: (taskId,role) => ipcRenderer.invoke('ordax:tasks:supervisor-role:set',{taskId,role}),
