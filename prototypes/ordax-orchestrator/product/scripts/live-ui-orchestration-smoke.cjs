@@ -77,7 +77,7 @@ let cleanupFailurePhase=null;
     const projectNavigation=await evaluate(`(()=>{const row=[...document.querySelectorAll('#projectNavList button')].find(b=>b.dataset.projectId==='${projectId}');return row?.getAttribute('aria-pressed')==='true'&&row?.textContent==='Projeto E2E isolado'})()`);
     if(!projectNavigation)throw Error('project_navigation_not_selected');
     phase='mission_persisted';
-    await wait("document.getElementById('orchestrationNotice')?.textContent?.includes('salva como rascunho')");
+    await wait("document.getElementById('orchestrationNotice')?.textContent?.includes('Projeto e missão criados localmente')");
     const missionDraft=await evaluate(`(async()=>{
       const projectId=document.getElementById('projectSelect').value;
       const coordinators=(await window.ordax.orchestratorInvoke('orchestrators_list',{projectId})).orchestrators;
