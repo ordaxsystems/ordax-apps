@@ -1377,6 +1377,14 @@ backgroundToggle?.addEventListener('change',async()=>{
   }finally {backgroundChanging=false;await refreshBackgroundMode();}
 });
 await refreshBackgroundMode();
+document.getElementById('backgroundExitApp')?.addEventListener('click',async()=>{
+  const button=document.getElementById('backgroundExitApp');
+  if(button.disabled)return;
+  button.disabled=true;
+  backgroundMessage.textContent='Encerrando o processo e preservando as execuções interrompidas...';
+  try {await window.ordax.quitApp();}
+  catch {button.disabled=false;backgroundMessage.textContent='Saída não confirmada: o processo permanece ativo.';}
+});
 
 const canConfigureLabKey=()=>labStatus.secureStorageAvailable===true;
 function showSupervisorStatus() {
