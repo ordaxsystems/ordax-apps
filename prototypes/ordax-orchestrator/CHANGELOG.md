@@ -1,3 +1,5 @@
+> **Linha alpha.19 — atualização de estado em 31/10/2026:** a versão semântica é `0.2.0-alpha.19`, mas a revisão do pacote Windows Dev validado é `f9c46e99038e06ceaeff6c07cc3b64ced60ae877`, integrada em `main`. Os incrementos de código posteriores à entrada alpha.19 são identificados por commit e evidência, não por cópia da instalação. O histórico abaixo começa com o lançamento interno de 24/10. Nenhuma distribuição pública nem autonomia 24h homologada. Ver [handoff](CODEX-HANDOFF.md).
+
 ## 0.2.0-alpha.19 — host Node com núcleo compartilhado (2026-10-24)
 
 - `npm start` inicia Node diretamente nos níveis produto e protótipo; Electron exige a entrada explícita `npm run start:electron`.
