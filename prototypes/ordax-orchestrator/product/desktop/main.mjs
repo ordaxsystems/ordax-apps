@@ -959,6 +959,14 @@ registerUiHandler('ordax:background:status',event=>{
   requireTrustedSupervisorRenderer(event);
   return backgroundState();
 });
+registerUiHandler('ordax:app:quit',event=>{
+  requireTrustedSupervisorRenderer(event);
+  // Exit the actual owner process even when background residence is enabled.
+  // A live GPT Run is interrupted by the existing close transaction.
+  quittingIntentionally=true;
+  setImmediate(()=>app.quit());
+  return {accepted:true};
+});
 registerUiHandler('ordax:background:set',async(event,value)=>{
   requireTrustedSupervisorRenderer(event);
   const enabled=backgroundModeRequested(value);
