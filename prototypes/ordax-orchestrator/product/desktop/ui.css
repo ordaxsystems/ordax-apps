@@ -675,3 +675,9 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
   .coordinator-transport{padding:9px 13px}
   .coordinator-transport .orchestration-connection{font-size:11px}
 }
+
+/* In coordinator mode the right rail owns the GPT work list.
+   Hiding the legacy left task list avoids two competing GPT destinations. */
+body.orchestrator-focus .left-rail .new-task,
+body.orchestrator-focus .left-rail .search-wrap,
+body.orchestrator-focus .left-rail .tasks-wrap{display:none!important}
