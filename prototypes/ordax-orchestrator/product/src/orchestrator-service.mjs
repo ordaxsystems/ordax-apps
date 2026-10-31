@@ -762,10 +762,13 @@ export class OrchestratorService {
       filesRead:workspaceStatus.filesRead,
       filesWritten:workspaceStatus.filesWritten
     }:null;
-    assertTaskHasNoUncertainTransport(this.store,task.id);
-    // The same admission rule gates plans and all canonical provider sends.
-    if(this.executorAdmission().availableSlots===0)
-      throw Error('orchestrator_executor_busy');
+    // GPT transport admission and uncertain GPT receipts must never block
+    // the independent Groq conversation with the coordinator.
+    if(usesProvider) {
+      assertTaskHasNoUncertainTransport(this.store,task.id);
+      if(this.executorAdmission().availableSlots===0)
+        throw Error('orchestrator_executor_busy');
+    }
     // Advisory API replies cannot submit GPT work. Preserve their uncertain
     // receipts without replay, but allow a fresh explicit API request. Only
     // uncertain provider submissions quarantine the work transport.
