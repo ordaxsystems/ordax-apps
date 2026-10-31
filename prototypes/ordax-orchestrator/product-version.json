@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.19",
+  "version": "0.2.0-alpha.20",
   "channel": "alpha",
-  "name": "Host Node com núcleo compartilhado",
+  "name": "Conversa Groq e execução GPT em ambientes distintos",
   "distributionEnabled": false,
   "releaseDate": null
 }
