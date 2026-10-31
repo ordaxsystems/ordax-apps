@@ -41,6 +41,9 @@ test('one-process native lifecycle keeps existing web worker and tick and has a 
   assert.match(main,/backgroundResidencyAllowed\(/);
   assert.match(main,/registeredScheduler\.close\(\)/);
   assert.match(main,/app\.setLoginItemSettings\(/);
+  assert.match(main,/app\.getLoginItemSettings\(item\)/);
+  assert.match(main,/app\.getLoginItemSettings\(canonicalLoginItem\(\)\)/);
+  assert.doesNotMatch(main,/app\.getLoginItemSettings\(\)/);
   assert.match(main,/quittingIntentionally=true;app\.quit\(\)/);
   assert.match(main,/backgroundOptedIn=enabled/);
   assert.match(main,/store\.updateWorkspaceMetadata\(\{keep_running_in_background:enabled\}\)/);
