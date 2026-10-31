@@ -14,6 +14,13 @@ let activeRightPane='provider';
 let hostChatGPTPlan={connected:false,authorized:false,secureStorageAvailable:false,email:null};
 let providerBoundsRaf=0;
 const rightPaneDefinitions=[['provider','providerPaneTab','providerPanel'],['preview','previewPaneTab','previewPanel'],['context','contextPaneTab','contextPanel']];
+function setWorkspaceRoute(route) {
+  document.body.dataset.workspaceRoute=route;
+  for(const [id,value] of [['openOrchestrator','coordinator'],['openWorks','gpt']]){
+    const button=document.getElementById(id);
+    button?.setAttribute('aria-pressed',String(route===value));
+  }
+}
 // Initialize this control before any startup await can restore a Task and call
 // showSupervisorRole().
 const labRoleSelect=document.getElementById('labSupervisorRole');
@@ -618,6 +625,7 @@ async function openTask(id) {
   if (epoch !== navigationEpoch || !task) return;
   currentTaskId = id;
   currentTask = task;
+  setWorkspaceRoute('gpt');
   showSupervisorRole(task);
   showDraft(task);
   syncComposerAvailability();
@@ -1218,12 +1226,6 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
     try {return await persistWorkspaceNavigation(navigation);}
     catch {$('#orchestrationNotice').textContent='A navegação atual não foi salva para o próximo início.';return false;}
   },
-  canStartMission:()=>composeAvailability.allowed===true&&!submittingTaskId,
-  onStartMission:async({taskId,mission})=>{
-    await loadTasks();await openTask(taskId);
-    if(currentTaskId!==taskId)return false;
-    return submitTaskMessage(mission);
-  },
   onScopeChange:async ids=>{
     scopedTaskIds=ids;
     if(currentTaskId && (ids?!ids.has(currentTaskId):allTasks.find(t=>t.id===currentTaskId)?.lab_binding)) {
@@ -1240,8 +1242,11 @@ orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRi
   onOpenWork:async id=>{await loadTasks();await openTask(id);},
   onShowCoordinator:async()=>{
     document.body.classList.add('orchestrator-focus');
+    setWorkspaceRoute('coordinator');
     $('#orchestratorWorkRail').hidden=false;
-    flushDraft();await selectRightPane('provider');
+    // Hide the embedded GPT browser while speaking to Groq. The right rail is
+    // the project's work list, not a second input to a different model.
+    flushDraft();await selectRightPane('context');
     currentTaskId=null;currentTask=null;navigationEpoch++;syncComposerAvailability();
     $('#taskPanel').classList.add('hidden');$('#empty').classList.add('hidden');
   }
