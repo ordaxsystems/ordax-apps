@@ -1345,6 +1345,47 @@ const labKeySave=document.getElementById('labSupervisorKeySave');
 const labKeyRemove=document.getElementById('labSupervisorKeyRemove');
 const labKeyState=document.getElementById('labSupervisorKeyState');
 let labStatus=await window.ordax.supervisorStatus().catch(()=>({enabled:false,configured:false,secureStorageAvailable:false}));
+
+const backgroundPanel=document.getElementById('backgroundModePanel');
+const backgroundToggle=document.getElementById('backgroundModeToggle');
+const backgroundMessage=document.getElementById('backgroundModeState');
+let backgroundChanging=false;
+async function refreshBackgroundMode(){
+  let state;
+  try {state=await window.ordax.backgroundStatus();}
+  catch {state={supported:false,optedIn:false,resident:false,startupEnabled:false};}
+  backgroundPanel.hidden=state.supported!==true;
+  backgroundToggle.checked=state.optedIn===true;
+  backgroundToggle.disabled=state.supported!==true||backgroundChanging;
+  backgroundMessage.textContent=state.resident===true
+    ? 'Ativo neste Windows: ao fechar a janela, o mesmo processo continua na bandeja. '+(state.startupEnabled?'Início com Windows configurado.':'Início com Windows não confirmado.')
+    :state.optedIn===true
+      ? 'Preferência registrada, mas bandeja indisponível. O fechamento continuará encerrando o aplicativo.'
+      :'Desativado: fechar a janela encerra o aplicativo e marca as execuções em andamento como interrompidas.';
+  return state;
+}
+backgroundToggle?.addEventListener('change',async()=>{
+  if(backgroundChanging)return;
+  backgroundChanging=true;
+  const requested=backgroundToggle.checked;
+  backgroundToggle.disabled=true;
+  try {
+    const state=await window.ordax.setBackgroundMode(requested);
+    backgroundMessage.textContent=state.resident?'Segundo plano ativado na instância atual.':'Segundo plano desativado.';
+  }catch {
+    backgroundMessage.textContent='Não foi possível alterar o modo. Nenhuma execução foi autorizada ou reenviada.';
+  }finally {backgroundChanging=false;await refreshBackgroundMode();}
+});
+await refreshBackgroundMode();
+document.getElementById('backgroundExitApp')?.addEventListener('click',async()=>{
+  const button=document.getElementById('backgroundExitApp');
+  if(button.disabled)return;
+  button.disabled=true;
+  backgroundMessage.textContent='Encerrando o processo e preservando as execuções interrompidas...';
+  try {await window.ordax.quitApp();}
+  catch {button.disabled=false;backgroundMessage.textContent='Saída não confirmada: o processo permanece ativo.';}
+});
+
 const canConfigureLabKey=()=>labStatus.secureStorageAvailable===true;
 function showSupervisorStatus() {
   document.getElementById('brandMode').textContent=labStatus.environment==='node_host'

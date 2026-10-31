@@ -1,5 +1,14 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
+## Estado canônico de continuidade — 31/10/2026 (alpha.21 em validação)
+
+- Repositório único: `ordaxsystems/ordax-apps`. `main` observada em `0c1a7d5bbb998ae9c7ef406b7111b52ee02e85ce` após a PR #375 de segurança do preflight W3. A **única instalação operacional** no `DESKTOP-PNUHUA0` é `0.2.0-alpha.20`, pacote com `sourceCommit=75f667852ca461386b17b3b82fcd7884e8f44015`, pois a mudança posterior na main alterou somente scripts/testes, sem payload Electron. A Groq já teve uma resposta real certificada no Windows; não repetir sem causa.
+- Um teste físico de GPT Web autorizado foi bloqueado **antes do envio**, porque a janela fechou mas os processos não terminaram dentro do limite de encerramento observado. O aplicativo original voltou a iniciar; não declarar W3 real aprovado ou atribuir envio. Diagnosticar ciclo de vida sem matar processos arbitrários nem abrir instalação concorrente.
+- Candidato alpha.21 em **uma branch** `feat/orchestrator-windows-background-single-instance-20261031`, sem PR concorrente: opção de continuar com janela fechada mantendo o mesmo Electron, worker GPT, Groq, Store e tick de 10 s; bandeja com abrir/sair e preferência persistida, bloqueada em Host Node e staged E2E. Nenhuma alteração em `ordax-runtime`, `ordax-os` ou `ordax-platform`.
+- `background_residency` depende da sessão Windows ativa e da bandeja; **não garante 24 h** ou execução com Windows desligado/logoff. Não ativar silenciosamente envios, não contornar grants ou aprovação humana. Só promover alpha.21 ao caminho canônico após testes, CI e verificação física. Enquanto isso, alpha.20 instalada permanece SSOT operacional.
+- Gates pendentes: sessão GPT Web autenticada e pronta, envio real e recibo, interrupção real com resposta reconciliada uma vez (W3), estabilidade física com janela fechada, autorizações Runtime/Platform e longa duração. Nunca fabricar receipt, duplicar perfil/instalação, ou afirmar que todos foram certificados pelo CI.
+
+
 ## Estado vigente da reestruturação — alpha.20 (31/10/2026)
 
 - **SSOT:** `ordaxsystems/ordax-apps/main`. Mudanças em `0.2.0-alpha.20` vivem apenas na PR de reestruturação `refactor/orchestrator-groq-workspace-20261031` até integração testada. A versão instalada no Windows é atualizada em um único diretório canônico após validação do artefato `main` (`sourceCommit` e hashes), nunca apenas pelo número alpha.

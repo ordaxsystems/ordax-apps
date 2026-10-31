@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, protocol, net, dialog, safeStorage, Tray, Menu } from 'electron';
 import path from 'node:path';import { SupervisorCoordinator, authorizeLocalSupervisorTask, listLocalSupervisorRecoverable } from '../supervisor/coordinator.mjs';
 import { inspectSupervisorChatReadOnly } from '../supervisor/read-only-reconcile.mjs';
 import { chatReceiptFromRunTask } from '../src/supervisor-chat-receipt.mjs';
@@ -25,6 +25,7 @@ import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 import { createProviderViewRegistry } from '../src/provider-view-registry.mjs';
+import { backgroundResidencyAllowed,backgroundStartupAllowed,backgroundModeRequested } from '../src/background-residency-policy.mjs';
 import { createProviderExecutionScheduler } from '../src/provider-execution-scheduler.mjs';
 import { normalizeProviderViewBounds } from '../src/provider-view-bounds.mjs';
 import { createProviderProvisionalRecorder } from '../src/provider-provisional-recorder.mjs';
@@ -74,8 +75,8 @@ if (!singleInstanceLock) {
   process.exit(0);
 } else {
   hostStartupLog('single_instance_lock_acquired');
-  app.on('second-instance', () => {
-    if(hostBrowserMode)return;
+  app.on('second-instance', (_event,commandLine) => {
+    if(hostBrowserMode||commandLine?.includes('--ordax-background-start'))return;
     // A previous Electron main process may still own the profile after its
     // window has disappeared (for example after a renderer crash). A new
     // launch must restore the UI instead of silently focusing nothing.
@@ -104,6 +105,64 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const store = new Store(path.join(dataRoot, 'ordax-orchestrator-lab.sqlite'));
+
+const stagedLab=process.argv.includes('--ordax-lab-staged-approved');
+const backgroundSupported=process.platform==='win32'&&app.isPackaged&&!hostBrowserMode&&!stagedLab;
+let backgroundOptedIn=backgroundSupported&&
+  store.getWorkspaceSession()?.metadata?.keep_running_in_background===true;
+let backgroundTray=null,backgroundTrayPending=null,quittingIntentionally=false;
+const backgroundStartupRequested=process.argv.includes('--ordax-background-start');
+function showCanonicalWindow(){
+  if(!win||win.isDestroyed()){void createWindow().then(window=>{window.show();window.focus();}).catch(()=>{});return;}
+  if(win.isMinimized())win.restore();
+  win.show();win.focus();
+}
+const canonicalLoginItem=()=>({path:process.execPath,args:['--ordax-background-start']});
+function updateLoginStartup(enabled) {
+  if(!backgroundSupported)return false;
+  try {
+    const item=canonicalLoginItem();
+    app.setLoginItemSettings({openAtLogin:enabled,...item});
+    // Electron compares the *complete* executable + args identity.
+    // Omitting args here would misreport an enabled run key as disabled.
+    return app.getLoginItemSettings(item).openAtLogin===enabled;
+  }catch{return false;}
+}
+async function ensureBackgroundTray() {
+  if(!backgroundSupported)return false;
+  if(backgroundTray)return true;
+  if(backgroundTrayPending)return backgroundTrayPending;
+  backgroundTrayPending=(async()=>{
+    try {
+      const icon=await app.getFileIcon(process.execPath,{size:'small'});
+      if(!icon||icon.isEmpty())return false;
+      const tray=new Tray(icon);
+      tray.setToolTip('OrdaX Orchestrator Lab — em segundo plano');
+      tray.setContextMenu(Menu.buildFromTemplate([
+        {label:'Abrir OrdaX Orchestrator',click:showCanonicalWindow},
+        {type:'separator'},
+        {label:'Sair do OrdaX Orchestrator',click:()=>{quittingIntentionally=true;app.quit();}}
+      ]));
+      tray.on('double-click',showCanonicalWindow);
+      backgroundTray=tray;
+      return true;
+    }catch{return false;}
+  })();
+  try{return await backgroundTrayPending}
+  finally{backgroundTrayPending=null}
+}
+function backgroundState(){
+  let startupEnabled=false;
+  if(backgroundSupported) {
+    try {startupEnabled=app.getLoginItemSettings(canonicalLoginItem()).openAtLogin===true;}catch {}
+  }
+  return {supported:backgroundSupported,optedIn:backgroundOptedIn,
+    resident:backgroundResidencyAllowed({optedIn:backgroundOptedIn,
+      hostMode:hostBrowserMode,trayReady:Boolean(backgroundTray),
+      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged}),
+    startupEnabled,requiresWindowsUserSession:true,unattended24hCertified:false};
+}
+
 const recoveredRunCount = store.recoverInterruptedRuns();
 store.updateWorkspaceMetadata({
   last_started_at: new Date().toISOString(),
@@ -515,8 +574,11 @@ async function createWindowOnce() {
     title: 'OrdaX Orchestrator Lab',
     backgroundColor: '#0b0e13',
     autoHideMenuBar: true,
-    show:!hostBrowserMode,
+    show:!hostBrowserMode&&!backgroundStartupAllowed({optedIn:backgroundOptedIn,
+      hostMode:hostBrowserMode,trayReady:true,requestedHidden:backgroundStartupRequested,
+      platform:process.platform,packaged:app.isPackaged}),
     webPreferences: {
+      backgroundThrottling:false,
       preload: path.join(here, 'preload.cjs'),
       contextIsolation: true,
       sandbox: true,
@@ -560,7 +622,15 @@ async function createWindowOnce() {
   // its reply is unknown. Persist the SAME interruption transaction used on
   // startup before destroying the window. No provider retry/cancel/API call.
   // A late response cannot be committed: finishRun requires status=running.
+  win.on('session-end',()=>{quittingIntentionally=true;});
   win.on('close', event => {
+    if(backgroundResidencyAllowed({optedIn:backgroundOptedIn,
+      hostMode:hostBrowserMode,trayReady:Boolean(backgroundTray),
+      quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged})) {
+      event.preventDefault();
+      win.hide();
+      return;
+    }
     if (!liveRun) {registeredScheduler.close();return;}
     try {
       const interrupted = store.recoverInterruptedRuns('app_shutdown');
@@ -888,6 +958,30 @@ registerUiHandler('ordax:orchestrator:chat-status',event=>{
   requireTrustedSupervisorRenderer(event);
   return coordinatorChatStatus();
 });
+registerUiHandler('ordax:background:status',event=>{
+  requireTrustedSupervisorRenderer(event);
+  return backgroundState();
+});
+registerUiHandler('ordax:app:quit',event=>{
+  requireTrustedSupervisorRenderer(event);
+  // Exit the actual owner process even when background residence is enabled.
+  // A live GPT Run is interrupted by the existing close transaction.
+  quittingIntentionally=true;
+  setImmediate(()=>app.quit());
+  return {accepted:true};
+});
+registerUiHandler('ordax:background:set',async(event,value)=>{
+  requireTrustedSupervisorRenderer(event);
+  const enabled=backgroundModeRequested(value);
+  if(!backgroundSupported)throw Error('background_mode_unavailable');
+  if(enabled&&!(await ensureBackgroundTray()))
+    throw Error('background_tray_unavailable');
+  backgroundOptedIn=enabled;
+  store.updateWorkspaceMetadata({keep_running_in_background:enabled});
+  updateLoginStartup(enabled);
+  if(!enabled&&backgroundTray){backgroundTray.destroy();backgroundTray=null;}
+  return backgroundState();
+});
 registerUiHandler('ordax:supervisor:status', (event) => {
   requireTrustedSupervisorRenderer(event);
   return ({
@@ -986,6 +1080,10 @@ app.whenReady().then(async () => {
   });
 
   await createWindow();
+  if(backgroundOptedIn){
+    const trayReady=await ensureBackgroundTray();
+    if(!trayReady&&win&&!win.isDestroyed())win.show();
+  }
   hostStartupLog('window_ready');
   // Observe completed Runs even when the coordinator chat is not selected.
   // Bound to this App lifetime; does not promise a headless 24h supervisor.
@@ -1027,7 +1125,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+app.on('before-quit',()=>{quittingIntentionally=true;});
 app.on('will-quit', () => {
+  if(backgroundTray){backgroundTray.destroy();backgroundTray=null;}
   if(continuationTimer)clearInterval(continuationTimer);
   void hostBrowserServer?.close();
   closeRuntimeOrchestratorPipe?.();
