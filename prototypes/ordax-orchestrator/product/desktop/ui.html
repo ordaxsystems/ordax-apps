@@ -401,6 +401,12 @@
         <button id="closeCoordinatorApiSettings" class="mini-secondary coordinator-settings-back" type="button">Voltar às conversas</button>
         <p id="labVersion" class="diagnostics-hint">Versão do Lab indisponível</p>
         <p id="labSupervisorState" class="diagnostics-hint">Verificando supervisor...</p>
+        <section id="backgroundModePanel" class="context-section background-mode-panel" hidden>
+          <label for="backgroundModeToggle"><input type="checkbox" id="backgroundModeToggle" /> Continuar em segundo plano ao fechar a janela</label>
+          <p id="backgroundModeState" class="diagnostics-hint" role="status" aria-live="polite">Verificando disponibilidade no Windows...</p>
+          <button id="backgroundExitApp" type="button" class="mini-secondary">Sair completamente do Orquestrador</button>
+          <p class="diagnostics-hint">Usa a mesma instalação e o mesmo supervisor. O ícone na bandeja reabre ou encerra o aplicativo. Só funciona enquanto o computador e a sessão Windows estiverem ativos; não certifica disponibilidade contínua por 24 horas.</p>
+        </section>
         <section id="chatgptPlanSettings" class="context-section chatgpt-plan-settings" aria-label="Conexão com ChatGPT">
           <h4>ChatGPT Plan</h4>
           <p id="chatgptPlanState" role="status" aria-live="polite" class="diagnostics-hint">Verificando conexão segura…</p>
@@ -417,7 +423,7 @@
         <p id="labRoleDescription" role="status" class="diagnostics-hint">Selecione uma tarefa para preparar seu papel. Isso não inicia a IA.</p>
         <details id="labSupervisorKeySettings" class="context-section">
           <summary>Chave da API Groq</summary>
-            <p class="diagnostics-hint">Provedor alternativo de coordenação, separado do login ChatGPT Plan. A chave Groq deste Host fica somente na memória do processo e não persiste depois que ele fecha.</p>
+            <p class="diagnostics-hint">Provedor de coordenação separado das conversas GPT Web. No aplicativo Windows, a chave fica protegida no cofre do sistema; a sessão do ChatGPT Web não recebe essa chave.</p>
           <form id="labSupervisorKeyForm" autocomplete="off">
             <label for="labSupervisorKeyInput">Chave Groq</label>
             <input id="labSupervisorKeyInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="gsk_..." maxlength="244" aria-describedby="labSupervisorKeyState" />

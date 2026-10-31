@@ -1,5 +1,12 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
+## Continuidade Windows na mesma instância — alpha.21 (em validação)
+
+A versão alpha.21 acrescenta **modo opcional de segundo plano no Windows**. Em Configurações do Orquestrador, ative “Continuar em segundo plano ao fechar a janela”: o botão de fechar oculta a janela, mantém o **mesmo processo Electron**, a conexão à Groq, o WebView GPT, o SQLite e os ticks existentes, e oferece ações “Abrir” e “Sair” no ícone da bandeja. A preferência é do workspace e só é aceita se o Windows puder criar um ícone de bandeja. O início com a sessão Windows pode ser configurado com o **mesmo EXE**, sem serviço, outro perfil ou instalador. O Host Node e os perfis isolados de E2E não ativam esse modo.
+
+Isso **não** certifica execução durante desligamento, logoff, ausência de conexão/energia ou garantia 24h; também não ignora as aprovações e recibos necessários para enviar ao GPT Web. Fechar completamente pelo ícone encerra o processo e marca Runs ativos como interrompidos, preservando a recuperação existente. Versão alpha.21 só deve chegar à instalação operacional única após testes, CI e validação do artefato canônico da `main`.
+
+
 > **Leia primeiro:** [Arquitetura Project-First](docs/PROJECT-FIRST-ARCHITECTURE.md) ·
 > [Plano M0–M7](docs/PROJECT-FIRST-IMPLEMENTATION-PLAN.md) ·
 > [Handoff obrigatório para Codex](CODEX-HANDOFF.md) ·

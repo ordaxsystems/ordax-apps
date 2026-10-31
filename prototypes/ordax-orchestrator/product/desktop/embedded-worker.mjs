@@ -56,6 +56,7 @@ function createView(partition) {
     webPreferences: {
       partition,
       preload: path.join(here, 'worker-preload.bundle.cjs'),
+      backgroundThrottling:false,
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false
