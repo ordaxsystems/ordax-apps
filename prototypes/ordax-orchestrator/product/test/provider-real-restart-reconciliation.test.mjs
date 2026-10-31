@@ -541,3 +541,58 @@ test('first new GPT conversation persists a real dispatch intent when DOM baseli
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM messages WHERE task_id=? AND role='assistant'").get(task.id).n,1);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+test('background recovery ignores a linked GPT thread belonging to another workspace session without writing its events',async t=>{
+  const f=openFixture(t);
+  const item=stageSubmission(f.store,{url:threadA,providerPrompt:'different workspace '+randomUUID()});
+  f.store.db.prepare("UPDATE runs SET status='interrupted',error='process_interrupted' WHERE id=?").run(item.runId);
+  const foreignSession='session_'+randomUUID(),now=new Date().toISOString();
+  f.store.db.prepare('INSERT INTO workspace_sessions(id,status,metadata,created_at,updated_at) VALUES(?,?,?,?,?)')
+    .run(foreignSession,'active','{}',now,now);
+  f.store.db.prepare('UPDATE tasks SET status=?,workspace_session_id=? WHERE id=?')
+    .run('interrupted',foreignSession,item.task.id);
+  let reads=0,sends=0;
+  const worker={
+    status:()=>({url:threadA}),
+    inspectConversationReadOnly:async()=>{reads++;throw Error('must_not_read_foreign_workspace');},
+    sendPrompt:async()=>{sends++;throw Error('must_not_resend');}
+  };
+  assert.deepEqual(await recoverVisibleLinkedProviderSubmission({store:f.store,worker}),{
+    state:'idle',reason:'provider_thread_not_linked'
+  });
+  assert.equal(reads,0);
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.recovery_attempt'")
+    .get(item.task.id).n,0);
+  assert.equal(f.store.db.prepare('SELECT status FROM runs WHERE id=?').get(item.runId).status,'interrupted');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('background recovery discards an in-flight inspection if the Task moves to another workspace',async t=>{
+  const f=openFixture(t);
+  const item=stageSubmission(f.store,{url:threadA,providerPrompt:'workspace changes mid-observation '+randomUUID()});
+  f.store.db.prepare("UPDATE runs SET status='interrupted',error='process_interrupted' WHERE id=?").run(item.runId);
+  f.store.db.prepare("UPDATE tasks SET status='interrupted' WHERE id=?").run(item.task.id);
+  const foreignSession='session_'+randomUUID(),now=new Date().toISOString();
+  f.store.db.prepare('INSERT INTO workspace_sessions(id,status,metadata,created_at,updated_at) VALUES(?,?,?,?,?)')
+    .run(foreignSession,'active','{}',now,now);
+  let reads=0,sends=0;
+  const worker={
+    status:()=>({url:threadA}),
+    inspectConversationReadOnly:async()=>{
+      reads++;
+      f.store.db.prepare('UPDATE tasks SET workspace_session_id=? WHERE id=?')
+        .run(foreignSession,item.task.id);
+      return {available:false,reason:'synthetic_unavailable'};
+    },
+    sendPrompt:async()=>{sends++;throw Error('must_not_resend');}
+  };
+  assert.deepEqual(await recoverVisibleLinkedProviderSubmission({store:f.store,worker}),{
+    state:'idle',reason:'provider_recovery_state_changed'
+  });
+  assert.equal(reads,1);
+  assert.equal(sends,0);
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='provider.response.recovery_attempt'")
+    .get(item.task.id).n,0);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
