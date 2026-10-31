@@ -2,9 +2,15 @@
 
 ## Estado vigente — 31/10/2026
 
-**Estado em 31/10/2026:** `main` em `3e86eb402ad1f4aca5665e182c908cd4372e506c`; versão canônica `0.2.0-alpha.19` no manifesto. PRs #348, #368 e #370 integradas. Entrega Windows Dev [#41021670806](https://github.com/ordaxsystems/ordax-apps/actions/runs/41021670806) no commit `f9c46e99038e06ceaeff6c07cc3b64ced60ae877`, sem alteração subsequente na subárvore Orchestrator. No `DESKTOP-PNUHUA0`, existe uma única instalação em `%LOCALAPPDATA%\Programs\OrdaX Orchestrator Lab`, com EXE e ASAR verificados; quatro processos Electron apontam ao mesmo EXE; staging e ZIP removidos. `DESKTOP-COHT67R` está offline e não foi alterado. Pacote não assinado para desenvolvimento; distribuição pública, GPT Web live, recuperação W3 real, grants Runtime/Platform e autonomia 24h continuam sem certificação.
+**Base auditada em 31/10/2026 (snapshot anterior à correção de recuperação):** `main` em `084e964d576bcc1dd6777b5fc285401bd420593e`; versão canônica `0.2.0-alpha.19` no manifesto. PRs #348, #368 e #370 integradas. Entrega Windows Dev [#41021670806](https://github.com/ordaxsystems/ordax-apps/actions/runs/41021670806) no commit `f9c46e99038e06ceaeff6c07cc3b64ced60ae877`, sem alteração subsequente na subárvore Orchestrator. No `DESKTOP-PNUHUA0`, existe uma única instalação em `%LOCALAPPDATA%\Programs\OrdaX Orchestrator Lab`, com EXE e ASAR verificados; quatro processos Electron apontam ao mesmo EXE; staging e ZIP removidos. `DESKTOP-COHT67R` está offline e não foi alterado. Pacote não assinado para desenvolvimento; distribuição pública, GPT Web live, recuperação W3 real, grants Runtime/Platform e autonomia 24h continuam sem certificação.
 
-**Regra operacional:** uma única instalação por computador, único owner do produto em `ordax-apps/main`, nenhum envio GPT de teste sem autorização. Não apagar SQLite, receipts nem perfis ao limpar estágio. Fonte/CI e operação 24h são gates distintos. Manter um único PR documental até merge; não reativar branches antigas.
+**Regra operacional:** uma única instalação por computador, único owner do produto em `ordax-apps/main`, nenhum envio GPT de teste sem autorização. Não apagar SQLite, receipts nem perfis ao limpar estágio. Fonte/CI e operação 24h são gates distintos. Abrir apenas a PR necessária a uma falha reproduzida, validar e integrar após CI; não reativar branches antigas.
+
+## Recuperação automática GPT — isolamento da sessão ativa
+
+A URL de conversa visível não confere, por si só, autoridade para recuperar uma Task: o fluxo deve confirmar `tasks.workspace_session_id === Store.getWorkspaceSession().id` **antes de inspeções e registros de tentativas**. Após qualquer leitura assíncrona do provedor, revalidar a mesma vinculação antes de persistir eventos de retry/backoff. Uma Task de outra sessão retorna estado inativo, **sem leitura de mensagens, reenvio, importação ou escrita de evento no seu ledger**. Não introduzir fila, banco, scheduler ou worker alternativo.
+
+Regressões correspondentes no arquivo canônico `product/test/provider-real-restart-reconciliation.test.mjs`: Task de sessão estrangeira e troca de sessão durante inspeção. São testes sintéticos locais; **não** homologam W3 GPT Web real. Para aceite físico W3 continuam necessários Run efetivamente interrompido, receipt válido, autorização específica e prova de importação idempotente sem replay.
 
 ## Snapshot canônico de 29/10/2026 (histórico)
 
