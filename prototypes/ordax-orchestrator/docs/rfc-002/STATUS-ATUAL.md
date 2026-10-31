@@ -1,3 +1,5 @@
+> **ARQUIVO HISTÓRICO (21/10/2026):** este `STATUS-ATUAL.md` pertence à RFC-002 da alpha.7 e não representa a versão instalada ou a `main` vigente. Consultar [CODEX-HANDOFF](../../CODEX-HANDOFF.md) para estado verificado de 31/10/2026, [README](../../README.md) e [product/package.json](../../product/package.json) para versão. Não reabrir a antiga PR #268 nem instalar versões alpha anteriores.
+
 # Incremento alpha.7 — primeiro envio aprovado pelo Orquestrador
 
 A ação `proposal_send` conecta a frente já criada ao mesmo executor `work_send`

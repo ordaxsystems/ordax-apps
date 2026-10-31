@@ -2,7 +2,13 @@
 
 **Estado:** objetivo contínuo ativo. Este documento é o plano de execução e aceite da auditoria de prontidão de 27/10/2026, atualizado com o estado remoto e do Desktop confirmados em 27/10/2026 (America/Sao_Paulo). A conclusão depende de evidências observáveis; respostas do GPT, mocks e testes unitários isolados não provam o produto completo.
 
-## Estado remoto atual — 27/10/2026
+## Estado vigente — 31/10/2026
+
+**Estado em 31/10/2026:** `main` em `3e86eb402ad1f4aca5665e182c908cd4372e506c`; versão canônica `0.2.0-alpha.19` no manifesto. PRs #348, #368 e #370 integradas. Entrega Windows Dev [#41021670806](https://github.com/ordaxsystems/ordax-apps/actions/runs/41021670806) no commit `f9c46e99038e06ceaeff6c07cc3b64ced60ae877`, sem alteração subsequente na subárvore Orchestrator. No `DESKTOP-PNUHUA0`, existe uma única instalação em `%LOCALAPPDATA%\Programs\OrdaX Orchestrator Lab`, com EXE e ASAR verificados; quatro processos Electron apontam ao mesmo EXE; staging e ZIP removidos. `DESKTOP-COHT67R` está offline e não foi alterado. Pacote não assinado para desenvolvimento; distribuição pública, GPT Web live, recuperação W3 real, grants Runtime/Platform e autonomia 24h continuam sem certificação.
+
+**Próximos gates:** prova de GPT Web autenticado com recibo de envio/resposta, recuperação W3 sem replay após interrupção física, grants reais e continuidade sem janela pelo Runtime/Scheduler existentes. Não criar segunda fila, banco, instalador ou Runtime.
+
+## Snapshot remoto histórico — 27/10/2026
 
 - Apps PR #348 está aberta em draft. Branch `codex/orchestrator-host-runtime-architecture`; head remoto `6af0c4d9ef6794d56ea116202785dbeaee3b5936`; último commit de código `bd5dc89e75a62f787613fe32323d534f9aa00375`; base `main` `2b76001db889e450ac9d537152e2485d455db73f`. Commits documentais posteriores não alteram esse source.
 - O último commit de código inclui recuperação limitada de resposta GPT tardia e, após reinício do app, somente reconcilia quando o Run interrompido tem receipt/dispatch intent durável, a thread exata já está visível e o prompt, baseline e resposta completa são atribuíveis. Nenhum reenvio automático.

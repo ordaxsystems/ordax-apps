@@ -1,11 +1,11 @@
 # RFC — OrdaX Orchestrator orientado a projetos locais
 
-**Status:** decisão de arquitetura aprovada pelo proprietário; **implementação pendente**.
-**Owner desta especificação:** `ordax-apps/prototypes/ordax-orchestrator` (PR draft [#268](https://github.com/ordaxsystems/ordax-apps/pull/268)).
+**Status em 31/10/2026:** arquitetura aprovada com implementação parcial em `ordax-apps/main` (`0.2.0-alpha.19`). O pacote Windows Dev de commit `f9c46e99038e06ceaeff6c07cc3b64ced60ae877` passou na [CI #41021670806](https://github.com/ordaxsystems/ordax-apps/actions/runs/41021670806); integração GPT Web real, grants Runtime/Platform e 24h continuam gates não certificados. A implementação não requer segunda fila, Runtime, banco ou provider.
+**Owner desta especificação:** `ordax-apps/prototypes/ordax-orchestrator` (PR histórica [#268](https://github.com/ordaxsystems/ordax-apps/pull/268); não é branch ativa).
 **Data da decisão:** 2026-10-21. **Destino:** OrdaX Orchestrator App (Windows inicialmente, OrdaX OS por ports públicos depois).
 **Leitura complementar:** [plano de execução](PROJECT-FIRST-IMPLEMENTATION-PLAN.md), [handoff Codex](../CODEX-HANDOFF.md), [aceite VESTE](VESTE-PROJECT-FIRST-E2E.md).
 
-**Estado observado em 2026-10-24:** a UI e o domínio atual ainda são um protótipo interativo. A candidata alpha.19 inicia a mesma UI por Node loopback, sem Electron, e compartilha Store/serviços com o shell desktop. O host visual já persistiu e recuperou VESTE, mas não dispõe de executor GPT, leitura/escrita GitHub, grant de workspace ligado ao App, edição/testes de arquivo nem supervisor headless. Uma tentativa Groq ficou sem resposta confirmada. Portanto, a arquitetura abaixo continua sendo direção e gates, não capacidades já entregues.
+**Snapshot histórico de 2026-10-24 (não é estado vigente):** a UI e o domínio atual ainda são um protótipo interativo. A candidata alpha.19 inicia a mesma UI por Node loopback, sem Electron, e compartilha Store/serviços com o shell desktop. O host visual já persistiu e recuperou VESTE, mas não dispõe de executor GPT, leitura/escrita GitHub, grant de workspace ligado ao App, edição/testes de arquivo nem supervisor headless. Uma tentativa Groq ficou sem resposta confirmada. Portanto, a arquitetura abaixo continua sendo direção e gates, não capacidades já entregues.
 
 ## 1. Decisão e motivação
 
