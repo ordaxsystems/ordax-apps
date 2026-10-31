@@ -260,10 +260,10 @@ test('coordinator shows an actionable empty state and keeps mobile controls insi
   assert.match(orchestration,/uncertainCommands/);
   assert.match(orchestration,/nada foi reenviado automaticamente/);
   assert.match(orchestration,/Conversa de coordenação ainda vazia/);
-  assert.match(orchestration,/Conecte o ChatGPT Plan para conversar com o coordenador sem uma chave de API/);
-  assert.match(orchestration,/Conectar ChatGPT/);
+  assert.match(orchestration,/Este é o chat do Orquestrador via/);
+  assert.match(orchestration,/Configurar '\+model/);
   assert.match(orchestration,/ChatGPT Plan · autorizado/);
-  assert.match(html,/id="coordinatorApiSettings"[^>]*>Conectar IA</);
+  assert.match(html,/id="coordinatorApiSettings"[^>]*>Configurar Groq</);
   assert.match(css,/coordinator-head-actions #coordinatorApiSettings\{font-size:9px;width:auto/);
   assert.match(orchestration,/groq_auth_rejected:/);
   assert.match(orchestration,/O tempo de resposta do \$\{provider\} expirou sem confirmação/);
