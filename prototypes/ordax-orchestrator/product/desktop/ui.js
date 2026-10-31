@@ -626,6 +626,9 @@ async function openTask(id) {
   currentTaskId = id;
   currentTask = task;
   setWorkspaceRoute('gpt');
+  // Make the GPT work destination visible again after leaving the Groq
+  // coordinator. Merely changing the central panel would keep a hidden pane.
+  await selectRightPane('provider');
   showSupervisorRole(task);
   showDraft(task);
   syncComposerAvailability();
