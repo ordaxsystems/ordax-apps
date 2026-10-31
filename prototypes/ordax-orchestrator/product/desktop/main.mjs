@@ -149,12 +149,15 @@ async function ensureBackgroundTray() {
   finally{backgroundTrayPending=null}
 }
 function backgroundState(){
+  let startupEnabled=false;
+  if(backgroundSupported) {
+    try {startupEnabled=app.getLoginItemSettings().openAtLogin===true;}catch {}
+  }
   return {supported:backgroundSupported,optedIn:backgroundOptedIn,
     resident:backgroundResidencyAllowed({optedIn:backgroundOptedIn,
       hostMode:hostBrowserMode,trayReady:Boolean(backgroundTray),
       quitting:quittingIntentionally,platform:process.platform,packaged:app.isPackaged}),
-    startupEnabled:backgroundSupported?Boolean(app.getLoginItemSettings().openAtLogin):false,
-    requiresWindowsUserSession:true,unattended24hCertified:false};
+    startupEnabled,requiresWindowsUserSession:true,unattended24hCertified:false};
 }
 
 const recoveredRunCount = store.recoverInterruptedRuns();
@@ -616,6 +619,7 @@ async function createWindowOnce() {
   // its reply is unknown. Persist the SAME interruption transaction used on
   // startup before destroying the window. No provider retry/cancel/API call.
   // A late response cannot be committed: finishRun requires status=running.
+  win.on('session-end',()=>{quittingIntentionally=true;});
   win.on('close', event => {
     if(backgroundResidencyAllowed({optedIn:backgroundOptedIn,
       hostMode:hostBrowserMode,trayReady:Boolean(backgroundTray),
