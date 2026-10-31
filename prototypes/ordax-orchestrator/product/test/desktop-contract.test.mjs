@@ -42,6 +42,11 @@ test('desktop package ships only canonical desktop runtime', () => {
 
 test('empty project state promises persistence without claiming autonomous execution',()=>{
   assert.match(uiHtml,/Seu projeto começa no Orquestrador/);
+  assert.match(uiHtml,/data-start-project>Começar pelo Orquestrador/);
+  assert.doesNotMatch(uiHtml,/data-create-task/);
+  assert.match(ui,/document\.querySelector\('\[data-start-project\]'\)/);
+  assert.doesNotMatch(ui,/addEventListener\('click', createTask\)/);
+
   assert.match(uiHtml,/Cada campo identifica o seu destino/);
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
 });
