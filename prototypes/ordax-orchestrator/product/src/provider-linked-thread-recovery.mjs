@@ -215,9 +215,16 @@ export async function recoverVisibleLinkedProviderSubmission({store,worker,now=D
   try {currentUrl=canonicalProviderChatUrl(worker.status?.()?.url);} catch {}
   if(!currentUrl)return {state:'idle',reason:'provider_thread_not_visible'};
 
-  const linked=store.db.prepare('SELECT id FROM tasks WHERE chat_url=? LIMIT 2').all(currentUrl);
+  // A visible GPT URL is not authority to operate on a Task owned by a
+  // different workspace session (including one left by an earlier login).
+  const activeSessionId=store.getWorkspaceSession()?.id;
+  if(!activeSessionId)return {state:'idle',reason:'provider_thread_not_linked'};
+  const linked=store.db.prepare('SELECT id,workspace_session_id FROM tasks WHERE chat_url=? LIMIT 2').all(currentUrl);
   if(linked.length!==0&&linked.length!==1)
     return {state:'ambiguous',reason:'provider_thread_linked_to_multiple_tasks'};
+  // Do not inspect or record recovery attempts against an inactive workspace.
+  if(linked.length===1&&linked[0].workspace_session_id!==activeSessionId)
+    return {state:'idle',reason:'provider_thread_not_linked'};
   // First-send uncertainty has no linked URL yet; require exactly one durable,
   // active-workspace intent rather than guessing which Task owns this thread.
   const fresh=linked.length===0?uniquePendingFreshSubmission(store):null;
@@ -264,6 +271,12 @@ export async function recoverVisibleLinkedProviderSubmission({store,worker,now=D
   const delay=PROVIDER_RECOVERY_BACKOFF_MS[Math.min(attempt-1,PROVIDER_RECOVERY_BACKOFF_MS.length-1)];
   const recovery=await recoverFailedProviderSubmission({store,worker,taskId,runId:run.id})
     .catch(error=>({reconciled:false,reason:safeHistoricalThreadFailure(error?.message)}));
+  // An asynchronous provider read may outlive a workspace switch. Never
+  // persist its retry/backoff event to a Task that is no longer owned here.
+  const currentTask=store.db.prepare('SELECT workspace_session_id FROM tasks WHERE id=?').get(taskId);
+  if(store.getWorkspaceSession()?.id!==activeSessionId||
+      currentTask?.workspace_session_id!==activeSessionId)
+    return {state:'idle',reason:'provider_recovery_state_changed'};
   const reconciled=recovery?.reconciled===true||recovery?.reason==='already_reconciled';
   const exhausted=!reconciled&&attempt>=PROVIDER_RECOVERY_MAX_OBSERVATIONS;
   const reason=typeof recovery?.reason==='string'&&/^[a-z0-9_]{1,80}$/.test(recovery.reason)
