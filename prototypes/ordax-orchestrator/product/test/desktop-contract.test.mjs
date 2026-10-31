@@ -589,5 +589,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   assert.match(service,/const port=usesProvider\?this\.provider:this\.coordinator/);
   assert.doesNotMatch(service,/const gptWebChat=operation==='orchestrator_chat'/);
   assert.match(css,/#orchestratorWorkRail\{display:flex!important/);
+  assert.match(css,/body\.orchestrator-focus \.left-rail \.tasks-wrap\{display:none!important\}/);
+
   assert.doesNotMatch(orchestratorUi,/GPT Web é o único transporte para enviar mensagens neste chat/);
 });
