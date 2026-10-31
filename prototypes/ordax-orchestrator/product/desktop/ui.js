@@ -882,7 +882,13 @@ $('#newerMessages').addEventListener('click', () => changeHistoryPage('newer'));
 $('#renameTask').addEventListener('click', () => toggleTaskRename(true));
 $('#cancelTaskRename').addEventListener('click', () => toggleTaskRename(false));
 $('#renameTaskForm').addEventListener('submit', saveTaskRename);
-document.querySelector('[data-create-task]')?.addEventListener('click', createTask);
+document.querySelector('[data-start-project]')?.addEventListener('click',()=>{
+  // First-run does not create a GPT Task. It guides the user to the
+  // configured coordinator or the setup needed to reach it.
+  if(orchestrationUi?.hasOrchestrator?.())void orchestrationUi.showCoordinator();
+  else if(orchestrationUi?.hasProject?.())document.getElementById('addOrchestrator')?.click();
+  else document.getElementById('addProject')?.click();
+});
 $('#taskSearch').addEventListener('input', renderTaskList);
 $('#rotateConversation').addEventListener('click',()=>void rotateConversation());
 $('#recoverProviderConversation').addEventListener('click',()=>void rotateConversation($('#recoverProviderConversation')));
