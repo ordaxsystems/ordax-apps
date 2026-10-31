@@ -559,6 +559,24 @@ test('Groq rejected and uncertain requests never reroute to GPT Web',async t=>{
   }
 });
 
+test('Groq coordinator remains available while the GPT Web executor is busy',async t=>{
+  let groqCalls=0,gptCalls=0;
+  const f=fixture(t,{
+    provider:{busy:()=>true,send:async()=>{gptCalls++;throw Error('unexpected_gpt_send');}},
+    coordinator:{available:()=>true,send:async()=>{groqCalls++;return {content:'A conversa de coordenação está disponível.'};}}
+  }),a=await project(f);
+  f.store.setDraft(a.chat,'Você está disponível?',1);
+  const result=await f.call('orchestrator_chat',{
+    requestId:'groq-while-gpt-busy',projectId:a.p,orchestratorId:a.o,
+    content:'Você está disponível?',draftRevision:1
+  });
+  assert.equal(result.status,'succeeded');
+  assert.equal(result.result.provider,'groq');
+  assert.equal(groqCalls,1);
+  assert.equal(gptCalls,0);
+  assert.equal(f.service.executorAdmission().availableSlots,0);
+});
+
 test('coordinator rejects stale revisions before a Groq request or any GPT work',async t=>{
   let gptCalls=0,groqCalls=0;
   const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('must_not_send_gpt');}},
