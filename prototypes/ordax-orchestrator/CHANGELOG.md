@@ -1,5 +1,15 @@
 ## 0.2.0-alpha.20 — ambientes Orquestrador/Groq e GPT separados (31/10/2026)
 
+## 0.2.0-alpha.21 — residência Windows opcional, sem segunda instalação (candidato)
+
+- Modo explicitamente opt-in de manter a **instância existente** em segundo plano quando a janela é fechada; bandeja Windows com ações de reabrir e sair.
+- Mesmo SQLite, mesmo executor GPT e mesmo coordenador Groq. Nenhum serviço alternativo ou autorização automática para novos envios; aprovação/fail-closed continuam obrigatórios.
+- Início na sessão Windows usando a mesma instalação e sem autoativação em perfis isolados E2E ou no Host Node.
+- Política e testes de estado formalizam que o modo não equivale a operação garantida 24h após logoff, desligamento ou queda de energia.
+- A integração, build e teste físico Windows desta versão ainda são gates e não devem ser inferidos deste changelog.
+
+---
+
 - Corrige a causa raiz: `orchestrator_chat` passa a usar o coordenador configurado (Groq no Windows), em vez do executor ChatGPT Web. `work_send` e `proposal_send` continuam exclusivos das frentes GPT.
 - Reestrutura a navegação em duas áreas com destino explícito, marca visual de rota e botões “Enviar à Groq” e “Enviar ao GPT”. A tela Groq apresenta frentes do projeto na lateral, não um navegador GPT como entrada principal.
 - Criação de missão apenas persiste projeto, coordenador e primeira frente como rascunho; nunca envia implicitamente ao GPT.
