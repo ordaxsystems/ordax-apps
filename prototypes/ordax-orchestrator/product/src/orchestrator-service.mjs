@@ -727,8 +727,10 @@ export class OrchestratorService {
     // Return an accepted command even if the provider is now offline; never replay.
     if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
     const isWorkSend=operation==='work_send'||operation==='proposal_send';
-    const gptWebChat=operation==='orchestrator_chat';
-    const usesProvider=isWorkSend||gptWebChat;
+    // Transport is determined by the operation, never by the visible GPT pane.
+    // Coordinator conversations use the configured coordinator (Groq on
+    // Windows); only explicit work sends reach the ChatGPT Web executor.
+    const usesProvider=isWorkSend;
     const sendInput=preparedSend||input;
     const orch=isWorkSend?null:this.orchestrator(input.projectId,input.orchestratorId);
     const task=isWorkSend?this.task(input.projectId,sendInput.taskId,'work'):
@@ -750,13 +752,6 @@ export class OrchestratorService {
     const providerContent=usesProvider
       ?preparedSend?.providerContent||appendRemoteRepositoryInstructions(content,repositoryUrl)
       :content;
-    const providerChatDraft=gptWebChat&&input.draftRevision!==undefined;
-    if(providerChatDraft) {
-      const draft=this.store.getTaskDraft(task.id);
-      if(draft.draft_revision!==input.draftRevision||draft.draft.trim()!==content.trim())
-        throw Error('task_draft_revision_conflict');
-      if(!Number.isSafeInteger(input.draftRevision+1))throw Error('invalid_task_draft_revision');
-    }
     const workspaceStatus=isWorkSend?null:this.workspace.status(context,input.projectId);
     const workspaceObservation=workspaceStatus?{
       state:workspaceStatus.state,
@@ -767,10 +762,13 @@ export class OrchestratorService {
       filesRead:workspaceStatus.filesRead,
       filesWritten:workspaceStatus.filesWritten
     }:null;
-    assertTaskHasNoUncertainTransport(this.store,task.id);
-    // The same admission rule gates plans and all canonical provider sends.
-    if(this.executorAdmission().availableSlots===0)
-      throw Error('orchestrator_executor_busy');
+    // GPT transport admission and uncertain GPT receipts must never block
+    // the independent Groq conversation with the coordinator.
+    if(usesProvider) {
+      assertTaskHasNoUncertainTransport(this.store,task.id);
+      if(this.executorAdmission().availableSlots===0)
+        throw Error('orchestrator_executor_busy');
+    }
     // Advisory API replies cannot submit GPT work. Preserve their uncertain
     // receipts without replay, but allow a fresh explicit API request. Only
     // uncertain provider submissions quarantine the work transport.
@@ -815,8 +813,8 @@ export class OrchestratorService {
       // Fresh authorization immediately before a potentially external effect.
       this.requireAccess(context,operation,input.projectId);
       const reply=await port.send({taskId:task.id,content:usesProvider?providerContent:content,
-        draftRevision:providerChatDraft?input.draftRevision+1:sendInput.draftRevision??null,
-        taskKind:gptWebChat?'orchestrator':isWorkSend?'work':null,
+        draftRevision:sendInput.draftRevision??null,
+        taskKind:isWorkSend?'work':null,
         mission:owner.mission,projectId:input.projectId,orchestratorId:owner.id,analysisContext,prepareWork,
         workspaceObservation,repositoryUrl});
       this.requireAccess(context,operation,input.projectId);
@@ -853,9 +851,8 @@ export class OrchestratorService {
         return this.finish(reserved.commandId,result);
       });
     } catch(error) {
-      // The central chat is the GPT executor, never an implicit Groq chat.
-      // A failed, unavailable, or uncertain GPT submission must not be
-      // replaced with an answer from a different model.
+      // Coordinator and work-chat transports are distinct and never silently
+      // substitute for each other after any rejection or uncertain outcome.
       const failure=error;
       // Only an explicit pre-submit disposition from the provider executor is
       // retryable. Missing/invalid evidence remains uncertain and quarantined.

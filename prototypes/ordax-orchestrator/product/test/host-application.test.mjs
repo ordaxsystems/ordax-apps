@@ -102,7 +102,7 @@ test('Node Host refuses to keep a Groq key in memory when the OS vault is unavai
   assert.equal(after.keySaved,false);
 });
 
-test('Host keeps Groq credential across restart but never pretends to send GPT',async t=>{
+test('Host routes coordinator chat to Groq and keeps the credential across restart',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'ordax-host-groq-'));
   const dataRoot=path.join(root,'profile');
   const fakeKey='gsk_aaaaaaaaaaaaaaaaaaaaaaaa';
@@ -110,10 +110,11 @@ test('Host keeps Groq credential across restart but never pretends to send GPT',
   const requests=[];
   const fetchImpl=async(url,options)=>{
     requests.push({url,headers:options.headers,body:JSON.parse(options.body)});
-    if(requests.length===2)return new Response('authentication rejected',{status:401});
-    if(requests.length===3){const error=Error('timeout');error.name='TimeoutError';throw error;}
+    if(requests.length===3)return new Response('authentication rejected',{status:401});
+    if(requests.length===4){const error=Error('timeout');error.name='TimeoutError';throw error;}
     return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{
-      content:JSON.stringify({title:'Revisar OrdaX',content:'Testar contrato',reason:'Planejar com a Groq'})}}]}),
+      content:requests.length===1?'Resposta exclusiva do Groq ao Orquestrador':
+        JSON.stringify({title:'Revisar OrdaX',content:'Testar contrato',reason:'Planejar com a Groq'})}}]}),
       {status:200,headers:{'content-type':'application/json'}});
   };
   let application=createHostApplication({productRoot,dataRoot,environment:{},fetchImpl,credentialStore:credentials});
@@ -137,23 +138,25 @@ test('Host keeps Groq credential across restart but never pretends to send GPT',
     requestId:'groq-orchestrator',projectId:project,name:'Coordenador',mission:'Coordenar'
   }])).body.result;
   await post('setDraft',[coordinator.chatTaskId,'Pergunte ao GPT qual meu nome.',1]);
-  const gptAttempt=await post('orchestratorInvoke',['orchestrator_chat',{
-    requestId:'gpt-no-transport',projectId:project,orchestratorId:coordinator.orchestratorId,
+  const groqChat=await post('orchestratorInvoke',['orchestrator_chat',{
+    requestId:'groq-chat-direct',projectId:project,orchestratorId:coordinator.orchestratorId,
     content:'Pergunte ao GPT qual meu nome.',draftRevision:1
   }]);
-  assert.equal(gptAttempt.status,400);
-  assert.equal(gptAttempt.body.error,'orchestrator_provider_unavailable');
-  assert.equal(requests.length,0,'no Groq impersonation of GPT');
-  assert.equal((await post('getTaskDraft',[coordinator.chatTaskId])).body.draft,'Pergunte ao GPT qual meu nome.');
+  assert.equal(groqChat.status,200);
+  assert.equal(groqChat.body.status,'succeeded');
+  assert.equal(groqChat.body.result.provider,'groq');
+  assert.equal(requests.length,1,'coordinator chat uses Groq; the Host has no GPT work transport');
+  assert.equal(requests[0].url,'https://api.groq.com/openai/v1/chat/completions');
+  assert.equal((await post('getTaskDraft',[coordinator.chatTaskId])).body.draft,'');
   const plan=async(requestId,content)=>post('orchestratorInvoke',['orchestrator_prepare',{
     requestId,projectId:project,orchestratorId:coordinator.orchestratorId,content
   }]);
   const first=await plan('groq-plan-1','Planejar OrdaX.');
   assert.equal(first.status,200);
   assert.equal(first.body.status,'succeeded');
-  assert.equal(requests.length,1);
-  assert.equal(requests[0].url,'https://api.groq.com/openai/v1/chat/completions');
-  assert.equal(requests[0].headers.Authorization,'Bearer '+fakeKey);
+  assert.equal(requests.length,2);
+  assert.equal(requests[1].url,'https://api.groq.com/openai/v1/chat/completions');
+  assert.equal(requests[1].headers.Authorization,'Bearer '+fakeKey);
   assert.equal(JSON.stringify(first.body).includes(fakeKey),false);
   const rejected=await plan('groq-plan-401','Planejar alternativa.');
   assert.equal(rejected.body.status,'failed');
@@ -161,9 +164,9 @@ test('Host keeps Groq credential across restart but never pretends to send GPT',
   const timeout=await plan('groq-plan-timeout','Planejar outra alternativa.');
   assert.equal(timeout.body.status,'uncertain');
   assert.equal(timeout.body.result.failureCode,'groq_request_timeout');
-  assert.equal(requests.length,3);
+  assert.equal(requests.length,4);
   assert.equal((await post('orchestratorInvoke',['status',{}])).body.uncertainCommands,1);
-  assert.equal((await post('getTaskDraft',[coordinator.chatTaskId])).body.draft,'Pergunte ao GPT qual meu nome.');
+  assert.equal((await post('getTaskDraft',[coordinator.chatTaskId])).body.draft,'');
   const dbBytes=await fs.readFile(path.join(dataRoot,'ordax-orchestrator-lab.sqlite'));
   assert.equal(dbBytes.includes(Buffer.from(fakeKey)),false);
   await server.close();server=null;application.close();application=null;
@@ -178,9 +181,9 @@ test('Host keeps Groq credential across restart but never pretends to send GPT',
     'Groq must be available again after restart without manual enable');
   const continued=await plan('groq-plan-after-restart','Continue planejamento.');
   assert.equal(continued.body.status,'succeeded');
-  assert.equal(requests.length,4);
-  assert.equal(requests[3].headers.Authorization,'Bearer '+fakeKey);
+  assert.equal(requests.length,5);
+  assert.equal(requests[4].headers.Authorization,'Bearer '+fakeKey);
   const page=(await post('orchestratorInvoke',['work_messages',{projectId:project,taskId:coordinator.chatTaskId,limit:50}])).body;
-  assert.equal(page.messages.filter(m=>m.role==='assistant').length,2);
+  assert.equal(page.messages.filter(m=>m.role==='assistant').length,3);
   assert.equal((await post('orchestratorInvoke',['status',{}])).body.uncertainCommands,1);
 });

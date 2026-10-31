@@ -1,6 +1,15 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
-## Estado vigente — 31/10/2026
+## Estado vigente da reestruturação — alpha.20 (31/10/2026)
+
+- **SSOT:** `ordaxsystems/ordax-apps/main`. Mudanças em `0.2.0-alpha.20` vivem apenas na PR de reestruturação `refactor/orchestrator-groq-workspace-20261031` até integração testada. A versão instalada no Windows é atualizada em um único diretório canônico após validação do artefato `main` (`sourceCommit` e hashes), nunca apenas pelo número alpha.
+- **Contrato inegociável:** `orchestrator_chat` usa `this.coordinator` (Groq no Electron, modelo configurado no Host); `work_send` e `proposal_send` usam `this.provider` (executor GPT Web). Nenhum fallback silencioso entre esses transportes. Uma falha/timeout da Groq não pode virar mensagem GPT. Um Run GPT incerto não autoriza replay.
+- **UX:** sidebar com destinos **Orquestrador** e **Conversas GPT**. Orquestrador é a tela de conversa direta via Groq; tarefas GPT mantêm seus próprios composer, histórico e WebView. `#coordinatorComposer` e `#composer` são diferentes por contrato e por rótulo visível. Trocar telas não envia, não descarta draft e não reutiliza um composer de outro serviço.
+- **Missão:** `mission_create` persiste projeto, orquestrador e draft da primeira frente, sem envio. Envio GPT exige ação separada e recibo. Não reintroduzir `onStartMission` que enviava implicitamente após criar missão.
+- **Validação:** testar rotas de transporte (nenhuma mensagem ao GPT via `orchestrator_chat`), erros/uncertainty/revisões de draft, UI desktop e host, E2E empacotado no CI, instalação única física. O W3 GPT real e supervisor 24h continuam não homologados por esses testes.
+- **Higiene:** perfis e conversas de teste são descartáveis com autorização do usuário; limpar apenas se necessário, nunca chaves/sessões de outros produtos nem duplicar instalações. A credencial Groq fica no cofre existente.
+
+## Estado anterior — alpha.19, histórico (não usar como situação corrente)
 
 **Base auditada em 31/10/2026 (snapshot anterior à correção de recuperação):** `main` em `084e964d576bcc1dd6777b5fc285401bd420593e`; versão canônica `0.2.0-alpha.19` no manifesto. PRs #348, #368 e #370 integradas. Entrega Windows Dev [#41021670806](https://github.com/ordaxsystems/ordax-apps/actions/runs/41021670806) no commit `f9c46e99038e06ceaeff6c07cc3b64ced60ae877`, sem alteração subsequente na subárvore Orchestrator. No `DESKTOP-PNUHUA0`, existe uma única instalação em `%LOCALAPPDATA%\Programs\OrdaX Orchestrator Lab`, com EXE e ASAR verificados; quatro processos Electron apontam ao mesmo EXE; staging e ZIP removidos. `DESKTOP-COHT67R` está offline e não foi alterado. Pacote não assinado para desenvolvimento; distribuição pública, GPT Web live, recuperação W3 real, grants Runtime/Platform e autonomia 24h continuam sem certificação.
 

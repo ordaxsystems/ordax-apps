@@ -1,7 +1,7 @@
 // Native App UI is a client of the same command service as MCP. No DOM of
 // ChatGPT, coordinates or direct SQLite access is used to operate the Lab.
 import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
-export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onStartMission,canStartMission,onSelectRightPane,onNavigationChange}) {
+export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onNavigationChange}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
@@ -418,7 +418,7 @@ const runState=document.createElement('small');
     nodeHost=state.executionSurface==='node_host';
     $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
     $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
-    $('coordinatorRailToggle').textContent=nodeHost?'Frentes':'Conversas';
+    $('coordinatorRailToggle').textContent=nodeHost?'Frentes':'Frentes GPT';
     $('newScopedWorkButton').textContent=nodeHost?'＋ Nova frente':'＋ Nova conversa no GPT';
     $('newScopedWorkDetails').querySelector('summary').textContent=nodeHost?'Configurar título da frente':'Configurar nome da conversa';
     $('newScopedWorkForm').querySelector('button[type="submit"]').textContent=nodeHost?'Criar frente e abrir rascunho':'Criar e abrir conversa';
@@ -428,18 +428,24 @@ const runState=document.createElement('small');
     const engineStatus=await call('status');
     coordinatorAvailable=engineStatus.coordinatorAvailable===true;
     gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
-    orchestratorChatAvailable=gptWebTransportAvailable;
+    // The coordinator is a distinct conversation, not another GPT Web front.
+    orchestratorChatAvailable=coordinatorAvailable;
     coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
     if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
     else if($('coordinatorDraftState').textContent.includes('backend anterior'))
       setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
-    $('orchestrationConnection').textContent=gptWebTransportAvailable
-      ?`ChatGPT Web é o único transporte para enviar mensagens neste chat; a sessão é verificada antes do envio.${coordinatorAvailable?' Groq disponível automaticamente para análise e propostas, sem se passar pelo GPT.':' Groq não configurado ou indisponível.'}`
-      :coordinatorAvailable
-        ?'GPT Web indisponível nesta superfície: envio bloqueado. Groq pode somente analisar e preparar propostas, não responder como GPT.'
-        :!state.configured
-          ?'GPT Web indisponível nesta superfície: envio bloqueado. Groq é opcional para análise e propostas.'
-          :'GPT Web indisponível nesta superfície: envio bloqueado. Groq configurado apenas para análise e propostas.';
+    const routingName=nodeHost
+      ?coordinatorProvider==='chatgpt_plan'?'ChatGPT Plan':'Groq'
+      :'Groq';
+    $('coordinatorNavProvider').textContent='Conversa com '+routingName;
+    $('coordinatorRouteLabel').textContent='CONVERSA DIRETA · '+routingName.toLocaleUpperCase('pt-BR');
+    $('coordinatorApiSettings').textContent='Configurar '+routingName;
+    $('coordinatorPrompt').placeholder='Mensagem para o Orquestrador · '+routingName;
+    $('coordinatorSend').textContent='Enviar à '+(routingName==='Groq'?'Groq':routingName);
+    $('coordinatorSend').setAttribute('aria-label','Enviar mensagem ao Orquestrador via '+routingName);
+    $('orchestrationConnection').textContent=coordinatorAvailable
+      ?'Destino: Orquestrador via '+routingName+'. Nenhuma mensagem deste campo vai às conversas do ChatGPT Web.'
+      :'Orquestrador indisponível: configure '+routingName+' para conversar. Nenhuma mensagem será redirecionada ao ChatGPT Web.';
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
@@ -458,7 +464,7 @@ const runState=document.createElement('small');
   });
   $('closeCoordinatorApiSettings').addEventListener('click',()=>{
     document.body.classList.remove('orchestrator-api-settings');$('contextRail').classList.remove('open');
-    void onSelectRightPane?.('provider').catch(()=>{});
+    void onSelectRightPane?.('context').catch(()=>{});
   });
   $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectObjective').focus(); });
   $('renameProjectButton').addEventListener('click',()=>{
@@ -536,6 +542,7 @@ const runState=document.createElement('small');
     if(generation!==epoch)return;
     const works=result.works;
     workCount=works.length;
+    $('openWorks').disabled=!projectId||!orchestratorId||workCount===0;
     renderWorks(works,planning?.plan||null);
     renderDependencyEditor(allResult?.works||result.works,planning?.plan||null);
     await onScopeChange(new Set(works.map(w=>w.id)));
@@ -591,6 +598,7 @@ const runState=document.createElement('small');
     $('pauseOrchestrator').disabled=!selected;
     $('pauseOrchestrator').textContent=selected?.status==='paused'?'Retomar':'Pausar';
     $('newOrchestratorForm').hidden=!p;
+    $('openWorks').disabled=!p||!selected||workCount===0;
     $('orchestratorMission').textContent=selected?.mission||'Configure um orquestrador para este projeto.';
     $('orchestratorTitle').textContent=selected?.name||'Orquestrador';
     syncCoordinatorActions();
@@ -642,8 +650,10 @@ const runState=document.createElement('small');
     if(page.messages.length===0) {
       const empty=document.createElement('div');empty.className='coordinator-empty';
       const title=document.createElement('strong');title.textContent='Conversa de coordenação ainda vazia';
-      const copy=document.createElement('p');copy.textContent='Conecte o ChatGPT Plan para conversar com o coordenador sem uma chave de API. Essa conexão não abre conversas existentes do ChatGPT Web nem envia mensagens às frentes de trabalho.';
-      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Conectar ChatGPT';
+      const copy=document.createElement('p');
+      const model=nodeHost&&coordinatorProvider==='chatgpt_plan'?'ChatGPT Plan':'Groq';
+      copy.textContent='Este é o chat do Orquestrador via '+model+'. As conversas GPT de execução ficam no outro ambiente. Configure o modelo para começar; esta área não envia mensagens ao GPT Web.';
+      const settings=document.createElement('button');settings.type='button';settings.className='mini-secondary';settings.textContent='Configurar '+model;
       settings.addEventListener('click',()=>$('coordinatorApiSettings').click());
       empty.append(title,copy,settings);box.append(empty);
     }
@@ -742,19 +752,8 @@ const runState=document.createElement('small');
       $('newProjectForm').reset();$('projectSetup').open=false;
       await refreshProjects();await refreshOrchestrators();
       await onNavigationChange?.({view:'coordinator',projectId,orchestratorId,taskId:null});
-      const readyToStart=typeof onStartMission==='function'&&
-        (typeof canStartMission!=='function'||canStartMission()===true);
-      if(readyToStart) {
-        let sent=false;
-        try {sent=await onStartMission({taskId:receipt.result.taskId,mission});} catch {}
-        status(sent===true
-          ?'Missão enviada à sessão ativa do ChatGPT. Acompanhe a execução e os resultados nesta conversa.'
-          :'Projeto criado e missão preservada como rascunho. O envio não foi confirmado; verifique a conversa antes de repetir.');
-      } else {
-        status(typeof onStartMission==='function'
-          ?'Projeto criado e missão salva como rascunho. Conecte uma sessão válida do ChatGPT para iniciar o trabalho.'
-          :'Projeto criado com a missão salva. O executor GPT não está disponível.');
-      }
+      await showCoordinator();
+      status('Projeto e missão criados localmente. Converse com o Orquestrador antes de abrir uma conversa GPT; nenhum envio foi realizado.');
     });
   });
   $('renameProjectForm').addEventListener('submit',event=>{
@@ -802,6 +801,12 @@ const runState=document.createElement('small');
     });
   });
   $('openOrchestrator').addEventListener('click',()=>{void showCoordinator().catch(error);});
+  $('openWorks').addEventListener('click',()=>{
+    const selected=visibleWorkItems[0];
+    if(!selected){status('Crie primeiro uma conversa GPT neste projeto.');return;}
+    coordinatorOpen=false;
+    void onOpenWork(selected.id).catch(()=>status('Não foi possível abrir a conversa GPT.'));
+  });
   $('pauseOrchestrator').addEventListener('click',async()=>{
     const o=orchestrators.find(o=>o.id===orchestratorId);if(!o)return;
     try {
@@ -823,6 +828,12 @@ const runState=document.createElement('small');
       await refreshContinuityStatus();}
     catch {status('Não foi possível mudar a análise automática.');await refreshContinuityStatus();}
   });
+  $('coordinatorPrompt').addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.isComposing){
+      event.preventDefault();
+      if(!$('coordinatorSend').disabled)$('coordinatorComposer').requestSubmit();
+    }
+  });
   $('coordinatorComposer').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
       const p=projectId,o=orchestratorId,t=chatTaskId;
@@ -834,10 +845,9 @@ const runState=document.createElement('small');
         const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
         if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
         await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-        if(receipt.status==='succeeded')status(receipt.result?.provider==='chatgpt_web'
-          ?'Resposta observada do ChatGPT Web e registrada. Nenhuma ação de projeto foi executada.'
-          :'Resposta registrada; consulte o provedor no recibo. Nenhuma ação de projeto foi executada.');
-        else status('Envio GPT não confirmado ('+receipt.status+'). Sem resposta atribuída nem reenvio automático.');
+        if(receipt.status==='succeeded')
+          status('Resposta do Orquestrador registrada via '+(receipt.result?.provider||'modelo configurado')+'. Nenhuma mensagem foi enviada às conversas GPT.');
+        else status('Resposta do Orquestrador não confirmada ('+receipt.status+'). O envio não será repetido automaticamente.');
         await renderCoordinator();
       } finally {
         coordinatorSubmitting=false;syncCoordinatorActions();

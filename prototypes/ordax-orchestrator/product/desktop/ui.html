@@ -27,7 +27,7 @@
             <label for="projectName">Nome do projeto (opcional)</label><input id="projectName" maxlength="140" placeholder="Derivado da missão se ficar vazio" />
             <label for="projectObjective">O que você quer fazer?</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Ex.: Crie uma loja de roupas chamada VESTE, com catálogo e carrinho." required></textarea>
             <label for="projectRepositoryUrl">Repositório GitHub remoto (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
-            <small>Cria projeto, orquestrador e primeira conversa em uma operação. Se o ChatGPT estiver conectado, inicia a missão; caso contrário, salva como rascunho.</small>
+            <small>Cria o projeto, o Orquestrador e o rascunho da primeira frente. Não envia mensagens ao GPT. Depois converse com o Orquestrador via Groq.</small>
             <button type="submit">Criar missão</button>
           </form>
         </details>
@@ -49,7 +49,20 @@
           </form>
         </details>
       </section>
-      <button id="newTask" class="primary new-task">+ Nova conversa de trabalho</button>
+      <nav class="workspace-modes" aria-label="Selecionar destino da conversa">
+        <span class="workspace-modes-caption">Ambiente de trabalho</span>
+        <button id="openOrchestrator" class="workspace-mode workspace-mode-coordinator" type="button" aria-pressed="false" disabled>
+          <span class="workspace-mode-symbol" aria-hidden="true">◇</span>
+          <span class="workspace-mode-copy"><strong>Orquestrador</strong><small id="coordinatorNavProvider">Conversa com Groq</small></span>
+          <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
+        </button>
+        <button id="openWorks" class="workspace-mode workspace-mode-gpt" type="button" aria-pressed="false" disabled>
+          <span class="workspace-mode-symbol" aria-hidden="true">⌘</span>
+          <span class="workspace-mode-copy"><strong>Conversas GPT</strong><small>Execução no ChatGPT Web</small></span>
+          <span class="workspace-mode-arrow" aria-hidden="true">↗</span>
+        </button>
+      </nav>
+      <button id="newTask" class="primary new-task">＋ Nova conversa GPT</button>
 
       <div class="search-wrap">
         <span aria-hidden="true">⌕</span>
@@ -58,7 +71,7 @@
 
       <section class="tasks-wrap">
         <div class="section-title-row">
-          <span>Conversas</span>
+          <span>Histórico GPT</span>
           <small id="taskCount">0</small>
         </div>
         <div id="tasks" class="tasks"></div>
@@ -101,15 +114,17 @@
     <section class="chat-column">
       <section id="orchestrationPanel" class="orchestration-panel" hidden aria-label="Conversa com o orquestrador">
         <header class="coordinator-head">
-          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><h2 id="orchestratorTitle">Orquestrador</h2><p id="orchestratorMission"></p></div></div>
+          <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">CONVERSA DIRETA · GROQ</span><h2 id="orchestratorTitle">Orquestrador</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Conversas</button>
-            <button id="openOrchestrator" class="ghost-button" type="button" disabled>Orquestrador</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
-            <button id="coordinatorApiSettings" class="ghost-button" type="button" title="Configurar conexão com ChatGPT e Groq">Conectar IA</button>
+            <button id="coordinatorApiSettings" class="ghost-button" type="button" title="Configurar o modelo do Orquestrador">Configurar Groq</button>
           </div>
         </header>
-        <p id="orchestrationConnection" class="orchestration-connection" role="status"></p>
+        <div class="coordinator-transport" role="status" aria-live="polite">
+          <span class="transport-symbol" aria-hidden="true">●</span>
+          <span id="orchestrationConnection" class="orchestration-connection">Esta área conversa com o Orquestrador. Nenhuma mensagem daqui vai ao ChatGPT Web.</span>
+        </div>
         <div id="orchestrationCapabilitySummary" class="orchestration-capabilities" aria-label="Capacidades disponíveis no Host" hidden>
           <span id="capabilityGroq" data-state="blocked">Groq · não configurado</span>
           <span id="capabilityGpt" data-state="blocked">ChatGPT Plan · não conectado</span>
@@ -154,9 +169,10 @@
         <div id="coordinatorProposals" class="coordinator-proposals" aria-label="Propostas para revisão"></div>
         <form id="coordinatorComposer">
           <label class="sr-only" for="coordinatorPrompt">Mensagem ao orquestrador</label>
-          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Converse com o orquestrador..." required></textarea>
-          <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao orquestrador" disabled>↑</button>
+          <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Mensagem para o Orquestrador · Groq" aria-describedby="orchestrationConnection" required></textarea>
+          <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao Orquestrador via Groq" disabled>Enviar à Groq</button>
         </form>
+        <small class="coordinator-route-note">Destino exclusivo: Orquestrador. Ctrl+Enter envia · Enter cria nova linha. Nunca abre uma conversa GPT automaticamente.</small>
         <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
@@ -166,7 +182,7 @@
             <div class="task-avatar">✦</div>
             <div>
               <div class="task-title-line">
-                <h2 id="taskTitle"></h2>
+                <span class="route-kicker route-kicker-gpt">CONVERSA DE TRABALHO · CHATGPT WEB</span><h2 id="taskTitle"></h2>
                 <button id="renameTask" class="rename-task" type="button" title="Renomear conversa" aria-label="Renomear conversa">✎</button>
               </div>
               <form id="renameTaskForm" class="task-rename-form hidden">
@@ -210,11 +226,11 @@
             <button id="recoverProviderConversation" type="button" class="mini-primary" hidden>Continuar em conversa nova</button>
           </div>
           <form id="composer" class="composer">
-            <textarea id="prompt" rows="1" placeholder="Pergunte, crie ou continue o trabalho…"></textarea>
-            <button id="send" class="send-button" type="submit" aria-label="Enviar" disabled title="Verificando a sessão do ChatGPT">↑</button>
+            <textarea id="prompt" rows="1" placeholder="Mensagem para esta conversa do ChatGPT Web…" aria-describedby="composerConnectionText"></textarea>
+            <button id="send" class="send-button" type="submit" aria-label="Enviar ao ChatGPT Web" disabled title="Verificando a sessão do ChatGPT">Enviar ao GPT</button>
             <div id="runStatus" class="run-status hidden"></div>
           </form>
-          <div class="composer-hint">Enter envia • Shift+Enter quebra linha • a memória da tarefa é local</div>
+          <div class="composer-hint">Destino: ChatGPT Web nesta frente · Enter envia · Shift+Enter quebra linha</div>
           <div id="draftState" class="draft-state" role="status" aria-live="polite"></div>
         </div>
         <div class="task-meta">
@@ -225,9 +241,9 @@
 
       <section id="empty" class="empty">
         <div class="empty-mark">O</div>
-        <h2>Um projeto, um histórico que você pode retomar.</h2>
-        <p>Missões e rascunhos ficam salvos no projeto. Para o Orquestrador executar trabalho, a conexão de modelo e os recursos autorizados precisam estar disponíveis.</p>
-        <button class="primary empty-create" type="button" data-create-task>Nova conversa</button>
+        <h2>Seu projeto começa no Orquestrador.</h2>
+        <p>Crie uma missão, converse com o Orquestrador na área Groq e abra frentes de execução no ChatGPT Web quando precisar. Cada campo identifica o seu destino.</p>
+        <button class="primary empty-create" type="button" data-start-project>Começar pelo Orquestrador</button>
       </section>
     </section>
 
