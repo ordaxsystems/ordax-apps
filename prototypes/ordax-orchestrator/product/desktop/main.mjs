@@ -117,12 +117,15 @@ function showCanonicalWindow(){
   if(win.isMinimized())win.restore();
   win.show();win.focus();
 }
+const canonicalLoginItem=()=>({path:process.execPath,args:['--ordax-background-start']});
 function updateLoginStartup(enabled) {
   if(!backgroundSupported)return false;
   try {
-    app.setLoginItemSettings({openAtLogin:enabled,path:process.execPath,
-      args:['--ordax-background-start']});
-    return app.getLoginItemSettings().openAtLogin===enabled;
+    const item=canonicalLoginItem();
+    app.setLoginItemSettings({openAtLogin:enabled,...item});
+    // Electron compares the *complete* executable + args identity.
+    // Omitting args here would misreport an enabled run key as disabled.
+    return app.getLoginItemSettings(item).openAtLogin===enabled;
   }catch{return false;}
 }
 async function ensureBackgroundTray() {
@@ -151,7 +154,7 @@ async function ensureBackgroundTray() {
 function backgroundState(){
   let startupEnabled=false;
   if(backgroundSupported) {
-    try {startupEnabled=app.getLoginItemSettings().openAtLogin===true;}catch {}
+    try {startupEnabled=app.getLoginItemSettings(canonicalLoginItem()).openAtLogin===true;}catch {}
   }
   return {supported:backgroundSupported,optedIn:backgroundOptedIn,
     resident:backgroundResidencyAllowed({optedIn:backgroundOptedIn,
