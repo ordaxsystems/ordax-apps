@@ -1,6 +1,12 @@
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
-## Estado canônico — 29/10/2026 (prevalece sobre registros históricos abaixo)
+## Estado vigente — 31/10/2026
+
+**Estado em 31/10/2026:** `main` em `3e86eb402ad1f4aca5665e182c908cd4372e506c`; versão canônica `0.2.0-alpha.19` no manifesto. PRs #348, #368 e #370 integradas. Entrega Windows Dev [#41021670806](https://github.com/ordaxsystems/ordax-apps/actions/runs/41021670806) no commit `f9c46e99038e06ceaeff6c07cc3b64ced60ae877`, sem alteração subsequente na subárvore Orchestrator. No `DESKTOP-PNUHUA0`, existe uma única instalação em `%LOCALAPPDATA%\Programs\OrdaX Orchestrator Lab`, com EXE e ASAR verificados; quatro processos Electron apontam ao mesmo EXE; staging e ZIP removidos. `DESKTOP-COHT67R` está offline e não foi alterado. Pacote não assinado para desenvolvimento; distribuição pública, GPT Web live, recuperação W3 real, grants Runtime/Platform e autonomia 24h continuam sem certificação.
+
+**Regra operacional:** uma única instalação por computador, único owner do produto em `ordax-apps/main`, nenhum envio GPT de teste sem autorização. Não apagar SQLite, receipts nem perfis ao limpar estágio. Fonte/CI e operação 24h são gates distintos. Manter um único PR documental até merge; não reativar branches antigas.
+
+## Snapshot canônico de 29/10/2026 (histórico)
 
 - **SSOT do produto:** `ordaxsystems/ordax-apps`, branch `main`. A [PR #348](https://github.com/ordaxsystems/ordax-apps/pull/348) foi **integrada** em `c4eb3e6852c856fd4bda97e7247dd6539b8de80c` (28/10), seguida da correção de empacotamento Windows `031d2b95219c9bbf19ea25a8150bc7538b135ebe`. Não reabrir a PR/branch histórica nem tratar os estados de draft abaixo como atuais.
 - **Windows — uma instalação operacional (29/10/2026, homologada):** binário no caminho canônico `%LOCALAPPDATA%\\Programs\\OrdaX Orchestrator Lab\\OrdaX Orchestrator Lab.exe`, pacote `0.2.0-alpha.19`, `sourceCommit=4347eef816a868b7e7bd568d794e14ccf92d1b06`. Instalação do pacote `win-unpacked` produzida pelo CI #40816448747, **no mesmo local**, com hashes SHA-256 do executável e `resources/app.asar` conferidos contra o recibo `ordax.lab.windows-dev-install-candidate.v1`; manifesto e prova de pacote no mesmo commit. Inicialização física positiva (múltiplos processos Electron do **mesmo** executável), atalho aponta para o local canônico, SQLite `PRAGMA quick_check=ok`. Revisão anterior de binário e estágio temporário eliminados; **uma instalação, um executável operacional**. Perfil/dados em `%LOCALAPPDATA%\\OrdaX\\OrchestratorLab` intactos; evidências históricas privadas segregadas. A coincidência do número `alpha.19` não implica igualdade de source: sempre conferir `sourceCommit`/hash.
