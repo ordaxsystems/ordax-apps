@@ -418,7 +418,7 @@ const runState=document.createElement('small');
     nodeHost=state.executionSurface==='node_host';
     $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
     $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
-    $('coordinatorRailToggle').textContent=nodeHost?'Frentes':'Conversas';
+    $('coordinatorRailToggle').textContent=nodeHost?'Frentes':'Frentes GPT';
     $('newScopedWorkButton').textContent=nodeHost?'＋ Nova frente':'＋ Nova conversa no GPT';
     $('newScopedWorkDetails').querySelector('summary').textContent=nodeHost?'Configurar título da frente':'Configurar nome da conversa';
     $('newScopedWorkForm').querySelector('button[type="submit"]').textContent=nodeHost?'Criar frente e abrir rascunho':'Criar e abrir conversa';
@@ -464,7 +464,7 @@ const runState=document.createElement('small');
   });
   $('closeCoordinatorApiSettings').addEventListener('click',()=>{
     document.body.classList.remove('orchestrator-api-settings');$('contextRail').classList.remove('open');
-    void onSelectRightPane?.('provider').catch(()=>{});
+    void onSelectRightPane?.('context').catch(()=>{});
   });
   $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectObjective').focus(); });
   $('renameProjectButton').addEventListener('click',()=>{
@@ -827,6 +827,12 @@ const runState=document.createElement('small');
     try {await command('continuity_set',{projectId:p,orchestratorId:o,enabled:$('continuityToggle').dataset.enabled!=='true'});
       await refreshContinuityStatus();}
     catch {status('Não foi possível mudar a análise automática.');await refreshContinuityStatus();}
+  });
+  $('coordinatorPrompt').addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.isComposing){
+      event.preventDefault();
+      if(!$('coordinatorSend').disabled)$('coordinatorComposer').requestSubmit();
+    }
   });
   $('coordinatorComposer').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
