@@ -27,7 +27,7 @@
             <label for="projectName">Nome do projeto (opcional)</label><input id="projectName" maxlength="140" placeholder="Derivado da missão se ficar vazio" />
             <label for="projectObjective">O que você quer fazer?</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Ex.: Crie uma loja de roupas chamada VESTE, com catálogo e carrinho." required></textarea>
             <label for="projectRepositoryUrl">Repositório GitHub remoto (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
-            <small>Cria projeto, orquestrador e primeira conversa em uma operação. Se o ChatGPT estiver conectado, inicia a missão; caso contrário, salva como rascunho.</small>
+            <small>Cria o projeto, o Orquestrador e o rascunho da primeira frente. Não envia mensagens ao GPT. Depois converse com o Orquestrador via Groq.</small>
             <button type="submit">Criar missão</button>
           </form>
         </details>
@@ -172,6 +172,7 @@
           <textarea id="coordinatorPrompt" maxlength="4000" rows="1" placeholder="Mensagem para o Orquestrador · Groq" aria-describedby="orchestrationConnection" required></textarea>
           <button id="coordinatorSend" class="send-button coordinator-send" type="submit" aria-label="Enviar ao Orquestrador via Groq" disabled>Enviar à Groq</button>
         </form>
+        <small class="coordinator-route-note">Destino exclusivo: Orquestrador. Ctrl+Enter envia · Enter cria nova linha. Nunca abre uma conversa GPT automaticamente.</small>
         <small id="coordinatorDraftState" class="coordinator-draft-state" role="status" aria-live="polite"></small>
       </section>
       <p id="orchestrationNotice" class="orchestration-notice" role="status" aria-live="polite"></p>
