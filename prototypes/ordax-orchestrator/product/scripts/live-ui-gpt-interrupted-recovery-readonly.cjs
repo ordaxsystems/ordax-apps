@@ -111,6 +111,8 @@ main().catch(error=>{
   const code=String(error?.message||'lab_recovery_unavailable');
   const allowed=new Set([
     'lab_recovery_interrupted_task_required','lab_recovery_failed_run_required',
+    'lab_recovery_active_workspace_unavailable','lab_recovery_workspace_mismatch',
+    'lab_recovery_latest_user_turn_required',
     'lab_recovery_verified_receipt_required','lab_recovery_task_not_visible',
     'lab_recovery_task_click_not_confirmed','lab_recovery_readonly_action_not_ready',
     'lab_recovery_inspection_not_triggered','lab_recovery_inspection_not_settled',

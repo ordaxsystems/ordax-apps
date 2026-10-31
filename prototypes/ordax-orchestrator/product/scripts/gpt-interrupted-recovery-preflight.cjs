@@ -4,10 +4,23 @@
 function readInterruptedRecoverySnapshot(db, expectedTaskId) {
   if(!db||!/^task_[0-9a-f-]{20,80}$/i.test(String(expectedTaskId||'')))
     throw Error('lab_recovery_explicit_task_approval_required');
-    const task=db.prepare('SELECT id,status,chat_url FROM tasks WHERE id=?').get(expectedTaskId);
-    if(!task?.chat_url||!['error','interrupted'].includes(task.status))
+    // A task ID plus a valid provider receipt does not grant access to a
+    // different workspace. A read-only certifier must fail closed before
+    // CDP even if stale/foreign Task rows are still present in this SQLite.
+    const activeSessions=db.prepare("SELECT id FROM workspace_sessions WHERE status='active' ORDER BY created_at,id LIMIT 2").all();
+    if(activeSessions.length!==1)
+      throw Error('lab_recovery_active_workspace_unavailable');
+    const task=db.prepare('SELECT id,status,chat_url,workspace_session_id FROM tasks WHERE id=?').get(expectedTaskId);
+    if(!task||task.workspace_session_id!==activeSessions[0].id)
+      throw Error('lab_recovery_workspace_mismatch');
+    if(!task.chat_url||!['error','interrupted'].includes(task.status))
       throw Error('lab_recovery_interrupted_task_required');
-    const message=db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY sequence DESC LIMIT 1").get(expectedTaskId);
+    const message=db.prepare("SELECT id FROM messages WHERE task_id=? AND role='user' ORDER BY sequence DESC,rowid DESC LIMIT 1").get(expectedTaskId);
+    const newest=db.prepare("SELECT id,role FROM messages WHERE task_id=? ORDER BY sequence DESC,rowid DESC LIMIT 1").get(expectedTaskId);
+    // If a reply is already local, there is no unanswered latest turn to
+    // certify. Never claim a recoverable interrupted reply for older history.
+    if(newest?.id!==message?.id||newest?.role!=='user')
+      throw Error('lab_recovery_latest_user_turn_required');
     const run=db.prepare('SELECT id,status FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1').get(expectedTaskId);
     if(!message||!run||!['failed','interrupted'].includes(run.status))
       throw Error('lab_recovery_failed_run_required');

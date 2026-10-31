@@ -144,3 +144,32 @@ test('invalid task identifiers are refused before querying SQLite',t=>{
       /lab_recovery_explicit_task_approval_required/);
   }
 });
+
+test('W3 preflight rejects a real interrupted receipt belonging to a foreign workspace',t=>{
+  const f=fixture(t);
+  const foreign='session_'+randomUUID(),now=new Date().toISOString();
+  f.store.db.prepare('INSERT INTO workspace_sessions(id,status,metadata,created_at,updated_at) VALUES(?,?,?,?,?)')
+    .run(foreign,'inactive','{}',now,now);
+  f.store.db.prepare('UPDATE tasks SET workspace_session_id=? WHERE id=?').run(foreign,f.taskId);
+  assert.throws(()=>readInterruptedRecoverySnapshot(f.db,f.taskId),
+    /lab_recovery_workspace_mismatch/);
+  assert.equal(f.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('W3 preflight fails closed when more than one workspace is marked active',t=>{
+  const f=fixture(t);
+  const second='session_'+randomUUID(),now=new Date().toISOString();
+  f.store.db.prepare('INSERT INTO workspace_sessions(id,status,metadata,created_at,updated_at) VALUES(?,?,?,?,?)')
+    .run(second,'active','{}',now,now);
+  assert.throws(()=>readInterruptedRecoverySnapshot(f.db,f.taskId),
+    /lab_recovery_active_workspace_unavailable/);
+  assert.equal(f.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('W3 preflight rejects an interrupted Run when the newest local turn already has an assistant reply',t=>{
+  const f=fixture(t);
+  f.store.appendMessage(f.taskId,'assistant','Resposta já presente localmente.');
+  assert.throws(()=>readInterruptedRecoverySnapshot(f.db,f.taskId),
+    /lab_recovery_latest_user_turn_required/);
+  assert.equal(f.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
