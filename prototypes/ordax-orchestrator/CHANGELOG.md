@@ -1,3 +1,12 @@
+## 0.2.0-alpha.20 — ambientes Orquestrador/Groq e GPT separados (31/10/2026)
+
+- Corrige a causa raiz: `orchestrator_chat` passa a usar o coordenador configurado (Groq no Windows), em vez do executor ChatGPT Web. `work_send` e `proposal_send` continuam exclusivos das frentes GPT.
+- Reestrutura a navegação em duas áreas com destino explícito, marca visual de rota e botões “Enviar à Groq” e “Enviar ao GPT”. A tela Groq apresenta frentes do projeto na lateral, não um navegador GPT como entrada principal.
+- Criação de missão apenas persiste projeto, coordenador e primeira frente como rascunho; nunca envia implicitamente ao GPT.
+- Contratos de regressão cobrem distinção de provider, falhas sem fallback, idempotência, versões de draft e retorno de navegação. O backend/Runtime externo e os perfis de outros produtos não são duplicados.
+- A entrega pública, W3 real, grants Runtime/Platform e autonomia 24h permanecem condicionadas a testes e evidências específicas. Atualização física do executável ocorre somente após CI/main e verificação criptográfica.
+
+---
 > **Linha alpha.19 — atualização de estado em 31/10/2026:** a versão semântica é `0.2.0-alpha.19`, mas a revisão do pacote Windows Dev validado é `f9c46e99038e06ceaeff6c07cc3b64ced60ae877`, integrada em `main`. Os incrementos de código posteriores à entrada alpha.19 são identificados por commit e evidência, não por cópia da instalação. O histórico abaixo começa com o lançamento interno de 24/10. Nenhuma distribuição pública nem autonomia 24h homologada. Ver [handoff](CODEX-HANDOFF.md).
 
 ## 0.2.0-alpha.19 — host Node com núcleo compartilhado (2026-10-24)
