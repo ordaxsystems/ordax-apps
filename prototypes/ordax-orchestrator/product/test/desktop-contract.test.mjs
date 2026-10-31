@@ -45,7 +45,7 @@ test('empty project state promises persistence without claiming autonomous execu
   assert.match(uiHtml,/data-start-project>Começar pelo Orquestrador/);
   assert.doesNotMatch(uiHtml,/data-create-task/);
   assert.match(ui,/document\.querySelector\('\[data-start-project\]'\)/);
-  assert.doesNotMatch(ui,/addEventListener\('click', createTask\)/);
+  assert.doesNotMatch(ui,/querySelector\('\[data-create-task\]'\)/);
 
   assert.match(uiHtml,/Cada campo identifica o seu destino/);
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
