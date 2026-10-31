@@ -245,6 +245,10 @@ button{color:inherit}
 .stat span{display:block;color:#586678;font-size:8px;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
 .context-section{margin-top:17px}
 .chatgpt-plan-settings{padding:12px;border:1px solid var(--line,#273544);border-radius:12px;background:rgba(255,255,255,.025)}
+.background-mode-panel{padding:12px;border:1px solid #3c4c44;border-radius:12px;background:#17211c}
+.background-mode-panel label{display:flex;align-items:center;gap:9px;cursor:pointer;color:#dce3da;font-size:12px;line-height:1.5}
+.background-mode-panel input{flex:none;width:16px;height:16px;accent-color:#9fc8a6}
+.background-mode-panel .diagnostics-hint{font-size:11px;line-height:1.5;color:#aebdb1}
 .chatgpt-plan-settings h4{margin:0 0 6px;font-size:14px}
 .chatgpt-plan-settings p{line-height:1.55}
 .context-section .section-title-row{padding-left:1px;padding-right:1px}
