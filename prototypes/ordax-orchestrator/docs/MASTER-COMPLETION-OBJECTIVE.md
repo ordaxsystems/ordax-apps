@@ -1,3 +1,5 @@
+> **Reestruturação de rotas alpha.20 (31/10/2026):** prioridade atual é certificar que o chat do Orquestrador use exclusivamente o coordenador Groq no Windows e que o envio a GPT Web seja possível apenas na frente de trabalho, com UI e recibos separados. Criar missão deve ser operação local. O plano histórico abaixo permanece somente como evidência; não tratar a antiga definição de GPT Web primário no Orquestrador como contrato vigente. Gate final exige suíte, CI, uma instalação Windows com `sourceCommit` verificável e demonstração física de navegação/sem envio cruzado. Projetos e conversas de teste são descartáveis se necessário, mas não excluir dados de outros produtos.
+
 # Objetivo mestre de conclusão — OrdaX Orchestrator
 
 **Estado:** objetivo contínuo ativo. Este documento é o plano de execução e aceite da auditoria de prontidão de 27/10/2026, atualizado com o estado remoto e do Desktop confirmados em 27/10/2026 (America/Sao_Paulo). A conclusão depende de evidências observáveis; respostas do GPT, mocks e testes unitários isolados não provam o produto completo.
