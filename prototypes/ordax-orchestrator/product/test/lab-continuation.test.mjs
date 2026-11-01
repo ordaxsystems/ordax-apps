@@ -761,3 +761,37 @@ test('unavailable coordinator A does not starve an independent next-work proposa
   assert.equal(db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.work-proposal' AND status='pending'").get().n,2);
   assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+
+test('unavailable analysis in project A does not starve ready proposal from project B',async t=>{
+  let unavailableProject=null,analysisCalls=0,proposalCalls=0;
+  const f=setup(t,{available:projectId=>projectId!==unavailableProject,
+    send:async input=>{
+      if(input.prepareWork){proposalCalls++;return {content:'Proposta B',
+        proposal:{title:'Verificar B',content:'Inspecionar entrega B',reason:'Aceite de B'}};}
+      analysisCalls++;return {content:'Análise confirmada'};
+    }});
+  const a=await prepare(f);
+  const projectB=(await f.call('project_create',{name:'Projeto de proposta B',objective:'Independente'})).result.projectId;
+  const orchestratorB=(await f.call('orchestrator_create',{projectId:projectB,name:'Coordenador B',mission:'Revisar B'})).result.orchestratorId;
+  const workB=(await f.call('work_create',{projectId:projectB,orchestratorId:orchestratorB,title:'Entrega B'})).result.taskId;
+  for(const [projectId,orchestratorId] of [[a.projectId,a.orchestratorId],[projectB,orchestratorB]])
+    await f.call('continuity_set',{projectId,orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:projectB,orchestratorId:orchestratorB,enabled:true});
+  const runB=finish(f.store,workB);
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'analyzed',runId:runB});
+  const runA=finish(f.store,a.taskId);
+  unavailableProject=a.projectId;
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'proposed',runId:runB});
+  assert.equal(proposalCalls,1);
+  assert.equal(analysisCalls,1);
+  const db=f.store.db;
+  assert.equal(db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(runA).state,'queued');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM lab_next_proposals WHERE review_run_id=?').get(runB).n,1);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'blocked_coordinator');
+  unavailableProject=null;
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'analyzed',runId:runA});
+  assert.equal(analysisCalls,2);
+  assert.equal(proposalCalls,1,'no duplicate proposal');
+  assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});

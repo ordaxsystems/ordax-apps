@@ -135,7 +135,13 @@ export class LabContinuation {
         WHERE q.state='queued' AND p.enabled=1 AND o.status='ready'
           AND r.rowid>p.start_run_rowid
         ORDER BY transport_uncertain ASC,q.updated_at,q.run_id`).iterate(session.id,session.id));
-      if(!choice.row)return choice.state==='idle'?await this.nextProposal.tick(context):{state:choice.state};
+      if(!choice.row) {
+        // A queued analysis with no available coordinator must not suppress an
+        // independent project's already analyzed, reviewable next proposal.
+        // A blocked analysis stays queued; proposal policy/receipt gates apply.
+        const next=await this.nextProposal.tick(context);
+        return next.state==='idle'?{state:choice.state}:next;
+      }
       const row=choice.row;
       if(row.transport_uncertain)return {state:'reconciliation_required'};
       if(this.service.provider?.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||

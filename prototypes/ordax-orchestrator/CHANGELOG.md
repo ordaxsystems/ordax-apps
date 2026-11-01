@@ -3,7 +3,7 @@
 - A fila opt-in de análise pós-Run e a fila de propostas consultivas agora compartilham a mesma seleção de coordenador executável, sem duplicar persistência ou criar outro Scheduler.
 - Coordenador Groq indisponível/ocupado em um projeto não impede progresso de outro projeto independente. O item bloqueado permanece com o mesmo estado durável, sem envio falso, retry ou alteração na ordem de consentimento.
 - Iteração SQLite lê candidatos por cursor, sem carregar o backlog inteiro em memória. Gates canônicos de recibos incertos, provedor e aprovação humana permanecem intactos.
-- Testes SQLite: projeto A sem Groq, A ocupado e propostas com A indisponível; B progride e A retoma, com `PRAGMA quick_check`.
+- Testes SQLite: projeto A sem Groq, A ocupado, propostas com A indisponível e proposta B pronta enquanto a análise A está bloqueada; B progride e A retoma, com `PRAGMA quick_check`.
 
 ---
 
