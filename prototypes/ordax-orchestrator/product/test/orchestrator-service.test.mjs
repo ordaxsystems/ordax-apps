@@ -575,7 +575,9 @@ test('truncated provider receipts preserve read models and quarantine only their
   const independent=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Trabalho autorizado independente'});
   assert.equal(independent.status,'succeeded');
   assert.equal(sends,1);
-  assert.equal((await f.call('work_get',{projectId:b.p,taskId:b.w})).monitor.state,'completed');
+  const verified=await f.call('work_get',{projectId:b.p,taskId:b.w});
+  assert.equal(verified.runs[0].status,'succeeded');
+  assert.equal(verified.monitor.state,'awaiting_instruction');
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
