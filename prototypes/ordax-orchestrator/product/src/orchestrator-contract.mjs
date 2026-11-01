@@ -7,6 +7,7 @@ const requestId = {...text(120),pattern:'^[A-Za-z0-9_-]+$'};
 const definitions = [
   ['status','Inspect local engine state and limitations.',{},[],true],
   ['projects_list','List accessible Lab projects.',{},[],true],
+  ['project_preflight','Inspect project-scoped local evidence and external capability blockers without a provider request, GitHub read, grant or GPT send.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['workspace_status','Inspect verified project-local workspace bindings and capability availability. No filesystem access.',{projectId:id},['projectId'],true],
   ['workspace_snapshot','Read a bounded Runtime-verified workspace summary through a project-scoped resource grant.',{projectId:id,bindingId:id},['projectId','bindingId'],true],
   ['workspace_bind','Bind a preauthorized opaque Runtime resource to a project. Never accepts a filesystem path or grants authority.',{projectId:id,deviceId:id,resourceId:{...text(180),pattern:'^resource_[A-Za-z0-9_-]{8,160}$'}},['projectId','deviceId','resourceId'],false],

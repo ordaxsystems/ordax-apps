@@ -19,7 +19,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let gptWebTransportAvailable=false;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
   let groqConfigured=false,coordinatorProvider=null;
-  let analysisBusy=false,coordinatorSubmitting=false,nodeHost=false;
+  let analysisBusy=false,preflightBusy=false,coordinatorSubmitting=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
   const requestKeys=new Map();
@@ -49,7 +49,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const selectedReady=Boolean(selected)&&selected.status!=='paused';
     $('coordinatorSend').disabled=!orchestratorChatAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
-    $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy||coordinatorSubmitting;
+    $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy||preflightBusy||coordinatorSubmitting;
+    $('inspectProjectAccess').disabled=!projectId||!selected||analysisBusy||preflightBusy||coordinatorSubmitting;
     $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
     $('startAutonomousDialogue').disabled=!coordinatorAvailable||!gptWebTransportAvailable||!selectedReady||analysisBusy||coordinatorSubmitting;
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
@@ -203,6 +204,35 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     work.status==='running'?'running':
     work.status==='completed'?'completed':
     ['failed','error','interrupted'].includes(work.status)?'attention':'ready';
+  function clearProjectPreflight() {
+    $('projectPreflightState').textContent='Diagnóstico ainda não solicitado. Uma URL GitHub não comprova acesso ao repositório.';
+    $('projectPreflightState').dataset.state='idle';
+  }
+  function renderProjectPreflight(snapshot) {
+    const work=snapshot.work,repo=snapshot.repository,owner=snapshot.coordinator;
+    const text=[
+      `Store local: ${work.registered} frente(s), ${work.started} com histórico de Run e ${work.unresolvedSends} envio(s) pendente(s) ou incerto(s).`,
+      repo.urlRegistered?'GitHub: URL registrada, leitura autenticada indisponível.':'GitHub: nenhum repositório registrado.',
+      'Runtime: grant do projeto não verificado.',
+      owner.modelConfigured?'Coordenador: configurado, resposta ainda não comprovada.':'Coordenador: modelo indisponível.',
+      snapshot.gates.recordedWorkAnalysisEligible
+        ?'Análise local elegível; não autoriza GPT, ações ou execução em segundo plano.'
+        :`Análise local bloqueada: ${snapshot.blockers.join(', ')}.`
+    ];
+    const node=$('projectPreflightState');
+    node.textContent=text.join(' ');
+    node.dataset.state=snapshot.gates.recordedWorkAnalysisEligible?'ready':'blocked';
+  }
+  async function inspectProjectPreflight(p,o) {
+    const snapshot=await call('project_preflight',{projectId:p,orchestratorId:o});
+    // A pending project A read must not reveal its status in project B.
+    if(p!==projectId||o!==orchestratorId)return null;
+    if(snapshot?.projectId!==p||snapshot.orchestratorId!==o||
+      snapshot.schema!=='ordax.orchestrator.project-preflight/1')
+      throw Error('project_preflight_scope_mismatch');
+    renderProjectPreflight(snapshot);
+    return snapshot;
+  }
   function renderProjectPulse(counts,total) {
     const panel=$('projectPulse');
     const hasScope=Boolean(projectId&&orchestratorId);
@@ -862,7 +892,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const previous=projectId,next=$('projectSelect').value||null;
     if(previous===next)return;
     try{await flushCoordinatorDraft();}catch{$('projectSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o projeto atual foi mantido.');return;}
-    projectId=next;orchestratorId=null;
+    projectId=next;orchestratorId=null;clearProjectPreflight();
     await refreshProjects();
     $('orchestrationPanel').hidden=true;coordinatorOpen=false;
     try{
@@ -876,7 +906,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const previous=orchestratorId,next=$('orchestratorSelect').value||null;
     if(previous===next)return;
     try{await flushCoordinatorDraft();}catch{$('orchestratorSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o orquestrador atual foi mantido.');return;}
-    orchestratorId=next;
+    orchestratorId=next;clearProjectPreflight();
     try{await refreshOrchestrators();if(chatTaskId)await showCoordinator();
       else await onNavigationChange?.({view:'home',projectId,orchestratorId,taskId:null});}catch{error();}
   });
@@ -894,7 +924,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const input={mission,...(name?{name}:{}),...(repositoryUrl?{repositoryUrl}:{})};
       const receipt=await command('mission_create',input);
       if(receipt.status!=='succeeded')return;
-      projectId=receipt.result.projectId;orchestratorId=receipt.result.orchestratorId;
+      projectId=receipt.result.projectId;orchestratorId=receipt.result.orchestratorId;clearProjectPreflight();
       $('newProjectForm').reset();$('projectSetup').open=false;
       await refreshProjects();await refreshOrchestrators();
       await onNavigationChange?.({view:'coordinator',projectId,orchestratorId,taskId:null});
@@ -1019,6 +1049,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
   });
+  $('inspectProjectAccess').addEventListener('click',async()=>{
+    if($('inspectProjectAccess').disabled||!projectId||!orchestratorId)return;
+    const p=projectId,o=orchestratorId;
+    preflightBusy=true;syncCoordinatorActions();
+    try{await inspectProjectPreflight(p,o);}
+    catch{
+      if(p===projectId&&o===orchestratorId) {
+        $('projectPreflightState').textContent='Não foi possível confirmar o diagnóstico local. Nenhuma análise ou execução foi iniciada.';
+        $('projectPreflightState').dataset.state='blocked';
+      }
+    }finally{preflightBusy=false;syncCoordinatorActions();}
+  });
   $('analyzeWorks').addEventListener('click',async()=>{
     if($('analyzeWorks').disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
@@ -1027,6 +1069,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       ?'Analisando frentes locais pelo coordenador disponível; o GitHub não será lido e nenhuma frente GPT será acionada…'
       :'Analisando frentes locais pelo Groq; o GitHub não será lido e nenhuma frente GPT será acionada…');
     try {
+      const snapshot=await inspectProjectPreflight(p,o);
+      if(!snapshot||!snapshot.gates.recordedWorkAnalysisEligible) {
+        if(snapshot)status('Análise não iniciada: resolva os bloqueios do diagnóstico local. Nenhum envio foi realizado.');
+        return;
+      }
       const receipt=await command('orchestrator_analyze',{projectId:p,orchestratorId:o});
       if(p!==projectId||o!==orchestratorId)return;
       if(receipt.status==='succeeded')status('Análise registrada no histórico. Nenhuma recomendação foi executada.');

@@ -362,6 +362,45 @@ export class OrchestratorService {
     if(operation==='projects_list')return {projects:this.db.prepare(
       'SELECT id,name,objective,repository_url,created_at FROM lab_projects WHERE workspace_session_id=? ORDER BY created_at,id LIMIT 200')
       .all(context.workspaceSessionId).filter(row=>this.authorize({context,operation,projectId:row.id})===true)};
+    if(operation==='project_preflight') {
+      // Read-only, project-scoped projection of the canonical Store. A saved
+      // repository URL is NOT authenticated GitHub access; an injected Runtime
+      // port is NOT a project resource grant. Never claim either as verified.
+      const owner=this.orchestrator(input.projectId,input.orchestratorId);
+      const project=this.db.prepare('SELECT repository_url FROM lab_projects WHERE id=? AND workspace_session_id=?')
+        .get(input.projectId,context.workspaceSessionId);
+      const work=this.db.prepare(`SELECT COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN EXISTS(SELECT 1 FROM runs r WHERE r.task_id=t.id) THEN 1 ELSE 0 END),0) AS started
+        FROM tasks t JOIN lab_task_bindings b ON b.task_id=t.id
+        WHERE b.project_id=? AND b.orchestrator_id=? AND b.kind='work'
+          AND t.workspace_session_id=?`)
+        .get(input.projectId,input.orchestratorId,context.workspaceSessionId);
+      // Any outstanding send in this project is relevant: parallel owners can
+      // share a repo, and missing/invalid target receipts are fail-closed.
+      const unresolved=this.db.prepare(`SELECT COUNT(*) AS total
+        FROM lab_command_receipts
+        WHERE project_id=? AND operation IN ('work_send','proposal_send')
+          AND status IN ('running','uncertain')`).get(input.projectId);
+      const modelConfigured=this.coordinator?.available?.()===true;
+      const blockers=[];
+      if(owner.status!=='ready')blockers.push('coordinator_paused');
+      if(!modelConfigured)blockers.push('coordinator_unavailable');
+      if(work.total===0)blockers.push('no_registered_work');
+      if(unresolved.total>0)blockers.push('work_receipts_unresolved');
+      return {
+        schema:'ordax.orchestrator.project-preflight/1',
+        projectId:input.projectId,orchestratorId:input.orchestratorId,
+        observedAt:this.store.now(),
+        provenance:{source:'app_sqlite',externalObservation:false},
+        repository:{urlRegistered:Boolean(project?.repository_url),authenticatedRead:'unavailable'},
+        runtime:{grantVerified:false},
+        coordinator:{state:owner.status,modelConfigured,providerResponseVerified:false},
+        work:{registered:Number(work.total),started:Number(work.started),unresolvedSends:Number(unresolved.total)},
+        gates:{recordedWorkAnalysisEligible:blockers.length===0,
+          githubObservationVerified:false,automaticGptDispatchAllowed:false,headlessExecutionVerified:false},
+        blockers
+      };
+    }
     if(operation==='orchestrators_list')return {orchestrators:this.db.prepare(
       'SELECT * FROM lab_orchestrators WHERE project_id=? ORDER BY created_at,id LIMIT 100').all(input.projectId)};
     if(operation==='work_plan')return {plan:this.projectPlan(input.projectId,input.maxParallel||4)};

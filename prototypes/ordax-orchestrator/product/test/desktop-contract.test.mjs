@@ -72,6 +72,20 @@ test('project onboarding accepts a name without a written mission, without impli
   assert.doesNotMatch(orchestration,/onStartMission\(/);
 });
 
+test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
+  const html=uiHtml;
+  const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((html.match(/id="inspectProjectAccess"/g)||[]).length,1);
+  assert.equal((html.match(/id="projectPreflightState"/g)||[]).length,1);
+  assert.match(html,/projectPreflightState"[^>]*role="status"/);
+  assert.match(uiSource,/call\('project_preflight',\{projectId:p,orchestratorId:o\}\)/);
+  assert.match(uiSource,/if\(!snapshot\|\|!snapshot\.gates\.recordedWorkAnalysisEligible\)/);
+  assert.match(uiSource,/if\(p!==projectId\|\|o!==orchestratorId\)return null/);
+  assert.match(uiSource,/repo\.urlRegistered\?'GitHub: URL registrada, leitura autenticada indisponível/);
+  assert.match(uiSource,/clearProjectPreflight\(\)/);
+  assert.match(uiSource,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
+});
+
 test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(main, /requestSingleInstanceLock/);
   const binding=fs.readFileSync(path.join(root,'src','lab-profile-binding.mjs'),'utf8');
