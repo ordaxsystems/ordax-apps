@@ -591,8 +591,10 @@ test('uncertain first-send target referencing a task in another project cannot q
   f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
     .run(JSON.stringify({taskId:b.w}),reserved.commandId);
   assert.equal(f.service.recoverInterruptedCommands(),1);
-  assert.deepEqual(f.store.db.prepare('SELECT task_id,unknown_work_target FROM lab_command_receipt_scope WHERE id=?')
-    .get(reserved.commandId),{task_id:null,unknown_work_target:1});
+  const scoped=f.store.db.prepare('SELECT task_id,unknown_work_target FROM lab_command_receipt_scope WHERE id=?')
+    .get(reserved.commandId);
+  assert.equal(scoped.task_id,null);
+  assert.equal(scoped.unknown_work_target,1);
   assert.equal((await f.call('work_get',{projectId:a.p,taskId:a.w})).monitor.state,'reconciliation_required');
   assert.equal((await f.call('work_get',{projectId:b.p,taskId:b.w})).monitor.state,'awaiting_instruction');
   const confirmed=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Isolado'});
