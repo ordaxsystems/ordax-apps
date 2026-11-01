@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {resolveProjectOnboardingMission} from '../desktop/orchestrator-ui.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const bootstrap = JSON.parse(fs.readFileSync(path.join(root,'..','package.json'),'utf8'));
@@ -49,6 +50,26 @@ test('empty project state promises persistence without claiming autonomous execu
 
   assert.match(uiHtml,/Cada campo identifica o seu destino/);
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
+});
+
+test('project onboarding accepts a name without a written mission, without implicit GPT execution',()=>{
+  assert.equal(resolveProjectOnboardingMission('',''),null);
+  assert.equal(resolveProjectOnboardingMission('Projeto', '  Analisar com cuidado  '),'Analisar com cuidado');
+  const inferred=resolveProjectOnboardingMission(' OrdaX ','  ');
+  assert.match(inferred,/Coordenar o projeto OrdaX/);
+  assert.match(inferred,/não presumir acesso ao GitHub ou Runtime/i);
+  assert.match(inferred,/não enviar mensagens ao GPT Web/i);
+  assert.ok(inferred.length<4000);
+  const html=uiHtml;
+  assert.match(html,/id="projectObjective"[^>]+placeholder="Pode deixar vazio:[^>]+><\/textarea>/);
+  assert.equal((html.match(/id="analyzeWorks"/g)||[]).length,1);
+  assert.ok(html.indexOf('id="analyzeWorks"')<html.indexOf('id="orchestrationIntegrations"'));
+  assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*Não lê o GitHub/);
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(orchestration,/resolveProjectOnboardingMission\(name,\$\('projectObjective'\)\.value\)/);
+  assert.match(orchestration,/command\('mission_create',input\)/);
+  assert.match(orchestration,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
+  assert.doesNotMatch(orchestration,/onStartMission\(/);
 });
 
 test('desktop is single-instance with canonical durable AppData state', () => {

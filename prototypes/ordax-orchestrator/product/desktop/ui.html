@@ -46,11 +46,11 @@
         <details id="projectSetup" class="nav-setup">
           <summary>Conectar projeto</summary>
           <form id="newProjectForm">
-            <label for="projectName">Nome do projeto (opcional)</label><input id="projectName" maxlength="140" placeholder="Derivado da missão se ficar vazio" />
-            <label for="projectObjective">O que você quer fazer?</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Ex.: Crie uma loja de roupas chamada VESTE, com catálogo e carrinho." required></textarea>
+            <label for="projectName">Nome do projeto</label><input id="projectName" maxlength="140" placeholder="Ex.: OrdaX" />
+            <label for="projectObjective">Objetivo e orientações (opcional)</label><textarea id="projectObjective" maxlength="4000" rows="3" placeholder="Pode deixar vazio: a coordenação começa com o nome do projeto."></textarea>
             <label for="projectRepositoryUrl">Repositório GitHub remoto (opcional)</label><input id="projectRepositoryUrl" type="url" maxlength="300" placeholder="https://github.com/owner/repository" />
-            <small>Cria o projeto, o Orquestrador e o rascunho da primeira frente. Não envia mensagens ao GPT. Depois converse com o Orquestrador via Groq.</small>
-            <button type="submit">Criar missão</button>
+            <small>Informe um nome ou objetivo. Conectar cria o projeto, o Administrador e o rascunho inicial; não envia ao GPT. Depois use Iniciar análise para revisar apenas as frentes registradas.</small>
+            <button type="submit">Conectar projeto</button>
           </form>
         </details>
         <details id="projectRenameSetup" class="nav-setup">
@@ -137,7 +137,7 @@
         <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
           <div class="project-pulse-heading">
             <div><span class="project-pulse-kicker">VISÃO OPERACIONAL</span><strong>Frentes do projeto</strong></div>
-            <button id="openProjectWork" class="mini-secondary" type="button" disabled>Ver frentes</button>
+            <div class="project-pulse-actions"><button id="analyzeWorks" type="button" class="mini-primary" disabled>Iniciar análise</button><button id="openProjectWork" class="mini-secondary" type="button" disabled>Ver frentes</button></div>
           </div>
           <div id="projectPulseStats" class="project-pulse-stats" role="group" aria-label="Abrir frentes por estado">
             <button type="button" data-work-filter="all" aria-label="Ver todas as frentes"><strong id="projectPulseTotal">0</strong><span>Registradas</span></button>
@@ -146,6 +146,7 @@
             <button type="button" data-work-filter="ready" aria-label="Ver frentes aguardando"><strong id="projectPulseWaiting">0</strong><span>Aguardando</span></button>
           </div>
           <p id="projectPulseNote">Resumo das frentes registradas, não uma confirmação de execução autônoma.</p>
+          <p id="analysisScopeHint">Iniciar análise consulta o coordenador configurado com contexto local limitado. Não lê o GitHub, não envia mensagens ao GPT Web nem executa propostas. As recomendações não executam ações. Exige conexão com um modelo.</p>
         </section>
         <div id="orchestrationCapabilitySummary" class="orchestration-capabilities" aria-label="Capacidades disponíveis no Host" hidden>
           <span id="capabilityGroq" data-state="blocked">Groq · não configurado</span>
@@ -173,7 +174,6 @@
               <small id="workspaceEvidence">Nenhum arquivo local é lido ou enviado nesta fase.</small>
             </section>
             <div class="coordinator-analysis-actions">
-              <button id="analyzeWorks" type="button" class="mini-secondary" disabled>Analisar conversas</button>
               <button id="continuityToggle" type="button" class="mini-secondary" disabled>Ativar análise automática</button>
               <button id="continuityProposalsToggle" type="button" class="mini-secondary" disabled>Propor próximas frentes automaticamente</button>
               <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
@@ -186,7 +186,6 @@
                   <small id="autonomousDialogueState" role="status" aria-live="polite">Escolha diálogo de duas mensagens ou história de quatro cenas. Uma missão inicial autoriza no máximo duas conversas GPT. O Groq planeja e interpreta as respostas sem novos comandos; falhas incertas bloqueiam reenvio.</small>
                 </div>
               </details>
-              <small id="analysisScopeHint">Envia ao modelo conectado o contexto limitado do projeto e do orquestrador. Sem anexos ou links; recomendações não executam ações.</small>
             </div>
           </div>
         </details>
