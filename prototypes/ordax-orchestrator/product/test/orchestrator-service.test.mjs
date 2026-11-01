@@ -1154,3 +1154,88 @@ test('prepared proposals require canonical approved ledger and ignore corrupted 
   assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
   assert.equal(providerSends,0);
 });
+
+
+test('in-flight Groq coordinator does not occupy the single GPT Web executor',async t=>{
+  let enterGroq,releaseGroq,groqCalls=0,gptCalls=0;
+  const started=new Promise(resolve=>{enterGroq=resolve;});
+  const gate=new Promise(resolve=>{releaseGroq=resolve;});
+  const f=fixture(t,{
+    coordinator:{available:()=>true,send:async()=>{
+      groqCalls++;enterGroq();await gate;return {content:'Consulta de coordenação confirmada'};
+    }},
+    provider:{busy:()=>false,send:async({taskId})=>{
+      gptCalls++;
+      const runId=f.store.startRun(taskId);
+      f.store.appendMessage(taskId,'assistant','Resposta GPT confirmada pela fixture');
+      f.store.finishRun(taskId,runId);
+      return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
+    }}
+  });
+  const a=await project(f,'Coordenação A'),b=await project(f,'Execução B');
+  const pending=f.call('orchestrator_chat',{requestId:'groq-held',projectId:a.p,
+    orchestratorId:a.o,content:'Coordene projeto A'});
+  await started;
+  const duringGroq=f.service.executorAdmission();
+  assert.equal(duringGroq.activeRuns,0);
+  assert.equal(duringGroq.activeCommands,0,
+    'a running Groq command must not be counted as a GPT submission');
+  assert.equal(duringGroq.availableSlots,1);
+  const result=await f.call('work_send',{requestId:'gpt-during-groq',projectId:b.p,
+    taskId:b.w,content:'Verifique trabalho B'});
+  assert.equal(result.status,'succeeded');
+  assert.equal(gptCalls,1);
+  assert.equal(groqCalls,1);
+  assert.equal(f.service.coordinatorTurnBusy(a.chat),true,
+    'GPT completion must not interrupt coordinator A');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  releaseGroq();
+  assert.equal((await pending).status,'succeeded');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('GPT admission still serializes provider sends while Groq is in flight',async t=>{
+  let enterGroq,releaseGroq,enterGPT,releaseGPT,gptCalls=0;
+  const groqStarted=new Promise(resolve=>{enterGroq=resolve;});
+  const groqGate=new Promise(resolve=>{releaseGroq=resolve;});
+  const gptStarted=new Promise(resolve=>{enterGPT=resolve;});
+  const gptGate=new Promise(resolve=>{releaseGPT=resolve;});
+  const f=fixture(t,{
+    coordinator:{available:()=>true,send:async()=>{
+      enterGroq();await groqGate;return {content:'Coordenação preservada'};
+    }},
+    provider:{busy:()=>false,send:async({taskId})=>{
+      gptCalls++;
+      if(gptCalls===1){enterGPT();await gptGate;}
+      const runId=f.store.startRun(taskId);
+      f.store.appendMessage(taskId,'assistant','GPT confirmado');
+      f.store.finishRun(taskId,runId);
+      return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
+    }}
+  });
+  const a=await project(f,'Groq A'),b=await project(f,'GPT B'),c=await project(f,'GPT C');
+  const groq=f.call('orchestrator_chat',{requestId:'held-groq',projectId:a.p,
+    orchestratorId:a.o,content:'Analisar A'});
+  await groqStarted;
+  const provider=f.call('work_send',{requestId:'held-gpt',projectId:b.p,
+    taskId:b.w,content:'Executar B'});
+  await gptStarted;
+  const admission=f.service.executorAdmission();
+  assert.equal(admission.activeCommands,1);
+  assert.equal(admission.availableSlots,0);
+  await assert.rejects(f.call('work_send',{requestId:'second-gpt-blocked',projectId:c.p,
+    taskId:c.w,content:'Executar C'}),/executor_busy/);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_command_receipts WHERE request_id=?')
+    .get('second-gpt-blocked').n,0,'a rejected send must not reserve or transmit');
+  assert.equal(gptCalls,1);
+  releaseGPT();
+  assert.equal((await provider).status,'succeeded');
+  assert.equal(f.service.executorAdmission().availableSlots,1,
+    'Groq A must not keep GPT capacity reserved after GPT B completes');
+  assert.equal((await f.call('work_send',{requestId:'gpt-after-gpt',projectId:c.p,
+    taskId:c.w,content:'Executar C'})).status,'succeeded');
+  assert.equal(gptCalls,2);
+  releaseGroq();
+  assert.equal((await groq).status,'succeeded');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
