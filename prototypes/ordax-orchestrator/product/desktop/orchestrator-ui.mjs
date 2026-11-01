@@ -344,7 +344,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       description.textContent='Abra a conversa para conferir a última execução e seus recibos antes de continuar.';
       summary.append(label,description);list.append(summary);
     }
-    if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
+    if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='Nenhuma frente registrada neste projeto. Use a ação de nova frente acima para criar um rascunho, sem envio automático ao GPT.';list.append(empty);return;}
     const ordered=[...works].sort((a,b)=>{const priority={attention:0,running:1,ready:2,completed:4};return (priority[workClass(a)]??5)-(priority[workClass(b)]??5);});
     for(const work of ordered){
       const state=workClass(work);
@@ -565,6 +565,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     document.body.classList.toggle('orchestrator-rail-open',open);
     $('contextRail').classList.toggle('open',open);
     $('coordinatorRailToggle').setAttribute('aria-expanded',String(open));
+    $('openWorks').setAttribute('aria-expanded',String(open));
     return ready;
   };
   const openFilteredWorks=(filter,trigger)=>{
@@ -657,7 +658,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     const works=result.works;
     workCount=works.length;
-    $('openWorks').disabled=!projectId||!orchestratorId||workCount===0;
+    $('openWorks').disabled=!projectId||!orchestratorId;
     const editableDependencies=renderDependencyEditor(allResult?.works||result.works,planning?.plan||null);
     renderWorks(works,planning?.plan||null,editableDependencies);
     await onScopeChange(new Set(works.map(w=>w.id)));
@@ -722,7 +723,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('pauseOrchestrator').disabled=!selected;
     $('pauseOrchestrator').textContent=selected?.status==='paused'?'Retomar':'Pausar';
     $('newOrchestratorForm').hidden=!p;
-    $('openWorks').disabled=!p||!selected||workCount===0;
+    $('openWorks').disabled=!p||!selected;
     $('orchestratorMission').textContent=selected
       ?selected.name+' · '+selected.mission
       :'Configure o Administrador Geral deste projeto.';
@@ -833,6 +834,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!chatTaskId)return;
     coordinatorOpen=true;
     document.body.classList.remove('orchestrator-api-settings','orchestrator-rail-open');$('contextRail').classList.remove('open');
+    $('openWorks').setAttribute('aria-expanded','false');
+    $('coordinatorRailToggle').setAttribute('aria-expanded','false');
     $('orchestrationPanel').hidden=false;$('orchestratorWorkRail').hidden=false;
     await onShowCoordinator();
     await onNavigationChange?.({view:'coordinator',projectId,orchestratorId,taskId:null});
@@ -929,11 +932,26 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     });
   });
   $('openOrchestrator').addEventListener('click',()=>{void showCoordinator().catch(error);});
+  let openingWorkNavigation=false;
   $('openWorks').addEventListener('click',()=>{
-    const selected=visibleWorkItems[0];
-    if(!selected){status('Crie primeiro uma conversa GPT neste projeto.');return;}
-    coordinatorOpen=false;
-    void onOpenWork(selected.id).catch(()=>status('Não foi possível abrir a conversa GPT.'));
+    // Work navigation opens the *list*, never an arbitrary first GPT task.
+    // The user chooses the actual destination before any work is opened.
+    if(openingWorkNavigation)return;
+    if(!projectId||!orchestratorId||!chatTaskId){
+      status('Selecione um projeto e configure o Administrador Geral para ver as frentes.');
+      return;
+    }
+    const currentProject=projectId,currentOrchestrator=orchestratorId;
+    openingWorkNavigation=true;
+    void (async()=>{
+      try{
+        await showCoordinator();
+        if(currentProject!==projectId||currentOrchestrator!==orchestratorId)return;
+        openFilteredWorks('all',$('openWorks'));
+      }catch{
+        status('Não foi possível abrir a lista de frentes. Confira o estado antes de tentar novamente.');
+      }finally{openingWorkNavigation=false;}
+    })();
   });
   $('pauseOrchestrator').addEventListener('click',async()=>{
     const o=orchestrators.find(o=>o.id===orchestratorId);if(!o)return;
