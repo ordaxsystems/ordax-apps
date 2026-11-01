@@ -37,9 +37,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function syncCoordinatorActions() {
     const selected=orchestrators.find(item=>item.id===orchestratorId);
     const selectedReady=Boolean(selected)&&selected.status!=='paused';
-    $('coordinatorSend').disabled=!orchestratorChatAvailable||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
-    $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy;
-    $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||!coordinatorDraftCommitAvailable;
+    $('coordinatorSend').disabled=!orchestratorChatAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
+    $('analyzeWorks').disabled=!coordinatorAvailable||!selectedReady||workCount===0||analysisBusy||coordinatorSubmitting;
+    $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
     $('startAutonomousDialogue').disabled=!coordinatorAvailable||!gptWebTransportAvailable||!selectedReady||analysisBusy||coordinatorSubmitting;
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
@@ -835,24 +835,26 @@ const runState=document.createElement('small');
     }
   });
   $('coordinatorComposer').addEventListener('submit',event=>{
-    event.preventDefault();void formAction(event.currentTarget,async()=>{
+    event.preventDefault();
+    // Acquire the single-flight lock BEFORE the first async draft read.
+    // The form's button restoration must not allow a second Groq dispatch.
+    if(coordinatorSubmitting||analysisBusy||$('coordinatorSend').disabled)return;
+    coordinatorSubmitting=true;syncCoordinatorActions();
+    void formAction(event.currentTarget,async()=>{
       const p=projectId,o=orchestratorId,t=chatTaskId;
       const draft=await prepareCoordinatorDraft(t),content=draft?.content;
-      if(!content)return;
-      coordinatorSubmitting=true;syncCoordinatorActions();
+      // Selection can change while awaiting the durable draft. Never send a
+      // stale coordinator message to the old project after navigation.
+      if(p!==projectId||o!==orchestratorId||t!==chatTaskId||!content)return;
       status('Consultando o orquestrador…');
-      try {
-        const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
-        if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
-        await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-        if(receipt.status==='succeeded')
-          status('Resposta do Orquestrador registrada via '+(receipt.result?.provider||'modelo configurado')+'. Nenhuma mensagem foi enviada às conversas GPT.');
-        else status('Resposta do Orquestrador não confirmada ('+receipt.status+'). O envio não será repetido automaticamente.');
-        await renderCoordinator();
-      } finally {
-        coordinatorSubmitting=false;syncCoordinatorActions();
-      }
-    });
+      const receipt=await command('orchestrator_chat',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
+      if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
+      await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
+      if(receipt.status==='succeeded')
+        status('Resposta do Orquestrador registrada via '+(receipt.result?.provider||'modelo configurado')+'. Nenhuma mensagem foi enviada às conversas GPT.');
+      else status('Resposta do Orquestrador não confirmada ('+receipt.status+'). O envio não será repetido automaticamente.');
+      await renderCoordinator();
+    }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
   });
   $('analyzeWorks').addEventListener('click',async()=>{
     if($('analyzeWorks').disabled||!projectId||!orchestratorId)return;
@@ -886,21 +888,27 @@ const runState=document.createElement('small');
   $('startAutonomousDialogue').addEventListener('click',()=>void launchAutonomousMission('dialogue'));
   $('startAutonomousStory').addEventListener('click',()=>void launchAutonomousMission('story'));
   $('prepareWork').addEventListener('click',async()=>{
-    if($('prepareWork').disabled||!projectId||!orchestratorId)return;
+    if($('prepareWork').disabled||analysisBusy||coordinatorSubmitting||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId,t=chatTaskId;
-    let draft;
-    try{draft=await prepareCoordinatorDraft(t);}catch{setCoordinatorDraftState('Não foi possível confirmar o rascunho salvo. Ele foi preservado e nenhuma proposta foi enviada.');return;}
-    const content=draft?.content;
-    if(!content){status('Descreva no campo de mensagem a frente que o orquestrador deve preparar.');$('coordinatorPrompt').focus();return;}
+    // Preparing a proposal consumes the same coordinator lane as chat.
+    // Admission is synchronous, before any draft flush or model request.
     analysisBusy=true;coordinatorSubmitting=true;syncCoordinatorActions();
-    status('A IA está preparando uma proposta de frente para sua revisão…');
     try {
-      const receipt=await command('orchestrator_prepare',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
+      let draft;
+      try{draft=await prepareCoordinatorDraft(t);}
+      catch{setCoordinatorDraftState('Não foi possível confirmar o rascunho salvo. Ele foi preservado e nenhuma proposta foi enviada.');return;}
       if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
-      await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
-      if(receipt.status==='succeeded')status('Proposta pronta. Confira título e mensagem antes de criar a frente.');
-      await renderCoordinator();
-    }catch{error();}finally{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions();}
+      const content=draft?.content;
+      if(!content){status('Descreva no campo de mensagem a frente que o orquestrador deve preparar.');$('coordinatorPrompt').focus();return;}
+      status('A IA está preparando uma proposta de frente para sua revisão…');
+      try {
+        const receipt=await command('orchestrator_prepare',{projectId:p,orchestratorId:o,content,draftRevision:draft.draftRevision});
+        if(p!==projectId||o!==orchestratorId||t!==chatTaskId)return;
+        await reconcileCoordinatorDraft(t,draft.raw,draft.draftRevision);
+        if(receipt.status==='succeeded')status('Proposta pronta. Confira título e mensagem antes de criar a frente.');
+        await renderCoordinator();
+      }catch{error();}
+    }finally{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions();}
   });
   $('coordinatorPrompt').addEventListener('input',stageCoordinatorDraft);
   $('coordinatorPrompt').addEventListener('blur',()=>{void flushCoordinatorDraft().catch(()=>{});});
