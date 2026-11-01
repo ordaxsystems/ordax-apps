@@ -42,7 +42,7 @@
           <summary>Trocar de projeto anterior</summary>
           <div id="projectNavList" class="nav-item-list" aria-label="Selecionar projeto existente"></div>
         </details>
-        <select id="projectSelect" class="native-state-control" aria-label="Projeto"><option value="">Conversas sem projeto</option></select>
+        <select id="projectSelect" class="native-state-control" aria-label="Selecionar projeto ativo" title="Projeto ativo"><option value="">Conversas sem projeto</option></select>
         <details id="projectSetup" class="nav-setup">
           <summary>Conectar projeto</summary>
           <form id="newProjectForm">
@@ -62,7 +62,7 @@
         </details>
         <div class="nav-section-heading orchestrator-heading"><span>Administração</span><button id="addOrchestrator" class="nav-add" type="button" aria-label="Novo orquestrador">+</button></div>
         <div id="orchestratorNavList" class="nav-item-list" aria-label="Lista de orquestradores"></div>
-        <select id="orchestratorSelect" class="native-state-control" aria-label="Orquestrador"><option value="">Selecione um orquestrador</option></select>
+        <select id="orchestratorSelect" class="native-state-control" aria-label="Selecionar administrador do projeto" title="Administrador do projeto"><option value="">Selecione um orquestrador</option></select>
         <details id="orchestratorSetup" class="nav-setup"><summary>Novo orquestrador</summary>
           <form id="newOrchestratorForm" hidden>
             <label for="orchestratorName">Nome</label><input id="orchestratorName" maxlength="140" required />
@@ -127,7 +127,7 @@
           <div class="coordinator-head-actions">
             <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Frentes</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
-            <button id="coordinatorApiSettings" class="ghost-button" type="button" title="Configurar o modelo do Orquestrador">Configurar Groq</button>
+            <button id="coordinatorApiSettings" class="ghost-button" type="button" aria-label="Configurar modelo do Administrador Geral" title="Configurar o modelo do Administrador Geral">Configurar Groq</button>
           </div>
         </header>
         <div class="coordinator-transport" role="status" aria-live="polite">
