@@ -627,3 +627,42 @@ test('coordinator UI admits a single Groq chat or proposal while an async draft 
   assert.doesNotMatch(chat,/window\.ordax\.send\(/,'Groq UI must never invoke the GPT Web sender');
   assert.doesNotMatch(proposal,/window\.ordax\.send\(/,'Groq planning must never invoke the GPT Web sender');
 });
+
+test('asynchronous project and orchestrator refreshes cannot overwrite newer scope or draft',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const project=source.slice(source.indexOf('async function refreshProjects()'),
+    source.indexOf('async function refreshContinuityStatus()'));
+  assert.match(project,/const generation=\+\+projectRefreshGeneration/);
+  assert.match(project,/if\(generation!==projectRefreshGeneration\)return projectsCache/);
+  const orch=source.slice(source.indexOf('async function refreshOrchestrators()'),
+    source.indexOf('async function refreshAutonomousDialogue()'));
+  const fetch=orch.indexOf("await call('orchestrators_list'");
+  const accept=orch.indexOf('orchestrators=result.orchestrators');
+  const guard=orch.indexOf('if(generation!==orchestratorRefreshGeneration||p!==projectId)return []');
+  assert.ok(fetch>=0&&guard>fetch&&accept>guard,
+    'stale lookup must be discarded BEFORE mutating the canonical selection');
+  assert.match(orch,/const isCurrent=\(\)=>generation===orchestratorRefreshGeneration&&p===projectId&&selectedId===orchestratorId/);
+  assert.match(orch,/await activateCoordinatorDraft\(selected\?\.chat_task_id\|\|null,isCurrent\)/);
+  assert.match(orch,/await refreshWorks\(\);\s*if\(!isCurrent\(\)\)return \[\]/);
+  assert.match(orch,/await refreshContinuityStatus\(\);\s*if\(!isCurrent\(\)\)return \[\]/);
+  const draft=source.slice(source.indexOf('async function activateCoordinatorDraft('),
+    source.indexOf('async function prepareCoordinatorDraft('));
+  assert.match(draft,/await flushCoordinatorDraft\(\);\s*[^\n]*\n\s*if\(!isCurrent\(\)\)return/);
+  assert.match(draft,/if\(!isCurrent\(\)\|\|generation!==coordinatorDraftGeneration\|\|taskId!==chatTaskId\)return/);
+  const works=source.slice(source.indexOf('async function refreshWorks()'),
+    source.indexOf('async function refreshProjects()'));
+  assert.equal((works.match(/generation!==epoch\|\|p!==projectId\|\|o!==orchestratorId/g)||[]).length,2,
+    'scope must still be current before and after the async work-list subscription');
+});
+
+test('coordinator Enter uses exactly one IME-safe keyboard handler',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((source.match(/\$\('coordinatorPrompt'\)\.addEventListener\('keydown'/g)||[]).length,1);
+  const keyboard=source.slice(source.indexOf("\$('coordinatorPrompt').addEventListener('keydown'"),
+    source.indexOf("\$('coordinatorComposer').addEventListener('submit'"));
+  assert.match(keyboard,/event\.key!=='Enter'\|\|event\.isComposing\|\|event\.shiftKey/);
+  assert.match(keyboard,/event\.preventDefault\(\)/);
+  assert.match(keyboard,/if\(!\$\('coordinatorSend'\)\.disabled\)\$\('coordinatorComposer'\)\.requestSubmit\(\)/);
+  assert.equal((keyboard.match(/requestSubmit\(\)/g)||[]).length,1);
+  assert.doesNotMatch(keyboard,/window\.ordax\.send\(/);
+});

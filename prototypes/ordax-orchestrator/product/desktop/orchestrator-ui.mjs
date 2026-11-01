@@ -4,6 +4,7 @@ import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provid
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onNavigationChange}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
+  let projectRefreshGeneration=0,orchestratorRefreshGeneration=0;
   let coordinatorOpen=false,coordinatorAvailable=false,orchestratorChatAvailable=false,coordinatorDraftCommitAvailable=false;
   let gptWebTransportAvailable=false;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
@@ -102,9 +103,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!task)throw Error('task_not_found');
     return {draft:task.draft||'',draft_revision:Number(task.draft_revision||0),draft_updated_at:task.draft_updated_at||null};
   }
-  async function activateCoordinatorDraft(taskId) {
+  async function activateCoordinatorDraft(taskId,isCurrent=()=>true) {
     if(chatTaskId===taskId&&coordinatorDraftTaskId===taskId)return;
     await flushCoordinatorDraft();
+    // A previous project selection may have been replaced while flushing.
+    if(!isCurrent())return;
     const generation=++coordinatorDraftGeneration;
     chatTaskId=taskId;
     coordinatorDraftTaskId=taskId;
@@ -114,7 +117,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     setCoordinatorDraftState('');
     if(!taskId)return;
     const draft=await readCoordinatorDraft(taskId);
-    if(generation!==coordinatorDraftGeneration||taskId!==chatTaskId)return;
+    if(!isCurrent()||generation!==coordinatorDraftGeneration||taskId!==chatTaskId)return;
     coordinatorDraftRevision=Number(draft.draft_revision||0);
     $('coordinatorPrompt').value=draft.draft||'';
     setCoordinatorDraftState(draft.draft?'Rascunho local preservado nesta conversa':'');
@@ -539,17 +542,21 @@ const runState=document.createElement('small');
       call('work_plan',{projectId:p,maxParallel:4}).catch(()=>null),
       o?call('work_list',{projectId:p}).catch(()=>null):Promise.resolve(null)
     ]);
-    if(generation!==epoch)return;
+    if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     const works=result.works;
     workCount=works.length;
     $('openWorks').disabled=!projectId||!orchestratorId||workCount===0;
     renderWorks(works,planning?.plan||null);
     renderDependencyEditor(allResult?.works||result.works,planning?.plan||null);
     await onScopeChange(new Set(works.map(w=>w.id)));
+    if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     syncCoordinatorActions();
   }
   async function refreshProjects() {
+    const generation=++projectRefreshGeneration;
     const result=await call('projects_list');
+    // Only the newest discovery may repopulate the project selector.
+    if(generation!==projectRefreshGeneration)return projectsCache;
     projectsCache=result.projects;
     options($('projectSelect'),projectsCache,'Conversas sem projeto');
     if(projectsCache.some(p=>p.id===projectId))$('projectSelect').value=projectId;
@@ -586,14 +593,19 @@ const runState=document.createElement('small');
     $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+' Nenhum envio automático ao GPT.'+executionNotice;
   }
   async function refreshOrchestrators() {
-    const p=projectId;
-    orchestrators=p?(await call('orchestrators_list',{projectId:p})).orchestrators:[];
-    if(p!==projectId)return;
+    const generation=++orchestratorRefreshGeneration,p=projectId;
+    const result=p?await call('orchestrators_list',{projectId:p}):{orchestrators:[]};
+    // A late response from project A must never overwrite project B's state.
+    if(generation!==orchestratorRefreshGeneration||p!==projectId)return [];
+    orchestrators=result.orchestrators;
     if(!orchestrators.some(o=>o.id===orchestratorId))orchestratorId=orchestrators[0]?.id||null;
     options($('orchestratorSelect'),orchestrators,'Selecione um orquestrador');
     $('orchestratorSelect').value=orchestratorId||'';
     const selected=orchestrators.find(o=>o.id===orchestratorId);
-    await activateCoordinatorDraft(selected?.chat_task_id||null);
+    const selectedId=selected?.id||null;
+    const isCurrent=()=>generation===orchestratorRefreshGeneration&&p===projectId&&selectedId===orchestratorId;
+    await activateCoordinatorDraft(selected?.chat_task_id||null,isCurrent);
+    if(!isCurrent())return [];
     $('openOrchestrator').disabled=!selected;
     $('pauseOrchestrator').disabled=!selected;
     $('pauseOrchestrator').textContent=selected?.status==='paused'?'Retomar':'Pausar';
@@ -604,9 +616,11 @@ const runState=document.createElement('small');
     syncCoordinatorActions();
     renderOrchestratorNavigation();
     await refreshWorks();
+    if(!isCurrent())return [];
     await refreshContinuityStatus();
+    if(!isCurrent())return [];
     await refreshAutonomousDialogue();
-    return orchestrators;
+    return isCurrent()?orchestrators:[];
   }
   async function refreshAutonomousDialogue(){
     if(!projectId||!orchestratorId)return;
@@ -828,11 +842,12 @@ const runState=document.createElement('small');
       await refreshContinuityStatus();}
     catch {status('Não foi possível mudar a análise automática.');await refreshContinuityStatus();}
   });
+  // One keyboard submission path: Enter or Ctrl/Cmd+Enter submits; Shift+Enter
+  // inserts a newline and IME composition must never trigger an early send.
   $('coordinatorPrompt').addEventListener('keydown',event=>{
-    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)&&!event.isComposing){
-      event.preventDefault();
-      if(!$('coordinatorSend').disabled)$('coordinatorComposer').requestSubmit();
-    }
+    if(event.key!=='Enter'||event.isComposing||event.shiftKey)return;
+    event.preventDefault();
+    if(!$('coordinatorSend').disabled)$('coordinatorComposer').requestSubmit();
   });
   $('coordinatorComposer').addEventListener('submit',event=>{
     event.preventDefault();
@@ -912,9 +927,6 @@ const runState=document.createElement('small');
   });
   $('coordinatorPrompt').addEventListener('input',stageCoordinatorDraft);
   $('coordinatorPrompt').addEventListener('blur',()=>{void flushCoordinatorDraft().catch(()=>{});});
-  $('coordinatorPrompt').addEventListener('keydown',event=>{
-    if(event.key==='Enter'&&!event.shiftKey&&!$('coordinatorSend').disabled){event.preventDefault();$('coordinatorComposer').requestSubmit();}
-  });
   $('newScopedWorkForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
       await createWork($('scopedWorkTitle').value);

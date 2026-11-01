@@ -1,3 +1,11 @@
+## 0.2.0-alpha.27 — navegação assíncrona segura e envio único de teclado (01/11/2026)
+
+- Impede respostas atrasadas de listas de projetos e orquestradores de sobrescrever a seleção atual ou ativar rascunho de outro chat.
+- Valida o escopo das frentes antes e depois de atualizações assíncronas; elimina handlers de Enter duplicados e respeita composição IME/Shift+Enter.
+- Usa somente estado transitório de geração na UI existente; sem serviços, cópias, bases, providers ou legados novos. Testes de regressão no contrato desktop.
+
+---
+
 ## 0.2.0-alpha.26 — isolamento das missões por workspace (01/11/2026)
 
 - Corrige a seleção de missões históricas que bloqueava novas sessões; exige mesmo workspace, owner e cliente antes de executar diálogos e narrativas.
