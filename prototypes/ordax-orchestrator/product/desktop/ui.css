@@ -566,7 +566,11 @@ body.orchestrator-focus .left-footer .provider-card{display:none}
 .work-rail-note{margin:auto 3px 0;padding-top:10px;border-top:1px solid var(--border-soft);color:var(--muted);font-size:var(--type-caption);line-height:1.5}
 body.orchestrator-focus #contextRail{padding:0}
 body.orchestrator-focus #contextRail>.right-pane-tabs{display:none!important}
-body.orchestrator-focus:not(.orchestrator-api-settings) #contextRail>:not(#orchestratorWorkRail){display:none!important}
+/* The Work rail is a CHILD of contextPanel. Preserve its parent when isolating
+   the coordinator route; hiding contextPanel would hide the entire Work rail. */
+body.orchestrator-focus:not(.orchestrator-api-settings) #contextRail>:not(#contextPanel){display:none!important}
+body.orchestrator-focus:not(.orchestrator-api-settings) #contextPanel{display:flex!important;overflow:hidden;padding:0}
+body.orchestrator-focus:not(.orchestrator-api-settings) #contextPanel>:not(#orchestratorWorkRail){display:none!important}
 body.orchestrator-focus:not(.orchestrator-api-settings) #orchestratorWorkRail{display:flex!important;padding:19px 15px 16px}
 body.orchestrator-focus.orchestrator-api-settings #contextRail>:not(#contextPanel){display:none!important}
 body.orchestrator-focus.orchestrator-api-settings #contextPanel>:not(#labSupervisorPanel){display:none!important}
