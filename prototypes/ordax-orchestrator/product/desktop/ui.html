@@ -37,9 +37,9 @@
         </button>
       </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
-        <div class="nav-section-heading"><span>Projetos existentes</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
+        <div class="nav-section-heading"><span>Configuração do projeto</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
         <details id="legacyProjectAccess" class="legacy-project-access" hidden>
-          <summary>Projetos salvos anteriormente</summary>
+          <summary>Trocar de projeto anterior</summary>
           <div id="projectNavList" class="nav-item-list" aria-label="Selecionar projeto existente"></div>
         </details>
         <select id="projectSelect" class="native-state-control" aria-label="Projeto"><option value="">Conversas sem projeto</option></select>
@@ -125,7 +125,7 @@
         <header class="coordinator-head">
           <div class="coordinator-identity"><div class="coordinator-avatar" aria-hidden="true">◇</div><div class="coordinator-title"><span class="route-kicker" id="coordinatorRouteLabel">ADMINISTRAÇÃO · GROQ</span><h2 id="orchestratorTitle">Administrador Geral</h2><p id="orchestratorMission"></p></div></div>
           <div class="coordinator-head-actions">
-            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Conversas</button>
+            <button id="coordinatorRailToggle" class="ghost-button coordinator-rail-toggle" type="button" aria-controls="orchestratorWorkRail" aria-expanded="false">Frentes</button>
             <button id="pauseOrchestrator" class="ghost-button" type="button" disabled>Pausar</button>
             <button id="coordinatorApiSettings" class="ghost-button" type="button" title="Configurar o modelo do Orquestrador">Configurar Groq</button>
           </div>
@@ -139,11 +139,11 @@
             <div><span class="project-pulse-kicker">VISÃO OPERACIONAL</span><strong>Frentes do projeto</strong></div>
             <button id="openProjectWork" class="mini-secondary" type="button" disabled>Ver frentes</button>
           </div>
-          <div class="project-pulse-stats">
-            <div><strong id="projectPulseTotal">0</strong><span>Registradas</span></div>
-            <div><strong id="projectPulseRunning">0</strong><span>Em andamento</span></div>
-            <div><strong id="projectPulseAttention">0</strong><span>Revisar</span></div>
-            <div><strong id="projectPulseWaiting">0</strong><span>Aguardando</span></div>
+          <div id="projectPulseStats" class="project-pulse-stats" role="group" aria-label="Abrir frentes por estado">
+            <button type="button" data-work-filter="all" aria-label="Ver todas as frentes"><strong id="projectPulseTotal">0</strong><span>Registradas</span></button>
+            <button type="button" data-work-filter="running" aria-label="Ver frentes em andamento"><strong id="projectPulseRunning">0</strong><span>Em andamento</span></button>
+            <button type="button" data-work-filter="attention" aria-label="Ver frentes que precisam de revisão"><strong id="projectPulseAttention">0</strong><span>Revisar</span></button>
+            <button type="button" data-work-filter="ready" aria-label="Ver frentes aguardando"><strong id="projectPulseWaiting">0</strong><span>Aguardando</span></button>
           </div>
           <p id="projectPulseNote">Resumo das frentes registradas, não uma confirmação de execução autônoma.</p>
         </section>
