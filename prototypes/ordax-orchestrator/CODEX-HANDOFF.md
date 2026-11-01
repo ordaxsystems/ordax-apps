@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — correção Groq alpha.24 (candidata)
+
+- **Base observada:** `ordax-apps/main@3dcc9b2cbb21a1c008e0358f4a0a15cf6dfb8bb6`, alpha.23 integrada. O usuário informou que o PC foi formatado inesperadamente: **somente trabalho remoto**, sem reinstalação ou tentativa de acesso físico.
+- **Defeito de concorrência:** `syncCoordinatorActions()` não levava `coordinatorSubmitting` em conta na habilitação de “Enviar”/“Analisar”/“Preparar”; após `prepareCoordinatorDraft(t)` assíncrono, o estado de envio podia reabilitar controles antes da conclusão e permitir requisições repetidas/concorrentes com recibos distintos.
+- **Correção:** adquirir a trava de interface antes do primeiro `await` nos fluxos de chat e preparo, manter os botões desabilitados durante a operação, validar seleção atual após o await, liberar a trava em `finally` até em erro. O backend continua dono de idempotência e receipts; o campo central não chama o executor GPT Web.
+- **Prova:** teste de contrato existente `desktop-contract.test.mjs` ampliado para verificar admissão síncrona, restauração e rota distinta; CI completo do candidato incluindo Windows necessário para merge. Nenhuma execução no PC formatado.
+- **Regra:** manter no máximo esta PR durante a correção, merge apenas com todos os gates verdes e branch descartada automaticamente. Não tocar em apps/remotos alheios.
+
+---
+
 ## Correção de continuidade por sessão — 01/11/2026 (candidata alpha.23)
 
 - **Base:** `ordax-apps/main@5a1f14ffc9e426a705db726a6586961c5e04d31e` (alpha.22 integrada; 5 checks de main aprovados).
