@@ -77,16 +77,9 @@ if (!singleInstanceLock) {
   hostStartupLog('single_instance_lock_acquired');
   app.on('second-instance', (_event,commandLine) => {
     if(hostBrowserMode||commandLine?.includes('--ordax-background-start'))return;
-    // A previous Electron main process may still own the profile after its
-    // window has disappeared (for example after a renderer crash). A new
-    // launch must restore the UI instead of silently focusing nothing.
-    if (!win || win.isDestroyed()) {
-      void createWindow().catch(()=>hostStartupLog('window_recovery_failed'));
-      return;
-    }
-    if (win.isMinimized()) win.restore();
-    win.show();
-    win.focus();
+    // Reuse the single UI-opening path even if the previous window crashed.
+    // Windows autostart can create a hidden window: second launch must show it.
+    showCanonicalWindow();
   });
 }
 
@@ -113,7 +106,7 @@ let backgroundOptedIn=backgroundSupported&&
 let backgroundTray=null,backgroundTrayPending=null,quittingIntentionally=false;
 const backgroundStartupRequested=process.argv.includes('--ordax-background-start');
 function showCanonicalWindow(){
-  if(!win||win.isDestroyed()){void createWindow().then(window=>{window.show();window.focus();}).catch(()=>{});return;}
+  if(!win||win.isDestroyed()){void createWindow().then(window=>{window.show();window.focus();}).catch(()=>hostStartupLog('window_recovery_failed'));return;}
   if(win.isMinimized())win.restore();
   win.show();win.focus();
 }

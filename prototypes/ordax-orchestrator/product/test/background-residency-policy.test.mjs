@@ -37,6 +37,12 @@ test('one-process native lifecycle keeps existing web worker and tick and has a 
   const ui=read('desktop/ui.js');
   const html=read('desktop/ui.html');
   assert.match(main,/app\.requestSingleInstanceLock\(\)/);
+  // Second launch must reveal a replacement even when Windows booted hidden.
+  // No duplicate path may create a window without a corresponding show/focus.
+  const secondInstance=main.match(/app\.on\('second-instance',[\s\S]*?\n  \}\);/)?.[0]||'';
+  assert.match(secondInstance,/showCanonicalWindow\(\)/);
+  assert.doesNotMatch(secondInstance,/createWindow\(/);
+  assert.match(main,/void createWindow\(\)\.then\(window=>\{window\.show\(\);window\.focus\(\);\}\)/);
   assert.match(main,/win\.hide\(\)/);
   assert.match(main,/backgroundResidencyAllowed\(/);
   assert.match(main,/registeredScheduler\.close\(\)/);
