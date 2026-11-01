@@ -1,3 +1,12 @@
+## Correção de continuidade por sessão — 01/11/2026 (candidata alpha.23)
+
+- **Base:** `ordax-apps/main@5a1f14ffc9e426a705db726a6586961c5e04d31e` (alpha.22 integrada; 5 checks de main aprovados).
+- **Falha no código:** `LabContinuation.scan/tick` e `LabNextProposal.tick` selecionavam reviews e propostas sem vincular o projeto/Task à sessão ativa. Uma pendência de workspace antigo podia ser consumida pelo agendador atual, falhar autorização e bloquear o avanço de tarefas atuais. A confirmação tardia após mudança de sessão tampouco era revalidada.
+- **Correção candidata:** joins existentes com `lab_projects.workspace_session_id` e `tasks.workspace_session_id`, verificação de `context.workspaceSessionId` e revalidação após chamadas assíncronas; fixtures SQLite no teste `lab-continuation.test.mjs`, sem nova SSOT.
+- **Entrega:** verificar cinco checks no HEAD; squash merge e exclusão da branch somente com gates aprovados. Windows remoto segue offline; última instalação fisicamente atestada alpha.20. GPT Web W3/24h não certificados.
+
+---
+
 ## Situação verificada em 01/11/2026 — ler antes dos snapshots históricos
 
 - **GitHub:** `ordaxsystems/ordax-apps/main` em `44b3f9b2a70eef1b881fecab15d4f1da7e76a31f`; PR #376 integrada (alpha.21), cinco checks positivos no commit da main; nenhuma PR aberta ou branch Orchestrator remanescente na auditoria inicial.
