@@ -38,7 +38,10 @@
       </nav>
       <section class="orchestration-navigation" aria-label="Configuração do projeto e administração">
         <div class="nav-section-heading"><span>Projetos existentes</span><div class="nav-heading-actions"><button id="renameProjectButton" class="nav-add" type="button" aria-label="Renomear projeto" disabled>✎</button><button id="addProject" class="nav-add" type="button" aria-label="Conectar projeto">+</button></div></div>
-        <div id="projectNavList" class="nav-item-list" aria-label="Lista de projetos"></div>
+        <details id="legacyProjectAccess" class="legacy-project-access" hidden>
+          <summary>Projetos salvos anteriormente</summary>
+          <div id="projectNavList" class="nav-item-list" aria-label="Selecionar projeto existente"></div>
+        </details>
         <select id="projectSelect" class="native-state-control" aria-label="Projeto"><option value="">Conversas sem projeto</option></select>
         <details id="projectSetup" class="nav-setup">
           <summary>Conectar projeto</summary>
