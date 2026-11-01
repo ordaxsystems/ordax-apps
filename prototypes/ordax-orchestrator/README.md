@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Continuidade segura por workspace — alpha.23 (candidata)
+## Entrada única de mensagens ao coordenador — alpha.24 (candidata)
+
+O chat Groq e a preparação de propostas usam **uma única trava por interface** antes de ler/salvar o rascunho. Enquanto a operação está em curso, “Enviar”, “Analisar” e “Preparar frente” permanecem indisponíveis; o formulário só é liberado após a conclusão, inclusive em falhas. A troca de projeto durante a leitura do rascunho cancela o envio antigo. Não altera o executor GPT Web, nem cria um transporte, perfil ou scheduler adicional. Validação remota via GitHub CI é separada de testes físicos e instalação Windows.
+
+
+## Continuidade segura por workspace — alpha.23 (integrada)
 
 A fila existente de revisão de Runs e propostas Groq seleciona apenas projetos e Tasks da sessão **ativa** do SQLite. Um workspace anterior não pode consumir o tick do atual, mesmo que tenha análises/propostas pendentes. Em troca de sessão durante uma chamada Groq, o resultado permanece em `reconciliation_required`, nunca é certificado e jamais dispara GPT. Não há novo scheduler, transporte, banco ou perfil. A promoção exige CI no HEAD e prova física separada; `alpha.22` continua na `main` até integração.
 
