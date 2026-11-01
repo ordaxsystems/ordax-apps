@@ -45,18 +45,23 @@ export class LabNextProposal {
       remaining:Math.max(0,2-proposed),automaticGPTSends:false};
   }
   async tick(context) {
+    const session=this.store.getWorkspaceSession();
+    if(session?.status!=='active'||context?.workspaceSessionId!==session.id)
+      return {state:'blocked_workspace'};
     const row=this.db.prepare(`SELECT r.run_id,r.project_id,r.orchestrator_id,r.task_id
       FROM lab_continuation_reviews r
       JOIN lab_next_proposal_policy p ON p.project_id=r.project_id AND p.orchestrator_id=r.orchestrator_id
       JOIN lab_continuation_policies base ON base.project_id=r.project_id AND base.orchestrator_id=r.orchestrator_id
-      JOIN lab_orchestrators o ON o.id=r.orchestrator_id
+      JOIN lab_orchestrators o ON o.id=r.orchestrator_id AND o.project_id=r.project_id
+      JOIN lab_projects project ON project.id=r.project_id AND project.workspace_session_id=?
+      JOIN tasks t ON t.id=r.task_id AND t.workspace_session_id=?
       WHERE r.state='analyzed' AND p.enabled=1 AND base.enabled=1 AND o.status='ready'
       AND r.rowid>p.start_review_rowid
       AND NOT EXISTS (SELECT 1 FROM lab_next_proposals n WHERE n.review_run_id=r.run_id)
       AND (SELECT COUNT(*) FROM lab_next_proposals n JOIN lab_continuation_reviews q
           ON q.run_id=n.review_run_id WHERE n.orchestrator_id=r.orchestrator_id
           AND q.rowid>p.start_review_rowid)<2
-      ORDER BY r.updated_at,r.run_id LIMIT 1`).get();
+      ORDER BY r.updated_at,r.run_id LIMIT 1`).get(session.id,session.id);
     if(!row)return {state:'idle'};
     if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};
     if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get() ||
@@ -78,10 +83,14 @@ export class LabNextProposal {
         requestId:'next_'+row.run_id.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,110),
         content:'Revise o progresso confirmado e proponha apenas UMA nova frente curta, verificável e necessária à missão. Não afirme que o trabalho já foi executado.'
       });
-      const ok=receipt?.status==='succeeded'&&typeof receipt?.result?.proposalActionId==='string';
+      // Model calls may finish after the active workspace changes. Keep
+      // the uncertain receipt, but never certify the old session's proposal.
+      const current=this.store.getWorkspaceSession();
+      const sameWorkspace=current?.status==='active'&&current.id===session.id;
+      const ok=sameWorkspace&&receipt?.status==='succeeded'&&typeof receipt?.result?.proposalActionId==='string';
       this.db.prepare('UPDATE lab_next_proposals SET status=?,command_id=?,reason=?,updated_at=? WHERE review_run_id=?')
         .run(ok?'proposed':'reconciliation_required',receipt?.commandId||null,
-          ok?null:'proposal_unconfirmed',this.store.now(),row.run_id);
+          ok?null:sameWorkspace?'proposal_unconfirmed':'workspace_changed',this.store.now(),row.run_id);
       return {state:ok?'proposed':'reconciliation_required',runId:row.run_id};
     }catch{
       this.db.prepare("UPDATE lab_next_proposals SET status='reconciliation_required',reason='proposal_unconfirmed',updated_at=? WHERE review_run_id=?")
