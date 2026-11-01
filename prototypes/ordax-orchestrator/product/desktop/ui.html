@@ -134,6 +134,19 @@
           <span class="transport-symbol" aria-hidden="true">●</span>
           <span id="orchestrationConnection" class="orchestration-connection">Esta área conversa com o Orquestrador. Nenhuma mensagem daqui vai ao ChatGPT Web.</span>
         </div>
+        <section id="projectPulse" class="project-pulse" aria-label="Resumo operacional das frentes de trabalho" hidden>
+          <div class="project-pulse-heading">
+            <div><span class="project-pulse-kicker">VISÃO OPERACIONAL</span><strong>Frentes do projeto</strong></div>
+            <button id="openProjectWork" class="mini-secondary" type="button" disabled>Ver frentes</button>
+          </div>
+          <div class="project-pulse-stats">
+            <div><strong id="projectPulseTotal">0</strong><span>Registradas</span></div>
+            <div><strong id="projectPulseRunning">0</strong><span>Em andamento</span></div>
+            <div><strong id="projectPulseAttention">0</strong><span>Revisar</span></div>
+            <div><strong id="projectPulseWaiting">0</strong><span>Aguardando</span></div>
+          </div>
+          <p id="projectPulseNote">Resumo das frentes registradas, não uma confirmação de execução autônoma.</p>
+        </section>
         <div id="orchestrationCapabilitySummary" class="orchestration-capabilities" aria-label="Capacidades disponíveis no Host" hidden>
           <span id="capabilityGroq" data-state="blocked">Groq · não configurado</span>
           <span id="capabilityGpt" data-state="blocked">ChatGPT Plan · não conectado</span>
@@ -165,9 +178,14 @@
               <button id="continuityProposalsToggle" type="button" class="mini-secondary" disabled>Propor próximas frentes automaticamente</button>
               <small id="continuityState" role="status">Análise automática desativada. Nunca envia mensagens ao GPT.</small>
               <button id="prepareWork" type="button" class="mini-secondary" disabled>Preparar nova frente</button>
-              <button id="startAutonomousDialogue" type="button" class="mini-primary" disabled>Executar missão autônoma (2 perguntas GPT)</button>
-              <button id="startAutonomousStory" type="button" class="mini-secondary" disabled>Criar história colaborativa (2 ciclos, 4 cenas GPT)</button>
-              <small id="autonomousDialogueState" role="status" aria-live="polite">Escolha diálogo de duas mensagens ou história de quatro cenas. Uma missão inicial autoriza no máximo duas conversas GPT. O Groq planeja e interpreta as respostas sem novos comandos; falhas incertas bloqueiam reenvio.</small>
+              <details id="orchestratorExperiments" class="orchestrator-experiments">
+                <summary>Experimentos de coordenação GPT</summary>
+                <div class="orchestrator-experiments-content">
+                  <button id="startAutonomousDialogue" type="button" class="mini-primary" disabled>Executar missão autônoma (2 perguntas GPT)</button>
+                  <button id="startAutonomousStory" type="button" class="mini-secondary" disabled>Criar história colaborativa (2 ciclos, 4 cenas GPT)</button>
+                  <small id="autonomousDialogueState" role="status" aria-live="polite">Escolha diálogo de duas mensagens ou história de quatro cenas. Uma missão inicial autoriza no máximo duas conversas GPT. O Groq planeja e interpreta as respostas sem novos comandos; falhas incertas bloqueiam reenvio.</small>
+                </div>
+              </details>
               <small id="analysisScopeHint">Envia ao modelo conectado o contexto limitado do projeto e do orquestrador. Sem anexos ou links; recomendações não executam ações.</small>
             </div>
           </div>
