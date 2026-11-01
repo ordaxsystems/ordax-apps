@@ -241,3 +241,81 @@ test('continuation scan preserves already reviewed Runs and resumes after reinit
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_continuation_reviews').get().n,120);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_continuation_reviews WHERE state=?').get('analyzed').n,1);
 });
+
+// Simulate a real session cutover on the SAME SQLite/Store. Old project
+// records and receipts remain durable; they must not drive the new session.
+function rotateActiveWorkspace(store,oldSessionId) {
+  const id='session_rotated_'+Date.now()+'_'+Math.random().toString(16).slice(2);
+  const now=store.now();
+  store.db.prepare("UPDATE workspace_sessions SET status='closed',updated_at=? WHERE id=?")
+    .run(now,oldSessionId);
+  store.db.prepare('INSERT INTO workspace_sessions(id,status,metadata,created_at,updated_at) VALUES(?,?,?,?,?)')
+    .run(id,'active','{}',now,now);
+  store.workspaceSession={id};
+  return id;
+}
+
+test('continuation does not consume another workspace pending analysis after session cutover',async t=>{
+  const observed=[];
+  const f=setup(t,{available:()=>true,send:async payload=>{
+    observed.push({taskId:payload.taskId,prepareWork:payload.prepareWork===true});
+    return {content:'Revisão do workspace atual'};
+  }});
+  const previous=await prepare(f);
+  await f.call('continuity_set',{projectId:previous.projectId,orchestratorId:previous.orchestratorId,enabled:true});
+  const oldRun=finish(f.store,previous.taskId);
+  assert.equal(f.service.continuation.scan(),1);
+  const nextId=rotateActiveWorkspace(f.store,f.context.workspaceSessionId);
+  const next={...f.context,workspaceSessionId:nextId};
+  assert.equal((await f.service.continuation.tick(f.context)).state,'blocked_workspace');
+  assert.equal((await f.service.continuation.tick(next)).state,'idle');
+  assert.equal(f.store.db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(oldRun).state,'queued');
+  assert.equal(observed.length,0);
+
+  let count=0;
+  const call=(operation,data)=>f.service.invoke(next,operation,{...data,requestId:'current_'+(++count)});
+  const projectId=(await call('project_create',{name:'Current',objective:'Testar isolamento'})).result.projectId;
+  const orchestratorId=(await call('orchestrator_create',{projectId,name:'Atual',mission:'Verificar'})).result.orchestratorId;
+  const taskId=(await call('work_create',{projectId,orchestratorId,title:'Frente atual'})).result.taskId;
+  await call('continuity_set',{projectId,orchestratorId,enabled:true});
+  const runId=finish(f.store,taskId);
+  assert.deepEqual(await f.service.continuation.tick(next),{state:'analyzed',runId});
+  assert.equal(observed.length,1);
+  assert.equal(f.store.db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(oldRun).state,'queued');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('proposals from an old workspace cannot be planned or counted in the new workspace',async t=>{
+  const proposals=[];
+  const f=setup(t,{available:()=>true,send:async payload=>{
+    if(payload.prepareWork){
+      proposals.push(payload.taskId);
+      return {content:'Proposta para revisão',proposal:{
+        title:'Nova frente',content:'Verificar a nova frente sem envio',reason:'Conferência'}};
+    }
+    return {content:'Análise confirmada'};
+  }});
+  const previous=await prepare(f);
+  await f.call('continuity_set',{projectId:previous.projectId,orchestratorId:previous.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:previous.projectId,orchestratorId:previous.orchestratorId,enabled:true});
+  const oldRun=finish(f.store,previous.taskId);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+  const nextId=rotateActiveWorkspace(f.store,f.context.workspaceSessionId);
+  const next={...f.context,workspaceSessionId:nextId};
+  assert.equal((await f.service.continuation.tick(next)).state,'idle');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_next_proposals').get().n,0);
+  let count=0;
+  const call=(operation,data)=>f.service.invoke(next,operation,{...data,requestId:'next_'+(++count)});
+  const projectId=(await call('project_create',{name:'Atual',objective:'Continuidade'})).result.projectId;
+  const orch=(await call('orchestrator_create',{projectId,name:'Atual',mission:'Revisar'})).result;
+  const taskId=(await call('work_create',{projectId,orchestratorId:orch.orchestratorId,title:'Novo trabalho'})).result.taskId;
+  await call('continuity_set',{projectId,orchestratorId:orch.orchestratorId,enabled:true});
+  await call('continuity_proposals_set',{projectId,orchestratorId:orch.orchestratorId,enabled:true});
+  const runId=finish(f.store,taskId);
+  assert.equal((await f.service.continuation.tick(next)).state,'analyzed');
+  assert.deepEqual(await f.service.continuation.tick(next),{state:'proposed',runId});
+  assert.deepEqual(proposals,[orch.chatTaskId]);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_next_proposals WHERE review_run_id=?').get(oldRun).n,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_next_proposals WHERE review_run_id=?').get(runId).n,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
