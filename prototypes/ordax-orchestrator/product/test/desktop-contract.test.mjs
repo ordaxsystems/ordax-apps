@@ -340,7 +340,7 @@ test('per-front prerequisite actions reuse one safe editor and keep filtered car
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   const js=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
-  for(const id of ['dependencyTarget','dependencyCandidates','dependencySelectionCount','clearDependencySelection','workDependencyEditor'])
+  for(const id of ['dependencyTarget','dependencyCandidates','dependencySelectionCount','clearDependencySelection','discardDependencyChanges','workDependencyEditor'])
     assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'single editor control: '+id);
   assert.match(html,/id="dependencySelectionCount" role="status" aria-live="polite"/);
   assert.match(html,/id="clearDependencySelection" type="button"[^>]*disabled/);
@@ -354,6 +354,11 @@ test('per-front prerequisite actions reuse one safe editor and keep filtered car
   assert.match(js,/const editableDependencies=renderDependencyEditor\(/);
   assert.match(js,/renderWorks\(works,planning\?\.plan\|\|null,editableDependencies\)/);
   assert.match(js,/button\.closest\('\.work-entry'\)\|\|button/);
+  assert.match(js,/dependencyCurrentTarget&&\$\('dependencyTarget'\)\.value!==dependencyCurrentTarget/);
+  assert.match(js,/dependencySelectionDirty=Boolean\(selected\)&&boxes\.some/);
+  assert.match(js,/discardDependencyChanges'\)\.addEventListener\('click'/);
+  assert.match(js,/Alterações não salvas descartadas/);
+  assert.match(html,/id="discardDependencyChanges" type="button"[^>]*disabled/);
   assert.match(js,/for\(const box of \$\('dependencyCandidates'\)\.querySelectorAll\('input\[type="checkbox"\]'\)\)box\.checked=false/);
   assert.match(css,/\.work-entry\[hidden\]\{display:none!important\}/);
   assert.match(css,/\.work-dependency-action:focus-visible\{/);
