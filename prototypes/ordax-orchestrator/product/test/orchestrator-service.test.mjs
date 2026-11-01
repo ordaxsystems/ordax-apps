@@ -600,6 +600,15 @@ test('backend serializes Groq chat, analysis and proposals on one Task without s
   assert.equal(f.service.coordinatorTurnBusy(a.chat),false);
   assert.equal(groqCalls,2);
   assert.deepEqual(f.store.messages(a.chat).map(x=>x.role),['user','assistant']);
+  // A completed request must release admission for the next explicit turn.
+  f.store.setDraft(a.chat,'Outra solicitação após liberação',3);
+  const resumed=await f.call('orchestrator_chat',{requestId:'after-release',projectId:a.p,
+    orchestratorId:a.o,content:'Outra solicitação após liberação',draftRevision:3});
+  assert.equal(resumed.status,'succeeded');
+  assert.equal(groqCalls,3);
+  assert.equal(f.service.coordinatorTurnBusy(a.chat),false);
+  assert.deepEqual(f.store.messages(a.chat).map(x=>x.role),
+    ['user','assistant','user','assistant']);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
