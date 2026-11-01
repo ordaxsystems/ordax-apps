@@ -723,7 +723,15 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
 
 /* Work state counts live only in the canonical project pulse, not twice in the side rail. */
 
-.work-toolbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(115px,.8fr);gap:7px;margin:8px 0}.work-toolbar input,.work-toolbar select{min-width:0;width:100%;padding:9px 10px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:9px;font-size:11px}.work-toolbar input:focus-visible,.work-toolbar select:focus-visible{outline:2px solid var(--muted);outline-offset:2px}.work-filter-count{font-size:10px;color:var(--muted);margin:3px 0 9px}.work-card[hidden]{display:none!important}@media(max-width:540px){.work-toolbar{grid-template-columns:1fr}}
+.work-toolbar{display:grid;grid-template-columns:minmax(0,1fr) minmax(115px,.8fr);gap:7px;margin:8px 0}.work-toolbar input,.work-toolbar select{min-width:0;width:100%;padding:9px 10px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:9px;font-size:11px}.work-toolbar input:focus-visible,.work-toolbar select:focus-visible{outline:2px solid var(--muted);outline-offset:2px}.work-filter-count{font-size:var(--type-caption);line-height:1.45;color:var(--muted);margin:3px 0 9px}
+.work-filter-empty{display:grid;gap:8px;padding:14px 12px;margin:8px 0 12px;border:1px dashed var(--border-strong);border-radius:11px;background:var(--panel-2)}
+.work-filter-empty[hidden],.work-attention-summary[hidden],.work-entry[hidden]{display:none!important}
+.work-filter-empty strong{color:var(--text);font-size:var(--type-label);font-weight:720}
+.work-filter-empty p{margin:0;color:var(--muted);font-size:var(--type-caption);line-height:1.5}
+.work-filter-empty button{justify-self:start;min-height:34px;padding:8px 12px;border:1px solid var(--border-strong);border-radius:8px;background:var(--panel-3);color:var(--text);font-size:var(--type-label);cursor:pointer}
+.work-filter-empty button:hover{border-color:var(--focus)}
+.work-filter-empty button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.work-card[hidden]{display:none!important}@media(max-width:540px){.work-toolbar{grid-template-columns:1fr}}
 @media(max-width:460px){
   .project-pulse-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .project-pulse-stats>button{min-height:58px}
