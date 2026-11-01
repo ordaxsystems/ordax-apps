@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.34",
+  "version": "0.2.0-alpha.35",
   "channel": "alpha",
-  "name": "Pausa durável de respostas Groq em voo",
+  "name": "Continuidade independente com coordenadores indisponíveis",
   "distributionEnabled": false,
   "releaseDate": null
 }

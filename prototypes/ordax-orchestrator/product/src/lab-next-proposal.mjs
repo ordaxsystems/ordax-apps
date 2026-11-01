@@ -59,7 +59,7 @@ export class LabNextProposal {
       return {state:'blocked_workspace'};
     // A blocked mission must not starve proposals from independent projects.
     // Both signals are derived from the existing receipt/approval ledgers.
-    const row=this.db.prepare(`SELECT r.run_id,r.project_id,r.orchestrator_id,r.task_id,
+    const choice=this.service.selectContinuationCandidate(this.db.prepare(`SELECT r.run_id,r.project_id,r.orchestrator_id,r.task_id,
       EXISTS(SELECT 1 FROM lab_command_receipt_scope c
         WHERE c.status='uncertain' AND c.operation IN ('work_send','proposal_send')
         AND (c.task_id=r.task_id OR
@@ -80,11 +80,9 @@ export class LabNextProposal {
       AND (SELECT COUNT(*) FROM lab_next_proposals n JOIN lab_continuation_reviews q
           ON q.run_id=n.review_run_id WHERE n.orchestrator_id=r.orchestrator_id
           AND q.rowid>p.start_review_rowid)<2
-      ORDER BY transport_uncertain ASC,pending_review ASC,r.updated_at,r.run_id LIMIT 1`).get(session.id,session.id);
-    if(!row)return {state:'idle'};
-    if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};
-    if(this.service.coordinatorTurnBusy(this.service.orchestrator(row.project_id,row.orchestrator_id).chat_task_id))
-      return {state:'coordinator_busy'};
+      ORDER BY transport_uncertain ASC,pending_review ASC,r.updated_at,r.run_id`).iterate(session.id,session.id));
+    if(!choice.row)return {state:choice.state};
+    const row=choice.row;
     if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get() ||
        this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get() ||
        this.service.provider?.busy?.())return {state:'executor_busy'};

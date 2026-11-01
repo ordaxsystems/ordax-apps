@@ -1,3 +1,12 @@
+## 0.2.0-alpha.35 — continuidade independente entre coordenadores (01/11/2026)
+
+- A fila opt-in de análise pós-Run e a fila de propostas consultivas agora compartilham a mesma seleção de coordenador executável, sem duplicar persistência ou criar outro Scheduler.
+- Coordenador Groq indisponível/ocupado em um projeto não impede progresso de outro projeto independente. O item bloqueado permanece com o mesmo estado durável, sem envio falso, retry ou alteração na ordem de consentimento.
+- Iteração SQLite lê candidatos por cursor, sem carregar o backlog inteiro em memória. Gates canônicos de recibos incertos, provedor e aprovação humana permanecem intactos.
+- Testes SQLite: projeto A sem Groq, A ocupado, propostas com A indisponível e proposta B pronta enquanto a análise A está bloqueada; B progride e A retoma, com `PRAGMA quick_check`.
+
+---
+
 ## 0.2.0-alpha.34 — pausa durável de respostas Groq em voo (01/11/2026)
 
 - Pausar um coordenador sela como incertos os recibos Groq `running` daquele coordenador na mesma transação, sem cancelar o request externo nem interferir em outros projetos/GPT.

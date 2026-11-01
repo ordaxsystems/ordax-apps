@@ -812,6 +812,26 @@ export class OrchestratorService {
       AND task_id=? LIMIT 1`).get(taskId));
   }
 
+  // Shared bounded-memory selector for opt-in reviews and proposals. An
+  // unavailable or occupied coordinator must not hold the whole project queue.
+  // It only inspects candidates; all receipt, consent and provider gates remain
+  // in the caller. The SQLite iterator does not materialize the full backlog.
+  selectContinuationCandidate(candidates) {
+    let blocked='idle';
+    for(const row of candidates) {
+      if(this.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true) {
+        if(blocked==='idle')blocked='blocked_coordinator';
+        continue;
+      }
+      if(this.coordinatorTurnBusy(this.orchestrator(row.project_id,row.orchestrator_id).chat_task_id)) {
+        if(blocked==='idle')blocked='coordinator_busy';
+        continue;
+      }
+      return {row};
+    }
+    return {state:blocked};
+  }
+
   async withCoordinatorTurn(taskId,action) {
     if(typeof taskId!=='string'||!taskId||typeof action!=='function')
       throw Error('orchestrator_coordinator_ports_required');
