@@ -1,3 +1,12 @@
+## 0.2.0-alpha.33 — propostas isoladas entre projetos bloqueados (01/11/2026)
+
+- A fila opcional de propostas prioriza revisões sem recibo GPT incerto e sem aprovação pendente, impedindo que o projeto A impeça propostas legítimas do projeto B.
+- Preserva a decisão de reconciliação e a revisão humana no projeto bloqueado; nenhuma nova Task ou mensagem GPT é criada automaticamente.
+- Reutiliza a VIEW de recibos, o action ledger e as tabelas de continuidade existentes, sem segunda fila, provider, worker ou mudança de grants.
+- Dois testes SQLite de regressão cobrem transporte indeterminado e aprovação pendente entre projetos independentes, incluindo integridade e ausência de envios GPT.
+
+---
+
 ## 0.2.0-alpha.32 — continuidade isolada por ativação opt-in (01/11/2026)
 
 - A fila de análise `tick` respeita o mesmo `start_run_rowid` da descoberta de Runs, impedindo execução retroativa de `queued` após desativar e reativar.

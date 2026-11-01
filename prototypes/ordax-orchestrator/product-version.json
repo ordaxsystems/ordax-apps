@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.32",
+  "version": "0.2.0-alpha.33",
   "channel": "alpha",
-  "name": "Opt-in isolado por ciclo de ativação",
+  "name": "Propostas independentes entre projetos",
   "distributionEnabled": false,
   "releaseDate": null
 }

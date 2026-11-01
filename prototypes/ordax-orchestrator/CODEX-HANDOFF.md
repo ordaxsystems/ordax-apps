@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — antistarvation de propostas alpha.33 (candidata)
+
+- **Base:** `ordax-apps/main@0fdce15993823365e9c5c8d6daeb0494ae256eea` (alpha.32; workflows pós-merge Isolation e Foundation concluídos com sucesso), zero PRs abertas antes da mudança.
+- **Causa:** `LabNextProposal.tick` selecionava a primeira revisão analisada globalmente e só então verificava o recibo incerto ou a aprovação pendente. Um projeto bloqueado podia impedir propostas de outro projeto independente com opt-in legítimo.
+- **Correção:** ordena candidatos com flags derivadas da mesma VIEW de recibos e do ledger de aprovação existentes, priorizando os que não estão bloqueados. Não afrouxa os bloqueios de origem e não duplica fila, persistência, executor, transporte ou permissões.
+- **Provas:** dois cenários com o mesmo SQLite e dois projetos: recibo `work_send` incerto no A; aprovação pendente no A; B ainda pode registrar sua proposta. Verificar que A não recebe proposta nova indevida, GPT não é enviado e `PRAGMA quick_check` permanece íntegro.
+- **Gates:** CI Linux/Windows e revisão antes da integração. Não declarar E2E GPT Web físico, Runtime real, instalação Windows ou autonomia 24h com base nestes testes.
+
+---
+
 ## Continuidade remota 01/11/2026 — isolamento de ciclo de opt-in alpha.32 (candidata)
 
 - **Base:** `ordax-apps/main@a111a75b12e78f3872c8046544cc6236bfe42583`, alpha.31 PR #386 integrada, com 5/5 gates da PR aprovados, zero PRs e branches Orchestrator. CI pós-merge independente ainda em andamento na verificação inicial.
