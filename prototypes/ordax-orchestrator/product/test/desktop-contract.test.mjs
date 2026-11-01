@@ -336,6 +336,31 @@ test('work rail separates observed evidence from advisory plans without duplicat
   assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
 });
 
+test('per-front prerequisite actions reuse one safe editor and keep filtered cards together',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const js=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  for(const id of ['dependencyTarget','dependencyCandidates','dependencySelectionCount','clearDependencySelection','workDependencyEditor'])
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'single editor control: '+id);
+  assert.match(html,/id="dependencySelectionCount" role="status" aria-live="polite"/);
+  assert.match(html,/id="clearDependencySelection" type="button"[^>]*disabled/);
+  assert.match(js,/function updateDependencySelectionCount\(\)/);
+  assert.match(js,/marked\+' de '\+boxes\.length\+' pré-requisitos selecionados'/);
+  assert.match(js,/return new Set\(eligible\.map\(work=>work\.id\)\)/);
+  assert.match(js,/function renderWorks\(works,plan=null,dependencyEligibleIds=new Set\(\)\)/);
+  assert.match(js,/dependencyEligibleIds\.has\(work\.id\)/);
+  assert.match(js,/edit\.textContent='Organizar pré-requisitos'/);
+  assert.match(js,/dependencySelectionDirty&&\$\('dependencyTarget'\)\.value!==work\.id/);
+  assert.match(js,/const editableDependencies=renderDependencyEditor\(/);
+  assert.match(js,/renderWorks\(works,planning\?\.plan\|\|null,editableDependencies\)/);
+  assert.match(js,/button\.closest\('\.work-entry'\)\|\|button/);
+  assert.match(js,/for\(const box of \$\('dependencyCandidates'\)\.querySelectorAll\('input\[type="checkbox"\]'\)\)box\.checked=false/);
+  assert.match(css,/\.work-entry\[hidden\]\{display:none!important\}/);
+  assert.match(css,/\.work-dependency-action:focus-visible\{/);
+  assert.match(css,/\.work-dependency-controls button:disabled\{/);
+  assert.doesNotMatch(html,/id="dependencyEditorSecondary"/);
+});
+
 test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
