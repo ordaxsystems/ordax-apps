@@ -945,7 +945,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     openingWorkNavigation=true;
     void (async()=>{
       try{
-        await showCoordinator();
+        if(!coordinatorOpen||document.body.classList.contains('orchestrator-api-settings'))
+          await showCoordinator();
         if(currentProject!==projectId||currentOrchestrator!==orchestratorId)return;
         openFilteredWorks('all',$('openWorks'));
       }catch{
