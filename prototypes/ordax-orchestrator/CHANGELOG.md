@@ -1,3 +1,12 @@
+## 0.2.0-alpha.23 — continuidade limitada ao workspace ativo (01/11/2026)
+
+- Fixa isolamento da fila de análises e propostas automáticas às Tasks e projetos da sessão SQLite ativa. Pendências históricas não consomem a fila atual.
+- Revalida a sessão depois de retornos assíncronos da Groq, classificando resultados atrasados como `reconciliation_required` quando houve troca de sessão.
+- Acrescenta regressões reais de SQLite com dois workspaces e mantém o mesmo supervisor, ledger, executor e aprovações. Sem envios GPT e sem expansão de permissões.
+- A candidata exige gates de CI e aceite físico distinto antes de atualizar a única instalação Windows.
+
+---
+
 ## 0.2.0-alpha.22 — restauração da janela canônica no Windows (01/11/2026)
 
 - Ao abrir uma segunda vez com a primeira janela destruída, reutiliza `showCanonicalWindow()`, com `show()` e `focus()` após recriação. Elimina o caminho duplicado que podia deixar o aplicativo oculto depois de um autostart em background e falha de janela.
