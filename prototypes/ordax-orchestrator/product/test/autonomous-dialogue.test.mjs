@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 
@@ -15,6 +16,7 @@ function fixture(t,{failure=null}={}){
   const store=new Store(path.join(dir,'one.sqlite'));
   let sends=0,plans=0,allowed=true;
   const context=Object.freeze({actorId:'test-owner',clientId:'one-app',workspaceSessionId:store.getWorkspaceSession().id});
+  let authorizedContext=context;
   const coordinator={
     available:()=>true,
     send:async ({analysisContext,prepareWork,mission})=>{
@@ -62,7 +64,7 @@ function fixture(t,{failure=null}={}){
       return {confirmed:true,deliveryObserved:true,responseObserved:true,effectVerified:false,runId};
     }
   };
-  const service=new OrchestratorService({store,coordinator,provider,authorize:({context:c})=>allowed&&c===context});
+  const service=new OrchestratorService({store,coordinator,provider,authorize:({context:c})=>allowed&&c===authorizedContext});
   t.after(()=>{try{store.close()}catch{}fs.rmSync(dir,{recursive:true,force:true})});
   let n=0;
   const invoke=(operation,input)=>service.invoke(context,operation,{requestId:'r'+(++n),...input});
@@ -84,8 +86,79 @@ function fixture(t,{failure=null}={}){
   };
   const start=async(requestId='one_mission',mission='Conduza automaticamente duas perguntas encadeadas; entregue uma proposta final, sem enviar a terceira.')=>
     service.invoke(context,'autonomous_dialogue_start',{...ids,requestId,mission});
-  return {store,service,context,invoke,setup,start,wait,current,setAllowed:v=>allowed=v,ids:()=>ids};
+  return {store,service,context,invoke,setup,start,wait,current,setAllowed:v=>allowed=v,
+    setContext:v=>{authorizedContext=v;},ids:()=>ids};
 }
+
+function rotateActiveWorkspace(store,oldSessionId) {
+  const id='session_rotated_'+randomUUID(),now=store.now();
+  store.db.prepare("UPDATE workspace_sessions SET status='closed',updated_at=? WHERE id=?")
+    .run(now,oldSessionId);
+  store.db.prepare('INSERT INTO workspace_sessions(id,status,metadata,created_at,updated_at) VALUES(?,?,?,?,?)')
+    .run(id,'active','{}',now,now);
+  store.workspaceSession={id};
+  return id;
+}
+
+test('historical queued mission cannot block or execute the new workspace mission',async t=>{
+  const f=fixture(t),old=await f.setup();
+  const chat=f.service.orchestrator(old.projectId,old.orchestratorId).chat_task_id;
+  let release;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const held=f.service.withCoordinatorTurn(chat,()=>gate);
+  const historic=await f.start('old_mission');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.service.autonomous.get(historic.result.missionId).state,'queued');
+  const newId=rotateActiveWorkspace(f.store,f.context.workspaceSessionId);
+  release();await held;
+  assert.deepEqual(await f.service.autonomous.tick(f.context),{state:'blocked_workspace'});
+  const current=Object.freeze({...f.context,workspaceSessionId:newId});
+  f.setContext(current);
+  let seq=0;
+  const call=(operation,input)=>f.service.invoke(current,operation,{...input,requestId:'next_'+(++seq)});
+  const projectId=(await call('project_create',{name:'Novo workspace',objective:'Sessão atual'})).result.projectId;
+  const orchestratorId=(await call('orchestrator_create',{projectId,name:'Groq atual',mission:'Validar nova sessão'})).result.orchestratorId;
+  const started=await call('autonomous_dialogue_start',{projectId,orchestratorId,mode:'dialogue',
+    mission:'Conduza duas perguntas confirmadas da sessão atual e pare.'});
+  assert.equal(started.status,'succeeded');
+  let latest=null;
+  for(let n=0;n<90;n++){
+    latest=f.service.autonomous.get(started.result.missionId);
+    if(['succeeded','blocked','reconciliation_required'].includes(latest.state))break;
+    await sleep(20);
+  }
+  assert.equal(latest?.state,'succeeded','old queued mission must not starve current context');
+  assert.equal(f.service.autonomous.get(historic.result.missionId).state,'queued',
+    'retain old mission evidence instead of deleting or importing it');
+  assert.deepEqual(f.current(),{sends:2,plans:3});
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('late Groq plan after workspace cutover quarantines mission before task creation',async t=>{
+  const f=fixture(t);await f.setup();
+  const original=f.service.coordinator.send;
+  let entered,release;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  f.service.coordinator.send=async args=>{
+    entered();await gate;return original(args);
+  };
+  const accepted=await f.start('inflight_cutover');
+  await started;
+  rotateActiveWorkspace(f.store,f.context.workspaceSessionId);
+  release();
+  let row;
+  for(let n=0;n<80;n++){
+    row=f.service.autonomous.get(accepted.result.missionId);
+    if(row.state==='reconciliation_required')break;
+    await sleep(20);
+  }
+  assert.equal(row.state,'reconciliation_required');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_task_bindings WHERE kind='work'").get().n,0);
+  assert.deepEqual(f.current(),{sends:0,plans:1});
+  assert.equal((await f.service.autonomous.tick(f.context)).state,'blocked_workspace');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
 
 test('an autonomous mission stays queued while the coordinator is occupied, then resumes without replay',async t=>{
   const f=fixture(t),ids=await f.setup();

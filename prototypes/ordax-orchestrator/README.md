@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Coordenação serial no backend único — alpha.25 (candidata)
+## Missões autônomas restritas ao workspace ativo — alpha.26 (candidata)
+
+A seleção das missões de diálogo e narrativa, inclusive o bloqueio de início de uma nova missão, respeita a sessão de workspace atual no SQLite. Missões históricas permanecem persistidas, mas não bloqueiam nem executam na sessão ativa. Cada resposta assíncrona de planejamento, envio ou síntese é seguida de verificação da autorização e da sessão atual antes de criar tarefas, publicar novas etapas ou certificar resultados. Mudanças de sessão durante uma chamada externa exigem reconciliação; **nunca** reenviar automaticamente. O executor GPT Web, a conexão Groq, os recibos existentes e a única Store permanecem canônicos. Validação Windows de CI não substitui E2E físico no PC do usuário.
+
+
+## Coordenação serial no backend único — alpha.25 (integrada)
 
 A trava da interface alpha.24 não protegia chamadas MCP/API simultâneas. O serviço canônico agora protege o Task do coordenador enquanto uma solicitação Groq está em curso, abrangendo chat, análise, proposta, missões autônomas e narrativa. Um pedido idempotente obtém o mesmo recibo; outro pedido simultâneo ao mesmo Task recebe `orchestrator_coordinator_busy` **antes de enviar**. Outros projetos continuam independentes. Revisões automáticas aguardam sem classificar contenção como entrega incerta. O mesmo SQLite, os mesmos recibos e o provider existente continuam sendo a fonte de verdade; nenhuma fila, worker, transporte ou banco novo.
 

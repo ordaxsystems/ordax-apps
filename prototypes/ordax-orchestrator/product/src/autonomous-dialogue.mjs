@@ -107,8 +107,12 @@ export class AutonomousDialogue {
       return this.summary(existing);
     }
     if(this.db.prepare(`SELECT 1 FROM lab_autonomous_dialogues
-      WHERE state IN ('queued','planning_a','ready_a','sending_a','ready_b','planning_b',
-        'ready_final','sending_b','planning_final','story_ready_synthesis') OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%' OR state LIKE 'story_planning_%' OR state LIKE 'story_sending_%' OR state='story_synthesizing')) LIMIT 1`).get())
+      WHERE workspace_session_id=? AND
+        (state IN ('queued','planning_a','ready_a','sending_a','ready_b','planning_b',
+        'ready_final','sending_b','planning_final','story_ready_synthesis') OR
+        (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%' OR
+        state LIKE 'story_planning_%' OR state LIKE 'story_sending_%' OR state='story_synthesizing')))
+      LIMIT 1`).get(context.workspaceSessionId))
       throw Error('autonomous_mission_already_running');
     const id='autonomous_'+randomUUID(),now=this.store.now();
     this.db.prepare(`INSERT INTO lab_autonomous_dialogues
@@ -122,6 +126,16 @@ export class AutonomousDialogue {
     // lifetime tick also resumes queued/ready (never indeterminate) stages.
     queueMicrotask(()=>{void this.tick(context).catch(()=>{});});
     return this.summary(this.get(id));
+  }
+  assertMissionSession(context,row) {
+    const session=this.store.getWorkspaceSession();
+    // Also recheck after every asynchronous coordinator/provider response:
+    // an old workspace can retain durable evidence, not execution authority.
+    if(!context||session?.status!=='active'||session.id!==row.workspace_session_id||
+      context.workspaceSessionId!==row.workspace_session_id||
+      context.actorId!==row.actor_id||context.clientId!==row.client_id)
+      throw Error('autonomous_owner_changed');
+    this.service.requireAccess(context,'autonomous_dialogue_start',row.project_id);
   }
   move(id,expected,next,patch={}) {
     const allowed=new Set(['question_a','question_b','question_final','task_a_id','task_b_id','last_error']);
@@ -182,14 +196,18 @@ export class AutonomousDialogue {
     }
   }
   async step(context) {
+    const session=this.store.getWorkspaceSession();
+    if(!context||session?.status!=='active'||session.id!==context.workspaceSessionId)
+      return {state:'blocked_workspace'};
+    // Historical queued missions are retained, but never select or starve
+    // a current mission. The same applies to a different owner/client.
     const row=this.db.prepare(`SELECT * FROM lab_autonomous_dialogues
-      WHERE state IN ('queued','ready_a','ready_b','ready_final','story_ready_synthesis')
-        OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%'))
-      ORDER BY created_at,id LIMIT 1`).get();
+      WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND
+        (state IN ('queued','ready_a','ready_b','ready_final','story_ready_synthesis')
+        OR (mode='story' AND (state LIKE 'story_queued_%' OR state LIKE 'story_ready_%')))
+      ORDER BY created_at,id LIMIT 1`).get(context.workspaceSessionId,context.actorId,context.clientId);
     if(!row)return {state:'idle'};
-    this.service.requireAccess(context,'autonomous_dialogue_start',row.project_id);
-    if(context.actorId!==row.actor_id||context.clientId!==row.client_id||
-       context.workspaceSessionId!==row.workspace_session_id)throw Error('autonomous_owner_changed');
+    this.assertMissionSession(context,row);
     if(this.service.orchestrator(row.project_id,row.orchestrator_id).status!=='ready')return {state:'paused'};
     if(this.service.coordinator.available?.(row.project_id,row.orchestrator_id)!==true)
       return {state:'blocked_coordinator'};
@@ -204,6 +222,7 @@ export class AutonomousDialogue {
       if(row.state==='queued') {
         working='planning_a';this.move(row.id,'queued',working);
         const p=await this.plan(row,'a');
+        this.assertMissionSession(context,row);
         this.db.exec('SAVEPOINT autonomous_work_creation');
         try {
           const task=this.service.mutate('work_create',{projectId:row.project_id,
@@ -217,10 +236,13 @@ export class AutonomousDialogue {
         }
       } else if(row.state==='ready_a') {
         working='sending_a';this.move(row.id,'ready_a',working);
-        await this.send(row,'a',context);this.move(row.id,working,'ready_b');
+        await this.send(row,'a',context);
+        this.assertMissionSession(context,row);
+        this.move(row.id,working,'ready_b');
       } else if(row.state==='ready_b') {
         working='planning_b';this.move(row.id,'ready_b',working);
         const p=await this.plan(row,'b');
+        this.assertMissionSession(context,row);
         this.db.exec('SAVEPOINT autonomous_work_creation');
         try {
           const task=this.service.mutate('work_create',{projectId:row.project_id,
@@ -235,9 +257,11 @@ export class AutonomousDialogue {
       } else if(row.state==='ready_final') {
         working='sending_b';this.move(row.id,'ready_final',working);
         await this.send(row,'b',context);
+        this.assertMissionSession(context,row);
         this.move(row.id,working,'planning_final');
         working='planning_final';
         const p=await this.plan(this.get(row.id),'final');
+        this.assertMissionSession(context,row);
         this.move(row.id,working,'succeeded',{question_final:p.content});
       }
       return {state:'advanced',missionId:row.id};
@@ -254,6 +278,9 @@ export class AutonomousDialogue {
     }
   }
   async tick(context){
+    const session=this.store.getWorkspaceSession();
+    if(!context||session?.status!=='active'||session.id!==context.workspaceSessionId)
+      return {state:'blocked_workspace'};
     if(this.inFlight)return {state:'busy'};
     this.inFlight=true;
     try {
