@@ -388,6 +388,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .nav-add{width:27px;height:27px;border:1px solid #263241;border-radius:8px;background:var(--panel-2);color:#9aa9ba;font-size:18px;line-height:1;cursor:pointer}
 .nav-add:hover{background:var(--border-soft);color:#fff;border-color:#37485b}
 .nav-add:disabled{opacity:.35;cursor:not-allowed}
+.legacy-project-access{margin:2px 4px 7px;border:1px solid var(--border-soft);border-radius:9px;background:var(--panel-2)}
+.legacy-project-access[hidden]{display:none}
+.legacy-project-access>summary{padding:9px 10px;color:var(--muted);font-size:11px;font-weight:650;cursor:pointer}
+.legacy-project-access[open]>summary{border-bottom:1px solid var(--border-soft)}
+.legacy-project-access .nav-item-list{padding:4px}
 .nav-item-list{display:grid;gap:3px}
 .nav-item{width:100%;min-width:0;display:flex;align-items:center;gap:10px;border:1px solid transparent;border-radius:9px;padding:9px 10px;background:transparent;color:var(--muted);text-align:left;font-size:12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-item::before{content:"▱";display:grid;place-items:center;width:18px;flex:none;color:#738399;font-size:15px}
@@ -544,7 +549,7 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
   body.orchestrator-focus .work-rail-close{display:grid;place-items:center}
 }
 @media(max-width:820px){
-  body.orchestrator-focus .project-identity{display:none}
+  body.orchestrator-focus .project-identity,body.orchestrator-focus .legacy-project-access{display:none}
   body.orchestrator-focus .app-shell{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:62px minmax(0,1fr)}
   body.orchestrator-focus .left-rail{position:relative;grid-column:1;grid-row:1;display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:8px;width:auto;min-height:62px;padding:7px 10px;border-right:0;border-bottom:1px solid var(--border-soft);overflow:visible;z-index:20}
   body.orchestrator-focus .brand-row{grid-column:1;grid-row:1;justify-content:center;padding:0}
