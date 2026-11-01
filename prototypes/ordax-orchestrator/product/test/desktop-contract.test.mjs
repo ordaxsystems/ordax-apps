@@ -234,6 +234,33 @@ test('single-project direction leads the desktop navigation without implying aut
   assert.doesNotMatch(html,/id="startProjectAutonomous"/);
 });
 
+test('compact administrator navigation retains both accessible selectors and theme SSOT',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const rule=name=>{
+    const start=css.indexOf(name);
+    assert.ok(start>=0,'missing CSS selector '+name);
+    return css.slice(start,css.indexOf('}',start)+1);
+  };
+  assert.equal((css.match(/:root\{/g)||[]).length,1,'one visual token root');
+  assert.match(html,/id="projectSelect"[^>]*aria-label="Selecionar projeto ativo"/);
+  assert.match(html,/id="orchestratorSelect"[^>]*aria-label="Selecionar administrador do projeto"/);
+  assert.match(html,/id="coordinatorApiSettings"[^>]*aria-label="Configurar modelo do Administrador Geral"/);
+  assert.match(css,/body\.orchestrator-focus \.app-shell\{grid-template-rows:98px minmax\(0,1fr\)\}/);
+  assert.match(css,/body\.orchestrator-focus \.orchestration-navigation\{grid-column:1\/-1;grid-row:2;/);
+  assert.match(css,/body\.orchestrator-focus \.left-footer\{grid-column:2;grid-row:1\}/);
+  assert.match(css,/body\.orchestrator-focus \.coordinator-head-actions button\{width:36px!important;height:36px!important\}/);
+  assert.match(css,/body\.orchestrator-focus \.coordinator-title p\{max-width:42vw;font-size:var\(--type-caption\)/);
+  assert.match(css,/body\.orchestrator-focus \.orchestration-connection\{white-space:normal;overflow:visible/);
+  assert.match(rule('.work-state.running{'),/border-color:var\(--border-strong\)/);
+  assert.match(rule('.work-state.completed{'),/color:var\(--green\)/);
+  assert.match(rule('.work-state.attention{'),/color:var\(--amber\)/);
+  assert.match(rule('.work-card-copy small{'),/font-size:var\(--type-caption\)/);
+  assert.match(rule('.workspace-mode:hover:not(:disabled){'),/background:var\(--panel-3\)/);
+  assert.match(rule('.nav-setup input,.nav-setup textarea{'),/background:var\(--panel-2\)/);
+  assert.match(rule('.composer .send-button{'),/background:var\(--accent\)/);
+});
+
 test('operational overview reuses work state and never presents an experimental flow as autonomous execution',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
