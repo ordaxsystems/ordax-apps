@@ -1,10 +1,10 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Continuidade Windows na mesma instância — alpha.21 (em validação)
+## Continuidade Windows na mesma instância — alpha.21 (integrada à main)
 
 A versão alpha.21 acrescenta **modo opcional de segundo plano no Windows**. Em Configurações do Orquestrador, ative “Continuar em segundo plano ao fechar a janela”: o botão de fechar oculta a janela, mantém o **mesmo processo Electron**, a conexão à Groq, o WebView GPT, o SQLite e os ticks existentes, e oferece ações “Abrir” e “Sair” no ícone da bandeja. A preferência é do workspace e só é aceita se o Windows puder criar um ícone de bandeja. O início com a sessão Windows pode ser configurado com o **mesmo EXE**, sem serviço, outro perfil ou instalador. O Host Node e os perfis isolados de E2E não ativam esse modo.
 
-Isso **não** certifica execução durante desligamento, logoff, ausência de conexão/energia ou garantia 24h; também não ignora as aprovações e recibos necessários para enviar ao GPT Web. Fechar completamente pelo ícone encerra o processo e marca Runs ativos como interrompidos, preservando a recuperação existente. Versão alpha.21 só deve chegar à instalação operacional única após testes, CI e validação do artefato canônico da `main`.
+Isso **não** certifica execução durante desligamento, logoff, ausência de conexão/energia ou garantia 24h; também não ignora as aprovações e recibos necessários para enviar ao GPT Web. Fechar completamente pelo ícone encerra o processo e marca Runs ativos como interrompidos, preservando a recuperação existente. A `alpha.21` já foi integrada e aprovada em CI; a instalação física só deve ser atualizada pelo artefato canônico da `main`, com `sourceCommit`, hashes e prova de funcionamento. Na `alpha.22`, uma segunda abertura também restaura uma janela antes destruída, sem criar outro processo ou perfil.
 
 
 > **Leia primeiro:** [Arquitetura Project-First](docs/PROJECT-FIRST-ARCHITECTURE.md) ·
@@ -14,7 +14,7 @@ Isso **não** certifica execução durante desligamento, logoff, ausência de co
 
 **Direção oficial aprovada:** o objeto central é um projeto com missão, pasta/repositório local autorizado, plano, diffs, testes e evidências. ChatGPT e outros modelos são inteligências/executores opcionais. O App e o plugin OrdaX MCP devem consumir o mesmo Runtime e grants canônicos; não criar segunda camada de arquivos/Git/terminal dentro do Lab.
 
-**Versão em desenvolvimento — 31/10/2026:** `0.2.0-alpha.20`, no mesmo owner `ordaxsystems/ordax-apps`. O usuário conversa com o **Orquestrador via Groq** no aplicativo Electron; envios às **conversas de execução GPT Web** são operação diferente e só ocorrem na frente de trabalho selecionada. Criar missão registra projeto, orquestrador e rascunho sem enviar ao GPT. O executável `alpha.19` é o anterior; somente promover `alpha.20` após CI Windows, hash, recibo e teste físico no caminho canônico único. Não existem novas filas, perfis oficiais paralelos ou Runtime alternativo. Gates de Runtime/Platform, W3 GPT real e continuidade headless permanecem independentes.
+**Estado de referência — 01/11/2026:** a `main` alcançou `44b3f9b2` com a `alpha.21` integrada e cinco checks aprovados. A correção posterior de restauração da janela compõe `alpha.22` no manifesto; a integração deve ser conferida no GitHub antes de sua promoção. A última instalação física atestada no `DESKTOP-PNUHUA0` permanece `alpha.20`; não inferir atualização do Windows por alterações de código. O usuário conversa com o **Orquestrador via Groq**; envios ao **GPT Web** exigem comando separado da frente. Criar missão persiste apenas projeto e rascunho. Não existem filas, perfis oficiais paralelos ou Runtime alternativo. W3 GPT real, Runtime/Platform e operação 24h continuam gates independentes.
 
 ## Como conversar — duas áreas sem redirecionamento
 
