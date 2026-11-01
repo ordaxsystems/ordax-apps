@@ -307,30 +307,19 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const counts={running:0,completed:0,attention:0,ready:0};
     for(const work of works)counts[workClass(work)]++;
     renderProjectPulse(counts,works.length);
-    const overview=document.createElement('section');overview.className='work-overview';
-    overview.setAttribute('aria-label','Resumo das frentes observadas');
-    for(const [key,label] of [['running','Em andamento'],['completed','Concluídas'],['attention','Revisar'],['ready','Aguardando']]){
-      const stat=document.createElement('div');stat.className='work-overview-stat';
-      const value=document.createElement('strong');value.textContent=String(counts[key]);
-      const name=document.createElement('span');name.textContent=label;
-      stat.append(value,name);overview.append(stat);
-    }
     const attention=works.filter(work=>workClass(work)==='attention');
     if(attention.length){
       const summary=document.createElement('div');
       summary.className='work-attention-summary';
       summary.setAttribute('role','status');
       const label=document.createElement('strong');
-      label.textContent=attention.length+' frente(s) precisam de revisão';
+      label.textContent='Há frentes que precisam de revisão';
       const description=document.createElement('span');
       description.textContent='Abra a conversa para conferir a última execução e seus recibos antes de continuar.';
       summary.append(label,description);list.append(summary);
     }
-    const note=document.createElement('p');note.className='work-overview-note';
-    note.textContent='Estado das conversas; execução paralela automática ainda não habilitada.';
-    overview.append(note);list.append(overview);
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
-    const ordered=[...works].sort((a,b)=>{const priority={failed:0,error:0,interrupted:0,running:1,ready:2,paused:3,completed:4};return (priority[a.status]??5)-(priority[b.status]??5);});
+    const ordered=[...works].sort((a,b)=>{const priority={attention:0,running:1,ready:2,completed:4};return (priority[workClass(a)]??5)-(priority[workClass(b)]??5);});
     for(const work of ordered){
       const [label,state]=work.execution?.observed==='reconciliation_required'?['Resultado incerto','attention']:
         work.execution?.observed==='review_required'?['Revisar recibo','attention']:
@@ -512,19 +501,39 @@ const runState=document.createElement('small');
   $('newScopedWorkButton').addEventListener('click',()=>{
     $('newScopedWorkDetails').open=true;$('scopedWorkTitle').focus();
   });
+  let workRailReturnFocus=$('coordinatorRailToggle');
   const setWorkRailOpen=open=>{
     if(open)void onSelectRightPane?.('context').catch(()=>{});
     document.body.classList.toggle('orchestrator-rail-open',open);
     $('contextRail').classList.toggle('open',open);
     $('coordinatorRailToggle').setAttribute('aria-expanded',String(open));
   };
+  const openFilteredWorks=(filter,trigger)=>{
+    if(!projectId||!orchestratorId)return;
+    workRailReturnFocus=trigger;
+    // A summary counter refers to ALL matching work; clear any stale search.
+    $('workSearch').value='';
+    $('workStatusFilter').value=filter;
+    applyWorkFilters();
+    setWorkRailOpen(true);
+    $('workSearch').focus();
+  };
   $('coordinatorRailToggle').addEventListener('click',()=>{
+    workRailReturnFocus=$('coordinatorRailToggle');
     setWorkRailOpen(!$('contextRail').classList.contains('open'));
   });
-  $('openProjectWork').addEventListener('click',()=>setWorkRailOpen(true));
+  $('openProjectWork').addEventListener('click',()=>{
+    openFilteredWorks('all',$('openProjectWork'));
+  });
+  $('projectPulseStats').addEventListener('click',event=>{
+    const button=event.target.closest('button[data-work-filter]');
+    if(!button||!event.currentTarget.contains(button))return;
+    openFilteredWorks(button.dataset.workFilter,button);
+  });
   $('closeWorkRail').addEventListener('click',()=>{
     setWorkRailOpen(false);
-    $('coordinatorRailToggle').focus();
+    if(workRailReturnFocus?.isConnected)workRailReturnFocus.focus();
+    else $('coordinatorRailToggle').focus();
   });
   $('dependencyTarget').addEventListener('change',()=>{
     dependencySelectionDirty=false;
