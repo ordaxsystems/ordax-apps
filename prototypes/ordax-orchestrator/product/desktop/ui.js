@@ -20,6 +20,10 @@ function setWorkspaceRoute(route) {
     const button=document.getElementById(id);
     button?.setAttribute('aria-pressed',String(route===value));
   }
+  // A GPT task is a destination; the coordinator's work-list panel is a
+  // different navigation state, and must not remain marked expanded.
+  if(route!=='coordinator')
+    document.getElementById('openWorks')?.setAttribute('aria-expanded','false');
 }
 // Initialize this control before any startup await can restore a Task and call
 // showSupervisorRole().
