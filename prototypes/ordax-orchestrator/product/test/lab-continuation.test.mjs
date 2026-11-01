@@ -319,3 +319,49 @@ test('proposals from an old workspace cannot be planned or counted in the new wo
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_next_proposals WHERE review_run_id=?').get(runId).n,1);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+test('workspace cutover during an in-flight Groq analysis cannot certify a stale review',async t=>{
+  let started,finishSend;
+  const entered=new Promise(resolve=>{started=resolve;});
+  const gate=new Promise(resolve=>{finishSend=resolve;});
+  const f=setup(t,{available:()=>true,send:async()=>{
+    started();await gate;return {content:'Resposta tardia'};
+  }});
+  const old=await prepare(f);
+  await f.call('continuity_set',{projectId:old.projectId,orchestratorId:old.orchestratorId,enabled:true});
+  const runId=finish(f.store,old.taskId);
+  const pending=f.service.continuation.tick(f.context);
+  await entered;
+  rotateActiveWorkspace(f.store,f.context.workspaceSessionId);
+  finishSend();
+  assert.equal((await pending).state,'reconciliation_required');
+  const record=f.store.db.prepare('SELECT state,reason FROM lab_continuation_reviews WHERE run_id=?').get(runId);
+  assert.equal(record.state,'reconciliation_required');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('workspace cutover during a pending Groq proposal cannot certify stale planning',async t=>{
+  let entered,release;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const f=setup(t,{available:()=>true,send:async input=>{
+    if(input.prepareWork) {
+      entered();await gate;
+      return {content:'Proposta tardia',proposal:{title:'Revisão',content:'Não enviar',reason:'Conferir'}};
+    }
+    return {content:'Análise concluída'};
+  }});
+  const old=await prepare(f);
+  await f.call('continuity_set',{projectId:old.projectId,orchestratorId:old.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:old.projectId,orchestratorId:old.orchestratorId,enabled:true});
+  const runId=finish(f.store,old.taskId);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+  const pending=f.service.continuation.tick(f.context);
+  await started;
+  rotateActiveWorkspace(f.store,f.context.workspaceSessionId);
+  release();
+  assert.equal((await pending).state,'reconciliation_required');
+  const record=f.store.db.prepare('SELECT status FROM lab_next_proposals WHERE review_run_id=?').get(runId);
+  assert.equal(record.status,'reconciliation_required');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
