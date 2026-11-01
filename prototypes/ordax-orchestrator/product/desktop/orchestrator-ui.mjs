@@ -282,7 +282,6 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const waiting=new Set(plan?.waiting||[]);
     const blocked=new Set(plan?.blocked||[]);
     const labels={running:['Em andamento','running'],completed:['Concluída','completed'],failed:['Revisar','attention'],error:['Revisar','attention'],interrupted:['Revisar','attention'],paused:['Pausada','paused'],ready:['Pronta','ready']};
-    $('workRailCount').textContent=String(works.length);
     $('workRailProject').textContent=$('projectSelect').selectedOptions[0]?.textContent||'';
     const planStatus=$('workPlanSummary');
     if(plan?.automaticDispatchAllowed===false){
@@ -321,9 +320,11 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
     const ordered=[...works].sort((a,b)=>{const priority={attention:0,running:1,ready:2,completed:4};return (priority[workClass(a)]??5)-(priority[workClass(b)]??5);});
     for(const work of ordered){
-      const [label,state]=work.execution?.observed==='reconciliation_required'?['Resultado incerto','attention']:
-        work.execution?.observed==='review_required'?['Revisar recibo','attention']:
-        work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);
+      const state=workClass(work);
+      const label=work.execution?.observed==='reconciliation_required'?'Resultado incerto':
+        work.execution?.observed==='review_required'?'Revisar recibo':
+        (labels[work.status]||labels.ready)[0];
+      // A Host capability gap is not a failure of this work item.
       const button=document.createElement('button');
       button.type='button';button.className='work-card';button.dataset.taskId=work.id;
       const copy=document.createElement('span');copy.className='work-card-copy';
@@ -331,21 +332,29 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const detail=document.createElement('small');detail.textContent=work.provider_segments
         ?`${work.provider_segments} conversa${work.provider_segments===1?'':'s'} no histórico`
         :nodeHost?'Rascunho local • envio ao GPT indisponível neste host':'Conversa pronta para iniciar';
-const runState=document.createElement('small');
+      const evidence=document.createElement('span');evidence.className='work-evidence-stack';
+      const runState=document.createElement('small');
       const states={running:'Run ativo',succeeded:'Último Run confirmado',failed:'Último Run falhou',cancelled:'Último Run cancelado',interrupted:'Run interrompido'};
-      runState.textContent=work.execution?.observed==='reconciliation_required'?'Execução incerta · verificar recibos':work.execution?.observed==='review_required'?'Execução requer revisão':work.execution?.observed==='running'?'Run em andamento':work.execution?.observed==='last_run_succeeded'?'Último Run confirmado':work.running_runs>0?'Run em andamento':states[work.latest_run_status]||'Sem Run confirmado';
+      const observed=work.execution?.observed==='reconciliation_required'?'Execução incerta · verificar recibos':
+        work.execution?.observed==='review_required'?'Execução requer revisão':
+        work.execution?.observed==='running'?'Run em andamento':
+        work.execution?.observed==='last_run_succeeded'?'Último Run confirmado':
+        work.running_runs>0?'Run em andamento':states[work.latest_run_status]||'Sem Run confirmado';
+      runState.textContent='Execução · '+observed;
       runState.className='work-run-evidence';
+      evidence.append(runState);
       if(Array.isArray(work.dependsOn)&&work.dependsOn.length){
         const dependencies=document.createElement('small');
         dependencies.className='work-run-evidence';
-        dependencies.textContent=work.dependsOn.length+' dependência(s) registrada(s)';
-        copy.append(title,detail,runState,dependencies);
-      }else copy.append(title,detail,runState);
+        dependencies.textContent='Dependências · '+work.dependsOn.length+' registrada(s)';
+        evidence.append(dependencies);
+      }
+      copy.append(title,detail,evidence);
       const planned=planWorkers.get(work.id);
       if(planned){
         const label=document.createElement('small');
         label.className='work-plan-item';
-        label.textContent=blocked.has(work.id)?'Dependência bloqueada · revisar':
+        label.textContent='Plano · '+(blocked.has(work.id)?'Dependência bloqueada · revisar':
           waiting.has(work.id)?'Aguardando pré-requisitos':
           candidates.has(work.id)?'Candidata à próxima ação · requer autorização':
           planned.state==='uncertain'?'Entrega incerta · reconciliar':
@@ -353,7 +362,7 @@ const runState=document.createElement('small');
           planned.state==='running'?'Ação em andamento':
           planned.state==='succeeded'?'Último Run concluído; qualidade não certificada':
           planned.state==='pending'?'Aguardando capacidade ou autorização':
-          'Estado não liberado';
+          'Estado não liberado');
         copy.append(label);
       }
       const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
