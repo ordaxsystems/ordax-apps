@@ -46,9 +46,16 @@ test('a second launch restores the Electron window if the profile owner lost it'
   const end=main.indexOf('\n  });',start);
   assert.ok(start>=0&&end>start,'single-instance recovery handler is registered');
   const handler=main.slice(start,end);
-  assert.match(handler,/if \(!win \|\| win\.isDestroyed\(\)\)/);
-  assert.match(handler,/createWindow\(\)\.catch/);
-  assert.doesNotMatch(handler,/if \(!win\) return/);
+  assert.match(handler,/showCanonicalWindow\(\)/);
+  assert.doesNotMatch(handler,/createWindow\(/,
+    'second-instance must use the same visible recovery path as the tray');
+  const canonical=main.slice(
+    main.indexOf('function showCanonicalWindow()'),
+    main.indexOf('const canonicalLoginItem=')
+  );
+  assert.match(canonical,/if\(!win\|\|win\.isDestroyed\(\)\)/);
+  assert.match(canonical,/createWindow\(\)\.then\(window=>\{window\.show\(\);window\.focus\(\);\}\)/);
+  assert.match(canonical,/win\.show\(\);win\.focus\(\)/);
 });
 
 test('concurrent startup, activation and second-instance events share one window creation',()=>{
