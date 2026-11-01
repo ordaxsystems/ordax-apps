@@ -32,7 +32,16 @@ export class LabNextProposal {
       start_review_rowid=CASE WHEN excluded.enabled=1 AND lab_next_proposal_policy.enabled=0
         THEN excluded.start_review_rowid ELSE lab_next_proposal_policy.start_review_rowid END`)
       .run(orchestratorId,projectId,enabled?1:0,baseline);
+    if(!enabled)this.quarantineInFlight(projectId,orchestratorId,'proposal_policy_disabled');
     return this.status(projectId,orchestratorId);
+  }
+  quarantineInFlight(projectId,orchestratorId,reason) {
+    if(!['policy_disabled','proposal_policy_disabled','orchestrator_paused'].includes(reason))
+      throw Error('continuation_invalid_interruption');
+    this.db.prepare(`UPDATE lab_next_proposals
+      SET status='reconciliation_required',reason=?,updated_at=?
+      WHERE project_id=? AND orchestrator_id=? AND status='planning'`)
+      .run(reason,this.store.now(),projectId,orchestratorId);
   }
   status(projectId,orchestratorId) {
     const policy=this.db.prepare('SELECT enabled,start_review_rowid FROM lab_next_proposal_policy WHERE project_id=? AND orchestrator_id=?')
@@ -89,12 +98,17 @@ export class LabNextProposal {
       const current=this.store.getWorkspaceSession();
       const sameWorkspace=current?.status==='active'&&current.id===session.id;
       const ok=sameWorkspace&&receipt?.status==='succeeded'&&typeof receipt?.result?.proposalActionId==='string';
-      this.db.prepare('UPDATE lab_next_proposals SET status=?,command_id=?,reason=?,updated_at=? WHERE review_run_id=?')
+      const finalized=this.db.prepare(`UPDATE lab_next_proposals
+        SET status=?,command_id=?,reason=?,updated_at=?
+        WHERE review_run_id=? AND status='planning'`)
         .run(ok?'proposed':'reconciliation_required',receipt?.commandId||null,
-          ok?null:sameWorkspace?'proposal_unconfirmed':'workspace_changed',this.store.now(),row.run_id);
-      return {state:ok?'proposed':'reconciliation_required',runId:row.run_id};
+          ok?null:sameWorkspace?'proposal_unconfirmed':'workspace_changed',this.store.now(),row.run_id).changes;
+      // A durable stop can arrive while Groq is in flight; never certify it.
+      return {state:ok&&finalized===1?'proposed':'reconciliation_required',runId:row.run_id};
     }catch{
-      this.db.prepare("UPDATE lab_next_proposals SET status='reconciliation_required',reason='proposal_unconfirmed',updated_at=? WHERE review_run_id=?")
+      this.db.prepare(`UPDATE lab_next_proposals
+        SET status='reconciliation_required',reason='proposal_unconfirmed',updated_at=?
+        WHERE review_run_id=? AND status='planning'`)
         .run(this.store.now(),row.run_id);
       return {state:'reconciliation_required',runId:row.run_id};
     }
