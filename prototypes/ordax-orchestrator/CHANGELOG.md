@@ -1,14 +1,22 @@
-## 0.2.0-alpha.20 — ambientes Orquestrador/Groq e GPT separados (31/10/2026)
+## 0.2.0-alpha.22 — restauração da janela canônica no Windows (01/11/2026)
 
-## 0.2.0-alpha.21 — residência Windows opcional, sem segunda instalação (candidato)
+- Ao abrir uma segunda vez com a primeira janela destruída, reutiliza `showCanonicalWindow()`, com `show()` e `focus()` após recriação. Elimina o caminho duplicado que podia deixar o aplicativo oculto depois de um autostart em background e falha de janela.
+- O erro de recuperação da janela é registrado no log sanitizado de inicialização. Teste de contrato acrescentado à suíte existente de residência, sem nova fonte de verdade, serviço ou perfil.
+- A entrega Windows segue condicionada à revisão exata, CI e verificação física; W3 e continuidade real prolongada permanecem pendentes.
+
+---
+
+## 0.2.0-alpha.21 — residência Windows opcional, sem segunda instalação (31/10/2026)
 
 - Modo explicitamente opt-in de manter a **instância existente** em segundo plano quando a janela é fechada; bandeja Windows com ações de reabrir e sair.
 - Mesmo SQLite, mesmo executor GPT e mesmo coordenador Groq. Nenhum serviço alternativo ou autorização automática para novos envios; aprovação/fail-closed continuam obrigatórios.
 - Início na sessão Windows usando a mesma instalação e sem autoativação em perfis isolados E2E ou no Host Node.
 - Política e testes de estado formalizam que o modo não equivale a operação garantida 24h após logoff, desligamento ou queda de energia.
-- A integração, build e teste físico Windows desta versão ainda são gates e não devem ser inferidos deste changelog.
+- A PR #376 foi integrada em `44b3f9b2`, com cinco checks positivos no commit de `main`; a instalação física da alpha.21 continua não atestada.
 
 ---
+
+## 0.2.0-alpha.20 — ambientes Orquestrador/Groq e GPT separados (31/10/2026)
 
 - Corrige a causa raiz: `orchestrator_chat` passa a usar o coordenador configurado (Groq no Windows), em vez do executor ChatGPT Web. `work_send` e `proposal_send` continuam exclusivos das frentes GPT.
 - Reestrutura a navegação em duas áreas com destino explícito, marca visual de rota e botões “Enviar à Groq” e “Enviar ao GPT”. A tela Groq apresenta frentes do projeto na lateral, não um navegador GPT como entrada principal.
