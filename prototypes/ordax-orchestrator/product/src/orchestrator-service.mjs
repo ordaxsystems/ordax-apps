@@ -282,6 +282,17 @@ export class OrchestratorService {
   }
 
   async bindWorkspace(context,input) {
+    // Replaying a durable requestId reads its canonical receipt. A historical
+    // binding is NOT a current grant: every new bind and every snapshot still
+    // revalidates the Runtime authority independently.
+    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts WHERE workspace_session_id=?
+      AND actor_id=? AND client_id=? AND request_id=?`)
+      .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+    if(existing)return this.transaction(()=>{
+      const reserved=this.reserve(context,'workspace_bind',input);
+      if(!reserved.existing)throw Error('orchestrator_command_state_conflict');
+      return reserved.existing;
+    });
     await this.workspace.authorizeBinding(context,input,()=>this.requireAccess(context,'workspace_bind',input.projectId));
     return this.transaction(()=>{
       this.requireAccess(context,'workspace_bind',input.projectId);

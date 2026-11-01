@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.29",
+  "version": "0.2.0-alpha.30",
   "channel": "alpha",
-  "name": "Recibos corrompidos isolados por projeto",
+  "name": "Snapshot Runtime revalidado após leitura",
   "distributionEnabled": false,
   "releaseDate": null
 }

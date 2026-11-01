@@ -1,3 +1,14 @@
+## Continuidade remota 01/11/2026 — revalidação do grant Runtime após snapshot alpha.30 (candidata)
+
+- **Base:** `ordax-apps/main@832eb3d15d20feab0cf44b59b8a6f238eb870094`; PR #384 (alpha.29) integrada, postmerge 5/5 gates aprovados, zero PRs e branches Orchestrator.
+- **Falha identificada:** `ProjectWorkspace.snapshot()` confirmava o grant antes de aguardar `Runtime.snapshot()`, mas apenas repetia a autorização local depois da consulta. Uma revogação remota durante o `await` podia produzir metadados conectados sob um grant já revogado.
+- **Correção:** checa autorização local logo após a primeira prova, antes de consultar o Runtime; checa a autorização local após o snapshot; solicita **nova prova Runtime para o mesmo device/resource/projeto/ator/cliente/sessão**, e repete a verificação local antes de retornar. Nenhuma autorização é inferida pelo snapshot nem por input do modelo/UI; sem persistência, fila, duplicação ou provider novo.
+- **Testes:** leitura remota que termina após grant revogado; local access revogado antes de iniciar snapshot; local access revogado enquanto segunda prova aguarda; controle de sucesso com três verificações Runtime; `PRAGMA quick_check`.
+- **Diagnóstico CI e correção adicional na mesma PR:** o teste inicial identificou quatro verificações em vez de três por causa da chamada de vinculação duplicada com o mesmo `requestId`; `bindWorkspace` revalidava o grant antes de consultar o recibo. A repetição idempotente agora consulta apenas o receipt da mesma Store com checagem de hash/autorização, sem contato redundante com o Runtime. Novas vinculações/snapshots seguem exigindo grant atual; teste explícito de conflito, revogação e não aquisição de autoridade.
+- **Validação/integração:** cinco gates (inclui Windows CI) em HEAD exato antes do squash merge e branch removida. Não confundir com E2E Windows físico; PC do usuário permanece intocado.
+
+---
+
 ## Continuidade remota 01/11/2026 — consultas seguras de recibos alpha.29 (candidata)
 
 - **Base:** `ordax-apps/main@d6032b3e6a4cbb8c8f341a2821de9472b84d52b6`. Alpha.28 PR #383 integrada, pós-merge 5/5 checks aprovados, zero PRs e branches Orchestrator.
