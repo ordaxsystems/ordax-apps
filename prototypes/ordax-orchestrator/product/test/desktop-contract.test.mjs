@@ -221,6 +221,8 @@ test('single-project direction leads the desktop navigation without implying aut
     'the administrator must appear before legacy project selectors');
   assert.match(html,/Administrador Geral/);
   assert.match(html,/Execuções GPT/);
+  assert.match(html,/<details id="legacyProjectAccess"[^>]*hidden>/);
+  assert.match(orchestration,/legacyProjectAccess'\)\.hidden=projects\.length<=1/);
   assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
   assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
   assert.match(orchestration,/ADMINISTRAÇÃO ·/);
