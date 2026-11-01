@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — navegação assíncrona do Orchestrator alpha.27 (candidata)
+
+- **Base:** `ordax-apps/main@54c839e2277db7605d72cd9a25c97a5eb45d1be1`; alpha.26 integrada na PR #381, cinco checks verdes no HEAD, branch limpa. A certificação Windows física é uma frente independente, fora do escopo desta etapa.
+- **Causa-raiz na UI:** `refreshOrchestrators()` atribuía à variável global `orchestrators` o resultado de `await orchestrators_list` **antes** de verificar se o projeto fora trocado. Uma resposta atrasada de A podia sobrescrever o estado de B. `activateCoordinatorDraft()` também fazia `await flushCoordinatorDraft()` sem revalidar a seleção antes de trocar o Task, e a mensagem tinha dois handlers de Enter sobrepostos (um ignorava IME).
+- **Correção:** gerações monotônicas por atualização de projetos/orquestradores; descarte antes de mutar, validador da seleção ao ativar/ler rascunho, rechecagem antes/depois de recarregar frentes e status. Um único handler de teclado IME-safe. Sem novo helper paralelo, transporte, base, provider ou ação.
+- **Testes:** contratos de regressão para ordem do guard, invalidação após awaits, single keyboard handler; CI Linux, Windows e fronteiras no HEAD da PR. Não atribuir esses gates à certificação física.
+- **Execução:** somente GitHub remoto enquanto o PC do usuário está formatado; uma PR/branch com squash e limpeza após 5/5 checks aprovados.
+
+---
+
 ## Continuidade remota 01/11/2026 — isolamento de missões por workspace alpha.26 (candidata)
 
 - **Base:** `ordax-apps/main@9c1d84aabb0f6654c1896456e8c45cbc9bf8d482` (alpha.25); cinco gates pós-merge aprovados incluindo Windows. Nenhuma PR ou branch Orchestrator preexistente.

@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.26",
+  "version": "0.2.0-alpha.27",
   "channel": "alpha",
-  "name": "Missões autônomas isoladas por workspace ativo",
+  "name": "Navegação assíncrona segura entre projetos",
   "distributionEnabled": false,
   "releaseDate": null
 }

@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Missões autônomas restritas ao workspace ativo — alpha.26 (candidata)
+## Navegação protegida de respostas atrasadas — alpha.27 (candidata)
+
+Ao trocar de projeto e orquestrador, cada consulta de listas usa geração de atualização para rejeitar respostas antigas **antes** de modificar seleção ou rascunho. O rascunho só é ativado quando a seleção continua válida, inclusive depois de operações assíncronas no SQLite. A lista de frentes valida o escopo antes e depois da notificação assíncrona. O campo de envio do Groq tem uma única regra de teclado: Enter/Ctrl+Enter enviam, Shift+Enter insere quebra e uma confirmação de IME nunca dispara envio. O serviço Groq, o executor GPT, a Store e os receipts continuam os mesmos; não existe cache, bridge ou provider duplicado.
+
+
+## Missões autônomas restritas ao workspace ativo — alpha.26 (integrada)
 
 A seleção das missões de diálogo e narrativa, inclusive o bloqueio de início de uma nova missão, respeita a sessão de workspace atual no SQLite. Missões históricas permanecem persistidas, mas não bloqueiam nem executam na sessão ativa. Cada resposta assíncrona de planejamento, envio ou síntese é seguida de verificação da autorização e da sessão atual antes de criar tarefas, publicar novas etapas ou certificar resultados. Mudanças de sessão durante uma chamada externa exigem reconciliação; **nunca** reenviar automaticamente. O executor GPT Web, a conexão Groq, os recibos existentes e a única Store permanecem canônicos. Validação Windows de CI não substitui E2E físico no PC do usuário.
 
