@@ -1097,3 +1097,60 @@ test('a late Groq error after pause preserves receipt while another project rema
   assert.equal(groqCalls,2);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+
+test('corrupt proposal payload does not block legitimate pending review or reveal another project',async t=>{
+  let providerSends=0;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>({
+    content:'Proposta para revisão',
+    proposal:{title:'Verificar evidências',content:'Inspecione o resultado sem executar.',reason:'Aceite'}})},
+    provider:{send:async()=>{providerSends++;throw Error('unexpected_gpt_send');}}});
+  const a=await project(f,'Projeto A');
+  const b=await project(f,'Projeto B');
+  const validA=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,
+    content:'Proposta A válida'})).result.proposalActionId;
+  const invalidA=(await f.call('orchestrator_prepare',{projectId:a.p,orchestratorId:a.o,
+    content:'Outra proposta A'})).result.proposalActionId;
+  const validB=(await f.call('orchestrator_prepare',{projectId:b.p,orchestratorId:b.o,
+    content:'Proposta independente B'})).result.proposalActionId;
+  const db=f.store.db;
+  db.prepare('UPDATE action_ledger SET payload=? WHERE id=?').run('{"truncated"',invalidA);
+  const listed=await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o});
+  assert.deepEqual(listed.proposals.map(x=>x.actionId),[validA]);
+  assert.equal((await f.call('proposals_list',{projectId:b.p,orchestratorId:b.o})).proposals[0].actionId,validB);
+  assert.equal(db.prepare('SELECT payload FROM action_ledger WHERE id=?').get(invalidA).payload,'{"truncated"',
+    'evidence must be preserved, not rewritten by a list read');
+  await assert.rejects(f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,
+    actionId:invalidA,approved:true}));
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM lab_task_bindings WHERE kind=?').get('work').n,2);
+  assert.equal(providerSends,0);
+  assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('prepared proposals require canonical approved ledger and ignore corrupted result or shape',async t=>{
+  let providerSends=0;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async()=>({
+    content:'Proposta revisável',proposal:{title:'Nova frente',content:'Revisar evidência',reason:'Aceite'}})},
+    provider:{send:async()=>{providerSends++;throw Error('unexpected_gpt_send');}}});
+  const a=await project(f);
+  const makeProposal=async content=>(await f.call('orchestrator_prepare',{
+    projectId:a.p,orchestratorId:a.o,content})).result.proposalActionId;
+  const good=await makeProposal('Boa proposta');
+  const approved=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId:good,approved:true});
+  assert.equal(approved.status,'succeeded');
+  const malformed=await makeProposal('Corrupt result');
+  const other=await f.call('proposal_review',{projectId:a.p,orchestratorId:a.o,actionId:malformed,approved:true});
+  assert.equal(other.status,'succeeded');
+  const pending=await makeProposal('Pending valid');
+  const db=f.store.db;
+  assert.deepEqual(new Set((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o}))
+    .proposals.map(x=>x.actionId)),new Set([pending,malformed,good]));
+  db.prepare('UPDATE action_ledger SET result=? WHERE id=?').run('{"broken"',malformed);
+  db.prepare("UPDATE approval_ledger SET status='rejected' WHERE action_id=?").run(good);
+  const visible=(await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals;
+  assert.deepEqual(visible.map(x=>x.actionId),[pending]);
+  assert.equal(visible[0].status,'pending');
+  assert.equal(db.prepare('SELECT result FROM action_ledger WHERE id=?').get(malformed).result,'{"broken"');
+  assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  assert.equal(providerSends,0);
+});

@@ -1,5 +1,10 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
+## Propostas recuperáveis e aprovações canônicas — alpha.37
+
+A listagem de propostas não falha por causa de uma ação histórica com JSON inválido e só apresenta propostas cuja aprovação pendente ou concluída está comprovada no `approval_ledger`. Os dados históricos permanecem intactos para investigação; a leitura nunca cria tarefas, aprovações ou envios GPT. O limite de 50 ações por consulta permanece vigente.
+
+
 ## Continuidade independente durante execução GPT Web — alpha.36
 
 O executor GPT Web e a coordenação Groq continuam canais distintos. Se há envio GPT em andamento em um projeto, análises e propostas automáticas desse projeto aguardam; outros projetos podem usar o Groq sem sofrer bloqueio global. O seletor usa o SQLite e os vínculos de projeto já existentes. Nenhuma resposta é considerada entrega verificada sem recibo; não há envio GPT automático nem autonomia 24h certificada.
