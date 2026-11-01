@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.27",
+  "version": "0.2.0-alpha.28",
   "channel": "alpha",
-  "name": "Navegação assíncrona segura entre projetos",
+  "name": "Recuperação validada de recibos e ações",
   "distributionEnabled": false,
   "releaseDate": null
 }

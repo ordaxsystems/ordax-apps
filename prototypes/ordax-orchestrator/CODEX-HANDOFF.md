@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — integridade de recuperação alpha.28 (candidata)
+
+- **Base:** `ordax-apps/main@d449c413fac0de79d42b53ea1700cfe4e4a908ee`, alpha.27 integrada via PR #382 e 5/5 gates verdes no HEAD; post-merge verificado 5/5. PRs/branches do Orchestrator: zero.
+- **Causa-raiz:** `OrchestratorService.recoverInterruptedCommands` confiava nos IDs `taskId`/`sendActionId` de um JSON dentro de um recibo `proposal_send` em estado `running`, invocando `Store.finishAction` mesmo quando a ação pertencia a outro comando, projeto ou já estava terminal. Um resultado JSON inválido podia bloquear a recuperação de todos os comandos.
+- **Correção:** valida ação vinculada à mesma `receipt.id` (via `action_ledger.resource_key`), `task_id`, vínculo `lab_task_bindings.project_id`, `kind=work`, tipo e estado `dispatching` antes de emitir `action.indeterminate`. Recuperação de comando sempre continua para `uncertain`, sem repetir efeito externo. JSON malformado é preservado no SQLite e exposto no receipt incerto apenas como `receipt_result_unreadable` (sem interpretá-lo).
+- **Testes:** integração SQLite exercita cross-project/cross-command forjado, ação já terminal e JSON truncado; testa ausência de eventos falsos, nenhuma repetição, estado de reconciliação e `PRAGMA quick_check`. Os gates do CI são necessários antes do squash.
+- **Ambiente:** somente GitHub remoto; sem acesso ao PC do usuário, sem E2E físico e sem certificação GPT Web.
+
+---
+
 ## Continuidade remota 01/11/2026 — navegação assíncrona do Orchestrator alpha.27 (candidata)
 
 - **Base:** `ordax-apps/main@54c839e2277db7605d72cd9a25c97a5eb45d1be1`; alpha.26 integrada na PR #381, cinco checks verdes no HEAD, branch limpa. A certificação Windows física é uma frente independente, fora do escopo desta etapa.
