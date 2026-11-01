@@ -1,3 +1,12 @@
+## 0.2.0-alpha.32 — continuidade isolada por ativação opt-in (01/11/2026)
+
+- A fila de análise `tick` respeita o mesmo `start_run_rowid` da descoberta de Runs, impedindo execução retroativa de `queued` após desativar e reativar.
+- Contagens, último Run e estado do `continuity_status` se limitam à ativação vigente; histórico anterior permanece auditável no único SQLite.
+- Três testes de integração verificam no-replay de fila antiga, nova análise legítima, recuperação de status após reconciliação anterior e isolamento entre projetos.
+- Nenhuma nova tabela, serviço, worker, fila ou alteração de protocolo Groq/GPT.
+
+---
+
 ## 0.2.0-alpha.31 — política de continuidade revogada durante Groq (01/11/2026)
 
 - Desativação de continuidade, desativação de propostas e pausa do Orchestrator preservam a decisão no SQLite e colocam análises/planejamentos em voo em reconciliação.

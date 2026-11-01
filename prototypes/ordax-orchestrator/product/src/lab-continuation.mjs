@@ -64,14 +64,21 @@ export class LabContinuation {
     this.nextProposal.quarantineInFlight(projectId,orchestratorId,reason);
   }
   status(projectId,orchestratorId) {
-    const policy=this.db.prepare('SELECT enabled FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?')
-      .get(projectId,orchestratorId);
-    const rows=this.db.prepare(`SELECT state,COUNT(*) AS count FROM lab_continuation_reviews
-      WHERE project_id=? AND orchestrator_id=? GROUP BY state`).all(projectId,orchestratorId);
+    const policy=this.db.prepare(`SELECT enabled,start_run_rowid FROM lab_continuation_policies
+      WHERE project_id=? AND orchestrator_id=?`).get(projectId,orchestratorId);
+    // Status is scoped to the current opt-in activation. Historical queued,
+    // analyzed or quarantined reviews remain durable, never active again.
+    const baseline=policy?.start_run_rowid??Number.MAX_SAFE_INTEGER;
+    const rows=this.db.prepare(`SELECT q.state,COUNT(*) AS count
+      FROM lab_continuation_reviews q JOIN runs r ON r.id=q.run_id
+      WHERE q.project_id=? AND q.orchestrator_id=? AND r.rowid>?
+      GROUP BY q.state`).all(projectId,orchestratorId,baseline);
     const counts=Object.fromEntries(rows.map(row=>[row.state,row.count]));
-    const latest=this.db.prepare(`SELECT run_id,state,reason,updated_at FROM lab_continuation_reviews
-      WHERE project_id=? AND orchestrator_id=? ORDER BY updated_at DESC,run_id DESC LIMIT 1`)
-      .get(projectId,orchestratorId)||null;
+    const latest=this.db.prepare(`SELECT q.run_id,q.state,q.reason,q.updated_at
+      FROM lab_continuation_reviews q JOIN runs r ON r.id=q.run_id
+      WHERE q.project_id=? AND q.orchestrator_id=? AND r.rowid>?
+      ORDER BY q.updated_at DESC,q.run_id DESC LIMIT 1`)
+      .get(projectId,orchestratorId,baseline)||null;
     const enabled=policy?.enabled===1;
     return {enabled,mode:'automatic_analysis_and_optional_proposals',automaticGPTSends:false,
       nextProposals:this.nextProposal.status(projectId,orchestratorId),
@@ -120,11 +127,13 @@ export class LabContinuation {
             AND (c.task_id=q.task_id OR
               (c.project_id=q.project_id AND c.unknown_work_target=1))) AS transport_uncertain
         FROM lab_continuation_reviews q
+        JOIN runs r ON r.id=q.run_id
         JOIN lab_continuation_policies p ON p.orchestrator_id=q.orchestrator_id AND p.project_id=q.project_id
         JOIN lab_orchestrators o ON o.id=q.orchestrator_id AND o.project_id=q.project_id
         JOIN lab_projects project ON project.id=q.project_id AND project.workspace_session_id=?
         JOIN tasks t ON t.id=q.task_id AND t.workspace_session_id=?
         WHERE q.state='queued' AND p.enabled=1 AND o.status='ready'
+          AND r.rowid>p.start_run_rowid
         ORDER BY transport_uncertain ASC,q.updated_at,q.run_id LIMIT 1`).get(session.id,session.id);
       if(!row)return await this.nextProposal.tick(context);
       if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};

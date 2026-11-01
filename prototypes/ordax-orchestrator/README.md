@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Desativação e pausa durante continuidade assíncrona — alpha.31 (candidata)
+## Continuidade restrita ao ciclo vigente do opt-in — alpha.32 (candidata)
+
+O marco canônico `lab_continuation_policies.start_run_rowid` já impedia a **descoberta** de Runs anteriores a uma nova ativação, mas a fila de `lab_continuation_reviews` podia preservar uma revisão `queued` de antes da desativação e executá-la após o usuário reativar a política. A seleção `tick` agora usa exatamente o mesmo corte por `runs.rowid > start_run_rowid`; o status `continuity_status` aplica o mesmo limite às contagens e à revisão mais recente. Revisões antigas continuam auditáveis no mesmo SQLite, inclusive as indeterminadas, mas não podem consumir chamadas Groq nem deixar o opt-in recém-ativado permanentemente marcado como pendente/incerto. Testes incluem filas históricas, reconciliação de ciclo antigo, novo Run permitido e projetos independentes. Sem nova tabela, coluna, serviço, fila ou reenvio GPT.
+
+
+## Desativação e pausa durante continuidade assíncrona — alpha.31 (integrada)
 
 O opt-in de continuidade automática não é uma autorização permanente. Se a análise Groq ou a geração opcional de proposta estiver em voo quando o dono **desativar a política** ou **pausar o coordenador**, a linha canônica em `lab_continuation_reviews` / `lab_next_proposals` muda para `reconciliation_required` **dentro da mesma transação de configuração**. Uma resposta atrasada só pode confirmar resultados ainda em `analyzing` ou `planning`; nunca sobrescreve uma decisão de interrupção, inclusive após desativar e reativar rapidamente. Não existe repetição automática de solicitações cuja entrega possa ter ocorrido. Respostas Groq já solicitadas podem permanecer no histórico/propostas pendentes para revisão humana, sem criação automática de novas Tasks ou envio GPT. Sem novas tabelas, filas, providers ou caches.
 
