@@ -49,6 +49,37 @@ test('opt-in analyzes only confirmed runs and never submits a GPT work message',
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_continuation_reviews').get().n,1);
   assert.equal((await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId})).automaticGPTSends,false);
 });
+test('automatic review and proposal wait for an occupied coordinator without quarantining work',async t=>{
+  let sends=0;
+  const f=setup(t,{available:()=>true,send:async ({prepareWork})=>{
+    sends++;
+    return prepareWork?{content:'Proposta confirmada',proposal:{title:'Nova frente',
+      content:'Verificar o próximo passo.',reason:'Resultado observado'}}:{content:'Análise confirmada'};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const runId=finish(f.store,a.taskId);
+  const chat=f.service.orchestrator(a.projectId,a.orchestratorId).chat_task_id;
+  let release;
+  const pending=new Promise(resolve=>{release=resolve;});
+  const held=f.service.withCoordinatorTurn(chat,()=>pending);
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'coordinator_busy'});
+  assert.equal(f.store.db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(runId).state,'queued');
+  assert.equal(sends,0);
+  release();await held;
+  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+  let releaseProposal;
+  const waitProposal=new Promise(resolve=>{releaseProposal=resolve;});
+  const heldProposal=f.service.withCoordinatorTurn(chat,()=>waitProposal);
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'coordinator_busy'});
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_next_proposals').get().n,0);
+  releaseProposal();await heldProposal;
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'proposed',runId});
+  assert.equal(sends,2);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('missing coordinator and pause preserve queued work without model calls',async t=>{
   const f=setup(t,{available:()=>false,send:()=>{throw Error('must not send')}});
   const a=await prepare(f);

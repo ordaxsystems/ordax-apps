@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Entrada única de mensagens ao coordenador — alpha.24 (candidata)
+## Coordenação serial no backend único — alpha.25 (candidata)
+
+A trava da interface alpha.24 não protegia chamadas MCP/API simultâneas. O serviço canônico agora protege o Task do coordenador enquanto uma solicitação Groq está em curso, abrangendo chat, análise, proposta, missões autônomas e narrativa. Um pedido idempotente obtém o mesmo recibo; outro pedido simultâneo ao mesmo Task recebe `orchestrator_coordinator_busy` **antes de enviar**. Outros projetos continuam independentes. Revisões automáticas aguardam sem classificar contenção como entrega incerta. O mesmo SQLite, os mesmos recibos e o provider existente continuam sendo a fonte de verdade; nenhuma fila, worker, transporte ou banco novo.
+
+
+## Entrada única de mensagens ao coordenador — alpha.24 (integrada)
 
 O chat Groq e a preparação de propostas usam **uma única trava por interface** antes de ler/salvar o rascunho. Enquanto a operação está em curso, “Enviar”, “Analisar” e “Preparar frente” permanecem indisponíveis; o formulário só é liberado após a conclusão, inclusive em falhas. A troca de projeto durante a leitura do rascunho cancela o envio antigo. Não altera o executor GPT Web, nem cria um transporte, perfil ou scheduler adicional. Validação remota via GitHub CI é separada de testes físicos e instalação Windows.
 

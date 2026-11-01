@@ -113,6 +113,8 @@ export class LabContinuation {
       if(!row)return await this.nextProposal.tick(context);
       if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};
       if(row.transport_uncertain)return {state:'reconciliation_required'};
+      if(this.service.coordinatorTurnBusy(this.service.orchestrator(row.project_id,row.orchestrator_id).chat_task_id))
+        return {state:'coordinator_busy'};
       if(this.service.provider?.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
         this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
         return {state:'executor_busy'};

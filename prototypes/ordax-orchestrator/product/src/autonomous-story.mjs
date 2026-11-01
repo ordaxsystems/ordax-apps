@@ -46,11 +46,12 @@ export async function planStoryTurn(engine,row,ordinal){
   const analysisContext={phase:'narrative_turn',ordinal,
     works:turns.map(t=>({title:'Cena '+t.ordinal,
       messages:[{role:'assistant',content:t.answer.slice(0,1100)}]}))};
-  const sendPlan=completionProfile=>engine.service.coordinator.send({
-    taskId:owner.chat_task_id,mission,projectId:row.project_id,
-    orchestratorId:row.orchestrator_id,analysisContext,prepareWork:true,
-    repositoryUrl:null,completionProfile
-  });
+  const sendPlan=completionProfile=>engine.service.withCoordinatorTurn(owner.chat_task_id,
+    ()=>engine.service.coordinator.send({
+      taskId:owner.chat_task_id,mission,projectId:row.project_id,
+      orchestratorId:row.orchestrator_id,analysisContext,prepareWork:true,
+      repositoryUrl:null,completionProfile
+    }));
   let result;
   try{result=await sendPlan('narrative');}
   catch(error){
@@ -99,11 +100,12 @@ export async function synthesizeStory(engine,row){
     'personagens, objeto, conflitos e promessas, sem contradizer as quatro cenas '+
     'OBSERVADAS no contexto de análise. Uma história com início, duas rodadas '+
     'e desfecho; 320 a 450 palavras. Entregue apenas o conto, sem comentários. Não reescreva acontecimentos incompatíveis com as quatro cenas. Missão original: '+row.mission;
-  const sendSynthesis=completionProfile=>engine.service.coordinator.send({
-    taskId:owner.chat_task_id,mission,projectId:row.project_id,
-    orchestratorId:row.orchestrator_id,analysisContext,prepareWork:false,
-    repositoryUrl:null,completionProfile
-  });
+  const sendSynthesis=completionProfile=>engine.service.withCoordinatorTurn(owner.chat_task_id,
+    ()=>engine.service.coordinator.send({
+      taskId:owner.chat_task_id,mission,projectId:row.project_id,
+      orchestratorId:row.orchestrator_id,analysisContext,prepareWork:false,
+      repositoryUrl:null,completionProfile
+    }));
   let result;
   try{result=await sendSynthesis('narrative');}
   catch(error){

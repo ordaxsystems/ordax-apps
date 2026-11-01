@@ -87,6 +87,25 @@ function fixture(t,{failure=null}={}){
   return {store,service,context,invoke,setup,start,wait,current,setAllowed:v=>allowed=v,ids:()=>ids};
 }
 
+test('an autonomous mission stays queued while the coordinator is occupied, then resumes without replay',async t=>{
+  const f=fixture(t),ids=await f.setup();
+  const chat=f.service.orchestrator(ids.projectId,ids.orchestratorId).chat_task_id;
+  let release;
+  const pending=new Promise(resolve=>{release=resolve;});
+  const occupied=f.service.withCoordinatorTurn(chat,()=>pending);
+  assert.equal(f.service.coordinatorTurnBusy(chat),true);
+  const accepted=await f.start('queued_while_groq_busy');
+  assert.equal(accepted.status,'succeeded');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(f.service.autonomous.status(f.context,ids).mission.state,'queued');
+  assert.deepEqual(f.current(),{sends:0,plans:0});
+  release();await occupied;
+  await f.service.autonomous.tick(f.context);
+  const done=await f.wait(['succeeded','blocked','reconciliation_required']);
+  assert.equal(done.state,'succeeded');
+  assert.deepEqual(f.current(),{sends:2,plans:3});
+});
+
 test('one mission command autonomously runs Groq -> GPT A -> Groq -> GPT B -> Groq, then stops',async t=>{
   const f=fixture(t);await f.setup();
   const accepted=await f.start();

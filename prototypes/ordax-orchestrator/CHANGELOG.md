@@ -1,3 +1,12 @@
+## 0.2.0-alpha.25 — serialização Groq na autoridade do serviço (01/11/2026)
+
+- Impede duas chamadas simultâneas ao mesmo Task Groq, mesmo quando originadas de clientes/API distintos, mantendo os recibos idempotentes.
+- Missões autônomas, narrativa e análises opt-in aguardam a liberação do mesmo coordenador sem reenvio ou falso estado incerto. Projetos diferentes seguem independentes.
+- Reutiliza o armazenamento e os providers canônicos; nenhum serviço, fila, banco ou legado adicional.
+- Testes de integração SQLite para concorrência e retomada; trabalho exclusivamente remoto.
+
+---
+
 ## 0.2.0-alpha.24 — admissão única no coordenador Groq (01/11/2026)
 
 - Corrige reabilitação indevida de “Enviar”, “Analisar” e “Preparar frente” durante uma chamada ao coordenador. Trava UI adquirida antes de qualquer leitura assíncrona do rascunho e liberada em `finally`.

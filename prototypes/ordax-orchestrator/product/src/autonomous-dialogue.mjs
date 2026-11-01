@@ -153,12 +153,12 @@ export class AutonomousDialogue {
       :phase==='b'
         ?'Leia a resposta confirmada do GPT A no contexto. Crie UMA pergunta NOVA ao GPT B que DEPENDA dela e cite o resultado comprovado. Não responda à pergunta.'
         :'Leia as respostas confirmadas GPT A e GPT B. Prepare UMA próxima pergunta que DEPENDA da resposta GPT B. Não a envie nem a execute.';
-    const response=await this.service.coordinator.send({
+    const response=await this.service.withCoordinatorTurn(owner.chat_task_id,()=>this.service.coordinator.send({
       taskId:owner.chat_task_id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
       mission:'MISSÃO AUTÔNOMA com autorização inicial para, no máximo, duas perguntas GPT: '+
         row.mission+'\nETAPA ATUAL: '+directive+(prior?'\nResposta anterior confirmada: '+prior.slice(0,1400):''),
       analysisContext,prepareWork:true,repositoryUrl:null
-    });
+    }));
     const proposal=validateWorkProposal(response?.proposal);
     if(phase!=='a')confirmDependency(proposal,prior);
     if(phase==='b'&&proposal.content===row.question_a)throw Error('autonomous_duplicate_question');
@@ -193,6 +193,9 @@ export class AutonomousDialogue {
     if(this.service.orchestrator(row.project_id,row.orchestrator_id).status!=='ready')return {state:'paused'};
     if(this.service.coordinator.available?.(row.project_id,row.orchestrator_id)!==true)
       return {state:'blocked_coordinator'};
+    // Busy is a wait condition, not an uncertain autonomous API effect.
+    if(this.service.coordinatorTurnBusy(this.service.orchestrator(row.project_id,row.orchestrator_id).chat_task_id))
+      return {state:'coordinator_busy'};
     if(this.service.executorAdmission().availableSlots===0)
       return {state:'executor_busy'};
     if(row.mode==='story')return advanceStory(this,context,row);
