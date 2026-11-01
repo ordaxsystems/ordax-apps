@@ -144,9 +144,6 @@ export class LabContinuation {
       }
       const row=choice.row;
       if(row.transport_uncertain)return {state:'reconciliation_required'};
-      if(this.service.provider?.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
-        this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
-        return {state:'executor_busy'};
       const claimed=this.db.prepare("UPDATE lab_continuation_reviews SET state='analyzing',updated_at=? WHERE run_id=? AND state='queued'")
         .run(this.store.now(),row.run_id).changes;
       if(claimed!==1)return {state:'race'};

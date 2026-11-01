@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — isolamento do executor GPT no opt-in alpha.36 (candidata)
+
+- **Base:** `ordax-apps/main@d7a337dee462c6f81f6a6e5fe49d0afd832beddf` (alpha.35 PR #390 integrada; 5/5 checks de PR, dois workflows pós-merge success; zero PRs).
+- **Causa:** `LabContinuation.tick` e `LabNextProposal.tick` bloqueavam Groq automático ao consultar `provider.busy()`, qualquer `runs.status='running'` ou qualquer `lab_command_receipts.status='running'`, inclusive GPT Web pertencente a outro projeto. Isso contradiz a separação dos transportes já estabelecida no `dispatchCore`.
+- **SSOT:** `OrchestratorService.projectWorkInProgress` usa recibos de `work_send/proposal_send` e Runs de Tasks de trabalho para verificar `running` **no projeto candidato**. O seletor compartilhado pula esse candidato sem repetir trabalho; globais redundantes removidos dos dois consumidores. Recibos incertos são guardados pelos gates existentes, sem mudança de autoridade.
+- **Provas:** análise de B com receipt `running` do GPT A; A permanece queued até o desbloqueio. Proposta B com Run GPT em execução no projeto A; A não propõe. Provider GPT global marcado busy, zero `send` GPT, `PRAGMA quick_check`.
+- **Limites:** não homologa GPT físico, Runtime real, funcionamento 24h nem distribuição. CI Linux/Windows obrigatório antes de squash merge.
+
+---
+
 ## Continuidade remota 01/11/2026 — fair scheduling multi-projeto alpha.35 (candidata)
 
 - **Base:** `ordax-apps/main@fc1fc4e1c424b8e2f1753c1b06e9da98c5cfa07e` (alpha.34 PR #389 integrada, 5/5 gates aprovados no HEAD, branch limpa, pós-merge Foundation success e Isolation em execução quando consultado).

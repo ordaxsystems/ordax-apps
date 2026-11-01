@@ -83,9 +83,6 @@ export class LabNextProposal {
       ORDER BY transport_uncertain ASC,pending_review ASC,r.updated_at,r.run_id`).iterate(session.id,session.id));
     if(!choice.row)return {state:choice.state};
     const row=choice.row;
-    if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get() ||
-       this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get() ||
-       this.service.provider?.busy?.())return {state:'executor_busy'};
     if(this.db.prepare(`SELECT 1 FROM action_ledger a JOIN lab_orchestrators o ON o.chat_task_id=a.task_id
       WHERE o.id=? AND a.action_type='orchestrator.work-proposal' AND a.status='pending' LIMIT 1`)
       .get(row.orchestrator_id))return {state:'waiting_proposal_review'};

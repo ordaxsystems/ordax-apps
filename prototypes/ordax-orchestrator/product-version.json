@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.35",
+  "version": "0.2.0-alpha.36",
   "channel": "alpha",
-  "name": "Continuidade independente com coordenadores indisponíveis",
+  "name": "Isolamento de execuções GPT durante continuidade Groq",
   "distributionEnabled": false,
   "releaseDate": null
 }

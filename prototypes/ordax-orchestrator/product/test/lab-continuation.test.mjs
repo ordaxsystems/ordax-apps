@@ -795,3 +795,77 @@ test('unavailable analysis in project A does not starve ready proposal from proj
   assert.equal(proposalCalls,1,'no duplicate proposal');
   assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
+
+
+test('a running GPT receipt blocks only its own project, not independent Groq analysis',async t=>{
+  const analyzed=[];
+  const f=setup(t,{available:()=>true,send:async input=>{
+    analyzed.push(input.projectId);return {content:'Análise consultiva confirmada'};
+  }});
+  const a=await prepare(f);
+  const projectB=(await f.call('project_create',{name:'B independente',objective:'Revisar outro trabalho'})).result.projectId;
+  const orchestratorB=(await f.call('orchestrator_create',{projectId:projectB,name:'B',mission:'Revisar B'})).result.orchestratorId;
+  const taskB=(await f.call('work_create',{projectId:projectB,orchestratorId:orchestratorB,title:'B'})).result.taskId;
+  for(const [projectId,orchestratorId] of [[a.projectId,a.orchestratorId],[projectB,orchestratorB]])
+    await f.call('continuity_set',{projectId,orchestratorId,enabled:true});
+  const runA=finish(f.store,a.taskId),runB=finish(f.store,taskB);
+  f.service.continuation.scan();
+  const db=f.store.db;
+  db.prepare('UPDATE lab_continuation_reviews SET updated_at=? WHERE run_id=?').run('2000-01-01',runA);
+  db.prepare('UPDATE lab_continuation_reviews SET updated_at=? WHERE run_id=?').run('2030-01-01',runB);
+  db.prepare(\`INSERT INTO lab_command_receipts
+    (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,'running',?,?,?)\`)
+    .run('command_busy_A',f.context.workspaceSessionId,f.context.actorId,f.context.clientId,
+      'busy_A',a.projectId,'work_send','digest',
+      JSON.stringify({taskId:a.taskId}),f.store.now(),f.store.now());
+  let gptCalls=0;
+  f.service.provider={busy:()=>true,send:async()=>{gptCalls++;throw Error('must_not_send_gpt')}};
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'analyzed',runId:runB});
+  assert.deepEqual(analyzed,[projectB]);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'executor_busy');
+  assert.equal(db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(runA).state,'queued');
+  db.prepare("UPDATE lab_command_receipts SET status='failed' WHERE id='command_busy_A'").run();
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'analyzed',runId:runA},
+    'Groq may resume after project work ends even if global GPT provider reports busy');
+  assert.deepEqual(analyzed,[projectB,a.projectId]);
+  assert.equal(gptCalls,0);
+  assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('a running GPT Run in A does not starve B proposal, but still blocks A proposal',async t=>{
+  const proposals=[];
+  const f=setup(t,{available:()=>true,send:async input=>{
+    if(input.prepareWork) {
+      proposals.push(input.projectId);
+      return {content:'Proposta consultiva',proposal:{title:'Verificar',content:'Validar evidência de trabalho',
+        reason:'Aceite necessário'}};
+    }
+    return {content:'Análise confirmada'};
+  }});
+  const a=await prepare(f);
+  const projectB=(await f.call('project_create',{name:'B proposta',objective:'Revisar B'})).result.projectId;
+  const orchestratorB=(await f.call('orchestrator_create',{projectId:projectB,name:'B',mission:'Validar B'})).result.orchestratorId;
+  const workB=(await f.call('work_create',{projectId:projectB,orchestratorId:orchestratorB,title:'B'})).result.taskId;
+  for(const [projectId,orchestratorId] of [[a.projectId,a.orchestratorId],[projectB,orchestratorB]]){
+    await f.call('continuity_set',{projectId,orchestratorId,enabled:true});
+    await f.call('continuity_proposals_set',{projectId,orchestratorId,enabled:true});
+  }
+  const runA=finish(f.store,a.taskId),runB=finish(f.store,workB);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+  const db=f.store.db;
+  db.prepare('UPDATE lab_continuation_reviews SET updated_at=? WHERE run_id=?').run('2000-01-01',runA);
+  db.prepare('UPDATE lab_continuation_reviews SET updated_at=? WHERE run_id=?').run('2030-01-01',runB);
+  const runningA=f.store.startRun(a.taskId);
+  assert.equal(db.prepare('SELECT status FROM runs WHERE id=?').get(runningA).status,'running');
+  let gptCalls=0;
+  f.service.provider={busy:()=>true,send:async()=>{gptCalls++;throw Error('must_not_send_gpt')}};
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'proposed',runId:runB});
+  assert.deepEqual(proposals,[projectB]);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'executor_busy');
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM lab_next_proposals WHERE review_run_id=?').get(runA).n,0);
+  assert.equal(db.prepare('SELECT COUNT(*) n FROM lab_next_proposals WHERE review_run_id=?').get(runB).n,1);
+  assert.equal(gptCalls,0);
+  assert.equal(db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
