@@ -461,7 +461,9 @@ body.orchestrator-focus .left-footer .provider-card{display:none}
 .project-pulse{display:grid;gap:10px;flex:none;padding:14px 22px 12px;background:var(--bg);border-bottom:1px solid var(--border-soft)}
 .project-pulse[hidden]{display:none}
 .project-pulse-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.project-pulse-heading>div{display:grid;gap:3px;min-width:0}
+.project-pulse-heading>div:first-child{display:grid;gap:3px;min-width:0}
+.project-pulse-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
+.project-pulse-actions #analyzeWorks{background:var(--text);border-color:var(--text);color:var(--bg)}
 .project-pulse-kicker{color:var(--muted-2);font-size:var(--type-caption);font-weight:700;letter-spacing:.08em}
 .project-pulse-heading strong{color:var(--text);font-size:var(--type-body);font-weight:750}
 .project-pulse-heading button{min-height:34px;padding:7px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);color:var(--text);font-size:var(--type-label);cursor:pointer}
@@ -735,7 +737,8 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
 @media(max-width:460px){
   .project-pulse-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
   .project-pulse-stats>button{min-height:58px}
-  .project-pulse-heading{align-items:flex-start}
+  .project-pulse-heading{align-items:flex-start;flex-wrap:wrap}
+  .project-pulse-actions{width:100%;justify-content:flex-start}
   .project-pulse-heading button{padding:7px 8px}
 }
 

@@ -1,6 +1,16 @@
 // Native App UI is a client of the same command service as MCP. No DOM of
 // ChatGPT, coordinates or direct SQLite access is used to operate the Lab.
 import {providerComposeAvailability,COMPOSE_STATUS_MESSAGES} from '../src/provider-compose-availability.mjs';
+// Name-only onboarding uses the existing mission_create contract. This
+// description is coordination guidance, never permission to inspect GitHub,
+// execute work or send messages to GPT Web.
+export function resolveProjectOnboardingMission(name,objective) {
+  const explicit=String(objective||'').trim();
+  if(explicit)return explicit;
+  const title=String(name||'').trim();
+  if(!title)return null;
+  return `Coordenar o projeto ${title}. Identificar prioridades e dependências apenas a partir das conexões e evidências efetivamente disponíveis; propor próximos passos para revisão humana. Não presumir acesso ao GitHub ou Runtime e não enviar mensagens ao GPT Web sem autorização explícita.`;
+}
 export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onNavigationChange}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
@@ -873,8 +883,13 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   $('newProjectForm').addEventListener('submit',event=>{
     event.preventDefault();void formAction(event.currentTarget,async()=>{
       await flushCoordinatorDraft();
-      const mission=$('projectObjective').value.trim();
       const name=$('projectName').value.trim();
+      const mission=resolveProjectOnboardingMission(name,$('projectObjective').value);
+      if(!mission) {
+        status('Informe o nome do projeto ou descreva o objetivo antes de conectar.');
+        $('projectName').focus();
+        return;
+      }
       const repositoryUrl=$('projectRepositoryUrl').value.trim();
       const input={mission,...(name?{name}:{}),...(repositoryUrl?{repositoryUrl}:{})};
       const receipt=await command('mission_create',input);
@@ -884,7 +899,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await refreshProjects();await refreshOrchestrators();
       await onNavigationChange?.({view:'coordinator',projectId,orchestratorId,taskId:null});
       await showCoordinator();
-      status('Projeto e missão criados localmente. Converse com o Orquestrador antes de abrir uma conversa GPT; nenhum envio foi realizado.');
+      status('Projeto e missão criados localmente. Use Iniciar análise para revisar frentes salvas sem escrever um prompt; nenhum envio ao GPT ocorreu.');
     });
   });
   $('renameProjectForm').addEventListener('submit',event=>{
@@ -1009,8 +1024,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const p=projectId,o=orchestratorId;
     analysisBusy=true;syncCoordinatorActions();
     status(nodeHost
-      ?'Enviando ao coordenador disponível nesta superfície, com histórico local limitado…'
-      :'Analisando as frentes pelo Groq configurado, com histórico recente limitado…');
+      ?'Analisando frentes locais pelo coordenador disponível; o GitHub não será lido e nenhuma frente GPT será acionada…'
+      :'Analisando frentes locais pelo Groq; o GitHub não será lido e nenhuma frente GPT será acionada…');
     try {
       const receipt=await command('orchestrator_analyze',{projectId:p,orchestratorId:o});
       if(p!==projectId||o!==orchestratorId)return;
