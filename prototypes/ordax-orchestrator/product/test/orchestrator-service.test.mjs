@@ -42,6 +42,53 @@ async function preparedWork(f) {
 }
 const proposedReply=async()=>({content:'Proposta para revisão',proposal:{title:'Pesquisar',content:'Compare as alternativas.',reason:'Fundamentar o projeto'}});
 
+test('project preflight reports only scoped local evidence, never manufactures external access or dispatches',async t=>{
+  let providerSends=0,modelCalls=0;
+  const f=fixture(t,{provider:{send:()=>{providerSends++;throw Error('unexpected GPT send');}},
+    coordinator:{available:()=>true,send:()=>{modelCalls++;throw Error('unexpected model call');}}});
+  const a=await project(f,'A'),b=await project(f,'B');
+  f.store.db.prepare('UPDATE lab_projects SET repository_url=? WHERE id=?')
+    .run('https://github.com/ordaxsystems/ordax-os',a.p);
+  const before=f.store.db.prepare('SELECT COUNT(*) AS total FROM lab_command_receipts').get().total;
+  const initial=await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o});
+  assert.equal(initial.schema,'ordax.orchestrator.project-preflight/1');
+  assert.equal(initial.projectId,a.p);
+  assert.equal(initial.provenance.source,'app_sqlite');
+  assert.equal(initial.provenance.externalObservation,false);
+  assert.deepEqual(initial.repository,{urlRegistered:true,authenticatedRead:'unavailable'});
+  assert.deepEqual(initial.runtime,{grantVerified:false});
+  assert.deepEqual(initial.work,{registered:1,started:0,unresolvedSends:0});
+  assert.deepEqual(initial.blockers,[]);
+  assert.equal(initial.gates.recordedWorkAnalysisEligible,true);
+  assert.equal(initial.gates.githubObservationVerified,false);
+  assert.equal(initial.gates.automaticGptDispatchAllowed,false);
+  assert.equal(initial.gates.headlessExecutionVerified,false);
+  assert.equal((await f.call('project_preflight',{projectId:b.p,orchestratorId:b.o})).repository.urlRegistered,false);
+  await assert.rejects(f.call('project_preflight',{projectId:a.p,orchestratorId:b.o}),/orchestrator_unavailable/);
+  f.service.transaction(()=>f.service.reserve(f.context,'work_send',{
+    requestId:'pending_work_preflight',projectId:a.p,taskId:a.w,content:'unconfirmed'}));
+  const pending=await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o});
+  assert.equal(pending.work.unresolvedSends,1);
+  assert.deepEqual(pending.blockers,['work_receipts_unresolved']);
+  assert.equal(pending.gates.recordedWorkAnalysisEligible,false);
+  assert.equal((await f.call('project_preflight',{projectId:b.p,orchestratorId:b.o})).work.unresolvedSends,0);
+  f.setAllowed(false);
+  await assert.rejects(f.call('project_preflight',{projectId:a.p,orchestratorId:a.o}),/orchestrator_access_denied/);
+  f.setAllowed(true);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS total FROM lab_command_receipts').get().total,before+1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  assert.equal(providerSends,0);assert.equal(modelCalls,0);
+});
+
+test('project preflight blocks missing model and paused coordinator without changing durable tasks',async t=>{
+  const f=fixture(t),a=await project(f);
+  assert.deepEqual((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).blockers,['coordinator_unavailable']);
+  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
+  assert.deepEqual((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).blockers,
+    ['coordinator_paused','coordinator_unavailable']);
+  assert.equal(f.store.getTask(a.w).status,'active');
+});
+
 test('native-approved first send uses the existing executor, durable approval and one receipt without coordinator API',async t=>{
   let sends=0,confirms=0;
   const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:async({content})=>{
