@@ -598,3 +598,32 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
 
   assert.doesNotMatch(orchestratorUi,/GPT Web é o único transporte para enviar mensagens neste chat/);
 });
+
+
+test('coordinator UI admits a single Groq chat or proposal while an async draft is being committed',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const admission=source.slice(source.indexOf('function syncCoordinatorActions()'),
+    source.indexOf('function setCoordinatorDraftState('));
+  assert.match(admission,/\$\('coordinatorSend'\)\.disabled=[^\n]*coordinatorSubmitting/);
+  assert.match(admission,/\$\('analyzeWorks'\)\.disabled=[^\n]*coordinatorSubmitting/);
+  assert.match(admission,/\$\('prepareWork'\)\.disabled=[^\n]*coordinatorSubmitting/);
+  const chat=source.slice(source.indexOf("\$('coordinatorComposer')\.addEventListener('submit'"),
+    source.indexOf("\$('analyzeWorks')\.addEventListener('click'"));
+  assert.match(chat,/if\(coordinatorSubmitting\|\|analysisBusy\|\|\$\('coordinatorSend'\)\.disabled\)return/);
+  const locked=chat.indexOf('coordinatorSubmitting=true;syncCoordinatorActions()');
+  const draft=chat.indexOf('await prepareCoordinatorDraft(t)');
+  const dispatch=chat.indexOf("command('orchestrator_chat'");
+  assert.ok(locked>=0&&draft>locked&&dispatch>draft,'acquire before the first await and dispatch');
+  assert.match(chat,/if\(p!==projectId\|\|o!==orchestratorId\|\|t!==chatTaskId\|\|!content\)return/);
+  assert.match(chat,/\.finally\(\(\)=>\{coordinatorSubmitting=false;syncCoordinatorActions\(\);\}\)/);
+  const proposal=source.slice(source.indexOf("\$('prepareWork')\.addEventListener('click'"),
+    source.indexOf("\$('coordinatorPrompt')\.addEventListener('input'"));
+  assert.match(proposal,/if\(\$\('prepareWork'\)\.disabled\|\|analysisBusy\|\|coordinatorSubmitting/);
+  assert.ok(proposal.indexOf('analysisBusy=true;coordinatorSubmitting=true;syncCoordinatorActions()')>=0 &&
+    proposal.indexOf('analysisBusy=true;coordinatorSubmitting=true;syncCoordinatorActions()')<
+    proposal.indexOf('await prepareCoordinatorDraft(t)'),
+    'proposal must lock the shared coordinator before awaiting SQLite draft');
+  assert.match(proposal,/finally\{analysisBusy=false;coordinatorSubmitting=false;syncCoordinatorActions\(\);\}/);
+  assert.doesNotMatch(chat,/window\.ordax\.send\(/,'Groq UI must never invoke the GPT Web sender');
+  assert.doesNotMatch(proposal,/window\.ordax\.send\(/,'Groq planning must never invoke the GPT Web sender');
+});

@@ -1,3 +1,11 @@
+## 0.2.0-alpha.24 — admissão única no coordenador Groq (01/11/2026)
+
+- Corrige reabilitação indevida de “Enviar”, “Analisar” e “Preparar frente” durante uma chamada ao coordenador. Trava UI adquirida antes de qualquer leitura assíncrona do rascunho e liberada em `finally`.
+- Troca de projeto ou de orquestrador durante a leitura do rascunho impede despacho da solicitação antiga; operações já enviadas são preservadas no ledger canônico.
+- Teste de regressão no contrato desktop confirma a serialização e as fronteiras Groq/GPT Web. Sem novo executor, banco, perfil ou scheduler; dispositivo físico permanece fora de escopo durante a formatação.
+
+---
+
 ## 0.2.0-alpha.23 — continuidade limitada ao workspace ativo (01/11/2026)
 
 - Fixa isolamento da fila de análises e propostas automáticas às Tasks e projetos da sessão SQLite ativa. Pendências históricas não consomem a fila atual.
