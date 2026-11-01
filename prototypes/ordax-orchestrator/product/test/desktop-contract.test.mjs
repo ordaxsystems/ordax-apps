@@ -234,6 +234,27 @@ test('single-project direction leads the desktop navigation without implying aut
   assert.doesNotMatch(html,/id="startProjectAutonomous"/);
 });
 
+test('operational overview reuses work state and never presents an experimental flow as autonomous execution',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  for(const id of ['projectPulse','projectPulseTotal','projectPulseRunning','projectPulseAttention','projectPulseWaiting','projectPulseNote','openProjectWork','orchestratorExperiments'])
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,'unique ID: '+id);
+  assert.match(html,/<section id="projectPulse"[^>]*hidden>/);
+  assert.match(html,/Resumo das frentes registradas, não uma confirmação de execução autônoma/);
+  assert.match(html,/<details id="orchestratorExperiments"/);
+  assert.match(orchestration,/function renderProjectPulse\(counts,total\)/);
+  assert.match(orchestration,/const hasScope=Boolean\(projectId&&orchestratorId\)/);
+  assert.match(orchestration,/renderProjectPulse\(counts,works\.length\)/);
+  assert.match(orchestration,/for\(const work of works\)counts\[workClass\(work\)\]\+\+/);
+  assert.match(orchestration,/\['reconciliation_required','review_required'\]\.includes\(work\.execution\?\.observed\)/);
+  assert.match(orchestration,/openProjectWork'\)\.addEventListener\('click',\(\)=>setWorkRailOpen\(true\)\)/);
+  assert.match(orchestration,/Estados das conversas registradas; não comprovam execução autônoma/);
+  assert.match(css,/\.project-pulse\[hidden\]\{display:none\}/);
+  assert.match(css,/\.project-pulse-stats\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(css,/\.orchestrator-experiments-content\{/);
+});
+
 test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');

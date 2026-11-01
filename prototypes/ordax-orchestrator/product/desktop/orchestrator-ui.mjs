@@ -188,9 +188,28 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
   }
   let visibleWorkItems=[];
-  const workClass=work=>work.status==='running'?'running':
+  const workClass=work=>
+    ['reconciliation_required','review_required'].includes(work.execution?.observed)?'attention':
+    work.status==='running'?'running':
     work.status==='completed'?'completed':
     ['failed','error','interrupted'].includes(work.status)?'attention':'ready';
+  function renderProjectPulse(counts,total) {
+    const panel=$('projectPulse');
+    const hasScope=Boolean(projectId&&orchestratorId);
+    panel.hidden=!hasScope;
+    $('openProjectWork').disabled=!hasScope;
+    if(!hasScope)return;
+    $('projectPulseTotal').textContent=String(total);
+    $('projectPulseRunning').textContent=String(counts.running);
+    $('projectPulseAttention').textContent=String(counts.attention);
+    $('projectPulseWaiting').textContent=String(counts.ready);
+    panel.dataset.state=counts.attention?'review':counts.running?'running':'idle';
+    $('projectPulseNote').textContent=counts.attention
+      ?'Há frentes que exigem revisão do histórico e dos recibos. Nenhum reenvio é automático.'
+      :total===0
+        ?'Nenhuma frente de trabalho registrada. Crie uma frente para acompanhar o progresso.'
+        :'Estados das conversas registradas; não comprovam execução autônoma nem conclusão do projeto.';
+  }
   function applyWorkFilters(){
     const query=($('workSearch')?.value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR').trim();
     const state=$('workStatusFilter')?.value||'all';
@@ -286,12 +305,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     }
     const list=$('orchestratorWorks');list.replaceChildren();
     const counts={running:0,completed:0,attention:0,ready:0};
-    for(const w of works){
-      if(w.status==='running')counts.running++;
-      else if(w.status==='completed')counts.completed++;
-      else if(['failed','error','interrupted'].includes(w.status))counts.attention++;
-      else counts.ready++;
-    }
+    for(const work of works)counts[workClass(work)]++;
+    renderProjectPulse(counts,works.length);
     const overview=document.createElement('section');overview.className='work-overview';
     overview.setAttribute('aria-label','Resumo das frentes observadas');
     for(const [key,label] of [['running','Em andamento'],['completed','Concluídas'],['attention','Revisar'],['ready','Aguardando']]){
@@ -300,7 +315,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const name=document.createElement('span');name.textContent=label;
       stat.append(value,name);overview.append(stat);
     }
-    const attention=works.filter(w=>['failed','error','interrupted'].includes(w.status));
+    const attention=works.filter(work=>workClass(work)==='attention');
     if(attention.length){
       const summary=document.createElement('div');
       summary.className='work-attention-summary';
@@ -317,7 +332,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
     const ordered=[...works].sort((a,b)=>{const priority={failed:0,error:0,interrupted:0,running:1,ready:2,paused:3,completed:4};return (priority[a.status]??5)-(priority[b.status]??5);});
     for(const work of ordered){
-      const [label,state]=work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);const button=document.createElement('button');
+      const [label,state]=work.execution?.observed==='reconciliation_required'?['Resultado incerto','attention']:
+        work.execution?.observed==='review_required'?['Revisar recibo','attention']:
+        work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);
+      const button=document.createElement('button');
       button.type='button';button.className='work-card';button.dataset.taskId=work.id;
       const copy=document.createElement('span');copy.className='work-card-copy';
       const title=document.createElement('strong');title.textContent=work.title;
@@ -503,6 +521,7 @@ const runState=document.createElement('small');
   $('coordinatorRailToggle').addEventListener('click',()=>{
     setWorkRailOpen(!$('contextRail').classList.contains('open'));
   });
+  $('openProjectWork').addEventListener('click',()=>setWorkRailOpen(true));
   $('closeWorkRail').addEventListener('click',()=>{
     setWorkRailOpen(false);
     $('coordinatorRailToggle').focus();
