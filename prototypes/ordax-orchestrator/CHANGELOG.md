@@ -1,3 +1,12 @@
+## 0.2.0-alpha.34 — pausa durável de respostas Groq em voo (01/11/2026)
+
+- Pausar um coordenador sela como incertos os recibos Groq `running` daquele coordenador na mesma transação, sem cancelar o request externo nem interferir em outros projetos/GPT.
+- Respostas tardias, inclusive erros de rede, não criam nova mensagem de assistente, proposta ou confirmação depois da pausa, mesmo que haja retomada imediata.
+- O mesmo requestId retorna o recibo original e não reenvia a requisição; novos pedidos explícitos continuam possíveis sob as políticas existentes.
+- Testes SQLite cobrem chat, análise, proposta, erro tardio e projeto independente. Nenhuma tabela, serviço, provider, fila ou permissão nova.
+
+---
+
 ## 0.2.0-alpha.33 — propostas isoladas entre projetos bloqueados (01/11/2026)
 
 - A fila opcional de propostas prioriza revisões sem recibo GPT incerto e sem aprovação pendente, impedindo que o projeto A impeça propostas legítimas do projeto B.

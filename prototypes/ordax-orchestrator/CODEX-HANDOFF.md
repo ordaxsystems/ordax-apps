@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — pausa Groq em voo alpha.34 (candidata)
+
+- **Base:** `ordax-apps/main@088611f75829fd14d30df231feb14f798180f4d5` (alpha.33 PR #388 integrada, testes e cinco gates da PR aprovados).
+- **Causa:** a pausa do coordenador colocava análises/propostas automáticas em reconciliação, mas `orchestrator_chat`/`orchestrator_analyze`/`orchestrator_prepare` manuais continuavam com recibo `running` e podiam confirmar respostas Groq depois de pausa/retomada rápida.
+- **Correção SSOT:** na mesma transação da pausa, recibos Groq ainda `running` vinculados ao Task do coordenador passam a `uncertain` com `coordinator_paused_inflight`. O retorno assíncrono (sucesso ou erro) respeita o estado durável antes de gravar assistente/approval. Não há cancelamento falso nem reenvio, e não afeta GPT ou projetos independentes.
+- **Provas:** SQLite em quatro condições: chat Groq, análise, proposta e erro de rede após pausa + reativação; comprovar ausência de mensagem ou aprovação tardia, mesmo requestId não repetido, isolamento do projeto B e `PRAGMA quick_check`.
+- **Gates:** validar version SSOT, testes de domínio/CI Linux, Windows e fronteiras, integrar somente checks verdes. Sem alegar E2E GPT físico, Runtime real ou 24 h.
+
+---
+
 ## Continuidade remota 01/11/2026 — antistarvation de propostas alpha.33 (candidata)
 
 - **Base:** `ordax-apps/main@0fdce15993823365e9c5c8d6daeb0494ae256eea` (alpha.32; workflows pós-merge Isolation e Foundation concluídos com sucesso), zero PRs abertas antes da mudança.

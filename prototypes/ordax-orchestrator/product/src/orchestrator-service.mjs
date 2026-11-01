@@ -607,11 +607,25 @@ export class OrchestratorService {
       return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled);
     }
     if(operation==='orchestrator_pause') {
-      this.orchestrator(input.projectId,input.orchestratorId);
+      const owner=this.orchestrator(input.projectId,input.orchestratorId);
       this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
         .run(input.paused?'paused':'ready',input.orchestratorId);
-      if(input.paused)this.continuation.quarantineInFlight(
-        input.projectId,input.orchestratorId,'orchestrator_paused');
+      if(input.paused) {
+        // A Groq request may already have left the process. Do not cancel or
+        // replay it; atomically preserve an uncertain receipt at the pause
+        // boundary so a late reply cannot be promoted after rapid resume.
+        // Scope to this coordinator Task, not unrelated project work/GPT sends.
+        this.db.prepare(`UPDATE lab_command_receipts
+          SET status='uncertain',result=json_object('taskId',?,'reason','coordinator_paused_inflight'),
+              updated_at=?
+          WHERE project_id=? AND status='running'
+            AND operation IN ('orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
+            AND id IN (SELECT id FROM lab_command_receipt_scope
+              WHERE project_id=? AND task_id=?)`)
+          .run(owner.chat_task_id,this.store.now(),input.projectId,input.projectId,owner.chat_task_id);
+        this.continuation.quarantineInFlight(
+          input.projectId,input.orchestratorId,'orchestrator_paused');
+      }
       return {orchestratorId:input.orchestratorId,status:input.paused?'paused':'ready'};
     }
     if(operation==='work_dependency_set') {
@@ -923,6 +937,11 @@ export class OrchestratorService {
         workspaceObservation,repositoryUrl});
       this.requireAccess(context,operation,input.projectId);
       if(!usesProvider) {
+        // Pause can happen during the external Groq await. A durable receipt
+        // already moved to uncertain must remain terminal even after resume.
+        if(this.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
+          .get(reserved.commandId)?.status!=='running')
+          return this.getReceipt(context,reserved.commandId);
         if(!reply||typeof reply.content!=='string'||!reply.content.trim()||reply.content.length>12000)
           throw Error('orchestrator_reply_invalid');
         return this.transaction(()=>{
@@ -955,6 +974,11 @@ export class OrchestratorService {
         return this.finish(reserved.commandId,result);
       });
     } catch(error) {
+      // The pause transaction may have sealed the accepted Groq receipt while
+      // the model was in flight. Preserve it instead of trying to finish twice.
+      if(!usesProvider&&this.db.prepare('SELECT status FROM lab_command_receipts WHERE id=?')
+        .get(reserved.commandId)?.status!=='running')
+        return this.getReceipt(context,reserved.commandId);
       // Coordinator and work-chat transports are distinct and never silently
       // substitute for each other after any rejection or uncertain outcome.
       const failure=error;

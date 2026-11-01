@@ -1,5 +1,10 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
+## Pausa durável de chamadas Groq em andamento — alpha.34 (candidata)
+
+Uma pausa do coordenador não desfaz a requisição Groq já enviada, mas sela como `uncertain` os comandos de chat/análise/proposta em voo **daquele coordenador** no recibo SQLite canônico. Assim, uma resposta ou falha tardia não certifica a operação nem gera propostas depois de uma pausa e retomada rápida. Outros projetos e envios GPT não são afetados. O requestId original nunca é reenviado; o histórico continua auditável e novas ações explícitas exigem os gates existentes. Sem novo executor, banco, tabela, fila ou privilégio.
+
+
 ## Priorização segura das propostas entre projetos — alpha.33 (candidata)
 
 Se uma revisão analisada do projeto A estiver bloqueada por envio GPT incerto ou por uma proposta anterior aguardando aprovação, a seleção global não deve impedir a proposta autorizada do projeto B. `LabNextProposal.tick` prioriza candidatos elegíveis usando as fontes canônicas `lab_command_receipt_scope` e `action_ledger`, preservando os bloqueios e os limites por orquestrador. Nenhuma proposta bloqueada é executada automaticamente, nenhum envio GPT é repetido, e não há nova fila, tabela ou provedor. Duas regressões SQLite validam isolamento e integridade.
