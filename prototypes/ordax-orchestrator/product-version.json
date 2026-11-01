@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.23",
+  "version": "0.2.0-alpha.24",
   "channel": "alpha",
-  "name": "Continuidade automática restrita ao workspace ativo",
+  "name": "Envio único e preparação serial do coordenador Groq",
   "distributionEnabled": false,
   "releaseDate": null
 }
