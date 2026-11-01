@@ -1,3 +1,12 @@
+## 0.2.0-alpha.37 — listagem segura de propostas e aprovações (01/11/2026)
+
+- A leitura `proposals_list` preserva o histórico SQLite, mas um JSON de payload/result corrompido não derruba a lista de propostas válidas do mesmo coordenador.
+- Propostas exibidas agora exigem vínculo completo de projeto/orquestrador/ator/cliente e aprovação canônica pendente ou aprovada, conforme o estado da ação. Um resultado marcado como aprovado sem `approval_ledger` correspondente não vira rascunho preparado.
+- Apenas leitura, sem reparar, aprovar, ocultar recibos ou enviar mensagens; registros inválidos permanecem para diagnóstico. Limite de leitura de 50 ações mantido.
+- Testes SQLite incluem corrupção de payload, result e inconsistência de aprovação, isolamento de outro projeto, nenhum envio GPT e integridade `PRAGMA quick_check`.
+
+---
+
 ## 0.2.0-alpha.36 — isolamento GPT/Groq na continuidade (01/11/2026)
 
 - Execuções ou recibos GPT Web `running` bloqueiam análises e propostas opt-in **somente no próprio projeto**. Um projeto independente pode seguir com Groq mesmo que o executor GPT global esteja ocupado.

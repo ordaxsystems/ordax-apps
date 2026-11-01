@@ -305,19 +305,38 @@ export class OrchestratorService {
   read(context,operation,input) {
     if(operation==='proposals_list') {
       const owner=this.orchestrator(input.projectId,input.orchestratorId);
-      return {proposals:this.db.prepare(`SELECT id,payload,status,result FROM action_ledger WHERE task_id=?
+      const proposals=[];
+      const rows=this.db.prepare(`SELECT id,payload,status,result FROM action_ledger WHERE task_id=?
         AND action_type='orchestrator.work-proposal' AND status IN ('pending','succeeded') ORDER BY created_at DESC,id LIMIT 50`)
-        .all(owner.chat_task_id).flatMap(row=>{
-          const payload=JSON.parse(row.payload);
-          if(payload.actorId!==context.actorId||payload.clientId!==context.clientId)return [];
-          const proposal={actionId:row.id,status:'pending',...validateWorkProposal(payload.proposal)};
-          if(row.status==='pending')return [proposal];
-          const result=row.result?JSON.parse(row.result):null;
-          if(!result?.approved||!result.taskId)return [];
-          const task=this.preparedTask(input.projectId,input.orchestratorId,result.taskId);
-          if(!task||!task.draft.trim()||task.has_messages||task.has_runs||task.has_send)return [];
-          return [{...proposal,status:'prepared',taskId:task.id,title:task.title,content:task.draft,draftRevision:task.draft_revision}];
-        })};
+        .all(owner.chat_task_id);
+      for(const row of rows) {
+        // Keep historical action bytes intact, but never let one corrupted
+        // proposal/result hide valid independent approvals in this read model.
+        // No recovery, approval or task mutation happens during listing.
+        let payload;
+        try {payload=JSON.parse(row.payload);} catch {continue;}
+        if(payload?.actorId!==context.actorId||payload?.clientId!==context.clientId||
+          payload?.projectId!==input.projectId||payload?.orchestratorId!==input.orchestratorId)
+          continue;
+        let proposal;
+        try {proposal=validateWorkProposal(payload.proposal);} catch {continue;}
+        if(row.status==='pending') {
+          if(!this.db.prepare(`SELECT 1 FROM approval_ledger WHERE action_id=? AND task_id=?
+            AND status='pending' LIMIT 1`).get(row.id,owner.chat_task_id))continue;
+          proposals.push({actionId:row.id,status:'pending',...proposal});
+          continue;
+        }
+        let result;
+        try {result=row.result?JSON.parse(row.result):null;} catch {continue;}
+        if(result?.approved!==true||typeof result.taskId!=='string')continue;
+        if(!this.db.prepare(`SELECT 1 FROM approval_ledger WHERE action_id=? AND task_id=?
+          AND status='approved' LIMIT 1`).get(row.id,owner.chat_task_id))continue;
+        const task=this.preparedTask(input.projectId,input.orchestratorId,result.taskId);
+        if(!task||!task.draft.trim()||task.has_messages||task.has_runs||task.has_send)continue;
+        proposals.push({actionId:row.id,status:'prepared',...proposal,
+          taskId:task.id,title:task.title,content:task.draft,draftRevision:task.draft_revision});
+      }
+      return {proposals};
     }
     if(operation==='workspace_status')return this.workspace.status(context,input.projectId);
     if(operation==='continuity_status') {

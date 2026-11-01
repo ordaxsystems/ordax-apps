@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — listagem de propostas resiliente alpha.37 (candidata)
+
+- **Base:** `ordax-apps/main@ae945e0e87c6f31e7e8cf580581cc61a8a0597b7` (alpha.36 PR #391 integrada, 5/5 gates e pós-merge Isolation/Foundation success; PRs abertas zero).
+- **Defeito:** `proposals_list` usava `JSON.parse` e `validateWorkProposal` sem isolamento por entrada; um payload/result inválido em `action_ledger` bloqueava toda a lista. Além disso, uma ação `succeeded` com `result.approved=true` mas sem a aprovação do ledger correspondente parecia preparada na UI.
+- **Correção SSOT:** percorre no máximo 50 ações da Task coordenadora, valida escopo de projeto/orquestrador/ator/cliente, conteúdo e estado de aprovação no ledger canônico. Ignora entrada ilegível na projeção de leitura, sem alterar bytes, aprovar efeitos ou tentar recuperação; propostas válidas permanecem acessíveis e preparadas só com `approval_ledger.status=approved`.
+- **Provas:** SQLite com payload corrompido, segundo projeto independente, JSON de resultado truncado e aprovação negada inconsistente; nenhuma Task indevida ou envio GPT; `PRAGMA quick_check`.
+- **Gates:** validar cinco checks no HEAD incluindo Windows automatizado antes de merge squash, depois branch removida; sem declarar E2E GPT real, Runtime físico ou 24h.
+
+---
+
 ## Continuidade remota 01/11/2026 — isolamento do executor GPT no opt-in alpha.36 (candidata)
 
 - **Base:** `ordax-apps/main@d7a337dee462c6f81f6a6e5fe49d0afd832beddf` (alpha.35 PR #390 integrada; 5/5 checks de PR, dois workflows pós-merge success; zero PRs).
