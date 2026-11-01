@@ -1,6 +1,15 @@
+## Situação verificada em 01/11/2026 — ler antes dos snapshots históricos
+
+- **GitHub:** `ordaxsystems/ordax-apps/main` em `44b3f9b2a70eef1b881fecab15d4f1da7e76a31f`; PR #376 integrada (alpha.21), cinco checks positivos no commit da main; nenhuma PR aberta ou branch Orchestrator remanescente na auditoria inicial.
+- **Correção seguinte:** a segunda abertura deve chamar a mesma `showCanonicalWindow()` usada na bandeja. O caminho antigo recriava a janela destruída sem `show()/focus()`, deixando um reinício pela segunda instância invisível após autostart oculto. Alpha.22 altera só o owner existente do Electron, o teste canônico e o versionamento/documentação; verificar o HEAD e os checks antes de alegar integração.
+- **Windows:** última instalação comprovada `alpha.20` em `%LOCALAPPDATA%\Programs\OrdaX Orchestrator Lab`. Não instalar `alpha.21/22` com base apenas na versão ou no CI; exigir `sourceCommit`, hash do pacote e teste físico em uma única instalação.
+- **Limites:** Groq é coordenador e GPT Web é executor, sem fallback; envios e reconciliações incertas não são repetidos. W3 com envio/recebimento real e autonomia física prolongada com janela oculta **não certificados**. Não duplicar PRs, processos, perfis, serviços ou fontes de verdade.
+
+---
+
 # CODEX HANDOFF — OrdaX Orchestrator Project-First
 
-## Estado canônico de continuidade — 31/10/2026 (alpha.21 em validação)
+## Histórico anterior à integração da PR #376 — 31/10/2026 (candidata alpha.21)
 
 - Repositório único: `ordaxsystems/ordax-apps`. `main` observada em `0c1a7d5bbb998ae9c7ef406b7111b52ee02e85ce` após a PR #375 de segurança do preflight W3. A **única instalação operacional** no `DESKTOP-PNUHUA0` é `0.2.0-alpha.20`, pacote com `sourceCommit=75f667852ca461386b17b3b82fcd7884e8f44015`, pois a mudança posterior na main alterou somente scripts/testes, sem payload Electron. A Groq já teve uma resposta real certificada no Windows; não repetir sem causa.
 - Um teste físico de GPT Web autorizado foi bloqueado **antes do envio**, porque a janela fechou mas os processos não terminaram dentro do limite de encerramento observado. O aplicativo original voltou a iniciar; não declarar W3 real aprovado ou atribuir envio. Diagnosticar ciclo de vida sem matar processos arbitrários nem abrir instalação concorrente.
