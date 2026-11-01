@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.22",
+  "version": "0.2.0-alpha.23",
   "channel": "alpha",
-  "name": "Recuperação da janela Windows na instância única",
+  "name": "Continuidade automática restrita ao workspace ativo",
   "distributionEnabled": false,
   "releaseDate": null
 }
