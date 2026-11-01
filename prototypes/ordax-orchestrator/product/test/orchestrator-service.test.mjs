@@ -1026,3 +1026,74 @@ test('Groq coordinator receives only bounded workspace facts and is instructed n
       absolutePath:'C:\\private\\VESTE',resourceId:'resource_private-id'}});
   assert.equal(result.content,'Nenhum arquivo foi lido.');
 });
+
+
+test('pause and immediate resume quarantine late Groq chat, analysis and proposal replies',async t=>{
+  for(const operation of ['orchestrator_chat','orchestrator_analyze','orchestrator_prepare']){
+    let entered,release,groqCalls=0,gptCalls=0;
+    const started=new Promise(resolve=>{entered=resolve;});
+    const gate=new Promise(resolve=>{release=resolve;});
+    const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('gpt_must_not_send');}},
+      coordinator:{available:()=>true,send:async()=>{
+        groqCalls++;entered();await gate;
+        return {provider:'groq',content:'A resposta antiga não pode confirmar progresso',
+          proposal:{title:'Não criar',content:'Sem envio',reason:'Resposta tardia'}};
+      }}});
+    const a=await project(f,'Projeto pause '+operation);
+    f.store.appendMessage(a.w,'user','Contexto do trabalho confirmado.');
+    const input={requestId:'paused_'+operation,projectId:a.p,orchestratorId:a.o,
+      ...(operation==='orchestrator_analyze'?{}:{content:'Planeje e revise esta missão.'})};
+    const pending=f.call(operation,input);
+    await started;
+    assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+      .get(input.requestId).status,'running');
+    await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
+    assert.equal(f.store.db.prepare('SELECT status FROM lab_command_receipts WHERE request_id=?')
+      .get(input.requestId).status,'uncertain');
+    await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:false});
+    release();
+    const result=await pending;
+    assert.equal(result.status,'uncertain');
+    assert.equal(result.result.reason,'coordinator_paused_inflight');
+    assert.equal(result.result.taskId,a.chat);
+    assert.equal(result.requiresReconciliation,true);
+    assert.equal(groqCalls,1);
+    assert.equal(gptCalls,0);
+    assert.deepEqual(f.store.messages(a.chat).map(m=>m.role),['user'],
+      'late model response must not create assistant evidence');
+    assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM action_ledger WHERE action_type='orchestrator.work-proposal'").get().n,0,
+      'late planning must not create a reviewable proposal');
+    assert.deepEqual(await f.call(operation,input),result,'same requestId must never replay');
+    assert.equal(groqCalls,1);
+    assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+  }
+});
+
+test('a late Groq error after pause preserves receipt while another project remains independent',async t=>{
+  let entered,release,groqCalls=0;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  let heldProject=null;
+  const f=fixture(t,{coordinator:{available:()=>true,send:async input=>{
+    groqCalls++;
+    if(input.projectId===heldProject){entered();await gate;throw Error('network_lost_after_pause');}
+    return {content:'Projeto independente confirmado',provider:'groq'};
+  }}});
+  const a=await project(f,'Projeto A'),b=await project(f,'Projeto B');
+  heldProject=a.p;
+  const input={requestId:'pause_network_error',projectId:a.p,orchestratorId:a.o,content:'Aguardar Groq'};
+  const pending=f.call('orchestrator_chat',input);
+  await started;
+  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
+  assert.equal((await f.call('orchestrator_chat',{requestId:'b_independent',projectId:b.p,
+    orchestratorId:b.o,content:'Continuar B'})).status,'succeeded');
+  await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:false});
+  release();
+  const sealed=await pending;
+  assert.equal(sealed.status,'uncertain');
+  assert.equal(sealed.result.reason,'coordinator_paused_inflight');
+  assert.deepEqual(f.store.messages(a.chat).map(m=>m.role),['user']);
+  assert.deepEqual(f.store.messages(b.chat).map(m=>m.role),['user','assistant']);
+  assert.equal(groqCalls,2);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});

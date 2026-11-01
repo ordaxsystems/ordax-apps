@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.33",
+  "version": "0.2.0-alpha.34",
   "channel": "alpha",
-  "name": "Propostas independentes entre projetos",
+  "name": "Pausa durável de respostas Groq em voo",
   "distributionEnabled": false,
   "releaseDate": null
 }
