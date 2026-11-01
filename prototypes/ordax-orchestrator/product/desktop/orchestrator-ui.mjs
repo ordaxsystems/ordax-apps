@@ -148,8 +148,17 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     return true;
   }
   function renderProjectNavigation(projects) {
+    const current=projects.find(project=>project.id===projectId);
+    // Read-only projection of the selected canonical project: not a second
+    // project store and never proof that a GitHub URL was actually read.
+    $('activeProjectName').textContent=current?.name||'Conecte seu projeto';
+    const legacyCount=Math.max(0,projects.length-1);
+    const repository=current?.repository_url?'GitHub vinculado por URL · leitura não verificada':'Repositório GitHub ainda não vinculado';
+    $('activeProjectDetail').textContent=current
+      ?repository+(legacyCount?' · '+legacyCount+' outro(s) projeto(s) existente(s)':'')
+      :'Configure um projeto para começar';
     const list=$('projectNavList');list.replaceChildren();
-    if(!projects.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Crie seu primeiro projeto.';list.append(empty);return;}
+    if(!projects.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Conecte seu primeiro projeto.';list.append(empty);return;}
     for(const project of projects){
       const button=document.createElement('button');button.type='button';button.className='nav-item project-nav-item';
       button.textContent=project.name;button.dataset.projectId=project.id;
@@ -440,8 +449,8 @@ const runState=document.createElement('small');
     const routingName=nodeHost
       ?coordinatorProvider==='chatgpt_plan'?'ChatGPT Plan':'Groq'
       :'Groq';
-    $('coordinatorNavProvider').textContent='Conversa com '+routingName;
-    $('coordinatorRouteLabel').textContent='CONVERSA DIRETA · '+routingName.toLocaleUpperCase('pt-BR');
+    $('coordinatorNavProvider').textContent='Coordenação via '+routingName;
+    $('coordinatorRouteLabel').textContent='ADMINISTRAÇÃO · '+routingName.toLocaleUpperCase('pt-BR');
     $('coordinatorApiSettings').textContent='Configurar '+routingName;
     $('coordinatorPrompt').placeholder='Mensagem para o Orquestrador · '+routingName;
     $('coordinatorSend').textContent='Enviar à '+(routingName==='Groq'?'Groq':routingName);
@@ -611,8 +620,10 @@ const runState=document.createElement('small');
     $('pauseOrchestrator').textContent=selected?.status==='paused'?'Retomar':'Pausar';
     $('newOrchestratorForm').hidden=!p;
     $('openWorks').disabled=!p||!selected||workCount===0;
-    $('orchestratorMission').textContent=selected?.mission||'Configure um orquestrador para este projeto.';
-    $('orchestratorTitle').textContent=selected?.name||'Orquestrador';
+    $('orchestratorMission').textContent=selected
+      ?selected.name+' · '+selected.mission
+      :'Configure o Administrador Geral deste projeto.';
+    $('orchestratorTitle').textContent='Administrador Geral';
     syncCoordinatorActions();
     renderOrchestratorNavigation();
     await refreshWorks();
