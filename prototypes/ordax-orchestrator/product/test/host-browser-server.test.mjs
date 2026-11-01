@@ -30,7 +30,13 @@ test('host serves only the current UI allowlist with a restrictive browser polic
     const css=await fs.readFile(path.join(productRoot,'desktop','ui.css'),'utf8');
     assert.match(ui,/<footer class="left-footer">[\s\S]*<details id="hostBrowserControls" class="host-browser-controls"[\s\S]*<\/footer>/);
     assert.doesNotMatch(css,/\.host-browser-controls\{position:fixed/);
-    assert.match(css,/body\.orchestrator-focus:not\(\.orchestrator-api-settings\) #contextRail>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
+    // The Work rail is nested inside contextPanel. A selector that hides
+    // contextPanel would make the real work list invisible in coordinator mode.
+    assert.ok(ui.indexOf('id="contextPanel"')<ui.indexOf('id="orchestratorWorkRail"'));
+    assert.match(css,/body\.orchestrator-focus:not\(\.orchestrator-api-settings\) #contextRail>:not\(#contextPanel\)\{display:none!important\}/);
+    assert.match(css,/body\.orchestrator-focus:not\(\.orchestrator-api-settings\) #contextPanel\{display:flex!important;overflow:hidden;padding:0\}/);
+    assert.match(css,/body\.orchestrator-focus:not\(\.orchestrator-api-settings\) #contextPanel>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
+    assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
     assert.match(css,/body\.orchestrator-focus\.orchestrator-api-settings #labSupervisorPanel\{display:block!important/);
     const pending=['/ui.js','/host-browser-bridge.js'];
     const checked=new Set();
