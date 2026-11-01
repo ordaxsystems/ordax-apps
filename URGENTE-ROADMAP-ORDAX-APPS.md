@@ -1,4 +1,8 @@
-## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21)
+# Prioridade atual do OrdaX Orchestrator — 2026-11-01
+
+**SSOT de direção:** [Orchestrator — contrato autônomo/instância única](prototypes/ordax-orchestrator/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). Uma instância = um projeto; Administrador Geral Groq é entrada principal; após conectar e **Iniciar** pode realizar diagnóstico sem prompt, definir missões e coordenar executores por repo **somente nos gates autorizados**. O usuário pode direcionar a qualquer momento. O plano antigo multi-projeto e "GPT Web como chat principal" abaixo é **histórico e não deve orientar novas implementações**. Envio GPT é um canal distinto e não implícito. Nada nesta decisão habilita sozinho GPT autônomo, Runtime/grants ou 24 h.
+
+## Direção Project-First do OrdaX Orchestrator — decisão do proprietário (2026-10-21; histórico)
 
 ### Alvo de continuidade 24h (2026-10-23)
 
