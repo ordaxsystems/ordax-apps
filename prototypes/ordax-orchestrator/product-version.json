@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.31",
+  "version": "0.2.0-alpha.32",
   "channel": "alpha",
-  "name": "Continuidade revogada sem replay",
+  "name": "Opt-in isolado por ciclo de ativação",
   "distributionEnabled": false,
   "releaseDate": null
 }

@@ -274,6 +274,95 @@ test('continuation scan preserves already reviewed Runs and resumes after reinit
 });
 
 
+
+test('re-enabled analysis never drains historical queued Runs from the previous opt-in',async t=>{
+  let calls=0;
+  const f=setup(t,{available:()=>true,send:async()=>{calls++;return {content:'Verified current review'};}});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const previous=finish(f.store,a.taskId);
+  assert.equal(f.service.continuation.scan(),1);
+  const before=await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId});
+  assert.equal(before.state,'pending');
+  assert.equal(before.counts.queued,1);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:false});
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const restored=await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId});
+  assert.equal(restored.state,'observing');
+  assert.deepEqual(restored.counts,{});
+  assert.equal(restored.latest,null);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(calls,0,'queued pre-opt-in Run must not dispatch after re-enable');
+  assert.equal(f.store.db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(previous).state,'queued',
+    'historical SQLite evidence is preserved, not silently deleted');
+  const current=finish(f.store,a.taskId);
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'analyzed',runId:current});
+  assert.equal(calls,1);
+  const status=await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId});
+  assert.equal(status.state,'observing');
+  assert.equal(status.counts.analyzed,1);
+  assert.equal(status.counts.queued,undefined);
+  assert.equal(status.latest.run_id,current);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_continuation_reviews').get().n,2);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('historical reconciliation does not permanently mark a new opt-in as blocked',async t=>{
+  let entered,release,calls=0;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const f=setup(t,{available:()=>true,send:async()=>{
+    calls++;if(calls===1){entered();await gate;}
+    return {content:'Confirmed continuation'};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const old=finish(f.store,a.taskId);
+  const pending=f.service.continuation.tick(f.context);
+  await started;
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:false});
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  release();
+  assert.equal((await pending).state,'reconciliation_required');
+  const oldRow=f.store.db.prepare('SELECT state,reason FROM lab_continuation_reviews WHERE run_id=?').get(old);
+  assert.equal(oldRow.state,'reconciliation_required');
+  assert.equal(oldRow.reason,'policy_disabled');
+  assert.equal((await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId})).state,'observing');
+  const fresh=finish(f.store,a.taskId);
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'analyzed',runId:fresh});
+  assert.equal(calls,2,'only fresh work from the new activation may be analyzed');
+  const status=await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId});
+  assert.equal(status.state,'observing');
+  assert.equal(status.counts.reconciliation_required,undefined);
+  assert.equal(status.counts.analyzed,1);
+  assert.equal(status.latest.run_id,fresh);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('re-enabling one project does not discard the other project pending opt-in',async t=>{
+  let calls=0;
+  const f=setup(t,{available:()=>true,send:async()=>{
+    calls++;return {content:'Confirmed independent project'};
+  }});
+  const a=await prepare(f);
+  const projectId=(await f.call('project_create',{name:'Second',objective:'Independent mission'})).result.projectId;
+  const orchestratorId=(await f.call('orchestrator_create',{projectId,name:'Other',mission:'Independent'})).result.orchestratorId;
+  const taskId=(await f.call('work_create',{projectId,orchestratorId,title:'Independent work'})).result.taskId;
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  await f.call('continuity_set',{projectId,orchestratorId,enabled:true});
+  const oldA=finish(f.store,a.taskId),waitingB=finish(f.store,taskId);
+  assert.equal(f.service.continuation.scan(),2);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:false});
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  assert.deepEqual(await f.service.continuation.tick(f.context),{state:'analyzed',runId:waitingB});
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(calls,1);
+  assert.equal(f.store.db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(oldA).state,'queued');
+  assert.equal((await f.call('continuity_status',{projectId:a.projectId,orchestratorId:a.orchestratorId})).state,'observing');
+  assert.equal((await f.call('continuity_status',{projectId,orchestratorId})).counts.analyzed,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('disable and rapid re-enable during Groq analysis cannot certify or replay the old review',async t=>{
   let entered,release,calls=0;
   const started=new Promise(resolve=>{entered=resolve;});

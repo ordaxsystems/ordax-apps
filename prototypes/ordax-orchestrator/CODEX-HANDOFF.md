@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — isolamento de ciclo de opt-in alpha.32 (candidata)
+
+- **Base:** `ordax-apps/main@a111a75b12e78f3872c8046544cc6236bfe42583`, alpha.31 PR #386 integrada, com 5/5 gates da PR aprovados, zero PRs e branches Orchestrator. CI pós-merge independente ainda em andamento na verificação inicial.
+- **Causa-raiz:** desativar/reabilitar continuidade atualizava `start_run_rowid`, e `scan()` aplicava esse corte. Porém `tick()` selecionava `queued` antigos sem verificar o marco, permitindo análise Groq retroativa de Run da ativação anterior. `status()` incluía `queued` e `reconciliation_required` de ciclos antigos, podendo informar falsamente estado bloqueado na nova ativação.
+- **Correção SSOT:** `tick` faz `JOIN runs` e `r.rowid>p.start_run_rowid` antes de chamar o coordenador; `status` usa o mesmo `start_run_rowid` para `counts` e `latest`. O histórico antigo fica intocado em `lab_continuation_reviews`, sem ficar elegível após reativação. Propostas continuam limitadas ao marco canônico separado do módulo `LabNextProposal`.
+- **Provas:** três cenários SQLite: Run `queued` antigo não é despachado após reenable, novo Run é; histórico `reconciliation_required` não contamina o status da próxima ativação; reativar projeto A não impede o projeto B de analisar sua fila legítima. Inspeção `PRAGMA quick_check`, sem repetição de chamadas antigas.
+- **Gates:** cinco checks do HEAD, inclusive Windows remoto; squash merge por SHA e branch eliminada. PC físico e E2E GPT Web não certificados, distribuição desligada.
+
+---
+
 ## Continuidade remota 01/11/2026 — controle durável de pausa/opt-in alpha.31 (candidata)
 
 - **Base:** `ordax-apps/main@95efc9f11e13ee84353a8c53652840bc8fc6984a`, alpha.30 PR #385 integrada e 5/5 CI da PR aprovados. Apenas GitHub remoto; Windows físico e certificação E2E seguem fora do escopo.
