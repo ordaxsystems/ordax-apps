@@ -334,7 +334,13 @@
             <small id="dependencyEditNote" role="status" aria-live="polite">Nenhum envio ao GPT é realizado ao salvar.</small>
           </form>
         </details>
-        <div class="work-toolbar"><label class="sr-only" for="workSearch">Buscar frentes de trabalho</label><input id="workSearch" type="search" autocomplete="off" placeholder="Buscar frentes..." aria-controls="orchestratorWorks" /><label class="sr-only" for="workStatusFilter">Filtrar por estado</label><select id="workStatusFilter" aria-label="Filtrar frentes por estado"><option value="all">Todos os estados</option><option value="running">Em andamento</option><option value="completed">Concluídas</option><option value="attention">Precisam de revisão</option><option value="ready">Aguardando</option></select></div><div id="workFilteredCount" class="work-filter-count" role="status" aria-live="polite"></div><div id="orchestratorWorks" class="orchestrator-works" aria-live="polite"></div>
+        <div class="work-toolbar"><label class="sr-only" for="workSearch">Buscar frentes de trabalho</label><input id="workSearch" type="search" autocomplete="off" placeholder="Buscar frentes..." aria-controls="orchestratorWorks" /><label class="sr-only" for="workStatusFilter">Filtrar por estado</label><select id="workStatusFilter" aria-label="Filtrar frentes por estado"><option value="all">Todos os estados</option><option value="running">Em andamento</option><option value="completed">Concluídas</option><option value="attention">Precisam de revisão</option><option value="ready">Aguardando</option></select></div><div id="workFilteredCount" class="work-filter-count" role="status" aria-live="polite"></div>
+        <div id="workFilterEmpty" class="work-filter-empty" hidden>
+          <strong>Nenhuma frente corresponde aos filtros</strong>
+          <p>Revise a busca ou consulte todos os estados. Nenhuma frente foi apagada.</p>
+          <button id="clearWorkFilters" class="mini-secondary" type="button">Limpar filtros</button>
+        </div>
+        <div id="orchestratorWorks" class="orchestrator-works" aria-live="polite"></div>
         <p id="workRailNote" class="work-rail-note">Cada conversa mantém o próprio histórico dentro do projeto.</p>
       </section>
       <header class="context-head">
