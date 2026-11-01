@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Leituras seguras de recibos incompletos — alpha.29 (candidata)
+## Snapshot read-only com autorização revalidada após espera — alpha.30 (candidata)
+
+O vínculo de workspace no projeto é um identificador opaco fornecido pelo Runtime/Platform, não uma permissão permanente. Uma consulta de snapshot pode durar tempo suficiente para que a sessão local ou o grant remoto sejam revogados. Agora o app verifica: (1) o grant Runtime antes da consulta, (2) a autorização local antes de ler, (3) a autorização local ao receber o resultado e (4) **novamente o grant do Runtime e a autorização local após a leitura**, antes de devolver qualquer metadado. Revogação em qualquer fronteira falha fechada; nenhum caminho, conteúdo de arquivo, comando, ação GPT ou novo estado persistido é exposto. Testes de concorrência cobrem revogação durante a leitura, antes da leitura e durante a checagem final. A fonte de verdade para permissões continua exclusivamente no Runtime/Platform.
+
+
+## Leituras seguras de recibos incompletos — alpha.29 (integrada)
 
 O recibo preservado na recuperação pode conter JSON incompleto. As telas de trabalho, o plano, a admissão do executor e a continuidade automática agora consultam uma **VIEW somente leitura** sobre o mesmo `lab_command_receipts`, que valida JSON e o vínculo real do Task com o projeto antes de oferecer `task_id`. Não existem novos dados persistidos, fontes alternativas ou migrações destrutivas. Quando o envio GPT é `uncertain` e seu Task não pode ser identificado, **apenas o projeto de origem** é colocado em quarentena para novos envios/alterações de execução; projetos independentes e a conversa Groq de aconselhamento permanecem disponíveis. Recibos antigos e seus bytes originais são preservados para reconciliação manual, sem reenvio automático. Testes SQLite verificam JSON truncado, referência cruzada entre projetos e duas formas de continuidade automática.
 

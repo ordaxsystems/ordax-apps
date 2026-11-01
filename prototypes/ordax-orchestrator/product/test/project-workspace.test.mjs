@@ -70,6 +70,7 @@ test('a verified opaque Runtime resource attaches once; read-only snapshot exclu
   assert.ok(!JSON.stringify(result).includes('SECRET_NEVER_PRINT'));
   assert.ok(!JSON.stringify(result).includes('private'));
   assert.equal(port.reads,1);
+  assert.equal(port.checks,3,'binding, before snapshot and after snapshot use the same Runtime authority');
 });
 test('project isolation, foreign identity, arbitrary paths and forged grant are rejected',async t=>{
   const port=trustedPort(),f=fixture(t,port),a=await project(f,'A'),b=await project(f,'B');
@@ -107,6 +108,63 @@ test('revocation during awaited grant verification prevents persistence and rece
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_project_workspaces').get().n,0);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='workspace_bind'").get().n,0);
 });
+
+test('Runtime grant revoked during an awaited snapshot never releases stale metadata',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  let release,started;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const entered=new Promise(resolve=>{started=resolve;});
+  const original=port.snapshot;
+  port.snapshot=async input=>{started();await gate;return original(input);};
+  const pending=f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId});
+  await entered;
+  port.setPermitted(false);
+  release();
+  await assert.rejects(pending,/workspace_grant_unverified/);
+  assert.equal(port.reads,1,'remote read was in flight; its metadata was not accepted');
+  assert.equal(port.checks,3,'grant was verified again after remote snapshot returned');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('local authorization revoked during initial grant verification prevents snapshot read',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  let release,started;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const entered=new Promise(resolve=>{started=resolve;});
+  const original=port.verifyBinding;
+  port.verifyBinding=async input=>{started();await gate;return original(input);};
+  const pending=f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId});
+  await entered;
+  f.setAllowed(false);
+  release();
+  await assert.rejects(pending,/orchestrator_access_denied/);
+  assert.equal(port.reads,0,'denied context may not start Runtime snapshot');
+});
+
+test('local authorization revoked while final grant verification waits prevents metadata disclosure',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});
+  let release,started,attempts=0;
+  const gate=new Promise(resolve=>{release=resolve;});
+  const entered=new Promise(resolve=>{started=resolve;});
+  const original=port.verifyBinding;
+  port.verifyBinding=async input=>{
+    attempts++;
+    if(attempts===2){started();await gate;}
+    return original(input);
+  };
+  const pending=f.invoke('workspace_snapshot',{projectId,bindingId:result.bindingId});
+  await entered;
+  f.setAllowed(false);
+  release();
+  await assert.rejects(pending,/orchestrator_access_denied/);
+  assert.equal(attempts,2,'both before and after snapshot must verify');
+  assert.equal(port.reads,1,'local revocation happened after the Runtime snapshot read');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('malformed Runtime snapshot is rejected, including unverified Git/provenance',async t=>{
   const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
   const {result}=await f.invoke('workspace_bind',{projectId,deviceId:DEVICE,resourceId:RESOURCE});

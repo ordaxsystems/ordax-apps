@@ -1,3 +1,12 @@
+## 0.2.0-alpha.30 — autorização contínua de snapshot Runtime (01/11/2026)
+
+- Revalida grants do Runtime/Platform **após** a leitura assíncrona do snapshot read-only, impedindo publicação de metadados sob permissão revogada durante o await.
+- Revalida autorização local antes de iniciar o snapshot, após seu retorno e após a prova final remota.
+- Testes de corrida verificam revogação antes, durante e depois da consulta, sem divulgar conteúdo ou alterar a Store.
+- Mesmo ProjectWorkspace e contrato de vinculação opaca; sem serviços, tabelas, transportes ou dependências novos.
+
+---
+
 ## 0.2.0-alpha.29 — leitura de recibos corrompidos sem vazamento entre projetos (01/11/2026)
 
 - Centraliza projeção SQL segura de `taskId` usando `json_valid` e valida o pertencimento do Task ao mesmo projeto antes da consulta.

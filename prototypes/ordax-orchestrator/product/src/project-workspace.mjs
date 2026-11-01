@@ -120,7 +120,16 @@ export class ProjectWorkspace {
     const who=identity(context,projectId);
     const proof=await this.port.verifyBinding({context:who,...binding});
     verifiedProof(proof,context,projectId,binding.deviceId,binding.resourceId);
+    // A session/grant can be revoked while remote operations are awaiting.
+    // Do not read the resource after an expired local authorization.
+    if(typeof recheckAccess==='function')recheckAccess();
     const result=await this.port.snapshot({context:who,...binding});
+    if(typeof recheckAccess==='function')recheckAccess();
+    // A valid proof BEFORE the snapshot is not evidence of a valid grant
+    // AFTER the awaited snapshot. Check the SAME Runtime authority again
+    // before releasing any metadata to the caller.
+    const finalProof=await this.port.verifyBinding({context:who,...binding});
+    verifiedProof(finalProof,context,projectId,binding.deviceId,binding.resourceId);
     if(typeof recheckAccess==='function')recheckAccess();
     return {bindingId,...cleanSnapshot(result,binding.deviceId,binding.resourceId)};
   }
