@@ -300,9 +300,12 @@
       </section>
       <div id="contextPanel" class="right-pane-panel context-panel" role="tabpanel" aria-labelledby="contextPaneTab" hidden>
       <section id="orchestratorWorkRail" class="orchestrator-work-rail" hidden aria-label="Conversas do projeto no GPT">
-        <header class="work-rail-head"><div><span class="eyebrow">Projeto ativo</span><h3 id="workRailTitle">Conversas no GPT</h3></div><div class="work-rail-head-actions"><span id="workRailCount" class="work-rail-count">0</span><button id="closeWorkRail" class="work-rail-close" type="button" aria-label="Fechar frentes de trabalho">×</button></div></header>
+        <header class="work-rail-head"><div><span class="eyebrow">Projeto ativo</span><h3 id="workRailTitle">Conversas no GPT</h3></div><div class="work-rail-head-actions"><button id="closeWorkRail" class="work-rail-close" type="button" aria-label="Fechar frentes de trabalho">×</button></div></header>
         <p id="workRailProject" class="work-rail-project"></p>
-        <p id="workPlanSummary" class="work-plan-summary" role="status" aria-live="polite">Planejamento do projeto não consultado.</p>
+        <details class="work-plan-details">
+          <summary>Planejamento consultivo · não autoriza envios</summary>
+          <p id="workPlanSummary" class="work-plan-summary" role="status" aria-live="polite">Planejamento do projeto não consultado.</p>
+        </details>
         <button id="newScopedWorkButton" class="primary new-gpt-conversation" type="button">＋ Nova conversa no GPT</button>
         <details id="newScopedWorkDetails" class="new-work-details">
           <summary>Configurar nome da conversa</summary>
