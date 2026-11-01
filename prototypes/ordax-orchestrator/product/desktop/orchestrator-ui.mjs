@@ -211,20 +211,31 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         :'Estados das conversas registradas; não comprovam execução autônoma nem conclusão do projeto.';
   }
   function applyWorkFilters(){
-    const query=($('workSearch')?.value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR').trim();
+    const normalize=text=>String(text||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+    const query=normalize($('workSearch')?.value).trim();
     const state=$('workStatusFilter')?.value||'all';
     const nodes=$('orchestratorWorks').querySelectorAll('.work-card');
+    const byId=new Map(visibleWorkItems.map(work=>[work.id,work]));
     let visible=0;
     for(const button of nodes){
-      const work=visibleWorkItems.find(w=>w.id===button.dataset.taskId);
-      const haystack=String(work?.title||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
-      const show=Boolean(work)&&(!query||haystack.includes(query))&&(state==='all'||workClass(work)===state);
+      const work=byId.get(button.dataset.taskId);
+      const show=Boolean(work)&&(!query||normalize(work.title).includes(query))&&(state==='all'||workClass(work)===state);
       (button.closest('.work-entry')||button).hidden=!show;if(show)visible++;
     }
+    const summary=$('orchestratorWorks').querySelector('.work-attention-summary');
+    // A global warning must not obscure a different filter or search result.
+    if(summary)summary.hidden=Boolean(query)||(state!=='all'&&state!=='attention');
+    $('workFilterEmpty').hidden=visibleWorkItems.length===0||visible>0;
     $('workFilteredCount').textContent=visible+' de '+visibleWorkItems.length+' frentes exibidas';
   }
   $('workSearch').addEventListener('input',applyWorkFilters);
   $('workStatusFilter').addEventListener('change',applyWorkFilters);
+  $('clearWorkFilters').addEventListener('click',()=>{
+    $('workSearch').value='';
+    $('workStatusFilter').value='all';
+    applyWorkFilters();
+    $('workSearch').focus();
+  });
   let dependencyWorks=[],dependencySelectionDirty=false,dependencyProject=null,dependencyCurrentTarget='';
   function updateDependencySelectionCount(){
     const boxes=[...$('dependencyCandidates').querySelectorAll('input[type="checkbox"]')];
