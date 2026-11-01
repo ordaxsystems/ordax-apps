@@ -812,10 +812,23 @@ export class OrchestratorService {
       AND task_id=? LIMIT 1`).get(taskId));
   }
 
+  // A running GPT Web action must only defer opt-in Groq coordination for
+  // its own project. Neither a global provider busy flag nor work in another
+  // project has authority to block this read-only coordinator channel.
+  projectWorkInProgress(projectId) {
+    return Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipts
+      WHERE project_id=? AND status='running'
+        AND operation IN ('work_send','proposal_send')
+      UNION ALL
+      SELECT 1 FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id
+      WHERE b.project_id=? AND b.kind='work' AND r.status='running'
+      LIMIT 1`).get(projectId,projectId));
+  }
+
   // Shared bounded-memory selector for opt-in reviews and proposals. An
-  // unavailable or occupied coordinator must not hold the whole project queue.
-  // It only inspects candidates; all receipt, consent and provider gates remain
-  // in the caller. The SQLite iterator does not materialize the full backlog.
+  // unavailable, occupied or project-busy coordinator must not hold the
+  // whole queue. Receipt, consent and provider gates remain in the caller.
+  // The SQLite iterator does not materialize the full backlog.
   selectContinuationCandidate(candidates) {
     let blocked='idle';
     for(const row of candidates) {
@@ -825,6 +838,10 @@ export class OrchestratorService {
       }
       if(this.coordinatorTurnBusy(this.orchestrator(row.project_id,row.orchestrator_id).chat_task_id)) {
         if(blocked==='idle')blocked='coordinator_busy';
+        continue;
+      }
+      if(this.projectWorkInProgress(row.project_id)) {
+        if(blocked==='idle')blocked='executor_busy';
         continue;
       }
       return {row};

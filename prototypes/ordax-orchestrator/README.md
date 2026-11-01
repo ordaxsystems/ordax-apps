@@ -1,5 +1,10 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
+## Continuidade independente durante execução GPT Web — alpha.36
+
+O executor GPT Web e a coordenação Groq continuam canais distintos. Se há envio GPT em andamento em um projeto, análises e propostas automáticas desse projeto aguardam; outros projetos podem usar o Groq sem sofrer bloqueio global. O seletor usa o SQLite e os vínculos de projeto já existentes. Nenhuma resposta é considerada entrega verificada sem recibo; não há envio GPT automático nem autonomia 24h certificada.
+
+
 ## Seleção justa para coordenação opt-in — alpha.35
 
 A análise opcional de Runs confirmados e a geração de propostas de trabalho não ficam presas ao primeiro coordenador sem Groq ou ocupado. Um seletor comum percorre candidatos na SQLite canônica e permite avançar outro projeto independente, sem reenviar comandos, assumir autoridade ou criar executor/fila paralelos. O trabalho bloqueado continua pendente para retomada autorizada; os recibos incertos e as aprovações humanas continuam bloqueios obrigatórios.

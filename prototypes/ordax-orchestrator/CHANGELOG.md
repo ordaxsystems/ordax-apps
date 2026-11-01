@@ -1,3 +1,12 @@
+## 0.2.0-alpha.36 — isolamento GPT/Groq na continuidade (01/11/2026)
+
+- Execuções ou recibos GPT Web `running` bloqueiam análises e propostas opt-in **somente no próprio projeto**. Um projeto independente pode seguir com Groq mesmo que o executor GPT global esteja ocupado.
+- O seletor compartilhado usa os recibos SQLite e os Runs vinculados ao projeto; elimina os guards globais redundantes dos consumidores. Nenhum bypass de receipts `uncertain`, pausa, consentimento, grants ou aprovações humanas.
+- Testes SQLite comprovam projeto A com recibo GPT em voo e projeto B em análise, retomada de A após conclusão; Run GPT em voo em A e proposta B livre. Nenhum envio GPT, `PRAGMA quick_check`.
+- Sem nova fila, store, worker, provider, Runtime ou credencial.
+
+---
+
 ## 0.2.0-alpha.35 — continuidade independente entre coordenadores (01/11/2026)
 
 - A fila opt-in de análise pós-Run e a fila de propostas consultivas agora compartilham a mesma seleção de coordenador executável, sem duplicar persistência ou criar outro Scheduler.
