@@ -157,6 +157,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('activeProjectDetail').textContent=current
       ?repository+(legacyCount?' · '+legacyCount+' outro(s) projeto(s) existente(s)':'')
       :'Configure um projeto para começar';
+    // Legacy projects remain selectable for safe migration, but they do not
+    // compete with the active instance as primary navigation.
+    $('legacyProjectAccess').hidden=projects.length<=1;
     const list=$('projectNavList');list.replaceChildren();
     if(!projects.length){const empty=document.createElement('p');empty.className='nav-empty';empty.textContent='Conecte seu primeiro projeto.';list.append(empty);return;}
     for(const project of projects){
