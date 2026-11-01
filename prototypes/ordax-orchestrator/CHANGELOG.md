@@ -1,3 +1,12 @@
+## 0.2.0-alpha.38 — execução GPT independente de coordenação Groq (01/11/2026)
+
+- A admissão do executor GPT Web contabiliza somente recibos `work_send` e `proposal_send` com estado `running`, Runs GPT `running` e a ocupação real do WebContentsView. Chamadas Groq `orchestrator_chat`, `orchestrator_analyze` ou `orchestrator_prepare` não consomem slots de transporte GPT.
+- Mantém capacidade física máxima de um envio GPT Web, sem criar fila adicional, workers, paralelismo de WebContentsView, grants, retry, ou autoridade externa.
+- Testes de concorrência reproduzem Groq em espera e GPT B confirmado, depois Groq simultâneo a envio GPT B em espera: outro envio GPT C falha fechado até B concluir, e então C segue mesmo com Groq A pendente.
+- A tela de status passa a reportar `executor.activeCommands` como recibos do próprio transporte GPT, não como qualquer chamada Groq.
+
+---
+
 ## 0.2.0-alpha.37 — listagem segura de propostas e aprovações (01/11/2026)
 
 - A leitura `proposals_list` preserva o histórico SQLite, mas um JSON de payload/result corrompido não derruba a lista de propostas válidas do mesmo coordenador.

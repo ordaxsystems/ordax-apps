@@ -400,9 +400,13 @@ export class OrchestratorService {
     const activeRuns=Number(this.db.prepare(
       "SELECT COUNT(*) n FROM runs WHERE status='running'"
     ).get().n);
-    const activeCommands=Number(this.db.prepare(
-      "SELECT COUNT(*) n FROM lab_command_receipts WHERE status='running'"
-    ).get().n);
+    // Only GPT Web submissions occupy the single WebContentsView executor.
+    // Groq/chat/analysis requests have their own coordinator lane and must
+    // not consume provider capacity, even while their receipts are running.
+    // Keep ALL in-flight GPT sends reserved until their durable receipt ends.
+    const activeCommands=Number(this.db.prepare(`SELECT COUNT(*) n
+      FROM lab_command_receipts WHERE status='running'
+      AND operation IN ('work_send','proposal_send')`).get().n);
     const hostOccupied=Boolean(this.provider?.busy?.());
     const occupied=activeRuns>0||activeCommands>0||hostOccupied;
     return Object.freeze({

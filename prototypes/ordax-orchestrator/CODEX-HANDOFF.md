@@ -1,3 +1,14 @@
+## Continuidade remota 01/11/2026 — admissão de transporte independente alpha.38 (candidata)
+
+- **Base:** `ordax-apps/main@bed4154f8ba484e2d1bd7a00dcb05b19f332e4a2`. PR #392 (alpha.37) integrada; cinco gates e dois pós-merge success; nenhuma PR aberta.
+- **Confirmação física anterior:** `DESKTOP-4UFL03B`, Node 24.22.2, testes domain 85/85, restart de processo e Node host, sessão HTTP e lock de perfil; teste temporário removido. Sem validação GPT Web real ou Electron instalado.
+- **Causa:** `executorAdmission()` contava `lab_command_receipts.status='running'` de qualquer operação, apesar de `dispatchCore()` distinguir Groq/GPT; Groq pendente falsamente bloqueava o único slot GPT.
+- **Correção:** contabilização dos receipts `work_send`/`proposal_send` somente, preservando o ceiling de um WebContentsView, Runs ativos e `provider.busy()`.
+- **Provas novas:** duas concorrências assíncronas: Groq A pendente com GPT B concluído; Groq A + GPT B pendentes e GPT C bloqueado até B concluir (sem receipt para C rejeitado); `PRAGMA quick_check`.
+- **Gates:** exigir todos os cinco no HEAD final, incluindo `owned-windows`, antes de squash merge. Sem implantar no Windows físico, sem enviar GPT real, sem prometer execução 24h.
+
+---
+
 ## Continuidade remota 01/11/2026 — listagem de propostas resiliente alpha.37 (candidata)
 
 - **Base:** `ordax-apps/main@ae945e0e87c6f31e7e8cf580581cc61a8a0597b7` (alpha.36 PR #391 integrada, 5/5 gates e pós-merge Isolation/Foundation success; PRs abertas zero).

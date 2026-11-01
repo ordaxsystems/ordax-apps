@@ -1,5 +1,10 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
+## Capacidade correta do executor GPT Web — alpha.38
+
+A ocupação do GPT Web não inclui chamadas consultivas Groq pendentes. Um comando Groq não impede um envio de trabalho GPT autorizado em outro projeto; apenas `work_send`/`proposal_send`, Runs GPT e o estado físico do provedor ocupam o slot. O limite continua sendo um envio GPT por vez, inclusive antes de existir um Run. Sem envio GPT automático.
+
+
 ## Propostas recuperáveis e aprovações canônicas — alpha.37
 
 A listagem de propostas não falha por causa de uma ação histórica com JSON inválido e só apresenta propostas cuja aprovação pendente ou concluída está comprovada no `approval_ledger`. Os dados históricos permanecem intactos para investigação; a leitura nunca cria tarefas, aprovações ou envios GPT. O limite de 50 ações por consulta permanece vigente.
