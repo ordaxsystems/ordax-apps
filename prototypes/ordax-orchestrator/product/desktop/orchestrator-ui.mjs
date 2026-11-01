@@ -332,7 +332,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='As conversas criadas para este orquestrador aparecerão aqui.';list.append(empty);return;}
     const ordered=[...works].sort((a,b)=>{const priority={failed:0,error:0,interrupted:0,running:1,ready:2,paused:3,completed:4};return (priority[a.status]??5)-(priority[b.status]??5);});
     for(const work of ordered){
-      const [label,state]=work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);const button=document.createElement('button');
+      const [label,state]=work.execution?.observed==='reconciliation_required'?['Resultado incerto','attention']:
+        work.execution?.observed==='review_required'?['Revisar recibo','attention']:
+        work.status==='ready'&&nodeHost?['GPT indisponível','attention']:(labels[work.status]||labels.ready);
+      const button=document.createElement('button');
       button.type='button';button.className='work-card';button.dataset.taskId=work.id;
       const copy=document.createElement('span');copy.className='work-card-copy';
       const title=document.createElement('strong');title.textContent=work.title;
