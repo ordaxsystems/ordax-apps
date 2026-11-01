@@ -503,10 +503,11 @@ const runState=document.createElement('small');
   });
   let workRailReturnFocus=$('coordinatorRailToggle');
   const setWorkRailOpen=open=>{
-    if(open)void onSelectRightPane?.('context').catch(()=>{});
+    const ready=open?(onSelectRightPane?.('context').catch(()=>{})??Promise.resolve()):Promise.resolve();
     document.body.classList.toggle('orchestrator-rail-open',open);
     $('contextRail').classList.toggle('open',open);
     $('coordinatorRailToggle').setAttribute('aria-expanded',String(open));
+    return ready;
   };
   const openFilteredWorks=(filter,trigger)=>{
     if(!projectId||!orchestratorId)return;
@@ -515,8 +516,9 @@ const runState=document.createElement('small');
     $('workSearch').value='';
     $('workStatusFilter').value=filter;
     applyWorkFilters();
-    setWorkRailOpen(true);
-    $('workSearch').focus();
+    void setWorkRailOpen(true).then(()=>{
+      if(document.body.classList.contains('orchestrator-rail-open'))$('workSearch').focus();
+    });
   };
   $('coordinatorRailToggle').addEventListener('click',()=>{
     workRailReturnFocus=$('coordinatorRailToggle');
