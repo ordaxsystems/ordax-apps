@@ -3,6 +3,7 @@
 - Revalida grants do Runtime/Platform **após** a leitura assíncrona do snapshot read-only, impedindo publicação de metadados sob permissão revogada durante o await.
 - Revalida autorização local antes de iniciar o snapshot, após seu retorno e após a prova final remota.
 - Testes de corrida verificam revogação antes, durante e depois da consulta, sem divulgar conteúdo ou alterar a Store.
+- `workspace_bind` retorna receipts idempotentes já aceitos sem uma nova chamada redundante ao Runtime; vinculações novas e snapshots sempre exigem grant atual, e requestIds conflitantes falham antes do acesso externo.
 - Mesmo ProjectWorkspace e contrato de vinculação opaca; sem serviços, tabelas, transportes ou dependências novos.
 
 ---

@@ -72,6 +72,29 @@ test('a verified opaque Runtime resource attaches once; read-only snapshot exclu
   assert.equal(port.reads,1);
   assert.equal(port.checks,3,'binding, before snapshot and after snapshot use the same Runtime authority');
 });
+
+test('idempotent binding returns historical receipt without repeating Runtime verification or granting current access',async t=>{
+  const port=trustedPort(),f=fixture(t,port),projectId=await project(f);
+  const input={requestId:'one_durable_binding',projectId,deviceId:DEVICE,resourceId:RESOURCE};
+  const receipt=await f.invoke('workspace_bind',input);
+  assert.equal(receipt.status,'succeeded');
+  assert.equal(port.checks,1);
+  port.setPermitted(false);
+  assert.deepEqual(await f.invoke('workspace_bind',input),receipt);
+  assert.equal(port.checks,1,'exact duplicate command must not re-contact Runtime');
+  await assert.rejects(f.invoke('workspace_bind',{...input,resourceId:'resource_other_987654321'}),
+    /orchestrator_request_conflict/);
+  assert.equal(port.checks,1,'requestId conflict must not trigger any grant check');
+  await assert.rejects(f.invoke('workspace_bind',{...input,requestId:'fresh_binding'}),
+    /workspace_grant_unverified/);
+  assert.equal(port.checks,2,'a NEW binding must revalidate Runtime grant');
+  await assert.rejects(f.invoke('workspace_snapshot',{
+    projectId,bindingId:receipt.result.bindingId}),/workspace_grant_unverified/);
+  assert.equal(port.reads,0,'an old successful receipt never authorizes a new snapshot');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_command_receipts WHERE operation='workspace_bind'").get().n,1);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('project isolation, foreign identity, arbitrary paths and forged grant are rejected',async t=>{
   const port=trustedPort(),f=fixture(t,port),a=await project(f,'A'),b=await project(f,'B');
   const result=await f.invoke('workspace_bind',{projectId:a,deviceId:DEVICE,resourceId:RESOURCE});
