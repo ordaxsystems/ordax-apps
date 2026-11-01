@@ -813,9 +813,9 @@ test('a running GPT receipt blocks only its own project, not independent Groq an
   const db=f.store.db;
   db.prepare('UPDATE lab_continuation_reviews SET updated_at=? WHERE run_id=?').run('2000-01-01',runA);
   db.prepare('UPDATE lab_continuation_reviews SET updated_at=? WHERE run_id=?').run('2030-01-01',runB);
-  db.prepare(\`INSERT INTO lab_command_receipts
+  db.prepare(`INSERT INTO lab_command_receipts
     (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,'running',?,?,?)\`)
+    VALUES(?,?,?,?,?,?,?,?,'running',?,?,?)`)
     .run('command_busy_A',f.context.workspaceSessionId,f.context.actorId,f.context.clientId,
       'busy_A',a.projectId,'work_send','digest',
       JSON.stringify({taskId:a.taskId}),f.store.now(),f.store.now());
