@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — consultas seguras de recibos alpha.29 (candidata)
+
+- **Base:** `ordax-apps/main@d6032b3e6a4cbb8c8f341a2821de9472b84d52b6`. Alpha.28 PR #383 integrada, pós-merge 5/5 checks aprovados, zero PRs e branches Orchestrator.
+- **Causa-raiz:** após a alpha.28 preservar recibos com JSON corrompido ou incompleto, `json_extract(result,'$.taskId')` direto permanecia em monitor, admissão, rotação, dependências, serialização Groq e análises/propostas opt-in. SQLite levanta erro `malformed JSON` e pode impedir a leitura de projeto inteiro.
+- **Correção SSOT:** `lab_command_receipt_scope` é uma VIEW SQL somente de leitura sobre `lab_command_receipts`; extração JSON apenas após `json_valid`, associação real com Task do mesmo projeto, `unknown_work_target` para provider work/proposal indeterminado. `hasUnresolvedWorkReceipt` é o guard canônico para autorização de trabalhos e mutações. Se o Task não puder ser identificado, quarentena **do projeto de origem**, não dos outros nem do chat Groq. Sem nova tabela, store, worker, persistência ou migração.
+- **Provas:** SQLite com JSON truncado, taskId de outro projeto, recibo Groq corrompido isolado e fila de análise/propostas após falha; verificações de ausência de envio indevido, bloqueio seguro, `PRAGMA quick_check`.
+- **Exclusões:** nenhum acesso ao Windows físico do usuário, nenhuma certificação GPT Web; apenas workflow Windows remoto e 5/5 gates antes de squash merge e limpeza da branch.
+
+---
+
 ## Continuidade remota 01/11/2026 — integridade de recuperação alpha.28 (candidata)
 
 - **Base:** `ordax-apps/main@d449c413fac0de79d42b53ea1700cfe4e4a908ee`, alpha.27 integrada via PR #382 e 5/5 gates verdes no HEAD; post-merge verificado 5/5. PRs/branches do Orchestrator: zero.

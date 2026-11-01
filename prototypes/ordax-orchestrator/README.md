@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Recuperação com vínculo imutável entre comando e ação — alpha.28 (candidata)
+## Leituras seguras de recibos incompletos — alpha.29 (candidata)
+
+O recibo preservado na recuperação pode conter JSON incompleto. As telas de trabalho, o plano, a admissão do executor e a continuidade automática agora consultam uma **VIEW somente leitura** sobre o mesmo `lab_command_receipts`, que valida JSON e o vínculo real do Task com o projeto antes de oferecer `task_id`. Não existem novos dados persistidos, fontes alternativas ou migrações destrutivas. Quando o envio GPT é `uncertain` e seu Task não pode ser identificado, **apenas o projeto de origem** é colocado em quarentena para novos envios/alterações de execução; projetos independentes e a conversa Groq de aconselhamento permanecem disponíveis. Recibos antigos e seus bytes originais são preservados para reconciliação manual, sem reenvio automático. Testes SQLite verificam JSON truncado, referência cruzada entre projetos e duas formas de continuidade automática.
+
+
+## Recuperação com vínculo imutável entre comando e ação — alpha.28 (integrada)
 
 No reinício, a recuperação de comandos `proposal_send` interrompidos valida antes de qualquer mutação que o recibo aponte para uma ação `orchestrator.proposal-send` **do mesmo comando, trabalho e projeto**, ainda em `dispatching`. Referências inválidas, incompletas ou cruzadas não alteram outras ações; o comando permanece `uncertain`, exige reconciliação e nunca reenvia. Resultados JSON corrompidos não bloqueiam o processo de recuperação: são mantidos integralmente no SQLite, e a consulta retorna apenas um diagnóstico conservador, sem confiança nos dados. A Store, as tabelas, o log de eventos e os mecanismos de autorização permanecem canônicos; não há outra fila, persistência ou transporte.
 
