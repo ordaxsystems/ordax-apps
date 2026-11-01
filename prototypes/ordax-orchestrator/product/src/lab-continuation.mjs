@@ -41,13 +41,27 @@ export class LabContinuation {
       start_run_rowid=CASE WHEN excluded.enabled=1 AND lab_continuation_policies.enabled=0
         THEN excluded.start_run_rowid ELSE lab_continuation_policies.start_run_rowid END`)
       .run(projectId,orchestratorId,enabled?1:0,now,baseline);
-    if(!enabled)this.nextProposal.configure(projectId,orchestratorId,false);
+    if(!enabled) {
+      // Persist the stop decision before an in-flight Groq reply returns.
+      // Its external outcome is not retried or promoted to a confirmed review.
+      this.quarantineInFlight(projectId,orchestratorId,'policy_disabled');
+      this.nextProposal.configure(projectId,orchestratorId,false);
+    }
     return this.status(projectId,orchestratorId);
   }
   configureProposals(projectId,orchestratorId,enabled) {
     if(enabled&&this.db.prepare('SELECT enabled FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?')
       .get(projectId,orchestratorId)?.enabled!==1)throw Error('continuation_analysis_required');
     return this.nextProposal.configure(projectId,orchestratorId,enabled);
+  }
+  quarantineInFlight(projectId,orchestratorId,reason) {
+    if(!['policy_disabled','orchestrator_paused'].includes(reason))
+      throw Error('continuation_invalid_interruption');
+    this.db.prepare(`UPDATE lab_continuation_reviews
+      SET state='reconciliation_required',reason=?,updated_at=?
+      WHERE project_id=? AND orchestrator_id=? AND state='analyzing'`)
+      .run(reason,this.store.now(),projectId,orchestratorId);
+    this.nextProposal.quarantineInFlight(projectId,orchestratorId,reason);
   }
   status(projectId,orchestratorId) {
     const policy=this.db.prepare('SELECT enabled FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?')
@@ -133,14 +147,20 @@ export class LabContinuation {
         const current=this.store.getWorkspaceSession();
         const sameWorkspace=current?.status==='active'&&current.id===session.id;
         const confirmed=sameWorkspace&&receipt?.status==='succeeded'&&receipt?.result?.responseObserved===true;
-        this.db.prepare("UPDATE lab_continuation_reviews SET state=?,command_id=?,reason=?,updated_at=? WHERE run_id=?")
+        const finalized=this.db.prepare(`UPDATE lab_continuation_reviews
+          SET state=?,command_id=?,reason=?,updated_at=?
+          WHERE run_id=? AND state='analyzing'`)
           .run(confirmed?'analyzed':'reconciliation_required',receipt?.commandId||null,
-            confirmed?null:sameWorkspace?'analysis_unconfirmed':'workspace_changed',this.store.now(),row.run_id);
+            confirmed?null:sameWorkspace?'analysis_unconfirmed':'workspace_changed',this.store.now(),row.run_id).changes;
+        // A policy disable/pause may have quarantined the row during await.
+        // Never overwrite that authoritative stop, even after rapid re-enable.
         this.notify();
-        return {state:confirmed?'analyzed':'reconciliation_required',runId:row.run_id};
+        return {state:confirmed&&finalized===1?'analyzed':'reconciliation_required',runId:row.run_id};
       }catch {
         // A coordinator request might have been accepted before the error.
-        this.db.prepare("UPDATE lab_continuation_reviews SET state='reconciliation_required',reason='analysis_unconfirmed',updated_at=? WHERE run_id=?")
+        this.db.prepare(`UPDATE lab_continuation_reviews
+          SET state='reconciliation_required',reason='analysis_unconfirmed',updated_at=?
+          WHERE run_id=? AND state='analyzing'`)
           .run(this.store.now(),row.run_id);
         this.notify();
         return {state:'reconciliation_required',runId:row.run_id};

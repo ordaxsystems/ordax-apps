@@ -1,3 +1,12 @@
+## 0.2.0-alpha.31 — política de continuidade revogada durante Groq (01/11/2026)
+
+- Desativação de continuidade, desativação de propostas e pausa do Orchestrator preservam a decisão no SQLite e colocam análises/planejamentos em voo em reconciliação.
+- Conclusões tardias só confirmam linhas ainda em `analyzing`/`planning`; a reativação imediata não certifica operação antiga nem a repete.
+- Quatro regressões de corrida confirmam isolamento entre política e efeito Groq, sem criação/envio automático de novas tarefas GPT.
+- Mesmo ledger, Store, Groq e gates, sem novas tabelas, estados duplicados, filas ou adaptadores.
+
+---
+
 ## 0.2.0-alpha.30 — autorização contínua de snapshot Runtime (01/11/2026)
 
 - Revalida grants do Runtime/Platform **após** a leitura assíncrona do snapshot read-only, impedindo publicação de metadados sob permissão revogada durante o await.

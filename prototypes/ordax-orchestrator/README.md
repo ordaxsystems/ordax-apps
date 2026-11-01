@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Snapshot read-only com autorização revalidada após espera — alpha.30 (candidata)
+## Desativação e pausa durante continuidade assíncrona — alpha.31 (candidata)
+
+O opt-in de continuidade automática não é uma autorização permanente. Se a análise Groq ou a geração opcional de proposta estiver em voo quando o dono **desativar a política** ou **pausar o coordenador**, a linha canônica em `lab_continuation_reviews` / `lab_next_proposals` muda para `reconciliation_required` **dentro da mesma transação de configuração**. Uma resposta atrasada só pode confirmar resultados ainda em `analyzing` ou `planning`; nunca sobrescreve uma decisão de interrupção, inclusive após desativar e reativar rapidamente. Não existe repetição automática de solicitações cuja entrega possa ter ocorrido. Respostas Groq já solicitadas podem permanecer no histórico/propostas pendentes para revisão humana, sem criação automática de novas Tasks ou envio GPT. Sem novas tabelas, filas, providers ou caches.
+
+
+## Snapshot read-only com autorização revalidada após espera — alpha.30 (integrada)
 
 O vínculo de workspace no projeto é um identificador opaco fornecido pelo Runtime/Platform, não uma permissão permanente. Uma consulta de snapshot pode durar tempo suficiente para que a sessão local ou o grant remoto sejam revogados. Agora o app verifica: (1) o grant Runtime antes da consulta, (2) a autorização local antes de ler, (3) a autorização local ao receber o resultado e (4) **novamente o grant do Runtime e a autorização local após a leitura**, antes de devolver qualquer metadado. Revogação em qualquer fronteira falha fechada; nenhum caminho, conteúdo de arquivo, comando, ação GPT ou novo estado persistido é exposto. Testes de concorrência cobrem revogação durante a leitura, antes da leitura e durante a checagem final. A fonte de verdade para permissões continua exclusivamente no Runtime/Platform. Um `workspace_bind` repetido com `requestId` idêntico lê seu recibo SQLite **sem repetir verificação remota**; isso não reautoriza recursos: qualquer nova vinculação ou snapshot volta a exigir grant Runtime atual. Conflitos de `requestId` são rejeitados antes de consultar o Runtime.
 

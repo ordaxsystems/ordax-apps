@@ -610,6 +610,8 @@ export class OrchestratorService {
       this.orchestrator(input.projectId,input.orchestratorId);
       this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
         .run(input.paused?'paused':'ready',input.orchestratorId);
+      if(input.paused)this.continuation.quarantineInFlight(
+        input.projectId,input.orchestratorId,'orchestrator_paused');
       return {orchestratorId:input.orchestratorId,status:input.paused?'paused':'ready'};
     }
     if(operation==='work_dependency_set') {

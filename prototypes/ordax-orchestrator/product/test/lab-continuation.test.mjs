@@ -273,6 +273,113 @@ test('continuation scan preserves already reviewed Runs and resumes after reinit
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_continuation_reviews WHERE state=?').get('analyzed').n,1);
 });
 
+
+test('disable and rapid re-enable during Groq analysis cannot certify or replay the old review',async t=>{
+  let entered,release,calls=0;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const f=setup(t,{available:()=>true,send:async()=>{
+    calls++;entered();await gate;return {content:'Old analysis replied'};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const runId=finish(f.store,a.taskId);
+  const pending=f.service.continuation.tick(f.context);
+  await started;
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:false});
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  release();
+  assert.deepEqual(await pending,{state:'reconciliation_required',runId});
+  const row=f.store.db.prepare('SELECT state,reason FROM lab_continuation_reviews WHERE run_id=?').get(runId);
+  assert.equal(row.state,'reconciliation_required');
+  assert.equal(row.reason,'policy_disabled');
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(calls,1,'a stopped analysis is not repeated after re-enable');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_next_proposals').get().n,0);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('turning off proposal policy while Groq plans never promotes old planning after re-enable',async t=>{
+  let entered,release,prepares=0;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const f=setup(t,{available:()=>true,send:async input=>{
+    if(!input.prepareWork)return {content:'Confirmed analysis'};
+    prepares++;entered();await gate;
+    return {content:'Plan returned',proposal:{title:'Review',content:'Inspect UI',reason:'Acceptance'}};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const runId=finish(f.store,a.taskId);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+  const pending=f.service.continuation.tick(f.context);
+  await started;
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:false});
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  release();
+  assert.deepEqual(await pending,{state:'reconciliation_required',runId});
+  const row=f.store.db.prepare('SELECT status,reason FROM lab_next_proposals WHERE review_run_id=?').get(runId);
+  assert.equal(row.status,'reconciliation_required');
+  assert.equal(row.reason,'proposal_policy_disabled');
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(prepares,1,'planning may not be replayed');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_task_bindings WHERE kind='work'").get().n,1,
+    'advisory Groq result must not create new GPT work without review');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('pausing and resuming a coordinator while analysis is in flight keeps a durable stop',async t=>{
+  let entered,release,calls=0;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const f=setup(t,{available:()=>true,send:async()=>{
+    calls++;entered();await gate;return {content:'Old analysis'};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const runId=finish(f.store,a.taskId);
+  const pending=f.service.continuation.tick(f.context);
+  await started;
+  await f.call('orchestrator_pause',{projectId:a.projectId,orchestratorId:a.orchestratorId,paused:true});
+  await f.call('orchestrator_pause',{projectId:a.projectId,orchestratorId:a.orchestratorId,paused:false});
+  release();
+  assert.equal((await pending).state,'reconciliation_required');
+  const review=f.store.db.prepare('SELECT state,reason FROM lab_continuation_reviews WHERE run_id=?').get(runId);
+  assert.equal(review.state,'reconciliation_required');
+  assert.equal(review.reason,'orchestrator_paused');
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(calls,1);
+});
+
+test('pausing and resuming a coordinator mid-proposal cannot silently certify it',async t=>{
+  let entered,release,calls=0;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const f=setup(t,{available:()=>true,send:async input=>{
+    if(!input.prepareWork)return {content:'Analysis finished'};
+    calls++;entered();await gate;
+    return {content:'Prepared',proposal:{title:'Review next',content:'Check result',reason:'Verification'}};
+  }});
+  const a=await prepare(f);
+  await f.call('continuity_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:a.projectId,orchestratorId:a.orchestratorId,enabled:true});
+  const runId=finish(f.store,a.taskId);
+  assert.equal((await f.service.continuation.tick(f.context)).state,'analyzed');
+  const pending=f.service.continuation.tick(f.context);
+  await started;
+  await f.call('orchestrator_pause',{projectId:a.projectId,orchestratorId:a.orchestratorId,paused:true});
+  await f.call('orchestrator_pause',{projectId:a.projectId,orchestratorId:a.orchestratorId,paused:false});
+  release();
+  assert.equal((await pending).state,'reconciliation_required');
+  const review=f.store.db.prepare('SELECT status,reason FROM lab_next_proposals WHERE review_run_id=?').get(runId);
+  assert.equal(review.status,'reconciliation_required');
+  assert.equal(review.reason,'orchestrator_paused');
+  assert.equal((await f.service.continuation.tick(f.context)).state,'idle');
+  assert.equal(calls,1);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_task_bindings').get().n,2);
+});
+
 // Simulate a real session cutover on the SAME SQLite/Store. Old project
 // records and receipts remain durable; they must not drive the new session.
 function rotateActiveWorkspace(store,oldSessionId) {

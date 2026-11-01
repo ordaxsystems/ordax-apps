@@ -1,3 +1,14 @@
+## Continuidade remota 01/11/2026 — controle durável de pausa/opt-in alpha.31 (candidata)
+
+- **Base:** `ordax-apps/main@95efc9f11e13ee84353a8c53652840bc8fc6984a`, alpha.30 PR #385 integrada e 5/5 CI da PR aprovados. Apenas GitHub remoto; Windows físico e certificação E2E seguem fora do escopo.
+- **Causa-raiz:** `LabContinuation.tick` e `LabNextProposal.tick` faziam `await service.invoke(...)` e escreviam `analyzed/proposed` depois mesmo que o usuário houvesse desativado o opt-in, desativado as propostas ou pausado o coordenador enquanto Groq aguardava. Um ciclo off/on podia produzir confirmação obsoleta.
+- **Correção SSOT:** ao desativar a política ou pausar, marca as linhas **já em voo** como `reconciliation_required` com motivo preciso no SQLite **na mesma transação do comando**. A conclusão usa CAS `WHERE state='analyzing'` ou `WHERE status='planning'` para nunca sobrescrever a interrupção; a mesma restrição protege caminhos de erro. A reativação não reenvia o requestId antigo.
+- **Testes:** quatro barreiras assíncronas reais (análise desligada+religada, propostas desligadas+religadas, coordenador pausado+retomado durante análise, pausado+retomado durante proposta). Verificam motivo durável, ausência de replay e criação automática de trabalho, e `PRAGMA quick_check`.
+- **Limite de segurança:** efeitos Groq eventualmente já iniciados não são cancelados artificialmente; seus recibos/históricos continuam canônicos, e uma proposta que chegou depois de uma revogação exige revisão humana. Nenhuma afirmação de E2E GPT físico.
+- **Gates:** 5/5 HEAD (inclui Windows automatizado); squash merge por SHA e limpeza da única branch após sucesso. Evitar novo build se houver Windows pós-merge em execução.
+
+---
+
 ## Continuidade remota 01/11/2026 — revalidação do grant Runtime após snapshot alpha.30 (candidata)
 
 - **Base:** `ordax-apps/main@832eb3d15d20feab0cf44b59b8a6f238eb870094`; PR #384 (alpha.29) integrada, postmerge 5/5 gates aprovados, zero PRs e branches Orchestrator.

@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.30",
+  "version": "0.2.0-alpha.31",
   "channel": "alpha",
-  "name": "Snapshot Runtime revalidado após leitura",
+  "name": "Continuidade revogada sem replay",
   "distributionEnabled": false,
   "releaseDate": null
 }
