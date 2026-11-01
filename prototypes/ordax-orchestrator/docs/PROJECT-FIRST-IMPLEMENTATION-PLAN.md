@@ -1,3 +1,5 @@
+> **PLANO HISTÓRICO RECONCILIADO — 2026-11-01:** a prioridade de produto e a sequência de gates atuais estão no [Contrato canônico de Orchestrator autônomo de instância única](ORCHESTRATOR-CANONICAL-PRODUCT.md), seção 7. O roteiro M0–M7/R0 abaixo permanece como material técnico de migração, evidências e dependências, **não** como ordem mandatória de retomar a UX multi-projeto ou tornar GPT o administrador. Implementação efetiva de automação é posterior a grants e E2E verificados.
+
 # Plano de execução — OrdaX Orchestrator Project-First
 
 **Estado vigente em 31/10/2026:** roteiro de aceitação da implementação parcial `0.2.0-alpha.19`, já integrada à `main`. Windows Dev foi instalado em um único caminho no `DESKTOP-PNUHUA0` a partir da [CI #41021670806](https://github.com/ordaxsystems/ordax-apps/actions/runs/41021670806); o produto iniciou com quatro processos Electron do mesmo executável e hashes conferidos. Nenhum E2E de envio GPT Web real, grant físico ou 24h foi certificado. O relato de 24/10 abaixo é histórico.
@@ -11,7 +13,7 @@
 3. O aplicativo não acessa arquivos/terminal/Git por bypass de grants: o owner da capacidade é Runtime. Não criar outro daemon local, SQLite de projetos ou execução por DOM do ChatGPT.
 4. Mudanças devem ser pequenas, revisáveis, com rollback seguro; cada gate exige testes positivos e negativos.
 5. Continuar projetos sem depender do chat é objetivo prioritário; ainda exige owner Runtime/headless e políticas.
-6. **M0 está reconciliado; R0 remoto é o próximo gate.** A entrada única de missão já está integrada à `main`; a prioridade restante é projeto → referência GitHub remota → conversa pelo executor GPT existente, com evidência de leitura autorizada. M1 local só começa quando Runtime/Platform fornecerem grant e port autenticados. Não antecipar M3–M7 nem declarar autonomia antes dos respectivos gates.
+6. **Regra histórica até 2026-10-31:** M0 estava reconciliado e R0 remoto era o próximo gate. **A ordem atual é definida pelo contrato canônico de 2026-11-01.** A entrada única de missão já está integrada à `main`; a prioridade restante é projeto → referência GitHub remota → conversa pelo executor GPT existente, com evidência de leitura autorizada. M1 local só começa quando Runtime/Platform fornecerem grant e port autenticados. Não antecipar M3–M7 nem declarar autonomia antes dos respectivos gates.
 
 ## Ordem vigente — R0 remoto antes do workspace local
 

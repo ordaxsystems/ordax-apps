@@ -1,3 +1,5 @@
+> **DIREÇÃO ATUAL DO PRODUTO — 2026-11-01:** [Contrato canônico de instância única com administrador autônomo](docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). A descrição Project-First, os nomes alpha e os cenários multi-projeto abaixo documentam evolução e mecanismos existentes, **não** definem mais a UX-alvo. Nenhuma nova IA deve retomar arquitetura de múltiplos projetos ativos, Groq secundário ou GPT Web como chat do administrador. Implementação ainda precisa de gates de autorização e E2E reais.
+
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
 ## Capacidade correta do executor GPT Web — alpha.38

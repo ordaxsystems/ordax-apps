@@ -1,6 +1,10 @@
 # OrdaX Apps — canonical handoff
 
-## Atualização Orchestrator Project-First (decisão 2026-10-21)
+## Prioridade atual do Orchestrator — decisão 2026-11-01
+
+Contrato canônico: [Orchestrator dedicado a um único projeto, Administração Geral Groq e coordenação iniciada sem prompt](prototypes/ordax-orchestrator/docs/ORCHESTRATOR-CANONICAL-PRODUCT.md). É a direção obrigatória para qualquer próxima IA. A antiga abordagem Project-First com vários projetos simultâneos e conversa GPT principal, descrita no histórico abaixo, foi **substituída** como experiência de produto; código multi-projeto e dados existentes permanecem até migração testada. O estado funcional depende de manifesto, CI, transportes, grants e provas reais — não inferir autonomia 24 h.
+
+## Atualização Orchestrator Project-First (decisão 2026-10-21) — histórico subordinado
 
 A arquitetura final é **missão vinculada a projeto e workspace autorizado**, acompanhando snapshots/diffs/Git/testes via owners canônicos e usando provedores quando necessário. Pela prioridade revisada pelo proprietário em 2026-10-22, a primeira etapa é projeto → URL GitHub remota → conversa persistente pela API existente → tarefa pelo executor ChatGPT existente. Groq recebe somente a URL, sem conteúdo do repositório; o GPT deve usar uma integração GitHub realmente disponível e parar se faltar acesso. Workspace local, watcher e serviço headless ficam para fases posteriores. Nada disso está concluído integralmente.
 
