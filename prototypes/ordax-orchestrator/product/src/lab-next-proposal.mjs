@@ -72,8 +72,7 @@ export class LabNextProposal {
     if(this.db.prepare(`SELECT 1 FROM action_ledger a JOIN lab_orchestrators o ON o.chat_task_id=a.task_id
       WHERE o.id=? AND a.action_type='orchestrator.work-proposal' AND a.status='pending' LIMIT 1`)
       .get(row.orchestrator_id))return {state:'waiting_proposal_review'};
-    if(this.db.prepare(`SELECT 1 FROM lab_command_receipts
-      WHERE status='uncertain' AND json_extract(result,'$.taskId')=? LIMIT 1`).get(row.task_id))
+    if(this.service.hasUnresolvedWorkReceipt(row.project_id,row.task_id))
       return {state:'reconciliation_required'};
     const claimed=this.db.prepare(`INSERT OR IGNORE INTO lab_next_proposals
       (review_run_id,project_id,orchestrator_id,status,updated_at) VALUES(?,?,?,'planning',?)`)

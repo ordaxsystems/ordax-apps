@@ -73,7 +73,12 @@ export class OrchestratorService {
       );
     `);
     const receiptSchema=this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='lab_command_receipts'").get()?.sql||'';
-    if(!receiptSchema.includes("'failed'"))this.transaction(()=>{
+    // Legacy table migration renames the referenced table. Drop only its
+    // derived VIEW before that migration so SQLite cannot retain a dangling
+    // reference to the old table name. Recreate after migration below.
+    if(!receiptSchema.includes("'failed'")){
+      this.db.exec('DROP VIEW IF EXISTS lab_command_receipt_scope');
+      this.transaction(()=>{
       this.db.exec('ALTER TABLE lab_command_receipts RENAME TO lab_command_receipts_legacy');
       this.db.exec(`CREATE TABLE lab_command_receipts (
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
@@ -88,9 +93,24 @@ export class OrchestratorService {
         SELECT id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at
         FROM lab_command_receipts_legacy`);
       this.db.exec('DROP TABLE lab_command_receipts_legacy');
-    });
+      });
+    }
     if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='repository_url'))
       this.db.exec('ALTER TABLE lab_projects ADD COLUMN repository_url TEXT');
+    // Read-only projection over the ONE durable receipt ledger. SQLite JSON
+    // extraction is never attempted on invalid/truncated result data. A work
+    // receipt with an unresolvable Task quarantines its OWN project only.
+    this.db.exec(`CREATE VIEW IF NOT EXISTS lab_command_receipt_scope AS
+      SELECT c.rowid AS receipt_rowid,c.id,c.project_id,c.operation,c.status,
+        b.task_id AS task_id,
+        CASE WHEN c.operation IN ('work_send','proposal_send')
+          AND c.status IN ('running','uncertain') AND b.task_id IS NULL
+          THEN 1 ELSE 0 END AS unknown_work_target
+      FROM lab_command_receipts c
+      LEFT JOIN lab_task_bindings b ON b.project_id=c.project_id
+        AND b.task_id=CASE WHEN json_valid(c.result) THEN
+          CASE WHEN json_type(c.result,'$.taskId')='text'
+            THEN json_extract(c.result,'$.taskId') END END`);
     this.continuation=new LabContinuation({store,service:this});
     this.autonomous=new AutonomousDialogue({store,service:this});
     this.workspace=new ProjectWorkspace({store,port:workspacePort});
@@ -168,14 +188,28 @@ export class OrchestratorService {
     return normalizeGitHubRepositoryUrl(row.repository_url);
   }
 
+  // Conservatively quarantine an unknown provider target at PROJECT scope,
+  // because a truncated receipt cannot prove which work was submitted.
+  // Valid references are matched to the same project by the read-only view.
+  hasUnresolvedWorkReceipt(projectId,taskId,{includeRunning=false}={}) {
+    const status=includeRunning?"IN ('running','uncertain')":"='uncertain'";
+    return Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
+      WHERE status ${status} AND operation IN ('work_send','proposal_send')
+      AND (task_id=? OR (project_id=? AND unknown_work_target=1)) LIMIT 1`)
+      .get(taskId,projectId));
+  }
+
   assertProviderTaskAvailable(taskId,{allowCoordinator=false}={}) {
-    const binding=this.db.prepare(`SELECT b.kind,o.status FROM lab_task_bindings b
+    const binding=this.db.prepare(`SELECT b.kind,b.project_id,o.status FROM lab_task_bindings b
       JOIN lab_orchestrators o ON o.id=b.orchestrator_id WHERE b.task_id=?`).get(taskId);
     if(binding?.kind==='orchestrator'&&!allowCoordinator)throw Error('orchestrator_coordinator_channel_required');
     if(allowCoordinator&&binding?.kind!=='orchestrator')throw Error('orchestrator_coordinator_task_required');
     if(binding?.status==='paused')throw Error('orchestrator_paused');
-    if(this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(taskId))
-      throw Error('orchestrator_reconciliation_required');
+    const uncertain=binding?.kind==='work'
+      ?this.hasUnresolvedWorkReceipt(binding.project_id,taskId)
+      :Boolean(this.db.prepare(`SELECT 1 FROM lab_command_receipt_scope
+        WHERE status='uncertain' AND task_id=? LIMIT 1`).get(taskId));
+    if(uncertain)throw Error('orchestrator_reconciliation_required');
   }
 
   receipt(row) {
@@ -318,7 +352,7 @@ export class OrchestratorService {
         FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 10`).all(task.id);
       return {...task,runs,conversations:this.store.listConversations(task.id).slice(-50),
         pendingApprovals:this.store.pendingApprovals(task.id).map(a=>({id:a.id,status:a.status,actionId:a.action_id})),
-        monitor:this.monitor(task,runs)};
+        monitor:this.monitor(task,runs,input.projectId)};
     }
     if(operation==='work_messages') {
       this.task(input.projectId,input.taskId);
@@ -351,9 +385,11 @@ export class OrchestratorService {
     });
   }
 
-  monitor(task,runs) {
-    const command=this.db.prepare(`SELECT status,result FROM lab_command_receipts
-      WHERE json_extract(result,'$.taskId')=? ORDER BY rowid DESC LIMIT 1`).get(task.id);
+  monitor(task,runs,projectId) {
+    const command=this.db.prepare(`SELECT status FROM lab_command_receipt_scope
+      WHERE task_id=? OR (project_id=? AND unknown_work_target=1)
+      ORDER BY CASE WHEN status IN ('uncertain','running') THEN 0 ELSE 1 END,
+        receipt_rowid DESC LIMIT 1`).get(task.id,projectId);
     if(command?.status==='uncertain')return {state:'reconciliation_required',mayAutomaticallySend:false};
     if(command?.status==='running')return {state:'running',mayAutomaticallySend:false};
     if(command?.status==='failed')return {state:'failed',retryAllowed:true,mayAutomaticallySend:false};
@@ -391,7 +427,7 @@ export class OrchestratorService {
         works:works.map(w=>({...w,monitor:this.monitor(w,[{
           status:w.latest_run_status,started_at:w.latest_started_at,
           heartbeat_at:w.latest_heartbeat_at
-        }])}))
+        }],projectId)}))
       });
       const executor=this.executorAdmission();
       return Object.freeze({...planning,
@@ -485,7 +521,7 @@ export class OrchestratorService {
           role:message.role,content:redactOrchestratorAnalysisText(message.content,1200),createdAt:message.created_at
         }));
         return {title:redactOrchestratorAnalysisText(row.title,180),status:row.status,updatedAt:row.updated_at,
-          providerSegments:row.provider_segments,monitor:this.monitor(row,runs),runs,messages};
+          providerSegments:row.provider_segments,monitor:this.monitor(row,runs,projectId),runs,messages};
       })
     };
   }
@@ -570,9 +606,7 @@ export class OrchestratorService {
       // Prerequisites are pre-execution policy, not retroactive evidence.
       // For continuing an already-executed work, create a new work milestone.
       if(this.db.prepare('SELECT 1 FROM runs WHERE task_id=? LIMIT 1').get(input.taskId)||
-        this.db.prepare(`SELECT 1 FROM lab_command_receipts
-          WHERE status IN ('running','uncertain') AND json_extract(result,'$.taskId')=? LIMIT 1`)
-          .get(input.taskId))
+        this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
         throw Error('orchestrator_dependencies_locked_after_execution');
       for(const dep of input.dependsOn)this.task(input.projectId,dep,'work');
       const existing=this.db.prepare('SELECT task_id,prerequisite_id FROM lab_work_dependencies WHERE project_id=?').all(input.projectId);
@@ -606,6 +640,8 @@ export class OrchestratorService {
     if(operation==='conversation_rotate') {
       this.task(input.projectId,input.taskId,'work');
       assertTaskHasNoUncertainTransport(this.store,input.taskId);
+      if(this.hasUnresolvedWorkReceipt(input.projectId,input.taskId,{includeRunning:true}))
+        throw Error('orchestrator_reconciliation_required');
       if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||this.provider?.busy?.())
         throw Error('orchestrator_executor_busy');
       this.store.rotateConversation(input.taskId,'orchestrator_command');
@@ -743,10 +779,10 @@ export class OrchestratorService {
 
   coordinatorTurnBusy(taskId) {
     return this.activeCoordinatorTurns.has(taskId)||Boolean(this.db.prepare(`
-      SELECT 1 FROM lab_command_receipts
+      SELECT 1 FROM lab_command_receipt_scope
       WHERE status='running' AND operation IN
         ('orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
-      AND json_extract(result,'$.taskId')=? LIMIT 1`).get(taskId));
+      AND task_id=? LIMIT 1`).get(taskId));
   }
 
   async withCoordinatorTurn(taskId,action) {
@@ -827,7 +863,7 @@ export class OrchestratorService {
     // Advisory API replies cannot submit GPT work. Preserve their uncertain
     // receipts without replay, but allow a fresh explicit API request. Only
     // uncertain provider submissions quarantine the work transport.
-    if(isWorkSend&&this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='uncertain' AND json_extract(result,'$.taskId')=?").get(task.id))
+    if(isWorkSend&&this.hasUnresolvedWorkReceipt(input.projectId,task.id))
       throw Error('orchestrator_reconciliation_required');
     const reserved=this.transaction(()=>{
       this.requireAccess(context,operation,input.projectId);

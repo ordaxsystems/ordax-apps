@@ -101,8 +101,10 @@ export class LabContinuation {
     try {
       this.scan();
       const row=this.db.prepare(`SELECT q.*,
-        EXISTS(SELECT 1 FROM lab_command_receipts c
-          WHERE c.status='uncertain' AND json_extract(c.result,'$.taskId')=q.task_id) AS transport_uncertain
+        EXISTS(SELECT 1 FROM lab_command_receipt_scope c
+          WHERE c.status='uncertain' AND c.operation IN ('work_send','proposal_send')
+            AND (c.task_id=q.task_id OR
+              (c.project_id=q.project_id AND c.unknown_work_target=1))) AS transport_uncertain
         FROM lab_continuation_reviews q
         JOIN lab_continuation_policies p ON p.orchestrator_id=q.orchestrator_id AND p.project_id=q.project_id
         JOIN lab_orchestrators o ON o.id=q.orchestrator_id AND o.project_id=q.project_id

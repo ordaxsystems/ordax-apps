@@ -1,3 +1,12 @@
+## 0.2.0-alpha.29 — leitura de recibos corrompidos sem vazamento entre projetos (01/11/2026)
+
+- Centraliza projeção SQL segura de `taskId` usando `json_valid` e valida o pertencimento do Task ao mesmo projeto antes da consulta.
+- Evita erro `malformed JSON` na visualização, planejamento, liberação de envio e análises/propostas automáticas depois de recuperação de recibos incompletos.
+- Quarentena conservadora de um projeto se o destino de um envio GPT for desconhecido; preserva outros projetos, o canal Groq e os bytes dos recibos para reconciliação sem replay.
+- Testes SQLite de JSON truncado, ID cruzado, aconselhamento Groq e continuidade. VIEW sem dados próprios; nenhum novo serviço, banco, fila ou provider.
+
+---
+
 ## 0.2.0-alpha.28 — recuperação segura de recibos e ações (01/11/2026)
 
 - Recuperação após reinício valida comando, projeto, Task e ação original em `dispatching` antes de marcar a ação como indeterminada.

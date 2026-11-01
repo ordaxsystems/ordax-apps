@@ -545,6 +545,102 @@ test('malformed recovery receipt quarantines the command and remains safely insp
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
 });
 
+
+test('truncated provider receipts preserve read models and quarantine only their own project',async t=>{
+  let sends=0;
+  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const a=await project(f,'Interrupted'),b=await project(f,'Independent');
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',{
+    requestId:'truncated_target',projectId:a.p,orchestratorId:a.o,
+    actionId:'action_placeholder',draftRevision:1}));
+  f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+    .run('{"taskId":',reserved.commandId);
+  assert.equal(f.service.recoverInterruptedCommands(),1);
+  const projection=f.store.db.prepare('SELECT task_id,unknown_work_target FROM lab_command_receipt_scope WHERE id=?')
+    .get(reserved.commandId);
+  assert.equal(projection.task_id,null);
+  assert.equal(projection.unknown_work_target,1);
+  const work=await f.call('work_get',{projectId:a.p,taskId:a.w});
+  assert.equal(work.monitor.state,'reconciliation_required');
+  assert.equal((await f.call('work_plan',{projectId:a.p})).plan.workers.length,1);
+  assert.equal((await f.call('status')).uncertainCommands,1);
+  assert.throws(()=>f.service.assertProviderTaskAvailable(a.w),/reconciliation_required/);
+  await assert.rejects(f.call('work_send',{projectId:a.p,taskId:a.w,content:'Não reenviar'}),
+    /reconciliation_required/);
+  await assert.rejects(f.call('conversation_rotate',{projectId:a.p,taskId:a.w}),
+    /reconciliation_required/);
+  await assert.rejects(f.call('work_dependency_set',{projectId:a.p,taskId:a.w,dependsOn:[]}),
+    /dependencies_locked_after_execution/);
+  assert.equal(sends,0);
+  const independent=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Trabalho autorizado independente'});
+  assert.equal(independent.status,'succeeded');
+  assert.equal(sends,1);
+  const verified=await f.call('work_get',{projectId:b.p,taskId:b.w});
+  assert.equal(verified.runs[0].status,'succeeded');
+  assert.equal(verified.monitor.state,'awaiting_instruction');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('uncertain first-send target referencing a task in another project cannot quarantine that task',async t=>{
+  let sends=0;
+  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const a=await project(f,'Receipt owner'),b=await project(f,'Separate target');
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',{
+    requestId:'cross_project_target',projectId:a.p,orchestratorId:a.o,
+    actionId:'action_placeholder',draftRevision:1}));
+  f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+    .run(JSON.stringify({taskId:b.w}),reserved.commandId);
+  assert.equal(f.service.recoverInterruptedCommands(),1);
+  const scoped=f.store.db.prepare('SELECT task_id,unknown_work_target FROM lab_command_receipt_scope WHERE id=?')
+    .get(reserved.commandId);
+  assert.equal(scoped.task_id,null);
+  assert.equal(scoped.unknown_work_target,1);
+  assert.equal((await f.call('work_get',{projectId:a.p,taskId:a.w})).monitor.state,'reconciliation_required');
+  assert.equal((await f.call('work_get',{projectId:b.p,taskId:b.w})).monitor.state,'awaiting_instruction');
+  const confirmed=await f.call('work_send',{projectId:b.p,taskId:b.w,content:'Isolado'});
+  assert.equal(confirmed.status,'succeeded');assert.equal(sends,1);
+});
+
+test('corrupted advisory receipt does not quarantine independent GPT work',async t=>{
+  let sends=0;
+  const f=fixture(t,{provider:{send:async({taskId})=>{sends++;return executorReceipt(f.store,taskId);}}});
+  const a=await project(f);
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'orchestrator_chat',{
+    requestId:'broken_advisory',projectId:a.p,orchestratorId:a.o,content:'Analisar'}));
+  f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+    .run('{"taskId":',reserved.commandId);
+  assert.equal(f.service.recoverInterruptedCommands(),1);
+  assert.equal(f.service.coordinatorTurnBusy(a.chat),false);
+  assert.equal((await f.call('work_get',{projectId:a.p,taskId:a.w})).monitor.state,'awaiting_instruction');
+  assert.equal((await f.call('work_send',{projectId:a.p,taskId:a.w,content:'Enviar explicitamente'})).status,'succeeded');
+  assert.equal(sends,1);
+});
+
+test('continuation analysis and advisory proposals quarantine unknown provider target without SQL errors',async t=>{
+  const f=fixture(t,{coordinator:{available:()=>true,send:async({prepareWork})=>
+    prepareWork?{content:'Plano',proposal:{title:'Próxima frente',content:'Verificar continuidade',reason:'Necessário'}}:
+      {content:'Análise confirmada'}}});
+  const a=await project(f);
+  await f.call('continuity_set',{projectId:a.p,orchestratorId:a.o,enabled:true});
+  await f.call('continuity_proposals_set',{projectId:a.p,orchestratorId:a.o,enabled:true});
+  const run=f.store.startRun(a.w);f.store.finishRun(a.w,run);
+  assert.equal(f.service.continuation.scan(),1);
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',{
+    requestId:'broken_continuation',projectId:a.p,orchestratorId:a.o,
+    actionId:'action_placeholder',draftRevision:1}));
+  f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+    .run('{"taskId":',reserved.commandId);
+  assert.equal(f.service.recoverInterruptedCommands(),1);
+  const blocked=await f.service.continuation.tick(f.context);
+  assert.equal(blocked.state,'reconciliation_required');
+  assert.equal(f.store.db.prepare('SELECT state FROM lab_continuation_reviews WHERE run_id=?').get(run).state,'queued',
+    'no Groq analysis is consumed without verified provider provenance');
+  f.store.db.prepare("UPDATE lab_continuation_reviews SET state='analyzed' WHERE run_id=?").run(run);
+  assert.equal((await f.service.continuation.nextProposal.tick(f.context)).state,'reconciliation_required');
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_next_proposals').get().n,0);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('coordinator chat never falls through to GPT Web when Groq is unavailable',async t=>{
   let gptCalls=0;
   const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('wrong_transport');}},
