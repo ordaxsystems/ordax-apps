@@ -211,6 +211,27 @@ test('OrdaX UI exposes responsive conversation, chat and context columns', () =>
   assert.match(html, /id="sessionPersistenceNote"/);
 });
 
+test('single-project direction leads the desktop navigation without implying autonomous GitHub access',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  for(const id of ['activeProjectName','activeProjectDetail','projectNavList','openOrchestrator','openWorks'])
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id+' must have exactly one owner');
+  assert.ok(html.indexOf('id="openOrchestrator"')<html.indexOf('id="projectNavList"'),
+    'the administrator must appear before legacy project selectors');
+  assert.match(html,/Administrador Geral/);
+  assert.match(html,/Execuções GPT/);
+  assert.match(orchestration,/activeProjectName'\)\.textContent=current\?\.name/);
+  assert.match(orchestration,/GitHub vinculado por URL · leitura não verificada/);
+  assert.match(orchestration,/ADMINISTRAÇÃO ·/);
+  assert.match(css,/--font-ui:/);
+  for(const token of ['--bg:','--panel:','--panel-2:','--border:','--text:','--muted:','--focus:'])
+    assert.ok(css.includes(token),token+' should be defined in the canonical CSS root');
+  assert.match(css,/\.project-identity\{/);
+  assert.match(css,/\.nav-item\.active\{[^}]*var\(--focus\)/);
+  assert.doesNotMatch(html,/id="startProjectAutonomous"/);
+});
+
 test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
@@ -575,7 +596,7 @@ test('Groq and ChatGPT workspaces have distinct visible destinations and fail-cl
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
   assert.match(uiHtml,/id="openOrchestrator"/);
   assert.match(uiHtml,/id="openWorks"/);
-  assert.match(uiHtml,/CONVERSA DIRETA · GROQ/);
+  assert.match(uiHtml,/ADMINISTRAÇÃO · GROQ/);
   assert.match(uiHtml,/CONVERSA DE TRABALHO · CHATGPT WEB/);
   assert.match(uiHtml,/id="coordinatorComposer"/);
   assert.match(uiHtml,/id="composer"/);
