@@ -248,11 +248,34 @@ test('operational overview reuses work state and never presents an experimental 
   assert.match(orchestration,/renderProjectPulse\(counts,works\.length\)/);
   assert.match(orchestration,/for\(const work of works\)counts\[workClass\(work\)\]\+\+/);
   assert.match(orchestration,/\['reconciliation_required','review_required'\]\.includes\(work\.execution\?\.observed\)/);
-  assert.match(orchestration,/openProjectWork'\)\.addEventListener\('click',\(\)=>setWorkRailOpen\(true\)\)/);
+  assert.match(orchestration,/openProjectWork'\)\.addEventListener\('click',\(\)=>\{/);
   assert.match(orchestration,/Estados das conversas registradas; não comprovam execução autônoma/);
   assert.match(css,/\.project-pulse\[hidden\]\{display:none\}/);
   assert.match(css,/\.project-pulse-stats\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.match(css,/\.orchestrator-experiments-content\{/);
+});
+
+test('project pulse opens a single filtered rail with preserved keyboard focus and no duplicate counters',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(html,/id="projectPulseStats"/);
+  assert.deepEqual([...html.matchAll(/data-work-filter="([^"]+)"/g)].map(m=>m[1]),['all','running','attention','ready']);
+  assert.match(html,/aria-label="Ver frentes que precisam de revisão"/);
+  assert.match(orchestration,/projectPulseStats'\)\.addEventListener\('click'/);
+  assert.match(orchestration,/const button=event\.target\.closest\('button\[data-work-filter\]'\)/);
+  assert.match(orchestration,/openFilteredWorks\(button\.dataset\.workFilter,button\)/);
+  assert.match(orchestration,/workStatusFilter'\)\.value=filter/);
+  assert.match(orchestration,/workSearch'\)\.value=''/);
+  assert.match(orchestration,/applyWorkFilters\(\)/);
+  assert.match(orchestration,/setWorkRailOpen\(true\)\.then/);
+  assert.match(orchestration,/workRailReturnFocus\?\.isConnected/);
+  assert.match(orchestration,/const ordered=\[\.\.\.works\]\.sort\(\(a,b\)=>\{const priority=\{attention:0/);
+  assert.doesNotMatch(orchestration,/className='work-overview'/);
+  assert.doesNotMatch(css,/\.work-overview-stat\{/);
+  assert.match(css,/\.project-pulse-stats>button\{/);
+  assert.match(css,/\.project-pulse-stats button:focus-visible\{/);
+  assert.match(css,/@media\(max-width:460px\)\{/);
 });
 
 test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
