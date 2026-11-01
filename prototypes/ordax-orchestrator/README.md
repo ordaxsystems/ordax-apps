@@ -1,5 +1,10 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
+## Continuidade segura por workspace — alpha.23 (candidata)
+
+A fila existente de revisão de Runs e propostas Groq seleciona apenas projetos e Tasks da sessão **ativa** do SQLite. Um workspace anterior não pode consumir o tick do atual, mesmo que tenha análises/propostas pendentes. Em troca de sessão durante uma chamada Groq, o resultado permanece em `reconciliation_required`, nunca é certificado e jamais dispara GPT. Não há novo scheduler, transporte, banco ou perfil. A promoção exige CI no HEAD e prova física separada; `alpha.22` continua na `main` até integração.
+
+
 ## Continuidade Windows na mesma instância — alpha.21 (integrada à main)
 
 A versão alpha.21 acrescenta **modo opcional de segundo plano no Windows**. Em Configurações do Orquestrador, ative “Continuar em segundo plano ao fechar a janela”: o botão de fechar oculta a janela, mantém o **mesmo processo Electron**, a conexão à Groq, o WebView GPT, o SQLite e os ticks existentes, e oferece ações “Abrir” e “Sair” no ícone da bandeja. A preferência é do workspace e só é aceita se o Windows puder criar um ícone de bandeja. O início com a sessão Windows pode ser configurado com o **mesmo EXE**, sem serviço, outro perfil ou instalador. O Host Node e os perfis isolados de E2E não ativam esse modo.

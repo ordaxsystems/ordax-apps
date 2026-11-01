@@ -67,25 +67,35 @@ export class LabContinuation {
       counts,latest};
   }
   scan() {
+    // Only the active workspace may enqueue work, even if an old workspace
+    // still has enabled policies or previously confirmed Runs in this SQLite.
+    const session=this.store.getWorkspaceSession();
+    if(session?.status!=='active')return 0;
     // Exactly one review per confirmed Run; a failed or provisional answer is never eligible.
     const now=this.store.now();
     const result=this.db.prepare(`INSERT OR IGNORE INTO lab_continuation_reviews
       (run_id,project_id,orchestrator_id,task_id,state,updated_at)
       SELECT r.id,b.project_id,b.orchestrator_id,r.task_id,'queued',?
-      FROM runs r JOIN lab_task_bindings b ON b.task_id=r.task_id AND b.kind='work'
+      FROM runs r JOIN tasks t ON t.id=r.task_id
+      JOIN lab_task_bindings b ON b.task_id=r.task_id AND b.kind='work'
+      JOIN lab_projects project ON project.id=b.project_id
       JOIN lab_continuation_policies p ON p.orchestrator_id=b.orchestrator_id AND p.project_id=b.project_id
-      JOIN lab_orchestrators o ON o.id=b.orchestrator_id
+      JOIN lab_orchestrators o ON o.id=b.orchestrator_id AND o.project_id=b.project_id
       WHERE p.enabled=1 AND o.status='ready' AND r.status='succeeded'
+      AND project.workspace_session_id=? AND t.workspace_session_id=?
       AND r.rowid>p.start_run_rowid
       -- Deduplicate BEFORE LIMIT. INSERT OR IGNORE alone would repeatedly
       -- pick the oldest 100 reviewed Runs and permanently starve newer work.
       AND NOT EXISTS (SELECT 1 FROM lab_continuation_reviews reviewed
         WHERE reviewed.run_id=r.id)
-      ORDER BY r.completed_at,r.id LIMIT 100`).run(now);
+      ORDER BY r.completed_at,r.id LIMIT 100`).run(now,session.id,session.id);
     return result.changes;
   }
   async tick(context=this.context) {
     if(!context)throw Error('continuation_context_required');
+    const session=this.store.getWorkspaceSession();
+    if(session?.status!=='active'||context.workspaceSessionId!==session.id)
+      return {state:'blocked_workspace'};
     if(this.inFlight)return {state:'busy'};
     this.inFlight=true;
     try {
@@ -94,10 +104,12 @@ export class LabContinuation {
         EXISTS(SELECT 1 FROM lab_command_receipts c
           WHERE c.status='uncertain' AND json_extract(c.result,'$.taskId')=q.task_id) AS transport_uncertain
         FROM lab_continuation_reviews q
-        JOIN lab_continuation_policies p ON p.orchestrator_id=q.orchestrator_id
-        JOIN lab_orchestrators o ON o.id=q.orchestrator_id
+        JOIN lab_continuation_policies p ON p.orchestrator_id=q.orchestrator_id AND p.project_id=q.project_id
+        JOIN lab_orchestrators o ON o.id=q.orchestrator_id AND o.project_id=q.project_id
+        JOIN lab_projects project ON project.id=q.project_id AND project.workspace_session_id=?
+        JOIN tasks t ON t.id=q.task_id AND t.workspace_session_id=?
         WHERE q.state='queued' AND p.enabled=1 AND o.status='ready'
-        ORDER BY transport_uncertain ASC,q.updated_at,q.run_id LIMIT 1`).get();
+        ORDER BY transport_uncertain ASC,q.updated_at,q.run_id LIMIT 1`).get(session.id,session.id);
       if(!row)return await this.nextProposal.tick(context);
       if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};
       if(row.transport_uncertain)return {state:'reconciliation_required'};
@@ -112,10 +124,14 @@ export class LabContinuation {
         const receipt=await this.service.invoke(context,'orchestrator_analyze',{
           projectId:row.project_id,orchestratorId:row.orchestrator_id,requestId
         });
-        const confirmed=receipt?.status==='succeeded'&&receipt?.result?.responseObserved===true;
+        // The coordinator call is asynchronous: a workspace switch while it
+        // is in flight must not certify an old session's queued review.
+        const current=this.store.getWorkspaceSession();
+        const sameWorkspace=current?.status==='active'&&current.id===session.id;
+        const confirmed=sameWorkspace&&receipt?.status==='succeeded'&&receipt?.result?.responseObserved===true;
         this.db.prepare("UPDATE lab_continuation_reviews SET state=?,command_id=?,reason=?,updated_at=? WHERE run_id=?")
           .run(confirmed?'analyzed':'reconciliation_required',receipt?.commandId||null,
-            confirmed?null:'analysis_unconfirmed',this.store.now(),row.run_id);
+            confirmed?null:sameWorkspace?'analysis_unconfirmed':'workspace_changed',this.store.now(),row.run_id);
         this.notify();
         return {state:confirmed?'analyzed':'reconciliation_required',runId:row.run_id};
       }catch {
