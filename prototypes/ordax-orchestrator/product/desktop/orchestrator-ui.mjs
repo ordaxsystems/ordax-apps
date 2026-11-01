@@ -219,19 +219,28 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const work=visibleWorkItems.find(w=>w.id===button.dataset.taskId);
       const haystack=String(work?.title||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
       const show=Boolean(work)&&(!query||haystack.includes(query))&&(state==='all'||workClass(work)===state);
-      button.hidden=!show;if(show)visible++;
+      (button.closest('.work-entry')||button).hidden=!show;if(show)visible++;
     }
     $('workFilteredCount').textContent=visible+' de '+visibleWorkItems.length+' frentes exibidas';
   }
   $('workSearch').addEventListener('input',applyWorkFilters);
   $('workStatusFilter').addEventListener('change',applyWorkFilters);
   let dependencyWorks=[],dependencySelectionDirty=false,dependencyProject=null;
+  function updateDependencySelectionCount(){
+    const boxes=[...$('dependencyCandidates').querySelectorAll('input[type="checkbox"]')];
+    const marked=boxes.filter(box=>box.checked).length;
+    $('dependencySelectionCount').textContent=$('dependencyTarget').value
+      ?marked+' de '+boxes.length+' pré-requisitos selecionados'
+      :'Selecione uma frente para organizar.';
+    $('clearDependencySelection').disabled=marked===0;
+  }
   function showDependencyChoices(){
     const targetId=$('dependencyTarget').value;
     const selected=dependencyWorks.find(work=>work.id===targetId);
     const area=$('dependencyCandidates');area.replaceChildren();
     if(!selected){
       area.textContent='Selecione uma frente que ainda não foi executada.';
+      updateDependencySelectionCount();
       return;
     }
     for(const work of dependencyWorks){
@@ -244,11 +253,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       label.append(checkbox,title);area.append(label);
     }
     if(!area.children.length)area.textContent='Crie outra frente para configurar pré-requisitos.';
+    updateDependencySelectionCount();
   }
   function renderDependencyEditor(works,plan){
     const editor=$('workDependencyEditor'),select=$('dependencyTarget'),save=$('saveWorkDependencies');
     const sameProject=dependencyProject===projectId;
-    if(editor.open&&dependencySelectionDirty&&sameProject)return;
+    if(editor.open&&dependencySelectionDirty&&sameProject)return new Set();
     dependencyProject=projectId;
     dependencyWorks=works||[];
     const complete=Boolean(plan&&Array.isArray(works)&&works.length===plan.workCount&&works.length<200);
@@ -274,8 +284,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         :'Pré-requisitos só podem ser alterados antes da primeira execução. Salvar não envia mensagens.';
     dependencySelectionDirty=false;
     showDependencyChoices();
+    return new Set(eligible.map(work=>work.id));
   }
-  function renderWorks(works,plan=null) {
+  function renderWorks(works,plan=null,dependencyEligibleIds=new Set()) {
     visibleWorkItems=works;
     const planWorkers=new Map((plan?.workers||[]).map(w=>[w.taskId,w]));
     const candidates=new Set(plan?.candidates||[]);
@@ -368,7 +379,29 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
       button.append(copy,badge);button.addEventListener('click',async()=>{
         try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
-      });list.append(button);
+      });
+      const entry=document.createElement('div');entry.className='work-entry';entry.append(button);
+      if(dependencyEligibleIds.has(work.id)){
+        const edit=document.createElement('button');edit.type='button';
+        edit.className='work-dependency-action';
+        edit.textContent='Organizar pré-requisitos';
+        edit.setAttribute('aria-label','Organizar pré-requisitos de '+work.title);
+        edit.addEventListener('click',()=>{
+          $('workDependencyEditor').open=true;
+          if(dependencySelectionDirty&&$('dependencyTarget').value!==work.id){
+            $('dependencyEditNote').textContent='Salve ou revise as alterações pendentes antes de trocar de frente.';
+            $('dependencyTarget').focus();
+            return;
+          }
+          $('dependencyTarget').value=work.id;
+          dependencySelectionDirty=false;
+          showDependencyChoices();
+          $('workDependencyEditor').scrollIntoView({block:'nearest'});
+          $('dependencyTarget').focus();
+        });
+        entry.append(edit);
+      }
+      list.append(entry);
     }
     applyWorkFilters();
   }
@@ -550,7 +583,12 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     dependencySelectionDirty=false;
     showDependencyChoices();
   });
-  $('dependencyCandidates').addEventListener('change',()=>{dependencySelectionDirty=true;});
+  $('dependencyCandidates').addEventListener('change',()=>{dependencySelectionDirty=true;updateDependencySelectionCount();});
+  $('clearDependencySelection').addEventListener('click',()=>{
+    for(const box of $('dependencyCandidates').querySelectorAll('input[type="checkbox"]'))box.checked=false;
+    dependencySelectionDirty=true;
+    updateDependencySelectionCount();
+  });
   $('workDependencyForm').addEventListener('submit',event=>{
     event.preventDefault();
     void (async()=>{
@@ -587,7 +625,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   });
   async function refreshWorks() {
     const generation=++epoch,p=projectId,o=orchestratorId;
-    if(!p) {workCount=0;renderWorks([]);renderDependencyEditor([],null);await onScopeChange(null);syncCoordinatorActions();return;}
+    if(!p) {workCount=0;renderDependencyEditor([],null);renderWorks([]);await onScopeChange(null);syncCoordinatorActions();return;}
     const [result,planning,allResult]=await Promise.all([
       call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})}),
       call('work_plan',{projectId:p,maxParallel:4}).catch(()=>null),
@@ -597,8 +635,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     const works=result.works;
     workCount=works.length;
     $('openWorks').disabled=!projectId||!orchestratorId||workCount===0;
-    renderWorks(works,planning?.plan||null);
-    renderDependencyEditor(allResult?.works||result.works,planning?.plan||null);
+    const editableDependencies=renderDependencyEditor(allResult?.works||result.works,planning?.plan||null);
+    renderWorks(works,planning?.plan||null,editableDependencies);
     await onScopeChange(new Set(works.map(w=>w.id)));
     if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
     syncCoordinatorActions();
