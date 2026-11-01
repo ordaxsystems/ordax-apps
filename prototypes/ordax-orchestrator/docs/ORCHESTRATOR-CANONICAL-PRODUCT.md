@@ -64,6 +64,14 @@ Prioridade de produto: Windows físico, com uma instalação canônica e um perf
 
 Aproveitar modelos/tabelas já existentes antes de introduzir contratos novos. Novos campos exigem migração com teste de reabertura dos dados pré-existentes. Nenhuma dessas formas textuais concede API, authority ou capability.
 
+### Sistema visual canônico do frontend (decisão 2026-11-01)
+
+- A autoridade de **cores, fonte e tipografia** do Orchestrator reside no `product/desktop/ui.css`, sob o único `:root` e os tokens `--font-ui`, `--type-*`, `--bg`, `--panel*`, `--border*`, `--text`, `--muted*`, `--accent`, `--focus`, `--green`, `--amber`, `--danger`. Não criar tema de Groq, tema de GPT ou outra paleta por tela.
+- Identidade visual: **grafite neutro e tipografia de sistema**, sem excesso de azul, gradientes luminosos ou cores decorativas. Cores semânticas indicam estado real (concluído, requer revisão ou indisponível) e não sucesso inferido.
+- No modo compacto, priorizar **rótulos legíveis e ações acessíveis**: em `620px` ou menos, separar identidade/conta e seletores de projeto/administrador em duas linhas; não esconder os seletores que preservam a migração dos projetos existentes. Conservar foco visível, alvos de interação consistentes, suporte `prefers-reduced-motion` e acessibilidade por teclado.
+- O painel principal é a única visão dos **contadores de frentes**; o painel lateral mostra itens/recibos e filtros, sem contagens duplicadas. Resumos derivam da mesma lista de trabalhos, nunca de outro armazenamento.
+- Não introduzir fonte externa/download de fontes para alcançar o layout. Toda alteração visual exige contrato de desktop, responsividade real e teste Windows pertinente; teste de CSS isolado **não** certifica GPT Web, GitHub, permissão Runtime ou execução headless.
+
 ## 7. Sequência de implementação e gates
 
 | Gate | Entrega | Aceite verificável |
