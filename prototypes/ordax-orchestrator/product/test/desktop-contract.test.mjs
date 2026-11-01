@@ -305,6 +305,31 @@ test('project pulse opens a single filtered rail with preserved keyboard focus a
   assert.match(css,/@media\(max-width:460px\)\{/);
 });
 
+test('work rail separates observed evidence from advisory plans without duplicate counters or false failures',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.doesNotMatch(html,/id="workRailCount"/);
+  assert.doesNotMatch(orchestrator,/workRailCount/);
+  assert.doesNotMatch(css,/\.work-rail-count\{/);
+  assert.match(html,/<details class="work-plan-details">/);
+  assert.match(html,/Planejamento consultivo · não autoriza envios/);
+  assert.match(html,/id="workPlanSummary"/);
+  assert.match(orchestrator,/const state=workClass\(work\)/);
+  assert.doesNotMatch(orchestrator,/work\.status==='ready'&&nodeHost\?\['GPT indisponível','attention'\]/);
+  assert.match(orchestrator,/Rascunho local • envio ao GPT indisponível neste host/);
+  assert.match(orchestrator,/evidence\.className='work-evidence-stack'/);
+  assert.match(orchestrator,/runState\.textContent='Execução · '\+observed/);
+  assert.match(orchestrator,/dependencies\.textContent='Dependências · '/);
+  assert.match(orchestrator,/label\.textContent='Plano · '\+\(/);
+  assert.match(orchestrator,/work\.execution\?\.observed==='reconciliation_required'\?'Resultado incerto'/);
+  assert.match(css,/\.work-evidence-stack\{[^}]*var\(--border-strong\)/);
+  assert.match(css,/\.work-card-copy strong\{[^}]*overflow-wrap:anywhere/);
+  assert.match(css,/\.work-state\{[^}]*white-space:normal/);
+  assert.match(css,/@media\(max-width:420px\)\{\.work-card\{/);
+  assert.match(css,/\.work-plan-details\[open\]>summary\{/);
+});
+
 test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
