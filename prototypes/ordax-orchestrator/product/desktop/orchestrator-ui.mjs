@@ -225,17 +225,22 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   $('workSearch').addEventListener('input',applyWorkFilters);
   $('workStatusFilter').addEventListener('change',applyWorkFilters);
-  let dependencyWorks=[],dependencySelectionDirty=false,dependencyProject=null;
+  let dependencyWorks=[],dependencySelectionDirty=false,dependencyProject=null,dependencyCurrentTarget='';
   function updateDependencySelectionCount(){
     const boxes=[...$('dependencyCandidates').querySelectorAll('input[type="checkbox"]')];
     const marked=boxes.filter(box=>box.checked).length;
+    const selected=dependencyWorks.find(work=>work.id===$('dependencyTarget').value);
+    const persisted=new Set(Array.isArray(selected?.dependsOn)?selected.dependsOn:[]);
+    dependencySelectionDirty=Boolean(selected)&&boxes.some(box=>box.checked!==persisted.has(box.value));
     $('dependencySelectionCount').textContent=$('dependencyTarget').value
       ?marked+' de '+boxes.length+' pré-requisitos selecionados'
       :'Selecione uma frente para organizar.';
     $('clearDependencySelection').disabled=marked===0;
+    $('discardDependencyChanges').disabled=!dependencySelectionDirty;
   }
   function showDependencyChoices(){
     const targetId=$('dependencyTarget').value;
+    dependencyCurrentTarget=targetId;
     const selected=dependencyWorks.find(work=>work.id===targetId);
     const area=$('dependencyCandidates');area.replaceChildren();
     if(!selected){
@@ -580,14 +585,21 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     else $('coordinatorRailToggle').focus();
   });
   $('dependencyTarget').addEventListener('change',()=>{
-    dependencySelectionDirty=false;
+    if(dependencySelectionDirty&&dependencyCurrentTarget&&$('dependencyTarget').value!==dependencyCurrentTarget){
+      $('dependencyTarget').value=dependencyCurrentTarget;
+      $('dependencyEditNote').textContent='Salve ou desfaça alterações pendentes antes de mudar de frente.';
+      return;
+    }
     showDependencyChoices();
   });
-  $('dependencyCandidates').addEventListener('change',()=>{dependencySelectionDirty=true;updateDependencySelectionCount();});
+  $('dependencyCandidates').addEventListener('change',updateDependencySelectionCount);
   $('clearDependencySelection').addEventListener('click',()=>{
     for(const box of $('dependencyCandidates').querySelectorAll('input[type="checkbox"]'))box.checked=false;
-    dependencySelectionDirty=true;
     updateDependencySelectionCount();
+  });
+  $('discardDependencyChanges').addEventListener('click',()=>{
+    showDependencyChoices();
+    $('dependencyEditNote').textContent='Alterações não salvas descartadas. Nenhuma gravação ou envio foi realizado.';
   });
   $('workDependencyForm').addEventListener('submit',event=>{
     event.preventDefault();
