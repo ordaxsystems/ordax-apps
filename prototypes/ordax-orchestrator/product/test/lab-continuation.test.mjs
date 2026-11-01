@@ -620,9 +620,9 @@ test('uncertain GPT work in one project cannot starve another project automatic 
     .run('2000-01-01T00:00:00.000Z',runA);
   db.prepare('UPDATE lab_continuation_reviews SET updated_at=? WHERE run_id=?')
     .run('2030-01-01T00:00:00.000Z',runB);
-  db.prepare(\`INSERT INTO lab_command_receipts
+  db.prepare(`INSERT INTO lab_command_receipts
     (id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,'uncertain',?,?,?)\`)
+    VALUES(?,?,?,?,?,?,?,?,'uncertain',?,?,?)`)
     .run('receipt_blocked_project_a',f.context.workspaceSessionId,f.context.actorId,f.context.clientId,
       'blocked_project_a',a.projectId,'work_send','digest',
       JSON.stringify({taskId:a.taskId}),f.store.now(),f.store.now());
