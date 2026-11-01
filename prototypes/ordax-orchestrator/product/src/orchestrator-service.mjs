@@ -73,7 +73,12 @@ export class OrchestratorService {
       );
     `);
     const receiptSchema=this.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='lab_command_receipts'").get()?.sql||'';
-    if(!receiptSchema.includes("'failed'"))this.transaction(()=>{
+    // Legacy table migration renames the referenced table. Drop only its
+    // derived VIEW before that migration so SQLite cannot retain a dangling
+    // reference to the old table name. Recreate after migration below.
+    if(!receiptSchema.includes("'failed'")){
+      this.db.exec('DROP VIEW IF EXISTS lab_command_receipt_scope');
+      this.transaction(()=>{
       this.db.exec('ALTER TABLE lab_command_receipts RENAME TO lab_command_receipts_legacy');
       this.db.exec(`CREATE TABLE lab_command_receipts (
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
@@ -88,7 +93,8 @@ export class OrchestratorService {
         SELECT id,workspace_session_id,actor_id,client_id,request_id,project_id,operation,input_hash,status,result,created_at,updated_at
         FROM lab_command_receipts_legacy`);
       this.db.exec('DROP TABLE lab_command_receipts_legacy');
-    });
+      });
+    }
     if(!this.db.prepare('PRAGMA table_info(lab_projects)').all().some(column=>column.name==='repository_url'))
       this.db.exec('ALTER TABLE lab_projects ADD COLUMN repository_url TEXT');
     // Read-only projection over the ONE durable receipt ledger. SQLite JSON
@@ -421,7 +427,7 @@ export class OrchestratorService {
         works:works.map(w=>({...w,monitor:this.monitor(w,[{
           status:w.latest_run_status,started_at:w.latest_started_at,
           heartbeat_at:w.latest_heartbeat_at
-        }])}))
+        }],projectId)}))
       });
       const executor=this.executorAdmission();
       return Object.freeze({...planning,
@@ -515,7 +521,7 @@ export class OrchestratorService {
           role:message.role,content:redactOrchestratorAnalysisText(message.content,1200),createdAt:message.created_at
         }));
         return {title:redactOrchestratorAnalysisText(row.title,180),status:row.status,updatedAt:row.updated_at,
-          providerSegments:row.provider_segments,monitor:this.monitor(row,runs),runs,messages};
+          providerSegments:row.provider_segments,monitor:this.monitor(row,runs,projectId),runs,messages};
       })
     };
   }
