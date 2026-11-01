@@ -139,6 +139,7 @@ export async function advanceStory(engine,context,row){
       const ordinal=Number(plan[1]);working='story_planning_'+ordinal;
       engine.move(row.id,state,working);
       const proposal=await planStoryTurn(engine,row,ordinal);
+      engine.assertMissionSession(context,row);
       engine.db.exec('SAVEPOINT autonomous_story_prepare');
       try{
         const task=engine.service.mutate('work_create',{projectId:row.project_id,
@@ -167,14 +168,17 @@ export async function advanceStory(engine,context,row){
           return {state:'blocked',diagnosis};
         }
       }
+      engine.assertMissionSession(context,row);
       working='story_sending_'+ordinal;engine.move(row.id,state,working);
       await sendStoryTurn(engine,context,row,ordinal);
+      engine.assertMissionSession(context,row);
       engine.move(row.id,working,ordinal===STORY_TURNS?'story_ready_synthesis':'story_queued_'+(ordinal+1));
       return {state:'advanced'};
     }
     if(state==='story_ready_synthesis'){
       working='story_synthesizing';engine.move(row.id,state,working);
       const result=await synthesizeStory(engine,row);
+      engine.assertMissionSession(context,row);
       const turns=witnessedAnswers(engine,row);
       const quality=assessStoryQuality(turns.map(x=>x.answer),result);
       // Persist evidence even when the story fails quality requirements.

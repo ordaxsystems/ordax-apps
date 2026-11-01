@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — isolamento de missões por workspace alpha.26 (candidata)
+
+- **Base:** `ordax-apps/main@9c1d84aabb0f6654c1896456e8c45cbc9bf8d482` (alpha.25); cinco gates pós-merge aprovados incluindo Windows. Nenhuma PR ou branch Orchestrator preexistente.
+- **Causa-raiz:** `AutonomousDialogue.start()` pesquisava missões ativas globalmente no SQLite; `step()` selecionava o primeiro item antigo sem filtrar a sessão ou owner. Uma missão antiga podia bloquear a próxima, e após uma resposta assíncrona de Groq/GPT, o processo continuava mutando estado sem revalidar o workspace.
+- **Correção:** `start` e `step` são estritamente filtrados pelo workspace da sessão; `tick` recusa contexto fechado. Um único método `assertMissionSession` revalida a autoridade após cada fronteira await, inclusive planejamento, envio, pré-envio e síntese de história. Se um efeito externo pode ter ocorrido antes da troca de sessão, o estágio é colocado em reconciliação e nunca repetido. Missões antigas ficam duráveis, não são apagadas ou misturadas.
+- **Provas:** testes SQLite com rotação real de workspace, missão antiga pendente, nova missão válida na mesma Store, e resposta Groq tardia de diálogo e narrativa. Exige 5/5 gates na PR antes de squash merge.
+- **Ambiente:** usuário está em um PC formatado; execução exclusivamente remota via GitHub. Não reinstalar nem alegar E2E físico.
+
+---
+
 ## Continuidade remota 01/11/2026 — backend Groq alpha.25 (candidata)
 
 - Base: `ordax-apps/main@544d5ebdd6f27885e75039861063b3e0d40092fc`, alpha.24 integrada via PR #379 (5/5 gates no HEAD), branch removida.

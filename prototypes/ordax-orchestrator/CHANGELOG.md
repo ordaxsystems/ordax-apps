@@ -1,3 +1,11 @@
+## 0.2.0-alpha.26 — isolamento das missões por workspace (01/11/2026)
+
+- Corrige a seleção de missões históricas que bloqueava novas sessões; exige mesmo workspace, owner e cliente antes de executar diálogos e narrativas.
+- Revalida a sessão após chamadas assíncronas Groq/GPT, preservando recibos e exigindo reconciliação de resultados tardios sem reenvio automático.
+- Reutiliza Store, ações e canais existentes; testes SQLite de troca de sessão e ausência de efeitos cruzados. Sem novo serviço, banco ou executor.
+
+---
+
 ## 0.2.0-alpha.25 — serialização Groq na autoridade do serviço (01/11/2026)
 
 - Impede duas chamadas simultâneas ao mesmo Task Groq, mesmo quando originadas de clientes/API distintos, mantendo os recibos idempotentes.

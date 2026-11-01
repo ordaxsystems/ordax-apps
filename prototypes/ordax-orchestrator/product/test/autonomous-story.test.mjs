@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {Store} from '../src/store.mjs';
 import {OrchestratorService} from '../src/orchestrator-service.mjs';
 import {storyContinuityEvidence} from '../src/autonomous-story.mjs';
@@ -94,6 +95,31 @@ function fixture(t,{beforeSendFailure=null,readyCount=0,slowCoordinator=false,ov
  };
  return {service,store,context,seen,setup,wait};
 }
+test('late Groq story plan after workspace cutover cannot create a scene or send GPT',async t=>{
+ const f=fixture(t);const ids=await f.setup();
+ const original=f.service.coordinator.send;
+ let entered,release;
+ const started=new Promise(resolve=>{entered=resolve;});
+ const gate=new Promise(resolve=>{release=resolve;});
+ f.service.coordinator.send=async args=>{entered();await gate;return original(args);};
+ const accepted=await f.service.invoke(f.context,'autonomous_dialogue_start',{
+   ...ids,requestId:'story_cutover',mode:'story',mission:'Preservar isolamento na troca de workspace'});
+ await started;
+ const newId='session_rotated_'+randomUUID(),now=f.store.now();
+ f.store.db.prepare("UPDATE workspace_sessions SET status='closed',updated_at=? WHERE id=?")
+   .run(now,f.context.workspaceSessionId);
+ f.store.db.prepare('INSERT INTO workspace_sessions(id,status,metadata,created_at,updated_at) VALUES(?,?,?,?,?)')
+   .run(newId,'active','{}',now,now);
+ f.store.workspaceSession={id:newId};
+ release();
+ const result=await f.wait(accepted.result.missionId);
+ assert.equal(result.state,'reconciliation_required');
+ assert.equal(f.seen.calls.length,1);
+ assert.equal(f.seen.sends.length,0);
+ assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_autonomous_story_turns').get().n,0);
+ assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_task_bindings WHERE kind='work'").get().n,0);
+ assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
 test('one story mission autonomously runs Groq A1 B1 A2 B2 Groq final with no other commands',async t=>{
  const f=fixture(t);const ids=await f.setup();
  const receipt=await f.service.invoke(f.context,'autonomous_dialogue_start',{
