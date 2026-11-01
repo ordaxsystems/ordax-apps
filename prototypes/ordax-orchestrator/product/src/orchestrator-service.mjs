@@ -27,6 +27,9 @@ export class OrchestratorService {
     this.confirmProposal=confirmProposal;
     this.confirmProposalSend=confirmProposalSend;
     this.pendingProposalReviews=new Set();
+    // One process-local admission lane per canonical coordinator Task.
+    // The durable command receipts remain the only source of truth.
+    this.activeCoordinatorTurns=new Set();
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS lab_projects (
         id TEXT PRIMARY KEY, workspace_session_id TEXT NOT NULL REFERENCES workspace_sessions(id),
@@ -720,7 +723,41 @@ export class OrchestratorService {
       throw Error('orchestrator_work_prerequisite_not_confirmed');
   }
 
+  coordinatorTurnBusy(taskId) {
+    return this.activeCoordinatorTurns.has(taskId)||Boolean(this.db.prepare(`
+      SELECT 1 FROM lab_command_receipts
+      WHERE status='running' AND operation IN
+        ('orchestrator_chat','orchestrator_analyze','orchestrator_prepare')
+      AND json_extract(result,'$.taskId')=? LIMIT 1`).get(taskId));
+  }
+
+  async withCoordinatorTurn(taskId,action) {
+    if(typeof taskId!=='string'||!taskId||typeof action!=='function')
+      throw Error('orchestrator_coordinator_ports_required');
+    // Fail closed BEFORE the model request. This is not a queue or a retry.
+    if(this.coordinatorTurnBusy(taskId)){
+      const error=Error('orchestrator_coordinator_busy');
+      error.orchestratorRequestOutcome='rejected';
+      throw error;
+    }
+    this.activeCoordinatorTurns.add(taskId);
+    try{return await action();}
+    finally{this.activeCoordinatorTurns.delete(taskId);}
+  }
+
   async dispatch(context,operation,input,preparedSend=null) {
+    if(operation==='work_send'||operation==='proposal_send')
+      return this.dispatchCore(context,operation,input,preparedSend);
+    // Repeated requestIds return their existing receipt even while busy.
+    const existing=this.db.prepare(`SELECT id FROM lab_command_receipts
+      WHERE workspace_session_id=? AND actor_id=? AND client_id=? AND request_id=?`)
+      .get(context.workspaceSessionId,context.actorId,context.clientId,input.requestId);
+    if(existing)return this.transaction(()=>this.reserve(context,operation,input).existing);
+    const chatTaskId=this.orchestrator(input.projectId,input.orchestratorId).chat_task_id;
+    return this.withCoordinatorTurn(chatTaskId,()=>this.dispatchCore(context,operation,input,preparedSend));
+  }
+
+  async dispatchCore(context,operation,input,preparedSend=null) {
     const existing=this.db.prepare(`SELECT id,input_hash FROM lab_command_receipts WHERE workspace_session_id=?
       AND actor_id=? AND client_id=? AND request_id=?`).get(context.workspaceSessionId,
       context.actorId,context.clientId,input.requestId);

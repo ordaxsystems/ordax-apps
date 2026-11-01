@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.24",
+  "version": "0.2.0-alpha.25",
   "channel": "alpha",
-  "name": "Envio único e preparação serial do coordenador Groq",
+  "name": "Serialização Groq no backend canônico",
   "distributionEnabled": false,
   "releaseDate": null
 }

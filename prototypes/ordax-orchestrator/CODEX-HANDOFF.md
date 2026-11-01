@@ -1,3 +1,14 @@
+## Continuidade remota 01/11/2026 — backend Groq alpha.25 (candidata)
+
+- Base: `ordax-apps/main@544d5ebdd6f27885e75039861063b3e0d40092fc`, alpha.24 integrada via PR #379 (5/5 gates no HEAD), branch removida.
+- Causa: a proteção da UI não coordenava chamadas do MCP, Host ou processos automáticos; invocações paralelas do mesmo Groq Task podiam gerar respostas intercaladas.
+- Correção: `OrchestratorService.withCoordinatorTurn` centraliza a admissão por Task com trava transitória do processo canônico e consulta de recibos `running` existentes; mantém requestIds idempotentes, independência de projetos e nenhuma segunda autoridade. Manual, opt-in, diálogo e história usam o mesmo mecanismo.
+- Falha fechada antes do envio: `orchestrator_coordinator_busy`; tick automático aguarda sem transformar espera em resultado incerto. Nenhuma nova queue, worker, perfil, banco ou dependência.
+- Prova: testes SQLite de concorrência, recibos, independência de projeto e retomada autônoma; CI remoto Windows/Foundation exigido para merge.
+- Ambiente: máquina Windows do usuário formatada; somente GitHub remoto, sem instalar ou acessar dispositivo físico.
+
+---
+
 ## Continuidade remota 01/11/2026 — correção Groq alpha.24 (candidata)
 
 - **Base observada:** `ordax-apps/main@3dcc9b2cbb21a1c008e0358f4a0a15cf6dfb8bb6`, alpha.23 integrada. O usuário informou que o PC foi formatado inesperadamente: **somente trabalho remoto**, sem reinstalação ou tentativa de acesso físico.
