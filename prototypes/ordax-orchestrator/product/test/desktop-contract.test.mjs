@@ -366,6 +366,26 @@ test('per-front prerequisite actions reuse one safe editor and keep filtered car
   assert.doesNotMatch(html,/id="dependencyEditorSecondary"/);
 });
 
+test('work filters have recoverable empty feedback without duplicate data sources',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  const ui=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  for(const id of ['workFilterEmpty','clearWorkFilters','workFilteredCount','workSearch','workStatusFilter'])
+    assert.equal((html.match(new RegExp('id="'+id+'"','g'))||[]).length,1,id+' must have a single owner');
+  assert.match(html,/<div id="workFilterEmpty" class="work-filter-empty" hidden>/);
+  assert.match(html,/Nenhuma frente corresponde aos filtros/);
+  assert.match(html,/<button id="clearWorkFilters"[^>]*type="button">Limpar filtros<\/button>/);
+  assert.match(ui,/const byId=new Map\(visibleWorkItems\.map\(work=>\[work\.id,work\]\)\)/);
+  assert.match(ui,/summary\.hidden=Boolean\(query\)\|\|\(state!=='all'&&state!=='attention'\)/);
+  assert.match(ui,/workFilterEmpty'\)\.hidden=visibleWorkItems\.length===0\|\|visible>0/);
+  assert.match(ui,/clearWorkFilters'\)\.addEventListener\('click'/);
+  assert.match(ui,/workStatusFilter'\)\.value='all'/);
+  assert.match(ui,/workSearch'\)\.focus\(\)/);
+  assert.match(css,/\.work-filter-empty\[hidden\],\.work-attention-summary\[hidden\],\.work-entry\[hidden\]\{display:none!important\}/);
+  assert.match(css,/\.work-filter-empty button:focus-visible\{/);
+  assert.match(css,/\.work-filter-empty\{[^}]*var\(--panel-2\)/);
+});
+
 test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
