@@ -328,6 +328,12 @@ test('work rail separates observed evidence from advisory plans without duplicat
   assert.match(css,/\.work-state\{[^}]*white-space:normal/);
   assert.match(css,/@media\(max-width:420px\)\{\.work-card\{/);
   assert.match(css,/\.work-plan-details\[open\]>summary\{/);
+  assert.ok(html.indexOf('id="contextPanel"')<html.indexOf('id="orchestratorWorkRail"'),
+    'work rail is nested in contextPanel and requires its parent visible');
+  assert.match(css,/#contextRail>:not\(#contextPanel\)\{display:none!important\}/);
+  assert.match(css,/#contextPanel\{display:flex!important;overflow:hidden;padding:0\}/);
+  assert.match(css,/#contextPanel>:not\(#orchestratorWorkRail\)\{display:none!important\}/);
+  assert.doesNotMatch(css,/#contextRail>:not\(#orchestratorWorkRail\)/);
 });
 
 test('Orchestrator workspace links project navigation, coordinator and scoped GPT work conversations', () => {
