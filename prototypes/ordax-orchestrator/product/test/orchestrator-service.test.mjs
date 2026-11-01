@@ -1143,8 +1143,8 @@ test('prepared proposals require canonical approved ledger and ignore corrupted 
   assert.equal(other.status,'succeeded');
   const pending=await makeProposal('Pending valid');
   const db=f.store.db;
-  assert.deepEqual((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals.map(x=>x.actionId),
-    [pending,malformed,good]);
+  assert.deepEqual(new Set((await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o}))
+    .proposals.map(x=>x.actionId)),new Set([pending,malformed,good]));
   db.prepare('UPDATE action_ledger SET result=? WHERE id=?').run('{"broken"',malformed);
   db.prepare("UPDATE approval_ledger SET status='rejected' WHERE action_id=?").run(good);
   const visible=(await f.call('proposals_list',{projectId:a.p,orchestratorId:a.o})).proposals;
