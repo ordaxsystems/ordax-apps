@@ -234,6 +234,29 @@ test('single-project direction leads the desktop navigation without implying aut
   assert.doesNotMatch(html,/id="startProjectAutonomous"/);
 });
 
+test('GPT execution navigation opens scoped work chooser, including an empty project, without implicit task selection',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const orchestrator=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  const shell=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+  assert.match(html,/id="openWorks"[^>]*aria-controls="orchestratorWorkRail"[^>]*aria-expanded="false"/);
+  assert.match(html,/Execuções GPT<\/strong><small>Escolha uma frente na lista/);
+  assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!projectId\|\|!orchestratorId;/);
+  assert.match(orchestrator,/\$\('openWorks'\)\.disabled=!p\|\|!selected;/);
+  const start=orchestrator.indexOf("  $('openWorks').addEventListener('click'");
+  const end=orchestrator.indexOf("  $('pauseOrchestrator').addEventListener",start);
+  assert.ok(start>=0&&end>start,'GPT workspace click handler must exist');
+  const handler=orchestrator.slice(start,end);
+  assert.match(handler,/await showCoordinator\(\)/);
+  assert.match(handler,/openFilteredWorks\('all',\$\('openWorks'\)\)/);
+  assert.match(handler,/if\(currentProject!==projectId\|\|currentOrchestrator!==orchestratorId\)return/);
+  assert.doesNotMatch(handler,/visibleWorkItems\[0\]/,'never choose the first task arbitrarily');
+  assert.doesNotMatch(handler,/onOpenWork\(/,'the work list never sends or opens a GPT task by itself');
+  assert.match(orchestrator,/Nenhuma frente registrada neste projeto/);
+  assert.match(orchestrator,/\$\('openWorks'\)\.setAttribute\('aria-expanded',String\(open\)\)/);
+  assert.match(orchestrator,/\$\('openWorks'\)\.setAttribute\('aria-expanded','false'\)/);
+  assert.match(shell,/if\(route!=='coordinator'\)[\s\S]{0,110}openWorks'\)\?\.setAttribute\('aria-expanded','false'\)/);
+});
+
 test('compact administrator navigation retains both accessible selectors and theme SSOT',()=>{
   const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
   const css=fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
