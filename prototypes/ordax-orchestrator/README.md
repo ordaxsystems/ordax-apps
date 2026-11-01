@@ -1,5 +1,10 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
+## Seleção justa para coordenação opt-in — alpha.35
+
+A análise opcional de Runs confirmados e a geração de propostas de trabalho não ficam presas ao primeiro coordenador sem Groq ou ocupado. Um seletor comum percorre candidatos na SQLite canônica e permite avançar outro projeto independente, sem reenviar comandos, assumir autoridade ou criar executor/fila paralelos. O trabalho bloqueado continua pendente para retomada autorizada; os recibos incertos e as aprovações humanas continuam bloqueios obrigatórios.
+
+
 ## Pausa durável de chamadas Groq em andamento — alpha.34 (candidata)
 
 Uma pausa do coordenador não desfaz a requisição Groq já enviada, mas sela como `uncertain` os comandos de chat/análise/proposta em voo **daquele coordenador** no recibo SQLite canônico. Assim, uma resposta ou falha tardia não certifica a operação nem gera propostas depois de uma pausa e retomada rápida. Outros projetos e envios GPT não são afetados. O requestId original nunca é reenviado; o histórico continua auditável e novas ações explícitas exigem os gates existentes. Sem novo executor, banco, tabela, fila ou privilégio.

@@ -1,3 +1,13 @@
+## Continuidade remota 01/11/2026 — fair scheduling multi-projeto alpha.35 (candidata)
+
+- **Base:** `ordax-apps/main@fc1fc4e1c424b8e2f1753c1b06e9da98c5cfa07e` (alpha.34 PR #389 integrada, 5/5 gates aprovados no HEAD, branch limpa, pós-merge Foundation success e Isolation em execução quando consultado).
+- **Falha:** `LabContinuation.tick` e `LabNextProposal.tick` consultavam apenas o primeiro candidato global e, se o coordenador Groq estivesse indisponível ou ocupado, devolviam bloqueio sem avaliar outras missões elegíveis. Isso impedia progresso do projeto B apesar de A estar bloqueado.
+- **Correção SSOT:** um seletor único no `OrchestratorService` percorre os resultados das queries SQLite já filtradas por workspace, opt-in e recibos. Ele pula coordenadores indisponíveis/ocupados e devolve o primeiro elegível; se nenhum for elegível, informa o bloqueio pré-existente. Não cria outra fila, tabela, serviço ou autoridade.
+- **Aceite:** SQLite com A indisponível e B elegível para análise; A ocupado sem receipt provider e B elegível; A indisponível para proposta após ambos os Runs analisados. B confirma sem reenvios; A permanece íntegro e retoma depois; `PRAGMA quick_check`; GPT e integração física não certificados.
+- **Gates:** validar 5/5 checks no HEAD (incluindo Windows) antes de squash e eliminação da branch; evitar builds redundantes fora do CI necessário.
+
+---
+
 ## Continuidade remota 01/11/2026 — pausa Groq em voo alpha.34 (candidata)
 
 - **Base:** `ordax-apps/main@088611f75829fd14d30df231feb14f798180f4d5` (alpha.33 PR #388 integrada, testes e cinco gates da PR aprovados).

@@ -121,7 +121,7 @@ export class LabContinuation {
     this.inFlight=true;
     try {
       this.scan();
-      const row=this.db.prepare(`SELECT q.*,
+      const choice=this.service.selectContinuationCandidate(this.db.prepare(`SELECT q.*,
         EXISTS(SELECT 1 FROM lab_command_receipt_scope c
           WHERE c.status='uncertain' AND c.operation IN ('work_send','proposal_send')
             AND (c.task_id=q.task_id OR
@@ -134,12 +134,10 @@ export class LabContinuation {
         JOIN tasks t ON t.id=q.task_id AND t.workspace_session_id=?
         WHERE q.state='queued' AND p.enabled=1 AND o.status='ready'
           AND r.rowid>p.start_run_rowid
-        ORDER BY transport_uncertain ASC,q.updated_at,q.run_id LIMIT 1`).get(session.id,session.id);
-      if(!row)return await this.nextProposal.tick(context);
-      if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};
+        ORDER BY transport_uncertain ASC,q.updated_at,q.run_id`).iterate(session.id,session.id));
+      if(!choice.row)return choice.state==='idle'?await this.nextProposal.tick(context):{state:choice.state};
+      const row=choice.row;
       if(row.transport_uncertain)return {state:'reconciliation_required'};
-      if(this.service.coordinatorTurnBusy(this.service.orchestrator(row.project_id,row.orchestrator_id).chat_task_id))
-        return {state:'coordinator_busy'};
       if(this.service.provider?.busy?.()||this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
         this.db.prepare("SELECT 1 FROM lab_command_receipts WHERE status='running' LIMIT 1").get())
         return {state:'executor_busy'};
