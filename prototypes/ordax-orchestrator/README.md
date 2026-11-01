@@ -1,6 +1,11 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
-## Navegação protegida de respostas atrasadas — alpha.27 (candidata)
+## Recuperação com vínculo imutável entre comando e ação — alpha.28 (candidata)
+
+No reinício, a recuperação de comandos `proposal_send` interrompidos valida antes de qualquer mutação que o recibo aponte para uma ação `orchestrator.proposal-send` **do mesmo comando, trabalho e projeto**, ainda em `dispatching`. Referências inválidas, incompletas ou cruzadas não alteram outras ações; o comando permanece `uncertain`, exige reconciliação e nunca reenvia. Resultados JSON corrompidos não bloqueiam o processo de recuperação: são mantidos integralmente no SQLite, e a consulta retorna apenas um diagnóstico conservador, sem confiança nos dados. A Store, as tabelas, o log de eventos e os mecanismos de autorização permanecem canônicos; não há outra fila, persistência ou transporte.
+
+
+## Navegação protegida de respostas atrasadas — alpha.27 (integrada)
 
 Ao trocar de projeto e orquestrador, cada consulta de listas usa geração de atualização para rejeitar respostas antigas **antes** de modificar seleção ou rascunho. O rascunho só é ativado quando a seleção continua válida, inclusive depois de operações assíncronas no SQLite. A lista de frentes valida o escopo antes e depois da notificação assíncrona. O campo de envio do Groq tem uma única regra de teclado: Enter/Ctrl+Enter enviam, Shift+Enter insere quebra e uma confirmação de IME nunca dispara envio. O serviço Groq, o executor GPT, a Store e os receipts continuam os mesmos; não existe cache, bridge ou provider duplicado.
 

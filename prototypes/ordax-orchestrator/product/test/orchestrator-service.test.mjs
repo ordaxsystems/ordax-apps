@@ -488,6 +488,63 @@ test('interrupted command recovery only marks uncertain and cannot dispatch or c
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,0);
 });
 
+
+test('crash recovery never changes another project action named by a forged first-send receipt',async t=>{
+  const f=fixture(t),a=await project(f,'First project'),b=await project(f,'Other project');
+  const otherAction=f.store.beginAction(b.w,null,'orchestrator.proposal-send','other_command',
+    {source:'unrelated_authorized_work'});
+  f.store.db.prepare("UPDATE action_ledger SET status='dispatching' WHERE id=?").run(otherAction);
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',{
+    requestId:'forged_recovery',projectId:a.p,actionId:'action_fake',draftRevision:1,orchestratorId:a.o}));
+  f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+    .run(JSON.stringify({taskId:b.w,sendActionId:otherAction}),reserved.commandId);
+  const before=f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='action.indeterminate'").get(b.w).n;
+  assert.equal(f.service.recoverInterruptedCommands(),1);
+  assert.equal(f.store.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(otherAction).status,'dispatching',
+    'unrelated action cannot be downgraded by another command receipt');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='action.indeterminate'").get(b.w).n,before);
+  const receipt=await f.call('command_get',{commandId:reserved.commandId});
+  assert.equal(receipt.status,'uncertain');
+  assert.equal(receipt.requiresReconciliation,true);
+  assert.equal(f.service.recoverInterruptedCommands(),0);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
+test('recovery preserves already terminal first-send action instead of downgrading it',async t=>{
+  const f=fixture(t),a=await project(f);
+  const input={requestId:'terminal_action',projectId:a.p,orchestratorId:a.o,
+    actionId:'action_placeholder',draftRevision:1};
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',input));
+  const actionId=f.store.beginAction(a.w,null,'orchestrator.proposal-send',reserved.commandId,{});
+  f.store.db.prepare("UPDATE action_ledger SET status='succeeded' WHERE id=?").run(actionId);
+  f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?')
+    .run(JSON.stringify({taskId:a.w,sendActionId:actionId}),reserved.commandId);
+  const prior=f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='action.indeterminate'").get(a.w).n;
+  assert.equal(f.service.recoverInterruptedCommands(),1);
+  assert.equal(f.store.db.prepare('SELECT status FROM action_ledger WHERE id=?').get(actionId).status,'succeeded');
+  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM events WHERE task_id=? AND kind='action.indeterminate'").get(a.w).n,prior);
+  assert.equal((await f.call('command_get',{commandId:reserved.commandId})).status,'uncertain');
+});
+
+test('malformed recovery receipt quarantines the command and remains safely inspectable',async t=>{
+  const f=fixture(t),a=await project(f);
+  const reserved=f.service.transaction(()=>f.service.reserve(f.context,'proposal_send',{
+    requestId:'partial_recovery',projectId:a.p,orchestratorId:a.o,
+    actionId:'action_placeholder',draftRevision:1}));
+  f.store.db.prepare('UPDATE lab_command_receipts SET result=? WHERE id=?').run('{"taskId":',reserved.commandId);
+  const before=f.store.db.prepare('SELECT COUNT(*) n FROM events').get().n;
+  assert.equal(f.service.recoverInterruptedCommands(),1);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM events').get().n,before);
+  assert.equal(f.service.recoverInterruptedCommands(),0);
+  const receipt=await f.call('command_get',{commandId:reserved.commandId});
+  assert.equal(receipt.status,'uncertain');
+  assert.equal(receipt.requiresReconciliation,true);
+  assert.deepEqual(receipt.result,{reason:'receipt_result_unreadable'});
+  assert.equal(f.store.db.prepare('SELECT result FROM lab_command_receipts WHERE id=?').get(reserved.commandId).result,'{"taskId":',
+    'do not destroy raw forensic evidence');
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('coordinator chat never falls through to GPT Web when Groq is unavailable',async t=>{
   let gptCalls=0;
   const f=fixture(t,{provider:{send:async()=>{gptCalls++;throw Error('wrong_transport');}},

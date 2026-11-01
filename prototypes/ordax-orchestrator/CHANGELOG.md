@@ -1,3 +1,12 @@
+## 0.2.0-alpha.28 — recuperação segura de recibos e ações (01/11/2026)
+
+- Recuperação após reinício valida comando, projeto, Task e ação original em `dispatching` antes de marcar a ação como indeterminada.
+- IDs trocados, ações já terminais e JSON de recibo incompleto não modificam trabalhos alheios e não impedem a quarentena do comando `uncertain`.
+- Raw JSON forense permanece no SQLite e leitura de recibos incertos corrompidos responde com diagnóstico seguro; nenhuma repetição de Groq/GPT.
+- Testes SQLite de cross-project, proteção de estado terminal e resultados truncados. Mesma Store, sem novos serviços, bancos, filas ou providers.
+
+---
+
 ## 0.2.0-alpha.27 — navegação assíncrona segura e envio único de teclado (01/11/2026)
 
 - Impede respostas atrasadas de listas de projetos e orquestradores de sobrescrever a seleção atual ou ativar rascunho de outro chat.

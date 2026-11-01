@@ -113,10 +113,21 @@ export class OrchestratorService {
   // Call exactly once by the App at startup, never when a client connects.
   recoverInterruptedCommands() {
     return this.transaction(()=>{
-      const rows=this.db.prepare("SELECT result FROM lab_command_receipts WHERE status='running' AND operation='proposal_send'").all();
+      const rows=this.db.prepare(`SELECT id,project_id,result FROM lab_command_receipts
+        WHERE status='running' AND operation='proposal_send'`).all();
       for(const row of rows) {
-        const result=row.result?JSON.parse(row.result):null;
-        if(result?.sendActionId&&result?.taskId)this.store.finishAction(result.taskId,result.sendActionId,'indeterminate',
+        // A command receipt can be incomplete or corrupted after a crash.
+        // Never use its JSON alone to change a different action or Task.
+        let result=null;
+        try {result=row.result?JSON.parse(row.result):null;} catch {}
+        if(typeof result?.sendActionId!=='string'||typeof result?.taskId!=='string')continue;
+        const action=this.db.prepare(`SELECT a.id FROM action_ledger a
+          JOIN lab_task_bindings b ON b.task_id=a.task_id
+          WHERE a.id=? AND a.task_id=? AND a.resource_key=?
+            AND a.action_type='orchestrator.proposal-send' AND a.status='dispatching'
+            AND b.project_id=? AND b.kind='work'`)
+          .get(result.sendActionId,result.taskId,row.id,row.project_id);
+        if(action)this.store.finishAction(result.taskId,action.id,'indeterminate',
           {reason:'process_interrupted',providerMessagesSent:null});
       }
       return Number(this.db.prepare("UPDATE lab_command_receipts SET status='uncertain',updated_at=? WHERE status='running'")
@@ -168,9 +179,16 @@ export class OrchestratorService {
   }
 
   receipt(row) {
+    let result=null;
+    try {result=row.result?JSON.parse(row.result):null;}
+    catch {
+      // Preserve the raw SQLite evidence; never interpret or replay it.
+      if(row.status!=='uncertain')throw Error('orchestrator_receipt_result_invalid');
+      result={reason:'receipt_result_unreadable'};
+    }
     return {commandId:row.id,operation:row.operation,status:row.status,
       requiresReconciliation:row.status==='uncertain',
-      result:row.result?JSON.parse(row.result):null,updatedAt:row.updated_at};
+      result,updatedAt:row.updated_at};
   }
 
   getReceipt(context,id) {
