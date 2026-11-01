@@ -1,3 +1,5 @@
+> **SUPERSEDED — 2026-11-01:** [Contrato canônico de produto](ORCHESTRATOR-CANONICAL-PRODUCT.md) redefine a experiência como **uma instância = um projeto, Administrador Geral Groq e executores por repositório**, com início após consentimento sem prompt. Esta RFC documenta a base histórica e capacidades já existentes; não é a direção para UX multi-projeto, chat GPT principal ou autonomia declarada.
+
 > **Atualização arquitetural alpha.20 — 31/10/2026:** o Orquestrador coordena por um transporte de IA distinto (Groq no Electron Windows); `orchestrator_chat` não é uma conversa GPT Web. A execução em frentes externas usa `work_send` e `proposal_send` com receipt GPT próprio. O projeto e o mesmo SQLite são a SSOT de ambos, mas mensagens jamais atravessam provedores de forma implícita. A interface tem entrada independente para **Orquestrador** e **Conversas GPT**; criar missão salva drafts sem enviar. Este contrato substitui qualquer afirmação histórica abaixo de que o chat coordenador deve enviar primariamente via GPT Web. O projeto continua sem supervisor headless/24 h homologado.
 
 # RFC — OrdaX Orchestrator orientado a projetos locais
@@ -19,7 +21,7 @@ O objetivo futuro é dar continuidade à missão até **aceite demonstrado**, **
 
 ## 2. Experiência desejada
 
-O usuário pode manter vários projetos, cada um com missão, N orquestradores e N frentes/agentes, permissões próprias, prioridades, orçamento e estado independente. Pode adicionar projeto por diretório existente ou criar workspace novo **apenas com autorização**; pode vincular um ou mais roots explicitamente, sem varrer o disco inteiro. A tela principal do projeto mostra:
+**Nota de migração:** a base histórica suporta vários projetos persistidos, mas a experiência-alvo passou a ser **um único projeto por instância**, com um Administrador Geral e N executores por repositório. Os registros antigos permanecem preservados até migração testada e isolamento de perfis. Pode adicionar projeto por diretório existente ou criar workspace novo **apenas com autorização**; pode vincular um ou mais roots explicitamente, sem varrer o disco inteiro. A tela principal do projeto mostra:
 
 - **Missão e objetivo** (com critérios verificáveis, escopo e status real).
 - **Workspace**: raízes autorizadas, branch/worktree, mudanças não commitadas, último snapshot e saúde do Runtime.
