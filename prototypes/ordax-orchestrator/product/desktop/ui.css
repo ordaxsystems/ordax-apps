@@ -666,16 +666,12 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
   body.orchestrator-focus .left-footer #login{min-height:36px;padding:8px 11px;font-size:var(--type-caption)}
   body.orchestrator-focus #projectSelect,body.orchestrator-focus #orchestratorSelect{font-size:var(--type-label)}
   body.orchestrator-focus .coordinator-title h2{font-size:14px}
-  body.orchestrator-focus .coordinator-title p{max-width:42vw;font-size:var(--type-caption)}
-  body.orchestrator-focus .coordinator-head-actions button{width:36px!important;height:36px!important}
-  body.orchestrator-focus #coordinatorRailToggle{width:36px!important}
   body.orchestrator-focus .coordinator-head-actions #coordinatorApiSettings{width:36px!important;min-width:36px;font-size:0!important;padding:0!important}
   body.orchestrator-focus .coordinator-head-actions #coordinatorApiSettings::after{content:"⚙";font-size:17px}
   body.orchestrator-focus .orchestration-connection{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.4}
   body.orchestrator-focus .orchestration-capabilities span{font-size:var(--type-caption);min-height:34px}
   body.orchestrator-focus .workspace-mode-copy strong{font-size:var(--type-label)}
   body.orchestrator-focus .workspace-mode-copy small{font-size:var(--type-caption)}
-  body.orchestrator-focus .coordinator-empty p{font-size:var(--type-label)}
   body.orchestrator-focus .coordinator-route-note{font-size:var(--type-caption)}
   body:not(.orchestrator-focus) .left-rail .orchestration-navigation{box-sizing:border-box;min-width:0;width:100%;padding:7px 2px;gap:4px;overflow:hidden}
   body:not(.orchestrator-focus) .left-rail .orchestration-navigation .nav-section-heading span,
@@ -691,14 +687,14 @@ body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:bl
   body.orchestrator-focus .coordinator-head{min-height:67px;padding:8px 9px;gap:5px}
   body.orchestrator-focus .coordinator-identity{gap:7px}
   body.orchestrator-focus .coordinator-avatar{width:30px;height:30px;font-size:18px}
-  body.orchestrator-focus .coordinator-title p{max-width:30vw;font-size:8px;-webkit-line-clamp:1}
+  body.orchestrator-focus .coordinator-title p{max-width:42vw;font-size:var(--type-caption);-webkit-line-clamp:1}
   body.orchestrator-focus .coordinator-head-actions{gap:3px}
-  body.orchestrator-focus .coordinator-head-actions button{width:29px!important;height:30px!important}
-  body.orchestrator-focus #coordinatorRailToggle{width:30px!important}
+  body.orchestrator-focus .coordinator-head-actions button{width:36px!important;height:36px!important}
+  body.orchestrator-focus #coordinatorRailToggle{width:36px!important}
   body.orchestrator-focus .coordinator-messages{padding:10px}
   body.orchestrator-focus .coordinator-empty{width:min(100%,440px);padding:16px 12px}
   body.orchestrator-focus .coordinator-empty strong{font-size:12px}
-  body.orchestrator-focus .coordinator-empty p{font-size:10px}
+  body.orchestrator-focus .coordinator-empty p{font-size:var(--type-label)}
   body.orchestrator-focus #coordinatorComposer{width:calc(100% - 16px);margin-bottom:8px}
   body.orchestrator-focus #coordinatorDraftState{width:calc(100% - 24px)}
   body.orchestrator-focus #orchestrationNotice{position:fixed;left:10px;right:10px;bottom:76px;width:auto;max-width:calc(100vw - 20px);box-sizing:border-box;transform:none;font-size:11px;line-height:1.45}
