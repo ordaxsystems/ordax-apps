@@ -1,3 +1,11 @@
+# Handoff vigente — OrdaX Orchestrator (2026-11-01)
+
+**Começar por:** [Contrato canônico de produto](docs/ORCHESTRATOR-CANONICAL-PRODUCT.md) → [AGENTS.md](../../AGENTS.md) → manifesto de versão → código atual → CI/PRs. **A decisão nova prevalece sobre todas as notas alpha anteriores abaixo.** Uma instância serve um projeto, com Administrador Geral Groq, descoberta/planejamento ao clicar Iniciar sem prompt, executor por repositório e intervenções humanas opcionais. GPT Web é canal de trabalho separado. Preservar um único Store/Kernel/serviço e recibos atuais; multi-projeto hoje implementado é legado a migrar com segurança, nunca apagar dados nem quebrar a UI por decreto.
+
+**Próxima implementação elegível:** reconciliar o onboarding/UI e o modelo de instância sem alterar o transporte GPT ou grants; depois testar diagnóstico automático read-only com acesso GitHub comprovado, orçamento e eventos; só em seguida orquestração real de executores. A análise não lê GitHub por URL; não certificar headless, Aura, E2E GPT ou autonomia sem prova. Não criar PR concorrente com trabalho do engenheiro responsável.
+
+---
+
 ## Continuidade remota 01/11/2026 — admissão de transporte independente alpha.38 (candidata)
 
 - **Base:** `ordax-apps/main@bed4154f8ba484e2d1bd7a00dcb05b19f332e4a2`. PR #392 (alpha.37) integrada; cinco gates e dois pós-merge success; nenhuma PR aberta.
