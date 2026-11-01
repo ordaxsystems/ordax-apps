@@ -86,7 +86,7 @@ test('project preflight blocks missing model and paused coordinator without chan
   await f.call('orchestrator_pause',{projectId:a.p,orchestratorId:a.o,paused:true});
   assert.deepEqual((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).blockers,
     ['coordinator_paused','coordinator_unavailable']);
-  assert.equal(f.store.getTask(a.w).status,'active');
+  assert.equal(f.store.getTask(a.w).status,'ready');
 });
 
 test('native-approved first send uses the existing executor, durable approval and one receipt without coordinator API',async t=>{
