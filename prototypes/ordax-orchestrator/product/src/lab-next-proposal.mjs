@@ -57,7 +57,17 @@ export class LabNextProposal {
     const session=this.store.getWorkspaceSession();
     if(session?.status!=='active'||context?.workspaceSessionId!==session.id)
       return {state:'blocked_workspace'};
-    const row=this.db.prepare(`SELECT r.run_id,r.project_id,r.orchestrator_id,r.task_id
+    // A blocked mission must not starve proposals from independent projects.
+    // Both signals are derived from the existing receipt/approval ledgers.
+    const row=this.db.prepare(`SELECT r.run_id,r.project_id,r.orchestrator_id,r.task_id,
+      EXISTS(SELECT 1 FROM lab_command_receipt_scope c
+        WHERE c.status='uncertain' AND c.operation IN ('work_send','proposal_send')
+        AND (c.task_id=r.task_id OR
+          (c.project_id=r.project_id AND c.unknown_work_target=1))) AS transport_uncertain,
+      EXISTS(SELECT 1 FROM action_ledger a
+        JOIN lab_orchestrators owner ON owner.chat_task_id=a.task_id
+        WHERE owner.id=r.orchestrator_id AND a.action_type='orchestrator.work-proposal'
+          AND a.status='pending') AS pending_review
       FROM lab_continuation_reviews r
       JOIN lab_next_proposal_policy p ON p.project_id=r.project_id AND p.orchestrator_id=r.orchestrator_id
       JOIN lab_continuation_policies base ON base.project_id=r.project_id AND base.orchestrator_id=r.orchestrator_id
@@ -70,7 +80,7 @@ export class LabNextProposal {
       AND (SELECT COUNT(*) FROM lab_next_proposals n JOIN lab_continuation_reviews q
           ON q.run_id=n.review_run_id WHERE n.orchestrator_id=r.orchestrator_id
           AND q.rowid>p.start_review_rowid)<2
-      ORDER BY r.updated_at,r.run_id LIMIT 1`).get(session.id,session.id);
+      ORDER BY transport_uncertain ASC,pending_review ASC,r.updated_at,r.run_id LIMIT 1`).get(session.id,session.id);
     if(!row)return {state:'idle'};
     if(this.service.coordinator?.available?.(row.project_id,row.orchestrator_id)!==true)return {state:'blocked_coordinator'};
     if(this.service.coordinatorTurnBusy(this.service.orchestrator(row.project_id,row.orchestrator_id).chat_task_id))

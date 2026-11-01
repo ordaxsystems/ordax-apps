@@ -1,5 +1,10 @@
 # OrdaX Orchestrator — Project-First (decisão 2026-10-21)
 
+## Priorização segura das propostas entre projetos — alpha.33 (candidata)
+
+Se uma revisão analisada do projeto A estiver bloqueada por envio GPT incerto ou por uma proposta anterior aguardando aprovação, a seleção global não deve impedir a proposta autorizada do projeto B. `LabNextProposal.tick` prioriza candidatos elegíveis usando as fontes canônicas `lab_command_receipt_scope` e `action_ledger`, preservando os bloqueios e os limites por orquestrador. Nenhuma proposta bloqueada é executada automaticamente, nenhum envio GPT é repetido, e não há nova fila, tabela ou provedor. Duas regressões SQLite validam isolamento e integridade.
+
+
 ## Continuidade restrita ao ciclo vigente do opt-in — alpha.32 (candidata)
 
 O marco canônico `lab_continuation_policies.start_run_rowid` já impedia a **descoberta** de Runs anteriores a uma nova ativação, mas a fila de `lab_continuation_reviews` podia preservar uma revisão `queued` de antes da desativação e executá-la após o usuário reativar a política. A seleção `tick` agora usa exatamente o mesmo corte por `runs.rowid > start_run_rowid`; o status `continuity_status` aplica o mesmo limite às contagens e à revisão mais recente. Revisões antigas continuam auditáveis no mesmo SQLite, inclusive as indeterminadas, mas não podem consumir chamadas Groq nem deixar o opt-in recém-ativado permanentemente marcado como pendente/incerto. Testes incluem filas históricas, reconciliação de ciclo antigo, novo Run permitido e projetos independentes. Sem nova tabela, coluna, serviço, fila ou reenvio GPT.
