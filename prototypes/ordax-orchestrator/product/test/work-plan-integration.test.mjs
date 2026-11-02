@@ -37,7 +37,7 @@ function fixture(t,{hostBusy=()=>false}={}){
   return {call,makeProject,reopen,getStore:()=>store,effects:()=>effects,
     analysis:(projectId,orchestratorId)=>service.analysisContext(projectId,orchestratorId)};
 }
-test('real SQLite: multi-worker dependency persists across restart and unlocks only after a successful Run',async t=>{
+test('real SQLite: multi-worker dependency persists across restart and is not unlocked by a GPT Run alone',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
   const a=await work('Foundation'),b=await work('Surface'),c=await work('Release'),d=await work('Documentation');
   await f.call('work_dependency_set',{projectId,taskId:b,dependsOn:[a]});
@@ -54,8 +54,28 @@ test('real SQLite: multi-worker dependency persists across restart and unlocks o
   assert.equal((await f.call('work_plan',{projectId})).plan.waiting.includes(b),true);
   f.getStore().finishRun(a,run);
   plan=(await f.call('work_plan',{projectId,maxParallel:2})).plan;
-  assert.deepEqual(plan.candidates,[b,d]);
-  assert.deepEqual(plan.waiting,[c]);
+  assert.deepEqual(plan.candidates,[d]);
+  assert.deepEqual(plan.blocked,[b,c]);
+  assert.deepEqual(plan.verificationRequired,[a]);
+  assert.deepEqual(plan.workers.find(w=>w.taskId===a),{
+    taskId:a,state:'blocked',dependsOn:[],responseObserved:true,
+    effectVerified:false,verificationRequired:true
+  });
+  assert.equal(f.effects(),0);
+});
+test('real SQLite: unverified GPT completion survives restart without upgrading readiness',async t=>{
+  const f=fixture(t),{projectId,work}=await f.makeProject();
+  const draft=await work('Research'),implementation=await work('Implement');
+  await f.call('work_dependency_set',{projectId,taskId:implementation,dependsOn:[draft]});
+  const run=f.getStore().startRun(draft);
+  f.getStore().finishRun(draft,run);
+  f.reopen();
+  const plan=(await f.call('work_plan',{projectId})).plan;
+  assert.deepEqual(plan.verificationRequired,[draft]);
+  assert.deepEqual(plan.blocked,[implementation]);
+  assert.equal(plan.workers.find(w=>w.taskId===draft).effectVerified,false);
+  await assert.rejects(f.call('work_send',{projectId,taskId:implementation,content:'Do not infer completed work'}),
+    /orchestrator_work_prerequisite_not_confirmed/);
   assert.equal(f.effects(),0);
 });
 test('real SQLite: failed prerequisite transitively blocks descendants, not unrelated workers',async t=>{
@@ -115,7 +135,7 @@ test('coordinator receives bounded SSOT dependencies without an execution grant'
   assert.equal(f.effects(),0);
 });
 
-test('work send honors persisted prerequisites and checks again before the provider',async t=>{
+test('work send honors persisted prerequisites and refuses Run-only success as effect evidence',async t=>{
   const f=fixture(t),{projectId,work}=await f.makeProject();
   const predecessor=await work('Source'),dependent=await work('Publish');
   await f.call('work_dependency_set',{projectId,taskId:dependent,dependsOn:[predecessor]});
@@ -124,9 +144,13 @@ test('work send honors persisted prerequisites and checks again before the provi
   assert.equal(f.effects(),0);
   const confirmedRun=f.getStore().startRun(predecessor);
   f.getStore().finishRun(predecessor,confirmedRun);
-  const receipt=await f.call('work_send',{projectId,taskId:dependent,content:'Publish after prerequisite'});
-  assert.equal(receipt.status,'uncertain');
-  assert.equal(f.effects(),1);
+  await assert.rejects(f.call('work_send',{projectId,taskId:dependent,content:'Publish after prerequisite'}),
+    /orchestrator_work_prerequisite_not_confirmed/);
+  const after=(await f.call('work_plan',{projectId})).plan;
+  assert.deepEqual(after.verificationRequired,[predecessor]);
+  assert.deepEqual(after.blocked,[dependent]);
+  assert.equal(after.workers.find(w=>w.taskId===dependent)?.state,'pending');
+  assert.equal(f.effects(),0);
 });
 
 test('prerequisites are immutable after the target has started a Run, including after restart',async t=>{

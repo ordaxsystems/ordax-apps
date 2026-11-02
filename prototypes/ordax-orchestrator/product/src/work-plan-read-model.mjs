@@ -28,23 +28,31 @@ export function projectWorkPlan({projectId,works,edges,maxParallel=4}={}){
     else if(['reconciliation_required','execution_unresponsive'].includes(monitor)||
       ['interrupted','indeterminate','uncertain'].includes(latest))state='uncertain';
     else if(monitor==='failed'||latest==='failed'||work.status==='error')state='failed';
-    else if(latest==='succeeded'&&monitor!=='running')state='succeeded';
+    // A succeeded GPT Run proves only the provider response, never repository
+    // effects, acceptance criteria, or independent tests. Without a trusted
+    // verification receipt, a dependent work item must remain blocked.
+    else if(latest==='succeeded'&&monitor!=='running')state='blocked';
     else if(latest==null&&['ready','pending'].includes(work.status)&&
       (monitor==null||monitor==='awaiting_instruction'))state='pending';
-    return {id:work.id,projectId,state,dependsOn:dependencies.get(work.id)};
+    return {id:work.id,projectId,state,dependsOn:dependencies.get(work.id),
+      responseObserved:latest==='succeeded',
+      verificationRequired:latest==='succeeded'&&state==='blocked'};
   });
   const result=tasks.length?planParallelWork({tasks,maxParallel}):{
     dispatch:[],blocked:[],waiting:[],capacity:maxParallel,remainingReady:0,inFlight:0
   };
   return Object.freeze({
     projectId,workCount:tasks.length,
+    verificationRequired:Object.freeze(tasks.filter(t=>t.verificationRequired).map(t=>t.id)),
     candidates:Object.freeze([...result.dispatch]),
     waiting:Object.freeze([...result.waiting]),
     blocked:Object.freeze([...result.blocked]),
     inFlight:result.inFlight,availableSlots:result.capacity,
     remainingCandidates:result.remainingReady,
     workers:Object.freeze(tasks.map(t=>Object.freeze({taskId:t.id,state:t.state,
-      dependsOn:Object.freeze([...t.dependsOn])}))),
+      dependsOn:Object.freeze([...t.dependsOn]),
+      responseObserved:t.responseObserved,effectVerified:false,
+      verificationRequired:t.verificationRequired}))),
     automaticDispatchAllowed:false,
     qualityCertified:false,
     basis:'canonical_run_and_monitor_states_only'
