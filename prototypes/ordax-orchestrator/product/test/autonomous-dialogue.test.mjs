@@ -189,6 +189,9 @@ test('one mission command autonomously runs Groq -> GPT A -> Groq -> GPT B -> Gr
   assert.equal(final.state,'succeeded',JSON.stringify(final));
   assert.equal(final.questionFinal,questionC);
   assert.equal(final.distinctConfirmedConversations,true);
+  assert.deepEqual(final.reviewTasks,[
+    {taskId:final.taskAId,label:'GPT A'},{taskId:final.taskBId,label:'GPT B'}
+  ],'the same persisted tasks are available for manual review after completion');
   assert.deepEqual(f.current(),{sends:2,plans:3});
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='succeeded'").get().n,2);
   assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM lab_task_bindings WHERE kind='work'").get().n,2);
@@ -222,6 +225,8 @@ test('unknown transport outcome is quarantined, and process ticks cannot re-send
   const uncertain=await f.wait(['reconciliation_required','blocked','succeeded']);
   assert.equal(uncertain.state,'reconciliation_required');
   assert.equal(uncertain.requiresReconciliation,true);
+  assert.deepEqual(uncertain.reviewTasks,[{taskId:uncertain.taskAId,label:'GPT A'}],
+    'uncertain delivery exposes the original task for inspection, never a replay handle');
   await f.service.autonomous.tick(f.context);
   assert.equal(f.current().sends,1);
   assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
