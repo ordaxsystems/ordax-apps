@@ -148,7 +148,8 @@ test('work send honors persisted prerequisites and refuses Run-only success as e
     /orchestrator_work_prerequisite_not_confirmed/);
   const after=(await f.call('work_plan',{projectId})).plan;
   assert.deepEqual(after.verificationRequired,[predecessor]);
-  assert.equal(after.workers.find(w=>w.taskId===dependent)?.state,'blocked');
+  assert.deepEqual(after.blocked,[dependent]);
+  assert.equal(after.workers.find(w=>w.taskId===dependent)?.state,'pending');
   assert.equal(f.effects(),0);
 });
 
