@@ -901,7 +901,32 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
     $('autonomousDialogueState').textContent=job?`${storyLabel||labels[job.state]||job.state}. ${job.lastError||''}${job.questionFinal?(job.mode==='story'?' História final: ':' Próxima pergunta proposta (não enviada): ')+job.questionFinal:''}`:
       'Uma missão autoriza duas perguntas ou quatro cenas em duas rodadas. Groq conduz tudo sem comandos adicionais.';
-    $('startAutonomousDialogue').disabled=Boolean(job && !['succeeded','blocked','reconciliation_required'].includes(job.state))||!coordinatorAvailable||!gptWebTransportAvailable;
+    // A failed or uncertain mission remains read-only. Reuse the canonical
+    // Task navigator to inspect confirmed records, never schedule a retry.
+    const reviews=$('autonomousReviewActions');
+    reviews.replaceChildren();
+    if(job&&['succeeded','blocked','reconciliation_required'].includes(job.state)) {
+      for(const item of job.reviewTasks||[]) {
+        if(typeof item?.taskId!=='string'||!item.taskId)continue;
+        const button=document.createElement('button');
+        button.type='button';button.className='mini-secondary';
+        button.textContent='Revisar '+item.label;
+        button.addEventListener('click',async()=>{
+          if(p!==projectId||o!==orchestratorId)return;
+          button.disabled=true;
+          try {
+            coordinatorOpen=false;$('orchestrationPanel').hidden=true;
+            await onOpenWork(item.taskId);
+          }catch{
+            status('Não foi possível abrir a conversa para revisão. Nenhuma mensagem foi reenviada.');
+            button.disabled=false;
+          }
+        });
+        reviews.append(button);
+      }
+    }
+    reviews.hidden=reviews.childElementCount===0;
+    $('startAutonomousDialogue').disabled=Boolean(job && !['succeeded','blocked','reconciliation_required'].includes(job.state))||!coordinatorAvailable||!gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
   }
   async function renderCoordinator() {
@@ -1271,6 +1296,16 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!mission){status('Descreva a missão única no campo do orquestrador.');$('coordinatorPrompt').focus();return;}
     $('startAutonomousStory').disabled=true;$('startAutonomousDialogue').disabled=true;
     try {
+      // A transport function existing does not prove ChatGPT is ready now.
+      // The Electron worker still independently validates each submission.
+      let availability;
+      try{availability=providerComposeAvailability(await api.providerStatus(),{hostMode:nodeHost});}
+      catch{status('Não foi possível verificar a sessão do GPT. Nenhuma missão foi iniciada.');return;}
+      if(p!==projectId||o!==orchestratorId)return;
+      if(!availability.allowed) {
+        status(COMPOSE_STATUS_MESSAGES[availability.reason]||'Sessão do GPT não confirmada. Nenhuma missão foi iniciada.');
+        return;
+      }
       const receipt=await command('autonomous_dialogue_start',{projectId:p,orchestratorId:o,mission,mode});
       if(p!==projectId||o!==orchestratorId)return;
       if(receipt.status==='succeeded')status('Missão aceita. Groq coordena as etapas e GPT responde sem novas orientações.');

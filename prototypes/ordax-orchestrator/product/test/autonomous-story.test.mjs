@@ -135,6 +135,8 @@ test('one story mission autonomously runs Groq A1 B1 A2 B2 Groq final with no ot
  assert.equal(summary.storyCycles,2);assert.equal(summary.storyTurns,4);
  const rows=f.store.db.prepare('SELECT ordinal,task_id FROM lab_autonomous_story_turns WHERE mission_id=? ORDER BY ordinal').all(result.id);
  assert.deepEqual(rows.map(r=>r.ordinal),[1,2,3,4]);
+ assert.deepEqual(summary.reviewTasks,rows.map(row=>({taskId:row.task_id,label:'Cena '+row.ordinal})),
+   'every scene retains its original task for read-only evidence inspection');
  assert.equal(f.store.db.prepare("SELECT COUNT(*) n FROM runs WHERE status='succeeded'").get().n,4);
  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
  const again=await f.service.invoke(f.context,'autonomous_dialogue_start',{

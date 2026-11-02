@@ -111,6 +111,21 @@ test('work rail supports bounded batch creation without dispatching to GPT',()=>
   assert.match(uiSource,/command\('work_batch_create',\{projectId:p,orchestratorId:o,titles\}\)/);
   assert.match(uiSource,/receipt\.result\.created\+' frentes registradas no projeto, sem enviar ao GPT/);
 });
+test('autonomous mission recovery exposes scoped existing Tasks without replay',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((uiHtml.match(/id="autonomousReviewActions"/g)||[]).length,1);
+  assert.match(source,/const reviews=\$\('autonomousReviewActions'\)/);
+  assert.match(source,/reviews\.replaceChildren\(\)/);
+  assert.match(source,/for\(const item of job\.reviewTasks\|\|\[\]\)/);
+  assert.match(source,/await onOpenWork\(item\.taskId\)/);
+  assert.match(source,/reviews\.hidden=reviews\.childElementCount===0/);
+  const start=source.slice(source.indexOf('async function launchAutonomousMission(mode)'));
+  assert.match(start,/providerComposeAvailability\(await api\.providerStatus\(\),\{hostMode:nodeHost\}\)/);
+  assert.ok(start.indexOf('providerComposeAvailability(await api.providerStatus()')<
+    start.indexOf("command('autonomous_dialogue_start'"),'fresh readiness precedes durable mission start');
+  assert.match(start,/if\(!availability\.allowed\)/);
+  assert.match(start,/Nenhuma missão foi iniciada/);
+});
 test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   const html=uiHtml;
   const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');

@@ -74,8 +74,15 @@ export class AutonomousDialogue {
     const storedQuality=story?this.db.prepare('SELECT report_json FROM lab_autonomous_story_quality WHERE mission_id=?').get(row.id):null;
     const quality=storedQuality?JSON.parse(storedQuality.report_json):null;
     const turns=story?this.db.prepare('SELECT ordinal,task_id FROM lab_autonomous_story_turns WHERE mission_id=? ORDER BY ordinal').all(row.id):[];
+    // Read-only review handles from the existing Store. These never grant a
+    // provider send, retry, or evidence verification.
+    const reviewTasks=story
+      ?turns.map(turn=>({taskId:turn.task_id,label:'Cena '+turn.ordinal}))
+      :[['GPT A',row.task_a_id],['GPT B',row.task_b_id]]
+        .filter(([,taskId])=>typeof taskId==='string'&&taskId.length>0)
+        .map(([label,taskId])=>({taskId,label}));
     return {missionId:row.id,projectId:row.project_id,orchestratorId:row.orchestrator_id,
-      mode:story?'story':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,
+      mode:story?'story':'dialogue',storyCycles:story?2:null,storyTurns:turns.length,quality,reviewTasks,
       state:row.state,maxGPTSends:story?STORY_TURNS:row.max_gpt_sends,taskAId:row.task_a_id,taskBId:row.task_b_id,
       questionFinal:row.state==='succeeded'?row.question_final:null,
       distinctConfirmedConversations:Boolean(a?.chat_url&&b?.chat_url&&a.chat_url!==b.chat_url),
