@@ -148,6 +148,21 @@ test('atomic batch rejects duplicates, invalid sizes and foreign coordinator wit
   assert.deepEqual(works,[]);
   assert.equal(f.effects(),0);
 });
+test('real SQLite rolls back the entire batch when the second binding insert fails',async t=>{
+  const f=fixture(t),{projectId,orchestratorId}=await f.makeProject();
+  const db=f.getStore().db;
+  db.exec(`CREATE TRIGGER reject_second_bulk_work BEFORE INSERT ON lab_task_bindings
+    WHEN NEW.kind='work' AND
+      (SELECT COUNT(*) FROM lab_task_bindings
+        WHERE project_id=NEW.project_id AND kind='work')>0
+    BEGIN SELECT RAISE(ABORT,'injected_batch_binding_failure'); END`);
+  await assert.rejects(f.call('work_batch_create',{
+    projectId,orchestratorId,titles:['Rollback Alpha','Rollback Beta']
+  }),/injected_batch_binding_failure/);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks WHERE title LIKE 'Rollback %'").get().n,0);
+  assert.equal((await f.call('work_plan',{projectId})).plan.workCount,0);
+  assert.equal(f.effects(),0);
+});
 test('read model: empty project is legal and no worker is dispatched',async t=>{
   const f=fixture(t),{projectId}=await f.makeProject();
   const plan=(await f.call('work_plan',{projectId})).plan;
