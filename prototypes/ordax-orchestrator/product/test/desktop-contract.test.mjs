@@ -491,7 +491,10 @@ test('work rail separates observed evidence from advisory plans without duplicat
   assert.match(html,/<details class="work-plan-details">/);
   assert.match(html,/Planejamento consultivo · não autoriza envios/);
   assert.match(html,/id="workPlanSummary"/);
-  assert.match(orchestrator,/const state=workClass\(work\)/);
+  assert.match(orchestrator,/const state=classify\(work\)/);
+  assert.match(orchestrator,/const verificationRequired=new Set\(plan\?\.verificationRequired\|\|\[\]\)/);
+  assert.match(orchestrator,/verificationRequired\.has\(work\.id\)\?'Verificar resultado'/);
+  assert.match(orchestrator,/respostas aguardando comprovação de resultado/);
   assert.doesNotMatch(orchestrator,/work\.status==='ready'&&nodeHost\?\['GPT indisponível','attention'\]/);
   assert.match(orchestrator,/Rascunho local • envio ao GPT indisponível neste host/);
   assert.match(orchestrator,/evidence\.className='work-evidence-stack'/);
