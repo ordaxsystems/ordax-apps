@@ -1413,6 +1413,7 @@ const labSendButton = document.getElementById("labSupervisorSend");
 const labKeyForm=document.getElementById('labSupervisorKeyForm');
 const labKeyInput=document.getElementById('labSupervisorKeyInput');
 const labKeySave=document.getElementById('labSupervisorKeySave');
+const labKeyTest=document.getElementById('labSupervisorKeyTest');
 const labKeyRemove=document.getElementById('labSupervisorKeyRemove');
 const labKeyState=document.getElementById('labSupervisorKeyState');
 let labStatus=await window.ordax.supervisorStatus().catch(()=>({enabled:false,configured:false,secureStorageAvailable:false}));
@@ -1474,6 +1475,8 @@ function showSupervisorStatus() {
   labKeySave.textContent='Salvar chave no cofre do Windows';
   labKeyRemove.disabled=!labStatus.keySaved;
   labKeyRemove.textContent='Remover chave';
+  labKeyTest.disabled=!labStatus.keySaved;
+  labKeyTest.textContent='Testar conexão';
   labKeyState.textContent=!available
     ? 'Cofre seguro do Windows indisponível: a chave não será armazenada.'
     : labStatus.keySaved
@@ -1509,6 +1512,26 @@ labKeyForm.addEventListener('submit',async event=>{
       ? 'Formato inválido. Use uma chave Groq iniciada por gsk_.'
       : 'O cofre seguro do Windows não aceitou a chave; ela não foi salva.';
   }finally{labKeySave.disabled=!canConfigureLabKey();}
+});
+labKeyTest.addEventListener('click',async()=>{
+  if(labKeyTest.disabled)return;
+  labKeyTest.disabled=true;
+  labKeyTest.textContent='Testando…';
+  labKeyState.textContent='Validando a chave com a API Groq. Nenhum prompt ou dado do projeto será enviado.';
+  try{
+    const result=await window.ordax.supervisorTestKey();
+    const messages={
+      connected:'Conexão Groq confirmada. Nenhuma geração ou dado do projeto foi enviado.',
+      api_key_missing:'Nenhuma chave Groq está disponível para testar.',
+      invalid_api_key:'A Groq recusou a chave salva. Confira a chave e salve novamente.',
+      rate_limited:'A Groq limitou temporariamente a validação. Tente mais tarde.',
+      request_timeout:'A validação da Groq expirou. Verifique a conexão e tente novamente.',
+      network_unavailable:'Não foi possível alcançar a API Groq. Verifique a conexão.',
+      provider_unavailable:'A API Groq não confirmou a chave agora. Tente novamente mais tarde.'
+    };
+    labKeyState.textContent=messages[result?.code]||'A Groq não confirmou a chave. Nenhum prompt foi enviado.';
+  }catch{labKeyState.textContent='A validação falhou antes de confirmar a chave. Nenhum prompt foi enviado.';}
+  finally{labKeyTest.textContent='Testar conexão';labKeyTest.disabled=!labStatus.keySaved;}
 });
 labKeyRemove.addEventListener('click',async()=>{
   labKeyRemove.disabled=true;

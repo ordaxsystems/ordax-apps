@@ -10,6 +10,7 @@ import { assertProviderSendReadiness, normalizeProviderFailure } from '../src/pr
 import { assertContinuationContextReady } from '../src/continuation-context.mjs';
 import { safeTaskNavigationReason } from '../src/task-navigation-status.mjs';
 import { createGroqSupervisorPlanner } from '../supervisor/groq-planner.mjs';
+import { testGroqApiKey } from '../src/groq-key-health.mjs';
 import { createLocalGroqCredential } from '../src/local-supervisor-credential.mjs';
 import { createOrchestratorKernel } from '../src/orchestrator-kernel.mjs';
 import { createProviderAwareTaskOpener, createTaskUiHandlers } from '../src/task-ui-handlers.mjs';
@@ -993,6 +994,10 @@ registerUiHandler('ordax:supervisor:key:save',(event,key)=>{
   labSupervisor=null;
   notifyOrchestratorChanged();
   return result;
+});
+registerUiHandler('ordax:supervisor:key:test',async(event)=>{
+  requireTrustedSupervisorRenderer(event);
+  return testGroqApiKey({apiKey:currentGroqKey()});
 });
 registerUiHandler('ordax:supervisor:key:remove',(event)=>{
   requireTrustedSupervisorRenderer(event);

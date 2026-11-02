@@ -82,12 +82,17 @@ test('preparation IPC checks trusted renderer and does not invoke planning or Ch
   assert.match(setup,/requireTrustedSupervisorRenderer\(event\)/);
   assert.match(setup,/groqCredential\.save\(key\)/);
   assert.match(setup,/groqCredential\.remove\(\)/);
+  assert.match(setup,/registerUiHandler\('ordax:supervisor:key:test'/);
+  assert.match(setup,/testGroqApiKey\(\{apiKey:currentGroqKey\(\)\}\)/);
   assert.match(setup,/store\.setTaskSupervisorRole\(/);
   assert.doesNotMatch(setup,/runTask\(|\.plan\(|\.dispatch\(|fetch\(|\.send\(/);
   assert.match(preload,/supervisorSaveKey:/);
+  assert.match(preload,/supervisorTestKey:/);
   assert.match(preload,/setTaskSupervisorRole:/);
   assert.match(ui,/labRoleSelect\.addEventListener\('change'/);
   assert.match(ui,/labKeyForm\.addEventListener\('submit'/);
+  assert.match(ui,/labKeyTest\.addEventListener\('click'/);
+  assert.match(ui,/Nenhum prompt ou dado do projeto será enviado/);
   assert.match(ui,/const canConfigureLabKey=\(\)=>labStatus\.secureStorageAvailable===true/);
   assert.match(ui,/salva no cofre seguro do Windows e recuperada ao reabrir o app/);
   assert.doesNotMatch(ui,/hostEphemeralSecret|memory_until_host_exit/);
