@@ -11,13 +11,13 @@ const quote='nenhuma alteração externa foi comprovada';
 const response='O GPT investigou o código e propôs alterações e testes de regressão; nenhuma alteração externa foi comprovada. A validação de efeito deve ser realizada separadamente.';
 const instruction='Revise o resultado observado, defina se continua na conversa ou exige outra frente, e produza provas verificáveis.';
 
-function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null}={}){
+function fixture(t,{first='continue_same_conversation',last='verify_external_effect',providerFailure=null,holdAfterFirstReview=false}={}){
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ordax-semantic-mission-'));
   const store=new Store(path.join(dir,'canonical.sqlite'));
   t.after(()=>{store.close();fs.rmSync(dir,{force:true,recursive:true})});
   const context=Object.freeze({actorId:'owner',clientId:'lab',
     workspaceSessionId:store.getWorkspaceSession().id});
-  let plans=0,reviews=0,sends=0;
+  let plans=0,reviews=0,sends=0,released=false;
   const coordinator={
     available:()=>true,
     send:async({prepareWork,analysisContext,mission})=>{
@@ -46,7 +46,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     }
   };
   const provider={
-    available:()=>true,busy:()=>false,
+    available:()=>true,busy:()=>holdAfterFirstReview&&sends===1&&reviews>=1&&!released,
     send:async({taskId,content})=>{
       sends++;
       if(providerFailure&&providerFailure.at===sends){
@@ -82,6 +82,14 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
   const start=async(ids,requestId='technical_test')=>service.invoke(context,'autonomous_dialogue_start',{
     ...ids,requestId,mode:'technical',mission:'Audite e corrija o aplicativo conforme as evidências do GPT; não presuma commit, teste ou deploy.'
   });
+  const waitFor=async(ids,states)=>{
+    for(let i=0;i<240;i++){
+      const m=service.autonomous.status(context,ids).mission;
+      if(states.includes(m?.state))return m;
+      await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    throw Error('technical_mission_not_expected_'+service.autonomous.status(context,ids).mission?.state);
+  };
   const wait=async(ids)=>{
     for(let i=0;i<240;i++){
       const m=service.autonomous.status(context,ids).mission;
@@ -90,7 +98,7 @@ function fixture(t,{first='continue_same_conversation',last='verify_external_eff
     }
     throw Error('technical_mission_not_terminal_'+service.autonomous.status(context,ids).mission?.state);
   };
-  return {store,service,context,setup,start,wait,metrics:()=>({plans,reviews,sends})};
+  return {store,service,context,setup,start,wait,waitFor,release:()=>{released=true},metrics:()=>({plans,reviews,sends})};
 }
 
 test('semantic owner authorization leads Groq -> GPT -> Groq decision -> same GPT thread -> Groq verification gate',async t=>{
@@ -178,6 +186,32 @@ test('generic opt-in review never duplicates Groq interpretation owned by the te
   assert.equal(f.service.continuation.scan(),0);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM lab_continuation_reviews').get().n,0);
   assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+});
+
+test('human draft added between Groq review and next send blocks automatic GPT without overwriting',async t=>{
+  const f=fixture(t,{holdAfterFirstReview:true}),ids=await f.setup();
+  await f.start(ids);
+  const ready=await f.waitFor(ids,['ready_final']);
+  const draft='Minha mensagem manual deve ser preservada, sem envio.';
+  f.store.setDraft(ready.taskAId,draft,1);
+  f.release();
+  assert.equal((await f.service.autonomous.tick(f.context)).state,'blocked');
+  assert.equal(f.service.autonomous.status(f.context,ids).mission.state,'blocked');
+  assert.equal(f.store.getTaskDraft(ready.taskAId).draft,draft);
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+});
+
+test('a newer Run after Groq decision supersedes the decision and blocks next automatic send',async t=>{
+  const f=fixture(t,{holdAfterFirstReview:true}),ids=await f.setup();
+  await f.start(ids);
+  const ready=await f.waitFor(ids,['ready_final']);
+  const extra=f.store.beginProviderRun(ready.taskAId,'Intervenção humana entre etapas');
+  f.store.appendMessage(ready.taskAId,'assistant','A intervenção humana alterou o estado da conversa antes do segundo envio.');
+  f.store.finishRun(ready.taskAId,extra.runId);
+  f.release();
+  assert.equal((await f.service.autonomous.tick(f.context)).state,'blocked');
+  assert.deepEqual(f.metrics(),{plans:1,reviews:1,sends:1});
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM runs').get().n,2);
 });
 
 test('a previously accepted technical mission request is idempotent and cannot change its mode',async t=>{

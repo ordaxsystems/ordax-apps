@@ -230,6 +230,10 @@ export class AutonomousDialogue {
       decision.automaticGPTSendAuthorized!==false)
       throw Error('autonomous_semantic_decision_unconfirmed');
     this.assertMissionSession(context,row);
+    // The user may have sent another GPT message while Groq was reasoning.
+    // A decision grounded in a superseded Run cannot route the next action.
+    if(!this.service.reviewableGPTResult(row.project_id,row.orchestrator_id,run.id))
+      throw Error('autonomous_review_source_superseded');
     return decision;
   }
   async send(row,phase,context) {
@@ -241,10 +245,18 @@ export class AutonomousDialogue {
     assertTaskHasNoUncertainTransport(this.store,taskId);
     if(row.strategy==='semantic'&&phase==='b') {
       const decision=JSON.parse(row.review_a_json||'null');
-      if(decision?.decision==='new_conversation')
+      const sourceRun=this.db.prepare("SELECT id FROM runs WHERE task_id=? ORDER BY rowid DESC LIMIT 1")
+        .get(row.task_a_id);
+      const draft=this.store.getTaskDraft(taskId);
+      if(!decision||row.question_b!==decision.nextPrompt||
+         decision.sourceRunId!==sourceRun?.id||draft.draft!=='') {
+        // No second provider call was made, so this can be safely blocked.
+        const error=Error('autonomous_semantic_source_or_draft_changed');
+        error.providerDeliveryState='not_submitted';
+        throw error;
+      }
+      if(decision.decision==='new_conversation')
         this.store.rotateConversation(taskId,'technical_mission_review');
-      if(!decision||row.question_b!==decision.nextPrompt)
-        throw Error('autonomous_semantic_prompt_changed');
     }
     const r=await this.service.provider.send({taskId,content,draftRevision:null,taskKind:'work'});
     requireConfirmedChatReceipt(r);
