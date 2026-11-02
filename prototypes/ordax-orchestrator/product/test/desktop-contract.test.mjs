@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {resolveProjectOnboardingMission} from '../desktop/orchestrator-ui.mjs';
+import {resolveProjectOnboardingMission,describeProjectPreflight} from '../desktop/orchestrator-ui.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const bootstrap = JSON.parse(fs.readFileSync(path.join(root,'..','package.json'),'utf8'));
@@ -107,6 +107,51 @@ test('Start/Pause is consent-only and never claims a running background supervis
   assert.match(source,/Nenhuma execução, mensagem GPT ou leitura remota foi iniciada/);
   assert.match(source,/const p=projectId,project=projectsCache\.find/);
   assert.match(source,/if\(p!==projectId\)return/);
+});
+
+test('Start immediately inspects local evidence and restores it without automatic external effects',()=>{
+  const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((uiHtml.match(/id="projectPreflightActions"/g)||[]).length,1);
+  assert.match(source,/if\(enabled\)await inspectRequestedProject\(\)/);
+  assert.match(source,/await inspectRequestedProject\(\);\s*let refreshPending/);
+  assert.match(source,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
+  assert.match(source,/requested!==\(projectsCache\.find/);
+  assert.match(source,/button\.disabled=!project\|\|observationBusy\|\|\(!requested&&anotherRequested\)/);
+  const evidence={
+    schema:'ordax.orchestrator.project-preflight/1',
+    provenance:{source:'app_sqlite',externalObservation:false},
+    observation:{requested:true,active:false},
+    repository:{urlRegistered:true,authenticatedRead:'unavailable'},
+    runtime:{grantVerified:false},
+    coordinator:{state:'ready',modelConfigured:true},
+    work:{registered:4,started:2,unresolvedSends:0},
+    gates:{recordedWorkAnalysisEligible:true,githubObservationVerified:false,
+      automaticGptDispatchAllowed:false,headlessExecutionVerified:false},
+    blockers:[]
+  };
+  const guide=describeProjectPreflight(evidence);
+  assert.equal(guide.state,'blocked');
+  assert.match(guide.summary,/Inventário local: 4 frente/);
+  assert.match(guide.summary,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT/);
+  assert.match(guide.actions.join(' '),/Platform ainda indisponível/);
+  assert.match(guide.actions.join(' '),/supervisão headless ainda não verificados/);
+  const missing=describeProjectPreflight({
+    ...evidence,observation:{requested:false,active:false},
+    repository:{urlRegistered:false,authenticatedRead:'unavailable'},
+    coordinator:{state:'paused',modelConfigured:false},
+    work:{registered:0,started:0,unresolvedSends:2},
+    gates:{...evidence.gates,recordedWorkAnalysisEligible:false}
+  });
+  assert.equal(missing.state,'blocked');
+  assert.match(missing.actions.join(' '),/Reconcilie envios pendentes/);
+  assert.match(missing.actions.join(' '),/Retome o Administrador Geral/);
+  assert.match(missing.actions.join(' '),/Cadastre a URL/);
+  assert.throws(()=>describeProjectPreflight({
+    ...evidence,provenance:{source:'app_sqlite',externalObservation:true}
+  }),/project_preflight_evidence_invalid/);
+  assert.throws(()=>describeProjectPreflight({
+    ...evidence,gates:{...evidence.gates,automaticGptDispatchAllowed:true}
+  }),/project_preflight_evidence_invalid/);
 });
 
 test('desktop is single-instance with canonical durable AppData state', () => {

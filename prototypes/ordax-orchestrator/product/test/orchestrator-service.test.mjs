@@ -254,6 +254,29 @@ test('project observation intent blocks retargeting until explicit pause and rej
   assert.equal((await f.call('project_preflight',{projectId:a.p,orchestratorId:a.o})).observation.state,'paused');
 });
 
+test('only one project may request observation in one App profile; pause enables scoped handoff',async t=>{
+  const f=fixture(t),a=await project(f,'A'),b=await project(f,'B');
+  const first={projectId:a.p,enabled:true,requestId:'exclusive-a'};
+  const second={projectId:b.p,enabled:true,requestId:'exclusive-b'};
+  const results=await Promise.allSettled([
+    f.call('project_observation_set',first),
+    f.call('project_observation_set',second)
+  ]);
+  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+  assert.equal(results.filter(r=>r.status==='rejected').length,1);
+  assert.match(String(results.find(r=>r.status==='rejected').reason),/orchestrator_project_observation_exclusive/);
+  const active=(await f.call('projects_list')).projects.filter(p=>p.observation_requested===1);
+  assert.equal(active.length,1);
+  assert.equal(active[0].id,a.p);
+  assert.deepEqual(await f.call('project_observation_set',first),results[0].value);
+  assert.equal((await f.call('project_preflight',{projectId:b.p,orchestratorId:b.o})).observation.state,'paused');
+  await f.call('project_observation_set',{projectId:a.p,enabled:false});
+  const promoted=await f.call('project_observation_set',{projectId:b.p,enabled:true});
+  assert.equal(promoted.result.state,'awaiting_external_authority');
+  assert.equal((await f.call('projects_list')).projects.filter(p=>p.observation_requested===1)[0].id,b.p);
+  assert.equal(f.store.db.prepare('PRAGMA quick_check').get().quick_check,'ok');
+});
+
 test('native-approved first send uses the existing executor, durable approval and one receipt without coordinator API',async t=>{
   let sends=0,confirms=0;
   const f=fixture(t,{coordinator:{send:proposedReply},confirmProposalSend:async({content})=>{
