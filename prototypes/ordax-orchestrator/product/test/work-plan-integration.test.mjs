@@ -110,6 +110,59 @@ test('real SQLite: capped candidates support more than two independent chats wit
   assert.equal(plan.remainingCandidates,7);
   assert.equal(f.effects(),0);
 });
+test('atomic batch registers 12 distinct specialists with one receipt and survives restart',async t=>{
+  const f=fixture(t),{projectId,orchestratorId}=await f.makeProject();
+  const titles=Array.from({length:12},(_,i)=>'Especialista '+(i+1));
+  const command={projectId,orchestratorId,titles,requestId:'atomic-batch-12'};
+  const first=await f.call('work_batch_create',command);
+  assert.equal(first.status,'succeeded');
+  assert.equal(first.result.created,12);
+  assert.equal(first.result.taskIds.length,12);
+  assert.equal(new Set(first.result.taskIds).size,12);
+  assert.equal(first.result.providerMessagesSent,0);
+  assert.deepEqual(await f.call('work_batch_create',command),first);
+  let plan=(await f.call('work_plan',{projectId,maxParallel:6})).plan;
+  assert.equal(plan.workCount,12);
+  assert.equal(plan.candidates.length,6);
+  assert.equal(plan.remainingCandidates,6);
+  assert.equal(plan.automaticDispatchAllowed,false);
+  f.reopen();
+  plan=(await f.call('work_plan',{projectId,maxParallel:6})).plan;
+  assert.equal(plan.workCount,12);
+  assert.equal(plan.candidates.length,6);
+  assert.equal(f.effects(),0);
+});
+test('atomic batch rejects duplicates, invalid sizes and foreign coordinator with no partial work',async t=>{
+  const f=fixture(t),a=await f.makeProject(),b=await f.makeProject();
+  const scope={projectId:a.projectId,orchestratorId:a.orchestratorId};
+  for(const titles of [['Only one'],['Build','build'],['Build','  Build  '],['Valid','Invalid\nLine']]){
+    await assert.rejects(f.call('work_batch_create',{...scope,titles}),
+      /orchestrator_batch_titles_invalid/);
+  }
+  await assert.rejects(f.call('work_batch_create',{...scope,titles:Array.from({length:17},(_,i)=>'Work '+i)}),
+    /orchestrator_invalid_input/);
+  await assert.rejects(f.call('work_batch_create',{
+    projectId:a.projectId,orchestratorId:b.orchestratorId,titles:['A','B']
+  }),/orchestrator_unavailable|orchestrator_access_denied|orchestrator_project_unavailable/);
+  const works=(await f.call('work_list',{projectId:a.projectId,orchestratorId:a.orchestratorId})).works;
+  assert.deepEqual(works,[]);
+  assert.equal(f.effects(),0);
+});
+test('real SQLite rolls back the entire batch when the second binding insert fails',async t=>{
+  const f=fixture(t),{projectId,orchestratorId}=await f.makeProject();
+  const db=f.getStore().db;
+  db.exec(`CREATE TRIGGER reject_second_bulk_work BEFORE INSERT ON lab_task_bindings
+    WHEN NEW.kind='work' AND
+      (SELECT COUNT(*) FROM lab_task_bindings
+        WHERE project_id=NEW.project_id AND kind='work')>0
+    BEGIN SELECT RAISE(ABORT,'injected_batch_binding_failure'); END`);
+  await assert.rejects(f.call('work_batch_create',{
+    projectId,orchestratorId,titles:['Rollback Alpha','Rollback Beta']
+  }),/injected_batch_binding_failure/);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM tasks WHERE title LIKE 'Rollback %'").get().n,0);
+  assert.equal((await f.call('work_plan',{projectId})).plan.workCount,0);
+  assert.equal(f.effects(),0);
+});
 test('read model: empty project is legal and no worker is dispatched',async t=>{
   const f=fixture(t),{projectId}=await f.makeProject();
   const plan=(await f.call('work_plan',{projectId})).plan;

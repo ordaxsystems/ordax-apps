@@ -26,6 +26,7 @@ const definitions = [
   ['autonomous_dialogue_status','Read the latest bounded one-mission dialogue; no external effects.',{projectId:id,orchestratorId:id},['projectId','orchestratorId'],true],
   ['autonomous_dialogue_start','Authorize a bounded autonomous dialogue (2 GPT sends), or a two-cycle narrative (4 GPT sends) in the existing provider; no system effects.',{projectId:id,orchestratorId:id,mission:text(4000),mode:{...text(8),pattern:'^(dialogue|story)'}},['projectId','orchestratorId','mission'],false],
   ['work_create','Create a work conversation under a project/coordinator. No provider submission.',{projectId:id,orchestratorId:id,title:text(140)},['projectId','orchestratorId','title'],false],
+  ['work_batch_create','Atomically register 2–16 independent work conversations with one coordinator. No GPT send or authorization grant.',{projectId:id,orchestratorId:id,titles:{type:'array',items:text(140),maxItems:16}},['projectId','orchestratorId','titles'],false],
   ['work_dependency_set','Replace prerequisite work IDs for one existing work, without dispatching.',{projectId:id,taskId:id,dependsOn:{type:'array',items:id,maxItems:64}},['projectId','taskId','dependsOn'],false],
   ['work_list','List work conversations, excluding the coordinator chat.',{projectId:id,orchestratorId:id},['projectId'],true],
   ['work_plan','Inspect bounded dependency readiness of all works in one project, without approving or dispatching any message.',{projectId:id,maxParallel:{type:'integer',minimum:1,maximum:32}},['projectId'],true],

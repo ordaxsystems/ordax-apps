@@ -554,7 +554,9 @@ body.orchestrator-focus .left-footer .provider-card{display:none}
 .new-work-details summary{padding:10px 12px;color:var(--muted);font-size:var(--type-label);cursor:pointer}
 .new-work-form{display:grid;gap:8px;padding:0 10px 10px}
 .new-work-form label{font-size:var(--type-label);color:var(--muted)}
-.new-work-form input{min-width:0;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);padding:10px;font-size:var(--type-label)}
+.new-work-form input,.new-work-form textarea{min-width:0;width:100%;border:1px solid var(--border);border-radius:8px;background:var(--panel);color:var(--text);padding:10px;font-size:var(--type-label)}
+.new-work-form textarea{resize:vertical;min-height:100px;line-height:1.5}
+.new-work-form small{color:var(--muted);font-size:var(--type-caption);line-height:1.5}
 .new-work-form .primary{background:var(--accent);color:var(--accent-ink);border:1px solid var(--border-strong);font-size:var(--type-label)}
 .orchestrator-works{display:flex;flex:1;min-height:0;flex-direction:column;gap:8px;overflow:auto;padding:1px 2px 8px}
 .work-entry{min-width:0;display:flex;flex-direction:column;gap:5px}
