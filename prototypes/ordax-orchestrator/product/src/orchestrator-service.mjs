@@ -629,6 +629,7 @@ export class OrchestratorService {
         candidateTaskIds:plan.candidates.filter(id=>ownerIds.has(id)).slice(0,8),
         waitingCount:plan.waiting.filter(id=>ownerIds.has(id)).length,
         blockedCount:plan.blocked.filter(id=>ownerIds.has(id)).length,
+        verificationRequiredCount:plan.verificationRequired.filter(id=>ownerIds.has(id)).length,
         inFlight:owned.filter(worker=>worker.state==='running').length,
         workCount:totalWorkCount,
         executorMode:plan.executor.mode,
