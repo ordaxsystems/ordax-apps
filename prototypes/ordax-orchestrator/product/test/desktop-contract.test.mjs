@@ -97,6 +97,16 @@ test('project onboarding accepts a name without a written mission, without impli
   assert.doesNotMatch(orchestration,/onStartMission\(/);
 });
 
+test('work rail supports bounded batch creation without dispatching to GPT',()=>{
+  const html=uiHtml;
+  const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.equal((html.match(/id="batchWorkDetails"/g)||[]).length,1);
+  assert.equal((html.match(/id="batchWorkForm"/g)||[]).length,1);
+  assert.match(html,/id="batchWorkTitles"[^>]*rows="4"/);
+  assert.match(html,/sem mensagens ao GPT ou novos agentes físicos/);
+  assert.match(uiSource,/command\('work_batch_create',\{projectId:p,orchestratorId:o,titles\}\)/);
+  assert.match(uiSource,/receipt\.result\.created\+' frentes registradas no projeto, sem enviar ao GPT/);
+});
 test('preflight is read-only, project-scoped and cannot silently send GPT',()=>{
   const html=uiHtml;
   const uiSource=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
