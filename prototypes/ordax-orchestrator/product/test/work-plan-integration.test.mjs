@@ -132,6 +132,28 @@ test('atomic batch registers 12 distinct specialists with one receipt and surviv
   assert.equal(plan.candidates.length,6);
   assert.equal(f.effects(),0);
 });
+test('atomic batch rejects existing fronts across request IDs without partial creation',async t=>{
+  const f=fixture(t),{projectId,orchestratorId}=await f.makeProject();
+  const scope={projectId,orchestratorId};
+  const original=(await f.call('work_create',{...scope,title:'Fonte Oficial'})).result.taskId;
+  const first=await f.call('work_batch_create',{...scope,titles:['Design','Testes']});
+  assert.equal(first.status,'succeeded');
+  await assert.rejects(f.call('work_batch_create',{
+    ...scope,titles:['Nova frente','  FONTE  oficial  ']
+  }),/orchestrator_batch_title_already_exists/);
+  await assert.rejects(f.call('work_batch_create',{
+    ...scope,titles:['Outra frente',' design ']
+  }),/orchestrator_batch_title_already_exists/);
+  assert.equal((await f.call('work_plan',{projectId})).plan.workCount,3);
+  f.reopen();
+  await assert.rejects(f.call('work_batch_create',{
+    ...scope,titles:['Depois do reinício','TESTES']
+  }),/orchestrator_batch_title_already_exists/);
+  const works=(await f.call('work_list',scope)).works;
+  assert.equal(works.length,3);
+  assert.ok(works.some(work=>work.id===original));
+  assert.equal(f.effects(),0);
+});
 test('atomic batch rejects duplicates, invalid sizes and foreign coordinator with no partial work',async t=>{
   const f=fixture(t),a=await f.makeProject(),b=await f.makeProject();
   const scope={projectId:a.projectId,orchestratorId:a.orchestratorId};
