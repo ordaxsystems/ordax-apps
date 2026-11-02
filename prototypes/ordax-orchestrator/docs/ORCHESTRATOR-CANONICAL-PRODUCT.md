@@ -44,6 +44,7 @@
 
 - Cada executor possui `executorId`, `projectId`, repositórios autorizados, owner, ferramentas/capabilities, sessão(s) física(s) opcionais e status verificado. O Administrador existe **uma vez por instância**, não por repositório.
 - A mesma tarefa não pode ser enviada duas vezes apenas porque o ChatGPT demorou, ficou offline ou a janela reiniciou; usar `requestId`, recibos canônicos, checkpoints e reconciliação de estado incerto.
+- **Gate de dependências:** `Run.succeeded` comprova somente a resposta do provedor, não a conclusão do trabalho. O plano classifica esse marco como `verificationRequired` e bloqueia descendentes até existir uma evidência positiva validada por autoridade independente; a versão atual não emite essa certificação. Nenhum texto do GPT, status local ou `effectVerified:false` autoriza promover trabalho a concluído. Frentes independentes permanecem elegíveis, sem despacho automático.
 - Seriais as alterações ao mesmo repo/arquivo/branch conforme ownership, lease/worktree e gates reais; permitir paralelismo apenas quando não há interseção de efeitos. Limite inicial GPT Web de uma entrega por vez deve permanecer até prova contrária.
 - A continuidade reside no estado do projeto e nas evidências, não na memória implícita de uma conversa; uma sessão GPT pode ser substituída **sem** duplicar envios pendentes.
 - O Administrador não edita repositórios sob responsabilidade de outros executores diretamente: identifica owner, prepara pedido, aguarda resposta e valida prova. Conflitos requerem coordenação explícita.
