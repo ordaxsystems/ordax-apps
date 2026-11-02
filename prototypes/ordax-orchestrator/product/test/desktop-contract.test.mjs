@@ -449,7 +449,7 @@ test('operational overview reuses work state and never presents an experimental 
   assert.match(orchestration,/function renderProjectPulse\(counts,total\)/);
   assert.match(orchestration,/const hasScope=Boolean\(projectId&&orchestratorId\)/);
   assert.match(orchestration,/renderProjectPulse\(counts,works\.length\)/);
-  assert.match(orchestration,/for\(const work of works\)counts\[workClass\(work\)\]\+\+/);
+  assert.match(orchestration,/for\(const work of works\)counts\[classify\(work\)\]\+\+/);
   assert.match(orchestration,/\['reconciliation_required','review_required'\]\.includes\(work\.execution\?\.observed\)/);
   assert.match(orchestration,/openProjectWork'\)\.addEventListener\('click',\(\)=>\{/);
   assert.match(orchestration,/Estados das conversas registradas; não comprovam execução autônoma/);
