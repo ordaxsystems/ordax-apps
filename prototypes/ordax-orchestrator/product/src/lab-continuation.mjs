@@ -87,13 +87,16 @@ export class LabContinuation {
         try{reviewDecision=JSON.parse(receipt.result||'{}').reviewDecision||null;}catch{}
       }
     }
+    const followupPrepared=Boolean(latest&&this.db.prepare(`SELECT 1 FROM events
+      WHERE kind='orchestrator.followup.prepared'
+        AND json_extract(payload,'$.source_run_id')=? LIMIT 1`).get(latest.run_id));
     const enabled=policy?.enabled===1;
     return {enabled,mode:'automatic_analysis_and_optional_proposals',automaticGPTSends:false,
       nextProposals:this.nextProposal.status(projectId,orchestratorId),
       state:!enabled?'disabled':this.service.coordinator?.available?.(projectId,orchestratorId)!==true
         ?'blocked_coordinator':counts.reconciliation_required?'reconciliation_required':
           counts.queued||counts.analyzing?'pending':'observing',
-      counts,latest:latest?{...latest,reviewDecision}:null};
+      counts,latest:latest?{...latest,reviewDecision,followupPrepared}:null};
   }
   scan() {
     // Only the active workspace may enqueue work, even if an old workspace

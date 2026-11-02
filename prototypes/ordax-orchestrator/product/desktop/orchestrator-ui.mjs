@@ -829,7 +829,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   }
   async function refreshContinuityStatus() {
     const p=projectId,o=orchestratorId;
-    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
+    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityFollowupPrepare').hidden=true;$('continuityFollowupPrepare').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
     const [result,engineStatus]=await Promise.all([
       call('continuity_status',{projectId:p,orchestratorId:o}),
       call('status').catch(()=>null)
@@ -863,6 +863,20 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
         '. '+String(latestDecision.summary||'').slice(0,240)+
         '. Proposta consultiva; nenhum efeito externo ou envio autorizado.'
       :'';
+    const followup=$('continuityFollowupPrepare');
+    const supported=new Set(['continue_same_conversation','request_correction','new_conversation']);
+    const canPrepare=result.enabled===true&&result.latest?.state==='analyzed'&&
+      result.latest.followupPrepared!==true&&latestDecision?.reviewOnly===true&&
+      supported.has(latestDecision.decision)&&
+      orchestrators.find(item=>item.id===o)?.status==='ready';
+    followup.hidden=!canPrepare;
+    followup.disabled=!canPrepare;
+    followup.dataset.reviewRunId=canPrepare?result.latest.run_id:'';
+    followup.textContent=latestDecision?.decision==='new_conversation'
+      ?'Preparar nova conversa para continuar'
+      :latestDecision?.decision==='request_correction'
+        ?'Preparar correção na conversa GPT'
+        :'Preparar continuação na conversa GPT';
     $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+
       ' Nenhum envio automático ao GPT.'+reviewNotice+executionNotice;
   }
@@ -1180,6 +1194,31 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await command('orchestrator_pause',{projectId,orchestratorId,paused:o.status!=='paused'});
       await refreshOrchestrators();
     } catch {error();}
+  });
+  $('continuityFollowupPrepare').addEventListener('click',async()=>{
+    const p=projectId,o=orchestratorId,button=$('continuityFollowupPrepare');
+    const reviewRunId=button.dataset.reviewRunId;
+    if(!p||!o||!reviewRunId||button.disabled)return;
+    button.disabled=true;
+    try {
+      const receipt=await command('continuity_followup_prepare',{
+        projectId:p,orchestratorId:o,reviewRunId
+      });
+      if(p!==projectId||o!==orchestratorId)return;
+      await refreshContinuityStatus();
+      if(receipt.status!=='succeeded'||!receipt.result?.taskId)return;
+      await refreshWorks();
+      coordinatorOpen=false;$('orchestrationPanel').hidden=true;
+      await onOpenWork(receipt.result.taskId);
+      status(receipt.result.conversationRotated
+        ?'Nova conversa preparada na mesma frente. Revise o rascunho antes de enviar.'
+        :'Próximo passo preparado na conversa original. Revise o rascunho antes de enviar.');
+    }catch{
+      if(p===projectId&&o===orchestratorId){
+        status('Não foi possível preparar o próximo passo: verifique rascunho, recibos e estado da frente.');
+        await refreshContinuityStatus().catch(()=>{});
+      }
+    }
   });
   $('continuityProposalsToggle').addEventListener('click',async()=>{
     const p=projectId,o=orchestratorId;if(!p||!o)return;

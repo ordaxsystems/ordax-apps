@@ -814,6 +814,56 @@ export class OrchestratorService {
       this.orchestrator(input.projectId,input.orchestratorId);
       return this.continuation.configure(input.projectId,input.orchestratorId,input.enabled);
     }
+    if(operation==='continuity_followup_prepare') {
+      const owner=this.orchestrator(input.projectId,input.orchestratorId);
+      if(owner.status!=='ready')throw Error('orchestrator_paused');
+      const policy=this.db.prepare('SELECT enabled FROM lab_continuation_policies WHERE project_id=? AND orchestrator_id=?')
+        .get(input.projectId,input.orchestratorId);
+      if(policy?.enabled!==1)throw Error('orchestrator_continuity_disabled');
+      const analyzed=this.db.prepare(`SELECT q.task_id,c.result
+        FROM lab_continuation_reviews q JOIN lab_command_receipts c ON c.id=q.command_id
+        WHERE q.run_id=? AND q.project_id=? AND q.orchestrator_id=?
+          AND q.state='analyzed' AND c.status='succeeded' AND c.operation='orchestrator_analyze'`)
+        .get(input.reviewRunId,input.projectId,input.orchestratorId);
+      let decision;
+      try{decision=JSON.parse(analyzed?.result||'{}').reviewDecision;}catch{}
+      const route=new Set(['continue_same_conversation','request_correction','new_conversation']);
+      if(!analyzed||!route.has(decision?.decision)||decision?.reviewOnly!==true||
+         decision.sourceRunId!==input.reviewRunId||decision.externalEffectVerified!==false||
+         decision.automaticGPTSendAuthorized!==false||
+         typeof decision.nextPrompt!=='string'||decision.nextPrompt.trim().length<20||
+         decision.nextPrompt.length>2200)throw Error('orchestrator_followup_decision_unavailable');
+      const source=this.reviewableGPTResult(input.projectId,input.orchestratorId,input.reviewRunId);
+      if(!source||source.taskId!==analyzed.task_id)throw Error('orchestrator_followup_source_stale');
+      this.assertProviderTaskAvailable(source.taskId);
+      if(this.hasUnresolvedWorkReceipt(input.projectId,source.taskId,{includeRunning:true}))
+        throw Error('orchestrator_reconciliation_required');
+      // A different requestId must never prepare or rotate this source Run
+      // twice. The durable event and draft update share the same transaction.
+      if(this.db.prepare(`SELECT 1 FROM events WHERE task_id=? AND kind='orchestrator.followup.prepared'
+        AND json_extract(payload,'$.source_run_id')=? LIMIT 1`)
+        .get(source.taskId,input.reviewRunId))throw Error('orchestrator_followup_already_prepared');
+      const draft=this.store.getTaskDraft(source.taskId);
+      if(draft.draft!=='')throw Error('orchestrator_followup_draft_not_empty');
+      if(!Number.isSafeInteger(draft.draft_revision+1))
+        throw Error('orchestrator_draft_revision_exhausted');
+      const rotate=decision.decision==='new_conversation';
+      if(rotate) {
+        if(this.db.prepare("SELECT 1 FROM runs WHERE status='running' LIMIT 1").get()||
+           this.provider?.busy?.())throw Error('orchestrator_executor_busy');
+        this.store.rotateConversation(source.taskId,'orchestrator_review_approved');
+      }
+      const prepared=this.store.setDraft(source.taskId,decision.nextPrompt,draft.draft_revision+1);
+      if(prepared.draft!==decision.nextPrompt||prepared.draft_revision!==draft.draft_revision+1)
+        throw Error('orchestrator_followup_draft_conflict');
+      this.store.event(source.taskId,'orchestrator.followup.prepared',{
+        source_run_id:input.reviewRunId,decision:decision.decision,
+        draft_revision:prepared.draft_revision,conversation_rotated:rotate
+      });
+      return {taskId:source.taskId,sourceRunId:input.reviewRunId,decision:decision.decision,
+        draftRevision:prepared.draft_revision,conversationRotated:rotate,
+        providerMessagesSent:0,requiresUserSend:true};
+    }
     if(operation==='orchestrator_pause') {
       const owner=this.orchestrator(input.projectId,input.orchestratorId);
       this.db.prepare('UPDATE lab_orchestrators SET status=? WHERE id=?')
