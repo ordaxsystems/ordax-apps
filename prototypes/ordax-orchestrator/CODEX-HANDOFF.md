@@ -4,6 +4,16 @@
 
 **Próxima implementação elegível:** conectar o diagnóstico automático às fontes GitHub realmente autorizadas pela Platform, com snapshots limitados e orçamento explícito; ampliar cobertura para branches, PRs e checks somente se a porta autorizada oferecer essas operações. Não criar OAuth/token store próprio. Até existir esse gate, o app pode analisar somente frentes locais e deve mostrar que faltam evidências remotas. Depois, avançar para coordenação real de executores com receipts. Não certificar headless, Aura, verificação independente de trabalho GPT ou autonomia sem prova; não criar PR concorrente com trabalho do engenheiro responsável.
 
+## Continuidade 02/11/2026 — decisão Groq para rascunho GPT sem reenvio
+
+- **Main reconciliada:** PR #422 integrada via squash em `7b1f706045d9c98345c9d086d64111f79e01e3ff`; a resposta GPT real é interpretada com vínculo de Run/recibo e decisão estruturada. Todos os gates de CI foram aprovados. Instalador operacional Windows ainda pode estar em revisão anterior: conferir `runtime-build.json`, não assumir atualização.
+- **Próxima candidata, em validação:** branch `feat/orchestrator-semantic-followup-routing-20261102` introduz `continuity_followup_prepare` no contrato já existente. Sob clique explícito, analisa decisão persistida `continue_same_conversation`, `request_correction` ou `new_conversation`; verifica o Run e a provenance canônica, recusa qualquer receipt incerto, preserva rascunhos já digitados, salva **uma única** instrução no Store do mesmo Task e gira o segmento somente para `new_conversation`. A ação não envia GPT, não chama Groq, não modifica código nem cria uma fila. `new_work` permanece no ledger existente de propostas com revisão.
+- **Idempotência:** `requestId` usa recibo canônico; o evento `orchestrator.followup.prepared` evita novo preparo do mesmo Run com outro requestId, inclusive após reinício. A UI exibe botão apenas para decisão permitida e não preparada; após preparar abre o mesmo trabalho para revisar/enviar pelo transporte já autenticado. `verify_external_effect` e `candidate_complete` continuam sem ação de rascunho nem prova de efeito.
+- **Testes desta candidata:** 66/66 em validação direcionada combinada (`desktop-contract`, interpretação GPT, integração de Run, roteamento sem envio); 6/6 após teste adicional de reinicialização do serviço. Escopo do teste: Store SQLite real, serviços e interface inspecionada; **não** certificar envio físico com o novo binário antes da publicação CI.
+- **Limite ainda real:** é roteamento e preparação de próxima ação, não despacho automático de missão nem verificação independente de commits/testes/PRs. Respeitar política de consentimento/Platform antes de introduzir autoenvio. Não duplicar Store, Runtime ou transporte, nem instalar binário sem gates CI Windows.
+
+---
+
 ## Missão real 02/11/2026 — GPT executa, Groq interpreta e seleciona próximo passo
 
 - **Decisão do proprietário:** o Administrador Groq deve interpretar *o conteúdo efetivo da resposta GPT*, decidir se continua a mesma conversa, cria outra, propõe outra frente, pede correção, aguarda provas ou encerra como candidato. Não usar respostas artificiais/markers como prova de autonomia. GPT é executor intelectual, mas o texto dele não comprova mudança em código, GitHub, testes ou deploy.

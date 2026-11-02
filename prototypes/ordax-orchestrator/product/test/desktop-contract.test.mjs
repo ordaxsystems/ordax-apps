@@ -614,6 +614,9 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(orchestration,/call\('status'\)\.catch\(\(\)=>null\)/);
   assert.match(orchestration,/const canDisable=result\.enabled===true/);
   assert.match(orchestration,/const canEnable=engineStatus\?\.coordinatorAvailable===true/);
+  assert.match(html,/id="continuityFollowupPrepare"/);
+  assert.match(orchestration,/command\('continuity_followup_prepare'/);
+  assert.match(orchestration,/followup\.dataset\.reviewRunId=canPrepare\?result\.latest\.run_id:''/);
   assert.match(orchestration,/Conecte e ative um modelo de coordenação para habilitar a análise automática/);
   assert.match(orchestration,/engineStatus\?\.autonomousExecution===false/);
   assert.match(orchestration,/A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado/);
