@@ -1310,6 +1310,22 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       $('newScopedWorkForm').reset();$('newScopedWorkDetails').open=false;
     });
   });
+  $('batchWorkForm').addEventListener('submit',event=>{
+    event.preventDefault();void formAction(event.currentTarget,async()=>{
+      if(!projectId||!orchestratorId)throw Error('orchestrator_selection_required');
+      const p=projectId,o=orchestratorId;
+      const titles=$('batchWorkTitles').value.split(/\r?\n/u).map(title=>title.trim()).filter(Boolean);
+      if(titles.length<2||titles.length>16||titles.some(title=>title.length>140)) {
+        status('Informe de 2 a 16 frentes, uma por linha, com até 140 caracteres cada.');
+        return;
+      }
+      const receipt=await command('work_batch_create',{projectId:p,orchestratorId:o,titles});
+      if(receipt.status!=='succeeded'||p!==projectId||o!==orchestratorId)return;
+      $('batchWorkForm').reset();$('batchWorkDetails').open=false;
+      await refreshWorks();
+      status(receipt.result.created+' frentes registradas no projeto, sem enviar ao GPT. Organize as dependências antes de executar.');
+    });
+  });
   async function createWork(title='Nova conversa de trabalho') {
     if(!projectId||!orchestratorId)throw Error('orchestrator_selection_required');
     const p=projectId,o=orchestratorId;
