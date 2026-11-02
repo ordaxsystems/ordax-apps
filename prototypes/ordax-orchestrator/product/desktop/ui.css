@@ -476,6 +476,8 @@ body.orchestrator-focus .left-footer .provider-card{display:none}
 .project-pulse-stats strong{font-size:18px;font-weight:750;font-variant-numeric:tabular-nums;line-height:1.2;color:var(--text)}
 .project-pulse-stats span{color:var(--muted);font-size:var(--type-caption);line-height:1.35;overflow-wrap:anywhere}
 .project-pulse[data-state="review"] #projectPulseAttention{color:var(--amber)}
+.project-pulse-actions #projectObservationToggle[data-requested="true"]{border-color:var(--border-strong);background:var(--panel-3)}
+.project-pulse #projectObservationState[data-state="blocked"]{color:var(--muted);font-weight:600}
 .project-pulse p{color:var(--muted-2);font-size:var(--type-caption);line-height:1.4;margin:0}
 .project-pulse .project-preflight-state{padding:9px 11px;border:1px solid var(--border-soft);border-radius:9px;background:var(--panel-2);line-height:1.55;overflow-wrap:anywhere}
 .project-preflight-state[data-state="blocked"]{border-color:var(--border-strong)}

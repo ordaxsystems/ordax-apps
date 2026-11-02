@@ -19,7 +19,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   let gptWebTransportAvailable=false;
   let chatgptPlanStatus={connected:false,planUsageAuthorized:false,secureStorageAvailable:false};
   let groqConfigured=false,coordinatorProvider=null;
-  let analysisBusy=false,preflightBusy=false,repositoryBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,nodeHost=false;
+  let analysisBusy=false,preflightBusy=false,repositoryBusy=false,observationBusy=false,repositoryPortAvailable=false,coordinatorSubmitting=false,nodeHost=false;
   let coordinatorDraftTaskId=null,coordinatorDraftRevision=0,coordinatorDraftTimer=null;
   let coordinatorDraftGeneration=0,pendingCoordinatorDraft=null,coordinatorDraftWrite=Promise.resolve();
   const requestKeys=new Map();
@@ -510,6 +510,20 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function options(select,rows,label) {
     select.replaceChildren(new Option(label,''),...rows.map(row=>new Option(row.name,row.id)));
   }
+  function syncProjectObservation() {
+    const project=projectsCache.find(item=>item.id===projectId);
+    const requested=project?.observation_requested===1;
+    const button=$('projectObservationToggle');
+    button.disabled=!project||observationBusy;
+    button.dataset.requested=String(requested);
+    button.textContent=requested?'Pausar':'Iniciar';
+    $('projectObservationState').dataset.state=requested?'blocked':'idle';
+    $('projectObservationState').textContent=!project
+      ?'Selecione um projeto.'
+      :requested
+        ?'Início solicitado e salvo. Observação remota bloqueada: falta grant GitHub verificado e supervisor autorizado. Nenhuma execução está ativa.'
+        :'Observação pausada. Iniciar salva somente a intenção de diagnóstico; não concede acesso ao GitHub nem aciona GPT.';
+  }
   function syncProjectRepository() {
     const project=projectsCache.find(item=>item.id===projectId);
     const input=$('projectRepositoryInput');
@@ -538,6 +552,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       ?'Runtime/workspace local não conectado a esta página; nenhuma pasta ou arquivo local é lido.'
       :'Acesso ao workspace local ainda indisponível. Nenhum arquivo local é lido nesta fase.';
     syncCapabilitySummary();
+    syncProjectObservation();
   }
   async function refreshApiStatus() {
     const state=await api.coordinatorChatStatus();
@@ -973,6 +988,8 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
           status('URL inválida. Use https://github.com/owner/repository.');
         else if(error?.message==='orchestrator_repository_change_requires_new_project')
           status('Este projeto já iniciou trabalho com o remoto atual. Crie outro projeto para usar um repositório diferente.');
+        else if(error?.message==='orchestrator_repository_change_requires_observation_pause')
+          status('Pause a observação solicitada antes de mudar o repositório vinculado.');
         else status('Não foi possível salvar o repositório. Consulte o estado antes de repetir.');
       } finally {button.disabled=false;}
     })();
@@ -1083,6 +1100,30 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       else status('Resposta do Orquestrador não confirmada ('+receipt.status+'). O envio não será repetido automaticamente.');
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
+  });
+  $('projectObservationToggle').addEventListener('click',async()=>{
+    const p=projectId,project=projectsCache.find(item=>item.id===projectId);
+    if(!project||observationBusy)return;
+    // Snapshot the selected scope before any await. A late response may not
+    // change the state or message of a different project.
+    const enabled=project.observation_requested!==1;
+    observationBusy=true;syncProjectObservation();
+    try {
+      const receipt=await command('project_observation_set',{projectId:p,enabled});
+      if(receipt.status!=='succeeded'||receipt.result?.requested!==enabled)
+        throw Error('orchestrator_observation_unconfirmed');
+      if(p!==projectId)return;
+      await refreshProjects();
+      if(p!==projectId)return;
+      status(enabled
+        ?'Início registrado, aguardando autorização GitHub e Runtime. Nenhuma execução, mensagem GPT ou leitura remota foi iniciada.'
+        :'Observação pausada no projeto. Nenhum grant da Platform foi alterado.');
+    }catch{
+      if(p===projectId)status('Não foi possível confirmar a mudança da observação. Consulte o estado antes de repetir.');
+    }finally{
+      observationBusy=false;
+      if(p===projectId)syncProjectObservation();
+    }
   });
   $('inspectProjectAccess').addEventListener('click',async()=>{
     if($('inspectProjectAccess').disabled||!projectId||!orchestratorId)return;
