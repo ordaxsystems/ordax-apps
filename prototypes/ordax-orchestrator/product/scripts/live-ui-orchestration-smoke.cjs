@@ -8,7 +8,7 @@ if(process.env.ORDAX_LAB_E2E_ORCHESTRATION_APPROVED!=='1')
   throw Error('lab_orchestration_e2e_approval_required');
 const scenarioReasons=new Set([
   'app_evaluation_failed','app_evaluation_timeout','socket_unavailable',
-  'runtime_identity_mismatch','fresh_disabled_profile_required','project_navigation_not_selected',
+  'runtime_identity_mismatch','fresh_disabled_profile_required','global_settings_unavailable','project_navigation_not_selected',
   'mission_draft_not_persisted','workspace_grant_absence_not_visible','coordinator_workspace_layout_missing',
   'api_key_not_persisted_securely','prepare_action_unavailable','mcp_initialization_failed',
   'native_mcp_state_mismatch','work_conversation_layout_failed',
@@ -62,6 +62,26 @@ let cleanupFailurePhase=null;
     if(before.projects!==0||before.taskCount!==0||before.status.coordinatorAvailable!==false||
       before.status.autonomousExecution!==false||!before.analysisButton||before.analysisDisabled!==true||
       !before.analysisHint.includes('não executa propostas')||before.prepareDisabled!==true||!before.proposalsPresent)throw Error('fresh_disabled_profile_required');
+    phase='global_settings_without_project';
+    await evaluate(`document.getElementById('openAppSettings').click()`);
+    const globalSettings=await evaluate(`(()=>{
+      const dialog=document.getElementById('appSettingsDialog');
+      const tabs=[...document.querySelectorAll('[data-settings-tab]')];
+      return {open:dialog.open,title:document.getElementById('appSettingsTitle')?.textContent,
+        projectSelected:!!document.getElementById('projectSelect')?.value,
+        tabs:tabs.map(tab=>tab.dataset.settingsTab),selected:tabs.find(tab=>tab.getAttribute('aria-selected')==='true')?.dataset.settingsTab};
+    })()`);
+    if(!globalSettings.open||globalSettings.title!=='Configurações'||globalSettings.projectSelected||
+      globalSettings.tabs.join(',')!=='general,providers,connections'||globalSettings.selected!=='general')
+      throw Error('global_settings_unavailable');
+    await evaluate(`document.getElementById('settingsTabProviders').click()`);
+    const providerSettings=await evaluate(`(()=>({selected:document.getElementById('settingsTabProviders').getAttribute('aria-selected'),
+      key:!!document.getElementById('labSupervisorKeyInput'),gpt:!!document.getElementById('settingsOpenChatGptLogin')}))()`);
+    if(providerSettings.selected!=='true'||!providerSettings.key||!providerSettings.gpt)throw Error('global_settings_unavailable');
+    await evaluate(`document.getElementById('settingsTabConnections').click()`);
+    if(!(await evaluate(`document.getElementById('settingsPanelConnections').hidden===false`)))throw Error('global_settings_unavailable');
+    await evaluate(`document.getElementById('settingsDone').click()`);
+    await evaluate(`(()=>{if(document.getElementById('appSettingsDialog').open)throw Error('global_settings_unavailable')})()`);
     phase='mission_create';
     await evaluate(`(()=>{
       document.getElementById('projectSetup').open=true;
@@ -180,7 +200,7 @@ let cleanupFailurePhase=null;
     successReport={schema:'ordax.lab.orchestration-app-e2e.v1',ok:true,
       appMode:true,runtimeVerified:true,toolCount:summary.toolCount,sharedStateVerified:true,
       projectFormVerified:true,missionDraftPersisted:true,missionStartBlockedWithoutSession:true,
-      coordinatorFormVerified:true,workVisibleInApp:true,
+      globalSettingsWithoutProjectVerified:true,coordinatorFormVerified:true,workVisibleInApp:true,
       projectNavigationVerified:true,coordinatorWorkspaceVerified:true,workConversationUiVerified:true,
       projectWorkspaceFailClosedVerified:true,
       localApiOptInVerified:true,localApiDisableVerified:true,analysisNeedsExplicitApiOptIn:true,

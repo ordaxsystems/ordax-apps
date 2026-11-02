@@ -15,6 +15,7 @@
           <h1>OrdaX</h1>
           <p id="brandMode">Projeto dedicado • carregando ambiente</p>
         </div>
+        <button id="openAppSettings" class="app-settings-trigger" type="button" aria-label="Configurações do aplicativo" title="Configurações do aplicativo" aria-haspopup="dialog" aria-controls="appSettingsDialog">⚙</button>
       </header>
 
       <section class="project-identity" aria-label="Identidade do projeto atual">
@@ -442,43 +443,12 @@
         <button id="rotateConversation" class="mini-secondary" type="button">Abrir outro chat GPT</button>
       </details>
       <details class="context-section" id="labSupervisorPanel">
-        <summary class="section-title-row"><span>Configurações do Orquestrador</span></summary>
-        <button id="closeCoordinatorApiSettings" class="mini-secondary coordinator-settings-back" type="button">Voltar às conversas</button>
-        <p id="labVersion" class="diagnostics-hint">Versão do Lab indisponível</p>
-        <p id="labSupervisorState" class="diagnostics-hint">Verificando supervisor...</p>
-        <section id="backgroundModePanel" class="context-section background-mode-panel" hidden>
-          <label for="backgroundModeToggle"><input type="checkbox" id="backgroundModeToggle" /> Continuar em segundo plano ao fechar a janela</label>
-          <p id="backgroundModeState" class="diagnostics-hint" role="status" aria-live="polite">Verificando disponibilidade no Windows...</p>
-          <button id="backgroundExitApp" type="button" class="mini-secondary">Sair completamente do Orquestrador</button>
-          <p class="diagnostics-hint">Usa a mesma instalação e o mesmo supervisor. O ícone na bandeja reabre ou encerra o aplicativo. Só funciona enquanto o computador e a sessão Windows estiverem ativos; não certifica disponibilidade contínua por 24 horas.</p>
-        </section>
-        <section id="chatgptPlanSettings" class="context-section chatgpt-plan-settings" aria-label="Conexão com ChatGPT">
-          <h4>ChatGPT Plan</h4>
-          <p id="chatgptPlanState" role="status" aria-live="polite" class="diagnostics-hint">Verificando conexão segura…</p>
-          <div class="memory-editor-actions">
-            <button type="button" class="mini-primary" id="chatgptPlanConnect">Continuar com ChatGPT</button>
-            <button type="button" class="mini-secondary" id="chatgptPlanDisconnect" hidden>Desconectar</button>
-          </div>
-          <p class="diagnostics-hint">A autorização oficial permite ao chat coordenador do OrdaX fazer inferências com o plano ChatGPT elegível, sem chave de API. O login acontece nesta aba e os tokens ficam no cofre seguro do sistema. Isso não abre suas conversas existentes do ChatGPT nem conecta, por si só, o envio às frentes de trabalho.</p>
-        </section>
+        <summary class="section-title-row"><span>Configuração desta tarefa</span></summary>
         <label for="labSupervisorRole">Papel desta conversa</label>
         <select id="labSupervisorRole" aria-describedby="labRoleDescription" disabled>
           <option value="none">Sem papel definido</option>
         </select>
         <p id="labRoleDescription" role="status" class="diagnostics-hint">Selecione uma tarefa para preparar seu papel. Isso não inicia a IA.</p>
-        <details id="labSupervisorKeySettings" class="context-section">
-          <summary>Chave da API Groq</summary>
-            <p class="diagnostics-hint">Provedor de coordenação separado das conversas GPT Web. No aplicativo Windows, a chave fica protegida no cofre do sistema; a sessão do ChatGPT Web não recebe essa chave.</p>
-          <form id="labSupervisorKeyForm" autocomplete="off">
-            <label for="labSupervisorKeyInput">Chave Groq</label>
-            <input id="labSupervisorKeyInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="gsk_..." maxlength="244" aria-describedby="labSupervisorKeyState" />
-            <div class="memory-editor-actions">
-              <button type="submit" class="mini-secondary" id="labSupervisorKeySave">Salvar chave no Windows</button>
-              <button type="button" class="mini-secondary" id="labSupervisorKeyRemove">Remover chave</button>
-            </div>
-          </form>
-          <p id="labSupervisorKeyState" role="status" aria-live="polite" class="diagnostics-hint">Nenhuma chave enviada ou testada.</p>
-        </details>
         <label for="labSupervisorObjective">Objetivo do próximo passo (rascunho)</label>
         <textarea id="labSupervisorObjective" rows="3" maxlength="4000" style="width:100%" placeholder="Descreva uma tarefa objetiva para os agentes"></textarea>
         <div class="memory-editor-actions">
@@ -493,6 +463,74 @@
       </div>
     </aside>
   </main>
+  <dialog id="appSettingsDialog" class="app-settings-dialog" aria-labelledby="appSettingsTitle">
+    <div class="app-settings-frame">
+      <header class="app-settings-header">
+        <div><span class="app-settings-eyebrow">ORDAX ORCHESTRATOR</span><h2 id="appSettingsTitle">Configurações</h2><p>Preferências do aplicativo, provedores e estado das conexões.</p></div>
+        <button id="closeAppSettings" class="app-settings-close" type="button" aria-label="Fechar configurações">×</button>
+      </header>
+      <div class="app-settings-body">
+        <nav class="app-settings-nav" role="tablist" aria-label="Seções de configurações" aria-orientation="vertical">
+          <button id="settingsTabGeneral" class="app-settings-tab" type="button" role="tab" aria-selected="true" aria-controls="settingsPanelGeneral" tabindex="0" data-settings-tab="general">Geral</button>
+          <button id="settingsTabProviders" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelProviders" tabindex="-1" data-settings-tab="providers">IA e provedores</button>
+          <button id="settingsTabConnections" class="app-settings-tab" type="button" role="tab" aria-selected="false" aria-controls="settingsPanelConnections" tabindex="-1" data-settings-tab="connections">Conexões</button>
+        </nav>
+        <div class="app-settings-content">
+          <section id="settingsPanelGeneral" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabGeneral" data-settings-panel="general" tabindex="0">
+            <div class="app-settings-card">
+              <span class="app-settings-eyebrow">APLICATIVO</span><h3>OrdaX Orchestrator</h3>
+              <p id="labVersion" class="diagnostics-hint">Versão do Lab indisponível</p>
+              <p>As preferências e sessões deste aplicativo ficam no perfil local do Windows. Fechar esta janela não remove seus dados.</p>
+            </div>
+            <section id="backgroundModePanel" class="context-section background-mode-panel" hidden>
+              <h3>Inicialização e segundo plano</h3>
+              <label for="backgroundModeToggle"><input type="checkbox" id="backgroundModeToggle" /> Continuar em segundo plano ao fechar a janela</label>
+              <p id="backgroundModeState" class="diagnostics-hint" role="status" aria-live="polite">Verificando disponibilidade no Windows...</p>
+              <button id="backgroundExitApp" type="button" class="mini-secondary">Sair completamente do Orquestrador</button>
+              <p class="diagnostics-hint">Usa a mesma instalação e o mesmo perfil. Só funciona enquanto o computador e a sessão Windows estiverem ativos; isso não comprova operação contínua por 24 horas.</p>
+            </section>
+          </section>
+          <section id="settingsPanelProviders" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabProviders" data-settings-panel="providers" tabindex="0" hidden>
+            <section class="app-settings-card app-settings-provider-card" aria-label="Sessão ChatGPT Web">
+              <span class="app-settings-eyebrow">EXECUTOR</span><h3>ChatGPT Web</h3>
+              <p id="settingsChatGptStatus">Verificando a sessão do navegador…</p>
+              <p>A sessão usa o perfil persistente deste aplicativo. O OrdaX não salva sua senha; os cookies podem expirar ou ser invalidados pelo próprio serviço.</p>
+              <button id="settingsOpenChatGptLogin" type="button" class="mini-secondary">Abrir sessão do ChatGPT</button>
+            </section>
+            <p id="labSupervisorState" class="diagnostics-hint">Verificando supervisor...</p>
+            <section id="chatgptPlanSettings" class="context-section chatgpt-plan-settings" aria-label="Conexão com ChatGPT Plan">
+              <h4>ChatGPT Plan</h4>
+              <p id="chatgptPlanState" role="status" aria-live="polite" class="diagnostics-hint">Verificando conexão segura…</p>
+              <div class="memory-editor-actions">
+                <button type="button" class="mini-primary" id="chatgptPlanConnect">Continuar com ChatGPT</button>
+                <button type="button" class="mini-secondary" id="chatgptPlanDisconnect" hidden>Desconectar</button>
+              </div>
+              <p class="diagnostics-hint">Conexão oficial para uso elegível do plano no coordenador Host. É separada do login ChatGPT Web e da chave Groq.</p>
+            </section>
+            <details id="labSupervisorKeySettings" class="app-settings-card app-settings-key" open>
+              <summary>Chave da API Groq</summary>
+              <p class="diagnostics-hint">Groq é o provedor do Administrador Geral. No Windows, a chave fica protegida no cofre do sistema e não é enviada à sessão ChatGPT Web.</p>
+              <form id="labSupervisorKeyForm" autocomplete="off">
+                <label for="labSupervisorKeyInput">Chave Groq</label>
+                <input id="labSupervisorKeyInput" type="password" autocomplete="new-password" spellcheck="false" placeholder="gsk_..." maxlength="244" aria-describedby="labSupervisorKeyState" />
+                <div class="memory-editor-actions">
+                  <button type="submit" class="mini-secondary" id="labSupervisorKeySave">Salvar chave no Windows</button>
+                  <button type="button" class="mini-secondary" id="labSupervisorKeyRemove">Remover chave</button>
+                </div>
+              </form>
+              <p id="labSupervisorKeyState" role="status" aria-live="polite" class="diagnostics-hint">Nenhuma chave enviada ou testada.</p>
+            </details>
+          </section>
+          <section id="settingsPanelConnections" class="app-settings-panel" role="tabpanel" aria-labelledby="settingsTabConnections" data-settings-panel="connections" tabindex="0" hidden>
+            <div class="app-settings-card"><span class="app-settings-eyebrow">GITHUB</span><h3>Repositórios</h3><p>O endereço do repositório é configurado dentro de cada projeto. A leitura de branches, PRs e verificações depende de uma conexão autorizada pelo Platform; este perfil ainda não a confirma.</p><button id="settingsOpenProject" type="button" class="mini-secondary">Configurar projeto</button></div>
+            <div class="app-settings-card"><span class="app-settings-eyebrow">RUNTIME</span><h3>Execução local</h3><p>Arquivos, testes e alterações no computador exigem um dispositivo conectado e um grant válido do Runtime/Platform. Nenhum grant é criado por esta tela.</p><p class="settings-connection-state" data-state="blocked">Aguardando conexão autorizada</p></div>
+            <div class="app-settings-card"><span class="app-settings-eyebrow">CONTINUIDADE</span><h3>Operação em segundo plano</h3><p>O estado de segundo plano aparece em Geral quando o Windows oferece esse recurso. Operação contínua só será indicada após integração e verificação pelo Runtime/Scheduler.</p></div>
+          </section>
+        </div>
+      </div>
+      <footer class="app-settings-footer"><span>As conexões ficam separadas por função e seguem suas autoridades próprias.</span><button id="settingsDone" type="button" class="mini-primary">Concluído</button></footer>
+    </div>
+  </dialog>
   <section id="hostBrowserSessionNotice" class="host-browser-session-notice" role="alert" aria-live="assertive" hidden>
     <h1 id="hostBrowserSessionTitle">Validando a sessão local…</h1>
     <p id="hostBrowserSessionMessage">Aguarde enquanto o OrdaX valida esta aba.</p>

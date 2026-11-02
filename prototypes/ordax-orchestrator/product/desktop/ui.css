@@ -83,6 +83,9 @@ button{color:inherit}
   padding:16px 13px 12px;
 }
 .brand-row{display:flex;align-items:center;gap:11px;padding:1px 5px 14px}
+.app-settings-trigger{margin-left:auto;flex:none;width:34px;height:34px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2);color:var(--muted);font-size:17px;cursor:pointer}
+.app-settings-trigger:hover{background:var(--panel-3);color:var(--text)}
+.app-settings-trigger:focus-visible,.app-settings-tab:focus-visible,.app-settings-close:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .logo,.empty-mark{
   display:grid;place-items:center;background:var(--text);color:#0c1015;font-weight:900;letter-spacing:-.04em
 }
@@ -583,14 +586,56 @@ body.orchestrator-focus #contextRail{padding:0}
 body.orchestrator-focus #contextRail>.right-pane-tabs{display:none!important}
 /* The Work rail is a CHILD of contextPanel. Preserve its parent when isolating
    the coordinator route; hiding contextPanel would hide the entire Work rail. */
-body.orchestrator-focus:not(.orchestrator-api-settings) #contextRail>:not(#contextPanel){display:none!important}
-body.orchestrator-focus:not(.orchestrator-api-settings) #contextPanel{display:flex!important;overflow:hidden;padding:0}
-body.orchestrator-focus:not(.orchestrator-api-settings) #contextPanel>:not(#orchestratorWorkRail){display:none!important}
-body.orchestrator-focus:not(.orchestrator-api-settings) #orchestratorWorkRail{display:flex!important;padding:19px 15px 16px}
-body.orchestrator-focus.orchestrator-api-settings #contextRail>:not(#contextPanel){display:none!important}
-body.orchestrator-focus.orchestrator-api-settings #contextPanel>:not(#labSupervisorPanel){display:none!important}
-body.orchestrator-focus.orchestrator-api-settings #labSupervisorPanel{display:block!important;overflow:auto;margin:0;border:1px solid #24313e;border-radius:12px;background:var(--panel-2);padding:13px}
-.coordinator-settings-back{margin:2px 0 14px}
+body.orchestrator-focus #contextRail>:not(#contextPanel){display:none!important}
+body.orchestrator-focus #contextPanel{display:flex!important;overflow:hidden;padding:0}
+body.orchestrator-focus #contextPanel>:not(#orchestratorWorkRail){display:none!important}
+body.orchestrator-focus #orchestratorWorkRail{display:flex!important;padding:19px 15px 16px}
+
+.app-settings-dialog{width:min(900px,calc(100vw - 32px));max-width:none;max-height:calc(100vh - 32px);padding:0;overflow:hidden;border:1px solid var(--border-strong);border-radius:17px;background:var(--panel);color:var(--text);box-shadow:0 24px 90px rgba(0,0,0,.58)}
+.app-settings-dialog::backdrop{background:rgba(5,7,5,.76);backdrop-filter:blur(3px)}
+.app-settings-frame{display:flex;flex-direction:column;max-height:calc(100vh - 34px);min-height:min(600px,calc(100vh - 34px))}
+.app-settings-header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:25px 28px 20px;border-bottom:1px solid var(--border-soft)}
+.app-settings-header h2{margin:0;font-size:22px;letter-spacing:-.025em}
+.app-settings-header p{margin:7px 0 0;color:var(--muted);font-size:13px}
+.app-settings-eyebrow{display:block;margin-bottom:7px;color:var(--muted-2);font-size:10px;font-weight:750;letter-spacing:.13em}
+.app-settings-close{flex:none;width:34px;height:34px;border:1px solid var(--border);border-radius:9px;background:var(--panel-2);color:var(--muted);font-size:22px;line-height:1;cursor:pointer}
+.app-settings-body{display:grid;grid-template-columns:205px minmax(0,1fr);flex:1;min-height:0}
+.app-settings-nav{display:flex;flex-direction:column;gap:5px;padding:18px 12px;border-right:1px solid var(--border-soft);background:rgba(255,255,255,.012)}
+.app-settings-tab{width:100%;padding:10px 12px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);text-align:left;font-size:13px;cursor:pointer}
+.app-settings-tab:hover{background:var(--panel-2);color:var(--text)}
+.app-settings-tab[aria-selected="true"]{border-color:var(--border);background:var(--panel-3);color:var(--text);font-weight:700}
+.app-settings-content{min-width:0;overflow:auto;padding:24px 26px;scrollbar-gutter:stable}
+.app-settings-panel[hidden]{display:none}
+.app-settings-panel{display:grid;align-content:start;gap:14px}
+.app-settings-card{margin:0;padding:16px;border:1px solid var(--border);border-radius:12px;background:var(--panel-2)}
+.app-settings-card h3{margin:0 0 8px;font-size:15px}
+.app-settings-card p{margin:7px 0;color:var(--muted);font-size:12px;line-height:1.55}
+.app-settings-card .app-settings-eyebrow+h3{margin-top:0}
+.app-settings-provider-card button,.app-settings-key button,.app-settings-card>button{min-height:34px;padding:7px 11px;border:1px solid var(--border);border-radius:8px;background:var(--panel-3);color:var(--text);font-size:12px;cursor:pointer}
+.app-settings-provider-card button:hover,.app-settings-key button:hover,.app-settings-card>button:hover{background:#343a30}
+.app-settings-key summary{cursor:pointer;font-size:14px;font-weight:700}
+.app-settings-key input{display:block;width:100%;margin:9px 0;padding:10px 11px;border:1px solid var(--border-strong);border-radius:8px;background:#11140f;color:var(--text);font-size:13px}
+.app-settings-key .memory-editor-actions{justify-content:flex-start;gap:9px}
+.app-settings-key .diagnostics-hint{font-size:12px;line-height:1.55}
+.settings-connection-state{display:inline-flex!important;width:max-content;margin-top:3px!important;padding:5px 8px;border:1px solid var(--border);border-radius:20px;font-size:11px!important}
+.settings-connection-state[data-state="blocked"]{color:var(--muted-2)!important}
+.app-settings-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 24px;border-top:1px solid var(--border-soft);color:var(--muted-2);font-size:11px}
+.app-settings-footer button{min-height:34px;padding:7px 13px;border-radius:8px;font-size:12px}
+.app-settings-panel .background-mode-panel{margin:0;padding:16px;border-color:var(--border);background:var(--panel-2)}
+.app-settings-panel .background-mode-panel h3{margin:0 0 10px;font-size:15px}
+.app-settings-panel .background-mode-panel button{min-height:34px;padding:7px 11px;border:1px solid var(--border);border-radius:8px;background:var(--panel-3);color:var(--text);font-size:12px;cursor:pointer}
+.app-settings-panel .background-mode-panel .diagnostics-hint{font-size:12px;line-height:1.55}
+@media(max-width:640px){
+  .app-settings-dialog{width:calc(100vw - 20px);max-height:calc(100vh - 20px);border-radius:13px}
+  .app-settings-frame{min-height:calc(100vh - 22px);max-height:calc(100vh - 22px)}
+  .app-settings-header{padding:18px 17px 15px}
+  .app-settings-header h2{font-size:19px}
+  .app-settings-body{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .app-settings-nav{flex-direction:row;gap:5px;overflow:auto;padding:9px 12px;border-right:0;border-bottom:1px solid var(--border-soft)}
+  .app-settings-tab{width:auto;flex:none;padding:8px 10px;font-size:12px}
+  .app-settings-content{padding:15px 13px}
+  .app-settings-footer{padding:11px 14px}
+}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 @media(max-width:1180px) and (min-width:1025px){

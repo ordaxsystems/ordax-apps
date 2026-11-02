@@ -1,3 +1,10 @@
+## 0.2.0-alpha.41 — configurações gerais do aplicativo (02/11/2026)
+
+- Adiciona uma área de configurações acessível pelo ícone de engrenagem, mesmo sem projeto selecionado.
+- Reúne opções gerais, sessão ChatGPT Web, ChatGPT Plan, chave Groq e estado das integrações em seções próprias.
+- O botão do Administrador Geral abre diretamente as configurações de IA e provedores; conexão GitHub por projeto continua separada e depende da autorização Platform.
+- Preserva chave Groq no cofre seguro do Windows e sessão GPT Web no perfil persistente do app; nenhum segredo ou cookie é mostrado na tela.
+
 ## 0.2.0-alpha.40 — correção do gate E2E Windows (02/11/2026)
 
 - Alinha a verificação do perfil novo à mensagem atual do escopo de análise, que afirma que propostas não são executadas.

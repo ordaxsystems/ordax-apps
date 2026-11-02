@@ -64,5 +64,5 @@ test('one-process native lifecycle keeps existing web worker and tick and has a 
   assert.match(ui,/backgroundExitApp'\)\?\.addEventListener\('click'/);
   assert.match(html,/id="backgroundExitApp"/);
   assert.match(html,/id="backgroundModeToggle"/);
-  assert.match(html,/não certifica disponibilidade contínua por 24 horas/);
+  assert.match(html,/não comprova operação contínua por 24 horas/);
 });

@@ -52,6 +52,30 @@ test('empty project state promises persistence without claiming autonomous execu
   assert.doesNotMatch(uiHtml,/continuar amanhã|gerencia automaticamente as conversas internas/);
 });
 
+test('application settings remain accessible with no project and own global provider configuration',()=>{
+  const html=fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const source=fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+  const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
+  assert.match(html,/id="openAppSettings"[^>]*aria-haspopup="dialog"/);
+  assert.match(html,/<dialog id="appSettingsDialog"/);
+  for(const section of ['general','providers','connections']) {
+    assert.equal((html.match(new RegExp(`data-settings-tab="${section}"`,'g'))||[]).length,1);
+    assert.equal((html.match(new RegExp(`data-settings-panel="${section}"`,'g'))||[]).length,1);
+  }
+  assert.match(html,/id="labSupervisorKeySettings" class="app-settings-card app-settings-key"/);
+  assert.match(html,/id="labSupervisorKeyInput" type="password"/);
+  assert.match(html,/id="backgroundModePanel"[^>]*hidden/);
+  assert.match(html,/id="settingsOpenChatGptLogin"/);
+  assert.match(html,/id="settingsOpenProject"/);
+  assert.match(source,/openAppSettings\('general'\)/);
+  assert.match(source,/selectAppSettingsTab\(section\)/);
+  assert.match(source,/settingsOpenChatGptLogin[\s\S]{0,150}\.click\(\)/);
+  assert.match(source,/settingsOpenProject[\s\S]{0,240}orchestrationUi\?\.getProjectId/);
+  assert.match(orchestration,/onOpenAppSettings/);
+  assert.match(orchestration,/coordinatorApiSettings'\)\.addEventListener\('click',\(\)=>onOpenAppSettings\?\.\('providers'\)\)/);
+  assert.doesNotMatch(html,/id="labSupervisorKeySettings" class="context-section"/);
+});
+
 test('project onboarding accepts a name without a written mission, without implicit GPT execution',()=>{
   assert.equal(resolveProjectOnboardingMission('',''),null);
   assert.equal(resolveProjectOnboardingMission('Projeto', '  Analisar com cuidado  '),'Analisar com cuidado');

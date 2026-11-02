@@ -62,7 +62,7 @@ export function describeProjectPreflight(snapshot) {
   };
 }
 
-export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onNavigationChange}) {
+export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordinator,onSelectRightPane,onOpenAppSettings,onNavigationChange}) {
   const $=id=>document.getElementById(id);
   let projectId=null,orchestratorId=null,projectsCache=[],orchestrators=[],epoch=0,chatTaskId=null,workCount=0;
   let projectRefreshGeneration=0,orchestratorRefreshGeneration=0;
@@ -675,23 +675,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     syncCapabilitySummary();
     syncCoordinatorActions();
   }
-  $('coordinatorApiSettings').addEventListener('click',async()=>{
-    await onSelectRightPane?.('context').catch(()=>{});
-    document.body.classList.add('orchestrator-api-settings');
-    $('contextRail').classList.add('open');
-    $('labSupervisorPanel').open=true;
-    if(nodeHost) {
-      $('chatgptPlanSettings').scrollIntoView({block:'center'});
-      $('chatgptPlanConnect').focus();
-    } else {
-      $('labSupervisorKeySettings').open=true;
-      $('labSupervisorKeyInput').scrollIntoView({block:'center'});$('labSupervisorKeyInput').focus();
-    }
-  });
-  $('closeCoordinatorApiSettings').addEventListener('click',()=>{
-    document.body.classList.remove('orchestrator-api-settings');$('contextRail').classList.remove('open');
-    void onSelectRightPane?.('context').catch(()=>{});
-  });
+  $('coordinatorApiSettings').addEventListener('click',()=>onOpenAppSettings?.('providers'));
   $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectObjective').focus(); });
   $('renameProjectButton').addEventListener('click',()=>{
     if(!projectId)return;
@@ -979,7 +963,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   async function showCoordinator() {
     if(!chatTaskId)return;
     coordinatorOpen=true;
-    document.body.classList.remove('orchestrator-api-settings','orchestrator-rail-open');$('contextRail').classList.remove('open');
+    document.body.classList.remove('orchestrator-rail-open');$('contextRail').classList.remove('open');
     $('openWorks').setAttribute('aria-expanded','false');
     $('coordinatorRailToggle').setAttribute('aria-expanded','false');
     $('orchestrationPanel').hidden=false;$('orchestratorWorkRail').hidden=false;
@@ -994,7 +978,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     try {await action();}catch{error();}finally{buttons.forEach((b,i)=>b.disabled=previous[i]);}
   }
   $('projectSelect').addEventListener('change',async()=>{
-    document.body.classList.remove('orchestrator-api-settings','orchestrator-rail-open');$('contextRail').classList.remove('open');
+    document.body.classList.remove('orchestrator-rail-open');$('contextRail').classList.remove('open');
     const previous=projectId,next=$('projectSelect').value||null;
     if(previous===next)return;
     try{await flushCoordinatorDraft();}catch{$('projectSelect').value=previous||'';status('O rascunho do chat central não foi salvo; o projeto atual foi mantido.');return;}
@@ -1004,7 +988,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     try{
       const items=await refreshOrchestrators();
       if(items.length)await showCoordinator();
-      else{document.body.classList.remove('orchestrator-focus','orchestrator-rail-open','orchestrator-api-settings');$('empty').classList.remove('hidden');
+      else{document.body.classList.remove('orchestrator-focus','orchestrator-rail-open');$('empty').classList.remove('hidden');
         await onNavigationChange?.({view:'home',projectId,orchestratorId:null,taskId:null});}
       await inspectRequestedProject();
     }catch{error();}
@@ -1125,7 +1109,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     openingWorkNavigation=true;
     void (async()=>{
       try{
-        if(!coordinatorOpen||document.body.classList.contains('orchestrator-api-settings'))
+        if(!coordinatorOpen)
           await showCoordinator();
         if(currentProject!==projectId||currentOrchestrator!==orchestratorId)return;
         openFilteredWorks('all',$('openWorks'));
