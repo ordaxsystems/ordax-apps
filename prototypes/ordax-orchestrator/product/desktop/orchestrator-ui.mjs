@@ -1316,13 +1316,32 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       const p=projectId,o=orchestratorId;
       const titles=$('batchWorkTitles').value.split(/\r?\n/u).map(title=>title.trim()).filter(Boolean);
       if(titles.length<2||titles.length>16||titles.some(title=>title.length>140)) {
+        $('batchWorkFeedback').textContent='Informe de 2 a 16 frentes, uma por linha, com até 140 caracteres cada.';
         status('Informe de 2 a 16 frentes, uma por linha, com até 140 caracteres cada.');
         return;
       }
-      const receipt=await command('work_batch_create',{projectId:p,orchestratorId:o,titles});
+      let receipt;
+      try {
+        receipt=await command('work_batch_create',{projectId:p,orchestratorId:o,titles});
+      } catch (failure) {
+        // The service remains the authority for duplicate and capacity checks.
+        // Show only known, safe error codes instead of exposing raw IPC errors.
+        const reason=String(failure?.message||'');
+        const notice=reason.includes('orchestrator_batch_title_already_exists')
+          ?'Uma dessas frentes já está cadastrada neste Administrador. Altere o título repetido e tente novamente.'
+          :reason.includes('orchestrator_batch_titles_invalid')
+            ?'Há títulos repetidos ou inválidos no lote. Revise as linhas antes de salvar.'
+            :reason.includes('orchestrator_work_plan_too_large')
+              ?'O projeto atingiu o limite de 256 frentes. Revise as frentes existentes.'
+              :'Não foi possível confirmar o lote. Consulte as frentes antes de repetir a solicitação.';
+        $('batchWorkFeedback').textContent=notice;
+        status(notice);
+        return;
+      }
       if(receipt.status!=='succeeded'||p!==projectId||o!==orchestratorId)return;
       $('batchWorkForm').reset();$('batchWorkDetails').open=false;
       await refreshWorks();
+      $('batchWorkFeedback').textContent=receipt.result.created+' frentes registradas. Nenhuma mensagem enviada ao GPT.';
       status(receipt.result.created+' frentes registradas no projeto, sem enviar ao GPT. Organize as dependências antes de executar.');
     });
   });

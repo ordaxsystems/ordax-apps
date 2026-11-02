@@ -103,6 +103,10 @@ test('work rail supports bounded batch creation without dispatching to GPT',()=>
   assert.equal((html.match(/id="batchWorkDetails"/g)||[]).length,1);
   assert.equal((html.match(/id="batchWorkForm"/g)||[]).length,1);
   assert.match(html,/id="batchWorkTitles"[^>]*rows="4"/);
+  assert.match(html,/id="batchWorkFeedback" role="status" aria-live="polite"/);
+  assert.match(uiSource,/reason\.includes\('orchestrator_batch_title_already_exists'\)/);
+  assert.match(uiSource,/reason\.includes\('orchestrator_batch_titles_invalid'\)/);
+  assert.match(uiSource,/\$\('batchWorkFeedback'\)\.textContent=notice/);
   assert.match(html,/sem mensagens ao GPT ou novos agentes físicos/);
   assert.match(uiSource,/command\('work_batch_create',\{projectId:p,orchestratorId:o,titles\}\)/);
   assert.match(uiSource,/receipt\.result\.created\+' frentes registradas no projeto, sem enviar ao GPT/);
