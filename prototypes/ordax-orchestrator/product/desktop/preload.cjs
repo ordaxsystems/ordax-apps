@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('ordax', {
   setBackgroundMode: enabled => ipcRenderer.invoke('ordax:background:set',enabled),
   quitApp: () => ipcRenderer.invoke('ordax:app:quit'),
   supervisorSaveKey: key => ipcRenderer.invoke('ordax:supervisor:key:save',key),
+  supervisorTestKey: () => ipcRenderer.invoke('ordax:supervisor:key:test'),
   supervisorRemoveKey: () => ipcRenderer.invoke('ordax:supervisor:key:remove'),
   setTaskSupervisorRole: (taskId,role) => ipcRenderer.invoke('ordax:tasks:supervisor-role:set',{taskId,role}),
   supervisorPlan: payload => ipcRenderer.invoke("ordax:supervisor:plan", payload),

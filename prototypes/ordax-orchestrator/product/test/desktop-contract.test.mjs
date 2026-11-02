@@ -64,6 +64,7 @@ test('application settings remain accessible with no project and own global prov
   }
   assert.match(html,/id="labSupervisorKeySettings" class="app-settings-card app-settings-key"/);
   assert.match(html,/id="labSupervisorKeyInput" type="password"/);
+  assert.match(html,/id="labSupervisorKeyTest"[^>]*disabled>Testar conexão/);
   assert.match(html,/id="backgroundModePanel"[^>]*hidden/);
   assert.match(html,/id="settingsOpenChatGptLogin"/);
   assert.match(html,/id="settingsOpenProject"/);
