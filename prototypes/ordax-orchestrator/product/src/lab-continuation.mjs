@@ -120,6 +120,12 @@ export class LabContinuation {
       -- pick the oldest 100 reviewed Runs and permanently starve newer work.
       AND NOT EXISTS (SELECT 1 FROM lab_continuation_reviews reviewed
         WHERE reviewed.run_id=r.id)
+      -- A technical autonomous mission owns its own two receipt-backed Groq
+      -- reviews. Replaying the same Run into the generic continuation queue
+      -- would duplicate model analysis and could propose a conflicting task.
+      AND NOT EXISTS (SELECT 1 FROM lab_autonomous_dialogues mission
+        WHERE mission.strategy='semantic'
+          AND (mission.task_a_id=r.task_id OR mission.task_b_id=r.task_id))
       ORDER BY r.completed_at,r.id LIMIT 100`).run(now,session.id,session.id);
     return result.changes;
   }

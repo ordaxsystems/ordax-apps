@@ -118,6 +118,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('prepareWork').disabled=!coordinatorAvailable||!selectedReady||analysisBusy||coordinatorSubmitting||!coordinatorDraftCommitAvailable;
     $('startAutonomousDialogue').disabled=!coordinatorAvailable||!gptWebTransportAvailable||!selectedReady||analysisBusy||coordinatorSubmitting;
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
+    $('startAutonomousTechnical').disabled=$('startAutonomousDialogue').disabled;
     $('coordinatorPrompt').disabled=coordinatorSubmitting||!chatTaskId;
   }
   function setCoordinatorDraftState(text='') {
@@ -919,18 +920,29 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(p!==projectId||o!==orchestratorId)return;
     const job=result?.mission;
     const labels={queued:'Missão aceita; planejamento automático pendente',planning_a:'Groq preparando GPT A',ready_a:'Preparado para enviar GPT A',sending_a:'GPT A em execução',ready_b:'GPT A confirmado; preparando GPT B',planning_b:'Groq analisando resposta A',ready_final:'Pergunta B pronta',sending_b:'GPT B em execução',planning_final:'Groq interpretando resposta B',succeeded:'Concluído: duas respostas GPT e proposta final confirmadas',blocked:'Falha comprovada; sem reenvio automático',reconciliation_required:'Resultado incerto: exige reconciliação, sem reenvio'};
+    const technicalLabel=job?.mode==='technical'?(
+      job.state==='verification_required'
+        ?'GPT respondeu; verificação externa de alterações/testes é necessária'
+        :job.state==='budget_exhausted'
+          ?'Limite de dois envios atingido; próxima decisão Groq registrada sem novo envio'
+          :job.state==='blocked'
+            ?'Missão técnica bloqueada; nenhum envio será repetido'
+            :job.state==='reconciliation_required'
+              ?'Missão técnica incerta; exige reconciliação sem repetir'
+              :'Missão técnica: '+(labels[job.state]||job.state)
+    ):null;
     const storyLabel=job?.mode==='story'?(job.quality?.passed===false
       ?'História produzida, mas reprovada na qualidade: '+job.quality.violations.join(', ')
       :job.state==='succeeded'
       ?'História final montada pelo Groq, após duas rodadas GPT A/B'
       :job.state.startsWith('story_')?'História colaborativa: '+job.state.replaceAll('_',' '):null):null;
-    $('autonomousDialogueState').textContent=job?`${storyLabel||labels[job.state]||job.state}. ${job.lastError||''}${job.questionFinal?(job.mode==='story'?' História final: ':' Próxima pergunta proposta (não enviada): ')+job.questionFinal:''}`:
+    $('autonomousDialogueState').textContent=job?`${technicalLabel||storyLabel||labels[job.state]||job.state}. ${job.lastError||''}${job.decision?.summary?' Decisão Groq: '+job.decision.summary:''}${job.questionFinal?(job.mode==='story'?' História final: ':' Próximo passo proposto (não enviado): ')+job.questionFinal:''}`:
       'Uma missão autoriza duas perguntas ou quatro cenas em duas rodadas. Groq conduz tudo sem comandos adicionais.';
     // A failed or uncertain mission remains read-only. Reuse the canonical
     // Task navigator to inspect confirmed records, never schedule a retry.
     const reviews=$('autonomousReviewActions');
     reviews.replaceChildren();
-    if(job&&['succeeded','blocked','reconciliation_required'].includes(job.state)) {
+    if(job&&['succeeded','blocked','reconciliation_required','verification_required','budget_exhausted'].includes(job.state)) {
       for(const item of job.reviewTasks||[]) {
         if(typeof item?.taskId!=='string'||!item.taskId)continue;
         const button=document.createElement('button');
@@ -951,8 +963,9 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       }
     }
     reviews.hidden=reviews.childElementCount===0;
-    $('startAutonomousDialogue').disabled=Boolean(job && !['succeeded','blocked','reconciliation_required'].includes(job.state))||!coordinatorAvailable||!gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
+    $('startAutonomousDialogue').disabled=Boolean(job && !['succeeded','blocked','reconciliation_required','verification_required','budget_exhausted'].includes(job.state))||!coordinatorAvailable||!gptWebTransportAvailable||analysisBusy||coordinatorSubmitting||preflightBusy;
     $('startAutonomousStory').disabled=$('startAutonomousDialogue').disabled;
+    $('startAutonomousTechnical').disabled=$('startAutonomousDialogue').disabled;
   }
   async function renderCoordinator() {
     if(!projectId||!chatTaskId)return;
@@ -1339,12 +1352,14 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     finally{analysisBusy=false;syncCoordinatorActions();}
   });
   async function launchAutonomousMission(mode){
-    const button=$(mode==='story'?'startAutonomousStory':'startAutonomousDialogue');
+    const button=$(mode==='story'?'startAutonomousStory':
+      mode==='technical'?'startAutonomousTechnical':'startAutonomousDialogue');
     if(button.disabled||!projectId||!orchestratorId)return;
     const p=projectId,o=orchestratorId;
     const mission=$('coordinatorPrompt').value.trim();
     if(!mission){status('Descreva a missão única no campo do orquestrador.');$('coordinatorPrompt').focus();return;}
     $('startAutonomousStory').disabled=true;$('startAutonomousDialogue').disabled=true;
+    $('startAutonomousTechnical').disabled=true;
     try {
       // A transport function existing does not prove ChatGPT is ready now.
       // The Electron worker still independently validates each submission.
@@ -1362,6 +1377,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await refreshAutonomousDialogue();
     }catch{error();}finally{await refreshAutonomousDialogue();}
   }
+  $('startAutonomousTechnical').addEventListener('click',()=>void launchAutonomousMission('technical'));
   $('startAutonomousDialogue').addEventListener('click',()=>void launchAutonomousMission('dialogue'));
   $('startAutonomousStory').addEventListener('click',()=>void launchAutonomousMission('story'));
   $('prepareWork').addEventListener('click',async()=>{
