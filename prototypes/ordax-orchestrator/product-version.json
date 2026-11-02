@@ -1,8 +1,8 @@
 {
   "$schema": "ordax.orchestrator-lab-product-version/1",
-  "version": "0.2.0-alpha.40",
+  "version": "0.2.0-alpha.41",
   "channel": "alpha",
-  "name": "Correção do gate E2E Windows",
+  "name": "Configurações gerais do aplicativo",
   "distributionEnabled": false,
   "releaseDate": null
 }

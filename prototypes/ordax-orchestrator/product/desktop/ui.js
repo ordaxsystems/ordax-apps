@@ -13,6 +13,56 @@ let workspaceNavigationWrite=Promise.resolve();
 let activeRightPane='provider';
 let hostChatGPTPlan={connected:false,authorized:false,secureStorageAvailable:false,email:null};
 let providerBoundsRaf=0;
+const settingsDialog=document.getElementById('appSettingsDialog');
+const settingsTabs=[...document.querySelectorAll('[data-settings-tab]')];
+function selectAppSettingsTab(section,{focus=false}={}) {
+  const active=settingsTabs.find(tab=>tab.dataset.settingsTab===section)||settingsTabs[0];
+  for(const tab of settingsTabs) {
+    const selected=tab===active;
+    tab.setAttribute('aria-selected',String(selected));
+    tab.tabIndex=selected?0:-1;
+  }
+  for(const panel of document.querySelectorAll('[data-settings-panel]'))
+    panel.hidden=panel.dataset.settingsPanel!==active.dataset.settingsTab;
+  if(focus)active.focus();
+  return active.dataset.settingsTab;
+}
+function openAppSettings(section='general') {
+  selectAppSettingsTab(section);
+  if(!settingsDialog?.open)settingsDialog?.showModal();
+  if(section==='providers') {
+    if(window.ordaxHost?.hostMode===true)document.getElementById('chatgptPlanConnect')?.focus();
+    else document.getElementById('labSupervisorKeyInput')?.focus();
+  } else settingsTabs.find(tab=>tab.dataset.settingsTab===section)?.focus();
+}
+document.getElementById('openAppSettings')?.addEventListener('click',()=>openAppSettings('general'));
+document.getElementById('closeAppSettings')?.addEventListener('click',()=>settingsDialog?.close());
+document.getElementById('settingsDone')?.addEventListener('click',()=>settingsDialog?.close());
+settingsTabs.forEach((tab,index)=>tab.addEventListener('click',()=>selectAppSettingsTab(tab.dataset.settingsTab)));
+document.querySelector('.app-settings-nav')?.addEventListener('keydown',event=>{
+  if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;
+  event.preventDefault();
+  const current=settingsTabs.indexOf(document.activeElement);
+  const next=event.key==='Home'?0:event.key==='End'?settingsTabs.length-1:
+    (current+(event.key==='ArrowDown'?1:-1)+settingsTabs.length)%settingsTabs.length;
+  selectAppSettingsTab(settingsTabs[next].dataset.settingsTab,{focus:true});
+});
+document.getElementById('settingsOpenChatGptLogin')?.addEventListener('click',()=>{
+  settingsDialog?.close();
+  document.getElementById('login')?.click();
+});
+document.getElementById('settingsOpenProject')?.addEventListener('click',async()=>{
+  settingsDialog?.close();
+  if(!orchestrationUi?.getProjectId?.()) {
+    document.getElementById('projectSetup').open=true;
+    document.getElementById('projectName').focus();
+    return;
+  }
+  await orchestrationUi.showCoordinator?.();
+  const integrations=document.getElementById('orchestrationIntegrations');
+  if(integrations)integrations.open=true;
+  requestAnimationFrame(()=>document.getElementById('projectRepositoryInput')?.focus());
+});
 const rightPaneDefinitions=[['provider','providerPaneTab','providerPanel'],['preview','previewPaneTab','previewPanel'],['context','contextPaneTab','contextPanel']];
 function setWorkspaceRoute(route) {
   document.body.dataset.workspaceRoute=route;
@@ -123,6 +173,13 @@ function applyHostProviderLimit() {
     :'Abra Conectar IA e escolha Continuar com ChatGPT para autorizar o plano no navegador.';
   const sessionNote=$('.session-persistence-note');
   if(sessionNote)sessionNote.textContent='A conta ChatGPT Plan é conectada pelo fluxo oficial do navegador; isso não vincula conversas existentes do ChatGPT Web.';
+  const settingsStatus=document.getElementById('settingsChatGptStatus');
+  if(settingsStatus)settingsStatus.textContent=hostChatGPTPlan.authorized
+    ?'ChatGPT Plan conectado e autorizado para o coordenador Host.'
+    :hostChatGPTPlan.connected?'Conta conectada; autorização de uso do plano pendente.'
+    :'ChatGPT Plan não conectado ao OrdaX.';
+  const settingsWebLogin=document.getElementById('settingsOpenChatGptLogin');
+  if(settingsWebLogin)settingsWebLogin.hidden=true;
   const observerRow=$('.observer-row');
   if(observerRow)observerRow.classList.add('hidden');
   $('#login').hidden = true;
@@ -620,7 +677,7 @@ function clearLinkedReplyRecovery() {
 async function openTask(id) {
   clearLinkedReplyRecovery();
   orchestrationUi?.hide();
-  document.body.classList.remove('orchestrator-focus','orchestrator-rail-open','orchestrator-api-settings');
+  document.body.classList.remove('orchestrator-focus','orchestrator-rail-open');
   $('#contextRail').classList.remove('open');
   $('#orchestratorWorkRail').hidden=true;
   if (id !== currentTaskId) flushDraft();
@@ -853,6 +910,14 @@ async function refreshProvider() {
     } else if (status.history_unavailable === true && !backendDenied && !backendRateLimited) {
       $('#providerDetail').textContent = 'O histórico lateral do ChatGPT está indisponível. O histórico local do OrdaX continua acessível. Não será feita recarga automática.';
     }
+    const settingsStatus=document.getElementById('settingsChatGptStatus');
+    if(settingsStatus)settingsStatus.textContent=verification
+      ?'O ChatGPT solicita uma verificação no painel oficial.'
+      :authenticating?'Autenticação em andamento nesta sessão.'
+      :anonymous?'Não conectado nesta sessão do OrdaX.'
+      :sessionObserved&&status.composer_ready?'Sessão detectada; identidade não verificada.'
+      :backendDenied?'A página está conectada, mas o serviço recusou uma requisição.'
+      :'O estado da sessão ainda não pôde ser confirmado.';
     applyHostProviderLimit();
     observerMode = status.observer_mode || observerMode;
     if ($('#observerMode').value !== observerMode) $('#observerMode').value = observerMode;
@@ -865,6 +930,8 @@ async function refreshProvider() {
     $('#providerText').textContent = 'ChatGPT • erro';
     $('#providerDetail').textContent = friendlyError(error);
     $('#providerDot').className = 'dot error';
+    const settingsStatus=document.getElementById('settingsChatGptStatus');
+    if(settingsStatus)settingsStatus.textContent='Não foi possível verificar a sessão do ChatGPT.';
     applyHostProviderLimit();
   } finally {
     providerRefreshPending = false;
@@ -1234,7 +1301,7 @@ window.ordax.onTaskReconciled(async payload=>{
 await selectRightPane('provider');
 syncComposerAvailability(); // no send until session observed
 workspace = await window.ordax.workspace();
-orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRightPane,
+orchestrationUi=mountOrchestratorUi({api:window.ordax,onSelectRightPane:selectRightPane,onOpenAppSettings:openAppSettings,
   onNavigationChange:async navigation=>{
     try {return await persistWorkspaceNavigation(navigation);}
     catch {$('#orchestrationNotice').textContent='A navegação atual não foi salva para o próximo início.';return false;}
