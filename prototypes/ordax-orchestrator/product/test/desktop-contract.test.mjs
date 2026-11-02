@@ -606,7 +606,9 @@ test('Orchestrator workspace links project navigation, coordinator and scoped GP
   assert.match(html,/Nova conversa no GPT/);
   assert.match(html,/id="analyzeWorks"/);
   assert.match(html,/id="remoteRepositoryCapabilityNote"/);
-  assert.match(coordinatorContext,/historyLimit=analysisContext===null\?12:8/);
+  assert.match(coordinatorContext,/focusedGPTReview=analysisContext\?\.phase==='gpt_response_review'/);
+  assert.match(coordinatorContext,/historyLimit=focusedGPTReview\?0:analysisContext===null\?12:8/);
+  assert.match(coordinatorContext,/history=focusedGPTReview\?\[\]:store\.messages/);
   assert.match(coordinatorContext,/historyMessageLimit=analysisContext===null\?4000:2000/);
   assert.match(orchestration,/command\('orchestrator_analyze'/);
   assert.match(orchestration,/call\('status'\)\.catch\(\(\)=>null\)/);
