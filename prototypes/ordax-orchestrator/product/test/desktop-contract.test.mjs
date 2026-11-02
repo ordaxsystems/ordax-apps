@@ -64,7 +64,7 @@ test('project onboarding accepts a name without a written mission, without impli
   assert.match(html,/id="projectObjective"[^>]+placeholder="Pode deixar vazio:[^>]+><\/textarea>/);
   assert.equal((html.match(/id="analyzeWorks"/g)||[]).length,1);
   assert.ok(html.indexOf('id="analyzeWorks"')<html.indexOf('id="orchestrationIntegrations"'));
-  assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*Não lê o GitHub/);
+  assert.match(html,/id="analysisScopeHint"[^>]*>[^<]*Iniciar consulta o preflight local/);
   const orchestration=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.match(orchestration,/resolveProjectOnboardingMission\(name,\$\('projectObjective'\)\.value\)/);
   assert.match(orchestration,/command\('mission_create',input\)/);
@@ -101,15 +101,20 @@ test('GitHub observation is hidden until trusted host capability and never autho
   assert.match(s,/snapshot\.provenance\?\.grantRechecked!==true/);
 });
 
-test('Start/Pause is consent-only and never claims a running background supervisor',()=>{
+test('Start persists consent and requests one prompt-free local analysis only when its gates pass',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="projectObservationToggle"/g)||[]).length,1);
   assert.equal((uiHtml.match(/id="projectObservationState"/g)||[]).length,1);
-  assert.match(uiHtml,/Iniciar salva somente a intenção de diagnóstico/);
+  assert.match(uiHtml,/solicita uma análise sem prompt somente se os gates permitirem/);
   assert.match(source,/project\?\.observation_requested===1/);
   assert.match(source,/command\('project_observation_set',\{projectId:p,enabled\}\)/);
-  assert.match(source,/GitHub e Runtime ainda sem autorização verificada; nenhuma mensagem GPT foi enviada/);
-  assert.match(source,/Nenhuma leitura GitHub, chamada Groq, mensagem GPT ou ação Runtime foi realizada/);
+  assert.match(source,/async function analyzeRegisteredWorks\(p,o,\{automatic=false\}=\{\}\)/);
+  assert.match(source,/if\(automatic&&!projectsCache\.some\(item=>item\.id===p&&item\.observation_requested===1\)\)return null/);
+  assert.match(source,/if\(!snapshot\|\|!snapshot\.gates\.recordedWorkAnalysisEligible\)/);
+  assert.match(source,/command\('orchestrator_analyze',\{projectId:p,orchestratorId:o\}\)/);
+  assert.match(source,/Diagnóstico inicial registrado pelo Administrador Geral, sem prompt/);
+  assert.match(source,/GitHub, GPT Web e Runtime não foram acionados/);
+  assert.match(source,/await analyzeRegisteredWorks\(p,orchestratorId,\{automatic:true\}\)/);
   assert.match(source,/const p=projectId,project=projectsCache\.find/);
   assert.match(source,/if\(p!==projectId\)return/);
 });
@@ -122,10 +127,10 @@ test('verified repository HEAD is shown only as historical evidence and never as
   assert.match(source,/snapshot\.repository\.authenticatedRead!=='unavailable'/);
 });
 
-test('Start immediately inspects local evidence and restores it without automatic external effects',()=>{
+test('Start inspects local evidence immediately and restores it without repeating model analysis',()=>{
   const source=fs.readFileSync(path.join(root,'desktop','orchestrator-ui.mjs'),'utf8');
   assert.equal((uiHtml.match(/id="projectPreflightActions"/g)||[]).length,1);
-  assert.match(source,/if\(enabled\)await inspectRequestedProject\(\)/);
+  assert.match(source,/if\(enabled\)await analyzeRegisteredWorks\(p,orchestratorId,\{automatic:true\}\)/);
   assert.match(source,/await inspectRequestedProject\(\);\s*let refreshPending/);
   assert.match(source,/generation!==preflightGeneration\|\|p!==projectId\|\|o!==orchestratorId/);
   assert.match(source,/requested!==\(projectsCache\.find/);

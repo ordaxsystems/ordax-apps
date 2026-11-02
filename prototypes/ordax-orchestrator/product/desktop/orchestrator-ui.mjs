@@ -600,10 +600,10 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     $('projectObservationState').textContent=!project
       ?'Selecione um projeto.'
       :requested
-        ?'Início solicitado e salvo. Observação remota bloqueada: falta grant GitHub verificado e supervisor autorizado. Nenhuma execução está ativa.'
+        ?'Início solicitado. O preflight local é restaurado ao abrir o projeto; não há observação remota nem execução em segundo plano.'
         :anotherRequested
           ?'Outro projeto deste perfil tem início solicitado. Pause aquele projeto antes de iniciar este.'
-          :'Observação pausada. Iniciar salva somente a intenção de diagnóstico; não concede acesso ao GitHub nem aciona GPT.';
+        :'Pausado. Iniciar registra a intenção, consulta o inventário local e pode solicitar uma análise ao Administrador Geral se os gates permitirem.';
   }
   function syncProjectRepository() {
     const project=projectsCache.find(item=>item.id===projectId);
@@ -1184,13 +1184,32 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       await renderCoordinator();
     }).finally(()=>{coordinatorSubmitting=false;syncCoordinatorActions();});
   });
+  async function analyzeRegisteredWorks(p,o,{automatic=false}={}) {
+    const snapshot=await inspectProjectPreflight(p,o);
+    if(p!==projectId||o!==orchestratorId)return null;
+    if(automatic&&!projectsCache.some(item=>item.id===p&&item.observation_requested===1))return null;
+    if(!snapshot||!snapshot.gates.recordedWorkAnalysisEligible) {
+      if(snapshot)status('Início registrado, mas a análise do Administrador está bloqueada pelas pré-condições locais. Nenhum envio foi realizado.');
+      return null;
+    }
+    const receipt=await command('orchestrator_analyze',{projectId:p,orchestratorId:o});
+    if(p!==projectId||o!==orchestratorId)return null;
+    if(receipt.status==='succeeded')status(automatic
+      ?'Diagnóstico inicial registrado pelo Administrador Geral, sem prompt. Analisou somente frentes locais; GitHub, GPT Web e Runtime não foram acionados.'
+      :'Análise das frentes locais registrada. Nenhuma recomendação foi executada.');
+    else status('Análise não confirmada. Confira o histórico antes de tentar novamente; o app não repetiu a solicitação.');
+    await renderCoordinator();
+    return receipt;
+  }
   $('projectObservationToggle').addEventListener('click',async()=>{
     const p=projectId,project=projectsCache.find(item=>item.id===projectId);
     if(!project||observationBusy)return;
     // Snapshot the selected scope before any await. A late response may not
     // change the state or message of a different project.
     const enabled=project.observation_requested!==1;
+    if(enabled&&(analysisBusy||coordinatorSubmitting))return;
     observationBusy=true;syncProjectObservation();
+    if(enabled){analysisBusy=true;syncCoordinatorActions();}
     try {
       const receipt=await command('project_observation_set',{projectId:p,enabled});
       if(receipt.status!=='succeeded'||receipt.result?.requested!==enabled)
@@ -1199,17 +1218,18 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       clearProjectPreflight();
       await refreshProjects();
       if(p!==projectId)return;
-      if(enabled)await inspectRequestedProject();
+      if(enabled)await analyzeRegisteredWorks(p,orchestratorId,{automatic:true});
       if(p!==projectId)return;
-      status(enabled
-        ?'Início registrado e diagnóstico local consultado. GitHub e Runtime ainda sem autorização verificada; nenhuma mensagem GPT foi enviada.'
-        :'Observação pausada no projeto. Nenhum grant da Platform foi alterado.');
+      if(enabled&&!projectsCache.some(item=>item.id===p&&item.observation_requested===1))return;
+      if(!enabled)status(
+        'Observação pausada no projeto. Nenhum grant da Platform foi alterado.');
     }catch(error){
       if(p===projectId)status(error?.message==='orchestrator_project_observation_exclusive'
         ?'Outro projeto já tem início solicitado neste perfil. Pause aquele projeto antes de iniciar este.'
         :'Não foi possível confirmar a mudança da observação. Consulte o estado antes de repetir.');
     }finally{
       observationBusy=false;
+      if(enabled)analysisBusy=false;
       // The user may have selected another project while the old command
       // was awaited. Restore controls for the CURRENT scope, not the old one.
       syncProjectObservation();
@@ -1235,15 +1255,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       ?'Analisando frentes locais pelo coordenador disponível; o GitHub não será lido e nenhuma frente GPT será acionada…'
       :'Analisando frentes locais pelo Groq; o GitHub não será lido e nenhuma frente GPT será acionada…');
     try {
-      const snapshot=await inspectProjectPreflight(p,o);
-      if(!snapshot||!snapshot.gates.recordedWorkAnalysisEligible) {
-        if(snapshot)status('Análise não iniciada: resolva os bloqueios do diagnóstico local. Nenhum envio foi realizado.');
-        return;
-      }
-      const receipt=await command('orchestrator_analyze',{projectId:p,orchestratorId:o});
-      if(p!==projectId||o!==orchestratorId)return;
-      if(receipt.status==='succeeded')status('Análise registrada no histórico. Nenhuma recomendação foi executada.');
-      await renderCoordinator();
+      await analyzeRegisteredWorks(p,o);
     }catch{error();}
     finally{analysisBusy=false;syncCoordinatorActions();}
   });
