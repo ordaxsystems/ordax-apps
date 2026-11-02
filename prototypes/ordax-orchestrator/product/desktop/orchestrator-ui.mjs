@@ -14,7 +14,7 @@ export function resolveProjectOnboardingMission(name,objective) {
 // Pure presentation of the SAME read-only project_preflight projection.
  // It cannot confer GitHub/Runtime authority or issue a provider request.
 export function describeProjectPreflight(snapshot) {
-  if(snapshot?.schema!=='ordax.orchestrator.project-preflight/1'||
+  if(snapshot?.schema!=='ordax.orchestrator.project-preflight/2'||
     snapshot.provenance?.source!=='app_sqlite'||snapshot.provenance.externalObservation!==false||
     !snapshot.observation||typeof snapshot.observation.requested!=='boolean'||
     snapshot.observation.active!==false||!snapshot.repository||
@@ -24,6 +24,10 @@ export function describeProjectPreflight(snapshot) {
     !snapshot.work||!Number.isSafeInteger(snapshot.work.registered)||snapshot.work.registered<0||
     !Number.isSafeInteger(snapshot.work.started)||snapshot.work.started<0||
     !Number.isSafeInteger(snapshot.work.unresolvedSends)||snapshot.work.unresolvedSends<0||
+    !snapshot.analysis||!Number.isSafeInteger(snapshot.analysis.attempts)||snapshot.analysis.attempts<0||
+    !Number.isSafeInteger(snapshot.analysis.completed)||snapshot.analysis.completed<0||
+    !(snapshot.analysis.lastStatus===null||['running','succeeded','failed','uncertain'].includes(snapshot.analysis.lastStatus))||
+    !(snapshot.analysis.lastAttemptAt===null||typeof snapshot.analysis.lastAttemptAt==='string')||
     !snapshot.coordinator||typeof snapshot.coordinator.modelConfigured!=='boolean'||
     !snapshot.gates||typeof snapshot.gates.recordedWorkAnalysisEligible!=='boolean'||
     snapshot.gates.githubObservationVerified!==false||
@@ -50,15 +54,22 @@ export function describeProjectPreflight(snapshot) {
     actions.push(`Histórico GitHub: HEAD ${historical.headSha.slice(0,12)} observado em ${historical.observedAt}; não confirma acesso atual, integridade ou checks.`);
   actions.push('GitHub: integração autorizada pela Platform ainda indisponível neste Host.');
   actions.push('Runtime: grant de leitura e supervisão headless ainda não verificados.');
+  const latestAnalysis=snapshot.analysis.lastStatus==='succeeded'
+    ?`Última análise registrada em ${snapshot.analysis.lastAttemptAt}.`
+    :snapshot.analysis.lastStatus==='running'?'Há uma análise em andamento; consulte o histórico antes de repetir.'
+      :snapshot.analysis.lastStatus==='uncertain'?'O recibo da última análise está incerto; consulte o histórico antes de repetir.'
+        :snapshot.analysis.lastStatus==='failed'?'A última análise falhou; consulte o histórico antes de repetir.'
+          :'Análise ainda não iniciada.';
+  const analysisLabel=snapshot.analysis.attempts>0?'Reanalisar frentes':'Analisar frentes';
   return {
     state:snapshot.observation.requested?'blocked':
       snapshot.gates.recordedWorkAnalysisEligible?'ready':'blocked',
     summary:`Inventário local: ${snapshot.work.registered} frente(s), ${snapshot.work.started} com histórico de Run, ${snapshot.work.unresolvedSends} envio(s) incerto(s) ou pendente(s). `+
-      (snapshot.gates.recordedWorkAnalysisEligible?
-        'Análise das frentes registradas elegível, mas não iniciada. ':
+      `${latestAnalysis} `+(snapshot.gates.recordedWorkAnalysisEligible?
+        'Análise das frentes registradas elegível. ':
         'Análise das frentes registradas bloqueada. ')+
-      'Fonte: Store local. Nenhuma leitura GitHub, chamada Groq, mensagem GPT ou ação Runtime foi realizada.',
-    actions
+      'Fonte: Store local. Este preflight não fez nova leitura GitHub, chamada Groq, mensagem GPT ou ação Runtime.',
+    actions,analysisLabel
   };
 }
 
@@ -262,6 +273,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     preflightGeneration++;
     $('projectPreflightState').textContent='Diagnóstico ainda não solicitado. Uma URL GitHub não comprova acesso ao repositório.';
     $('projectPreflightState').dataset.state='idle';
+    $('analyzeWorks').textContent='Analisar frentes';
     $('projectPreflightActions').replaceChildren();
     $('projectPreflightActions').hidden=true;
     clearRepositoryObservation();
@@ -269,6 +281,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
   function renderProjectPreflight(snapshot) {
     const guide=describeProjectPreflight(snapshot);
     const node=$('projectPreflightState');
+    $('analyzeWorks').textContent=guide.analysisLabel;
     node.textContent=guide.summary;
     node.dataset.state=guide.state;
     const list=$('projectPreflightActions');
@@ -289,7 +302,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
       return null;
     if(snapshot?.projectId!==p||snapshot.orchestratorId!==o||
       snapshot.observation?.requested!==requested||
-      snapshot.schema!=='ordax.orchestrator.project-preflight/1')
+      snapshot.schema!=='ordax.orchestrator.project-preflight/2')
       throw Error('project_preflight_scope_mismatch');
     renderProjectPreflight(snapshot);
     return snapshot;
@@ -472,399 +485,7 @@ export function mountOrchestratorUi({api,onScopeChange,onOpenWork,onShowCoordina
     if(!works.length){applyWorkFilters();const empty=document.createElement('div');empty.className='work-rail-empty';empty.textContent='Nenhuma frente registrada neste projeto. Use a ação de nova frente acima para criar um rascunho, sem envio automático ao GPT.';list.append(empty);return;}
     const ordered=[...works].sort((a,b)=>{const priority={attention:0,running:1,ready:2,completed:4};return (priority[workClass(a)]??5)-(priority[workClass(b)]??5);});
     for(const work of ordered){
-      const state=workClass(work);
-      const label=work.execution?.observed==='reconciliation_required'?'Resultado incerto':
-        work.execution?.observed==='review_required'?'Revisar recibo':
-        (labels[work.status]||labels.ready)[0];
-      // A Host capability gap is not a failure of this work item.
-      const button=document.createElement('button');
-      button.type='button';button.className='work-card';button.dataset.taskId=work.id;
-      const copy=document.createElement('span');copy.className='work-card-copy';
-      const title=document.createElement('strong');title.textContent=work.title;
-      const detail=document.createElement('small');detail.textContent=work.provider_segments
-        ?`${work.provider_segments} conversa${work.provider_segments===1?'':'s'} no histórico`
-        :nodeHost?'Rascunho local • envio ao GPT indisponível neste host':'Conversa pronta para iniciar';
-      const evidence=document.createElement('span');evidence.className='work-evidence-stack';
-      const runState=document.createElement('small');
-      const states={running:'Run ativo',succeeded:'Último Run confirmado',failed:'Último Run falhou',cancelled:'Último Run cancelado',interrupted:'Run interrompido'};
-      const observed=work.execution?.observed==='reconciliation_required'?'Execução incerta · verificar recibos':
-        work.execution?.observed==='review_required'?'Execução requer revisão':
-        work.execution?.observed==='running'?'Run em andamento':
-        work.execution?.observed==='last_run_succeeded'?'Último Run confirmado':
-        work.running_runs>0?'Run em andamento':states[work.latest_run_status]||'Sem Run confirmado';
-      runState.textContent='Execução · '+observed;
-      runState.className='work-run-evidence';
-      evidence.append(runState);
-      if(Array.isArray(work.dependsOn)&&work.dependsOn.length){
-        const dependencies=document.createElement('small');
-        dependencies.className='work-run-evidence';
-        dependencies.textContent='Dependências · '+work.dependsOn.length+' registrada(s)';
-        evidence.append(dependencies);
-      }
-      copy.append(title,detail,evidence);
-      const planned=planWorkers.get(work.id);
-      if(planned){
-        const label=document.createElement('small');
-        label.className='work-plan-item';
-        label.textContent='Plano · '+(blocked.has(work.id)?'Dependência bloqueada · revisar':
-          waiting.has(work.id)?'Aguardando pré-requisitos':
-          candidates.has(work.id)?'Candidata à próxima ação · requer autorização':
-          planned.state==='uncertain'?'Entrega incerta · reconciliar':
-          planned.state==='failed'?'Falha confirmada · revisar':
-          planned.state==='running'?'Ação em andamento':
-          planned.state==='succeeded'?'Último Run concluído; qualidade não certificada':
-          planned.state==='pending'?'Aguardando capacidade ou autorização':
-          'Estado não liberado');
-        copy.append(label);
-      }
-      const badge=document.createElement('span');badge.className=`work-state ${state}`;badge.textContent=label;
-      button.append(copy,badge);button.addEventListener('click',async()=>{
-        try{coordinatorOpen=false;await onOpenWork(work.id);}catch{status('Não foi possível abrir esta conversa.');}
-      });
-      const entry=document.createElement('div');entry.className='work-entry';entry.append(button);
-      if(dependencyEligibleIds.has(work.id)){
-        const edit=document.createElement('button');edit.type='button';
-        edit.className='work-dependency-action';
-        edit.textContent='Organizar pré-requisitos';
-        edit.setAttribute('aria-label','Organizar pré-requisitos de '+work.title);
-        edit.addEventListener('click',()=>{
-          $('workDependencyEditor').open=true;
-          if(dependencySelectionDirty&&$('dependencyTarget').value!==work.id){
-            $('dependencyEditNote').textContent='Salve ou revise as alterações pendentes antes de trocar de frente.';
-            $('dependencyTarget').focus();
-            return;
-          }
-          $('dependencyTarget').value=work.id;
-          dependencySelectionDirty=false;
-          showDependencyChoices();
-          $('workDependencyEditor').scrollIntoView({block:'nearest'});
-          $('dependencyTarget').focus();
-        });
-        entry.append(edit);
-      }
-      list.append(entry);
-    }
-    applyWorkFilters();
-  }
-  async function command(operation,input) {
-    const key=JSON.stringify({operation,input});
-    const requestId=requestKeys.get(key)||crypto.randomUUID();
-    requestKeys.set(key,requestId);
-    const receipt=await call(operation,{requestId,...input});
-    if(receipt.status==='succeeded')requestKeys.delete(key);
-    else if(receipt.status==='failed') {
-      requestKeys.delete(key);
-      const failures={
-        groq_auth_rejected:'Groq rejeitou a autenticação. Confira a chave nas configurações; nenhuma resposta foi registrada.',
-        groq_rate_limited:'Groq aplicou limite de requisições. Aguarde o limite resetar antes de tentar novamente.',
-        groq_service_unavailable:'Groq está indisponível no momento. A solicitação terminou sem resposta registrada.',
-        groq_request_rejected:'Groq recusou a solicitação. Confira o modelo e a configuração da API.',
-        groq_invalid_response:'Groq retornou uma resposta inválida; o app não a aceitou.',
-        groq_incomplete_response:'Groq encerrou a resposta antes de concluí-la; o app não a aceitou.',
-        groq_invalid_work_proposal:'Groq não retornou uma proposta de frente válida; nenhuma frente foi criada.',
-        chatgpt_auth_rejected:'A autorização do ChatGPT Plan foi rejeitada. Reconecte a conta e tente novamente.',
-        chatgpt_access_denied:'A política de acesso ao plano ChatGPT impediu a solicitação. Nenhuma resposta foi registrada.',
-        chatgpt_rate_limited:'O limite de uso do plano ChatGPT foi atingido. Aguarde antes de iniciar outra solicitação.',
-        chatgpt_service_unavailable:'O serviço ChatGPT Plan está indisponível. A solicitação terminou sem resposta registrada.',
-        chatgpt_request_rejected:'O serviço ChatGPT Plan recusou a solicitação. Revise o modelo e as permissões concedidas.',
-        chatgpt_plan_scope_missing:'O login não concedeu permissão de uso do plano ChatGPT. Reconecte e aprove essa permissão.',
-        chatgpt_no_supported_models:'Não há modelos disponíveis para esta conta ChatGPT.',
-        chatgpt_models_unavailable:'Não foi possível consultar os modelos da conta ChatGPT; nenhuma inferência foi enviada.',
-        chatgpt_invalid_response:'O ChatGPT retornou uma resposta inválida; o app não a aceitou.',
-        chatgpt_invalid_work_proposal:'O ChatGPT não retornou uma proposta válida; nenhuma frente foi criada.'
-      };
-      status(failures[receipt.result?.failureCode]||'A solicitação falhou e não foi repetida. Confira a configuração e tente novamente quando estiver pronta.');
-    } else {
-      const failureCode=receipt.result?.failureCode||'';
-      const provider=failureCode.startsWith('chatgpt_')?'ChatGPT Plan':'Groq';
-      status(failureCode.endsWith('_request_timeout')
-        ?`O tempo de resposta do ${provider} expirou sem confirmação. Confira o histórico antes de enviar outra solicitação; nada será repetido automaticamente.`
-        :failureCode.endsWith('_network_unavailable')
-          ?`Não foi possível confirmar o resultado enviado ao ${provider}. Confira o histórico antes de enviar outra solicitação; nada será repetido automaticamente.`
-          :'O resultado do comando não foi confirmado. Confira a conversa antes de iniciar outro envio; nada será repetido automaticamente.');
-    }
-    return receipt;
-  }
-  function options(select,rows,label) {
-    select.replaceChildren(new Option(label,''),...rows.map(row=>new Option(row.name,row.id)));
-  }
-  function syncProjectObservation() {
-    const project=projectsCache.find(item=>item.id===projectId);
-    const requested=project?.observation_requested===1;
-    const anotherRequested=projectsCache.some(item=>item.id!==projectId&&item.observation_requested===1);
-    const button=$('projectObservationToggle');
-    button.disabled=!project||observationBusy||(!requested&&anotherRequested);
-    button.dataset.requested=String(requested);
-    button.textContent=requested?'Pausar':'Iniciar';
-    $('projectObservationState').dataset.state=requested?'blocked':'idle';
-    $('projectObservationState').textContent=!project
-      ?'Selecione um projeto.'
-      :requested
-        ?'Início solicitado. O preflight local é restaurado ao abrir o projeto; não há observação remota nem execução em segundo plano.'
-        :anotherRequested
-          ?'Outro projeto deste perfil tem início solicitado. Pause aquele projeto antes de iniciar este.'
-        :'Pausado. Iniciar registra a intenção, consulta o inventário local e pode solicitar uma análise ao Administrador Geral se os gates permitirem.';
-  }
-  function syncProjectRepository() {
-    const project=projectsCache.find(item=>item.id===projectId);
-    const input=$('projectRepositoryInput');
-    input.value=project?.repository_url||'';
-    input.disabled=!project;
-    $('saveProjectRepository').disabled=!project;
-    $('observeProjectRepository').hidden=!repositoryPortAvailable;
-    $('observeProjectRepository').disabled=!repositoryPortAvailable||!project?.repository_url||repositoryBusy;
-    $('renameProjectButton').disabled=!project;
-    $('renameProjectInput').value=project?.name||'';
-    $('remoteRepositoryStatus').textContent=nodeHost
-      ?!project?'Selecione um projeto.'
-        :project.repository_url
-          ?`URL salva no projeto: ${project.repository_url}. Este Host não lê o GitHub nem envia mensagens às frentes de trabalho.`
-          :'Nenhum repositório vinculado. Salvar uma URL registra só metadado; a leitura autenticada do GitHub não está conectada neste Host.'
-      :!project?'Selecione um projeto.'
-        :project.repository_url
-          ?`Destino remoto: ${project.repository_url}. A API não leu o conteúdo do repositório.`
-          :'Nenhum repositório remoto vinculado. Vincular salva a URL do GitHub como destino do projeto.';
-    $('remoteRepositoryCapabilityNote').textContent=nodeHost
-      ?project?.repository_url
-        ?'O chat coordenador recebe somente esta URL como contexto; não consulta arquivos, commits ou branches. Nenhuma integração GitHub está conectada ao Host.'
-        :'Nenhuma URL de repositório está vinculada. O Host não tem leitura autenticada do GitHub; nenhuma integração GitHub está conectada.'
-      :'A API recebe somente a URL. No desktop, tarefas podem pedir ao ChatGPT para usar a integração GitHub da sessão; isso não comprova que a integração está disponível. Nenhum arquivo local é lido nesta etapa.';
-    $('workspaceConnection').textContent=nodeHost
-      ?'Runtime/workspace local não conectado a esta página; nenhuma pasta ou arquivo local é lido.'
-      :'Acesso ao workspace local ainda indisponível. Nenhum arquivo local é lido nesta fase.';
-    syncCapabilitySummary();
-    syncProjectObservation();
-  }
-  async function refreshApiStatus() {
-    const state=await api.coordinatorChatStatus();
-    chatgptPlanStatus=state.chatgpt||chatgptPlanStatus;
-    groqConfigured=state.groqConfigured===true;
-    coordinatorProvider=state.provider||null;
-    nodeHost=state.executionSurface==='node_host';
-    $('orchestratorWorkRail').setAttribute('aria-label',nodeHost?'Frentes de trabalho do projeto':'Conversas do projeto no GPT');
-    $('workRailTitle').textContent=nodeHost?'Frentes de trabalho':'Conversas no GPT';
-    $('coordinatorRailToggle').textContent=nodeHost?'Frentes':'Frentes GPT';
-    $('newScopedWorkButton').textContent=nodeHost?'＋ Nova frente':'＋ Nova conversa no GPT';
-    $('newScopedWorkDetails').querySelector('summary').textContent=nodeHost?'Configurar título da frente':'Configurar nome da conversa';
-    $('newScopedWorkForm').querySelector('button[type="submit"]').textContent=nodeHost?'Criar frente e abrir rascunho':'Criar e abrir conversa';
-    $('workRailNote').textContent=nodeHost
-      ?'As frentes ficam salvas no projeto. O ChatGPT conectado responde no chat coordenador; envio às conversas de trabalho ainda não está ligado neste Host.'
-      :'Cada conversa mantém o próprio histórico dentro do projeto.';
-    const engineStatus=await call('status');
-    coordinatorAvailable=engineStatus.coordinatorAvailable===true;
-    repositoryPortAvailable=engineStatus.repositoryPortAvailable===true;
-    gptWebTransportAvailable=engineStatus.providerExecutionAvailable===true&&!nodeHost;
-    // The coordinator is a distinct conversation, not another GPT Web front.
-    orchestratorChatAvailable=coordinatorAvailable;
-    coordinatorDraftCommitAvailable=engineStatus.coordinatorDraftCommitAvailable===true;
-    if(!coordinatorDraftCommitAvailable)setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
-    else if($('coordinatorDraftState').textContent.includes('backend anterior'))
-      setCoordinatorDraftState($('coordinatorPrompt').value?'Rascunho local preservado nesta conversa.':'');
-    const routingName=nodeHost
-      ?coordinatorProvider==='chatgpt_plan'?'ChatGPT Plan':'Groq'
-      :'Groq';
-    $('coordinatorNavProvider').textContent='Coordenação via '+routingName;
-    $('coordinatorRouteLabel').textContent='ADMINISTRAÇÃO · '+routingName.toLocaleUpperCase('pt-BR');
-    $('coordinatorApiSettings').textContent='Configurar '+routingName;
-    $('coordinatorPrompt').placeholder='Mensagem para o Orquestrador · '+routingName;
-    $('coordinatorSend').textContent='Enviar à '+(routingName==='Groq'?'Groq':routingName);
-    $('coordinatorSend').setAttribute('aria-label','Enviar mensagem ao Orquestrador via '+routingName);
-    $('orchestrationConnection').textContent=coordinatorAvailable
-      ?'Destino: Orquestrador via '+routingName+'. Nenhuma mensagem deste campo vai às conversas do ChatGPT Web.'
-      :'Orquestrador indisponível: configure '+routingName+' para conversar. Nenhuma mensagem será redirecionada ao ChatGPT Web.';
-    syncCapabilitySummary();
-    syncCoordinatorActions();
-  }
-  $('coordinatorApiSettings').addEventListener('click',()=>onOpenAppSettings?.('providers'));
-  $('addProject').addEventListener('click',()=>{ $('projectSetup').open=true;$('projectObjective').focus(); });
-  $('renameProjectButton').addEventListener('click',()=>{
-    if(!projectId)return;
-    $('renameProjectInput').value=projectsCache.find(item=>item.id===projectId)?.name||'';
-    $('projectRenameSetup').open=true;$('renameProjectInput').focus();
-  });
-  $('addOrchestrator').addEventListener('click',()=>{
-    if(!projectId){status('Selecione ou crie um projeto antes de adicionar um orquestrador.');return;}
-    $('orchestratorSetup').open=true;$('orchestratorName').focus();
-  });
-  $('newScopedWorkButton').addEventListener('click',()=>{
-    $('newScopedWorkDetails').open=true;$('scopedWorkTitle').focus();
-  });
-  let workRailReturnFocus=$('coordinatorRailToggle');
-  const setWorkRailOpen=open=>{
-    const ready=open?(onSelectRightPane?.('context').catch(()=>{})??Promise.resolve()):Promise.resolve();
-    document.body.classList.toggle('orchestrator-rail-open',open);
-    $('contextRail').classList.toggle('open',open);
-    $('coordinatorRailToggle').setAttribute('aria-expanded',String(open));
-    $('openWorks').setAttribute('aria-expanded',String(open));
-    return ready;
-  };
-  const openFilteredWorks=(filter,trigger)=>{
-    if(!projectId||!orchestratorId)return;
-    workRailReturnFocus=trigger;
-    // A summary counter refers to ALL matching work; clear any stale search.
-    $('workSearch').value='';
-    $('workStatusFilter').value=filter;
-    applyWorkFilters();
-    void setWorkRailOpen(true).then(()=>{
-      if(document.body.classList.contains('orchestrator-rail-open'))$('workSearch').focus();
-    });
-  };
-  $('coordinatorRailToggle').addEventListener('click',()=>{
-    workRailReturnFocus=$('coordinatorRailToggle');
-    setWorkRailOpen(!$('contextRail').classList.contains('open'));
-  });
-  $('openProjectWork').addEventListener('click',()=>{
-    openFilteredWorks('all',$('openProjectWork'));
-  });
-  $('projectPulseStats').addEventListener('click',event=>{
-    const button=event.target.closest('button[data-work-filter]');
-    if(!button||!event.currentTarget.contains(button))return;
-    openFilteredWorks(button.dataset.workFilter,button);
-  });
-  $('closeWorkRail').addEventListener('click',()=>{
-    setWorkRailOpen(false);
-    if(workRailReturnFocus?.isConnected)workRailReturnFocus.focus();
-    else $('coordinatorRailToggle').focus();
-  });
-  $('dependencyTarget').addEventListener('change',()=>{
-    if(dependencySelectionDirty&&dependencyCurrentTarget&&$('dependencyTarget').value!==dependencyCurrentTarget){
-      $('dependencyTarget').value=dependencyCurrentTarget;
-      $('dependencyEditNote').textContent='Salve ou desfaça alterações pendentes antes de mudar de frente.';
-      return;
-    }
-    showDependencyChoices();
-  });
-  $('dependencyCandidates').addEventListener('change',updateDependencySelectionCount);
-  $('clearDependencySelection').addEventListener('click',()=>{
-    for(const box of $('dependencyCandidates').querySelectorAll('input[type="checkbox"]'))box.checked=false;
-    updateDependencySelectionCount();
-  });
-  $('discardDependencyChanges').addEventListener('click',()=>{
-    showDependencyChoices();
-    $('dependencyEditNote').textContent='Alterações não salvas descartadas. Nenhuma gravação ou envio foi realizado.';
-  });
-  $('workDependencyForm').addEventListener('submit',event=>{
-    event.preventDefault();
-    void (async()=>{
-      const selectedProject=projectId,taskId=$('dependencyTarget').value;
-      if(!selectedProject||!taskId)return;
-      const dependsOn=[...$('dependencyCandidates').querySelectorAll('input[type="checkbox"]:checked')].map(node=>node.value);
-      if(dependsOn.length>64){
-        $('dependencyEditNote').textContent='Selecione no máximo 64 pré-requisitos.';
-        return;
-      }
-      const save=$('saveWorkDependencies');
-      save.disabled=true;
-      $('dependencyEditNote').textContent='Verificando e salvando no projeto...';
-      try{
-        const receipt=await command('work_dependency_set',{projectId:selectedProject,taskId,dependsOn});
-        if(receipt.status!=='succeeded')throw Error('dependency_change_unconfirmed');
-        if(projectId!==selectedProject)return;
-        dependencySelectionDirty=false;
-        await refreshWorks();
-        $('dependencyEditNote').textContent='Dependências registradas no projeto. Nenhuma mensagem foi enviada.';
-        status('Dependências atualizadas. O planejamento considera os pré-requisitos persistidos.');
-      }catch(error){
-        if(projectId===selectedProject){
-          $('dependencyEditNote').textContent=String(error?.message||'')==='orchestrator_dependency_cycle'
-            ?'Dependências circulares não são permitidas. Revise as seleções.'
-            :String(error?.message||'')==='orchestrator_dependencies_locked_after_execution'
-              ?'Essa frente já foi executada. Crie uma nova frente para dependências futuras.'
-              :'Não foi possível confirmar a gravação. Confira o estado antes de tentar novamente.';
-        }
-      }finally{
-        if(projectId===selectedProject)save.disabled=false;
-      }
-    })();
-  });
-  async function refreshWorks() {
-    const generation=++epoch,p=projectId,o=orchestratorId;
-    if(!p) {workCount=0;renderDependencyEditor([],null);renderWorks([]);await onScopeChange(null);syncCoordinatorActions();return;}
-    const [result,planning,allResult]=await Promise.all([
-      call('work_list',{projectId:p,...(o?{orchestratorId:o}:{})}),
-      call('work_plan',{projectId:p,maxParallel:4}).catch(()=>null),
-      o?call('work_list',{projectId:p}).catch(()=>null):Promise.resolve(null)
-    ]);
-    if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
-    const works=result.works;
-    workCount=works.length;
-    $('openWorks').disabled=!projectId||!orchestratorId;
-    const editableDependencies=renderDependencyEditor(allResult?.works||result.works,planning?.plan||null);
-    renderWorks(works,planning?.plan||null,editableDependencies);
-    await onScopeChange(new Set(works.map(w=>w.id)));
-    if(generation!==epoch||p!==projectId||o!==orchestratorId)return;
-    syncCoordinatorActions();
-  }
-  async function refreshProjects() {
-    const generation=++projectRefreshGeneration;
-    const result=await call('projects_list');
-    // Only the newest discovery may repopulate the project selector.
-    if(generation!==projectRefreshGeneration)return projectsCache;
-    projectsCache=result.projects;
-    options($('projectSelect'),projectsCache,'Conversas sem projeto');
-    if(projectsCache.some(p=>p.id===projectId))$('projectSelect').value=projectId;
-    renderProjectNavigation(projectsCache);
-    syncProjectRepository();
-    return projectsCache;
-  }
-  async function refreshContinuityStatus() {
-    const p=projectId,o=orchestratorId;
-    if(!p||!o){$('continuityToggle').disabled=true;$('continuityProposalsToggle').disabled=true;$('continuityState').textContent='Selecione um orquestrador.';return;}
-    const [result,engineStatus]=await Promise.all([
-      call('continuity_status',{projectId:p,orchestratorId:o}),
-      call('status').catch(()=>null)
-    ]);
-    if(p!==projectId||o!==orchestratorId)return;
-    const canDisable=result.enabled===true;
-    const canEnable=engineStatus?.coordinatorAvailable===true;
-    $('continuityToggle').disabled=!canDisable&&!canEnable;
-    $('continuityToggle').title=!canDisable&&!canEnable
-      ?'Conecte e ative um modelo de coordenação para habilitar a análise automática.'
-      :'';
-    $('continuityProposalsToggle').disabled=!result.enabled;
-    $('continuityProposalsToggle').dataset.enabled=String(result.nextProposals.enabled);
-    $('continuityProposalsToggle').textContent=result.nextProposals.enabled?'Desativar propostas automáticas':'Propor próximas frentes automaticamente';
-    $('continuityToggle').dataset.enabled=String(result.enabled);
-    $('continuityToggle').textContent=result.enabled?'Desativar análise automática':'Ativar análise automática';
-    const messages={disabled:'Desativada',blocked_coordinator:'Bloqueada: conecte e ative um modelo de coordenação',pending:'Analisando trabalhos concluídos',observing:'Observando novas respostas',reconciliation_required:'Revisão manual necessária'};
-    const proposals=result.nextProposals.enabled?(' Próximas propostas: '+result.nextProposals.proposed+'/'+result.nextProposals.maximum+' geradas neste ciclo; exigem revisão.'):' Próximas propostas desativadas.';
-    const executionNotice=engineStatus?.autonomousExecution===true
-      ?' O supervisor de execução em segundo plano está ativo.'
-      :engineStatus?.autonomousExecution===false
-        ?' A análise só roda enquanto o processo OrdaX está aberto; o supervisor de 24 h do Runtime ainda não está conectado.'
-        :' O estado de execução em segundo plano não foi confirmado; não considerar como trabalho 24 h.';
-    $('continuityState').textContent=(messages[result.state]||'Estado indisponível')+'.'+proposals+' Nenhum envio automático ao GPT.'+executionNotice;
-  }
-  async function refreshOrchestrators() {
-    const generation=++orchestratorRefreshGeneration,p=projectId;
-    const result=p?await call('orchestrators_list',{projectId:p}):{orchestrators:[]};
-    // A late response from project A must never overwrite project B's state.
-    if(generation!==orchestratorRefreshGeneration||p!==projectId)return [];
-    orchestrators=result.orchestrators;
-    if(!orchestrators.some(o=>o.id===orchestratorId))orchestratorId=orchestrators[0]?.id||null;
-    options($('orchestratorSelect'),orchestrators,'Selecione um orquestrador');
-    $('orchestratorSelect').value=orchestratorId||'';
-    const selected=orchestrators.find(o=>o.id===orchestratorId);
-    const selectedId=selected?.id||null;
-    const isCurrent=()=>generation===orchestratorRefreshGeneration&&p===projectId&&selectedId===orchestratorId;
-    await activateCoordinatorDraft(selected?.chat_task_id||null,isCurrent);
-    if(!isCurrent())return [];
-    $('openOrchestrator').disabled=!selected;
-    $('pauseOrchestrator').disabled=!selected;
-    $('pauseOrchestrator').textContent=selected?.status==='paused'?'Retomar':'Pausar';
-    $('newOrchestratorForm').hidden=!p;
-    $('openWorks').disabled=!p||!selected;
-    $('orchestratorMission').textContent=selected
-      ?selected.name+' · '+selected.mission
-      :'Configure o Administrador Geral deste projeto.';
-    $('orchestratorTitle').textContent='Administrador Geral';
-    syncCoordinatorActions();
-    renderOrchestratorNavigation();
-    await refreshWorks();
-    if(!isCurrent())return [];
-    await refreshContinuityStatus();
-    if(!isCurrent())return [];
-    await refreshAutonomousDialogue();
+    …6375 tokens truncated…  await refreshAutonomousDialogue();
     return isCurrent()?orchestrators:[];
   }
   async function refreshAutonomousDialogue(){
