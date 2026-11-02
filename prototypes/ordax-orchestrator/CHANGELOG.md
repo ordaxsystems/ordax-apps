@@ -1,3 +1,9 @@
+## 0.2.0-alpha.42 — recomendações Groq fundamentadas (02/11/2026)
+
+- A análise inicial separa evidência local de hipóteses e mantém o diagnóstico de código em aberto quando nenhum snapshot foi observado.
+- Impede recomendações que presumem tokens, ferramentas, canais externos ou metas quantitativas não registradas.
+- A coordenação permanece consultiva; nenhuma recomendação é executada sem fluxo e recibo próprios.
+
 ## 0.2.0-alpha.41 — configurações gerais do aplicativo (02/11/2026)
 
 - Adiciona uma área de configurações acessível pelo ícone de engrenagem, mesmo sem projeto selecionado.
